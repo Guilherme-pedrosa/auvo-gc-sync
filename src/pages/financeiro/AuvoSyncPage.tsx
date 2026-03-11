@@ -105,8 +105,8 @@ const AuvoSyncPage = () => {
     { id: "7116099", label: "EXECUTADO – AG. NEGOCIAÇÃO" },
   ];
 
-  const gcOsUrl = (gcOsId: string) => `https://app.gestaoclick.com/ordens_servicos/${gcOsId}`;
-  const auvoTaskUrl = (taskId: string) => `https://app.auvo.com.br/tarefas/${taskId}`;
+  const gcOsUrl = (gcOsId: string) => `https://gestaoclick.com/ordens_servicos/visualizar/${gcOsId}`;
+  const auvoTaskUrl = (taskId: string) => `https://app.auvo.com.br/relatorioTarefas/DetalheTarefa/${taskId}`;
 
   const alterarSituacaoOS = async (detail: LogDetail, situacaoId: string) => {
     setChangingSituacao(detail.gc_os_id);
