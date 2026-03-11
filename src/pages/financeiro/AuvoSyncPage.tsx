@@ -504,26 +504,6 @@ const AuvoSyncPage = () => {
                   <Button onClick={() => executarSync(true)} disabled={running} variant="outline" className="w-full">
                     <Eye className="mr-2 h-4 w-4" />Dry Run (simular)
                   </Button>
-                  {!confirmExecute ? (
-                    <Button onClick={() => setConfirmExecute(true)} disabled={running} className="w-full">
-                      <Play className="mr-2 h-4 w-4" />Executar Sync (dar baixa em todas)
-                    </Button>
-                  ) : (
-                    <div className="space-y-2">
-                      <p className="text-xs text-destructive font-medium">Digite EXECUTAR para confirmar:</p>
-                      <Input value={confirmText} onChange={(e) => setConfirmText(e.target.value)} placeholder="EXECUTAR" />
-                      <div className="flex gap-2">
-                        <Button
-                          disabled={confirmText !== "EXECUTAR" || running}
-                          className="flex-1"
-                          onClick={() => { executarSync(false); setConfirmExecute(false); setConfirmText(""); }}
-                        >
-                          <Play className="mr-2 h-4 w-4" />Confirmar
-                        </Button>
-                        <Button variant="ghost" onClick={() => { setConfirmExecute(false); setConfirmText(""); }}>Cancelar</Button>
-                      </div>
-                    </div>
-                  )}
                 </div>
               </CardContent>
             </Card>
@@ -532,7 +512,26 @@ const AuvoSyncPage = () => {
           <Card>
             <CardHeader className="flex flex-row items-center justify-between">
               <div><CardTitle className="text-lg">Histórico</CardTitle><CardDescription>Últimas 20 execuções</CardDescription></div>
-              <Button variant="ghost" size="icon" onClick={() => queryClient.invalidateQueries({ queryKey: ["auvo-sync-logs"] })}><RefreshCw className="h-4 w-4" /></Button>
+              <div className="flex items-center gap-2">
+                {!confirmExecute ? (
+                  <Button onClick={() => setConfirmExecute(true)} disabled={running} size="sm">
+                    <Play className="mr-2 h-4 w-4" />Executar Sync (dar baixa em todas)
+                  </Button>
+                ) : (
+                  <div className="flex items-center gap-2">
+                    <Input value={confirmText} onChange={(e) => setConfirmText(e.target.value)} placeholder="Digite EXECUTAR" className="h-8 w-40 text-xs" />
+                    <Button
+                      size="sm"
+                      disabled={confirmText !== "EXECUTAR" || running}
+                      onClick={() => { executarSync(false); setConfirmExecute(false); setConfirmText(""); }}
+                    >
+                      <Play className="mr-2 h-3 w-3" />Confirmar
+                    </Button>
+                    <Button variant="ghost" size="sm" onClick={() => { setConfirmExecute(false); setConfirmText(""); }}>✕</Button>
+                  </div>
+                )}
+                <Button variant="ghost" size="icon" onClick={() => queryClient.invalidateQueries({ queryKey: ["auvo-sync-logs"] })}><RefreshCw className="h-4 w-4" /></Button>
+              </div>
             </CardHeader>
             <CardContent>
               {isLoading ? <p className="text-sm text-muted-foreground">Carregando...</p> : !logs?.length ? <p className="text-sm text-muted-foreground">Nenhum registro</p> : (
