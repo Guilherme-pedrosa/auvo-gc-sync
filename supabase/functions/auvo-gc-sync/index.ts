@@ -713,7 +713,14 @@ Deno.serve(async (req) => {
     let naoEncontradas = 0;
     let divergenciaPecas = 0;
 
+    const MAX_EXECUTION_TIME_MS = 50000; // parar antes do timeout de 60s da edge function
+
     for (const os of osCandidatas) {
+      // Check de tempo — parar se estamos perto do timeout
+      if (Date.now() - startTime > MAX_EXECUTION_TIME_MS) {
+        console.warn(`[auvo-gc-sync] ⚠️ Tempo limite atingido (${MAX_EXECUTION_TIME_MS}ms) — parando com ${logEntries.length} OS processadas`);
+        break;
+      }
       if (osIdsManual.length > 0 && !osIdsManual.includes(os.gc_os_id)) continue;
 
       console.log(`[auvo-gc-sync] Processando OS ${os.gc_os_codigo} → tarefa Auvo ${os.auvo_task_id}`);
