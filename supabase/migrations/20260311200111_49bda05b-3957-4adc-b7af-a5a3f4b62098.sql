@@ -1,0 +1,1 @@
+ALTER TABLE public.auvo_gc_sync_log ADD COLUMN IF NOT EXISTS os_divergencia_pecas INT DEFAULT 0;
