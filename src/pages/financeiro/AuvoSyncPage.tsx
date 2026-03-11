@@ -437,21 +437,21 @@ const AuvoSyncPage = () => {
                 {/* Filtros pós-busca */}
                 <div className="flex flex-wrap items-center gap-3 mt-3 pt-3 border-t">
                   <span className="text-xs font-medium text-muted-foreground">Filtros:</span>
-                  <Select value={filtroClientePos} onValueChange={setFiltroClientePos}>
+                  <Select value={filtroClientePos || "__all__"} onValueChange={v => setFiltroClientePos(v === "__all__" ? "" : v)}>
                     <SelectTrigger className="h-8 text-xs w-[220px]"><SelectValue placeholder="Todos os clientes" /></SelectTrigger>
                     <SelectContent>
                       <SelectItem value="__all__">Todos os clientes</SelectItem>
                       {clientesUnicos.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
                     </SelectContent>
                   </Select>
-                  <Select value={filtroSituacaoPos} onValueChange={setFiltroSituacaoPos}>
+                  <Select value={filtroSituacaoPos || "__all__"} onValueChange={v => setFiltroSituacaoPos(v === "__all__" ? "" : v)}>
                     <SelectTrigger className="h-8 text-xs w-[260px]"><SelectValue placeholder="Todas as situações" /></SelectTrigger>
                     <SelectContent>
                       <SelectItem value="__all__">Todas as situações</SelectItem>
                       {situacoesUnicas.map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}
                     </SelectContent>
                   </Select>
-                  <Select value={filtroTecnicoPos} onValueChange={setFiltroTecnicoPos}>
+                  <Select value={filtroTecnicoPos || "__all__"} onValueChange={v => setFiltroTecnicoPos(v === "__all__" ? "" : v)}>
                     <SelectTrigger className="h-8 text-xs w-[200px]"><SelectValue placeholder="Todos os técnicos" /></SelectTrigger>
                     <SelectContent>
                       <SelectItem value="__all__">Todos os técnicos</SelectItem>
