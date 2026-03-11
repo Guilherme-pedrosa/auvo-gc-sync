@@ -87,9 +87,9 @@ async function fetchOsComTarefaAuvo(gcHeaders: Record<string, string>): Promise<
         const label = String(nested.descricao || nested.label || nested.nome || "").toLowerCase();
         return id === atributoId || label === atributoLabel || label.includes("tarefa execu");
       });
-      const nested = atributoTarefa?.atributo || atributoTarefa;
-      const valor = String(nested?.conteudo || nested?.valor || "").trim();
-      if (!valor) continue;
+      const nested2 = atributoTarefa?.atributo || atributoTarefa;
+      const valor = String(nested2?.conteudo || nested2?.valor || "").trim();
+      if (!valor) { semValor++; continue; }
 
       results.push({
         gc_os_id: String(os.id),
@@ -99,6 +99,7 @@ async function fetchOsComTarefaAuvo(gcHeaders: Record<string, string>): Promise<
         situacao_id: situacaoId,
       });
     }
+    console.log(`[auvo-gc-sync] Página ${page}: excluídas=${excluidas}, semAtributo=${semAtributo}, semValor=${semValor}, candidatas=${results.length}`);
     page++;
   }
   return results;
