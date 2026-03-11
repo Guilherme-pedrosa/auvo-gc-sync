@@ -389,7 +389,7 @@ const AuvoSyncPage = () => {
                           </CollapsibleTrigger>
                           <CollapsibleContent asChild>
                             <TableRow>
-                              <TableCell colSpan={10} className="bg-muted/30 p-4">
+                              <TableCell colSpan={11} className="bg-muted/30 p-4">
                                 {Array.isArray(log.detalhes) && log.detalhes.length > 0 ? (
                                   <Table>
                                     <TableHeader>
