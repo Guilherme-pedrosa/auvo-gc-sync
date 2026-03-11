@@ -510,6 +510,11 @@ Deno.serve(async (req) => {
       let errosRevert = 0;
       
       for (const os of osList) {
+        if (!validarSituacaoPermitida(os.situacao_destino_id)) {
+          errosRevert++;
+          results.push({ gc_os_id: os.id, gc_os_codigo: os.codigo, resultado: "bloqueado", detalhe: `Situação ${os.situacao_destino_id} NÃO está na whitelist de situações permitidas` });
+          continue;
+        }
         if (dryRunRevert) {
           results.push({ gc_os_id: os.id, gc_os_codigo: os.codigo, resultado: "dry_run_ok", detalhe: `Seria revertida para situação ${os.situacao_destino_id}` });
           revertidas++;
