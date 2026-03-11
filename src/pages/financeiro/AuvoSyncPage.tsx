@@ -315,6 +315,7 @@ const AuvoSyncPage = () => {
       <Tabs defaultValue="execucoes">
         <TabsList>
           <TabsTrigger value="execucoes">📊 Execuções</TabsTrigger>
+          <TabsTrigger value="reversao">↩️ Reversão em Lote</TabsTrigger>
           <TabsTrigger value="mapeamento">🔗 Mapeamento de Técnicos</TabsTrigger>
         </TabsList>
 
