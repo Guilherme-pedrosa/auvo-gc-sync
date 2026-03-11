@@ -109,6 +109,7 @@ const AuvoSyncPage = () => {
     { id: "7748831", label: "AGUARDANDO RETIRADA" },
     { id: "8219136", label: "EM ROTA" },
     { id: "7116099", label: "EXECUTADO – AG. NEGOCIAÇÃO" },
+    { id: "8889036", label: "FECHADO CHAMADO" },
   ];
 
   const gcOsUrl = (gcOsId: string) => `https://gestaoclick.com/ordens_servicos/visualizar/${gcOsId}`;
