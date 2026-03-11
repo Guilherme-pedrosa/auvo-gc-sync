@@ -11,7 +11,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { toast } from "sonner";
-import { RefreshCw, Play, Eye, ChevronDown, ChevronRight, ArrowLeft, Package, AlertTriangle, Plus, Link2, UserCheck } from "lucide-react";
+import { RefreshCw, Play, Eye, ChevronDown, ChevronRight, ArrowLeft, Package, AlertTriangle, Plus, Link2, UserCheck, CalendarIcon } from "lucide-react";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { useNavigate } from "react-router-dom";
