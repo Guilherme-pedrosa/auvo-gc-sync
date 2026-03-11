@@ -458,9 +458,23 @@ const AuvoSyncPage = () => {
                                           </TableCell>
                                           <TableCell className="text-xs">{d.situacao_antes}</TableCell>
                                           <TableCell className="text-xs">{d.situacao_depois || "—"}</TableCell>
-                                          <TableCell className="text-xs max-w-xs">
+                                           <TableCell className="text-xs max-w-xs">
                                             <span className="truncate block" title={d.detalhe}>{d.detalhe}</span>
                                             <PecasDetail detail={d} />
+                                          </TableCell>
+                                          <TableCell>
+                                            {(d.resultado === "atualizada" || d.resultado === "dry_run_ok") && d.situacao_id_antes && !log.dry_run && (
+                                              <Button
+                                                variant="outline"
+                                                size="sm"
+                                                className="text-xs"
+                                                disabled={reverting === d.gc_os_id}
+                                                onClick={(e) => { e.stopPropagation(); reverterOS(d); }}
+                                              >
+                                                <Undo2 className="h-3 w-3 mr-1" />
+                                                {reverting === d.gc_os_id ? "Revertendo..." : "Reverter"}
+                                              </Button>
+                                            )}
                                           </TableCell>
                                         </TableRow>
                                       ))}
