@@ -612,7 +612,7 @@ const AuvoSyncPage = () => {
                                                 for (const d of selecionadas) {
                                                   try {
                                                     const { data, error } = await supabase.functions.invoke("auvo-gc-sync", {
-                                                      body: { action: "revert_os", gc_os_id: d.gc_os_id, gc_os_codigo: d.gc_os_codigo, situacao_id_antes: situacaoSelecionadas },
+                                                      body: { action: "revert_os", gc_os_id: d.gc_os_id, gc_os_codigo: d.gc_os_codigo, situacao_id_antes: situacaoSelecionadas, gc_vendedor_id: d.gc_vendedor_id || null, gc_vendedor_nome: d.gc_vendedor_nome || null },
                                                     });
                                                     if (error) throw error;
                                                     if (data?.success) ok++; else fail++;
