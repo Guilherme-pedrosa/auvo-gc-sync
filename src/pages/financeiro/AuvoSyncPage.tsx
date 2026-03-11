@@ -73,6 +73,8 @@ const AuvoSyncPage = () => {
   const [selectedAuvoUserNome, setSelectedAuvoUserNome] = useState("");
   const [selectedGcVendedor, setSelectedGcVendedor] = useState("");
   const [selectedGcVendedorNome, setSelectedGcVendedorNome] = useState("");
+  const [dataInicio, setDataInicio] = useState<Date | undefined>(undefined);
+  const [dataFim, setDataFim] = useState<Date | undefined>(undefined);
 
   // ─── Queries ───
   const { data: logs, isLoading } = useQuery({
