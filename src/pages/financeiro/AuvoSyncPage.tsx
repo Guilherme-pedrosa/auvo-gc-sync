@@ -649,7 +649,6 @@ const AuvoSyncPage = () => {
                                             <TableCell>
                                               <span className="text-xs truncate block max-w-[180px]" title={d.gc_cliente || ""}>{d.gc_cliente || "—"}</span>
                                             </TableCell>
-                                            </TableCell>
                                             <TableCell className="text-xs text-muted-foreground">
                                               {d.data_os ? (() => { try { return format(new Date(d.data_os), "dd/MM/yy"); } catch { return d.data_os; } })() : "—"}
                                             </TableCell>
