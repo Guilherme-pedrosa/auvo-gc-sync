@@ -838,6 +838,7 @@ Deno.serve(async (req) => {
           resultado: "erro_gc", detalhe: `HTTP ${gcResult.status} — ${JSON.stringify(gcResult.body)}`,
           situacao_antes: os.nome_situacao, situacao_id_antes: os.situacao_id, situacao_depois: null, data_os: os.data_os,
           auvo_tecnico_id: auvoTecnicoId || null, vendedor_status: vendedorStatus,
+          gc_cliente: os.gc_cliente, auvo_cliente: auvoCliente || null,
         });
       }
     }
