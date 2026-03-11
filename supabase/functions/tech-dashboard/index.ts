@@ -49,6 +49,11 @@ async function fetchAllAuvoTasks(
       break;
     }
     const data = await response.json();
+    console.log(`[tech-dashboard] Page ${page} response keys: ${Object.keys(data).join(", ")}`);
+    if (page === 1) {
+      console.log(`[tech-dashboard] Result keys: ${Object.keys(data?.result || {}).join(", ")}`);
+      console.log(`[tech-dashboard] First entity sample: ${JSON.stringify((data?.result?.entityList || data?.result?.Entities || [])[0] || "EMPTY").substring(0, 1000)}`);
+    }
     const entities = data?.result?.entityList || data?.result?.Entities || [];
     allTasks.push(...entities);
     console.log(`[tech-dashboard] Page ${page}: ${entities.length} tasks (total: ${allTasks.length})`);
