@@ -529,6 +529,142 @@ const AuvoSyncPage = () => {
           </Card>
         </TabsContent>
 
+        {/* ─── TAB: Reversão em Lote ─── */}
+        <TabsContent value="reversao" className="space-y-4">
+          <Alert variant="destructive">
+            <AlertTriangle className="h-4 w-4" />
+            <AlertTitle>Ferramenta de Emergência</AlertTitle>
+            <AlertDescription>
+              Reverte a situação de múltiplas OS no GestãoClick. Não restaura pagamentos, NFs ou outros dados — apenas a situação.
+            </AlertDescription>
+          </Alert>
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-lg flex items-center gap-2"><Undo2 className="h-5 w-5" /> Reversão em Lote</CardTitle>
+              <CardDescription>Encontre e reverta OS alteradas indevidamente</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium text-muted-foreground">Modificadas após (datetime)</label>
+                  <Input
+                    value={revertModificadoApos}
+                    onChange={(e) => setRevertModificadoApos(e.target.value)}
+                    placeholder="2026-03-11 17:46:00"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium text-muted-foreground">Situação de destino</label>
+                  <Select value={revertSituacaoId} onValueChange={setRevertSituacaoId}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="7213493">SERVICO AGUARDANDO EXECUCAO</SelectItem>
+                      <SelectItem value="7684665">RETIRADA PELO TECNICO</SelectItem>
+                      <SelectItem value="7063581">PEDIDO EM CONFERENCIA</SelectItem>
+                      <SelectItem value="7063705">PEDIDO CONFERIDO AGUARDANDO EXECUÇÃO</SelectItem>
+                      <SelectItem value="7063579">AGUARDANDO COMPRA DE PEÇAS</SelectItem>
+                      <SelectItem value="7063580">AGUARDANDO CHEGADA DE PEÇAS</SelectItem>
+                      <SelectItem value="7659440">AGUARDANDO FABRICAÇÃO</SelectItem>
+                      <SelectItem value="8679279">IMPORTADO API CIGAM</SelectItem>
+                      <SelectItem value="8685059">IMP CIGAM FATURADO TOTAL</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+
+              <div className="flex gap-2">
+                <Button
+                  onClick={async () => {
+                    setScanning(true);
+                    try {
+                      const { data, error } = await supabase.functions.invoke("auvo-gc-sync", {
+                        body: { action: "batch_scan", modificado_apos: revertModificadoApos },
+                      });
+                      if (error) throw error;
+                      setScanResult(data?.os_list || []);
+                      toast.success(`${data?.total || 0} OS encontradas`);
+                    } catch (err: any) {
+                      toast.error(`Erro: ${err.message}`);
+                    } finally {
+                      setScanning(false);
+                    }
+                  }}
+                  disabled={scanning}
+                  variant="outline"
+                >
+                  <Eye className="mr-2 h-4 w-4" />
+                  {scanning ? "Escaneando..." : "1. Escanear OS afetadas"}
+                </Button>
+
+                {scanResult && scanResult.length > 0 && (
+                  <Button
+                    onClick={async () => {
+                      const confirmed = window.confirm(
+                        `CONFIRMA reverter ${scanResult.length} OS para a situação selecionada? Esta ação NÃO pode ser desfeita.`
+                      );
+                      if (!confirmed) return;
+                      setBatchReverting(true);
+                      try {
+                        const osList = scanResult.map(os => ({
+                          id: os.id,
+                          codigo: os.codigo,
+                          situacao_destino_id: revertSituacaoId,
+                        }));
+                        const { data, error } = await supabase.functions.invoke("auvo-gc-sync", {
+                          body: { action: "batch_revert", os_list: osList, dry_run: false },
+                        });
+                        if (error) throw error;
+                        toast.success(`${data?.revertidas || 0} OS revertidas, ${data?.erros || 0} erros`);
+                        queryClient.invalidateQueries({ queryKey: ["auvo-sync-logs"] });
+                        setScanResult(null);
+                      } catch (err: any) {
+                        toast.error(`Erro: ${err.message}`);
+                      } finally {
+                        setBatchReverting(false);
+                      }
+                    }}
+                    disabled={batchReverting}
+                    variant="destructive"
+                  >
+                    <Undo2 className="mr-2 h-4 w-4" />
+                    {batchReverting ? "Revertendo..." : `2. Reverter ${scanResult.length} OS`}
+                  </Button>
+                )}
+              </div>
+
+              {scanResult && (
+                <div className="border rounded-md">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>OS</TableHead>
+                        <TableHead>Modificado em</TableHead>
+                        <TableHead>Situação atual</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {scanResult.length === 0 ? (
+                        <TableRow>
+                          <TableCell colSpan={3} className="text-center text-muted-foreground">Nenhuma OS encontrada</TableCell>
+                        </TableRow>
+                      ) : (
+                        scanResult.map((os) => (
+                          <TableRow key={os.id}>
+                            <TableCell className="font-mono text-sm">{os.codigo}</TableCell>
+                            <TableCell className="text-sm">{os.modificado_em}</TableCell>
+                            <TableCell><Badge variant="destructive">EXECUTADO - AG. NEGOCIAÇÃO</Badge></TableCell>
+                          </TableRow>
+                        ))
+                      )}
+                    </TableBody>
+                  </Table>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
         {/* ─── TAB 2: Mapeamento ─── */}
         <TabsContent value="mapeamento" className="space-y-4">
           {tecnicosSemMapa.length > 0 && (
