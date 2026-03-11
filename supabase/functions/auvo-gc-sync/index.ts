@@ -401,7 +401,7 @@ async function validarPecasOsVsExecucao(
   return { aprovado, sem_pecas_orcamento: false, pecas_orcamento: pecasOrcamento, materiais_execucao: materiaisExecucao, itens_cobertos: cobertos, itens_faltando: faltando, itens_parciais: parciais, resumo };
 }
 
-// ─── STEP 3: Atualizar APENAS situação GC — NUNCA alterar nome_cliente, vendedor ou outros campos ───
+// ─── STEP 3: Atualizar APENAS situação GC — busca OS atual e reenvia todos os campos ───
 async function atualizarSituacaoOsGC(
   gcOsId: string, situacaoId: string, gcHeaders: Record<string, string>
 ): Promise<{ success: boolean; status: number; body: unknown }> {
@@ -411,10 +411,42 @@ async function atualizarSituacaoOsGC(
     return { success: false, status: 403, body: `Situação ${situacaoId} bloqueada pela whitelist` };
   }
   const url = `${GC_BASE_URL}/api/ordens_servicos/${gcOsId}`;
-  // ── SEGURANÇA: payload MÍNIMO — NUNCA alterar nome_cliente, vendedor, ou outros campos ──
-  // Apenas situacao_id é permitido no PUT de OS
-  const payload: Record<string, unknown> = { situacao_id: situacaoId };
+
   try {
+    // ── Buscar OS atual para preservar TODOS os campos (vendedor, valor, etc.) ──
+    const getResp = await rateLimitedFetch(url, { headers: gcHeaders }, "gc");
+    if (!getResp.ok) {
+      console.error(`[auvo-gc-sync] Erro ao buscar OS ${gcOsId} antes do PUT: HTTP ${getResp.status}`);
+      return { success: false, status: getResp.status, body: `Erro ao buscar OS atual: HTTP ${getResp.status}` };
+    }
+    const getData = await getResp.json();
+    const osAtual = getData?.data ?? getData;
+
+    // ── Montar payload preservando campos críticos ──
+    const payload: Record<string, unknown> = {
+      situacao_id: situacaoId,
+    };
+
+    // Preservar campos que a API zera se não forem enviados
+    const camposPreservar = [
+      "vendedor_id", "vendedor", "tecnico_id", "tecnico",
+      "valor_total", "valor", "desconto", "frete",
+      "nome_cliente", "cliente_id",
+      "data_entrada", "data_saida",
+      "centro_custo_id", "centro_custo",
+      "canal_venda_id", "canal_venda",
+      "loja_id", "loja",
+      "observacao", "descricao",
+    ];
+
+    for (const campo of camposPreservar) {
+      if (osAtual[campo] !== undefined && osAtual[campo] !== null) {
+        payload[campo] = osAtual[campo];
+      }
+    }
+
+    console.log(`[auvo-gc-sync] PUT OS ${gcOsId}: situacao_id=${situacaoId}, vendedor_id=${payload.vendedor_id || "N/A"}, valor_total=${payload.valor_total || "N/A"}`);
+
     const response = await rateLimitedFetch(url, {
       method: "PUT", headers: gcHeaders,
       body: JSON.stringify(payload),
