@@ -54,6 +54,17 @@ const SITUACOES_EXCLUIR = [
 
 const MAX_OS_POR_EXECUCAO = 40; // teto de segurança para evitar timeout
 
+// ─── WHITELIST de situações permitidas para alteração ───
+const SITUACOES_PERMITIDAS = [
+  "7063579", "7063580", "7659440", "7063581", "7063705",
+  "7213493", "7684665", "7748831", "8219136",
+  "7116099", // destino padrão da sync (EXECUTADO - AG. NEGOCIAÇÃO)
+];
+
+function validarSituacaoPermitida(situacaoId: string): boolean {
+  return SITUACOES_PERMITIDAS.includes(situacaoId);
+}
+
 // ─── STEP 1: Buscar OS com tarefa Auvo ───
 async function fetchOsComTarefaAuvo(gcHeaders: Record<string, string>, dataInicio?: string, dataFim?: string): Promise<Array<{
   gc_os_id: string;
@@ -386,6 +397,11 @@ async function atualizarSituacaoOsGC(
   gcOsId: string, situacaoId: string, gcHeaders: Record<string, string>,
   gcVendedorId?: string | null
 ): Promise<{ success: boolean; status: number; body: unknown }> {
+  // ── TRAVA DE SEGURANÇA: só permite situações da whitelist ──
+  if (!validarSituacaoPermitida(situacaoId)) {
+    console.error(`[BLOQUEADO] Tentativa de alterar OS ${gcOsId} para situação ${situacaoId} que NÃO está na whitelist!`);
+    return { success: false, status: 403, body: `Situação ${situacaoId} bloqueada pela whitelist` };
+  }
   const url = `${GC_BASE_URL}/api/ordens_servicos/${gcOsId}`;
   const payload: Record<string, unknown> = { situacao_id: situacaoId };
   if (gcVendedorId) {
@@ -499,6 +515,11 @@ Deno.serve(async (req) => {
       let errosRevert = 0;
       
       for (const os of osList) {
+        if (!validarSituacaoPermitida(os.situacao_destino_id)) {
+          errosRevert++;
+          results.push({ gc_os_id: os.id, gc_os_codigo: os.codigo, resultado: "bloqueado", detalhe: `Situação ${os.situacao_destino_id} NÃO está na whitelist de situações permitidas` });
+          continue;
+        }
         if (dryRunRevert) {
           results.push({ gc_os_id: os.id, gc_os_codigo: os.codigo, resultado: "dry_run_ok", detalhe: `Seria revertida para situação ${os.situacao_destino_id}` });
           revertidas++;
@@ -547,6 +568,11 @@ Deno.serve(async (req) => {
       if (!gcOsId || !situacaoAnteriorId) {
         return new Response(JSON.stringify({ error: "gc_os_id e situacao_id_antes são obrigatórios" }), {
           status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+      if (!validarSituacaoPermitida(situacaoAnteriorId)) {
+        return new Response(JSON.stringify({ error: `Situação ${situacaoAnteriorId} NÃO está na whitelist de situações permitidas. Permitidas: ${SITUACOES_PERMITIDAS.join(", ")}` }), {
+          status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
       console.log(`[auvo-gc-sync] REVERT: OS ${gcOsCodigo} (${gcOsId}) → situação ${situacaoAnteriorId}`);
