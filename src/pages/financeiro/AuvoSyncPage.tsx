@@ -46,6 +46,7 @@ type LogDetail = {
   situacao_depois: string | null;
   data_os?: string;
   auvo_tecnico_id?: string | null;
+  auvo_tecnico_nome?: string | null;
   gc_vendedor_id?: string | null;
   gc_vendedor_nome?: string | null;
   vendedor_status?: string;
@@ -560,7 +561,7 @@ const AuvoSyncPage = () => {
                                           <TableHead>OS</TableHead>
                                           <TableHead>Tarefa</TableHead>
                                           <TableHead>Resultado</TableHead>
-                                          <TableHead>Vendedor</TableHead>
+                                          <TableHead>Técnico</TableHead>
                                           <TableHead>Antes</TableHead>
                                           <TableHead>Depois</TableHead>
                                           <TableHead>Detalhe</TableHead>
@@ -590,8 +591,9 @@ const AuvoSyncPage = () => {
                                             <TableCell>{resultadoBadge(d.resultado)}</TableCell>
                                             <TableCell>
                                               <div className="space-y-1">
+                                                {d.auvo_tecnico_nome && <span className="text-xs block font-medium">{d.auvo_tecnico_nome}</span>}
+                                                {!d.auvo_tecnico_nome && d.gc_vendedor_nome && <span className="text-xs block">{d.gc_vendedor_nome}</span>}
                                                 {vendedorBadge(d.vendedor_status)}
-                                                {d.gc_vendedor_nome && <span className="text-xs block">{d.gc_vendedor_nome}</span>}
                                               </div>
                                             </TableCell>
                                             <TableCell className="text-xs">{d.situacao_antes}</TableCell>

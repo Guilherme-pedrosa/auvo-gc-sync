@@ -738,9 +738,12 @@ Deno.serve(async (req) => {
         continue;
       }
 
+      // Extrair técnico de toda tarefa
+      const auvoTecnicoId = String(tarefa._raw?.idUserTo || tarefa._raw?.idUserFrom || "").trim();
+      const auvoTecnicoNome = String(tarefa._raw?.userToName || tarefa._raw?.userFromName || tarefa._raw?.collaboratorName || "").trim();
+
       // ─── FILTRO: só processar tarefas finalizadas (com ou sem pendência) ───
       if (!tarefa.finished) {
-        // Não finalizada — ignorar silenciosamente (não poluir log)
         continue;
       }
 
@@ -748,7 +751,7 @@ Deno.serve(async (req) => {
 
       if (!finalizadaSemPendencia) {
         comPendencia++;
-        logEntries.push({ gc_os_id: os.gc_os_id, gc_os_codigo: os.gc_os_codigo, auvo_task_id: os.auvo_task_id, resultado: "com_pendencia", detalhe: `finished=${tarefa.finished} | pendency="${tarefa.pendency}" | taskStatus=${tarefa.taskStatus}`, situacao_antes: os.nome_situacao, situacao_id_antes: os.situacao_id, situacao_depois: null, data_os: os.data_os });
+        logEntries.push({ gc_os_id: os.gc_os_id, gc_os_codigo: os.gc_os_codigo, auvo_task_id: os.auvo_task_id, resultado: "com_pendencia", detalhe: `finished=${tarefa.finished} | pendency="${tarefa.pendency}" | taskStatus=${tarefa.taskStatus}`, situacao_antes: os.nome_situacao, situacao_id_antes: os.situacao_id, situacao_depois: null, data_os: os.data_os, auvo_tecnico_id: auvoTecnicoId || null, auvo_tecnico_nome: auvoTecnicoNome || null });
         continue;
       }
 
@@ -766,6 +769,7 @@ Deno.serve(async (req) => {
           gc_os_id: os.gc_os_id, gc_os_codigo: os.gc_os_codigo, auvo_task_id: os.auvo_task_id,
           resultado: "divergencia_pecas", detalhe: validacaoPecas.resumo,
           situacao_antes: os.nome_situacao, situacao_id_antes: os.situacao_id, situacao_depois: null, data_os: os.data_os,
+          auvo_tecnico_id: auvoTecnicoId || null, auvo_tecnico_nome: auvoTecnicoNome || null,
           pecas_orcamento: validacaoPecas.pecas_orcamento,
           materiais_execucao: validacaoPecas.materiais_execucao,
           itens_cobertos: validacaoPecas.itens_cobertos,
@@ -776,7 +780,6 @@ Deno.serve(async (req) => {
       }
 
       // ─── Resolver vendedor ───
-      const auvoTecnicoId = String(tarefa._raw?.idUserTo || tarefa._raw?.idUserFrom || "").trim();
       let gcVendedorId: string | null = null;
       let gcVendedorNome: string | null = null;
       let vendedorStatus: "mapeado" | "sem_mapeamento" | "sem_tecnico" = "sem_tecnico";
@@ -799,7 +802,7 @@ Deno.serve(async (req) => {
           resultado: "dry_run_ok",
           detalhe: `Seria atualizada para situação 7116099 | Peças: ${validacaoPecas.resumo} | Vendedor: ${gcVendedorNome || vendedorStatus}`,
           situacao_antes: os.nome_situacao, situacao_id_antes: os.situacao_id, situacao_depois: "EXECUTADO – AG. NEGOCIAÇÃO (7116099)",
-          auvo_tecnico_id: auvoTecnicoId || null, data_os: os.data_os,
+          auvo_tecnico_id: auvoTecnicoId || null, auvo_tecnico_nome: auvoTecnicoNome || null, data_os: os.data_os,
           gc_vendedor_id: gcVendedorId, gc_vendedor_nome: gcVendedorNome, vendedor_status: vendedorStatus,
         });
         continue;
@@ -814,7 +817,7 @@ Deno.serve(async (req) => {
           resultado: "atualizada",
           detalhe: `HTTP ${gcResult.status} — situação 7116099 | Vendedor: ${gcVendedorNome || vendedorStatus} | Peças: ${validacaoPecas.resumo}`,
           situacao_antes: os.nome_situacao, situacao_id_antes: os.situacao_id, situacao_depois: "EXECUTADO – AGUARDANDO NEGOCIAÇÃO FINANCEIRA",
-          auvo_tecnico_id: auvoTecnicoId || null, data_os: os.data_os,
+          auvo_tecnico_id: auvoTecnicoId || null, auvo_tecnico_nome: auvoTecnicoNome || null, data_os: os.data_os,
           gc_vendedor_id: gcVendedorId, gc_vendedor_nome: gcVendedorNome, vendedor_status: vendedorStatus,
         });
       } else {
