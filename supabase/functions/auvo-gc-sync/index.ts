@@ -40,8 +40,19 @@ function auvoHeaders(bearerToken: string): Record<string, string> {
 }
 
 const SITUACOES_EXCLUIR = [
-  "7116099", "7124107", "8760417", "7063724",
+  "7116099", // EXECUTADO - AG. NEGOCIAÇÃO (destino)
+  "7124107", // EXECUTADO COM NOTA EMITIDA
+  "8760417", // LIBERADO P/ FATURAMENTO
+  "7063724", // AGUARDANDO PAGAMENTO
+  "7261986", // EXECUTADO POR CONTRATO
+  "7438044", // EXECUTADO EM GARANTIA
+  "7535001", // EXECUTADO - PATRIMÔNIO
+  "7720756", // FINANCEIRO SEPARADO
+  "8677491", // CIGAM
+  "8889036", // FECHADO CHAMADO
 ];
+
+const MAX_OS_POR_EXECUCAO = 80; // teto de segurança para evitar timeout (~50s de processamento)
 
 // ─── STEP 1: Buscar OS com tarefa Auvo ───
 async function fetchOsComTarefaAuvo(gcHeaders: Record<string, string>, dataInicio?: string, dataFim?: string): Promise<Array<{
@@ -58,14 +69,27 @@ async function fetchOsComTarefaAuvo(gcHeaders: Record<string, string>, dataInici
     nome_situacao: string; situacao_id: string;
   }> = [];
 
+  // Acumuladores totais
+  let totalExcluidas = 0;
+  let totalSemAtributo = 0;
+  let totalSemValor = 0;
+  let totalProcessadas = 0;
+
   let page = 1;
   let totalPages = 1;
 
-  while (page <= totalPages) {
+  while (page <= totalPages && results.length < MAX_OS_POR_EXECUCAO) {
     let url = `${GC_BASE_URL}/api/ordens_servicos?limite=100&pagina=${page}`;
     if (dataInicio) url += `&data_cadastro_inicio=${dataInicio}`;
     if (dataFim) url += `&data_cadastro_fim=${dataFim}`;
+
     const response = await rateLimitedFetch(url, { headers: gcHeaders }, "gc");
+
+    if (response.status === 429) {
+      console.warn("[auvo-gc-sync] GC rate limit — aguardando 3s...");
+      await new Promise(r => setTimeout(r, 3000));
+      continue;
+    }
     if (!response.ok) { console.error(`[auvo-gc-sync] GC OS list error: ${response.status}`); break; }
 
     const data = await response.json();
@@ -73,28 +97,23 @@ async function fetchOsComTarefaAuvo(gcHeaders: Record<string, string>, dataInici
     totalPages = data?.meta?.total_paginas || 1;
     console.log(`[auvo-gc-sync] Página ${page}/${totalPages}: ${records.length} OS`);
 
-    let excluidas = 0;
-    let semAtributo = 0;
-    let semValor = 0;
-
     for (const os of records) {
+      if (results.length >= MAX_OS_POR_EXECUCAO) break;
+      totalProcessadas++;
       const situacaoId = String(os.situacao_id || "");
-      if (SITUACOES_EXCLUIR.includes(situacaoId)) { excluidas++; continue; }
+      if (SITUACOES_EXCLUIR.includes(situacaoId)) { totalExcluidas++; continue; }
 
       const atributos: any[] = os.atributos || [];
       const atributoTarefa = atributos.find((a: any) => {
-        // GC returns nested: { atributo: { atributo_id, descricao, conteudo } }
         const nested = a?.atributo || a;
         const id = String(nested.atributo_id || nested.id || "");
         const label = String(nested.descricao || nested.label || nested.nome || "").toLowerCase();
         return id === atributoId || label === atributoLabel || label.includes("tarefa execu");
       });
-      if (!atributoTarefa) { semAtributo++; continue; }
+      if (!atributoTarefa) { totalSemAtributo++; continue; }
       const nested2 = atributoTarefa?.atributo || atributoTarefa;
       const valor = String(nested2?.conteudo || nested2?.valor || "").trim();
-      if (!valor) { semValor++; continue; }
-      // Skip non-numeric task IDs (e.g. "importação Cigam", "venda", "DESLOCAMENTO")
-      if (!/^\d+$/.test(valor)) { semValor++; continue; }
+      if (!valor || !/^\d+$/.test(valor)) { totalSemValor++; continue; }
 
       results.push({
         gc_os_id: String(os.id),
@@ -104,7 +123,7 @@ async function fetchOsComTarefaAuvo(gcHeaders: Record<string, string>, dataInici
         situacao_id: situacaoId,
       });
     }
-    console.log(`[auvo-gc-sync] Página ${page}: excluídas=${excluidas}, semAtributo=${semAtributo}, semValor=${semValor}, candidatas=${results.length}`);
+    console.log(`[auvo-gc-sync] Página ${page}: totalExcluídas=${totalExcluidas}, totalSemAtributo=${totalSemAtributo}, totalSemValor=${totalSemValor}, candidatas=${results.length}`);
     page++;
   }
   return results;
