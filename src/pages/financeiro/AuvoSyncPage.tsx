@@ -98,6 +98,9 @@ const AuvoSyncPage = () => {
   const [situacaoClienteBulk, setSituacaoClienteBulk] = useState("");
   const [changingSituacaoCliente, setChangingSituacaoCliente] = useState(false);
   const [filtroStatusTarefa, setFiltroStatusTarefa] = useState<"sem_pendencia" | "todas">("sem_pendencia");
+  const [selectedOsIds, setSelectedOsIds] = useState<Set<string>>(new Set());
+  const [situacaoSelecionadas, setSituacaoSelecionadas] = useState("");
+  const [changingSelecionadas, setChangingSelecionadas] = useState(false);
 
   const SITUACOES_OPTIONS = [
     { id: "7063579", label: "AGUARDANDO COMPRA DE PEÇAS" },
@@ -536,7 +539,7 @@ const AuvoSyncPage = () => {
                       <Collapsible key={log.id} asChild open={expandedRow === log.id}>
                         <>
                           <CollapsibleTrigger asChild>
-                            <TableRow className="cursor-pointer hover:bg-muted/50" onClick={() => setExpandedRow(expandedRow === log.id ? null : log.id)}>
+                            <TableRow className="cursor-pointer hover:bg-muted/50" onClick={() => { setExpandedRow(expandedRow === log.id ? null : log.id); setSelectedOsIds(new Set()); setSituacaoSelecionadas(""); }}>
                               <TableCell>{expandedRow === log.id ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}</TableCell>
                               <TableCell className="text-sm">{format(new Date(log.executado_em), "dd/MM HH:mm", { locale: ptBR })}</TableCell>
                               <TableCell className="text-center">{log.os_candidatas}</TableCell>
@@ -554,44 +557,82 @@ const AuvoSyncPage = () => {
                               <TableCell colSpan={11} className="bg-muted/30 p-4">
                                 {Array.isArray(log.detalhes) && log.detalhes.length > 0 ? (
                                   <div className="space-y-3">
+                                    {/* Barra de ações em lote */}
+                                    <div className="flex flex-wrap items-center gap-3">
+                                      <Button
+                                        variant="outline"
+                                        size="sm"
+                                        className="text-xs"
+                                        onClick={() => {
+                                          const allIds = (log.detalhes as LogDetail[]).map(d => d.gc_os_id);
+                                          if (selectedOsIds.size === allIds.length && allIds.every(id => selectedOsIds.has(id))) {
+                                            setSelectedOsIds(new Set());
+                                          } else {
+                                            setSelectedOsIds(new Set(allIds));
+                                          }
+                                        }}
+                                      >
+                                        {(() => {
+                                          const allIds = (log.detalhes as LogDetail[]).map(d => d.gc_os_id);
+                                          return selectedOsIds.size === allIds.length && allIds.every(id => selectedOsIds.has(id))
+                                            ? "Desmarcar tudo"
+                                            : "Selecionar tudo";
+                                        })()}
+                                      </Button>
 
-                                    {log.detalhes.some((d: LogDetail) => d.situacao_id_antes && d.resultado === "atualizada") && (
-                                      <div className="flex justify-end">
-                                        <Button
-                                          variant="outline"
-                                          size="sm"
-                                          className="text-xs"
-                                          disabled={changingSituacaoAll}
-                                          onClick={(e) => {
-                                            e.stopPropagation();
-                                            const revertibles = (log.detalhes as LogDetail[]).filter(d => d.situacao_id_antes && d.resultado === "atualizada");
-                                            if (!window.confirm(`Reverter ${revertibles.length} OS para a situação anterior?`)) return;
-                                            (async () => {
-                                              setChangingSituacaoAll(true);
-                                              let ok = 0, fail = 0;
-                                              for (const d of revertibles) {
-                                                try {
-                                                  const { data, error } = await supabase.functions.invoke("auvo-gc-sync", {
-                                                    body: { action: "revert_os", gc_os_id: d.gc_os_id, gc_os_codigo: d.gc_os_codigo, situacao_id_antes: d.situacao_id_antes },
-                                                  });
-                                                  if (error) throw error;
-                                                  if (data?.success) ok++; else fail++;
-                                                } catch { fail++; }
-                                              }
-                                              toast.success(`${ok} OS revertidas, ${fail} erros`);
-                                              queryClient.invalidateQueries({ queryKey: ["auvo-sync-logs"] });
-                                              setChangingSituacaoAll(false);
-                                            })();
-                                          }}
-                                        >
-                                          <Undo2 className="h-3 w-3 mr-1" />
-                                          {changingSituacaoAll ? "Revertendo..." : `Reverter todas (${(log.detalhes as LogDetail[]).filter((d: LogDetail) => d.situacao_id_antes && d.resultado === "atualizada").length})`}
-                                        </Button>
-                                      </div>
-                                    )}
+                                      {selectedOsIds.size > 0 && (
+                                        <>
+                                          <span className="text-xs text-muted-foreground">{selectedOsIds.size} OS selecionada(s)</span>
+                                          <Select value={situacaoSelecionadas} onValueChange={setSituacaoSelecionadas}>
+                                            <SelectTrigger className="h-8 text-xs w-[260px]">
+                                              <SelectValue placeholder="Situação destino" />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                              {SITUACOES_OPTIONS.map(s => (
+                                                <SelectItem key={s.id} value={s.id}>{s.label}</SelectItem>
+                                              ))}
+                                            </SelectContent>
+                                          </Select>
+                                          <Button
+                                            size="sm"
+                                            className="h-8 text-xs"
+                                            disabled={!situacaoSelecionadas || changingSelecionadas}
+                                            onClick={(e) => {
+                                              e.stopPropagation();
+                                              const selecionadas = (log.detalhes as LogDetail[]).filter(d => selectedOsIds.has(d.gc_os_id));
+                                              const label = SITUACOES_OPTIONS.find(s => s.id === situacaoSelecionadas)?.label || situacaoSelecionadas;
+                                              if (!window.confirm(`Alterar ${selecionadas.length} OS para "${label}"?`)) return;
+                                              (async () => {
+                                                setChangingSelecionadas(true);
+                                                let ok = 0, fail = 0;
+                                                for (const d of selecionadas) {
+                                                  try {
+                                                    const { data, error } = await supabase.functions.invoke("auvo-gc-sync", {
+                                                      body: { action: "revert_os", gc_os_id: d.gc_os_id, gc_os_codigo: d.gc_os_codigo, situacao_id_antes: situacaoSelecionadas },
+                                                    });
+                                                    if (error) throw error;
+                                                    if (data?.success) ok++; else fail++;
+                                                  } catch { fail++; }
+                                                }
+                                                toast.success(`${ok} OS alteradas, ${fail} erros`);
+                                                queryClient.invalidateQueries({ queryKey: ["auvo-sync-logs"] });
+                                                setChangingSelecionadas(false);
+                                                setSelectedOsIds(new Set());
+                                                setSituacaoSelecionadas("");
+                                              })();
+                                            }}
+                                          >
+                                            <Settings2 className="h-3 w-3 mr-1" />
+                                            {changingSelecionadas ? "Alterando..." : `Alterar situação (${selectedOsIds.size})`}
+                                          </Button>
+                                        </>
+                                      )}
+                                    </div>
+
                                     <Table>
                                       <TableHeader>
                                         <TableRow>
+                                          <TableHead className="w-8"></TableHead>
                                           <TableHead>OS</TableHead>
                                           <TableHead>Cliente</TableHead>
                                           <TableHead>Data</TableHead>
@@ -601,12 +642,25 @@ const AuvoSyncPage = () => {
                                           <TableHead>Antes</TableHead>
                                           <TableHead>Depois</TableHead>
                                           <TableHead>Detalhe</TableHead>
-                                          <TableHead>Ações</TableHead>
                                         </TableRow>
                                       </TableHeader>
                                       <TableBody>
                                         {(log.detalhes as LogDetail[]).map((d, i) => (
-                                          <TableRow key={i}>
+                                          <TableRow key={i} className={selectedOsIds.has(d.gc_os_id) ? "bg-accent/30" : ""}>
+                                            <TableCell>
+                                              <input
+                                                type="checkbox"
+                                                className="h-4 w-4 rounded border-input"
+                                                checked={selectedOsIds.has(d.gc_os_id)}
+                                                onChange={(e) => {
+                                                  e.stopPropagation();
+                                                  const next = new Set(selectedOsIds);
+                                                  if (next.has(d.gc_os_id)) next.delete(d.gc_os_id);
+                                                  else next.add(d.gc_os_id);
+                                                  setSelectedOsIds(next);
+                                                }}
+                                              />
+                                            </TableCell>
                                             <TableCell>
                                               <div className="flex items-center gap-1">
                                                 <span className="font-mono text-xs">{d.gc_os_codigo}</span>
@@ -645,25 +699,6 @@ const AuvoSyncPage = () => {
                                             <TableCell className="text-xs max-w-xs">
                                               <span className="truncate block" title={d.detalhe}>{d.detalhe}</span>
                                               <PecasDetail detail={d} />
-                                            </TableCell>
-                                            <TableCell>
-                                              {d.situacao_id_antes && d.resultado === "atualizada" ? (
-                                                <Button
-                                                  variant="outline"
-                                                  size="sm"
-                                                  className="text-xs"
-                                                  disabled={reverting === d.gc_os_id}
-                                                  onClick={(e) => {
-                                                    e.stopPropagation();
-                                                    reverterOS(d);
-                                                  }}
-                                                >
-                                                  <Undo2 className="h-3 w-3 mr-1" />
-                                                  {reverting === d.gc_os_id ? "Revertendo..." : "Reverter"}
-                                                </Button>
-                                              ) : (
-                                                <span className="text-xs text-muted-foreground">—</span>
-                                              )}
                                             </TableCell>
                                           </TableRow>
                                         ))}
