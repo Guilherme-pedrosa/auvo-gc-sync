@@ -984,11 +984,51 @@ Deno.serve(async (req) => {
         const auvoTecnicoNome = String(raw.userToName || raw.userFromName || raw.collaboratorName || "").trim();
         const auvoCliente = String(raw.customerName || raw.customer?.name || raw.customerDescription || "").trim();
 
-        // Extrair tempos — Auvo pode ter campos específicos
-        const tempoTrabalhoSeg = Number(raw.totalWorkTime || raw.workDuration || raw.totalWorkDuration || 0);
-        const tempoPausaSeg = Number(raw.totalPauseTime || raw.pauseDuration || raw.totalPauseDuration || 0);
-        const checkinHora = raw.checkInDate || raw.startDate || null;
-        const checkoutHora = raw.checkOutDate || raw.endDate || null;
+        // Extrair tempos — campos reais da API Auvo v2
+        // duration = string "HH:MM:SS", timeControl = array de pausas
+        const checkinHora = raw.checkInDate || null;
+        const checkoutHora = raw.checkOutDate || null;
+
+        // Calcular tempo de trabalho a partir de checkIn/checkOut
+        let tempoTrabalhoSeg = 0;
+        if (checkinHora && checkoutHora) {
+          try {
+            const diffMs = new Date(checkoutHora).getTime() - new Date(checkinHora).getTime();
+            if (diffMs > 0) tempoTrabalhoSeg = Math.floor(diffMs / 1000);
+          } catch {}
+        }
+
+        // Calcular pausas a partir de timeControl ou reasonForPause
+        let tempoPausaSeg = 0;
+        const timeControl: any[] = raw.timeControl || [];
+        for (const tc of timeControl) {
+          const pauseStart = tc.pauseStart || tc.startPause || tc.start;
+          const pauseEnd = tc.pauseEnd || tc.endPause || tc.end || tc.resumeDate;
+          if (pauseStart && pauseEnd) {
+            try {
+              const diffMs = new Date(pauseEnd).getTime() - new Date(pauseStart).getTime();
+              if (diffMs > 0) tempoPausaSeg += Math.floor(diffMs / 1000);
+            } catch {}
+          }
+          // Auvo pode ter duration em segundos direto
+          if (tc.duration && typeof tc.duration === "number") {
+            tempoPausaSeg += tc.duration;
+          }
+        }
+
+        // Se há pausas, descontar do tempo de trabalho
+        if (tempoPausaSeg > 0 && tempoTrabalhoSeg > tempoPausaSeg) {
+          tempoTrabalhoSeg -= tempoPausaSeg;
+        }
+
+        // Fallback: usar campo duration (formato "HH:MM:SS")
+        if (tempoTrabalhoSeg === 0 && raw.duration) {
+          const dStr = String(raw.duration);
+          const dMatch = dStr.match(/^(\d+):(\d+):(\d+)$/);
+          if (dMatch) {
+            tempoTrabalhoSeg = parseInt(dMatch[1]) * 3600 + parseInt(dMatch[2]) * 60 + parseInt(dMatch[3]);
+          }
+        }
 
         // Vendedor
         let gcVendedorId: string | null = null;
