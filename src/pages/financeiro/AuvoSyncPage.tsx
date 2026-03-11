@@ -386,7 +386,34 @@ const AuvoSyncPage = () => {
                   </Button>
                 )}
                 <div className="space-y-2">
-                  <Button onClick={() => executarSync(false)} disabled={running} className="w-full"><Play className="mr-2 h-4 w-4" />{running ? "Executando..." : "Executar Agora"}</Button>
+                  <Dialog open={confirmExecute} onOpenChange={(o) => { setConfirmExecute(o); setConfirmText(""); }}>
+                    <DialogTrigger asChild>
+                      <Button disabled={running} variant="destructive" className="w-full"><Play className="mr-2 h-4 w-4" />Executar Agora</Button>
+                    </DialogTrigger>
+                    <DialogContent>
+                      <DialogHeader>
+                        <DialogTitle>⚠️ Confirmação de Execução Real</DialogTitle>
+                        <DialogDescription>
+                          Esta ação vai alterar situações de OS no GestãoClick. Digite <strong>EXECUTAR</strong> para confirmar.
+                        </DialogDescription>
+                      </DialogHeader>
+                      <Input
+                        value={confirmText}
+                        onChange={(e) => setConfirmText(e.target.value)}
+                        placeholder='Digite "EXECUTAR" para confirmar'
+                      />
+                      <DialogFooter>
+                        <Button variant="outline" onClick={() => setConfirmExecute(false)}>Cancelar</Button>
+                        <Button
+                          variant="destructive"
+                          disabled={confirmText !== "EXECUTAR" || running}
+                          onClick={() => { setConfirmExecute(false); setConfirmText(""); executarSync(false); }}
+                        >
+                          {running ? "Executando..." : "Confirmar Execução"}
+                        </Button>
+                      </DialogFooter>
+                    </DialogContent>
+                  </Dialog>
                   <Button onClick={() => executarSync(true)} disabled={running} variant="outline" className="w-full"><Eye className="mr-2 h-4 w-4" />Dry Run (simular)</Button>
                 </div>
               </CardContent>
