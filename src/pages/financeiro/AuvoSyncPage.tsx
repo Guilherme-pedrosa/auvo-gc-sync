@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -6,57 +6,40 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
 import { Input } from "@/components/ui/input";
+import { Checkbox } from "@/components/ui/checkbox";
 import { toast } from "sonner";
-import { RefreshCw, Play, Eye, ChevronDown, ChevronRight, ArrowLeft, Package, AlertTriangle, Plus, Link2, UserCheck, CalendarIcon, Undo2, ExternalLink, Settings2 } from "lucide-react";
+import { RefreshCw, Play, Eye, ArrowLeft, AlertTriangle, Plus, Link2, CalendarIcon, ExternalLink, Settings2, CheckCircle2, Clock, Timer, Search, FileCheck, FileX } from "lucide-react";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { useNavigate } from "react-router-dom";
 
-type SyncLog = {
-  id: string;
-  executado_em: string;
-  os_candidatas: number;
-  os_atualizadas: number;
-  os_com_pendencia: number;
-  os_sem_pendencia: number;
-  os_nao_encontradas: number;
-  os_divergencia_pecas: number;
-  erros: number;
-  dry_run: boolean;
-  duracao_ms: number;
-  detalhes: any[];
-  observacao: string | null;
-};
-
-type LogDetail = {
+type ConciliacaoItem = {
   gc_os_id: string;
   gc_os_codigo: string;
+  gc_cliente: string;
+  gc_situacao: string;
+  gc_situacao_id: string;
+  data_os: string;
   auvo_task_id: string;
-  resultado: string;
-  detalhe: string;
-  gc_cliente?: string;
-  auvo_cliente?: string;
-  situacao_antes: string;
-  situacao_id_antes?: string;
-  situacao_depois: string | null;
-  data_os?: string;
-  auvo_tecnico_id?: string | null;
-  auvo_tecnico_nome?: string | null;
-  gc_vendedor_id?: string | null;
-  gc_vendedor_nome?: string | null;
-  vendedor_status?: string;
-  pecas_orcamento?: Array<{ descricao: string; quantidade: number; codigo?: string }>;
-  materiais_execucao?: Array<{ descricao: string; quantidade: number }>;
-  itens_cobertos?: Array<{ descricao: string; match: string; score: number }>;
-  itens_faltando?: Array<{ descricao: string; motivo: string }>;
-  itens_parciais?: Array<{ descricao: string; melhor_match: string; score: number }>;
+  conciliada: boolean;
+  auvo_finalizada: boolean | null;
+  auvo_pendencia: string | null;
+  auvo_tecnico_nome: string | null;
+  auvo_tecnico_id: string | null;
+  auvo_cliente: string | null;
+  gc_vendedor_id: string | null;
+  gc_vendedor_nome: string | null;
+  vendedor_status: string;
+  tempo_trabalho_seg: number;
+  tempo_pausa_seg: number;
+  checkin_hora: string | null;
+  checkout_hora: string | null;
 };
 
 type UsuarioMap = {
@@ -68,134 +51,70 @@ type UsuarioMap = {
   ativo: boolean;
 };
 
+const SITUACOES_OPTIONS = [
+  { id: "7063579", label: "AGUARDANDO COMPRA DE PEÇAS" },
+  { id: "7063580", label: "AGUARDANDO CHEGADA DE PEÇAS" },
+  { id: "7659440", label: "AGUARDANDO FABRICAÇÃO" },
+  { id: "7063581", label: "PEDIDO EM CONFERENCIA" },
+  { id: "7063705", label: "PEDIDO CONFERIDO AGUARDANDO EXECUÇÃO" },
+  { id: "7213493", label: "SERVICO AGUARDANDO EXECUCAO" },
+  { id: "7684665", label: "RETIRADA PELO TECNICO" },
+  { id: "7748831", label: "AGUARDANDO RETIRADA" },
+  { id: "8219136", label: "EM ROTA" },
+  { id: "7116099", label: "EXECUTADO – AG. NEGOCIAÇÃO" },
+  { id: "8889036", label: "FECHADO CHAMADO" },
+];
+
+function formatTempo(segundos: number): string {
+  if (!segundos || segundos <= 0) return "—";
+  const h = Math.floor(segundos / 3600);
+  const m = Math.floor((segundos % 3600) / 60);
+  const s = Math.floor(segundos % 60);
+  return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+}
+
+function formatHora(isoDate: string | null): string {
+  if (!isoDate) return "—";
+  try {
+    return format(new Date(isoDate), "HH:mm", { locale: ptBR });
+  } catch {
+    return "—";
+  }
+}
+
+const gcOsUrl = (gcOsId: string) => `https://gestaoclick.com/ordens_servicos/visualizar/${gcOsId}`;
+const auvoTaskUrl = (taskId: string) => `https://app.auvo.com.br/relatorioTarefas/DetalheTarefa/${taskId}`;
+
 const AuvoSyncPage = () => {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const [running, setRunning] = useState(false);
-  const [expandedRow, setExpandedRow] = useState<string | null>(null);
+
+  // ─── Conciliação state ───
+  const [dataInicio, setDataInicio] = useState<Date | undefined>(undefined);
+  const [dataFim, setDataFim] = useState<Date | undefined>(undefined);
+  const [filtroCliente, setFiltroCliente] = useState("");
+  const [conciliacaoData, setConciliacaoData] = useState<ConciliacaoItem[] | null>(null);
+  const [loadingConciliacao, setLoadingConciliacao] = useState(false);
+  const [filtroConciliacao, setFiltroConciliacao] = useState<"todas" | "pendentes" | "conciliadas">("todas");
+  const [selectedOsIds, setSelectedOsIds] = useState<Set<string>>(new Set());
+  const [situacaoDestino, setSituacaoDestino] = useState("");
+  const [changingAll, setChangingAll] = useState(false);
+  const [movedOsIds, setMovedOsIds] = useState<Set<string>>(new Set());
+  const [changingId, setChangingId] = useState<string | null>(null);
+  const [searchText, setSearchText] = useState("");
+
+  // ─── Mapeamento state ───
   const [dialogOpen, setDialogOpen] = useState(false);
   const [selectedAuvoUser, setSelectedAuvoUser] = useState("");
   const [selectedAuvoUserNome, setSelectedAuvoUserNome] = useState("");
   const [selectedGcVendedor, setSelectedGcVendedor] = useState("");
   const [selectedGcVendedorNome, setSelectedGcVendedorNome] = useState("");
-  const [dataInicio, setDataInicio] = useState<Date | undefined>(undefined);
-  const [dataFim, setDataFim] = useState<Date | undefined>(undefined);
-  const [reverting, setReverting] = useState<string | null>(null);
-  const [scanResult, setScanResult] = useState<Array<{ id: string; codigo: string; modificado_em: string }> | null>(null);
-  const [scanning, setScanning] = useState(false);
-  const [batchReverting, setBatchReverting] = useState(false);
-  const [revertSituacaoId, setRevertSituacaoId] = useState("7213493");
-  const [revertModificadoApos, setRevertModificadoApos] = useState("2026-03-11 17:46:00");
-  const [confirmExecute, setConfirmExecute] = useState(false);
-  const [confirmText, setConfirmText] = useState("");
-  const [changingSituacao, setChangingSituacao] = useState<string | null>(null);
-  const [changingSituacaoAll, setChangingSituacaoAll] = useState(false);
-  const [situacaoDestinoDialog, setSituacaoDestinoDialog] = useState("");
-  const [situacaoDialogOpen, setSituacaoDialogOpen] = useState(false);
-  const [situacaoDialogTarget, setSituacaoDialogTarget] = useState<LogDetail | null>(null);
-  const [situacaoDialogBulk, setSituacaoDialogBulk] = useState<LogDetail[] | null>(null);
-  const [filtroCliente, setFiltroCliente] = useState("");
-  const [situacaoClienteBulk, setSituacaoClienteBulk] = useState("");
-  const [changingSituacaoCliente, setChangingSituacaoCliente] = useState(false);
-  const [filtroStatusTarefa, setFiltroStatusTarefa] = useState<"sem_pendencia" | "todas">("sem_pendencia");
-  const [selectedOsIds, setSelectedOsIds] = useState<Set<string>>(new Set());
-  const [situacaoSelecionadas, setSituacaoSelecionadas] = useState("");
-  const [changingSelecionadas, setChangingSelecionadas] = useState(false);
-  const [movedOsIds, setMovedOsIds] = useState<Set<string>>(new Set());
-
-  const SITUACOES_OPTIONS = [
-    { id: "7063579", label: "AGUARDANDO COMPRA DE PEÇAS" },
-    { id: "7063580", label: "AGUARDANDO CHEGADA DE PEÇAS" },
-    { id: "7659440", label: "AGUARDANDO FABRICAÇÃO" },
-    { id: "7063581", label: "PEDIDO EM CONFERENCIA" },
-    { id: "7063705", label: "PEDIDO CONFERIDO AGUARDANDO EXECUÇÃO" },
-    { id: "7213493", label: "SERVICO AGUARDANDO EXECUCAO" },
-    { id: "7684665", label: "RETIRADA PELO TECNICO" },
-    { id: "7748831", label: "AGUARDANDO RETIRADA" },
-    { id: "8219136", label: "EM ROTA" },
-    { id: "7116099", label: "EXECUTADO – AG. NEGOCIAÇÃO" },
-    { id: "8889036", label: "FECHADO CHAMADO" },
-  ];
-
-  const gcOsUrl = (gcOsId: string) => `https://gestaoclick.com/ordens_servicos/visualizar/${gcOsId}`;
-  const auvoTaskUrl = (taskId: string) => `https://app.auvo.com.br/relatorioTarefas/DetalheTarefa/${taskId}`;
-
-  const alterarSituacaoOS = async (detail: LogDetail, situacaoId: string) => {
-    setChangingSituacao(detail.gc_os_id);
-    try {
-      const { data, error } = await supabase.functions.invoke("auvo-gc-sync", {
-        body: {
-          action: "revert_os",
-          gc_os_id: detail.gc_os_id,
-          gc_os_codigo: detail.gc_os_codigo,
-          situacao_id_antes: situacaoId,
-          gc_vendedor_id: detail.gc_vendedor_id || null,
-          gc_vendedor_nome: detail.gc_vendedor_nome || null,
-        },
-      });
-      if (error) throw error;
-      if (data?.success) {
-        setMovedOsIds(prev => new Set(prev).add(detail.gc_os_id));
-        toast.success(`OS ${detail.gc_os_codigo} → situação alterada`);
-        queryClient.invalidateQueries({ queryKey: ["auvo-sync-logs"] });
-      } else {
-        toast.error(`Erro: ${JSON.stringify(data?.body || data?.error || data)}`);
-      }
-    } catch (err: any) {
-      toast.error(`Erro: ${err.message}`);
-    } finally {
-      setChangingSituacao(null);
-    }
-  };
-
-  const alterarSituacaoTodas = async (details: LogDetail[], situacaoId: string) => {
-    setChangingSituacaoAll(true);
-    let ok = 0, fail = 0;
-    for (const d of details) {
-      try {
-        const { data, error } = await supabase.functions.invoke("auvo-gc-sync", {
-          body: {
-            action: "revert_os",
-            gc_os_id: d.gc_os_id,
-            gc_os_codigo: d.gc_os_codigo,
-            situacao_id_antes: situacaoId,
-            gc_vendedor_id: d.gc_vendedor_id || null,
-            gc_vendedor_nome: d.gc_vendedor_nome || null,
-          },
-        });
-        if (error) throw error;
-        if (data?.success) { ok++; setMovedOsIds(prev => { const s = new Set(prev); s.add(d.gc_os_id); return s; }); } else fail++;
-      } catch {
-        fail++;
-      }
-    }
-    toast.success(`${ok} OS alteradas, ${fail} erros`);
-    queryClient.invalidateQueries({ queryKey: ["auvo-sync-logs"] });
-    setChangingSituacaoAll(false);
-  };
 
   // ─── Queries ───
-  const { data: logs, isLoading } = useQuery({
-    queryKey: ["auvo-sync-logs"],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from("auvo_gc_sync_log")
-        .select("*")
-        .order("executado_em", { ascending: false })
-        .limit(20);
-      if (error) throw error;
-      return data as SyncLog[];
-    },
-    refetchInterval: 30000,
-  });
-
   const { data: mapeamentos, isLoading: loadingMap } = useQuery({
     queryKey: ["auvo-gc-mapeamentos"],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from("auvo_gc_usuario_map")
-        .select("*")
-        .order("auvo_user_nome");
+      const { data, error } = await supabase.from("auvo_gc_usuario_map").select("*").order("auvo_user_nome");
       if (error) throw error;
       return data as UsuarioMap[];
     },
@@ -204,11 +123,9 @@ const AuvoSyncPage = () => {
   const { data: auvoUsers, isLoading: loadingAuvoUsers } = useQuery({
     queryKey: ["auvo-users"],
     queryFn: async () => {
-      const { data, error } = await supabase.functions.invoke("auvo-gc-sync", {
-        body: { action: "list_auvo_users" },
-      });
+      const { data, error } = await supabase.functions.invoke("auvo-gc-sync", { body: { action: "list_auvo_users" } });
       if (error) throw error;
-      return (data?.users || []) as Array<{ userID: number; name: string; email?: string }>;
+      return (data?.users || []) as Array<{ userID: number; name: string }>;
     },
     enabled: dialogOpen,
   });
@@ -219,52 +136,29 @@ const AuvoSyncPage = () => {
       const todos: Array<{ id: string; nome: string }> = [];
       let pagina = 1;
       let totalPaginas = 1;
-
       do {
         const { data, error } = await supabase.functions.invoke("gc-proxy", {
           body: { endpoint: "/api/funcionarios", method: "GET", params: { limite: "100", pagina: String(pagina) } },
         });
         if (error) throw error;
-
         const payload = data?.data;
         const lista: any[] = Array.isArray(payload?.data) ? payload.data : Array.isArray(data?.data) ? data.data : [];
         const meta = payload?.meta;
-
-        todos.push(
-          ...lista.map((f: any) => ({ id: String(f.id || ""), nome: String(f.nome || f.name || "") }))
-        );
-
+        todos.push(...lista.map((f: any) => ({ id: String(f.id || ""), nome: String(f.nome || f.name || "") })));
         totalPaginas = Number(meta?.total_paginas || 1);
         pagina += 1;
       } while (pagina <= totalPaginas);
-
       return todos.sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR"));
     },
     enabled: dialogOpen,
   });
 
-  const tecnicosSemMapa = (() => {
-    const ids = new Set<string>();
-    for (const log of (logs || [])) {
-      for (const entry of (log.detalhes || [])) {
-        if (entry.auvo_tecnico_id && entry.vendedor_status === "sem_mapeamento") {
-          ids.add(entry.auvo_tecnico_id);
-        }
-      }
-    }
-    return Array.from(ids);
-  })();
-
-  // ─── Mutations ───
   const salvarMapeamento = useMutation({
     mutationFn: async () => {
       const { error } = await supabase.from("auvo_gc_usuario_map").upsert({
-        auvo_user_id: selectedAuvoUser,
-        auvo_user_nome: selectedAuvoUserNome,
-        gc_vendedor_id: selectedGcVendedor,
-        gc_vendedor_nome: selectedGcVendedorNome,
-        ativo: true,
-        atualizado_em: new Date().toISOString(),
+        auvo_user_id: selectedAuvoUser, auvo_user_nome: selectedAuvoUserNome,
+        gc_vendedor_id: selectedGcVendedor, gc_vendedor_nome: selectedGcVendedorNome,
+        ativo: true, atualizado_em: new Date().toISOString(),
       }, { onConflict: "auvo_user_id" });
       if (error) throw error;
     },
@@ -289,597 +183,459 @@ const AuvoSyncPage = () => {
     },
   });
 
-  const executarSync = async (dryRun = false) => {
-    setRunning(true);
+  // ─── Conciliação actions ───
+  const buscarConciliacao = async () => {
+    setLoadingConciliacao(true);
+    setSelectedOsIds(new Set());
+    setMovedOsIds(new Set());
     try {
-      const syncBody: any = { dry_run: dryRun };
+      const syncBody: any = { action: "conciliacao" };
       if (dataInicio) syncBody.data_inicio = format(dataInicio, "yyyy-MM-dd");
       if (dataFim) syncBody.data_fim = format(dataFim, "yyyy-MM-dd");
       if (filtroCliente.trim()) syncBody.filtro_cliente = filtroCliente.trim();
-      if (filtroStatusTarefa === "todas") syncBody.incluir_pendencia = true;
       const { data, error } = await supabase.functions.invoke("auvo-gc-sync", { body: syncBody });
       if (error) throw error;
-      toast.success(
-        dryRun
-          ? `Dry Run: ${data.osCandidatas} candidatas, ${data.semPendencia} prontas, ${data.divergenciaPecas || 0} div. peças`
-          : `Sync: ${data.atualizadas} atualizadas, ${data.divergenciaPecas || 0} bloqueadas, ${data.erros} erros`
-      );
-      queryClient.invalidateQueries({ queryKey: ["auvo-sync-logs"] });
+      setConciliacaoData(data?.itens || []);
+      toast.success(`${data?.total || 0} OS encontradas — ${data?.conciliadas || 0} conciliadas, ${data?.pendentes || 0} pendentes`);
     } catch (err: any) {
       toast.error(`Erro: ${err.message}`);
     } finally {
-      setRunning(false);
+      setLoadingConciliacao(false);
     }
   };
 
-  const resultadoBadge = (resultado: string) => {
-    const map: Record<string, { variant: "default" | "secondary" | "destructive" | "outline"; label: string }> = {
-      atualizada: { variant: "default", label: "✅ Atualizada" },
-      dry_run_ok: { variant: "secondary", label: "🔍 Dry Run OK" },
-      com_pendencia: { variant: "outline", label: "⚠️ Pendência" },
-      nao_finalizada: { variant: "outline", label: "⏳ Não Finalizada" },
-      nao_encontrada: { variant: "secondary", label: "🔍 Não Encontrada" },
-      erro_gc: { variant: "destructive", label: "❌ Erro GC" },
-      divergencia_pecas: { variant: "destructive", label: "🔴 Div. Peças" },
-      revertida: { variant: "outline", label: "↩️ Revertida" },
-    };
-    const m = map[resultado] || { variant: "outline" as const, label: resultado };
-    return <Badge variant={m.variant}>{m.label}</Badge>;
-  };
-
-
-  const reverterOS = async (detail: LogDetail) => {
-    if (!detail.situacao_id_antes || !detail.gc_os_id) {
-      toast.error("Dados insuficientes para reverter (situacao_id_antes não disponível)");
-      return;
-    }
-    const confirmed = window.confirm(
-      `Reverter OS ${detail.gc_os_codigo} de "${detail.situacao_depois}" para "${detail.situacao_antes}" (ID: ${detail.situacao_id_antes})?`
-    );
-    if (!confirmed) return;
-    
-    setReverting(detail.gc_os_id);
+  const alterarSituacaoOS = async (item: ConciliacaoItem, situacaoId: string) => {
+    setChangingId(item.gc_os_id);
     try {
       const { data, error } = await supabase.functions.invoke("auvo-gc-sync", {
         body: {
-          action: "revert_os",
-          gc_os_id: detail.gc_os_id,
-          gc_os_codigo: detail.gc_os_codigo,
-          situacao_id_antes: detail.situacao_id_antes,
-          gc_vendedor_id: detail.gc_vendedor_id || null,
-          gc_vendedor_nome: detail.gc_vendedor_nome || null,
+          action: "revert_os", gc_os_id: item.gc_os_id, gc_os_codigo: item.gc_os_codigo,
+          situacao_id_antes: situacaoId,
+          gc_vendedor_id: item.gc_vendedor_id || null, gc_vendedor_nome: item.gc_vendedor_nome || null,
         },
       });
       if (error) throw error;
       if (data?.success) {
-        setMovedOsIds(prev => new Set(prev).add(detail.gc_os_id));
-        toast.success(`OS ${detail.gc_os_codigo} revertida para "${detail.situacao_antes}"`);
-        queryClient.invalidateQueries({ queryKey: ["auvo-sync-logs"] });
+        setMovedOsIds(prev => new Set(prev).add(item.gc_os_id));
+        toast.success(`OS ${item.gc_os_codigo} → situação alterada`);
       } else {
-        toast.error(`Erro ao reverter: ${JSON.stringify(data?.body || data)}`);
+        toast.error(`Erro: ${JSON.stringify(data?.body || data?.error || data)}`);
       }
     } catch (err: any) {
       toast.error(`Erro: ${err.message}`);
     } finally {
-      setReverting(null);
+      setChangingId(null);
     }
   };
 
-  const vendedorBadge = (status?: string) => {
-    if (!status) return null;
-    const map: Record<string, { variant: "default" | "secondary" | "destructive" | "outline"; label: string }> = {
-      mapeado: { variant: "default", label: "✅ Mapeado" },
-      sem_mapeamento: { variant: "destructive", label: "⚠️ Sem Mapa" },
-      sem_tecnico: { variant: "outline", label: "— Sem Técnico" },
-    };
-    const m = map[status] || { variant: "outline" as const, label: status };
-    return <Badge variant={m.variant} className="text-xs">{m.label}</Badge>;
+  const alterarSelecionadas = async () => {
+    if (!situacaoDestino || selectedOsIds.size === 0) return;
+    const label = SITUACOES_OPTIONS.find(s => s.id === situacaoDestino)?.label || situacaoDestino;
+    if (!window.confirm(`Alterar ${selectedOsIds.size} OS para "${label}"?`)) return;
+    setChangingAll(true);
+    let ok = 0, fail = 0;
+    const selecionadas = (conciliacaoData || []).filter(i => selectedOsIds.has(i.gc_os_id));
+    for (const item of selecionadas) {
+      try {
+        const { data, error } = await supabase.functions.invoke("auvo-gc-sync", {
+          body: {
+            action: "revert_os", gc_os_id: item.gc_os_id, gc_os_codigo: item.gc_os_codigo,
+            situacao_id_antes: situacaoDestino,
+            gc_vendedor_id: item.gc_vendedor_id || null, gc_vendedor_nome: item.gc_vendedor_nome || null,
+          },
+        });
+        if (error) throw error;
+        if (data?.success) { ok++; setMovedOsIds(prev => new Set(prev).add(item.gc_os_id)); } else fail++;
+      } catch { fail++; }
+    }
+    toast.success(`${ok} OS alteradas, ${fail} erros`);
+    setChangingAll(false);
+    setSelectedOsIds(new Set());
   };
 
-  const lastSync = logs?.[0];
+  // ─── Filtered + searched data ───
+  const itensFiltrados = useMemo(() => {
+    if (!conciliacaoData) return [];
+    let items = conciliacaoData;
+    if (filtroConciliacao === "pendentes") items = items.filter(i => !i.conciliada);
+    else if (filtroConciliacao === "conciliadas") items = items.filter(i => i.conciliada);
+    if (searchText.trim()) {
+      const q = searchText.toLowerCase();
+      items = items.filter(i =>
+        i.gc_os_codigo.toLowerCase().includes(q) ||
+        i.gc_cliente.toLowerCase().includes(q) ||
+        (i.auvo_tecnico_nome || "").toLowerCase().includes(q) ||
+        (i.auvo_cliente || "").toLowerCase().includes(q) ||
+        i.auvo_task_id.includes(q)
+      );
+    }
+    return items;
+  }, [conciliacaoData, filtroConciliacao, searchText]);
 
-  const PecasDetail = ({ detail }: { detail: LogDetail }) => {
-    if (detail.resultado !== "divergencia_pecas") return null;
-    return (
-      <div className="mt-3 space-y-3 border-t pt-3">
-        <div className="flex items-center gap-2 text-sm font-medium"><Package className="h-4 w-4" /> Validação de Peças</div>
-        <div className="grid gap-4 md:grid-cols-2">
-          <div>
-            <p className="text-xs font-medium text-muted-foreground mb-1">📦 Orçamento GC ({detail.pecas_orcamento?.length || 0})</p>
-            <ul className="text-xs space-y-1">{detail.pecas_orcamento?.map((p, i) => <li key={i} className="font-mono">{p.quantidade}x {p.descricao}</li>)}</ul>
-          </div>
-          <div>
-            <p className="text-xs font-medium text-muted-foreground mb-1">🔧 Execução Auvo ({detail.materiais_execucao?.length || 0})</p>
-            <ul className="text-xs space-y-1">{detail.materiais_execucao?.length ? detail.materiais_execucao.map((m, i) => <li key={i} className="font-mono">{m.quantidade}x {m.descricao}</li>) : <li className="text-muted-foreground italic">Nenhum material</li>}</ul>
-          </div>
-        </div>
-        <div className="space-y-1">
-          {detail.itens_cobertos?.map((item, i) => <div key={`c-${i}`} className="text-xs">✅ {item.descricao} → "{item.match}" ({item.score}%)</div>)}
-          {detail.itens_parciais?.map((item, i) => <div key={`p-${i}`} className="text-xs">⚠️ {item.descricao} → "{item.melhor_match}" ({item.score}%)</div>)}
-          {detail.itens_faltando?.map((item, i) => <div key={`f-${i}`} className="text-xs">❌ {item.descricao} — {item.motivo}</div>)}
-        </div>
-      </div>
-    );
-  };
+  const totalConciliadas = conciliacaoData?.filter(i => i.conciliada).length || 0;
+  const totalPendentes = conciliacaoData?.filter(i => !i.conciliada).length || 0;
+  const totalFinalizadas = conciliacaoData?.filter(i => i.auvo_finalizada && !i.conciliada).length || 0;
 
   return (
-    <div className="min-h-screen bg-background p-6 max-w-7xl mx-auto space-y-6">
+    <div className="min-h-screen bg-background p-6 max-w-[1600px] mx-auto space-y-6">
       <div className="flex items-center gap-4">
         <Button variant="ghost" size="icon" onClick={() => navigate("/")}><ArrowLeft className="h-5 w-5" /></Button>
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">🔄 Auvo → GC Sync</h1>
-          <p className="text-muted-foreground">Automação de fechamento de OS com validação de peças e mapeamento de vendedores</p>
+          <h1 className="text-3xl font-bold tracking-tight">📋 Conciliação Auvo ↔ GC</h1>
+          <p className="text-muted-foreground">Visão unificada de todas as OS com tarefa Auvo e seu status no GestãoClick</p>
         </div>
       </div>
 
-      <Tabs defaultValue="execucoes">
+      <Tabs defaultValue="conciliacao">
         <TabsList>
-          <TabsTrigger value="execucoes">📊 Execuções</TabsTrigger>
-          <TabsTrigger value="reversao">↩️ Reversão em Lote</TabsTrigger>
+          <TabsTrigger value="conciliacao">📋 Conciliação</TabsTrigger>
           <TabsTrigger value="mapeamento">🔗 Mapeamento de Técnicos</TabsTrigger>
         </TabsList>
 
-        {/* ─── TAB 1: Execuções ─── */}
-        <TabsContent value="execucoes" className="space-y-4">
-          <div className="grid gap-4 md:grid-cols-2">
-            <Card>
-              <CardHeader><CardTitle className="text-lg">Último Sync</CardTitle></CardHeader>
-              <CardContent>
-                {lastSync ? (
-                  <div className="space-y-2 text-sm">
-                    <p><span className="text-muted-foreground">Data:</span> {format(new Date(lastSync.executado_em), "dd/MM/yyyy HH:mm:ss", { locale: ptBR })}</p>
-                    <p><span className="text-muted-foreground">OS Candidatas:</span> {lastSync.os_candidatas}</p>
-                    <p><span className="text-muted-foreground">Atualizadas:</span> <span className="font-medium">{lastSync.os_atualizadas}</span></p>
-                    {(lastSync.os_divergencia_pecas || 0) > 0 && (
-                      <p className="flex items-center gap-1"><AlertTriangle className="h-3 w-3 text-orange-500" /><span className="text-muted-foreground">Div. Peças:</span> <span className="font-medium text-orange-600">{lastSync.os_divergencia_pecas}</span></p>
-                    )}
-                    <p><span className="text-muted-foreground">Erros:</span> {lastSync.erros}</p>
-                    <p><span className="text-muted-foreground">Duração:</span> {lastSync.duracao_ms}ms</p>
-                    {lastSync.dry_run && <Badge variant="secondary">Dry Run</Badge>}
-                  </div>
-                ) : <p className="text-muted-foreground text-sm">Nenhuma execução</p>}
-              </CardContent>
-            </Card>
-            <Card>
-              <CardHeader><CardTitle className="text-lg">Controles</CardTitle><CardDescription>Filtros, período e execução da sincronização</CardDescription></CardHeader>
-              <CardContent className="space-y-4">
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="space-y-1.5">
-                    <label className="text-sm font-medium text-muted-foreground">Data Início</label>
-                    <Popover>
-                      <PopoverTrigger asChild>
-                        <Button variant="outline" className="w-full justify-start text-left font-normal">
-                          <CalendarIcon className="mr-2 h-4 w-4" />
-                          {dataInicio ? format(dataInicio, "dd/MM/yyyy") : "Selecione"}
-                        </Button>
-                      </PopoverTrigger>
-                      <PopoverContent className="w-auto p-0" align="start">
-                        <Calendar mode="single" selected={dataInicio} onSelect={setDataInicio} locale={ptBR} initialFocus />
-                      </PopoverContent>
-                    </Popover>
-                  </div>
-                  <div className="space-y-1.5">
-                    <label className="text-sm font-medium text-muted-foreground">Data Fim</label>
-                    <Popover>
-                      <PopoverTrigger asChild>
-                        <Button variant="outline" className="w-full justify-start text-left font-normal">
-                          <CalendarIcon className="mr-2 h-4 w-4" />
-                          {dataFim ? format(dataFim, "dd/MM/yyyy") : "Selecione"}
-                        </Button>
-                      </PopoverTrigger>
-                      <PopoverContent className="w-auto p-0" align="start">
-                        <Calendar mode="single" selected={dataFim} onSelect={setDataFim} locale={ptBR} initialFocus />
-                      </PopoverContent>
-                    </Popover>
-                  </div>
-                </div>
-
+        {/* ─── TAB: Conciliação ─── */}
+        <TabsContent value="conciliacao" className="space-y-4">
+          {/* Filtros */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-lg flex items-center gap-2"><Search className="h-5 w-5" /> Filtros</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="flex flex-wrap items-end gap-4">
                 <div className="space-y-1.5">
-                  <label className="text-sm font-medium text-muted-foreground">Filtrar por Cliente (GC)</label>
-                  <Input
-                    placeholder="Nome do cliente..."
-                    value={filtroCliente}
-                    onChange={(e) => setFiltroCliente(e.target.value)}
-                  />
+                  <label className="text-sm font-medium text-muted-foreground">Data Início</label>
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <Button variant="outline" className="w-[160px] justify-start text-left font-normal">
+                        <CalendarIcon className="mr-2 h-4 w-4" />
+                        {dataInicio ? format(dataInicio, "dd/MM/yyyy") : "Selecione"}
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-auto p-0" align="start">
+                      <Calendar mode="single" selected={dataInicio} onSelect={setDataInicio} locale={ptBR} initialFocus />
+                    </PopoverContent>
+                  </Popover>
                 </div>
-
                 <div className="space-y-1.5">
-                  <label className="text-sm font-medium text-muted-foreground">Status da Tarefa Auvo</label>
-                  <Select value={filtroStatusTarefa} onValueChange={(v) => setFiltroStatusTarefa(v as "sem_pendencia" | "todas")}>
-                    <SelectTrigger><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="sem_pendencia">Só concluídas sem pendência</SelectItem>
-                      <SelectItem value="todas">Concluídas (com e sem pendência)</SelectItem>
-                    </SelectContent>
-                  </Select>
+                  <label className="text-sm font-medium text-muted-foreground">Data Fim</label>
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <Button variant="outline" className="w-[160px] justify-start text-left font-normal">
+                        <CalendarIcon className="mr-2 h-4 w-4" />
+                        {dataFim ? format(dataFim, "dd/MM/yyyy") : "Selecione"}
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-auto p-0" align="start">
+                      <Calendar mode="single" selected={dataFim} onSelect={setDataFim} locale={ptBR} initialFocus />
+                    </PopoverContent>
+                  </Popover>
                 </div>
-
                 <div className="space-y-1.5">
-                  <label className="text-sm font-medium text-muted-foreground">Situação destino (dar baixa)</label>
-                  <Select value={situacaoClienteBulk} onValueChange={setSituacaoClienteBulk}>
-                    <SelectTrigger><SelectValue placeholder="Selecione a situação" /></SelectTrigger>
-                    <SelectContent>
-                      {SITUACOES_OPTIONS.map(s => (
-                        <SelectItem key={s.id} value={s.id}>{s.label}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  <label className="text-sm font-medium text-muted-foreground">Cliente</label>
+                  <Input placeholder="Filtrar por cliente..." value={filtroCliente} onChange={e => setFiltroCliente(e.target.value)} className="w-[200px]" />
                 </div>
-
+                <Button onClick={buscarConciliacao} disabled={loadingConciliacao} className="h-10">
+                  <RefreshCw className={`mr-2 h-4 w-4 ${loadingConciliacao ? "animate-spin" : ""}`} />
+                  {loadingConciliacao ? "Buscando..." : "Buscar Conciliação"}
+                </Button>
                 {(dataInicio || dataFim || filtroCliente) && (
-                  <Button variant="ghost" size="sm" className="text-xs" onClick={() => { setDataInicio(undefined); setDataFim(undefined); setFiltroCliente(""); }}>
+                  <Button variant="ghost" size="sm" className="text-xs h-10" onClick={() => { setDataInicio(undefined); setDataFim(undefined); setFiltroCliente(""); }}>
                     Limpar filtros
                   </Button>
                 )}
-
-                <div className="space-y-2">
-                  <Button onClick={() => executarSync(true)} disabled={running} variant="outline" className="w-full">
-                    <Eye className="mr-2 h-4 w-4" />Dry Run (simular)
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
-          </div>
-
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between">
-              <div><CardTitle className="text-lg">Histórico</CardTitle><CardDescription>Últimas 20 execuções</CardDescription></div>
-              <Button variant="ghost" size="icon" onClick={() => queryClient.invalidateQueries({ queryKey: ["auvo-sync-logs"] })}><RefreshCw className="h-4 w-4" /></Button>
-            </CardHeader>
-            <CardContent>
-              {isLoading ? <p className="text-sm text-muted-foreground">Carregando...</p> : !logs?.length ? <p className="text-sm text-muted-foreground">Nenhum registro</p> : (
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead className="w-8"></TableHead>
-                      <TableHead>Data</TableHead>
-                      <TableHead className="text-center">Cand.</TableHead>
-                      <TableHead className="text-center">✅</TableHead>
-                      <TableHead className="text-center">⚠️</TableHead>
-                      <TableHead className="text-center">🔴 Peças</TableHead>
-                      <TableHead className="text-center">🔍</TableHead>
-                      <TableHead className="text-center">❌</TableHead>
-                      <TableHead className="text-center">Dry</TableHead>
-                      <TableHead className="text-right">ms</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {logs.map((log) => (
-                      <Collapsible key={log.id} asChild open={expandedRow === log.id}>
-                        <>
-                          <CollapsibleTrigger asChild>
-                            <TableRow className="cursor-pointer hover:bg-muted/50" onClick={() => { setExpandedRow(expandedRow === log.id ? null : log.id); setSelectedOsIds(new Set()); setSituacaoSelecionadas(""); setMovedOsIds(new Set()); }}>
-                              <TableCell>{expandedRow === log.id ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}</TableCell>
-                              <TableCell className="text-sm">{format(new Date(log.executado_em), "dd/MM HH:mm", { locale: ptBR })}</TableCell>
-                              <TableCell className="text-center">{log.os_candidatas}</TableCell>
-                              <TableCell className="text-center font-medium">{log.os_atualizadas}</TableCell>
-                              <TableCell className="text-center">{log.os_com_pendencia}</TableCell>
-                              <TableCell className="text-center">{(log.os_divergencia_pecas || 0) > 0 ? <Badge variant="destructive" className="text-xs">{log.os_divergencia_pecas}</Badge> : "0"}</TableCell>
-                              <TableCell className="text-center">{log.os_nao_encontradas}</TableCell>
-                              <TableCell className="text-center">{log.erros}</TableCell>
-                              <TableCell className="text-center">{log.dry_run && <Badge variant="secondary">Sim</Badge>}</TableCell>
-                              <TableCell className="text-right text-sm">{log.duracao_ms}</TableCell>
-                            </TableRow>
-                          </CollapsibleTrigger>
-                          <CollapsibleContent asChild>
-                            <TableRow>
-                              <TableCell colSpan={11} className="bg-muted/30 p-4">
-                                {Array.isArray(log.detalhes) && log.detalhes.length > 0 ? (
-                                  <div className="space-y-3">
-                                    {/* Barra de ações em lote */}
-                                    <div className="flex flex-wrap items-center gap-3">
-                                      <Button
-                                        variant="outline"
-                                        size="sm"
-                                        className="text-xs"
-                                        onClick={() => {
-                                          const allIds = (log.detalhes as LogDetail[]).map(d => d.gc_os_id);
-                                          if (selectedOsIds.size === allIds.length && allIds.every(id => selectedOsIds.has(id))) {
-                                            setSelectedOsIds(new Set());
-                                          } else {
-                                            setSelectedOsIds(new Set(allIds));
-                                          }
-                                        }}
-                                      >
-                                        {(() => {
-                                          const allIds = (log.detalhes as LogDetail[]).map(d => d.gc_os_id);
-                                          return selectedOsIds.size === allIds.length && allIds.every(id => selectedOsIds.has(id))
-                                            ? "Desmarcar tudo"
-                                            : "Selecionar tudo";
-                                        })()}
-                                      </Button>
-
-                                      {selectedOsIds.size > 0 && (
-                                        <>
-                                          <span className="text-xs text-muted-foreground">{selectedOsIds.size} OS selecionada(s)</span>
-                                          <Select value={situacaoSelecionadas} onValueChange={setSituacaoSelecionadas}>
-                                            <SelectTrigger className="h-8 text-xs w-[260px]">
-                                              <SelectValue placeholder="Situação destino" />
-                                            </SelectTrigger>
-                                            <SelectContent>
-                                              {SITUACOES_OPTIONS.map(s => (
-                                                <SelectItem key={s.id} value={s.id}>{s.label}</SelectItem>
-                                              ))}
-                                            </SelectContent>
-                                          </Select>
-                                          <Button
-                                            size="sm"
-                                            className="h-8 text-xs"
-                                            disabled={!situacaoSelecionadas || changingSelecionadas}
-                                            onClick={(e) => {
-                                              e.stopPropagation();
-                                              const selecionadas = (log.detalhes as LogDetail[]).filter(d => selectedOsIds.has(d.gc_os_id));
-                                              const label = SITUACOES_OPTIONS.find(s => s.id === situacaoSelecionadas)?.label || situacaoSelecionadas;
-                                              if (!window.confirm(`Alterar ${selecionadas.length} OS para "${label}"?`)) return;
-                                              (async () => {
-                                                setChangingSelecionadas(true);
-                                                let ok = 0, fail = 0;
-                                                for (const d of selecionadas) {
-                                                  try {
-                                                    const { data, error } = await supabase.functions.invoke("auvo-gc-sync", {
-                                                      body: { action: "revert_os", gc_os_id: d.gc_os_id, gc_os_codigo: d.gc_os_codigo, situacao_id_antes: situacaoSelecionadas, gc_vendedor_id: d.gc_vendedor_id || null, gc_vendedor_nome: d.gc_vendedor_nome || null },
-                                                    });
-                                                    if (error) throw error;
-                                                    if (data?.success) { ok++; setMovedOsIds(prev => { const s = new Set(prev); s.add(d.gc_os_id); return s; }); } else fail++;
-                                                  } catch { fail++; }
-                                                }
-                                                toast.success(`${ok} OS alteradas, ${fail} erros`);
-                                                queryClient.invalidateQueries({ queryKey: ["auvo-sync-logs"] });
-                                                setChangingSelecionadas(false);
-                                                setSelectedOsIds(new Set());
-                                                setSituacaoSelecionadas("");
-                                              })();
-                                            }}
-                                          >
-                                            <Settings2 className="h-3 w-3 mr-1" />
-                                            {changingSelecionadas ? "Alterando..." : `Alterar situação (${selectedOsIds.size})`}
-                                          </Button>
-                                        </>
-                                      )}
-                                    </div>
-
-                                    <Table>
-                                      <TableHeader>
-                                        <TableRow>
-                                          <TableHead className="w-8"></TableHead>
-                                          <TableHead>OS</TableHead>
-                                          <TableHead>Cliente</TableHead>
-                                          <TableHead>Data</TableHead>
-                                          <TableHead>Tarefa</TableHead>
-                                          <TableHead>Resultado</TableHead>
-                                          <TableHead>Técnico</TableHead>
-                                          <TableHead>Antes</TableHead>
-                                          <TableHead>Depois</TableHead>
-                                          <TableHead>Detalhe</TableHead>
-                                        </TableRow>
-                                      </TableHeader>
-                                      <TableBody>
-                                        {(log.detalhes as LogDetail[]).map((d, i) => (
-                                          <TableRow key={i} className={`transition-colors ${movedOsIds.has(d.gc_os_id) ? "bg-green-100/80 dark:bg-green-950/30 opacity-50" : selectedOsIds.has(d.gc_os_id) ? "bg-accent/30" : ""}`}>
-                                            <TableCell>
-                                              <input
-                                                type="checkbox"
-                                                className="h-4 w-4 rounded border-input"
-                                                checked={selectedOsIds.has(d.gc_os_id)}
-                                                onChange={(e) => {
-                                                  e.stopPropagation();
-                                                  const next = new Set(selectedOsIds);
-                                                  if (next.has(d.gc_os_id)) next.delete(d.gc_os_id);
-                                                  else next.add(d.gc_os_id);
-                                                  setSelectedOsIds(next);
-                                                }}
-                                              />
-                                            </TableCell>
-                                            <TableCell>
-                                              <div className="flex items-center gap-1">
-                                                <span className={`font-mono text-xs ${movedOsIds.has(d.gc_os_id) ? "line-through text-muted-foreground" : ""}`}>{d.gc_os_codigo}</span>
-                                                {movedOsIds.has(d.gc_os_id) && (
-                                                  <span className="text-[10px] font-semibold text-green-600 dark:text-green-400 bg-green-100 dark:bg-green-900/50 px-1.5 py-0.5 rounded-full">✅ Movida</span>
-                                                )}
-                                                <a href={gcOsUrl(d.gc_os_id)} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} title="Abrir no GestãoClick">
-                                                  <ExternalLink className="h-3 w-3 text-muted-foreground hover:text-foreground" />
-                                                </a>
-                                              </div>
-                                            </TableCell>
-                                            <TableCell>
-                                              <span className="text-xs truncate block max-w-[180px]" title={d.gc_cliente || ""}>{d.gc_cliente || "—"}</span>
-                                            </TableCell>
-                                            <TableCell className="text-xs text-muted-foreground">
-                                              {d.data_os ? (() => { try { return format(new Date(d.data_os), "dd/MM/yy"); } catch { return d.data_os; } })() : "—"}
-                                            </TableCell>
-                                            <TableCell>
-                                              <div>
-                                                <div className="flex items-center gap-1">
-                                                  <span className="font-mono text-xs">{d.auvo_task_id}</span>
-                                                  <a href={auvoTaskUrl(d.auvo_task_id)} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} title="Abrir no Auvo">
-                                                    <ExternalLink className="h-3 w-3 text-muted-foreground hover:text-foreground" />
-                                                  </a>
-                                                </div>
-                                                {d.auvo_cliente && <span className="text-xs text-muted-foreground block truncate max-w-[180px]" title={d.auvo_cliente}>{d.auvo_cliente}</span>}
-                                              </div>
-                                            </TableCell>
-                                            <TableCell>{resultadoBadge(d.resultado)}</TableCell>
-                                            <TableCell>
-                                              <div className="space-y-1">
-                                                {d.auvo_tecnico_nome && <span className="text-xs block font-medium">{d.auvo_tecnico_nome}</span>}
-                                                {!d.auvo_tecnico_nome && d.gc_vendedor_nome && <span className="text-xs block">{d.gc_vendedor_nome}</span>}
-                                                {vendedorBadge(d.vendedor_status)}
-                                              </div>
-                                            </TableCell>
-                                            <TableCell className="text-xs">{d.situacao_antes}</TableCell>
-                                            <TableCell className="text-xs">{d.situacao_depois || "—"}</TableCell>
-                                            <TableCell className="text-xs max-w-xs">
-                                              <span className="truncate block" title={d.detalhe}>{d.detalhe}</span>
-                                              <PecasDetail detail={d} />
-                                            </TableCell>
-                                          </TableRow>
-                                        ))}
-                                      </TableBody>
-                                    </Table>
-                                  </div>
-                                ) : <p className="text-sm text-muted-foreground">Sem detalhes</p>}
-                              </TableCell>
-                            </TableRow>
-                          </CollapsibleContent>
-                        </>
-                      </Collapsible>
-                    ))}
-                  </TableBody>
-                </Table>
-              )}
+              </div>
             </CardContent>
           </Card>
-        </TabsContent>
 
-        {/* ─── TAB: Reversão em Lote ─── */}
-        <TabsContent value="reversao" className="space-y-4">
-          <Alert variant="destructive">
-            <AlertTriangle className="h-4 w-4" />
-            <AlertTitle>Ferramenta de Emergência</AlertTitle>
-            <AlertDescription>
-              Reverte a situação de múltiplas OS no GestãoClick. Não restaura pagamentos, NFs ou outros dados — apenas a situação.
-            </AlertDescription>
-          </Alert>
+          {/* Resumo */}
+          {conciliacaoData && (
+            <div className="grid gap-4 md:grid-cols-4">
+              <Card className="cursor-pointer hover:shadow-md transition-shadow" onClick={() => setFiltroConciliacao("todas")}>
+                <CardContent className="pt-4 pb-4">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-sm text-muted-foreground">Total</p>
+                      <p className="text-3xl font-bold">{conciliacaoData.length}</p>
+                    </div>
+                    <FileCheck className="h-8 w-8 text-muted-foreground/30" />
+                  </div>
+                </CardContent>
+              </Card>
+              <Card className="cursor-pointer hover:shadow-md transition-shadow border-green-200 dark:border-green-800" onClick={() => setFiltroConciliacao("conciliadas")}>
+                <CardContent className="pt-4 pb-4">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-sm text-green-600">Conciliadas</p>
+                      <p className="text-3xl font-bold text-green-600">{totalConciliadas}</p>
+                    </div>
+                    <CheckCircle2 className="h-8 w-8 text-green-500/30" />
+                  </div>
+                </CardContent>
+              </Card>
+              <Card className="cursor-pointer hover:shadow-md transition-shadow border-amber-200 dark:border-amber-800" onClick={() => setFiltroConciliacao("pendentes")}>
+                <CardContent className="pt-4 pb-4">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-sm text-amber-600">Pendentes</p>
+                      <p className="text-3xl font-bold text-amber-600">{totalPendentes}</p>
+                    </div>
+                    <FileX className="h-8 w-8 text-amber-500/30" />
+                  </div>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardContent className="pt-4 pb-4">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-sm text-blue-600">Finalizadas (Auvo)</p>
+                      <p className="text-3xl font-bold text-blue-600">{totalFinalizadas}</p>
+                      <p className="text-xs text-muted-foreground">Prontas p/ conciliar</p>
+                    </div>
+                    <Timer className="h-8 w-8 text-blue-500/30" />
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+          )}
 
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-lg flex items-center gap-2"><Undo2 className="h-5 w-5" /> Reversão em Lote</CardTitle>
-              <CardDescription>Encontre e reverta OS alteradas indevidamente</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-1.5">
-                  <label className="text-sm font-medium text-muted-foreground">Modificadas após (datetime)</label>
-                  <Input
-                    value={revertModificadoApos}
-                    onChange={(e) => setRevertModificadoApos(e.target.value)}
-                    placeholder="2026-03-11 17:46:00"
-                  />
+          {/* Tabela de conciliação */}
+          {conciliacaoData && (
+            <Card>
+              <CardHeader className="pb-3">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div className="flex items-center gap-3">
+                    <CardTitle className="text-lg">
+                      {filtroConciliacao === "todas" ? "Todas as OS" : filtroConciliacao === "conciliadas" ? "OS Conciliadas" : "OS Pendentes"}
+                    </CardTitle>
+                    <Badge variant="secondary">{itensFiltrados.length}</Badge>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Input placeholder="Buscar OS, cliente, técnico..." value={searchText} onChange={e => setSearchText(e.target.value)} className="w-[250px] h-8 text-sm" />
+                  </div>
                 </div>
-                <div className="space-y-1.5">
-                  <label className="text-sm font-medium text-muted-foreground">Situação de destino</label>
-                  <Select value={revertSituacaoId} onValueChange={setRevertSituacaoId}>
-                    <SelectTrigger><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="7213493">SERVICO AGUARDANDO EXECUCAO</SelectItem>
-                      <SelectItem value="7684665">RETIRADA PELO TECNICO</SelectItem>
-                      <SelectItem value="7063581">PEDIDO EM CONFERENCIA</SelectItem>
-                      <SelectItem value="7063705">PEDIDO CONFERIDO AGUARDANDO EXECUÇÃO</SelectItem>
-                      <SelectItem value="7063579">AGUARDANDO COMPRA DE PEÇAS</SelectItem>
-                      <SelectItem value="7063580">AGUARDANDO CHEGADA DE PEÇAS</SelectItem>
-                      <SelectItem value="7659440">AGUARDANDO FABRICAÇÃO</SelectItem>
-                      <SelectItem value="8679279">IMPORTADO API CIGAM</SelectItem>
-                      <SelectItem value="8685059">IMP CIGAM FATURADO TOTAL</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
 
-              <div className="flex gap-2">
-                <Button
-                  onClick={async () => {
-                    setScanning(true);
-                    try {
-                      const { data, error } = await supabase.functions.invoke("auvo-gc-sync", {
-                        body: { action: "batch_scan", modificado_apos: revertModificadoApos },
-                      });
-                      if (error) throw error;
-                      setScanResult(data?.os_list || []);
-                      toast.success(`${data?.total || 0} OS encontradas`);
-                    } catch (err: any) {
-                      toast.error(`Erro: ${err.message}`);
-                    } finally {
-                      setScanning(false);
-                    }
-                  }}
-                  disabled={scanning}
-                  variant="outline"
-                >
-                  <Eye className="mr-2 h-4 w-4" />
-                  {scanning ? "Escaneando..." : "1. Escanear OS afetadas"}
-                </Button>
-
-                {scanResult && scanResult.length > 0 && (
-                  <Button
-                    onClick={async () => {
-                      const confirmed = window.confirm(
-                        `CONFIRMA reverter ${scanResult.length} OS para a situação selecionada? Esta ação NÃO pode ser desfeita.`
-                      );
-                      if (!confirmed) return;
-                      setBatchReverting(true);
-                      try {
-                        const osList = scanResult.map(os => ({
-                          id: os.id,
-                          codigo: os.codigo,
-                          situacao_destino_id: revertSituacaoId,
-                        }));
-                        const { data, error } = await supabase.functions.invoke("auvo-gc-sync", {
-                          body: { action: "batch_revert", os_list: osList, dry_run: false },
-                        });
-                        if (error) throw error;
-                        toast.success(`${data?.revertidas || 0} OS revertidas, ${data?.erros || 0} erros`);
-                        queryClient.invalidateQueries({ queryKey: ["auvo-sync-logs"] });
-                        setScanResult(null);
-                      } catch (err: any) {
-                        toast.error(`Erro: ${err.message}`);
-                      } finally {
-                        setBatchReverting(false);
-                      }
-                    }}
-                    disabled={batchReverting}
-                    variant="destructive"
-                  >
-                    <Undo2 className="mr-2 h-4 w-4" />
-                    {batchReverting ? "Revertendo..." : `2. Reverter ${scanResult.length} OS`}
-                  </Button>
+                {/* Barra de ações em lote */}
+                {filtroConciliacao === "pendentes" && (
+                  <div className="flex flex-wrap items-center gap-3 mt-3 pt-3 border-t">
+                    <Button
+                      variant="outline" size="sm" className="text-xs"
+                      onClick={() => {
+                        const pendentes = itensFiltrados.filter(i => !i.conciliada && !movedOsIds.has(i.gc_os_id));
+                        if (selectedOsIds.size === pendentes.length && pendentes.every(i => selectedOsIds.has(i.gc_os_id))) {
+                          setSelectedOsIds(new Set());
+                        } else {
+                          setSelectedOsIds(new Set(pendentes.map(i => i.gc_os_id)));
+                        }
+                      }}
+                    >
+                      {(() => {
+                        const pendentes = itensFiltrados.filter(i => !i.conciliada && !movedOsIds.has(i.gc_os_id));
+                        return selectedOsIds.size === pendentes.length && pendentes.every(i => selectedOsIds.has(i.gc_os_id))
+                          ? "Desmarcar tudo" : "Selecionar tudo";
+                      })()}
+                    </Button>
+                    {selectedOsIds.size > 0 && (
+                      <>
+                        <span className="text-xs text-muted-foreground">{selectedOsIds.size} selecionada(s)</span>
+                        <Select value={situacaoDestino} onValueChange={setSituacaoDestino}>
+                          <SelectTrigger className="h-8 text-xs w-[260px]"><SelectValue placeholder="Situação destino" /></SelectTrigger>
+                          <SelectContent>
+                            {SITUACOES_OPTIONS.map(s => <SelectItem key={s.id} value={s.id}>{s.label}</SelectItem>)}
+                          </SelectContent>
+                        </Select>
+                        <Button size="sm" className="h-8 text-xs" disabled={!situacaoDestino || changingAll} onClick={alterarSelecionadas}>
+                          <Settings2 className="h-3 w-3 mr-1" />
+                          {changingAll ? "Alterando..." : `Alterar situação (${selectedOsIds.size})`}
+                        </Button>
+                      </>
+                    )}
+                  </div>
                 )}
-              </div>
-
-              {scanResult && (
-                <div className="border rounded-md">
+              </CardHeader>
+              <CardContent className="p-0">
+                <div className="overflow-auto max-h-[65vh]">
                   <Table>
-                    <TableHeader>
+                    <TableHeader className="sticky top-0 bg-background z-10">
                       <TableRow>
-                        <TableHead>OS</TableHead>
-                        <TableHead>Modificado em</TableHead>
-                        <TableHead>Situação atual</TableHead>
+                        {filtroConciliacao === "pendentes" && <TableHead className="w-8"></TableHead>}
+                        <TableHead className="text-center w-[90px]">Status</TableHead>
+                        <TableHead>OS (GC)</TableHead>
+                        <TableHead>Cliente</TableHead>
+                        <TableHead>Data</TableHead>
+                        <TableHead>Tarefa (Auvo)</TableHead>
+                        <TableHead>Técnico / Vendedor</TableHead>
+                        <TableHead>Situação GC</TableHead>
+                        <TableHead className="text-center">Auvo</TableHead>
+                        <TableHead className="text-center">
+                          <div className="flex items-center justify-center gap-1"><Clock className="h-3 w-3" /> Trabalho</div>
+                        </TableHead>
+                        <TableHead className="text-center">
+                          <div className="flex items-center justify-center gap-1"><Timer className="h-3 w-3" /> Pausa</div>
+                        </TableHead>
+                        <TableHead className="text-center">Check-in</TableHead>
+                        <TableHead className="text-center">Check-out</TableHead>
+                        {filtroConciliacao !== "conciliadas" && <TableHead className="w-[100px]">Ação</TableHead>}
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {scanResult.length === 0 ? (
+                      {itensFiltrados.length === 0 ? (
                         <TableRow>
-                          <TableCell colSpan={3} className="text-center text-muted-foreground">Nenhuma OS encontrada</TableCell>
+                          <TableCell colSpan={14} className="text-center text-muted-foreground py-12">
+                            {loadingConciliacao ? "Buscando..." : "Nenhuma OS encontrada"}
+                          </TableCell>
                         </TableRow>
-                      ) : (
-                        scanResult.map((os) => (
-                          <TableRow key={os.id}>
-                            <TableCell className="font-mono text-sm">{os.codigo}</TableCell>
-                            <TableCell className="text-sm">{os.modificado_em}</TableCell>
-                            <TableCell><Badge variant="destructive">EXECUTADO - AG. NEGOCIAÇÃO</Badge></TableCell>
+                      ) : itensFiltrados.map((item) => {
+                        const moved = movedOsIds.has(item.gc_os_id);
+                        const selected = selectedOsIds.has(item.gc_os_id);
+                        return (
+                          <TableRow
+                            key={item.gc_os_id}
+                            className={`transition-colors text-sm ${
+                              moved ? "bg-green-50 dark:bg-green-950/20 opacity-50" :
+                              item.conciliada ? "bg-green-50/40 dark:bg-green-950/10" :
+                              selected ? "bg-accent/30" : ""
+                            }`}
+                          >
+                            {filtroConciliacao === "pendentes" && (
+                              <TableCell className="text-center">
+                                {!item.conciliada && !moved && (
+                                  <Checkbox
+                                    checked={selected}
+                                    onCheckedChange={() => {
+                                      const next = new Set(selectedOsIds);
+                                      if (next.has(item.gc_os_id)) next.delete(item.gc_os_id);
+                                      else next.add(item.gc_os_id);
+                                      setSelectedOsIds(next);
+                                    }}
+                                  />
+                                )}
+                              </TableCell>
+                            )}
+                            <TableCell className="text-center">
+                              {moved ? (
+                                <Badge variant="outline" className="text-[10px] bg-green-100 text-green-700 border-green-300 dark:bg-green-900/50 dark:text-green-300 dark:border-green-700">✅ Movida</Badge>
+                              ) : item.conciliada ? (
+                                <Badge variant="outline" className="text-[10px] bg-green-100 text-green-700 border-green-300 dark:bg-green-900/50 dark:text-green-300 dark:border-green-700">
+                                  <CheckCircle2 className="h-3 w-3 mr-0.5" /> Conciliada
+                                </Badge>
+                              ) : item.auvo_finalizada ? (
+                                <Badge variant="outline" className="text-[10px] bg-blue-100 text-blue-700 border-blue-300 dark:bg-blue-900/50 dark:text-blue-300 dark:border-blue-700">
+                                  Finalizada
+                                </Badge>
+                              ) : (
+                                <Badge variant="outline" className="text-[10px] bg-amber-100 text-amber-700 border-amber-300 dark:bg-amber-900/50 dark:text-amber-300 dark:border-amber-700">
+                                  Pendente
+                                </Badge>
+                              )}
+                            </TableCell>
+                            <TableCell>
+                              <div className="flex items-center gap-1">
+                                <span className={`font-mono text-xs ${moved ? "line-through text-muted-foreground" : "font-medium"}`}>{item.gc_os_codigo}</span>
+                                <a href={gcOsUrl(item.gc_os_id)} target="_blank" rel="noopener noreferrer" title="Abrir no GC">
+                                  <ExternalLink className="h-3 w-3 text-muted-foreground hover:text-foreground" />
+                                </a>
+                              </div>
+                            </TableCell>
+                            <TableCell>
+                              <span className="text-xs truncate block max-w-[180px]" title={item.gc_cliente}>{item.gc_cliente || "—"}</span>
+                            </TableCell>
+                            <TableCell className="text-xs text-muted-foreground">
+                              {item.data_os ? (() => { try { return format(new Date(item.data_os), "dd/MM/yy"); } catch { return item.data_os; } })() : "—"}
+                            </TableCell>
+                            <TableCell>
+                              <div className="flex items-center gap-1">
+                                <span className="font-mono text-xs">{item.auvo_task_id}</span>
+                                <a href={auvoTaskUrl(item.auvo_task_id)} target="_blank" rel="noopener noreferrer" title="Abrir no Auvo">
+                                  <ExternalLink className="h-3 w-3 text-muted-foreground hover:text-foreground" />
+                                </a>
+                              </div>
+                              {item.auvo_cliente && <span className="text-xs text-muted-foreground block truncate max-w-[150px]" title={item.auvo_cliente}>{item.auvo_cliente}</span>}
+                            </TableCell>
+                            <TableCell>
+                              <div className="space-y-0.5">
+                                <span className="text-xs font-medium block">{item.auvo_tecnico_nome || item.gc_vendedor_nome || "—"}</span>
+                                {item.vendedor_status === "mapeado" && <Badge variant="default" className="text-[10px]">✅ Mapeado</Badge>}
+                                {item.vendedor_status === "sem_mapeamento" && <Badge variant="destructive" className="text-[10px]">⚠️ Sem Mapa</Badge>}
+                              </div>
+                            </TableCell>
+                            <TableCell>
+                              <span className="text-xs">{item.gc_situacao}</span>
+                            </TableCell>
+                            <TableCell className="text-center">
+                              {item.auvo_finalizada === true ? (
+                                <span className="text-green-600 text-xs font-medium">✅</span>
+                              ) : item.auvo_finalizada === false ? (
+                                <span className="text-amber-600 text-xs">⏳</span>
+                              ) : (
+                                <span className="text-muted-foreground text-xs">—</span>
+                              )}
+                              {item.auvo_pendencia && item.auvo_pendencia.trim() && (
+                                <span className="text-[10px] text-destructive block" title={item.auvo_pendencia}>Pendência</span>
+                              )}
+                            </TableCell>
+                            <TableCell className="text-center font-mono text-xs font-medium text-blue-600">
+                              {formatTempo(item.tempo_trabalho_seg)}
+                            </TableCell>
+                            <TableCell className="text-center font-mono text-xs text-amber-600">
+                              {formatTempo(item.tempo_pausa_seg)}
+                            </TableCell>
+                            <TableCell className="text-center font-mono text-xs text-muted-foreground">
+                              {formatHora(item.checkin_hora)}
+                            </TableCell>
+                            <TableCell className="text-center font-mono text-xs text-muted-foreground">
+                              {formatHora(item.checkout_hora)}
+                            </TableCell>
+                            {filtroConciliacao !== "conciliadas" && (
+                              <TableCell>
+                                {!item.conciliada && !moved && (
+                                  <Popover>
+                                    <PopoverTrigger asChild>
+                                      <Button variant="outline" size="sm" className="h-7 text-xs" disabled={changingId === item.gc_os_id}>
+                                        {changingId === item.gc_os_id ? "..." : "Mover"}
+                                      </Button>
+                                    </PopoverTrigger>
+                                    <PopoverContent className="w-[280px] p-2" align="end">
+                                      <div className="space-y-1">
+                                        <p className="text-xs font-medium text-muted-foreground mb-2">Mover OS para:</p>
+                                        {SITUACOES_OPTIONS.map(s => (
+                                          <Button
+                                            key={s.id}
+                                            variant="ghost"
+                                            size="sm"
+                                            className="w-full justify-start text-xs h-7"
+                                            onClick={() => alterarSituacaoOS(item, s.id)}
+                                          >
+                                            {s.label}
+                                          </Button>
+                                        ))}
+                                      </div>
+                                    </PopoverContent>
+                                  </Popover>
+                                )}
+                              </TableCell>
+                            )}
                           </TableRow>
-                        ))
-                      )}
+                        );
+                      })}
                     </TableBody>
                   </Table>
                 </div>
-              )}
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        {/* ─── TAB 2: Mapeamento ─── */}
-        <TabsContent value="mapeamento" className="space-y-4">
-          {tecnicosSemMapa.length > 0 && (
-            <Alert variant="destructive">
-              <AlertTriangle className="h-4 w-4" />
-              <AlertTitle>Técnicos sem mapeamento</AlertTitle>
-              <AlertDescription>
-                {tecnicosSemMapa.length} técnico(s) detectados nas últimas execuções sem mapeamento GC:
-                <span className="font-mono text-xs ml-1">{tecnicosSemMapa.join(", ")}</span>
-              </AlertDescription>
-            </Alert>
+              </CardContent>
+            </Card>
           )}
 
+          {!conciliacaoData && (
+            <Card>
+              <CardContent className="py-16 text-center">
+                <FileCheck className="h-16 w-16 mx-auto text-muted-foreground/20 mb-4" />
+                <p className="text-lg font-medium text-muted-foreground">Selecione um período e clique em "Buscar Conciliação"</p>
+                <p className="text-sm text-muted-foreground mt-1">O sistema vai cruzar todas as OS do GestãoClick com as tarefas do Auvo</p>
+              </CardContent>
+            </Card>
+          )}
+        </TabsContent>
+
+        {/* ─── TAB: Mapeamento ─── */}
+        <TabsContent value="mapeamento" className="space-y-4">
           <Card>
             <CardHeader className="flex flex-row items-center justify-between">
               <div>
@@ -898,48 +654,33 @@ const AuvoSyncPage = () => {
                   <div className="space-y-4 py-4">
                     <div className="space-y-2">
                       <label className="text-sm font-medium">Técnico Auvo</label>
-                      <Select
-                        value={selectedAuvoUser}
-                        onValueChange={(v) => {
-                          setSelectedAuvoUser(v);
-                          const user = auvoUsers?.find(u => String(u.userID) === v);
-                          setSelectedAuvoUserNome(user?.name || v);
-                        }}
-                      >
+                      <Select value={selectedAuvoUser} onValueChange={(v) => {
+                        setSelectedAuvoUser(v);
+                        const user = auvoUsers?.find(u => String(u.userID) === v);
+                        setSelectedAuvoUserNome(user?.name || v);
+                      }}>
                         <SelectTrigger><SelectValue placeholder={loadingAuvoUsers ? "Carregando..." : "Selecione"} /></SelectTrigger>
                         <SelectContent>
-                          {auvoUsers?.map(u => (
-                            <SelectItem key={u.userID} value={String(u.userID)}>
-                              {u.name} (ID: {u.userID})
-                            </SelectItem>
-                          ))}
+                          {auvoUsers?.map(u => <SelectItem key={u.userID} value={String(u.userID)}>{u.name} (ID: {u.userID})</SelectItem>)}
                         </SelectContent>
                       </Select>
                     </div>
                     <div className="space-y-2">
                       <label className="text-sm font-medium">Vendedor GC</label>
-                      <Select
-                        value={selectedGcVendedor}
-                        onValueChange={(v) => {
-                          setSelectedGcVendedor(v);
-                          const vend = gcVendedores?.find(f => f.id === v);
-                          setSelectedGcVendedorNome(vend?.nome || v);
-                        }}
-                      >
+                      <Select value={selectedGcVendedor} onValueChange={(v) => {
+                        setSelectedGcVendedor(v);
+                        const vend = gcVendedores?.find(f => f.id === v);
+                        setSelectedGcVendedorNome(vend?.nome || v);
+                      }}>
                         <SelectTrigger><SelectValue placeholder={loadingGcVendedores ? "Carregando..." : "Selecione"} /></SelectTrigger>
                         <SelectContent>
-                          {gcVendedores?.map(f => (
-                            <SelectItem key={f.id} value={f.id}>{f.nome} (ID: {f.id})</SelectItem>
-                          ))}
+                          {gcVendedores?.map(f => <SelectItem key={f.id} value={f.id}>{f.nome} (ID: {f.id})</SelectItem>)}
                         </SelectContent>
                       </Select>
                     </div>
                   </div>
                   <DialogFooter>
-                    <Button
-                      onClick={() => salvarMapeamento.mutate()}
-                      disabled={!selectedAuvoUser || !selectedGcVendedor || salvarMapeamento.isPending}
-                    >
+                    <Button onClick={() => salvarMapeamento.mutate()} disabled={!selectedAuvoUser || !selectedGcVendedor || salvarMapeamento.isPending}>
                       {salvarMapeamento.isPending ? "Salvando..." : "Salvar"}
                     </Button>
                   </DialogFooter>
@@ -948,7 +689,7 @@ const AuvoSyncPage = () => {
             </CardHeader>
             <CardContent>
               {loadingMap ? <p className="text-sm text-muted-foreground">Carregando...</p> : !mapeamentos?.length ? (
-                <p className="text-sm text-muted-foreground">Nenhum mapeamento configurado. Clique em "Adicionar" para começar.</p>
+                <p className="text-sm text-muted-foreground">Nenhum mapeamento configurado.</p>
               ) : (
                 <Table>
                   <TableHeader>
@@ -974,11 +715,7 @@ const AuvoSyncPage = () => {
                           <Badge variant={m.ativo ? "default" : "secondary"}>{m.ativo ? "✅ Ativo" : "Inativo"}</Badge>
                         </TableCell>
                         <TableCell>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => toggleAtivo.mutate({ id: m.id, ativo: !m.ativo })}
-                          >
+                          <Button variant="ghost" size="sm" onClick={() => toggleAtivo.mutate({ id: m.id, ativo: !m.ativo })}>
                             {m.ativo ? "Desativar" : "Ativar"}
                           </Button>
                         </TableCell>
@@ -991,7 +728,6 @@ const AuvoSyncPage = () => {
           </Card>
         </TabsContent>
       </Tabs>
-
     </div>
   );
 };
