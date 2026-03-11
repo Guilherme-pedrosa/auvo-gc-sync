@@ -778,6 +778,7 @@ Deno.serve(async (req) => {
           resultado: "divergencia_pecas", detalhe: validacaoPecas.resumo,
           situacao_antes: os.nome_situacao, situacao_id_antes: os.situacao_id, situacao_depois: null, data_os: os.data_os,
           auvo_tecnico_id: auvoTecnicoId || null, auvo_tecnico_nome: auvoTecnicoNome || null,
+          gc_cliente: os.gc_cliente, auvo_cliente: auvoCliente || null,
           pecas_orcamento: validacaoPecas.pecas_orcamento,
           materiais_execucao: validacaoPecas.materiais_execucao,
           itens_cobertos: validacaoPecas.itens_cobertos,
