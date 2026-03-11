@@ -741,13 +741,14 @@ Deno.serve(async (req) => {
 
       if (!tarefa) {
         naoEncontradas++;
-        logEntries.push({ gc_os_id: os.gc_os_id, gc_os_codigo: os.gc_os_codigo, auvo_task_id: os.auvo_task_id, resultado: "nao_encontrada", detalhe: "Tarefa não encontrada no Auvo", situacao_antes: os.nome_situacao, situacao_id_antes: os.situacao_id, situacao_depois: null, data_os: os.data_os });
+        logEntries.push({ gc_os_id: os.gc_os_id, gc_os_codigo: os.gc_os_codigo, auvo_task_id: os.auvo_task_id, resultado: "nao_encontrada", detalhe: "Tarefa não encontrada no Auvo", situacao_antes: os.nome_situacao, situacao_id_antes: os.situacao_id, situacao_depois: null, data_os: os.data_os, gc_cliente: os.gc_cliente });
         continue;
       }
 
-      // Extrair técnico de toda tarefa
+      // Extrair técnico e cliente de toda tarefa
       const auvoTecnicoId = String(tarefa._raw?.idUserTo || tarefa._raw?.idUserFrom || "").trim();
       const auvoTecnicoNome = String(tarefa._raw?.userToName || tarefa._raw?.userFromName || tarefa._raw?.collaboratorName || "").trim();
+      const auvoCliente = String(tarefa._raw?.customerName || tarefa._raw?.customer?.name || tarefa._raw?.customerDescription || "").trim();
 
       // ─── FILTRO: só processar tarefas finalizadas (com ou sem pendência) ───
       if (!tarefa.finished) {
@@ -758,7 +759,7 @@ Deno.serve(async (req) => {
 
       if (!finalizadaSemPendencia) {
         comPendencia++;
-        logEntries.push({ gc_os_id: os.gc_os_id, gc_os_codigo: os.gc_os_codigo, auvo_task_id: os.auvo_task_id, resultado: "com_pendencia", detalhe: `finished=${tarefa.finished} | pendency="${tarefa.pendency}" | taskStatus=${tarefa.taskStatus}`, situacao_antes: os.nome_situacao, situacao_id_antes: os.situacao_id, situacao_depois: null, data_os: os.data_os, auvo_tecnico_id: auvoTecnicoId || null, auvo_tecnico_nome: auvoTecnicoNome || null });
+        logEntries.push({ gc_os_id: os.gc_os_id, gc_os_codigo: os.gc_os_codigo, auvo_task_id: os.auvo_task_id, resultado: "com_pendencia", detalhe: `finished=${tarefa.finished} | pendency="${tarefa.pendency}" | taskStatus=${tarefa.taskStatus}`, situacao_antes: os.nome_situacao, situacao_id_antes: os.situacao_id, situacao_depois: null, data_os: os.data_os, auvo_tecnico_id: auvoTecnicoId || null, auvo_tecnico_nome: auvoTecnicoNome || null, gc_cliente: os.gc_cliente, auvo_cliente: auvoCliente || null });
         continue;
       }
 
