@@ -105,6 +105,7 @@ const AuvoSyncPage = () => {
   const [filtroClientePos, setFiltroClientePos] = useState("");
   const [filtroSituacaoPos, setFiltroSituacaoPos] = useState("");
   const [filtroTecnicoPos, setFiltroTecnicoPos] = useState("");
+  const [filtroStatusAuvo, setFiltroStatusAuvo] = useState("");
   // ─── Mapeamento state ───
   const [dialogOpen, setDialogOpen] = useState(false);
   const [selectedAuvoUser, setSelectedAuvoUser] = useState("");
