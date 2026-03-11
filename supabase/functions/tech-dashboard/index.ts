@@ -30,21 +30,29 @@ async function fetchAllAuvoTasks(
 ): Promise<any[]> {
   const allTasks: any[] = [];
   let page = 1;
-  const pageSize = 200;
+  const pageSize = 100;
   let hasMore = true;
 
   while (hasMore) {
-    const paramFilter = encodeURIComponent(
-      JSON.stringify({ startDate, endDate })
-    );
+    const [sy, sm, sd] = startDate.split("-");
+    const [ey, em, ed] = endDate.split("-");
+    const paramFilter = encodeURIComponent(JSON.stringify({ startDate: `${sm}/${sd}/${sy}`, endDate: `${em}/${ed}/${ey}` }));
     const url = `${AUVO_BASE_URL}/tasks/?Page=${page}&PageSize=${pageSize}&Order=asc&ParamFilter=${paramFilter}`;
+    console.log(`[tech-dashboard] Fetching page ${page}: ${url}`);
     const response = await fetch(url, { headers: auvoHeaders(bearerToken) });
     if (!response.ok) {
-      console.error(`[tech-dashboard] Auvo tasks page ${page} error: ${response.status}`);
+      const errBody = await response.text().catch(() => "");
+      console.error(`[tech-dashboard] Error: ${response.status} — ${errBody.substring(0, 300)}`);
       break;
     }
-    const data = await response.json();
+    
+    let data: any;
+    try { data = JSON.parse(responseText); } catch { break; }
     const entities = data?.result?.entityList || data?.result?.Entities || [];
+    if (page === 1 && entities.length > 0) {
+      console.log(`[tech-dashboard] First task keys: ${Object.keys(entities[0]).join(", ")}`);
+      console.log(`[tech-dashboard] First task sample: ${JSON.stringify(entities[0]).substring(0, 1000)}`);
+    }
     allTasks.push(...entities);
     console.log(`[tech-dashboard] Page ${page}: ${entities.length} tasks (total: ${allTasks.length})`);
     if (entities.length < pageSize) hasMore = false;
