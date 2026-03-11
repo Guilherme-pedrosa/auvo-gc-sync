@@ -14,7 +14,51 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      auvo_gc_sync_log: {
+        Row: {
+          detalhes: Json | null
+          dry_run: boolean | null
+          duracao_ms: number | null
+          erros: number | null
+          executado_em: string
+          id: string
+          observacao: string | null
+          os_atualizadas: number | null
+          os_candidatas: number | null
+          os_com_pendencia: number | null
+          os_nao_encontradas: number | null
+          os_sem_pendencia: number | null
+        }
+        Insert: {
+          detalhes?: Json | null
+          dry_run?: boolean | null
+          duracao_ms?: number | null
+          erros?: number | null
+          executado_em?: string
+          id?: string
+          observacao?: string | null
+          os_atualizadas?: number | null
+          os_candidatas?: number | null
+          os_com_pendencia?: number | null
+          os_nao_encontradas?: number | null
+          os_sem_pendencia?: number | null
+        }
+        Update: {
+          detalhes?: Json | null
+          dry_run?: boolean | null
+          duracao_ms?: number | null
+          erros?: number | null
+          executado_em?: string
+          id?: string
+          observacao?: string | null
+          os_atualizadas?: number | null
+          os_candidatas?: number | null
+          os_com_pendencia?: number | null
+          os_nao_encontradas?: number | null
+          os_sem_pendencia?: number | null
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
