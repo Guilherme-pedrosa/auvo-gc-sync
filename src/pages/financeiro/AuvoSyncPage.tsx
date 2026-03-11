@@ -281,6 +281,10 @@ const AuvoSyncPage = () => {
     if (filtroClientePos) items = items.filter(i => i.gc_cliente === filtroClientePos);
     if (filtroSituacaoPos) items = items.filter(i => i.gc_situacao === filtroSituacaoPos);
     if (filtroTecnicoPos) items = items.filter(i => i.auvo_tecnico_nome === filtroTecnicoPos);
+    if (filtroStatusAuvo === "finalizada_sem_pendencia") items = items.filter(i => i.auvo_finalizada === true && (!i.auvo_pendencia || !i.auvo_pendencia.trim()));
+    else if (filtroStatusAuvo === "finalizada_com_pendencia") items = items.filter(i => i.auvo_finalizada === true && i.auvo_pendencia && i.auvo_pendencia.trim());
+    else if (filtroStatusAuvo === "finalizada") items = items.filter(i => i.auvo_finalizada === true);
+    else if (filtroStatusAuvo === "nao_finalizada") items = items.filter(i => i.auvo_finalizada !== true);
     if (searchText.trim()) {
       const q = searchText.toLowerCase();
       items = items.filter(i =>
@@ -292,7 +296,7 @@ const AuvoSyncPage = () => {
       );
     }
     return items;
-  }, [conciliacaoData, filtroConciliacao, filtroClientePos, filtroSituacaoPos, filtroTecnicoPos, searchText]);
+  }, [conciliacaoData, filtroConciliacao, filtroClientePos, filtroSituacaoPos, filtroTecnicoPos, filtroStatusAuvo, searchText]);
 
   const totalConciliadas = conciliacaoData?.filter(i => i.conciliada).length || 0;
   const totalPendentes = conciliacaoData?.filter(i => !i.conciliada).length || 0;
