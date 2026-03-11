@@ -98,6 +98,9 @@ const AuvoSyncPage = () => {
   const [situacaoClienteBulk, setSituacaoClienteBulk] = useState("");
   const [changingSituacaoCliente, setChangingSituacaoCliente] = useState(false);
   const [filtroStatusTarefa, setFiltroStatusTarefa] = useState<"sem_pendencia" | "todas">("sem_pendencia");
+  const [selectedOsIds, setSelectedOsIds] = useState<Set<string>>(new Set());
+  const [situacaoSelecionadas, setSituacaoSelecionadas] = useState("");
+  const [changingSelecionadas, setChangingSelecionadas] = useState(false);
 
   const SITUACOES_OPTIONS = [
     { id: "7063579", label: "AGUARDANDO COMPRA DE PEÇAS" },
