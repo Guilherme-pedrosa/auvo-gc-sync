@@ -105,7 +105,7 @@ const AuvoSyncPage = () => {
         body: { action: "list_auvo_users" },
       });
       if (error) throw error;
-      return (data?.users || []) as Array<{ idUserLogin: number; name: string; email?: string }>;
+      return (data?.users || []) as Array<{ userID: number; name: string; email?: string }>;
     },
     enabled: dialogOpen,
   });
@@ -411,15 +411,15 @@ const AuvoSyncPage = () => {
                         value={selectedAuvoUser}
                         onValueChange={(v) => {
                           setSelectedAuvoUser(v);
-                          const user = auvoUsers?.find(u => String(u.idUserLogin) === v);
+                          const user = auvoUsers?.find(u => String(u.userID) === v);
                           setSelectedAuvoUserNome(user?.name || v);
                         }}
                       >
                         <SelectTrigger><SelectValue placeholder={loadingAuvoUsers ? "Carregando..." : "Selecione"} /></SelectTrigger>
                         <SelectContent>
                           {auvoUsers?.map(u => (
-                            <SelectItem key={u.idUserLogin} value={String(u.idUserLogin)}>
-                              {u.name} (ID: {u.idUserLogin})
+                            <SelectItem key={u.userID} value={String(u.userID)}>
+                              {u.name} (ID: {u.userID})
                             </SelectItem>
                           ))}
                         </SelectContent>
