@@ -93,6 +93,8 @@ async function fetchOsComTarefaAuvo(gcHeaders: Record<string, string>, dataInici
       const nested2 = atributoTarefa?.atributo || atributoTarefa;
       const valor = String(nested2?.conteudo || nested2?.valor || "").trim();
       if (!valor) { semValor++; continue; }
+      // Skip non-numeric task IDs (e.g. "importação Cigam", "venda", "DESLOCAMENTO")
+      if (!/^\d+$/.test(valor)) { semValor++; continue; }
 
       results.push({
         gc_os_id: String(os.id),
