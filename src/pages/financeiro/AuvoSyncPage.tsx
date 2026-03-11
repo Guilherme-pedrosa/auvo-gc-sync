@@ -102,7 +102,9 @@ const AuvoSyncPage = () => {
   const [movedOsIds, setMovedOsIds] = useState<Set<string>>(new Set());
   const [changingId, setChangingId] = useState<string | null>(null);
   const [searchText, setSearchText] = useState("");
-
+  const [filtroClientePos, setFiltroClientePos] = useState("");
+  const [filtroSituacaoPos, setFiltroSituacaoPos] = useState("");
+  const [filtroTecnicoPos, setFiltroTecnicoPos] = useState("");
   // ─── Mapeamento state ───
   const [dialogOpen, setDialogOpen] = useState(false);
   const [selectedAuvoUser, setSelectedAuvoUser] = useState("");
@@ -253,12 +255,31 @@ const AuvoSyncPage = () => {
     setSelectedOsIds(new Set());
   };
 
+  // ─── Unique lists for post-filters ───
+  const clientesUnicos = useMemo(() => {
+    if (!conciliacaoData) return [];
+    return [...new Set(conciliacaoData.map(i => i.gc_cliente).filter(Boolean))].sort((a, b) => a.localeCompare(b, "pt-BR"));
+  }, [conciliacaoData]);
+
+  const situacoesUnicas = useMemo(() => {
+    if (!conciliacaoData) return [];
+    return [...new Set(conciliacaoData.map(i => i.gc_situacao).filter(Boolean))].sort((a, b) => a.localeCompare(b, "pt-BR"));
+  }, [conciliacaoData]);
+
+  const tecnicosUnicos = useMemo(() => {
+    if (!conciliacaoData) return [];
+    return [...new Set(conciliacaoData.map(i => i.auvo_tecnico_nome).filter(Boolean) as string[])].sort((a, b) => a.localeCompare(b, "pt-BR"));
+  }, [conciliacaoData]);
+
   // ─── Filtered + searched data ───
   const itensFiltrados = useMemo(() => {
     if (!conciliacaoData) return [];
     let items = conciliacaoData;
     if (filtroConciliacao === "pendentes") items = items.filter(i => !i.conciliada);
     else if (filtroConciliacao === "conciliadas") items = items.filter(i => i.conciliada);
+    if (filtroClientePos) items = items.filter(i => i.gc_cliente === filtroClientePos);
+    if (filtroSituacaoPos) items = items.filter(i => i.gc_situacao === filtroSituacaoPos);
+    if (filtroTecnicoPos) items = items.filter(i => i.auvo_tecnico_nome === filtroTecnicoPos);
     if (searchText.trim()) {
       const q = searchText.toLowerCase();
       items = items.filter(i =>
@@ -270,7 +291,7 @@ const AuvoSyncPage = () => {
       );
     }
     return items;
-  }, [conciliacaoData, filtroConciliacao, searchText]);
+  }, [conciliacaoData, filtroConciliacao, filtroClientePos, filtroSituacaoPos, filtroTecnicoPos, searchText]);
 
   const totalConciliadas = conciliacaoData?.filter(i => i.conciliada).length || 0;
   const totalPendentes = conciliacaoData?.filter(i => !i.conciliada).length || 0;
@@ -409,8 +430,39 @@ const AuvoSyncPage = () => {
                     <Badge variant="secondary">{itensFiltrados.length}</Badge>
                   </div>
                   <div className="flex items-center gap-2">
-                    <Input placeholder="Buscar OS, cliente, técnico..." value={searchText} onChange={e => setSearchText(e.target.value)} className="w-[250px] h-8 text-sm" />
+                    <Input placeholder="Buscar OS, cliente, técnico..." value={searchText} onChange={e => setSearchText(e.target.value)} className="w-[220px] h-8 text-sm" />
                   </div>
+                </div>
+
+                {/* Filtros pós-busca */}
+                <div className="flex flex-wrap items-center gap-3 mt-3 pt-3 border-t">
+                  <span className="text-xs font-medium text-muted-foreground">Filtros:</span>
+                  <Select value={filtroClientePos || "__all__"} onValueChange={v => setFiltroClientePos(v === "__all__" ? "" : v)}>
+                    <SelectTrigger className="h-8 text-xs w-[220px]"><SelectValue placeholder="Todos os clientes" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="__all__">Todos os clientes</SelectItem>
+                      {clientesUnicos.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                  <Select value={filtroSituacaoPos || "__all__"} onValueChange={v => setFiltroSituacaoPos(v === "__all__" ? "" : v)}>
+                    <SelectTrigger className="h-8 text-xs w-[260px]"><SelectValue placeholder="Todas as situações" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="__all__">Todas as situações</SelectItem>
+                      {situacoesUnicas.map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                  <Select value={filtroTecnicoPos || "__all__"} onValueChange={v => setFiltroTecnicoPos(v === "__all__" ? "" : v)}>
+                    <SelectTrigger className="h-8 text-xs w-[200px]"><SelectValue placeholder="Todos os técnicos" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="__all__">Todos os técnicos</SelectItem>
+                      {tecnicosUnicos.map(t => <SelectItem key={t} value={t}>{t}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                  {(filtroClientePos || filtroSituacaoPos || filtroTecnicoPos) && (
+                    <Button variant="ghost" size="sm" className="text-xs h-8" onClick={() => { setFiltroClientePos(""); setFiltroSituacaoPos(""); setFiltroTecnicoPos(""); }}>
+                      Limpar filtros
+                    </Button>
+                  )}
                 </div>
 
                 {/* Barra de ações em lote */}
