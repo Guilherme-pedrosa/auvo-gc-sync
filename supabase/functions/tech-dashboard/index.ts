@@ -34,15 +34,14 @@ async function fetchAllAuvoTasks(
   let hasMore = true;
 
   while (hasMore) {
-    const [sy, sm, sd] = startDate.split("-");
-    const [ey, em, ed] = endDate.split("-");
-    const paramFilter = encodeURIComponent(JSON.stringify({ startDate: `${sd}/${sm}/${sy}`, endDate: `${ed}/${em}/${ey}` }));
+    // Auvo v2 tasks list — try without date filter first to confirm endpoint works
+    const paramFilter = encodeURIComponent(JSON.stringify({}));
     const url = `${AUVO_BASE_URL}/tasks/?Page=${page}&PageSize=${pageSize}&Order=asc&ParamFilter=${paramFilter}`;
-    console.log(`[tech-dashboard] Fetching page ${page}...`);
+    console.log(`[tech-dashboard] Fetching page ${page}: ${url}`);
     const response = await fetch(url, { headers: auvoHeaders(bearerToken) });
     if (!response.ok) {
       const errBody = await response.text().catch(() => "");
-      console.error(`[tech-dashboard] Error page ${page}: ${response.status} — ${errBody.substring(0, 300)}`);
+      console.error(`[tech-dashboard] Error: ${response.status} — ${errBody.substring(0, 300)}`);
       break;
     }
     
