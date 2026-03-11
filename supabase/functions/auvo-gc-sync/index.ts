@@ -74,12 +74,13 @@ async function fetchOsComTarefaAuvo(gcHeaders: Record<string, string>, dataInici
   nome_situacao: string;
   situacao_id: string;
   data_os: string;
+  gc_cliente: string;
 }>> {
   const atributoId = Deno.env.get("GC_ATRIBUTO_TAREFA_ID") || "73344";
   const atributoLabel = (Deno.env.get("AUVO_ATRIBUTO_LABEL") || "Tarefa Execução").toLowerCase();
   const results: Array<{
     gc_os_id: string; gc_os_codigo: string; auvo_task_id: string;
-    nome_situacao: string; situacao_id: string; data_os: string;
+    nome_situacao: string; situacao_id: string; data_os: string; gc_cliente: string;
   }> = [];
 
   // Acumuladores totais
@@ -140,6 +141,7 @@ async function fetchOsComTarefaAuvo(gcHeaders: Record<string, string>, dataInici
         nome_situacao: String(os.nome_situacao || ""),
         situacao_id: situacaoId,
         data_os: String(os.data_entrada || os.cadastrado_em || ""),
+        gc_cliente: String(os.nome_cliente || ""),
       });
     }
     console.log(`[auvo-gc-sync] Página ${page}: totalExcluídas=${totalExcluidas}, totalSemAtributo=${totalSemAtributo}, totalSemValor=${totalSemValor}, candidatas=${results.length}`);
@@ -739,13 +741,14 @@ Deno.serve(async (req) => {
 
       if (!tarefa) {
         naoEncontradas++;
-        logEntries.push({ gc_os_id: os.gc_os_id, gc_os_codigo: os.gc_os_codigo, auvo_task_id: os.auvo_task_id, resultado: "nao_encontrada", detalhe: "Tarefa não encontrada no Auvo", situacao_antes: os.nome_situacao, situacao_id_antes: os.situacao_id, situacao_depois: null, data_os: os.data_os });
+        logEntries.push({ gc_os_id: os.gc_os_id, gc_os_codigo: os.gc_os_codigo, auvo_task_id: os.auvo_task_id, resultado: "nao_encontrada", detalhe: "Tarefa não encontrada no Auvo", situacao_antes: os.nome_situacao, situacao_id_antes: os.situacao_id, situacao_depois: null, data_os: os.data_os, gc_cliente: os.gc_cliente });
         continue;
       }
 
-      // Extrair técnico de toda tarefa
+      // Extrair técnico e cliente de toda tarefa
       const auvoTecnicoId = String(tarefa._raw?.idUserTo || tarefa._raw?.idUserFrom || "").trim();
       const auvoTecnicoNome = String(tarefa._raw?.userToName || tarefa._raw?.userFromName || tarefa._raw?.collaboratorName || "").trim();
+      const auvoCliente = String(tarefa._raw?.customerName || tarefa._raw?.customer?.name || tarefa._raw?.customerDescription || "").trim();
 
       // ─── FILTRO: só processar tarefas finalizadas (com ou sem pendência) ───
       if (!tarefa.finished) {
@@ -756,7 +759,7 @@ Deno.serve(async (req) => {
 
       if (!finalizadaSemPendencia) {
         comPendencia++;
-        logEntries.push({ gc_os_id: os.gc_os_id, gc_os_codigo: os.gc_os_codigo, auvo_task_id: os.auvo_task_id, resultado: "com_pendencia", detalhe: `finished=${tarefa.finished} | pendency="${tarefa.pendency}" | taskStatus=${tarefa.taskStatus}`, situacao_antes: os.nome_situacao, situacao_id_antes: os.situacao_id, situacao_depois: null, data_os: os.data_os, auvo_tecnico_id: auvoTecnicoId || null, auvo_tecnico_nome: auvoTecnicoNome || null });
+        logEntries.push({ gc_os_id: os.gc_os_id, gc_os_codigo: os.gc_os_codigo, auvo_task_id: os.auvo_task_id, resultado: "com_pendencia", detalhe: `finished=${tarefa.finished} | pendency="${tarefa.pendency}" | taskStatus=${tarefa.taskStatus}`, situacao_antes: os.nome_situacao, situacao_id_antes: os.situacao_id, situacao_depois: null, data_os: os.data_os, auvo_tecnico_id: auvoTecnicoId || null, auvo_tecnico_nome: auvoTecnicoNome || null, gc_cliente: os.gc_cliente, auvo_cliente: auvoCliente || null });
         continue;
       }
 
@@ -775,6 +778,7 @@ Deno.serve(async (req) => {
           resultado: "divergencia_pecas", detalhe: validacaoPecas.resumo,
           situacao_antes: os.nome_situacao, situacao_id_antes: os.situacao_id, situacao_depois: null, data_os: os.data_os,
           auvo_tecnico_id: auvoTecnicoId || null, auvo_tecnico_nome: auvoTecnicoNome || null,
+          gc_cliente: os.gc_cliente, auvo_cliente: auvoCliente || null,
           pecas_orcamento: validacaoPecas.pecas_orcamento,
           materiais_execucao: validacaoPecas.materiais_execucao,
           itens_cobertos: validacaoPecas.itens_cobertos,
@@ -808,6 +812,7 @@ Deno.serve(async (req) => {
           detalhe: `Seria atualizada para situação 7116099 | Peças: ${validacaoPecas.resumo} | Vendedor: ${gcVendedorNome || vendedorStatus}`,
           situacao_antes: os.nome_situacao, situacao_id_antes: os.situacao_id, situacao_depois: "EXECUTADO – AG. NEGOCIAÇÃO (7116099)",
           auvo_tecnico_id: auvoTecnicoId || null, auvo_tecnico_nome: auvoTecnicoNome || null, data_os: os.data_os,
+          gc_cliente: os.gc_cliente, auvo_cliente: auvoCliente || null,
           gc_vendedor_id: gcVendedorId, gc_vendedor_nome: gcVendedorNome, vendedor_status: vendedorStatus,
         });
         continue;
@@ -823,6 +828,7 @@ Deno.serve(async (req) => {
           detalhe: `HTTP ${gcResult.status} — situação 7116099 | Vendedor: ${gcVendedorNome || vendedorStatus} | Peças: ${validacaoPecas.resumo}`,
           situacao_antes: os.nome_situacao, situacao_id_antes: os.situacao_id, situacao_depois: "EXECUTADO – AGUARDANDO NEGOCIAÇÃO FINANCEIRA",
           auvo_tecnico_id: auvoTecnicoId || null, auvo_tecnico_nome: auvoTecnicoNome || null, data_os: os.data_os,
+          gc_cliente: os.gc_cliente, auvo_cliente: auvoCliente || null,
           gc_vendedor_id: gcVendedorId, gc_vendedor_nome: gcVendedorNome, vendedor_status: vendedorStatus,
         });
       } else {
@@ -832,6 +838,7 @@ Deno.serve(async (req) => {
           resultado: "erro_gc", detalhe: `HTTP ${gcResult.status} — ${JSON.stringify(gcResult.body)}`,
           situacao_antes: os.nome_situacao, situacao_id_antes: os.situacao_id, situacao_depois: null, data_os: os.data_os,
           auvo_tecnico_id: auvoTecnicoId || null, vendedor_status: vendedorStatus,
+          gc_cliente: os.gc_cliente, auvo_cliente: auvoCliente || null,
         });
       }
     }
