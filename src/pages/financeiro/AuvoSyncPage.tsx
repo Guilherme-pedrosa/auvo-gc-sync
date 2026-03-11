@@ -135,6 +135,7 @@ const AuvoSyncPage = () => {
       });
       if (error) throw error;
       if (data?.success) {
+        setMovedOsIds(prev => new Set(prev).add(detail.gc_os_id));
         toast.success(`OS ${detail.gc_os_codigo} → situação alterada`);
         queryClient.invalidateQueries({ queryKey: ["auvo-sync-logs"] });
       } else {
