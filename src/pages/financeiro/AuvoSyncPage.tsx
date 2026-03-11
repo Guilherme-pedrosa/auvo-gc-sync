@@ -97,6 +97,7 @@ const AuvoSyncPage = () => {
   const [filtroCliente, setFiltroCliente] = useState("");
   const [situacaoClienteBulk, setSituacaoClienteBulk] = useState("");
   const [changingSituacaoCliente, setChangingSituacaoCliente] = useState(false);
+  const [filtroStatusTarefa, setFiltroStatusTarefa] = useState<"sem_pendencia" | "todas">("sem_pendencia");
 
   const SITUACOES_OPTIONS = [
     { id: "7063579", label: "AGUARDANDO COMPRA DE PEÇAS" },
@@ -285,6 +286,8 @@ const AuvoSyncPage = () => {
       const syncBody: any = { dry_run: dryRun };
       if (dataInicio) syncBody.data_inicio = format(dataInicio, "yyyy-MM-dd");
       if (dataFim) syncBody.data_fim = format(dataFim, "yyyy-MM-dd");
+      if (filtroCliente.trim()) syncBody.filtro_cliente = filtroCliente.trim();
+      if (filtroStatusTarefa === "todas") syncBody.incluir_pendencia = true;
       const { data, error } = await supabase.functions.invoke("auvo-gc-sync", { body: syncBody });
       if (error) throw error;
       toast.success(
@@ -426,7 +429,7 @@ const AuvoSyncPage = () => {
               </CardContent>
             </Card>
             <Card>
-              <CardHeader><CardTitle className="text-lg">Controles</CardTitle><CardDescription>Selecione o período e execute a sincronização</CardDescription></CardHeader>
+              <CardHeader><CardTitle className="text-lg">Controles</CardTitle><CardDescription>Filtros, período e execução da sincronização</CardDescription></CardHeader>
               <CardContent className="space-y-4">
                 <div className="grid grid-cols-2 gap-3">
                   <div className="space-y-1.5">
@@ -458,13 +461,69 @@ const AuvoSyncPage = () => {
                     </Popover>
                   </div>
                 </div>
-                {(dataInicio || dataFim) && (
-                  <Button variant="ghost" size="sm" className="text-xs" onClick={() => { setDataInicio(undefined); setDataFim(undefined); }}>
-                    Limpar datas (buscar todas)
+
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium text-muted-foreground">Filtrar por Cliente (GC)</label>
+                  <Input
+                    placeholder="Nome do cliente..."
+                    value={filtroCliente}
+                    onChange={(e) => setFiltroCliente(e.target.value)}
+                  />
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium text-muted-foreground">Status da Tarefa Auvo</label>
+                  <Select value={filtroStatusTarefa} onValueChange={(v) => setFiltroStatusTarefa(v as "sem_pendencia" | "todas")}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="sem_pendencia">Só concluídas sem pendência</SelectItem>
+                      <SelectItem value="todas">Concluídas (com e sem pendência)</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium text-muted-foreground">Situação destino (dar baixa)</label>
+                  <Select value={situacaoClienteBulk} onValueChange={setSituacaoClienteBulk}>
+                    <SelectTrigger><SelectValue placeholder="Selecione a situação" /></SelectTrigger>
+                    <SelectContent>
+                      {SITUACOES_OPTIONS.map(s => (
+                        <SelectItem key={s.id} value={s.id}>{s.label}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {(dataInicio || dataFim || filtroCliente) && (
+                  <Button variant="ghost" size="sm" className="text-xs" onClick={() => { setDataInicio(undefined); setDataFim(undefined); setFiltroCliente(""); }}>
+                    Limpar filtros
                   </Button>
                 )}
+
                 <div className="space-y-2">
-                  <Button onClick={() => executarSync(true)} disabled={running} variant="outline" className="w-full"><Eye className="mr-2 h-4 w-4" />Dry Run (simular)</Button>
+                  <Button onClick={() => executarSync(true)} disabled={running} variant="outline" className="w-full">
+                    <Eye className="mr-2 h-4 w-4" />Dry Run (simular)
+                  </Button>
+                  {!confirmExecute ? (
+                    <Button onClick={() => setConfirmExecute(true)} disabled={running} className="w-full">
+                      <Play className="mr-2 h-4 w-4" />Executar Sync (dar baixa em todas)
+                    </Button>
+                  ) : (
+                    <div className="space-y-2">
+                      <p className="text-xs text-destructive font-medium">Digite EXECUTAR para confirmar:</p>
+                      <Input value={confirmText} onChange={(e) => setConfirmText(e.target.value)} placeholder="EXECUTAR" />
+                      <div className="flex gap-2">
+                        <Button
+                          disabled={confirmText !== "EXECUTAR" || running}
+                          className="flex-1"
+                          onClick={() => { executarSync(false); setConfirmExecute(false); setConfirmText(""); }}
+                        >
+                          <Play className="mr-2 h-4 w-4" />Confirmar
+                        </Button>
+                        <Button variant="ghost" onClick={() => { setConfirmExecute(false); setConfirmText(""); }}>Cancelar</Button>
+                      </div>
+                    </div>
+                  )}
                 </div>
               </CardContent>
             </Card>
@@ -515,77 +574,8 @@ const AuvoSyncPage = () => {
                               <TableCell colSpan={11} className="bg-muted/30 p-4">
                                 {Array.isArray(log.detalhes) && log.detalhes.length > 0 ? (
                                   <div className="space-y-3">
-                                    {/* Filtro por cliente + ação em lote */}
-                                    <div className="flex flex-wrap items-end gap-3">
-                                      <div className="space-y-1 flex-1 min-w-[200px]">
-                                        <label className="text-xs font-medium text-muted-foreground">Filtrar por cliente</label>
-                                        <Input
-                                          placeholder="Digite o nome do cliente..."
-                                          value={filtroCliente}
-                                          onChange={(e) => setFiltroCliente(e.target.value)}
-                                          className="h-8 text-xs"
-                                        />
-                                      </div>
-                                      {filtroCliente && (() => {
-                                        const filtradas = (log.detalhes as LogDetail[]).filter(d =>
-                                          d.gc_cliente?.toLowerCase().includes(filtroCliente.toLowerCase())
-                                        );
-                                        return filtradas.length > 0 ? (
-                                          <div className="flex items-end gap-2">
-                                            <div className="space-y-1">
-                                              <label className="text-xs font-medium text-muted-foreground">Alterar situação ({filtradas.length} OS)</label>
-                                              <Select value={situacaoClienteBulk} onValueChange={setSituacaoClienteBulk}>
-                                                <SelectTrigger className="h-8 text-xs w-[260px]">
-                                                  <SelectValue placeholder="Selecione situação" />
-                                                </SelectTrigger>
-                                                <SelectContent>
-                                                  {SITUACOES_OPTIONS.map(s => (
-                                                    <SelectItem key={s.id} value={s.id}>{s.label}</SelectItem>
-                                                  ))}
-                                                </SelectContent>
-                                              </Select>
-                                            </div>
-                                            <Button
-                                              size="sm"
-                                              className="h-8 text-xs"
-                                              disabled={!situacaoClienteBulk || changingSituacaoCliente}
-                                              onClick={(e) => {
-                                                e.stopPropagation();
-                                                const label = SITUACOES_OPTIONS.find(s => s.id === situacaoClienteBulk)?.label || situacaoClienteBulk;
-                                                if (!window.confirm(`Alterar ${filtradas.length} OS do cliente "${filtroCliente}" para "${label}"?`)) return;
-                                                (async () => {
-                                                  setChangingSituacaoCliente(true);
-                                                  let ok = 0, fail = 0;
-                                                  for (const d of filtradas) {
-                                                    try {
-                                                      const { data, error } = await supabase.functions.invoke("auvo-gc-sync", {
-                                                        body: { action: "revert_os", gc_os_id: d.gc_os_id, gc_os_codigo: d.gc_os_codigo, situacao_id_antes: situacaoClienteBulk },
-                                                      });
-                                                      if (error) throw error;
-                                                      if (data?.success) ok++; else fail++;
-                                                    } catch { fail++; }
-                                                  }
-                                                  toast.success(`${ok} OS alteradas, ${fail} erros`);
-                                                  queryClient.invalidateQueries({ queryKey: ["auvo-sync-logs"] });
-                                                  setChangingSituacaoCliente(false);
-                                                  setSituacaoClienteBulk("");
-                                                })();
-                                              }}
-                                            >
-                                              <Settings2 className="h-3 w-3 mr-1" />
-                                              {changingSituacaoCliente ? "Alterando..." : "Aplicar"}
-                                            </Button>
-                                          </div>
-                                        ) : null;
-                                      })()}
-                                      {filtroCliente && (
-                                        <Button variant="ghost" size="sm" className="h-8 text-xs" onClick={() => setFiltroCliente("")}>
-                                          Limpar filtro
-                                        </Button>
-                                      )}
-                                    </div>
 
-                                    {log.detalhes.some((d: LogDetail) => d.situacao_id_antes && d.resultado === "atualizada") && !filtroCliente && (
+                                    {log.detalhes.some((d: LogDetail) => d.situacao_id_antes && d.resultado === "atualizada") && (
                                       <div className="flex justify-end">
                                         <Button
                                           variant="outline"
@@ -635,9 +625,7 @@ const AuvoSyncPage = () => {
                                         </TableRow>
                                       </TableHeader>
                                       <TableBody>
-                                        {(log.detalhes as LogDetail[])
-                                          .filter(d => !filtroCliente || d.gc_cliente?.toLowerCase().includes(filtroCliente.toLowerCase()))
-                                          .map((d, i) => (
+                                        {(log.detalhes as LogDetail[]).map((d, i) => (
                                           <TableRow key={i}>
                                             <TableCell>
                                               <div className="flex items-center gap-1">
