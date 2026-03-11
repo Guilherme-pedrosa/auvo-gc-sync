@@ -62,6 +62,39 @@ export type Database = {
         }
         Relationships: []
       }
+      auvo_gc_usuario_map: {
+        Row: {
+          ativo: boolean | null
+          atualizado_em: string | null
+          auvo_user_id: string
+          auvo_user_nome: string
+          criado_em: string | null
+          gc_vendedor_id: string
+          gc_vendedor_nome: string
+          id: string
+        }
+        Insert: {
+          ativo?: boolean | null
+          atualizado_em?: string | null
+          auvo_user_id: string
+          auvo_user_nome: string
+          criado_em?: string | null
+          gc_vendedor_id: string
+          gc_vendedor_nome: string
+          id?: string
+        }
+        Update: {
+          ativo?: boolean | null
+          atualizado_em?: string | null
+          auvo_user_id?: string
+          auvo_user_nome?: string
+          criado_em?: string | null
+          gc_vendedor_id?: string
+          gc_vendedor_nome?: string
+          id?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
