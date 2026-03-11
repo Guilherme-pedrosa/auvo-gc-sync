@@ -76,15 +76,20 @@ async function fetchOsComTarefaAuvo(gcHeaders: Record<string, string>): Promise<
 
       const atributos: any[] = os.atributos || [];
       const atributoTarefa = atributos.find((a: any) => {
-        const label = String(a.label || a.nome || "").toLowerCase();
-        return label === atributoLabel || label.includes("tarefa") || label.includes("execu");
+        // GC returns nested: { atributo: { atributo_id, descricao, conteudo } }
+        const nested = a?.atributo || a;
+        const id = String(nested.atributo_id || nested.id || "");
+        const label = String(nested.descricao || nested.label || nested.nome || "").toLowerCase();
+        return id === atributoId || label === atributoLabel || label.includes("tarefa execu");
       });
-      if (!atributoTarefa?.valor || String(atributoTarefa.valor).trim() === "") continue;
+      const nested = atributoTarefa?.atributo || atributoTarefa;
+      const valor = String(nested?.conteudo || nested?.valor || "").trim();
+      if (!valor) continue;
 
       results.push({
         gc_os_id: String(os.id),
         gc_os_codigo: String(os.codigo || os.id),
-        auvo_task_id: String(atributoTarefa.valor).trim(),
+        auvo_task_id: valor,
         nome_situacao: String(os.nome_situacao || ""),
         situacao_id: situacaoId,
       });
