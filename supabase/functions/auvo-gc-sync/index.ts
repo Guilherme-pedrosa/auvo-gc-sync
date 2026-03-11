@@ -394,8 +394,7 @@ async function validarPecasOsVsExecucao(
 
 // ─── STEP 3: Atualizar situação GC (com vendedor opcional) ───
 async function atualizarSituacaoOsGC(
-  gcOsId: string, situacaoId: string, gcHeaders: Record<string, string>,
-  gcVendedorId?: string | null
+  gcOsId: string, situacaoId: string, gcHeaders: Record<string, string>
 ): Promise<{ success: boolean; status: number; body: unknown }> {
   // ── TRAVA DE SEGURANÇA: só permite situações da whitelist ──
   if (!validarSituacaoPermitida(situacaoId)) {
