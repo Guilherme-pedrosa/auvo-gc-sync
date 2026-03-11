@@ -434,7 +434,7 @@ Deno.serve(async (req) => {
     }
     console.log(`[auvo-gc-sync] ${Object.keys(mapaVendedores).length} mapeamentos de vendedores carregados`);
 
-    const osCandidatas = await fetchOsComTarefaAuvo(gcHeaders);
+    const osCandidatas = await fetchOsComTarefaAuvo(gcHeaders, dataInicio, dataFim);
     console.log(`[auvo-gc-sync] ${osCandidatas.length} OS com tarefa Auvo encontradas`);
 
     const logEntries: any[] = [];
