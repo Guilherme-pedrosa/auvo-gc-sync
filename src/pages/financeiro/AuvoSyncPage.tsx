@@ -230,7 +230,6 @@ const AuvoSyncPage = () => {
     return <Badge variant={m.variant}>{m.label}</Badge>;
   };
 
-  const [reverting, setReverting] = useState<string | null>(null);
 
   const reverterOS = async (detail: LogDetail) => {
     if (!detail.situacao_id_antes || !detail.gc_os_id) {
