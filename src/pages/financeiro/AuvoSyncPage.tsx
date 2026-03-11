@@ -647,35 +647,33 @@ const AuvoSyncPage = () => {
                             <TableCell className="text-center font-mono text-xs text-muted-foreground">
                               {formatHora(item.checkout_hora)}
                             </TableCell>
-                            {filtroConciliacao !== "conciliadas" && (
-                              <TableCell>
-                                {!item.conciliada && !moved && (
-                                  <Popover>
-                                    <PopoverTrigger asChild>
-                                      <Button variant="outline" size="sm" className="h-7 text-xs" disabled={changingId === item.gc_os_id}>
-                                        {changingId === item.gc_os_id ? "..." : "Mover"}
-                                      </Button>
-                                    </PopoverTrigger>
-                                    <PopoverContent className="w-[280px] p-2" align="end">
-                                      <div className="space-y-1">
-                                        <p className="text-xs font-medium text-muted-foreground mb-2">Mover OS para:</p>
-                                        {SITUACOES_OPTIONS.map(s => (
-                                          <Button
-                                            key={s.id}
-                                            variant="ghost"
-                                            size="sm"
-                                            className="w-full justify-start text-xs h-7"
-                                            onClick={() => alterarSituacaoOS(item, s.id)}
-                                          >
-                                            {s.label}
-                                          </Button>
-                                        ))}
-                                      </div>
-                                    </PopoverContent>
-                                  </Popover>
-                                )}
-                              </TableCell>
-                            )}
+                            <TableCell>
+                              {!moved && (
+                                <Popover>
+                                  <PopoverTrigger asChild>
+                                    <Button variant="outline" size="sm" className="h-7 text-xs" disabled={changingId === item.gc_os_id}>
+                                      {changingId === item.gc_os_id ? "..." : "Mover"}
+                                    </Button>
+                                  </PopoverTrigger>
+                                  <PopoverContent className="w-[280px] p-2" align="end">
+                                    <div className="space-y-1">
+                                      <p className="text-xs font-medium text-muted-foreground mb-2">Mover OS para:</p>
+                                      {SITUACOES_OPTIONS.map(s => (
+                                        <Button
+                                          key={s.id}
+                                          variant="ghost"
+                                          size="sm"
+                                          className="w-full justify-start text-xs h-7"
+                                          onClick={() => alterarSituacaoOS(item, s.id)}
+                                        >
+                                          {s.label}
+                                        </Button>
+                                      ))}
+                                    </div>
+                                  </PopoverContent>
+                                </Popover>
+                              )}
+                            </TableCell>
                           </TableRow>
                         );
                       })}
