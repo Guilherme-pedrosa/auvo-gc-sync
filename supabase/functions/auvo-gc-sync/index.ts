@@ -141,6 +141,7 @@ async function fetchOsComTarefaAuvo(gcHeaders: Record<string, string>, dataInici
         nome_situacao: String(os.nome_situacao || ""),
         situacao_id: situacaoId,
         data_os: String(os.data_entrada || os.cadastrado_em || ""),
+        gc_cliente: String(os.nome_cliente || ""),
       });
     }
     console.log(`[auvo-gc-sync] Página ${page}: totalExcluídas=${totalExcluidas}, totalSemAtributo=${totalSemAtributo}, totalSemValor=${totalSemValor}, candidatas=${results.length}`);
