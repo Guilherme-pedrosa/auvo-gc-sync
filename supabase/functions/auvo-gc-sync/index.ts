@@ -487,7 +487,7 @@ Deno.serve(async (req) => {
 
       if (!finalizadaSemPendencia) {
         comPendencia++;
-        logEntries.push({ gc_os_id: os.gc_os_id, gc_os_codigo: os.gc_os_codigo, auvo_task_id: os.auvo_task_id, resultado: tarefa.finished ? "com_pendencia" : "nao_finalizada", detalhe: `finished=${tarefa.finished} | pendency="${tarefa.pendency}" | taskStatus=${tarefa.taskStatus}`, situacao_antes: os.nome_situacao, situacao_depois: null });
+        logEntries.push({ gc_os_id: os.gc_os_id, gc_os_codigo: os.gc_os_codigo, auvo_task_id: os.auvo_task_id, resultado: tarefa.finished ? "com_pendencia" : "nao_finalizada", detalhe: `finished=${tarefa.finished} | pendency="${tarefa.pendency}" | taskStatus=${tarefa.taskStatus}`, situacao_antes: os.nome_situacao, situacao_depois: null, data_os: os.data_os });
         continue;
       }
 
