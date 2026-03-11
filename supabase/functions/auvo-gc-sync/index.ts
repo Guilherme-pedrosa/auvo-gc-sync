@@ -21,14 +21,11 @@ async function rateLimitedFetch(url: string, options: RequestInit, type: "gc" | 
   return fetch(url, options);
 }
 
-// Situações que NÃO devem ser processadas (já finalizadas)
 const SITUACOES_EXCLUIR = [
-  "7116099", // Ag. Negociação Financeira
-  "7124107", // Com Nota Emitida
-  "8760417", // Liberado p/ Faturamento
-  "7063724", // Aguardando Pagamento
+  "7116099", "7124107", "8760417", "7063724",
 ];
 
+// ─── STEP 1: Buscar OS com tarefa Auvo ───
 async function fetchOsComTarefaAuvo(gcHeaders: Record<string, string>): Promise<Array<{
   gc_os_id: string;
   gc_os_codigo: string;
@@ -38,11 +35,8 @@ async function fetchOsComTarefaAuvo(gcHeaders: Record<string, string>): Promise<
 }>> {
   const atributoLabel = (Deno.env.get("AUVO_ATRIBUTO_LABEL") || "Tarefa Execução").toLowerCase();
   const results: Array<{
-    gc_os_id: string;
-    gc_os_codigo: string;
-    auvo_task_id: string;
-    nome_situacao: string;
-    situacao_id: string;
+    gc_os_id: string; gc_os_codigo: string; auvo_task_id: string;
+    nome_situacao: string; situacao_id: string;
   }> = [];
 
   let page = 1;
@@ -51,11 +45,7 @@ async function fetchOsComTarefaAuvo(gcHeaders: Record<string, string>): Promise<
   while (page <= totalPages) {
     const url = `${GC_BASE_URL}/api/ordens_servicos?limite=100&pagina=${page}`;
     const response = await rateLimitedFetch(url, { headers: gcHeaders }, "gc");
-
-    if (!response.ok) {
-      console.error(`[auvo-gc-sync] GC OS list error: ${response.status}`);
-      break;
-    }
+    if (!response.ok) { console.error(`[auvo-gc-sync] GC OS list error: ${response.status}`); break; }
 
     const data = await response.json();
     const records: any[] = Array.isArray(data?.data) ? data.data : [];
@@ -70,7 +60,6 @@ async function fetchOsComTarefaAuvo(gcHeaders: Record<string, string>): Promise<
         const label = String(a.label || a.nome || "").toLowerCase();
         return label === atributoLabel || label.includes("tarefa") || label.includes("execu");
       });
-
       if (!atributoTarefa?.valor || String(atributoTarefa.valor).trim() === "") continue;
 
       results.push({
@@ -83,36 +72,19 @@ async function fetchOsComTarefaAuvo(gcHeaders: Record<string, string>): Promise<
     }
     page++;
   }
-
   return results;
 }
 
-async function getAuvoTask(taskId: string, appKey: string, token: string): Promise<{
-  taskID: number;
-  finished: boolean;
-  pendency: string;
-  taskStatus: string;
-  checkIn: boolean;
-  checkOut: boolean;
-  report: string;
-} | null> {
+// ─── STEP 2: Consultar tarefa Auvo ───
+async function getAuvoTask(taskId: string, appKey: string, token: string): Promise<any | null> {
   const url = `${AUVO_BASE_URL}/tasks/${taskId}?appKey=${appKey}&token=${token}`;
-
   try {
-    const response = await rateLimitedFetch(url, {
-      headers: { "Content-Type": "application/json" },
-    }, "auvo");
-
+    const response = await rateLimitedFetch(url, { headers: { "Content-Type": "application/json" } }, "auvo");
     if (response.status === 404) return null;
-    if (!response.ok) {
-      console.error(`[auvo-gc-sync] Auvo task ${taskId} error: ${response.status}`);
-      return null;
-    }
-
+    if (!response.ok) { console.error(`[auvo-gc-sync] Auvo task ${taskId} error: ${response.status}`); return null; }
     const data = await response.json();
     const entity = data?.result?.Entities?.[0] ?? data?.result?.[0] ?? data;
     if (!entity) return null;
-
     return {
       taskID: entity.taskID ?? entity.id,
       finished: entity.finished === true || entity.finished === "true",
@@ -121,6 +93,8 @@ async function getAuvoTask(taskId: string, appKey: string, token: string): Promi
       checkIn: entity.checkIn === true,
       checkOut: entity.checkOut === true,
       report: String(entity.report ?? ""),
+      // Keep raw for parts validation
+      _raw: entity,
     };
   } catch (err) {
     console.error(`[auvo-gc-sync] Erro ao buscar tarefa ${taskId}:`, err);
@@ -128,20 +102,202 @@ async function getAuvoTask(taskId: string, appKey: string, token: string): Promi
   }
 }
 
-async function atualizarSituacaoOsGC(
-  gcOsId: string,
-  situacaoId: string,
-  gcHeaders: Record<string, string>
-): Promise<{ success: boolean; status: number; body: unknown }> {
+// ─── STEP 2.1: Buscar peças do orçamento GC ───
+async function fetchItensPecasOsGC(
+  gcOsId: string, gcHeaders: Record<string, string>
+): Promise<Array<{ descricao: string; quantidade: number; codigo?: string }>> {
   const url = `${GC_BASE_URL}/api/ordens_servicos/${gcOsId}`;
+  try {
+    const response = await rateLimitedFetch(url, { headers: gcHeaders }, "gc");
+    if (!response.ok) return [];
+    const data = await response.json();
+    const osObj = data?.data ?? data;
+    const produtos: any[] = osObj?.produtos || osObj?.itens || osObj?.servicos_produtos || osObj?.pecas || [];
+    return produtos
+      .filter((p: any) => {
+        const desc = String(p.descricao || p.nome || p.produto || "").trim();
+        const qty = parseFloat(String(p.quantidade || p.qtd || "0"));
+        return desc.length > 0 && qty > 0;
+      })
+      .map((p: any) => ({
+        descricao: String(p.descricao || p.nome || p.produto || ""),
+        quantidade: parseFloat(String(p.quantidade || p.qtd || "1")),
+        codigo: String(p.codigo || p.id || ""),
+      }));
+  } catch (err) {
+    console.error(`[auvo-gc-sync] Erro ao buscar itens GC OS ${gcOsId}:`, err);
+    return [];
+  }
+}
+
+// ─── STEP 2.2: Buscar materiais Auvo ───
+async function fetchMateriaisAuvoTask(
+  taskId: string, appKey: string, token: string, tarefaRaw?: any
+): Promise<Array<{ descricao: string; quantidade: number }>> {
+  const materiais: Array<{ descricao: string; quantidade: number }> = [];
+
+  if (tarefaRaw) {
+    const produtosNaTarefa: any[] = tarefaRaw?.products || tarefaRaw?.materials || tarefaRaw?.materiais || tarefaRaw?.itens || [];
+    for (const p of produtosNaTarefa) {
+      const desc = String(p.description || p.descricao || p.name || p.nome || "").trim();
+      const qty = parseFloat(String(p.quantity || p.quantidade || p.qtd || "1"));
+      if (desc) materiais.push({ descricao: desc, quantidade: qty });
+    }
+
+    const questionnaires: any[] = tarefaRaw?.questionnaires || [];
+    for (const q of questionnaires) {
+      for (const answer of (q.answers || [])) {
+        const qDesc = String(answer.questionDescription || "").toLowerCase();
+        if (qDesc.includes("peça") || qDesc.includes("peca") || qDesc.includes("material") ||
+            qDesc.includes("produto") || qDesc.includes("componente") || qDesc.includes("part") || qDesc.includes("item")) {
+          const replyText = String(answer.reply || "").trim();
+          if (replyText) materiais.push({ descricao: replyText, quantidade: 1 });
+        }
+      }
+    }
+    if (materiais.length > 0) return materiais;
+  }
 
   try {
+    const url = `${AUVO_BASE_URL}/tasks/${taskId}/products?appKey=${appKey}&token=${token}`;
+    const response = await rateLimitedFetch(url, { headers: { "Content-Type": "application/json" } }, "auvo");
+    if (response.ok) {
+      const data = await response.json();
+      const lista: any[] = data?.result?.Entities || data?.result || data?.data || [];
+      for (const p of lista) {
+        const desc = String(p.description || p.descricao || p.name || p.nome || "").trim();
+        const qty = parseFloat(String(p.quantity || p.quantidade || "1"));
+        if (desc) materiais.push({ descricao: desc, quantidade: qty });
+      }
+    }
+  } catch (err) {
+    console.warn(`[auvo-gc-sync] Endpoint /tasks/${taskId}/products indisponível:`, err);
+  }
+
+  return materiais;
+}
+
+// ─── STEP 2.3: Comparação flexível ───
+function normalizarDescricao(texto: string): string {
+  return texto.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9\s]/g, " ").replace(/\s+/g, " ").trim();
+}
+
+const STOPWORDS = new Set(["de", "da", "do", "para", "com", "sem", "por", "em", "no", "na", "os", "as", "um", "uma"]);
+
+function tokenizar(texto: string): string[] {
+  return normalizarDescricao(texto).split(" ").filter(t => t.length >= 3 && !STOPWORDS.has(t));
+}
+
+function itemOrcamentoCoberto(
+  itemOrcamento: { descricao: string; quantidade: number },
+  materiaisExecucao: Array<{ descricao: string; quantidade: number }>,
+  thresholdCompleto: number,
+  thresholdParcial: number
+): { coberto: boolean; matchParcial: boolean; melhorMatch: string | null; score: number } {
+  const tokensOrc = tokenizar(itemOrcamento.descricao);
+  if (tokensOrc.length === 0) return { coberto: true, matchParcial: false, melhorMatch: null, score: 1 };
+
+  let melhorScore = 0;
+  let melhorMatch: string | null = null;
+
+  for (const mat of materiaisExecucao) {
+    const tokensExec = tokenizar(mat.descricao);
+    const tokensExecSet = new Set(tokensExec);
+    const matchCount = tokensOrc.filter(t => {
+      if (tokensExecSet.has(t)) return true;
+      for (const te of tokensExec) { if (te.includes(t) || t.includes(te)) return true; }
+      return false;
+    }).length;
+    const score = matchCount / tokensOrc.length;
+    if (score > melhorScore) { melhorScore = score; melhorMatch = mat.descricao; }
+  }
+
+  return {
+    coberto: melhorScore >= thresholdCompleto,
+    matchParcial: melhorScore >= thresholdParcial && melhorScore < thresholdCompleto,
+    melhorMatch,
+    score: Math.round(melhorScore * 100),
+  };
+}
+
+// ─── STEP 2.4: Validação principal de peças ───
+interface ResultadoValidacaoPecas {
+  aprovado: boolean;
+  sem_pecas_orcamento: boolean;
+  pecas_orcamento: Array<{ descricao: string; quantidade: number; codigo?: string }>;
+  materiais_execucao: Array<{ descricao: string; quantidade: number }>;
+  itens_cobertos: Array<{ descricao: string; match: string; score: number }>;
+  itens_faltando: Array<{ descricao: string; motivo: string }>;
+  itens_parciais: Array<{ descricao: string; melhor_match: string; score: number }>;
+  resumo: string;
+}
+
+async function validarPecasOsVsExecucao(
+  gcOsId: string, auvoTaskId: string, tarefaRaw: any,
+  gcHeaders: Record<string, string>, auvoAppKey: string, auvoToken: string
+): Promise<ResultadoValidacaoPecas> {
+  const THRESHOLD_COMPLETO = parseInt(Deno.env.get("AUVO_PECAS_THRESHOLD") || "75") / 100;
+  const THRESHOLD_PARCIAL = parseInt(Deno.env.get("AUVO_PECAS_PARCIAL") || "40") / 100;
+
+  const [pecasOrcamento, materiaisExecucao] = await Promise.all([
+    fetchItensPecasOsGC(gcOsId, gcHeaders),
+    fetchMateriaisAuvoTask(auvoTaskId, auvoAppKey, auvoToken, tarefaRaw),
+  ]);
+
+  if (pecasOrcamento.length === 0) {
+    return {
+      aprovado: true, sem_pecas_orcamento: true, pecas_orcamento: [], materiais_execucao: materiaisExecucao,
+      itens_cobertos: [], itens_faltando: [], itens_parciais: [],
+      resumo: "OS sem peças no orçamento — aprovação automática",
+    };
+  }
+
+  if (materiaisExecucao.length === 0) {
+    return {
+      aprovado: false, sem_pecas_orcamento: false, pecas_orcamento: pecasOrcamento, materiais_execucao: [],
+      itens_cobertos: [], itens_parciais: [],
+      itens_faltando: pecasOrcamento.map(p => ({ descricao: p.descricao, motivo: "Nenhum material registrado na execução Auvo" })),
+      resumo: `BLOQUEADO — ${pecasOrcamento.length} peças no orçamento, 0 materiais na execução`,
+    };
+  }
+
+  const cobertos: Array<{ descricao: string; match: string; score: number }> = [];
+  const faltando: Array<{ descricao: string; motivo: string }> = [];
+  const parciais: Array<{ descricao: string; melhor_match: string; score: number }> = [];
+
+  for (const peca of pecasOrcamento) {
+    const resultado = itemOrcamentoCoberto(peca, materiaisExecucao, THRESHOLD_COMPLETO, THRESHOLD_PARCIAL);
+    if (resultado.coberto) {
+      cobertos.push({ descricao: peca.descricao, match: resultado.melhorMatch || "", score: resultado.score });
+    } else if (resultado.matchParcial) {
+      parciais.push({ descricao: peca.descricao, melhor_match: resultado.melhorMatch || "", score: resultado.score });
+    } else {
+      faltando.push({
+        descricao: peca.descricao,
+        motivo: resultado.melhorMatch ? `Melhor match insuficiente: "${resultado.melhorMatch}" (${resultado.score}%)` : "Sem correspondência nos materiais da execução",
+      });
+    }
+  }
+
+  const aprovado = faltando.length === 0;
+  const resumo = aprovado
+    ? `✅ ${cobertos.length} peças cobertas${parciais.length > 0 ? `, ${parciais.length} parciais (aviso)` : ""}`
+    : `❌ BLOQUEADO — ${faltando.length} peças sem cobertura de ${pecasOrcamento.length} no orçamento`;
+
+  return { aprovado, sem_pecas_orcamento: false, pecas_orcamento: pecasOrcamento, materiais_execucao: materiaisExecucao, itens_cobertos: cobertos, itens_faltando: faltando, itens_parciais: parciais, resumo };
+}
+
+// ─── STEP 3: Atualizar situação GC ───
+async function atualizarSituacaoOsGC(
+  gcOsId: string, situacaoId: string, gcHeaders: Record<string, string>
+): Promise<{ success: boolean; status: number; body: unknown }> {
+  const url = `${GC_BASE_URL}/api/ordens_servicos/${gcOsId}`;
+  try {
     const response = await rateLimitedFetch(url, {
-      method: "PUT",
-      headers: gcHeaders,
+      method: "PUT", headers: gcHeaders,
       body: JSON.stringify({ situacao_id: situacaoId }),
     }, "gc");
-
     const body = await response.json().catch(() => ({}));
     return { success: response.ok, status: response.status, body };
   } catch (err) {
@@ -149,6 +305,7 @@ async function atualizarSituacaoOsGC(
   }
 }
 
+// ─── MAIN HANDLER ───
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
@@ -171,9 +328,7 @@ Deno.serve(async (req) => {
 
     const supabase = createClient(supabaseUrl, supabaseKey);
     const gcHeaders: Record<string, string> = {
-      "access-token": gcAccessToken,
-      "secret-access-token": gcSecretToken,
-      "Content-Type": "application/json",
+      "access-token": gcAccessToken, "secret-access-token": gcSecretToken, "Content-Type": "application/json",
     };
 
     let body: any = {};
@@ -192,6 +347,7 @@ Deno.serve(async (req) => {
     let comPendencia = 0;
     let erros = 0;
     let naoEncontradas = 0;
+    let divergenciaPecas = 0;
 
     for (const os of osCandidatas) {
       if (osIdsManual.length > 0 && !osIdsManual.includes(os.gc_os_id)) continue;
@@ -202,46 +358,46 @@ Deno.serve(async (req) => {
 
       if (!tarefa) {
         naoEncontradas++;
-        logEntries.push({
-          gc_os_id: os.gc_os_id,
-          gc_os_codigo: os.gc_os_codigo,
-          auvo_task_id: os.auvo_task_id,
-          resultado: "nao_encontrada",
-          detalhe: "Tarefa não encontrada no Auvo",
-          situacao_antes: os.nome_situacao,
-          situacao_depois: null,
-        });
+        logEntries.push({ gc_os_id: os.gc_os_id, gc_os_codigo: os.gc_os_codigo, auvo_task_id: os.auvo_task_id, resultado: "nao_encontrada", detalhe: "Tarefa não encontrada no Auvo", situacao_antes: os.nome_situacao, situacao_depois: null });
         continue;
       }
 
-      const finalizadaSemPendencia = tarefa.finished === true &&
-        (!tarefa.pendency || tarefa.pendency.trim() === "");
+      const finalizadaSemPendencia = tarefa.finished === true && (!tarefa.pendency || tarefa.pendency.trim() === "");
 
       if (!finalizadaSemPendencia) {
         comPendencia++;
-        logEntries.push({
-          gc_os_id: os.gc_os_id,
-          gc_os_codigo: os.gc_os_codigo,
-          auvo_task_id: os.auvo_task_id,
-          resultado: tarefa.finished ? "com_pendencia" : "nao_finalizada",
-          detalhe: `finished=${tarefa.finished} | pendency="${tarefa.pendency}" | taskStatus=${tarefa.taskStatus}`,
-          situacao_antes: os.nome_situacao,
-          situacao_depois: null,
-        });
+        logEntries.push({ gc_os_id: os.gc_os_id, gc_os_codigo: os.gc_os_codigo, auvo_task_id: os.auvo_task_id, resultado: tarefa.finished ? "com_pendencia" : "nao_finalizada", detalhe: `finished=${tarefa.finished} | pendency="${tarefa.pendency}" | taskStatus=${tarefa.taskStatus}`, situacao_antes: os.nome_situacao, situacao_depois: null });
         continue;
       }
 
       semPendencia++;
 
+      // ─── STEP 2.5: Validação de peças ───
+      const validacaoPecas = await validarPecasOsVsExecucao(
+        os.gc_os_id, os.auvo_task_id, tarefa._raw, gcHeaders, auvoAppKey, auvoToken
+      );
+      console.log(`[auvo-gc-sync] OS ${os.gc_os_codigo} — validação peças: ${validacaoPecas.resumo}`);
+
+      if (!validacaoPecas.aprovado) {
+        divergenciaPecas++;
+        logEntries.push({
+          gc_os_id: os.gc_os_id, gc_os_codigo: os.gc_os_codigo, auvo_task_id: os.auvo_task_id,
+          resultado: "divergencia_pecas", detalhe: validacaoPecas.resumo,
+          situacao_antes: os.nome_situacao, situacao_depois: null,
+          pecas_orcamento: validacaoPecas.pecas_orcamento,
+          materiais_execucao: validacaoPecas.materiais_execucao,
+          itens_cobertos: validacaoPecas.itens_cobertos,
+          itens_faltando: validacaoPecas.itens_faltando,
+          itens_parciais: validacaoPecas.itens_parciais,
+        });
+        continue;
+      }
+
       if (dryRun) {
         logEntries.push({
-          gc_os_id: os.gc_os_id,
-          gc_os_codigo: os.gc_os_codigo,
-          auvo_task_id: os.auvo_task_id,
-          resultado: "dry_run_ok",
-          detalhe: "Seria atualizada para situação 7116099",
-          situacao_antes: os.nome_situacao,
-          situacao_depois: "EXECUTADO – AG. NEGOCIAÇÃO (7116099)",
+          gc_os_id: os.gc_os_id, gc_os_codigo: os.gc_os_codigo, auvo_task_id: os.auvo_task_id,
+          resultado: "dry_run_ok", detalhe: `Seria atualizada para situação 7116099 | Peças: ${validacaoPecas.resumo}`,
+          situacao_antes: os.nome_situacao, situacao_depois: "EXECUTADO – AG. NEGOCIAÇÃO (7116099)",
         });
         continue;
       }
@@ -250,26 +406,10 @@ Deno.serve(async (req) => {
 
       if (gcResult.success) {
         atualizadas++;
-        logEntries.push({
-          gc_os_id: os.gc_os_id,
-          gc_os_codigo: os.gc_os_codigo,
-          auvo_task_id: os.auvo_task_id,
-          resultado: "atualizada",
-          detalhe: `HTTP ${gcResult.status} — situação alterada para 7116099`,
-          situacao_antes: os.nome_situacao,
-          situacao_depois: "EXECUTADO – AGUARDANDO NEGOCIAÇÃO FINANCEIRA",
-        });
+        logEntries.push({ gc_os_id: os.gc_os_id, gc_os_codigo: os.gc_os_codigo, auvo_task_id: os.auvo_task_id, resultado: "atualizada", detalhe: `HTTP ${gcResult.status} — situação alterada para 7116099 | Peças: ${validacaoPecas.resumo}`, situacao_antes: os.nome_situacao, situacao_depois: "EXECUTADO – AGUARDANDO NEGOCIAÇÃO FINANCEIRA" });
       } else {
         erros++;
-        logEntries.push({
-          gc_os_id: os.gc_os_id,
-          gc_os_codigo: os.gc_os_codigo,
-          auvo_task_id: os.auvo_task_id,
-          resultado: "erro_gc",
-          detalhe: `HTTP ${gcResult.status} — ${JSON.stringify(gcResult.body)}`,
-          situacao_antes: os.nome_situacao,
-          situacao_depois: null,
-        });
+        logEntries.push({ gc_os_id: os.gc_os_id, gc_os_codigo: os.gc_os_codigo, auvo_task_id: os.auvo_task_id, resultado: "erro_gc", detalhe: `HTTP ${gcResult.status} — ${JSON.stringify(gcResult.body)}`, situacao_antes: os.nome_situacao, situacao_depois: null });
       }
     }
 
@@ -282,27 +422,20 @@ Deno.serve(async (req) => {
       os_com_pendencia: comPendencia,
       os_sem_pendencia: semPendencia,
       os_nao_encontradas: naoEncontradas,
-      erros,
-      dry_run: dryRun,
-      duracao_ms: duracao,
-      detalhes: logEntries,
+      os_divergencia_pecas: divergenciaPecas,
+      erros, dry_run: dryRun, duracao_ms: duracao, detalhes: logEntries,
     });
 
-    const summary = {
-      atualizadas, comPendencia, semPendencia, naoEncontradas, erros,
-      osCandidatas: osCandidatas.length, dryRun, duracao_ms: duracao,
-    };
+    const summary = { atualizadas, comPendencia, semPendencia, naoEncontradas, divergenciaPecas, erros, osCandidatas: osCandidatas.length, dryRun, duracao_ms: duracao };
     console.log("[auvo-gc-sync] Concluído:", summary);
 
     return new Response(JSON.stringify({ success: true, ...summary, log: logEntries }), {
-      status: 200,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
+      status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (error) {
     console.error("[auvo-gc-sync] Erro fatal:", error);
     return new Response(JSON.stringify({ error: (error as Error).message }), {
-      status: 500,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
+      status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   }
 });
