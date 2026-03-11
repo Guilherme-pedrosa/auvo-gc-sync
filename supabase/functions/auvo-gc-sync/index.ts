@@ -52,7 +52,7 @@ const SITUACOES_EXCLUIR = [
   "8889036", // FECHADO CHAMADO
 ];
 
-const MAX_OS_POR_EXECUCAO = 80; // teto de segurança para evitar timeout (~50s de processamento)
+const MAX_OS_POR_EXECUCAO = 40; // teto de segurança para evitar timeout
 
 // ─── STEP 1: Buscar OS com tarefa Auvo ───
 async function fetchOsComTarefaAuvo(gcHeaders: Record<string, string>, dataInicio?: string, dataFim?: string): Promise<Array<{
