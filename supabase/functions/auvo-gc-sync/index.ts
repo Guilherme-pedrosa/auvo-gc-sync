@@ -397,6 +397,11 @@ async function atualizarSituacaoOsGC(
   gcOsId: string, situacaoId: string, gcHeaders: Record<string, string>,
   gcVendedorId?: string | null
 ): Promise<{ success: boolean; status: number; body: unknown }> {
+  // ── TRAVA DE SEGURANÇA: só permite situações da whitelist ──
+  if (!validarSituacaoPermitida(situacaoId)) {
+    console.error(`[BLOQUEADO] Tentativa de alterar OS ${gcOsId} para situação ${situacaoId} que NÃO está na whitelist!`);
+    return { success: false, status: 403, body: `Situação ${situacaoId} bloqueada pela whitelist` };
+  }
   const url = `${GC_BASE_URL}/api/ordens_servicos/${gcOsId}`;
   const payload: Record<string, unknown> = { situacao_id: situacaoId };
   if (gcVendedorId) {
