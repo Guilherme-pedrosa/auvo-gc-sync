@@ -437,6 +437,47 @@ Deno.serve(async (req) => {
       }
     }
 
+    // ─── Action: debug_task — inspecionar estrutura crua de uma tarefa Auvo ───
+    if (body?.action === "debug_task") {
+      const taskId = String(body.task_id || "");
+      if (!taskId) {
+        return new Response(JSON.stringify({ error: "task_id obrigatório" }), {
+          status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+      try {
+        const url = `${AUVO_BASE_URL}/tasks/${taskId}`;
+        const response = await rateLimitedFetch(url, { headers: auvoHeaders(auvoBearerToken) }, "auvo");
+        const rawText = await response.text();
+        let parsed: any = null;
+        try { parsed = JSON.parse(rawText); } catch {}
+        const entity = parsed?.result ?? parsed;
+
+        // Extrair info relevante para debug
+        const questionnaires = entity?.questionnaires || entity?.questionnaireAnswers || [];
+        const products = entity?.products || entity?.materials || entity?.materiais || entity?.itens || [];
+        
+        console.log(`[debug_task] Task ${taskId} — keys: ${Object.keys(entity || {}).join(", ")}`);
+        console.log(`[debug_task] questionnaires (${questionnaires.length}):`, JSON.stringify(questionnaires).substring(0, 3000));
+        console.log(`[debug_task] products (${products.length}):`, JSON.stringify(products).substring(0, 1000));
+
+        return new Response(JSON.stringify({
+          task_id: taskId,
+          http_status: response.status,
+          entity_keys: Object.keys(entity || {}),
+          questionnaires,
+          products,
+          raw_preview: rawText.substring(0, 5000),
+        }), {
+          status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      } catch (err) {
+        return new Response(JSON.stringify({ error: (err as Error).message }), {
+          status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+    }
+
     const osIdsManual: string[] = body?.os_ids || [];
     const dryRun: boolean = body?.dry_run === true;
     const dataInicio: string | undefined = body?.data_inicio || undefined;
