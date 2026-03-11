@@ -429,7 +429,7 @@ const AuvoSyncPage = () => {
               </CardContent>
             </Card>
             <Card>
-              <CardHeader><CardTitle className="text-lg">Controles</CardTitle><CardDescription>Selecione o período e execute a sincronização</CardDescription></CardHeader>
+              <CardHeader><CardTitle className="text-lg">Controles</CardTitle><CardDescription>Filtros, período e execução da sincronização</CardDescription></CardHeader>
               <CardContent className="space-y-4">
                 <div className="grid grid-cols-2 gap-3">
                   <div className="space-y-1.5">
@@ -461,13 +461,69 @@ const AuvoSyncPage = () => {
                     </Popover>
                   </div>
                 </div>
-                {(dataInicio || dataFim) && (
-                  <Button variant="ghost" size="sm" className="text-xs" onClick={() => { setDataInicio(undefined); setDataFim(undefined); }}>
-                    Limpar datas (buscar todas)
+
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium text-muted-foreground">Filtrar por Cliente (GC)</label>
+                  <Input
+                    placeholder="Nome do cliente..."
+                    value={filtroCliente}
+                    onChange={(e) => setFiltroCliente(e.target.value)}
+                  />
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium text-muted-foreground">Status da Tarefa Auvo</label>
+                  <Select value={filtroStatusTarefa} onValueChange={(v) => setFiltroStatusTarefa(v as "sem_pendencia" | "todas")}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="sem_pendencia">Só concluídas sem pendência</SelectItem>
+                      <SelectItem value="todas">Concluídas (com e sem pendência)</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium text-muted-foreground">Situação destino (dar baixa)</label>
+                  <Select value={situacaoClienteBulk} onValueChange={setSituacaoClienteBulk}>
+                    <SelectTrigger><SelectValue placeholder="Selecione a situação" /></SelectTrigger>
+                    <SelectContent>
+                      {SITUACOES_OPTIONS.map(s => (
+                        <SelectItem key={s.id} value={s.id}>{s.label}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {(dataInicio || dataFim || filtroCliente) && (
+                  <Button variant="ghost" size="sm" className="text-xs" onClick={() => { setDataInicio(undefined); setDataFim(undefined); setFiltroCliente(""); }}>
+                    Limpar filtros
                   </Button>
                 )}
+
                 <div className="space-y-2">
-                  <Button onClick={() => executarSync(true)} disabled={running} variant="outline" className="w-full"><Eye className="mr-2 h-4 w-4" />Dry Run (simular)</Button>
+                  <Button onClick={() => executarSync(true)} disabled={running} variant="outline" className="w-full">
+                    <Eye className="mr-2 h-4 w-4" />Dry Run (simular)
+                  </Button>
+                  {!confirmExecute ? (
+                    <Button onClick={() => setConfirmExecute(true)} disabled={running} className="w-full">
+                      <Play className="mr-2 h-4 w-4" />Executar Sync (dar baixa em todas)
+                    </Button>
+                  ) : (
+                    <div className="space-y-2">
+                      <p className="text-xs text-destructive font-medium">Digite EXECUTAR para confirmar:</p>
+                      <Input value={confirmText} onChange={(e) => setConfirmText(e.target.value)} placeholder="EXECUTAR" />
+                      <div className="flex gap-2">
+                        <Button
+                          disabled={confirmText !== "EXECUTAR" || running}
+                          className="flex-1"
+                          onClick={() => { executarSync(false); setConfirmExecute(false); setConfirmText(""); }}
+                        >
+                          <Play className="mr-2 h-4 w-4" />Confirmar
+                        </Button>
+                        <Button variant="ghost" onClick={() => { setConfirmExecute(false); setConfirmText(""); }}>Cancelar</Button>
+                      </div>
+                    </div>
+                  )}
                 </div>
               </CardContent>
             </Card>
