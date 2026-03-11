@@ -395,6 +395,7 @@ const AuvoSyncPage = () => {
                                     <TableHeader>
                                       <TableRow>
                                         <TableHead>OS</TableHead>
+                                        <TableHead>Data OS</TableHead>
                                         <TableHead>Tarefa</TableHead>
                                         <TableHead>Resultado</TableHead>
                                         <TableHead>Vendedor</TableHead>
