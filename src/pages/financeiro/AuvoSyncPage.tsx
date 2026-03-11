@@ -10,8 +10,11 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/component
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Calendar } from "@/components/ui/calendar";
+import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
-import { RefreshCw, Play, Eye, ChevronDown, ChevronRight, ArrowLeft, Package, AlertTriangle, Plus, Link2, UserCheck } from "lucide-react";
+import { RefreshCw, Play, Eye, ChevronDown, ChevronRight, ArrowLeft, Package, AlertTriangle, Plus, Link2, UserCheck, CalendarIcon } from "lucide-react";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { useNavigate } from "react-router-dom";
@@ -70,6 +73,8 @@ const AuvoSyncPage = () => {
   const [selectedAuvoUserNome, setSelectedAuvoUserNome] = useState("");
   const [selectedGcVendedor, setSelectedGcVendedor] = useState("");
   const [selectedGcVendedorNome, setSelectedGcVendedorNome] = useState("");
+  const [dataInicio, setDataInicio] = useState<Date | undefined>(undefined);
+  const [dataFim, setDataFim] = useState<Date | undefined>(undefined);
 
   // ─── Queries ───
   const { data: logs, isLoading } = useQuery({
@@ -189,7 +194,10 @@ const AuvoSyncPage = () => {
   const executarSync = async (dryRun = false) => {
     setRunning(true);
     try {
-      const { data, error } = await supabase.functions.invoke("auvo-gc-sync", { body: { dry_run: dryRun } });
+      const syncBody: any = { dry_run: dryRun };
+      if (dataInicio) syncBody.data_inicio = format(dataInicio, "yyyy-MM-dd");
+      if (dataFim) syncBody.data_fim = format(dataFim, "yyyy-MM-dd");
+      const { data, error } = await supabase.functions.invoke("auvo-gc-sync", { body: syncBody });
       if (error) throw error;
       toast.success(
         dryRun
@@ -293,10 +301,47 @@ const AuvoSyncPage = () => {
               </CardContent>
             </Card>
             <Card>
-              <CardHeader><CardTitle className="text-lg">Controles</CardTitle><CardDescription>Execute a sincronização manualmente</CardDescription></CardHeader>
-              <CardContent className="space-y-3">
-                <Button onClick={() => executarSync(false)} disabled={running} className="w-full"><Play className="mr-2 h-4 w-4" />{running ? "Executando..." : "Executar Agora"}</Button>
-                <Button onClick={() => executarSync(true)} disabled={running} variant="outline" className="w-full"><Eye className="mr-2 h-4 w-4" />Dry Run (simular)</Button>
+              <CardHeader><CardTitle className="text-lg">Controles</CardTitle><CardDescription>Selecione o período e execute a sincronização</CardDescription></CardHeader>
+              <CardContent className="space-y-4">
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1.5">
+                    <label className="text-sm font-medium text-muted-foreground">Data Início</label>
+                    <Popover>
+                      <PopoverTrigger asChild>
+                        <Button variant="outline" className="w-full justify-start text-left font-normal">
+                          <CalendarIcon className="mr-2 h-4 w-4" />
+                          {dataInicio ? format(dataInicio, "dd/MM/yyyy") : "Selecione"}
+                        </Button>
+                      </PopoverTrigger>
+                      <PopoverContent className="w-auto p-0" align="start">
+                        <Calendar mode="single" selected={dataInicio} onSelect={setDataInicio} locale={ptBR} initialFocus />
+                      </PopoverContent>
+                    </Popover>
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-sm font-medium text-muted-foreground">Data Fim</label>
+                    <Popover>
+                      <PopoverTrigger asChild>
+                        <Button variant="outline" className="w-full justify-start text-left font-normal">
+                          <CalendarIcon className="mr-2 h-4 w-4" />
+                          {dataFim ? format(dataFim, "dd/MM/yyyy") : "Selecione"}
+                        </Button>
+                      </PopoverTrigger>
+                      <PopoverContent className="w-auto p-0" align="start">
+                        <Calendar mode="single" selected={dataFim} onSelect={setDataFim} locale={ptBR} initialFocus />
+                      </PopoverContent>
+                    </Popover>
+                  </div>
+                </div>
+                {(dataInicio || dataFim) && (
+                  <Button variant="ghost" size="sm" className="text-xs" onClick={() => { setDataInicio(undefined); setDataFim(undefined); }}>
+                    Limpar datas (buscar todas)
+                  </Button>
+                )}
+                <div className="space-y-2">
+                  <Button onClick={() => executarSync(false)} disabled={running} className="w-full"><Play className="mr-2 h-4 w-4" />{running ? "Executando..." : "Executar Agora"}</Button>
+                  <Button onClick={() => executarSync(true)} disabled={running} variant="outline" className="w-full"><Eye className="mr-2 h-4 w-4" />Dry Run (simular)</Button>
+                </div>
               </CardContent>
             </Card>
           </div>

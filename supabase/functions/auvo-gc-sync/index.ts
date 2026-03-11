@@ -44,7 +44,7 @@ const SITUACOES_EXCLUIR = [
 ];
 
 // ─── STEP 1: Buscar OS com tarefa Auvo ───
-async function fetchOsComTarefaAuvo(gcHeaders: Record<string, string>): Promise<Array<{
+async function fetchOsComTarefaAuvo(gcHeaders: Record<string, string>, dataInicio?: string, dataFim?: string): Promise<Array<{
   gc_os_id: string;
   gc_os_codigo: string;
   auvo_task_id: string;
@@ -62,7 +62,9 @@ async function fetchOsComTarefaAuvo(gcHeaders: Record<string, string>): Promise<
   let totalPages = 1;
 
   while (page <= totalPages) {
-    const url = `${GC_BASE_URL}/api/ordens_servicos?limite=100&pagina=${page}`;
+    let url = `${GC_BASE_URL}/api/ordens_servicos?limite=100&pagina=${page}`;
+    if (dataInicio) url += `&data_cadastro_inicio=${dataInicio}`;
+    if (dataFim) url += `&data_cadastro_fim=${dataFim}`;
     const response = await rateLimitedFetch(url, { headers: gcHeaders }, "gc");
     if (!response.ok) { console.error(`[auvo-gc-sync] GC OS list error: ${response.status}`); break; }
 
@@ -412,8 +414,10 @@ Deno.serve(async (req) => {
 
     const osIdsManual: string[] = body?.os_ids || [];
     const dryRun: boolean = body?.dry_run === true;
+    const dataInicio: string | undefined = body?.data_inicio || undefined;
+    const dataFim: string | undefined = body?.data_fim || undefined;
 
-    console.log(`[auvo-gc-sync] Iniciando sync. dry_run=${dryRun}`);
+    console.log(`[auvo-gc-sync] Iniciando sync. dry_run=${dryRun}, data_inicio=${dataInicio || "todas"}, data_fim=${dataFim || "todas"}`);
 
     // ─── STEP 0: Carregar mapeamento vendedores ───
     const { data: mapeamentos } = await supabase
@@ -430,7 +434,7 @@ Deno.serve(async (req) => {
     }
     console.log(`[auvo-gc-sync] ${Object.keys(mapaVendedores).length} mapeamentos de vendedores carregados`);
 
-    const osCandidatas = await fetchOsComTarefaAuvo(gcHeaders);
+    const osCandidatas = await fetchOsComTarefaAuvo(gcHeaders, dataInicio, dataFim);
     console.log(`[auvo-gc-sync] ${osCandidatas.length} OS com tarefa Auvo encontradas`);
 
     const logEntries: any[] = [];
