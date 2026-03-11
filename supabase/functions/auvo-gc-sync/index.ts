@@ -126,6 +126,8 @@ async function fetchOsComTarefaAuvo(gcHeaders: Record<string, string>, dataInici
     console.log(`[auvo-gc-sync] Página ${page}: totalExcluídas=${totalExcluidas}, totalSemAtributo=${totalSemAtributo}, totalSemValor=${totalSemValor}, candidatas=${results.length}`);
     page++;
   }
+
+  console.log(`[auvo-gc-sync] FUNIL GC: processadas=${totalProcessadas} | excluídas=${totalExcluidas} | semAtributo=${totalSemAtributo} | semValor=${totalSemValor} | candidatas=${results.length}${results.length >= MAX_OS_POR_EXECUCAO ? " (LIMITE ATINGIDO)" : ""}`);
   return results;
 }
 
