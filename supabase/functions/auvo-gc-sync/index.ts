@@ -7,7 +7,7 @@ const corsHeaders = {
 
 const GC_BASE_URL = "https://api.gestaoclick.com";
 const AUVO_BASE_URL = "https://api.auvo.com.br/v2";
-const MIN_DELAY_MS = 400;
+const MIN_DELAY_MS = 200; // reduzido para processar mais OS (Auvo permite 400 req/min)
 let lastGcCall = 0;
 let lastAuvoCall = 0;
 
@@ -52,7 +52,7 @@ const SITUACOES_EXCLUIR = [
   "8889036", // FECHADO CHAMADO
 ];
 
-const MAX_OS_POR_EXECUCAO = 40; // teto de segurança para evitar timeout
+const MAX_OS_POR_EXECUCAO = 150; // teto de segurança — agora varre mais OS por execução
 
 // ─── WHITELIST de situações permitidas para alteração ───
 const SITUACOES_PERMITIDAS = [
@@ -713,7 +713,14 @@ Deno.serve(async (req) => {
     let naoEncontradas = 0;
     let divergenciaPecas = 0;
 
+    const MAX_EXECUTION_TIME_MS = 50000; // parar antes do timeout de 60s da edge function
+
     for (const os of osCandidatas) {
+      // Check de tempo — parar se estamos perto do timeout
+      if (Date.now() - startTime > MAX_EXECUTION_TIME_MS) {
+        console.warn(`[auvo-gc-sync] ⚠️ Tempo limite atingido (${MAX_EXECUTION_TIME_MS}ms) — parando com ${logEntries.length} OS processadas`);
+        break;
+      }
       if (osIdsManual.length > 0 && !osIdsManual.includes(os.gc_os_id)) continue;
 
       console.log(`[auvo-gc-sync] Processando OS ${os.gc_os_codigo} → tarefa Auvo ${os.auvo_task_id}`);
