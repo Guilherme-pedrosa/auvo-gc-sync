@@ -52,7 +52,7 @@ const SITUACOES_EXCLUIR = [
   "8889036", // FECHADO CHAMADO
 ];
 
-const MAX_OS_POR_EXECUCAO = 40; // teto de segurança para evitar timeout
+const MAX_OS_POR_EXECUCAO = 150; // teto de segurança — agora varre mais OS por execução
 
 // ─── WHITELIST de situações permitidas para alteração ───
 const SITUACOES_PERMITIDAS = [
