@@ -418,8 +418,8 @@ const AuvoSyncPage = () => {
                         <SelectTrigger><SelectValue placeholder={loadingAuvoUsers ? "Carregando..." : "Selecione"} /></SelectTrigger>
                         <SelectContent>
                           {auvoUsers?.map(u => (
-                            <SelectItem key={u.idUserLogin} value={String(u.idUserLogin)}>
-                              {u.name} (ID: {u.idUserLogin})
+                            <SelectItem key={u.userID} value={String(u.userID)}>
+                              {u.name} (ID: {u.userID})
                             </SelectItem>
                           ))}
                         </SelectContent>
