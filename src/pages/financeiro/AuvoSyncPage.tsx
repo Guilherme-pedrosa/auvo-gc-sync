@@ -42,6 +42,7 @@ type LogDetail = {
   resultado: string;
   detalhe: string;
   situacao_antes: string;
+  situacao_id_antes?: string;
   situacao_depois: string | null;
   data_os?: string;
   auvo_tecnico_id?: string | null;
