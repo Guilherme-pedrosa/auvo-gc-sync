@@ -625,9 +625,7 @@ const AuvoSyncPage = () => {
                                         </TableRow>
                                       </TableHeader>
                                       <TableBody>
-                                        {(log.detalhes as LogDetail[])
-                                          .filter(d => !filtroCliente || d.gc_cliente?.toLowerCase().includes(filtroCliente.toLowerCase()))
-                                          .map((d, i) => (
+                                        {(log.detalhes as LogDetail[]).map((d, i) => (
                                           <TableRow key={i}>
                                             <TableCell>
                                               <div className="flex items-center gap-1">
