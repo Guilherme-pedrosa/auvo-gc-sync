@@ -378,7 +378,8 @@ Deno.serve(async (req) => {
     // ─── Action: list_auvo_users ───
     if (body?.action === "list_auvo_users") {
       try {
-        const url = `${AUVO_BASE_URL}/users/?page=1&pageSize=200&order=asc&paramFilter={}`;
+        const paramFilter = encodeURIComponent(JSON.stringify({}));
+        const url = `${AUVO_BASE_URL}/users/?page=1&pageSize=200&order=asc&paramFilter=${paramFilter}`;
         const response = await fetch(url, { headers: auvoHeaders(auvoBearerToken) });
         const text = await response.text();
         let data: any = {};
