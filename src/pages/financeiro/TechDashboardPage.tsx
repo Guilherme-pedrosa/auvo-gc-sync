@@ -73,16 +73,18 @@ const TechDashboardPage = () => {
 
   const dates = getDates();
 
-  const { data, isLoading, refetch } = useQuery({
+  const { data, isLoading, error: queryError, refetch } = useQuery({
     queryKey: ["tech-dashboard", dates.start, dates.end],
     queryFn: async () => {
       const { data, error } = await supabase.functions.invoke("tech-dashboard", {
         body: { start_date: dates.start, end_date: dates.end },
       });
       if (error) throw error;
+      if (data?.error) throw new Error(data.error);
       return data as DashboardData;
     },
     refetchInterval: 60000,
+    retry: false,
   });
 
   const metaBadge = (valor: number, meta: number) => {
