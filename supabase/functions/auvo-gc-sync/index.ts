@@ -438,6 +438,150 @@ Deno.serve(async (req) => {
       // empty body is OK
     }
 
+    // ─── Actions that only need GC (no Auvo login required) ───
+    
+    // ─── Action: batch_scan — listar OS na situação 7116099 modificadas após uma data ───
+    if (body?.action === "batch_scan") {
+      const modificadoApos = body.modificado_apos || "2026-03-11 17:46:00";
+      console.log(`[auvo-gc-sync] BATCH_SCAN: buscando OS em situação 7116099 modificadas após ${modificadoApos}`);
+      
+      const todasOs: Array<{ id: string; codigo: string; modificado_em: string; nome_situacao: string }> = [];
+      let page = 1;
+      let totalPages = 1;
+      
+      while (page <= totalPages) {
+        const url = `${GC_BASE_URL}/api/ordens_servicos?limite=100&pagina=${page}&situacao_id=7116099`;
+        const response = await rateLimitedFetch(url, { headers: gcHeaders }, "gc");
+        if (!response.ok) break;
+        const data = await response.json();
+        const records: any[] = Array.isArray(data?.data) ? data.data : [];
+        totalPages = data?.meta?.total_paginas || 1;
+        
+        for (const os of records) {
+          const modEm = String(os.modificado_em || "");
+          if (modEm >= modificadoApos) {
+            todasOs.push({
+              id: String(os.id),
+              codigo: String(os.codigo || os.id),
+              modificado_em: modEm,
+              nome_situacao: String(os.nome_situacao || ""),
+            });
+          }
+        }
+        page++;
+      }
+      
+      console.log(`[auvo-gc-sync] BATCH_SCAN: ${todasOs.length} OS encontradas modificadas após ${modificadoApos}`);
+      return new Response(JSON.stringify({ 
+        total: todasOs.length, 
+        modificado_apos: modificadoApos,
+        os_list: todasOs 
+      }), {
+        status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    // ─── Action: batch_revert — reverter OS em lote para uma situação específica ───
+    if (body?.action === "batch_revert") {
+      const osList: Array<{ id: string; codigo: string; situacao_destino_id: string }> = body.os_list || [];
+      const dryRunRevert: boolean = body.dry_run === true;
+      
+      if (!osList.length) {
+        return new Response(JSON.stringify({ error: "os_list é obrigatório (array de {id, codigo, situacao_destino_id})" }), {
+          status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+      
+      console.log(`[auvo-gc-sync] BATCH_REVERT: ${osList.length} OS para reverter. dry_run=${dryRunRevert}`);
+      
+      const results: any[] = [];
+      let revertidas = 0;
+      let errosRevert = 0;
+      
+      for (const os of osList) {
+        if (dryRunRevert) {
+          results.push({ gc_os_id: os.id, gc_os_codigo: os.codigo, resultado: "dry_run_ok", detalhe: `Seria revertida para situação ${os.situacao_destino_id}` });
+          revertidas++;
+          continue;
+        }
+        
+        const result = await atualizarSituacaoOsGC(os.id, os.situacao_destino_id, gcHeaders);
+        if (result.success) {
+          revertidas++;
+          results.push({ gc_os_id: os.id, gc_os_codigo: os.codigo, resultado: "revertida", detalhe: `HTTP ${result.status} → situação ${os.situacao_destino_id}` });
+        } else {
+          errosRevert++;
+          results.push({ gc_os_id: os.id, gc_os_codigo: os.codigo, resultado: "erro_gc", detalhe: `HTTP ${result.status} — ${JSON.stringify(result.body)}` });
+        }
+      }
+      
+      // Log the batch revert
+      await supabase.from("auvo_gc_sync_log").insert({
+        executado_em: new Date().toISOString(),
+        os_candidatas: osList.length,
+        os_atualizadas: revertidas,
+        erros: errosRevert,
+        dry_run: dryRunRevert,
+        duracao_ms: Date.now() - startTime,
+        observacao: `REVERSÃO EM LOTE: ${osList.length} OS${dryRunRevert ? " (simulação)" : ""}`,
+        detalhes: results,
+      });
+      
+      return new Response(JSON.stringify({ 
+        success: true, 
+        total: osList.length, 
+        revertidas, 
+        erros: errosRevert,
+        dry_run: dryRunRevert,
+        results 
+      }), {
+        status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    // ─── Action: revert_os — reverter OS individual ───
+    if (body?.action === "revert_os") {
+      const gcOsId = String(body.gc_os_id || "");
+      const situacaoAnteriorId = String(body.situacao_id_antes || "");
+      const gcOsCodigo = String(body.gc_os_codigo || "");
+      if (!gcOsId || !situacaoAnteriorId) {
+        return new Response(JSON.stringify({ error: "gc_os_id e situacao_id_antes são obrigatórios" }), {
+          status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+      console.log(`[auvo-gc-sync] REVERT: OS ${gcOsCodigo} (${gcOsId}) → situação ${situacaoAnteriorId}`);
+      const revertResult = await atualizarSituacaoOsGC(gcOsId, situacaoAnteriorId, gcHeaders);
+      
+      await supabase.from("auvo_gc_sync_log").insert({
+        executado_em: new Date().toISOString(),
+        os_candidatas: 1,
+        os_atualizadas: revertResult.success ? 1 : 0,
+        erros: revertResult.success ? 0 : 1,
+        dry_run: false,
+        duracao_ms: Date.now() - startTime,
+        observacao: `REVERSÃO manual: OS ${gcOsCodigo}`,
+        detalhes: [{
+          gc_os_id: gcOsId, gc_os_codigo: gcOsCodigo, auvo_task_id: "",
+          resultado: revertResult.success ? "revertida" : "erro_gc",
+          detalhe: revertResult.success 
+            ? `Revertida para situação ${situacaoAnteriorId} | HTTP ${revertResult.status}`
+            : `Erro ao reverter: HTTP ${revertResult.status} — ${JSON.stringify(revertResult.body)}`,
+          situacao_antes: "EXECUTADO – AGUARDANDO NEGOCIAÇÃO FINANCEIRA",
+          situacao_depois: revertResult.success ? `Revertida (${situacaoAnteriorId})` : null,
+          situacao_id_antes: "7116099",
+          situacao_id_depois: revertResult.success ? situacaoAnteriorId : null,
+        }],
+      });
+
+      return new Response(JSON.stringify({ 
+        success: revertResult.success, gc_os_id: gcOsId, gc_os_codigo: gcOsCodigo,
+        status: revertResult.status, body: revertResult.body,
+      }), {
+        status: revertResult.success ? 200 : 500, 
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
     // ─── Auvo Login (v2 — Bearer token) ───
     console.log("[auvo-gc-sync] Fazendo login na API Auvo v2...");
     let auvoBearerToken: string;
@@ -473,56 +617,6 @@ Deno.serve(async (req) => {
       }
     }
 
-    // ─── Action: revert_os — reverter OS para situação anterior ───
-    if (body?.action === "revert_os") {
-      const gcOsId = String(body.gc_os_id || "");
-      const situacaoAnteriorId = String(body.situacao_id_antes || "");
-      const gcOsCodigo = String(body.gc_os_codigo || "");
-      if (!gcOsId || !situacaoAnteriorId) {
-        return new Response(JSON.stringify({ error: "gc_os_id e situacao_id_antes são obrigatórios" }), {
-          status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
-      }
-      console.log(`[auvo-gc-sync] REVERT: OS ${gcOsCodigo} (${gcOsId}) → situação ${situacaoAnteriorId}`);
-      const revertResult = await atualizarSituacaoOsGC(gcOsId, situacaoAnteriorId, gcHeaders);
-      
-      // Log the revert action
-      await supabase.from("auvo_gc_sync_log").insert({
-        executado_em: new Date().toISOString(),
-        os_candidatas: 1,
-        os_atualizadas: revertResult.success ? 1 : 0,
-        erros: revertResult.success ? 0 : 1,
-        dry_run: false,
-        duracao_ms: Date.now() - startTime,
-        observacao: `REVERSÃO manual: OS ${gcOsCodigo}`,
-        detalhes: [{
-          gc_os_id: gcOsId,
-          gc_os_codigo: gcOsCodigo,
-          auvo_task_id: "",
-          resultado: revertResult.success ? "revertida" : "erro_gc",
-          detalhe: revertResult.success 
-            ? `Revertida para situação ${situacaoAnteriorId} | HTTP ${revertResult.status}`
-            : `Erro ao reverter: HTTP ${revertResult.status} — ${JSON.stringify(revertResult.body)}`,
-          situacao_antes: "EXECUTADO – AGUARDANDO NEGOCIAÇÃO FINANCEIRA",
-          situacao_depois: revertResult.success ? `Revertida (${situacaoAnteriorId})` : null,
-          situacao_id_antes: "7116099",
-          situacao_id_depois: revertResult.success ? situacaoAnteriorId : null,
-        }],
-      });
-
-      return new Response(JSON.stringify({ 
-        success: revertResult.success, 
-        gc_os_id: gcOsId,
-        gc_os_codigo: gcOsCodigo,
-        status: revertResult.status,
-        body: revertResult.body,
-      }), {
-        status: revertResult.success ? 200 : 500, 
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
-
-    // ─── Action: debug_task — inspecionar estrutura crua de uma tarefa Auvo ───
     if (body?.action === "debug_task") {
       const taskId = String(body.task_id || "");
       if (!taskId) {
