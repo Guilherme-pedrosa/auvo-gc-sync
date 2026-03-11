@@ -6,7 +6,7 @@ const corsHeaders = {
 };
 
 const GC_BASE_URL = "https://api.gestaoclick.com";
-const AUVO_BASE_URL = "https://app.auvo.com.br/api/v2";
+const AUVO_BASE_URL = "https://api.auvo.com.br/v2";
 const MIN_DELAY_MS = 400;
 let lastGcCall = 0;
 let lastAuvoCall = 0;
