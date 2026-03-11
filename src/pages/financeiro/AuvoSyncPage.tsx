@@ -94,6 +94,9 @@ const AuvoSyncPage = () => {
   const [situacaoDialogOpen, setSituacaoDialogOpen] = useState(false);
   const [situacaoDialogTarget, setSituacaoDialogTarget] = useState<LogDetail | null>(null);
   const [situacaoDialogBulk, setSituacaoDialogBulk] = useState<LogDetail[] | null>(null);
+  const [filtroCliente, setFiltroCliente] = useState("");
+  const [situacaoClienteBulk, setSituacaoClienteBulk] = useState("");
+  const [changingSituacaoCliente, setChangingSituacaoCliente] = useState(false);
 
   const SITUACOES_OPTIONS = [
     { id: "7063579", label: "AGUARDANDO COMPRA DE PEÇAS" },
