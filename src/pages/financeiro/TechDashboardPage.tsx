@@ -185,6 +185,31 @@ const TechDashboardPage = () => {
         </Badge>
       </div>
 
+      {/* Error display */}
+      {queryError && (
+        <Card className="border-destructive">
+          <CardContent className="pt-6">
+            <div className="flex items-center gap-2 text-destructive">
+              <AlertTriangle className="h-5 w-5" />
+              <span className="font-medium">Erro ao consultar Auvo:</span>
+              <span className="text-sm">{(queryError as Error).message}</span>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {data?.auvo_error && (
+        <Card className="border-yellow-500">
+          <CardContent className="pt-6">
+            <div className="flex items-center gap-2 text-yellow-600">
+              <AlertTriangle className="h-5 w-5" />
+              <span className="font-medium">Aviso Auvo:</span>
+              <span className="text-sm truncate">{data.auvo_error}</span>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Resumo Cards */}
       {data?.resumo && (
         <div className="grid gap-4 md:grid-cols-4">
