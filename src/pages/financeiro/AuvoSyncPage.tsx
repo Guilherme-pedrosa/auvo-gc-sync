@@ -14,7 +14,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Calendar } from "@/components/ui/calendar";
 import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
-import { RefreshCw, Play, Eye, ChevronDown, ChevronRight, ArrowLeft, Package, AlertTriangle, Plus, Link2, UserCheck, CalendarIcon, Undo2 } from "lucide-react";
+import { RefreshCw, Play, Eye, ChevronDown, ChevronRight, ArrowLeft, Package, AlertTriangle, Plus, Link2, UserCheck, CalendarIcon, Undo2, ExternalLink, Settings2 } from "lucide-react";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { useNavigate } from "react-router-dom";
