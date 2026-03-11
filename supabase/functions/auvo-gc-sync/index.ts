@@ -52,7 +52,8 @@ const SITUACOES_EXCLUIR = [
   "8889036", // FECHADO CHAMADO
 ];
 
-const MAX_OS_POR_EXECUCAO = 150; // teto de segurança — agora varre mais OS por execução
+const MAX_OS_POR_EXECUCAO = 500; // coleta do GC (rápida, sem Auvo)
+const MAX_AUVO_CHECKS = 150; // limite de consultas ao Auvo por execução
 
 // ─── WHITELIST de situações permitidas para alteração ───
 const SITUACOES_PERMITIDAS = [
@@ -713,18 +714,22 @@ Deno.serve(async (req) => {
     let naoEncontradas = 0;
     let divergenciaPecas = 0;
 
-    const MAX_EXECUTION_TIME_MS = 50000; // parar antes do timeout de 60s da edge function
+    const MAX_EXECUTION_TIME_MS = 50000;
+    let auvoChecks = 0;
 
     for (const os of osCandidatas) {
-      // Check de tempo — parar se estamos perto do timeout
+      // Check de tempo e limite de chamadas Auvo
       if (Date.now() - startTime > MAX_EXECUTION_TIME_MS) {
-        console.warn(`[auvo-gc-sync] ⚠️ Tempo limite atingido (${MAX_EXECUTION_TIME_MS}ms) — parando com ${logEntries.length} OS processadas`);
+        console.warn(`[auvo-gc-sync] ⚠️ Tempo limite atingido — parando com ${logEntries.length} OS processadas de ${osCandidatas.length} candidatas`);
+        break;
+      }
+      if (auvoChecks >= MAX_AUVO_CHECKS) {
+        console.warn(`[auvo-gc-sync] ⚠️ Limite de ${MAX_AUVO_CHECKS} consultas Auvo atingido — parando`);
         break;
       }
       if (osIdsManual.length > 0 && !osIdsManual.includes(os.gc_os_id)) continue;
 
-      console.log(`[auvo-gc-sync] Processando OS ${os.gc_os_codigo} → tarefa Auvo ${os.auvo_task_id}`);
-
+      auvoChecks++;
       const tarefa = await getAuvoTask(os.auvo_task_id, auvoBearerToken);
 
       if (!tarefa) {
@@ -733,11 +738,17 @@ Deno.serve(async (req) => {
         continue;
       }
 
-      const finalizadaSemPendencia = tarefa.finished === true && (!tarefa.pendency || tarefa.pendency.trim() === "");
+      // ─── FILTRO: só processar tarefas finalizadas (com ou sem pendência) ───
+      if (!tarefa.finished) {
+        // Não finalizada — ignorar silenciosamente (não poluir log)
+        continue;
+      }
+
+      const finalizadaSemPendencia = !tarefa.pendency || tarefa.pendency.trim() === "";
 
       if (!finalizadaSemPendencia) {
         comPendencia++;
-        logEntries.push({ gc_os_id: os.gc_os_id, gc_os_codigo: os.gc_os_codigo, auvo_task_id: os.auvo_task_id, resultado: tarefa.finished ? "com_pendencia" : "nao_finalizada", detalhe: `finished=${tarefa.finished} | pendency="${tarefa.pendency}" | taskStatus=${tarefa.taskStatus}`, situacao_antes: os.nome_situacao, situacao_id_antes: os.situacao_id, situacao_depois: null, data_os: os.data_os });
+        logEntries.push({ gc_os_id: os.gc_os_id, gc_os_codigo: os.gc_os_codigo, auvo_task_id: os.auvo_task_id, resultado: "com_pendencia", detalhe: `finished=${tarefa.finished} | pendency="${tarefa.pendency}" | taskStatus=${tarefa.taskStatus}`, situacao_antes: os.nome_situacao, situacao_id_antes: os.situacao_id, situacao_depois: null, data_os: os.data_os });
         continue;
       }
 
