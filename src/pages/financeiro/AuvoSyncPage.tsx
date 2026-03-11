@@ -573,6 +573,7 @@ const AuvoSyncPage = () => {
                                             <TableCell>
                                               <div className="flex items-center gap-1">
                                                 <span className="font-mono text-xs">{d.gc_os_codigo}</span>
+                                                <span className="text-xs text-muted-foreground">{d.data_os ? (() => { try { return format(new Date(d.data_os), "dd/MM/yy"); } catch { return ""; } })() : ""}</span>
                                                 <a href={gcOsUrl(d.gc_os_id)} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} title="Abrir no GestãoClick">
                                                   <ExternalLink className="h-3 w-3 text-muted-foreground hover:text-foreground" />
                                                 </a>
