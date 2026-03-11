@@ -80,8 +80,8 @@ async function fetchOsComTarefaAuvo(gcHeaders: Record<string, string>, dataInici
 
   while (page <= totalPages && results.length < MAX_OS_POR_EXECUCAO) {
     let url = `${GC_BASE_URL}/api/ordens_servicos?limite=100&pagina=${page}`;
-    if (dataInicio) url += `&data_cadastro_inicio=${dataInicio}`;
-    if (dataFim) url += `&data_cadastro_fim=${dataFim}`;
+    if (dataInicio) url += `&data_inicio=${dataInicio}`;
+    if (dataFim) url += `&data_fim=${dataFim}`;
 
     const response = await rateLimitedFetch(url, { headers: gcHeaders }, "gc");
 
