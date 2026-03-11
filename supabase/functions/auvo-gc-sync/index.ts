@@ -448,11 +448,70 @@ async function validarPecasOsVsExecucao(
   return { aprovado, sem_pecas_orcamento: false, pecas_orcamento: pecasOrcamento, materiais_execucao: materiaisExecucao, itens_cobertos: cobertos, itens_faltando: faltando, itens_parciais: parciais, resumo };
 }
 
+// ─── Situação transitória que permite editar vendedor, financeiro, etc. ───
+const SITUACAO_TRANSITORIA = "8896431";
+
 // ─── STEP 3: Atualizar situação GC preservando OS completa + vendedor mapeado ───
+// Fluxo: situação atual → transitória (edita vendedor/dados) → situação destino
 type AtualizarSituacaoOptions = {
   vendedorId?: string | null;
   vendedorNome?: string | null;
 };
+
+async function executarPutOs(
+  gcOsId: string,
+  payload: Record<string, unknown>,
+  gcHeaders: Record<string, string>,
+  label: string,
+): Promise<{ success: boolean; status: number; body: unknown }> {
+  const url = `${GC_BASE_URL}/api/ordens_servicos/${gcOsId}`;
+
+  // Campos de leitura que podem causar rejeição/efeito colateral no PUT
+  const camposRemover = ["id", "codigo", "nome_situacao", "cor_situacao", "hash", "cadastrado_em", "modificado_em"];
+  for (const campo of camposRemover) delete payload[campo];
+
+  if (payload.data_saida == null) payload.data_saida = "";
+
+  // Recalcula totais a partir dos itens para evitar valor_total zerado
+  const totalServicos = sumWrappedItems(payload.servicos, "servico");
+  const totalProdutos = sumWrappedItems(payload.produtos, "produto");
+  const desconto = parseCurrency(payload.desconto_valor);
+  const frete = parseCurrency(payload.valor_frete);
+  const totalCalculado = totalServicos + totalProdutos + frete - desconto;
+
+  if (totalServicos > 0 || totalProdutos > 0 || totalCalculado > 0) {
+    payload.valor_servicos = formatCurrency(totalServicos);
+    payload.valor_produtos = formatCurrency(totalProdutos);
+    payload.valor_total = formatCurrency(totalCalculado);
+    payload.valor = formatCurrency(totalCalculado);
+  }
+
+  console.log(
+    `[auvo-gc-sync] ${label} OS ${gcOsId}: situacao_id=${String(payload.situacao_id)}, vendedor_id=${String(payload.vendedor_id || "N/A")}, nome_vendedor=${String(payload.nome_vendedor || "N/A")}, valor_total=${String(payload.valor_total || "N/A")}`,
+  );
+
+  const response = await rateLimitedFetch(url, {
+    method: "PUT",
+    headers: gcHeaders,
+    body: JSON.stringify(payload),
+  }, "gc");
+
+  const body = await response.json().catch(() => ({}));
+  return { success: response.ok, status: response.status, body };
+}
+
+async function buscarOsAtual(gcOsId: string, gcHeaders: Record<string, string>): Promise<Record<string, unknown> | null> {
+  const url = `${GC_BASE_URL}/api/ordens_servicos/${gcOsId}`;
+  const getResp = await rateLimitedFetch(url, { headers: gcHeaders }, "gc");
+  if (!getResp.ok) {
+    console.error(`[auvo-gc-sync] Erro ao buscar OS ${gcOsId}: HTTP ${getResp.status}`);
+    return null;
+  }
+  const getData = await getResp.json();
+  const osAtual = getData?.data ?? getData;
+  if (!osAtual || typeof osAtual !== "object") return null;
+  return osAtual as Record<string, unknown>;
+}
 
 async function atualizarSituacaoOsGC(
   gcOsId: string,
@@ -465,65 +524,59 @@ async function atualizarSituacaoOsGC(
     return { success: false, status: 403, body: `Situação ${situacaoId} bloqueada pela whitelist` };
   }
 
-  const url = `${GC_BASE_URL}/api/ordens_servicos/${gcOsId}`;
-
   try {
-    const getResp = await rateLimitedFetch(url, { headers: gcHeaders }, "gc");
-    if (!getResp.ok) {
-      console.error(`[auvo-gc-sync] Erro ao buscar OS ${gcOsId} antes do PUT: HTTP ${getResp.status}`);
-      return { success: false, status: getResp.status, body: `Erro ao buscar OS atual: HTTP ${getResp.status}` };
+    // ── STEP A: Buscar OS atual ──
+    const osAtual = await buscarOsAtual(gcOsId, gcHeaders);
+    if (!osAtual) {
+      return { success: false, status: 500, body: "Não foi possível buscar OS atual" };
     }
 
-    const getData = await getResp.json();
-    const osAtual = getData?.data ?? getData;
-    if (!osAtual || typeof osAtual !== "object") {
-      return { success: false, status: 500, body: "Formato inesperado da OS ao montar payload" };
+    // ── STEP B: Mover para situação TRANSITÓRIA (permite editar vendedor, financeiro) ──
+    const payloadTransitorio: Record<string, unknown> = {
+      ...osAtual,
+      situacao_id: SITUACAO_TRANSITORIA,
+    };
+
+    // Aplicar vendedor mapeado já na etapa transitória
+    if (options.vendedorId) {
+      payloadTransitorio.vendedor_id = options.vendedorId;
+      if (options.vendedorNome) payloadTransitorio.nome_vendedor = options.vendedorNome;
     }
 
-    // Envia a OS praticamente completa para evitar zerar vendedor/valor na API GC
-    const payload: Record<string, unknown> = {
-      ...(osAtual as Record<string, unknown>),
+    const transitResult = await executarPutOs(gcOsId, { ...payloadTransitorio }, gcHeaders, "TRANSITÓRIA");
+    if (!transitResult.success) {
+      console.error(`[auvo-gc-sync] Falha ao mover OS ${gcOsId} para transitória: HTTP ${transitResult.status}`);
+      return { success: false, status: transitResult.status, body: `Falha na etapa transitória: ${JSON.stringify(transitResult.body)}` };
+    }
+
+    console.log(`[auvo-gc-sync] OS ${gcOsId} → transitória ${SITUACAO_TRANSITORIA} OK`);
+
+    // ── STEP C: Buscar OS novamente (agora na transitória, com vendedor atualizado) e mover para destino final ──
+    const osTransitoria = await buscarOsAtual(gcOsId, gcHeaders);
+    if (!osTransitoria) {
+      return { success: false, status: 500, body: "Não foi possível buscar OS após etapa transitória" };
+    }
+
+    const payloadFinal: Record<string, unknown> = {
+      ...osTransitoria,
       situacao_id: situacaoId,
     };
 
-    // Se existe mapeamento de técnico→vendedor, força no payload
+    // Garantir vendedor no payload final também
     if (options.vendedorId) {
-      payload.vendedor_id = options.vendedorId;
-      if (options.vendedorNome) payload.nome_vendedor = options.vendedorNome;
+      payloadFinal.vendedor_id = options.vendedorId;
+      if (options.vendedorNome) payloadFinal.nome_vendedor = options.vendedorNome;
     }
 
-    // Campos de leitura que podem causar rejeição/efeito colateral no PUT
-    const camposRemover = ["id", "codigo", "nome_situacao", "cor_situacao", "hash", "cadastrado_em", "modificado_em"];
-    for (const campo of camposRemover) delete payload[campo];
+    const finalResult = await executarPutOs(gcOsId, payloadFinal, gcHeaders, "FINAL");
 
-    if (payload.data_saida == null) payload.data_saida = "";
-
-    // Recalcula totais a partir dos itens para evitar valor_total zerado por efeito colateral da API
-    const totalServicos = sumWrappedItems(payload.servicos, "servico");
-    const totalProdutos = sumWrappedItems(payload.produtos, "produto");
-    const desconto = parseCurrency(payload.desconto_valor);
-    const frete = parseCurrency(payload.valor_frete);
-    const totalCalculado = totalServicos + totalProdutos + frete - desconto;
-
-    if (totalServicos > 0 || totalProdutos > 0 || totalCalculado > 0) {
-      payload.valor_servicos = formatCurrency(totalServicos);
-      payload.valor_produtos = formatCurrency(totalProdutos);
-      payload.valor_total = formatCurrency(totalCalculado);
-      payload.valor = formatCurrency(totalCalculado);
+    if (finalResult.success) {
+      console.log(`[auvo-gc-sync] OS ${gcOsId} → destino ${situacaoId} OK`);
+    } else {
+      console.error(`[auvo-gc-sync] Falha ao mover OS ${gcOsId} para destino ${situacaoId}: HTTP ${finalResult.status}`);
     }
 
-    console.log(
-      `[auvo-gc-sync] PUT OS ${gcOsId}: situacao_id=${situacaoId}, vendedor_id=${String(payload.vendedor_id || "N/A")}, nome_vendedor=${String(payload.nome_vendedor || "N/A")}, valor_total=${String(payload.valor_total || "N/A")}, valor_servicos=${String(payload.valor_servicos || "N/A")}, valor_produtos=${String(payload.valor_produtos || "N/A")}`,
-    );
-
-    const response = await rateLimitedFetch(url, {
-      method: "PUT",
-      headers: gcHeaders,
-      body: JSON.stringify(payload),
-    }, "gc");
-
-    const body = await response.json().catch(() => ({}));
-    return { success: response.ok, status: response.status, body };
+    return finalResult;
   } catch (err) {
     return { success: false, status: 0, body: String(err) };
   }
