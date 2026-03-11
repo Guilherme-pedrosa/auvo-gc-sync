@@ -546,23 +546,6 @@ const AuvoSyncPage = () => {
                                         {changingSituacaoAll ? "Revertendo..." : `Reverter todas (${(log.detalhes as LogDetail[]).filter(d => d.situacao_id_antes && (d.resultado === "atualizada" || d.resultado === "dry_run_ok")).length})`}
                                       </Button>
                                     </div>
-                                    )}
-                                      <Button
-                                        variant="outline"
-                                        size="sm"
-                                        className="text-xs"
-                                        disabled={changingSituacaoAll}
-                                        onClick={(e) => {
-                                          e.stopPropagation();
-                                          setSituacaoDialogBulk(log.detalhes as LogDetail[]);
-                                          setSituacaoDestinoDialog("");
-                                          setSituacaoDialogOpen(true);
-                                        }}
-                                      >
-                                        <Settings2 className="h-3 w-3 mr-1" />
-                                        Alterar situação de todas ({log.detalhes.length})
-                                      </Button>
-                                    </div>
                                     <Table>
                                       <TableHeader>
                                         <TableRow>
