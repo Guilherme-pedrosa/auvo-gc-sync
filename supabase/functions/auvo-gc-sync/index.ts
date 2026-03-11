@@ -67,6 +67,52 @@ function validarSituacaoPermitida(situacaoId: string): boolean {
   return SITUACOES_PERMITIDAS.includes(situacaoId);
 }
 
+function parseCurrency(value: unknown): number {
+  if (typeof value === "number") return Number.isFinite(value) ? value : 0;
+  if (typeof value !== "string") return 0;
+  const raw = value.trim();
+  if (!raw) return 0;
+
+  const hasDot = raw.includes(".");
+  const hasComma = raw.includes(",");
+  let normalized = raw;
+
+  if (hasDot && hasComma) {
+    // Ex.: 1.234,56
+    normalized = raw.replace(/\./g, "").replace(",", ".");
+  } else if (hasComma) {
+    // Ex.: 123,45
+    normalized = raw.replace(",", ".");
+  }
+
+  const parsed = Number.parseFloat(normalized);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function sumWrappedItems(items: unknown, wrapperKey: "servico" | "produto"): number {
+  if (!Array.isArray(items)) return 0;
+  return items.reduce((acc, item) => {
+    const wrapped = (item && typeof item === "object")
+      ? ((item as Record<string, unknown>)[wrapperKey] ?? item)
+      : item;
+
+    if (!wrapped || typeof wrapped !== "object") return acc;
+
+    const data = wrapped as Record<string, unknown>;
+    const valorTotal = parseCurrency(data.valor_total);
+    if (valorTotal > 0) return acc + valorTotal;
+
+    const qtd = parseCurrency(data.quantidade || 1);
+    const venda = parseCurrency(data.valor_venda);
+    const desconto = parseCurrency(data.desconto_valor);
+    return acc + Math.max(0, (qtd * venda) - desconto);
+  }, 0);
+}
+
+function formatCurrency(value: number): string {
+  return Math.max(0, value).toFixed(2);
+}
+
 // ─── STEP 1: Buscar OS com tarefa Auvo ───
 async function fetchOsComTarefaAuvo(gcHeaders: Record<string, string>, dataInicio?: string, dataFim?: string): Promise<Array<{
   gc_os_id: string;
