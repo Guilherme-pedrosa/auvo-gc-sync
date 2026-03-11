@@ -380,8 +380,10 @@ Deno.serve(async (req) => {
       try {
         const paramFilter = encodeURIComponent(JSON.stringify({}));
         const url = `${AUVO_BASE_URL}/users/?page=1&pageSize=200&order=asc&paramFilter=${paramFilter}`;
+        console.log(`[auvo-gc-sync] Fetching users from: ${url}`);
         const response = await fetch(url, { headers: auvoHeaders(auvoBearerToken) });
         const text = await response.text();
+        console.log(`[auvo-gc-sync] Users response (${response.status}): ${text.substring(0, 500)}`);
         let data: any = {};
         try { data = JSON.parse(text); } catch { /* empty response */ }
         const users = data?.result?.entityList || data?.result?.Entities || data?.result || [];
