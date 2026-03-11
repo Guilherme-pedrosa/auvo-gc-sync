@@ -43,6 +43,7 @@ type LogDetail = {
   detalhe: string;
   situacao_antes: string;
   situacao_depois: string | null;
+  data_os?: string;
   auvo_tecnico_id?: string | null;
   gc_vendedor_id?: string | null;
   gc_vendedor_nome?: string | null;
