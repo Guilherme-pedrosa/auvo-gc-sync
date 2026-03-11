@@ -898,6 +898,50 @@ const AuvoSyncPage = () => {
           </Card>
         </TabsContent>
       </Tabs>
+
+      {/* Dialog para alterar situação */}
+      <Dialog open={situacaoDialogOpen} onOpenChange={(open) => { setSituacaoDialogOpen(open); if (!open) { setSituacaoDialogTarget(null); setSituacaoDialogBulk(null); } }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Alterar Situação</DialogTitle>
+            <DialogDescription>
+              {situacaoDialogBulk
+                ? `Alterar a situação de ${situacaoDialogBulk.length} OS`
+                : `Alterar a situação da OS ${situacaoDialogTarget?.gc_os_codigo}`
+              }
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3">
+            <label className="text-sm font-medium">Nova situação</label>
+            <Select value={situacaoDestinoDialog} onValueChange={setSituacaoDestinoDialog}>
+              <SelectTrigger><SelectValue placeholder="Selecione a situação" /></SelectTrigger>
+              <SelectContent>
+                {SITUACOES_OPTIONS.map((s) => (
+                  <SelectItem key={s.id} value={s.id}>{s.label}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setSituacaoDialogOpen(false)}>Cancelar</Button>
+            <Button
+              disabled={!situacaoDestinoDialog || changingSituacao !== null || changingSituacaoAll}
+              onClick={async () => {
+                if (situacaoDialogBulk) {
+                  await alterarSituacaoTodas(situacaoDialogBulk, situacaoDestinoDialog);
+                } else if (situacaoDialogTarget) {
+                  await alterarSituacaoOS(situacaoDialogTarget, situacaoDestinoDialog);
+                }
+                setSituacaoDialogOpen(false);
+                setSituacaoDialogTarget(null);
+                setSituacaoDialogBulk(null);
+              }}
+            >
+              {changingSituacaoAll ? "Alterando todas..." : changingSituacao ? "Alterando..." : "Confirmar"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };
