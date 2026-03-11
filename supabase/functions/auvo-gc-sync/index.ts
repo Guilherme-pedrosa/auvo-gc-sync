@@ -403,11 +403,9 @@ async function atualizarSituacaoOsGC(
     return { success: false, status: 403, body: `Situação ${situacaoId} bloqueada pela whitelist` };
   }
   const url = `${GC_BASE_URL}/api/ordens_servicos/${gcOsId}`;
+  // ── SEGURANÇA: payload MÍNIMO — NUNCA alterar nome_cliente, vendedor, ou outros campos ──
+  // Apenas situacao_id é permitido no PUT de OS
   const payload: Record<string, unknown> = { situacao_id: situacaoId };
-  if (gcVendedorId) {
-    payload.vendedor_id = gcVendedorId;
-    payload.funcionario_id = gcVendedorId;
-  }
   try {
     const response = await rateLimitedFetch(url, {
       method: "PUT", headers: gcHeaders,
