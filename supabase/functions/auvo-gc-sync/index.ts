@@ -61,6 +61,7 @@ const SITUACOES_PERMITIDAS = [
   "7213493", "7684665", "7748831", "8219136",
   "7116099", // destino padrão da sync (EXECUTADO - AG. NEGOCIAÇÃO)
   "8889036", // FECHADO CHAMADO
+  "8896431", // TRANSITÓRIA (permite editar vendedor, financeiro, etc.)
 ];
 
 function validarSituacaoPermitida(situacaoId: string): boolean {
