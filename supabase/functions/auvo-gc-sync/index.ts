@@ -187,13 +187,35 @@ async function fetchItensPecasOsGC(
   }
 }
 
-// ─── STEP 2.2: Buscar materiais Auvo (v2) ───
+// ─── STEP 2.2: Parsear texto livre de peças (multi-linha) ───
+// Formato: "01 placa controladora cód (16020427)\n02 sensor digital..."
+function parsePecasTextoLivre(texto: string): Array<{ descricao: string; quantidade: number }> {
+  const linhas = texto.split(/\n/).map(l => l.trim()).filter(l => l.length > 0);
+  const resultado: Array<{ descricao: string; quantidade: number }> = [];
+
+  for (const linha of linhas) {
+    const match = linha.match(/^(\d+)\s+(.+)/);
+    if (match) {
+      resultado.push({
+        quantidade: parseInt(match[1], 10) || 1,
+        descricao: match[2].trim(),
+      });
+    } else {
+      resultado.push({ descricao: linha, quantidade: 1 });
+    }
+  }
+
+  return resultado;
+}
+
+// ─── STEP 2.2b: Buscar materiais Auvo (v2) ───
 async function fetchMateriaisAuvoTask(
   taskId: string, bearerToken: string, tarefaRaw?: any
 ): Promise<Array<{ descricao: string; quantidade: number }>> {
   const materiais: Array<{ descricao: string; quantidade: number }> = [];
 
   if (tarefaRaw) {
+    // 1. Campo products da API (geralmente vazio)
     const produtosNaTarefa: any[] = tarefaRaw?.products || tarefaRaw?.materials || tarefaRaw?.materiais || tarefaRaw?.itens || [];
     for (const p of produtosNaTarefa) {
       const desc = String(p.description || p.descricao || p.name || p.nome || "").trim();
@@ -201,14 +223,28 @@ async function fetchMateriaisAuvoTask(
       if (desc) materiais.push({ descricao: desc, quantidade: qty });
     }
 
+    // 2. Questionários — parsear campos de peças como texto livre multi-linha
     const questionnaires: any[] = tarefaRaw?.questionnaires || [];
+    const CAMPOS_PECAS = ["peças necessárias", "pecas necessarias", "peças trocadas", "pecas trocadas",
+      "peças utilizadas", "pecas utilizadas", "materiais utilizados", "material utilizado"];
+
     for (const q of questionnaires) {
       for (const answer of (q.answers || [])) {
-        const qDesc = String(answer.questionDescription || "").toLowerCase();
-        if (qDesc.includes("peça") || qDesc.includes("peca") || qDesc.includes("material") ||
-            qDesc.includes("produto") || qDesc.includes("componente") || qDesc.includes("part") || qDesc.includes("item")) {
-          const replyText = String(answer.reply || "").trim();
-          if (replyText) materiais.push({ descricao: replyText, quantidade: 1 });
+        const qDesc = String(answer.questionDescription || "").toLowerCase().trim();
+        const replyText = String(answer.reply || "").trim();
+        // Ignora respostas vazias ou URLs (fotos)
+        if (!replyText || replyText.startsWith("http://") || replyText.startsWith("https://")) continue;
+
+        const ehCampoPecas = CAMPOS_PECAS.some(cp => qDesc.includes(cp)) ||
+          ((qDesc.includes("peça") || qDesc.includes("peca")) && !qDesc.includes("foto"));
+
+        if (ehCampoPecas) {
+          const pecasParsed = parsePecasTextoLivre(replyText);
+          console.log(`[auvo-gc-sync] Task ${taskId} — campo "${answer.questionDescription}": ${pecasParsed.length} peças parseadas de texto livre`);
+          for (const p of pecasParsed) {
+            console.log(`[auvo-gc-sync]   → ${p.quantidade}x ${p.descricao}`);
+          }
+          materiais.push(...pecasParsed);
         }
       }
     }
