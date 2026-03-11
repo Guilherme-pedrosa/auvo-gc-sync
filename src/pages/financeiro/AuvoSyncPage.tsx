@@ -255,12 +255,31 @@ const AuvoSyncPage = () => {
     setSelectedOsIds(new Set());
   };
 
+  // ─── Unique lists for post-filters ───
+  const clientesUnicos = useMemo(() => {
+    if (!conciliacaoData) return [];
+    return [...new Set(conciliacaoData.map(i => i.gc_cliente).filter(Boolean))].sort((a, b) => a.localeCompare(b, "pt-BR"));
+  }, [conciliacaoData]);
+
+  const situacoesUnicas = useMemo(() => {
+    if (!conciliacaoData) return [];
+    return [...new Set(conciliacaoData.map(i => i.gc_situacao).filter(Boolean))].sort((a, b) => a.localeCompare(b, "pt-BR"));
+  }, [conciliacaoData]);
+
+  const tecnicosUnicos = useMemo(() => {
+    if (!conciliacaoData) return [];
+    return [...new Set(conciliacaoData.map(i => i.auvo_tecnico_nome).filter(Boolean) as string[])].sort((a, b) => a.localeCompare(b, "pt-BR"));
+  }, [conciliacaoData]);
+
   // ─── Filtered + searched data ───
   const itensFiltrados = useMemo(() => {
     if (!conciliacaoData) return [];
     let items = conciliacaoData;
     if (filtroConciliacao === "pendentes") items = items.filter(i => !i.conciliada);
     else if (filtroConciliacao === "conciliadas") items = items.filter(i => i.conciliada);
+    if (filtroClientePos) items = items.filter(i => i.gc_cliente === filtroClientePos);
+    if (filtroSituacaoPos) items = items.filter(i => i.gc_situacao === filtroSituacaoPos);
+    if (filtroTecnicoPos) items = items.filter(i => i.auvo_tecnico_nome === filtroTecnicoPos);
     if (searchText.trim()) {
       const q = searchText.toLowerCase();
       items = items.filter(i =>
@@ -272,7 +291,7 @@ const AuvoSyncPage = () => {
       );
     }
     return items;
-  }, [conciliacaoData, filtroConciliacao, searchText]);
+  }, [conciliacaoData, filtroConciliacao, filtroClientePos, filtroSituacaoPos, filtroTecnicoPos, searchText]);
 
   const totalConciliadas = conciliacaoData?.filter(i => i.conciliada).length || 0;
   const totalPendentes = conciliacaoData?.filter(i => !i.conciliada).length || 0;
