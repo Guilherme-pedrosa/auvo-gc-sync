@@ -6,7 +6,7 @@ const corsHeaders = {
 };
 
 const GC_BASE_URL = "https://api.gestaoclick.com";
-const AUVO_BASE_URL = "https://app.auvo.com.br/api/v1.0";
+const AUVO_BASE_URL = "https://api.auvo.com.br/v2";
 const MIN_DELAY_MS = 400;
 let lastGcCall = 0;
 let lastAuvoCall = 0;
@@ -19,6 +19,24 @@ async function rateLimitedFetch(url: string, options: RequestInit, type: "gc" | 
   if (type === "gc") lastGcCall = Date.now();
   else lastAuvoCall = Date.now();
   return fetch(url, options);
+}
+
+// ─── Auvo v2 Login ───
+async function auvoLogin(apiKey: string, apiToken: string): Promise<string> {
+  const url = `${AUVO_BASE_URL}/login/?apiKey=${encodeURIComponent(apiKey)}&apiToken=${encodeURIComponent(apiToken)}`;
+  const response = await fetch(url, { method: "GET", headers: { "Content-Type": "application/json" } });
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(`Auvo login failed (${response.status}): ${text}`);
+  }
+  const data = await response.json();
+  const token = data?.result?.accessToken;
+  if (!token) throw new Error("Auvo login: accessToken não retornado");
+  return token;
+}
+
+function auvoHeaders(bearerToken: string): Record<string, string> {
+  return { "Authorization": `Bearer ${bearerToken}`, "Content-Type": "application/json" };
 }
 
 const SITUACOES_EXCLUIR = [
@@ -75,15 +93,15 @@ async function fetchOsComTarefaAuvo(gcHeaders: Record<string, string>): Promise<
   return results;
 }
 
-// ─── STEP 2: Consultar tarefa Auvo ───
-async function getAuvoTask(taskId: string, appKey: string, token: string): Promise<any | null> {
-  const url = `${AUVO_BASE_URL}/tasks/${taskId}?appKey=${appKey}&token=${token}`;
+// ─── STEP 2: Consultar tarefa Auvo (v2) ───
+async function getAuvoTask(taskId: string, bearerToken: string): Promise<any | null> {
+  const url = `${AUVO_BASE_URL}/tasks/${taskId}`;
   try {
-    const response = await rateLimitedFetch(url, { headers: { "Content-Type": "application/json" } }, "auvo");
+    const response = await rateLimitedFetch(url, { headers: auvoHeaders(bearerToken) }, "auvo");
     if (response.status === 404) return null;
     if (!response.ok) { console.error(`[auvo-gc-sync] Auvo task ${taskId} error: ${response.status}`); return null; }
     const data = await response.json();
-    const entity = data?.result?.Entities?.[0] ?? data?.result?.[0] ?? data;
+    const entity = data?.result ?? data;
     if (!entity) return null;
     return {
       taskID: entity.taskID ?? entity.id,
@@ -93,7 +111,6 @@ async function getAuvoTask(taskId: string, appKey: string, token: string): Promi
       checkIn: entity.checkIn === true,
       checkOut: entity.checkOut === true,
       report: String(entity.report ?? ""),
-      // Keep raw for parts validation
       _raw: entity,
     };
   } catch (err) {
@@ -130,9 +147,9 @@ async function fetchItensPecasOsGC(
   }
 }
 
-// ─── STEP 2.2: Buscar materiais Auvo ───
+// ─── STEP 2.2: Buscar materiais Auvo (v2) ───
 async function fetchMateriaisAuvoTask(
-  taskId: string, appKey: string, token: string, tarefaRaw?: any
+  taskId: string, bearerToken: string, tarefaRaw?: any
 ): Promise<Array<{ descricao: string; quantidade: number }>> {
   const materiais: Array<{ descricao: string; quantidade: number }> = [];
 
@@ -159,11 +176,11 @@ async function fetchMateriaisAuvoTask(
   }
 
   try {
-    const url = `${AUVO_BASE_URL}/tasks/${taskId}/products?appKey=${appKey}&token=${token}`;
-    const response = await rateLimitedFetch(url, { headers: { "Content-Type": "application/json" } }, "auvo");
+    const url = `${AUVO_BASE_URL}/tasks/${taskId}/products`;
+    const response = await rateLimitedFetch(url, { headers: auvoHeaders(bearerToken) }, "auvo");
     if (response.ok) {
       const data = await response.json();
-      const lista: any[] = data?.result?.Entities || data?.result || data?.data || [];
+      const lista: any[] = data?.result?.entityList || data?.result?.Entities || data?.result || data?.data || [];
       for (const p of lista) {
         const desc = String(p.description || p.descricao || p.name || p.nome || "").trim();
         const qty = parseFloat(String(p.quantity || p.quantidade || "1"));
@@ -235,14 +252,14 @@ interface ResultadoValidacaoPecas {
 
 async function validarPecasOsVsExecucao(
   gcOsId: string, auvoTaskId: string, tarefaRaw: any,
-  gcHeaders: Record<string, string>, auvoAppKey: string, auvoToken: string
+  gcHeaders: Record<string, string>, auvoBearerToken: string
 ): Promise<ResultadoValidacaoPecas> {
   const THRESHOLD_COMPLETO = parseInt(Deno.env.get("AUVO_PECAS_THRESHOLD") || "75") / 100;
   const THRESHOLD_PARCIAL = parseInt(Deno.env.get("AUVO_PECAS_PARCIAL") || "40") / 100;
 
   const [pecasOrcamento, materiaisExecucao] = await Promise.all([
     fetchItensPecasOsGC(gcOsId, gcHeaders),
-    fetchMateriaisAuvoTask(auvoTaskId, auvoAppKey, auvoToken, tarefaRaw),
+    fetchMateriaisAuvoTask(auvoTaskId, auvoBearerToken, tarefaRaw),
   ]);
 
   if (pecasOrcamento.length === 0) {
@@ -320,12 +337,12 @@ Deno.serve(async (req) => {
   try {
     const gcAccessToken = Deno.env.get("GC_ACCESS_TOKEN");
     const gcSecretToken = Deno.env.get("GC_SECRET_TOKEN");
-    const auvoAppKey = Deno.env.get("AUVO_APP_KEY");
-    const auvoToken = Deno.env.get("AUVO_TOKEN");
+    const auvoApiKey = Deno.env.get("AUVO_APP_KEY");
+    const auvoApiToken = Deno.env.get("AUVO_TOKEN");
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
-    if (!gcAccessToken || !gcSecretToken || !auvoAppKey || !auvoToken) {
+    if (!gcAccessToken || !gcSecretToken || !auvoApiKey || !auvoApiToken) {
       return new Response(
         JSON.stringify({ error: "Credenciais não configuradas (GC ou Auvo)" }),
         { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
@@ -345,15 +362,28 @@ Deno.serve(async (req) => {
       // empty body is OK
     }
 
+    // ─── Auvo Login (v2 — Bearer token) ───
+    console.log("[auvo-gc-sync] Fazendo login na API Auvo v2...");
+    let auvoBearerToken: string;
+    try {
+      auvoBearerToken = await auvoLogin(auvoApiKey, auvoApiToken);
+      console.log("[auvo-gc-sync] Login Auvo v2 OK");
+    } catch (err) {
+      return new Response(
+        JSON.stringify({ error: `Falha no login Auvo: ${(err as Error).message}` }),
+        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
     // ─── Action: list_auvo_users ───
     if (body?.action === "list_auvo_users") {
       try {
-        const url = `${AUVO_BASE_URL}/users?appKey=${auvoAppKey}&token=${auvoToken}&limite=100`;
-        const response = await fetch(url, { headers: { "Content-Type": "application/json" } });
+        const url = `${AUVO_BASE_URL}/users/?page=1&pageSize=200&order=asc&paramFilter={}`;
+        const response = await fetch(url, { headers: auvoHeaders(auvoBearerToken) });
         const text = await response.text();
         let data: any = {};
         try { data = JSON.parse(text); } catch { /* empty response */ }
-        const users = data?.result?.Entities || data?.result || data?.data || [];
+        const users = data?.result?.entityList || data?.result?.Entities || data?.result || [];
         return new Response(JSON.stringify({ users, status: response.status }), {
           status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
@@ -400,7 +430,7 @@ Deno.serve(async (req) => {
 
       console.log(`[auvo-gc-sync] Processando OS ${os.gc_os_codigo} → tarefa Auvo ${os.auvo_task_id}`);
 
-      const tarefa = await getAuvoTask(os.auvo_task_id, auvoAppKey, auvoToken);
+      const tarefa = await getAuvoTask(os.auvo_task_id, auvoBearerToken);
 
       if (!tarefa) {
         naoEncontradas++;
@@ -420,7 +450,7 @@ Deno.serve(async (req) => {
 
       // ─── Validação de peças ───
       const validacaoPecas = await validarPecasOsVsExecucao(
-        os.gc_os_id, os.auvo_task_id, tarefa._raw, gcHeaders, auvoAppKey, auvoToken
+        os.gc_os_id, os.auvo_task_id, tarefa._raw, gcHeaders, auvoBearerToken
       );
       console.log(`[auvo-gc-sync] OS ${os.gc_os_codigo} — validação peças: ${validacaoPecas.resumo}`);
 
