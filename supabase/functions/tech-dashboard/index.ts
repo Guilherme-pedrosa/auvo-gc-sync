@@ -6,12 +6,14 @@ const corsHeaders = {
 };
 
 const AUVO_BASE_URL = "https://api.auvo.com.br/v2";
-const GC_BASE_URL = "https://api.gestaoclick.com";
 
 async function auvoLogin(apiKey: string, apiToken: string): Promise<string> {
   const url = `${AUVO_BASE_URL}/login/?apiKey=${encodeURIComponent(apiKey)}&apiToken=${encodeURIComponent(apiToken)}`;
   const response = await fetch(url, { method: "GET", headers: { "Content-Type": "application/json" } });
-  if (!response.ok) throw new Error(`Auvo login failed (${response.status})`);
+  if (!response.ok) {
+    const errBody = await response.text().catch(() => "");
+    throw new Error(`Auvo login failed (${response.status}): ${errBody.substring(0, 200)}`);
+  }
   const data = await response.json();
   const token = data?.result?.accessToken;
   if (!token) throw new Error("Auvo login: accessToken não retornado");
@@ -22,76 +24,79 @@ function auvoHeaders(token: string): Record<string, string> {
   return { Authorization: `Bearer ${token}`, "Content-Type": "application/json" };
 }
 
-// Fetch all tasks from Auvo for a date range, paginated
+/**
+ * Fetch all FINALIZED tasks from Auvo for a date range, paginated.
+ * 
+ * IMPORTANT - Auvo API V2 spec:
+ * - paramFilter é JSON string URL-encoded
+ * - startDate e endDate são OBRIGATÓRIOS no formato yyyy-MM-ddTHH:mm:ss (sem timezone, sem Z)
+ * - status=3 = finalizedAutomaticallyOrManually
+ */
 async function fetchAllAuvoTasks(
   bearerToken: string,
-  startDate: string,
-  endDate: string
-): Promise<any[]> {
+  startDate: string, // yyyy-MM-dd
+  endDate: string    // yyyy-MM-dd
+): Promise<{ tasks: any[]; error: string | null }> {
   const allTasks: any[] = [];
   let page = 1;
   const pageSize = 100;
-  let hasMore = true;
+  const MAX_PAGES = 10; // Safety limit
 
-  while (hasMore) {
-    const [sy, sm, sd] = startDate.split("-");
-    const [ey, em, ed] = endDate.split("-");
-    const paramFilter = encodeURIComponent(JSON.stringify({ startDate: `${sm}/${sd}/${sy}`, endDate: `${em}/${ed}/${ey}` }));
-    const url = `${AUVO_BASE_URL}/tasks/?Page=${page}&PageSize=${pageSize}&Order=asc&ParamFilter=${paramFilter}`;
-    console.log(`[tech-dashboard] Fetching page ${page}: ${url}`);
+  // Formato exigido pela spec: yyyy-MM-ddTHH:mm:ss (sem Z, sem timezone)
+  const formattedStart = `${startDate}T00:00:00`;
+  const formattedEnd = `${endDate}T23:59:59`;
+
+  console.log(`[tech-dashboard] startDate=${formattedStart}, endDate=${formattedEnd}`);
+
+  while (page <= MAX_PAGES) {
+    // paramFilter: JSON stringified + URL encoded, com status=3 (finalizadas)
+    const filterObj = {
+      startDate: formattedStart,
+      endDate: formattedEnd,
+      status: 3,
+    };
+    const paramFilter = encodeURIComponent(JSON.stringify(filterObj));
+    const url = `${AUVO_BASE_URL}/tasks/?page=${page}&pageSize=${pageSize}&order=asc&paramFilter=${paramFilter}`;
+
+    console.log(`[tech-dashboard] Fetching page ${page} (filter: startDate=${formattedStart}, endDate=${formattedEnd}, status=3)`);
+
     const response = await fetch(url, { headers: auvoHeaders(bearerToken) });
+
     if (!response.ok) {
       const errBody = await response.text().catch(() => "");
-      console.error(`[tech-dashboard] Error: ${response.status} — ${errBody.substring(0, 300)}`);
-      break;
+      const errorMsg = `Auvo tasks API retornou ${response.status}: ${errBody.substring(0, 500)}`;
+      console.error(`[tech-dashboard] ${errorMsg}`);
+      return { tasks: allTasks, error: errorMsg };
     }
-    
+
+    const responseText = await response.text();
     let data: any;
-    try { data = JSON.parse(responseText); } catch { break; }
+    try {
+      data = JSON.parse(responseText);
+    } catch {
+      console.error(`[tech-dashboard] JSON parse error on page ${page}`);
+      return { tasks: allTasks, error: "Resposta inválida (não é JSON) da API Auvo" };
+    }
+
     const entities = data?.result?.entityList || data?.result?.Entities || [];
+
     if (page === 1 && entities.length > 0) {
       console.log(`[tech-dashboard] First task keys: ${Object.keys(entities[0]).join(", ")}`);
       console.log(`[tech-dashboard] First task sample: ${JSON.stringify(entities[0]).substring(0, 1000)}`);
     }
+
     allTasks.push(...entities);
-    console.log(`[tech-dashboard] Page ${page}: ${entities.length} tasks (total: ${allTasks.length})`);
-    if (entities.length < pageSize) hasMore = false;
-    else page++;
-    // Safety limit
-    if (page > 50) break;
-  }
+    console.log(`[tech-dashboard] Page ${page}: ${entities.length} tasks (total acumulado: ${allTasks.length})`);
 
-  return allTasks;
-}
-
-// Fetch OS count from GC for a date range
-async function fetchGcOsCount(
-  gcHeaders: Record<string, string>,
-  dataInicio: string,
-  dataFim: string
-): Promise<{ total: number; porSituacao: Record<string, number> }> {
-  let total = 0;
-  const porSituacao: Record<string, number> = {};
-  let page = 1;
-  let totalPages = 1;
-
-  while (page <= totalPages && page <= 20) {
-    const url = `${GC_BASE_URL}/api/ordens_servicos?limite=100&pagina=${page}&data_inicio=${dataInicio}&data_fim=${dataFim}`;
-    const response = await fetch(url, { headers: gcHeaders });
-    if (!response.ok) break;
-    const data = await response.json();
-    const records: any[] = Array.isArray(data?.data) ? data.data : [];
-    totalPages = data?.meta?.total_paginas || 1;
-
-    for (const os of records) {
-      total++;
-      const sit = String(os.nome_situacao || "Desconhecida");
-      porSituacao[sit] = (porSituacao[sit] || 0) + 1;
-    }
+    if (entities.length < pageSize) break;
     page++;
   }
 
-  return { total, porSituacao };
+  if (page > MAX_PAGES) {
+    console.warn(`[tech-dashboard] Atingiu limite de ${MAX_PAGES} páginas, total parcial: ${allTasks.length}`);
+  }
+
+  return { tasks: allTasks, error: null };
 }
 
 Deno.serve(async (req) => {
@@ -100,8 +105,6 @@ Deno.serve(async (req) => {
   try {
     const auvoApiKey = Deno.env.get("AUVO_APP_KEY");
     const auvoApiToken = Deno.env.get("AUVO_TOKEN");
-    const gcAccessToken = Deno.env.get("GC_ACCESS_TOKEN");
-    const gcSecretToken = Deno.env.get("GC_SECRET_TOKEN");
 
     if (!auvoApiKey || !auvoApiToken) {
       return new Response(JSON.stringify({ error: "Credenciais Auvo não configuradas" }), {
@@ -115,16 +118,15 @@ Deno.serve(async (req) => {
     const today = new Date();
     const startDate = body.start_date || today.toISOString().split("T")[0];
     const endDate = body.end_date || today.toISOString().split("T")[0];
-    const periodo = body.periodo || "dia"; // dia, semana, mes
 
-    console.log(`[tech-dashboard] Período: ${startDate} a ${endDate}`);
+    console.log(`[tech-dashboard] Período solicitado: ${startDate} a ${endDate}`);
 
     // Login Auvo
     const bearerToken = await auvoLogin(auvoApiKey, auvoApiToken);
 
-    // Fetch all tasks
-    const tasks = await fetchAllAuvoTasks(bearerToken, startDate, endDate);
-    console.log(`[tech-dashboard] Total tasks: ${tasks.length}`);
+    // Fetch finalized tasks
+    const { tasks, error: auvoError } = await fetchAllAuvoTasks(bearerToken, startDate, endDate);
+    console.log(`[tech-dashboard] Total tasks retornadas: ${tasks.length}`);
 
     // Group by technician
     const techMap: Record<string, {
@@ -165,7 +167,9 @@ Deno.serve(async (req) => {
       const tech = techMap[techId];
       tech.tarefas_total++;
 
-      const finished = task.finished === true || task.finished === "true";
+      // Como filtramos status=3 (finalizadas), todas são finalizadas
+      // Mas verificamos o campo finished por segurança
+      const finished = task.finished === true || task.finished === "true" || task.status === 3;
       if (finished) tech.tarefas_finalizadas++;
       else tech.tarefas_abertas++;
 
@@ -206,7 +210,6 @@ Deno.serve(async (req) => {
         : 0;
       const mediaExecucoesDia = Math.round((tech.tarefas_finalizadas / dias) * 10) / 10;
       const tempoHoras = Math.round(tech.tempo_total_minutos / 60 * 10) / 10;
-      // Assuming 8h workday
       const tempoAtividadePct = dias > 0
         ? Math.round((tech.tempo_total_minutos / (dias * 480)) * 100)
         : 0;
@@ -232,11 +235,11 @@ Deno.serve(async (req) => {
     const resumo = {
       periodo: { inicio: startDate, fim: endDate },
       total_tarefas: tasks.length,
-      total_finalizadas: tasks.filter((t: any) => t.finished === true || t.finished === "true").length,
+      total_finalizadas: tasks.filter((t: any) => t.finished === true || t.finished === "true" || t.status === 3).length,
       total_tecnicos: tecnicos.length,
     };
 
-    return new Response(JSON.stringify({ resumo, tecnicos }), {
+    return new Response(JSON.stringify({ resumo, tecnicos, auvo_error: auvoError }), {
       status: 200,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });

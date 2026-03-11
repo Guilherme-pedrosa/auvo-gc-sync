@@ -38,6 +38,8 @@ type DashboardData = {
     total_tecnicos: number;
   };
   tecnicos: TecnicoData[];
+  auvo_error?: string | null;
+  error?: string;
 };
 
 const METAS = {
@@ -71,16 +73,18 @@ const TechDashboardPage = () => {
 
   const dates = getDates();
 
-  const { data, isLoading, refetch } = useQuery({
+  const { data, isLoading, error: queryError, refetch } = useQuery({
     queryKey: ["tech-dashboard", dates.start, dates.end],
     queryFn: async () => {
       const { data, error } = await supabase.functions.invoke("tech-dashboard", {
         body: { start_date: dates.start, end_date: dates.end },
       });
       if (error) throw error;
+      if (data?.error) throw new Error(data.error);
       return data as DashboardData;
     },
     refetchInterval: 60000,
+    retry: false,
   });
 
   const metaBadge = (valor: number, meta: number) => {
@@ -180,6 +184,31 @@ const TechDashboardPage = () => {
           {dates.start === dates.end ? format(new Date(dates.start + "T12:00:00"), "dd/MM/yyyy") : `${format(new Date(dates.start + "T12:00:00"), "dd/MM")} → ${format(new Date(dates.end + "T12:00:00"), "dd/MM/yyyy")}`}
         </Badge>
       </div>
+
+      {/* Error display */}
+      {queryError && (
+        <Card className="border-destructive">
+          <CardContent className="pt-6">
+            <div className="flex items-center gap-2 text-destructive">
+              <AlertTriangle className="h-5 w-5" />
+              <span className="font-medium">Erro ao consultar Auvo:</span>
+              <span className="text-sm">{(queryError as Error).message}</span>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {data?.auvo_error && (
+        <Card className="border-yellow-500">
+          <CardContent className="pt-6">
+            <div className="flex items-center gap-2 text-yellow-600">
+              <AlertTriangle className="h-5 w-5" />
+              <span className="font-medium">Aviso Auvo:</span>
+              <span className="text-sm truncate">{data.auvo_error}</span>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Resumo Cards */}
       {data?.resumo && (
