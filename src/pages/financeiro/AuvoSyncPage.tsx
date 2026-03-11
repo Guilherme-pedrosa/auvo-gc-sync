@@ -538,7 +538,7 @@ const AuvoSyncPage = () => {
                         </TableHead>
                         <TableHead className="text-center">Check-in</TableHead>
                         <TableHead className="text-center">Check-out</TableHead>
-                        {filtroConciliacao !== "conciliadas" && <TableHead className="w-[100px]">Ação</TableHead>}
+                        <TableHead className="w-[100px]">Ação</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
