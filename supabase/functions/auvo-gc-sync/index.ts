@@ -617,7 +617,7 @@ Deno.serve(async (req) => {
       }
     }
 
-    // ─── Action: debug_task ───
+    if (body?.action === "debug_task") {
       const taskId = String(body.task_id || "");
       if (!taskId) {
         return new Response(JSON.stringify({ error: "task_id obrigatório" }), {
