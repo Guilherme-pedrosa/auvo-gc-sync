@@ -286,6 +286,8 @@ const AuvoSyncPage = () => {
       const syncBody: any = { dry_run: dryRun };
       if (dataInicio) syncBody.data_inicio = format(dataInicio, "yyyy-MM-dd");
       if (dataFim) syncBody.data_fim = format(dataFim, "yyyy-MM-dd");
+      if (filtroCliente.trim()) syncBody.filtro_cliente = filtroCliente.trim();
+      if (filtroStatusTarefa === "todas") syncBody.incluir_pendencia = true;
       const { data, error } = await supabase.functions.invoke("auvo-gc-sync", { body: syncBody });
       if (error) throw error;
       toast.success(
