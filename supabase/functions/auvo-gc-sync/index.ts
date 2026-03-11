@@ -67,6 +67,52 @@ function validarSituacaoPermitida(situacaoId: string): boolean {
   return SITUACOES_PERMITIDAS.includes(situacaoId);
 }
 
+function parseCurrency(value: unknown): number {
+  if (typeof value === "number") return Number.isFinite(value) ? value : 0;
+  if (typeof value !== "string") return 0;
+  const raw = value.trim();
+  if (!raw) return 0;
+
+  const hasDot = raw.includes(".");
+  const hasComma = raw.includes(",");
+  let normalized = raw;
+
+  if (hasDot && hasComma) {
+    // Ex.: 1.234,56
+    normalized = raw.replace(/\./g, "").replace(",", ".");
+  } else if (hasComma) {
+    // Ex.: 123,45
+    normalized = raw.replace(",", ".");
+  }
+
+  const parsed = Number.parseFloat(normalized);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function sumWrappedItems(items: unknown, wrapperKey: "servico" | "produto"): number {
+  if (!Array.isArray(items)) return 0;
+  return items.reduce((acc, item) => {
+    const wrapped = (item && typeof item === "object")
+      ? ((item as Record<string, unknown>)[wrapperKey] ?? item)
+      : item;
+
+    if (!wrapped || typeof wrapped !== "object") return acc;
+
+    const data = wrapped as Record<string, unknown>;
+    const valorTotal = parseCurrency(data.valor_total);
+    if (valorTotal > 0) return acc + valorTotal;
+
+    const qtd = parseCurrency(data.quantidade || 1);
+    const venda = parseCurrency(data.valor_venda);
+    const desconto = parseCurrency(data.desconto_valor);
+    return acc + Math.max(0, (qtd * venda) - desconto);
+  }, 0);
+}
+
+function formatCurrency(value: number): string {
+  return Math.max(0, value).toFixed(2);
+}
+
 // ─── STEP 1: Buscar OS com tarefa Auvo ───
 async function fetchOsComTarefaAuvo(gcHeaders: Record<string, string>, dataInicio?: string, dataFim?: string): Promise<Array<{
   gc_os_id: string;
@@ -401,56 +447,80 @@ async function validarPecasOsVsExecucao(
   return { aprovado, sem_pecas_orcamento: false, pecas_orcamento: pecasOrcamento, materiais_execucao: materiaisExecucao, itens_cobertos: cobertos, itens_faltando: faltando, itens_parciais: parciais, resumo };
 }
 
-// ─── STEP 3: Atualizar APENAS situação GC — busca OS atual e reenvia todos os campos ───
+// ─── STEP 3: Atualizar situação GC preservando OS completa + vendedor mapeado ───
+type AtualizarSituacaoOptions = {
+  vendedorId?: string | null;
+  vendedorNome?: string | null;
+};
+
 async function atualizarSituacaoOsGC(
-  gcOsId: string, situacaoId: string, gcHeaders: Record<string, string>
+  gcOsId: string,
+  situacaoId: string,
+  gcHeaders: Record<string, string>,
+  options: AtualizarSituacaoOptions = {},
 ): Promise<{ success: boolean; status: number; body: unknown }> {
-  // ── TRAVA DE SEGURANÇA: só permite situações da whitelist ──
   if (!validarSituacaoPermitida(situacaoId)) {
     console.error(`[BLOQUEADO] Tentativa de alterar OS ${gcOsId} para situação ${situacaoId} que NÃO está na whitelist!`);
     return { success: false, status: 403, body: `Situação ${situacaoId} bloqueada pela whitelist` };
   }
+
   const url = `${GC_BASE_URL}/api/ordens_servicos/${gcOsId}`;
 
   try {
-    // ── Buscar OS atual para preservar TODOS os campos (vendedor, valor, etc.) ──
     const getResp = await rateLimitedFetch(url, { headers: gcHeaders }, "gc");
     if (!getResp.ok) {
       console.error(`[auvo-gc-sync] Erro ao buscar OS ${gcOsId} antes do PUT: HTTP ${getResp.status}`);
       return { success: false, status: getResp.status, body: `Erro ao buscar OS atual: HTTP ${getResp.status}` };
     }
+
     const getData = await getResp.json();
     const osAtual = getData?.data ?? getData;
+    if (!osAtual || typeof osAtual !== "object") {
+      return { success: false, status: 500, body: "Formato inesperado da OS ao montar payload" };
+    }
 
-    // ── Montar payload preservando campos críticos ──
+    // Envia a OS praticamente completa para evitar zerar vendedor/valor na API GC
     const payload: Record<string, unknown> = {
+      ...(osAtual as Record<string, unknown>),
       situacao_id: situacaoId,
     };
 
-    // Preservar campos que a API zera se não forem enviados
-    const camposPreservar = [
-      "vendedor_id", "vendedor", "tecnico_id", "tecnico",
-      "valor_total", "valor", "desconto", "frete",
-      "nome_cliente", "cliente_id",
-      "data_entrada", "data_saida",
-      "centro_custo_id", "centro_custo",
-      "canal_venda_id", "canal_venda",
-      "loja_id", "loja",
-      "observacao", "descricao",
-    ];
-
-    for (const campo of camposPreservar) {
-      if (osAtual[campo] !== undefined && osAtual[campo] !== null) {
-        payload[campo] = osAtual[campo];
-      }
+    // Se existe mapeamento de técnico→vendedor, força no payload
+    if (options.vendedorId) {
+      payload.vendedor_id = options.vendedorId;
+      if (options.vendedorNome) payload.nome_vendedor = options.vendedorNome;
     }
 
-    console.log(`[auvo-gc-sync] PUT OS ${gcOsId}: situacao_id=${situacaoId}, vendedor_id=${payload.vendedor_id || "N/A"}, valor_total=${payload.valor_total || "N/A"}`);
+    // Campos de leitura que podem causar rejeição/efeito colateral no PUT
+    const camposRemover = ["id", "codigo", "nome_situacao", "cor_situacao", "hash", "cadastrado_em", "modificado_em"];
+    for (const campo of camposRemover) delete payload[campo];
+
+    if (payload.data_saida == null) payload.data_saida = "";
+
+    // Recalcula totais a partir dos itens para evitar valor_total zerado por efeito colateral da API
+    const totalServicos = sumWrappedItems(payload.servicos, "servico");
+    const totalProdutos = sumWrappedItems(payload.produtos, "produto");
+    const desconto = parseCurrency(payload.desconto_valor);
+    const frete = parseCurrency(payload.valor_frete);
+    const totalCalculado = totalServicos + totalProdutos + frete - desconto;
+
+    if (totalServicos > 0 || totalProdutos > 0 || totalCalculado > 0) {
+      payload.valor_servicos = formatCurrency(totalServicos);
+      payload.valor_produtos = formatCurrency(totalProdutos);
+      payload.valor_total = formatCurrency(totalCalculado);
+      payload.valor = formatCurrency(totalCalculado);
+    }
+
+    console.log(
+      `[auvo-gc-sync] PUT OS ${gcOsId}: situacao_id=${situacaoId}, vendedor_id=${String(payload.vendedor_id || "N/A")}, nome_vendedor=${String(payload.nome_vendedor || "N/A")}, valor_total=${String(payload.valor_total || "N/A")}, valor_servicos=${String(payload.valor_servicos || "N/A")}, valor_produtos=${String(payload.valor_produtos || "N/A")}`,
+    );
 
     const response = await rateLimitedFetch(url, {
-      method: "PUT", headers: gcHeaders,
+      method: "PUT",
+      headers: gcHeaders,
       body: JSON.stringify(payload),
     }, "gc");
+
     const body = await response.json().catch(() => ({}));
     return { success: response.ok, status: response.status, body };
   } catch (err) {
@@ -855,7 +925,7 @@ Deno.serve(async (req) => {
         continue;
       }
 
-      const gcResult = await atualizarSituacaoOsGC(os.gc_os_id, "7116099", gcHeaders);
+      const gcResult = await atualizarSituacaoOsGC(os.gc_os_id, "7116099", gcHeaders, { vendedorId: gcVendedorId, vendedorNome: gcVendedorNome });
 
       if (gcResult.success) {
         atualizadas++;
