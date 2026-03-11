@@ -62,7 +62,9 @@ async function fetchOsComTarefaAuvo(gcHeaders: Record<string, string>, dataInici
   let totalPages = 1;
 
   while (page <= totalPages) {
-    const url = `${GC_BASE_URL}/api/ordens_servicos?limite=100&pagina=${page}`;
+    let url = `${GC_BASE_URL}/api/ordens_servicos?limite=100&pagina=${page}`;
+    if (dataInicio) url += `&data_cadastro_inicio=${dataInicio}`;
+    if (dataFim) url += `&data_cadastro_fim=${dataFim}`;
     const response = await rateLimitedFetch(url, { headers: gcHeaders }, "gc");
     if (!response.ok) { console.error(`[auvo-gc-sync] GC OS list error: ${response.status}`); break; }
 
