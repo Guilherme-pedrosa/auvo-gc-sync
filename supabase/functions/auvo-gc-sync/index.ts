@@ -738,6 +738,8 @@ Deno.serve(async (req) => {
         break;
       }
       if (osIdsManual.length > 0 && !osIdsManual.includes(os.gc_os_id)) continue;
+      // Filtro por cliente (frontend)
+      if (filtroCliente && !os.gc_cliente.toLowerCase().includes(filtroCliente)) continue;
 
       auvoChecks++;
       const tarefa = await getAuvoTask(os.auvo_task_id, auvoBearerToken);
@@ -760,7 +762,7 @@ Deno.serve(async (req) => {
 
       const finalizadaSemPendencia = !tarefa.pendency || tarefa.pendency.trim() === "";
 
-      if (!finalizadaSemPendencia) {
+      if (!finalizadaSemPendencia && !incluirPendencia) {
         comPendencia++;
         logEntries.push({ gc_os_id: os.gc_os_id, gc_os_codigo: os.gc_os_codigo, auvo_task_id: os.auvo_task_id, resultado: "com_pendencia", detalhe: `finished=${tarefa.finished} | pendency="${tarefa.pendency}" | taskStatus=${tarefa.taskStatus}`, situacao_antes: os.nome_situacao, situacao_id_antes: os.situacao_id, situacao_depois: null, data_os: os.data_os, auvo_tecnico_id: auvoTecnicoId || null, auvo_tecnico_nome: auvoTecnicoNome || null, gc_cliente: os.gc_cliente, auvo_cliente: auvoCliente || null });
         continue;
