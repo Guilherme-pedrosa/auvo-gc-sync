@@ -497,8 +497,22 @@ async function atualizarSituacaoOsGC(
 
     if (payload.data_saida == null) payload.data_saida = "";
 
+    // Recalcula totais a partir dos itens para evitar valor_total zerado por efeito colateral da API
+    const totalServicos = sumWrappedItems(payload.servicos, "servico");
+    const totalProdutos = sumWrappedItems(payload.produtos, "produto");
+    const desconto = parseCurrency(payload.desconto_valor);
+    const frete = parseCurrency(payload.valor_frete);
+    const totalCalculado = totalServicos + totalProdutos + frete - desconto;
+
+    if (totalServicos > 0 || totalProdutos > 0 || totalCalculado > 0) {
+      payload.valor_servicos = formatCurrency(totalServicos);
+      payload.valor_produtos = formatCurrency(totalProdutos);
+      payload.valor_total = formatCurrency(totalCalculado);
+      payload.valor = formatCurrency(totalCalculado);
+    }
+
     console.log(
-      `[auvo-gc-sync] PUT OS ${gcOsId}: situacao_id=${situacaoId}, vendedor_id=${String(payload.vendedor_id || "N/A")}, nome_vendedor=${String(payload.nome_vendedor || "N/A")}, valor_total=${String(payload.valor_total || "N/A")}`,
+      `[auvo-gc-sync] PUT OS ${gcOsId}: situacao_id=${situacaoId}, vendedor_id=${String(payload.vendedor_id || "N/A")}, nome_vendedor=${String(payload.nome_vendedor || "N/A")}, valor_total=${String(payload.valor_total || "N/A")}, valor_servicos=${String(payload.valor_servicos || "N/A")}, valor_produtos=${String(payload.valor_produtos || "N/A")}`,
     );
 
     const response = await rateLimitedFetch(url, {
