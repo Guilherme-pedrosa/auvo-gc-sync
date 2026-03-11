@@ -591,8 +591,9 @@ const AuvoSyncPage = () => {
                                             <TableCell>{resultadoBadge(d.resultado)}</TableCell>
                                             <TableCell>
                                               <div className="space-y-1">
+                                                {d.auvo_tecnico_nome && <span className="text-xs block font-medium">{d.auvo_tecnico_nome}</span>}
+                                                {!d.auvo_tecnico_nome && d.gc_vendedor_nome && <span className="text-xs block">{d.gc_vendedor_nome}</span>}
                                                 {vendedorBadge(d.vendedor_status)}
-                                                {d.gc_vendedor_nome && <span className="text-xs block">{d.gc_vendedor_nome}</span>}
                                               </div>
                                             </TableCell>
                                             <TableCell className="text-xs">{d.situacao_antes}</TableCell>
