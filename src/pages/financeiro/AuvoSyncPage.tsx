@@ -194,7 +194,10 @@ const AuvoSyncPage = () => {
   const executarSync = async (dryRun = false) => {
     setRunning(true);
     try {
-      const { data, error } = await supabase.functions.invoke("auvo-gc-sync", { body: { dry_run: dryRun } });
+      const syncBody: any = { dry_run: dryRun };
+      if (dataInicio) syncBody.data_inicio = format(dataInicio, "yyyy-MM-dd");
+      if (dataFim) syncBody.data_fim = format(dataFim, "yyyy-MM-dd");
+      const { data, error } = await supabase.functions.invoke("auvo-gc-sync", { body: syncBody });
       if (error) throw error;
       toast.success(
         dryRun
