@@ -102,7 +102,9 @@ const AuvoSyncPage = () => {
   const [movedOsIds, setMovedOsIds] = useState<Set<string>>(new Set());
   const [changingId, setChangingId] = useState<string | null>(null);
   const [searchText, setSearchText] = useState("");
-
+  const [filtroClientePos, setFiltroClientePos] = useState("");
+  const [filtroSituacaoPos, setFiltroSituacaoPos] = useState("");
+  const [filtroTecnicoPos, setFiltroTecnicoPos] = useState("");
   // ─── Mapeamento state ───
   const [dialogOpen, setDialogOpen] = useState(false);
   const [selectedAuvoUser, setSelectedAuvoUser] = useState("");
