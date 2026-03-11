@@ -34,7 +34,9 @@ async function fetchAllAuvoTasks(
   let hasMore = true;
 
   while (hasMore) {
-    const paramFilter = encodeURIComponent(JSON.stringify({ startDate, endDate }));
+    const [sy, sm, sd] = startDate.split("-");
+    const [ey, em, ed] = endDate.split("-");
+    const paramFilter = encodeURIComponent(JSON.stringify({ startDate: `${sd}/${sm}/${sy}`, endDate: `${ed}/${em}/${ey}` }));
     const url = `${AUVO_BASE_URL}/tasks/?Page=${page}&PageSize=${pageSize}&Order=asc&ParamFilter=${paramFilter}`;
     console.log(`[tech-dashboard] Fetching page ${page}...`);
     const response = await fetch(url, { headers: auvoHeaders(bearerToken) });
