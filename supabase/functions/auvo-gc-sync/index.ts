@@ -414,8 +414,10 @@ Deno.serve(async (req) => {
 
     const osIdsManual: string[] = body?.os_ids || [];
     const dryRun: boolean = body?.dry_run === true;
+    const dataInicio: string | undefined = body?.data_inicio || undefined;
+    const dataFim: string | undefined = body?.data_fim || undefined;
 
-    console.log(`[auvo-gc-sync] Iniciando sync. dry_run=${dryRun}`);
+    console.log(`[auvo-gc-sync] Iniciando sync. dry_run=${dryRun}, data_inicio=${dataInicio || "todas"}, data_fim=${dataFim || "todas"}`);
 
     // ─── STEP 0: Carregar mapeamento vendedores ───
     const { data: mapeamentos } = await supabase
