@@ -411,7 +411,7 @@ const AuvoSyncPage = () => {
                         value={selectedAuvoUser}
                         onValueChange={(v) => {
                           setSelectedAuvoUser(v);
-                          const user = auvoUsers?.find(u => String(u.idUserLogin) === v);
+                          const user = auvoUsers?.find(u => String(u.userID) === v);
                           setSelectedAuvoUserNome(user?.name || v);
                         }}
                       >
