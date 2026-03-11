@@ -288,15 +288,21 @@ async function validarPecasOsVsExecucao(
   return { aprovado, sem_pecas_orcamento: false, pecas_orcamento: pecasOrcamento, materiais_execucao: materiaisExecucao, itens_cobertos: cobertos, itens_faltando: faltando, itens_parciais: parciais, resumo };
 }
 
-// ─── STEP 3: Atualizar situação GC ───
+// ─── STEP 3: Atualizar situação GC (com vendedor opcional) ───
 async function atualizarSituacaoOsGC(
-  gcOsId: string, situacaoId: string, gcHeaders: Record<string, string>
+  gcOsId: string, situacaoId: string, gcHeaders: Record<string, string>,
+  gcVendedorId?: string | null
 ): Promise<{ success: boolean; status: number; body: unknown }> {
   const url = `${GC_BASE_URL}/api/ordens_servicos/${gcOsId}`;
+  const payload: Record<string, unknown> = { situacao_id: situacaoId };
+  if (gcVendedorId) {
+    payload.vendedor_id = gcVendedorId;
+    payload.funcionario_id = gcVendedorId;
+  }
   try {
     const response = await rateLimitedFetch(url, {
       method: "PUT", headers: gcHeaders,
-      body: JSON.stringify({ situacao_id: situacaoId }),
+      body: JSON.stringify(payload),
     }, "gc");
     const body = await response.json().catch(() => ({}));
     return { success: response.ok, status: response.status, body };
