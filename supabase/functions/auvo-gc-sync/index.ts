@@ -339,10 +339,37 @@ Deno.serve(async (req) => {
 
     let body: any = {};
     try { body = await req.json(); } catch {}
+
+    // ─── Action: list_auvo_users ───
+    if (body?.action === "list_auvo_users") {
+      const url = `${AUVO_BASE_URL}/users?appKey=${auvoAppKey}&token=${auvoToken}&limite=100`;
+      const response = await fetch(url, { headers: { "Content-Type": "application/json" } });
+      const data = await response.json();
+      const users = data?.result?.Entities || data?.result || data?.data || [];
+      return new Response(JSON.stringify({ users }), {
+        status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
     const osIdsManual: string[] = body?.os_ids || [];
     const dryRun: boolean = body?.dry_run === true;
 
     console.log(`[auvo-gc-sync] Iniciando sync. dry_run=${dryRun}`);
+
+    // ─── STEP 0: Carregar mapeamento vendedores ───
+    const { data: mapeamentos } = await supabase
+      .from("auvo_gc_usuario_map")
+      .select("auvo_user_id, gc_vendedor_id, gc_vendedor_nome, auvo_user_nome")
+      .eq("ativo", true);
+
+    const mapaVendedores: Record<string, { gc_vendedor_id: string; gc_vendedor_nome: string }> = {};
+    for (const m of (mapeamentos || [])) {
+      mapaVendedores[String(m.auvo_user_id)] = {
+        gc_vendedor_id: String(m.gc_vendedor_id),
+        gc_vendedor_nome: m.gc_vendedor_nome,
+      };
+    }
+    console.log(`[auvo-gc-sync] ${Object.keys(mapaVendedores).length} mapeamentos de vendedores carregados`);
 
     const osCandidatas = await fetchOsComTarefaAuvo(gcHeaders);
     console.log(`[auvo-gc-sync] ${osCandidatas.length} OS com tarefa Auvo encontradas`);
@@ -378,7 +405,7 @@ Deno.serve(async (req) => {
 
       semPendencia++;
 
-      // ─── STEP 2.5: Validação de peças ───
+      // ─── Validação de peças ───
       const validacaoPecas = await validarPecasOsVsExecucao(
         os.gc_os_id, os.auvo_task_id, tarefa._raw, gcHeaders, auvoAppKey, auvoToken
       );
@@ -399,23 +426,56 @@ Deno.serve(async (req) => {
         continue;
       }
 
+      // ─── Resolver vendedor ───
+      const auvoTecnicoId = String(tarefa._raw?.idUserTo || tarefa._raw?.idUserFrom || "").trim();
+      let gcVendedorId: string | null = null;
+      let gcVendedorNome: string | null = null;
+      let vendedorStatus: "mapeado" | "sem_mapeamento" | "sem_tecnico" = "sem_tecnico";
+
+      if (auvoTecnicoId && auvoTecnicoId !== "0") {
+        const vendedorMap = mapaVendedores[auvoTecnicoId];
+        if (vendedorMap) {
+          gcVendedorId = vendedorMap.gc_vendedor_id;
+          gcVendedorNome = vendedorMap.gc_vendedor_nome;
+          vendedorStatus = "mapeado";
+        } else {
+          vendedorStatus = "sem_mapeamento";
+          console.warn(`[auvo-gc-sync] Técnico Auvo ID ${auvoTecnicoId} sem mapeamento GC`);
+        }
+      }
+
       if (dryRun) {
         logEntries.push({
           gc_os_id: os.gc_os_id, gc_os_codigo: os.gc_os_codigo, auvo_task_id: os.auvo_task_id,
-          resultado: "dry_run_ok", detalhe: `Seria atualizada para situação 7116099 | Peças: ${validacaoPecas.resumo}`,
+          resultado: "dry_run_ok",
+          detalhe: `Seria atualizada para situação 7116099 | Peças: ${validacaoPecas.resumo} | Vendedor: ${gcVendedorNome || vendedorStatus}`,
           situacao_antes: os.nome_situacao, situacao_depois: "EXECUTADO – AG. NEGOCIAÇÃO (7116099)",
+          auvo_tecnico_id: auvoTecnicoId || null,
+          gc_vendedor_id: gcVendedorId, gc_vendedor_nome: gcVendedorNome, vendedor_status: vendedorStatus,
         });
         continue;
       }
 
-      const gcResult = await atualizarSituacaoOsGC(os.gc_os_id, "7116099", gcHeaders);
+      const gcResult = await atualizarSituacaoOsGC(os.gc_os_id, "7116099", gcHeaders, gcVendedorId);
 
       if (gcResult.success) {
         atualizadas++;
-        logEntries.push({ gc_os_id: os.gc_os_id, gc_os_codigo: os.gc_os_codigo, auvo_task_id: os.auvo_task_id, resultado: "atualizada", detalhe: `HTTP ${gcResult.status} — situação alterada para 7116099 | Peças: ${validacaoPecas.resumo}`, situacao_antes: os.nome_situacao, situacao_depois: "EXECUTADO – AGUARDANDO NEGOCIAÇÃO FINANCEIRA" });
+        logEntries.push({
+          gc_os_id: os.gc_os_id, gc_os_codigo: os.gc_os_codigo, auvo_task_id: os.auvo_task_id,
+          resultado: "atualizada",
+          detalhe: `HTTP ${gcResult.status} — situação 7116099 | Vendedor: ${gcVendedorNome || vendedorStatus} | Peças: ${validacaoPecas.resumo}`,
+          situacao_antes: os.nome_situacao, situacao_depois: "EXECUTADO – AGUARDANDO NEGOCIAÇÃO FINANCEIRA",
+          auvo_tecnico_id: auvoTecnicoId || null,
+          gc_vendedor_id: gcVendedorId, gc_vendedor_nome: gcVendedorNome, vendedor_status: vendedorStatus,
+        });
       } else {
         erros++;
-        logEntries.push({ gc_os_id: os.gc_os_id, gc_os_codigo: os.gc_os_codigo, auvo_task_id: os.auvo_task_id, resultado: "erro_gc", detalhe: `HTTP ${gcResult.status} — ${JSON.stringify(gcResult.body)}`, situacao_antes: os.nome_situacao, situacao_depois: null });
+        logEntries.push({
+          gc_os_id: os.gc_os_id, gc_os_codigo: os.gc_os_codigo, auvo_task_id: os.auvo_task_id,
+          resultado: "erro_gc", detalhe: `HTTP ${gcResult.status} — ${JSON.stringify(gcResult.body)}`,
+          situacao_antes: os.nome_situacao, situacao_depois: null,
+          auvo_tecnico_id: auvoTecnicoId || null, vendedor_status: vendedorStatus,
+        });
       }
     }
 
