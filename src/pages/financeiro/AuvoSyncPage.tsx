@@ -672,7 +672,10 @@ const AuvoSyncPage = () => {
                                             </TableCell>
                                             <TableCell>
                                               <div className="flex items-center gap-1">
-                                                <span className="font-mono text-xs">{d.gc_os_codigo}</span>
+                                                <span className={`font-mono text-xs ${movedOsIds.has(d.gc_os_id) ? "line-through text-muted-foreground" : ""}`}>{d.gc_os_codigo}</span>
+                                                {movedOsIds.has(d.gc_os_id) && (
+                                                  <span className="text-[10px] font-semibold text-green-600 dark:text-green-400 bg-green-100 dark:bg-green-900/50 px-1.5 py-0.5 rounded-full">✅ Movida</span>
+                                                )}
                                                 <a href={gcOsUrl(d.gc_os_id)} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} title="Abrir no GestãoClick">
                                                   <ExternalLink className="h-3 w-3 text-muted-foreground hover:text-foreground" />
                                                 </a>
