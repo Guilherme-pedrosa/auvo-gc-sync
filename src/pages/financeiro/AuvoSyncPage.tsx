@@ -463,8 +463,18 @@ const AuvoSyncPage = () => {
                       {tecnicosUnicos.map(t => <SelectItem key={t} value={t}>{t}</SelectItem>)}
                     </SelectContent>
                   </Select>
-                  {(filtroClientePos || filtroSituacaoPos || filtroTecnicoPos) && (
-                    <Button variant="ghost" size="sm" className="text-xs h-8" onClick={() => { setFiltroClientePos(""); setFiltroSituacaoPos(""); setFiltroTecnicoPos(""); }}>
+                  <Select value={filtroStatusAuvo || "__all__"} onValueChange={v => setFiltroStatusAuvo(v === "__all__" ? "" : v)}>
+                    <SelectTrigger className="h-8 text-xs w-[240px]"><SelectValue placeholder="Status Auvo" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="__all__">Todos os status</SelectItem>
+                      <SelectItem value="finalizada">✅ Finalizada (todas)</SelectItem>
+                      <SelectItem value="finalizada_sem_pendencia">✅ Finalizada sem pendência</SelectItem>
+                      <SelectItem value="finalizada_com_pendencia">⚠️ Finalizada com pendência</SelectItem>
+                      <SelectItem value="nao_finalizada">⏳ Não finalizada</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  {(filtroClientePos || filtroSituacaoPos || filtroTecnicoPos || filtroStatusAuvo) && (
+                    <Button variant="ghost" size="sm" className="text-xs h-8" onClick={() => { setFiltroClientePos(""); setFiltroSituacaoPos(""); setFiltroTecnicoPos(""); setFiltroStatusAuvo(""); }}>
                       Limpar filtros
                     </Button>
                   )}
