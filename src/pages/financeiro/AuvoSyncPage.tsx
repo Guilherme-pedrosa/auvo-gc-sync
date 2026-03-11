@@ -535,57 +535,95 @@ const AuvoSyncPage = () => {
                             <TableRow>
                               <TableCell colSpan={11} className="bg-muted/30 p-4">
                                 {Array.isArray(log.detalhes) && log.detalhes.length > 0 ? (
-                                  <Table>
-                                    <TableHeader>
-                                      <TableRow>
-                                        <TableHead>OS</TableHead>
-                                        <TableHead>Data OS</TableHead>
-                                        <TableHead>Tarefa</TableHead>
-                                        <TableHead>Resultado</TableHead>
-                                        <TableHead>Vendedor</TableHead>
-                                        <TableHead>Antes</TableHead>
-                                        <TableHead>Depois</TableHead>
-                                         <TableHead>Detalhe</TableHead>
-                                         <TableHead>Ações</TableHead>
-                                       </TableRow>
-                                     </TableHeader>
-                                     <TableBody>
-                                       {(log.detalhes as LogDetail[]).map((d, i) => (
-                                         <TableRow key={i}>
-                                           <TableCell className="font-mono text-xs">{d.gc_os_codigo}</TableCell>
-                                          <TableCell className="text-xs">{d.data_os ? (() => { try { return format(new Date(d.data_os), "dd/MM/yyyy"); } catch { return d.data_os; } })() : "—"}</TableCell>
-                                          <TableCell className="font-mono text-xs">{d.auvo_task_id}</TableCell>
-                                          <TableCell>{resultadoBadge(d.resultado)}</TableCell>
-                                          <TableCell>
-                                            <div className="space-y-1">
-                                              {vendedorBadge(d.vendedor_status)}
-                                              {d.gc_vendedor_nome && <span className="text-xs block">{d.gc_vendedor_nome}</span>}
-                                            </div>
-                                          </TableCell>
-                                          <TableCell className="text-xs">{d.situacao_antes}</TableCell>
-                                          <TableCell className="text-xs">{d.situacao_depois || "—"}</TableCell>
-                                           <TableCell className="text-xs max-w-xs">
-                                            <span className="truncate block" title={d.detalhe}>{d.detalhe}</span>
-                                            <PecasDetail detail={d} />
-                                          </TableCell>
-                                          <TableCell>
-                                            {(d.resultado === "atualizada" || d.resultado === "dry_run_ok") && d.situacao_id_antes && !log.dry_run && (
-                                              <Button
-                                                variant="outline"
-                                                size="sm"
-                                                className="text-xs"
-                                                disabled={reverting === d.gc_os_id}
-                                                onClick={(e) => { e.stopPropagation(); reverterOS(d); }}
-                                              >
-                                                <Undo2 className="h-3 w-3 mr-1" />
-                                                {reverting === d.gc_os_id ? "Revertendo..." : "Reverter"}
-                                              </Button>
-                                            )}
-                                          </TableCell>
+                                  <div className="space-y-3">
+                                    {/* Botão alterar todas */}
+                                    <div className="flex justify-end">
+                                      <Button
+                                        variant="outline"
+                                        size="sm"
+                                        className="text-xs"
+                                        disabled={changingSituacaoAll}
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          setSituacaoDialogBulk(log.detalhes as LogDetail[]);
+                                          setSituacaoDestinoDialog("");
+                                          setSituacaoDialogOpen(true);
+                                        }}
+                                      >
+                                        <Settings2 className="h-3 w-3 mr-1" />
+                                        Alterar situação de todas ({log.detalhes.length})
+                                      </Button>
+                                    </div>
+                                    <Table>
+                                      <TableHeader>
+                                        <TableRow>
+                                          <TableHead>OS</TableHead>
+                                          <TableHead>Tarefa</TableHead>
+                                          <TableHead>Resultado</TableHead>
+                                          <TableHead>Vendedor</TableHead>
+                                          <TableHead>Antes</TableHead>
+                                          <TableHead>Depois</TableHead>
+                                          <TableHead>Detalhe</TableHead>
+                                          <TableHead>Ações</TableHead>
                                         </TableRow>
-                                      ))}
-                                    </TableBody>
-                                  </Table>
+                                      </TableHeader>
+                                      <TableBody>
+                                        {(log.detalhes as LogDetail[]).map((d, i) => (
+                                          <TableRow key={i}>
+                                            <TableCell>
+                                              <div className="flex items-center gap-1">
+                                                <span className="font-mono text-xs">{d.gc_os_codigo}</span>
+                                                <a href={gcOsUrl(d.gc_os_id)} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} title="Abrir no GestãoClick">
+                                                  <ExternalLink className="h-3 w-3 text-muted-foreground hover:text-foreground" />
+                                                </a>
+                                              </div>
+                                            </TableCell>
+                                            <TableCell>
+                                              <div className="flex items-center gap-1">
+                                                <span className="font-mono text-xs">{d.auvo_task_id}</span>
+                                                <a href={auvoTaskUrl(d.auvo_task_id)} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} title="Abrir no Auvo">
+                                                  <ExternalLink className="h-3 w-3 text-muted-foreground hover:text-foreground" />
+                                                </a>
+                                              </div>
+                                            </TableCell>
+                                            <TableCell>{resultadoBadge(d.resultado)}</TableCell>
+                                            <TableCell>
+                                              <div className="space-y-1">
+                                                {vendedorBadge(d.vendedor_status)}
+                                                {d.gc_vendedor_nome && <span className="text-xs block">{d.gc_vendedor_nome}</span>}
+                                              </div>
+                                            </TableCell>
+                                            <TableCell className="text-xs">{d.situacao_antes}</TableCell>
+                                            <TableCell className="text-xs">{d.situacao_depois || "—"}</TableCell>
+                                            <TableCell className="text-xs max-w-xs">
+                                              <span className="truncate block" title={d.detalhe}>{d.detalhe}</span>
+                                              <PecasDetail detail={d} />
+                                            </TableCell>
+                                            <TableCell>
+                                              <div className="flex gap-1">
+                                                <Button
+                                                  variant="outline"
+                                                  size="sm"
+                                                  className="text-xs"
+                                                  disabled={changingSituacao === d.gc_os_id}
+                                                  onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    setSituacaoDialogTarget(d);
+                                                    setSituacaoDialogBulk(null);
+                                                    setSituacaoDestinoDialog("");
+                                                    setSituacaoDialogOpen(true);
+                                                  }}
+                                                >
+                                                  <Settings2 className="h-3 w-3 mr-1" />
+                                                  {changingSituacao === d.gc_os_id ? "Alterando..." : "Situação"}
+                                                </Button>
+                                              </div>
+                                            </TableCell>
+                                          </TableRow>
+                                        ))}
+                                      </TableBody>
+                                    </Table>
+                                  </div>
                                 ) : <p className="text-sm text-muted-foreground">Sem detalhes</p>}
                               </TableCell>
                             </TableRow>
