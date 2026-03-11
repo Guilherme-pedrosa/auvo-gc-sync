@@ -630,7 +630,7 @@ Deno.serve(async (req) => {
         logEntries.push({
           gc_os_id: os.gc_os_id, gc_os_codigo: os.gc_os_codigo, auvo_task_id: os.auvo_task_id,
           resultado: "divergencia_pecas", detalhe: validacaoPecas.resumo,
-          situacao_antes: os.nome_situacao, situacao_depois: null, data_os: os.data_os,
+          situacao_antes: os.nome_situacao, situacao_id_antes: os.situacao_id, situacao_depois: null, data_os: os.data_os,
           pecas_orcamento: validacaoPecas.pecas_orcamento,
           materiais_execucao: validacaoPecas.materiais_execucao,
           itens_cobertos: validacaoPecas.itens_cobertos,
