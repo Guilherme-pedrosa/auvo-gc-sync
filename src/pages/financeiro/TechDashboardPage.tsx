@@ -38,6 +38,8 @@ type DashboardData = {
     total_tecnicos: number;
   };
   tecnicos: TecnicoData[];
+  auvo_error?: string | null;
+  error?: string;
 };
 
 const METAS = {
