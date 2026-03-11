@@ -344,6 +344,8 @@ const AuvoSyncPage = () => {
           gc_os_id: detail.gc_os_id,
           gc_os_codigo: detail.gc_os_codigo,
           situacao_id_antes: detail.situacao_id_antes,
+          gc_vendedor_id: detail.gc_vendedor_id || null,
+          gc_vendedor_nome: detail.gc_vendedor_nome || null,
         },
       });
       if (error) throw error;
