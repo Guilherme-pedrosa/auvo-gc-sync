@@ -181,17 +181,18 @@ Deno.serve(async (req) => {
         tech.tarefas_com_pendencia++;
       }
 
-      // Calculate time from checkIn/checkOut timestamps
-      const checkInTime = task.checkInDate || task.startDate || "";
-      const checkOutTime = task.checkOutDate || task.endDate || "";
-      if (checkInTime && checkOutTime) {
-        try {
-          const start = new Date(checkInTime).getTime();
-          const end = new Date(checkOutTime).getTime();
-          if (end > start) {
-            tech.tempo_total_minutos += (end - start) / 60000;
-          }
-        } catch {}
+      // Usar durationDecimal do Auvo (horas decimais) — é o tempo real de trabalho na tarefa
+      // calculado pelo próprio Auvo, evita somar check-in/check-out sobrepostos
+      const durationDecimal = parseFloat(task.durationDecimal);
+      if (!isNaN(durationDecimal) && durationDecimal > 0) {
+        tech.tempo_total_minutos += durationDecimal * 60;
+      } else {
+        // Fallback: parse campo duration "HH:MM:SS"
+        const durationStr = String(task.duration || "");
+        const match = durationStr.match(/^(\d+):(\d+):(\d+)$/);
+        if (match) {
+          tech.tempo_total_minutos += parseInt(match[1]) * 60 + parseInt(match[2]) + parseInt(match[3]) / 60;
+        }
       }
 
       // Tasks per day
