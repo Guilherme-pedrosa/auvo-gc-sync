@@ -379,7 +379,7 @@ Deno.serve(async (req) => {
     if (body?.action === "list_auvo_users") {
       try {
         const paramFilter = encodeURIComponent(JSON.stringify({}));
-        const url = `${AUVO_BASE_URL}/users/?page=1&pageSize=200&order=asc&paramFilter=${paramFilter}`;
+        const url = `${AUVO_BASE_URL}/users/?Page=1&PageSize=200&Order=asc&ParamFilter=${paramFilter}`;
         console.log(`[auvo-gc-sync] Fetching users from: ${url}`);
         const response = await fetch(url, { headers: auvoHeaders(auvoBearerToken) });
         const text = await response.text();
