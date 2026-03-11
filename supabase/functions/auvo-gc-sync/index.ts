@@ -392,7 +392,7 @@ async function validarPecasOsVsExecucao(
   return { aprovado, sem_pecas_orcamento: false, pecas_orcamento: pecasOrcamento, materiais_execucao: materiaisExecucao, itens_cobertos: cobertos, itens_faltando: faltando, itens_parciais: parciais, resumo };
 }
 
-// ─── STEP 3: Atualizar situação GC (com vendedor opcional) ───
+// ─── STEP 3: Atualizar APENAS situação GC — NUNCA alterar nome_cliente, vendedor ou outros campos ───
 async function atualizarSituacaoOsGC(
   gcOsId: string, situacaoId: string, gcHeaders: Record<string, string>
 ): Promise<{ success: boolean; status: number; body: unknown }> {
