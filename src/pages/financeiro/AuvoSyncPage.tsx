@@ -575,22 +575,28 @@ const AuvoSyncPage = () => {
                                         {(log.detalhes as LogDetail[]).map((d, i) => (
                                           <TableRow key={i}>
                                             <TableCell>
-                                              <div className="flex items-center gap-1">
-                                                <span className="font-mono text-xs">{d.gc_os_codigo}</span>
-                                                <a href={gcOsUrl(d.gc_os_id)} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} title="Abrir no GestãoClick">
-                                                  <ExternalLink className="h-3 w-3 text-muted-foreground hover:text-foreground" />
-                                                </a>
+                                              <div>
+                                                <div className="flex items-center gap-1">
+                                                  <span className="font-mono text-xs">{d.gc_os_codigo}</span>
+                                                  <a href={gcOsUrl(d.gc_os_id)} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} title="Abrir no GestãoClick">
+                                                    <ExternalLink className="h-3 w-3 text-muted-foreground hover:text-foreground" />
+                                                  </a>
+                                                </div>
+                                                {d.gc_cliente && <span className="text-xs text-muted-foreground block truncate max-w-[180px]" title={d.gc_cliente}>{d.gc_cliente}</span>}
                                               </div>
                                             </TableCell>
                                             <TableCell className="text-xs text-muted-foreground">
                                               {d.data_os ? (() => { try { return format(new Date(d.data_os), "dd/MM/yy"); } catch { return d.data_os; } })() : "—"}
                                             </TableCell>
                                             <TableCell>
-                                              <div className="flex items-center gap-1">
-                                                <span className="font-mono text-xs">{d.auvo_task_id}</span>
-                                                <a href={auvoTaskUrl(d.auvo_task_id)} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} title="Abrir no Auvo">
-                                                  <ExternalLink className="h-3 w-3 text-muted-foreground hover:text-foreground" />
-                                                </a>
+                                              <div>
+                                                <div className="flex items-center gap-1">
+                                                  <span className="font-mono text-xs">{d.auvo_task_id}</span>
+                                                  <a href={auvoTaskUrl(d.auvo_task_id)} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} title="Abrir no Auvo">
+                                                    <ExternalLink className="h-3 w-3 text-muted-foreground hover:text-foreground" />
+                                                  </a>
+                                                </div>
+                                                {d.auvo_cliente && <span className="text-xs text-muted-foreground block truncate max-w-[180px]" title={d.auvo_cliente}>{d.auvo_cliente}</span>}
                                               </div>
                                             </TableCell>
                                             <TableCell>{resultadoBadge(d.resultado)}</TableCell>
