@@ -696,7 +696,7 @@ Deno.serve(async (req) => {
     const incluirPendencia: boolean = body?.incluir_pendencia === true;
     const filtroCliente: string = (body?.filtro_cliente || "").trim().toLowerCase();
 
-    console.log(`[auvo-gc-sync] Iniciando sync. dry_run=${dryRun}, data_inicio=${dataInicio || "todas"}, data_fim=${dataFim || "todas"}`);
+    console.log(`[auvo-gc-sync] Iniciando sync. dry_run=${dryRun}, data_inicio=${dataInicio || "todas"}, data_fim=${dataFim || "todas"}, incluir_pendencia=${incluirPendencia}, filtro_cliente=${filtroCliente || "nenhum"}`);
 
     // ─── STEP 0: Carregar mapeamento vendedores ───
     const { data: mapeamentos } = await supabase
