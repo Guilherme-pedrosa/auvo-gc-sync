@@ -30,26 +30,17 @@ async function fetchAllAuvoTasks(
 ): Promise<any[]> {
   const allTasks: any[] = [];
   let page = 1;
-  const pageSize = 200;
+  const pageSize = 100;
   let hasMore = true;
 
   while (hasMore) {
-    // Try multiple date formats — Auvo v2 may use MM/dd/yyyy or dd/MM/yyyy
-    const paramFilter = encodeURIComponent(JSON.stringify({}));
-    const url = `${AUVO_BASE_URL}/tasks/?Page=${page}&PageSize=${pageSize}&Order=asc&startDate=${startDate}&endDate=${endDate}&ParamFilter=${paramFilter}`;
-    console.log(`[tech-dashboard] Fetching: ${url}`);
+    const paramFilter = encodeURIComponent(JSON.stringify({ startDate, endDate }));
+    const url = `${AUVO_BASE_URL}/tasks/?Page=${page}&PageSize=${pageSize}&Order=asc&ParamFilter=${paramFilter}`;
+    console.log(`[tech-dashboard] Fetching page ${page}...`);
     const response = await fetch(url, { headers: auvoHeaders(bearerToken) });
-    const responseText = await response.text();
-    console.log(`[tech-dashboard] Page ${page} status: ${response.status}, body preview: ${responseText.substring(0, 500)}`);
-    
     if (!response.ok) {
-      // Try alternative: pass dates inside ParamFilter
-      const pf2 = encodeURIComponent(JSON.stringify({ startDate, endDate }));
-      const url2 = `${AUVO_BASE_URL}/tasks/?Page=${page}&PageSize=${pageSize}&Order=asc&ParamFilter=${pf2}`;
-      console.log(`[tech-dashboard] Retry with ParamFilter dates: ${url2}`);
-      const resp2 = await fetch(url2, { headers: auvoHeaders(bearerToken) });
-      const text2 = await resp2.text();
-      console.log(`[tech-dashboard] Retry status: ${resp2.status}, body: ${text2.substring(0, 500)}`);
+      const errBody = await response.text().catch(() => "");
+      console.error(`[tech-dashboard] Error page ${page}: ${response.status} — ${errBody.substring(0, 300)}`);
       break;
     }
     
