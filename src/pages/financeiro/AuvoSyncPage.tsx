@@ -223,9 +223,46 @@ const AuvoSyncPage = () => {
       nao_encontrada: { variant: "secondary", label: "🔍 Não Encontrada" },
       erro_gc: { variant: "destructive", label: "❌ Erro GC" },
       divergencia_pecas: { variant: "destructive", label: "🔴 Div. Peças" },
+      revertida: { variant: "outline", label: "↩️ Revertida" },
     };
     const m = map[resultado] || { variant: "outline" as const, label: resultado };
     return <Badge variant={m.variant}>{m.label}</Badge>;
+  };
+
+  const [reverting, setReverting] = useState<string | null>(null);
+
+  const reverterOS = async (detail: LogDetail) => {
+    if (!detail.situacao_id_antes || !detail.gc_os_id) {
+      toast.error("Dados insuficientes para reverter (situacao_id_antes não disponível)");
+      return;
+    }
+    const confirmed = window.confirm(
+      `Reverter OS ${detail.gc_os_codigo} de "${detail.situacao_depois}" para "${detail.situacao_antes}" (ID: ${detail.situacao_id_antes})?`
+    );
+    if (!confirmed) return;
+    
+    setReverting(detail.gc_os_id);
+    try {
+      const { data, error } = await supabase.functions.invoke("auvo-gc-sync", {
+        body: {
+          action: "revert_os",
+          gc_os_id: detail.gc_os_id,
+          gc_os_codigo: detail.gc_os_codigo,
+          situacao_id_antes: detail.situacao_id_antes,
+        },
+      });
+      if (error) throw error;
+      if (data?.success) {
+        toast.success(`OS ${detail.gc_os_codigo} revertida para "${detail.situacao_antes}"`);
+        queryClient.invalidateQueries({ queryKey: ["auvo-sync-logs"] });
+      } else {
+        toast.error(`Erro ao reverter: ${JSON.stringify(data?.body || data)}`);
+      }
+    } catch (err: any) {
+      toast.error(`Erro: ${err.message}`);
+    } finally {
+      setReverting(null);
+    }
   };
 
   const vendedorBadge = (status?: string) => {
