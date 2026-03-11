@@ -408,6 +408,7 @@ const AuvoSyncPage = () => {
                                       {(log.detalhes as LogDetail[]).map((d, i) => (
                                         <TableRow key={i}>
                                           <TableCell className="font-mono text-xs">{d.gc_os_codigo}</TableCell>
+                                          <TableCell className="text-xs">{d.data_os ? (() => { try { return format(new Date(d.data_os), "dd/MM/yyyy"); } catch { return d.data_os; } })() : "—"}</TableCell>
                                           <TableCell className="font-mono text-xs">{d.auvo_task_id}</TableCell>
                                           <TableCell>{resultadoBadge(d.resultado)}</TableCell>
                                           <TableCell>
