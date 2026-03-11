@@ -7,7 +7,7 @@ const corsHeaders = {
 
 const GC_BASE_URL = "https://api.gestaoclick.com";
 const AUVO_BASE_URL = "https://api.auvo.com.br/v2";
-const MIN_DELAY_MS = 400;
+const MIN_DELAY_MS = 200; // reduzido para processar mais OS (Auvo permite 400 req/min)
 let lastGcCall = 0;
 let lastAuvoCall = 0;
 
