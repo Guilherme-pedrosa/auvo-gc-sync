@@ -105,6 +105,7 @@ const AuvoSyncPage = () => {
   const [filtroClientePos, setFiltroClientePos] = useState("");
   const [filtroSituacaoPos, setFiltroSituacaoPos] = useState("");
   const [filtroTecnicoPos, setFiltroTecnicoPos] = useState("");
+  const [filtroStatusAuvo, setFiltroStatusAuvo] = useState("");
   // ─── Mapeamento state ───
   const [dialogOpen, setDialogOpen] = useState(false);
   const [selectedAuvoUser, setSelectedAuvoUser] = useState("");
@@ -280,6 +281,10 @@ const AuvoSyncPage = () => {
     if (filtroClientePos) items = items.filter(i => i.gc_cliente === filtroClientePos);
     if (filtroSituacaoPos) items = items.filter(i => i.gc_situacao === filtroSituacaoPos);
     if (filtroTecnicoPos) items = items.filter(i => i.auvo_tecnico_nome === filtroTecnicoPos);
+    if (filtroStatusAuvo === "finalizada_sem_pendencia") items = items.filter(i => i.auvo_finalizada === true && (!i.auvo_pendencia || !i.auvo_pendencia.trim()));
+    else if (filtroStatusAuvo === "finalizada_com_pendencia") items = items.filter(i => i.auvo_finalizada === true && i.auvo_pendencia && i.auvo_pendencia.trim());
+    else if (filtroStatusAuvo === "finalizada") items = items.filter(i => i.auvo_finalizada === true);
+    else if (filtroStatusAuvo === "nao_finalizada") items = items.filter(i => i.auvo_finalizada !== true);
     if (searchText.trim()) {
       const q = searchText.toLowerCase();
       items = items.filter(i =>
@@ -291,7 +296,7 @@ const AuvoSyncPage = () => {
       );
     }
     return items;
-  }, [conciliacaoData, filtroConciliacao, filtroClientePos, filtroSituacaoPos, filtroTecnicoPos, searchText]);
+  }, [conciliacaoData, filtroConciliacao, filtroClientePos, filtroSituacaoPos, filtroTecnicoPos, filtroStatusAuvo, searchText]);
 
   const totalConciliadas = conciliacaoData?.filter(i => i.conciliada).length || 0;
   const totalPendentes = conciliacaoData?.filter(i => !i.conciliada).length || 0;
@@ -458,30 +463,39 @@ const AuvoSyncPage = () => {
                       {tecnicosUnicos.map(t => <SelectItem key={t} value={t}>{t}</SelectItem>)}
                     </SelectContent>
                   </Select>
-                  {(filtroClientePos || filtroSituacaoPos || filtroTecnicoPos) && (
-                    <Button variant="ghost" size="sm" className="text-xs h-8" onClick={() => { setFiltroClientePos(""); setFiltroSituacaoPos(""); setFiltroTecnicoPos(""); }}>
+                  <Select value={filtroStatusAuvo || "__all__"} onValueChange={v => setFiltroStatusAuvo(v === "__all__" ? "" : v)}>
+                    <SelectTrigger className="h-8 text-xs w-[240px]"><SelectValue placeholder="Status Auvo" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="__all__">Todos os status</SelectItem>
+                      <SelectItem value="finalizada">✅ Finalizada (todas)</SelectItem>
+                      <SelectItem value="finalizada_sem_pendencia">✅ Finalizada sem pendência</SelectItem>
+                      <SelectItem value="finalizada_com_pendencia">⚠️ Finalizada com pendência</SelectItem>
+                      <SelectItem value="nao_finalizada">⏳ Não finalizada</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  {(filtroClientePos || filtroSituacaoPos || filtroTecnicoPos || filtroStatusAuvo) && (
+                    <Button variant="ghost" size="sm" className="text-xs h-8" onClick={() => { setFiltroClientePos(""); setFiltroSituacaoPos(""); setFiltroTecnicoPos(""); setFiltroStatusAuvo(""); }}>
                       Limpar filtros
                     </Button>
                   )}
                 </div>
 
                 {/* Barra de ações em lote */}
-                {filtroConciliacao === "pendentes" && (
                   <div className="flex flex-wrap items-center gap-3 mt-3 pt-3 border-t">
                     <Button
                       variant="outline" size="sm" className="text-xs"
                       onClick={() => {
-                        const pendentes = itensFiltrados.filter(i => !i.conciliada && !movedOsIds.has(i.gc_os_id));
-                        if (selectedOsIds.size === pendentes.length && pendentes.every(i => selectedOsIds.has(i.gc_os_id))) {
+                        const selecionaveis = itensFiltrados.filter(i => !movedOsIds.has(i.gc_os_id));
+                        if (selectedOsIds.size === selecionaveis.length && selecionaveis.every(i => selectedOsIds.has(i.gc_os_id))) {
                           setSelectedOsIds(new Set());
                         } else {
-                          setSelectedOsIds(new Set(pendentes.map(i => i.gc_os_id)));
+                          setSelectedOsIds(new Set(selecionaveis.map(i => i.gc_os_id)));
                         }
                       }}
                     >
                       {(() => {
-                        const pendentes = itensFiltrados.filter(i => !i.conciliada && !movedOsIds.has(i.gc_os_id));
-                        return selectedOsIds.size === pendentes.length && pendentes.every(i => selectedOsIds.has(i.gc_os_id))
+                        const selecionaveis = itensFiltrados.filter(i => !movedOsIds.has(i.gc_os_id));
+                        return selectedOsIds.size === selecionaveis.length && selecionaveis.every(i => selectedOsIds.has(i.gc_os_id))
                           ? "Desmarcar tudo" : "Selecionar tudo";
                       })()}
                     </Button>
@@ -501,14 +515,13 @@ const AuvoSyncPage = () => {
                       </>
                     )}
                   </div>
-                )}
               </CardHeader>
               <CardContent className="p-0">
                 <div className="overflow-auto max-h-[65vh]">
                   <Table>
                     <TableHeader className="sticky top-0 bg-background z-10">
                       <TableRow>
-                        {filtroConciliacao === "pendentes" && <TableHead className="w-8"></TableHead>}
+                        <TableHead className="w-8"></TableHead>
                         <TableHead className="text-center w-[90px]">Status</TableHead>
                         <TableHead>OS (GC)</TableHead>
                         <TableHead>Cliente</TableHead>
@@ -525,7 +538,7 @@ const AuvoSyncPage = () => {
                         </TableHead>
                         <TableHead className="text-center">Check-in</TableHead>
                         <TableHead className="text-center">Check-out</TableHead>
-                        {filtroConciliacao !== "conciliadas" && <TableHead className="w-[100px]">Ação</TableHead>}
+                        <TableHead className="w-[100px]">Ação</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -547,21 +560,19 @@ const AuvoSyncPage = () => {
                               selected ? "bg-accent/30" : ""
                             }`}
                           >
-                            {filtroConciliacao === "pendentes" && (
-                              <TableCell className="text-center">
-                                {!item.conciliada && !moved && (
-                                  <Checkbox
-                                    checked={selected}
-                                    onCheckedChange={() => {
-                                      const next = new Set(selectedOsIds);
-                                      if (next.has(item.gc_os_id)) next.delete(item.gc_os_id);
-                                      else next.add(item.gc_os_id);
-                                      setSelectedOsIds(next);
-                                    }}
-                                  />
-                                )}
-                              </TableCell>
-                            )}
+                            <TableCell className="text-center">
+                              {!moved && (
+                                <Checkbox
+                                  checked={selected}
+                                  onCheckedChange={() => {
+                                    const next = new Set(selectedOsIds);
+                                    if (next.has(item.gc_os_id)) next.delete(item.gc_os_id);
+                                    else next.add(item.gc_os_id);
+                                    setSelectedOsIds(next);
+                                  }}
+                                />
+                              )}
+                            </TableCell>
                             <TableCell className="text-center">
                               {moved ? (
                                 <Badge variant="outline" className="text-[10px] bg-green-100 text-green-700 border-green-300 dark:bg-green-900/50 dark:text-green-300 dark:border-green-700">✅ Movida</Badge>
@@ -636,35 +647,33 @@ const AuvoSyncPage = () => {
                             <TableCell className="text-center font-mono text-xs text-muted-foreground">
                               {formatHora(item.checkout_hora)}
                             </TableCell>
-                            {filtroConciliacao !== "conciliadas" && (
-                              <TableCell>
-                                {!item.conciliada && !moved && (
-                                  <Popover>
-                                    <PopoverTrigger asChild>
-                                      <Button variant="outline" size="sm" className="h-7 text-xs" disabled={changingId === item.gc_os_id}>
-                                        {changingId === item.gc_os_id ? "..." : "Mover"}
-                                      </Button>
-                                    </PopoverTrigger>
-                                    <PopoverContent className="w-[280px] p-2" align="end">
-                                      <div className="space-y-1">
-                                        <p className="text-xs font-medium text-muted-foreground mb-2">Mover OS para:</p>
-                                        {SITUACOES_OPTIONS.map(s => (
-                                          <Button
-                                            key={s.id}
-                                            variant="ghost"
-                                            size="sm"
-                                            className="w-full justify-start text-xs h-7"
-                                            onClick={() => alterarSituacaoOS(item, s.id)}
-                                          >
-                                            {s.label}
-                                          </Button>
-                                        ))}
-                                      </div>
-                                    </PopoverContent>
-                                  </Popover>
-                                )}
-                              </TableCell>
-                            )}
+                            <TableCell>
+                              {!moved && (
+                                <Popover>
+                                  <PopoverTrigger asChild>
+                                    <Button variant="outline" size="sm" className="h-7 text-xs" disabled={changingId === item.gc_os_id}>
+                                      {changingId === item.gc_os_id ? "..." : "Mover"}
+                                    </Button>
+                                  </PopoverTrigger>
+                                  <PopoverContent className="w-[280px] p-2" align="end">
+                                    <div className="space-y-1">
+                                      <p className="text-xs font-medium text-muted-foreground mb-2">Mover OS para:</p>
+                                      {SITUACOES_OPTIONS.map(s => (
+                                        <Button
+                                          key={s.id}
+                                          variant="ghost"
+                                          size="sm"
+                                          className="w-full justify-start text-xs h-7"
+                                          onClick={() => alterarSituacaoOS(item, s.id)}
+                                        >
+                                          {s.label}
+                                        </Button>
+                                      ))}
+                                    </div>
+                                  </PopoverContent>
+                                </Popover>
+                              )}
+                            </TableCell>
                           </TableRow>
                         );
                       })}
