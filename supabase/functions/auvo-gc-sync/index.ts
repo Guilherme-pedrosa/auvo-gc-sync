@@ -54,6 +54,17 @@ const SITUACOES_EXCLUIR = [
 
 const MAX_OS_POR_EXECUCAO = 40; // teto de segurança para evitar timeout
 
+// ─── WHITELIST de situações permitidas para alteração ───
+const SITUACOES_PERMITIDAS = [
+  "7063579", "7063580", "7659440", "7063581", "7063705",
+  "7213493", "7684665", "7748831", "8219136",
+  "7116099", // destino padrão da sync (EXECUTADO - AG. NEGOCIAÇÃO)
+];
+
+function validarSituacaoPermitida(situacaoId: string): boolean {
+  return SITUACOES_PERMITIDAS.includes(situacaoId);
+}
+
 // ─── STEP 1: Buscar OS com tarefa Auvo ───
 async function fetchOsComTarefaAuvo(gcHeaders: Record<string, string>, dataInicio?: string, dataFim?: string): Promise<Array<{
   gc_os_id: string;
