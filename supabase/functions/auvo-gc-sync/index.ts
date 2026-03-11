@@ -823,7 +823,6 @@ Deno.serve(async (req) => {
         try { parsed = JSON.parse(rawText); } catch {}
         const entity = parsed?.result ?? parsed;
 
-        // Extrair info relevante para debug
         const questionnaires = entity?.questionnaires || entity?.questionnaireAnswers || [];
         const products = entity?.products || entity?.materials || entity?.materiais || entity?.itens || [];
         
@@ -846,6 +845,192 @@ Deno.serve(async (req) => {
           status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
+    }
+
+    // ─── Action: conciliacao — visão de conciliação bancária ───
+    if (body?.action === "conciliacao") {
+      const dataInicioConcil: string | undefined = body.data_inicio || undefined;
+      const dataFimConcil: string | undefined = body.data_fim || undefined;
+      const filtroClienteConcil: string = (body.filtro_cliente || "").trim().toLowerCase();
+
+      console.log(`[conciliacao] Buscando OS para conciliação: data_inicio=${dataInicioConcil || "todas"}, data_fim=${dataFimConcil || "todas"}`);
+
+      // Carregar mapeamento vendedores
+      const { data: mapeamentosConcil } = await supabase
+        .from("auvo_gc_usuario_map")
+        .select("auvo_user_id, gc_vendedor_id, gc_vendedor_nome, auvo_user_nome")
+        .eq("ativo", true);
+      const mapaVendedoresConcil: Record<string, { gc_vendedor_id: string; gc_vendedor_nome: string }> = {};
+      for (const m of (mapeamentosConcil || [])) {
+        mapaVendedoresConcil[String(m.auvo_user_id)] = { gc_vendedor_id: String(m.gc_vendedor_id), gc_vendedor_nome: m.gc_vendedor_nome };
+      }
+
+      // Buscar TODAS as OS com tarefa Auvo (incluindo situações finais)
+      const atributoId = Deno.env.get("GC_ATRIBUTO_TAREFA_ID") || "73344";
+      const atributoLabel = (Deno.env.get("AUVO_ATRIBUTO_LABEL") || "Tarefa Execução").toLowerCase();
+      const todasOs: Array<{
+        gc_os_id: string; gc_os_codigo: string; auvo_task_id: string;
+        nome_situacao: string; situacao_id: string; data_os: string; gc_cliente: string;
+      }> = [];
+
+      let pageConcil = 1;
+      let totalPagesConcil = 1;
+      while (pageConcil <= totalPagesConcil && todasOs.length < 500) {
+        let url = `${GC_BASE_URL}/api/ordens_servicos?limite=100&pagina=${pageConcil}`;
+        if (dataInicioConcil) url += `&data_inicio=${dataInicioConcil}`;
+        if (dataFimConcil) url += `&data_fim=${dataFimConcil}`;
+        const response = await rateLimitedFetch(url, { headers: gcHeaders }, "gc");
+        if (response.status === 429) { await new Promise(r => setTimeout(r, 3000)); continue; }
+        if (!response.ok) break;
+        const data = await response.json();
+        const records: any[] = Array.isArray(data?.data) ? data.data : [];
+        totalPagesConcil = data?.meta?.total_paginas || 1;
+
+        for (const os of records) {
+          if (todasOs.length >= 500) break;
+          if (filtroClienteConcil && !String(os.nome_cliente || "").toLowerCase().includes(filtroClienteConcil)) continue;
+          const atributos: any[] = os.atributos || [];
+          const atributoTarefa = atributos.find((a: any) => {
+            const nested = a?.atributo || a;
+            const id = String(nested.atributo_id || nested.id || "");
+            const label = String(nested.descricao || nested.label || nested.nome || "").toLowerCase();
+            return id === atributoId || label === atributoLabel || label.includes("tarefa execu");
+          });
+          if (!atributoTarefa) continue;
+          const nested2 = atributoTarefa?.atributo || atributoTarefa;
+          const valor = String(nested2?.conteudo || nested2?.valor || "").trim();
+          if (!valor || !/^\d+$/.test(valor)) continue;
+
+          todasOs.push({
+            gc_os_id: String(os.id),
+            gc_os_codigo: String(os.codigo || os.id),
+            auvo_task_id: valor,
+            nome_situacao: String(os.nome_situacao || ""),
+            situacao_id: String(os.situacao_id || ""),
+            data_os: String(os.data_entrada || os.cadastrado_em || ""),
+            gc_cliente: String(os.nome_cliente || ""),
+          });
+        }
+        pageConcil++;
+      }
+
+      console.log(`[conciliacao] ${todasOs.length} OS com tarefa Auvo encontradas`);
+
+      // Buscar dados Auvo para cada OS (com limite)
+      const MAX_AUVO = Math.min(todasOs.length, 100);
+      const itens: any[] = [];
+      let auvoChecksConcil = 0;
+
+      for (const os of todasOs) {
+        const conciliada = SITUACOES_EXCLUIR.includes(os.situacao_id);
+
+        // Para OS conciliadas, não precisa consultar Auvo (economia de API)
+        if (conciliada) {
+          itens.push({
+            gc_os_id: os.gc_os_id,
+            gc_os_codigo: os.gc_os_codigo,
+            gc_cliente: os.gc_cliente,
+            gc_situacao: os.nome_situacao,
+            gc_situacao_id: os.situacao_id,
+            data_os: os.data_os,
+            auvo_task_id: os.auvo_task_id,
+            conciliada: true,
+            auvo_finalizada: true,
+            auvo_pendencia: "",
+            auvo_tecnico_nome: "",
+            auvo_tecnico_id: "",
+            auvo_cliente: "",
+            gc_vendedor_id: null,
+            gc_vendedor_nome: null,
+            vendedor_status: "desconhecido",
+            tempo_trabalho_seg: 0,
+            tempo_pausa_seg: 0,
+            checkin_hora: null,
+            checkout_hora: null,
+          });
+          continue;
+        }
+
+        if (auvoChecksConcil >= MAX_AUVO) {
+          // Ainda adiciona sem dados Auvo
+          itens.push({
+            gc_os_id: os.gc_os_id, gc_os_codigo: os.gc_os_codigo, gc_cliente: os.gc_cliente,
+            gc_situacao: os.nome_situacao, gc_situacao_id: os.situacao_id, data_os: os.data_os,
+            auvo_task_id: os.auvo_task_id, conciliada: false,
+            auvo_finalizada: null, auvo_pendencia: null, auvo_tecnico_nome: null, auvo_tecnico_id: null,
+            auvo_cliente: null, gc_vendedor_id: null, gc_vendedor_nome: null, vendedor_status: "nao_consultado",
+            tempo_trabalho_seg: 0, tempo_pausa_seg: 0, checkin_hora: null, checkout_hora: null,
+          });
+          continue;
+        }
+
+        auvoChecksConcil++;
+        const tarefa = await getAuvoTask(os.auvo_task_id, auvoBearerToken);
+
+        if (!tarefa) {
+          itens.push({
+            gc_os_id: os.gc_os_id, gc_os_codigo: os.gc_os_codigo, gc_cliente: os.gc_cliente,
+            gc_situacao: os.nome_situacao, gc_situacao_id: os.situacao_id, data_os: os.data_os,
+            auvo_task_id: os.auvo_task_id, conciliada: false,
+            auvo_finalizada: null, auvo_pendencia: null, auvo_tecnico_nome: null, auvo_tecnico_id: null,
+            auvo_cliente: null, gc_vendedor_id: null, gc_vendedor_nome: null, vendedor_status: "nao_encontrada",
+            tempo_trabalho_seg: 0, tempo_pausa_seg: 0, checkin_hora: null, checkout_hora: null,
+          });
+          continue;
+        }
+
+        const raw = tarefa._raw || {};
+        const auvoTecnicoId = String(raw.idUserTo || raw.idUserFrom || "").trim();
+        const auvoTecnicoNome = String(raw.userToName || raw.userFromName || raw.collaboratorName || "").trim();
+        const auvoCliente = String(raw.customerName || raw.customer?.name || raw.customerDescription || "").trim();
+
+        // Extrair tempos — Auvo pode ter campos específicos
+        const tempoTrabalhoSeg = Number(raw.totalWorkTime || raw.workDuration || raw.totalWorkDuration || 0);
+        const tempoPausaSeg = Number(raw.totalPauseTime || raw.pauseDuration || raw.totalPauseDuration || 0);
+        const checkinHora = raw.checkInDate || raw.startDate || null;
+        const checkoutHora = raw.checkOutDate || raw.endDate || null;
+
+        // Vendedor
+        let gcVendedorId: string | null = null;
+        let gcVendedorNome: string | null = null;
+        let vendedorStatus: string = "sem_tecnico";
+        if (auvoTecnicoId && auvoTecnicoId !== "0") {
+          const vendedorMap = mapaVendedoresConcil[auvoTecnicoId];
+          if (vendedorMap) {
+            gcVendedorId = vendedorMap.gc_vendedor_id;
+            gcVendedorNome = vendedorMap.gc_vendedor_nome;
+            vendedorStatus = "mapeado";
+          } else {
+            vendedorStatus = "sem_mapeamento";
+          }
+        }
+
+        itens.push({
+          gc_os_id: os.gc_os_id, gc_os_codigo: os.gc_os_codigo, gc_cliente: os.gc_cliente,
+          gc_situacao: os.nome_situacao, gc_situacao_id: os.situacao_id, data_os: os.data_os,
+          auvo_task_id: os.auvo_task_id, conciliada: false,
+          auvo_finalizada: tarefa.finished, auvo_pendencia: tarefa.pendency,
+          auvo_tecnico_nome: auvoTecnicoNome, auvo_tecnico_id: auvoTecnicoId,
+          auvo_cliente: auvoCliente,
+          gc_vendedor_id: gcVendedorId, gc_vendedor_nome: gcVendedorNome, vendedor_status: vendedorStatus,
+          tempo_trabalho_seg: tempoTrabalhoSeg, tempo_pausa_seg: tempoPausaSeg,
+          checkin_hora: checkinHora, checkout_hora: checkoutHora,
+        });
+      }
+
+      const totalConciliadas = itens.filter(i => i.conciliada).length;
+      const totalPendentes = itens.filter(i => !i.conciliada).length;
+
+      console.log(`[conciliacao] Resultado: ${itens.length} itens, ${totalConciliadas} conciliadas, ${totalPendentes} pendentes`);
+
+      return new Response(JSON.stringify({
+        total: itens.length,
+        conciliadas: totalConciliadas,
+        pendentes: totalPendentes,
+        itens,
+      }), {
+        status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
     }
 
     const osIdsManual: string[] = body?.os_ids || [];
