@@ -52,7 +52,8 @@ const SITUACOES_EXCLUIR = [
   "8889036", // FECHADO CHAMADO
 ];
 
-const MAX_OS_POR_EXECUCAO = 150; // teto de segurança — agora varre mais OS por execução
+const MAX_OS_POR_EXECUCAO = 500; // coleta do GC (rápida, sem Auvo)
+const MAX_AUVO_CHECKS = 150; // limite de consultas ao Auvo por execução
 
 // ─── WHITELIST de situações permitidas para alteração ───
 const SITUACOES_PERMITIDAS = [
