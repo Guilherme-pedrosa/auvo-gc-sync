@@ -548,7 +548,7 @@ const AuvoSyncPage = () => {
                       <Collapsible key={log.id} asChild open={expandedRow === log.id}>
                         <>
                           <CollapsibleTrigger asChild>
-                            <TableRow className="cursor-pointer hover:bg-muted/50" onClick={() => { setExpandedRow(expandedRow === log.id ? null : log.id); setSelectedOsIds(new Set()); setSituacaoSelecionadas(""); }}>
+                            <TableRow className="cursor-pointer hover:bg-muted/50" onClick={() => { setExpandedRow(expandedRow === log.id ? null : log.id); setSelectedOsIds(new Set()); setSituacaoSelecionadas(""); setMovedOsIds(new Set()); }}>
                               <TableCell>{expandedRow === log.id ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}</TableCell>
                               <TableCell className="text-sm">{format(new Date(log.executado_em), "dd/MM HH:mm", { locale: ptBR })}</TableCell>
                               <TableCell className="text-center">{log.os_candidatas}</TableCell>
