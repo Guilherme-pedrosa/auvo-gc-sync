@@ -113,6 +113,11 @@ async function fetchOsComTarefaAuvo(gcHeaders: Record<string, string>, dataInici
     for (const os of records) {
       if (results.length >= MAX_OS_POR_EXECUCAO) break;
       totalProcessadas++;
+      // Log keys da primeira OS para diagnóstico de campos
+      if (totalProcessadas === 1) {
+        console.log(`[auvo-gc-sync] OS sample keys: ${Object.keys(os).join(", ")}`);
+        console.log(`[auvo-gc-sync] OS sample data fields: data=${os.data}, data_cadastro=${os.data_cadastro}, data_criacao=${os.data_criacao}, created_at=${os.created_at}, data_abertura=${os.data_abertura}`);
+      }
       const situacaoId = String(os.situacao_id || "");
       if (SITUACOES_EXCLUIR.includes(situacaoId)) { totalExcluidas++; continue; }
 
@@ -134,7 +139,7 @@ async function fetchOsComTarefaAuvo(gcHeaders: Record<string, string>, dataInici
         auvo_task_id: valor,
         nome_situacao: String(os.nome_situacao || ""),
         situacao_id: situacaoId,
-        data_os: String(os.data || os.data_cadastro || ""),
+        data_os: String(os.data_entrada || os.cadastrado_em || ""),
       });
     }
     console.log(`[auvo-gc-sync] Página ${page}: totalExcluídas=${totalExcluidas}, totalSemAtributo=${totalSemAtributo}, totalSemValor=${totalSemValor}, candidatas=${results.length}`);
