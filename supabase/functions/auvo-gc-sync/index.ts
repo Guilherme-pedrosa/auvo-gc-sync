@@ -401,56 +401,66 @@ async function validarPecasOsVsExecucao(
   return { aprovado, sem_pecas_orcamento: false, pecas_orcamento: pecasOrcamento, materiais_execucao: materiaisExecucao, itens_cobertos: cobertos, itens_faltando: faltando, itens_parciais: parciais, resumo };
 }
 
-// ─── STEP 3: Atualizar APENAS situação GC — busca OS atual e reenvia todos os campos ───
+// ─── STEP 3: Atualizar situação GC preservando OS completa + vendedor mapeado ───
+type AtualizarSituacaoOptions = {
+  vendedorId?: string | null;
+  vendedorNome?: string | null;
+};
+
 async function atualizarSituacaoOsGC(
-  gcOsId: string, situacaoId: string, gcHeaders: Record<string, string>
+  gcOsId: string,
+  situacaoId: string,
+  gcHeaders: Record<string, string>,
+  options: AtualizarSituacaoOptions = {},
 ): Promise<{ success: boolean; status: number; body: unknown }> {
-  // ── TRAVA DE SEGURANÇA: só permite situações da whitelist ──
   if (!validarSituacaoPermitida(situacaoId)) {
     console.error(`[BLOQUEADO] Tentativa de alterar OS ${gcOsId} para situação ${situacaoId} que NÃO está na whitelist!`);
     return { success: false, status: 403, body: `Situação ${situacaoId} bloqueada pela whitelist` };
   }
+
   const url = `${GC_BASE_URL}/api/ordens_servicos/${gcOsId}`;
 
   try {
-    // ── Buscar OS atual para preservar TODOS os campos (vendedor, valor, etc.) ──
     const getResp = await rateLimitedFetch(url, { headers: gcHeaders }, "gc");
     if (!getResp.ok) {
       console.error(`[auvo-gc-sync] Erro ao buscar OS ${gcOsId} antes do PUT: HTTP ${getResp.status}`);
       return { success: false, status: getResp.status, body: `Erro ao buscar OS atual: HTTP ${getResp.status}` };
     }
+
     const getData = await getResp.json();
     const osAtual = getData?.data ?? getData;
+    if (!osAtual || typeof osAtual !== "object") {
+      return { success: false, status: 500, body: "Formato inesperado da OS ao montar payload" };
+    }
 
-    // ── Montar payload preservando campos críticos ──
+    // Envia a OS praticamente completa para evitar zerar vendedor/valor na API GC
     const payload: Record<string, unknown> = {
+      ...(osAtual as Record<string, unknown>),
       situacao_id: situacaoId,
     };
 
-    // Preservar campos que a API zera se não forem enviados
-    const camposPreservar = [
-      "vendedor_id", "vendedor", "tecnico_id", "tecnico",
-      "valor_total", "valor", "desconto", "frete",
-      "nome_cliente", "cliente_id",
-      "data_entrada", "data_saida",
-      "centro_custo_id", "centro_custo",
-      "canal_venda_id", "canal_venda",
-      "loja_id", "loja",
-      "observacao", "descricao",
-    ];
-
-    for (const campo of camposPreservar) {
-      if (osAtual[campo] !== undefined && osAtual[campo] !== null) {
-        payload[campo] = osAtual[campo];
-      }
+    // Se existe mapeamento de técnico→vendedor, força no payload
+    if (options.vendedorId) {
+      payload.vendedor_id = options.vendedorId;
+      if (options.vendedorNome) payload.nome_vendedor = options.vendedorNome;
     }
 
-    console.log(`[auvo-gc-sync] PUT OS ${gcOsId}: situacao_id=${situacaoId}, vendedor_id=${payload.vendedor_id || "N/A"}, valor_total=${payload.valor_total || "N/A"}`);
+    // Campos de leitura que podem causar rejeição/efeito colateral no PUT
+    const camposRemover = ["id", "codigo", "nome_situacao", "cor_situacao", "hash", "cadastrado_em", "modificado_em"];
+    for (const campo of camposRemover) delete payload[campo];
+
+    if (payload.data_saida == null) payload.data_saida = "";
+
+    console.log(
+      `[auvo-gc-sync] PUT OS ${gcOsId}: situacao_id=${situacaoId}, vendedor_id=${String(payload.vendedor_id || "N/A")}, nome_vendedor=${String(payload.nome_vendedor || "N/A")}, valor_total=${String(payload.valor_total || "N/A")}`,
+    );
 
     const response = await rateLimitedFetch(url, {
-      method: "PUT", headers: gcHeaders,
+      method: "PUT",
+      headers: gcHeaders,
       body: JSON.stringify(payload),
     }, "gc");
+
     const body = await response.json().catch(() => ({}));
     return { success: response.ok, status: response.status, body };
   } catch (err) {
