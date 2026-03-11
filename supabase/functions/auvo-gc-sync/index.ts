@@ -473,6 +473,55 @@ Deno.serve(async (req) => {
       }
     }
 
+    // ─── Action: revert_os — reverter OS para situação anterior ───
+    if (body?.action === "revert_os") {
+      const gcOsId = String(body.gc_os_id || "");
+      const situacaoAnteriorId = String(body.situacao_id_antes || "");
+      const gcOsCodigo = String(body.gc_os_codigo || "");
+      if (!gcOsId || !situacaoAnteriorId) {
+        return new Response(JSON.stringify({ error: "gc_os_id e situacao_id_antes são obrigatórios" }), {
+          status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+      console.log(`[auvo-gc-sync] REVERT: OS ${gcOsCodigo} (${gcOsId}) → situação ${situacaoAnteriorId}`);
+      const revertResult = await atualizarSituacaoOsGC(gcOsId, situacaoAnteriorId, gcHeaders);
+      
+      // Log the revert action
+      await supabase.from("auvo_gc_sync_log").insert({
+        executado_em: new Date().toISOString(),
+        os_candidatas: 1,
+        os_atualizadas: revertResult.success ? 1 : 0,
+        erros: revertResult.success ? 0 : 1,
+        dry_run: false,
+        duracao_ms: Date.now() - startTime,
+        observacao: `REVERSÃO manual: OS ${gcOsCodigo}`,
+        detalhes: [{
+          gc_os_id: gcOsId,
+          gc_os_codigo: gcOsCodigo,
+          auvo_task_id: "",
+          resultado: revertResult.success ? "revertida" : "erro_gc",
+          detalhe: revertResult.success 
+            ? `Revertida para situação ${situacaoAnteriorId} | HTTP ${revertResult.status}`
+            : `Erro ao reverter: HTTP ${revertResult.status} — ${JSON.stringify(revertResult.body)}`,
+          situacao_antes: "EXECUTADO – AGUARDANDO NEGOCIAÇÃO FINANCEIRA",
+          situacao_depois: revertResult.success ? `Revertida (${situacaoAnteriorId})` : null,
+          situacao_id_antes: "7116099",
+          situacao_id_depois: revertResult.success ? situacaoAnteriorId : null,
+        }],
+      });
+
+      return new Response(JSON.stringify({ 
+        success: revertResult.success, 
+        gc_os_id: gcOsId,
+        gc_os_codigo: gcOsCodigo,
+        status: revertResult.status,
+        body: revertResult.body,
+      }), {
+        status: revertResult.success ? 200 : 500, 
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
     // ─── Action: debug_task — inspecionar estrutura crua de uma tarefa Auvo ───
     if (body?.action === "debug_task") {
       const taskId = String(body.task_id || "");
