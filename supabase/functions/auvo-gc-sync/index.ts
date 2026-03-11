@@ -828,6 +828,7 @@ Deno.serve(async (req) => {
           detalhe: `HTTP ${gcResult.status} — situação 7116099 | Vendedor: ${gcVendedorNome || vendedorStatus} | Peças: ${validacaoPecas.resumo}`,
           situacao_antes: os.nome_situacao, situacao_id_antes: os.situacao_id, situacao_depois: "EXECUTADO – AGUARDANDO NEGOCIAÇÃO FINANCEIRA",
           auvo_tecnico_id: auvoTecnicoId || null, auvo_tecnico_nome: auvoTecnicoNome || null, data_os: os.data_os,
+          gc_cliente: os.gc_cliente, auvo_cliente: auvoCliente || null,
           gc_vendedor_id: gcVendedorId, gc_vendedor_nome: gcVendedorNome, vendedor_status: vendedorStatus,
         });
       } else {
