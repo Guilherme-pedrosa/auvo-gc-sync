@@ -687,7 +687,7 @@ Deno.serve(async (req) => {
         logEntries.push({
           gc_os_id: os.gc_os_id, gc_os_codigo: os.gc_os_codigo, auvo_task_id: os.auvo_task_id,
           resultado: "erro_gc", detalhe: `HTTP ${gcResult.status} — ${JSON.stringify(gcResult.body)}`,
-          situacao_antes: os.nome_situacao, situacao_depois: null, data_os: os.data_os,
+          situacao_antes: os.nome_situacao, situacao_id_antes: os.situacao_id, situacao_depois: null, data_os: os.data_os,
           auvo_tecnico_id: auvoTecnicoId || null, vendedor_status: vendedorStatus,
         });
       }
