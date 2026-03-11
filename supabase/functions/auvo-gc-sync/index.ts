@@ -87,6 +87,7 @@ async function fetchOsComTarefaAuvo(gcHeaders: Record<string, string>): Promise<
         const label = String(nested.descricao || nested.label || nested.nome || "").toLowerCase();
         return id === atributoId || label === atributoLabel || label.includes("tarefa execu");
       });
+      if (!atributoTarefa) { semAtributo++; continue; }
       const nested2 = atributoTarefa?.atributo || atributoTarefa;
       const valor = String(nested2?.conteudo || nested2?.valor || "").trim();
       if (!valor) { semValor++; continue; }
