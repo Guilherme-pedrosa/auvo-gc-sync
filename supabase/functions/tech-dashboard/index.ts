@@ -34,27 +34,32 @@ async function fetchAllAuvoTasks(
   let hasMore = true;
 
   while (hasMore) {
-    // Auvo v2 API expects startDate/endDate in dd/MM/yyyy format inside ParamFilter
-    const [sy, sm, sd] = startDate.split("-");
-    const [ey, em, ed] = endDate.split("-");
-    const paramFilter = encodeURIComponent(
-      JSON.stringify({ startDate: `${sd}/${sm}/${sy}`, endDate: `${ed}/${em}/${ey}` })
-    );
-    const url = `${AUVO_BASE_URL}/tasks/?Page=${page}&PageSize=${pageSize}&Order=asc&ParamFilter=${paramFilter}`;
+    // Try multiple date formats — Auvo v2 may use MM/dd/yyyy or dd/MM/yyyy
+    const paramFilter = encodeURIComponent(JSON.stringify({}));
+    const url = `${AUVO_BASE_URL}/tasks/?Page=${page}&PageSize=${pageSize}&Order=asc&startDate=${startDate}&endDate=${endDate}&ParamFilter=${paramFilter}`;
     console.log(`[tech-dashboard] Fetching: ${url}`);
     const response = await fetch(url, { headers: auvoHeaders(bearerToken) });
+    const responseText = await response.text();
+    console.log(`[tech-dashboard] Page ${page} status: ${response.status}, body preview: ${responseText.substring(0, 500)}`);
+    
     if (!response.ok) {
-      const errBody = await response.text().catch(() => "");
-      console.error(`[tech-dashboard] Auvo tasks page ${page} error: ${response.status} — ${errBody.substring(0, 500)}`);
+      // Try alternative: pass dates inside ParamFilter
+      const pf2 = encodeURIComponent(JSON.stringify({ startDate, endDate }));
+      const url2 = `${AUVO_BASE_URL}/tasks/?Page=${page}&PageSize=${pageSize}&Order=asc&ParamFilter=${pf2}`;
+      console.log(`[tech-dashboard] Retry with ParamFilter dates: ${url2}`);
+      const resp2 = await fetch(url2, { headers: auvoHeaders(bearerToken) });
+      const text2 = await resp2.text();
+      console.log(`[tech-dashboard] Retry status: ${resp2.status}, body: ${text2.substring(0, 500)}`);
       break;
     }
-    const data = await response.json();
-    console.log(`[tech-dashboard] Page ${page} response keys: ${Object.keys(data).join(", ")}`);
-    if (page === 1) {
-      console.log(`[tech-dashboard] Result keys: ${Object.keys(data?.result || {}).join(", ")}`);
-      console.log(`[tech-dashboard] First entity sample: ${JSON.stringify((data?.result?.entityList || data?.result?.Entities || [])[0] || "EMPTY").substring(0, 1000)}`);
-    }
+    
+    let data: any;
+    try { data = JSON.parse(responseText); } catch { break; }
     const entities = data?.result?.entityList || data?.result?.Entities || [];
+    if (page === 1 && entities.length > 0) {
+      console.log(`[tech-dashboard] First task keys: ${Object.keys(entities[0]).join(", ")}`);
+      console.log(`[tech-dashboard] First task sample: ${JSON.stringify(entities[0]).substring(0, 1000)}`);
+    }
     allTasks.push(...entities);
     console.log(`[tech-dashboard] Page ${page}: ${entities.length} tasks (total: ${allTasks.length})`);
     if (entities.length < pageSize) hasMore = false;
