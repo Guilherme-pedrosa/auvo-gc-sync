@@ -575,7 +575,7 @@ const AuvoSyncPage = () => {
                                 {Array.isArray(log.detalhes) && log.detalhes.length > 0 ? (
                                   <div className="space-y-3">
 
-                                    {log.detalhes.some((d: LogDetail) => d.situacao_id_antes && d.resultado === "atualizada") && !filtroCliente && (
+                                    {log.detalhes.some((d: LogDetail) => d.situacao_id_antes && d.resultado === "atualizada") && (
                                       <div className="flex justify-end">
                                         <Button
                                           variant="outline"
