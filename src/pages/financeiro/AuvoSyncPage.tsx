@@ -301,10 +301,47 @@ const AuvoSyncPage = () => {
               </CardContent>
             </Card>
             <Card>
-              <CardHeader><CardTitle className="text-lg">Controles</CardTitle><CardDescription>Execute a sincronização manualmente</CardDescription></CardHeader>
-              <CardContent className="space-y-3">
-                <Button onClick={() => executarSync(false)} disabled={running} className="w-full"><Play className="mr-2 h-4 w-4" />{running ? "Executando..." : "Executar Agora"}</Button>
-                <Button onClick={() => executarSync(true)} disabled={running} variant="outline" className="w-full"><Eye className="mr-2 h-4 w-4" />Dry Run (simular)</Button>
+              <CardHeader><CardTitle className="text-lg">Controles</CardTitle><CardDescription>Selecione o período e execute a sincronização</CardDescription></CardHeader>
+              <CardContent className="space-y-4">
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1.5">
+                    <label className="text-sm font-medium text-muted-foreground">Data Início</label>
+                    <Popover>
+                      <PopoverTrigger asChild>
+                        <Button variant="outline" className="w-full justify-start text-left font-normal">
+                          <CalendarIcon className="mr-2 h-4 w-4" />
+                          {dataInicio ? format(dataInicio, "dd/MM/yyyy") : "Selecione"}
+                        </Button>
+                      </PopoverTrigger>
+                      <PopoverContent className="w-auto p-0" align="start">
+                        <Calendar mode="single" selected={dataInicio} onSelect={setDataInicio} locale={ptBR} initialFocus />
+                      </PopoverContent>
+                    </Popover>
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-sm font-medium text-muted-foreground">Data Fim</label>
+                    <Popover>
+                      <PopoverTrigger asChild>
+                        <Button variant="outline" className="w-full justify-start text-left font-normal">
+                          <CalendarIcon className="mr-2 h-4 w-4" />
+                          {dataFim ? format(dataFim, "dd/MM/yyyy") : "Selecione"}
+                        </Button>
+                      </PopoverTrigger>
+                      <PopoverContent className="w-auto p-0" align="start">
+                        <Calendar mode="single" selected={dataFim} onSelect={setDataFim} locale={ptBR} initialFocus />
+                      </PopoverContent>
+                    </Popover>
+                  </div>
+                </div>
+                {(dataInicio || dataFim) && (
+                  <Button variant="ghost" size="sm" className="text-xs" onClick={() => { setDataInicio(undefined); setDataFim(undefined); }}>
+                    Limpar datas (buscar todas)
+                  </Button>
+                )}
+                <div className="space-y-2">
+                  <Button onClick={() => executarSync(false)} disabled={running} className="w-full"><Play className="mr-2 h-4 w-4" />{running ? "Executando..." : "Executar Agora"}</Button>
+                  <Button onClick={() => executarSync(true)} disabled={running} variant="outline" className="w-full"><Eye className="mr-2 h-4 w-4" />Dry Run (simular)</Button>
+                </div>
               </CardContent>
             </Card>
           </div>
