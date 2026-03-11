@@ -14,7 +14,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Calendar } from "@/components/ui/calendar";
 import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
-import { RefreshCw, Play, Eye, ChevronDown, ChevronRight, ArrowLeft, Package, AlertTriangle, Plus, Link2, UserCheck, CalendarIcon, Undo2 } from "lucide-react";
+import { RefreshCw, Play, Eye, ChevronDown, ChevronRight, ArrowLeft, Package, AlertTriangle, Plus, Link2, UserCheck, CalendarIcon, Undo2, ExternalLink, Settings2 } from "lucide-react";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { useNavigate } from "react-router-dom";
@@ -85,6 +85,77 @@ const AuvoSyncPage = () => {
   const [revertModificadoApos, setRevertModificadoApos] = useState("2026-03-11 17:46:00");
   const [confirmExecute, setConfirmExecute] = useState(false);
   const [confirmText, setConfirmText] = useState("");
+  const [changingSituacao, setChangingSituacao] = useState<string | null>(null);
+  const [changingSituacaoAll, setChangingSituacaoAll] = useState(false);
+  const [situacaoDestinoDialog, setSituacaoDestinoDialog] = useState("");
+  const [situacaoDialogOpen, setSituacaoDialogOpen] = useState(false);
+  const [situacaoDialogTarget, setSituacaoDialogTarget] = useState<LogDetail | null>(null);
+  const [situacaoDialogBulk, setSituacaoDialogBulk] = useState<LogDetail[] | null>(null);
+
+  const SITUACOES_OPTIONS = [
+    { id: "7063579", label: "AGUARDANDO COMPRA DE PEÇAS" },
+    { id: "7063580", label: "AGUARDANDO CHEGADA DE PEÇAS" },
+    { id: "7659440", label: "AGUARDANDO FABRICAÇÃO" },
+    { id: "7063581", label: "PEDIDO EM CONFERENCIA" },
+    { id: "7063705", label: "PEDIDO CONFERIDO AGUARDANDO EXECUÇÃO" },
+    { id: "7213493", label: "SERVICO AGUARDANDO EXECUCAO" },
+    { id: "7684665", label: "RETIRADA PELO TECNICO" },
+    { id: "7748831", label: "AGUARDANDO RETIRADA" },
+    { id: "8219136", label: "EM ROTA" },
+    { id: "7116099", label: "EXECUTADO – AG. NEGOCIAÇÃO" },
+  ];
+
+  const gcOsUrl = (gcOsId: string) => `https://app.gestaoclick.com/ordens_servicos/${gcOsId}`;
+  const auvoTaskUrl = (taskId: string) => `https://app.auvo.com.br/tarefas/${taskId}`;
+
+  const alterarSituacaoOS = async (detail: LogDetail, situacaoId: string) => {
+    setChangingSituacao(detail.gc_os_id);
+    try {
+      const { data, error } = await supabase.functions.invoke("auvo-gc-sync", {
+        body: {
+          action: "revert_os",
+          gc_os_id: detail.gc_os_id,
+          gc_os_codigo: detail.gc_os_codigo,
+          situacao_id_antes: situacaoId,
+        },
+      });
+      if (error) throw error;
+      if (data?.success) {
+        toast.success(`OS ${detail.gc_os_codigo} → situação alterada`);
+        queryClient.invalidateQueries({ queryKey: ["auvo-sync-logs"] });
+      } else {
+        toast.error(`Erro: ${JSON.stringify(data?.body || data?.error || data)}`);
+      }
+    } catch (err: any) {
+      toast.error(`Erro: ${err.message}`);
+    } finally {
+      setChangingSituacao(null);
+    }
+  };
+
+  const alterarSituacaoTodas = async (details: LogDetail[], situacaoId: string) => {
+    setChangingSituacaoAll(true);
+    let ok = 0, fail = 0;
+    for (const d of details) {
+      try {
+        const { data, error } = await supabase.functions.invoke("auvo-gc-sync", {
+          body: {
+            action: "revert_os",
+            gc_os_id: d.gc_os_id,
+            gc_os_codigo: d.gc_os_codigo,
+            situacao_id_antes: situacaoId,
+          },
+        });
+        if (error) throw error;
+        if (data?.success) ok++; else fail++;
+      } catch {
+        fail++;
+      }
+    }
+    toast.success(`${ok} OS alteradas, ${fail} erros`);
+    queryClient.invalidateQueries({ queryKey: ["auvo-sync-logs"] });
+    setChangingSituacaoAll(false);
+  };
 
   // ─── Queries ───
   const { data: logs, isLoading } = useQuery({
@@ -464,57 +535,95 @@ const AuvoSyncPage = () => {
                             <TableRow>
                               <TableCell colSpan={11} className="bg-muted/30 p-4">
                                 {Array.isArray(log.detalhes) && log.detalhes.length > 0 ? (
-                                  <Table>
-                                    <TableHeader>
-                                      <TableRow>
-                                        <TableHead>OS</TableHead>
-                                        <TableHead>Data OS</TableHead>
-                                        <TableHead>Tarefa</TableHead>
-                                        <TableHead>Resultado</TableHead>
-                                        <TableHead>Vendedor</TableHead>
-                                        <TableHead>Antes</TableHead>
-                                        <TableHead>Depois</TableHead>
-                                         <TableHead>Detalhe</TableHead>
-                                         <TableHead>Ações</TableHead>
-                                       </TableRow>
-                                     </TableHeader>
-                                     <TableBody>
-                                       {(log.detalhes as LogDetail[]).map((d, i) => (
-                                         <TableRow key={i}>
-                                           <TableCell className="font-mono text-xs">{d.gc_os_codigo}</TableCell>
-                                          <TableCell className="text-xs">{d.data_os ? (() => { try { return format(new Date(d.data_os), "dd/MM/yyyy"); } catch { return d.data_os; } })() : "—"}</TableCell>
-                                          <TableCell className="font-mono text-xs">{d.auvo_task_id}</TableCell>
-                                          <TableCell>{resultadoBadge(d.resultado)}</TableCell>
-                                          <TableCell>
-                                            <div className="space-y-1">
-                                              {vendedorBadge(d.vendedor_status)}
-                                              {d.gc_vendedor_nome && <span className="text-xs block">{d.gc_vendedor_nome}</span>}
-                                            </div>
-                                          </TableCell>
-                                          <TableCell className="text-xs">{d.situacao_antes}</TableCell>
-                                          <TableCell className="text-xs">{d.situacao_depois || "—"}</TableCell>
-                                           <TableCell className="text-xs max-w-xs">
-                                            <span className="truncate block" title={d.detalhe}>{d.detalhe}</span>
-                                            <PecasDetail detail={d} />
-                                          </TableCell>
-                                          <TableCell>
-                                            {(d.resultado === "atualizada" || d.resultado === "dry_run_ok") && d.situacao_id_antes && !log.dry_run && (
-                                              <Button
-                                                variant="outline"
-                                                size="sm"
-                                                className="text-xs"
-                                                disabled={reverting === d.gc_os_id}
-                                                onClick={(e) => { e.stopPropagation(); reverterOS(d); }}
-                                              >
-                                                <Undo2 className="h-3 w-3 mr-1" />
-                                                {reverting === d.gc_os_id ? "Revertendo..." : "Reverter"}
-                                              </Button>
-                                            )}
-                                          </TableCell>
+                                  <div className="space-y-3">
+                                    {/* Botão alterar todas */}
+                                    <div className="flex justify-end">
+                                      <Button
+                                        variant="outline"
+                                        size="sm"
+                                        className="text-xs"
+                                        disabled={changingSituacaoAll}
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          setSituacaoDialogBulk(log.detalhes as LogDetail[]);
+                                          setSituacaoDestinoDialog("");
+                                          setSituacaoDialogOpen(true);
+                                        }}
+                                      >
+                                        <Settings2 className="h-3 w-3 mr-1" />
+                                        Alterar situação de todas ({log.detalhes.length})
+                                      </Button>
+                                    </div>
+                                    <Table>
+                                      <TableHeader>
+                                        <TableRow>
+                                          <TableHead>OS</TableHead>
+                                          <TableHead>Tarefa</TableHead>
+                                          <TableHead>Resultado</TableHead>
+                                          <TableHead>Vendedor</TableHead>
+                                          <TableHead>Antes</TableHead>
+                                          <TableHead>Depois</TableHead>
+                                          <TableHead>Detalhe</TableHead>
+                                          <TableHead>Ações</TableHead>
                                         </TableRow>
-                                      ))}
-                                    </TableBody>
-                                  </Table>
+                                      </TableHeader>
+                                      <TableBody>
+                                        {(log.detalhes as LogDetail[]).map((d, i) => (
+                                          <TableRow key={i}>
+                                            <TableCell>
+                                              <div className="flex items-center gap-1">
+                                                <span className="font-mono text-xs">{d.gc_os_codigo}</span>
+                                                <a href={gcOsUrl(d.gc_os_id)} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} title="Abrir no GestãoClick">
+                                                  <ExternalLink className="h-3 w-3 text-muted-foreground hover:text-foreground" />
+                                                </a>
+                                              </div>
+                                            </TableCell>
+                                            <TableCell>
+                                              <div className="flex items-center gap-1">
+                                                <span className="font-mono text-xs">{d.auvo_task_id}</span>
+                                                <a href={auvoTaskUrl(d.auvo_task_id)} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} title="Abrir no Auvo">
+                                                  <ExternalLink className="h-3 w-3 text-muted-foreground hover:text-foreground" />
+                                                </a>
+                                              </div>
+                                            </TableCell>
+                                            <TableCell>{resultadoBadge(d.resultado)}</TableCell>
+                                            <TableCell>
+                                              <div className="space-y-1">
+                                                {vendedorBadge(d.vendedor_status)}
+                                                {d.gc_vendedor_nome && <span className="text-xs block">{d.gc_vendedor_nome}</span>}
+                                              </div>
+                                            </TableCell>
+                                            <TableCell className="text-xs">{d.situacao_antes}</TableCell>
+                                            <TableCell className="text-xs">{d.situacao_depois || "—"}</TableCell>
+                                            <TableCell className="text-xs max-w-xs">
+                                              <span className="truncate block" title={d.detalhe}>{d.detalhe}</span>
+                                              <PecasDetail detail={d} />
+                                            </TableCell>
+                                            <TableCell>
+                                              <div className="flex gap-1">
+                                                <Button
+                                                  variant="outline"
+                                                  size="sm"
+                                                  className="text-xs"
+                                                  disabled={changingSituacao === d.gc_os_id}
+                                                  onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    setSituacaoDialogTarget(d);
+                                                    setSituacaoDialogBulk(null);
+                                                    setSituacaoDestinoDialog("");
+                                                    setSituacaoDialogOpen(true);
+                                                  }}
+                                                >
+                                                  <Settings2 className="h-3 w-3 mr-1" />
+                                                  {changingSituacao === d.gc_os_id ? "Alterando..." : "Situação"}
+                                                </Button>
+                                              </div>
+                                            </TableCell>
+                                          </TableRow>
+                                        ))}
+                                      </TableBody>
+                                    </Table>
+                                  </div>
                                 ) : <p className="text-sm text-muted-foreground">Sem detalhes</p>}
                               </TableCell>
                             </TableRow>
@@ -789,6 +898,50 @@ const AuvoSyncPage = () => {
           </Card>
         </TabsContent>
       </Tabs>
+
+      {/* Dialog para alterar situação */}
+      <Dialog open={situacaoDialogOpen} onOpenChange={(open) => { setSituacaoDialogOpen(open); if (!open) { setSituacaoDialogTarget(null); setSituacaoDialogBulk(null); } }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Alterar Situação</DialogTitle>
+            <DialogDescription>
+              {situacaoDialogBulk
+                ? `Alterar a situação de ${situacaoDialogBulk.length} OS`
+                : `Alterar a situação da OS ${situacaoDialogTarget?.gc_os_codigo}`
+              }
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3">
+            <label className="text-sm font-medium">Nova situação</label>
+            <Select value={situacaoDestinoDialog} onValueChange={setSituacaoDestinoDialog}>
+              <SelectTrigger><SelectValue placeholder="Selecione a situação" /></SelectTrigger>
+              <SelectContent>
+                {SITUACOES_OPTIONS.map((s) => (
+                  <SelectItem key={s.id} value={s.id}>{s.label}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setSituacaoDialogOpen(false)}>Cancelar</Button>
+            <Button
+              disabled={!situacaoDestinoDialog || changingSituacao !== null || changingSituacaoAll}
+              onClick={async () => {
+                if (situacaoDialogBulk) {
+                  await alterarSituacaoTodas(situacaoDialogBulk, situacaoDestinoDialog);
+                } else if (situacaoDialogTarget) {
+                  await alterarSituacaoOS(situacaoDialogTarget, situacaoDestinoDialog);
+                }
+                setSituacaoDialogOpen(false);
+                setSituacaoDialogTarget(null);
+                setSituacaoDialogBulk(null);
+              }}
+            >
+              {changingSituacaoAll ? "Alterando todas..." : changingSituacao ? "Alterando..." : "Confirmar"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };
