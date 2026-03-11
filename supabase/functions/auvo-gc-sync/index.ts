@@ -605,7 +605,7 @@ Deno.serve(async (req) => {
 
       if (!tarefa) {
         naoEncontradas++;
-        logEntries.push({ gc_os_id: os.gc_os_id, gc_os_codigo: os.gc_os_codigo, auvo_task_id: os.auvo_task_id, resultado: "nao_encontrada", detalhe: "Tarefa não encontrada no Auvo", situacao_antes: os.nome_situacao, situacao_depois: null, data_os: os.data_os });
+        logEntries.push({ gc_os_id: os.gc_os_id, gc_os_codigo: os.gc_os_codigo, auvo_task_id: os.auvo_task_id, resultado: "nao_encontrada", detalhe: "Tarefa não encontrada no Auvo", situacao_antes: os.nome_situacao, situacao_id_antes: os.situacao_id, situacao_depois: null, data_os: os.data_os });
         continue;
       }
 
