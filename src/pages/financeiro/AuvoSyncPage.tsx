@@ -481,22 +481,21 @@ const AuvoSyncPage = () => {
                 </div>
 
                 {/* Barra de ações em lote */}
-                {filtroConciliacao === "pendentes" && (
                   <div className="flex flex-wrap items-center gap-3 mt-3 pt-3 border-t">
                     <Button
                       variant="outline" size="sm" className="text-xs"
                       onClick={() => {
-                        const pendentes = itensFiltrados.filter(i => !i.conciliada && !movedOsIds.has(i.gc_os_id));
-                        if (selectedOsIds.size === pendentes.length && pendentes.every(i => selectedOsIds.has(i.gc_os_id))) {
+                        const selecionaveis = itensFiltrados.filter(i => !movedOsIds.has(i.gc_os_id));
+                        if (selectedOsIds.size === selecionaveis.length && selecionaveis.every(i => selectedOsIds.has(i.gc_os_id))) {
                           setSelectedOsIds(new Set());
                         } else {
-                          setSelectedOsIds(new Set(pendentes.map(i => i.gc_os_id)));
+                          setSelectedOsIds(new Set(selecionaveis.map(i => i.gc_os_id)));
                         }
                       }}
                     >
                       {(() => {
-                        const pendentes = itensFiltrados.filter(i => !i.conciliada && !movedOsIds.has(i.gc_os_id));
-                        return selectedOsIds.size === pendentes.length && pendentes.every(i => selectedOsIds.has(i.gc_os_id))
+                        const selecionaveis = itensFiltrados.filter(i => !movedOsIds.has(i.gc_os_id));
+                        return selectedOsIds.size === selecionaveis.length && selecionaveis.every(i => selectedOsIds.has(i.gc_os_id))
                           ? "Desmarcar tudo" : "Selecionar tudo";
                       })()}
                     </Button>
@@ -516,7 +515,6 @@ const AuvoSyncPage = () => {
                       </>
                     )}
                   </div>
-                )}
               </CardHeader>
               <CardContent className="p-0">
                 <div className="overflow-auto max-h-[65vh]">
