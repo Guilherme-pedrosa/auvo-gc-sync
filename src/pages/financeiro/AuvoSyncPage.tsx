@@ -94,6 +94,9 @@ const AuvoSyncPage = () => {
   const [situacaoDialogOpen, setSituacaoDialogOpen] = useState(false);
   const [situacaoDialogTarget, setSituacaoDialogTarget] = useState<LogDetail | null>(null);
   const [situacaoDialogBulk, setSituacaoDialogBulk] = useState<LogDetail[] | null>(null);
+  const [filtroCliente, setFiltroCliente] = useState("");
+  const [situacaoClienteBulk, setSituacaoClienteBulk] = useState("");
+  const [changingSituacaoCliente, setChangingSituacaoCliente] = useState(false);
 
   const SITUACOES_OPTIONS = [
     { id: "7063579", label: "AGUARDANDO COMPRA DE PEÇAS" },
@@ -511,7 +514,77 @@ const AuvoSyncPage = () => {
                               <TableCell colSpan={11} className="bg-muted/30 p-4">
                                 {Array.isArray(log.detalhes) && log.detalhes.length > 0 ? (
                                   <div className="space-y-3">
-                                    {log.detalhes.some((d: LogDetail) => d.situacao_id_antes && d.resultado === "atualizada") && (
+                                    {/* Filtro por cliente + ação em lote */}
+                                    <div className="flex flex-wrap items-end gap-3">
+                                      <div className="space-y-1 flex-1 min-w-[200px]">
+                                        <label className="text-xs font-medium text-muted-foreground">Filtrar por cliente</label>
+                                        <Input
+                                          placeholder="Digite o nome do cliente..."
+                                          value={filtroCliente}
+                                          onChange={(e) => setFiltroCliente(e.target.value)}
+                                          className="h-8 text-xs"
+                                        />
+                                      </div>
+                                      {filtroCliente && (() => {
+                                        const filtradas = (log.detalhes as LogDetail[]).filter(d =>
+                                          d.gc_cliente?.toLowerCase().includes(filtroCliente.toLowerCase())
+                                        );
+                                        return filtradas.length > 0 ? (
+                                          <div className="flex items-end gap-2">
+                                            <div className="space-y-1">
+                                              <label className="text-xs font-medium text-muted-foreground">Alterar situação ({filtradas.length} OS)</label>
+                                              <Select value={situacaoClienteBulk} onValueChange={setSituacaoClienteBulk}>
+                                                <SelectTrigger className="h-8 text-xs w-[260px]">
+                                                  <SelectValue placeholder="Selecione situação" />
+                                                </SelectTrigger>
+                                                <SelectContent>
+                                                  {SITUACOES_OPTIONS.map(s => (
+                                                    <SelectItem key={s.id} value={s.id}>{s.label}</SelectItem>
+                                                  ))}
+                                                </SelectContent>
+                                              </Select>
+                                            </div>
+                                            <Button
+                                              size="sm"
+                                              className="h-8 text-xs"
+                                              disabled={!situacaoClienteBulk || changingSituacaoCliente}
+                                              onClick={(e) => {
+                                                e.stopPropagation();
+                                                const label = SITUACOES_OPTIONS.find(s => s.id === situacaoClienteBulk)?.label || situacaoClienteBulk;
+                                                if (!window.confirm(`Alterar ${filtradas.length} OS do cliente "${filtroCliente}" para "${label}"?`)) return;
+                                                (async () => {
+                                                  setChangingSituacaoCliente(true);
+                                                  let ok = 0, fail = 0;
+                                                  for (const d of filtradas) {
+                                                    try {
+                                                      const { data, error } = await supabase.functions.invoke("auvo-gc-sync", {
+                                                        body: { action: "revert_os", gc_os_id: d.gc_os_id, gc_os_codigo: d.gc_os_codigo, situacao_id_antes: situacaoClienteBulk },
+                                                      });
+                                                      if (error) throw error;
+                                                      if (data?.success) ok++; else fail++;
+                                                    } catch { fail++; }
+                                                  }
+                                                  toast.success(`${ok} OS alteradas, ${fail} erros`);
+                                                  queryClient.invalidateQueries({ queryKey: ["auvo-sync-logs"] });
+                                                  setChangingSituacaoCliente(false);
+                                                  setSituacaoClienteBulk("");
+                                                })();
+                                              }}
+                                            >
+                                              <Settings2 className="h-3 w-3 mr-1" />
+                                              {changingSituacaoCliente ? "Alterando..." : "Aplicar"}
+                                            </Button>
+                                          </div>
+                                        ) : null;
+                                      })()}
+                                      {filtroCliente && (
+                                        <Button variant="ghost" size="sm" className="h-8 text-xs" onClick={() => setFiltroCliente("")}>
+                                          Limpar filtro
+                                        </Button>
+                                      )}
+                                    </div>
+
+                                    {log.detalhes.some((d: LogDetail) => d.situacao_id_antes && d.resultado === "atualizada") && !filtroCliente && (
                                       <div className="flex justify-end">
                                         <Button
                                           variant="outline"
@@ -549,6 +622,7 @@ const AuvoSyncPage = () => {
                                       <TableHeader>
                                         <TableRow>
                                           <TableHead>OS</TableHead>
+                                          <TableHead>Cliente</TableHead>
                                           <TableHead>Data</TableHead>
                                           <TableHead>Tarefa</TableHead>
                                           <TableHead>Resultado</TableHead>
@@ -560,18 +634,20 @@ const AuvoSyncPage = () => {
                                         </TableRow>
                                       </TableHeader>
                                       <TableBody>
-                                        {(log.detalhes as LogDetail[]).map((d, i) => (
+                                        {(log.detalhes as LogDetail[])
+                                          .filter(d => !filtroCliente || d.gc_cliente?.toLowerCase().includes(filtroCliente.toLowerCase()))
+                                          .map((d, i) => (
                                           <TableRow key={i}>
                                             <TableCell>
-                                              <div>
-                                                <div className="flex items-center gap-1">
-                                                  <span className="font-mono text-xs">{d.gc_os_codigo}</span>
-                                                  <a href={gcOsUrl(d.gc_os_id)} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} title="Abrir no GestãoClick">
-                                                    <ExternalLink className="h-3 w-3 text-muted-foreground hover:text-foreground" />
-                                                  </a>
-                                                </div>
-                                                {d.gc_cliente && <span className="text-xs text-muted-foreground block truncate max-w-[180px]" title={d.gc_cliente}>{d.gc_cliente}</span>}
+                                              <div className="flex items-center gap-1">
+                                                <span className="font-mono text-xs">{d.gc_os_codigo}</span>
+                                                <a href={gcOsUrl(d.gc_os_id)} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} title="Abrir no GestãoClick">
+                                                  <ExternalLink className="h-3 w-3 text-muted-foreground hover:text-foreground" />
+                                                </a>
                                               </div>
+                                            </TableCell>
+                                            <TableCell>
+                                              <span className="text-xs truncate block max-w-[180px]" title={d.gc_cliente || ""}>{d.gc_cliente || "—"}</span>
                                             </TableCell>
                                             <TableCell className="text-xs text-muted-foreground">
                                               {d.data_os ? (() => { try { return format(new Date(d.data_os), "dd/MM/yy"); } catch { return d.data_os; } })() : "—"}
