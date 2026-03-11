@@ -10,6 +10,9 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/component
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Calendar } from "@/components/ui/calendar";
+import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
 import { RefreshCw, Play, Eye, ChevronDown, ChevronRight, ArrowLeft, Package, AlertTriangle, Plus, Link2, UserCheck, CalendarIcon } from "lucide-react";
 import { format } from "date-fns";
