@@ -511,8 +511,42 @@ const AuvoSyncPage = () => {
                               <TableCell colSpan={11} className="bg-muted/30 p-4">
                                 {Array.isArray(log.detalhes) && log.detalhes.length > 0 ? (
                                   <div className="space-y-3">
-                                    {/* Botão alterar todas */}
+                                    {/* Botão reverter todas */}
+                                    {log.detalhes.some((d: LogDetail) => d.situacao_id_antes && (d.resultado === "atualizada" || d.resultado === "dry_run_ok")) && (
                                     <div className="flex justify-end">
+                                      <Button
+                                        variant="outline"
+                                        size="sm"
+                                        className="text-xs"
+                                        disabled={changingSituacaoAll}
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          const revertibles = (log.detalhes as LogDetail[]).filter(d => d.situacao_id_antes && (d.resultado === "atualizada" || d.resultado === "dry_run_ok"));
+                                          if (!window.confirm(`Reverter ${revertibles.length} OS para a situação anterior?`)) return;
+                                          const mapped = revertibles.map(d => ({ ...d }));
+                                          (async () => {
+                                            setChangingSituacaoAll(true);
+                                            let ok = 0, fail = 0;
+                                            for (const d of mapped) {
+                                              try {
+                                                const { data, error } = await supabase.functions.invoke("auvo-gc-sync", {
+                                                  body: { action: "revert_os", gc_os_id: d.gc_os_id, gc_os_codigo: d.gc_os_codigo, situacao_id_antes: d.situacao_id_antes },
+                                                });
+                                                if (error) throw error;
+                                                if (data?.success) ok++; else fail++;
+                                              } catch { fail++; }
+                                            }
+                                            toast.success(`${ok} OS revertidas, ${fail} erros`);
+                                            queryClient.invalidateQueries({ queryKey: ["auvo-sync-logs"] });
+                                            setChangingSituacaoAll(false);
+                                          })();
+                                        }}
+                                      >
+                                        <Undo2 className="h-3 w-3 mr-1" />
+                                        {changingSituacaoAll ? "Revertendo..." : `Reverter todas (${(log.detalhes as LogDetail[]).filter(d => d.situacao_id_antes && (d.resultado === "atualizada" || d.resultado === "dry_run_ok")).length})`}
+                                      </Button>
+                                    </div>
+                                    )}
                                       <Button
                                         variant="outline"
                                         size="sm"
