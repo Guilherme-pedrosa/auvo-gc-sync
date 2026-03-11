@@ -538,7 +538,7 @@ Deno.serve(async (req) => {
           resultado: "dry_run_ok",
           detalhe: `Seria atualizada para situação 7116099 | Peças: ${validacaoPecas.resumo} | Vendedor: ${gcVendedorNome || vendedorStatus}`,
           situacao_antes: os.nome_situacao, situacao_depois: "EXECUTADO – AG. NEGOCIAÇÃO (7116099)",
-          auvo_tecnico_id: auvoTecnicoId || null,
+          auvo_tecnico_id: auvoTecnicoId || null, data_os: os.data_os,
           gc_vendedor_id: gcVendedorId, gc_vendedor_nome: gcVendedorNome, vendedor_status: vendedorStatus,
         });
         continue;
