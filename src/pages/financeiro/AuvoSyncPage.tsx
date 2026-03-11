@@ -78,6 +78,13 @@ const AuvoSyncPage = () => {
   const [dataInicio, setDataInicio] = useState<Date | undefined>(undefined);
   const [dataFim, setDataFim] = useState<Date | undefined>(undefined);
   const [reverting, setReverting] = useState<string | null>(null);
+  const [scanResult, setScanResult] = useState<Array<{ id: string; codigo: string; modificado_em: string }> | null>(null);
+  const [scanning, setScanning] = useState(false);
+  const [batchReverting, setBatchReverting] = useState(false);
+  const [revertSituacaoId, setRevertSituacaoId] = useState("7213493");
+  const [revertModificadoApos, setRevertModificadoApos] = useState("2026-03-11 17:46:00");
+  const [confirmExecute, setConfirmExecute] = useState(false);
+  const [confirmText, setConfirmText] = useState("");
 
   // ─── Queries ───
   const { data: logs, isLoading } = useQuery({
