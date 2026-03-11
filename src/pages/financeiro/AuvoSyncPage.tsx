@@ -164,7 +164,7 @@ const AuvoSyncPage = () => {
           },
         });
         if (error) throw error;
-        if (data?.success) ok++; else fail++;
+        if (data?.success) { ok++; setMovedOsIds(prev => { const s = new Set(prev); s.add(d.gc_os_id); return s; }); } else fail++;
       } catch {
         fail++;
       }
