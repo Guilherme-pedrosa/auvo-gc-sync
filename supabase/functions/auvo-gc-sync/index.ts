@@ -473,6 +473,55 @@ Deno.serve(async (req) => {
       }
     }
 
+    // ─── Action: revert_os — reverter OS para situação anterior ───
+    if (body?.action === "revert_os") {
+      const gcOsId = String(body.gc_os_id || "");
+      const situacaoAnteriorId = String(body.situacao_id_antes || "");
+      const gcOsCodigo = String(body.gc_os_codigo || "");
+      if (!gcOsId || !situacaoAnteriorId) {
+        return new Response(JSON.stringify({ error: "gc_os_id e situacao_id_antes são obrigatórios" }), {
+          status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+      console.log(`[auvo-gc-sync] REVERT: OS ${gcOsCodigo} (${gcOsId}) → situação ${situacaoAnteriorId}`);
+      const revertResult = await atualizarSituacaoOsGC(gcOsId, situacaoAnteriorId, gcHeaders);
+      
+      // Log the revert action
+      await supabase.from("auvo_gc_sync_log").insert({
+        executado_em: new Date().toISOString(),
+        os_candidatas: 1,
+        os_atualizadas: revertResult.success ? 1 : 0,
+        erros: revertResult.success ? 0 : 1,
+        dry_run: false,
+        duracao_ms: Date.now() - startTime,
+        observacao: `REVERSÃO manual: OS ${gcOsCodigo}`,
+        detalhes: [{
+          gc_os_id: gcOsId,
+          gc_os_codigo: gcOsCodigo,
+          auvo_task_id: "",
+          resultado: revertResult.success ? "revertida" : "erro_gc",
+          detalhe: revertResult.success 
+            ? `Revertida para situação ${situacaoAnteriorId} | HTTP ${revertResult.status}`
+            : `Erro ao reverter: HTTP ${revertResult.status} — ${JSON.stringify(revertResult.body)}`,
+          situacao_antes: "EXECUTADO – AGUARDANDO NEGOCIAÇÃO FINANCEIRA",
+          situacao_depois: revertResult.success ? `Revertida (${situacaoAnteriorId})` : null,
+          situacao_id_antes: "7116099",
+          situacao_id_depois: revertResult.success ? situacaoAnteriorId : null,
+        }],
+      });
+
+      return new Response(JSON.stringify({ 
+        success: revertResult.success, 
+        gc_os_id: gcOsId,
+        gc_os_codigo: gcOsCodigo,
+        status: revertResult.status,
+        body: revertResult.body,
+      }), {
+        status: revertResult.success ? 200 : 500, 
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
     // ─── Action: debug_task — inspecionar estrutura crua de uma tarefa Auvo ───
     if (body?.action === "debug_task") {
       const taskId = String(body.task_id || "");
@@ -556,7 +605,7 @@ Deno.serve(async (req) => {
 
       if (!tarefa) {
         naoEncontradas++;
-        logEntries.push({ gc_os_id: os.gc_os_id, gc_os_codigo: os.gc_os_codigo, auvo_task_id: os.auvo_task_id, resultado: "nao_encontrada", detalhe: "Tarefa não encontrada no Auvo", situacao_antes: os.nome_situacao, situacao_depois: null, data_os: os.data_os });
+        logEntries.push({ gc_os_id: os.gc_os_id, gc_os_codigo: os.gc_os_codigo, auvo_task_id: os.auvo_task_id, resultado: "nao_encontrada", detalhe: "Tarefa não encontrada no Auvo", situacao_antes: os.nome_situacao, situacao_id_antes: os.situacao_id, situacao_depois: null, data_os: os.data_os });
         continue;
       }
 
@@ -564,7 +613,7 @@ Deno.serve(async (req) => {
 
       if (!finalizadaSemPendencia) {
         comPendencia++;
-        logEntries.push({ gc_os_id: os.gc_os_id, gc_os_codigo: os.gc_os_codigo, auvo_task_id: os.auvo_task_id, resultado: tarefa.finished ? "com_pendencia" : "nao_finalizada", detalhe: `finished=${tarefa.finished} | pendency="${tarefa.pendency}" | taskStatus=${tarefa.taskStatus}`, situacao_antes: os.nome_situacao, situacao_depois: null, data_os: os.data_os });
+        logEntries.push({ gc_os_id: os.gc_os_id, gc_os_codigo: os.gc_os_codigo, auvo_task_id: os.auvo_task_id, resultado: tarefa.finished ? "com_pendencia" : "nao_finalizada", detalhe: `finished=${tarefa.finished} | pendency="${tarefa.pendency}" | taskStatus=${tarefa.taskStatus}`, situacao_antes: os.nome_situacao, situacao_id_antes: os.situacao_id, situacao_depois: null, data_os: os.data_os });
         continue;
       }
 
@@ -581,7 +630,7 @@ Deno.serve(async (req) => {
         logEntries.push({
           gc_os_id: os.gc_os_id, gc_os_codigo: os.gc_os_codigo, auvo_task_id: os.auvo_task_id,
           resultado: "divergencia_pecas", detalhe: validacaoPecas.resumo,
-          situacao_antes: os.nome_situacao, situacao_depois: null, data_os: os.data_os,
+          situacao_antes: os.nome_situacao, situacao_id_antes: os.situacao_id, situacao_depois: null, data_os: os.data_os,
           pecas_orcamento: validacaoPecas.pecas_orcamento,
           materiais_execucao: validacaoPecas.materiais_execucao,
           itens_cobertos: validacaoPecas.itens_cobertos,
@@ -614,7 +663,7 @@ Deno.serve(async (req) => {
           gc_os_id: os.gc_os_id, gc_os_codigo: os.gc_os_codigo, auvo_task_id: os.auvo_task_id,
           resultado: "dry_run_ok",
           detalhe: `Seria atualizada para situação 7116099 | Peças: ${validacaoPecas.resumo} | Vendedor: ${gcVendedorNome || vendedorStatus}`,
-          situacao_antes: os.nome_situacao, situacao_depois: "EXECUTADO – AG. NEGOCIAÇÃO (7116099)",
+          situacao_antes: os.nome_situacao, situacao_id_antes: os.situacao_id, situacao_depois: "EXECUTADO – AG. NEGOCIAÇÃO (7116099)",
           auvo_tecnico_id: auvoTecnicoId || null, data_os: os.data_os,
           gc_vendedor_id: gcVendedorId, gc_vendedor_nome: gcVendedorNome, vendedor_status: vendedorStatus,
         });
@@ -629,7 +678,7 @@ Deno.serve(async (req) => {
           gc_os_id: os.gc_os_id, gc_os_codigo: os.gc_os_codigo, auvo_task_id: os.auvo_task_id,
           resultado: "atualizada",
           detalhe: `HTTP ${gcResult.status} — situação 7116099 | Vendedor: ${gcVendedorNome || vendedorStatus} | Peças: ${validacaoPecas.resumo}`,
-          situacao_antes: os.nome_situacao, situacao_depois: "EXECUTADO – AGUARDANDO NEGOCIAÇÃO FINANCEIRA",
+          situacao_antes: os.nome_situacao, situacao_id_antes: os.situacao_id, situacao_depois: "EXECUTADO – AGUARDANDO NEGOCIAÇÃO FINANCEIRA",
           auvo_tecnico_id: auvoTecnicoId || null, data_os: os.data_os,
           gc_vendedor_id: gcVendedorId, gc_vendedor_nome: gcVendedorNome, vendedor_status: vendedorStatus,
         });
@@ -638,7 +687,7 @@ Deno.serve(async (req) => {
         logEntries.push({
           gc_os_id: os.gc_os_id, gc_os_codigo: os.gc_os_codigo, auvo_task_id: os.auvo_task_id,
           resultado: "erro_gc", detalhe: `HTTP ${gcResult.status} — ${JSON.stringify(gcResult.body)}`,
-          situacao_antes: os.nome_situacao, situacao_depois: null, data_os: os.data_os,
+          situacao_antes: os.nome_situacao, situacao_id_antes: os.situacao_id, situacao_depois: null, data_os: os.data_os,
           auvo_tecnico_id: auvoTecnicoId || null, vendedor_status: vendedorStatus,
         });
       }

@@ -14,7 +14,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Calendar } from "@/components/ui/calendar";
 import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
-import { RefreshCw, Play, Eye, ChevronDown, ChevronRight, ArrowLeft, Package, AlertTriangle, Plus, Link2, UserCheck, CalendarIcon } from "lucide-react";
+import { RefreshCw, Play, Eye, ChevronDown, ChevronRight, ArrowLeft, Package, AlertTriangle, Plus, Link2, UserCheck, CalendarIcon, Undo2 } from "lucide-react";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { useNavigate } from "react-router-dom";
@@ -42,6 +42,7 @@ type LogDetail = {
   resultado: string;
   detalhe: string;
   situacao_antes: string;
+  situacao_id_antes?: string;
   situacao_depois: string | null;
   data_os?: string;
   auvo_tecnico_id?: string | null;
@@ -76,6 +77,7 @@ const AuvoSyncPage = () => {
   const [selectedGcVendedorNome, setSelectedGcVendedorNome] = useState("");
   const [dataInicio, setDataInicio] = useState<Date | undefined>(undefined);
   const [dataFim, setDataFim] = useState<Date | undefined>(undefined);
+  const [reverting, setReverting] = useState<string | null>(null);
 
   // ─── Queries ───
   const { data: logs, isLoading } = useQuery({
@@ -222,9 +224,45 @@ const AuvoSyncPage = () => {
       nao_encontrada: { variant: "secondary", label: "🔍 Não Encontrada" },
       erro_gc: { variant: "destructive", label: "❌ Erro GC" },
       divergencia_pecas: { variant: "destructive", label: "🔴 Div. Peças" },
+      revertida: { variant: "outline", label: "↩️ Revertida" },
     };
     const m = map[resultado] || { variant: "outline" as const, label: resultado };
     return <Badge variant={m.variant}>{m.label}</Badge>;
+  };
+
+
+  const reverterOS = async (detail: LogDetail) => {
+    if (!detail.situacao_id_antes || !detail.gc_os_id) {
+      toast.error("Dados insuficientes para reverter (situacao_id_antes não disponível)");
+      return;
+    }
+    const confirmed = window.confirm(
+      `Reverter OS ${detail.gc_os_codigo} de "${detail.situacao_depois}" para "${detail.situacao_antes}" (ID: ${detail.situacao_id_antes})?`
+    );
+    if (!confirmed) return;
+    
+    setReverting(detail.gc_os_id);
+    try {
+      const { data, error } = await supabase.functions.invoke("auvo-gc-sync", {
+        body: {
+          action: "revert_os",
+          gc_os_id: detail.gc_os_id,
+          gc_os_codigo: detail.gc_os_codigo,
+          situacao_id_antes: detail.situacao_id_antes,
+        },
+      });
+      if (error) throw error;
+      if (data?.success) {
+        toast.success(`OS ${detail.gc_os_codigo} revertida para "${detail.situacao_antes}"`);
+        queryClient.invalidateQueries({ queryKey: ["auvo-sync-logs"] });
+      } else {
+        toast.error(`Erro ao reverter: ${JSON.stringify(data?.body || data)}`);
+      }
+    } catch (err: any) {
+      toast.error(`Erro: ${err.message}`);
+    } finally {
+      setReverting(null);
+    }
   };
 
   const vendedorBadge = (status?: string) => {
@@ -401,13 +439,14 @@ const AuvoSyncPage = () => {
                                         <TableHead>Vendedor</TableHead>
                                         <TableHead>Antes</TableHead>
                                         <TableHead>Depois</TableHead>
-                                        <TableHead>Detalhe</TableHead>
-                                      </TableRow>
-                                    </TableHeader>
-                                    <TableBody>
-                                      {(log.detalhes as LogDetail[]).map((d, i) => (
-                                        <TableRow key={i}>
-                                          <TableCell className="font-mono text-xs">{d.gc_os_codigo}</TableCell>
+                                         <TableHead>Detalhe</TableHead>
+                                         <TableHead>Ações</TableHead>
+                                       </TableRow>
+                                     </TableHeader>
+                                     <TableBody>
+                                       {(log.detalhes as LogDetail[]).map((d, i) => (
+                                         <TableRow key={i}>
+                                           <TableCell className="font-mono text-xs">{d.gc_os_codigo}</TableCell>
                                           <TableCell className="text-xs">{d.data_os ? (() => { try { return format(new Date(d.data_os), "dd/MM/yyyy"); } catch { return d.data_os; } })() : "—"}</TableCell>
                                           <TableCell className="font-mono text-xs">{d.auvo_task_id}</TableCell>
                                           <TableCell>{resultadoBadge(d.resultado)}</TableCell>
@@ -419,9 +458,23 @@ const AuvoSyncPage = () => {
                                           </TableCell>
                                           <TableCell className="text-xs">{d.situacao_antes}</TableCell>
                                           <TableCell className="text-xs">{d.situacao_depois || "—"}</TableCell>
-                                          <TableCell className="text-xs max-w-xs">
+                                           <TableCell className="text-xs max-w-xs">
                                             <span className="truncate block" title={d.detalhe}>{d.detalhe}</span>
                                             <PecasDetail detail={d} />
+                                          </TableCell>
+                                          <TableCell>
+                                            {(d.resultado === "atualizada" || d.resultado === "dry_run_ok") && d.situacao_id_antes && !log.dry_run && (
+                                              <Button
+                                                variant="outline"
+                                                size="sm"
+                                                className="text-xs"
+                                                disabled={reverting === d.gc_os_id}
+                                                onClick={(e) => { e.stopPropagation(); reverterOS(d); }}
+                                              >
+                                                <Undo2 className="h-3 w-3 mr-1" />
+                                                {reverting === d.gc_os_id ? "Revertendo..." : "Reverter"}
+                                              </Button>
+                                            )}
                                           </TableCell>
                                         </TableRow>
                                       ))}
