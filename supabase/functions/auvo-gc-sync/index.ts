@@ -44,7 +44,7 @@ const SITUACOES_EXCLUIR = [
 ];
 
 // ─── STEP 1: Buscar OS com tarefa Auvo ───
-async function fetchOsComTarefaAuvo(gcHeaders: Record<string, string>): Promise<Array<{
+async function fetchOsComTarefaAuvo(gcHeaders: Record<string, string>, dataInicio?: string, dataFim?: string): Promise<Array<{
   gc_os_id: string;
   gc_os_codigo: string;
   auvo_task_id: string;
