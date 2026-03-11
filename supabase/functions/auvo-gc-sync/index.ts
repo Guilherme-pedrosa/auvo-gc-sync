@@ -392,10 +392,9 @@ async function validarPecasOsVsExecucao(
   return { aprovado, sem_pecas_orcamento: false, pecas_orcamento: pecasOrcamento, materiais_execucao: materiaisExecucao, itens_cobertos: cobertos, itens_faltando: faltando, itens_parciais: parciais, resumo };
 }
 
-// ─── STEP 3: Atualizar situação GC (com vendedor opcional) ───
+// ─── STEP 3: Atualizar APENAS situação GC — NUNCA alterar nome_cliente, vendedor ou outros campos ───
 async function atualizarSituacaoOsGC(
-  gcOsId: string, situacaoId: string, gcHeaders: Record<string, string>,
-  gcVendedorId?: string | null
+  gcOsId: string, situacaoId: string, gcHeaders: Record<string, string>
 ): Promise<{ success: boolean; status: number; body: unknown }> {
   // ── TRAVA DE SEGURANÇA: só permite situações da whitelist ──
   if (!validarSituacaoPermitida(situacaoId)) {
@@ -403,11 +402,9 @@ async function atualizarSituacaoOsGC(
     return { success: false, status: 403, body: `Situação ${situacaoId} bloqueada pela whitelist` };
   }
   const url = `${GC_BASE_URL}/api/ordens_servicos/${gcOsId}`;
+  // ── SEGURANÇA: payload MÍNIMO — NUNCA alterar nome_cliente, vendedor, ou outros campos ──
+  // Apenas situacao_id é permitido no PUT de OS
   const payload: Record<string, unknown> = { situacao_id: situacaoId };
-  if (gcVendedorId) {
-    payload.vendedor_id = gcVendedorId;
-    payload.funcionario_id = gcVendedorId;
-  }
   try {
     const response = await rateLimitedFetch(url, {
       method: "PUT", headers: gcHeaders,
@@ -790,7 +787,7 @@ Deno.serve(async (req) => {
         continue;
       }
 
-      const gcResult = await atualizarSituacaoOsGC(os.gc_os_id, "7116099", gcHeaders, gcVendedorId);
+      const gcResult = await atualizarSituacaoOsGC(os.gc_os_id, "7116099", gcHeaders);
 
       if (gcResult.success) {
         atualizadas++;
