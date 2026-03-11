@@ -338,17 +338,30 @@ Deno.serve(async (req) => {
     };
 
     let body: any = {};
-    try { body = await req.json(); } catch {}
+    try {
+      const text = await req.text();
+      if (text) body = JSON.parse(text);
+    } catch {
+      // empty body is OK
+    }
 
     // ─── Action: list_auvo_users ───
     if (body?.action === "list_auvo_users") {
-      const url = `${AUVO_BASE_URL}/users?appKey=${auvoAppKey}&token=${auvoToken}&limite=100`;
-      const response = await fetch(url, { headers: { "Content-Type": "application/json" } });
-      const data = await response.json();
-      const users = data?.result?.Entities || data?.result || data?.data || [];
-      return new Response(JSON.stringify({ users }), {
-        status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+      try {
+        const url = `${AUVO_BASE_URL}/users?appKey=${auvoAppKey}&token=${auvoToken}&limite=100`;
+        const response = await fetch(url, { headers: { "Content-Type": "application/json" } });
+        const text = await response.text();
+        let data: any = {};
+        try { data = JSON.parse(text); } catch { /* empty response */ }
+        const users = data?.result?.Entities || data?.result || data?.data || [];
+        return new Response(JSON.stringify({ users, status: response.status }), {
+          status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      } catch (err) {
+        return new Response(JSON.stringify({ error: `Erro ao listar usuários Auvo: ${(err as Error).message}`, users: [] }), {
+          status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
     }
 
     const osIdsManual: string[] = body?.os_ids || [];
