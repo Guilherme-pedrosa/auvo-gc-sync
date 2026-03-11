@@ -101,6 +101,7 @@ const AuvoSyncPage = () => {
   const [selectedOsIds, setSelectedOsIds] = useState<Set<string>>(new Set());
   const [situacaoSelecionadas, setSituacaoSelecionadas] = useState("");
   const [changingSelecionadas, setChangingSelecionadas] = useState(false);
+  const [movedOsIds, setMovedOsIds] = useState<Set<string>>(new Set());
 
   const SITUACOES_OPTIONS = [
     { id: "7063579", label: "AGUARDANDO COMPRA DE PEÇAS" },
