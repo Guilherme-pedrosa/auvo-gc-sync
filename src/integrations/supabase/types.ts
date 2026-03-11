@@ -26,6 +26,7 @@ export type Database = {
           os_atualizadas: number | null
           os_candidatas: number | null
           os_com_pendencia: number | null
+          os_divergencia_pecas: number | null
           os_nao_encontradas: number | null
           os_sem_pendencia: number | null
         }
@@ -40,6 +41,7 @@ export type Database = {
           os_atualizadas?: number | null
           os_candidatas?: number | null
           os_com_pendencia?: number | null
+          os_divergencia_pecas?: number | null
           os_nao_encontradas?: number | null
           os_sem_pendencia?: number | null
         }
@@ -54,6 +56,7 @@ export type Database = {
           os_atualizadas?: number | null
           os_candidatas?: number | null
           os_com_pendencia?: number | null
+          os_divergencia_pecas?: number | null
           os_nao_encontradas?: number | null
           os_sem_pendencia?: number | null
         }
