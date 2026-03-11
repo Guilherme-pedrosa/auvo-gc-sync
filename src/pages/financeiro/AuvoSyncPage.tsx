@@ -85,6 +85,77 @@ const AuvoSyncPage = () => {
   const [revertModificadoApos, setRevertModificadoApos] = useState("2026-03-11 17:46:00");
   const [confirmExecute, setConfirmExecute] = useState(false);
   const [confirmText, setConfirmText] = useState("");
+  const [changingSituacao, setChangingSituacao] = useState<string | null>(null);
+  const [changingSituacaoAll, setChangingSituacaoAll] = useState(false);
+  const [situacaoDestinoDialog, setSituacaoDestinoDialog] = useState("");
+  const [situacaoDialogOpen, setSituacaoDialogOpen] = useState(false);
+  const [situacaoDialogTarget, setSituacaoDialogTarget] = useState<LogDetail | null>(null);
+  const [situacaoDialogBulk, setSituacaoDialogBulk] = useState<LogDetail[] | null>(null);
+
+  const SITUACOES_OPTIONS = [
+    { id: "7063579", label: "AGUARDANDO COMPRA DE PEÇAS" },
+    { id: "7063580", label: "AGUARDANDO CHEGADA DE PEÇAS" },
+    { id: "7659440", label: "AGUARDANDO FABRICAÇÃO" },
+    { id: "7063581", label: "PEDIDO EM CONFERENCIA" },
+    { id: "7063705", label: "PEDIDO CONFERIDO AGUARDANDO EXECUÇÃO" },
+    { id: "7213493", label: "SERVICO AGUARDANDO EXECUCAO" },
+    { id: "7684665", label: "RETIRADA PELO TECNICO" },
+    { id: "7748831", label: "AGUARDANDO RETIRADA" },
+    { id: "8219136", label: "EM ROTA" },
+    { id: "7116099", label: "EXECUTADO – AG. NEGOCIAÇÃO" },
+  ];
+
+  const gcOsUrl = (gcOsId: string) => `https://app.gestaoclick.com/ordens_servicos/${gcOsId}`;
+  const auvoTaskUrl = (taskId: string) => `https://app.auvo.com.br/tarefas/${taskId}`;
+
+  const alterarSituacaoOS = async (detail: LogDetail, situacaoId: string) => {
+    setChangingSituacao(detail.gc_os_id);
+    try {
+      const { data, error } = await supabase.functions.invoke("auvo-gc-sync", {
+        body: {
+          action: "revert_os",
+          gc_os_id: detail.gc_os_id,
+          gc_os_codigo: detail.gc_os_codigo,
+          situacao_id_antes: situacaoId,
+        },
+      });
+      if (error) throw error;
+      if (data?.success) {
+        toast.success(`OS ${detail.gc_os_codigo} → situação alterada`);
+        queryClient.invalidateQueries({ queryKey: ["auvo-sync-logs"] });
+      } else {
+        toast.error(`Erro: ${JSON.stringify(data?.body || data?.error || data)}`);
+      }
+    } catch (err: any) {
+      toast.error(`Erro: ${err.message}`);
+    } finally {
+      setChangingSituacao(null);
+    }
+  };
+
+  const alterarSituacaoTodas = async (details: LogDetail[], situacaoId: string) => {
+    setChangingSituacaoAll(true);
+    let ok = 0, fail = 0;
+    for (const d of details) {
+      try {
+        const { data, error } = await supabase.functions.invoke("auvo-gc-sync", {
+          body: {
+            action: "revert_os",
+            gc_os_id: d.gc_os_id,
+            gc_os_codigo: d.gc_os_codigo,
+            situacao_id_antes: situacaoId,
+          },
+        });
+        if (error) throw error;
+        if (data?.success) ok++; else fail++;
+      } catch {
+        fail++;
+      }
+    }
+    toast.success(`${ok} OS alteradas, ${fail} erros`);
+    queryClient.invalidateQueries({ queryKey: ["auvo-sync-logs"] });
+    setChangingSituacaoAll(false);
+  };
 
   // ─── Queries ───
   const { data: logs, isLoading } = useQuery({
