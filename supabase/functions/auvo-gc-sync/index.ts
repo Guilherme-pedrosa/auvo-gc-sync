@@ -338,7 +338,12 @@ Deno.serve(async (req) => {
     };
 
     let body: any = {};
-    try { body = await req.json(); } catch {}
+    try {
+      const text = await req.text();
+      if (text) body = JSON.parse(text);
+    } catch {
+      // empty body is OK
+    }
 
     // ─── Action: list_auvo_users ───
     if (body?.action === "list_auvo_users") {
