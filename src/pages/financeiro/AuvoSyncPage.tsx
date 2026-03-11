@@ -43,6 +43,7 @@ type LogDetail = {
   detalhe: string;
   situacao_antes: string;
   situacao_depois: string | null;
+  data_os?: string;
   auvo_tecnico_id?: string | null;
   gc_vendedor_id?: string | null;
   gc_vendedor_nome?: string | null;
@@ -388,12 +389,13 @@ const AuvoSyncPage = () => {
                           </CollapsibleTrigger>
                           <CollapsibleContent asChild>
                             <TableRow>
-                              <TableCell colSpan={10} className="bg-muted/30 p-4">
+                              <TableCell colSpan={11} className="bg-muted/30 p-4">
                                 {Array.isArray(log.detalhes) && log.detalhes.length > 0 ? (
                                   <Table>
                                     <TableHeader>
                                       <TableRow>
                                         <TableHead>OS</TableHead>
+                                        <TableHead>Data OS</TableHead>
                                         <TableHead>Tarefa</TableHead>
                                         <TableHead>Resultado</TableHead>
                                         <TableHead>Vendedor</TableHead>
@@ -406,6 +408,7 @@ const AuvoSyncPage = () => {
                                       {(log.detalhes as LogDetail[]).map((d, i) => (
                                         <TableRow key={i}>
                                           <TableCell className="font-mono text-xs">{d.gc_os_codigo}</TableCell>
+                                          <TableCell className="text-xs">{d.data_os ? (() => { try { return format(new Date(d.data_os), "dd/MM/yyyy"); } catch { return d.data_os; } })() : "—"}</TableCell>
                                           <TableCell className="font-mono text-xs">{d.auvo_task_id}</TableCell>
                                           <TableCell>{resultadoBadge(d.resultado)}</TableCell>
                                           <TableCell>
