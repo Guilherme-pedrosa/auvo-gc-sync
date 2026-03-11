@@ -113,12 +113,29 @@ const AuvoSyncPage = () => {
   const { data: gcVendedores, isLoading: loadingGcVendedores } = useQuery({
     queryKey: ["gc-vendedores"],
     queryFn: async () => {
-      const { data, error } = await supabase.functions.invoke("gc-proxy", {
-        body: { endpoint: "/api/funcionarios", method: "GET", params: { limite: "100", pagina: "1" } },
-      });
-      if (error) throw error;
-      const lista: any[] = data?.data?.data || data?.data || [];
-      return lista.map((f: any) => ({ id: String(f.id || ""), nome: String(f.nome || f.name || "") }));
+      const todos: Array<{ id: string; nome: string }> = [];
+      let pagina = 1;
+      let totalPaginas = 1;
+
+      do {
+        const { data, error } = await supabase.functions.invoke("gc-proxy", {
+          body: { endpoint: "/api/funcionarios", method: "GET", params: { limite: "100", pagina: String(pagina) } },
+        });
+        if (error) throw error;
+
+        const payload = data?.data;
+        const lista: any[] = Array.isArray(payload?.data) ? payload.data : Array.isArray(data?.data) ? data.data : [];
+        const meta = payload?.meta;
+
+        todos.push(
+          ...lista.map((f: any) => ({ id: String(f.id || ""), nome: String(f.nome || f.name || "") }))
+        );
+
+        totalPaginas = Number(meta?.total_paginas || 1);
+        pagina += 1;
+      } while (pagina <= totalPaginas);
+
+      return todos.sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR"));
     },
     enabled: dialogOpen,
   });
