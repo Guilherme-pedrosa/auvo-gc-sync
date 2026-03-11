@@ -688,7 +688,8 @@ Deno.serve(async (req) => {
           continue;
         }
         
-        const result = await atualizarSituacaoOsGC(os.id, os.situacao_destino_id, gcHeaders);
+        const vendedorOpts = os.gc_vendedor_id ? { vendedorId: String(os.gc_vendedor_id), vendedorNome: os.gc_vendedor_nome ? String(os.gc_vendedor_nome) : null } : {};
+        const result = await atualizarSituacaoOsGC(os.id, os.situacao_destino_id, gcHeaders, vendedorOpts);
         if (result.success) {
           revertidas++;
           results.push({ gc_os_id: os.id, gc_os_codigo: os.codigo, resultado: "revertida", detalhe: `HTTP ${result.status} → situação ${os.situacao_destino_id}` });
