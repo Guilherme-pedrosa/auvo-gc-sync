@@ -511,24 +511,40 @@ const AuvoSyncPage = () => {
                               <TableCell colSpan={11} className="bg-muted/30 p-4">
                                 {Array.isArray(log.detalhes) && log.detalhes.length > 0 ? (
                                   <div className="space-y-3">
-                                    {/* Botão alterar todas */}
-                                    <div className="flex justify-end">
-                                      <Button
-                                        variant="outline"
-                                        size="sm"
-                                        className="text-xs"
-                                        disabled={changingSituacaoAll}
-                                        onClick={(e) => {
-                                          e.stopPropagation();
-                                          setSituacaoDialogBulk(log.detalhes as LogDetail[]);
-                                          setSituacaoDestinoDialog("");
-                                          setSituacaoDialogOpen(true);
-                                        }}
-                                      >
-                                        <Settings2 className="h-3 w-3 mr-1" />
-                                        Alterar situação de todas ({log.detalhes.length})
-                                      </Button>
-                                    </div>
+                                    {log.detalhes.some((d: LogDetail) => d.situacao_id_antes && d.resultado === "atualizada") && (
+                                      <div className="flex justify-end">
+                                        <Button
+                                          variant="outline"
+                                          size="sm"
+                                          className="text-xs"
+                                          disabled={changingSituacaoAll}
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            const revertibles = (log.detalhes as LogDetail[]).filter(d => d.situacao_id_antes && d.resultado === "atualizada");
+                                            if (!window.confirm(`Reverter ${revertibles.length} OS para a situação anterior?`)) return;
+                                            (async () => {
+                                              setChangingSituacaoAll(true);
+                                              let ok = 0, fail = 0;
+                                              for (const d of revertibles) {
+                                                try {
+                                                  const { data, error } = await supabase.functions.invoke("auvo-gc-sync", {
+                                                    body: { action: "revert_os", gc_os_id: d.gc_os_id, gc_os_codigo: d.gc_os_codigo, situacao_id_antes: d.situacao_id_antes },
+                                                  });
+                                                  if (error) throw error;
+                                                  if (data?.success) ok++; else fail++;
+                                                } catch { fail++; }
+                                              }
+                                              toast.success(`${ok} OS revertidas, ${fail} erros`);
+                                              queryClient.invalidateQueries({ queryKey: ["auvo-sync-logs"] });
+                                              setChangingSituacaoAll(false);
+                                            })();
+                                          }}
+                                        >
+                                          <Undo2 className="h-3 w-3 mr-1" />
+                                          {changingSituacaoAll ? "Revertendo..." : `Reverter todas (${(log.detalhes as LogDetail[]).filter((d: LogDetail) => d.situacao_id_antes && d.resultado === "atualizada").length})`}
+                                        </Button>
+                                      </div>
+                                    )}
                                     <Table>
                                       <TableHeader>
                                         <TableRow>
@@ -586,24 +602,23 @@ const AuvoSyncPage = () => {
                                               <PecasDetail detail={d} />
                                             </TableCell>
                                             <TableCell>
-                                              <div className="flex gap-1">
+                                              {d.situacao_id_antes && d.resultado === "atualizada" ? (
                                                 <Button
                                                   variant="outline"
                                                   size="sm"
                                                   className="text-xs"
-                                                  disabled={changingSituacao === d.gc_os_id}
+                                                  disabled={reverting === d.gc_os_id}
                                                   onClick={(e) => {
                                                     e.stopPropagation();
-                                                    setSituacaoDialogTarget(d);
-                                                    setSituacaoDialogBulk(null);
-                                                    setSituacaoDestinoDialog("");
-                                                    setSituacaoDialogOpen(true);
+                                                    reverterOS(d);
                                                   }}
                                                 >
-                                                  <Settings2 className="h-3 w-3 mr-1" />
-                                                  {changingSituacao === d.gc_os_id ? "Alterando..." : "Situação"}
+                                                  <Undo2 className="h-3 w-3 mr-1" />
+                                                  {reverting === d.gc_os_id ? "Revertendo..." : "Reverter"}
                                                 </Button>
-                                              </div>
+                                              ) : (
+                                                <span className="text-xs text-muted-foreground">—</span>
+                                              )}
                                             </TableCell>
                                           </TableRow>
                                         ))}
@@ -885,49 +900,6 @@ const AuvoSyncPage = () => {
         </TabsContent>
       </Tabs>
 
-      {/* Dialog para alterar situação */}
-      <Dialog open={situacaoDialogOpen} onOpenChange={(open) => { setSituacaoDialogOpen(open); if (!open) { setSituacaoDialogTarget(null); setSituacaoDialogBulk(null); } }}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Alterar Situação</DialogTitle>
-            <DialogDescription>
-              {situacaoDialogBulk
-                ? `Alterar a situação de ${situacaoDialogBulk.length} OS`
-                : `Alterar a situação da OS ${situacaoDialogTarget?.gc_os_codigo}`
-              }
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-3">
-            <label className="text-sm font-medium">Nova situação</label>
-            <Select value={situacaoDestinoDialog} onValueChange={setSituacaoDestinoDialog}>
-              <SelectTrigger><SelectValue placeholder="Selecione a situação" /></SelectTrigger>
-              <SelectContent>
-                {SITUACOES_OPTIONS.map((s) => (
-                  <SelectItem key={s.id} value={s.id}>{s.label}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setSituacaoDialogOpen(false)}>Cancelar</Button>
-            <Button
-              disabled={!situacaoDestinoDialog || changingSituacao !== null || changingSituacaoAll}
-              onClick={async () => {
-                if (situacaoDialogBulk) {
-                  await alterarSituacaoTodas(situacaoDialogBulk, situacaoDestinoDialog);
-                } else if (situacaoDialogTarget) {
-                  await alterarSituacaoOS(situacaoDialogTarget, situacaoDestinoDialog);
-                }
-                setSituacaoDialogOpen(false);
-                setSituacaoDialogTarget(null);
-                setSituacaoDialogBulk(null);
-              }}
-            >
-              {changingSituacaoAll ? "Alterando todas..." : changingSituacao ? "Alterando..." : "Confirmar"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 };
