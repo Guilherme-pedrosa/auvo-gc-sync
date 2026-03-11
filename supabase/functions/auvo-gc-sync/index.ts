@@ -69,10 +69,15 @@ async function fetchOsComTarefaAuvo(gcHeaders: Record<string, string>): Promise<
     const data = await response.json();
     const records: any[] = Array.isArray(data?.data) ? data.data : [];
     totalPages = data?.meta?.total_paginas || 1;
+    console.log(`[auvo-gc-sync] Página ${page}/${totalPages}: ${records.length} OS`);
+
+    let excluidas = 0;
+    let semAtributo = 0;
+    let semValor = 0;
 
     for (const os of records) {
       const situacaoId = String(os.situacao_id || "");
-      if (SITUACOES_EXCLUIR.includes(situacaoId)) continue;
+      if (SITUACOES_EXCLUIR.includes(situacaoId)) { excluidas++; continue; }
 
       const atributos: any[] = os.atributos || [];
       const atributoTarefa = atributos.find((a: any) => {
