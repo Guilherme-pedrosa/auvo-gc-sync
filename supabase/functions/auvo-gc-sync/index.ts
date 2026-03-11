@@ -51,6 +51,7 @@ async function fetchOsComTarefaAuvo(gcHeaders: Record<string, string>): Promise<
   nome_situacao: string;
   situacao_id: string;
 }>> {
+  const atributoId = Deno.env.get("GC_ATRIBUTO_TAREFA_ID") || "73344";
   const atributoLabel = (Deno.env.get("AUVO_ATRIBUTO_LABEL") || "Tarefa Execução").toLowerCase();
   const results: Array<{
     gc_os_id: string; gc_os_codigo: string; auvo_task_id: string;
@@ -68,26 +69,38 @@ async function fetchOsComTarefaAuvo(gcHeaders: Record<string, string>): Promise<
     const data = await response.json();
     const records: any[] = Array.isArray(data?.data) ? data.data : [];
     totalPages = data?.meta?.total_paginas || 1;
+    console.log(`[auvo-gc-sync] Página ${page}/${totalPages}: ${records.length} OS`);
+
+    let excluidas = 0;
+    let semAtributo = 0;
+    let semValor = 0;
 
     for (const os of records) {
       const situacaoId = String(os.situacao_id || "");
-      if (SITUACOES_EXCLUIR.includes(situacaoId)) continue;
+      if (SITUACOES_EXCLUIR.includes(situacaoId)) { excluidas++; continue; }
 
       const atributos: any[] = os.atributos || [];
       const atributoTarefa = atributos.find((a: any) => {
-        const label = String(a.label || a.nome || "").toLowerCase();
-        return label === atributoLabel || label.includes("tarefa") || label.includes("execu");
+        // GC returns nested: { atributo: { atributo_id, descricao, conteudo } }
+        const nested = a?.atributo || a;
+        const id = String(nested.atributo_id || nested.id || "");
+        const label = String(nested.descricao || nested.label || nested.nome || "").toLowerCase();
+        return id === atributoId || label === atributoLabel || label.includes("tarefa execu");
       });
-      if (!atributoTarefa?.valor || String(atributoTarefa.valor).trim() === "") continue;
+      if (!atributoTarefa) { semAtributo++; continue; }
+      const nested2 = atributoTarefa?.atributo || atributoTarefa;
+      const valor = String(nested2?.conteudo || nested2?.valor || "").trim();
+      if (!valor) { semValor++; continue; }
 
       results.push({
         gc_os_id: String(os.id),
         gc_os_codigo: String(os.codigo || os.id),
-        auvo_task_id: String(atributoTarefa.valor).trim(),
+        auvo_task_id: valor,
         nome_situacao: String(os.nome_situacao || ""),
         situacao_id: situacaoId,
       });
     }
+    console.log(`[auvo-gc-sync] Página ${page}: excluídas=${excluidas}, semAtributo=${semAtributo}, semValor=${semValor}, candidatas=${results.length}`);
     page++;
   }
   return results;
