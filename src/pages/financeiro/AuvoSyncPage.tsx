@@ -101,6 +101,7 @@ const AuvoSyncPage = () => {
   const [selectedOsIds, setSelectedOsIds] = useState<Set<string>>(new Set());
   const [situacaoSelecionadas, setSituacaoSelecionadas] = useState("");
   const [changingSelecionadas, setChangingSelecionadas] = useState(false);
+  const [movedOsIds, setMovedOsIds] = useState<Set<string>>(new Set());
 
   const SITUACOES_OPTIONS = [
     { id: "7063579", label: "AGUARDANDO COMPRA DE PEÇAS" },
@@ -134,6 +135,7 @@ const AuvoSyncPage = () => {
       });
       if (error) throw error;
       if (data?.success) {
+        setMovedOsIds(prev => new Set(prev).add(detail.gc_os_id));
         toast.success(`OS ${detail.gc_os_codigo} → situação alterada`);
         queryClient.invalidateQueries({ queryKey: ["auvo-sync-logs"] });
       } else {
@@ -162,7 +164,7 @@ const AuvoSyncPage = () => {
           },
         });
         if (error) throw error;
-        if (data?.success) ok++; else fail++;
+        if (data?.success) { ok++; setMovedOsIds(prev => { const s = new Set(prev); s.add(d.gc_os_id); return s; }); } else fail++;
       } catch {
         fail++;
       }
@@ -350,6 +352,7 @@ const AuvoSyncPage = () => {
       });
       if (error) throw error;
       if (data?.success) {
+        setMovedOsIds(prev => new Set(prev).add(detail.gc_os_id));
         toast.success(`OS ${detail.gc_os_codigo} revertida para "${detail.situacao_antes}"`);
         queryClient.invalidateQueries({ queryKey: ["auvo-sync-logs"] });
       } else {
@@ -545,7 +548,7 @@ const AuvoSyncPage = () => {
                       <Collapsible key={log.id} asChild open={expandedRow === log.id}>
                         <>
                           <CollapsibleTrigger asChild>
-                            <TableRow className="cursor-pointer hover:bg-muted/50" onClick={() => { setExpandedRow(expandedRow === log.id ? null : log.id); setSelectedOsIds(new Set()); setSituacaoSelecionadas(""); }}>
+                            <TableRow className="cursor-pointer hover:bg-muted/50" onClick={() => { setExpandedRow(expandedRow === log.id ? null : log.id); setSelectedOsIds(new Set()); setSituacaoSelecionadas(""); setMovedOsIds(new Set()); }}>
                               <TableCell>{expandedRow === log.id ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}</TableCell>
                               <TableCell className="text-sm">{format(new Date(log.executado_em), "dd/MM HH:mm", { locale: ptBR })}</TableCell>
                               <TableCell className="text-center">{log.os_candidatas}</TableCell>
@@ -617,7 +620,7 @@ const AuvoSyncPage = () => {
                                                       body: { action: "revert_os", gc_os_id: d.gc_os_id, gc_os_codigo: d.gc_os_codigo, situacao_id_antes: situacaoSelecionadas, gc_vendedor_id: d.gc_vendedor_id || null, gc_vendedor_nome: d.gc_vendedor_nome || null },
                                                     });
                                                     if (error) throw error;
-                                                    if (data?.success) ok++; else fail++;
+                                                    if (data?.success) { ok++; setMovedOsIds(prev => { const s = new Set(prev); s.add(d.gc_os_id); return s; }); } else fail++;
                                                   } catch { fail++; }
                                                 }
                                                 toast.success(`${ok} OS alteradas, ${fail} erros`);
@@ -652,7 +655,7 @@ const AuvoSyncPage = () => {
                                       </TableHeader>
                                       <TableBody>
                                         {(log.detalhes as LogDetail[]).map((d, i) => (
-                                          <TableRow key={i} className={selectedOsIds.has(d.gc_os_id) ? "bg-accent/30" : ""}>
+                                          <TableRow key={i} className={`transition-colors ${movedOsIds.has(d.gc_os_id) ? "bg-green-100/80 dark:bg-green-950/30 opacity-50" : selectedOsIds.has(d.gc_os_id) ? "bg-accent/30" : ""}`}>
                                             <TableCell>
                                               <input
                                                 type="checkbox"
@@ -669,7 +672,10 @@ const AuvoSyncPage = () => {
                                             </TableCell>
                                             <TableCell>
                                               <div className="flex items-center gap-1">
-                                                <span className="font-mono text-xs">{d.gc_os_codigo}</span>
+                                                <span className={`font-mono text-xs ${movedOsIds.has(d.gc_os_id) ? "line-through text-muted-foreground" : ""}`}>{d.gc_os_codigo}</span>
+                                                {movedOsIds.has(d.gc_os_id) && (
+                                                  <span className="text-[10px] font-semibold text-green-600 dark:text-green-400 bg-green-100 dark:bg-green-900/50 px-1.5 py-0.5 rounded-full">✅ Movida</span>
+                                                )}
                                                 <a href={gcOsUrl(d.gc_os_id)} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} title="Abrir no GestãoClick">
                                                   <ExternalLink className="h-3 w-3 text-muted-foreground hover:text-foreground" />
                                                 </a>
