@@ -105,7 +105,7 @@ const AuvoSyncPage = () => {
         body: { action: "list_auvo_users" },
       });
       if (error) throw error;
-      return (data?.users || []) as Array<{ idUserLogin: number; name: string; email?: string }>;
+      return (data?.users || []) as Array<{ userID: number; name: string; email?: string }>;
     },
     enabled: dialogOpen,
   });
