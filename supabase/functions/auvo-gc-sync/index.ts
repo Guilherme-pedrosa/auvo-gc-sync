@@ -787,7 +787,7 @@ Deno.serve(async (req) => {
         continue;
       }
 
-      const gcResult = await atualizarSituacaoOsGC(os.gc_os_id, "7116099", gcHeaders, gcVendedorId);
+      const gcResult = await atualizarSituacaoOsGC(os.gc_os_id, "7116099", gcHeaders);
 
       if (gcResult.success) {
         atualizadas++;
