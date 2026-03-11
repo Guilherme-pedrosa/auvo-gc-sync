@@ -565,6 +565,11 @@ Deno.serve(async (req) => {
           status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
+      if (!validarSituacaoPermitida(situacaoAnteriorId)) {
+        return new Response(JSON.stringify({ error: `Situação ${situacaoAnteriorId} NÃO está na whitelist de situações permitidas. Permitidas: ${SITUACOES_PERMITIDAS.join(", ")}` }), {
+          status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
       console.log(`[auvo-gc-sync] REVERT: OS ${gcOsCodigo} (${gcOsId}) → situação ${situacaoAnteriorId}`);
       const revertResult = await atualizarSituacaoOsGC(gcOsId, situacaoAnteriorId, gcHeaders);
       
