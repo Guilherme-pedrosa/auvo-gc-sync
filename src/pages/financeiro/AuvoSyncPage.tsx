@@ -655,11 +655,7 @@ const AuvoSyncPage = () => {
                                       </TableHeader>
                                       <TableBody>
                                         {(log.detalhes as LogDetail[]).map((d, i) => (
-                                          <TableRow key={i} className={`${movedOsIds.has(d.gc_os_id) ? "bg-green-100 dark:bg-green-950/40 opacity-60 line-through" : selectedOsIds.has(d.gc_os_id) ? "bg-accent/30" : ""}`}>
-                                            {movedOsIds.has(d.gc_os_id) && (
-                                              <td colSpan={0} className="absolute left-2 top-1/2 -translate-y-1/2">
-                                              </td>
-                                            )}
+                                          <TableRow key={i} className={`transition-colors ${movedOsIds.has(d.gc_os_id) ? "bg-green-100/80 dark:bg-green-950/30 opacity-50" : selectedOsIds.has(d.gc_os_id) ? "bg-accent/30" : ""}`}>
                                             <TableCell>
                                               <input
                                                 type="checkbox"
