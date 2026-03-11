@@ -521,7 +521,7 @@ const AuvoSyncPage = () => {
                   <Table>
                     <TableHeader className="sticky top-0 bg-background z-10">
                       <TableRow>
-                        {filtroConciliacao === "pendentes" && <TableHead className="w-8"></TableHead>}
+                        <TableHead className="w-8"></TableHead>
                         <TableHead className="text-center w-[90px]">Status</TableHead>
                         <TableHead>OS (GC)</TableHead>
                         <TableHead>Cliente</TableHead>
