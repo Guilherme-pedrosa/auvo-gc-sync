@@ -41,6 +41,8 @@ type LogDetail = {
   auvo_task_id: string;
   resultado: string;
   detalhe: string;
+  gc_cliente?: string;
+  auvo_cliente?: string;
   situacao_antes: string;
   situacao_id_antes?: string;
   situacao_depois: string | null;
