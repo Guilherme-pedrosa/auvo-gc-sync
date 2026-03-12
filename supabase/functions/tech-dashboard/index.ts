@@ -146,14 +146,8 @@ Deno.serve(async (req) => {
     const { tasks, error: auvoError } = await fetchAllAuvoTasks(bearerToken, startDate, endDate);
     console.log(`[tech-dashboard] Total tasks retornadas: ${tasks.length}`);
 
-    // Collect externalIds (GC OS codes) to fetch values from GC
-    const gcAccessToken = Deno.env.get("GC_ACCESS_TOKEN") || "";
-    const gcSecretToken = Deno.env.get("GC_SECRET_TOKEN") || "";
-    const gcHeaders: Record<string, string> = {
-      "access-token": gcAccessToken,
-      "secret-access-token": gcSecretToken,
-      "Content-Type": "application/json",
-    };
+
+
 
     // Build map: GC OS codigo → valor_total from conciliation snapshot (fast, no GC API calls)
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
