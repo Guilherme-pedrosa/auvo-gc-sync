@@ -7,6 +7,20 @@ const corsHeaders = {
 
 const AUVO_BASE_URL = "https://api.auvo.com.br/v2";
 
+function parseCurrency(value: unknown): number {
+  if (typeof value === "number") return Number.isFinite(value) ? value : 0;
+  if (typeof value !== "string") return 0;
+  const raw = value.trim();
+  if (!raw) return 0;
+  const hasDot = raw.includes(".");
+  const hasComma = raw.includes(",");
+  let normalized = raw;
+  if (hasDot && hasComma) normalized = raw.replace(/\./g, "").replace(",", ".");
+  else if (hasComma) normalized = raw.replace(",", ".");
+  const parsed = Number.parseFloat(normalized);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
 async function auvoLogin(apiKey: string, apiToken: string): Promise<string> {
   const url = `${AUVO_BASE_URL}/login/?apiKey=${encodeURIComponent(apiKey)}&apiToken=${encodeURIComponent(apiToken)}`;
   const response = await fetch(url, { method: "GET", headers: { "Content-Type": "application/json" } });
