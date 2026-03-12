@@ -338,6 +338,12 @@ const TechDashboardPage = () => {
                           <Badge variant="destructive" className="text-xs">⚠️ {tech.tarefas_com_pendencia}</Badge>
                         )}
                       </TableCell>
+                      <TableCell className="text-right font-mono text-sm">
+                        {tech.valor_total > 0 ? `R$ ${tech.valor_total.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}` : "—"}
+                      </TableCell>
+                      <TableCell className="text-right font-mono text-sm">
+                        {tech.faturamento_hora > 0 ? `R$ ${tech.faturamento_hora.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}` : "—"}
+                      </TableCell>
                       <TableCell className="text-center">
                         <div className="flex items-center gap-2 justify-center">
                           <Progress value={pct} className="w-16 h-2" />
