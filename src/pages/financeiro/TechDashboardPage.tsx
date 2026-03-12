@@ -26,6 +26,8 @@ type TecnicoData = {
   tempo_horas: number;
   tempo_atividade_pct: number;
   dias_trabalhados: number;
+  valor_total: number;
+  faturamento_hora: number;
   tarefas_por_dia: Record<string, number>;
   finalizadas_por_dia: Record<string, number>;
 };
