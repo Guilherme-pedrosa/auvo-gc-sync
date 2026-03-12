@@ -1161,7 +1161,7 @@ Deno.serve(async (req) => {
         itens.push({
           gc_os_id: os.gc_os_id, gc_os_codigo: os.gc_os_codigo, gc_cliente: os.gc_cliente,
           gc_situacao: os.nome_situacao, gc_situacao_id: os.situacao_id, data_os: os.data_os,
-          auvo_task_id: os.auvo_task_id, conciliada: false,
+          auvo_task_id: os.auvo_task_id, gc_valor_total: os.gc_valor_total, conciliada: false,
           auvo_finalizada: tarefa.finished, auvo_pendencia: tarefa.pendency,
           auvo_tecnico_nome: auvoTecnicoNome, auvo_tecnico_id: auvoTecnicoId,
           auvo_cliente: auvoCliente,
