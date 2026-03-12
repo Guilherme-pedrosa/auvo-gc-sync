@@ -575,6 +575,11 @@ async function atualizarSituacaoOsGC(
       if (options.vendedorNome) payloadFinal.nome_vendedor = options.vendedorNome;
     }
 
+    // Garantir data de saída no payload final também
+    if (options.dataSaida) {
+      payloadFinal.data_saida = options.dataSaida;
+    }
+
     const finalResult = await executarPutOs(gcOsId, payloadFinal, gcHeaders, "FINAL");
 
     if (finalResult.success) {
