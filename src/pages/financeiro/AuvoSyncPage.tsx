@@ -51,6 +51,15 @@ type UsuarioMap = {
   ativo: boolean;
 };
 
+type ConciliacaoResponse = {
+  total: number;
+  conciliadas: number;
+  pendentes: number;
+  alteradas?: number;
+  snapshot_em?: string | null;
+  itens: ConciliacaoItem[];
+};
+
 const SITUACOES_OPTIONS = [
   { id: "7063579", label: "AGUARDANDO COMPRA DE PEÇAS" },
   { id: "7063580", label: "AGUARDANDO CHEGADA DE PEÇAS" },
