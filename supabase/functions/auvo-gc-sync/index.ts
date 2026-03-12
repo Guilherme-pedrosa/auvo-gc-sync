@@ -773,6 +773,38 @@ Deno.serve(async (req) => {
       });
     }
 
+    // ─── Action: get_last_conciliacao — carregar último snapshot salvo ───
+    if (body?.action === "get_last_conciliacao") {
+      const { data: lastRows, error: lastError } = await supabase
+        .from("auvo_gc_sync_log")
+        .select("executado_em, detalhes")
+        .eq("observacao", "CONCILIACAO_SNAPSHOT")
+        .order("executado_em", { ascending: false })
+        .limit(1);
+
+      if (lastError) {
+        return new Response(JSON.stringify({ error: `Erro ao carregar conciliação salva: ${lastError.message}` }), {
+          status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      const last = lastRows?.[0];
+      const detalhes = last?.detalhes as any;
+      const itens = Array.isArray(detalhes?.itens)
+        ? detalhes.itens
+        : (Array.isArray(detalhes) ? detalhes : []);
+
+      return new Response(JSON.stringify({
+        total: itens.length,
+        conciliadas: itens.filter((i: any) => i.conciliada).length,
+        pendentes: itens.filter((i: any) => !i.conciliada).length,
+        itens,
+        snapshot_em: last?.executado_em || null,
+      }), {
+        status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
     // ─── Auvo Login (v2 — Bearer token) ───
     console.log("[auvo-gc-sync] Fazendo login na API Auvo v2...");
     let auvoBearerToken: string;
@@ -855,6 +887,24 @@ Deno.serve(async (req) => {
 
       console.log(`[conciliacao] Buscando OS para conciliação: data_inicio=${dataInicioConcil || "todas"}, data_fim=${dataFimConcil || "todas"}`);
 
+      // Carregar último snapshot salvo para evitar "zerar" dados já conciliados
+      const { data: lastSnapshotRows } = await supabase
+        .from("auvo_gc_sync_log")
+        .select("detalhes")
+        .eq("observacao", "CONCILIACAO_SNAPSHOT")
+        .order("executado_em", { ascending: false })
+        .limit(1);
+
+      const lastDetalhes = lastSnapshotRows?.[0]?.detalhes as any;
+      const itensAnteriores: any[] = Array.isArray(lastDetalhes?.itens)
+        ? lastDetalhes.itens
+        : (Array.isArray(lastDetalhes) ? lastDetalhes : []);
+      const mapaAnterior: Record<string, any> = {};
+      for (const item of itensAnteriores) {
+        if (item?.gc_os_id) mapaAnterior[String(item.gc_os_id)] = item;
+      }
+      console.log(`[conciliacao] Snapshot anterior carregado: ${itensAnteriores.length} itens`);
+
       // Carregar mapeamento vendedores
       const { data: mapeamentosConcil } = await supabase
         .from("auvo_gc_usuario_map")
@@ -923,44 +973,73 @@ Deno.serve(async (req) => {
 
       for (const os of todasOs) {
         const conciliada = SITUACOES_EXCLUIR.includes(os.situacao_id);
+        const itemAnterior = mapaAnterior[os.gc_os_id];
 
-        // Para OS conciliadas, não precisa consultar Auvo (economia de API)
+        // Para OS conciliadas, reaproveita dados anteriores (tempo/técnico) e atualiza só os campos alterados
         if (conciliada) {
-          itens.push({
-            gc_os_id: os.gc_os_id,
-            gc_os_codigo: os.gc_os_codigo,
-            gc_cliente: os.gc_cliente,
-            gc_situacao: os.nome_situacao,
-            gc_situacao_id: os.situacao_id,
-            data_os: os.data_os,
-            auvo_task_id: os.auvo_task_id,
-            conciliada: true,
-            auvo_finalizada: true,
-            auvo_pendencia: "",
-            auvo_tecnico_nome: "",
-            auvo_tecnico_id: "",
-            auvo_cliente: "",
-            gc_vendedor_id: null,
-            gc_vendedor_nome: null,
-            vendedor_status: "desconhecido",
-            tempo_trabalho_seg: 0,
-            tempo_pausa_seg: 0,
-            checkin_hora: null,
-            checkout_hora: null,
-          });
+          if (itemAnterior && String(itemAnterior.auvo_task_id || "") === os.auvo_task_id) {
+            itens.push({
+              ...itemAnterior,
+              gc_os_id: os.gc_os_id,
+              gc_os_codigo: os.gc_os_codigo,
+              gc_cliente: os.gc_cliente,
+              gc_situacao: os.nome_situacao,
+              gc_situacao_id: os.situacao_id,
+              data_os: os.data_os,
+              auvo_task_id: os.auvo_task_id,
+              conciliada: true,
+            });
+          } else {
+            itens.push({
+              gc_os_id: os.gc_os_id,
+              gc_os_codigo: os.gc_os_codigo,
+              gc_cliente: os.gc_cliente,
+              gc_situacao: os.nome_situacao,
+              gc_situacao_id: os.situacao_id,
+              data_os: os.data_os,
+              auvo_task_id: os.auvo_task_id,
+              conciliada: true,
+              auvo_finalizada: true,
+              auvo_pendencia: "",
+              auvo_tecnico_nome: "",
+              auvo_tecnico_id: "",
+              auvo_cliente: "",
+              gc_vendedor_id: null,
+              gc_vendedor_nome: null,
+              vendedor_status: "desconhecido",
+              tempo_trabalho_seg: 0,
+              tempo_pausa_seg: 0,
+              checkin_hora: null,
+              checkout_hora: null,
+            });
+          }
           continue;
         }
 
         if (auvoChecksConcil >= MAX_AUVO) {
-          // Ainda adiciona sem dados Auvo
-          itens.push({
-            gc_os_id: os.gc_os_id, gc_os_codigo: os.gc_os_codigo, gc_cliente: os.gc_cliente,
-            gc_situacao: os.nome_situacao, gc_situacao_id: os.situacao_id, data_os: os.data_os,
-            auvo_task_id: os.auvo_task_id, conciliada: false,
-            auvo_finalizada: null, auvo_pendencia: null, auvo_tecnico_nome: null, auvo_tecnico_id: null,
-            auvo_cliente: null, gc_vendedor_id: null, gc_vendedor_nome: null, vendedor_status: "nao_consultado",
-            tempo_trabalho_seg: 0, tempo_pausa_seg: 0, checkin_hora: null, checkout_hora: null,
-          });
+          // Limite de chamadas Auvo: reaproveita snapshot anterior quando existir
+          if (itemAnterior && String(itemAnterior.auvo_task_id || "") === os.auvo_task_id) {
+            itens.push({
+              ...itemAnterior,
+              gc_os_id: os.gc_os_id,
+              gc_os_codigo: os.gc_os_codigo,
+              gc_cliente: os.gc_cliente,
+              gc_situacao: os.nome_situacao,
+              gc_situacao_id: os.situacao_id,
+              data_os: os.data_os,
+              auvo_task_id: os.auvo_task_id,
+              conciliada: false,
+            });
+          } else {
+            itens.push({
+              gc_os_id: os.gc_os_id, gc_os_codigo: os.gc_os_codigo, gc_cliente: os.gc_cliente,
+              gc_situacao: os.nome_situacao, gc_situacao_id: os.situacao_id, data_os: os.data_os,
+              auvo_task_id: os.auvo_task_id, conciliada: false,
+              auvo_finalizada: null, auvo_pendencia: null, auvo_tecnico_nome: null, auvo_tecnico_id: null,
+              auvo_cliente: null, gc_vendedor_id: null, gc_vendedor_nome: null, vendedor_status: "nao_consultado",
+              tempo_trabalho_seg: 0, tempo_pausa_seg: 0, checkin_hora: null, checkout_hora: null,
+            });
+          }
           continue;
         }
 
@@ -968,14 +1047,29 @@ Deno.serve(async (req) => {
         const tarefa = await getAuvoTask(os.auvo_task_id, auvoBearerToken);
 
         if (!tarefa) {
-          itens.push({
-            gc_os_id: os.gc_os_id, gc_os_codigo: os.gc_os_codigo, gc_cliente: os.gc_cliente,
-            gc_situacao: os.nome_situacao, gc_situacao_id: os.situacao_id, data_os: os.data_os,
-            auvo_task_id: os.auvo_task_id, conciliada: false,
-            auvo_finalizada: null, auvo_pendencia: null, auvo_tecnico_nome: null, auvo_tecnico_id: null,
-            auvo_cliente: null, gc_vendedor_id: null, gc_vendedor_nome: null, vendedor_status: "nao_encontrada",
-            tempo_trabalho_seg: 0, tempo_pausa_seg: 0, checkin_hora: null, checkout_hora: null,
-          });
+          if (itemAnterior && String(itemAnterior.auvo_task_id || "") === os.auvo_task_id) {
+            itens.push({
+              ...itemAnterior,
+              gc_os_id: os.gc_os_id,
+              gc_os_codigo: os.gc_os_codigo,
+              gc_cliente: os.gc_cliente,
+              gc_situacao: os.nome_situacao,
+              gc_situacao_id: os.situacao_id,
+              data_os: os.data_os,
+              auvo_task_id: os.auvo_task_id,
+              conciliada: false,
+              vendedor_status: "nao_encontrada",
+            });
+          } else {
+            itens.push({
+              gc_os_id: os.gc_os_id, gc_os_codigo: os.gc_os_codigo, gc_cliente: os.gc_cliente,
+              gc_situacao: os.nome_situacao, gc_situacao_id: os.situacao_id, data_os: os.data_os,
+              auvo_task_id: os.auvo_task_id, conciliada: false,
+              auvo_finalizada: null, auvo_pendencia: null, auvo_tecnico_nome: null, auvo_tecnico_id: null,
+              auvo_cliente: null, gc_vendedor_id: null, gc_vendedor_nome: null, vendedor_status: "nao_encontrada",
+              tempo_trabalho_seg: 0, tempo_pausa_seg: 0, checkin_hora: null, checkout_hora: null,
+            });
+          }
           continue;
         }
 
@@ -1061,12 +1155,58 @@ Deno.serve(async (req) => {
       const totalConciliadas = itens.filter(i => i.conciliada).length;
       const totalPendentes = itens.filter(i => !i.conciliada).length;
 
+      // Detectar quantos itens mudaram em relação ao snapshot anterior
+      let itensAlterados = 0;
+      for (const item of itens) {
+        const prev = mapaAnterior[item.gc_os_id];
+        if (!prev) {
+          itensAlterados++;
+          continue;
+        }
+        const currentCmp = JSON.stringify(item);
+        const prevCmp = JSON.stringify(prev);
+        if (currentCmp !== prevCmp) itensAlterados++;
+      }
+
+      // Persistir snapshot completo da conciliação para manter estado entre execuções
+      const snapshotPayload = {
+        filtros: {
+          data_inicio: dataInicioConcil || null,
+          data_fim: dataFimConcil || null,
+          filtro_cliente: filtroClienteConcil || null,
+        },
+        gerado_em: new Date().toISOString(),
+        itens,
+      };
+
+      const { error: snapshotError } = await supabase.from("auvo_gc_sync_log").insert({
+        executado_em: new Date().toISOString(),
+        os_candidatas: itens.length,
+        os_atualizadas: itensAlterados,
+        os_com_pendencia: itens.filter(i => !!String(i.auvo_pendencia || "").trim()).length,
+        os_sem_pendencia: itens.filter(i => i.auvo_finalizada === true && !String(i.auvo_pendencia || "").trim()).length,
+        os_nao_encontradas: itens.filter(i => i.vendedor_status === "nao_encontrada").length,
+        erros: 0,
+        dry_run: true,
+        duracao_ms: Date.now() - startTime,
+        observacao: "CONCILIACAO_SNAPSHOT",
+        detalhes: snapshotPayload,
+      });
+
+      if (snapshotError) {
+        console.error(`[conciliacao] Erro ao salvar snapshot: ${snapshotError.message}`);
+      } else {
+        console.log(`[conciliacao] Snapshot salvo: ${itens.length} itens (${itensAlterados} alterados)`);
+      }
+
       console.log(`[conciliacao] Resultado: ${itens.length} itens, ${totalConciliadas} conciliadas, ${totalPendentes} pendentes`);
 
       return new Response(JSON.stringify({
         total: itens.length,
         conciliadas: totalConciliadas,
         pendentes: totalPendentes,
+        alteradas: itensAlterados,
+        snapshot_em: snapshotPayload.gerado_em,
         itens,
       }), {
         status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },

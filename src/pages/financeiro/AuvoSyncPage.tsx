@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -51,6 +51,15 @@ type UsuarioMap = {
   ativo: boolean;
 };
 
+type ConciliacaoResponse = {
+  total: number;
+  conciliadas: number;
+  pendentes: number;
+  alteradas?: number;
+  snapshot_em?: string | null;
+  itens: ConciliacaoItem[];
+};
+
 const SITUACOES_OPTIONS = [
   { id: "7063579", label: "AGUARDANDO COMPRA DE PEÇAS" },
   { id: "7063580", label: "AGUARDANDO CHEGADA DE PEÇAS" },
@@ -94,6 +103,7 @@ const AuvoSyncPage = () => {
   const [dataFim, setDataFim] = useState<Date | undefined>(undefined);
   const [filtroCliente, setFiltroCliente] = useState("");
   const [conciliacaoData, setConciliacaoData] = useState<ConciliacaoItem[] | null>(null);
+  const [snapshotEm, setSnapshotEm] = useState<string | null>(null);
   const [loadingConciliacao, setLoadingConciliacao] = useState(false);
   const [filtroConciliacao, setFiltroConciliacao] = useState<"todas" | "pendentes" | "conciliadas">("todas");
   const [selectedOsIds, setSelectedOsIds] = useState<Set<string>>(new Set());
@@ -156,6 +166,23 @@ const AuvoSyncPage = () => {
     enabled: dialogOpen,
   });
 
+  const { data: conciliacaoSalva, isLoading: loadingConciliacaoSalva } = useQuery({
+    queryKey: ["conciliacao-snapshot"],
+    queryFn: async () => {
+      const { data, error } = await supabase.functions.invoke("auvo-gc-sync", { body: { action: "get_last_conciliacao" } });
+      if (error) throw error;
+      return data as ConciliacaoResponse;
+    },
+    staleTime: 60000,
+  });
+
+  useEffect(() => {
+    if (!conciliacaoData && conciliacaoSalva?.itens?.length) {
+      setConciliacaoData(conciliacaoSalva.itens);
+      setSnapshotEm(conciliacaoSalva.snapshot_em || null);
+    }
+  }, [conciliacaoSalva, conciliacaoData]);
+
   const salvarMapeamento = useMutation({
     mutationFn: async () => {
       const { error } = await supabase.from("auvo_gc_usuario_map").upsert({
@@ -198,8 +225,10 @@ const AuvoSyncPage = () => {
       if (filtroCliente.trim()) syncBody.filtro_cliente = filtroCliente.trim();
       const { data, error } = await supabase.functions.invoke("auvo-gc-sync", { body: syncBody });
       if (error) throw error;
-      setConciliacaoData(data?.itens || []);
-      toast.success(`${data?.total || 0} OS encontradas — ${data?.conciliadas || 0} conciliadas, ${data?.pendentes || 0} pendentes`);
+      const payload = data as ConciliacaoResponse;
+      setConciliacaoData(payload?.itens || []);
+      setSnapshotEm(payload?.snapshot_em || null);
+      toast.success(`${payload?.total || 0} OS encontradas — ${payload?.conciliadas || 0} conciliadas, ${payload?.pendentes || 0} pendentes (${payload?.alteradas || 0} alteradas)`);
     } catch (err: any) {
       toast.error(`Erro: ${err.message}`);
     } finally {
@@ -373,6 +402,12 @@ const AuvoSyncPage = () => {
           </Card>
 
           {/* Resumo */}
+          {conciliacaoData && (
+            <div className="text-xs text-muted-foreground">
+              Snapshot salvo: {snapshotEm ? format(new Date(snapshotEm), "dd/MM/yyyy HH:mm") : "agora"}
+            </div>
+          )}
+
           {conciliacaoData && (
             <div className="grid gap-4 md:grid-cols-4">
               <Card className="cursor-pointer hover:shadow-md transition-shadow" onClick={() => setFiltroConciliacao("todas")}>
@@ -696,8 +731,10 @@ const AuvoSyncPage = () => {
             <Card>
               <CardContent className="py-16 text-center">
                 <FileCheck className="h-16 w-16 mx-auto text-muted-foreground/20 mb-4" />
-                <p className="text-lg font-medium text-muted-foreground">Selecione um período e clique em "Buscar Conciliação"</p>
-                <p className="text-sm text-muted-foreground mt-1">O sistema vai cruzar todas as OS do GestãoClick com as tarefas do Auvo</p>
+                <p className="text-lg font-medium text-muted-foreground">
+                  {loadingConciliacaoSalva ? "Carregando última conciliação salva..." : "Selecione um período e clique em \"Buscar Conciliação\""}
+                </p>
+                <p className="text-sm text-muted-foreground mt-1">O sistema cruza as OS do GestãoClick com as tarefas do Auvo e mantém um snapshot salvo</p>
               </CardContent>
             </Card>
           )}
