@@ -249,8 +249,13 @@ Deno.serve(async (req) => {
 
       // Valor: buscar do snapshot usando taskID do Auvo
       const taskId = String(task.taskID || "").trim();
-      if (taskId && auvoTaskValorMap[taskId] > 0) {
-        tech.valor_total += auvoTaskValorMap[taskId];
+      const valorDoSnapshot = auvoTaskValorMap[taskId];
+      if (valorDoSnapshot && valorDoSnapshot > 0) {
+        tech.valor_total += valorDoSnapshot;
+      }
+      // Debug: log first few matches/misses
+      if (tech.tarefas_total <= 2) {
+        console.log(`[tech-dashboard] Task ${taskId} (${tech.nome}): snapshot valor=${valorDoSnapshot ?? "NÃO ENCONTRADO"}, keys sample: ${Object.keys(auvoTaskValorMap).slice(0,5).join(",")}`);
       }
 
       // Tasks per day
