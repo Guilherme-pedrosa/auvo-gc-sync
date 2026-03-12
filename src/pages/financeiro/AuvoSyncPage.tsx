@@ -403,6 +403,12 @@ const AuvoSyncPage = () => {
 
           {/* Resumo */}
           {conciliacaoData && (
+            <div className="text-xs text-muted-foreground">
+              Snapshot salvo: {snapshotEm ? format(new Date(snapshotEm), "dd/MM/yyyy HH:mm") : "agora"}
+            </div>
+          )}
+
+          {conciliacaoData && (
             <div className="grid gap-4 md:grid-cols-4">
               <Card className="cursor-pointer hover:shadow-md transition-shadow" onClick={() => setFiltroConciliacao("todas")}>
                 <CardContent className="pt-4 pb-4">
