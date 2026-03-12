@@ -731,8 +731,10 @@ const AuvoSyncPage = () => {
             <Card>
               <CardContent className="py-16 text-center">
                 <FileCheck className="h-16 w-16 mx-auto text-muted-foreground/20 mb-4" />
-                <p className="text-lg font-medium text-muted-foreground">Selecione um período e clique em "Buscar Conciliação"</p>
-                <p className="text-sm text-muted-foreground mt-1">O sistema vai cruzar todas as OS do GestãoClick com as tarefas do Auvo</p>
+                <p className="text-lg font-medium text-muted-foreground">
+                  {loadingConciliacaoSalva ? "Carregando última conciliação salva..." : "Selecione um período e clique em \"Buscar Conciliação\""}
+                </p>
+                <p className="text-sm text-muted-foreground mt-1">O sistema cruza as OS do GestãoClick com as tarefas do Auvo e mantém um snapshot salvo</p>
               </CardContent>
             </Card>
           )}
