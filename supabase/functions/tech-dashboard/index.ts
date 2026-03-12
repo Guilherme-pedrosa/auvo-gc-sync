@@ -247,10 +247,10 @@ Deno.serve(async (req) => {
         }
       }
 
-      // Valor: buscar do GC usando externalId (código da OS)
-      const externalId = String(task.externalId || "").trim();
-      if (externalId && gcValorMap[externalId] > 0) {
-        tech.valor_total += gcValorMap[externalId];
+      // Valor: buscar do snapshot usando taskID do Auvo
+      const taskId = String(task.taskID || "").trim();
+      if (taskId && auvoTaskValorMap[taskId] > 0) {
+        tech.valor_total += auvoTaskValorMap[taskId];
       }
 
       // Tasks per day
