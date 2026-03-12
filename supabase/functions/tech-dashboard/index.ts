@@ -6,6 +6,7 @@ const corsHeaders = {
 };
 
 const AUVO_BASE_URL = "https://api.auvo.com.br/v2";
+const GC_BASE_URL = "https://api.gestaoclick.com";
 
 function parseCurrency(value: unknown): number {
   if (typeof value === "number") return Number.isFinite(value) ? value : 0;
@@ -145,6 +146,48 @@ Deno.serve(async (req) => {
     const { tasks, error: auvoError } = await fetchAllAuvoTasks(bearerToken, startDate, endDate);
     console.log(`[tech-dashboard] Total tasks retornadas: ${tasks.length}`);
 
+    // Collect externalIds (GC OS codes) to fetch values from GC
+    const gcAccessToken = Deno.env.get("GC_ACCESS_TOKEN") || "";
+    const gcSecretToken = Deno.env.get("GC_SECRET_TOKEN") || "";
+    const gcHeaders: Record<string, string> = {
+      "access-token": gcAccessToken,
+      "secret-access-token": gcSecretToken,
+      "Content-Type": "application/json",
+    };
+
+    // Build map: GC OS codigo → valor_total
+    const gcValorMap: Record<string, number> = {};
+    if (gcAccessToken && gcSecretToken) {
+      try {
+        let gcPage = 1;
+        let gcTotalPages = 1;
+        while (gcPage <= gcTotalPages && gcPage <= 10) {
+          let gcUrl = `${GC_BASE_URL}/api/ordens_servicos?limite=100&pagina=${gcPage}`;
+          if (startDate) gcUrl += `&data_inicio=${startDate}`;
+          if (endDate) gcUrl += `&data_fim=${endDate}`;
+          const gcResp = await fetch(gcUrl, { headers: gcHeaders });
+          if (!gcResp.ok) {
+            console.warn(`[tech-dashboard] GC OS list error: ${gcResp.status}`);
+            break;
+          }
+          const gcData = await gcResp.json();
+          const gcRecords: any[] = Array.isArray(gcData?.data) ? gcData.data : [];
+          gcTotalPages = gcData?.meta?.total_paginas || 1;
+          for (const os of gcRecords) {
+            const codigo = String(os.codigo || "").trim();
+            if (codigo) {
+              gcValorMap[codigo] = parseCurrency(os.valor_total);
+            }
+          }
+          console.log(`[tech-dashboard] GC página ${gcPage}/${gcTotalPages}: ${gcRecords.length} OS carregadas`);
+          gcPage++;
+        }
+        console.log(`[tech-dashboard] GC valor map: ${Object.keys(gcValorMap).length} OS com valor`);
+      } catch (err) {
+        console.warn(`[tech-dashboard] Erro ao buscar valores GC:`, err);
+      }
+    }
+
     // Group by technician
     const techMap: Record<string, {
       id: string;
@@ -214,54 +257,11 @@ Deno.serve(async (req) => {
         }
       }
 
-      // Valor: somar services + products + additionalCosts + expense
-      let taskTotal = 0;
-
-      // Services
-      if (Array.isArray(task.services)) {
-        for (const s of task.services) {
-          const item = s?.servico || s?.service || s;
-          if (item && typeof item === "object") {
-            const vt = parseCurrency(item.valor_total || item.totalValue || item.value);
-            if (vt > 0) { taskTotal += vt; continue; }
-            const qty = parseCurrency(item.quantidade || item.quantity || 1);
-            const price = parseCurrency(item.valor_venda || item.valor || item.unitPrice || item.price || 0);
-            taskTotal += qty * price;
-          }
-        }
+      // Valor: buscar do GC usando externalId (código da OS)
+      const externalId = String(task.externalId || "").trim();
+      if (externalId && gcValorMap[externalId] > 0) {
+        tech.valor_total += gcValorMap[externalId];
       }
-
-      // Products
-      if (Array.isArray(task.products)) {
-        for (const p of task.products) {
-          const item = p?.produto || p?.product || p;
-          if (item && typeof item === "object") {
-            const vt = parseCurrency(item.valor_total || item.totalValue || item.value);
-            if (vt > 0) { taskTotal += vt; continue; }
-            const qty = parseCurrency(item.quantidade || item.quantity || 1);
-            const price = parseCurrency(item.valor_venda || item.valor || item.unitPrice || item.price || 0);
-            taskTotal += qty * price;
-          }
-        }
-      }
-
-      // Additional costs
-      if (Array.isArray(task.additionalCosts)) {
-        for (const c of task.additionalCosts) {
-          const item = c?.custo || c?.cost || c;
-          if (item && typeof item === "object") {
-            taskTotal += parseCurrency(item.valor_total || item.totalValue || item.value || item.valor || 0);
-          }
-        }
-      }
-
-      // Expense (pode ser valor direto)
-      const expenseVal = parseCurrency(task.expense);
-      if (expenseVal > 0 && taskTotal === 0) {
-        taskTotal = expenseVal;
-      }
-
-      tech.valor_total += taskTotal;
 
       // Tasks per day
       const taskDate = String(task.taskDate || task.date || startDate).split("T")[0];
