@@ -1014,6 +1014,7 @@ Deno.serve(async (req) => {
               gc_situacao_id: os.situacao_id,
               data_os: os.data_os,
               auvo_task_id: os.auvo_task_id,
+              gc_valor_total: os.gc_valor_total,
               conciliada: true,
               auvo_finalizada: true,
               auvo_pendencia: "",
