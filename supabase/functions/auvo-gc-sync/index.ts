@@ -972,6 +972,7 @@ Deno.serve(async (req) => {
       let auvoChecksConcil = 0;
 
       for (const os of todasOs) {
+        const conciliada = SITUACOES_EXCLUIR.includes(os.situacao_id);
         const itemAnterior = mapaAnterior[os.gc_os_id];
 
         // Para OS conciliadas, reaproveita dados anteriores (tempo/técnico) e atualiza só os campos alterados
