@@ -103,6 +103,7 @@ const AuvoSyncPage = () => {
   const [dataFim, setDataFim] = useState<Date | undefined>(undefined);
   const [filtroCliente, setFiltroCliente] = useState("");
   const [conciliacaoData, setConciliacaoData] = useState<ConciliacaoItem[] | null>(null);
+  const [snapshotEm, setSnapshotEm] = useState<string | null>(null);
   const [loadingConciliacao, setLoadingConciliacao] = useState(false);
   const [filtroConciliacao, setFiltroConciliacao] = useState<"todas" | "pendentes" | "conciliadas">("todas");
   const [selectedOsIds, setSelectedOsIds] = useState<Set<string>>(new Set());
