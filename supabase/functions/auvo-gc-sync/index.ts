@@ -456,6 +456,7 @@ const SITUACAO_TRANSITORIA = "8896431";
 type AtualizarSituacaoOptions = {
   vendedorId?: string | null;
   vendedorNome?: string | null;
+  dataSaida?: string | null; // Data de saída da OS (formato yyyy-MM-dd), preenchida com data de execução da tarefa Auvo
 };
 
 async function executarPutOs(
