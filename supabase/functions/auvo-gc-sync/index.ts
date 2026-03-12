@@ -781,7 +781,7 @@ Deno.serve(async (req) => {
         success: revertResult.success, gc_os_id: gcOsId, gc_os_codigo: gcOsCodigo,
         status: revertResult.status, body: revertResult.body,
       }), {
-        status: revertResult.success ? 200 : 422, 
+        status: 200, 
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
