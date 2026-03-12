@@ -471,7 +471,8 @@ async function executarPutOs(
   const camposRemover = ["id", "codigo", "nome_situacao", "cor_situacao", "hash", "cadastrado_em", "modificado_em"];
   for (const campo of camposRemover) delete payload[campo];
 
-  if (payload.data_saida == null) payload.data_saida = "";
+  // data_saida: se fornecida via options, usar; caso contrário manter vazio
+  // NÃO sobrescrever aqui — será definida em atualizarSituacaoOsGC
 
   // Recalcula totais a partir dos itens para evitar valor_total zerado
   const totalServicos = sumWrappedItems(payload.servicos, "servico");
