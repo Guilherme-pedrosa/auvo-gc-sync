@@ -773,6 +773,38 @@ Deno.serve(async (req) => {
       });
     }
 
+    // ─── Action: get_last_conciliacao — carregar último snapshot salvo ───
+    if (body?.action === "get_last_conciliacao") {
+      const { data: lastRows, error: lastError } = await supabase
+        .from("auvo_gc_sync_log")
+        .select("executado_em, detalhes")
+        .eq("observacao", "CONCILIACAO_SNAPSHOT")
+        .order("executado_em", { ascending: false })
+        .limit(1);
+
+      if (lastError) {
+        return new Response(JSON.stringify({ error: `Erro ao carregar conciliação salva: ${lastError.message}` }), {
+          status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      const last = lastRows?.[0];
+      const detalhes = last?.detalhes as any;
+      const itens = Array.isArray(detalhes?.itens)
+        ? detalhes.itens
+        : (Array.isArray(detalhes) ? detalhes : []);
+
+      return new Response(JSON.stringify({
+        total: itens.length,
+        conciliadas: itens.filter((i: any) => i.conciliada).length,
+        pendentes: itens.filter((i: any) => !i.conciliada).length,
+        itens,
+        snapshot_em: last?.executado_em || null,
+      }), {
+        status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
     // ─── Auvo Login (v2 — Bearer token) ───
     console.log("[auvo-gc-sync] Fazendo login na API Auvo v2...");
     let auvoBearerToken: string;
