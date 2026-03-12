@@ -1154,12 +1154,57 @@ Deno.serve(async (req) => {
       const totalConciliadas = itens.filter(i => i.conciliada).length;
       const totalPendentes = itens.filter(i => !i.conciliada).length;
 
+      // Detectar quantos itens mudaram em relação ao snapshot anterior
+      let itensAlterados = 0;
+      for (const item of itens) {
+        const prev = mapaAnterior[item.gc_os_id];
+        if (!prev) {
+          itensAlterados++;
+          continue;
+        }
+        const currentCmp = JSON.stringify(item);
+        const prevCmp = JSON.stringify(prev);
+        if (currentCmp !== prevCmp) itensAlterados++;
+      }
+
+      // Persistir snapshot completo da conciliação para manter estado entre execuções
+      const snapshotPayload = {
+        filtros: {
+          data_inicio: dataInicioConcil || null,
+          data_fim: dataFimConcil || null,
+          filtro_cliente: filtroClienteConcil || null,
+        },
+        gerado_em: new Date().toISOString(),
+        itens,
+      };
+
+      const { error: snapshotError } = await supabase.from("auvo_gc_sync_log").insert({
+        executado_em: new Date().toISOString(),
+        os_candidatas: itens.length,
+        os_atualizadas: itensAlterados,
+        os_com_pendencia: itens.filter(i => !!String(i.auvo_pendencia || "").trim()).length,
+        os_sem_pendencia: itens.filter(i => i.auvo_finalizada === true && !String(i.auvo_pendencia || "").trim()).length,
+        os_nao_encontradas: itens.filter(i => i.vendedor_status === "nao_encontrada").length,
+        erros: 0,
+        dry_run: true,
+        duracao_ms: Date.now() - startTime,
+        observacao: "CONCILIACAO_SNAPSHOT",
+        detalhes: snapshotPayload,
+      });
+
+      if (snapshotError) {
+        console.error(`[conciliacao] Erro ao salvar snapshot: ${snapshotError.message}`);
+      } else {
+        console.log(`[conciliacao] Snapshot salvo: ${itens.length} itens (${itensAlterados} alterados)`);
+      }
+
       console.log(`[conciliacao] Resultado: ${itens.length} itens, ${totalConciliadas} conciliadas, ${totalPendentes} pendentes`);
 
       return new Response(JSON.stringify({
         total: itens.length,
         conciliadas: totalConciliadas,
         pendentes: totalPendentes,
+        alteradas: itensAlterados,
         itens,
       }), {
         status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
