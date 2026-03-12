@@ -9,7 +9,7 @@ import { Progress } from "@/components/ui/progress";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { ArrowLeft, CalendarIcon, RefreshCw, Users, CheckCircle, Clock, TrendingUp, AlertTriangle } from "lucide-react";
+import { ArrowLeft, CalendarIcon, RefreshCw, Users, CheckCircle, Clock, TrendingUp, AlertTriangle, DollarSign } from "lucide-react";
 import { format, subDays, startOfWeek, startOfMonth } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { useNavigate } from "react-router-dom";
