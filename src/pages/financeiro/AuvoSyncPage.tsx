@@ -236,6 +236,11 @@ const AuvoSyncPage = () => {
     }
   };
 
+  const atualizarStatusLocal = (gcOsId: string, situacaoId: string) => {
+    const label = SITUACOES_OPTIONS.find(s => s.id === situacaoId)?.label || situacaoId;
+    setConciliacaoData(prev => prev?.map(i => i.gc_os_id === gcOsId ? { ...i, gc_situacao: label, gc_situacao_id: situacaoId, conciliada: true } : i) || null);
+  };
+
   const alterarSituacaoOS = async (item: ConciliacaoItem, situacaoId: string) => {
     setChangingId(item.gc_os_id);
     try {
@@ -250,6 +255,7 @@ const AuvoSyncPage = () => {
       });
       if (error) throw error;
       if (data?.success) {
+        atualizarStatusLocal(item.gc_os_id, situacaoId);
         setMovedOsIds(prev => new Set(prev).add(item.gc_os_id));
         toast.success(`OS ${item.gc_os_codigo} → situação alterada`);
       } else {
