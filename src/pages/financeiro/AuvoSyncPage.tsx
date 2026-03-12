@@ -152,6 +152,18 @@ const AuvoSyncPage = () => {
       do {
         const { data, error } = await supabase.functions.invoke("gc-proxy", {
           body: { endpoint: "/api/funcionarios", method: "GET", params: { limite: "100", pagina: String(pagina) } },
+        });
+        if (error) throw error;
+        const payload = data?.data;
+        const lista: any[] = Array.isArray(payload?.data) ? payload.data : Array.isArray(data?.data) ? data.data : [];
+        const meta = payload?.meta;
+        todos.push(...lista.map((f: any) => ({ id: String(f.id || ""), nome: String(f.nome || f.name || "") })));
+        totalPaginas = Number(meta?.total_paginas || 1);
+        pagina += 1;
+      } while (pagina <= totalPaginas);
+      return todos.sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR"));
+    },
+    enabled: dialogOpen,
   });
 
   const { data: conciliacaoSalva, isLoading: loadingConciliacaoSalva } = useQuery({
@@ -170,18 +182,6 @@ const AuvoSyncPage = () => {
       setSnapshotEm(conciliacaoSalva.snapshot_em || null);
     }
   }, [conciliacaoSalva, conciliacaoData]);
-        if (error) throw error;
-        const payload = data?.data;
-        const lista: any[] = Array.isArray(payload?.data) ? payload.data : Array.isArray(data?.data) ? data.data : [];
-        const meta = payload?.meta;
-        todos.push(...lista.map((f: any) => ({ id: String(f.id || ""), nome: String(f.nome || f.name || "") })));
-        totalPaginas = Number(meta?.total_paginas || 1);
-        pagina += 1;
-      } while (pagina <= totalPaginas);
-      return todos.sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR"));
-    },
-    enabled: dialogOpen,
-  });
 
   const salvarMapeamento = useMutation({
     mutationFn: async () => {
