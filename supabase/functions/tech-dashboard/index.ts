@@ -160,6 +160,7 @@ Deno.serve(async (req) => {
           tarefas_com_checkout: 0,
           tarefas_com_pendencia: 0,
           tempo_total_minutos: 0,
+          valor_total: 0,
           tarefas_por_dia: {},
           finalizadas_por_dia: {},
         };
