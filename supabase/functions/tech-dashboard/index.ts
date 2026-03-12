@@ -6,7 +6,6 @@ const corsHeaders = {
 };
 
 const AUVO_BASE_URL = "https://api.auvo.com.br/v2";
-const GC_BASE_URL = "https://api.gestaoclick.com";
 
 function parseCurrency(value: unknown): number {
   if (typeof value === "number") return Number.isFinite(value) ? value : 0;
@@ -146,56 +145,37 @@ Deno.serve(async (req) => {
     const { tasks, error: auvoError } = await fetchAllAuvoTasks(bearerToken, startDate, endDate);
     console.log(`[tech-dashboard] Total tasks retornadas: ${tasks.length}`);
 
-    // Collect externalIds (GC OS codes) to fetch values from GC
-    const gcAccessToken = Deno.env.get("GC_ACCESS_TOKEN") || "";
-    const gcSecretToken = Deno.env.get("GC_SECRET_TOKEN") || "";
-    const gcHeaders: Record<string, string> = {
-      "access-token": gcAccessToken,
-      "secret-access-token": gcSecretToken,
-      "Content-Type": "application/json",
-    };
 
-    // Build map: GC OS codigo → valor_total
-    // Collect unique externalIds (GC OS codes) from Auvo tasks
-    const uniqueCodes = new Set<string>();
-    for (const task of tasks) {
-      const extId = String(task.externalId || "").trim();
-      if (extId && /^\d+$/.test(extId)) uniqueCodes.add(extId);
-    }
-    console.log(`[tech-dashboard] ${uniqueCodes.size} externalIds únicos para buscar no GC`);
 
-    const gcValorMap: Record<string, number> = {};
-    if (gcAccessToken && gcSecretToken && uniqueCodes.size > 0) {
-      try {
-        // Buscar OS sem filtro de data para capturar OS de qualquer período
-        let gcPage = 1;
-        let gcTotalPages = 1;
-        const codesFound = new Set<string>();
-        while (gcPage <= gcTotalPages && gcPage <= 20 && codesFound.size < uniqueCodes.size) {
-          const gcUrl = `${GC_BASE_URL}/api/ordens_servicos?limite=100&pagina=${gcPage}`;
-          const gcResp = await fetch(gcUrl, { headers: gcHeaders });
-          if (!gcResp.ok) {
-            console.warn(`[tech-dashboard] GC OS list error: ${gcResp.status}`);
-            break;
-          }
-          const gcData = await gcResp.json();
-          const gcRecords: any[] = Array.isArray(gcData?.data) ? gcData.data : [];
-          gcTotalPages = gcData?.meta?.total_paginas || 1;
-          for (const os of gcRecords) {
-            const codigo = String(os.codigo || "").trim();
-            if (codigo && uniqueCodes.has(codigo)) {
-              gcValorMap[codigo] = parseCurrency(os.valor_total);
-              codesFound.add(codigo);
-            }
-          }
-          console.log(`[tech-dashboard] GC página ${gcPage}/${gcTotalPages}: encontrados ${codesFound.size}/${uniqueCodes.size} códigos`);
-          if (codesFound.size >= uniqueCodes.size) break;
-          gcPage++;
+
+    // Build map: GC OS codigo → valor_total from conciliation snapshot (fast, no GC API calls)
+    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+    const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+    const supabase = createClient(supabaseUrl, supabaseKey);
+
+    // Build map: auvo_task_id → valor_total from conciliation snapshot
+    const auvoTaskValorMap: Record<string, number> = {};
+    try {
+      const { data: snapshotRows } = await supabase
+        .from("auvo_gc_sync_log")
+        .select("detalhes")
+        .eq("observacao", "CONCILIACAO_SNAPSHOT")
+        .order("executado_em", { ascending: false })
+        .limit(1);
+
+      const detalhes = snapshotRows?.[0]?.detalhes as any;
+      const itens: any[] = Array.isArray(detalhes?.itens) ? detalhes.itens : (Array.isArray(detalhes) ? detalhes : []);
+      
+      for (const item of itens) {
+        const auvoTaskId = String(item.auvo_task_id || "").trim();
+        const valor = parseCurrency(item.gc_valor_total);
+        if (auvoTaskId && valor > 0) {
+          auvoTaskValorMap[auvoTaskId] = valor;
         }
-        console.log(`[tech-dashboard] GC valor map: ${Object.keys(gcValorMap).length} OS com valor. Exemplos: ${JSON.stringify(Object.entries(gcValorMap).slice(0, 5))}`);
-      } catch (err) {
-        console.warn(`[tech-dashboard] Erro ao buscar valores GC:`, err);
       }
+      console.log(`[tech-dashboard] Snapshot: ${itens.length} itens, ${Object.keys(auvoTaskValorMap).length} com valor`);
+    } catch (err) {
+      console.warn(`[tech-dashboard] Erro ao carregar snapshot:`, err);
     }
 
     // Group by technician
@@ -267,10 +247,15 @@ Deno.serve(async (req) => {
         }
       }
 
-      // Valor: buscar do GC usando externalId (código da OS)
-      const externalId = String(task.externalId || "").trim();
-      if (externalId && gcValorMap[externalId] > 0) {
-        tech.valor_total += gcValorMap[externalId];
+      // Valor: buscar do snapshot usando taskID do Auvo
+      const taskId = String(task.taskID || "").trim();
+      const valorDoSnapshot = auvoTaskValorMap[taskId];
+      if (valorDoSnapshot && valorDoSnapshot > 0) {
+        tech.valor_total += valorDoSnapshot;
+      }
+      // Debug: log first few matches/misses
+      if (tech.tarefas_total <= 2) {
+        console.log(`[tech-dashboard] Task ${taskId} (${tech.nome}): snapshot valor=${valorDoSnapshot ?? "NÃO ENCONTRADO"}, keys sample: ${Object.keys(auvoTaskValorMap).slice(0,5).join(",")}`);
       }
 
       // Tasks per day
