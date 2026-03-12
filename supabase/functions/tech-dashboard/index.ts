@@ -200,11 +200,54 @@ Deno.serve(async (req) => {
         }
       }
 
-      // Valor da OS/tarefa
-      const taskValue = parseFloat(task.value ?? task.taskValue ?? task.valorTotal ?? task.valor ?? 0);
-      if (!isNaN(taskValue) && taskValue > 0) {
-        tech.valor_total += taskValue;
+      // Valor: somar services + products + additionalCosts + expense
+      let taskTotal = 0;
+
+      // Services
+      if (Array.isArray(task.services)) {
+        for (const s of task.services) {
+          const item = s?.servico || s?.service || s;
+          if (item && typeof item === "object") {
+            const vt = parseCurrency(item.valor_total || item.totalValue || item.value);
+            if (vt > 0) { taskTotal += vt; continue; }
+            const qty = parseCurrency(item.quantidade || item.quantity || 1);
+            const price = parseCurrency(item.valor_venda || item.valor || item.unitPrice || item.price || 0);
+            taskTotal += qty * price;
+          }
+        }
       }
+
+      // Products
+      if (Array.isArray(task.products)) {
+        for (const p of task.products) {
+          const item = p?.produto || p?.product || p;
+          if (item && typeof item === "object") {
+            const vt = parseCurrency(item.valor_total || item.totalValue || item.value);
+            if (vt > 0) { taskTotal += vt; continue; }
+            const qty = parseCurrency(item.quantidade || item.quantity || 1);
+            const price = parseCurrency(item.valor_venda || item.valor || item.unitPrice || item.price || 0);
+            taskTotal += qty * price;
+          }
+        }
+      }
+
+      // Additional costs
+      if (Array.isArray(task.additionalCosts)) {
+        for (const c of task.additionalCosts) {
+          const item = c?.custo || c?.cost || c;
+          if (item && typeof item === "object") {
+            taskTotal += parseCurrency(item.valor_total || item.totalValue || item.value || item.valor || 0);
+          }
+        }
+      }
+
+      // Expense (pode ser valor direto)
+      const expenseVal = parseCurrency(task.expense);
+      if (expenseVal > 0 && taskTotal === 0) {
+        taskTotal = expenseVal;
+      }
+
+      tech.valor_total += taskTotal;
 
       // Tasks per day
       const taskDate = String(task.taskDate || task.date || startDate).split("T")[0];
