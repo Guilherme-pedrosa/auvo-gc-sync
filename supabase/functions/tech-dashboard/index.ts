@@ -223,6 +223,9 @@ Deno.serve(async (req) => {
         ? Math.round((tech.tempo_total_minutos / (dias * 480)) * 100)
         : 0;
 
+      const valorTotal = Math.round(tech.valor_total * 100) / 100;
+      const faturamentoHora = tempoHoras > 0 ? Math.round((valorTotal / tempoHoras) * 100) / 100 : 0;
+
       return {
         id: tech.id,
         nome: tech.nome,
@@ -235,6 +238,8 @@ Deno.serve(async (req) => {
         tempo_horas: tempoHoras,
         tempo_atividade_pct: tempoAtividadePct,
         dias_trabalhados: dias,
+        valor_total: valorTotal,
+        faturamento_hora: faturamentoHora,
         tarefas_por_dia: tech.tarefas_por_dia,
         finalizadas_por_dia: tech.finalizadas_por_dia,
       };
