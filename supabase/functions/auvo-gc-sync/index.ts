@@ -545,6 +545,11 @@ async function atualizarSituacaoOsGC(
       if (options.vendedorNome) payloadTransitorio.nome_vendedor = options.vendedorNome;
     }
 
+    // Aplicar data de saída (data de execução da tarefa Auvo)
+    if (options.dataSaida) {
+      payloadTransitorio.data_saida = options.dataSaida;
+    }
+
     const transitResult = await executarPutOs(gcOsId, { ...payloadTransitorio }, gcHeaders, "TRANSITÓRIA");
     if (!transitResult.success) {
       console.error(`[auvo-gc-sync] Falha ao mover OS ${gcOsId} para transitória: HTTP ${transitResult.status}`);
