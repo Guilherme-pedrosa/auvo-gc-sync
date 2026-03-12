@@ -155,47 +155,33 @@ Deno.serve(async (req) => {
       "Content-Type": "application/json",
     };
 
-    // Build map: GC OS codigo → valor_total
-    // Collect unique externalIds (GC OS codes) from Auvo tasks
-    const uniqueCodes = new Set<string>();
-    for (const task of tasks) {
-      const extId = String(task.externalId || "").trim();
-      if (extId && /^\d+$/.test(extId)) uniqueCodes.add(extId);
-    }
-    console.log(`[tech-dashboard] ${uniqueCodes.size} externalIds únicos para buscar no GC`);
+    // Build map: GC OS codigo → valor_total from conciliation snapshot (fast, no GC API calls)
+    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+    const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+    const supabase = createClient(supabaseUrl, supabaseKey);
 
     const gcValorMap: Record<string, number> = {};
-    if (gcAccessToken && gcSecretToken && uniqueCodes.size > 0) {
-      try {
-        // Buscar OS sem filtro de data para capturar OS de qualquer período
-        let gcPage = 1;
-        let gcTotalPages = 1;
-        const codesFound = new Set<string>();
-        while (gcPage <= gcTotalPages && gcPage <= 20 && codesFound.size < uniqueCodes.size) {
-          const gcUrl = `${GC_BASE_URL}/api/ordens_servicos?limite=100&pagina=${gcPage}`;
-          const gcResp = await fetch(gcUrl, { headers: gcHeaders });
-          if (!gcResp.ok) {
-            console.warn(`[tech-dashboard] GC OS list error: ${gcResp.status}`);
-            break;
-          }
-          const gcData = await gcResp.json();
-          const gcRecords: any[] = Array.isArray(gcData?.data) ? gcData.data : [];
-          gcTotalPages = gcData?.meta?.total_paginas || 1;
-          for (const os of gcRecords) {
-            const codigo = String(os.codigo || "").trim();
-            if (codigo && uniqueCodes.has(codigo)) {
-              gcValorMap[codigo] = parseCurrency(os.valor_total);
-              codesFound.add(codigo);
-            }
-          }
-          console.log(`[tech-dashboard] GC página ${gcPage}/${gcTotalPages}: encontrados ${codesFound.size}/${uniqueCodes.size} códigos`);
-          if (codesFound.size >= uniqueCodes.size) break;
-          gcPage++;
+    try {
+      const { data: snapshotRows } = await supabase
+        .from("auvo_gc_sync_log")
+        .select("detalhes")
+        .eq("observacao", "CONCILIACAO_SNAPSHOT")
+        .order("executado_em", { ascending: false })
+        .limit(1);
+
+      const detalhes = snapshotRows?.[0]?.detalhes as any;
+      const itens: any[] = Array.isArray(detalhes?.itens) ? detalhes.itens : (Array.isArray(detalhes) ? detalhes : []);
+      
+      for (const item of itens) {
+        const codigo = String(item.gc_os_codigo || "").trim();
+        const valor = parseCurrency(item.gc_valor_total);
+        if (codigo && valor > 0) {
+          gcValorMap[codigo] = valor;
         }
-        console.log(`[tech-dashboard] GC valor map: ${Object.keys(gcValorMap).length} OS com valor. Exemplos: ${JSON.stringify(Object.entries(gcValorMap).slice(0, 5))}`);
-      } catch (err) {
-        console.warn(`[tech-dashboard] Erro ao buscar valores GC:`, err);
       }
+      console.log(`[tech-dashboard] Snapshot: ${itens.length} itens, ${Object.keys(gcValorMap).length} com valor`);
+    } catch (err) {
+      console.warn(`[tech-dashboard] Erro ao carregar snapshot:`, err);
     }
 
     // Group by technician
