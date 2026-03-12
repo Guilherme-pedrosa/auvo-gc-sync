@@ -83,6 +83,9 @@ async function fetchAllAuvoTasks(
     if (page === 1 && entities.length > 0) {
       console.log(`[tech-dashboard] First task keys: ${Object.keys(entities[0]).join(", ")}`);
       console.log(`[tech-dashboard] First task sample: ${JSON.stringify(entities[0]).substring(0, 1000)}`);
+      // Log value-related fields
+      const t0 = entities[0];
+      console.log(`[tech-dashboard] Value fields: expense=${JSON.stringify(t0.expense)?.substring(0,200)}, services=${JSON.stringify(t0.services)?.substring(0,500)}, products=${JSON.stringify(t0.products)?.substring(0,500)}, additionalCosts=${JSON.stringify(t0.additionalCosts)?.substring(0,200)}`);
     }
 
     allTasks.push(...entities);
