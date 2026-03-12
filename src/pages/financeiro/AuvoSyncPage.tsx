@@ -25,6 +25,7 @@ type ConciliacaoItem = {
   gc_cliente: string;
   gc_situacao: string;
   gc_situacao_id: string;
+  gc_valor_total: string;
   data_os: string;
   auvo_task_id: string;
   conciliada: boolean;
