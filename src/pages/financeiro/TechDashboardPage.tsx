@@ -9,7 +9,7 @@ import { Progress } from "@/components/ui/progress";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { ArrowLeft, CalendarIcon, RefreshCw, Users, CheckCircle, Clock, TrendingUp, AlertTriangle } from "lucide-react";
+import { ArrowLeft, CalendarIcon, RefreshCw, Users, CheckCircle, Clock, TrendingUp, AlertTriangle, DollarSign } from "lucide-react";
 import { format, subDays, startOfWeek, startOfMonth } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { useNavigate } from "react-router-dom";
@@ -26,6 +26,8 @@ type TecnicoData = {
   tempo_horas: number;
   tempo_atividade_pct: number;
   dias_trabalhados: number;
+  valor_total: number;
+  faturamento_hora: number;
   tarefas_por_dia: Record<string, number>;
   finalizadas_por_dia: Record<string, number>;
 };
@@ -212,7 +214,7 @@ const TechDashboardPage = () => {
 
       {/* Resumo Cards */}
       {data?.resumo && (
-        <div className="grid gap-4 md:grid-cols-4">
+        <div className="grid gap-4 md:grid-cols-5">
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="text-sm font-medium">Técnicos Ativos</CardTitle>
@@ -252,6 +254,25 @@ const TechDashboardPage = () => {
               <div className="text-2xl font-bold">{data.resumo.total_tarefas - data.resumo.total_finalizadas}</div>
             </CardContent>
           </Card>
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Valor Total OS</CardTitle>
+              <DollarSign className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">
+                R$ {data.tecnicos.reduce((sum, t) => sum + (t.valor_total || 0), 0).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+              </div>
+              <p className="text-xs text-muted-foreground">
+                {(() => {
+                  const totalHoras = data.tecnicos.reduce((sum, t) => sum + (t.tempo_horas || 0), 0);
+                  const totalValor = data.tecnicos.reduce((sum, t) => sum + (t.valor_total || 0), 0);
+                  const mediaHora = totalHoras > 0 ? (totalValor / totalHoras) : 0;
+                  return `R$ ${mediaHora.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}/h média`;
+                })()}
+              </p>
+            </CardContent>
+          </Card>
         </div>
       )}
 
@@ -279,8 +300,10 @@ const TechDashboardPage = () => {
                   <TableHead className="text-center">Exec/Dia</TableHead>
                   <TableHead className="text-center">Tempo (h)</TableHead>
                   <TableHead className="text-center">% Atividade</TableHead>
-                  <TableHead className="text-center">Pendências</TableHead>
-                  <TableHead className="text-center">Atingimento</TableHead>
+                   <TableHead className="text-center">Pendências</TableHead>
+                   <TableHead className="text-right">Valor OS</TableHead>
+                   <TableHead className="text-right">R$/Hora</TableHead>
+                   <TableHead className="text-center">Atingimento</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -314,6 +337,12 @@ const TechDashboardPage = () => {
                         ) : (
                           <Badge variant="destructive" className="text-xs">⚠️ {tech.tarefas_com_pendencia}</Badge>
                         )}
+                      </TableCell>
+                      <TableCell className="text-right font-mono text-sm">
+                        {tech.valor_total > 0 ? `R$ ${tech.valor_total.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}` : "—"}
+                      </TableCell>
+                      <TableCell className="text-right font-mono text-sm">
+                        {tech.faturamento_hora > 0 ? `R$ ${tech.faturamento_hora.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}` : "—"}
                       </TableCell>
                       <TableCell className="text-center">
                         <div className="flex items-center gap-2 justify-center">

@@ -139,6 +139,7 @@ Deno.serve(async (req) => {
       tarefas_com_checkout: number;
       tarefas_com_pendencia: number;
       tempo_total_minutos: number;
+      valor_total: number;
       tarefas_por_dia: Record<string, number>;
       finalizadas_por_dia: Record<string, number>;
     }> = {};
@@ -159,6 +160,7 @@ Deno.serve(async (req) => {
           tarefas_com_checkout: 0,
           tarefas_com_pendencia: 0,
           tempo_total_minutos: 0,
+          valor_total: 0,
           tarefas_por_dia: {},
           finalizadas_por_dia: {},
         };
@@ -195,6 +197,12 @@ Deno.serve(async (req) => {
         }
       }
 
+      // Valor da OS/tarefa
+      const taskValue = parseFloat(task.value ?? task.taskValue ?? task.valorTotal ?? task.valor ?? 0);
+      if (!isNaN(taskValue) && taskValue > 0) {
+        tech.valor_total += taskValue;
+      }
+
       // Tasks per day
       const taskDate = String(task.taskDate || task.date || startDate).split("T")[0];
       tech.tarefas_por_dia[taskDate] = (tech.tarefas_por_dia[taskDate] || 0) + 1;
@@ -215,6 +223,9 @@ Deno.serve(async (req) => {
         ? Math.round((tech.tempo_total_minutos / (dias * 480)) * 100)
         : 0;
 
+      const valorTotal = Math.round(tech.valor_total * 100) / 100;
+      const faturamentoHora = tempoHoras > 0 ? Math.round((valorTotal / tempoHoras) * 100) / 100 : 0;
+
       return {
         id: tech.id,
         nome: tech.nome,
@@ -227,6 +238,8 @@ Deno.serve(async (req) => {
         tempo_horas: tempoHoras,
         tempo_atividade_pct: tempoAtividadePct,
         dias_trabalhados: dias,
+        valor_total: valorTotal,
+        faturamento_hora: faturamentoHora,
         tarefas_por_dia: tech.tarefas_por_dia,
         finalizadas_por_dia: tech.finalizadas_por_dia,
       };
