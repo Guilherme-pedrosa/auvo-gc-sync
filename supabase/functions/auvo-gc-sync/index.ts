@@ -939,7 +939,13 @@ Deno.serve(async (req) => {
 
       let pageConcil = 1;
       let totalPagesConcil = 1;
-      while (pageConcil <= totalPagesConcil && todasOs.length < 500) {
+      const maxOsConcilBody = Number(body?.max_os || 0);
+      const maxOsConcil = Number.isFinite(maxOsConcilBody) && maxOsConcilBody > 0
+        ? maxOsConcilBody
+        : Number.POSITIVE_INFINITY;
+      console.log(`[conciliacao] Limite de OS aplicado: ${Number.isFinite(maxOsConcil) ? maxOsConcil : "SEM LIMITE"}`);
+
+      while (pageConcil <= totalPagesConcil && todasOs.length < maxOsConcil) {
         let url = `${GC_BASE_URL}/api/ordens_servicos?limite=100&pagina=${pageConcil}`;
         if (dataInicioConcil) url += `&data_inicio=${dataInicioConcil}`;
         if (dataFimConcil) url += `&data_fim=${dataFimConcil}`;
@@ -951,7 +957,7 @@ Deno.serve(async (req) => {
         totalPagesConcil = data?.meta?.total_paginas || 1;
 
         for (const os of records) {
-          if (todasOs.length >= 500) break;
+          if (todasOs.length >= maxOsConcil) break;
           if (filtroClienteConcil && !String(os.nome_cliente || "").toLowerCase().includes(filtroClienteConcil)) continue;
           const atributos: any[] = os.atributos || [];
           const atributoTarefa = atributos.find((a: any) => {
@@ -1193,6 +1199,7 @@ Deno.serve(async (req) => {
           data_inicio: dataInicioConcil || null,
           data_fim: dataFimConcil || null,
           filtro_cliente: filtroClienteConcil || null,
+          max_os: Number.isFinite(maxOsConcil) ? maxOsConcil : null,
         },
         gerado_em: new Date().toISOString(),
         itens,
