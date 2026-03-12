@@ -300,8 +300,10 @@ const TechDashboardPage = () => {
                   <TableHead className="text-center">Exec/Dia</TableHead>
                   <TableHead className="text-center">Tempo (h)</TableHead>
                   <TableHead className="text-center">% Atividade</TableHead>
-                  <TableHead className="text-center">Pendências</TableHead>
-                  <TableHead className="text-center">Atingimento</TableHead>
+                   <TableHead className="text-center">Pendências</TableHead>
+                   <TableHead className="text-right">Valor OS</TableHead>
+                   <TableHead className="text-right">R$/Hora</TableHead>
+                   <TableHead className="text-center">Atingimento</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
