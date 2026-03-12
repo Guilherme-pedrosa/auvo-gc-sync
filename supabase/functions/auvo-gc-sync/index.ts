@@ -887,6 +887,24 @@ Deno.serve(async (req) => {
 
       console.log(`[conciliacao] Buscando OS para conciliação: data_inicio=${dataInicioConcil || "todas"}, data_fim=${dataFimConcil || "todas"}`);
 
+      // Carregar último snapshot salvo para evitar "zerar" dados já conciliados
+      const { data: lastSnapshotRows } = await supabase
+        .from("auvo_gc_sync_log")
+        .select("detalhes")
+        .eq("observacao", "CONCILIACAO_SNAPSHOT")
+        .order("executado_em", { ascending: false })
+        .limit(1);
+
+      const lastDetalhes = lastSnapshotRows?.[0]?.detalhes as any;
+      const itensAnteriores: any[] = Array.isArray(lastDetalhes?.itens)
+        ? lastDetalhes.itens
+        : (Array.isArray(lastDetalhes) ? lastDetalhes : []);
+      const mapaAnterior: Record<string, any> = {};
+      for (const item of itensAnteriores) {
+        if (item?.gc_os_id) mapaAnterior[String(item.gc_os_id)] = item;
+      }
+      console.log(`[conciliacao] Snapshot anterior carregado: ${itensAnteriores.length} itens`);
+
       // Carregar mapeamento vendedores
       const { data: mapeamentosConcil } = await supabase
         .from("auvo_gc_usuario_map")
