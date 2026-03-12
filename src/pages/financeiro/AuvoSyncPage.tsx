@@ -591,7 +591,7 @@ const AuvoSyncPage = () => {
                     <TableBody>
                       {itensFiltrados.length === 0 ? (
                         <TableRow>
-                          <TableCell colSpan={14} className="text-center text-muted-foreground py-12">
+                          <TableCell colSpan={16} className="text-center text-muted-foreground py-12">
                             {loadingConciliacao ? "Buscando..." : "Nenhuma OS encontrada"}
                           </TableCell>
                         </TableRow>
