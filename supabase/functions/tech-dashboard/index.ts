@@ -153,7 +153,8 @@ Deno.serve(async (req) => {
     const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, supabaseKey);
 
-    const gcValorMap: Record<string, number> = {};
+    // Build map: auvo_task_id → valor_total from conciliation snapshot
+    const auvoTaskValorMap: Record<string, number> = {};
     try {
       const { data: snapshotRows } = await supabase
         .from("auvo_gc_sync_log")
@@ -166,13 +167,13 @@ Deno.serve(async (req) => {
       const itens: any[] = Array.isArray(detalhes?.itens) ? detalhes.itens : (Array.isArray(detalhes) ? detalhes : []);
       
       for (const item of itens) {
-        const codigo = String(item.gc_os_codigo || "").trim();
+        const auvoTaskId = String(item.auvo_task_id || "").trim();
         const valor = parseCurrency(item.gc_valor_total);
-        if (codigo && valor > 0) {
-          gcValorMap[codigo] = valor;
+        if (auvoTaskId && valor > 0) {
+          auvoTaskValorMap[auvoTaskId] = valor;
         }
       }
-      console.log(`[tech-dashboard] Snapshot: ${itens.length} itens, ${Object.keys(gcValorMap).length} com valor`);
+      console.log(`[tech-dashboard] Snapshot: ${itens.length} itens, ${Object.keys(auvoTaskValorMap).length} com valor`);
     } catch (err) {
       console.warn(`[tech-dashboard] Erro ao carregar snapshot:`, err);
     }
