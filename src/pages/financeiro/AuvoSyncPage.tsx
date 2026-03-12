@@ -152,7 +152,24 @@ const AuvoSyncPage = () => {
       do {
         const { data, error } = await supabase.functions.invoke("gc-proxy", {
           body: { endpoint: "/api/funcionarios", method: "GET", params: { limite: "100", pagina: String(pagina) } },
-        });
+  });
+
+  const { data: conciliacaoSalva, isLoading: loadingConciliacaoSalva } = useQuery({
+    queryKey: ["conciliacao-snapshot"],
+    queryFn: async () => {
+      const { data, error } = await supabase.functions.invoke("auvo-gc-sync", { body: { action: "get_last_conciliacao" } });
+      if (error) throw error;
+      return data as ConciliacaoResponse;
+    },
+    staleTime: 60000,
+  });
+
+  useEffect(() => {
+    if (!conciliacaoData && conciliacaoSalva?.itens?.length) {
+      setConciliacaoData(conciliacaoSalva.itens);
+      setSnapshotEm(conciliacaoSalva.snapshot_em || null);
+    }
+  }, [conciliacaoSalva, conciliacaoData]);
         if (error) throw error;
         const payload = data?.data;
         const lista: any[] = Array.isArray(payload?.data) ? payload.data : Array.isArray(data?.data) ? data.data : [];
