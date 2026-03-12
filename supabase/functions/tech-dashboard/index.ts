@@ -146,6 +146,48 @@ Deno.serve(async (req) => {
     const { tasks, error: auvoError } = await fetchAllAuvoTasks(bearerToken, startDate, endDate);
     console.log(`[tech-dashboard] Total tasks retornadas: ${tasks.length}`);
 
+    // Collect externalIds (GC OS codes) to fetch values from GC
+    const gcAccessToken = Deno.env.get("GC_ACCESS_TOKEN") || "";
+    const gcSecretToken = Deno.env.get("GC_SECRET_TOKEN") || "";
+    const gcHeaders: Record<string, string> = {
+      "access-token": gcAccessToken,
+      "secret-access-token": gcSecretToken,
+      "Content-Type": "application/json",
+    };
+
+    // Build map: GC OS codigo → valor_total
+    const gcValorMap: Record<string, number> = {};
+    if (gcAccessToken && gcSecretToken) {
+      try {
+        let gcPage = 1;
+        let gcTotalPages = 1;
+        while (gcPage <= gcTotalPages && gcPage <= 10) {
+          let gcUrl = `${GC_BASE_URL}/api/ordens_servicos?limite=100&pagina=${gcPage}`;
+          if (startDate) gcUrl += `&data_inicio=${startDate}`;
+          if (endDate) gcUrl += `&data_fim=${endDate}`;
+          const gcResp = await fetch(gcUrl, { headers: gcHeaders });
+          if (!gcResp.ok) {
+            console.warn(`[tech-dashboard] GC OS list error: ${gcResp.status}`);
+            break;
+          }
+          const gcData = await gcResp.json();
+          const gcRecords: any[] = Array.isArray(gcData?.data) ? gcData.data : [];
+          gcTotalPages = gcData?.meta?.total_paginas || 1;
+          for (const os of gcRecords) {
+            const codigo = String(os.codigo || "").trim();
+            if (codigo) {
+              gcValorMap[codigo] = parseCurrency(os.valor_total);
+            }
+          }
+          console.log(`[tech-dashboard] GC página ${gcPage}/${gcTotalPages}: ${gcRecords.length} OS carregadas`);
+          gcPage++;
+        }
+        console.log(`[tech-dashboard] GC valor map: ${Object.keys(gcValorMap).length} OS com valor`);
+      } catch (err) {
+        console.warn(`[tech-dashboard] Erro ao buscar valores GC:`, err);
+      }
+    }
+
     // Group by technician
     const techMap: Record<string, {
       id: string;
