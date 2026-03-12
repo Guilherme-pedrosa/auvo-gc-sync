@@ -651,6 +651,13 @@ const AuvoSyncPage = () => {
                             <TableCell className="text-xs text-muted-foreground">
                               {item.data_os ? (() => { try { return format(new Date(item.data_os), "dd/MM/yy"); } catch { return item.data_os; } })() : "—"}
                             </TableCell>
+                            <TableCell className="text-right">
+                              <span className="text-xs font-medium">
+                                {item.gc_valor_total && item.gc_valor_total !== "0"
+                                  ? `R$ ${item.gc_valor_total}`
+                                  : "—"}
+                              </span>
+                            </TableCell>
                             <TableCell>
                               <div className="flex items-center gap-1">
                                 <span className="font-mono text-xs">{item.auvo_task_id}</span>
