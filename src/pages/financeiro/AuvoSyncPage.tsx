@@ -25,6 +25,7 @@ type ConciliacaoItem = {
   gc_cliente: string;
   gc_situacao: string;
   gc_situacao_id: string;
+  gc_valor_total: string;
   data_os: string;
   auvo_task_id: string;
   conciliada: boolean;
@@ -571,6 +572,7 @@ const AuvoSyncPage = () => {
                         <TableHead>OS (GC)</TableHead>
                         <TableHead>Cliente</TableHead>
                         <TableHead>Data</TableHead>
+                        <TableHead className="text-right">Valor</TableHead>
                         <TableHead>Tarefa (Auvo)</TableHead>
                         <TableHead>Técnico / Vendedor</TableHead>
                         <TableHead>Situação GC</TableHead>
@@ -589,7 +591,7 @@ const AuvoSyncPage = () => {
                     <TableBody>
                       {itensFiltrados.length === 0 ? (
                         <TableRow>
-                          <TableCell colSpan={14} className="text-center text-muted-foreground py-12">
+                          <TableCell colSpan={16} className="text-center text-muted-foreground py-12">
                             {loadingConciliacao ? "Buscando..." : "Nenhuma OS encontrada"}
                           </TableCell>
                         </TableRow>
@@ -648,6 +650,13 @@ const AuvoSyncPage = () => {
                             </TableCell>
                             <TableCell className="text-xs text-muted-foreground">
                               {item.data_os ? (() => { try { return format(new Date(item.data_os), "dd/MM/yy"); } catch { return item.data_os; } })() : "—"}
+                            </TableCell>
+                            <TableCell className="text-right">
+                              <span className="text-xs font-medium">
+                                {item.gc_valor_total && item.gc_valor_total !== "0"
+                                  ? `R$ ${item.gc_valor_total}`
+                                  : "—"}
+                              </span>
                             </TableCell>
                             <TableCell>
                               <div className="flex items-center gap-1">

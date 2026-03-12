@@ -128,7 +128,7 @@ async function fetchOsComTarefaAuvo(gcHeaders: Record<string, string>, dataInici
   const atributoLabel = (Deno.env.get("AUVO_ATRIBUTO_LABEL") || "Tarefa Execução").toLowerCase();
   const results: Array<{
     gc_os_id: string; gc_os_codigo: string; auvo_task_id: string;
-    nome_situacao: string; situacao_id: string; data_os: string; gc_cliente: string;
+    nome_situacao: string; situacao_id: string; data_os: string; gc_cliente: string; gc_valor_total: string;
   }> = [];
 
   // Acumuladores totais
@@ -190,6 +190,7 @@ async function fetchOsComTarefaAuvo(gcHeaders: Record<string, string>, dataInici
         situacao_id: situacaoId,
         data_os: String(os.data_entrada || os.cadastrado_em || ""),
         gc_cliente: String(os.nome_cliente || ""),
+        gc_valor_total: String(os.valor_total || "0"),
       });
     }
     console.log(`[auvo-gc-sync] Página ${page}: totalExcluídas=${totalExcluidas}, totalSemAtributo=${totalSemAtributo}, totalSemValor=${totalSemValor}, candidatas=${results.length}`);
@@ -933,7 +934,7 @@ Deno.serve(async (req) => {
       const atributoLabel = (Deno.env.get("AUVO_ATRIBUTO_LABEL") || "Tarefa Execução").toLowerCase();
       const todasOs: Array<{
         gc_os_id: string; gc_os_codigo: string; auvo_task_id: string;
-        nome_situacao: string; situacao_id: string; data_os: string; gc_cliente: string;
+        nome_situacao: string; situacao_id: string; data_os: string; gc_cliente: string; gc_valor_total: string;
       }> = [];
 
       let pageConcil = 1;
@@ -972,6 +973,7 @@ Deno.serve(async (req) => {
             situacao_id: String(os.situacao_id || ""),
             data_os: String(os.data_entrada || os.cadastrado_em || ""),
             gc_cliente: String(os.nome_cliente || ""),
+            gc_valor_total: String(os.valor_total || "0"),
           });
         }
         pageConcil++;
@@ -1000,6 +1002,7 @@ Deno.serve(async (req) => {
               gc_situacao_id: os.situacao_id,
               data_os: os.data_os,
               auvo_task_id: os.auvo_task_id,
+              gc_valor_total: os.gc_valor_total,
               conciliada: true,
             });
           } else {
@@ -1011,6 +1014,7 @@ Deno.serve(async (req) => {
               gc_situacao_id: os.situacao_id,
               data_os: os.data_os,
               auvo_task_id: os.auvo_task_id,
+              gc_valor_total: os.gc_valor_total,
               conciliada: true,
               auvo_finalizada: true,
               auvo_pendencia: "",
@@ -1041,13 +1045,14 @@ Deno.serve(async (req) => {
               gc_situacao_id: os.situacao_id,
               data_os: os.data_os,
               auvo_task_id: os.auvo_task_id,
+              gc_valor_total: os.gc_valor_total,
               conciliada: false,
             });
           } else {
             itens.push({
               gc_os_id: os.gc_os_id, gc_os_codigo: os.gc_os_codigo, gc_cliente: os.gc_cliente,
               gc_situacao: os.nome_situacao, gc_situacao_id: os.situacao_id, data_os: os.data_os,
-              auvo_task_id: os.auvo_task_id, conciliada: false,
+              auvo_task_id: os.auvo_task_id, gc_valor_total: os.gc_valor_total, conciliada: false,
               auvo_finalizada: null, auvo_pendencia: null, auvo_tecnico_nome: null, auvo_tecnico_id: null,
               auvo_cliente: null, gc_vendedor_id: null, gc_vendedor_nome: null, vendedor_status: "nao_consultado",
               tempo_trabalho_seg: 0, tempo_pausa_seg: 0, checkin_hora: null, checkout_hora: null,
@@ -1070,6 +1075,7 @@ Deno.serve(async (req) => {
               gc_situacao_id: os.situacao_id,
               data_os: os.data_os,
               auvo_task_id: os.auvo_task_id,
+              gc_valor_total: os.gc_valor_total,
               conciliada: false,
               vendedor_status: "nao_encontrada",
             });
@@ -1077,7 +1083,7 @@ Deno.serve(async (req) => {
             itens.push({
               gc_os_id: os.gc_os_id, gc_os_codigo: os.gc_os_codigo, gc_cliente: os.gc_cliente,
               gc_situacao: os.nome_situacao, gc_situacao_id: os.situacao_id, data_os: os.data_os,
-              auvo_task_id: os.auvo_task_id, conciliada: false,
+              auvo_task_id: os.auvo_task_id, gc_valor_total: os.gc_valor_total, conciliada: false,
               auvo_finalizada: null, auvo_pendencia: null, auvo_tecnico_nome: null, auvo_tecnico_id: null,
               auvo_cliente: null, gc_vendedor_id: null, gc_vendedor_nome: null, vendedor_status: "nao_encontrada",
               tempo_trabalho_seg: 0, tempo_pausa_seg: 0, checkin_hora: null, checkout_hora: null,
@@ -1155,7 +1161,7 @@ Deno.serve(async (req) => {
         itens.push({
           gc_os_id: os.gc_os_id, gc_os_codigo: os.gc_os_codigo, gc_cliente: os.gc_cliente,
           gc_situacao: os.nome_situacao, gc_situacao_id: os.situacao_id, data_os: os.data_os,
-          auvo_task_id: os.auvo_task_id, conciliada: false,
+          auvo_task_id: os.auvo_task_id, gc_valor_total: os.gc_valor_total, conciliada: false,
           auvo_finalizada: tarefa.finished, auvo_pendencia: tarefa.pendency,
           auvo_tecnico_nome: auvoTecnicoNome, auvo_tecnico_id: auvoTecnicoId,
           auvo_cliente: auvoCliente,
