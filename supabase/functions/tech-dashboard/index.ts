@@ -147,14 +147,15 @@ Deno.serve(async (req) => {
 
 
 
-
-    // Build map: GC OS codigo → valor_total from conciliation snapshot (fast, no GC API calls)
+    // Build maps from conciliation snapshot: task→valor AND tecnico→valor_total
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, supabaseKey);
 
-    // Build map: auvo_task_id → valor_total from conciliation snapshot
     const auvoTaskValorMap: Record<string, number> = {};
+    // Aggregate valor by auvo_tecnico_id from snapshot (all OS, all periods)
+    const tecnicoValorFromSnapshot: Record<string, number> = {};
+    const tecnicoNomeFromSnapshot: Record<string, string> = {};
     try {
       const { data: snapshotRows } = await supabase
         .from("auvo_gc_sync_log")
@@ -172,11 +173,19 @@ Deno.serve(async (req) => {
         if (auvoTaskId && valor > 0) {
           auvoTaskValorMap[auvoTaskId] = valor;
         }
+        // Aggregate by technician
+        const tecId = String(item.auvo_tecnico_id || "").trim();
+        const tecNome = String(item.auvo_tecnico_nome || "").trim();
+        if (tecId && valor > 0) {
+          tecnicoValorFromSnapshot[tecId] = (tecnicoValorFromSnapshot[tecId] || 0) + valor;
+          if (tecNome) tecnicoNomeFromSnapshot[tecId] = tecNome;
+        }
       }
-      console.log(`[tech-dashboard] Snapshot: ${itens.length} itens, ${Object.keys(auvoTaskValorMap).length} com valor`);
+      console.log(`[tech-dashboard] Snapshot: ${itens.length} itens, ${Object.keys(auvoTaskValorMap).length} com valor, ${Object.keys(tecnicoValorFromSnapshot).length} técnicos com faturamento`);
     } catch (err) {
       console.warn(`[tech-dashboard] Erro ao carregar snapshot:`, err);
     }
+
 
     // Group by technician
     const techMap: Record<string, {
@@ -247,15 +256,11 @@ Deno.serve(async (req) => {
         }
       }
 
-      // Valor: buscar do snapshot usando taskID do Auvo
+      // Valor: per-task lookup (soma individual)
       const taskId = String(task.taskID || "").trim();
       const valorDoSnapshot = auvoTaskValorMap[taskId];
       if (valorDoSnapshot && valorDoSnapshot > 0) {
         tech.valor_total += valorDoSnapshot;
-      }
-      // Debug: log first few matches/misses
-      if (tech.tarefas_total <= 2) {
-        console.log(`[tech-dashboard] Task ${taskId} (${tech.nome}): snapshot valor=${valorDoSnapshot ?? "NÃO ENCONTRADO"}, keys sample: ${Object.keys(auvoTaskValorMap).slice(0,5).join(",")}`);
       }
 
       // Tasks per day
@@ -278,7 +283,10 @@ Deno.serve(async (req) => {
         ? Math.round((tech.tempo_total_minutos / (dias * 480)) * 100)
         : 0;
 
-      const valorTotal = Math.round(tech.valor_total * 100) / 100;
+      // Usar valor agregado do snapshot (todas as OS do técnico) se maior que a soma por task
+      const valorPorTask = Math.round(tech.valor_total * 100) / 100;
+      const valorDoSnapshotTotal = Math.round((tecnicoValorFromSnapshot[tech.id] || 0) * 100) / 100;
+      const valorTotal = Math.max(valorPorTask, valorDoSnapshotTotal);
       const faturamentoHora = tempoHoras > 0 ? Math.round((valorTotal / tempoHoras) * 100) / 100 : 0;
 
       return {
