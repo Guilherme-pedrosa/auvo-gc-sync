@@ -456,6 +456,7 @@ const SITUACAO_TRANSITORIA = "8896431";
 type AtualizarSituacaoOptions = {
   vendedorId?: string | null;
   vendedorNome?: string | null;
+  dataSaida?: string | null; // Data de saída da OS (formato yyyy-MM-dd), preenchida com data de execução da tarefa Auvo
 };
 
 async function executarPutOs(
@@ -470,7 +471,8 @@ async function executarPutOs(
   const camposRemover = ["id", "codigo", "nome_situacao", "cor_situacao", "hash", "cadastrado_em", "modificado_em"];
   for (const campo of camposRemover) delete payload[campo];
 
-  if (payload.data_saida == null) payload.data_saida = "";
+  // data_saida: se fornecida via options, usar; caso contrário manter vazio
+  // NÃO sobrescrever aqui — será definida em atualizarSituacaoOsGC
 
   // Recalcula totais a partir dos itens para evitar valor_total zerado
   const totalServicos = sumWrappedItems(payload.servicos, "servico");
@@ -543,6 +545,11 @@ async function atualizarSituacaoOsGC(
       if (options.vendedorNome) payloadTransitorio.nome_vendedor = options.vendedorNome;
     }
 
+    // Aplicar data de saída (data de execução da tarefa Auvo)
+    if (options.dataSaida) {
+      payloadTransitorio.data_saida = options.dataSaida;
+    }
+
     const transitResult = await executarPutOs(gcOsId, { ...payloadTransitorio }, gcHeaders, "TRANSITÓRIA");
     if (!transitResult.success) {
       console.error(`[auvo-gc-sync] Falha ao mover OS ${gcOsId} para transitória: HTTP ${transitResult.status}`);
@@ -566,6 +573,11 @@ async function atualizarSituacaoOsGC(
     if (options.vendedorId) {
       payloadFinal.vendedor_id = options.vendedorId;
       if (options.vendedorNome) payloadFinal.nome_vendedor = options.vendedorNome;
+    }
+
+    // Garantir data de saída no payload final também
+    if (options.dataSaida) {
+      payloadFinal.data_saida = options.dataSaida;
     }
 
     const finalResult = await executarPutOs(gcOsId, payloadFinal, gcHeaders, "FINAL");
@@ -730,6 +742,7 @@ Deno.serve(async (req) => {
       const gcOsCodigo = String(body.gc_os_codigo || "");
       const vendedorId = body.gc_vendedor_id ? String(body.gc_vendedor_id) : null;
       const vendedorNome = body.gc_vendedor_nome ? String(body.gc_vendedor_nome) : null;
+      const dataSaida = body.data_saida ? String(body.data_saida) : null;
       if (!gcOsId || !situacaoAnteriorId) {
         return new Response(JSON.stringify({ error: "gc_os_id e situacao_id_antes são obrigatórios" }), {
           status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -740,8 +753,8 @@ Deno.serve(async (req) => {
           status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
-      console.log(`[auvo-gc-sync] REVERT: OS ${gcOsCodigo} (${gcOsId}) → situação ${situacaoAnteriorId} | vendedor: ${vendedorNome || "N/A"} (${vendedorId || "N/A"})`);
-      const revertResult = await atualizarSituacaoOsGC(gcOsId, situacaoAnteriorId, gcHeaders, { vendedorId, vendedorNome });
+      console.log(`[auvo-gc-sync] REVERT: OS ${gcOsCodigo} (${gcOsId}) → situação ${situacaoAnteriorId} | vendedor: ${vendedorNome || "N/A"} (${vendedorId || "N/A"}) | data_saida: ${dataSaida || "N/A"}`);
+      const revertResult = await atualizarSituacaoOsGC(gcOsId, situacaoAnteriorId, gcHeaders, { vendedorId, vendedorNome, dataSaida });
       
       await supabase.from("auvo_gc_sync_log").insert({
         executado_em: new Date().toISOString(),
@@ -1334,11 +1347,15 @@ Deno.serve(async (req) => {
         }
       }
 
+      // ─── Extrair data de execução da tarefa (taskDate) para data_saida da OS ───
+      // Formato esperado pelo GC: yyyy-MM-dd
+      const auvoTaskDate = String(tarefa._raw?.taskDate || tarefa._raw?.checkOutDate || "").split("T")[0] || null;
+
       if (dryRun) {
         logEntries.push({
           gc_os_id: os.gc_os_id, gc_os_codigo: os.gc_os_codigo, auvo_task_id: os.auvo_task_id,
           resultado: "dry_run_ok",
-          detalhe: `Seria atualizada para situação 7116099 | Peças: ${validacaoPecas.resumo} | Vendedor: ${gcVendedorNome || vendedorStatus}`,
+          detalhe: `Seria atualizada para situação 7116099 | Peças: ${validacaoPecas.resumo} | Vendedor: ${gcVendedorNome || vendedorStatus} | data_saida: ${auvoTaskDate || "N/A"}`,
           situacao_antes: os.nome_situacao, situacao_id_antes: os.situacao_id, situacao_depois: "EXECUTADO – AG. NEGOCIAÇÃO (7116099)",
           auvo_tecnico_id: auvoTecnicoId || null, auvo_tecnico_nome: auvoTecnicoNome || null, data_os: os.data_os,
           gc_cliente: os.gc_cliente, auvo_cliente: auvoCliente || null,
@@ -1347,7 +1364,11 @@ Deno.serve(async (req) => {
         continue;
       }
 
-      const gcResult = await atualizarSituacaoOsGC(os.gc_os_id, "7116099", gcHeaders, { vendedorId: gcVendedorId, vendedorNome: gcVendedorNome });
+      const gcResult = await atualizarSituacaoOsGC(os.gc_os_id, "7116099", gcHeaders, {
+        vendedorId: gcVendedorId,
+        vendedorNome: gcVendedorNome,
+        dataSaida: auvoTaskDate,
+      });
 
       if (gcResult.success) {
         atualizadas++;
