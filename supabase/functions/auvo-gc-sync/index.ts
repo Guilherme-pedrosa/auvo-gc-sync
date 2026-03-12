@@ -1206,6 +1206,7 @@ Deno.serve(async (req) => {
         conciliadas: totalConciliadas,
         pendentes: totalPendentes,
         alteradas: itensAlterados,
+        snapshot_em: snapshotPayload.gerado_em,
         itens,
       }), {
         status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
