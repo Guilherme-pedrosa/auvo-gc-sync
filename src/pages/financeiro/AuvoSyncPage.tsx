@@ -573,6 +573,7 @@ const AuvoSyncPage = () => {
                         <TableHead>Cliente</TableHead>
                         <TableHead>Data</TableHead>
                         <TableHead className="text-right">Valor</TableHead>
+                        <TableHead>Tarefa (Auvo)</TableHead>
                         <TableHead>Técnico / Vendedor</TableHead>
                         <TableHead>Situação GC</TableHead>
                         <TableHead className="text-center">Auvo</TableHead>
