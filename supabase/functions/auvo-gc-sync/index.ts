@@ -973,6 +973,7 @@ Deno.serve(async (req) => {
             situacao_id: String(os.situacao_id || ""),
             data_os: String(os.data_entrada || os.cadastrado_em || ""),
             gc_cliente: String(os.nome_cliente || ""),
+            gc_valor_total: String(os.valor_total || "0"),
           });
         }
         pageConcil++;
