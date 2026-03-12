@@ -197,6 +197,12 @@ Deno.serve(async (req) => {
         }
       }
 
+      // Valor da OS/tarefa
+      const taskValue = parseFloat(task.value ?? task.taskValue ?? task.valorTotal ?? task.valor ?? 0);
+      if (!isNaN(taskValue) && taskValue > 0) {
+        tech.valor_total += taskValue;
+      }
+
       // Tasks per day
       const taskDate = String(task.taskDate || task.date || startDate).split("T")[0];
       tech.tarefas_por_dia[taskDate] = (tech.tarefas_por_dia[taskDate] || 0) + 1;
