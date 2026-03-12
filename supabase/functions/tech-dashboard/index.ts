@@ -156,15 +156,23 @@ Deno.serve(async (req) => {
     };
 
     // Build map: GC OS codigo → valor_total
+    // Collect unique externalIds (GC OS codes) from Auvo tasks
+    const uniqueCodes = new Set<string>();
+    for (const task of tasks) {
+      const extId = String(task.externalId || "").trim();
+      if (extId && /^\d+$/.test(extId)) uniqueCodes.add(extId);
+    }
+    console.log(`[tech-dashboard] ${uniqueCodes.size} externalIds únicos para buscar no GC`);
+
     const gcValorMap: Record<string, number> = {};
-    if (gcAccessToken && gcSecretToken) {
+    if (gcAccessToken && gcSecretToken && uniqueCodes.size > 0) {
       try {
+        // Buscar OS sem filtro de data para capturar OS de qualquer período
         let gcPage = 1;
         let gcTotalPages = 1;
-        while (gcPage <= gcTotalPages && gcPage <= 10) {
-          let gcUrl = `${GC_BASE_URL}/api/ordens_servicos?limite=100&pagina=${gcPage}`;
-          if (startDate) gcUrl += `&data_inicio=${startDate}`;
-          if (endDate) gcUrl += `&data_fim=${endDate}`;
+        const codesFound = new Set<string>();
+        while (gcPage <= gcTotalPages && gcPage <= 20 && codesFound.size < uniqueCodes.size) {
+          const gcUrl = `${GC_BASE_URL}/api/ordens_servicos?limite=100&pagina=${gcPage}`;
           const gcResp = await fetch(gcUrl, { headers: gcHeaders });
           if (!gcResp.ok) {
             console.warn(`[tech-dashboard] GC OS list error: ${gcResp.status}`);
@@ -175,14 +183,16 @@ Deno.serve(async (req) => {
           gcTotalPages = gcData?.meta?.total_paginas || 1;
           for (const os of gcRecords) {
             const codigo = String(os.codigo || "").trim();
-            if (codigo) {
+            if (codigo && uniqueCodes.has(codigo)) {
               gcValorMap[codigo] = parseCurrency(os.valor_total);
+              codesFound.add(codigo);
             }
           }
-          console.log(`[tech-dashboard] GC página ${gcPage}/${gcTotalPages}: ${gcRecords.length} OS carregadas`);
+          console.log(`[tech-dashboard] GC página ${gcPage}/${gcTotalPages}: encontrados ${codesFound.size}/${uniqueCodes.size} códigos`);
+          if (codesFound.size >= uniqueCodes.size) break;
           gcPage++;
         }
-        console.log(`[tech-dashboard] GC valor map: ${Object.keys(gcValorMap).length} OS com valor`);
+        console.log(`[tech-dashboard] GC valor map: ${Object.keys(gcValorMap).length} OS com valor. Exemplos: ${JSON.stringify(Object.entries(gcValorMap).slice(0, 5))}`);
       } catch (err) {
         console.warn(`[tech-dashboard] Erro ao buscar valores GC:`, err);
       }
