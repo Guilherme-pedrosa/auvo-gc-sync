@@ -128,7 +128,7 @@ async function fetchOsComTarefaAuvo(gcHeaders: Record<string, string>, dataInici
   const atributoLabel = (Deno.env.get("AUVO_ATRIBUTO_LABEL") || "Tarefa Execução").toLowerCase();
   const results: Array<{
     gc_os_id: string; gc_os_codigo: string; auvo_task_id: string;
-    nome_situacao: string; situacao_id: string; data_os: string; gc_cliente: string;
+    nome_situacao: string; situacao_id: string; data_os: string; gc_cliente: string; gc_valor_total: string;
   }> = [];
 
   // Acumuladores totais
