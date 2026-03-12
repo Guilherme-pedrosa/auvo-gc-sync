@@ -7,6 +7,20 @@ const corsHeaders = {
 
 const AUVO_BASE_URL = "https://api.auvo.com.br/v2";
 
+function parseCurrency(value: unknown): number {
+  if (typeof value === "number") return Number.isFinite(value) ? value : 0;
+  if (typeof value !== "string") return 0;
+  const raw = value.trim();
+  if (!raw) return 0;
+  const hasDot = raw.includes(".");
+  const hasComma = raw.includes(",");
+  let normalized = raw;
+  if (hasDot && hasComma) normalized = raw.replace(/\./g, "").replace(",", ".");
+  else if (hasComma) normalized = raw.replace(",", ".");
+  const parsed = Number.parseFloat(normalized);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
 async function auvoLogin(apiKey: string, apiToken: string): Promise<string> {
   const url = `${AUVO_BASE_URL}/login/?apiKey=${encodeURIComponent(apiKey)}&apiToken=${encodeURIComponent(apiToken)}`;
   const response = await fetch(url, { method: "GET", headers: { "Content-Type": "application/json" } });
@@ -83,6 +97,9 @@ async function fetchAllAuvoTasks(
     if (page === 1 && entities.length > 0) {
       console.log(`[tech-dashboard] First task keys: ${Object.keys(entities[0]).join(", ")}`);
       console.log(`[tech-dashboard] First task sample: ${JSON.stringify(entities[0]).substring(0, 1000)}`);
+      // Log value-related fields
+      const t0 = entities[0];
+      console.log(`[tech-dashboard] Value fields: expense=${JSON.stringify(t0.expense)?.substring(0,200)}, services=${JSON.stringify(t0.services)?.substring(0,500)}, products=${JSON.stringify(t0.products)?.substring(0,500)}, additionalCosts=${JSON.stringify(t0.additionalCosts)?.substring(0,200)}`);
     }
 
     allTasks.push(...entities);
@@ -197,11 +214,54 @@ Deno.serve(async (req) => {
         }
       }
 
-      // Valor da OS/tarefa
-      const taskValue = parseFloat(task.value ?? task.taskValue ?? task.valorTotal ?? task.valor ?? 0);
-      if (!isNaN(taskValue) && taskValue > 0) {
-        tech.valor_total += taskValue;
+      // Valor: somar services + products + additionalCosts + expense
+      let taskTotal = 0;
+
+      // Services
+      if (Array.isArray(task.services)) {
+        for (const s of task.services) {
+          const item = s?.servico || s?.service || s;
+          if (item && typeof item === "object") {
+            const vt = parseCurrency(item.valor_total || item.totalValue || item.value);
+            if (vt > 0) { taskTotal += vt; continue; }
+            const qty = parseCurrency(item.quantidade || item.quantity || 1);
+            const price = parseCurrency(item.valor_venda || item.valor || item.unitPrice || item.price || 0);
+            taskTotal += qty * price;
+          }
+        }
       }
+
+      // Products
+      if (Array.isArray(task.products)) {
+        for (const p of task.products) {
+          const item = p?.produto || p?.product || p;
+          if (item && typeof item === "object") {
+            const vt = parseCurrency(item.valor_total || item.totalValue || item.value);
+            if (vt > 0) { taskTotal += vt; continue; }
+            const qty = parseCurrency(item.quantidade || item.quantity || 1);
+            const price = parseCurrency(item.valor_venda || item.valor || item.unitPrice || item.price || 0);
+            taskTotal += qty * price;
+          }
+        }
+      }
+
+      // Additional costs
+      if (Array.isArray(task.additionalCosts)) {
+        for (const c of task.additionalCosts) {
+          const item = c?.custo || c?.cost || c;
+          if (item && typeof item === "object") {
+            taskTotal += parseCurrency(item.valor_total || item.totalValue || item.value || item.valor || 0);
+          }
+        }
+      }
+
+      // Expense (pode ser valor direto)
+      const expenseVal = parseCurrency(task.expense);
+      if (expenseVal > 0 && taskTotal === 0) {
+        taskTotal = expenseVal;
+      }
+
+      tech.valor_total += taskTotal;
 
       // Tasks per day
       const taskDate = String(task.taskDate || task.date || startDate).split("T")[0];
