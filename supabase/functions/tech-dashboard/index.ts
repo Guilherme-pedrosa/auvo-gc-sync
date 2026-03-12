@@ -139,6 +139,7 @@ Deno.serve(async (req) => {
       tarefas_com_checkout: number;
       tarefas_com_pendencia: number;
       tempo_total_minutos: number;
+      valor_total: number;
       tarefas_por_dia: Record<string, number>;
       finalizadas_por_dia: Record<string, number>;
     }> = {};
