@@ -101,7 +101,7 @@ const AuvoSyncPage = () => {
   // ─── Conciliação state ───
   const [dataInicio, setDataInicio] = useState<Date | undefined>(undefined);
   const [dataFim, setDataFim] = useState<Date | undefined>(undefined);
-  const [filtroCliente, setFiltroCliente] = useState("");
+  
   const [conciliacaoData, setConciliacaoData] = useState<ConciliacaoItem[] | null>(null);
   const [snapshotEm, setSnapshotEm] = useState<string | null>(null);
   const [loadingConciliacao, setLoadingConciliacao] = useState(false);
