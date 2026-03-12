@@ -363,57 +363,51 @@ const AuvoSyncPage = () => {
 
         {/* ─── TAB: Conciliação ─── */}
         <TabsContent value="conciliacao" className="space-y-4">
-          {/* Filtros */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-lg flex items-center gap-2"><Search className="h-5 w-5" /> Filtros</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="flex flex-wrap items-end gap-4">
-                <div className="space-y-1.5">
-                  <label className="text-sm font-medium text-muted-foreground">Data Início</label>
-                  <Popover>
-                    <PopoverTrigger asChild>
-                      <Button variant="outline" className="w-[160px] justify-start text-left font-normal">
-                        <CalendarIcon className="mr-2 h-4 w-4" />
-                        {dataInicio ? format(dataInicio, "dd/MM/yyyy") : "Selecione"}
-                      </Button>
-                    </PopoverTrigger>
-                    <PopoverContent className="w-auto p-0" align="start">
-                      <Calendar mode="single" selected={dataInicio} onSelect={setDataInicio} locale={ptBR} initialFocus />
-                    </PopoverContent>
-                  </Popover>
-                </div>
-                <div className="space-y-1.5">
-                  <label className="text-sm font-medium text-muted-foreground">Data Fim</label>
-                  <Popover>
-                    <PopoverTrigger asChild>
-                      <Button variant="outline" className="w-[160px] justify-start text-left font-normal">
-                        <CalendarIcon className="mr-2 h-4 w-4" />
-                        {dataFim ? format(dataFim, "dd/MM/yyyy") : "Selecione"}
-                      </Button>
-                    </PopoverTrigger>
-                    <PopoverContent className="w-auto p-0" align="start">
-                      <Calendar mode="single" selected={dataFim} onSelect={setDataFim} locale={ptBR} initialFocus />
-                    </PopoverContent>
-                  </Popover>
-                </div>
-                <div className="space-y-1.5">
-                  <label className="text-sm font-medium text-muted-foreground">Cliente</label>
-                  <Input placeholder="Filtrar por cliente..." value={filtroCliente} onChange={e => setFiltroCliente(e.target.value)} className="w-[200px]" />
-                </div>
-                <Button onClick={buscarConciliacao} disabled={loadingConciliacao} className="h-10">
-                  <RefreshCw className={`mr-2 h-4 w-4 ${loadingConciliacao ? "animate-spin" : ""}`} />
-                  {loadingConciliacao ? "Buscando..." : "Buscar Conciliação"}
-                </Button>
-                {(dataInicio || dataFim || filtroCliente) && (
-                  <Button variant="ghost" size="sm" className="text-xs h-10" onClick={() => { setDataInicio(undefined); setDataFim(undefined); setFiltroCliente(""); }}>
-                    Limpar filtros
+          {/* Buscar + Atualizar */}
+          <div className="flex flex-wrap items-end gap-4">
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium text-muted-foreground">Data Início</label>
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button variant="outline" className="w-[160px] justify-start text-left font-normal">
+                    <CalendarIcon className="mr-2 h-4 w-4" />
+                    {dataInicio ? format(dataInicio, "dd/MM/yyyy") : "Selecione"}
                   </Button>
-                )}
-              </div>
-            </CardContent>
-          </Card>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0" align="start">
+                  <Calendar mode="single" selected={dataInicio} onSelect={setDataInicio} locale={ptBR} initialFocus />
+                </PopoverContent>
+              </Popover>
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium text-muted-foreground">Data Fim</label>
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button variant="outline" className="w-[160px] justify-start text-left font-normal">
+                    <CalendarIcon className="mr-2 h-4 w-4" />
+                    {dataFim ? format(dataFim, "dd/MM/yyyy") : "Selecione"}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0" align="start">
+                  <Calendar mode="single" selected={dataFim} onSelect={setDataFim} locale={ptBR} initialFocus />
+                </PopoverContent>
+              </Popover>
+            </div>
+            <Button onClick={buscarConciliacao} disabled={loadingConciliacao} className="h-10">
+              <RefreshCw className={`mr-2 h-4 w-4 ${loadingConciliacao ? "animate-spin" : ""}`} />
+              {loadingConciliacao ? "Buscando..." : conciliacaoData ? "Atualizar" : "Buscar Conciliação"}
+            </Button>
+            {(dataInicio || dataFim) && (
+              <Button variant="ghost" size="sm" className="text-xs h-10" onClick={() => { setDataInicio(undefined); setDataFim(undefined); }}>
+                Limpar datas
+              </Button>
+            )}
+            {snapshotEm && (
+              <span className="text-xs text-muted-foreground self-end pb-2">
+                Snapshot: {format(new Date(snapshotEm), "dd/MM/yyyy HH:mm")}
+              </span>
+            )}
+          </div>
 
           {/* Resumo */}
           {conciliacaoData && (
