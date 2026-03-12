@@ -298,7 +298,7 @@ Deno.serve(async (req) => {
         tarefas_por_dia: tech.tarefas_por_dia,
         finalizadas_por_dia: tech.finalizadas_por_dia,
       };
-    }).sort((a, b) => b.tarefas_finalizadas - a.tarefas_finalizadas);
+    }).sort((a, b) => b.faturamento_hora - a.faturamento_hora);
 
     // Summary
     const resumo = {
