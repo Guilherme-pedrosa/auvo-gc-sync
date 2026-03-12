@@ -173,10 +173,12 @@ Deno.serve(async (req) => {
         if (auvoTaskId && valor > 0) {
           auvoTaskValorMap[auvoTaskId] = valor;
         }
-        // Aggregate by technician
+        // Aggregate by technician — ONLY for OS within the requested date range
         const tecId = String(item.auvo_tecnico_id || "").trim();
         const tecNome = String(item.auvo_tecnico_nome || "").trim();
-        if (tecId && valor > 0) {
+        const dataOs = String(item.data_os || "").trim();
+        const withinRange = dataOs >= startDate && dataOs <= endDate;
+        if (tecId && valor > 0 && withinRange) {
           tecnicoValorFromSnapshot[tecId] = (tecnicoValorFromSnapshot[tecId] || 0) + valor;
           if (tecNome) tecnicoNomeFromSnapshot[tecId] = tecNome;
         }
