@@ -222,7 +222,7 @@ const AuvoSyncPage = () => {
       const syncBody: any = { action: "conciliacao" };
       if (dataInicio) syncBody.data_inicio = format(dataInicio, "yyyy-MM-dd");
       if (dataFim) syncBody.data_fim = format(dataFim, "yyyy-MM-dd");
-      if (filtroCliente.trim()) syncBody.filtro_cliente = filtroCliente.trim();
+      
       const { data, error } = await supabase.functions.invoke("auvo-gc-sync", { body: syncBody });
       if (error) throw error;
       const payload = data as ConciliacaoResponse;
