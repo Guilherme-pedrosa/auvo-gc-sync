@@ -271,11 +271,15 @@ const AuvoSyncPage = () => {
     const selecionadas = (conciliacaoData || []).filter(i => selectedOsIds.has(i.gc_os_id));
     for (const item of selecionadas) {
       try {
+        const dataSaida = item.checkout_hora ? item.checkout_hora.split("T")[0] : (item.data_os || null);
         const { data, error } = await supabase.functions.invoke("auvo-gc-sync", {
           body: {
             action: "revert_os", gc_os_id: item.gc_os_id, gc_os_codigo: item.gc_os_codigo,
             situacao_id_antes: situacaoDestino,
             gc_vendedor_id: item.gc_vendedor_id || null, gc_vendedor_nome: item.gc_vendedor_nome || null,
+            data_saida: dataSaida,
+          },
+        });
           },
         });
         if (error) throw error;
