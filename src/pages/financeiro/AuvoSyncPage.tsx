@@ -409,12 +409,6 @@ const AuvoSyncPage = () => {
             )}
           </div>
 
-          {/* Resumo */}
-          {conciliacaoData && (
-            <div className="text-xs text-muted-foreground">
-              Snapshot salvo: {snapshotEm ? format(new Date(snapshotEm), "dd/MM/yyyy HH:mm") : "agora"}
-            </div>
-          )}
 
           {conciliacaoData && (
             <div className="grid gap-4 md:grid-cols-4">
