@@ -225,8 +225,10 @@ const AuvoSyncPage = () => {
       if (filtroCliente.trim()) syncBody.filtro_cliente = filtroCliente.trim();
       const { data, error } = await supabase.functions.invoke("auvo-gc-sync", { body: syncBody });
       if (error) throw error;
-      setConciliacaoData(data?.itens || []);
-      toast.success(`${data?.total || 0} OS encontradas — ${data?.conciliadas || 0} conciliadas, ${data?.pendentes || 0} pendentes`);
+      const payload = data as ConciliacaoResponse;
+      setConciliacaoData(payload?.itens || []);
+      setSnapshotEm(payload?.snapshot_em || null);
+      toast.success(`${payload?.total || 0} OS encontradas — ${payload?.conciliadas || 0} conciliadas, ${payload?.pendentes || 0} pendentes (${payload?.alteradas || 0} alteradas)`);
     } catch (err: any) {
       toast.error(`Erro: ${err.message}`);
     } finally {
