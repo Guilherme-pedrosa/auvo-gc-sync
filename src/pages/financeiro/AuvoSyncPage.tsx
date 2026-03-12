@@ -280,8 +280,6 @@ const AuvoSyncPage = () => {
             data_saida: dataSaida,
           },
         });
-          },
-        });
         if (error) throw error;
         if (data?.success) { ok++; setMovedOsIds(prev => new Set(prev).add(item.gc_os_id)); } else fail++;
       } catch { fail++; }
