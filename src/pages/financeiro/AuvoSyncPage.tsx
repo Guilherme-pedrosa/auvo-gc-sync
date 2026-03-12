@@ -101,7 +101,7 @@ const AuvoSyncPage = () => {
   // ─── Conciliação state ───
   const [dataInicio, setDataInicio] = useState<Date | undefined>(undefined);
   const [dataFim, setDataFim] = useState<Date | undefined>(undefined);
-  const [filtroCliente, setFiltroCliente] = useState("");
+  
   const [conciliacaoData, setConciliacaoData] = useState<ConciliacaoItem[] | null>(null);
   const [snapshotEm, setSnapshotEm] = useState<string | null>(null);
   const [loadingConciliacao, setLoadingConciliacao] = useState(false);
@@ -222,7 +222,7 @@ const AuvoSyncPage = () => {
       const syncBody: any = { action: "conciliacao" };
       if (dataInicio) syncBody.data_inicio = format(dataInicio, "yyyy-MM-dd");
       if (dataFim) syncBody.data_fim = format(dataFim, "yyyy-MM-dd");
-      if (filtroCliente.trim()) syncBody.filtro_cliente = filtroCliente.trim();
+      
       const { data, error } = await supabase.functions.invoke("auvo-gc-sync", { body: syncBody });
       if (error) throw error;
       const payload = data as ConciliacaoResponse;
@@ -234,6 +234,11 @@ const AuvoSyncPage = () => {
     } finally {
       setLoadingConciliacao(false);
     }
+  };
+
+  const atualizarStatusLocal = (gcOsId: string, situacaoId: string) => {
+    const label = SITUACOES_OPTIONS.find(s => s.id === situacaoId)?.label || situacaoId;
+    setConciliacaoData(prev => prev?.map(i => i.gc_os_id === gcOsId ? { ...i, gc_situacao: label, gc_situacao_id: situacaoId, conciliada: true } : i) || null);
   };
 
   const alterarSituacaoOS = async (item: ConciliacaoItem, situacaoId: string) => {
@@ -250,6 +255,7 @@ const AuvoSyncPage = () => {
       });
       if (error) throw error;
       if (data?.success) {
+        atualizarStatusLocal(item.gc_os_id, situacaoId);
         setMovedOsIds(prev => new Set(prev).add(item.gc_os_id));
         toast.success(`OS ${item.gc_os_codigo} → situação alterada`);
       } else {
@@ -281,7 +287,11 @@ const AuvoSyncPage = () => {
           },
         });
         if (error) throw error;
-        if (data?.success) { ok++; setMovedOsIds(prev => new Set(prev).add(item.gc_os_id)); } else fail++;
+        if (data?.success) {
+          ok++;
+          atualizarStatusLocal(item.gc_os_id, situacaoDestino);
+          setMovedOsIds(prev => new Set(prev).add(item.gc_os_id));
+        } else fail++;
       } catch { fail++; }
     }
     toast.success(`${ok} OS alteradas, ${fail} erros`);
@@ -353,64 +363,52 @@ const AuvoSyncPage = () => {
 
         {/* ─── TAB: Conciliação ─── */}
         <TabsContent value="conciliacao" className="space-y-4">
-          {/* Filtros */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-lg flex items-center gap-2"><Search className="h-5 w-5" /> Filtros</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="flex flex-wrap items-end gap-4">
-                <div className="space-y-1.5">
-                  <label className="text-sm font-medium text-muted-foreground">Data Início</label>
-                  <Popover>
-                    <PopoverTrigger asChild>
-                      <Button variant="outline" className="w-[160px] justify-start text-left font-normal">
-                        <CalendarIcon className="mr-2 h-4 w-4" />
-                        {dataInicio ? format(dataInicio, "dd/MM/yyyy") : "Selecione"}
-                      </Button>
-                    </PopoverTrigger>
-                    <PopoverContent className="w-auto p-0" align="start">
-                      <Calendar mode="single" selected={dataInicio} onSelect={setDataInicio} locale={ptBR} initialFocus />
-                    </PopoverContent>
-                  </Popover>
-                </div>
-                <div className="space-y-1.5">
-                  <label className="text-sm font-medium text-muted-foreground">Data Fim</label>
-                  <Popover>
-                    <PopoverTrigger asChild>
-                      <Button variant="outline" className="w-[160px] justify-start text-left font-normal">
-                        <CalendarIcon className="mr-2 h-4 w-4" />
-                        {dataFim ? format(dataFim, "dd/MM/yyyy") : "Selecione"}
-                      </Button>
-                    </PopoverTrigger>
-                    <PopoverContent className="w-auto p-0" align="start">
-                      <Calendar mode="single" selected={dataFim} onSelect={setDataFim} locale={ptBR} initialFocus />
-                    </PopoverContent>
-                  </Popover>
-                </div>
-                <div className="space-y-1.5">
-                  <label className="text-sm font-medium text-muted-foreground">Cliente</label>
-                  <Input placeholder="Filtrar por cliente..." value={filtroCliente} onChange={e => setFiltroCliente(e.target.value)} className="w-[200px]" />
-                </div>
-                <Button onClick={buscarConciliacao} disabled={loadingConciliacao} className="h-10">
-                  <RefreshCw className={`mr-2 h-4 w-4 ${loadingConciliacao ? "animate-spin" : ""}`} />
-                  {loadingConciliacao ? "Buscando..." : "Buscar Conciliação"}
-                </Button>
-                {(dataInicio || dataFim || filtroCliente) && (
-                  <Button variant="ghost" size="sm" className="text-xs h-10" onClick={() => { setDataInicio(undefined); setDataFim(undefined); setFiltroCliente(""); }}>
-                    Limpar filtros
+          {/* Buscar + Atualizar */}
+          <div className="flex flex-wrap items-end gap-4">
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium text-muted-foreground">Data Início</label>
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button variant="outline" className="w-[160px] justify-start text-left font-normal">
+                    <CalendarIcon className="mr-2 h-4 w-4" />
+                    {dataInicio ? format(dataInicio, "dd/MM/yyyy") : "Selecione"}
                   </Button>
-                )}
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Resumo */}
-          {conciliacaoData && (
-            <div className="text-xs text-muted-foreground">
-              Snapshot salvo: {snapshotEm ? format(new Date(snapshotEm), "dd/MM/yyyy HH:mm") : "agora"}
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0" align="start">
+                  <Calendar mode="single" selected={dataInicio} onSelect={setDataInicio} locale={ptBR} initialFocus />
+                </PopoverContent>
+              </Popover>
             </div>
-          )}
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium text-muted-foreground">Data Fim</label>
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button variant="outline" className="w-[160px] justify-start text-left font-normal">
+                    <CalendarIcon className="mr-2 h-4 w-4" />
+                    {dataFim ? format(dataFim, "dd/MM/yyyy") : "Selecione"}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0" align="start">
+                  <Calendar mode="single" selected={dataFim} onSelect={setDataFim} locale={ptBR} initialFocus />
+                </PopoverContent>
+              </Popover>
+            </div>
+            <Button onClick={buscarConciliacao} disabled={loadingConciliacao} className="h-10">
+              <RefreshCw className={`mr-2 h-4 w-4 ${loadingConciliacao ? "animate-spin" : ""}`} />
+              {loadingConciliacao ? "Buscando..." : conciliacaoData ? "Atualizar" : "Buscar Conciliação"}
+            </Button>
+            {(dataInicio || dataFim) && (
+              <Button variant="ghost" size="sm" className="text-xs h-10" onClick={() => { setDataInicio(undefined); setDataFim(undefined); }}>
+                Limpar datas
+              </Button>
+            )}
+            {snapshotEm && (
+              <span className="text-xs text-muted-foreground self-end pb-2">
+                Snapshot: {format(new Date(snapshotEm), "dd/MM/yyyy HH:mm")}
+              </span>
+            )}
+          </div>
+
 
           {conciliacaoData && (
             <div className="grid gap-4 md:grid-cols-4">
