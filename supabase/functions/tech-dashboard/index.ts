@@ -283,7 +283,10 @@ Deno.serve(async (req) => {
         ? Math.round((tech.tempo_total_minutos / (dias * 480)) * 100)
         : 0;
 
-      const valorTotal = Math.round(tech.valor_total * 100) / 100;
+      // Usar valor agregado do snapshot (todas as OS do técnico) se maior que a soma por task
+      const valorPorTask = Math.round(tech.valor_total * 100) / 100;
+      const valorDoSnapshotTotal = Math.round((tecnicoValorFromSnapshot[tech.id] || 0) * 100) / 100;
+      const valorTotal = Math.max(valorPorTask, valorDoSnapshotTotal);
       const faturamentoHora = tempoHoras > 0 ? Math.round((valorTotal / tempoHoras) * 100) / 100 : 0;
 
       return {
