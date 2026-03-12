@@ -287,7 +287,11 @@ const AuvoSyncPage = () => {
           },
         });
         if (error) throw error;
-        if (data?.success) { ok++; setMovedOsIds(prev => new Set(prev).add(item.gc_os_id)); } else fail++;
+        if (data?.success) {
+          ok++;
+          atualizarStatusLocal(item.gc_os_id, situacaoDestino);
+          setMovedOsIds(prev => new Set(prev).add(item.gc_os_id));
+        } else fail++;
       } catch { fail++; }
     }
     toast.success(`${ok} OS alteradas, ${fail} erros`);
