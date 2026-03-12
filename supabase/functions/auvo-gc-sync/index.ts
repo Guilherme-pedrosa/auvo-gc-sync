@@ -1199,6 +1199,7 @@ Deno.serve(async (req) => {
           data_inicio: dataInicioConcil || null,
           data_fim: dataFimConcil || null,
           filtro_cliente: filtroClienteConcil || null,
+          max_os: Number.isFinite(maxOsConcil) ? maxOsConcil : null,
         },
         gerado_em: new Date().toISOString(),
         itens,
