@@ -6,7 +6,6 @@ const corsHeaders = {
 };
 
 const AUVO_BASE_URL = "https://api.auvo.com.br/v2";
-const GC_BASE_URL = "https://api.gestaoclick.com";
 
 function parseCurrency(value: unknown): number {
   if (typeof value === "number") return Number.isFinite(value) ? value : 0;
