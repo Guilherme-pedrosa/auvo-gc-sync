@@ -120,7 +120,7 @@ Deno.serve(async (req) => {
       const startTime = String(task.startTime || task.startHour || "");
       const endTime = String(task.endTime || task.endHour || "");
       
-      // Customer resolution: customerDescription is the reliable field in Auvo API
+      // Customer resolution
       let customerName = "";
       if (task.customerDescription) {
         customerName = String(task.customerDescription).trim();
@@ -134,11 +134,35 @@ Deno.serve(async (req) => {
       
       const address = task.address || task.customer?.address || "";
 
+      // Late detection: if task is "Agendada" and endTime has passed, or if no endTime and it's past 17:00
+      let atrasada = false;
+      if (statusLabel === "Agendada" && taskDate <= nowStr) {
+        if (taskDate < nowStr) {
+          // Past day = definitely late
+          atrasada = true;
+        } else if (endTime) {
+          // Today: compare with current time
+          atrasada = nowTime > endTime;
+        } else if (startTime) {
+          // If start time has passed by 2+ hours, consider late
+          const startHour = parseInt(startTime.split(":")[0] || "0");
+          const startMin = parseInt(startTime.split(":")[1] || "0");
+          const nowHour = parseInt(nowTime.split(":")[0] || "0");
+          const nowMin = parseInt(nowTime.split(":")[1] || "0");
+          const diffMin = (nowHour * 60 + nowMin) - (startHour * 60 + startMin);
+          atrasada = diffMin > 120;
+        } else {
+          // No time info: if past 17:00 and still "Agendada", it's late
+          atrasada = nowTime > "17:00";
+        }
+      }
+
       techMap[techId].tarefas.push({
         taskId: String(task.taskID || task.id || ""),
         cliente: customerName,
         endereco: typeof address === "object" ? "" : String(address).substring(0, 100),
         status: statusLabel,
+        atrasada,
         horaInicio: startTime,
         horaFim: endTime,
         data: taskDate,
