@@ -314,7 +314,8 @@ Deno.serve(async (req) => {
         const matchNome = orient.match(/(?:NOME|CLIENTE)\s*:\s*(.+?)(?:\n|$)/i);
         if (matchNome) clienteFallback = matchNome[1].trim();
       }
-      const cliente = clienteRaw || clienteSnapshot || clienteGc || clienteFallback || "Cliente não identificado";
+      const cliente = clienteRaw || clienteSnapshot || clienteGc || clienteFallback || "";
+      const needsCustomerLookup = !cliente && task.customerId;
 
       return {
         auvo_task_id: taskId,
