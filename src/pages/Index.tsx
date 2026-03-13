@@ -125,10 +125,14 @@ function computeMetrics(items: KanbanItem[], monthItems: KanbanItem[], source: "
 
 export default function Index() {
   const today = new Date();
-  const [dateRange, setDateRange] = useState({
+  const [dateRange, setDateRange] = useState<{ from: Date; to?: Date }>({
     from: startOfYear(today),
     to: today,
   });
+  const effectiveDateRange = useMemo(
+    () => ({ from: dateRange.from, to: dateRange.to ?? dateRange.from }),
+    [dateRange],
+  );
   const [monthRange] = useState({
     from: startOfMonth(today),
     to: endOfMonth(today),
@@ -136,10 +140,14 @@ export default function Index() {
 
   // Fetch orçamentos data
   const { data: orcData, isLoading: orcLoading, refetch: refetchOrc } = useQuery({
-    queryKey: ["dash-orc", format(dateRange.from, "yyyy-MM-dd"), format(dateRange.to, "yyyy-MM-dd")],
+    queryKey: ["dash-orc", format(effectiveDateRange.from, "yyyy-MM-dd"), format(effectiveDateRange.to, "yyyy-MM-dd")],
     queryFn: async () => {
       const { data, error } = await supabase.functions.invoke("budget-kanban", {
-        body: { mode: "cache", start_date: format(dateRange.from, "yyyy-MM-dd"), end_date: format(dateRange.to, "yyyy-MM-dd") },
+        body: {
+          mode: "cache",
+          start_date: format(effectiveDateRange.from, "yyyy-MM-dd"),
+          end_date: format(effectiveDateRange.to, "yyyy-MM-dd"),
+        },
       });
       if (error) throw error;
       return data as { items: KanbanItem[]; ultimo_sync?: string };
@@ -149,7 +157,7 @@ export default function Index() {
 
   // Fetch execução data from custom cache (all config_ids)
   const { data: execData, isLoading: execLoading, refetch: refetchExec } = useQuery({
-    queryKey: ["dash-exec", format(dateRange.from, "yyyy-MM-dd"), format(dateRange.to, "yyyy-MM-dd")],
+    queryKey: ["dash-exec", format(effectiveDateRange.from, "yyyy-MM-dd"), format(effectiveDateRange.to, "yyyy-MM-dd")],
     queryFn: async () => {
       const { data: cached, error } = await supabase
         .from("kanban_custom_cache")
@@ -165,7 +173,11 @@ export default function Index() {
         if (!d?.auvo_task_id || seen.has(d.auvo_task_id)) continue;
         // Filter by date range
         const taskDate = String(d.data_tarefa || "");
-        if (taskDate && taskDate >= format(dateRange.from, "yyyy-MM-dd") && taskDate <= format(dateRange.to, "yyyy-MM-dd")) {
+        if (
+          taskDate &&
+          taskDate >= format(effectiveDateRange.from, "yyyy-MM-dd") &&
+          taskDate <= format(effectiveDateRange.to, "yyyy-MM-dd")
+        ) {
           seen.add(d.auvo_task_id);
           items.push(d as KanbanItem);
         }
@@ -184,7 +196,11 @@ export default function Index() {
     try {
       await Promise.all([
         supabase.functions.invoke("budget-kanban", {
-          body: { mode: "sync", start_date: format(dateRange.from, "yyyy-MM-dd"), end_date: format(dateRange.to, "yyyy-MM-dd") },
+          body: {
+            mode: "sync",
+            start_date: format(effectiveDateRange.from, "yyyy-MM-dd"),
+            end_date: format(effectiveDateRange.to, "yyyy-MM-dd"),
+          },
         }),
       ]);
       toast.success("Orçamentos sincronizados!");
