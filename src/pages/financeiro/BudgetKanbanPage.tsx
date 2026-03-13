@@ -87,6 +87,7 @@ export default function BudgetKanbanPage() {
   const [editingColumnId, setEditingColumnId] = useState<string | null>(null);
   const [editingColumnTitle, setEditingColumnTitle] = useState("");
   const [selectedCard, setSelectedCard] = useState<KanbanItem | null>(null);
+  const [expandedPhoto, setExpandedPhoto] = useState<string | null>(null);
 
   const { data, isLoading, refetch, isFetching } = useQuery<ApiResponse>({
     queryKey: ["budget-kanban", format(dateRange.from, "yyyy-MM-dd"), format(dateRange.to, "yyyy-MM-dd")],
@@ -856,12 +857,11 @@ export default function BudgetKanbanPage() {
                       {selectedCard.questionario_respostas
                         .filter((r) => r.reply.startsWith("http"))
                         .map((r, i) => (
-                          <a
+                          <button
                             key={i}
-                            href={r.reply}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="block rounded-md overflow-hidden border hover:ring-2 ring-primary/30 transition-all"
+                            type="button"
+                            onClick={() => setExpandedPhoto(r.reply)}
+                            className="block rounded-md overflow-hidden border hover:ring-2 ring-primary/30 transition-all cursor-zoom-in"
                           >
                             <img
                               src={r.reply}
@@ -869,13 +869,26 @@ export default function BudgetKanbanPage() {
                               className="w-full h-24 object-cover"
                               loading="lazy"
                             />
-                          </a>
+                          </button>
                         ))}
                     </div>
                   </div>
                 )}
               </div>
             </>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Photo Lightbox */}
+      <Dialog open={!!expandedPhoto} onOpenChange={(open) => !open && setExpandedPhoto(null)}>
+        <DialogContent className="max-w-[90vw] max-h-[90vh] p-2 flex items-center justify-center bg-black/95 border-none">
+          {expandedPhoto && (
+            <img
+              src={expandedPhoto}
+              alt="Foto ampliada"
+              className="max-w-full max-h-[85vh] object-contain rounded"
+            />
           )}
         </DialogContent>
       </Dialog>
