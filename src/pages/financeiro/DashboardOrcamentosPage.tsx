@@ -198,29 +198,24 @@ export default function DashboardOrcamentosPage() {
   }, [metrics]);
 
   const tecnicoChartData = useMemo(() => {
-    // Only count tasks that have a match with OS in GC
-    const tecnicoOsMap: Record<string, { total: number; comOrc: number; semOrc: number; valorOrc: number }> = {};
+    const tecnicoOsMap: Record<string, { comMatch: number; semMatch: number }> = {};
     for (const item of items) {
-      if (!item.os_realizada) continue; // Only tasks with OS match
       const t = item.tecnico || "Sem técnico";
-      if (!tecnicoOsMap[t]) tecnicoOsMap[t] = { total: 0, comOrc: 0, semOrc: 0, valorOrc: 0 };
-      tecnicoOsMap[t].total++;
-      if (item.orcamento_realizado) {
-        tecnicoOsMap[t].comOrc++;
-        tecnicoOsMap[t].valorOrc += parseFloat(item.gc_orcamento?.gc_valor_total || "0");
+      if (!tecnicoOsMap[t]) tecnicoOsMap[t] = { comMatch: 0, semMatch: 0 };
+      if (item.orcamento_realizado || item.os_realizada) {
+        tecnicoOsMap[t].comMatch++;
       } else {
-        tecnicoOsMap[t].semOrc++;
+        tecnicoOsMap[t].semMatch++;
       }
     }
     return Object.entries(tecnicoOsMap)
-      .sort(([, a], [, b]) => b.total - a.total)
+      .sort(([, a], [, b]) => (b.comMatch + b.semMatch) - (a.comMatch + a.semMatch))
       .slice(0, 10)
       .map(([name, data]) => ({
         name: name.length > 15 ? name.substring(0, 15) + "..." : name,
         fullName: name,
-        "Com Orçamento": data.comOrc,
-        "Sem Orçamento": data.semOrc,
-        valorOrc: data.valorOrc,
+        "Com Orç/OS": data.comMatch,
+        "Sem Orç/OS": data.semMatch,
       }));
   }, [items]);
 
@@ -489,8 +484,8 @@ export default function DashboardOrcamentosPage() {
           {/* Technician breakdown */}
           <Card>
             <CardHeader className="pb-2">
-              <CardTitle className="text-base">Tarefas por Técnico (com OS)</CardTitle>
-              <CardDescription>Top 10 técnicos — apenas tarefas com OS vinculada no GC</CardDescription>
+              <CardTitle className="text-base">Tarefas por Técnico</CardTitle>
+              <CardDescription>Top 10 técnicos — verde = tem Orçamento ou OS, amarelo = sem nenhum</CardDescription>
             </CardHeader>
             <CardContent>
               {tecnicoChartData.length > 0 ? (
@@ -501,8 +496,8 @@ export default function DashboardOrcamentosPage() {
                     <YAxis />
                     <Tooltip />
                     <Legend />
-                    <Bar dataKey="Sem Orçamento" stackId="a" fill="hsl(38, 92%, 50%)" radius={[0, 0, 0, 0]} />
-                    <Bar dataKey="Com Orçamento" stackId="a" fill="hsl(142, 71%, 45%)" radius={[4, 4, 0, 0]} />
+                    <Bar dataKey="Sem Orç/OS" stackId="a" fill="hsl(38, 92%, 50%)" radius={[0, 0, 0, 0]} />
+                    <Bar dataKey="Com Orç/OS" stackId="a" fill="hsl(142, 71%, 45%)" radius={[4, 4, 0, 0]} />
                   </BarChart>
                 </ResponsiveContainer>
               ) : (
