@@ -124,8 +124,20 @@ Deno.serve(async (req) => {
 
     console.log(`[realtime-tracking] Buscando tarefas para ${targetDate}`);
 
+    // GC credentials (optional — if available, we fetch OS values)
+    const gcAccessToken = Deno.env.get("GC_ACCESS_TOKEN");
+    const gcSecretToken = Deno.env.get("GC_SECRET_TOKEN");
+    const gcHeaders: Record<string, string> | null = (gcAccessToken && gcSecretToken)
+      ? { "access-token": gcAccessToken, "secret-access-token": gcSecretToken, "Content-Type": "application/json" }
+      : null;
+
     const bearerToken = await auvoLogin(auvoApiKey, auvoApiToken);
-    const tasks = await fetchAllTasks(bearerToken, targetDate, targetDate);
+
+    // Fetch Auvo tasks and GC OS map in parallel
+    const [tasks, gcOsMap] = await Promise.all([
+      fetchAllTasks(bearerToken, targetDate, targetDate),
+      gcHeaders ? fetchGcOsMap(gcHeaders) : Promise.resolve({} as Record<string, { codigo: string; valor: string }>),
+    ]);
 
     console.log(`[realtime-tracking] Total: ${tasks.length} tarefas`);
     if (tasks.length > 0) {
