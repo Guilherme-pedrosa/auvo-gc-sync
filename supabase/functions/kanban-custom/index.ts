@@ -522,8 +522,10 @@ Deno.serve(async (req) => {
       const existing = existingMap[item.auvo_task_id];
 
       let autoColuna = "a_fazer";
-      if (item.os_realizada) autoColuna = "os_realizada";
-      else if (item.orcamento_realizado) autoColuna = `orc_${(item.gc_orcamento?.gc_situacao || "sem_situacao").replace(/\s+/g, "_").toLowerCase()}`;
+      if (item.os_realizada) {
+        const sit = item.gc_os?.gc_situacao || "sem_situacao";
+        autoColuna = `os_${sit.replace(/\s+/g, "_").toLowerCase()}`;
+      }
 
       let finalColuna: string;
       let finalPosicao: number;
@@ -534,9 +536,7 @@ Deno.serve(async (req) => {
       } else {
         const oldData = existing.dados || {};
         const hadUpdate =
-          (!oldData.orcamento_realizado && item.orcamento_realizado) ||
           (!oldData.os_realizada && item.os_realizada) ||
-          (oldData.gc_orcamento?.gc_situacao !== item.gc_orcamento?.gc_situacao && item.orcamento_realizado) ||
           (oldData.gc_os?.gc_situacao !== item.gc_os?.gc_situacao && item.os_realizada);
 
         if (hadUpdate) {
