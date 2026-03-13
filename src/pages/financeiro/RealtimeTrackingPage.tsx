@@ -7,12 +7,14 @@ import { Badge } from "@/components/ui/badge";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import {
   RefreshCw, CalendarIcon, MapPin, Clock, User,
   CheckCircle2, PlayCircle, CalendarClock, AlertTriangle,
-  ChevronLeft, ChevronRight
+  ChevronLeft, ChevronRight, FileWarning
 } from "lucide-react";
-import { format, addDays, subDays, isToday } from "date-fns";
+import { format, addDays, subDays, isToday, startOfMonth, endOfMonth } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { toast } from "sonner";
 
