@@ -180,67 +180,7 @@ async function fetchGcOsMapByAttr(
   return map;
 }
 
-async function fetchGcOsMap(
-  gcHeaders: Record<string, string>,
-  startDate?: string,
-  endDate?: string
-): Promise<Record<string, any>> {
-  const map: Record<string, any> = {};
-  let page = 1;
-  let totalPages = 1;
-  const MAX_PAGES = 30;
-
-  while (page <= totalPages && page <= MAX_PAGES) {
-    let url = `${GC_BASE_URL}/api/ordens_servicos?limite=100&pagina=${page}`;
-    if (startDate) url += `&data_inicio=${startDate}`;
-    if (endDate) url += `&data_fim=${endDate}`;
-
-    const response = await rateLimitedFetch(url, { headers: gcHeaders }, "gc");
-    if (response.status === 429) {
-      console.warn("[kanban-custom] GC OS rate limit — aguardando 3s...");
-      await new Promise(r => setTimeout(r, 3000));
-      continue;
-    }
-    if (!response.ok) {
-      console.error(`[kanban-custom] GC OS error: ${response.status}`);
-      break;
-    }
-
-    const data = await response.json();
-    const records: any[] = Array.isArray(data?.data) ? data.data : [];
-    totalPages = data?.meta?.total_paginas || 1;
-
-    for (const os of records) {
-      const atributos: any[] = os.atributos || [];
-      const attrTarefa = atributos.find((a: any) => {
-        const nested = a?.atributo || a;
-        return String(nested.atributo_id || nested.id || "") === GC_ATRIBUTO_TAREFA_OS;
-      });
-      if (attrTarefa) {
-        const nested = attrTarefa?.atributo || attrTarefa;
-        const taskId = String(nested?.conteudo || nested?.valor || "").trim();
-        if (taskId && /^\d+$/.test(taskId)) {
-          map[taskId] = {
-            gc_os_id: String(os.id),
-            gc_os_codigo: String(os.codigo || ""),
-            gc_cliente: String(os.nome_cliente || ""),
-            gc_situacao: String(os.nome_situacao || ""),
-            gc_situacao_id: String(os.situacao_id || ""),
-            gc_cor_situacao: String(os.cor_situacao || ""),
-            gc_valor_total: String(os.valor_total || "0"),
-            gc_vendedor: String(os.nome_vendedor || ""),
-            gc_data: String(os.data || os.data_entrada || ""),
-            gc_link: `https://gestaoclick.com/ordens_servicos/editar/${os.id}?retorno=%2Fordens_servicos`,
-          };
-        }
-      }
-    }
-
-    console.log(`[kanban-custom] GC OS page ${page}/${totalPages}: ${records.length} registros`);
-    page++;
-  }
-  return map;
-}
+// No separate fetchGcOsMap needed — we use fetchGcOsMapByAttr for both attributes
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
