@@ -369,13 +369,73 @@ Deno.serve(async (req) => {
     }
 
     // Fetch in parallel: Auvo tasks + GC orçamentos + GC OS
-    const [auvoTasks, gcOrcMap, gcOsMap] = await Promise.all([
+    const [auvoPrimary, gcOrcMap, gcOsMap] = await Promise.all([
       fetchAuvoTasksWithQuestionnaire(bearerToken, startDate, endDate),
       fetchGcOrcamentosMap(gcH, startDate, endDate),
       fetchGcOsMap(gcH, startDate, endDate),
     ]);
 
+    let auvoTasks = auvoPrimary.tasks;
+    let auvoError = auvoPrimary.errorMessage;
+
+    // Fallback robusto: se vier vazio/erro no range escolhido, tenta range amplo no Auvo e filtra localmente
+    if ((auvoPrimary.hadError || auvoTasks.length === 0) && (startDate !== AUVO_SAFE_START || endDate !== AUVO_SAFE_END)) {
+      console.warn("[budget-kanban] Tentando fallback Auvo com range amplo (2020-2030)");
+      const auvoFallback = await fetchAuvoTasksWithQuestionnaire(bearerToken, AUVO_SAFE_START, AUVO_SAFE_END);
+      if (!auvoError && auvoFallback.errorMessage) auvoError = auvoFallback.errorMessage;
+
+      const fallbackFiltered = auvoFallback.tasks.filter((task: any) =>
+        inDateRange(String(task.taskDate || ""), startDate, endDate)
+      );
+
+      if (fallbackFiltered.length > 0) {
+        auvoTasks = fallbackFiltered;
+        console.log(`[budget-kanban] Fallback Auvo recuperou ${auvoTasks.length} tarefas no período`);
+      }
+    }
+
     console.log(`[budget-kanban] Auvo tasks: ${auvoTasks.length}, GC orçamentos: ${Object.keys(gcOrcMap).length}, GC OS: ${Object.keys(gcOsMap).length}`);
+
+    // Se Auvo falhar, não sobrescreve cache com vazio
+    if (auvoTasks.length === 0 && auvoError) {
+      console.warn(`[budget-kanban] Sync preservado por erro Auvo: ${auvoError}`);
+
+      const { data: cached } = await sbClient
+        .from("kanban_orcamentos_cache")
+        .select("*")
+        .order("coluna")
+        .order("posicao");
+
+      const { data: meta } = await sbClient
+        .from("kanban_sync_meta")
+        .select("*")
+        .eq("id", "default")
+        .single();
+
+      const fallbackItems = (cached || [])
+        .map((row: any) => ({ ...row.dados, _coluna: row.coluna, _posicao: row.posicao }))
+        .filter((item: any) => inDateRange(item.data_tarefa, startDate, endDate));
+
+      const resumo = {
+        periodo: { inicio: startDate, fim: endDate },
+        total_tarefas_com_questionario: fallbackItems.length,
+        orcamentos_realizados: fallbackItems.filter((i: any) => i.orcamento_realizado).length,
+        os_realizadas: fallbackItems.filter((i: any) => i.os_realizada).length,
+        pendentes: fallbackItems.filter((i: any) => !i.orcamento_realizado && !i.os_realizada).length,
+      };
+
+      return new Response(JSON.stringify({
+        success: false,
+        error: auvoError,
+        resumo,
+        items: fallbackItems,
+        ultimo_sync: meta?.ultimo_sync || null,
+        from_cache: true,
+      }), {
+        status: 200,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
 
     // Build kanban items — first pass (resolve what we can synchronously)
     const items = auvoTasks.map((task: any) => {
