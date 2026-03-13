@@ -1,7 +1,7 @@
 import { useNavigate, useLocation } from "react-router-dom";
 import { cn } from "@/lib/utils";
 import {
-  RefreshCw, BarChart3, Kanban, Settings, LayoutDashboard, DollarSign, ListChecks
+  RefreshCw, BarChart3, Kanban, Settings, LayoutDashboard, DollarSign, ListChecks, Radio
 } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 
