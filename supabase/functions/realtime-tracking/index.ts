@@ -92,6 +92,12 @@ Deno.serve(async (req) => {
       console.log(`[realtime-tracking] Customer fields: customerDescription=${s.customerDescription}, customerName=${s.customerName}, customer=${JSON.stringify(s.customer)?.substring(0,300)}`);
     }
 
+    // Current time for late detection (Brazil timezone UTC-3)
+    const nowUTC = new Date();
+    const nowBR = new Date(nowUTC.getTime() - 3 * 60 * 60 * 1000);
+    const nowStr = nowBR.toISOString().split("T")[0];
+    const nowTime = nowBR.toISOString().split("T")[1].substring(0, 5); // HH:MM
+
     // Group by technician
     const techMap: Record<string, {
       id: string;
