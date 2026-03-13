@@ -73,6 +73,12 @@ async function fetchAuvoTasksWithQuestionnaire(
     const data = await response.json();
     const entities = data?.result?.entityList || data?.result?.Entities || [];
 
+    // Log first task's customer fields for debugging
+    if (page === 1 && entities.length > 0) {
+      const t0 = entities[0];
+      console.log(`[budget-kanban] Task sample customer fields: customerName=${t0.customerName}, customerId=${t0.customerId}, customer=${JSON.stringify(t0.customer)?.substring(0,300)}`);
+    }
+
     // Filter tasks that have the target questionnaire
     for (const task of entities) {
       const questionnaires = task.questionnaires || [];
