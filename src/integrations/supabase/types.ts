@@ -95,6 +95,36 @@ export type Database = {
         }
         Relationships: []
       }
+      kanban_custom_cache: {
+        Row: {
+          atualizado_em: string
+          auvo_task_id: string
+          coluna: string
+          config_id: string
+          criado_em: string
+          dados: Json
+          posicao: number
+        }
+        Insert: {
+          atualizado_em?: string
+          auvo_task_id: string
+          coluna?: string
+          config_id?: string
+          criado_em?: string
+          dados: Json
+          posicao?: number
+        }
+        Update: {
+          atualizado_em?: string
+          auvo_task_id?: string
+          coluna?: string
+          config_id?: string
+          criado_em?: string
+          dados?: Json
+          posicao?: number
+        }
+        Relationships: []
+      }
       kanban_orcamentos_cache: {
         Row: {
           atualizado_em: string
