@@ -277,7 +277,7 @@ export default function CustomKanbanPage() {
         .filter((colId) => (colMap[colId] && colMap[colId].length > 0) || savedOrderMap.has(colId) || colId === "falta_preenchimento" || colId === "a_fazer")
         .map((colId) => ({
           id: colId,
-          title: savedOrderMap.get(colId)?.title || defaultTitles[colId] || (colId.startsWith("orc_") ? `💰 ${colId.replace("orc_", "").replace(/_/g, " ")}` : colId),
+          title: savedOrderMap.get(colId)?.title || defaultTitles[colId] || (colId.startsWith("os_") ? `🔧 ${colId.replace("os_", "").replace(/_/g, " ")}` : colId),
           items: colMap[colId] || [],
         }));
 
