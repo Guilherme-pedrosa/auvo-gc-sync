@@ -30,6 +30,8 @@ type TaskItem = {
   pendencia: string;
   descricao: string;
   duration: string;
+  gcOsCodigo: string;
+  gcOsValor: string;
 };
 
 type TecnicoGroup = {
@@ -262,6 +264,18 @@ export default function RealtimeTrackingPage() {
                               <p className="font-medium text-xs text-foreground truncate">
                                 {task.cliente || "Sem cliente identificado"}
                               </p>
+                              {task.gcOsCodigo && (
+                                <div className="flex items-center gap-1.5 mt-0.5">
+                                  <Badge variant="outline" className="text-[9px] h-4 px-1.5 font-mono">
+                                    OS {task.gcOsCodigo}
+                                  </Badge>
+                                  {task.gcOsValor && task.gcOsValor !== "0" && (
+                                    <span className="text-[10px] font-semibold text-emerald-600">
+                                      R$ {parseFloat(task.gcOsValor).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+                                    </span>
+                                  )}
+                                </div>
+                              )}
                               {task.descricao && (
                                 <p className="text-[11px] text-muted-foreground line-clamp-2 mt-0.5 leading-tight">
                                   {task.descricao}

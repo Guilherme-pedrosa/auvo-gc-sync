@@ -6,6 +6,48 @@ const corsHeaders = {
 };
 
 const AUVO_BASE_URL = "https://api.auvo.com.br/v2";
+const GC_BASE_URL = "https://api.gestaoclick.com";
+
+// Fetch GC OS and build a map of auvo_task_id → { codigo, valor_total }
+async function fetchGcOsMap(gcHeaders: Record<string, string>): Promise<Record<string, { codigo: string; valor: string }>> {
+  const atributoId = Deno.env.get("GC_ATRIBUTO_TAREFA_ID") || "73344";
+  const atributoLabel = (Deno.env.get("AUVO_ATRIBUTO_LABEL") || "Tarefa Execução").toLowerCase();
+  const map: Record<string, { codigo: string; valor: string }> = {};
+  let page = 1;
+  let totalPages = 1;
+
+  while (page <= totalPages && page <= 10) {
+    const url = `${GC_BASE_URL}/api/ordens_servicos?limite=100&pagina=${page}`;
+    const response = await fetch(url, { headers: gcHeaders });
+    if (!response.ok) break;
+    const data = await response.json();
+    const records: any[] = Array.isArray(data?.data) ? data.data : [];
+    totalPages = data?.meta?.total_paginas || 1;
+
+    for (const os of records) {
+      const atributos: any[] = os.atributos || [];
+      const atributoTarefa = atributos.find((a: any) => {
+        const nested = a?.atributo || a;
+        const id = String(nested.atributo_id || nested.id || "");
+        const label = String(nested.descricao || nested.label || nested.nome || "").toLowerCase();
+        return id === atributoId || label === atributoLabel || label.includes("tarefa execu");
+      });
+      if (!atributoTarefa) continue;
+      const nested2 = atributoTarefa?.atributo || atributoTarefa;
+      const taskIdValue = String(nested2?.conteudo || nested2?.valor || "").trim();
+      if (!taskIdValue || !/^\d+$/.test(taskIdValue)) continue;
+
+      map[taskIdValue] = {
+        codigo: String(os.codigo || os.id),
+        valor: String(os.valor_total || "0"),
+      };
+    }
+    page++;
+  }
+
+  console.log(`[realtime-tracking] GC map: ${Object.keys(map).length} OS mapeadas`);
+  return map;
+}
 
 async function auvoLogin(apiKey: string, apiToken: string): Promise<string> {
   const url = `${AUVO_BASE_URL}/login/?apiKey=${encodeURIComponent(apiKey)}&apiToken=${encodeURIComponent(apiToken)}`;
@@ -82,8 +124,20 @@ Deno.serve(async (req) => {
 
     console.log(`[realtime-tracking] Buscando tarefas para ${targetDate}`);
 
+    // GC credentials (optional — if available, we fetch OS values)
+    const gcAccessToken = Deno.env.get("GC_ACCESS_TOKEN");
+    const gcSecretToken = Deno.env.get("GC_SECRET_TOKEN");
+    const gcHeaders: Record<string, string> | null = (gcAccessToken && gcSecretToken)
+      ? { "access-token": gcAccessToken, "secret-access-token": gcSecretToken, "Content-Type": "application/json" }
+      : null;
+
     const bearerToken = await auvoLogin(auvoApiKey, auvoApiToken);
-    const tasks = await fetchAllTasks(bearerToken, targetDate, targetDate);
+
+    // Fetch Auvo tasks and GC OS map in parallel
+    const [tasks, gcOsMap] = await Promise.all([
+      fetchAllTasks(bearerToken, targetDate, targetDate),
+      gcHeaders ? fetchGcOsMap(gcHeaders) : Promise.resolve({} as Record<string, { codigo: string; valor: string }>),
+    ]);
 
     console.log(`[realtime-tracking] Total: ${tasks.length} tarefas`);
     if (tasks.length > 0) {
@@ -163,8 +217,11 @@ Deno.serve(async (req) => {
         }
       }
 
+      const auvoTaskId = String(task.taskID || task.id || "");
+      const gcOs = gcOsMap[auvoTaskId] || null;
+
       techMap[techId].tarefas.push({
-        taskId: String(task.taskID || task.id || ""),
+        taskId: auvoTaskId,
         cliente: customerName,
         endereco: typeof address === "object" ? "" : String(address).substring(0, 100),
         status: statusLabel,
@@ -177,6 +234,8 @@ Deno.serve(async (req) => {
         pendencia: String(task.pendency ?? task.pendencia ?? "").trim(),
         descricao: String(task.description || task.orientation || "").substring(0, 150),
         duration: String(task.duration || ""),
+        gcOsCodigo: gcOs?.codigo || "",
+        gcOsValor: gcOs?.valor || "",
       });
     }
 
