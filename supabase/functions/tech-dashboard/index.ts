@@ -76,6 +76,11 @@ async function fetchAllAuvoTasks(
 
     const response = await fetch(url, { headers: auvoHeaders(bearerToken) });
 
+    if (response.status === 404) {
+      console.log(`[tech-dashboard] Page ${page}: 404 — sem tarefas no período`);
+      return { tasks: allTasks, error: null };
+    }
+
     if (!response.ok) {
       const errBody = await response.text().catch(() => "");
       const errorMsg = `Auvo tasks API retornou ${response.status}: ${errBody.substring(0, 500)}`;
