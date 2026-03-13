@@ -242,24 +242,40 @@ export default function DashboardOrcamentosPage() {
             </div>
           </div>
           <div className="flex items-center gap-3">
+            {/* Date FROM */}
             <Popover>
               <PopoverTrigger asChild>
                 <Button variant="outline" size="sm" className="gap-2">
                   <CalendarIcon className="h-4 w-4" />
-                  {format(dateRange.from, "dd/MM/yy")} - {format(dateRange.to, "dd/MM/yy")}
+                  {format(dateRange.from, "dd/MM/yy")}
                 </Button>
               </PopoverTrigger>
               <PopoverContent className="w-auto p-0" align="end">
                 <Calendar
-                  mode="range"
-                  selected={{ from: dateRange.from, to: dateRange.to }}
-                  onSelect={(range) => {
-                    if (range?.from) {
-                      setDateRange({ from: range.from, to: range.to || range.from });
-                    }
-                  }}
+                  mode="single"
+                  selected={dateRange.from}
+                  onSelect={(d) => d && setDateRange(prev => ({ ...prev, from: d }))}
                   locale={ptBR}
-                  numberOfMonths={2}
+                  className="p-3 pointer-events-auto"
+                />
+              </PopoverContent>
+            </Popover>
+            <span className="text-xs text-muted-foreground">até</span>
+            {/* Date TO */}
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button variant="outline" size="sm" className="gap-2">
+                  <CalendarIcon className="h-4 w-4" />
+                  {format(dateRange.to, "dd/MM/yy")}
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-auto p-0" align="end">
+                <Calendar
+                  mode="single"
+                  selected={dateRange.to}
+                  onSelect={(d) => d && setDateRange(prev => ({ ...prev, to: d }))}
+                  locale={ptBR}
+                  className="p-3 pointer-events-auto"
                 />
               </PopoverContent>
             </Popover>
