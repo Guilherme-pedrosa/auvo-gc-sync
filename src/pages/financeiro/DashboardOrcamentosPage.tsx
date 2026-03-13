@@ -198,18 +198,31 @@ export default function DashboardOrcamentosPage() {
   }, [metrics]);
 
   const tecnicoChartData = useMemo(() => {
-    return Object.entries(metrics.tecnicoMap)
-      .sort(([, a], [, b]) => b.valorOrc - a.valorOrc)
+    // Only count tasks that have a match with OS in GC
+    const tecnicoOsMap: Record<string, { total: number; comOrc: number; semOrc: number; valorOrc: number }> = {};
+    for (const item of items) {
+      if (!item.os_realizada) continue; // Only tasks with OS match
+      const t = item.tecnico || "Sem técnico";
+      if (!tecnicoOsMap[t]) tecnicoOsMap[t] = { total: 0, comOrc: 0, semOrc: 0, valorOrc: 0 };
+      tecnicoOsMap[t].total++;
+      if (item.orcamento_realizado) {
+        tecnicoOsMap[t].comOrc++;
+        tecnicoOsMap[t].valorOrc += parseFloat(item.gc_orcamento?.gc_valor_total || "0");
+      } else {
+        tecnicoOsMap[t].semOrc++;
+      }
+    }
+    return Object.entries(tecnicoOsMap)
+      .sort(([, a], [, b]) => b.total - a.total)
       .slice(0, 10)
       .map(([name, data]) => ({
         name: name.length > 15 ? name.substring(0, 15) + "..." : name,
         fullName: name,
         "Com Orçamento": data.comOrc,
-        "Sem Orçamento": data.total - data.comOrc - data.comOs,
-        "Com OS": data.comOs,
+        "Sem Orçamento": data.semOrc,
         valorOrc: data.valorOrc,
       }));
-  }, [metrics]);
+  }, [items]);
 
   const pieData = useMemo(() => {
     const d = [
