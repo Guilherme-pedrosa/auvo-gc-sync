@@ -578,32 +578,71 @@ Deno.serve(async (req) => {
     });
 
     // === UPSERT TO CACHE ===
-    // Read existing cache to preserve column/position for known items
+    // Read existing cache WITH dados to detect real changes
     const { data: existingCache } = await sbClient
       .from("kanban_orcamentos_cache")
-      .select("auvo_task_id, coluna, posicao");
+      .select("auvo_task_id, coluna, posicao, dados");
     
-    const existingMap: Record<string, { coluna: string; posicao: number }> = {};
+    const existingMap: Record<string, { coluna: string; posicao: number; dados: any }> = {};
     for (const row of existingCache || []) {
-      existingMap[row.auvo_task_id] = { coluna: row.coluna, posicao: row.posicao };
+      existingMap[row.auvo_task_id] = { coluna: row.coluna, posicao: row.posicao, dados: row.dados };
     }
 
     const now = new Date().toISOString();
+    let movedCount = 0;
+    let keptCount = 0;
+
     const upsertRows = items.map((item: any, idx: number) => {
       const existing = existingMap[item.auvo_task_id];
-      // Determine default column for new items
-      let defaultColuna = "a_fazer";
-      if (item.os_realizada) defaultColuna = "os_realizada";
-      else if (item.orcamento_realizado) defaultColuna = `orc_${(item.gc_orcamento?.gc_situacao || "sem_situacao").replace(/\s+/g, "_").toLowerCase()}`;
+
+      // Determine the "correct" column based on current data
+      let autoColuna = "a_fazer";
+      if (item.os_realizada) autoColuna = "os_realizada";
+      else if (item.orcamento_realizado) autoColuna = `orc_${(item.gc_orcamento?.gc_situacao || "sem_situacao").replace(/\s+/g, "_").toLowerCase()}`;
+
+      let finalColuna: string;
+      let finalPosicao: number;
+
+      if (!existing) {
+        // New item → auto-assign
+        finalColuna = autoColuna;
+        finalPosicao = idx;
+      } else {
+        // Existing item: check if data changed in ways that should trigger a move
+        const oldData = existing.dados || {};
+        const hadUpdate =
+          // Gained an orçamento
+          (!oldData.orcamento_realizado && item.orcamento_realizado) ||
+          // Gained an OS
+          (!oldData.os_realizada && item.os_realizada) ||
+          // Orçamento situation changed
+          (oldData.gc_orcamento?.gc_situacao !== item.gc_orcamento?.gc_situacao && item.orcamento_realizado) ||
+          // OS situation changed
+          (oldData.gc_os?.gc_situacao !== item.gc_os?.gc_situacao && item.os_realizada);
+
+        if (hadUpdate) {
+          // Data changed → move to correct column
+          finalColuna = autoColuna;
+          finalPosicao = 0; // top of column
+          movedCount++;
+        } else {
+          // No meaningful update → keep user's position
+          finalColuna = existing.coluna;
+          finalPosicao = existing.posicao;
+          keptCount++;
+        }
+      }
 
       return {
         auvo_task_id: item.auvo_task_id,
         dados: item,
-        coluna: existing ? existing.coluna : defaultColuna,
-        posicao: existing ? existing.posicao : idx,
+        coluna: finalColuna,
+        posicao: finalPosicao,
         atualizado_em: now,
       };
     });
+
+    console.log(`[budget-kanban] Posições: ${movedCount} movidos por atualização, ${keptCount} mantidos`);
 
     // Upsert in batches of 50
     for (let i = 0; i < upsertRows.length; i += 50) {
