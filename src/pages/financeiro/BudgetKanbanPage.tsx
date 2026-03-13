@@ -229,6 +229,18 @@ export default function BudgetKanbanPage() {
     setEditingColumnId(null);
   }, [editingColumnId, editingColumnTitle]);
 
+  // Abbreviate long client names: keep first + last word with "..." in between
+  const abbreviateName = (name: string, maxLen = 30) => {
+    if (name.length <= maxLen) return name;
+    const words = name.split(/\s+/);
+    if (words.length <= 2) return name.substring(0, maxLen - 3) + "...";
+    const first = words[0];
+    const last = words[words.length - 1];
+    const abbrev = `${first} ... ${last}`;
+    if (abbrev.length <= maxLen) return abbrev;
+    return name.substring(0, maxLen - 3) + "...";
+  };
+
   // Extract specific questionnaire answers
   const getAnswer = (item: KanbanItem, keyword: string) => {
     return item.questionario_respostas
