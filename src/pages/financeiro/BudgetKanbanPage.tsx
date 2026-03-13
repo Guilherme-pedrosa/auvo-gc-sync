@@ -66,6 +66,7 @@ type ApiResponse = {
   };
   items: (KanbanItem & { _coluna?: string; _posicao?: number })[];
   ultimo_sync?: string | null;
+  custom_columns?: { id: string; title: string; order: number }[];
   from_cache?: boolean;
   error?: string;
 };
