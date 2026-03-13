@@ -9,6 +9,7 @@ import AuvoSyncPage from "./pages/financeiro/AuvoSyncPage.tsx";
 import TechDashboardPage from "./pages/financeiro/TechDashboardPage.tsx";
 import BudgetKanbanPage from "./pages/financeiro/BudgetKanbanPage.tsx";
 import CustomKanbanPage from "./pages/financeiro/CustomKanbanPage.tsx";
+import DashboardOrcamentosPage from "./pages/financeiro/DashboardOrcamentosPage.tsx";
 
 const queryClient = new QueryClient();
 
@@ -24,6 +25,7 @@ const App = () => (
           <Route path="/financeiro/dashboard-tecnicos" element={<TechDashboardPage />} />
           <Route path="/financeiro/kanban-orcamentos" element={<BudgetKanbanPage />} />
           <Route path="/financeiro/kanban-personalizado" element={<CustomKanbanPage />} />
+          <Route path="/financeiro/dashboard-orcamentos" element={<DashboardOrcamentosPage />} />
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
           <Route path="*" element={<NotFound />} />
         </Routes>
