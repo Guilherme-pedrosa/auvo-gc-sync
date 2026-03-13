@@ -475,6 +475,67 @@ Deno.serve(async (req) => {
       return b.data_tarefa.localeCompare(a.data_tarefa);
     });
 
+    // === UPSERT TO CACHE ===
+    // Read existing cache to preserve column/position for known items
+    const { data: existingCache } = await sbClient
+      .from("kanban_orcamentos_cache")
+      .select("auvo_task_id, coluna, posicao");
+    
+    const existingMap: Record<string, { coluna: string; posicao: number }> = {};
+    for (const row of existingCache || []) {
+      existingMap[row.auvo_task_id] = { coluna: row.coluna, posicao: row.posicao };
+    }
+
+    const now = new Date().toISOString();
+    const upsertRows = items.map((item: any, idx: number) => {
+      const existing = existingMap[item.auvo_task_id];
+      // Determine default column for new items
+      let defaultColuna = "a_fazer";
+      if (item.os_realizada) defaultColuna = "os_realizada";
+      else if (item.orcamento_realizado) defaultColuna = `orc_${(item.gc_orcamento?.gc_situacao || "sem_situacao").replace(/\s+/g, "_").toLowerCase()}`;
+
+      return {
+        auvo_task_id: item.auvo_task_id,
+        dados: item,
+        coluna: existing ? existing.coluna : defaultColuna,
+        posicao: existing ? existing.posicao : idx,
+        atualizado_em: now,
+      };
+    });
+
+    // Upsert in batches of 50
+    for (let i = 0; i < upsertRows.length; i += 50) {
+      const batch = upsertRows.slice(i, i + 50);
+      await sbClient
+        .from("kanban_orcamentos_cache")
+        .upsert(batch, { onConflict: "auvo_task_id" });
+    }
+
+    // Remove cached items that no longer exist in the API response
+    const currentIds = new Set(items.map((i: any) => i.auvo_task_id));
+    const toDelete = (existingCache || [])
+      .filter((row: any) => !currentIds.has(row.auvo_task_id))
+      .map((row: any) => row.auvo_task_id);
+    if (toDelete.length > 0) {
+      await sbClient
+        .from("kanban_orcamentos_cache")
+        .delete()
+        .in("auvo_task_id", toDelete);
+      console.log(`[budget-kanban] Removed ${toDelete.length} stale cache entries`);
+    }
+
+    // Update sync metadata
+    await sbClient
+      .from("kanban_sync_meta")
+      .upsert({
+        id: "default",
+        ultimo_sync: now,
+        periodo_inicio: startDate,
+        periodo_fim: endDate,
+      });
+
+    console.log(`[budget-kanban] Cache atualizado: ${upsertRows.length} itens`);
+
     const resumo = {
       periodo: { inicio: startDate, fim: endDate },
       total_tarefas_com_questionario: items.length,
@@ -483,7 +544,7 @@ Deno.serve(async (req) => {
       pendentes: items.filter((i: any) => !i.orcamento_realizado && !i.os_realizada).length,
     };
 
-    return new Response(JSON.stringify({ resumo, items }), {
+    return new Response(JSON.stringify({ resumo, items, ultimo_sync: now, from_cache: false }), {
       status: 200,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
