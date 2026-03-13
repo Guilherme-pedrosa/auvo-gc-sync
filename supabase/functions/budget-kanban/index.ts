@@ -102,8 +102,7 @@ async function fetchAuvoTasksWithQuestionnaire(
 
   if (allTasks.length > 0) {
     const sample = allTasks[0];
-    console.log(`[budget-kanban] ALL TASK KEYS: ${Object.keys(sample).join(', ')}`);
-    console.log(`[budget-kanban] Sample task FULL: ${JSON.stringify(sample).substring(0, 2000)}`);
+    console.log(`[budget-kanban] Sample task fields: taskID=${sample.taskID}, customerDescription=${sample.customerDescription}, customerName=${sample.customerName}, customerId=${sample.customerId}, externalId=${sample.externalId}`);
   }
 
   return { tasks: allTasks, hadError, errorMessage };
