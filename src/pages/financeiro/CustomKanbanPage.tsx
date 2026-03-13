@@ -239,7 +239,7 @@ export default function CustomKanbanPage() {
         let col = (item as any)._coluna || "a_fazer";
         const { _coluna, _posicao, ...cleanItem } = item as any;
 
-        if (col === "a_fazer" && !cleanItem.orcamento_realizado && !cleanItem.os_realizada && !hasFilledQuestionnaire(cleanItem)) {
+        if (col === "a_fazer" && !cleanItem.os_realizada && !hasFilledQuestionnaire(cleanItem)) {
           col = "falta_preenchimento";
         }
 
@@ -277,41 +277,39 @@ export default function CustomKanbanPage() {
         .filter((colId) => (colMap[colId] && colMap[colId].length > 0) || savedOrderMap.has(colId) || colId === "falta_preenchimento" || colId === "a_fazer")
         .map((colId) => ({
           id: colId,
-          title: savedOrderMap.get(colId)?.title || defaultTitles[colId] || (colId.startsWith("orc_") ? `💰 ${colId.replace("orc_", "").replace(/_/g, " ")}` : colId),
+          title: savedOrderMap.get(colId)?.title || defaultTitles[colId] || (colId.startsWith("os_") ? `🔧 ${colId.replace("os_", "").replace(/_/g, " ")}` : colId),
           items: colMap[colId] || [],
         }));
 
       setColumns(cols);
     } else {
       const faltaPreenchimento = data.items.filter(
-        (i) => !i.orcamento_realizado && !i.os_realizada && !hasFilledQuestionnaire(i)
+        (i) => !i.os_realizada && !hasFilledQuestionnaire(i)
       );
       const aFazer = data.items.filter(
-        (i) => !i.orcamento_realizado && !i.os_realizada && hasFilledQuestionnaire(i)
+        (i) => !i.os_realizada && hasFilledQuestionnaire(i)
       );
-      const osRealizada = data.items.filter((i) => i.os_realizada);
-      const orcItems = data.items.filter((i) => i.orcamento_realizado && !i.os_realizada);
+      const osItems = data.items.filter((i) => i.os_realizada);
 
       const situacaoMap: Record<string, KanbanItem[]> = {};
-      for (const item of orcItems) {
-        const sit = item.gc_orcamento?.gc_situacao || "Sem situação";
+      for (const item of osItems) {
+        const sit = item.gc_os?.gc_situacao || "Sem situação";
         if (!situacaoMap[sit]) situacaoMap[sit] = [];
         situacaoMap[sit].push(item);
       }
 
-      const orcColumns: KanbanColumn[] = Object.entries(situacaoMap)
+      const osColumns: KanbanColumn[] = Object.entries(situacaoMap)
         .sort(([a], [b]) => a.localeCompare(b))
         .map(([sit, items]) => ({
-          id: `orc_${sit.replace(/\s+/g, "_").toLowerCase()}`,
-          title: `💰 ${sit}`,
+          id: `os_${sit.replace(/\s+/g, "_").toLowerCase()}`,
+          title: `🔧 ${sit}`,
           items,
         }));
 
       setColumns([
         { id: "falta_preenchimento", title: "⚠️ Falta Preenchimento", items: faltaPreenchimento },
         { id: "a_fazer", title: "📋 A Fazer", items: aFazer },
-        { id: "os_realizada", title: "🔧 OS Realizada", items: osRealizada },
-        ...orcColumns,
+        ...osColumns,
       ]);
     }
 
@@ -763,7 +761,7 @@ export default function CustomKanbanPage() {
                                         {...provided.dragHandleProps}
                                         className={`rounded-md border bg-card shadow-sm transition-shadow cursor-pointer ${
                                           snapshot.isDragging ? "shadow-lg ring-2 ring-primary/20" : "hover:shadow-md"
-                                        } ${item.orcamento_realizado ? "border-l-4 border-l-emerald-500" : item.os_realizada ? "border-l-4 border-l-blue-500" : "border-l-4 border-l-amber-400"}`}
+                                        } ${item.os_realizada ? "border-l-4 border-l-blue-500" : "border-l-4 border-l-amber-400"}`}
                                         onClick={() => setSelectedCard(item)}
                                       >
                                         <div className="flex items-start gap-1 px-3 py-2">
