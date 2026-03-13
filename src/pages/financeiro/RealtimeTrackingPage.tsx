@@ -8,11 +8,11 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Calendar } from "@/components/ui/calendar";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import {
   RefreshCw, CalendarIcon, MapPin, Clock, User,
   CheckCircle2, PlayCircle, CalendarClock, AlertTriangle,
-  ChevronLeft, ChevronRight, FileWarning
+  ChevronLeft, ChevronRight, FileWarning, ChevronDown
 } from "lucide-react";
 import { format, addDays, subDays, isToday, startOfMonth, endOfMonth } from "date-fns";
 import { ptBR } from "date-fns/locale";
