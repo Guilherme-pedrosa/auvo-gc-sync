@@ -445,7 +445,7 @@ export default function BudgetKanbanPage() {
                                 {...provided.draggableProps}
                                 className={`rounded-md border bg-card shadow-sm transition-shadow cursor-pointer ${
                                   snapshot.isDragging ? "shadow-lg ring-2 ring-primary/20" : "hover:shadow-md"
-                                } ${item.orcamento_realizado ? "border-l-4 border-l-emerald-500" : "border-l-4 border-l-amber-400"}`}
+                                } ${item.orcamento_realizado ? "border-l-4 border-l-emerald-500" : item.os_realizada ? "border-l-4 border-l-blue-500" : "border-l-4 border-l-amber-400"}`}
                                 onClick={() => setSelectedCard(item)}
                               >
                                 <div className="flex items-start gap-1 px-3 py-2">
