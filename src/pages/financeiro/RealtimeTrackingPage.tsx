@@ -168,6 +168,12 @@ export default function RealtimeTrackingPage() {
               <CalendarClock className="h-3.5 w-3.5 text-amber-500" />
               <strong className="text-amber-600">{data.tecnicos.reduce((s, t) => s + t.resumo.agendadas, 0)}</strong> agendadas
             </span>
+            {(data.total_atrasadas || 0) > 0 && (
+              <span className="flex items-center gap-1.5">
+                <AlertTriangle className="h-3.5 w-3.5 text-red-500" />
+                <strong className="text-red-600">{data.total_atrasadas}</strong> atrasada(s)
+              </span>
+            )}
           </div>
 
           {/* Agenda grid — horizontal scroll of technician columns */}
