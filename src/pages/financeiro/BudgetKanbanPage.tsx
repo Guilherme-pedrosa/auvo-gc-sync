@@ -699,6 +699,41 @@ export default function BudgetKanbanPage() {
                   </div>
                 )}
 
+                {/* GC OS details */}
+                {selectedCard.gc_os && (
+                  <div className="p-3 rounded-lg bg-blue-50 border border-blue-200 space-y-2">
+                    <h4 className="font-semibold text-sm text-blue-900">Ordem de Serviço GestãoClick</h4>
+                    <div className="grid grid-cols-2 gap-2 text-sm">
+                      <div>
+                        <span className="text-blue-700">Código:</span>
+                        <span className="ml-2 font-medium">#{selectedCard.gc_os.gc_os_codigo}</span>
+                      </div>
+                      <div>
+                        <span className="text-blue-700">Valor:</span>
+                        <span className="ml-2 font-bold">
+                          R$ {parseFloat(selectedCard.gc_os.gc_valor_total).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+                        </span>
+                      </div>
+                      <div className="col-span-2 flex items-center gap-1.5">
+                        <span className="text-blue-700">Situação:</span>
+                        <div
+                          className="h-2.5 w-2.5 rounded-full"
+                          style={{ backgroundColor: selectedCard.gc_os.gc_cor_situacao }}
+                        />
+                        <span className="font-medium">{selectedCard.gc_os.gc_situacao}</span>
+                      </div>
+                      <div>
+                        <span className="text-blue-700">Responsável:</span>
+                        <span className="ml-2">{selectedCard.gc_os.gc_vendedor}</span>
+                      </div>
+                      <div>
+                        <span className="text-blue-700">Data:</span>
+                        <span className="ml-2">{selectedCard.gc_os.gc_data}</span>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
                 {/* Peças Necessárias */}
                 {getAnswer(selectedCard, "peças") && (
                   <div className="space-y-1">
