@@ -84,6 +84,11 @@ Deno.serve(async (req) => {
     const tasks = await fetchAllTasks(bearerToken, targetDate, targetDate);
 
     console.log(`[realtime-tracking] Total: ${tasks.length} tarefas`);
+    if (tasks.length > 0) {
+      const s = tasks[0];
+      console.log(`[realtime-tracking] Sample keys: ${Object.keys(s).join(", ")}`);
+      console.log(`[realtime-tracking] Customer fields: customerDescription=${s.customerDescription}, customerName=${s.customerName}, customer=${JSON.stringify(s.customer)?.substring(0,300)}`);
+    }
 
     // Group by technician
     const techMap: Record<string, {
@@ -112,12 +117,24 @@ Deno.serve(async (req) => {
       const taskDate = String(task.taskDate || task.date || "").split("T")[0];
       const startTime = String(task.startTime || task.startHour || "");
       const endTime = String(task.endTime || task.endHour || "");
-      const customer = task.customer?.name || task.customerName || task.customer || "";
+      
+      // Customer resolution: customerDescription is the reliable field in Auvo API
+      let customerName = "";
+      if (task.customerDescription) {
+        customerName = String(task.customerDescription).trim();
+      } else if (task.customer && typeof task.customer === "object") {
+        customerName = String(task.customer.name || task.customer.description || "").trim();
+      } else if (task.customerName) {
+        customerName = String(task.customerName).trim();
+      } else if (typeof task.customer === "string") {
+        customerName = task.customer.trim();
+      }
+      
       const address = task.address || task.customer?.address || "";
 
       techMap[techId].tarefas.push({
         taskId: String(task.taskID || task.id || ""),
-        cliente: typeof customer === "object" ? customer.name || "" : String(customer),
+        cliente: customerName,
         endereco: typeof address === "object" ? "" : String(address).substring(0, 100),
         status: statusLabel,
         horaInicio: startTime,

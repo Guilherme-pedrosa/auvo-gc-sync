@@ -2,15 +2,17 @@ import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import {
-  RefreshCw, CalendarIcon, MapPin, Clock, User, CheckCircle2,
-  PlayCircle, CalendarClock, AlertTriangle, ChevronDown, ChevronUp
+  RefreshCw, CalendarIcon, MapPin, Clock, User,
+  CheckCircle2, PlayCircle, CalendarClock, AlertTriangle,
+  ChevronLeft, ChevronRight
 } from "lucide-react";
-import { format } from "date-fns";
+import { format, addDays, subDays, isToday } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { toast } from "sonner";
 
@@ -48,17 +50,22 @@ type TrackingData = {
   tecnicos: TecnicoGroup[];
 };
 
-const statusConfig: Record<string, { color: string; icon: typeof CheckCircle2; label: string }> = {
-  "Finalizada": { color: "text-emerald-600 bg-emerald-50 border-emerald-200", icon: CheckCircle2, label: "Finalizada" },
-  "Em andamento": { color: "text-blue-600 bg-blue-50 border-blue-200", icon: PlayCircle, label: "Em andamento" },
-  "Agendada": { color: "text-amber-600 bg-amber-50 border-amber-200", icon: CalendarClock, label: "Agendada" },
-  "Cancelada": { color: "text-red-600 bg-red-50 border-red-200", icon: AlertTriangle, label: "Cancelada" },
+const statusIcon: Record<string, { icon: typeof CheckCircle2; class: string }> = {
+  "Finalizada": { icon: CheckCircle2, class: "text-emerald-600" },
+  "Em andamento": { icon: PlayCircle, class: "text-blue-600" },
+  "Agendada": { icon: CalendarClock, class: "text-amber-600" },
+  "Cancelada": { icon: AlertTriangle, class: "text-red-500" },
+};
+
+const statusBarColor: Record<string, string> = {
+  "Finalizada": "bg-emerald-500",
+  "Em andamento": "bg-blue-500",
+  "Agendada": "bg-amber-400",
+  "Cancelada": "bg-red-400",
 };
 
 export default function RealtimeTrackingPage() {
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
-  const [expandedTechs, setExpandedTechs] = useState<Set<string>>(new Set());
-
   const dateStr = format(selectedDate, "yyyy-MM-dd");
 
   const { data, isLoading, refetch, isFetching } = useQuery({
@@ -71,76 +78,53 @@ export default function RealtimeTrackingPage() {
       if (data?.error) throw new Error(data.error);
       return data as TrackingData;
     },
-    refetchInterval: 120_000, // auto-refresh every 2 min
+    refetchInterval: 120_000,
     staleTime: 30_000,
   });
 
-  const toggleExpand = (id: string) => {
-    setExpandedTechs((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-  };
-
-  const expandAll = () => {
-    if (!data) return;
-    setExpandedTechs(new Set(data.tecnicos.map((t) => t.id)));
-  };
-  const collapseAll = () => setExpandedTechs(new Set());
-
-  const handleRefresh = () => {
-    refetch();
-    toast.info("Atualizando...");
-  };
-
-  const getStatusBadge = (status: string) => {
-    const cfg = statusConfig[status] || statusConfig["Agendada"];
-    const Icon = cfg.icon;
-    return (
-      <span className={`inline-flex items-center gap-1 text-[11px] font-medium px-2 py-0.5 rounded-full border ${cfg.color}`}>
-        <Icon className="h-3 w-3" />
-        {cfg.label}
-      </span>
-    );
-  };
+  const goDay = (dir: number) => setSelectedDate((d) => (dir > 0 ? addDays(d, 1) : subDays(d, 1)));
 
   return (
-    <div className="min-h-screen">
+    <div className="min-h-screen flex flex-col">
       {/* Header */}
-      <div className="border-b bg-card px-6 py-4">
+      <div className="border-b bg-card px-6 py-3 flex-shrink-0">
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-lg font-semibold text-foreground">Acompanhamento em Tempo Real</h1>
+            <h1 className="text-lg font-semibold text-foreground">Agenda de Técnicos</h1>
             <p className="text-xs text-muted-foreground">
-              Tarefas de cada técnico no Auvo — todas as situações
+              Acompanhamento em tempo real — Auvo
             </p>
           </div>
-          <div className="flex items-center gap-3">
-            <Popover>
-              <PopoverTrigger asChild>
-                <Button variant="outline" size="sm" className="gap-2 text-xs h-8">
-                  <CalendarIcon className="h-3.5 w-3.5" />
-                  {format(selectedDate, "dd/MM/yyyy")}
-                </Button>
-              </PopoverTrigger>
-              <PopoverContent className="w-auto p-0" align="end">
-                <Calendar
-                  mode="single"
-                  selected={selectedDate}
-                  onSelect={(d) => d && setSelectedDate(d)}
-                  locale={ptBR}
-                />
-              </PopoverContent>
-            </Popover>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handleRefresh}
-              disabled={isFetching}
-              className="h-8 text-xs"
-            >
+
+          <div className="flex items-center gap-2">
+            {/* Date nav */}
+            <div className="flex items-center border rounded-lg overflow-hidden h-8">
+              <button onClick={() => goDay(-1)} className="px-2 h-full hover:bg-muted transition-colors">
+                <ChevronLeft className="h-3.5 w-3.5" />
+              </button>
+              <Popover>
+                <PopoverTrigger asChild>
+                  <button className="px-3 h-full text-xs font-medium hover:bg-muted transition-colors flex items-center gap-1.5 border-x">
+                    <CalendarIcon className="h-3 w-3" />
+                    {isToday(selectedDate) ? "Hoje" : format(selectedDate, "dd MMM", { locale: ptBR })}
+                  </button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0" align="end">
+                  <Calendar mode="single" selected={selectedDate} onSelect={(d) => d && setSelectedDate(d)} locale={ptBR} />
+                </PopoverContent>
+              </Popover>
+              <button onClick={() => goDay(1)} className="px-2 h-full hover:bg-muted transition-colors">
+                <ChevronRight className="h-3.5 w-3.5" />
+              </button>
+            </div>
+
+            {isToday(selectedDate) && (
+              <Badge variant="outline" className="text-[10px] h-6 bg-blue-50 text-blue-700 border-blue-200">
+                🔴 AO VIVO
+              </Badge>
+            )}
+
+            <Button variant="outline" size="sm" onClick={() => { refetch(); toast.info("Atualizando..."); }} disabled={isFetching} className="h-8 text-xs">
               <RefreshCw className={`h-3.5 w-3.5 mr-1.5 ${isFetching ? "animate-spin" : ""}`} />
               Atualizar
             </Button>
@@ -152,176 +136,146 @@ export default function RealtimeTrackingPage() {
         <div className="flex items-center justify-center h-64">
           <RefreshCw className="h-5 w-5 animate-spin text-muted-foreground" />
         </div>
-      ) : !data ? (
-        <div className="flex items-center justify-center h-64 text-muted-foreground">
-          Nenhum dado disponível
+      ) : !data || data.tecnicos.length === 0 ? (
+        <div className="flex flex-col items-center justify-center h-64 text-muted-foreground gap-2">
+          <CalendarClock className="h-8 w-8" />
+          <p className="text-sm">Nenhuma tarefa para {format(selectedDate, "dd/MM/yyyy")}</p>
         </div>
       ) : (
-        <div className="p-6 space-y-4">
-          {/* Summary */}
-          <div className="flex items-center gap-4 flex-wrap">
-            <div className="grid grid-cols-3 gap-3 flex-1 min-w-[300px]">
-              <Card>
-                <CardContent className="pt-4 pb-3 px-4">
-                  <p className="text-xs text-muted-foreground mb-1 flex items-center gap-1.5">
-                    <User className="h-3.5 w-3.5" /> Técnicos
-                  </p>
-                  <p className="text-2xl font-bold">{data.total_tecnicos}</p>
-                </CardContent>
-              </Card>
-              <Card>
-                <CardContent className="pt-4 pb-3 px-4">
-                  <p className="text-xs text-muted-foreground mb-1 flex items-center gap-1.5">
-                    <Clock className="h-3.5 w-3.5" /> Tarefas
-                  </p>
-                  <p className="text-2xl font-bold">{data.total_tarefas}</p>
-                </CardContent>
-              </Card>
-              <Card>
-                <CardContent className="pt-4 pb-3 px-4">
-                  <p className="text-xs text-muted-foreground mb-1 flex items-center gap-1.5">
-                    <PlayCircle className="h-3.5 w-3.5 text-blue-500" /> Em andamento
-                  </p>
-                  <p className="text-2xl font-bold text-blue-600">
-                    {data.tecnicos.reduce((s, t) => s + t.resumo.emAndamento, 0)}
-                  </p>
-                </CardContent>
-              </Card>
-            </div>
-            <div className="flex gap-2">
-              <Button variant="ghost" size="sm" onClick={expandAll} className="text-xs h-7">
-                <ChevronDown className="h-3 w-3 mr-1" /> Expandir Todos
-              </Button>
-              <Button variant="ghost" size="sm" onClick={collapseAll} className="text-xs h-7">
-                <ChevronUp className="h-3 w-3 mr-1" /> Recolher
-              </Button>
-            </div>
+        <div className="flex-1 overflow-hidden">
+          {/* Summary strip */}
+          <div className="px-6 py-3 border-b bg-muted/30 flex items-center gap-6 text-xs">
+            <span className="flex items-center gap-1.5">
+              <User className="h-3.5 w-3.5 text-muted-foreground" />
+              <strong>{data.total_tecnicos}</strong> técnicos
+            </span>
+            <span className="flex items-center gap-1.5">
+              <Clock className="h-3.5 w-3.5 text-muted-foreground" />
+              <strong>{data.total_tarefas}</strong> tarefas
+            </span>
+            <span className="flex items-center gap-1.5">
+              <PlayCircle className="h-3.5 w-3.5 text-blue-500" />
+              <strong className="text-blue-600">{data.tecnicos.reduce((s, t) => s + t.resumo.emAndamento, 0)}</strong> em andamento
+            </span>
+            <span className="flex items-center gap-1.5">
+              <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" />
+              <strong className="text-emerald-600">{data.tecnicos.reduce((s, t) => s + t.resumo.finalizadas, 0)}</strong> finalizadas
+            </span>
+            <span className="flex items-center gap-1.5">
+              <CalendarClock className="h-3.5 w-3.5 text-amber-500" />
+              <strong className="text-amber-600">{data.tecnicos.reduce((s, t) => s + t.resumo.agendadas, 0)}</strong> agendadas
+            </span>
           </div>
 
-          {/* Technician cards */}
-          <div className="space-y-3">
-            {data.tecnicos.map((tech) => {
-              const isExpanded = expandedTechs.has(tech.id);
-              const hasActive = tech.resumo.emAndamento > 0;
+          {/* Agenda grid — horizontal scroll of technician columns */}
+          <ScrollArea className="h-[calc(100vh-10rem)]">
+            <div className="p-4 grid gap-4" style={{ gridTemplateColumns: `repeat(${Math.min(data.tecnicos.length, 5)}, minmax(280px, 1fr))` }}>
+              {data.tecnicos.map((tech) => {
+                const hasActive = tech.resumo.emAndamento > 0;
+                const progress = tech.resumo.total > 0
+                  ? Math.round(((tech.resumo.finalizadas) / tech.resumo.total) * 100)
+                  : 0;
 
-              return (
-                <Card
-                  key={tech.id}
-                  className={hasActive ? "border-blue-300 bg-blue-50/30" : ""}
-                >
-                  {/* Tech header */}
-                  <button
-                    onClick={() => toggleExpand(tech.id)}
-                    className="w-full text-left"
-                  >
-                    <CardHeader className="pb-2 pt-4 px-5">
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-3">
-                          <div className={`h-8 w-8 rounded-full flex items-center justify-center text-xs font-bold ${
-                            hasActive
-                              ? "bg-blue-100 text-blue-700"
-                              : "bg-muted text-muted-foreground"
-                          }`}>
-                            {tech.nome.charAt(0)}
-                          </div>
-                          <div>
-                            <CardTitle className="text-sm font-semibold">{tech.nome}</CardTitle>
-                            <div className="flex items-center gap-2 mt-0.5">
-                              <span className="text-[10px] text-muted-foreground">
-                                {tech.resumo.total} tarefa(s)
-                              </span>
-                              {tech.resumo.emAndamento > 0 && (
-                                <Badge variant="secondary" className="text-[10px] h-4 px-1.5 bg-blue-100 text-blue-700 border-blue-200">
-                                  {tech.resumo.emAndamento} ativa(s)
-                                </Badge>
-                              )}
-                              {tech.resumo.finalizadas > 0 && (
-                                <Badge variant="secondary" className="text-[10px] h-4 px-1.5 bg-emerald-100 text-emerald-700 border-emerald-200">
-                                  {tech.resumo.finalizadas} finalizada(s)
-                                </Badge>
-                              )}
-                              {tech.resumo.agendadas > 0 && (
-                                <Badge variant="secondary" className="text-[10px] h-4 px-1.5 bg-amber-100 text-amber-700 border-amber-200">
-                                  {tech.resumo.agendadas} agendada(s)
-                                </Badge>
-                              )}
-                            </div>
+                return (
+                  <div key={tech.id} className="flex flex-col">
+                    {/* Technician header */}
+                    <div className={`rounded-t-lg border border-b-0 px-4 py-3 ${
+                      hasActive ? "bg-blue-50 border-blue-200" : "bg-card"
+                    }`}>
+                      <div className="flex items-center gap-3">
+                        <div className={`h-9 w-9 rounded-full flex items-center justify-center text-sm font-bold flex-shrink-0 ${
+                          hasActive
+                            ? "bg-blue-500 text-white"
+                            : "bg-muted text-muted-foreground"
+                        }`}>
+                          {tech.nome.split(" ").map(n => n[0]).slice(0, 2).join("")}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="font-semibold text-sm truncate">{tech.nome}</p>
+                          <div className="flex items-center gap-2 mt-0.5">
+                            <span className="text-[10px] text-muted-foreground">{tech.resumo.total} tarefa(s)</span>
+                            {hasActive && (
+                              <span className="text-[10px] text-blue-600 font-medium animate-pulse">● Ativo</span>
+                            )}
                           </div>
                         </div>
-                        {isExpanded ? (
-                          <ChevronUp className="h-4 w-4 text-muted-foreground" />
-                        ) : (
-                          <ChevronDown className="h-4 w-4 text-muted-foreground" />
-                        )}
                       </div>
-                    </CardHeader>
-                  </button>
+                      {/* Mini progress */}
+                      <div className="mt-2 flex items-center gap-2">
+                        <div className="flex-1 h-1.5 bg-muted rounded-full overflow-hidden">
+                          <div className="h-full bg-emerald-500 rounded-full transition-all" style={{ width: `${progress}%` }} />
+                        </div>
+                        <span className="text-[10px] text-muted-foreground">{progress}%</span>
+                      </div>
+                    </div>
 
-                  {/* Tasks list */}
-                  {isExpanded && (
-                    <CardContent className="pt-0 pb-3 px-5">
-                      <div className="space-y-2 mt-1">
-                        {tech.tarefas.map((task, idx) => (
-                          <div
-                            key={task.taskId || idx}
-                            className={`rounded-lg border p-3 text-sm ${
-                              task.status === "Em andamento"
-                                ? "border-blue-200 bg-blue-50/50"
-                                : task.status === "Finalizada"
-                                ? "border-emerald-100 bg-emerald-50/30"
-                                : "border-border bg-card"
-                            }`}
-                          >
-                            <div className="flex items-start justify-between gap-2">
-                              <div className="flex-1 min-w-0">
-                                <div className="flex items-center gap-2 mb-1">
-                                  {getStatusBadge(task.status)}
-                                  {task.horaInicio && (
-                                    <span className="text-[11px] text-muted-foreground flex items-center gap-1">
-                                      <Clock className="h-3 w-3" />
-                                      {task.horaInicio}{task.horaFim ? ` → ${task.horaFim}` : ""}
-                                    </span>
-                                  )}
-                                  {task.duration && task.status === "Finalizada" && (
-                                    <span className="text-[10px] text-muted-foreground">({task.duration})</span>
-                                  )}
-                                </div>
-                                <p className="font-medium text-foreground text-sm truncate">
-                                  {task.cliente || "Sem cliente"}
-                                </p>
-                                {task.descricao && (
-                                  <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">
-                                    {task.descricao}
-                                  </p>
-                                )}
-                                {task.endereco && (
-                                  <p className="text-[11px] text-muted-foreground mt-1 flex items-center gap-1">
-                                    <MapPin className="h-3 w-3 flex-shrink-0" />
-                                    <span className="truncate">{task.endereco}</span>
-                                  </p>
+                    {/* Task timeline */}
+                    <div className={`rounded-b-lg border px-3 py-2 flex-1 space-y-1.5 ${
+                      hasActive ? "border-blue-200" : ""
+                    }`}>
+                      {tech.tarefas.map((task, idx) => {
+                        const cfg = statusIcon[task.status] || statusIcon["Agendada"];
+                        const Icon = cfg.icon;
+                        const barColor = statusBarColor[task.status] || "bg-muted";
+
+                        return (
+                          <div key={task.taskId || idx} className="relative flex gap-2.5 group">
+                            {/* Timeline line */}
+                            <div className="flex flex-col items-center pt-1">
+                              <div className={`h-2.5 w-2.5 rounded-full ${barColor} ring-2 ring-background flex-shrink-0`} />
+                              {idx < tech.tarefas.length - 1 && (
+                                <div className="w-px flex-1 bg-border mt-1" />
+                              )}
+                            </div>
+
+                            {/* Task card */}
+                            <div className={`flex-1 pb-3 min-w-0 ${idx < tech.tarefas.length - 1 ? "" : ""}`}>
+                              <div className="flex items-center gap-1.5 mb-0.5">
+                                <Icon className={`h-3 w-3 flex-shrink-0 ${cfg.class}`} />
+                                <span className={`text-[10px] font-medium ${cfg.class}`}>{task.status}</span>
+                                {task.horaInicio && (
+                                  <span className="text-[10px] text-muted-foreground ml-auto flex items-center gap-0.5">
+                                    <Clock className="h-2.5 w-2.5" />
+                                    {task.horaInicio}{task.horaFim ? ` - ${task.horaFim}` : ""}
+                                  </span>
                                 )}
                               </div>
+                              <p className="font-medium text-xs text-foreground truncate">
+                                {task.cliente || "Sem cliente identificado"}
+                              </p>
+                              {task.descricao && (
+                                <p className="text-[11px] text-muted-foreground line-clamp-2 mt-0.5 leading-tight">
+                                  {task.descricao}
+                                </p>
+                              )}
+                              {task.endereco && (
+                                <p className="text-[10px] text-muted-foreground mt-1 flex items-start gap-1">
+                                  <MapPin className="h-2.5 w-2.5 mt-0.5 flex-shrink-0" />
+                                  <span className="truncate">{task.endereco}</span>
+                                </p>
+                              )}
                               {task.pendencia && task.pendencia.toLowerCase() !== "nenhuma" && task.pendencia !== "0" && (
-                                <Badge variant="destructive" className="text-[10px] shrink-0">
-                                  Pendência
+                                <Badge variant="destructive" className="text-[9px] h-4 mt-1">
+                                  ⚠ Pendência
                                 </Badge>
                               )}
                             </div>
                           </div>
-                        ))}
-                      </div>
-                    </CardContent>
-                  )}
-                </Card>
-              );
-            })}
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
 
-            {data.tecnicos.length === 0 && (
-              <div className="text-center text-muted-foreground py-12">
-                Nenhuma tarefa encontrada para {format(selectedDate, "dd/MM/yyyy")}
+            {/* If more than 5, second row */}
+            {data.tecnicos.length > 5 && (
+              <div className="px-4 pb-4 grid gap-4" style={{ gridTemplateColumns: `repeat(${Math.min(data.tecnicos.length - 5, 5)}, minmax(280px, 1fr))` }}>
+                {/* Already rendered above via single grid, but we need to handle overflow */}
               </div>
             )}
-          </div>
+          </ScrollArea>
         </div>
       )}
     </div>
