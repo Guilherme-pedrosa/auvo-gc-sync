@@ -10,7 +10,7 @@ import AuvoSyncPage from "./pages/financeiro/AuvoSyncPage.tsx";
 import TechDashboardPage from "./pages/financeiro/TechDashboardPage.tsx";
 import BudgetKanbanPage from "./pages/financeiro/BudgetKanbanPage.tsx";
 import CustomKanbanPage from "./pages/financeiro/CustomKanbanPage.tsx";
-// DashboardOrcamentosPage is now integrated into Index
+import RealtimeTrackingPage from "./pages/financeiro/RealtimeTrackingPage.tsx";
 
 const queryClient = new QueryClient();
 
@@ -27,7 +27,7 @@ const App = () => (
             <Route path="/financeiro/dashboard-tecnicos" element={<TechDashboardPage />} />
             <Route path="/financeiro/kanban-orcamentos" element={<BudgetKanbanPage />} />
             <Route path="/financeiro/kanban-personalizado" element={<CustomKanbanPage />} />
-            {/* Dashboard Orçamentos is now the home page */}
+            <Route path="/financeiro/acompanhamento" element={<RealtimeTrackingPage />} />
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
             <Route path="*" element={<NotFound />} />
           </Routes>
