@@ -122,12 +122,12 @@ export default function BudgetKanbanPage() {
       });
 
       if (error) throw error;
-      if (syncData?.error) throw new Error(syncData.error);
 
-      toast.success(`Sincronizado! ${syncData?.resumo?.total_tarefas_com_questionario ?? 0} tarefas atualizadas`);
-    } catch (e: any) {
-      toast.warning(`Sincronização em processamento. Atualizando cache...`);
-      console.warn("Erro/timeout no retorno do sync, tentando recarregar cache:", e?.message || e);
+      if (syncData?.success === false || syncData?.error) {
+        toast.error(syncData?.error || "Erro na sincronização. Mantendo último estado.");
+      } else {
+        toast.success(`Sincronizado! ${syncData?.resumo?.total_tarefas_com_questionario ?? 0} tarefas atualizadas`);
+      }
     } finally {
       setColumnsInitialized(false);
       await refetch();
