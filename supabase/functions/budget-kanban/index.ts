@@ -217,10 +217,26 @@ Deno.serve(async (req) => {
         reply: String(a.reply || ""),
       }));
 
+      // Extract client name from multiple possible fields
+      const clienteRaw = String(
+        task.customerName || task.customer?.tradeName || task.customer?.companyName || 
+        task.customerCompanyName || task.customerTradeName || ""
+      ).trim();
+      
+      // Fallback: extract from orientation (usually first line has client info)
+      let clienteFallback = "";
+      if (!clienteRaw) {
+        const orient = String(task.orientation || "");
+        // Try patterns like "CLIENTE: xxx" or "NOME: xxx"
+        const matchNome = orient.match(/(?:NOME|CLIENTE)\s*:\s*(.+?)(?:\n|$)/i);
+        if (matchNome) clienteFallback = matchNome[1].trim();
+        else clienteFallback = orient.split("\n")[0].substring(0, 80).trim();
+      }
+
       return {
         auvo_task_id: taskId,
         auvo_link: `https://app2.auvo.com.br/tarefas/visualizar/${taskId}`,
-        cliente: String(task.customerName || task.customer?.tradeName || ""),
+        cliente: clienteRaw || clienteFallback,
         tecnico: String(task.userToName || ""),
         data_tarefa: String(task.taskDate || "").split("T")[0],
         orientacao: String(task.orientation || "").substring(0, 200),
