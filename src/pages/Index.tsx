@@ -467,7 +467,7 @@ export default function Index() {
               <PopoverTrigger asChild>
                 <Button variant="outline" size="sm" className="gap-2 text-xs h-8">
                   <CalendarIcon className="h-3.5 w-3.5" />
-                  {format(dateRange.from, "dd/MM/yy")} - {format(dateRange.to, "dd/MM/yy")}
+                  {format(dateRange.from, "dd/MM/yy")} - {format(effectiveDateRange.to, "dd/MM/yy")}
                 </Button>
               </PopoverTrigger>
               <PopoverContent className="w-auto p-0" align="end">
@@ -476,14 +476,7 @@ export default function Index() {
                   selected={{ from: dateRange.from, to: dateRange.to }}
                   onSelect={(range) => {
                     if (!range?.from) return;
-                    setDateRange((prev) => {
-                      const nextFrom = range.from as Date;
-                      const prevToValid = prev.to && prev.to >= nextFrom;
-                      return {
-                        from: nextFrom,
-                        to: (range.to as Date | undefined) ?? (prevToValid ? prev.to : nextFrom),
-                      };
-                    });
+                    setDateRange({ from: range.from, to: range.to });
                   }}
                   locale={ptBR}
                   numberOfMonths={2}
