@@ -123,7 +123,7 @@ export default function BudgetKanbanPage() {
     if (!data?.items || columnsInitialized) return;
     const aFazer = data.items.filter((i) => !i.orcamento_realizado && !i.os_realizada);
     const osRealizada = data.items.filter((i) => i.os_realizada);
-    const orcRealizado = data.items.filter((i) => i.orcamento_realizado);
+    const orcRealizado = data.items.filter((i) => i.orcamento_realizado && !i.os_realizada);
     setColumns([
       { id: "a_fazer", title: "📋 A Fazer", items: aFazer },
       { id: "os_realizada", title: "🔧 OS Realizada", items: osRealizada },
