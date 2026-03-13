@@ -320,7 +320,8 @@ Deno.serve(async (req) => {
       return {
         auvo_task_id: taskId,
         auvo_link: `https://app2.auvo.com.br/relatorioTarefas/DetalheTarefa/${taskId}`,
-        cliente,
+        cliente: cliente || "Cliente não identificado",
+        _customerId: needsCustomerLookup ? String(task.customerId) : null,
         tecnico: String(task.userToName || ""),
         data_tarefa: String(task.taskDate || "").split("T")[0],
         orientacao: String(task.orientation || ""),
@@ -332,6 +333,39 @@ Deno.serve(async (req) => {
         gc_os: gcOsMatch,
       };
     });
+
+    // Resolve unidentified customers via Auvo /customers/{id}
+    const unresolvedItems = items.filter((i: any) => i._customerId);
+    if (unresolvedItems.length > 0) {
+      console.log(`[budget-kanban] Buscando ${unresolvedItems.length} clientes não identificados via Auvo API`);
+      const customerCache: Record<string, string> = {};
+      for (const item of unresolvedItems) {
+        const cid = (item as any)._customerId;
+        if (customerCache[cid]) {
+          (item as any).cliente = customerCache[cid];
+          continue;
+        }
+        try {
+          const url = `${AUVO_BASE_URL}/customers/${cid}`;
+          const resp = await rateLimitedFetch(url, { headers: auvoHeaders(bearerToken) }, "auvo");
+          if (resp.ok) {
+            const cData = await resp.json();
+            const cust = cData?.result;
+            const name = String(cust?.tradeName || cust?.companyName || cust?.name || "").trim();
+            if (name) {
+              customerCache[cid] = name;
+              (item as any).cliente = name;
+              console.log(`[budget-kanban] Customer ${cid} → ${name}`);
+            }
+          }
+        } catch (e) {
+          console.warn(`[budget-kanban] Erro ao buscar customer ${cid}:`, e);
+        }
+      }
+    }
+
+    // Remove internal field
+    for (const item of items) { delete (item as any)._customerId; }
 
     // Sort: pendentes primeiro, depois por data desc
     items.sort((a: any, b: any) => {
