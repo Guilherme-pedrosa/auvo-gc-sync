@@ -200,18 +200,28 @@ export default function BudgetKanbanPage() {
         os_realizada: "🔧 OS Realizada",
       };
 
+      // Add custom column titles from saved metadata
+      const savedCustomCols = data.custom_columns || [];
+      for (const cc of savedCustomCols) {
+        titleMap[cc.id] = cc.title;
+      }
+
       // Ensure falta_preenchimento and a_fazer are always present and in order
       const orderedIds: string[] = [];
       if (!colOrder.includes("falta_preenchimento")) colOrder.unshift("falta_preenchimento");
-      // Put falta_preenchimento first, then a_fazer, then the rest in original order
       if (colOrder.includes("falta_preenchimento")) orderedIds.push("falta_preenchimento");
       if (colOrder.includes("a_fazer")) orderedIds.push("a_fazer");
       for (const id of colOrder) {
         if (!orderedIds.includes(id)) orderedIds.push(id);
       }
 
+      // Add saved custom columns that might be empty (no items assigned)
+      for (const cc of savedCustomCols) {
+        if (!orderedIds.includes(cc.id)) orderedIds.push(cc.id);
+      }
+
       const cols: KanbanColumn[] = orderedIds
-        .filter((colId) => colMap[colId] && colMap[colId].length > 0 || colId === "falta_preenchimento" || colId === "a_fazer")
+        .filter((colId) => colMap[colId] && colMap[colId].length > 0 || colId === "falta_preenchimento" || colId === "a_fazer" || titleMap[colId])
         .map((colId) => ({
           id: colId,
           title: titleMap[colId] || (colId.startsWith("orc_") ? `💰 ${colId.replace("orc_", "").replace(/_/g, " ")}` : colId),
