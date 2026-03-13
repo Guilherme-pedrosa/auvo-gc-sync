@@ -31,6 +31,11 @@ const navItems = [
     icon: ListChecks,
     path: "/financeiro/kanban-personalizado",
   },
+  {
+    label: "Acompanhamento",
+    icon: Radio,
+    path: "/financeiro/acompanhamento",
+  },
   // Dashboard Orçamentos is now the home page
 ];
 
