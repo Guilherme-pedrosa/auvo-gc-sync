@@ -412,8 +412,7 @@ Deno.serve(async (req) => {
     const qIdSet = new Set(questionnaireIds);
     const items = auvoTasks.map((task: any) => {
       const taskId = String(task.taskID || "");
-      const gcOrcMatch = gcOrcMap[taskId] || null;
-      const gcOsMatch = gcOsMap[taskId] || null;
+      const gcOsMatch = gcMergedMap[taskId] || null;
 
       // Collect answers from ALL matching questionnaires
       const allAnswers: { question: string; reply: string }[] = [];
@@ -431,7 +430,7 @@ Deno.serve(async (req) => {
       const desc = String(task.customerDescription || "").trim();
       const nameRaw = String(task.customerName || task.customer?.tradeName || task.customer?.companyName || "").trim();
       const nameSnapshot = auvoTaskClienteMap[taskId] || "";
-      const nameGc = gcOrcMatch?.gc_cliente || gcOsMatch?.gc_cliente || "";
+      const nameGc = gcOsMatch?.gc_cliente || "";
       const clienteSync = desc || nameRaw || nameSnapshot || nameGc;
 
       return {
@@ -448,9 +447,9 @@ Deno.serve(async (req) => {
         orientacao: String(task.orientation || ""),
         status_auvo: task.finished ? "Finalizada" : (task.checkIn ? "Em andamento" : "Aberta"),
         questionario_respostas: allAnswers,
-        orcamento_realizado: !!gcOrcMatch,
+        orcamento_realizado: false,
         os_realizada: !!gcOsMatch,
-        gc_orcamento: gcOrcMatch,
+        gc_orcamento: null,
         gc_os: gcOsMatch,
       };
     });
