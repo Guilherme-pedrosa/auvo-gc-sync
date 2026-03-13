@@ -150,43 +150,80 @@ export default function BudgetKanbanPage() {
   useMemo(() => {
     if (!data?.items || columnsInitialized) return;
 
-    // Check if item has meaningful questionnaire answers (non-URL text)
     const hasFilledQuestionnaire = (item: KanbanItem) =>
       item.questionario_respostas.some(
         (r) => r.reply && r.reply.trim() !== "" && !r.reply.startsWith("http")
       );
 
-    const faltaPreenchimento = data.items.filter(
-      (i) => !i.orcamento_realizado && !i.os_realizada && !hasFilledQuestionnaire(i)
-    );
-    const aFazer = data.items.filter(
-      (i) => !i.orcamento_realizado && !i.os_realizada && hasFilledQuestionnaire(i)
-    );
-    const osRealizada = data.items.filter((i) => i.os_realizada);
-    const orcItems = data.items.filter((i) => i.orcamento_realizado && !i.os_realizada);
+    // If data came from cache with saved positions, use them
+    const hasSavedPositions = data.from_cache && data.items.some((i: any) => i._coluna);
 
-    // Group orçamentos by GC situação
-    const situacaoMap: Record<string, KanbanItem[]> = {};
-    for (const item of orcItems) {
-      const sit = item.gc_orcamento?.gc_situacao || "Sem situação";
-      if (!situacaoMap[sit]) situacaoMap[sit] = [];
-      situacaoMap[sit].push(item);
-    }
+    if (hasSavedPositions) {
+      const colMap: Record<string, KanbanItem[]> = {};
+      const colOrder: string[] = [];
+      for (const item of data.items) {
+        const col = (item as any)._coluna || "a_fazer";
+        if (!colMap[col]) {
+          colMap[col] = [];
+          colOrder.push(col);
+        }
+        // Strip internal fields
+        const { _coluna, _posicao, ...cleanItem } = item as any;
+        colMap[col].push(cleanItem);
+      }
+      // Sort items within each column by saved position
+      for (const col of colOrder) {
+        colMap[col].sort((a: any, b: any) => ((a as any)._posicao || 0) - ((b as any)._posicao || 0));
+      }
 
-    const orcColumns: KanbanColumn[] = Object.entries(situacaoMap)
-      .sort(([a], [b]) => a.localeCompare(b))
-      .map(([sit, items]) => ({
-        id: `orc_${sit.replace(/\s+/g, "_").toLowerCase()}`,
-        title: `💰 ${sit}`,
-        items,
+      // Build column title mapping
+      const titleMap: Record<string, string> = {
+        falta_preenchimento: "⚠️ Falta Preenchimento",
+        a_fazer: "📋 A Fazer",
+        os_realizada: "🔧 OS Realizada",
+      };
+
+      const cols: KanbanColumn[] = colOrder.map((colId) => ({
+        id: colId,
+        title: titleMap[colId] || (colId.startsWith("orc_") ? `💰 ${colId.replace("orc_", "").replace(/_/g, " ")}` : colId),
+        items: colMap[colId],
       }));
 
-    setColumns([
-      { id: "falta_preenchimento", title: "⚠️ Falta Preenchimento", items: faltaPreenchimento },
-      { id: "a_fazer", title: "📋 A Fazer", items: aFazer },
-      { id: "os_realizada", title: "🔧 OS Realizada", items: osRealizada },
-      ...orcColumns,
-    ]);
+      setColumns(cols);
+    } else {
+      // Fresh data (from sync) — auto-assign columns
+      const faltaPreenchimento = data.items.filter(
+        (i) => !i.orcamento_realizado && !i.os_realizada && !hasFilledQuestionnaire(i)
+      );
+      const aFazer = data.items.filter(
+        (i) => !i.orcamento_realizado && !i.os_realizada && hasFilledQuestionnaire(i)
+      );
+      const osRealizada = data.items.filter((i) => i.os_realizada);
+      const orcItems = data.items.filter((i) => i.orcamento_realizado && !i.os_realizada);
+
+      const situacaoMap: Record<string, KanbanItem[]> = {};
+      for (const item of orcItems) {
+        const sit = item.gc_orcamento?.gc_situacao || "Sem situação";
+        if (!situacaoMap[sit]) situacaoMap[sit] = [];
+        situacaoMap[sit].push(item);
+      }
+
+      const orcColumns: KanbanColumn[] = Object.entries(situacaoMap)
+        .sort(([a], [b]) => a.localeCompare(b))
+        .map(([sit, items]) => ({
+          id: `orc_${sit.replace(/\s+/g, "_").toLowerCase()}`,
+          title: `💰 ${sit}`,
+          items,
+        }));
+
+      setColumns([
+        { id: "falta_preenchimento", title: "⚠️ Falta Preenchimento", items: faltaPreenchimento },
+        { id: "a_fazer", title: "📋 A Fazer", items: aFazer },
+        { id: "os_realizada", title: "🔧 OS Realizada", items: osRealizada },
+        ...orcColumns,
+      ]);
+    }
+
     setColumnsInitialized(true);
   }, [data, columnsInitialized]);
 
@@ -194,8 +231,8 @@ export default function BudgetKanbanPage() {
     setColumnsInitialized(false);
     setAllClientesSelected(true);
     setSelectedClientes(new Set());
-    refetch();
-  }, [refetch]);
+    handleSync();
+  }, [handleSync]);
 
   // Unique technicians
   const tecnicos = useMemo(() => {
