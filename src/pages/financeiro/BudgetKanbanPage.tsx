@@ -172,17 +172,23 @@ export default function BudgetKanbanPage() {
       const colMap: Record<string, KanbanItem[]> = {};
       const colOrder: string[] = [];
       for (const item of data.items) {
-        const col = (item as any)._coluna || "a_fazer";
+        let col = (item as any)._coluna || "a_fazer";
+        // Strip internal fields
+        const { _coluna, _posicao, ...cleanItem } = item as any;
+
+        // Re-check: items in "a_fazer" without questionnaire should go to "falta_preenchimento"
+        if (col === "a_fazer" && !cleanItem.orcamento_realizado && !cleanItem.os_realizada && !hasFilledQuestionnaire(cleanItem)) {
+          col = "falta_preenchimento";
+        }
+
         if (!colMap[col]) {
           colMap[col] = [];
           colOrder.push(col);
         }
-        // Strip internal fields
-        const { _coluna, _posicao, ...cleanItem } = item as any;
         colMap[col].push(cleanItem);
       }
       // Sort items within each column by saved position
-      for (const col of colOrder) {
+      for (const col of Object.keys(colMap)) {
         colMap[col].sort((a: any, b: any) => ((a as any)._posicao || 0) - ((b as any)._posicao || 0));
       }
 
@@ -193,11 +199,23 @@ export default function BudgetKanbanPage() {
         os_realizada: "🔧 OS Realizada",
       };
 
-      const cols: KanbanColumn[] = colOrder.map((colId) => ({
-        id: colId,
-        title: titleMap[colId] || (colId.startsWith("orc_") ? `💰 ${colId.replace("orc_", "").replace(/_/g, " ")}` : colId),
-        items: colMap[colId],
-      }));
+      // Ensure falta_preenchimento and a_fazer are always present and in order
+      const orderedIds: string[] = [];
+      if (!colOrder.includes("falta_preenchimento")) colOrder.unshift("falta_preenchimento");
+      // Put falta_preenchimento first, then a_fazer, then the rest in original order
+      if (colOrder.includes("falta_preenchimento")) orderedIds.push("falta_preenchimento");
+      if (colOrder.includes("a_fazer")) orderedIds.push("a_fazer");
+      for (const id of colOrder) {
+        if (!orderedIds.includes(id)) orderedIds.push(id);
+      }
+
+      const cols: KanbanColumn[] = orderedIds
+        .filter((colId) => colMap[colId] && colMap[colId].length > 0 || colId === "falta_preenchimento" || colId === "a_fazer")
+        .map((colId) => ({
+          id: colId,
+          title: titleMap[colId] || (colId.startsWith("orc_") ? `💰 ${colId.replace("orc_", "").replace(/_/g, " ")}` : colId),
+          items: colMap[colId] || [],
+        }));
 
       setColumns(cols);
     } else {
