@@ -1,3 +1,5 @@
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
@@ -6,7 +8,8 @@ const corsHeaders = {
 const AUVO_BASE_URL = "https://api.auvo.com.br/v2";
 const GC_BASE_URL = "https://api.gestaoclick.com";
 const QUESTIONNAIRE_ID = "216040";
-const GC_ATRIBUTO_TAREFA_OS = "73341";
+const GC_ATRIBUTO_TAREFA_ORC = "73341";
+const GC_ATRIBUTO_TAREFA_OS = "73343";
 const MIN_DELAY_MS = 200;
 let lastAuvoCall = 0;
 let lastGcCall = 0;
@@ -38,7 +41,6 @@ function auvoHeaders(token: string): Record<string, string> {
   return { Authorization: `Bearer ${token}`, "Content-Type": "application/json" };
 }
 
-// Fetch Auvo tasks that have questionnaire 216040
 async function fetchAuvoTasksWithQuestionnaire(
   bearerToken: string,
   startDate: string,
@@ -48,7 +50,6 @@ async function fetchAuvoTasksWithQuestionnaire(
   let page = 1;
   const pageSize = 100;
   const MAX_PAGES = 20;
-
   const formattedStart = `${startDate}T00:00:00`;
   const formattedEnd = `${endDate}T23:59:59`;
 
@@ -60,10 +61,7 @@ async function fetchAuvoTasksWithQuestionnaire(
     console.log(`[budget-kanban] Auvo page ${page}`);
     const response = await rateLimitedFetch(url, { headers: auvoHeaders(bearerToken) }, "auvo");
 
-    if (response.status === 404) {
-      console.log(`[budget-kanban] Auvo 404 — sem tarefas no período`);
-      break;
-    }
+    if (response.status === 404) break;
     if (!response.ok) {
       const errBody = await response.text().catch(() => "");
       console.error(`[budget-kanban] Auvo error ${response.status}: ${errBody.substring(0, 300)}`);
@@ -73,28 +71,16 @@ async function fetchAuvoTasksWithQuestionnaire(
     const data = await response.json();
     const entities = data?.result?.entityList || data?.result?.Entities || [];
 
-    // Log first task's customer fields for debugging
-    if (page === 1 && entities.length > 0) {
-      const t0 = entities[0];
-      console.log(`[budget-kanban] Task sample customer fields: customerName=${t0.customerName}, customerId=${t0.customerId}, customer=${JSON.stringify(t0.customer)?.substring(0,300)}`);
-    }
-
-    // Filter tasks that have the target questionnaire
     for (const task of entities) {
       const questionnaires = task.questionnaires || [];
-      const hasTarget = questionnaires.some(
-        (q: any) => String(q.questionnaireId) === QUESTIONNAIRE_ID
-      );
-      if (hasTarget) {
-        allTasks.push(task);
-      }
+      const hasTarget = questionnaires.some((q: any) => String(q.questionnaireId) === QUESTIONNAIRE_ID);
+      if (hasTarget) allTasks.push(task);
     }
 
     console.log(`[budget-kanban] Page ${page}: ${entities.length} tasks, ${allTasks.length} com questionário ${QUESTIONNAIRE_ID}`);
     if (entities.length < pageSize) break;
     page++;
   }
-
   return allTasks;
 }
 
@@ -115,14 +101,13 @@ async function fetchGcOrcamentosMap(
     if (endDate) url += `&data_fim=${endDate}`;
 
     const response = await rateLimitedFetch(url, { headers: gcHeaders }, "gc");
-
     if (response.status === 429) {
       console.warn("[budget-kanban] GC rate limit — aguardando 3s...");
       await new Promise(r => setTimeout(r, 3000));
       continue;
     }
     if (!response.ok) {
-      console.error(`[budget-kanban] GC error: ${response.status}`);
+      console.error(`[budget-kanban] GC orcamentos error: ${response.status}`);
       break;
     }
 
@@ -134,7 +119,7 @@ async function fetchGcOrcamentosMap(
       const atributos: any[] = orc.atributos || [];
       const attrTarefa = atributos.find((a: any) => {
         const nested = a?.atributo || a;
-        return String(nested.atributo_id || nested.id || "") === GC_ATRIBUTO_TAREFA_OS;
+        return String(nested.atributo_id || nested.id || "") === GC_ATRIBUTO_TAREFA_ORC;
       });
       if (attrTarefa) {
         const nested = attrTarefa?.atributo || attrTarefa;
@@ -156,10 +141,72 @@ async function fetchGcOrcamentosMap(
       }
     }
 
-    console.log(`[budget-kanban] GC page ${page}/${totalPages}: ${records.length} orçamentos, ${Object.keys(map).length} com tarefa`);
+    console.log(`[budget-kanban] GC orçamentos page ${page}/${totalPages}: ${records.length} registros, ${Object.keys(map).length} com tarefa`);
     page++;
   }
+  return map;
+}
 
+// Fetch GC ordens de serviço and build a map of taskID -> OS data
+async function fetchGcOsMap(
+  gcHeaders: Record<string, string>,
+  startDate?: string,
+  endDate?: string
+): Promise<Record<string, any>> {
+  const map: Record<string, any> = {};
+  let page = 1;
+  let totalPages = 1;
+  const MAX_PAGES = 30;
+
+  while (page <= totalPages && page <= MAX_PAGES) {
+    let url = `${GC_BASE_URL}/api/ordens_servicos?limite=100&pagina=${page}`;
+    if (startDate) url += `&data_inicio=${startDate}`;
+    if (endDate) url += `&data_fim=${endDate}`;
+
+    const response = await rateLimitedFetch(url, { headers: gcHeaders }, "gc");
+    if (response.status === 429) {
+      console.warn("[budget-kanban] GC OS rate limit — aguardando 3s...");
+      await new Promise(r => setTimeout(r, 3000));
+      continue;
+    }
+    if (!response.ok) {
+      console.error(`[budget-kanban] GC OS error: ${response.status}`);
+      break;
+    }
+
+    const data = await response.json();
+    const records: any[] = Array.isArray(data?.data) ? data.data : [];
+    totalPages = data?.meta?.total_paginas || 1;
+
+    for (const os of records) {
+      const atributos: any[] = os.atributos || [];
+      const attrTarefa = atributos.find((a: any) => {
+        const nested = a?.atributo || a;
+        return String(nested.atributo_id || nested.id || "") === GC_ATRIBUTO_TAREFA_OS;
+      });
+      if (attrTarefa) {
+        const nested = attrTarefa?.atributo || attrTarefa;
+        const taskId = String(nested?.conteudo || nested?.valor || "").trim();
+        if (taskId && /^\d+$/.test(taskId)) {
+          map[taskId] = {
+            gc_os_id: String(os.id),
+            gc_os_codigo: String(os.codigo || ""),
+            gc_cliente: String(os.nome_cliente || ""),
+            gc_situacao: String(os.nome_situacao || ""),
+            gc_situacao_id: String(os.situacao_id || ""),
+            gc_cor_situacao: String(os.cor_situacao || ""),
+            gc_valor_total: String(os.valor_total || "0"),
+            gc_vendedor: String(os.nome_vendedor || ""),
+            gc_data: String(os.data || ""),
+            gc_link: `https://gestaoclick.com/ordens_servicos/visualizar/${os.id}`,
+          };
+        }
+      }
+    }
+
+    console.log(`[budget-kanban] GC OS page ${page}/${totalPages}: ${records.length} registros, ${Object.keys(map).length} com tarefa`);
+    page++;
+  }
   return map;
 }
 
@@ -192,16 +239,15 @@ Deno.serve(async (req) => {
 
     console.log(`[budget-kanban] Período: ${startDate} a ${endDate}`);
 
-    // Login Auvo
     const bearerToken = await auvoLogin(auvoApiKey, auvoApiToken);
 
-    const gcHeaders: Record<string, string> = {
+    const gcH: Record<string, string> = {
       "access-token": gcAccessToken,
       "secret-access-token": gcSecretToken,
       "Content-Type": "application/json",
     };
 
-    // Also load conciliation snapshot for customer name mapping
+    // Load conciliation snapshot for customer name mapping
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const sbClient = createClient(supabaseUrl, supabaseKey);
@@ -227,20 +273,21 @@ Deno.serve(async (req) => {
       console.warn(`[budget-kanban] Erro ao carregar snapshot:`, err);
     }
 
-    // Fetch in parallel
-    const [auvoTasks, gcMap] = await Promise.all([
+    // Fetch in parallel: Auvo tasks + GC orçamentos + GC OS
+    const [auvoTasks, gcOrcMap, gcOsMap] = await Promise.all([
       fetchAuvoTasksWithQuestionnaire(bearerToken, startDate, endDate),
-      fetchGcOrcamentosMap(gcHeaders, startDate, endDate),
+      fetchGcOrcamentosMap(gcH, startDate, endDate),
+      fetchGcOsMap(gcH, startDate, endDate),
     ]);
 
-    console.log(`[budget-kanban] Auvo tasks com questionário: ${auvoTasks.length}, GC orçamentos com tarefa: ${Object.keys(gcMap).length}`);
+    console.log(`[budget-kanban] Auvo tasks: ${auvoTasks.length}, GC orçamentos: ${Object.keys(gcOrcMap).length}, GC OS: ${Object.keys(gcOsMap).length}`);
 
     // Build kanban items
     const items = auvoTasks.map((task: any) => {
       const taskId = String(task.taskID || "");
-      const gcMatch = gcMap[taskId] || null;
+      const gcOrcMatch = gcOrcMap[taskId] || null;
+      const gcOsMatch = gcOsMap[taskId] || null;
 
-      // Extract questionnaire answers
       const targetQ = (task.questionnaires || []).find(
         (q: any) => String(q.questionnaireId) === QUESTIONNAIRE_ID
       );
@@ -249,12 +296,11 @@ Deno.serve(async (req) => {
         reply: String(a.reply || ""),
       }));
 
-      // Customer name: try Auvo fields → snapshot → GC match → orientation fallback
       const clienteRaw = String(
         task.customerName || task.customer?.tradeName || task.customer?.companyName || ""
       ).trim();
       const clienteSnapshot = auvoTaskClienteMap[taskId] || "";
-      const clienteGc = gcMatch?.gc_cliente || "";
+      const clienteGc = gcOrcMatch?.gc_cliente || gcOsMatch?.gc_cliente || "";
       let clienteFallback = "";
       if (!clienteRaw && !clienteSnapshot && !clienteGc) {
         const orient = String(task.orientation || "");
@@ -272,14 +318,18 @@ Deno.serve(async (req) => {
         orientacao: String(task.orientation || ""),
         status_auvo: task.finished ? "Finalizada" : (task.checkIn ? "Em andamento" : "Aberta"),
         questionario_respostas: answers,
-        orcamento_realizado: !!gcMatch,
-        gc_orcamento: gcMatch,
+        orcamento_realizado: !!gcOrcMatch,
+        os_realizada: !!gcOsMatch,
+        gc_orcamento: gcOrcMatch,
+        gc_os: gcOsMatch,
       };
     });
 
     // Sort: pendentes primeiro, depois por data desc
     items.sort((a: any, b: any) => {
-      if (a.orcamento_realizado !== b.orcamento_realizado) return a.orcamento_realizado ? 1 : -1;
+      const aHasGc = a.orcamento_realizado || a.os_realizada;
+      const bHasGc = b.orcamento_realizado || b.os_realizada;
+      if (aHasGc !== bHasGc) return aHasGc ? 1 : -1;
       return b.data_tarefa.localeCompare(a.data_tarefa);
     });
 
@@ -287,7 +337,8 @@ Deno.serve(async (req) => {
       periodo: { inicio: startDate, fim: endDate },
       total_tarefas_com_questionario: items.length,
       orcamentos_realizados: items.filter((i: any) => i.orcamento_realizado).length,
-      orcamentos_pendentes: items.filter((i: any) => !i.orcamento_realizado).length,
+      os_realizadas: items.filter((i: any) => i.os_realizada).length,
+      pendentes: items.filter((i: any) => !i.orcamento_realizado && !i.os_realizada).length,
     };
 
     return new Response(JSON.stringify({ resumo, items }), {

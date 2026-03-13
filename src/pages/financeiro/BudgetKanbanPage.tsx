@@ -20,6 +20,21 @@ import { useNavigate } from "react-router-dom";
 import { DragDropContext, Droppable, Draggable, DropResult } from "@hello-pangea/dnd";
 import { toast } from "sonner";
 
+type GcDocData = {
+  gc_orcamento_id?: string;
+  gc_orcamento_codigo?: string;
+  gc_os_id?: string;
+  gc_os_codigo?: string;
+  gc_cliente: string;
+  gc_situacao: string;
+  gc_situacao_id: string;
+  gc_cor_situacao: string;
+  gc_valor_total: string;
+  gc_vendedor: string;
+  gc_data: string;
+  gc_link: string;
+};
+
 type KanbanItem = {
   auvo_task_id: string;
   auvo_link: string;
@@ -30,18 +45,9 @@ type KanbanItem = {
   status_auvo: string;
   questionario_respostas: { question: string; reply: string }[];
   orcamento_realizado: boolean;
-  gc_orcamento: {
-    gc_orcamento_id: string;
-    gc_orcamento_codigo: string;
-    gc_cliente: string;
-    gc_situacao: string;
-    gc_situacao_id: string;
-    gc_cor_situacao: string;
-    gc_valor_total: string;
-    gc_vendedor: string;
-    gc_data: string;
-    gc_link: string;
-  } | null;
+  os_realizada: boolean;
+  gc_orcamento: GcDocData | null;
+  gc_os: GcDocData | null;
 };
 
 type KanbanColumn = {
@@ -55,7 +61,8 @@ type ApiResponse = {
     periodo: { inicio: string; fim: string };
     total_tarefas_com_questionario: number;
     orcamentos_realizados: number;
-    orcamentos_pendentes: number;
+    os_realizadas: number;
+    pendentes: number;
   };
   items: KanbanItem[];
   error?: string;
@@ -114,11 +121,13 @@ export default function BudgetKanbanPage() {
   // Initialize columns from API data
   useMemo(() => {
     if (!data?.items || columnsInitialized) return;
-    const aFazer = data.items.filter((i) => !i.orcamento_realizado);
-    const concluido = data.items.filter((i) => i.orcamento_realizado);
+    const aFazer = data.items.filter((i) => !i.orcamento_realizado && !i.os_realizada);
+    const osRealizada = data.items.filter((i) => i.os_realizada);
+    const orcRealizado = data.items.filter((i) => i.orcamento_realizado);
     setColumns([
       { id: "a_fazer", title: "📋 A Fazer", items: aFazer },
-      { id: "concluido", title: "✅ Orçamento Realizado", items: concluido },
+      { id: "os_realizada", title: "🔧 OS Realizada", items: osRealizada },
+      { id: "concluido", title: "✅ Orçamento Realizado", items: orcRealizado },
     ]);
     setColumnsInitialized(true);
   }, [data, columnsInitialized]);
@@ -345,7 +354,10 @@ export default function BudgetKanbanPage() {
               </Badge>
               <Badge variant="secondary" className="gap-1 bg-amber-100 text-amber-800 border-amber-300">
                 <FileText className="h-3 w-3" />
-                {resumo.orcamentos_pendentes} pendentes
+                {resumo.pendentes} pendentes
+              </Badge>
+              <Badge variant="secondary" className="gap-1 bg-blue-100 text-blue-800 border-blue-300">
+                🔧 {resumo.os_realizadas} OS
               </Badge>
               <Badge variant="secondary" className="gap-1 bg-emerald-100 text-emerald-800 border-emerald-300">
                 <Check className="h-3 w-3" />
@@ -433,7 +445,7 @@ export default function BudgetKanbanPage() {
                                 {...provided.draggableProps}
                                 className={`rounded-md border bg-card shadow-sm transition-shadow cursor-pointer ${
                                   snapshot.isDragging ? "shadow-lg ring-2 ring-primary/20" : "hover:shadow-md"
-                                } ${item.orcamento_realizado ? "border-l-4 border-l-emerald-500" : "border-l-4 border-l-amber-400"}`}
+                                } ${item.orcamento_realizado ? "border-l-4 border-l-emerald-500" : item.os_realizada ? "border-l-4 border-l-blue-500" : "border-l-4 border-l-amber-400"}`}
                                 onClick={() => setSelectedCard(item)}
                               >
                                 <div className="flex items-start gap-1 px-3 py-2">
@@ -477,6 +489,29 @@ export default function BudgetKanbanPage() {
                                       </div>
                                     )}
 
+                                    {/* GC OS summary */}
+                                    {item.gc_os && (
+                                      <div className="mt-2 p-2 rounded bg-blue-50 border border-blue-200">
+                                        <div className="flex items-center justify-between">
+                                          <span className="text-xs font-medium text-blue-800">
+                                            OS #{item.gc_os.gc_os_codigo}
+                                          </span>
+                                          <span className="text-xs font-bold text-blue-700">
+                                            R$ {parseFloat(item.gc_os.gc_valor_total).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+                                          </span>
+                                        </div>
+                                        <div className="flex items-center gap-1 mt-1">
+                                          <div
+                                            className="h-2 w-2 rounded-full"
+                                            style={{ backgroundColor: item.gc_os.gc_cor_situacao }}
+                                          />
+                                          <span className="text-[10px] text-blue-700">
+                                            {item.gc_os.gc_situacao}
+                                          </span>
+                                        </div>
+                                      </div>
+                                    )}
+
                                     {/* Links */}
                                     <div className="flex items-center gap-2 mt-2">
                                       <a
@@ -498,7 +533,19 @@ export default function BudgetKanbanPage() {
                                           onClick={(e) => e.stopPropagation()}
                                         >
                                           <ExternalLink className="h-3 w-3" />
-                                          GestãoClick
+                                          Orçamento GC
+                                        </a>
+                                      )}
+                                      {item.gc_os && (
+                                        <a
+                                          href={item.gc_os.gc_link}
+                                          target="_blank"
+                                          rel="noopener noreferrer"
+                                          className="inline-flex items-center gap-1 text-[10px] text-blue-600 hover:underline"
+                                          onClick={(e) => e.stopPropagation()}
+                                        >
+                                          <ExternalLink className="h-3 w-3" />
+                                          OS GC
                                         </a>
                                       )}
                                     </div>
@@ -555,8 +602,8 @@ export default function BudgetKanbanPage() {
               <DialogHeader>
                 <DialogTitle className="flex items-center justify-between gap-4">
                   <span className="truncate">{selectedCard.cliente}</span>
-                  <Badge variant={selectedCard.orcamento_realizado ? "default" : "secondary"}>
-                    {selectedCard.orcamento_realizado ? "Orçamento Realizado" : "Pendente"}
+                  <Badge variant={selectedCard.orcamento_realizado ? "default" : selectedCard.os_realizada ? "outline" : "secondary"}>
+                    {selectedCard.orcamento_realizado ? "Orçamento Realizado" : selectedCard.os_realizada ? "OS Realizada" : "Pendente"}
                   </Badge>
                 </DialogTitle>
               </DialogHeader>
@@ -601,7 +648,18 @@ export default function BudgetKanbanPage() {
                       className="inline-flex items-center gap-1.5 text-sm text-emerald-600 hover:underline font-medium"
                     >
                       <ExternalLink className="h-4 w-4" />
-                      Abrir no GestãoClick
+                      Orçamento GC
+                    </a>
+                  )}
+                  {selectedCard.gc_os && (
+                    <a
+                      href={selectedCard.gc_os.gc_link}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1.5 text-sm text-blue-600 hover:underline font-medium"
+                    >
+                      <ExternalLink className="h-4 w-4" />
+                      OS GC
                     </a>
                   )}
                 </div>
@@ -636,6 +694,41 @@ export default function BudgetKanbanPage() {
                       <div>
                         <span className="text-emerald-700">Data:</span>
                         <span className="ml-2">{selectedCard.gc_orcamento.gc_data}</span>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* GC OS details */}
+                {selectedCard.gc_os && (
+                  <div className="p-3 rounded-lg bg-blue-50 border border-blue-200 space-y-2">
+                    <h4 className="font-semibold text-sm text-blue-900">Ordem de Serviço GestãoClick</h4>
+                    <div className="grid grid-cols-2 gap-2 text-sm">
+                      <div>
+                        <span className="text-blue-700">Código:</span>
+                        <span className="ml-2 font-medium">#{selectedCard.gc_os.gc_os_codigo}</span>
+                      </div>
+                      <div>
+                        <span className="text-blue-700">Valor:</span>
+                        <span className="ml-2 font-bold">
+                          R$ {parseFloat(selectedCard.gc_os.gc_valor_total).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+                        </span>
+                      </div>
+                      <div className="col-span-2 flex items-center gap-1.5">
+                        <span className="text-blue-700">Situação:</span>
+                        <div
+                          className="h-2.5 w-2.5 rounded-full"
+                          style={{ backgroundColor: selectedCard.gc_os.gc_cor_situacao }}
+                        />
+                        <span className="font-medium">{selectedCard.gc_os.gc_situacao}</span>
+                      </div>
+                      <div>
+                        <span className="text-blue-700">Responsável:</span>
+                        <span className="ml-2">{selectedCard.gc_os.gc_vendedor}</span>
+                      </div>
+                      <div>
+                        <span className="text-blue-700">Data:</span>
+                        <span className="ml-2">{selectedCard.gc_os.gc_data}</span>
                       </div>
                     </div>
                   </div>
