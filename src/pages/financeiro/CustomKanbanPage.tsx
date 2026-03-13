@@ -533,7 +533,6 @@ export default function CustomKanbanPage() {
             {/* Questionnaire Selector */}
             <Popover open={showQuestionnaireSelector} onOpenChange={(open) => {
               setShowQuestionnaireSelector(open);
-              if (open && !questionnairesLoaded) loadCachedQuestionnaires();
             }}>
               <PopoverTrigger asChild>
                 <Button variant="outline" size="sm" className="gap-2">
