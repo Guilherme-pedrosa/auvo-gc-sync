@@ -31,11 +31,7 @@ const navItems = [
     icon: ListChecks,
     path: "/financeiro/kanban-personalizado",
   },
-  {
-    label: "Dashboard Orçamentos",
-    icon: DollarSign,
-    path: "/financeiro/dashboard-orcamentos",
-  },
+  // Dashboard Orçamentos is now the home page
 ];
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
