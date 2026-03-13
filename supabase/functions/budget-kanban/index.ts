@@ -272,6 +272,28 @@ Deno.serve(async (req) => {
       });
     }
 
+    // === MODE: SAVE_POSITIONS — persist column/position changes from drag-drop ===
+    if (mode === "save_positions") {
+      const positions: { auvo_task_id: string; coluna: string; posicao: number }[] = body.positions || [];
+      if (positions.length > 0) {
+        for (let i = 0; i < positions.length; i += 50) {
+          const batch = positions.slice(i, i + 50).map((p) => ({
+            auvo_task_id: p.auvo_task_id,
+            coluna: p.coluna,
+            posicao: p.posicao,
+            atualizado_em: new Date().toISOString(),
+          }));
+          await sbClient
+            .from("kanban_orcamentos_cache")
+            .upsert(batch, { onConflict: "auvo_task_id", ignoreDuplicates: false });
+        }
+      }
+      return new Response(JSON.stringify({ ok: true, saved: positions.length }), {
+        status: 200,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
     // === MODE: SYNC — fetch APIs, update cache ===
     const auvoApiKey = Deno.env.get("AUVO_APP_KEY");
     const auvoApiToken = Deno.env.get("AUVO_TOKEN");
