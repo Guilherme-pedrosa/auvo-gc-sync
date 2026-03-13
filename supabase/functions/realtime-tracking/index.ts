@@ -217,8 +217,11 @@ Deno.serve(async (req) => {
         }
       }
 
+      const auvoTaskId = String(task.taskID || task.id || "");
+      const gcOs = gcOsMap[auvoTaskId] || null;
+
       techMap[techId].tarefas.push({
-        taskId: String(task.taskID || task.id || ""),
+        taskId: auvoTaskId,
         cliente: customerName,
         endereco: typeof address === "object" ? "" : String(address).substring(0, 100),
         status: statusLabel,
@@ -231,6 +234,8 @@ Deno.serve(async (req) => {
         pendencia: String(task.pendency ?? task.pendencia ?? "").trim(),
         descricao: String(task.description || task.orientation || "").substring(0, 150),
         duration: String(task.duration || ""),
+        gcOsCodigo: gcOs?.codigo || "",
+        gcOsValor: gcOs?.valor || "",
       });
     }
 
