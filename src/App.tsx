@@ -25,6 +25,7 @@ const App = () => (
           <Route path="/financeiro/dashboard-tecnicos" element={<TechDashboardPage />} />
           <Route path="/financeiro/kanban-orcamentos" element={<BudgetKanbanPage />} />
           <Route path="/financeiro/kanban-personalizado" element={<CustomKanbanPage />} />
+          <Route path="/financeiro/dashboard-orcamentos" element={<DashboardOrcamentosPage />} />
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
           <Route path="*" element={<NotFound />} />
         </Routes>

@@ -78,6 +78,22 @@ const Index = () => {
             </Button>
           </CardContent>
         </Card>
+
+        <Card className="cursor-pointer hover:border-primary/50 transition-colors" onClick={() => navigate("/financeiro/dashboard-orcamentos")}>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-lg">
+              💰 Dashboard Orçamentos
+            </CardTitle>
+            <CardDescription>
+              Métricas de valores, situações, conversão e análise por técnico dos orçamentos
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Button variant="outline" className="w-full">
+              Acessar <ArrowRight className="ml-2 h-4 w-4" />
+            </Button>
+          </CardContent>
+        </Card>
       </div>
     </div>
   );
