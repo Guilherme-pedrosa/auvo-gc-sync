@@ -284,34 +284,32 @@ export default function CustomKanbanPage() {
       setColumns(cols);
     } else {
       const faltaPreenchimento = data.items.filter(
-        (i) => !i.orcamento_realizado && !i.os_realizada && !hasFilledQuestionnaire(i)
+        (i) => !i.os_realizada && !hasFilledQuestionnaire(i)
       );
       const aFazer = data.items.filter(
-        (i) => !i.orcamento_realizado && !i.os_realizada && hasFilledQuestionnaire(i)
+        (i) => !i.os_realizada && hasFilledQuestionnaire(i)
       );
-      const osRealizada = data.items.filter((i) => i.os_realizada);
-      const orcItems = data.items.filter((i) => i.orcamento_realizado && !i.os_realizada);
+      const osItems = data.items.filter((i) => i.os_realizada);
 
       const situacaoMap: Record<string, KanbanItem[]> = {};
-      for (const item of orcItems) {
-        const sit = item.gc_orcamento?.gc_situacao || "Sem situação";
+      for (const item of osItems) {
+        const sit = item.gc_os?.gc_situacao || "Sem situação";
         if (!situacaoMap[sit]) situacaoMap[sit] = [];
         situacaoMap[sit].push(item);
       }
 
-      const orcColumns: KanbanColumn[] = Object.entries(situacaoMap)
+      const osColumns: KanbanColumn[] = Object.entries(situacaoMap)
         .sort(([a], [b]) => a.localeCompare(b))
         .map(([sit, items]) => ({
-          id: `orc_${sit.replace(/\s+/g, "_").toLowerCase()}`,
-          title: `💰 ${sit}`,
+          id: `os_${sit.replace(/\s+/g, "_").toLowerCase()}`,
+          title: `🔧 ${sit}`,
           items,
         }));
 
       setColumns([
         { id: "falta_preenchimento", title: "⚠️ Falta Preenchimento", items: faltaPreenchimento },
         { id: "a_fazer", title: "📋 A Fazer", items: aFazer },
-        { id: "os_realizada", title: "🔧 OS Realizada", items: osRealizada },
-        ...orcColumns,
+        ...osColumns,
       ]);
     }
 
