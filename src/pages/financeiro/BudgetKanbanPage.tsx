@@ -203,10 +203,24 @@ export default function BudgetKanbanPage() {
     }));
   }, [columns, filterTecnico, allClientesSelected, selectedClientes]);
 
-  // Drag and drop
+  // Drag and drop (cards and columns)
   const onDragEnd = useCallback((result: DropResult) => {
-    const { source, destination } = result;
+    const { source, destination, type } = result;
     if (!destination) return;
+
+    // Column reorder
+    if (type === "COLUMN") {
+      if (source.index === destination.index) return;
+      setColumns((prev) => {
+        const newCols = [...prev];
+        const [moved] = newCols.splice(source.index, 1);
+        newCols.splice(destination.index, 0, moved);
+        return newCols;
+      });
+      return;
+    }
+
+    // Card reorder
     if (source.droppableId === destination.droppableId && source.index === destination.index) return;
     setColumns((prev) => {
       const newCols = prev.map((c) => ({ ...c, items: [...c.items] }));
