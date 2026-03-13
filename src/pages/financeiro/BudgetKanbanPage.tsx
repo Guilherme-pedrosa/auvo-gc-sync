@@ -873,7 +873,7 @@ export default function BudgetKanbanPage() {
                 </div>
 
                 {/* Links */}
-                <div className="flex gap-3">
+                <div className="flex gap-3 flex-wrap">
                   <a
                     href={selectedCard.auvo_link}
                     target="_blank"
@@ -883,6 +883,28 @@ export default function BudgetKanbanPage() {
                     <ExternalLink className="h-4 w-4" />
                     Abrir no Auvo
                   </a>
+                  {selectedCard.auvo_task_url && (
+                    <a
+                      href={selectedCard.auvo_task_url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1.5 text-sm text-orange-600 hover:underline font-medium"
+                    >
+                      <FileDown className="h-4 w-4" />
+                      OS Digital
+                    </a>
+                  )}
+                  {selectedCard.auvo_survey_url && (
+                    <a
+                      href={selectedCard.auvo_survey_url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1.5 text-sm text-purple-600 hover:underline font-medium"
+                    >
+                      <Star className="h-4 w-4" />
+                      Pesquisa de Satisfação
+                    </a>
+                  )}
                   {selectedCard.gc_orcamento && (
                     <a
                       href={selectedCard.gc_orcamento.gc_link}
