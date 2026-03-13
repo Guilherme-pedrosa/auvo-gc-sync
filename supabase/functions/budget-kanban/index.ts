@@ -270,17 +270,21 @@ Deno.serve(async (req) => {
         _posicao: row.posicao,
       }));
 
+      const filteredItems = items.filter((item: any) =>
+        inDateRange(item.data_tarefa, startDate, endDate)
+      );
+
       const resumo = {
-        periodo: { inicio: meta?.periodo_inicio || startDate, fim: meta?.periodo_fim || endDate },
-        total_tarefas_com_questionario: items.length,
-        orcamentos_realizados: items.filter((i: any) => i.orcamento_realizado).length,
-        os_realizadas: items.filter((i: any) => i.os_realizada).length,
-        pendentes: items.filter((i: any) => !i.orcamento_realizado && !i.os_realizada).length,
+        periodo: { inicio: startDate, fim: endDate },
+        total_tarefas_com_questionario: filteredItems.length,
+        orcamentos_realizados: filteredItems.filter((i: any) => i.orcamento_realizado).length,
+        os_realizadas: filteredItems.filter((i: any) => i.os_realizada).length,
+        pendentes: filteredItems.filter((i: any) => !i.orcamento_realizado && !i.os_realizada).length,
       };
 
       return new Response(JSON.stringify({
         resumo,
-        items,
+        items: filteredItems,
         ultimo_sync: meta?.ultimo_sync || null,
         from_cache: true,
       }), {
