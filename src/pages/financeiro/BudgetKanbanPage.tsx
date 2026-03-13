@@ -61,7 +61,8 @@ type ApiResponse = {
     periodo: { inicio: string; fim: string };
     total_tarefas_com_questionario: number;
     orcamentos_realizados: number;
-    orcamentos_pendentes: number;
+    os_realizadas: number;
+    pendentes: number;
   };
   items: KanbanItem[];
   error?: string;
