@@ -478,6 +478,8 @@ Deno.serve(async (req) => {
       return {
         auvo_task_id: taskId,
         auvo_link: `https://app2.auvo.com.br/relatorioTarefas/DetalheTarefa/${taskId}`,
+        auvo_task_url: String(task.taskUrl || ""),
+        auvo_survey_url: String(task.survey || ""),
         cliente: clienteSync || "",
         _customerId: (!clienteSync && task.customerId && Number(task.customerId) > 0) ? String(task.customerId) : null,
         _externalId: (!clienteSync && !task.customerId) ? String(task.externalId || "").trim() : null,
