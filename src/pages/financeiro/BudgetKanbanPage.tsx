@@ -123,11 +123,28 @@ export default function BudgetKanbanPage() {
     if (!data?.items || columnsInitialized) return;
     const aFazer = data.items.filter((i) => !i.orcamento_realizado && !i.os_realizada);
     const osRealizada = data.items.filter((i) => i.os_realizada);
-    const orcRealizado = data.items.filter((i) => i.orcamento_realizado && !i.os_realizada);
+    const orcItems = data.items.filter((i) => i.orcamento_realizado && !i.os_realizada);
+
+    // Group orçamentos by GC situação
+    const situacaoMap: Record<string, KanbanItem[]> = {};
+    for (const item of orcItems) {
+      const sit = item.gc_orcamento?.gc_situacao || "Sem situação";
+      if (!situacaoMap[sit]) situacaoMap[sit] = [];
+      situacaoMap[sit].push(item);
+    }
+
+    const orcColumns: KanbanColumn[] = Object.entries(situacaoMap)
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([sit, items]) => ({
+        id: `orc_${sit.replace(/\s+/g, "_").toLowerCase()}`,
+        title: `💰 ${sit}`,
+        items,
+      }));
+
     setColumns([
       { id: "a_fazer", title: "📋 A Fazer", items: aFazer },
       { id: "os_realizada", title: "🔧 OS Realizada", items: osRealizada },
-      { id: "concluido", title: "✅ Orçamento Realizado", items: orcRealizado },
+      ...orcColumns,
     ]);
     setColumnsInitialized(true);
   }, [data, columnsInitialized]);
@@ -426,7 +443,7 @@ export default function BudgetKanbanPage() {
                           >
                             <Edit2 className="h-3 w-3" />
                           </Button>
-                          {column.id !== "a_fazer" && column.id !== "concluido" && (
+                          {column.id !== "a_fazer" && column.id !== "os_realizada" && !column.id.startsWith("orc_") && (
                             <Button
                               size="icon" variant="ghost" className="h-6 w-6 text-destructive"
                               onClick={() => deleteColumn(column.id)}
