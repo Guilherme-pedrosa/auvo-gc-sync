@@ -38,6 +38,8 @@ type GcDocData = {
 type KanbanItem = {
   auvo_task_id: string;
   auvo_link: string;
+  auvo_task_url?: string;
+  auvo_survey_url?: string;
   cliente: string;
   tecnico: string;
   data_tarefa: string;
