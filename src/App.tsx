@@ -9,6 +9,7 @@ import AuvoSyncPage from "./pages/financeiro/AuvoSyncPage.tsx";
 import TechDashboardPage from "./pages/financeiro/TechDashboardPage.tsx";
 import BudgetKanbanPage from "./pages/financeiro/BudgetKanbanPage.tsx";
 import CustomKanbanPage from "./pages/financeiro/CustomKanbanPage.tsx";
+import DashboardOrcamentosPage from "./pages/financeiro/DashboardOrcamentosPage.tsx";
 
 const queryClient = new QueryClient();
 
