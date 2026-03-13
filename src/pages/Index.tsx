@@ -46,6 +46,22 @@ const Index = () => {
             </Button>
           </CardContent>
         </Card>
+
+        <Card className="cursor-pointer hover:border-primary/50 transition-colors" onClick={() => navigate("/financeiro/kanban-orcamentos")}>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-lg">
+              📋 Kanban Orçamentos
+            </CardTitle>
+            <CardDescription>
+              Tarefas com pedido de peças → acompanhamento de orçamentos no GestãoClick
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Button variant="outline" className="w-full">
+              Acessar <ArrowRight className="ml-2 h-4 w-4" />
+            </Button>
+          </CardContent>
+        </Card>
       </div>
     </div>
   );
