@@ -81,6 +81,13 @@ async function fetchAuvoTasksWithQuestionnaire(
     if (entities.length < pageSize) break;
     page++;
   }
+
+  // Log sample task fields for debugging customer resolution
+  if (allTasks.length > 0) {
+    const sample = allTasks[0];
+    console.log(`[budget-kanban] Sample task fields: taskID=${sample.taskID}, customerName=${sample.customerName}, customerId=${sample.customerId}, customer=${JSON.stringify(sample.customer)?.substring(0,500)}`);
+  }
+
   return allTasks;
 }
 
