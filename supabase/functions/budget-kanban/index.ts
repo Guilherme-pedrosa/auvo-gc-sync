@@ -304,9 +304,6 @@ Deno.serve(async (req) => {
     };
 
     // Load conciliation snapshot for customer name mapping
-    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
-    const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-    const sbClient = createClient(supabaseUrl, supabaseKey);
 
     const auvoTaskClienteMap: Record<string, string> = {};
     try {
