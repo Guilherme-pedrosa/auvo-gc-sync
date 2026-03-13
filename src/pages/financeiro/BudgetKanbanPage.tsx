@@ -376,27 +376,35 @@ export default function BudgetKanbanPage() {
   const addColumn = useCallback(() => {
     if (!newColumnTitle.trim()) return;
     const id = `custom_${Date.now()}`;
-    setColumns((prev) => [...prev, { id, title: newColumnTitle.trim(), items: [] }]);
+    setColumns((prev) => {
+      const newCols = [...prev, { id, title: newColumnTitle.trim(), items: [] }];
+      savePositions(newCols);
+      return newCols;
+    });
     setNewColumnTitle("");
     setShowAddColumn(false);
     toast.success(`Coluna "${newColumnTitle.trim()}" criada`);
-  }, [newColumnTitle]);
+  }, [newColumnTitle, savePositions]);
 
   const deleteColumn = useCallback((columnId: string) => {
     setColumns((prev) => {
       const col = prev.find((c) => c.id === columnId);
       if (!col) return prev;
-      return prev
+      const newCols = prev
         .filter((c) => c.id !== columnId)
         .map((c) => c.id === "a_fazer" ? { ...c, items: [...c.items, ...col.items] } : c);
+      savePositions(newCols);
+      return newCols;
     });
-  }, []);
+  }, [savePositions]);
 
   const saveColumnRename = useCallback(() => {
     if (!editingColumnId || !editingColumnTitle.trim()) return;
-    setColumns((prev) =>
-      prev.map((c) => c.id === editingColumnId ? { ...c, title: editingColumnTitle.trim() } : c)
-    );
+    setColumns((prev) => {
+      const newCols = prev.map((c) => c.id === editingColumnId ? { ...c, title: editingColumnTitle.trim() } : c);
+      savePositions(newCols);
+      return newCols;
+    });
     setEditingColumnId(null);
   }, [editingColumnId, editingColumnTitle]);
 
