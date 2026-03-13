@@ -122,7 +122,19 @@ export default function BudgetKanbanPage() {
   // Initialize columns from API data
   useMemo(() => {
     if (!data?.items || columnsInitialized) return;
-    const aFazer = data.items.filter((i) => !i.orcamento_realizado && !i.os_realizada);
+
+    // Check if item has meaningful questionnaire answers (non-URL text)
+    const hasFilledQuestionnaire = (item: KanbanItem) =>
+      item.questionario_respostas.some(
+        (r) => r.reply && r.reply.trim() !== "" && !r.reply.startsWith("http")
+      );
+
+    const faltaPreenchimento = data.items.filter(
+      (i) => !i.orcamento_realizado && !i.os_realizada && !hasFilledQuestionnaire(i)
+    );
+    const aFazer = data.items.filter(
+      (i) => !i.orcamento_realizado && !i.os_realizada && hasFilledQuestionnaire(i)
+    );
     const osRealizada = data.items.filter((i) => i.os_realizada);
     const orcItems = data.items.filter((i) => i.orcamento_realizado && !i.os_realizada);
 
@@ -143,6 +155,7 @@ export default function BudgetKanbanPage() {
       }));
 
     setColumns([
+      { id: "falta_preenchimento", title: "⚠️ Falta Preenchimento", items: faltaPreenchimento },
       { id: "a_fazer", title: "📋 A Fazer", items: aFazer },
       { id: "os_realizada", title: "🔧 OS Realizada", items: osRealizada },
       ...orcColumns,
