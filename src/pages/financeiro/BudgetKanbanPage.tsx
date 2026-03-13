@@ -857,12 +857,11 @@ export default function BudgetKanbanPage() {
                       {selectedCard.questionario_respostas
                         .filter((r) => r.reply.startsWith("http"))
                         .map((r, i) => (
-                          <a
+                          <button
                             key={i}
-                            href={r.reply}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="block rounded-md overflow-hidden border hover:ring-2 ring-primary/30 transition-all"
+                            type="button"
+                            onClick={() => setExpandedPhoto(r.reply)}
+                            className="block rounded-md overflow-hidden border hover:ring-2 ring-primary/30 transition-all cursor-zoom-in"
                           >
                             <img
                               src={r.reply}
@@ -870,7 +869,7 @@ export default function BudgetKanbanPage() {
                               className="w-full h-24 object-cover"
                               loading="lazy"
                             />
-                          </a>
+                          </button>
                         ))}
                     </div>
                   </div>
