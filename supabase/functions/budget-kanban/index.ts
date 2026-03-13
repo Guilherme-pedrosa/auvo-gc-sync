@@ -85,7 +85,7 @@ async function fetchAuvoTasksWithQuestionnaire(
   // Log sample task fields for debugging customer resolution
   if (allTasks.length > 0) {
     const sample = allTasks[0];
-    console.log(`[budget-kanban] Sample task fields: taskID=${sample.taskID}, customerName=${sample.customerName}, customerId=${sample.customerId}, customer=${JSON.stringify(sample.customer)?.substring(0,500)}`);
+    console.log(`[budget-kanban] Sample task fields: taskID=${sample.taskID}, customerDescription=${sample.customerDescription}, customerName=${sample.customerName}, customerId=${sample.customerId}, externalId=${sample.externalId}, customer=${JSON.stringify(sample.customer)?.substring(0,500)}`);
   }
 
   return allTasks;
