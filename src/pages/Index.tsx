@@ -463,19 +463,45 @@ export default function Index() {
               <PopoverTrigger asChild>
                 <Button variant="outline" size="sm" className="gap-2 text-xs h-8">
                   <CalendarIcon className="h-3.5 w-3.5" />
-                  {format(dateRange.from, "dd/MM/yy")} - {format(effectiveDateRange.to, "dd/MM/yy")}
+                  {format(dateRange.from, "dd/MM/yy")}
                 </Button>
               </PopoverTrigger>
               <PopoverContent className="w-auto p-0" align="end">
                 <Calendar
-                  mode="range"
-                  selected={{ from: dateRange.from, to: dateRange.to }}
-                  onSelect={(range) => {
-                    if (!range?.from) return;
-                    setDateRange({ from: range.from, to: range.to });
+                  mode="single"
+                  selected={dateRange.from}
+                  onSelect={(d) => {
+                    if (!d) return;
+                    setDateRange((prev) => ({
+                      from: d,
+                      to: prev.to >= d ? prev.to : d,
+                    }));
                   }}
                   locale={ptBR}
-                  numberOfMonths={2}
+                  className="p-3 pointer-events-auto"
+                />
+              </PopoverContent>
+            </Popover>
+            <span className="text-xs text-muted-foreground">até</span>
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button variant="outline" size="sm" className="gap-2 text-xs h-8">
+                  <CalendarIcon className="h-3.5 w-3.5" />
+                  {format(dateRange.to, "dd/MM/yy")}
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-auto p-0" align="end">
+                <Calendar
+                  mode="single"
+                  selected={dateRange.to}
+                  onSelect={(d) => {
+                    if (!d) return;
+                    setDateRange((prev) => ({
+                      from: prev.from <= d ? prev.from : d,
+                      to: d,
+                    }));
+                  }}
+                  locale={ptBR}
                   className="p-3 pointer-events-auto"
                 />
               </PopoverContent>
