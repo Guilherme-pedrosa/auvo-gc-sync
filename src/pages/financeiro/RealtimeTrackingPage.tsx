@@ -21,6 +21,7 @@ type TaskItem = {
   cliente: string;
   endereco: string;
   status: string;
+  atrasada: boolean;
   horaInicio: string;
   horaFim: string;
   data: string;
@@ -40,6 +41,7 @@ type TecnicoGroup = {
     finalizadas: number;
     emAndamento: number;
     agendadas: number;
+    atrasadas: number;
   };
 };
 
@@ -47,6 +49,7 @@ type TrackingData = {
   data: string;
   total_tarefas: number;
   total_tecnicos: number;
+  total_atrasadas: number;
   tecnicos: TecnicoGroup[];
 };
 
