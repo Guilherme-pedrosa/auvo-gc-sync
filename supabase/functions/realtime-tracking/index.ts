@@ -129,7 +129,7 @@ Deno.serve(async (req) => {
 
       techMap[techId].tarefas.push({
         taskId: String(task.taskID || task.id || ""),
-        cliente: typeof customer === "object" ? customer.name || "" : String(customer),
+        cliente: customerName,
         endereco: typeof address === "object" ? "" : String(address).substring(0, 100),
         status: statusLabel,
         horaInicio: startTime,
