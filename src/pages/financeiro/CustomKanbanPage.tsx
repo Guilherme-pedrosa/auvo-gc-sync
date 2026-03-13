@@ -105,10 +105,31 @@ export default function CustomKanbanPage() {
   const [questionnaireSearch, setQuestionnaireSearch] = useState("");
   const [isLoadingQuestionnaires, setIsLoadingQuestionnaires] = useState(false);
   const [availableQuestionnaires, setAvailableQuestionnaires] = useState<QuestionnaireOption[]>([]);
+  const [questionnairesLoaded, setQuestionnairesLoaded] = useState(false);
 
   const questionnaireIds = useMemo(() => Array.from(selectedQuestionnaires), [selectedQuestionnaires]);
 
-  // Fetch available questionnaires
+  const CACHE_KEY = "kanban_custom_questionnaires";
+
+  // Load cached questionnaires from DB on mount
+  const loadCachedQuestionnaires = useCallback(async () => {
+    try {
+      const { data } = await supabase
+        .from("kanban_sync_meta")
+        .select("periodo_inicio")
+        .eq("id", CACHE_KEY)
+        .single();
+      if (data?.periodo_inicio) {
+        const cached = JSON.parse(data.periodo_inicio) as QuestionnaireOption[];
+        if (cached.length > 0) {
+          setAvailableQuestionnaires(cached);
+          setQuestionnairesLoaded(true);
+        }
+      }
+    } catch {}
+  }, []);
+
+  // Fetch fresh from API and save to cache
   const loadQuestionnaires = useCallback(async () => {
     setIsLoadingQuestionnaires(true);
     try {
@@ -120,7 +141,14 @@ export default function CustomKanbanPage() {
         },
       });
       if (error) throw error;
-      setAvailableQuestionnaires(data?.questionnaires || []);
+      const list = data?.questionnaires || [];
+      setAvailableQuestionnaires(list);
+      setQuestionnairesLoaded(true);
+      // Save to DB cache
+      await supabase
+        .from("kanban_sync_meta")
+        .upsert({ id: CACHE_KEY, periodo_inicio: JSON.stringify(list), ultimo_sync: new Date().toISOString() });
+      toast.success(`${list.length} questionários carregados da API`);
     } catch (e: any) {
       toast.error("Erro ao carregar questionários: " + (e?.message || ""));
     } finally {
