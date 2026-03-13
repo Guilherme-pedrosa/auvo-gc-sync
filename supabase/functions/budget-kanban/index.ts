@@ -221,6 +221,58 @@ Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   try {
+    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+    const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+    const sbClient = createClient(supabaseUrl, supabaseKey);
+
+    let body: any = {};
+    try { const text = await req.text(); if (text) body = JSON.parse(text); } catch {}
+
+    const mode = body.mode || "cache"; // "cache" = read DB, "sync" = fetch APIs + update DB
+    const today = new Date().toISOString().split("T")[0];
+    const startDate = body.start_date || "2026-01-01";
+    const endDate = body.end_date || today;
+
+    // === MODE: CACHE — read from DB ===
+    if (mode === "cache") {
+      const { data: cached } = await sbClient
+        .from("kanban_orcamentos_cache")
+        .select("*")
+        .order("coluna")
+        .order("posicao");
+
+      const { data: meta } = await sbClient
+        .from("kanban_sync_meta")
+        .select("*")
+        .eq("id", "default")
+        .single();
+
+      const items = (cached || []).map((row: any) => ({
+        ...row.dados,
+        _coluna: row.coluna,
+        _posicao: row.posicao,
+      }));
+
+      const resumo = {
+        periodo: { inicio: meta?.periodo_inicio || startDate, fim: meta?.periodo_fim || endDate },
+        total_tarefas_com_questionario: items.length,
+        orcamentos_realizados: items.filter((i: any) => i.orcamento_realizado).length,
+        os_realizadas: items.filter((i: any) => i.os_realizada).length,
+        pendentes: items.filter((i: any) => !i.orcamento_realizado && !i.os_realizada).length,
+      };
+
+      return new Response(JSON.stringify({
+        resumo,
+        items,
+        ultimo_sync: meta?.ultimo_sync || null,
+        from_cache: true,
+      }), {
+        status: 200,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    // === MODE: SYNC — fetch APIs, update cache ===
     const auvoApiKey = Deno.env.get("AUVO_APP_KEY");
     const auvoApiToken = Deno.env.get("AUVO_TOKEN");
     const gcAccessToken = Deno.env.get("GC_ACCESS_TOKEN");
@@ -236,9 +288,6 @@ Deno.serve(async (req) => {
         status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
-
-    let body: any = {};
-    try { const text = await req.text(); if (text) body = JSON.parse(text); } catch {}
 
     const today = new Date().toISOString().split("T")[0];
     const startDate = body.start_date || "2026-01-01";
