@@ -499,9 +499,7 @@ Deno.serve(async (req) => {
 
     // Sort
     items.sort((a: any, b: any) => {
-      const aHasGc = a.orcamento_realizado || a.os_realizada;
-      const bHasGc = b.orcamento_realizado || b.os_realizada;
-      if (aHasGc !== bHasGc) return aHasGc ? 1 : -1;
+      if (a.os_realizada !== b.os_realizada) return a.os_realizada ? 1 : -1;
       return b.data_tarefa.localeCompare(a.data_tarefa);
     });
 
