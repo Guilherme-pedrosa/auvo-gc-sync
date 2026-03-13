@@ -159,7 +159,7 @@ async function fetchGcOrcamentosMap(
             gc_valor_total: String(orc.valor_total || "0"),
             gc_vendedor: String(orc.nome_vendedor || ""),
             gc_data: String(orc.data || ""),
-            gc_link: `https://gestaoclick.com/orcamentos/visualizar/${orc.id}`,
+            gc_link: `https://gestaoclick.com/orcamentos_servicos/editar/${orc.id}?retorno=%2Forcamentos_servicos`,
           };
         }
       }
