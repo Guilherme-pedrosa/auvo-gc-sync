@@ -239,7 +239,7 @@ export default function CustomKanbanPage() {
         let col = (item as any)._coluna || "a_fazer";
         const { _coluna, _posicao, ...cleanItem } = item as any;
 
-        if (col === "a_fazer" && !cleanItem.orcamento_realizado && !cleanItem.os_realizada && !hasFilledQuestionnaire(cleanItem)) {
+        if (col === "a_fazer" && !cleanItem.os_realizada && !hasFilledQuestionnaire(cleanItem)) {
           col = "falta_preenchimento";
         }
 
