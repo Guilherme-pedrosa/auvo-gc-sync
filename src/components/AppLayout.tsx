@@ -7,7 +7,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 
 const navItems = [
   {
-    label: "Início",
+    label: "Dashboard",
     icon: LayoutDashboard,
     path: "/",
   },
