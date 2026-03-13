@@ -727,7 +727,7 @@ export default function BudgetKanbanPage() {
                                             )}
 
                                             {/* Links */}
-                                            <div className="flex items-center gap-2 mt-2">
+                                            <div className="flex items-center gap-2 mt-2 flex-wrap">
                                               <a
                                                 href={item.auvo_link}
                                                 target="_blank"
@@ -738,6 +738,30 @@ export default function BudgetKanbanPage() {
                                                 <ExternalLink className="h-3 w-3" />
                                                 Auvo
                                               </a>
+                                              {item.auvo_task_url && (
+                                                <a
+                                                  href={item.auvo_task_url}
+                                                  target="_blank"
+                                                  rel="noopener noreferrer"
+                                                  className="inline-flex items-center gap-1 text-[10px] text-orange-600 hover:underline"
+                                                  onClick={(e) => e.stopPropagation()}
+                                                >
+                                                  <FileDown className="h-3 w-3" />
+                                                  OS Digital
+                                                </a>
+                                              )}
+                                              {item.auvo_survey_url && (
+                                                <a
+                                                  href={item.auvo_survey_url}
+                                                  target="_blank"
+                                                  rel="noopener noreferrer"
+                                                  className="inline-flex items-center gap-1 text-[10px] text-purple-600 hover:underline"
+                                                  onClick={(e) => e.stopPropagation()}
+                                                >
+                                                  <Star className="h-3 w-3" />
+                                                  Pesquisa
+                                                </a>
+                                              )}
                                               {item.gc_orcamento && (
                                                 <a
                                                   href={item.gc_orcamento.gc_link}
