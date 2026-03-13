@@ -489,6 +489,29 @@ export default function BudgetKanbanPage() {
                                       </div>
                                     )}
 
+                                    {/* GC OS summary */}
+                                    {item.gc_os && (
+                                      <div className="mt-2 p-2 rounded bg-blue-50 border border-blue-200">
+                                        <div className="flex items-center justify-between">
+                                          <span className="text-xs font-medium text-blue-800">
+                                            OS #{item.gc_os.gc_os_codigo}
+                                          </span>
+                                          <span className="text-xs font-bold text-blue-700">
+                                            R$ {parseFloat(item.gc_os.gc_valor_total).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+                                          </span>
+                                        </div>
+                                        <div className="flex items-center gap-1 mt-1">
+                                          <div
+                                            className="h-2 w-2 rounded-full"
+                                            style={{ backgroundColor: item.gc_os.gc_cor_situacao }}
+                                          />
+                                          <span className="text-[10px] text-blue-700">
+                                            {item.gc_os.gc_situacao}
+                                          </span>
+                                        </div>
+                                      </div>
+                                    )}
+
                                     {/* Links */}
                                     <div className="flex items-center gap-2 mt-2">
                                       <a
@@ -510,7 +533,19 @@ export default function BudgetKanbanPage() {
                                           onClick={(e) => e.stopPropagation()}
                                         >
                                           <ExternalLink className="h-3 w-3" />
-                                          GestãoClick
+                                          Orçamento GC
+                                        </a>
+                                      )}
+                                      {item.gc_os && (
+                                        <a
+                                          href={item.gc_os.gc_link}
+                                          target="_blank"
+                                          rel="noopener noreferrer"
+                                          className="inline-flex items-center gap-1 text-[10px] text-blue-600 hover:underline"
+                                          onClick={(e) => e.stopPropagation()}
+                                        >
+                                          <ExternalLink className="h-3 w-3" />
+                                          OS GC
                                         </a>
                                       )}
                                     </div>
