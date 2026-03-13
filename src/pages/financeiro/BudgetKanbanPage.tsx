@@ -120,14 +120,21 @@ export default function BudgetKanbanPage() {
           end_date: format(dateRange.to, "yyyy-MM-dd"),
         },
       });
+
       if (error) throw error;
       if (syncData?.error) throw new Error(syncData.error);
-      setColumnsInitialized(false);
-      refetch();
-      toast.success(`Sincronizado! ${syncData.resumo.total_tarefas_com_questionario} tarefas atualizadas`);
+
+      toast.success(`Sincronizado! ${syncData?.resumo?.total_tarefas_com_questionario ?? 0} tarefas atualizadas`);
     } catch (e: any) {
-      toast.error(`Erro ao sincronizar: ${e.message}`);
+      toast.warning(`Sincronização em processamento. Atualizando cache...`);
+      console.warn("Erro/timeout no retorno do sync, tentando recarregar cache:", e?.message || e);
     } finally {
+      setColumnsInitialized(false);
+      await refetch();
+      setTimeout(() => {
+        setColumnsInitialized(false);
+        refetch();
+      }, 5000);
       setIsSyncing(false);
     }
   }, [dateRange, refetch]);

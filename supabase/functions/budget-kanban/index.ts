@@ -565,7 +565,12 @@ Deno.serve(async (req) => {
       pendentes: items.filter((i: any) => !i.orcamento_realizado && !i.os_realizada).length,
     };
 
-    return new Response(JSON.stringify({ resumo, items, ultimo_sync: now, from_cache: false }), {
+    return new Response(JSON.stringify({
+      resumo,
+      updated: upsertRows.length,
+      ultimo_sync: now,
+      from_cache: false,
+    }), {
       status: 200,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
