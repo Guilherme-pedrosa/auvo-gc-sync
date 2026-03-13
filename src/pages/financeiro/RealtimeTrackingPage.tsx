@@ -8,11 +8,11 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Calendar } from "@/components/ui/calendar";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import {
   RefreshCw, CalendarIcon, MapPin, Clock, User,
   CheckCircle2, PlayCircle, CalendarClock, AlertTriangle,
-  ChevronLeft, ChevronRight, FileWarning
+  ChevronLeft, ChevronRight, FileWarning, ChevronDown
 } from "lucide-react";
 import { format, addDays, subDays, isToday, startOfMonth, endOfMonth } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -186,32 +186,61 @@ export default function RealtimeTrackingPage() {
                         </Button>
                       </div>
                       <ScrollArea className="h-[calc(100vh-12rem)]">
-                        <Table>
-                          <TableHeader>
-                            <TableRow>
-                              <TableHead className="text-xs">Data</TableHead>
-                              <TableHead className="text-xs">Técnico</TableHead>
-                              <TableHead className="text-xs">Cliente</TableHead>
-                              <TableHead className="text-xs">Status</TableHead>
-                            </TableRow>
-                          </TableHeader>
-                          <TableBody>
-                            {atrasadasMes.map((item) => (
-                              <TableRow key={item.id}>
-                                <TableCell className="text-xs font-mono whitespace-nowrap">
-                                  {item.data_planejada ? format(new Date(item.data_planejada + "T12:00:00"), "dd/MM", { locale: ptBR }) : "-"}
-                                </TableCell>
-                                <TableCell className="text-xs truncate max-w-[120px]">{item.tecnico_nome}</TableCell>
-                                <TableCell className="text-xs truncate max-w-[160px]">{item.cliente || "—"}</TableCell>
-                                <TableCell>
-                                  <Badge variant="outline" className="text-[9px] h-4 border-red-200 text-red-600">
-                                    {item.status_original}
-                                  </Badge>
-                                </TableCell>
-                              </TableRow>
-                            ))}
-                          </TableBody>
-                        </Table>
+                        <div className="space-y-2">
+                          {(() => {
+                            // Group by technician
+                            const byTech: Record<string, { nome: string; items: typeof atrasadasMes }> = {};
+                            for (const item of atrasadasMes) {
+                              const key = item.tecnico_id;
+                              if (!byTech[key]) byTech[key] = { nome: item.tecnico_nome, items: [] };
+                              byTech[key].items.push(item);
+                            }
+                            // Sort by count desc
+                            const sorted = Object.entries(byTech).sort((a, b) => b[1].items.length - a[1].items.length);
+
+                            return sorted.map(([techId, group]) => (
+                              <Collapsible key={techId}>
+                                <CollapsibleTrigger className="w-full flex items-center justify-between px-3 py-2.5 rounded-lg border bg-card hover:bg-muted/50 transition-colors">
+                                  <div className="flex items-center gap-3">
+                                    <div className="h-8 w-8 rounded-full bg-red-100 text-red-700 flex items-center justify-center text-xs font-bold flex-shrink-0">
+                                      {group.nome.split(" ").map(n => n[0]).slice(0, 2).join("")}
+                                    </div>
+                                    <div className="text-left">
+                                      <p className="text-sm font-semibold">{group.nome}</p>
+                                      <p className="text-[10px] text-muted-foreground">
+                                        {group.items.length} atraso(s) no mês
+                                      </p>
+                                    </div>
+                                  </div>
+                                  <div className="flex items-center gap-2">
+                                    <Badge variant="destructive" className="text-[10px] h-5 px-2">
+                                      {group.items.length}
+                                    </Badge>
+                                    <ChevronDown className="h-4 w-4 text-muted-foreground transition-transform data-[state=open]:rotate-180" />
+                                  </div>
+                                </CollapsibleTrigger>
+                                <CollapsibleContent>
+                                  <div className="mt-1 ml-4 border-l-2 border-red-200 pl-3 space-y-1.5 py-1.5">
+                                    {group.items.map((item) => (
+                                      <div key={item.id} className="flex items-start gap-2 text-xs py-1">
+                                        <span className="font-mono text-muted-foreground whitespace-nowrap min-w-[40px]">
+                                          {item.data_planejada ? format(new Date(item.data_planejada + "T12:00:00"), "dd/MM") : "—"}
+                                        </span>
+                                        <div className="flex-1 min-w-0">
+                                          <p className="font-medium truncate">{item.cliente || "Sem cliente"}</p>
+                                          {item.descricao && (
+                                            <p className="text-[10px] text-muted-foreground truncate">{item.descricao}</p>
+                                          )}
+                                        </div>
+                                        <span className="text-[10px] text-muted-foreground font-mono">#{item.auvo_task_id}</span>
+                                      </div>
+                                    ))}
+                                  </div>
+                                </CollapsibleContent>
+                              </Collapsible>
+                            ));
+                          })()}
+                        </div>
                       </ScrollArea>
                     </>
                   )}
