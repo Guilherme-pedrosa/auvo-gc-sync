@@ -560,11 +560,11 @@ export default function CustomKanbanPage() {
                 )}
                 <div className="p-2 border-t flex justify-between items-center">
                   <span className="text-xs text-muted-foreground">
-                    {availableQuestionnaires.length} questionários disponíveis
+                    {availableQuestionnaires.length} questionários{questionnairesLoaded ? " (cache)" : ""}
                   </span>
                   <Button size="sm" variant="outline" onClick={loadQuestionnaires} disabled={isLoadingQuestionnaires}>
                     <RefreshCw className={`h-3 w-3 mr-1 ${isLoadingQuestionnaires ? "animate-spin" : ""}`} />
-                    Atualizar lista
+                    Buscar da API
                   </Button>
                 </div>
               </PopoverContent>
