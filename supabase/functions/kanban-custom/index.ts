@@ -350,12 +350,15 @@ Deno.serve(async (req) => {
       console.warn(`[kanban-custom] Erro ao carregar snapshot:`, err);
     }
 
-    // Fetch in parallel
-    const [auvoResult, gcOrcMap, gcOsMap] = await Promise.all([
+    // Fetch in parallel: Auvo tasks + GC OS (two attributes: tarefa OS + tarefa Execução)
+    const [auvoResult, gcOsMap, gcExecMap] = await Promise.all([
       fetchAuvoTasksAll(bearerToken, startDate, endDate),
-      fetchGcOrcamentosMap(gcH, startDate, endDate),
-      fetchGcOsMap(gcH, startDate, endDate),
+      fetchGcOsMapByAttr(gcH, GC_ATRIBUTO_TAREFA_OS, "tarefa_OS", startDate, endDate),
+      fetchGcOsMapByAttr(gcH, GC_ATRIBUTO_TAREFA_EXEC, "tarefa_Exec", startDate, endDate),
     ]);
+
+    // Merge: OS map takes priority, then Exec map fills gaps
+    const gcMergedMap: Record<string, any> = { ...gcExecMap, ...gcOsMap };
 
     let auvoTasks = filterTasksByQuestionnaires(auvoResult.tasks, questionnaireIds);
     const auvoError = auvoResult.errorMessage;
@@ -373,7 +376,7 @@ Deno.serve(async (req) => {
       }
     }
 
-    console.log(`[kanban-custom] Tasks filtradas: ${auvoTasks.length}, GC orç: ${Object.keys(gcOrcMap).length}, GC OS: ${Object.keys(gcOsMap).length}`);
+    console.log(`[kanban-custom] Tasks filtradas: ${auvoTasks.length}, GC OS: ${Object.keys(gcOsMap).length}, GC Exec: ${Object.keys(gcExecMap).length}, merged: ${Object.keys(gcMergedMap).length}`);
 
     // Se Auvo falhar, preservar cache
     if (auvoTasks.length === 0 && auvoError) {
