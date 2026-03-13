@@ -289,7 +289,7 @@ Deno.serve(async (req) => {
 
     console.log(`[budget-kanban] Auvo tasks: ${auvoTasks.length}, GC orçamentos: ${Object.keys(gcOrcMap).length}, GC OS: ${Object.keys(gcOsMap).length}`);
 
-    // Build kanban items
+    // Build kanban items — first pass (resolve what we can synchronously)
     const items = auvoTasks.map((task: any) => {
       const taskId = String(task.taskID || "");
       const gcOrcMatch = gcOrcMap[taskId] || null;
@@ -303,25 +303,27 @@ Deno.serve(async (req) => {
         reply: String(a.reply || ""),
       }));
 
-      const clienteRaw = String(
+      // === CADEIA DE RESOLUÇÃO DO CLIENTE ===
+      // 1. customerDescription (campo direto da task)
+      const desc = String(task.customerDescription || "").trim();
+      // 2. customerName / customer object
+      const nameRaw = String(
         task.customerName || task.customer?.tradeName || task.customer?.companyName || ""
       ).trim();
-      const clienteSnapshot = auvoTaskClienteMap[taskId] || "";
-      const clienteGc = gcOrcMatch?.gc_cliente || gcOsMatch?.gc_cliente || "";
-      let clienteFallback = "";
-      if (!clienteRaw && !clienteSnapshot && !clienteGc) {
-        const orient = String(task.orientation || "");
-        const matchNome = orient.match(/(?:NOME|CLIENTE)\s*:\s*(.+?)(?:\n|$)/i);
-        if (matchNome) clienteFallback = matchNome[1].trim();
-      }
-      const cliente = clienteRaw || clienteSnapshot || clienteGc || clienteFallback || "";
-      const needsCustomerLookup = !cliente && task.customerId;
+      // 3. Snapshot (conciliação anterior)
+      const nameSnapshot = auvoTaskClienteMap[taskId] || "";
+      // 4. GC match (orçamento ou OS)
+      const nameGc = gcOrcMatch?.gc_cliente || gcOsMatch?.gc_cliente || "";
+
+      const clienteSync = desc || nameRaw || nameSnapshot || nameGc;
 
       return {
         auvo_task_id: taskId,
         auvo_link: `https://app2.auvo.com.br/relatorioTarefas/DetalheTarefa/${taskId}`,
-        cliente: cliente || "Cliente não identificado",
-        _customerId: needsCustomerLookup ? String(task.customerId) : null,
+        cliente: clienteSync || "",
+        _customerId: (!clienteSync && task.customerId && Number(task.customerId) > 0) ? String(task.customerId) : null,
+        _externalId: (!clienteSync && !task.customerId) ? String(task.externalId || "").trim() : null,
+        _resolucao: clienteSync ? (desc ? "customerDescription" : nameRaw ? "customerName" : nameSnapshot ? "snapshot" : "gc_match") : "pendente",
         tecnico: String(task.userToName || ""),
         data_tarefa: String(task.taskDate || "").split("T")[0],
         orientacao: String(task.orientation || ""),
@@ -334,15 +336,16 @@ Deno.serve(async (req) => {
       };
     });
 
-    // Resolve unidentified customers via Auvo /customers/{id}
-    const unresolvedItems = items.filter((i: any) => i._customerId);
-    if (unresolvedItems.length > 0) {
-      console.log(`[budget-kanban] Buscando ${unresolvedItems.length} clientes não identificados via Auvo API`);
+    // === RESOLUÇÃO ASYNC: customerId → Auvo /customers/{id} ===
+    const needsCustomerLookup = items.filter((i: any) => i._customerId);
+    if (needsCustomerLookup.length > 0) {
+      console.log(`[budget-kanban] Resolvendo ${needsCustomerLookup.length} clientes via Auvo /customers/{id}`);
       const customerCache: Record<string, string> = {};
-      for (const item of unresolvedItems) {
+      for (const item of needsCustomerLookup) {
         const cid = (item as any)._customerId;
         if (customerCache[cid]) {
           (item as any).cliente = customerCache[cid];
+          (item as any)._resolucao = "auvo_customer_api";
           continue;
         }
         try {
@@ -351,21 +354,72 @@ Deno.serve(async (req) => {
           if (resp.ok) {
             const cData = await resp.json();
             const cust = cData?.result;
-            const name = String(cust?.tradeName || cust?.companyName || cust?.name || "").trim();
+            const name = String(cust?.tradeName || cust?.companyName || cust?.description || cust?.name || "").trim();
             if (name) {
               customerCache[cid] = name;
               (item as any).cliente = name;
+              (item as any)._resolucao = "auvo_customer_api";
               console.log(`[budget-kanban] Customer ${cid} → ${name}`);
             }
           }
         } catch (e) {
-          console.warn(`[budget-kanban] Erro ao buscar customer ${cid}:`, e);
+          console.warn(`[budget-kanban] Erro customer ${cid}:`, e);
         }
       }
     }
 
-    // Remove internal field
-    for (const item of items) { delete (item as any)._customerId; }
+    // === RESOLUÇÃO ASYNC: externalId → GC OS/cliente ===
+    const needsExternalLookup = items.filter((i: any) => !(i as any).cliente && (i as any)._externalId);
+    if (needsExternalLookup.length > 0) {
+      console.log(`[budget-kanban] Resolvendo ${needsExternalLookup.length} clientes via externalId no GC`);
+      for (const item of needsExternalLookup) {
+        const extId = (item as any)._externalId;
+        try {
+          // Try fetching OS by codigo (externalId)
+          const url = `${GC_BASE_URL}/api/ordens_servicos?codigo=${encodeURIComponent(extId)}&limite=1`;
+          const resp = await rateLimitedFetch(url, { headers: gcH }, "gc");
+          if (resp.ok) {
+            const data = await resp.json();
+            const os = Array.isArray(data?.data) ? data.data[0] : null;
+            if (os?.nome_cliente) {
+              (item as any).cliente = String(os.nome_cliente);
+              (item as any)._resolucao = "gc_externalId";
+              console.log(`[budget-kanban] ExternalId ${extId} → ${os.nome_cliente}`);
+            }
+          }
+        } catch (e) {
+          console.warn(`[budget-kanban] Erro externalId ${extId}:`, e);
+        }
+      }
+    }
+
+    // Fallback final + log de não resolvidos
+    const unresolved: string[] = [];
+    for (const item of items) {
+      if (!(item as any).cliente) {
+        (item as any).cliente = "Cliente não identificado";
+        (item as any)._resolucao = "nao_identificado";
+        unresolved.push((item as any).auvo_task_id);
+      }
+    }
+    if (unresolved.length > 0) {
+      console.warn(`[budget-kanban] ${unresolved.length} tarefas sem cliente: ${unresolved.join(", ")}`);
+    }
+
+    // Log resolução summary
+    const resolucaoCount: Record<string, number> = {};
+    for (const item of items) {
+      const r = (item as any)._resolucao || "unknown";
+      resolucaoCount[r] = (resolucaoCount[r] || 0) + 1;
+    }
+    console.log(`[budget-kanban] Resolução clientes: ${JSON.stringify(resolucaoCount)}`);
+
+    // Remove internal fields
+    for (const item of items) {
+      delete (item as any)._customerId;
+      delete (item as any)._externalId;
+      delete (item as any)._resolucao;
+    }
 
     // Sort: pendentes primeiro, depois por data desc
     items.sort((a: any, b: any) => {
