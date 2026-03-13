@@ -96,6 +96,7 @@ export default function BudgetKanbanPage() {
     queryFn: async () => {
       const { data, error } = await supabase.functions.invoke("budget-kanban", {
         body: {
+          mode: "cache",
           start_date: format(dateRange.from, "yyyy-MM-dd"),
           end_date: format(dateRange.to, "yyyy-MM-dd"),
         },
@@ -104,8 +105,32 @@ export default function BudgetKanbanPage() {
       if (data?.error) throw new Error(data.error);
       return data as ApiResponse;
     },
-    staleTime: 5 * 60 * 1000,
+    staleTime: Infinity, // Don't auto-refetch, use cache
   });
+
+  const [isSyncing, setIsSyncing] = useState(false);
+
+  const handleSync = useCallback(async () => {
+    setIsSyncing(true);
+    try {
+      const { data: syncData, error } = await supabase.functions.invoke("budget-kanban", {
+        body: {
+          mode: "sync",
+          start_date: format(dateRange.from, "yyyy-MM-dd"),
+          end_date: format(dateRange.to, "yyyy-MM-dd"),
+        },
+      });
+      if (error) throw error;
+      if (syncData?.error) throw new Error(syncData.error);
+      setColumnsInitialized(false);
+      refetch();
+      toast.success(`Sincronizado! ${syncData.resumo.total_tarefas_com_questionario} tarefas atualizadas`);
+    } catch (e: any) {
+      toast.error(`Erro ao sincronizar: ${e.message}`);
+    } finally {
+      setIsSyncing(false);
+    }
+  }, [dateRange, refetch]);
 
   // All unique clients
   const allClientes = useMemo(() => {
