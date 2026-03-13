@@ -20,6 +20,21 @@ import { useNavigate } from "react-router-dom";
 import { DragDropContext, Droppable, Draggable, DropResult } from "@hello-pangea/dnd";
 import { toast } from "sonner";
 
+type GcDocData = {
+  gc_orcamento_id?: string;
+  gc_orcamento_codigo?: string;
+  gc_os_id?: string;
+  gc_os_codigo?: string;
+  gc_cliente: string;
+  gc_situacao: string;
+  gc_situacao_id: string;
+  gc_cor_situacao: string;
+  gc_valor_total: string;
+  gc_vendedor: string;
+  gc_data: string;
+  gc_link: string;
+};
+
 type KanbanItem = {
   auvo_task_id: string;
   auvo_link: string;
@@ -30,18 +45,9 @@ type KanbanItem = {
   status_auvo: string;
   questionario_respostas: { question: string; reply: string }[];
   orcamento_realizado: boolean;
-  gc_orcamento: {
-    gc_orcamento_id: string;
-    gc_orcamento_codigo: string;
-    gc_cliente: string;
-    gc_situacao: string;
-    gc_situacao_id: string;
-    gc_cor_situacao: string;
-    gc_valor_total: string;
-    gc_vendedor: string;
-    gc_data: string;
-    gc_link: string;
-  } | null;
+  os_realizada: boolean;
+  gc_orcamento: GcDocData | null;
+  gc_os: GcDocData | null;
 };
 
 type KanbanColumn = {
