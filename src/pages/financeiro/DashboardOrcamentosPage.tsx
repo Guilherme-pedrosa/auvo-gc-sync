@@ -484,8 +484,8 @@ export default function DashboardOrcamentosPage() {
           {/* Technician breakdown */}
           <Card>
             <CardHeader className="pb-2">
-              <CardTitle className="text-base">Tarefas por Técnico (com OS)</CardTitle>
-              <CardDescription>Top 10 técnicos — apenas tarefas com OS vinculada no GC</CardDescription>
+              <CardTitle className="text-base">Tarefas por Técnico</CardTitle>
+              <CardDescription>Top 10 técnicos — verde = tem Orçamento ou OS, amarelo = sem nenhum</CardDescription>
             </CardHeader>
             <CardContent>
               {tecnicoChartData.length > 0 ? (
@@ -496,8 +496,8 @@ export default function DashboardOrcamentosPage() {
                     <YAxis />
                     <Tooltip />
                     <Legend />
-                    <Bar dataKey="Sem Orçamento" stackId="a" fill="hsl(38, 92%, 50%)" radius={[0, 0, 0, 0]} />
-                    <Bar dataKey="Com Orçamento" stackId="a" fill="hsl(142, 71%, 45%)" radius={[4, 4, 0, 0]} />
+                    <Bar dataKey="Sem Orç/OS" stackId="a" fill="hsl(38, 92%, 50%)" radius={[0, 0, 0, 0]} />
+                    <Bar dataKey="Com Orç/OS" stackId="a" fill="hsl(142, 71%, 45%)" radius={[4, 4, 0, 0]} />
                   </BarChart>
                 </ResponsiveContainer>
               ) : (
