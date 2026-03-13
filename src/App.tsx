@@ -8,6 +8,7 @@ import NotFound from "./pages/NotFound.tsx";
 import AuvoSyncPage from "./pages/financeiro/AuvoSyncPage.tsx";
 import TechDashboardPage from "./pages/financeiro/TechDashboardPage.tsx";
 import BudgetKanbanPage from "./pages/financeiro/BudgetKanbanPage.tsx";
+import CustomKanbanPage from "./pages/financeiro/CustomKanbanPage.tsx";
 
 const queryClient = new QueryClient();
 
