@@ -648,7 +648,18 @@ export default function BudgetKanbanPage() {
                       className="inline-flex items-center gap-1.5 text-sm text-emerald-600 hover:underline font-medium"
                     >
                       <ExternalLink className="h-4 w-4" />
-                      Abrir no GestãoClick
+                      Orçamento GC
+                    </a>
+                  )}
+                  {selectedCard.gc_os && (
+                    <a
+                      href={selectedCard.gc_os.gc_link}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1.5 text-sm text-blue-600 hover:underline font-medium"
+                    >
+                      <ExternalLink className="h-4 w-4" />
+                      OS GC
                     </a>
                   )}
                 </div>
