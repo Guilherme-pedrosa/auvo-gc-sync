@@ -196,9 +196,10 @@ export default function CustomKanbanPage() {
       const next = new Set(prev);
       if (next.has(id)) next.delete(id);
       else next.add(id);
+      saveSelection(next);
       return next;
     });
-  }, []);
+  }, [saveSelection]);
 
   // Fetch kanban data
   const { data, isLoading, refetch, isFetching } = useQuery<ApiResponse>({
