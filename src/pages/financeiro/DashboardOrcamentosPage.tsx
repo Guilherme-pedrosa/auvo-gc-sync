@@ -254,7 +254,9 @@ export default function DashboardOrcamentosPage() {
                   mode="range"
                   selected={{ from: dateRange.from, to: dateRange.to }}
                   onSelect={(range) => {
-                    if (range?.from && range?.to) setDateRange({ from: range.from, to: range.to });
+                    if (range?.from) {
+                      setDateRange({ from: range.from, to: range.to || range.from });
+                    }
                   }}
                   locale={ptBR}
                   numberOfMonths={2}
