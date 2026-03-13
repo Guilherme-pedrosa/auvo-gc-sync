@@ -416,10 +416,15 @@ export default function BudgetKanbanPage() {
                 />
               </PopoverContent>
             </Popover>
-            <Button variant="outline" size="sm" onClick={handleRefresh} disabled={isFetching}>
-              <RefreshCw className={`h-4 w-4 mr-2 ${isFetching ? "animate-spin" : ""}`} />
-              Atualizar
+            <Button variant="outline" size="sm" onClick={handleRefresh} disabled={isSyncing || isFetching}>
+              <RefreshCw className={`h-4 w-4 mr-2 ${isSyncing ? "animate-spin" : ""}`} />
+              {isSyncing ? "Sincronizando..." : "Sincronizar APIs"}
             </Button>
+            {data?.ultimo_sync && (
+              <span className="text-xs text-muted-foreground">
+                Último sync: {new Date(data.ultimo_sync).toLocaleString("pt-BR")}
+              </span>
+            )}
           </div>
         </div>
 
