@@ -186,6 +186,7 @@ Deno.serve(async (req) => {
       const finalizadas = tech.tarefas.filter(t => t.status === "Finalizada").length;
       const emAndamento = tech.tarefas.filter(t => t.status === "Em andamento").length;
       const agendadas = tech.tarefas.filter(t => t.status === "Agendada").length;
+      const atrasadas = tech.tarefas.filter(t => t.atrasada).length;
       return {
         ...tech,
         resumo: {
@@ -193,19 +194,61 @@ Deno.serve(async (req) => {
           finalizadas,
           emAndamento,
           agendadas,
+          atrasadas,
         }
       };
     }).sort((a, b) => {
-      // Sort: em andamento first, then by total tasks
       if (a.resumo.emAndamento > 0 && b.resumo.emAndamento === 0) return -1;
       if (b.resumo.emAndamento > 0 && a.resumo.emAndamento === 0) return 1;
       return b.resumo.total - a.resumo.total;
     });
 
+    // Save non-executed tasks (late/agendada past day) to DB for commission tracking
+    // Only persist for past dates or if it's past 18:00 BR time for today
+    const shouldPersist = targetDate < nowStr || (targetDate === nowStr && nowTime >= "18:00");
+    if (shouldPersist) {
+      try {
+        const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+        const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+        const supabase = createClient(supabaseUrl, supabaseKey);
+
+        const naoExecutadas: any[] = [];
+        for (const tech of tecnicos) {
+          for (const task of tech.tarefas) {
+            if (task.status === "Agendada" || (task.status !== "Finalizada" && task.status !== "Em andamento" && task.atrasada)) {
+              naoExecutadas.push({
+                auvo_task_id: task.taskId,
+                tecnico_id: tech.id,
+                tecnico_nome: tech.nome,
+                cliente: task.cliente || null,
+                descricao: task.descricao || null,
+                data_planejada: targetDate,
+                status_original: task.status,
+              });
+            }
+          }
+        }
+
+        if (naoExecutadas.length > 0) {
+          const { error: upsertErr } = await supabase
+            .from("atividades_nao_executadas")
+            .upsert(naoExecutadas, { onConflict: "auvo_task_id,data_planejada" });
+          if (upsertErr) console.error("[realtime-tracking] Erro ao salvar não executadas:", upsertErr);
+          else console.log(`[realtime-tracking] ${naoExecutadas.length} atividades não executadas salvas para ${targetDate}`);
+        }
+      } catch (err) {
+        console.warn("[realtime-tracking] Erro ao persistir não executadas:", err);
+      }
+    }
+
+    // Count total late
+    const totalAtrasadas = tecnicos.reduce((s, t) => s + t.resumo.atrasadas, 0);
+
     return new Response(JSON.stringify({
       data: targetDate,
       total_tarefas: tasks.length,
       total_tecnicos: tecnicos.length,
+      total_atrasadas: totalAtrasadas,
       tecnicos,
     }), {
       status: 200,
