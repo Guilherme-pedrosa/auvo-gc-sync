@@ -331,15 +331,12 @@ export default function BudgetKanbanPage() {
         posicao: idx,
       }))
     );
-    // Save custom column metadata (columns that aren't built-in)
-    const builtInIds = new Set(["falta_preenchimento", "a_fazer", "os_realizada"]);
-    const customColumns = cols
-      .filter((c) => !builtInIds.has(c.id) && !c.id.startsWith("orc_"))
-      .map((c, idx) => ({ id: c.id, title: c.title, order: idx }));
+    // Save ALL columns order and titles (not just custom ones)
+    const allColumnsOrder = cols.map((c, idx) => ({ id: c.id, title: c.title, order: idx }));
 
     // Fire and forget
     supabase.functions.invoke("budget-kanban", {
-      body: { mode: "save_positions", positions, custom_columns: customColumns },
+      body: { mode: "save_positions", positions, custom_columns: allColumnsOrder },
     }).catch((e) => console.warn("Erro ao salvar posições:", e));
   }, []);
 
