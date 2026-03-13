@@ -424,188 +424,206 @@ export default function BudgetKanbanPage() {
       {/* Kanban Board */}
       {!isLoading && (
         <DragDropContext onDragEnd={onDragEnd}>
-          <div className="flex gap-4 p-6 overflow-x-auto min-h-[calc(100vh-180px)]">
-            {filteredColumns.map((column) => (
-              <div key={column.id} className="flex-shrink-0 w-[360px]">
-                <div className="bg-muted/50 rounded-lg border">
-                  {/* Column Header */}
-                  <div className="flex items-center justify-between px-3 py-2 border-b">
-                    {editingColumnId === column.id ? (
-                      <div className="flex items-center gap-1 flex-1">
-                        <Input
-                          value={editingColumnTitle}
-                          onChange={(e) => setEditingColumnTitle(e.target.value)}
-                          className="h-7 text-sm"
-                          onKeyDown={(e) => e.key === "Enter" && saveColumnRename()}
-                          autoFocus
-                        />
-                        <Button size="icon" variant="ghost" className="h-7 w-7" onClick={saveColumnRename}>
-                          <Check className="h-3 w-3" />
-                        </Button>
-                        <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => setEditingColumnId(null)}>
-                          <X className="h-3 w-3" />
-                        </Button>
-                      </div>
-                    ) : (
-                      <>
-                        <span className="font-semibold text-sm text-foreground">{column.title}</span>
-                        <div className="flex items-center gap-1">
-                          <Badge variant="secondary" className="text-xs">{column.items.length}</Badge>
-                          <Button
-                            size="icon" variant="ghost" className="h-6 w-6"
-                            onClick={() => { setEditingColumnId(column.id); setEditingColumnTitle(column.title); }}
-                          >
-                            <Edit2 className="h-3 w-3" />
-                          </Button>
-                          {column.id !== "a_fazer" && column.id !== "os_realizada" && !column.id.startsWith("orc_") && (
-                            <Button
-                              size="icon" variant="ghost" className="h-6 w-6 text-destructive"
-                              onClick={() => deleteColumn(column.id)}
-                            >
-                              <Trash2 className="h-3 w-3" />
-                            </Button>
-                          )}
-                        </div>
-                      </>
-                    )}
-                  </div>
-
-                  {/* Droppable Area */}
-                  <Droppable droppableId={column.id}>
-                    {(provided, snapshot) => (
+          <Droppable droppableId="board" type="COLUMN" direction="horizontal">
+            {(boardProvided) => (
+              <div
+                ref={boardProvided.innerRef}
+                {...boardProvided.droppableProps}
+                className="flex gap-4 p-6 overflow-x-auto min-h-[calc(100vh-180px)]"
+              >
+                {filteredColumns.map((column, colIndex) => (
+                  <Draggable key={column.id} draggableId={`col-${column.id}`} index={colIndex}>
+                    {(colProvided, colSnapshot) => (
                       <div
-                        ref={provided.innerRef}
-                        {...provided.droppableProps}
-                        className={`p-2 min-h-[200px] max-h-[calc(100vh-300px)] overflow-y-auto space-y-2 transition-colors ${
-                          snapshot.isDraggingOver ? "bg-accent/50" : ""
-                        }`}
+                        ref={colProvided.innerRef}
+                        {...colProvided.draggableProps}
+                        className={`flex-shrink-0 w-[360px] transition-shadow ${colSnapshot.isDragging ? "shadow-xl opacity-90" : ""}`}
                       >
-                        {column.items.map((item, index) => (
-                          <Draggable key={item.auvo_task_id} draggableId={item.auvo_task_id} index={index}>
+                        <div className="bg-muted/50 rounded-lg border h-full">
+                          {/* Column Header — drag handle */}
+                          <div
+                            {...colProvided.dragHandleProps}
+                            className="flex items-center justify-between px-3 py-2 border-b cursor-grab active:cursor-grabbing"
+                          >
+                            {editingColumnId === column.id ? (
+                              <div className="flex items-center gap-1 flex-1" onClick={(e) => e.stopPropagation()}>
+                                <Input
+                                  value={editingColumnTitle}
+                                  onChange={(e) => setEditingColumnTitle(e.target.value)}
+                                  className="h-7 text-sm"
+                                  onKeyDown={(e) => e.key === "Enter" && saveColumnRename()}
+                                  autoFocus
+                                />
+                                <Button size="icon" variant="ghost" className="h-7 w-7" onClick={saveColumnRename}>
+                                  <Check className="h-3 w-3" />
+                                </Button>
+                                <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => setEditingColumnId(null)}>
+                                  <X className="h-3 w-3" />
+                                </Button>
+                              </div>
+                            ) : (
+                              <>
+                                <div className="flex items-center gap-1.5">
+                                  <GripVertical className="h-4 w-4 text-muted-foreground/50" />
+                                  <span className="font-semibold text-sm text-foreground">{column.title}</span>
+                                </div>
+                                <div className="flex items-center gap-1">
+                                  <Badge variant="secondary" className="text-xs">{column.items.length}</Badge>
+                                  <Button
+                                    size="icon" variant="ghost" className="h-6 w-6"
+                                    onClick={(e) => { e.stopPropagation(); setEditingColumnId(column.id); setEditingColumnTitle(column.title); }}
+                                  >
+                                    <Edit2 className="h-3 w-3" />
+                                  </Button>
+                                  {column.id !== "a_fazer" && column.id !== "os_realizada" && !column.id.startsWith("orc_") && (
+                                    <Button
+                                      size="icon" variant="ghost" className="h-6 w-6 text-destructive"
+                                      onClick={(e) => { e.stopPropagation(); deleteColumn(column.id); }}
+                                    >
+                                      <Trash2 className="h-3 w-3" />
+                                    </Button>
+                                  )}
+                                </div>
+                              </>
+                            )}
+                          </div>
+
+                          {/* Droppable Area for cards */}
+                          <Droppable droppableId={column.id} type="CARD">
                             {(provided, snapshot) => (
                               <div
                                 ref={provided.innerRef}
-                                {...provided.draggableProps}
-                                className={`rounded-md border bg-card shadow-sm transition-shadow cursor-pointer ${
-                                  snapshot.isDragging ? "shadow-lg ring-2 ring-primary/20" : "hover:shadow-md"
-                                } ${item.orcamento_realizado ? "border-l-4 border-l-emerald-500" : item.os_realizada ? "border-l-4 border-l-blue-500" : "border-l-4 border-l-amber-400"}`}
-                                onClick={() => setSelectedCard(item)}
+                                {...provided.droppableProps}
+                                className={`p-2 min-h-[200px] max-h-[calc(100vh-300px)] overflow-y-auto space-y-2 transition-colors ${
+                                  snapshot.isDraggingOver ? "bg-accent/50" : ""
+                                }`}
                               >
-                                <div className="flex items-start gap-1 px-3 py-2">
-                                  <div {...provided.dragHandleProps} className="pt-1 cursor-grab" onClick={(e) => e.stopPropagation()}>
-                                    <GripVertical className="h-4 w-4 text-muted-foreground/50" />
-                                  </div>
-                                  <div className="flex-1 min-w-0">
-                                    <div className="flex items-center justify-between">
-                                      <span className="text-xs font-mono text-muted-foreground">#{item.auvo_task_id}</span>
-                                      <Badge variant="outline" className="text-[10px] h-5">
-                                        {item.status_auvo}
-                                      </Badge>
-                                    </div>
-                                    <p className="text-sm font-semibold text-foreground mt-1 truncate" title={item.cliente}>
-                                      {abbreviateName(item.cliente)}
-                                    </p>
-                                    <p className="text-xs text-muted-foreground mt-0.5">
-                                      {item.tecnico} • {item.data_tarefa}
-                                    </p>
-
-                                    {/* GC Orçamento summary */}
-                                    {item.gc_orcamento && (
-                                      <div className="mt-2 p-2 rounded bg-emerald-50 border border-emerald-200">
-                                        <div className="flex items-center justify-between">
-                                          <span className="text-xs font-medium text-emerald-800">
-                                            Orç. #{item.gc_orcamento.gc_orcamento_codigo}
-                                          </span>
-                                          <span className="text-xs font-bold text-emerald-700">
-                                            R$ {parseFloat(item.gc_orcamento.gc_valor_total).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
-                                          </span>
-                                        </div>
-                                        <div className="flex items-center gap-1 mt-1">
-                                          <div
-                                            className="h-2 w-2 rounded-full"
-                                            style={{ backgroundColor: item.gc_orcamento.gc_cor_situacao }}
-                                          />
-                                          <span className="text-[10px] text-emerald-700">
-                                            {item.gc_orcamento.gc_situacao}
-                                          </span>
-                                        </div>
-                                      </div>
-                                    )}
-
-                                    {/* GC OS summary */}
-                                    {item.gc_os && (
-                                      <div className="mt-2 p-2 rounded bg-blue-50 border border-blue-200">
-                                        <div className="flex items-center justify-between">
-                                          <span className="text-xs font-medium text-blue-800">
-                                            OS #{item.gc_os.gc_os_codigo}
-                                          </span>
-                                          <span className="text-xs font-bold text-blue-700">
-                                            R$ {parseFloat(item.gc_os.gc_valor_total).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
-                                          </span>
-                                        </div>
-                                        <div className="flex items-center gap-1 mt-1">
-                                          <div
-                                            className="h-2 w-2 rounded-full"
-                                            style={{ backgroundColor: item.gc_os.gc_cor_situacao }}
-                                          />
-                                          <span className="text-[10px] text-blue-700">
-                                            {item.gc_os.gc_situacao}
-                                          </span>
-                                        </div>
-                                      </div>
-                                    )}
-
-                                    {/* Links */}
-                                    <div className="flex items-center gap-2 mt-2">
-                                      <a
-                                        href={item.auvo_link}
-                                        target="_blank"
-                                        rel="noopener noreferrer"
-                                        className="inline-flex items-center gap-1 text-[10px] text-blue-600 hover:underline"
-                                        onClick={(e) => e.stopPropagation()}
+                                {column.items.map((item, index) => (
+                                  <Draggable key={item.auvo_task_id} draggableId={item.auvo_task_id} index={index}>
+                                    {(provided, snapshot) => (
+                                      <div
+                                        ref={provided.innerRef}
+                                        {...provided.draggableProps}
+                                        {...provided.dragHandleProps}
+                                        className={`rounded-md border bg-card shadow-sm transition-shadow cursor-pointer ${
+                                          snapshot.isDragging ? "shadow-lg ring-2 ring-primary/20" : "hover:shadow-md"
+                                        } ${item.orcamento_realizado ? "border-l-4 border-l-emerald-500" : item.os_realizada ? "border-l-4 border-l-blue-500" : "border-l-4 border-l-amber-400"}`}
+                                        onClick={() => setSelectedCard(item)}
                                       >
-                                        <ExternalLink className="h-3 w-3" />
-                                        Auvo
-                                      </a>
-                                      {item.gc_orcamento && (
-                                        <a
-                                          href={item.gc_orcamento.gc_link}
-                                          target="_blank"
-                                          rel="noopener noreferrer"
-                                          className="inline-flex items-center gap-1 text-[10px] text-emerald-600 hover:underline"
-                                          onClick={(e) => e.stopPropagation()}
-                                        >
-                                          <ExternalLink className="h-3 w-3" />
-                                          Orçamento GC
-                                        </a>
-                                      )}
-                                      {item.gc_os && (
-                                        <a
-                                          href={item.gc_os.gc_link}
-                                          target="_blank"
-                                          rel="noopener noreferrer"
-                                          className="inline-flex items-center gap-1 text-[10px] text-blue-600 hover:underline"
-                                          onClick={(e) => e.stopPropagation()}
-                                        >
-                                          <ExternalLink className="h-3 w-3" />
-                                          OS GC
-                                        </a>
-                                      )}
-                                    </div>
-                                  </div>
-                                </div>
+                                        <div className="flex items-start gap-1 px-3 py-2">
+                                          <div className="flex-1 min-w-0">
+                                            <div className="flex items-center justify-between">
+                                              <span className="text-xs font-mono text-muted-foreground">#{item.auvo_task_id}</span>
+                                              <Badge variant="outline" className="text-[10px] h-5">
+                                                {item.status_auvo}
+                                              </Badge>
+                                            </div>
+                                            <p className="text-sm font-semibold text-foreground mt-1 truncate" title={item.cliente}>
+                                              {abbreviateName(item.cliente)}
+                                            </p>
+                                            <p className="text-xs text-muted-foreground mt-0.5">
+                                              {item.tecnico} • {item.data_tarefa}
+                                            </p>
+
+                                            {/* GC Orçamento summary */}
+                                            {item.gc_orcamento && (
+                                              <div className="mt-2 p-2 rounded bg-emerald-50 border border-emerald-200">
+                                                <div className="flex items-center justify-between">
+                                                  <span className="text-xs font-medium text-emerald-800">
+                                                    Orç. #{item.gc_orcamento.gc_orcamento_codigo}
+                                                  </span>
+                                                  <span className="text-xs font-bold text-emerald-700">
+                                                    R$ {parseFloat(item.gc_orcamento.gc_valor_total).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+                                                  </span>
+                                                </div>
+                                                <div className="flex items-center gap-1 mt-1">
+                                                  <div
+                                                    className="h-2 w-2 rounded-full"
+                                                    style={{ backgroundColor: item.gc_orcamento.gc_cor_situacao }}
+                                                  />
+                                                  <span className="text-[10px] text-emerald-700">
+                                                    {item.gc_orcamento.gc_situacao}
+                                                  </span>
+                                                </div>
+                                              </div>
+                                            )}
+
+                                            {/* GC OS summary */}
+                                            {item.gc_os && (
+                                              <div className="mt-2 p-2 rounded bg-blue-50 border border-blue-200">
+                                                <div className="flex items-center justify-between">
+                                                  <span className="text-xs font-medium text-blue-800">
+                                                    OS #{item.gc_os.gc_os_codigo}
+                                                  </span>
+                                                  <span className="text-xs font-bold text-blue-700">
+                                                    R$ {parseFloat(item.gc_os.gc_valor_total).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+                                                  </span>
+                                                </div>
+                                                <div className="flex items-center gap-1 mt-1">
+                                                  <div
+                                                    className="h-2 w-2 rounded-full"
+                                                    style={{ backgroundColor: item.gc_os.gc_cor_situacao }}
+                                                  />
+                                                  <span className="text-[10px] text-blue-700">
+                                                    {item.gc_os.gc_situacao}
+                                                  </span>
+                                                </div>
+                                              </div>
+                                            )}
+
+                                            {/* Links */}
+                                            <div className="flex items-center gap-2 mt-2">
+                                              <a
+                                                href={item.auvo_link}
+                                                target="_blank"
+                                                rel="noopener noreferrer"
+                                                className="inline-flex items-center gap-1 text-[10px] text-blue-600 hover:underline"
+                                                onClick={(e) => e.stopPropagation()}
+                                              >
+                                                <ExternalLink className="h-3 w-3" />
+                                                Auvo
+                                              </a>
+                                              {item.gc_orcamento && (
+                                                <a
+                                                  href={item.gc_orcamento.gc_link}
+                                                  target="_blank"
+                                                  rel="noopener noreferrer"
+                                                  className="inline-flex items-center gap-1 text-[10px] text-emerald-600 hover:underline"
+                                                  onClick={(e) => e.stopPropagation()}
+                                                >
+                                                  <ExternalLink className="h-3 w-3" />
+                                                  Orçamento GC
+                                                </a>
+                                              )}
+                                              {item.gc_os && (
+                                                <a
+                                                  href={item.gc_os.gc_link}
+                                                  target="_blank"
+                                                  rel="noopener noreferrer"
+                                                  className="inline-flex items-center gap-1 text-[10px] text-blue-600 hover:underline"
+                                                  onClick={(e) => e.stopPropagation()}
+                                                >
+                                                  <ExternalLink className="h-3 w-3" />
+                                                  OS GC
+                                                </a>
+                                              )}
+                                            </div>
+                                          </div>
+                                        </div>
+                                      </div>
+                                    )}
+                                  </Draggable>
+                                ))}
+                                {provided.placeholder}
                               </div>
                             )}
-                          </Draggable>
-                        ))}
-                        {provided.placeholder}
+                          </Droppable>
+                        </div>
                       </div>
                     )}
-                  </Droppable>
-                </div>
-              </div>
-            ))}
-
+                  </Draggable>
+                ))}
+                {boardProvided.placeholder}
             {/* Add Column */}
             <div className="flex-shrink-0 w-[300px]">
               {showAddColumn ? (
