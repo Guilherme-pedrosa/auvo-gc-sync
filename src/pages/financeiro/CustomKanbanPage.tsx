@@ -110,23 +110,50 @@ export default function CustomKanbanPage() {
   const questionnaireIds = useMemo(() => Array.from(selectedQuestionnaires), [selectedQuestionnaires]);
 
   const CACHE_KEY = "kanban_custom_questionnaires";
+  const SELECTION_KEY = "kanban_custom_selected";
 
-  // Load cached questionnaires from DB on mount
-  const loadCachedQuestionnaires = useCallback(async () => {
+  // Persist selected questionnaire IDs to DB whenever they change
+  const saveSelection = useCallback(async (ids: Set<string>) => {
+    if (ids.size === 0) return;
     try {
-      const { data } = await supabase
+      await supabase
         .from("kanban_sync_meta")
-        .select("periodo_inicio")
-        .eq("id", CACHE_KEY)
-        .single();
-      if (data?.periodo_inicio) {
-        const cached = JSON.parse(data.periodo_inicio) as QuestionnaireOption[];
-        if (cached.length > 0) {
-          setAvailableQuestionnaires(cached);
-          setQuestionnairesLoaded(true);
-        }
-      }
+        .upsert({ id: SELECTION_KEY, periodo_inicio: JSON.stringify(Array.from(ids)), ultimo_sync: new Date().toISOString() });
     } catch {}
+  }, []);
+
+  // Load cached questionnaires AND saved selection on mount
+  useEffect(() => {
+    (async () => {
+      try {
+        // Load questionnaire list from cache
+        const { data: listData } = await supabase
+          .from("kanban_sync_meta")
+          .select("periodo_inicio")
+          .eq("id", CACHE_KEY)
+          .single();
+        if (listData?.periodo_inicio) {
+          const cached = JSON.parse(listData.periodo_inicio) as QuestionnaireOption[];
+          if (cached.length > 0) {
+            setAvailableQuestionnaires(cached);
+            setQuestionnairesLoaded(true);
+          }
+        }
+
+        // Load saved selection
+        const { data: selData } = await supabase
+          .from("kanban_sync_meta")
+          .select("periodo_inicio")
+          .eq("id", SELECTION_KEY)
+          .single();
+        if (selData?.periodo_inicio) {
+          const savedIds = JSON.parse(selData.periodo_inicio) as string[];
+          if (savedIds.length > 0) {
+            setSelectedQuestionnaires(new Set(savedIds));
+          }
+        }
+      } catch {}
+    })();
   }, []);
 
   // Fetch fresh from API and save to cache
