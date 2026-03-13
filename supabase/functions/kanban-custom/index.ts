@@ -114,8 +114,11 @@ function filterTasksByQuestionnaires(tasks: any[], questionnaireIds: string[]): 
   });
 }
 
-async function fetchGcOrcamentosMap(
+// Fetch GC OS and match by a specific attribute ID, returning a map of taskId -> OS data
+async function fetchGcOsMapByAttr(
   gcHeaders: Record<string, string>,
+  attrId: string,
+  label: string,
   startDate?: string,
   endDate?: string
 ): Promise<Record<string, any>> {
@@ -125,18 +128,18 @@ async function fetchGcOrcamentosMap(
   const MAX_PAGES = 30;
 
   while (page <= totalPages && page <= MAX_PAGES) {
-    let url = `${GC_BASE_URL}/api/orcamentos?limite=100&pagina=${page}`;
+    let url = `${GC_BASE_URL}/api/ordens_servicos?limite=100&pagina=${page}`;
     if (startDate) url += `&data_inicio=${startDate}`;
     if (endDate) url += `&data_fim=${endDate}`;
 
     const response = await rateLimitedFetch(url, { headers: gcHeaders }, "gc");
     if (response.status === 429) {
-      console.warn("[kanban-custom] GC rate limit — aguardando 3s...");
+      console.warn(`[kanban-custom] GC ${label} rate limit — aguardando 3s...`);
       await new Promise(r => setTimeout(r, 3000));
       continue;
     }
     if (!response.ok) {
-      console.error(`[kanban-custom] GC orcamentos error: ${response.status}`);
+      console.error(`[kanban-custom] GC ${label} error: ${response.status}`);
       break;
     }
 
@@ -144,33 +147,34 @@ async function fetchGcOrcamentosMap(
     const records: any[] = Array.isArray(data?.data) ? data.data : [];
     totalPages = data?.meta?.total_paginas || 1;
 
-    for (const orc of records) {
-      const atributos: any[] = orc.atributos || [];
+    for (const os of records) {
+      const atributos: any[] = os.atributos || [];
       const attrTarefa = atributos.find((a: any) => {
         const nested = a?.atributo || a;
-        return String(nested.atributo_id || nested.id || "") === GC_ATRIBUTO_TAREFA_ORC;
+        return String(nested.atributo_id || nested.id || "") === attrId;
       });
       if (attrTarefa) {
         const nested = attrTarefa?.atributo || attrTarefa;
         const taskId = String(nested?.conteudo || nested?.valor || "").trim();
-        if (taskId && /^\d+$/.test(taskId)) {
+        if (taskId && /^\d+$/.test(taskId) && !map[taskId]) {
           map[taskId] = {
-            gc_orcamento_id: String(orc.id),
-            gc_orcamento_codigo: String(orc.codigo || ""),
-            gc_cliente: String(orc.nome_cliente || ""),
-            gc_situacao: String(orc.nome_situacao || ""),
-            gc_situacao_id: String(orc.situacao_id || ""),
-            gc_cor_situacao: String(orc.cor_situacao || ""),
-            gc_valor_total: String(orc.valor_total || "0"),
-            gc_vendedor: String(orc.nome_vendedor || ""),
-            gc_data: String(orc.data || ""),
-            gc_link: `https://gestaoclick.com/orcamentos_servicos/editar/${orc.id}?retorno=%2Forcamentos_servicos`,
+            gc_os_id: String(os.id),
+            gc_os_codigo: String(os.codigo || ""),
+            gc_cliente: String(os.nome_cliente || ""),
+            gc_situacao: String(os.nome_situacao || ""),
+            gc_situacao_id: String(os.situacao_id || ""),
+            gc_cor_situacao: String(os.cor_situacao || ""),
+            gc_valor_total: String(os.valor_total || "0"),
+            gc_vendedor: String(os.nome_vendedor || ""),
+            gc_data: String(os.data || os.data_entrada || ""),
+            gc_link: `https://gestaoclick.com/ordens_servicos/editar/${os.id}?retorno=%2Fordens_servicos`,
+            gc_match_attr: label,
           };
         }
       }
     }
 
-    console.log(`[kanban-custom] GC orçamentos page ${page}/${totalPages}: ${records.length} registros`);
+    console.log(`[kanban-custom] GC ${label} page ${page}/${totalPages}: ${records.length} registros`);
     page++;
   }
   return map;
