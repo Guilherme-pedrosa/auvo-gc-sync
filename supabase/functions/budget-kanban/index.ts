@@ -73,6 +73,12 @@ async function fetchAuvoTasksWithQuestionnaire(
     const data = await response.json();
     const entities = data?.result?.entityList || data?.result?.Entities || [];
 
+    // Log first task's customer fields for debugging
+    if (page === 1 && entities.length > 0) {
+      const t0 = entities[0];
+      console.log(`[budget-kanban] Task sample customer fields: customerName=${t0.customerName}, customerId=${t0.customerId}, customer=${JSON.stringify(t0.customer)?.substring(0,300)}`);
+    }
+
     // Filter tasks that have the target questionnaire
     for (const task of entities) {
       const questionnaires = task.questionnaires || [];
@@ -195,6 +201,32 @@ Deno.serve(async (req) => {
       "Content-Type": "application/json",
     };
 
+    // Also load conciliation snapshot for customer name mapping
+    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+    const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+    const sbClient = createClient(supabaseUrl, supabaseKey);
+
+    const auvoTaskClienteMap: Record<string, string> = {};
+    try {
+      const { data: snapshotRows } = await sbClient
+        .from("auvo_gc_sync_log")
+        .select("detalhes")
+        .eq("observacao", "CONCILIACAO_SNAPSHOT")
+        .order("executado_em", { ascending: false })
+        .limit(1);
+
+      const detalhes = snapshotRows?.[0]?.detalhes as any;
+      const itens: any[] = Array.isArray(detalhes?.itens) ? detalhes.itens : (Array.isArray(detalhes) ? detalhes : []);
+      for (const item of itens) {
+        const tid = String(item.auvo_task_id || "").trim();
+        const nome = String(item.auvo_cliente || item.gc_cliente || "").trim();
+        if (tid && nome) auvoTaskClienteMap[tid] = nome;
+      }
+      console.log(`[budget-kanban] Snapshot: ${Object.keys(auvoTaskClienteMap).length} task→cliente mappings`);
+    } catch (err) {
+      console.warn(`[budget-kanban] Erro ao carregar snapshot:`, err);
+    }
+
     // Fetch in parallel
     const [auvoTasks, gcMap] = await Promise.all([
       fetchAuvoTasksWithQuestionnaire(bearerToken, startDate, endDate),
@@ -217,32 +249,29 @@ Deno.serve(async (req) => {
         reply: String(a.reply || ""),
       }));
 
-      // Extract client name from multiple possible fields
+      // Customer name: try Auvo fields → snapshot → GC match → orientation fallback
       const clienteRaw = String(
-        task.customerName || task.customer?.tradeName || task.customer?.companyName || 
-        task.customerCompanyName || task.customerTradeName || ""
+        task.customerName || task.customer?.tradeName || task.customer?.companyName || ""
       ).trim();
-      
-      // Fallback: extract from orientation (usually first line has client info)
+      const clienteSnapshot = auvoTaskClienteMap[taskId] || "";
+      const clienteGc = gcMatch?.gc_cliente || "";
       let clienteFallback = "";
-      if (!clienteRaw) {
+      if (!clienteRaw && !clienteSnapshot && !clienteGc) {
         const orient = String(task.orientation || "");
-        // Try patterns like "CLIENTE: xxx" or "NOME: xxx"
         const matchNome = orient.match(/(?:NOME|CLIENTE)\s*:\s*(.+?)(?:\n|$)/i);
         if (matchNome) clienteFallback = matchNome[1].trim();
-        else clienteFallback = orient.split("\n")[0].substring(0, 80).trim();
       }
+      const cliente = clienteRaw || clienteSnapshot || clienteGc || clienteFallback || "Cliente não identificado";
 
       return {
         auvo_task_id: taskId,
-        auvo_link: `https://app2.auvo.com.br/tarefas/visualizar/${taskId}`,
-        cliente: clienteRaw || clienteFallback,
+        auvo_link: `https://app2.auvo.com.br/relatorioTarefas/DetalheTarefa/${taskId}`,
+        cliente,
         tecnico: String(task.userToName || ""),
         data_tarefa: String(task.taskDate || "").split("T")[0],
-        orientacao: String(task.orientation || "").substring(0, 200),
+        orientacao: String(task.orientation || ""),
         status_auvo: task.finished ? "Finalizada" : (task.checkIn ? "Em andamento" : "Aberta"),
         questionario_respostas: answers,
-        // GC match
         orcamento_realizado: !!gcMatch,
         gc_orcamento: gcMatch,
       };
