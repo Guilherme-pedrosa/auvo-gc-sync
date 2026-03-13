@@ -206,6 +206,11 @@ export default function RealtimeTrackingPage() {
                             {hasActive && (
                               <span className="text-[10px] text-blue-600 font-medium animate-pulse">● Ativo</span>
                             )}
+                            {tech.resumo.atrasadas > 0 && (
+                              <Badge variant="destructive" className="text-[9px] h-4 px-1.5">
+                                {tech.resumo.atrasadas} atrasada(s)
+                              </Badge>
+                            )}
                           </div>
                         </div>
                       </div>
