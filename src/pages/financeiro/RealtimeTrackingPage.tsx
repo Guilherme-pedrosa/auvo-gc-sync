@@ -30,6 +30,8 @@ type TaskItem = {
   pendencia: string;
   descricao: string;
   duration: string;
+  gcOsCodigo: string;
+  gcOsValor: string;
 };
 
 type TecnicoGroup = {
