@@ -262,10 +262,13 @@ Deno.serve(async (req) => {
       return b.resumo.total - a.resumo.total;
     });
 
-    // Save non-executed tasks (late/agendada past day) to DB for commission tracking
-    // Only persist for past dates or if it's past 18:00 BR time for today
-    const shouldPersist = targetDate < nowStr || (targetDate === nowStr && nowTime >= "18:00");
-    if (shouldPersist) {
+    // Save late/non-executed tasks to DB immediately for commission tracking
+    // Persist any task detected as "atrasada" right away (even during the day)
+    // Also persist all non-executed at end of day (past 18:00) or for past dates
+    const shouldPersistAll = targetDate < nowStr || (targetDate === nowStr && nowTime >= "18:00");
+    const hasLateTasks = tecnicos.some(t => t.tarefas.some(task => task.atrasada));
+
+    if (shouldPersistAll || hasLateTasks) {
       try {
         const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
         const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -274,7 +277,10 @@ Deno.serve(async (req) => {
         const naoExecutadas: any[] = [];
         for (const tech of tecnicos) {
           for (const task of tech.tarefas) {
-            if (task.status === "Agendada" || (task.status !== "Finalizada" && task.status !== "Em andamento" && task.atrasada)) {
+            // Persist if: task is late OR (end of day and still scheduled/not finished)
+            const isLateNow = task.atrasada;
+            const isEndOfDayPending = shouldPersistAll && (task.status === "Agendada" || (task.status !== "Finalizada" && task.status !== "Em andamento"));
+            if (isLateNow || isEndOfDayPending) {
               naoExecutadas.push({
                 auvo_task_id: task.taskId,
                 tecnico_id: tech.id,
@@ -282,7 +288,7 @@ Deno.serve(async (req) => {
                 cliente: task.cliente || null,
                 descricao: task.descricao || null,
                 data_planejada: targetDate,
-                status_original: task.status,
+                status_original: isLateNow ? "Atrasada" : task.status,
               });
             }
           }
@@ -293,7 +299,7 @@ Deno.serve(async (req) => {
             .from("atividades_nao_executadas")
             .upsert(naoExecutadas, { onConflict: "auvo_task_id,data_planejada" });
           if (upsertErr) console.error("[realtime-tracking] Erro ao salvar não executadas:", upsertErr);
-          else console.log(`[realtime-tracking] ${naoExecutadas.length} atividades não executadas salvas para ${targetDate}`);
+          else console.log(`[realtime-tracking] ${naoExecutadas.length} atividades não executadas/atrasadas salvas para ${targetDate}`);
         }
       } catch (err) {
         console.warn("[realtime-tracking] Erro ao persistir não executadas:", err);
