@@ -121,11 +121,13 @@ export default function BudgetKanbanPage() {
   // Initialize columns from API data
   useMemo(() => {
     if (!data?.items || columnsInitialized) return;
-    const aFazer = data.items.filter((i) => !i.orcamento_realizado);
-    const concluido = data.items.filter((i) => i.orcamento_realizado);
+    const aFazer = data.items.filter((i) => !i.orcamento_realizado && !i.os_realizada);
+    const osRealizada = data.items.filter((i) => i.os_realizada);
+    const orcRealizado = data.items.filter((i) => i.orcamento_realizado);
     setColumns([
       { id: "a_fazer", title: "📋 A Fazer", items: aFazer },
-      { id: "concluido", title: "✅ Orçamento Realizado", items: concluido },
+      { id: "os_realizada", title: "🔧 OS Realizada", items: osRealizada },
+      { id: "concluido", title: "✅ Orçamento Realizado", items: orcRealizado },
     ]);
     setColumnsInitialized(true);
   }, [data, columnsInitialized]);
