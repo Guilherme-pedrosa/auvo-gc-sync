@@ -624,34 +624,37 @@ export default function BudgetKanbanPage() {
                   </Draggable>
                 ))}
                 {boardProvided.placeholder}
-            {/* Add Column */}
-            <div className="flex-shrink-0 w-[300px]">
-              {showAddColumn ? (
-                <div className="bg-muted/50 rounded-lg border p-3 space-y-2">
-                  <Input
-                    value={newColumnTitle}
-                    onChange={(e) => setNewColumnTitle(e.target.value)}
-                    placeholder="Nome da coluna"
-                    onKeyDown={(e) => e.key === "Enter" && addColumn()}
-                    autoFocus
-                  />
-                  <div className="flex gap-2">
-                    <Button size="sm" onClick={addColumn}>Criar</Button>
-                    <Button size="sm" variant="ghost" onClick={() => setShowAddColumn(false)}>Cancelar</Button>
-                  </div>
+
+                {/* Add Column */}
+                <div className="flex-shrink-0 w-[300px]">
+                  {showAddColumn ? (
+                    <div className="bg-muted/50 rounded-lg border p-3 space-y-2">
+                      <Input
+                        value={newColumnTitle}
+                        onChange={(e) => setNewColumnTitle(e.target.value)}
+                        placeholder="Nome da coluna"
+                        onKeyDown={(e) => e.key === "Enter" && addColumn()}
+                        autoFocus
+                      />
+                      <div className="flex gap-2">
+                        <Button size="sm" onClick={addColumn}>Criar</Button>
+                        <Button size="sm" variant="ghost" onClick={() => setShowAddColumn(false)}>Cancelar</Button>
+                      </div>
+                    </div>
+                  ) : (
+                    <Button
+                      variant="outline"
+                      className="w-full h-12 border-dashed text-muted-foreground"
+                      onClick={() => setShowAddColumn(true)}
+                    >
+                      <Plus className="h-4 w-4 mr-2" />
+                      Adicionar coluna
+                    </Button>
+                  )}
                 </div>
-              ) : (
-                <Button
-                  variant="outline"
-                  className="w-full h-12 border-dashed text-muted-foreground"
-                  onClick={() => setShowAddColumn(true)}
-                >
-                  <Plus className="h-4 w-4 mr-2" />
-                  Adicionar coluna
-                </Button>
-              )}
-            </div>
-          </div>
+              </div>
+            )}
+          </Droppable>
         </DragDropContext>
       )}
 
