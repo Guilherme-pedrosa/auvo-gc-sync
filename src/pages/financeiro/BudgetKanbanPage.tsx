@@ -281,6 +281,21 @@ export default function BudgetKanbanPage() {
     }));
   }, [columns, filterTecnico, allClientesSelected, selectedClientes]);
 
+  // Save positions to DB (debounced)
+  const savePositions = useCallback((cols: KanbanColumn[]) => {
+    const positions = cols.flatMap((col) =>
+      col.items.map((item, idx) => ({
+        auvo_task_id: item.auvo_task_id,
+        coluna: col.id,
+        posicao: idx,
+      }))
+    );
+    // Fire and forget
+    supabase.functions.invoke("budget-kanban", {
+      body: { mode: "save_positions", positions },
+    }).catch((e) => console.warn("Erro ao salvar posições:", e));
+  }, []);
+
   // Drag and drop (cards and columns)
   const onDragEnd = useCallback((result: DropResult) => {
     const { source, destination, type } = result;
@@ -293,6 +308,7 @@ export default function BudgetKanbanPage() {
         const newCols = [...prev];
         const [moved] = newCols.splice(source.index, 1);
         newCols.splice(destination.index, 0, moved);
+        savePositions(newCols);
         return newCols;
       });
       return;
@@ -307,9 +323,10 @@ export default function BudgetKanbanPage() {
       if (!srcCol || !destCol) return prev;
       const [moved] = srcCol.items.splice(source.index, 1);
       destCol.items.splice(destination.index, 0, moved);
+      savePositions(newCols);
       return newCols;
     });
-  }, []);
+  }, [savePositions]);
 
   const addColumn = useCallback(() => {
     if (!newColumnTitle.trim()) return;
