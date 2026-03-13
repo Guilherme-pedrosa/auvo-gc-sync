@@ -64,7 +64,9 @@ type ApiResponse = {
     os_realizadas: number;
     pendentes: number;
   };
-  items: KanbanItem[];
+  items: (KanbanItem & { _coluna?: string; _posicao?: number })[];
+  ultimo_sync?: string | null;
+  from_cache?: boolean;
   error?: string;
 };
 
@@ -94,6 +96,7 @@ export default function BudgetKanbanPage() {
     queryFn: async () => {
       const { data, error } = await supabase.functions.invoke("budget-kanban", {
         body: {
+          mode: "cache",
           start_date: format(dateRange.from, "yyyy-MM-dd"),
           end_date: format(dateRange.to, "yyyy-MM-dd"),
         },
@@ -102,8 +105,32 @@ export default function BudgetKanbanPage() {
       if (data?.error) throw new Error(data.error);
       return data as ApiResponse;
     },
-    staleTime: 5 * 60 * 1000,
+    staleTime: Infinity, // Don't auto-refetch, use cache
   });
+
+  const [isSyncing, setIsSyncing] = useState(false);
+
+  const handleSync = useCallback(async () => {
+    setIsSyncing(true);
+    try {
+      const { data: syncData, error } = await supabase.functions.invoke("budget-kanban", {
+        body: {
+          mode: "sync",
+          start_date: format(dateRange.from, "yyyy-MM-dd"),
+          end_date: format(dateRange.to, "yyyy-MM-dd"),
+        },
+      });
+      if (error) throw error;
+      if (syncData?.error) throw new Error(syncData.error);
+      setColumnsInitialized(false);
+      refetch();
+      toast.success(`Sincronizado! ${syncData.resumo.total_tarefas_com_questionario} tarefas atualizadas`);
+    } catch (e: any) {
+      toast.error(`Erro ao sincronizar: ${e.message}`);
+    } finally {
+      setIsSyncing(false);
+    }
+  }, [dateRange, refetch]);
 
   // All unique clients
   const allClientes = useMemo(() => {
@@ -123,43 +150,80 @@ export default function BudgetKanbanPage() {
   useMemo(() => {
     if (!data?.items || columnsInitialized) return;
 
-    // Check if item has meaningful questionnaire answers (non-URL text)
     const hasFilledQuestionnaire = (item: KanbanItem) =>
       item.questionario_respostas.some(
         (r) => r.reply && r.reply.trim() !== "" && !r.reply.startsWith("http")
       );
 
-    const faltaPreenchimento = data.items.filter(
-      (i) => !i.orcamento_realizado && !i.os_realizada && !hasFilledQuestionnaire(i)
-    );
-    const aFazer = data.items.filter(
-      (i) => !i.orcamento_realizado && !i.os_realizada && hasFilledQuestionnaire(i)
-    );
-    const osRealizada = data.items.filter((i) => i.os_realizada);
-    const orcItems = data.items.filter((i) => i.orcamento_realizado && !i.os_realizada);
+    // If data came from cache with saved positions, use them
+    const hasSavedPositions = data.from_cache && data.items.some((i: any) => i._coluna);
 
-    // Group orçamentos by GC situação
-    const situacaoMap: Record<string, KanbanItem[]> = {};
-    for (const item of orcItems) {
-      const sit = item.gc_orcamento?.gc_situacao || "Sem situação";
-      if (!situacaoMap[sit]) situacaoMap[sit] = [];
-      situacaoMap[sit].push(item);
-    }
+    if (hasSavedPositions) {
+      const colMap: Record<string, KanbanItem[]> = {};
+      const colOrder: string[] = [];
+      for (const item of data.items) {
+        const col = (item as any)._coluna || "a_fazer";
+        if (!colMap[col]) {
+          colMap[col] = [];
+          colOrder.push(col);
+        }
+        // Strip internal fields
+        const { _coluna, _posicao, ...cleanItem } = item as any;
+        colMap[col].push(cleanItem);
+      }
+      // Sort items within each column by saved position
+      for (const col of colOrder) {
+        colMap[col].sort((a: any, b: any) => ((a as any)._posicao || 0) - ((b as any)._posicao || 0));
+      }
 
-    const orcColumns: KanbanColumn[] = Object.entries(situacaoMap)
-      .sort(([a], [b]) => a.localeCompare(b))
-      .map(([sit, items]) => ({
-        id: `orc_${sit.replace(/\s+/g, "_").toLowerCase()}`,
-        title: `💰 ${sit}`,
-        items,
+      // Build column title mapping
+      const titleMap: Record<string, string> = {
+        falta_preenchimento: "⚠️ Falta Preenchimento",
+        a_fazer: "📋 A Fazer",
+        os_realizada: "🔧 OS Realizada",
+      };
+
+      const cols: KanbanColumn[] = colOrder.map((colId) => ({
+        id: colId,
+        title: titleMap[colId] || (colId.startsWith("orc_") ? `💰 ${colId.replace("orc_", "").replace(/_/g, " ")}` : colId),
+        items: colMap[colId],
       }));
 
-    setColumns([
-      { id: "falta_preenchimento", title: "⚠️ Falta Preenchimento", items: faltaPreenchimento },
-      { id: "a_fazer", title: "📋 A Fazer", items: aFazer },
-      { id: "os_realizada", title: "🔧 OS Realizada", items: osRealizada },
-      ...orcColumns,
-    ]);
+      setColumns(cols);
+    } else {
+      // Fresh data (from sync) — auto-assign columns
+      const faltaPreenchimento = data.items.filter(
+        (i) => !i.orcamento_realizado && !i.os_realizada && !hasFilledQuestionnaire(i)
+      );
+      const aFazer = data.items.filter(
+        (i) => !i.orcamento_realizado && !i.os_realizada && hasFilledQuestionnaire(i)
+      );
+      const osRealizada = data.items.filter((i) => i.os_realizada);
+      const orcItems = data.items.filter((i) => i.orcamento_realizado && !i.os_realizada);
+
+      const situacaoMap: Record<string, KanbanItem[]> = {};
+      for (const item of orcItems) {
+        const sit = item.gc_orcamento?.gc_situacao || "Sem situação";
+        if (!situacaoMap[sit]) situacaoMap[sit] = [];
+        situacaoMap[sit].push(item);
+      }
+
+      const orcColumns: KanbanColumn[] = Object.entries(situacaoMap)
+        .sort(([a], [b]) => a.localeCompare(b))
+        .map(([sit, items]) => ({
+          id: `orc_${sit.replace(/\s+/g, "_").toLowerCase()}`,
+          title: `💰 ${sit}`,
+          items,
+        }));
+
+      setColumns([
+        { id: "falta_preenchimento", title: "⚠️ Falta Preenchimento", items: faltaPreenchimento },
+        { id: "a_fazer", title: "📋 A Fazer", items: aFazer },
+        { id: "os_realizada", title: "🔧 OS Realizada", items: osRealizada },
+        ...orcColumns,
+      ]);
+    }
+
     setColumnsInitialized(true);
   }, [data, columnsInitialized]);
 
@@ -167,8 +231,8 @@ export default function BudgetKanbanPage() {
     setColumnsInitialized(false);
     setAllClientesSelected(true);
     setSelectedClientes(new Set());
-    refetch();
-  }, [refetch]);
+    handleSync();
+  }, [handleSync]);
 
   // Unique technicians
   const tecnicos = useMemo(() => {
@@ -217,6 +281,21 @@ export default function BudgetKanbanPage() {
     }));
   }, [columns, filterTecnico, allClientesSelected, selectedClientes]);
 
+  // Save positions to DB (debounced)
+  const savePositions = useCallback((cols: KanbanColumn[]) => {
+    const positions = cols.flatMap((col) =>
+      col.items.map((item, idx) => ({
+        auvo_task_id: item.auvo_task_id,
+        coluna: col.id,
+        posicao: idx,
+      }))
+    );
+    // Fire and forget
+    supabase.functions.invoke("budget-kanban", {
+      body: { mode: "save_positions", positions },
+    }).catch((e) => console.warn("Erro ao salvar posições:", e));
+  }, []);
+
   // Drag and drop (cards and columns)
   const onDragEnd = useCallback((result: DropResult) => {
     const { source, destination, type } = result;
@@ -229,6 +308,7 @@ export default function BudgetKanbanPage() {
         const newCols = [...prev];
         const [moved] = newCols.splice(source.index, 1);
         newCols.splice(destination.index, 0, moved);
+        savePositions(newCols);
         return newCols;
       });
       return;
@@ -243,9 +323,10 @@ export default function BudgetKanbanPage() {
       if (!srcCol || !destCol) return prev;
       const [moved] = srcCol.items.splice(source.index, 1);
       destCol.items.splice(destination.index, 0, moved);
+      savePositions(newCols);
       return newCols;
     });
-  }, []);
+  }, [savePositions]);
 
   const addColumn = useCallback(() => {
     if (!newColumnTitle.trim()) return;
@@ -335,10 +416,15 @@ export default function BudgetKanbanPage() {
                 />
               </PopoverContent>
             </Popover>
-            <Button variant="outline" size="sm" onClick={handleRefresh} disabled={isFetching}>
-              <RefreshCw className={`h-4 w-4 mr-2 ${isFetching ? "animate-spin" : ""}`} />
-              Atualizar
+            <Button variant="outline" size="sm" onClick={handleRefresh} disabled={isSyncing || isFetching}>
+              <RefreshCw className={`h-4 w-4 mr-2 ${isSyncing ? "animate-spin" : ""}`} />
+              {isSyncing ? "Sincronizando..." : "Sincronizar APIs"}
             </Button>
+            {data?.ultimo_sync && (
+              <span className="text-xs text-muted-foreground">
+                Último sync: {new Date(data.ultimo_sync).toLocaleString("pt-BR")}
+              </span>
+            )}
           </div>
         </div>
 

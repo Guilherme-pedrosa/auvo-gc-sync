@@ -221,6 +221,80 @@ Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   try {
+    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+    const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+    const sbClient = createClient(supabaseUrl, supabaseKey);
+
+    let body: any = {};
+    try { const text = await req.text(); if (text) body = JSON.parse(text); } catch {}
+
+    const mode = body.mode || "cache"; // "cache" = read DB, "sync" = fetch APIs + update DB
+    const today = new Date().toISOString().split("T")[0];
+    const startDate = body.start_date || "2026-01-01";
+    const endDate = body.end_date || today;
+
+    // === MODE: CACHE — read from DB ===
+    if (mode === "cache") {
+      const { data: cached } = await sbClient
+        .from("kanban_orcamentos_cache")
+        .select("*")
+        .order("coluna")
+        .order("posicao");
+
+      const { data: meta } = await sbClient
+        .from("kanban_sync_meta")
+        .select("*")
+        .eq("id", "default")
+        .single();
+
+      const items = (cached || []).map((row: any) => ({
+        ...row.dados,
+        _coluna: row.coluna,
+        _posicao: row.posicao,
+      }));
+
+      const resumo = {
+        periodo: { inicio: meta?.periodo_inicio || startDate, fim: meta?.periodo_fim || endDate },
+        total_tarefas_com_questionario: items.length,
+        orcamentos_realizados: items.filter((i: any) => i.orcamento_realizado).length,
+        os_realizadas: items.filter((i: any) => i.os_realizada).length,
+        pendentes: items.filter((i: any) => !i.orcamento_realizado && !i.os_realizada).length,
+      };
+
+      return new Response(JSON.stringify({
+        resumo,
+        items,
+        ultimo_sync: meta?.ultimo_sync || null,
+        from_cache: true,
+      }), {
+        status: 200,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    // === MODE: SAVE_POSITIONS — persist column/position changes from drag-drop ===
+    if (mode === "save_positions") {
+      const positions: { auvo_task_id: string; coluna: string; posicao: number }[] = body.positions || [];
+      if (positions.length > 0) {
+        for (let i = 0; i < positions.length; i += 50) {
+          const batch = positions.slice(i, i + 50).map((p) => ({
+            auvo_task_id: p.auvo_task_id,
+            coluna: p.coluna,
+            posicao: p.posicao,
+            atualizado_em: new Date().toISOString(),
+          }));
+          await sbClient
+            .from("kanban_orcamentos_cache")
+            .upsert(batch, { onConflict: "auvo_task_id", ignoreDuplicates: false });
+        }
+      }
+      return new Response(JSON.stringify({ ok: true, saved: positions.length }), {
+        status: 200,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    // === MODE: SYNC — fetch APIs, update cache ===
     const auvoApiKey = Deno.env.get("AUVO_APP_KEY");
     const auvoApiToken = Deno.env.get("AUVO_TOKEN");
     const gcAccessToken = Deno.env.get("GC_ACCESS_TOKEN");
@@ -237,9 +311,6 @@ Deno.serve(async (req) => {
       });
     }
 
-    let body: any = {};
-    try { const text = await req.text(); if (text) body = JSON.parse(text); } catch {}
-
     const today = new Date().toISOString().split("T")[0];
     const startDate = body.start_date || "2026-01-01";
     const endDate = body.end_date || today;
@@ -255,9 +326,6 @@ Deno.serve(async (req) => {
     };
 
     // Load conciliation snapshot for customer name mapping
-    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
-    const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-    const sbClient = createClient(supabaseUrl, supabaseKey);
 
     const auvoTaskClienteMap: Record<string, string> = {};
     try {
@@ -429,6 +497,67 @@ Deno.serve(async (req) => {
       return b.data_tarefa.localeCompare(a.data_tarefa);
     });
 
+    // === UPSERT TO CACHE ===
+    // Read existing cache to preserve column/position for known items
+    const { data: existingCache } = await sbClient
+      .from("kanban_orcamentos_cache")
+      .select("auvo_task_id, coluna, posicao");
+    
+    const existingMap: Record<string, { coluna: string; posicao: number }> = {};
+    for (const row of existingCache || []) {
+      existingMap[row.auvo_task_id] = { coluna: row.coluna, posicao: row.posicao };
+    }
+
+    const now = new Date().toISOString();
+    const upsertRows = items.map((item: any, idx: number) => {
+      const existing = existingMap[item.auvo_task_id];
+      // Determine default column for new items
+      let defaultColuna = "a_fazer";
+      if (item.os_realizada) defaultColuna = "os_realizada";
+      else if (item.orcamento_realizado) defaultColuna = `orc_${(item.gc_orcamento?.gc_situacao || "sem_situacao").replace(/\s+/g, "_").toLowerCase()}`;
+
+      return {
+        auvo_task_id: item.auvo_task_id,
+        dados: item,
+        coluna: existing ? existing.coluna : defaultColuna,
+        posicao: existing ? existing.posicao : idx,
+        atualizado_em: now,
+      };
+    });
+
+    // Upsert in batches of 50
+    for (let i = 0; i < upsertRows.length; i += 50) {
+      const batch = upsertRows.slice(i, i + 50);
+      await sbClient
+        .from("kanban_orcamentos_cache")
+        .upsert(batch, { onConflict: "auvo_task_id" });
+    }
+
+    // Remove cached items that no longer exist in the API response
+    const currentIds = new Set(items.map((i: any) => i.auvo_task_id));
+    const toDelete = (existingCache || [])
+      .filter((row: any) => !currentIds.has(row.auvo_task_id))
+      .map((row: any) => row.auvo_task_id);
+    if (toDelete.length > 0) {
+      await sbClient
+        .from("kanban_orcamentos_cache")
+        .delete()
+        .in("auvo_task_id", toDelete);
+      console.log(`[budget-kanban] Removed ${toDelete.length} stale cache entries`);
+    }
+
+    // Update sync metadata
+    await sbClient
+      .from("kanban_sync_meta")
+      .upsert({
+        id: "default",
+        ultimo_sync: now,
+        periodo_inicio: startDate,
+        periodo_fim: endDate,
+      });
+
+    console.log(`[budget-kanban] Cache atualizado: ${upsertRows.length} itens`);
+
     const resumo = {
       periodo: { inicio: startDate, fim: endDate },
       total_tarefas_com_questionario: items.length,
@@ -437,7 +566,7 @@ Deno.serve(async (req) => {
       pendentes: items.filter((i: any) => !i.orcamento_realizado && !i.os_realizada).length,
     };
 
-    return new Response(JSON.stringify({ resumo, items }), {
+    return new Response(JSON.stringify({ resumo, items, ultimo_sync: now, from_cache: false }), {
       status: 200,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });

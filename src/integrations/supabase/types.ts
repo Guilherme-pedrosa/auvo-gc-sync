@@ -95,6 +95,54 @@ export type Database = {
         }
         Relationships: []
       }
+      kanban_orcamentos_cache: {
+        Row: {
+          atualizado_em: string
+          auvo_task_id: string
+          coluna: string
+          criado_em: string
+          dados: Json
+          posicao: number
+        }
+        Insert: {
+          atualizado_em?: string
+          auvo_task_id: string
+          coluna?: string
+          criado_em?: string
+          dados: Json
+          posicao?: number
+        }
+        Update: {
+          atualizado_em?: string
+          auvo_task_id?: string
+          coluna?: string
+          criado_em?: string
+          dados?: Json
+          posicao?: number
+        }
+        Relationships: []
+      }
+      kanban_sync_meta: {
+        Row: {
+          id: string
+          periodo_fim: string | null
+          periodo_inicio: string | null
+          ultimo_sync: string | null
+        }
+        Insert: {
+          id?: string
+          periodo_fim?: string | null
+          periodo_inicio?: string | null
+          ultimo_sync?: string | null
+        }
+        Update: {
+          id?: string
+          periodo_fim?: string | null
+          periodo_inicio?: string | null
+          ultimo_sync?: string | null
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
