@@ -239,7 +239,7 @@ export default function RealtimeTrackingPage() {
       ) : (
         <div className="flex-1 overflow-hidden">
           {/* Summary strip */}
-          <div className="px-6 py-3 border-b bg-muted/30 flex items-center gap-6 text-xs">
+          <div className="px-6 py-3 border-b bg-muted/30 flex items-center gap-6 text-xs flex-wrap">
             <span className="flex items-center gap-1.5">
               <User className="h-3.5 w-3.5 text-muted-foreground" />
               <strong>{data.total_tecnicos}</strong> técnicos
@@ -266,6 +266,30 @@ export default function RealtimeTrackingPage() {
                 <strong className="text-red-600">{data.total_atrasadas}</strong> atrasada(s)
               </span>
             )}
+
+            {/* Totais financeiros */}
+            {(() => {
+              let totalAgendado = 0;
+              let totalExecutado = 0;
+              for (const tech of data.tecnicos) {
+                for (const task of tech.tarefas) {
+                  const val = parseFloat(task.gcOsValor || "0");
+                  if (!val) continue;
+                  totalAgendado += val;
+                  if (task.status === "Finalizada") totalExecutado += val;
+                }
+              }
+              return (
+                <>
+                  <span className="border-l pl-4 ml-2 flex items-center gap-1.5 font-semibold">
+                    📋 Agendado: <strong className="text-foreground">R$ {totalAgendado.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}</strong>
+                  </span>
+                  <span className="flex items-center gap-1.5 font-semibold">
+                    ✅ Executado: <strong className="text-emerald-600">R$ {totalExecutado.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}</strong>
+                  </span>
+                </>
+              );
+            })()}
           </div>
 
           {/* Agenda grid — horizontal scroll of technician columns */}
