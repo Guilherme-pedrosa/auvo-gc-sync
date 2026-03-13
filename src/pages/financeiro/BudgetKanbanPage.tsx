@@ -64,7 +64,9 @@ type ApiResponse = {
     os_realizadas: number;
     pendentes: number;
   };
-  items: KanbanItem[];
+  items: (KanbanItem & { _coluna?: string; _posicao?: number })[];
+  ultimo_sync?: string | null;
+  from_cache?: boolean;
   error?: string;
 };
 
