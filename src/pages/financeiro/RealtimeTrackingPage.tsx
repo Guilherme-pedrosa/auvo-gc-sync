@@ -73,6 +73,7 @@ const statusBarColor: Record<string, string> = {
 
 export default function RealtimeTrackingPage() {
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
+  const [sheetOpen, setSheetOpen] = useState(false);
   const dateStr = format(selectedDate, "yyyy-MM-dd");
 
   const { data, isLoading, refetch, isFetching } = useQuery({
@@ -87,6 +88,25 @@ export default function RealtimeTrackingPage() {
     },
     refetchInterval: 120_000,
     staleTime: 30_000,
+  });
+
+  // Monthly late tasks query
+  const monthStart = format(startOfMonth(selectedDate), "yyyy-MM-dd");
+  const monthEnd = format(endOfMonth(selectedDate), "yyyy-MM-dd");
+
+  const { data: atrasadasMes, isLoading: loadingAtrasadas, refetch: refetchAtrasadas } = useQuery({
+    queryKey: ["atrasadas-mes", monthStart, monthEnd],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("atividades_nao_executadas")
+        .select("*")
+        .gte("data_planejada", monthStart)
+        .lte("data_planejada", monthEnd)
+        .order("data_planejada", { ascending: false });
+      if (error) throw error;
+      return data || [];
+    },
+    enabled: sheetOpen,
   });
 
   const goDay = (dir: number) => setSelectedDate((d) => (dir > 0 ? addDays(d, 1) : subDays(d, 1)));
