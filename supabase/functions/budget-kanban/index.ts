@@ -296,6 +296,8 @@ Deno.serve(async (req) => {
     // === MODE: SAVE_POSITIONS — persist column/position changes from drag-drop ===
     if (mode === "save_positions") {
       const positions: { auvo_task_id: string; coluna: string; posicao: number }[] = body.positions || [];
+      const customColumns: { id: string; title: string; order: number }[] = body.custom_columns || [];
+
       if (positions.length > 0) {
         for (let i = 0; i < positions.length; i += 50) {
           const batch = positions.slice(i, i + 50).map((p) => ({
@@ -309,6 +311,14 @@ Deno.serve(async (req) => {
             .upsert(batch, { onConflict: "auvo_task_id", ignoreDuplicates: false });
         }
       }
+
+      // Save custom column metadata if provided
+      if (customColumns.length > 0) {
+        await sbClient
+          .from("kanban_sync_meta")
+          .upsert({ id: "custom_columns", periodo_inicio: JSON.stringify(customColumns) });
+      }
+
       return new Response(JSON.stringify({ ok: true, saved: positions.length }), {
         status: 200,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
