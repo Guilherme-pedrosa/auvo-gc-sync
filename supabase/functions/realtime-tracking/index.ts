@@ -6,6 +6,48 @@ const corsHeaders = {
 };
 
 const AUVO_BASE_URL = "https://api.auvo.com.br/v2";
+const GC_BASE_URL = "https://api.gestaoclick.com";
+
+// Fetch GC OS and build a map of auvo_task_id → { codigo, valor_total }
+async function fetchGcOsMap(gcHeaders: Record<string, string>): Promise<Record<string, { codigo: string; valor: string }>> {
+  const atributoId = Deno.env.get("GC_ATRIBUTO_TAREFA_ID") || "73344";
+  const atributoLabel = (Deno.env.get("AUVO_ATRIBUTO_LABEL") || "Tarefa Execução").toLowerCase();
+  const map: Record<string, { codigo: string; valor: string }> = {};
+  let page = 1;
+  let totalPages = 1;
+
+  while (page <= totalPages && page <= 10) {
+    const url = `${GC_BASE_URL}/api/ordens_servicos?limite=100&pagina=${page}`;
+    const response = await fetch(url, { headers: gcHeaders });
+    if (!response.ok) break;
+    const data = await response.json();
+    const records: any[] = Array.isArray(data?.data) ? data.data : [];
+    totalPages = data?.meta?.total_paginas || 1;
+
+    for (const os of records) {
+      const atributos: any[] = os.atributos || [];
+      const atributoTarefa = atributos.find((a: any) => {
+        const nested = a?.atributo || a;
+        const id = String(nested.atributo_id || nested.id || "");
+        const label = String(nested.descricao || nested.label || nested.nome || "").toLowerCase();
+        return id === atributoId || label === atributoLabel || label.includes("tarefa execu");
+      });
+      if (!atributoTarefa) continue;
+      const nested2 = atributoTarefa?.atributo || atributoTarefa;
+      const taskIdValue = String(nested2?.conteudo || nested2?.valor || "").trim();
+      if (!taskIdValue || !/^\d+$/.test(taskIdValue)) continue;
+
+      map[taskIdValue] = {
+        codigo: String(os.codigo || os.id),
+        valor: String(os.valor_total || "0"),
+      };
+    }
+    page++;
+  }
+
+  console.log(`[realtime-tracking] GC map: ${Object.keys(map).length} OS mapeadas`);
+  return map;
+}
 
 async function auvoLogin(apiKey: string, apiToken: string): Promise<string> {
   const url = `${AUVO_BASE_URL}/login/?apiKey=${encodeURIComponent(apiKey)}&apiToken=${encodeURIComponent(apiToken)}`;
