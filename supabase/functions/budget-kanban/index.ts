@@ -252,17 +252,16 @@ Deno.serve(async (req) => {
 
     // === MODE: CACHE — read from DB ===
     if (mode === "cache") {
-      const { data: cached } = await sbClient
-        .from("kanban_orcamentos_cache")
-        .select("*")
-        .order("coluna")
-        .order("posicao");
+      const [{ data: cached }, { data: meta }, { data: colMeta }] = await Promise.all([
+        sbClient.from("kanban_orcamentos_cache").select("*").order("coluna").order("posicao"),
+        sbClient.from("kanban_sync_meta").select("*").eq("id", "default").single(),
+        sbClient.from("kanban_sync_meta").select("*").eq("id", "custom_columns").single(),
+      ]);
 
-      const { data: meta } = await sbClient
-        .from("kanban_sync_meta")
-        .select("*")
-        .eq("id", "default")
-        .single();
+      let customColumns: { id: string; title: string; order: number }[] = [];
+      try {
+        if (colMeta?.periodo_inicio) customColumns = JSON.parse(colMeta.periodo_inicio);
+      } catch {}
 
       const items = (cached || []).map((row: any) => ({
         ...row.dados,
@@ -286,6 +285,7 @@ Deno.serve(async (req) => {
         resumo,
         items: filteredItems,
         ultimo_sync: meta?.ultimo_sync || null,
+        custom_columns: customColumns,
         from_cache: true,
       }), {
         status: 200,
