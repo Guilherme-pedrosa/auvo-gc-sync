@@ -10,9 +10,23 @@ const GC_BASE_URL = "https://api.gestaoclick.com";
 const QUESTIONNAIRE_ID = "216040";
 const GC_ATRIBUTO_TAREFA_ORC = "73341";
 const GC_ATRIBUTO_TAREFA_OS = "73343";
+const AUVO_SAFE_START = "2020-01-01";
+const AUVO_SAFE_END = "2030-12-31";
 const MIN_DELAY_MS = 200;
 let lastAuvoCall = 0;
 let lastGcCall = 0;
+
+type AuvoFetchResult = {
+  tasks: any[];
+  hadError: boolean;
+  errorMessage: string | null;
+};
+
+function inDateRange(dateValue: string | undefined, startDate: string, endDate: string): boolean {
+  const dateOnly = String(dateValue || "").split("T")[0];
+  if (!dateOnly || !/^\d{4}-\d{2}-\d{2}$/.test(dateOnly)) return true;
+  return dateOnly >= startDate && dateOnly <= endDate;
+}
 
 async function rateLimitedFetch(url: string, options: RequestInit, type: "gc" | "auvo"): Promise<Response> {
   const now = Date.now();
@@ -45,16 +59,18 @@ async function fetchAuvoTasksWithQuestionnaire(
   bearerToken: string,
   startDate: string,
   endDate: string
-): Promise<any[]> {
+): Promise<AuvoFetchResult> {
   const allTasks: any[] = [];
   let page = 1;
   const pageSize = 100;
   const MAX_PAGES = 20;
-  const formattedStart = `${startDate}T00:00:00`;
-  const formattedEnd = `${endDate}T23:59:59`;
+  const filterObj = { startDate: `${startDate}T00:00:00`, endDate: `${endDate}T23:59:59` };
+  let hadError = false;
+  let errorMessage: string | null = null;
+
+  console.log(`[budget-kanban] Auvo paramFilter: ${JSON.stringify(filterObj)}`);
 
   while (page <= MAX_PAGES) {
-    const filterObj = { startDate: formattedStart, endDate: formattedEnd };
     const paramFilter = encodeURIComponent(JSON.stringify(filterObj));
     const url = `${AUVO_BASE_URL}/tasks/?page=${page}&pageSize=${pageSize}&order=desc&paramFilter=${paramFilter}`;
 
@@ -64,7 +80,9 @@ async function fetchAuvoTasksWithQuestionnaire(
     if (response.status === 404) break;
     if (!response.ok) {
       const errBody = await response.text().catch(() => "");
-      console.error(`[budget-kanban] Auvo error ${response.status}: ${errBody.substring(0, 300)}`);
+      hadError = true;
+      errorMessage = `Auvo /tasks erro ${response.status}: ${errBody.substring(0, 300)}`;
+      console.error(`[budget-kanban] ${errorMessage}`);
       break;
     }
 
@@ -82,13 +100,12 @@ async function fetchAuvoTasksWithQuestionnaire(
     page++;
   }
 
-  // Log sample task fields for debugging customer resolution
   if (allTasks.length > 0) {
     const sample = allTasks[0];
     console.log(`[budget-kanban] Sample task fields: taskID=${sample.taskID}, customerDescription=${sample.customerDescription}, customerName=${sample.customerName}, customerId=${sample.customerId}, externalId=${sample.externalId}, customer=${JSON.stringify(sample.customer)?.substring(0,500)}`);
   }
 
-  return allTasks;
+  return { tasks: allTasks, hadError, errorMessage };
 }
 
 // Fetch GC orçamentos and build a map of taskID -> orçamento data
