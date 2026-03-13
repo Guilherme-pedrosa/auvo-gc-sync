@@ -602,8 +602,8 @@ export default function BudgetKanbanPage() {
               <DialogHeader>
                 <DialogTitle className="flex items-center justify-between gap-4">
                   <span className="truncate">{selectedCard.cliente}</span>
-                  <Badge variant={selectedCard.orcamento_realizado ? "default" : "secondary"}>
-                    {selectedCard.orcamento_realizado ? "Orçamento Realizado" : "Pendente"}
+                  <Badge variant={selectedCard.orcamento_realizado ? "default" : selectedCard.os_realizada ? "outline" : "secondary"}>
+                    {selectedCard.orcamento_realizado ? "Orçamento Realizado" : selectedCard.os_realizada ? "OS Realizada" : "Pendente"}
                   </Badge>
                 </DialogTitle>
               </DialogHeader>
