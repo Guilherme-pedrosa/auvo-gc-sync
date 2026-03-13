@@ -12,7 +12,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   ArrowLeft, CalendarIcon, RefreshCw, ExternalLink, ClipboardList,
-  FileText, Plus, GripVertical, Trash2, Edit2, Check, X, Filter
+  FileText, Plus, GripVertical, Trash2, Edit2, Check, X, Filter, FileDown, Star
 } from "lucide-react";
 import { format, startOfMonth } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -38,6 +38,8 @@ type GcDocData = {
 type KanbanItem = {
   auvo_task_id: string;
   auvo_link: string;
+  auvo_task_url?: string;
+  auvo_survey_url?: string;
   cliente: string;
   tecnico: string;
   data_tarefa: string;
@@ -725,7 +727,7 @@ export default function BudgetKanbanPage() {
                                             )}
 
                                             {/* Links */}
-                                            <div className="flex items-center gap-2 mt-2">
+                                            <div className="flex items-center gap-2 mt-2 flex-wrap">
                                               <a
                                                 href={item.auvo_link}
                                                 target="_blank"
@@ -736,6 +738,30 @@ export default function BudgetKanbanPage() {
                                                 <ExternalLink className="h-3 w-3" />
                                                 Auvo
                                               </a>
+                                              {item.auvo_task_url && (
+                                                <a
+                                                  href={item.auvo_task_url}
+                                                  target="_blank"
+                                                  rel="noopener noreferrer"
+                                                  className="inline-flex items-center gap-1 text-[10px] text-orange-600 hover:underline"
+                                                  onClick={(e) => e.stopPropagation()}
+                                                >
+                                                  <FileDown className="h-3 w-3" />
+                                                  OS Digital
+                                                </a>
+                                              )}
+                                              {item.auvo_survey_url && (
+                                                <a
+                                                  href={item.auvo_survey_url}
+                                                  target="_blank"
+                                                  rel="noopener noreferrer"
+                                                  className="inline-flex items-center gap-1 text-[10px] text-purple-600 hover:underline"
+                                                  onClick={(e) => e.stopPropagation()}
+                                                >
+                                                  <Star className="h-3 w-3" />
+                                                  Pesquisa
+                                                </a>
+                                              )}
                                               {item.gc_orcamento && (
                                                 <a
                                                   href={item.gc_orcamento.gc_link}
@@ -847,7 +873,7 @@ export default function BudgetKanbanPage() {
                 </div>
 
                 {/* Links */}
-                <div className="flex gap-3">
+                <div className="flex gap-3 flex-wrap">
                   <a
                     href={selectedCard.auvo_link}
                     target="_blank"
@@ -857,6 +883,28 @@ export default function BudgetKanbanPage() {
                     <ExternalLink className="h-4 w-4" />
                     Abrir no Auvo
                   </a>
+                  {selectedCard.auvo_task_url && (
+                    <a
+                      href={selectedCard.auvo_task_url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1.5 text-sm text-orange-600 hover:underline font-medium"
+                    >
+                      <FileDown className="h-4 w-4" />
+                      OS Digital
+                    </a>
+                  )}
+                  {selectedCard.auvo_survey_url && (
+                    <a
+                      href={selectedCard.auvo_survey_url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1.5 text-sm text-purple-600 hover:underline font-medium"
+                    >
+                      <Star className="h-4 w-4" />
+                      Pesquisa de Satisfação
+                    </a>
+                  )}
                   {selectedCard.gc_orcamento && (
                     <a
                       href={selectedCard.gc_orcamento.gc_link}
