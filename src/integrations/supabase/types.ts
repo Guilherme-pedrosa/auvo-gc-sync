@@ -14,6 +14,45 @@ export type Database = {
   }
   public: {
     Tables: {
+      atividades_nao_executadas: {
+        Row: {
+          auvo_task_id: string
+          cliente: string | null
+          data_planejada: string
+          descricao: string | null
+          id: string
+          motivo: string | null
+          registrado_em: string
+          status_original: string
+          tecnico_id: string
+          tecnico_nome: string
+        }
+        Insert: {
+          auvo_task_id: string
+          cliente?: string | null
+          data_planejada: string
+          descricao?: string | null
+          id?: string
+          motivo?: string | null
+          registrado_em?: string
+          status_original?: string
+          tecnico_id: string
+          tecnico_nome: string
+        }
+        Update: {
+          auvo_task_id?: string
+          cliente?: string | null
+          data_planejada?: string
+          descricao?: string | null
+          id?: string
+          motivo?: string | null
+          registrado_em?: string
+          status_original?: string
+          tecnico_id?: string
+          tecnico_nome?: string
+        }
+        Relationships: []
+      }
       auvo_gc_sync_log: {
         Row: {
           detalhes: Json | null

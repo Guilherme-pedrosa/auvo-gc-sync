@@ -21,6 +21,7 @@ type TaskItem = {
   cliente: string;
   endereco: string;
   status: string;
+  atrasada: boolean;
   horaInicio: string;
   horaFim: string;
   data: string;
@@ -40,6 +41,7 @@ type TecnicoGroup = {
     finalizadas: number;
     emAndamento: number;
     agendadas: number;
+    atrasadas: number;
   };
 };
 
@@ -47,6 +49,7 @@ type TrackingData = {
   data: string;
   total_tarefas: number;
   total_tecnicos: number;
+  total_atrasadas: number;
   tecnicos: TecnicoGroup[];
 };
 
@@ -165,6 +168,12 @@ export default function RealtimeTrackingPage() {
               <CalendarClock className="h-3.5 w-3.5 text-amber-500" />
               <strong className="text-amber-600">{data.tecnicos.reduce((s, t) => s + t.resumo.agendadas, 0)}</strong> agendadas
             </span>
+            {(data.total_atrasadas || 0) > 0 && (
+              <span className="flex items-center gap-1.5">
+                <AlertTriangle className="h-3.5 w-3.5 text-red-500" />
+                <strong className="text-red-600">{data.total_atrasadas}</strong> atrasada(s)
+              </span>
+            )}
           </div>
 
           {/* Agenda grid — horizontal scroll of technician columns */}
@@ -197,6 +206,11 @@ export default function RealtimeTrackingPage() {
                             {hasActive && (
                               <span className="text-[10px] text-blue-600 font-medium animate-pulse">● Ativo</span>
                             )}
+                            {tech.resumo.atrasadas > 0 && (
+                              <Badge variant="destructive" className="text-[9px] h-4 px-1.5">
+                                {tech.resumo.atrasadas} atrasada(s)
+                              </Badge>
+                            )}
                           </div>
                         </div>
                       </div>
@@ -214,12 +228,15 @@ export default function RealtimeTrackingPage() {
                       hasActive ? "border-blue-200" : ""
                     }`}>
                       {tech.tarefas.map((task, idx) => {
-                        const cfg = statusIcon[task.status] || statusIcon["Agendada"];
+                        const isLate = task.atrasada;
+                        const cfg = isLate
+                          ? { icon: AlertTriangle, class: "text-red-600" }
+                          : (statusIcon[task.status] || statusIcon["Agendada"]);
                         const Icon = cfg.icon;
-                        const barColor = statusBarColor[task.status] || "bg-muted";
+                        const barColor = isLate ? "bg-red-500" : (statusBarColor[task.status] || "bg-muted");
 
                         return (
-                          <div key={task.taskId || idx} className="relative flex gap-2.5 group">
+                          <div key={task.taskId || idx} className={`relative flex gap-2.5 group ${isLate ? "bg-red-50/50 -mx-1 px-1 rounded" : ""}`}>
                             {/* Timeline line */}
                             <div className="flex flex-col items-center pt-1">
                               <div className={`h-2.5 w-2.5 rounded-full ${barColor} ring-2 ring-background flex-shrink-0`} />
@@ -229,10 +246,12 @@ export default function RealtimeTrackingPage() {
                             </div>
 
                             {/* Task card */}
-                            <div className={`flex-1 pb-3 min-w-0 ${idx < tech.tarefas.length - 1 ? "" : ""}`}>
+                            <div className={`flex-1 pb-3 min-w-0`}>
                               <div className="flex items-center gap-1.5 mb-0.5">
                                 <Icon className={`h-3 w-3 flex-shrink-0 ${cfg.class}`} />
-                                <span className={`text-[10px] font-medium ${cfg.class}`}>{task.status}</span>
+                                <span className={`text-[10px] font-medium ${cfg.class}`}>
+                                  {isLate ? "⚠ Atrasada" : task.status}
+                                </span>
                                 {task.horaInicio && (
                                   <span className="text-[10px] text-muted-foreground ml-auto flex items-center gap-0.5">
                                     <Clock className="h-2.5 w-2.5" />

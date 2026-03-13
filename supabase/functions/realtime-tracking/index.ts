@@ -1,3 +1,5 @@
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
@@ -90,6 +92,12 @@ Deno.serve(async (req) => {
       console.log(`[realtime-tracking] Customer fields: customerDescription=${s.customerDescription}, customerName=${s.customerName}, customer=${JSON.stringify(s.customer)?.substring(0,300)}`);
     }
 
+    // Current time for late detection (Brazil timezone UTC-3)
+    const nowUTC = new Date();
+    const nowBR = new Date(nowUTC.getTime() - 3 * 60 * 60 * 1000);
+    const nowStr = nowBR.toISOString().split("T")[0];
+    const nowTime = nowBR.toISOString().split("T")[1].substring(0, 5); // HH:MM
+
     // Group by technician
     const techMap: Record<string, {
       id: string;
@@ -118,7 +126,7 @@ Deno.serve(async (req) => {
       const startTime = String(task.startTime || task.startHour || "");
       const endTime = String(task.endTime || task.endHour || "");
       
-      // Customer resolution: customerDescription is the reliable field in Auvo API
+      // Customer resolution
       let customerName = "";
       if (task.customerDescription) {
         customerName = String(task.customerDescription).trim();
@@ -132,11 +140,35 @@ Deno.serve(async (req) => {
       
       const address = task.address || task.customer?.address || "";
 
+      // Late detection: if task is "Agendada" and endTime has passed, or if no endTime and it's past 17:00
+      let atrasada = false;
+      if (statusLabel === "Agendada" && taskDate <= nowStr) {
+        if (taskDate < nowStr) {
+          // Past day = definitely late
+          atrasada = true;
+        } else if (endTime) {
+          // Today: compare with current time
+          atrasada = nowTime > endTime;
+        } else if (startTime) {
+          // If start time has passed by 2+ hours, consider late
+          const startHour = parseInt(startTime.split(":")[0] || "0");
+          const startMin = parseInt(startTime.split(":")[1] || "0");
+          const nowHour = parseInt(nowTime.split(":")[0] || "0");
+          const nowMin = parseInt(nowTime.split(":")[1] || "0");
+          const diffMin = (nowHour * 60 + nowMin) - (startHour * 60 + startMin);
+          atrasada = diffMin > 120;
+        } else {
+          // No time info: if past 17:00 and still "Agendada", it's late
+          atrasada = nowTime > "17:00";
+        }
+      }
+
       techMap[techId].tarefas.push({
         taskId: String(task.taskID || task.id || ""),
         cliente: customerName,
         endereco: typeof address === "object" ? "" : String(address).substring(0, 100),
         status: statusLabel,
+        atrasada,
         horaInicio: startTime,
         horaFim: endTime,
         data: taskDate,
@@ -154,6 +186,7 @@ Deno.serve(async (req) => {
       const finalizadas = tech.tarefas.filter(t => t.status === "Finalizada").length;
       const emAndamento = tech.tarefas.filter(t => t.status === "Em andamento").length;
       const agendadas = tech.tarefas.filter(t => t.status === "Agendada").length;
+      const atrasadas = tech.tarefas.filter(t => t.atrasada).length;
       return {
         ...tech,
         resumo: {
@@ -161,19 +194,61 @@ Deno.serve(async (req) => {
           finalizadas,
           emAndamento,
           agendadas,
+          atrasadas,
         }
       };
     }).sort((a, b) => {
-      // Sort: em andamento first, then by total tasks
       if (a.resumo.emAndamento > 0 && b.resumo.emAndamento === 0) return -1;
       if (b.resumo.emAndamento > 0 && a.resumo.emAndamento === 0) return 1;
       return b.resumo.total - a.resumo.total;
     });
 
+    // Save non-executed tasks (late/agendada past day) to DB for commission tracking
+    // Only persist for past dates or if it's past 18:00 BR time for today
+    const shouldPersist = targetDate < nowStr || (targetDate === nowStr && nowTime >= "18:00");
+    if (shouldPersist) {
+      try {
+        const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+        const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+        const supabase = createClient(supabaseUrl, supabaseKey);
+
+        const naoExecutadas: any[] = [];
+        for (const tech of tecnicos) {
+          for (const task of tech.tarefas) {
+            if (task.status === "Agendada" || (task.status !== "Finalizada" && task.status !== "Em andamento" && task.atrasada)) {
+              naoExecutadas.push({
+                auvo_task_id: task.taskId,
+                tecnico_id: tech.id,
+                tecnico_nome: tech.nome,
+                cliente: task.cliente || null,
+                descricao: task.descricao || null,
+                data_planejada: targetDate,
+                status_original: task.status,
+              });
+            }
+          }
+        }
+
+        if (naoExecutadas.length > 0) {
+          const { error: upsertErr } = await supabase
+            .from("atividades_nao_executadas")
+            .upsert(naoExecutadas, { onConflict: "auvo_task_id,data_planejada" });
+          if (upsertErr) console.error("[realtime-tracking] Erro ao salvar não executadas:", upsertErr);
+          else console.log(`[realtime-tracking] ${naoExecutadas.length} atividades não executadas salvas para ${targetDate}`);
+        }
+      } catch (err) {
+        console.warn("[realtime-tracking] Erro ao persistir não executadas:", err);
+      }
+    }
+
+    // Count total late
+    const totalAtrasadas = tecnicos.reduce((s, t) => s + t.resumo.atrasadas, 0);
+
     return new Response(JSON.stringify({
       data: targetDate,
       total_tarefas: tasks.length,
       total_tecnicos: tecnicos.length,
+      total_atrasadas: totalAtrasadas,
       tecnicos,
     }), {
       status: 200,
