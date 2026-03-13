@@ -228,12 +228,15 @@ export default function RealtimeTrackingPage() {
                       hasActive ? "border-blue-200" : ""
                     }`}>
                       {tech.tarefas.map((task, idx) => {
-                        const cfg = statusIcon[task.status] || statusIcon["Agendada"];
+                        const isLate = task.atrasada;
+                        const cfg = isLate
+                          ? { icon: AlertTriangle, class: "text-red-600" }
+                          : (statusIcon[task.status] || statusIcon["Agendada"]);
                         const Icon = cfg.icon;
-                        const barColor = statusBarColor[task.status] || "bg-muted";
+                        const barColor = isLate ? "bg-red-500" : (statusBarColor[task.status] || "bg-muted");
 
                         return (
-                          <div key={task.taskId || idx} className="relative flex gap-2.5 group">
+                          <div key={task.taskId || idx} className={`relative flex gap-2.5 group ${isLate ? "bg-red-50/50 -mx-1 px-1 rounded" : ""}`}>
                             {/* Timeline line */}
                             <div className="flex flex-col items-center pt-1">
                               <div className={`h-2.5 w-2.5 rounded-full ${barColor} ring-2 ring-background flex-shrink-0`} />
@@ -243,10 +246,12 @@ export default function RealtimeTrackingPage() {
                             </div>
 
                             {/* Task card */}
-                            <div className={`flex-1 pb-3 min-w-0 ${idx < tech.tarefas.length - 1 ? "" : ""}`}>
+                            <div className={`flex-1 pb-3 min-w-0`}>
                               <div className="flex items-center gap-1.5 mb-0.5">
                                 <Icon className={`h-3 w-3 flex-shrink-0 ${cfg.class}`} />
-                                <span className={`text-[10px] font-medium ${cfg.class}`}>{task.status}</span>
+                                <span className={`text-[10px] font-medium ${cfg.class}`}>
+                                  {isLate ? "⚠ Atrasada" : task.status}
+                                </span>
                                 {task.horaInicio && (
                                   <span className="text-[10px] text-muted-foreground ml-auto flex items-center gap-0.5">
                                     <Clock className="h-2.5 w-2.5" />
