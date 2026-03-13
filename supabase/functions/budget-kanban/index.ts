@@ -311,9 +311,8 @@ Deno.serve(async (req) => {
       });
     }
 
-    const today = new Date().toISOString().split("T")[0];
-    const startDate = body.start_date || "2026-01-01";
-    const endDate = body.end_date || today;
+    // startDate/endDate already declared above
+
 
     console.log(`[budget-kanban] Período: ${startDate} a ${endDate}`);
 
