@@ -459,10 +459,19 @@ export default function Index() {
                   mode="range"
                   selected={{ from: dateRange.from, to: dateRange.to }}
                   onSelect={(range) => {
-                    if (range?.from && range?.to) setDateRange({ from: range.from, to: range.to });
+                    if (!range?.from) return;
+                    setDateRange((prev) => {
+                      const nextFrom = range.from as Date;
+                      const prevToValid = prev.to && prev.to >= nextFrom;
+                      return {
+                        from: nextFrom,
+                        to: (range.to as Date | undefined) ?? (prevToValid ? prev.to : nextFrom),
+                      };
+                    });
                   }}
                   locale={ptBR}
                   numberOfMonths={2}
+                  className="p-3 pointer-events-auto"
                 />
               </PopoverContent>
             </Popover>
