@@ -471,8 +471,8 @@ export default function BudgetKanbanPage() {
                                         {item.status_auvo}
                                       </Badge>
                                     </div>
-                                    <p className="text-sm font-semibold text-foreground mt-1 truncate">
-                                      {item.cliente}
+                                    <p className="text-sm font-semibold text-foreground mt-1 truncate" title={item.cliente}>
+                                      {abbreviateName(item.cliente)}
                                     </p>
                                     <p className="text-xs text-muted-foreground mt-0.5">
                                       {item.tecnico} • {item.data_tarefa}
