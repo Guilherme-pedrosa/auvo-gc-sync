@@ -613,18 +613,8 @@ Deno.serve(async (req) => {
         .upsert(batch, { onConflict: "auvo_task_id" });
     }
 
-    // Remove cached items that no longer exist in the API response
-    const currentIds = new Set(items.map((i: any) => i.auvo_task_id));
-    const toDelete = (existingCache || [])
-      .filter((row: any) => !currentIds.has(row.auvo_task_id))
-      .map((row: any) => row.auvo_task_id);
-    if (toDelete.length > 0) {
-      await sbClient
-        .from("kanban_orcamentos_cache")
-        .delete()
-        .in("auvo_task_id", toDelete);
-      console.log(`[budget-kanban] Removed ${toDelete.length} stale cache entries`);
-    }
+    // Não remover itens antigos do cache: preservar histórico e posições já salvas
+
 
     // Update sync metadata
     await sbClient
