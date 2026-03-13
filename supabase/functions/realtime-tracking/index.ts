@@ -84,6 +84,11 @@ Deno.serve(async (req) => {
     const tasks = await fetchAllTasks(bearerToken, targetDate, targetDate);
 
     console.log(`[realtime-tracking] Total: ${tasks.length} tarefas`);
+    if (tasks.length > 0) {
+      const s = tasks[0];
+      console.log(`[realtime-tracking] Sample keys: ${Object.keys(s).join(", ")}`);
+      console.log(`[realtime-tracking] Customer fields: customerDescription=${s.customerDescription}, customerName=${s.customerName}, customer=${JSON.stringify(s.customer)?.substring(0,300)}`);
+    }
 
     // Group by technician
     const techMap: Record<string, {
