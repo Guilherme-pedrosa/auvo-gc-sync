@@ -10,9 +10,23 @@ const GC_BASE_URL = "https://api.gestaoclick.com";
 const QUESTIONNAIRE_ID = "216040";
 const GC_ATRIBUTO_TAREFA_ORC = "73341";
 const GC_ATRIBUTO_TAREFA_OS = "73343";
+const AUVO_SAFE_START = "2020-01-01";
+const AUVO_SAFE_END = "2030-12-31";
 const MIN_DELAY_MS = 200;
 let lastAuvoCall = 0;
 let lastGcCall = 0;
+
+type AuvoFetchResult = {
+  tasks: any[];
+  hadError: boolean;
+  errorMessage: string | null;
+};
+
+function inDateRange(dateValue: string | undefined, startDate: string, endDate: string): boolean {
+  const dateOnly = String(dateValue || "").split("T")[0];
+  if (!dateOnly || !/^\d{4}-\d{2}-\d{2}$/.test(dateOnly)) return true;
+  return dateOnly >= startDate && dateOnly <= endDate;
+}
 
 async function rateLimitedFetch(url: string, options: RequestInit, type: "gc" | "auvo"): Promise<Response> {
   const now = Date.now();
@@ -45,16 +59,18 @@ async function fetchAuvoTasksWithQuestionnaire(
   bearerToken: string,
   startDate: string,
   endDate: string
-): Promise<any[]> {
+): Promise<AuvoFetchResult> {
   const allTasks: any[] = [];
   let page = 1;
   const pageSize = 100;
   const MAX_PAGES = 20;
-  const formattedStart = `${startDate}T00:00:00`;
-  const formattedEnd = `${endDate}T23:59:59`;
+  const filterObj = { startDate: `${startDate}T00:00:00`, endDate: `${endDate}T23:59:59` };
+  let hadError = false;
+  let errorMessage: string | null = null;
+
+  console.log(`[budget-kanban] Auvo paramFilter: ${JSON.stringify(filterObj)}`);
 
   while (page <= MAX_PAGES) {
-    const filterObj = { startDate: formattedStart, endDate: formattedEnd };
     const paramFilter = encodeURIComponent(JSON.stringify(filterObj));
     const url = `${AUVO_BASE_URL}/tasks/?page=${page}&pageSize=${pageSize}&order=desc&paramFilter=${paramFilter}`;
 
@@ -64,7 +80,9 @@ async function fetchAuvoTasksWithQuestionnaire(
     if (response.status === 404) break;
     if (!response.ok) {
       const errBody = await response.text().catch(() => "");
-      console.error(`[budget-kanban] Auvo error ${response.status}: ${errBody.substring(0, 300)}`);
+      hadError = true;
+      errorMessage = `Auvo /tasks erro ${response.status}: ${errBody.substring(0, 300)}`;
+      console.error(`[budget-kanban] ${errorMessage}`);
       break;
     }
 
@@ -82,13 +100,12 @@ async function fetchAuvoTasksWithQuestionnaire(
     page++;
   }
 
-  // Log sample task fields for debugging customer resolution
   if (allTasks.length > 0) {
     const sample = allTasks[0];
     console.log(`[budget-kanban] Sample task fields: taskID=${sample.taskID}, customerDescription=${sample.customerDescription}, customerName=${sample.customerName}, customerId=${sample.customerId}, externalId=${sample.externalId}, customer=${JSON.stringify(sample.customer)?.substring(0,500)}`);
   }
 
-  return allTasks;
+  return { tasks: allTasks, hadError, errorMessage };
 }
 
 // Fetch GC orçamentos and build a map of taskID -> orçamento data
@@ -253,17 +270,21 @@ Deno.serve(async (req) => {
         _posicao: row.posicao,
       }));
 
+      const filteredItems = items.filter((item: any) =>
+        inDateRange(item.data_tarefa, startDate, endDate)
+      );
+
       const resumo = {
-        periodo: { inicio: meta?.periodo_inicio || startDate, fim: meta?.periodo_fim || endDate },
-        total_tarefas_com_questionario: items.length,
-        orcamentos_realizados: items.filter((i: any) => i.orcamento_realizado).length,
-        os_realizadas: items.filter((i: any) => i.os_realizada).length,
-        pendentes: items.filter((i: any) => !i.orcamento_realizado && !i.os_realizada).length,
+        periodo: { inicio: startDate, fim: endDate },
+        total_tarefas_com_questionario: filteredItems.length,
+        orcamentos_realizados: filteredItems.filter((i: any) => i.orcamento_realizado).length,
+        os_realizadas: filteredItems.filter((i: any) => i.os_realizada).length,
+        pendentes: filteredItems.filter((i: any) => !i.orcamento_realizado && !i.os_realizada).length,
       };
 
       return new Response(JSON.stringify({
         resumo,
-        items,
+        items: filteredItems,
         ultimo_sync: meta?.ultimo_sync || null,
         from_cache: true,
       }), {
@@ -348,13 +369,73 @@ Deno.serve(async (req) => {
     }
 
     // Fetch in parallel: Auvo tasks + GC orçamentos + GC OS
-    const [auvoTasks, gcOrcMap, gcOsMap] = await Promise.all([
+    const [auvoPrimary, gcOrcMap, gcOsMap] = await Promise.all([
       fetchAuvoTasksWithQuestionnaire(bearerToken, startDate, endDate),
       fetchGcOrcamentosMap(gcH, startDate, endDate),
       fetchGcOsMap(gcH, startDate, endDate),
     ]);
 
+    let auvoTasks = auvoPrimary.tasks;
+    let auvoError = auvoPrimary.errorMessage;
+
+    // Fallback robusto: se vier vazio/erro no range escolhido, tenta range amplo no Auvo e filtra localmente
+    if ((auvoPrimary.hadError || auvoTasks.length === 0) && (startDate !== AUVO_SAFE_START || endDate !== AUVO_SAFE_END)) {
+      console.warn("[budget-kanban] Tentando fallback Auvo com range amplo (2020-2030)");
+      const auvoFallback = await fetchAuvoTasksWithQuestionnaire(bearerToken, AUVO_SAFE_START, AUVO_SAFE_END);
+      if (!auvoError && auvoFallback.errorMessage) auvoError = auvoFallback.errorMessage;
+
+      const fallbackFiltered = auvoFallback.tasks.filter((task: any) =>
+        inDateRange(String(task.taskDate || ""), startDate, endDate)
+      );
+
+      if (fallbackFiltered.length > 0) {
+        auvoTasks = fallbackFiltered;
+        console.log(`[budget-kanban] Fallback Auvo recuperou ${auvoTasks.length} tarefas no período`);
+      }
+    }
+
     console.log(`[budget-kanban] Auvo tasks: ${auvoTasks.length}, GC orçamentos: ${Object.keys(gcOrcMap).length}, GC OS: ${Object.keys(gcOsMap).length}`);
+
+    // Se Auvo falhar, não sobrescreve cache com vazio
+    if (auvoTasks.length === 0 && auvoError) {
+      console.warn(`[budget-kanban] Sync preservado por erro Auvo: ${auvoError}`);
+
+      const { data: cached } = await sbClient
+        .from("kanban_orcamentos_cache")
+        .select("*")
+        .order("coluna")
+        .order("posicao");
+
+      const { data: meta } = await sbClient
+        .from("kanban_sync_meta")
+        .select("*")
+        .eq("id", "default")
+        .single();
+
+      const fallbackItems = (cached || [])
+        .map((row: any) => ({ ...row.dados, _coluna: row.coluna, _posicao: row.posicao }))
+        .filter((item: any) => inDateRange(item.data_tarefa, startDate, endDate));
+
+      const resumo = {
+        periodo: { inicio: startDate, fim: endDate },
+        total_tarefas_com_questionario: fallbackItems.length,
+        orcamentos_realizados: fallbackItems.filter((i: any) => i.orcamento_realizado).length,
+        os_realizadas: fallbackItems.filter((i: any) => i.os_realizada).length,
+        pendentes: fallbackItems.filter((i: any) => !i.orcamento_realizado && !i.os_realizada).length,
+      };
+
+      return new Response(JSON.stringify({
+        success: false,
+        error: auvoError,
+        resumo,
+        items: fallbackItems,
+        ultimo_sync: meta?.ultimo_sync || null,
+        from_cache: true,
+      }), {
+        status: 200,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
 
     // Build kanban items — first pass (resolve what we can synchronously)
     const items = auvoTasks.map((task: any) => {
@@ -532,18 +613,8 @@ Deno.serve(async (req) => {
         .upsert(batch, { onConflict: "auvo_task_id" });
     }
 
-    // Remove cached items that no longer exist in the API response
-    const currentIds = new Set(items.map((i: any) => i.auvo_task_id));
-    const toDelete = (existingCache || [])
-      .filter((row: any) => !currentIds.has(row.auvo_task_id))
-      .map((row: any) => row.auvo_task_id);
-    if (toDelete.length > 0) {
-      await sbClient
-        .from("kanban_orcamentos_cache")
-        .delete()
-        .in("auvo_task_id", toDelete);
-      console.log(`[budget-kanban] Removed ${toDelete.length} stale cache entries`);
-    }
+    // Não remover itens antigos do cache: preservar histórico e posições já salvas
+
 
     // Update sync metadata
     await sbClient
