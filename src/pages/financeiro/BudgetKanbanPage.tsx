@@ -173,10 +173,8 @@ export default function BudgetKanbanPage() {
 
     if (hasSavedPositions) {
       const colMap: Record<string, KanbanItem[]> = {};
-      const colOrder: string[] = [];
       for (const item of data.items) {
         let col = (item as any)._coluna || "a_fazer";
-        // Strip internal fields
         const { _coluna, _posicao, ...cleanItem } = item as any;
 
         // Re-check: items in "a_fazer" without questionnaire should go to "falta_preenchimento"
@@ -184,10 +182,7 @@ export default function BudgetKanbanPage() {
           col = "falta_preenchimento";
         }
 
-        if (!colMap[col]) {
-          colMap[col] = [];
-          colOrder.push(col);
-        }
+        if (!colMap[col]) colMap[col] = [];
         colMap[col].push(cleanItem);
       }
       // Sort items within each column by saved position
@@ -195,38 +190,39 @@ export default function BudgetKanbanPage() {
         colMap[col].sort((a: any, b: any) => ((a as any)._posicao || 0) - ((b as any)._posicao || 0));
       }
 
-      // Build column title mapping
-      const titleMap: Record<string, string> = {
+      // Use saved column order and titles
+      const savedCols = data.custom_columns || [];
+      const savedOrderMap = new Map(savedCols.map((cc) => [cc.id, cc]));
+
+      // Build title mapping from saved data
+      const defaultTitles: Record<string, string> = {
         falta_preenchimento: "⚠️ Falta Preenchimento",
         a_fazer: "📋 A Fazer",
         os_realizada: "🔧 OS Realizada",
       };
 
-      // Add custom column titles from saved metadata
-      const savedCustomCols = data.custom_columns || [];
-      for (const cc of savedCustomCols) {
-        titleMap[cc.id] = cc.title;
+      // Start with saved column order
+      const orderedIds: string[] = savedCols
+        .sort((a, b) => a.order - b.order)
+        .map((cc) => cc.id);
+
+      // Add any columns from data that weren't in saved order (new columns from sync)
+      for (const colId of Object.keys(colMap)) {
+        if (!orderedIds.includes(colId)) orderedIds.push(colId);
       }
 
-      // Ensure falta_preenchimento and a_fazer are always present and in order
-      const orderedIds: string[] = [];
-      if (!colOrder.includes("falta_preenchimento")) colOrder.unshift("falta_preenchimento");
-      if (colOrder.includes("falta_preenchimento")) orderedIds.push("falta_preenchimento");
-      if (colOrder.includes("a_fazer")) orderedIds.push("a_fazer");
-      for (const id of colOrder) {
-        if (!orderedIds.includes(id)) orderedIds.push(id);
-      }
-
-      // Add saved custom columns that might be empty (no items assigned)
-      for (const cc of savedCustomCols) {
-        if (!orderedIds.includes(cc.id)) orderedIds.push(cc.id);
+      // Ensure falta_preenchimento and a_fazer exist
+      if (!orderedIds.includes("falta_preenchimento")) orderedIds.unshift("falta_preenchimento");
+      if (!orderedIds.includes("a_fazer")) {
+        const fpIdx = orderedIds.indexOf("falta_preenchimento");
+        orderedIds.splice(fpIdx + 1, 0, "a_fazer");
       }
 
       const cols: KanbanColumn[] = orderedIds
-        .filter((colId) => colMap[colId] && colMap[colId].length > 0 || colId === "falta_preenchimento" || colId === "a_fazer" || titleMap[colId])
+        .filter((colId) => (colMap[colId] && colMap[colId].length > 0) || savedOrderMap.has(colId) || colId === "falta_preenchimento" || colId === "a_fazer")
         .map((colId) => ({
           id: colId,
-          title: titleMap[colId] || (colId.startsWith("orc_") ? `💰 ${colId.replace("orc_", "").replace(/_/g, " ")}` : colId),
+          title: savedOrderMap.get(colId)?.title || defaultTitles[colId] || (colId.startsWith("orc_") ? `💰 ${colId.replace("orc_", "").replace(/_/g, " ")}` : colId),
           items: colMap[colId] || [],
         }));
 
@@ -331,15 +327,12 @@ export default function BudgetKanbanPage() {
         posicao: idx,
       }))
     );
-    // Save custom column metadata (columns that aren't built-in)
-    const builtInIds = new Set(["falta_preenchimento", "a_fazer", "os_realizada"]);
-    const customColumns = cols
-      .filter((c) => !builtInIds.has(c.id) && !c.id.startsWith("orc_"))
-      .map((c, idx) => ({ id: c.id, title: c.title, order: idx }));
+    // Save ALL columns order and titles (not just custom ones)
+    const allColumnsOrder = cols.map((c, idx) => ({ id: c.id, title: c.title, order: idx }));
 
     // Fire and forget
     supabase.functions.invoke("budget-kanban", {
-      body: { mode: "save_positions", positions, custom_columns: customColumns },
+      body: { mode: "save_positions", positions, custom_columns: allColumnsOrder },
     }).catch((e) => console.warn("Erro ao salvar posições:", e));
   }, []);
 
