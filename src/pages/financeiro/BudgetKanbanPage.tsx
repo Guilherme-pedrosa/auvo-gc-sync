@@ -310,7 +310,7 @@ export default function BudgetKanbanPage() {
     }));
   }, [columns, filterTecnico, allClientesSelected, selectedClientes]);
 
-  // Save positions to DB (debounced)
+  // Save positions + custom columns to DB
   const savePositions = useCallback((cols: KanbanColumn[]) => {
     const positions = cols.flatMap((col) =>
       col.items.map((item, idx) => ({
@@ -319,9 +319,15 @@ export default function BudgetKanbanPage() {
         posicao: idx,
       }))
     );
+    // Save custom column metadata (columns that aren't built-in)
+    const builtInIds = new Set(["falta_preenchimento", "a_fazer", "os_realizada"]);
+    const customColumns = cols
+      .filter((c) => !builtInIds.has(c.id) && !c.id.startsWith("orc_"))
+      .map((c, idx) => ({ id: c.id, title: c.title, order: idx }));
+
     // Fire and forget
     supabase.functions.invoke("budget-kanban", {
-      body: { mode: "save_positions", positions },
+      body: { mode: "save_positions", positions, custom_columns: customColumns },
     }).catch((e) => console.warn("Erro ao salvar posições:", e));
   }, []);
 
