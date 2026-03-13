@@ -98,17 +98,19 @@ function computeMetrics(items: KanbanItem[], monthItems: KanbanItem[], source: "
     situacaoMap[sit].valor += parseFloat(doc?.gc_valor_total || "0");
   }
 
-  // By technician
+  // By technician — green = has Orçamento OR OS, yellow = neither
   const tecnicoMap: Record<string, { total: number; comMatch: number; valorMatch: number }> = {};
   for (const item of items) {
     const t = item.tecnico || "Sem técnico";
     if (!tecnicoMap[t]) tecnicoMap[t] = { total: 0, comMatch: 0, valorMatch: 0 };
     tecnicoMap[t].total++;
-    const matched = source === "orc" ? item.orcamento_realizado : item.os_realizada;
-    if (matched) {
+    const hasOrc = item.orcamento_realizado;
+    const hasOs = item.os_realizada;
+    if (hasOrc || hasOs) {
       tecnicoMap[t].comMatch++;
-      const doc = source === "orc" ? item.gc_orcamento : item.gc_os;
-      tecnicoMap[t].valorMatch += parseFloat(doc?.gc_valor_total || "0");
+      const valorOrc = parseFloat(item.gc_orcamento?.gc_valor_total || "0");
+      const valorOs = parseFloat(item.gc_os?.gc_valor_total || "0");
+      tecnicoMap[t].valorMatch += valorOrc + valorOs;
     }
   }
 
