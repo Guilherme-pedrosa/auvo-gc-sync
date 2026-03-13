@@ -7,12 +7,14 @@ import { Badge } from "@/components/ui/badge";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import {
   RefreshCw, CalendarIcon, MapPin, Clock, User,
   CheckCircle2, PlayCircle, CalendarClock, AlertTriangle,
-  ChevronLeft, ChevronRight
+  ChevronLeft, ChevronRight, FileWarning
 } from "lucide-react";
-import { format, addDays, subDays, isToday } from "date-fns";
+import { format, addDays, subDays, isToday, startOfMonth, endOfMonth } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { toast } from "sonner";
 
@@ -71,6 +73,7 @@ const statusBarColor: Record<string, string> = {
 
 export default function RealtimeTrackingPage() {
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
+  const [sheetOpen, setSheetOpen] = useState(false);
   const dateStr = format(selectedDate, "yyyy-MM-dd");
 
   const { data, isLoading, refetch, isFetching } = useQuery({
@@ -85,6 +88,25 @@ export default function RealtimeTrackingPage() {
     },
     refetchInterval: 120_000,
     staleTime: 30_000,
+  });
+
+  // Monthly late tasks query
+  const monthStart = format(startOfMonth(selectedDate), "yyyy-MM-dd");
+  const monthEnd = format(endOfMonth(selectedDate), "yyyy-MM-dd");
+
+  const { data: atrasadasMes, isLoading: loadingAtrasadas, refetch: refetchAtrasadas } = useQuery({
+    queryKey: ["atrasadas-mes", monthStart, monthEnd],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("atividades_nao_executadas")
+        .select("*")
+        .gte("data_planejada", monthStart)
+        .lte("data_planejada", monthEnd)
+        .order("data_planejada", { ascending: false });
+      if (error) throw error;
+      return data || [];
+    },
+    enabled: sheetOpen,
   });
 
   const goDay = (dir: number) => setSelectedDate((d) => (dir > 0 ? addDays(d, 1) : subDays(d, 1)));
@@ -128,6 +150,74 @@ export default function RealtimeTrackingPage() {
                 🔴 AO VIVO
               </Badge>
             )}
+
+            <Sheet open={sheetOpen} onOpenChange={setSheetOpen}>
+              <SheetTrigger asChild>
+                <Button variant="outline" size="sm" className="h-8 text-xs border-red-200 text-red-700 hover:bg-red-50">
+                  <FileWarning className="h-3.5 w-3.5 mr-1.5" />
+                  Atrasadas do Mês
+                </Button>
+              </SheetTrigger>
+              <SheetContent className="w-[600px] sm:max-w-[600px]">
+                <SheetHeader>
+                  <SheetTitle className="flex items-center gap-2">
+                    <AlertTriangle className="h-5 w-5 text-red-500" />
+                    Atividades Atrasadas — {format(selectedDate, "MMMM yyyy", { locale: ptBR })}
+                  </SheetTitle>
+                </SheetHeader>
+                <div className="mt-4">
+                  {loadingAtrasadas ? (
+                    <div className="flex items-center justify-center py-8">
+                      <RefreshCw className="h-5 w-5 animate-spin text-muted-foreground" />
+                    </div>
+                  ) : !atrasadasMes || atrasadasMes.length === 0 ? (
+                    <div className="flex flex-col items-center justify-center py-12 text-muted-foreground gap-2">
+                      <CheckCircle2 className="h-8 w-8 text-emerald-500" />
+                      <p className="text-sm">Nenhuma atividade atrasada neste mês!</p>
+                    </div>
+                  ) : (
+                    <>
+                      <div className="flex items-center justify-between mb-3">
+                        <Badge variant="destructive" className="text-xs">
+                          {atrasadasMes.length} atividade(s) atrasada(s)
+                        </Badge>
+                        <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={() => refetchAtrasadas()}>
+                          <RefreshCw className="h-3 w-3 mr-1" /> Atualizar
+                        </Button>
+                      </div>
+                      <ScrollArea className="h-[calc(100vh-12rem)]">
+                        <Table>
+                          <TableHeader>
+                            <TableRow>
+                              <TableHead className="text-xs">Data</TableHead>
+                              <TableHead className="text-xs">Técnico</TableHead>
+                              <TableHead className="text-xs">Cliente</TableHead>
+                              <TableHead className="text-xs">Status</TableHead>
+                            </TableRow>
+                          </TableHeader>
+                          <TableBody>
+                            {atrasadasMes.map((item) => (
+                              <TableRow key={item.id}>
+                                <TableCell className="text-xs font-mono whitespace-nowrap">
+                                  {item.data_planejada ? format(new Date(item.data_planejada + "T12:00:00"), "dd/MM", { locale: ptBR }) : "-"}
+                                </TableCell>
+                                <TableCell className="text-xs truncate max-w-[120px]">{item.tecnico_nome}</TableCell>
+                                <TableCell className="text-xs truncate max-w-[160px]">{item.cliente || "—"}</TableCell>
+                                <TableCell>
+                                  <Badge variant="outline" className="text-[9px] h-4 border-red-200 text-red-600">
+                                    {item.status_original}
+                                  </Badge>
+                                </TableCell>
+                              </TableRow>
+                            ))}
+                          </TableBody>
+                        </Table>
+                      </ScrollArea>
+                    </>
+                  )}
+                </div>
+              </SheetContent>
+            </Sheet>
 
             <Button variant="outline" size="sm" onClick={() => { refetch(); toast.info("Atualizando..."); }} disabled={isFetching} className="h-8 text-xs">
               <RefreshCw className={`h-3.5 w-3.5 mr-1.5 ${isFetching ? "animate-spin" : ""}`} />
