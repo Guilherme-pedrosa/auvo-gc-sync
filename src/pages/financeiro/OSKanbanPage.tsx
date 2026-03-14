@@ -21,7 +21,7 @@ import {
   Package, FileText, ClipboardList, MapPin, ArrowUpDown, ArrowDown, ArrowUp,
   UserCog, Save, Loader2
 } from "lucide-react";
-import { format, startOfMonth, parse } from "date-fns";
+import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
@@ -128,65 +128,80 @@ export default function OSKanbanPage() {
   });
 
   // Fetch execution task ID from GC OS attributes (campo 73344)
-  const fetchExecTaskId = useCallback(async (gcOsId: string): Promise<string | null> => {
+  const fetchExecTaskId = useCallback(async (gcOsId: string): Promise<{ execTaskId: string | null; osTaskId: string | null }> => {
     try {
       const { data, error } = await supabase.functions.invoke("gc-proxy", {
         body: { endpoint: `/api/ordens_servicos/${gcOsId}`, method: "GET" },
       });
-      if (error) return null;
+      if (error) return { execTaskId: null, osTaskId: null };
+
       const osObj = data?.data?.data ?? data?.data ?? null;
-      if (!osObj) return null;
+      if (!osObj) return { execTaskId: null, osTaskId: null };
+
       const atributos: any[] = osObj.atributos || [];
-      console.log("[fetchExecTaskId] OS atributos:", JSON.stringify(atributos, null, 2));
-      // Look for attribute 73344 (Tarefa Execução)
-      for (const a of atributos) {
-        const nested = a?.atributo || a;
-        const id = String(nested.atributo_id || nested.id || "");
-        const label = String(nested.descricao || nested.label || nested.nome || "").toLowerCase();
+      const findAttrValue = (attrId: string) => {
+        const attr = atributos.find((a: any) => {
+          const nested = a?.atributo || a;
+          return String(nested.atributo_id || nested.id || "") === attrId;
+        });
+        if (!attr) return null;
+        const nested = attr?.atributo || attr;
         const valor = String(nested?.conteudo || nested?.valor || "").trim();
-        console.log(`[fetchExecTaskId] attr id=${id} label="${label}" valor="${valor}"`);
-      }
-      const attr = atributos.find((a: any) => {
-        const nested = a?.atributo || a;
-        const id = String(nested.atributo_id || nested.id || "");
-        const label = String(nested.descricao || nested.label || nested.nome || "").toLowerCase();
-        return id === "73344" || label.includes("tarefa execu") || label.includes("execução");
-      });
-      if (!attr) return null;
-      const nestedAttr = attr?.atributo || attr;
-      const valor = String(nestedAttr?.conteudo || nestedAttr?.valor || "").trim();
-      console.log("[fetchExecTaskId] Found exec task:", valor);
-      return valor && /^\d+$/.test(valor) ? valor : null;
-    } catch { return null; }
+        return valor && /^\d+$/.test(valor) ? valor : null;
+      };
+
+      return {
+        osTaskId: findAttrValue("73343"),
+        execTaskId: findAttrValue("73344"),
+      };
+    } catch {
+      return { execTaskId: null, osTaskId: null };
+    }
   }, []);
 
   const openEditModal = useCallback(async (card: OSItem) => {
     setEditingCard(card);
     setExecTaskId(null);
     setExecTaskLoading(true);
-    // Parse existing date
-    if (card.data_tarefa) {
-      try {
-        const parsed = parse(card.data_tarefa, "yyyy-MM-dd", new Date());
-        if (!isNaN(parsed.getTime())) setEditDate(parsed);
-        else setEditDate(undefined);
-      } catch { setEditDate(undefined); }
-    } else {
-      setEditDate(undefined);
-    }
-    // Try to match current technician
-    const currentTecnico = auvoUsers?.find(u => u.name === card.tecnico || u.login === card.tecnico);
+    setEditDate(undefined);
+
+    // Fallback technician from card (will be replaced by execution task data if available)
+    const currentTecnico = auvoUsers?.find((u) => u.name === card.tecnico || u.login === card.tecnico);
     setEditTecnicoId(currentTecnico ? String(currentTecnico.userID) : card.tecnico_id || "");
     setShowEditModal(true);
 
-    // Fetch execution task ID from GC
     if (card.gc_os_id) {
-      const taskId = await fetchExecTaskId(card.gc_os_id);
-      setExecTaskId(taskId);
-      if (!taskId) {
-        toast.warning("Tarefa de execução não encontrada no atributo 73344 desta OS");
+      const { execTaskId: fetchedExecTaskId, osTaskId } = await fetchExecTaskId(card.gc_os_id);
+
+      if (!fetchedExecTaskId) {
+        toast.warning("Tarefa de execução (73344) não encontrada nesta OS");
+        setExecTaskLoading(false);
+        return;
+      }
+
+      if (osTaskId && fetchedExecTaskId === osTaskId) {
+        toast.error("A tarefa de execução (73344) está igual à tarefa OS (73343). Verifique os campos no GC.");
+      }
+
+      setExecTaskId(fetchedExecTaskId);
+
+      // Load execution task data from Auvo (date + technician)
+      const { data: taskData, error: taskError } = await supabase.functions.invoke("auvo-task-update", {
+        body: { action: "get", taskId: Number(fetchedExecTaskId) },
+      });
+
+      if (!taskError) {
+        const taskObj = taskData?.data?.result ?? taskData?.data ?? null;
+        const rawTaskDate = taskObj?.taskDate || taskObj?.task_date || taskObj?.date || null;
+        if (rawTaskDate) {
+          const parsedDate = new Date(rawTaskDate);
+          if (!isNaN(parsedDate.getTime())) setEditDate(parsedDate);
+        }
+        const rawUserTo = taskObj?.idUserTo ?? taskObj?.id_user_to ?? null;
+        if (rawUserTo) setEditTecnicoId(String(rawUserTo));
       }
     }
+
     setExecTaskLoading(false);
   }, [auvoUsers, fetchExecTaskId]);
 
@@ -1182,7 +1197,7 @@ export default function OSKanbanPage() {
               <div className="bg-muted/50 rounded-md p-3 text-sm">
                 <p className="font-medium">{editingCard.cliente || editingCard.gc_os_cliente || "—"}</p>
                 <p className="text-muted-foreground text-xs mt-0.5">
-                  OS {editingCard.gc_os_codigo} • Tarefa OS #{editingCard.auvo_task_id}
+                  OS {editingCard.gc_os_codigo}
                 </p>
                 <p className="text-xs mt-1">
                   {execTaskLoading ? (
