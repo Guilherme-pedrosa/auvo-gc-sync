@@ -71,6 +71,7 @@ export default function AgendaSemanalPage() {
   const [movingTaskId, setMovingTaskId] = useState<string | null>(null);
   const [dragOverCell, setDragOverCell] = useState<string | null>(null);
   const [selectedTarefa, setSelectedTarefa] = useState<Tarefa | null>(null);
+  const [selectedTecnicos, setSelectedTecnicos] = useState<Set<string> | null>(null); // null = all
 
   const weekStart = useMemo(() => {
     const today = new Date();
