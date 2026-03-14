@@ -248,7 +248,7 @@ export default function OSKanbanPage() {
     return Array.from(set).sort();
   }, [items]);
 
-  useMemo(() => {
+  useEffect(() => {
     if (allClientes.length > 0 && selectedClientes.size === 0 && allClientesSelected) {
       setSelectedClientes(new Set(allClientes));
     }
