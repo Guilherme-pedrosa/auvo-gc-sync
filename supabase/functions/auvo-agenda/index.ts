@@ -73,32 +73,46 @@ Deno.serve(async (req) => {
     // Map to simplified format
     const mapped = allTasks.map((t: any) => {
       const taskId = String(t.taskID || t.taskId || t.id || "");
-      const customerName = t.customer?.name || t.customerName || t.customer_name || "";
-      const userName = t.userTo?.name || t.user?.name || t.userName || "";
-      const userId = String(t.userTo?.userID || t.idUserTo || t.user_id || "");
-      const rawDate = t.taskDate || t.task_date || "";
+
+      // Customer: same logic as central-sync
+      const custDesc = String(t.customerDescription || "").trim();
+      const custName = String(t.customerName || t.customer?.tradeName || t.customer?.companyName || "").trim();
+      const cliente = custDesc || custName || "Sem cliente";
+
+      // Technician
+      const tecnico = String(t.userToName || "");
+      const tecnicoId = String(t.idUserTo || "");
+
+      // Date
+      const rawDate = String(t.taskDate || "");
       const taskDate = rawDate ? rawDate.substring(0, 10) : "";
-      const startTime = t.startTime || t.start_time || t.hora_inicio || "";
-      const endTime = t.endTime || t.end_time || t.hora_fim || "";
-      const status = t.taskStatus?.description || t.status?.description || t.status || "";
-      const address = t.address?.address || t.address || "";
-      const description = t.orientation || t.description || "";
-      const checkedIn = !!t.checkInDate;
-      const checkedOut = !!t.checkOutDate;
+
+      // Status: same logic as central-sync
+      const status = t.finished ? "Finalizada" : (t.checkIn ? "Em andamento" : "Agendada");
+
+      // Times
+      const startTime = String(t.startTime || t.startHour || "");
+      const endTime = String(t.endTime || t.endHour || "");
+
+      // Address
+      const address = typeof t.address === "object" ? "" : String(t.address || "").substring(0, 200);
+
+      // Description
+      const description = String(t.orientation || t.description || "").substring(0, 500);
 
       return {
         auvo_task_id: taskId,
-        cliente: customerName,
-        tecnico: userName,
-        tecnico_id: userId,
+        cliente,
+        tecnico,
+        tecnico_id: tecnicoId,
         data_tarefa: taskDate,
         hora_inicio: startTime,
         hora_fim: endTime,
         status_auvo: status,
         endereco: address,
         descricao: description,
-        check_in: checkedIn,
-        check_out: checkedOut,
+        check_in: !!t.checkIn,
+        check_out: !!t.checkOut,
         auvo_link: `https://app2.auvo.com.br/relatorioTarefas/DetalheTarefa/${taskId}`,
       };
     });
