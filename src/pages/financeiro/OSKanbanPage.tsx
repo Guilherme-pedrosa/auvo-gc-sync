@@ -105,8 +105,81 @@ export default function OSKanbanPage() {
   const [globalSort, setGlobalSort] = useState<string>("none");
   // Per-column sort
   const [columnSorts, setColumnSorts] = useState<Record<string, string>>({});
+  // Edit task state
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [editingCard, setEditingCard] = useState<OSItem | null>(null);
+  const [editDate, setEditDate] = useState<Date | undefined>(undefined);
+  const [editTecnicoId, setEditTecnicoId] = useState("");
+  const [editSaving, setEditSaving] = useState(false);
 
-  // Fetch OS detail (produtos, serviços, valores) from GC when card is selected
+  // Fetch Auvo users (technicians)
+  const { data: auvoUsers } = useQuery({
+    queryKey: ["auvo-users"],
+    queryFn: async () => {
+      const { data, error } = await supabase.functions.invoke("auvo-task-update", {
+        body: { action: "list-users" },
+      });
+      if (error) throw error;
+      return (data?.data || []) as { userID: number; login: string; name: string }[];
+    },
+    staleTime: 1000 * 60 * 30, // 30 min cache
+  });
+
+  const openEditModal = useCallback((card: OSItem) => {
+    setEditingCard(card);
+    // Parse existing date
+    if (card.data_tarefa) {
+      try {
+        const parsed = parse(card.data_tarefa, "yyyy-MM-dd", new Date());
+        if (!isNaN(parsed.getTime())) setEditDate(parsed);
+        else setEditDate(undefined);
+      } catch { setEditDate(undefined); }
+    } else {
+      setEditDate(undefined);
+    }
+    // Try to match current technician
+    const currentTecnico = auvoUsers?.find(u => u.name === card.tecnico || u.login === card.tecnico);
+    setEditTecnicoId(currentTecnico ? String(currentTecnico.userID) : card.tecnico_id || "");
+    setShowEditModal(true);
+  }, [auvoUsers]);
+
+  const handleEditSave = useCallback(async () => {
+    if (!editingCard) return;
+    setEditSaving(true);
+    try {
+      const patches: { op: string; path: string; value: any }[] = [];
+      if (editDate) {
+        patches.push({ op: "replace", path: "taskDate", value: format(editDate, "yyyy-MM-dd'T'08:00:00") });
+      }
+      if (editTecnicoId) {
+        patches.push({ op: "replace", path: "idUserTo", value: Number(editTecnicoId) });
+      }
+      if (patches.length === 0) {
+        toast.warning("Nenhuma alteração para salvar");
+        setEditSaving(false);
+        return;
+      }
+
+      const { data, error } = await supabase.functions.invoke("auvo-task-update", {
+        body: { action: "edit", taskId: Number(editingCard.auvo_task_id), patches },
+      });
+
+      if (error) throw error;
+      if (data?.status && data.status >= 400) {
+        throw new Error(JSON.stringify(data?.data || "Erro ao atualizar tarefa"));
+      }
+
+      toast.success("Tarefa atualizada no Auvo!");
+      setShowEditModal(false);
+      setEditingCard(null);
+    } catch (err: any) {
+      console.error("Erro ao editar tarefa Auvo:", err);
+      toast.error(`Erro: ${err.message || "Falha ao atualizar"}`);
+    } finally {
+      setEditSaving(false);
+    }
+  }, [editingCard, editDate, editTecnicoId]);
+
   useEffect(() => {
     if (!selectedCard?.gc_os_id) {
       setOsDetail(null);
