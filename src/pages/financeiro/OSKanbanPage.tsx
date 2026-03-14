@@ -1220,14 +1220,9 @@ export default function OSKanbanPage() {
                   {execTaskLoading ? (
                     <span className="text-muted-foreground flex items-center gap-1"><Loader2 className="h-3 w-3 animate-spin" /> Buscando tarefa de execução...</span>
                   ) : execTaskId ? (
-                    <span className="text-primary font-medium inline-flex items-center gap-2">
-                      ✓ Tarefa Execução #{execTaskId}
-                      {execTaskUrl ? (
-                        <a href={execTaskUrl} target="_blank" rel="noopener noreferrer" className="hover:underline inline-flex items-center gap-1">
-                          Abrir <ExternalLink className="h-3 w-3" />
-                        </a>
-                      ) : null}
-                    </span>
+                    <a href={`https://app2.auvo.com.br/relatorioTarefas/DetalheTarefa/${execTaskId}`} target="_blank" rel="noopener noreferrer" className="text-primary font-medium hover:underline inline-flex items-center gap-1">
+                      ✓ Tarefa Execução #{execTaskId} <ExternalLink className="h-3 w-3" />
+                    </a>
                   ) : (
                     <span className="text-destructive">⚠ Tarefa de execução não encontrada</span>
                   )}
