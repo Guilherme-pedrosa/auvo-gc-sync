@@ -9,9 +9,10 @@ import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   CalendarIcon, RefreshCw, DollarSign, FileText,
-  ClipboardList, CheckCircle2, XCircle, TrendingUp, BarChart3, Wrench
+  ClipboardList, CheckCircle2, XCircle, TrendingUp, BarChart3, Wrench,
+  ChevronLeft, ChevronRight
 } from "lucide-react";
-import { format, startOfMonth, startOfYear, endOfMonth, isWithinInterval, parseISO } from "date-fns";
+import { format, startOfMonth, startOfYear, endOfMonth, isWithinInterval, parseISO, subMonths, addMonths } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { toast } from "sonner";
 import {
@@ -135,10 +136,11 @@ export default function Index() {
     from: startOfYear(today),
     to: today,
   });
-  const [monthRange] = useState({
-    from: startOfMonth(today),
-    to: endOfMonth(today),
-  });
+  const [selectedMonth, setSelectedMonth] = useState(today);
+  const monthRange = useMemo(() => ({
+    from: startOfMonth(selectedMonth),
+    to: endOfMonth(selectedMonth),
+  }), [selectedMonth]);
 
   // Fetch orçamentos data
   const { data: orcData, isLoading: orcLoading, refetch: refetchOrc } = useQuery({
@@ -637,8 +639,16 @@ export default function Index() {
               </div>
               <div>
                 <div className="flex items-center gap-2 mb-3">
-                  <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Mês Atual</h2>
-                  <Badge variant="outline" className="text-[10px]">{format(monthRange.from, "MMMM yyyy", { locale: ptBR })}</Badge>
+                  <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Mês</h2>
+                  <div className="flex items-center gap-1">
+                    <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => setSelectedMonth(prev => subMonths(prev, 1))}>
+                      <ChevronLeft className="h-3.5 w-3.5" />
+                    </Button>
+                    <Badge variant="outline" className="text-[10px] min-w-[100px] justify-center">{format(monthRange.from, "MMMM yyyy", { locale: ptBR })}</Badge>
+                    <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => setSelectedMonth(prev => addMonths(prev, 1))}>
+                      <ChevronRight className="h-3.5 w-3.5" />
+                    </Button>
+                  </div>
                 </div>
                 {renderMonthKPIs(orcMetrics, orcLabels)}
               </div>
@@ -656,8 +666,16 @@ export default function Index() {
               </div>
               <div>
                 <div className="flex items-center gap-2 mb-3">
-                  <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Mês Atual</h2>
-                  <Badge variant="outline" className="text-[10px]">{format(monthRange.from, "MMMM yyyy", { locale: ptBR })}</Badge>
+                  <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Mês</h2>
+                  <div className="flex items-center gap-1">
+                    <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => setSelectedMonth(prev => subMonths(prev, 1))}>
+                      <ChevronLeft className="h-3.5 w-3.5" />
+                    </Button>
+                    <Badge variant="outline" className="text-[10px] min-w-[100px] justify-center">{format(monthRange.from, "MMMM yyyy", { locale: ptBR })}</Badge>
+                    <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => setSelectedMonth(prev => addMonths(prev, 1))}>
+                      <ChevronRight className="h-3.5 w-3.5" />
+                    </Button>
+                  </div>
                 </div>
                 {renderMonthKPIs(execMetrics, execLabels)}
               </div>
