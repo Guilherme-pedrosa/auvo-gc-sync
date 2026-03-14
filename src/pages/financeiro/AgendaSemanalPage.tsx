@@ -230,7 +230,7 @@ export default function AgendaSemanalPage() {
 
 function TaskCard({ tarefa }: { tarefa: Tarefa }) {
   const statusClass = STATUS_COLORS[tarefa.status_auvo || ""] || "bg-muted text-muted-foreground";
-  const linkUrl = tarefa.auvo_link || tarefa.auvo_task_url || `https://app2.auvo.com.br/relatorioTarefas/DetalheTarefa/${tarefa.auvo_task_id}`;
+  const linkUrl = tarefa.auvo_link || `https://app2.auvo.com.br/relatorioTarefas/DetalheTarefa/${tarefa.auvo_task_id}`;
 
   return (
     <Tooltip delayDuration={200}>
