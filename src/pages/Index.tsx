@@ -68,14 +68,13 @@ function hasFilledQuestionnaire(item: KanbanItem) {
 function computeMetrics(items: KanbanItem[], monthItems: KanbanItem[], source: "orc" | "exec") {
   const total = items.length;
 
-  // For exec: questionnaire filled = "Com OS" (the questionnaire IS the OS evidence)
   const comMatch = source === "orc"
     ? items.filter((i) => i.orcamento_realizado)
-    : items.filter((i) => hasFilledQuestionnaire(i));
+    : items.filter((i) => i.os_realizada);
   const comOs = items.filter((i) => i.os_realizada);
   const semMatch = source === "orc"
     ? items.filter((i) => !i.orcamento_realizado && !i.os_realizada)
-    : items.filter((i) => !hasFilledQuestionnaire(i));
+    : items.filter((i) => !i.os_realizada);
 
   const valorMatch = comMatch.reduce((acc, i) => {
     if (source === "orc") return acc + parseFloat(i.gc_orcamento?.gc_valor_total || "0");
