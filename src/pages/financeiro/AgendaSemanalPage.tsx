@@ -303,6 +303,52 @@ export default function AgendaSemanalPage() {
               </Button>
             </div>
 
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button variant="outline" size="sm" className="relative">
+                  <Filter className="h-3.5 w-3.5 mr-1" />
+                  Técnicos
+                  {selectedTecnicos && (
+                    <Badge variant="secondary" className="ml-1 h-4 px-1 text-[10px]">
+                      {selectedTecnicos.size}/{tecnicos.length}
+                    </Badge>
+                  )}
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-56 p-2" align="end">
+                <div className="flex items-center justify-between mb-2 px-1">
+                  <span className="text-xs font-semibold text-muted-foreground">Filtrar técnicos</span>
+                  <button
+                    className="text-[10px] text-primary hover:underline"
+                    onClick={() => setSelectedTecnicos(null)}
+                  >
+                    Todos
+                  </button>
+                </div>
+                <div className="max-h-60 overflow-y-auto space-y-0.5">
+                  {tecnicos.map(t => {
+                    const checked = !selectedTecnicos || selectedTecnicos.has(t.nome);
+                    return (
+                      <label key={t.nome} className="flex items-center gap-2 px-1 py-1 rounded hover:bg-muted cursor-pointer text-sm">
+                        <Checkbox
+                          checked={checked}
+                          onCheckedChange={(val) => {
+                            setSelectedTecnicos(prev => {
+                              const set = new Set(prev || tecnicos.map(x => x.nome));
+                              if (val) set.add(t.nome);
+                              else set.delete(t.nome);
+                              return set.size === tecnicos.length ? null : set;
+                            });
+                          }}
+                        />
+                        {t.nome}
+                      </label>
+                    );
+                  })}
+                </div>
+              </PopoverContent>
+            </Popover>
+
             <Button variant="outline" size="sm" onClick={() => refetch()} disabled={isFetching}>
               <RefreshCw className={cn("h-3.5 w-3.5 mr-1", isFetching && "animate-spin")} />
               Atualizar
