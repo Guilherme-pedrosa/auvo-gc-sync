@@ -657,10 +657,10 @@ export default function Index() {
                 {renderMonthKPIs(orcMetrics, orcLabels)}
               </div>
               <div className="grid lg:grid-cols-2 gap-4">
-                {renderSituacaoChart(orcMetrics, "Valor por Situação do Orçamento")}
-                {renderTecnicoChart(orcMetrics, orcLabels)}
+                {renderSituacaoChart(orcMonthMetrics, "Valor por Situação do Orçamento")}
+                {renderTecnicoChart(orcMonthMetrics, orcLabels)}
               </div>
-              {renderSituacaoTable(orcMetrics)}
+              {renderSituacaoTable(orcMonthMetrics)}
             </TabsContent>
 
             <TabsContent value="execucao" className="space-y-5">
