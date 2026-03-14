@@ -341,7 +341,6 @@ export default function AgendaSemanalPage() {
                         <div className="text-[10px] font-semibold text-emerald-700 dark:text-emerald-400 mt-0.5">
                           {formatCurrency(dayTotals[idx])}
                         </div>
-                        )}
                       </th>
                     );
                   })}
