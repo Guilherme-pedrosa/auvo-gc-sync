@@ -378,9 +378,15 @@ export default function RealtimeTrackingPage() {
                                                 <p className="text-[10px] text-amber-700 font-medium">
                                                   📋 {item.formName}
                                                 </p>
-                                                {item.camposVazios.length > 0 && (
-                                                  <p className="text-[10px] text-red-600 mt-0.5">
-                                                    ❌ Sem preenchimento: {item.camposVazios.join(", ")}
+                                                {item.motivosPendencia.length > 0 ? (
+                                                  item.motivosPendencia.map((motivo: string, idx: number) => (
+                                                    <p key={`${item.taskId}-motivo-${idx}`} className="text-[10px] text-destructive mt-0.5">
+                                                      ❌ {motivo}
+                                                    </p>
+                                                  ))
+                                                ) : (
+                                                  <p className="text-[10px] text-muted-foreground mt-0.5">
+                                                    ⚠️ Motivo da pendência não detalhado pelo formulário
                                                   </p>
                                                 )}
                                               </div>
