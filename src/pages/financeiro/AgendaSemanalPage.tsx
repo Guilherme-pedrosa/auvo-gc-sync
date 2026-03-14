@@ -145,10 +145,16 @@ export default function AgendaSemanalPage() {
     });
   }, [tarefas, weekDays]);
 
+  // Filtered technicians
+  const filteredTecnicos = useMemo(() => {
+    if (!selectedTecnicos) return tecnicos;
+    return tecnicos.filter(t => selectedTecnicos.has(t.nome));
+  }, [tecnicos, selectedTecnicos]);
+
   const grid = useMemo(() => {
     if (!tarefas) return new Map<string, Tarefa[][]>();
     const result = new Map<string, Tarefa[][]>();
-    for (const tec of tecnicos) {
+    for (const tec of filteredTecnicos) {
       const days: Tarefa[][] = weekDays.map(() => []);
       const tecTarefas = tarefas.filter((t) => (t.tecnico || "Sem técnico") === tec.nome);
       for (const tarefa of tecTarefas) {
@@ -160,7 +166,7 @@ export default function AgendaSemanalPage() {
       result.set(tec.nome, days);
     }
     return result;
-  }, [tarefas, tecnicos, weekDays]);
+  }, [tarefas, filteredTecnicos, weekDays]);
 
   // --- Drag & Drop ---
   const handleDragStart = useCallback((e: DragEvent, tarefa: Tarefa) => {
