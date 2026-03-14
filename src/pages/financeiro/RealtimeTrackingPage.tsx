@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useCallback } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -12,11 +12,13 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/component
 import {
   RefreshCw, CalendarIcon, MapPin, Clock, User,
   CheckCircle2, PlayCircle, CalendarClock, AlertTriangle,
-  ChevronLeft, ChevronRight, FileWarning, ChevronDown
+  ChevronLeft, ChevronRight, FileWarning, ChevronDown, Download
 } from "lucide-react";
 import { format, addDays, subDays, isToday, startOfMonth, endOfMonth } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { toast } from "sonner";
+import jsPDF from "jspdf";
+import autoTable from "jspdf-autotable";
 
 type TaskItem = {
   taskId: string;
