@@ -18,7 +18,7 @@ import {
 import {
   ArrowLeft, CalendarIcon, RefreshCw, ExternalLink,
   Filter, GripVertical, Check, X, Edit2, Trash2, Plus,
-  Package, FileText, ClipboardList, MapPin
+  Package, FileText, ClipboardList, MapPin, ArrowUpDown, ArrowDown, ArrowUp
 } from "lucide-react";
 import { format, startOfMonth } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -95,6 +95,13 @@ export default function OSKanbanPage() {
   const [syncStatus, setSyncStatus] = useState("");
   const [osDetail, setOsDetail] = useState<any>(null);
   const [osDetailLoading, setOsDetailLoading] = useState(false);
+  // Value range filter
+  const [valorMin, setValorMin] = useState("");
+  const [valorMax, setValorMax] = useState("");
+  // Global sort
+  const [globalSort, setGlobalSort] = useState<string>("none");
+  // Per-column sort
+  const [columnSorts, setColumnSorts] = useState<Record<string, string>>({});
 
   // Fetch OS detail (produtos, serviços, valores) from GC when card is selected
   useEffect(() => {
@@ -284,18 +291,44 @@ export default function OSKanbanPage() {
     }
   }, [allClientesSelected, allClientes]);
 
+  // Sort helper for items
+  const sortItems = useCallback((items: OSItem[], sortKey: string): OSItem[] => {
+    if (sortKey === "none" || !sortKey) return items;
+    const sorted = [...items];
+    switch (sortKey) {
+      case "valor_desc": return sorted.sort((a, b) => (Number(b.gc_os_valor_total) || 0) - (Number(a.gc_os_valor_total) || 0));
+      case "valor_asc": return sorted.sort((a, b) => (Number(a.gc_os_valor_total) || 0) - (Number(b.gc_os_valor_total) || 0));
+      case "data_desc": return sorted.sort((a, b) => (b.data_tarefa || "").localeCompare(a.data_tarefa || ""));
+      case "data_asc": return sorted.sort((a, b) => (a.data_tarefa || "").localeCompare(b.data_tarefa || ""));
+      case "cliente_freq": {
+        const freq: Record<string, number> = {};
+        sorted.forEach(i => { const c = i.cliente || i.gc_os_cliente || ""; freq[c] = (freq[c] || 0) + 1; });
+        return sorted.sort((a, b) => (freq[b.cliente || b.gc_os_cliente || ""] || 0) - (freq[a.cliente || a.gc_os_cliente || ""] || 0));
+      }
+      case "cliente_az": return sorted.sort((a, b) => (a.cliente || a.gc_os_cliente || "").localeCompare(b.cliente || b.gc_os_cliente || ""));
+      default: return sorted;
+    }
+  }, []);
+
   const filteredColumns = useMemo(() => {
-    console.log("Filter state:", { allClientesSelected, selectedClientesSize: selectedClientes.size, selectedClientes: Array.from(selectedClientes).slice(0, 5) });
-    return columns.map((col) => ({
-      ...col,
-      items: col.items.filter((item) => {
+    const minVal = valorMin ? Number(valorMin) : null;
+    const maxVal = valorMax ? Number(valorMax) : null;
+    return columns.map((col) => {
+      let filtered = col.items.filter((item) => {
         const clientName = item.cliente || item.gc_os_cliente || "";
         if (filterTecnico !== "todos" && item.tecnico !== filterTecnico) return false;
         if (!allClientesSelected && selectedClientes.size > 0 && !selectedClientes.has(clientName)) return false;
+        const val = Number(item.gc_os_valor_total) || 0;
+        if (minVal !== null && val < minVal) return false;
+        if (maxVal !== null && val > maxVal) return false;
         return true;
-      }),
-    }));
-  }, [columns, filterTecnico, allClientesSelected, selectedClientes]);
+      });
+      // Apply sort: column-level overrides global
+      const sortKey = columnSorts[col.id] || globalSort;
+      filtered = sortItems(filtered, sortKey);
+      return { ...col, items: filtered };
+    });
+  }, [columns, filterTecnico, allClientesSelected, selectedClientes, valorMin, valorMax, globalSort, columnSorts, sortItems]);
 
   // Drag & drop
   const onDragEnd = useCallback((result: DropResult) => {
@@ -436,6 +469,62 @@ export default function OSKanbanPage() {
             </PopoverContent>
           </Popover>
 
+          {/* Value range filter */}
+          <Popover>
+            <PopoverTrigger asChild>
+              <Button variant="outline" size="sm" className="gap-2">
+                💰 Valor
+                {(valorMin || valorMax) && (
+                  <Badge variant="secondary" className="text-[10px] h-4 px-1 ml-1">
+                    {valorMin || "0"} - {valorMax || "∞"}
+                  </Badge>
+                )}
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent className="w-[240px] p-3" align="start">
+              <p className="text-sm font-medium mb-2">Faixa de valor (R$)</p>
+              <div className="flex items-center gap-2">
+                <Input
+                  type="number"
+                  placeholder="Mín"
+                  value={valorMin}
+                  onChange={(e) => setValorMin(e.target.value)}
+                  className="h-8 text-sm"
+                />
+                <span className="text-muted-foreground text-xs">até</span>
+                <Input
+                  type="number"
+                  placeholder="Máx"
+                  value={valorMax}
+                  onChange={(e) => setValorMax(e.target.value)}
+                  className="h-8 text-sm"
+                />
+              </div>
+              {(valorMin || valorMax) && (
+                <Button variant="ghost" size="sm" className="w-full mt-2 text-xs" onClick={() => { setValorMin(""); setValorMax(""); }}>
+                  Limpar filtro de valor
+                </Button>
+              )}
+            </PopoverContent>
+          </Popover>
+
+          {/* Global sort */}
+          <Select value={globalSort} onValueChange={setGlobalSort}>
+            <SelectTrigger className="w-[180px]">
+              <ArrowUpDown className="h-3.5 w-3.5 mr-1.5" />
+              <SelectValue placeholder="Ordenar" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="none">Sem ordenação</SelectItem>
+              <SelectItem value="valor_desc">Maior valor ↓</SelectItem>
+              <SelectItem value="valor_asc">Menor valor ↑</SelectItem>
+              <SelectItem value="data_desc">Mais recente ↓</SelectItem>
+              <SelectItem value="data_asc">Mais antigo ↑</SelectItem>
+              <SelectItem value="cliente_freq">Cliente + frequente</SelectItem>
+              <SelectItem value="cliente_az">Cliente A-Z</SelectItem>
+            </SelectContent>
+          </Select>
+
           <div className="flex items-center gap-3 ml-auto text-sm">
             <Badge variant="outline" className="gap-1">
               🔧 {totalOS} OS
@@ -494,7 +583,25 @@ export default function OSKanbanPage() {
                                 {column.title}
                               </span>
                             </div>
-                            <Badge variant="secondary" className="text-xs">{column.items.length}</Badge>
+                            <div className="flex items-center gap-1">
+                              <Select
+                                value={columnSorts[column.id] || "none"}
+                                onValueChange={(v) => setColumnSorts(prev => ({ ...prev, [column.id]: v }))}
+                              >
+                                <SelectTrigger className="h-6 w-6 p-0 border-0 bg-transparent [&>svg]:hidden">
+                                  <ArrowUpDown className="h-3.5 w-3.5 text-muted-foreground" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="none">Padrão</SelectItem>
+                                  <SelectItem value="valor_desc">Maior valor</SelectItem>
+                                  <SelectItem value="valor_asc">Menor valor</SelectItem>
+                                  <SelectItem value="data_desc">Mais recente</SelectItem>
+                                  <SelectItem value="data_asc">Mais antigo</SelectItem>
+                                  <SelectItem value="cliente_az">Cliente A-Z</SelectItem>
+                                </SelectContent>
+                              </Select>
+                              <Badge variant="secondary" className="text-xs">{column.items.length}</Badge>
+                            </div>
                           </div>
 
                           {/* Cards */}
