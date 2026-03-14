@@ -475,14 +475,52 @@ function TaskCard({
   );
 }
 
-function TaskDetailDialog({ tarefa, onClose }: { tarefa: Tarefa | null; onClose: () => void }) {
+function TaskDetailDialog({
+  tarefa,
+  onClose,
+  tecnicos,
+  onUpdate,
+  isSaving,
+}: {
+  tarefa: Tarefa | null;
+  onClose: () => void;
+  tecnicos: { nome: string; id: string | null }[];
+  onUpdate: (taskId: string, newDate: string | null, newTecNome: string | null, newTecId: string | null) => Promise<void>;
+  isSaving: boolean;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [editDate, setEditDate] = useState("");
+  const [editTecId, setEditTecId] = useState("");
+
   if (!tarefa) return null;
 
   const statusClass = STATUS_COLORS[tarefa.status_auvo || ""] || "bg-muted text-muted-foreground";
   const auvoUrl = tarefa.auvo_link || `https://app2.auvo.com.br/relatorioTarefas/DetalheTarefa/${tarefa.auvo_task_id}`;
+  const canEdit = tarefa.status_auvo === "Agendada";
+
+  const startEditing = () => {
+    setEditDate(tarefa.data_tarefa || "");
+    setEditTecId(tarefa.tecnico_id || "");
+    setEditing(true);
+  };
+
+  const cancelEditing = () => {
+    setEditing(false);
+  };
+
+  const saveEdit = async () => {
+    const newTec = tecnicos.find(t => t.id === editTecId);
+    await onUpdate(
+      tarefa.auvo_task_id,
+      editDate !== tarefa.data_tarefa ? editDate : null,
+      newTec ? newTec.nome : null,
+      editTecId !== tarefa.tecnico_id ? editTecId : null,
+    );
+    setEditing(false);
+  };
 
   return (
-    <Dialog open={!!tarefa} onOpenChange={(open) => !open && onClose()}>
+    <Dialog open={!!tarefa} onOpenChange={(open) => { if (!open) { setEditing(false); onClose(); } }}>
       <DialogContent className="max-w-md">
         <DialogHeader>
           <DialogTitle className="text-base">{tarefa.cliente || "Sem cliente"}</DialogTitle>
@@ -494,7 +532,7 @@ function TaskDetailDialog({ tarefa, onClose }: { tarefa: Tarefa | null; onClose:
             <Badge variant="outline" className={cn(statusClass, "border-0")}>
               {tarefa.status_auvo || "—"}
             </Badge>
-            {tarefa.data_tarefa && (
+            {!editing && tarefa.data_tarefa && (
               <Badge variant="secondary">
                 {format(parseISO(tarefa.data_tarefa), "EEEE, dd/MM", { locale: ptBR })}
               </Badge>
@@ -502,11 +540,57 @@ function TaskDetailDialog({ tarefa, onClose }: { tarefa: Tarefa | null; onClose:
             {tarefa.check_in && <Badge variant="secondary">✅ Check-in</Badge>}
           </div>
 
-          {/* Technician */}
-          <div className="text-sm">
-            <span className="text-muted-foreground">Técnico:</span>{" "}
-            <span className="font-medium text-foreground">{tarefa.tecnico || "—"}</span>
-          </div>
+          {/* Editable fields */}
+          {editing ? (
+            <div className="space-y-3 bg-muted/50 rounded-lg p-3">
+              <div>
+                <label className="text-xs font-medium text-muted-foreground mb-1 block">Data</label>
+                <Input
+                  type="date"
+                  value={editDate}
+                  onChange={(e) => setEditDate(e.target.value)}
+                  className="h-8 text-sm"
+                />
+              </div>
+              <div>
+                <label className="text-xs font-medium text-muted-foreground mb-1 block">Técnico</label>
+                <Select value={editTecId} onValueChange={setEditTecId}>
+                  <SelectTrigger className="h-8 text-sm">
+                    <SelectValue placeholder="Selecionar técnico" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {tecnicos.map(t => (
+                      <SelectItem key={t.id || t.nome} value={t.id || t.nome}>
+                        {t.nome}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="flex gap-2">
+                <Button size="sm" onClick={saveEdit} disabled={isSaving} className="flex-1">
+                  {isSaving ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" /> : <Save className="h-3.5 w-3.5 mr-1" />}
+                  Salvar
+                </Button>
+                <Button size="sm" variant="ghost" onClick={cancelEditing} disabled={isSaving}>
+                  <X className="h-3.5 w-3.5" />
+                </Button>
+              </div>
+            </div>
+          ) : (
+            <div className="flex items-center justify-between">
+              <div className="text-sm">
+                <span className="text-muted-foreground">Técnico:</span>{" "}
+                <span className="font-medium text-foreground">{tarefa.tecnico || "—"}</span>
+              </div>
+              {canEdit && (
+                <Button size="sm" variant="ghost" onClick={startEditing} className="h-7 px-2 text-xs">
+                  <Pencil className="h-3 w-3 mr-1" />
+                  Editar
+                </Button>
+              )}
+            </div>
+          )}
 
           {/* Time */}
           {tarefa.hora_inicio && (
@@ -544,7 +628,6 @@ function TaskDetailDialog({ tarefa, onClose }: { tarefa: Tarefa | null; onClose:
 
           {/* GC Values */}
           <div className="grid grid-cols-2 gap-3">
-            {/* OS */}
             <div className="space-y-1">
               <div className="text-[11px] font-semibold text-muted-foreground uppercase">OS</div>
               {tarefa.gc_os_codigo ? (
@@ -568,7 +651,6 @@ function TaskDetailDialog({ tarefa, onClose }: { tarefa: Tarefa | null; onClose:
               )}
             </div>
 
-            {/* Orçamento */}
             <div className="space-y-1">
               <div className="text-[11px] font-semibold text-muted-foreground uppercase">Orçamento</div>
               {tarefa.gc_orcamento_codigo ? (
