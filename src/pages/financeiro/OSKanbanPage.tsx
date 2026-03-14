@@ -285,12 +285,13 @@ export default function OSKanbanPage() {
   }, [allClientesSelected, allClientes]);
 
   const filteredColumns = useMemo(() => {
+    console.log("Filter state:", { allClientesSelected, selectedClientesSize: selectedClientes.size, selectedClientes: Array.from(selectedClientes).slice(0, 5) });
     return columns.map((col) => ({
       ...col,
       items: col.items.filter((item) => {
         const clientName = item.cliente || item.gc_os_cliente || "";
         if (filterTecnico !== "todos" && item.tecnico !== filterTecnico) return false;
-        if (!allClientesSelected && !selectedClientes.has(clientName)) return false;
+        if (!allClientesSelected && selectedClientes.size > 0 && !selectedClientes.has(clientName)) return false;
         return true;
       }),
     }));
