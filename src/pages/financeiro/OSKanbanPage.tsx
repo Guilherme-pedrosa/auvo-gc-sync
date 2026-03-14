@@ -112,6 +112,7 @@ export default function OSKanbanPage() {
   const [editTecnicoId, setEditTecnicoId] = useState("");
   const [editSaving, setEditSaving] = useState(false);
   const [execTaskId, setExecTaskId] = useState<string | null>(null);
+  const [execTaskUrl, setExecTaskUrl] = useState<string | null>(null);
   const [execTaskLoading, setExecTaskLoading] = useState(false);
 
   // Fetch Auvo users (technicians)
