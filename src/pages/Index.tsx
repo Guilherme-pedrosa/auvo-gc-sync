@@ -114,7 +114,7 @@ function computeMetrics(items: KanbanItem[], monthItems: KanbanItem[], source: "
     tecnicoMap[t].total++;
     const hasMatch = source === "orc"
       ? (item.orcamento_realizado || item.os_realizada)
-      : hasFilledQuestionnaire(item);
+      : item.os_realizada;
     if (hasMatch) {
       tecnicoMap[t].comMatch++;
       const valorOrc = parseFloat(item.gc_orcamento?.gc_valor_total || "0");
