@@ -292,6 +292,10 @@ export default function Index() {
   const orcMetrics = useMemo(() => computeMetrics(orcItems, orcMonthItems, "orc"), [orcItems, orcMonthItems]);
   const execMetrics = useMemo(() => computeMetrics(execItems, execMonthItems, "exec"), [execItems, execMonthItems]);
 
+  // Month-only metrics for charts and table
+  const orcMonthMetrics = useMemo(() => computeMetrics(orcMonthItems, orcMonthItems, "orc"), [orcMonthItems]);
+  const execMonthMetrics = useMemo(() => computeMetrics(execMonthItems, execMonthItems, "exec"), [execMonthItems]);
+
   // Combined totals
   const combined = useMemo(() => ({
     totalTarefas: orcMetrics.total + execMetrics.total,
