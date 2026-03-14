@@ -292,6 +292,10 @@ export default function Index() {
   const orcMetrics = useMemo(() => computeMetrics(orcItems, orcMonthItems, "orc"), [orcItems, orcMonthItems]);
   const execMetrics = useMemo(() => computeMetrics(execItems, execMonthItems, "exec"), [execItems, execMonthItems]);
 
+  // Month-only metrics for charts and table
+  const orcMonthMetrics = useMemo(() => computeMetrics(orcMonthItems, orcMonthItems, "orc"), [orcMonthItems]);
+  const execMonthMetrics = useMemo(() => computeMetrics(execMonthItems, execMonthItems, "exec"), [execMonthItems]);
+
   // Combined totals
   const combined = useMemo(() => ({
     totalTarefas: orcMetrics.total + execMetrics.total,
@@ -653,10 +657,10 @@ export default function Index() {
                 {renderMonthKPIs(orcMetrics, orcLabels)}
               </div>
               <div className="grid lg:grid-cols-2 gap-4">
-                {renderSituacaoChart(orcMetrics, "Valor por Situação do Orçamento")}
-                {renderTecnicoChart(orcMetrics, orcLabels)}
+                {renderSituacaoChart(orcMonthMetrics, "Valor por Situação do Orçamento")}
+                {renderTecnicoChart(orcMonthMetrics, orcLabels)}
               </div>
-              {renderSituacaoTable(orcMetrics)}
+              {renderSituacaoTable(orcMonthMetrics)}
             </TabsContent>
 
             <TabsContent value="execucao" className="space-y-5">
@@ -680,10 +684,10 @@ export default function Index() {
                 {renderMonthKPIs(execMetrics, execLabels)}
               </div>
               <div className="grid lg:grid-cols-2 gap-4">
-                {renderSituacaoChart(execMetrics, "Valor por Situação da OS")}
-                {renderTecnicoChart(execMetrics, execLabels)}
+                {renderSituacaoChart(execMonthMetrics, "Valor por Situação da OS")}
+                {renderTecnicoChart(execMonthMetrics, execLabels)}
               </div>
-              {renderSituacaoTable(execMetrics)}
+              {renderSituacaoTable(execMonthMetrics)}
             </TabsContent>
           </Tabs>
 
