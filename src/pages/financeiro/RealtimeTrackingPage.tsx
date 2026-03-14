@@ -110,7 +110,7 @@ export default function RealtimeTrackingPage() {
   });
 
   // Monthly pendências from tarefas_central
-  const { data: pendenciasMesRaw } = useQuery({
+  const { data: pendenciasMesRaw, refetch: refetchPendencias } = useQuery({
     queryKey: ["pendencias-mes", monthStart, monthEnd],
     queryFn: async () => {
       const { data, error } = await supabase
@@ -127,19 +127,33 @@ export default function RealtimeTrackingPage() {
     enabled: sheetOpen,
   });
 
+  const isBlankChecklistReply = (value: unknown) => {
+    if (value === null || value === undefined) return true;
+    const text = String(value).trim().toLowerCase();
+    return !text || [".", "-", "na", "n/a", "null", "undefined"].includes(text);
+  };
+
   const pendenciasMes = useMemo(() => {
     return (pendenciasMesRaw || []).map((item) => {
       const pendenciaRaw = item.pendencia || "";
-      // Extract form name: "Checklist: FORM_NAME" → "FORM_NAME"
       const formName = pendenciaRaw.startsWith("Checklist: ")
         ? pendenciaRaw.replace("Checklist: ", "")
         : pendenciaRaw;
 
-      // Find empty fields in questionnaire responses
-      const respostas = (item.questionario_respostas as any[] || []);
+      const respostas = Array.isArray(item.questionario_respostas)
+        ? (item.questionario_respostas as Array<Record<string, unknown>>)
+            .filter((r) => typeof r === "object" && r !== null)
+        : [];
+
       const camposVazios = respostas
-        .filter((r: any) => !r.reply || r.reply.trim() === "")
-        .map((r: any) => r.question || "");
+        .filter((r) => isBlankChecklistReply(r.reply))
+        .map((r) => (typeof r.question === "string" ? r.question.trim() : ""))
+        .filter(Boolean);
+
+      const motivosPendencia = [
+        ...(respostas.length === 0 ? ["Formulário sem respostas enviadas"] : []),
+        ...(camposVazios.length > 0 ? [`Sem preenchimento: ${camposVazios.join(", ")}`] : []),
+      ];
 
       return {
         taskId: item.auvo_task_id,
@@ -148,7 +162,7 @@ export default function RealtimeTrackingPage() {
         data: item.data_tarefa || "",
         pendencia: pendenciaRaw,
         formName,
-        camposVazios,
+        motivosPendencia,
         descricao: item.descricao || "",
         gcOsCodigo: item.gc_os_codigo || "",
       };
@@ -237,7 +251,14 @@ export default function RealtimeTrackingPage() {
                             </div>
                           )}
                         </div>
-                        <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={() => refetchAtrasadas()}>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-7 text-xs"
+                          onClick={() => {
+                            void Promise.all([refetchAtrasadas(), refetchPendencias()]);
+                          }}
+                        >
                           <RefreshCw className="h-3 w-3 mr-1" /> Atualizar
                         </Button>
                       </div>
@@ -356,9 +377,15 @@ export default function RealtimeTrackingPage() {
                                                 <p className="text-[10px] text-amber-700 font-medium">
                                                   📋 {item.formName}
                                                 </p>
-                                                {item.camposVazios.length > 0 && (
-                                                  <p className="text-[10px] text-red-600 mt-0.5">
-                                                    ❌ Sem preenchimento: {item.camposVazios.join(", ")}
+                                                {item.motivosPendencia.length > 0 ? (
+                                                  item.motivosPendencia.map((motivo: string, idx: number) => (
+                                                    <p key={`${item.taskId}-motivo-${idx}`} className="text-[10px] text-destructive mt-0.5">
+                                                      ❌ {motivo}
+                                                    </p>
+                                                  ))
+                                                ) : (
+                                                  <p className="text-[10px] text-muted-foreground mt-0.5">
+                                                    ⚠️ Motivo da pendência não detalhado pelo formulário
                                                   </p>
                                                 )}
                                               </div>
