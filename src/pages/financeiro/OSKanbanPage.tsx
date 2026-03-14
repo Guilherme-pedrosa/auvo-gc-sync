@@ -18,10 +18,13 @@ import {
 import {
   ArrowLeft, CalendarIcon, RefreshCw, ExternalLink,
   Filter, GripVertical, Check, X, Edit2, Trash2, Plus,
-  Package, FileText, ClipboardList, MapPin, ArrowUpDown, ArrowDown, ArrowUp
+  Package, FileText, ClipboardList, MapPin, ArrowUpDown, ArrowDown, ArrowUp,
+  UserCog, Save, Loader2
 } from "lucide-react";
-import { format, startOfMonth } from "date-fns";
+import { format, startOfMonth, parse } from "date-fns";
 import { ptBR } from "date-fns/locale";
+import { Label } from "@/components/ui/label";
+import { cn } from "@/lib/utils";
 import { useNavigate } from "react-router-dom";
 import { DragDropContext, Droppable, Draggable, DropResult } from "@hello-pangea/dnd";
 import { toast } from "sonner";
