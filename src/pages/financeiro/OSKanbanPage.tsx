@@ -30,8 +30,11 @@ type OSItem = {
   status_auvo: string;
   pendencia: string | null;
   descricao: string | null;
+  orientacao: string | null;
+  endereco: string | null;
   auvo_task_url: string | null;
   auvo_link: string | null;
+  auvo_survey_url: string | null;
   gc_os_id: string;
   gc_os_codigo: string;
   gc_os_cliente: string | null;
@@ -42,10 +45,22 @@ type OSItem = {
   gc_os_vendedor: string | null;
   gc_os_data: string | null;
   gc_os_link: string | null;
+  gc_orcamento_id: string | null;
+  gc_orcamento_codigo: string | null;
+  gc_orc_situacao: string | null;
+  gc_orc_cor_situacao: string | null;
+  gc_orc_valor_total: number | null;
+  gc_orc_vendedor: string | null;
+  gc_orc_link: string | null;
+  orcamento_realizado: boolean;
+  os_realizada: boolean;
   check_in: boolean;
   check_out: boolean;
   hora_inicio: string | null;
   hora_fim: string | null;
+  duracao_decimal: number | null;
+  questionario_preenchido: boolean;
+  questionario_respostas: { question: string; reply: string }[] | null;
   _coluna?: string;
 };
 
