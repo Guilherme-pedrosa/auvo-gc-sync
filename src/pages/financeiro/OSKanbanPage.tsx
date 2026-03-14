@@ -1197,7 +1197,7 @@ export default function OSKanbanPage() {
               <div className="bg-muted/50 rounded-md p-3 text-sm">
                 <p className="font-medium">{editingCard.cliente || editingCard.gc_os_cliente || "—"}</p>
                 <p className="text-muted-foreground text-xs mt-0.5">
-                  OS {editingCard.gc_os_codigo} • Tarefa OS #{editingCard.auvo_task_id}
+                  OS {editingCard.gc_os_codigo}
                 </p>
                 <p className="text-xs mt-1">
                   {execTaskLoading ? (
