@@ -93,6 +93,43 @@ export default function OSKanbanPage() {
   const [selectedCard, setSelectedCard] = useState<OSItem | null>(null);
   const [isSyncing, setIsSyncing] = useState(false);
   const [syncStatus, setSyncStatus] = useState("");
+  const [osDetail, setOsDetail] = useState<any>(null);
+  const [osDetailLoading, setOsDetailLoading] = useState(false);
+
+  // Fetch OS detail (produtos, serviços, valores) from GC when card is selected
+  useEffect(() => {
+    if (!selectedCard?.gc_os_id) {
+      setOsDetail(null);
+      return;
+    }
+    let cancelled = false;
+    setOsDetailLoading(true);
+    setOsDetail(null);
+
+    supabase.functions
+      .invoke("gc-proxy", {
+        body: {
+          endpoint: `/api/ordens_servicos/${selectedCard.gc_os_id}`,
+          method: "GET",
+        },
+      })
+      .then(({ data, error }) => {
+        if (cancelled) return;
+        if (error) {
+          console.warn("Erro ao buscar detalhes da OS:", error);
+          setOsDetailLoading(false);
+          return;
+        }
+        const osObj = data?.data?.data ?? data?.data ?? null;
+        setOsDetail(osObj);
+        setOsDetailLoading(false);
+      })
+      .catch(() => {
+        if (!cancelled) setOsDetailLoading(false);
+      });
+
+    return () => { cancelled = true; };
+  }, [selectedCard?.gc_os_id]);
 
   const startStr = format(dateRange.from, "yyyy-MM-dd");
   const endStr = format(dateRange.to, "yyyy-MM-dd");
