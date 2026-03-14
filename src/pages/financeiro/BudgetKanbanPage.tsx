@@ -1,6 +1,6 @@
 import { useState, useCallback, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { startOfDay, startOfWeek, startOfMonth as startOfMonthFn, isAfter, isEqual } from "date-fns";
+import { isAfter, isEqual } from "date-fns";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
