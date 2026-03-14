@@ -354,7 +354,7 @@ export default function AgendaSemanalPage() {
                 </tr>
               </thead>
               <tbody>
-                {tecnicos.map((tec) => {
+                {filteredTecnicos.map((tec) => {
                   const days = grid.get(tec.nome) || [];
                   const totalTec = days.reduce((acc, d) => acc + d.length, 0);
                   return (
