@@ -102,9 +102,11 @@ Deno.serve(async (req) => {
     const mapped = allTasks.map((t: any) => {
       const taskId = String(t.taskID || t.taskId || t.id || "");
 
-      // Customer: same logic as central-sync
+      // Customer: try multiple fields; listing may return them empty
       const custDesc = String(t.customerDescription || "").trim();
       const custName = String(t.customerName || t.customer?.tradeName || t.customer?.companyName || "").trim();
+      // Fallback: extract from orientation (e.g. first line often has context)
+      const orientation = String(t.orientation || "").trim();
       const cliente = custDesc || custName || "Sem cliente";
 
       // Technician - resolve from users map if userToName is empty
@@ -116,8 +118,9 @@ Deno.serve(async (req) => {
       const rawDate = String(t.taskDate || "");
       const taskDate = rawDate ? rawDate.substring(0, 10) : "";
 
-      // Status: same logic as central-sync
-      const status = t.finished ? "Finalizada" : (t.checkIn ? "Em andamento" : "Agendada");
+      // Status
+      const statusDesc = String(t.taskStatus?.description || t.status?.description || "").trim();
+      const status = statusDesc || (t.finished ? "Finalizada" : (t.checkIn ? "Em andamento" : "Agendada"));
 
       // Times
       const startTime = String(t.startTime || t.startHour || "");
