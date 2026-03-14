@@ -41,6 +41,11 @@ const navItems = [
     icon: Wrench,
     path: "/financeiro/kanban-os",
   },
+  {
+    label: "Agenda Semanal",
+    icon: CalendarDays,
+    path: "/financeiro/agenda-semanal",
+  },
 ];
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
