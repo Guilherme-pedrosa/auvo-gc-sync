@@ -262,7 +262,7 @@ function TaskCard({ tarefa }: { tarefa: Tarefa }) {
           {tarefa.hora_inicio && tarefa.hora_fim && (
             <div>🕐 {tarefa.hora_inicio?.substring(0, 5)} – {tarefa.hora_fim?.substring(0, 5)}</div>
           )}
-          {tarefa.gc_os_situacao && <div>OS: {tarefa.gc_os_situacao}</div>}
+          {tarefa.check_in && <div>✅ Check-in realizado</div>}
         </div>
       </TooltipContent>
     </Tooltip>
