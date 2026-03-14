@@ -59,23 +59,17 @@ const pieColors = ["hsl(38, 92%, 50%)", "hsl(142, 71%, 45%)", "hsl(217, 91%, 60%
 
 const fmtBRL = (v: number) => v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 
-function hasFilledQuestionnaire(item: KanbanItem) {
-  return item.questionario_respostas?.some(
-    (r) => r.reply && r.reply.trim() !== "" && !r.reply.startsWith("http")
-  );
-}
 
 function computeMetrics(items: KanbanItem[], monthItems: KanbanItem[], source: "orc" | "exec") {
   const total = items.length;
 
-  // For exec: questionnaire filled = "Com OS" (the questionnaire IS the OS evidence)
   const comMatch = source === "orc"
     ? items.filter((i) => i.orcamento_realizado)
-    : items.filter((i) => hasFilledQuestionnaire(i));
+    : items.filter((i) => i.os_realizada);
   const comOs = items.filter((i) => i.os_realizada);
   const semMatch = source === "orc"
     ? items.filter((i) => !i.orcamento_realizado && !i.os_realizada)
-    : items.filter((i) => !hasFilledQuestionnaire(i));
+    : items.filter((i) => !i.os_realizada);
 
   const valorMatch = comMatch.reduce((acc, i) => {
     if (source === "orc") return acc + parseFloat(i.gc_orcamento?.gc_valor_total || "0");
@@ -86,10 +80,10 @@ function computeMetrics(items: KanbanItem[], monthItems: KanbanItem[], source: "
   // Monthly
   const mesComMatch = source === "orc"
     ? monthItems.filter((i) => i.orcamento_realizado)
-    : monthItems.filter((i) => hasFilledQuestionnaire(i));
+    : monthItems.filter((i) => i.os_realizada);
   const mesSemMatch = source === "orc"
     ? monthItems.filter((i) => !i.orcamento_realizado && !i.os_realizada)
-    : monthItems.filter((i) => !hasFilledQuestionnaire(i));
+    : monthItems.filter((i) => !i.os_realizada);
   const mesValorMatch = mesComMatch.reduce((acc, i) => {
     if (source === "orc") return acc + parseFloat(i.gc_orcamento?.gc_valor_total || "0");
     return acc + parseFloat(i.gc_os?.gc_valor_total || "0");
@@ -115,7 +109,7 @@ function computeMetrics(items: KanbanItem[], monthItems: KanbanItem[], source: "
     tecnicoMap[t].total++;
     const hasMatch = source === "orc"
       ? (item.orcamento_realizado || item.os_realizada)
-      : hasFilledQuestionnaire(item);
+      : item.os_realizada;
     if (hasMatch) {
       tecnicoMap[t].comMatch++;
       const valorOrc = parseFloat(item.gc_orcamento?.gc_valor_total || "0");
@@ -163,19 +157,87 @@ export default function Index() {
     staleTime: 60_000,
   });
 
-  // Fetch execução data from the same budget-kanban source (has OS data too)
+  // Fetch execução data from central mirror table (all tasks + OS)
   const { data: execData, isLoading: execLoading, refetch: refetchExec } = useQuery({
     queryKey: ["dash-exec", format(dateRange.from, "yyyy-MM-dd"), format(dateRange.to, "yyyy-MM-dd")],
     queryFn: async () => {
-      const { data, error } = await supabase.functions.invoke("budget-kanban", {
-        body: {
-          mode: "cache",
-          start_date: format(dateRange.from, "yyyy-MM-dd"),
-          end_date: format(dateRange.to, "yyyy-MM-dd"),
-        },
-      });
-      if (error) throw error;
-      return data as { items: KanbanItem[]; ultimo_sync?: string };
+      const startDate = format(dateRange.from, "yyyy-MM-dd");
+      const endDate = format(dateRange.to, "yyyy-MM-dd");
+      const pageSize = 1000;
+      let from = 0;
+      const rows: any[] = [];
+
+      while (true) {
+        const { data, error } = await supabase
+          .from("tarefas_central")
+          .select("auvo_task_id,auvo_link,cliente,tecnico,data_tarefa,orientacao,status_auvo,questionario_respostas,orcamento_realizado,os_realizada,gc_orcamento_id,gc_orcamento_codigo,gc_orc_cliente,gc_orc_situacao,gc_orc_situacao_id,gc_orc_cor_situacao,gc_orc_valor_total,gc_orc_vendedor,gc_orc_data,gc_orc_link,gc_os_id,gc_os_codigo,gc_os_cliente,gc_os_situacao,gc_os_situacao_id,gc_os_cor_situacao,gc_os_valor_total,gc_os_vendedor,gc_os_data,gc_os_link,atualizado_em")
+          .gte("data_tarefa", startDate)
+          .lte("data_tarefa", endDate)
+          .order("data_tarefa", { ascending: false })
+          .range(from, from + pageSize - 1);
+
+        if (error) throw error;
+        if (!data?.length) break;
+
+        rows.push(...data);
+        if (data.length < pageSize) break;
+        from += pageSize;
+      }
+
+      const items: KanbanItem[] = rows.map((row: any) => ({
+        auvo_task_id: String(row.auvo_task_id || ""),
+        auvo_link: String(row.auvo_link || ""),
+        cliente: String(row.cliente || "Cliente não identificado"),
+        tecnico: String(row.tecnico || "Sem técnico"),
+        data_tarefa: String(row.data_tarefa || ""),
+        orientacao: String(row.orientacao || ""),
+        status_auvo: String(row.status_auvo || ""),
+        questionario_respostas: Array.isArray(row.questionario_respostas)
+          ? row.questionario_respostas
+          : [],
+        orcamento_realizado: !!row.orcamento_realizado,
+        os_realizada: !!row.os_realizada,
+        gc_orcamento: row.gc_orcamento_id
+          ? {
+              gc_orcamento_id: String(row.gc_orcamento_id || ""),
+              gc_orcamento_codigo: String(row.gc_orcamento_codigo || ""),
+              gc_os_id: "",
+              gc_os_codigo: "",
+              gc_cliente: String(row.gc_orc_cliente || ""),
+              gc_situacao: String(row.gc_orc_situacao || ""),
+              gc_situacao_id: String(row.gc_orc_situacao_id || ""),
+              gc_cor_situacao: String(row.gc_orc_cor_situacao || ""),
+              gc_valor_total: String(row.gc_orc_valor_total ?? "0"),
+              gc_vendedor: String(row.gc_orc_vendedor || ""),
+              gc_data: String(row.gc_orc_data || ""),
+              gc_link: String(row.gc_orc_link || ""),
+            }
+          : null,
+        gc_os: row.gc_os_id
+          ? {
+              gc_orcamento_id: "",
+              gc_orcamento_codigo: "",
+              gc_os_id: String(row.gc_os_id || ""),
+              gc_os_codigo: String(row.gc_os_codigo || ""),
+              gc_cliente: String(row.gc_os_cliente || ""),
+              gc_situacao: String(row.gc_os_situacao || ""),
+              gc_situacao_id: String(row.gc_os_situacao_id || ""),
+              gc_cor_situacao: String(row.gc_os_cor_situacao || ""),
+              gc_valor_total: String(row.gc_os_valor_total ?? "0"),
+              gc_vendedor: String(row.gc_os_vendedor || ""),
+              gc_data: String(row.gc_os_data || ""),
+              gc_link: String(row.gc_os_link || ""),
+            }
+          : null,
+      }));
+
+      const ultimo_sync = rows
+        .map((row) => row.atualizado_em)
+        .filter(Boolean)
+        .sort()
+        .at(-1);
+
+      return { items, ultimo_sync } as { items: KanbanItem[]; ultimo_sync?: string };
     },
     staleTime: 60_000,
   });
@@ -447,7 +509,7 @@ export default function Index() {
   );
 
   const orcLabels = { match: "Com Orçamento", sem: "Sem Orçamento" };
-  const execLabels = { match: "Questionário Preenchido", sem: "Sem Preenchimento" };
+  const execLabels = { match: "Com OS", sem: "Sem OS" };
 
   return (
     <div className="min-h-screen">
