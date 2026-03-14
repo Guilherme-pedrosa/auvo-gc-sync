@@ -378,11 +378,12 @@ Deno.serve(async (req) => {
       console.warn(`[budget-kanban] Erro ao carregar snapshot:`, err);
     }
 
-    // Fetch in parallel: Auvo tasks + GC orçamentos + GC OS
+    // Fetch in parallel: Auvo tasks + GC orçamentos (ALL) + GC OS (ALL)
+    // No date filter on GC — we fetch everything and filter by task date in cache/frontend
     const [auvoPrimary, gcOrcMap, gcOsMap] = await Promise.all([
       fetchAuvoTasksWithQuestionnaire(bearerToken, startDate, endDate),
-      fetchGcOrcamentosMap(gcH, startDate, endDate),
-      fetchGcOsMap(gcH, startDate, endDate),
+      fetchGcOrcamentosMap(gcH),
+      fetchGcOsMap(gcH),
     ]);
 
     let auvoTasks = auvoPrimary.tasks;
