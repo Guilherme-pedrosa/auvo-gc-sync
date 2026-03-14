@@ -59,11 +59,6 @@ const pieColors = ["hsl(38, 92%, 50%)", "hsl(142, 71%, 45%)", "hsl(217, 91%, 60%
 
 const fmtBRL = (v: number) => v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 
-function hasFilledQuestionnaire(item: KanbanItem) {
-  return item.questionario_respostas?.some(
-    (r) => r.reply && r.reply.trim() !== "" && !r.reply.startsWith("http")
-  );
-}
 
 function computeMetrics(items: KanbanItem[], monthItems: KanbanItem[], source: "orc" | "exec") {
   const total = items.length;
