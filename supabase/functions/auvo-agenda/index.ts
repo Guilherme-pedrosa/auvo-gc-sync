@@ -5,6 +5,9 @@ const corsHeaders = {
 };
 
 const AUVO_BASE_URL = "https://api.auvo.com.br/v2";
+const GC_BASE_URL = "https://api.gestaoclick.com";
+const GC_ATRIBUTO_TAREFA_OS = "73343";
+const GC_ATRIBUTO_TAREFA_ORC = "73341";
 
 async function auvoLogin(apiKey: string, apiToken: string): Promise<string> {
   const url = `${AUVO_BASE_URL}/login/?apiKey=${encodeURIComponent(apiKey)}&apiToken=${encodeURIComponent(apiToken)}`;
@@ -16,12 +19,105 @@ async function auvoLogin(apiKey: string, apiToken: string): Promise<string> {
   return token;
 }
 
+// Fetch all GC OS pages and build taskId -> OS map
+async function fetchGcOsMap(gcHeaders: Record<string, string>): Promise<Map<string, any>> {
+  const map = new Map<string, any>();
+  let page = 1;
+  let totalPages = 1;
+  const MAX_PAGES = 50;
+
+  while (page <= totalPages && page <= MAX_PAGES) {
+    const url = `${GC_BASE_URL}/api/ordens_servicos?limite=100&pagina=${page}`;
+    const response = await fetch(url, { headers: gcHeaders });
+    if (response.status === 429) {
+      await new Promise(r => setTimeout(r, 3000));
+      continue;
+    }
+    if (!response.ok) break;
+
+    const data = await response.json();
+    const records: any[] = Array.isArray(data?.data) ? data.data : [];
+    totalPages = data?.meta?.total_paginas || 1;
+
+    for (const os of records) {
+      const atributos: any[] = os.atributos || [];
+      const attrTarefa = atributos.find((a: any) => {
+        const nested = a?.atributo || a;
+        return String(nested.atributo_id || nested.id || "") === GC_ATRIBUTO_TAREFA_OS;
+      });
+      if (attrTarefa) {
+        const nested = attrTarefa?.atributo || attrTarefa;
+        const taskId = String(nested?.conteudo || nested?.valor || "").trim();
+        if (taskId && /^\d+$/.test(taskId)) {
+          map.set(taskId, {
+            gc_os_codigo: String(os.codigo || ""),
+            gc_os_situacao: String(os.nome_situacao || ""),
+            gc_os_valor_total: parseFloat(os.valor_total || "0"),
+            gc_os_link: `https://gestaoclick.com/ordens_servicos/editar/${os.id}?retorno=%2Fordens_servicos`,
+          });
+        }
+      }
+    }
+    page++;
+  }
+  console.log(`[auvo-agenda] GC OS map: ${map.size} entries`);
+  return map;
+}
+
+// Fetch all GC orçamentos and build taskId -> orc map
+async function fetchGcOrcMap(gcHeaders: Record<string, string>): Promise<Map<string, any>> {
+  const map = new Map<string, any>();
+  let page = 1;
+  let totalPages = 1;
+  const MAX_PAGES = 50;
+
+  while (page <= totalPages && page <= MAX_PAGES) {
+    const url = `${GC_BASE_URL}/api/orcamentos?limite=100&pagina=${page}`;
+    const response = await fetch(url, { headers: gcHeaders });
+    if (response.status === 429) {
+      await new Promise(r => setTimeout(r, 3000));
+      continue;
+    }
+    if (!response.ok) break;
+
+    const data = await response.json();
+    const records: any[] = Array.isArray(data?.data) ? data.data : [];
+    totalPages = data?.meta?.total_paginas || 1;
+
+    for (const orc of records) {
+      const atributos: any[] = orc.atributos || [];
+      const attrTarefa = atributos.find((a: any) => {
+        const nested = a?.atributo || a;
+        return String(nested.atributo_id || nested.id || "") === GC_ATRIBUTO_TAREFA_ORC;
+      });
+      if (attrTarefa) {
+        const nested = attrTarefa?.atributo || attrTarefa;
+        const taskId = String(nested?.conteudo || nested?.valor || "").trim();
+        if (taskId && /^\d+$/.test(taskId)) {
+          map.set(taskId, {
+            gc_orcamento_codigo: String(orc.codigo || ""),
+            gc_orc_situacao: String(orc.nome_situacao || ""),
+            gc_orc_valor_total: parseFloat(orc.valor_total || "0"),
+            gc_orc_link: `https://gestaoclick.com/orcamentos_servicos/editar/${orc.id}?retorno=%2Forcamentos_servicos`,
+          });
+        }
+      }
+    }
+    page++;
+  }
+  console.log(`[auvo-agenda] GC Orc map: ${map.size} entries`);
+  return map;
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   try {
     const apiKey = Deno.env.get("AUVO_APP_KEY");
     const apiToken = Deno.env.get("AUVO_TOKEN");
+    const gcAccessToken = Deno.env.get("GC_ACCESS_TOKEN");
+    const gcSecretToken = Deno.env.get("GC_SECRET_TOKEN");
+
     if (!apiKey || !apiToken) {
       return new Response(
         JSON.stringify({ error: "Credenciais Auvo não configuradas" }),
@@ -63,74 +159,77 @@ Deno.serve(async (req) => {
       console.log(`[auvo-agenda] ${usersMap.size} users loaded`);
     }
 
-    const allTasks: any[] = [];
-    let page = 1;
-    const pageSize = 100;
-    const MAX_PAGES = 20;
-    const filterObj = { startDate: `${startDate}T00:00:00`, endDate: `${endDate}T23:59:59` };
+    // Fetch Auvo tasks + GC data in parallel
+    const gcHeaders: Record<string, string> = gcAccessToken && gcSecretToken ? {
+      "access-token": gcAccessToken,
+      "secret-access-token": gcSecretToken,
+      "Content-Type": "application/json",
+    } : {};
+    const hasGc = !!gcAccessToken && !!gcSecretToken;
 
-    while (page <= MAX_PAGES) {
-      const paramFilter = encodeURIComponent(JSON.stringify(filterObj));
-      const url = `${AUVO_BASE_URL}/tasks/?page=${page}&pageSize=${pageSize}&order=asc&paramFilter=${paramFilter}`;
+    const fetchTasks = async () => {
+      const allTasks: any[] = [];
+      let page = 1;
+      const pageSize = 100;
+      const MAX_PAGES = 20;
+      const filterObj = { startDate: `${startDate}T00:00:00`, endDate: `${endDate}T23:59:59` };
 
-      const response = await fetch(url, { headers });
-
-      if (response.status === 404) break;
-      if (!response.ok) {
-        const text = await response.text();
-        console.error(`[auvo-agenda] page ${page} error ${response.status}: ${text.substring(0, 200)}`);
-        break;
+      while (page <= MAX_PAGES) {
+        const paramFilter = encodeURIComponent(JSON.stringify(filterObj));
+        const url = `${AUVO_BASE_URL}/tasks/?page=${page}&pageSize=${pageSize}&order=asc&paramFilter=${paramFilter}`;
+        const response = await fetch(url, { headers });
+        if (response.status === 404) break;
+        if (!response.ok) {
+          const text = await response.text();
+          console.error(`[auvo-agenda] page ${page} error ${response.status}: ${text.substring(0, 200)}`);
+          break;
+        }
+        const json = await response.json();
+        const tasks = json?.result?.entityList || json?.result?.Entities || json?.result?.tasks || json?.result || [];
+        if (!Array.isArray(tasks) || tasks.length === 0) break;
+        allTasks.push(...tasks);
+        if (tasks.length < pageSize) break;
+        page++;
       }
+      return allTasks;
+    };
 
-      const json = await response.json();
-      const tasks = json?.result?.entityList || json?.result?.Entities || json?.result?.tasks || json?.result || [];
-      if (!Array.isArray(tasks) || tasks.length === 0) break;
+    // Run in parallel: Auvo tasks + GC OS + GC Orçamentos
+    const [allTasks, gcOsMap, gcOrcMap] = await Promise.all([
+      fetchTasks(),
+      hasGc ? fetchGcOsMap(gcHeaders) : Promise.resolve(new Map<string, any>()),
+      hasGc ? fetchGcOrcMap(gcHeaders) : Promise.resolve(new Map<string, any>()),
+    ]);
 
-      allTasks.push(...tasks);
-      if (tasks.length < pageSize) break;
-      page++;
-    }
+    console.log(`[auvo-agenda] ${allTasks.length} tasks, ${gcOsMap.size} OS, ${gcOrcMap.size} orçamentos`);
 
-    // Debug: log first task's raw keys
-    if (allTasks.length > 0) {
-      const sample = allTasks[0];
-      console.log("[auvo-agenda] Sample task keys:", Object.keys(sample));
-      console.log("[auvo-agenda] Sample task:", JSON.stringify(sample).substring(0, 1000));
-    }
-
-    // Map to simplified format
-    const mapped = allTasks.map((t: any) => {
+    // Map to simplified format + enrich with GC
+    const enriched = allTasks.map((t: any) => {
       const taskId = String(t.taskID || t.taskId || t.id || "");
 
-      // Customer: try multiple fields; listing may return them empty
       const custDesc = String(t.customerDescription || "").trim();
       const custName = String(t.customerName || t.customer?.tradeName || t.customer?.companyName || "").trim();
-      // Fallback: extract from orientation (e.g. first line often has context)
-      const orientation = String(t.orientation || "").trim();
       const cliente = custDesc || custName || "Sem cliente";
 
-      // Technician - resolve from users map if userToName is empty
       const rawTecnico = String(t.userToName || "").trim();
       const tecnicoId = String(t.idUserTo || "");
       const tecnico = rawTecnico || usersMap.get(tecnicoId) || "Sem técnico";
 
-      // Date
       const rawDate = String(t.taskDate || "");
       const taskDate = rawDate ? rawDate.substring(0, 10) : "";
 
-      // Status
       const statusDesc = String(t.taskStatus?.description || t.status?.description || "").trim();
       const status = statusDesc || (t.finished ? "Finalizada" : (t.checkIn ? "Em andamento" : "Agendada"));
 
-      // Times
       const startTime = String(t.startTime || t.startHour || "");
       const endTime = String(t.endTime || t.endHour || "");
 
-      // Address
       const address = typeof t.address === "object" ? "" : String(t.address || "").substring(0, 200);
-
-      // Description
       const description = String(t.orientation || t.description || "").substring(0, 500);
+
+      // GC enrichment
+      const os = gcOsMap.get(taskId);
+      const orc = gcOrcMap.get(taskId);
 
       return {
         auvo_task_id: taskId,
@@ -146,44 +245,15 @@ Deno.serve(async (req) => {
         check_in: !!t.checkIn,
         check_out: !!t.checkOut,
         auvo_link: `https://app2.auvo.com.br/relatorioTarefas/DetalheTarefa/${taskId}`,
-      };
-    });
-
-    // Enrich with GC values from tarefas_central
-    const taskIds = mapped.map(m => m.auvo_task_id);
-    const { createClient } = await import("https://esm.sh/@supabase/supabase-js@2");
-    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
-    const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-    const sb = createClient(supabaseUrl, supabaseKey);
-
-    const valoresMap = new Map<string, any>();
-    if (taskIds.length > 0) {
-      // Query in batches of 200
-      for (let i = 0; i < taskIds.length; i += 200) {
-        const batch = taskIds.slice(i, i + 200);
-        const { data: rows } = await sb
-          .from("tarefas_central")
-          .select("auvo_task_id, gc_os_valor_total, gc_orc_valor_total, gc_os_situacao, gc_os_codigo, gc_os_link, gc_orc_situacao, gc_orcamento_codigo, gc_orc_link, pendencia")
-          .in("auvo_task_id", batch);
-        if (rows) {
-          for (const row of rows) valoresMap.set(row.auvo_task_id, row);
-        }
-      }
-    }
-
-    const enriched = mapped.map(m => {
-      const gc = valoresMap.get(m.auvo_task_id);
-      return {
-        ...m,
-        gc_os_valor_total: gc?.gc_os_valor_total ?? null,
-        gc_orc_valor_total: gc?.gc_orc_valor_total ?? null,
-        gc_os_situacao: gc?.gc_os_situacao ?? null,
-        gc_os_codigo: gc?.gc_os_codigo ?? null,
-        gc_os_link: gc?.gc_os_link ?? null,
-        gc_orc_situacao: gc?.gc_orc_situacao ?? null,
-        gc_orcamento_codigo: gc?.gc_orcamento_codigo ?? null,
-        gc_orc_link: gc?.gc_orc_link ?? null,
-        pendencia: gc?.pendencia ?? null,
+        gc_os_codigo: os?.gc_os_codigo ?? null,
+        gc_os_situacao: os?.gc_os_situacao ?? null,
+        gc_os_valor_total: os?.gc_os_valor_total ?? null,
+        gc_os_link: os?.gc_os_link ?? null,
+        gc_orcamento_codigo: orc?.gc_orcamento_codigo ?? null,
+        gc_orc_situacao: orc?.gc_orc_situacao ?? null,
+        gc_orc_valor_total: orc?.gc_orc_valor_total ?? null,
+        gc_orc_link: orc?.gc_orc_link ?? null,
+        pendencia: null,
       };
     });
 
