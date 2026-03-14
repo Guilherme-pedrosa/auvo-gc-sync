@@ -365,6 +365,7 @@ export default function RealtimeTrackingPage() {
                                               {item.gcOsCodigo && (
                                                 <span className="text-[10px] text-muted-foreground font-mono">OS #{item.gcOsCodigo}</span>
                                               )}
+                                            </div>
                                           ))}
                                         </div>
                                       </CollapsibleContent>
