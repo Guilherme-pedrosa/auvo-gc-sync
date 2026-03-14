@@ -252,7 +252,14 @@ export default function RealtimeTrackingPage() {
                             </div>
                           )}
                         </div>
-                        <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={() => refetchAtrasadas()}>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-7 text-xs"
+                          onClick={() => {
+                            void Promise.all([refetchAtrasadas(), refetchPendencias()]);
+                          }}
+                        >
                           <RefreshCw className="h-3 w-3 mr-1" /> Atualizar
                         </Button>
                       </div>
