@@ -107,9 +107,10 @@ Deno.serve(async (req) => {
       const custName = String(t.customerName || t.customer?.tradeName || t.customer?.companyName || "").trim();
       const cliente = custDesc || custName || "Sem cliente";
 
-      // Technician
-      const tecnico = String(t.userToName || "");
+      // Technician - resolve from users map if userToName is empty
+      const rawTecnico = String(t.userToName || "").trim();
       const tecnicoId = String(t.idUserTo || "");
+      const tecnico = rawTecnico || usersMap.get(tecnicoId) || "Sem técnico";
 
       // Date
       const rawDate = String(t.taskDate || "");
