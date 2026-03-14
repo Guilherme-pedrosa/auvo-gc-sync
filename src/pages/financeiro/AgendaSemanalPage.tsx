@@ -307,7 +307,7 @@ export default function AgendaSemanalPage() {
       </div>
 
       {/* Grid */}
-      <ScrollArea className="flex-1">
+      <div className="flex-1 overflow-auto">
         {isLoading ? (
           <div className="p-6 space-y-4">
             {Array.from({ length: 5 }).map((_, i) => (
