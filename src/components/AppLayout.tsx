@@ -36,7 +36,11 @@ const navItems = [
     icon: Radio,
     path: "/financeiro/acompanhamento",
   },
-  // Dashboard Orçamentos is now the home page
+  {
+    label: "Kanban OS",
+    icon: Wrench,
+    path: "/financeiro/kanban-os",
+  },
 ];
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {

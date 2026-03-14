@@ -29,6 +29,7 @@ const App = () => (
             <Route path="/financeiro/kanban-orcamentos" element={<BudgetKanbanPage />} />
             <Route path="/financeiro/kanban-personalizado" element={<CustomKanbanPage />} />
             <Route path="/financeiro/acompanhamento" element={<RealtimeTrackingPage />} />
+            <Route path="/financeiro/kanban-os" element={<OSKanbanPage />} />
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
             <Route path="*" element={<NotFound />} />
           </Routes>
