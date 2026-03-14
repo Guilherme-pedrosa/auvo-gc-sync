@@ -394,7 +394,7 @@ export default function AgendaSemanalPage() {
             </table>
           </div>
         )}
-      </ScrollArea>
+      </div>
 
       {/* Detail Dialog */}
       <TaskDetailDialog
