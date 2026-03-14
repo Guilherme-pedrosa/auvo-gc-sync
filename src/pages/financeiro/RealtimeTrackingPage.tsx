@@ -347,19 +347,25 @@ export default function RealtimeTrackingPage() {
                                       <CollapsibleContent>
                                         <div className="mt-1 ml-4 border-l-2 border-amber-300 pl-3 space-y-1.5 py-1.5">
                                           {group.items.map((item) => (
-                                            <div key={item.taskId} className="flex items-start gap-2 text-xs py-1">
+                                             <div key={item.taskId} className="flex items-start gap-2 text-xs py-1.5">
                                               <span className="font-mono text-muted-foreground whitespace-nowrap min-w-[40px]">
                                                 {item.data ? format(new Date(item.data + "T12:00:00"), "dd/MM") : "—"}
                                               </span>
                                               <div className="flex-1 min-w-0">
                                                 <p className="font-medium truncate">{item.cliente || "Sem cliente"}</p>
-                                                <p className="text-[10px] text-amber-700 truncate">
-                                                  ⚠️ {item.pendencia}
+                                                <p className="text-[10px] text-amber-700 font-medium">
+                                                  📋 {item.formName}
                                                 </p>
-                                                {item.descricao && (
-                                                  <p className="text-[10px] text-muted-foreground truncate">{item.descricao}</p>
+                                                {item.camposVazios.length > 0 && (
+                                                  <p className="text-[10px] text-red-600 mt-0.5">
+                                                    ❌ Sem preenchimento: {item.camposVazios.join(", ")}
+                                                  </p>
                                                 )}
                                               </div>
+                                              {item.gcOsCodigo && (
+                                                <span className="text-[10px] text-muted-foreground font-mono">OS #{item.gcOsCodigo}</span>
+                                              )}
+                                            </div>
                                               {item.gcOsCodigo && (
                                                 <span className="text-[10px] text-muted-foreground font-mono">OS #{item.gcOsCodigo}</span>
                                               )}
