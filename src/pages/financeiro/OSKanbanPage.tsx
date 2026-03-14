@@ -18,7 +18,7 @@ import {
 import {
   ArrowLeft, CalendarIcon, RefreshCw, ExternalLink,
   Filter, GripVertical, Check, X, Edit2, Trash2, Plus,
-  Package, FileText, ClipboardList, MapPin
+  Package, FileText, ClipboardList, MapPin, ArrowUpDown, ArrowDown, ArrowUp
 } from "lucide-react";
 import { format, startOfMonth } from "date-fns";
 import { ptBR } from "date-fns/locale";
