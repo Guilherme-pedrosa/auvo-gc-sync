@@ -42,6 +42,27 @@ Deno.serve(async (req) => {
     const bearerToken = await auvoLogin(apiKey, apiToken);
     const headers = { Authorization: `Bearer ${bearerToken}`, "Content-Type": "application/json" };
 
+    // Fetch users for name resolution
+    const usersMap = new Map<string, string>();
+    {
+      let page = 1;
+      const MAX = 10;
+      while (page <= MAX) {
+        const url = `${AUVO_BASE_URL}/users/?page=${page}&pageSize=100`;
+        const resp = await fetch(url, { headers });
+        if (resp.status === 404 || !resp.ok) { await resp.text(); break; }
+        const json = await resp.json();
+        const users = json?.result?.entityList || json?.result || [];
+        if (!Array.isArray(users) || users.length === 0) break;
+        for (const u of users) {
+          usersMap.set(String(u.userID || ""), String(u.name || u.login || ""));
+        }
+        if (users.length < 100) break;
+        page++;
+      }
+      console.log(`[auvo-agenda] ${usersMap.size} users loaded`);
+    }
+
     const allTasks: any[] = [];
     let page = 1;
     const pageSize = 100;
