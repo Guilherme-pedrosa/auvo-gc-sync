@@ -141,9 +141,8 @@ export default function RealtimeTrackingPage() {
         : pendenciaRaw;
 
       const respostas = Array.isArray(item.questionario_respostas)
-        ? item.questionario_respostas.filter(
-            (r): r is { question?: unknown; reply?: unknown } => typeof r === "object" && r !== null,
-          )
+        ? (item.questionario_respostas as Array<Record<string, unknown>>)
+            .filter((r) => typeof r === "object" && r !== null)
         : [];
 
       const camposVazios = respostas
