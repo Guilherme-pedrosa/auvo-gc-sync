@@ -115,7 +115,7 @@ export default function RealtimeTrackingPage() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("tarefas_central")
-        .select("auvo_task_id, cliente, tecnico, data_tarefa, pendencia, descricao, gc_os_codigo, status_auvo")
+        .select("auvo_task_id, cliente, tecnico, data_tarefa, pendencia, descricao, gc_os_codigo, status_auvo, questionario_respostas")
         .gte("data_tarefa", monthStart)
         .lte("data_tarefa", monthEnd)
         .neq("pendencia", "")
