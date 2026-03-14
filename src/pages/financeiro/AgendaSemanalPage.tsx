@@ -244,9 +244,6 @@ function TaskCard({ tarefa }: { tarefa: Tarefa }) {
           )}
         >
           <div className="font-medium text-foreground truncate">{tarefa.cliente || "—"}</div>
-          {tarefa.gc_os_codigo && (
-            <div className="text-muted-foreground truncate">OS {tarefa.gc_os_codigo}</div>
-          )}
           <div className="flex items-center justify-between mt-1 gap-1">
             {tarefa.hora_inicio && (
               <span className="text-muted-foreground">{tarefa.hora_inicio?.substring(0, 5)}</span>
