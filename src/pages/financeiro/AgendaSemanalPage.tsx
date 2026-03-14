@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
-  ArrowLeft, ChevronLeft, ChevronRight, RefreshCw, CalendarDays, Loader2, ExternalLink, MapPin, Clock, AlertTriangle, Pencil, Save, X
+  ArrowLeft, ChevronLeft, ChevronRight, RefreshCw, CalendarDays, Loader2, ExternalLink, MapPin, Clock, AlertTriangle, Pencil, Save, X, Filter
 } from "lucide-react";
 import { format, addDays, startOfWeek, parseISO, isSameDay } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -17,6 +17,8 @@ import {
 } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
@@ -71,6 +73,7 @@ export default function AgendaSemanalPage() {
   const [movingTaskId, setMovingTaskId] = useState<string | null>(null);
   const [dragOverCell, setDragOverCell] = useState<string | null>(null);
   const [selectedTarefa, setSelectedTarefa] = useState<Tarefa | null>(null);
+  const [selectedTecnicos, setSelectedTecnicos] = useState<Set<string> | null>(null); // null = all
 
   const weekStart = useMemo(() => {
     const today = new Date();
@@ -144,10 +147,16 @@ export default function AgendaSemanalPage() {
     });
   }, [tarefas, weekDays]);
 
+  // Filtered technicians
+  const filteredTecnicos = useMemo(() => {
+    if (!selectedTecnicos) return tecnicos;
+    return tecnicos.filter(t => selectedTecnicos.has(t.nome));
+  }, [tecnicos, selectedTecnicos]);
+
   const grid = useMemo(() => {
     if (!tarefas) return new Map<string, Tarefa[][]>();
     const result = new Map<string, Tarefa[][]>();
-    for (const tec of tecnicos) {
+    for (const tec of filteredTecnicos) {
       const days: Tarefa[][] = weekDays.map(() => []);
       const tecTarefas = tarefas.filter((t) => (t.tecnico || "Sem técnico") === tec.nome);
       for (const tarefa of tecTarefas) {
@@ -159,7 +168,7 @@ export default function AgendaSemanalPage() {
       result.set(tec.nome, days);
     }
     return result;
-  }, [tarefas, tecnicos, weekDays]);
+  }, [tarefas, filteredTecnicos, weekDays]);
 
   // --- Drag & Drop ---
   const handleDragStart = useCallback((e: DragEvent, tarefa: Tarefa) => {
@@ -294,6 +303,52 @@ export default function AgendaSemanalPage() {
               </Button>
             </div>
 
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button variant="outline" size="sm" className="relative">
+                  <Filter className="h-3.5 w-3.5 mr-1" />
+                  Técnicos
+                  {selectedTecnicos && (
+                    <Badge variant="secondary" className="ml-1 h-4 px-1 text-[10px]">
+                      {selectedTecnicos.size}/{tecnicos.length}
+                    </Badge>
+                  )}
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-56 p-2" align="end">
+                <div className="flex items-center justify-between mb-2 px-1">
+                  <span className="text-xs font-semibold text-muted-foreground">Filtrar técnicos</span>
+                  <button
+                    className="text-[10px] text-primary hover:underline"
+                    onClick={() => setSelectedTecnicos(null)}
+                  >
+                    Todos
+                  </button>
+                </div>
+                <div className="max-h-60 overflow-y-auto space-y-0.5">
+                  {tecnicos.map(t => {
+                    const checked = !selectedTecnicos || selectedTecnicos.has(t.nome);
+                    return (
+                      <label key={t.nome} className="flex items-center gap-2 px-1 py-1 rounded hover:bg-muted cursor-pointer text-sm">
+                        <Checkbox
+                          checked={checked}
+                          onCheckedChange={(val) => {
+                            setSelectedTecnicos(prev => {
+                              const set = new Set(prev || tecnicos.map(x => x.nome));
+                              if (val) set.add(t.nome);
+                              else set.delete(t.nome);
+                              return set.size === tecnicos.length ? null : set;
+                            });
+                          }}
+                        />
+                        {t.nome}
+                      </label>
+                    );
+                  })}
+                </div>
+              </PopoverContent>
+            </Popover>
+
             <Button variant="outline" size="sm" onClick={() => refetch()} disabled={isFetching}>
               <RefreshCw className={cn("h-3.5 w-3.5 mr-1", isFetching && "animate-spin")} />
               Atualizar
@@ -347,7 +402,7 @@ export default function AgendaSemanalPage() {
                 </tr>
               </thead>
               <tbody>
-                {tecnicos.map((tec) => {
+                {filteredTecnicos.map((tec) => {
                   const days = grid.get(tec.nome) || [];
                   const totalTec = days.reduce((acc, d) => acc + d.length, 0);
                   return (
