@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
-  ArrowLeft, ChevronLeft, ChevronRight, RefreshCw, CalendarDays, Loader2, ExternalLink, MapPin, Clock, AlertTriangle, Pencil, Save, X
+  ArrowLeft, ChevronLeft, ChevronRight, RefreshCw, CalendarDays, Loader2, ExternalLink, MapPin, Clock, AlertTriangle, Pencil, Save, X, Filter
 } from "lucide-react";
 import { format, addDays, startOfWeek, parseISO, isSameDay } from "date-fns";
 import { ptBR } from "date-fns/locale";
