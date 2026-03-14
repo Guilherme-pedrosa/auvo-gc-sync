@@ -469,6 +469,62 @@ export default function OSKanbanPage() {
             </PopoverContent>
           </Popover>
 
+          {/* Value range filter */}
+          <Popover>
+            <PopoverTrigger asChild>
+              <Button variant="outline" size="sm" className="gap-2">
+                💰 Valor
+                {(valorMin || valorMax) && (
+                  <Badge variant="secondary" className="text-[10px] h-4 px-1 ml-1">
+                    {valorMin || "0"} - {valorMax || "∞"}
+                  </Badge>
+                )}
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent className="w-[240px] p-3" align="start">
+              <p className="text-sm font-medium mb-2">Faixa de valor (R$)</p>
+              <div className="flex items-center gap-2">
+                <Input
+                  type="number"
+                  placeholder="Mín"
+                  value={valorMin}
+                  onChange={(e) => setValorMin(e.target.value)}
+                  className="h-8 text-sm"
+                />
+                <span className="text-muted-foreground text-xs">até</span>
+                <Input
+                  type="number"
+                  placeholder="Máx"
+                  value={valorMax}
+                  onChange={(e) => setValorMax(e.target.value)}
+                  className="h-8 text-sm"
+                />
+              </div>
+              {(valorMin || valorMax) && (
+                <Button variant="ghost" size="sm" className="w-full mt-2 text-xs" onClick={() => { setValorMin(""); setValorMax(""); }}>
+                  Limpar filtro de valor
+                </Button>
+              )}
+            </PopoverContent>
+          </Popover>
+
+          {/* Global sort */}
+          <Select value={globalSort} onValueChange={setGlobalSort}>
+            <SelectTrigger className="w-[180px]">
+              <ArrowUpDown className="h-3.5 w-3.5 mr-1.5" />
+              <SelectValue placeholder="Ordenar" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="none">Sem ordenação</SelectItem>
+              <SelectItem value="valor_desc">Maior valor ↓</SelectItem>
+              <SelectItem value="valor_asc">Menor valor ↑</SelectItem>
+              <SelectItem value="data_desc">Mais recente ↓</SelectItem>
+              <SelectItem value="data_asc">Mais antigo ↑</SelectItem>
+              <SelectItem value="cliente_freq">Cliente + frequente</SelectItem>
+              <SelectItem value="cliente_az">Cliente A-Z</SelectItem>
+            </SelectContent>
+          </Select>
+
           <div className="flex items-center gap-3 ml-auto text-sm">
             <Badge variant="outline" className="gap-1">
               🔧 {totalOS} OS
