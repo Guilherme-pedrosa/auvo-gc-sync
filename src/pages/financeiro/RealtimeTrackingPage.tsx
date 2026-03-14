@@ -128,15 +128,31 @@ export default function RealtimeTrackingPage() {
   });
 
   const pendenciasMes = useMemo(() => {
-    return (pendenciasMesRaw || []).map((item) => ({
-      taskId: item.auvo_task_id,
-      cliente: item.cliente || "",
-      tecnico: item.tecnico || "",
-      data: item.data_tarefa || "",
-      pendencia: item.pendencia || "",
-      descricao: item.descricao || "",
-      gcOsCodigo: item.gc_os_codigo || "",
-    }));
+    return (pendenciasMesRaw || []).map((item) => {
+      const pendenciaRaw = item.pendencia || "";
+      // Extract form name: "Checklist: FORM_NAME" → "FORM_NAME"
+      const formName = pendenciaRaw.startsWith("Checklist: ")
+        ? pendenciaRaw.replace("Checklist: ", "")
+        : pendenciaRaw;
+
+      // Find empty fields in questionnaire responses
+      const respostas = (item.questionario_respostas as any[] || []);
+      const camposVazios = respostas
+        .filter((r: any) => !r.reply || r.reply.trim() === "")
+        .map((r: any) => r.question || "");
+
+      return {
+        taskId: item.auvo_task_id,
+        cliente: item.cliente || "",
+        tecnico: item.tecnico || "",
+        data: item.data_tarefa || "",
+        pendencia: pendenciaRaw,
+        formName,
+        camposVazios,
+        descricao: item.descricao || "",
+        gcOsCodigo: item.gc_os_codigo || "",
+      };
+    });
   }, [pendenciasMesRaw]);
 
   const goDay = (dir: number) => setSelectedDate((d) => (dir > 0 ? addDays(d, 1) : subDays(d, 1)));
