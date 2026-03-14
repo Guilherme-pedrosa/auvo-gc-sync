@@ -23,13 +23,11 @@ type Tarefa = {
   status_auvo: string | null;
   descricao: string | null;
   endereco: string | null;
-  auvo_task_url: string | null;
   auvo_link: string | null;
-  gc_os_codigo: string | null;
-  gc_os_situacao: string | null;
-  gc_os_cor_situacao: string | null;
   hora_inicio: string | null;
   hora_fim: string | null;
+  check_in: boolean;
+  check_out: boolean;
 };
 
 const STATUS_COLORS: Record<string, string> = {
