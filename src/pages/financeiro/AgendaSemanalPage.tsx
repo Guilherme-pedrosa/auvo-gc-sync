@@ -478,6 +478,16 @@ function TaskCard({
       )}
     >
       <div className="font-medium text-foreground truncate">{tarefa.cliente || "—"}</div>
+      {tarefa.gc_os_codigo && (
+        <div className="text-[10px] text-muted-foreground mt-0.5">
+          OS #{tarefa.gc_os_codigo}
+          {tarefa.gc_os_valor_total != null && (
+            <span className="ml-1 font-semibold text-emerald-700 dark:text-emerald-400">
+              {formatCurrency(tarefa.gc_os_valor_total)}
+            </span>
+          )}
+        </div>
+      )}
       <div className="flex items-center justify-between mt-1 gap-1">
         {tarefa.hora_inicio && (
           <span className="text-muted-foreground">{tarefa.hora_inicio?.substring(0, 5)}</span>
@@ -486,11 +496,6 @@ function TaskCard({
           {tarefa.status_auvo || "—"}
         </span>
       </div>
-      {valor != null && (
-        <div className="mt-1 text-[10px] font-semibold text-emerald-700 dark:text-emerald-400">
-          {formatCurrency(valor)}
-        </div>
-      )}
       {isMoving && (
         <div className="flex items-center gap-1 mt-1 text-primary">
           <Loader2 className="h-3 w-3 animate-spin" />
