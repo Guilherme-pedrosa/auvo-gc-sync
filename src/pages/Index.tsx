@@ -157,7 +157,7 @@ export default function Index() {
     staleTime: 60_000,
   });
 
-  // Fetch execução data from the same budget-kanban source (has OS data too)
+  // Fetch execução data from central mirror table (all tasks + OS)
   const { data: execData, isLoading: execLoading, refetch: refetchExec } = useQuery({
     queryKey: ["dash-exec", format(dateRange.from, "yyyy-MM-dd"), format(dateRange.to, "yyyy-MM-dd")],
     queryFn: async () => {
