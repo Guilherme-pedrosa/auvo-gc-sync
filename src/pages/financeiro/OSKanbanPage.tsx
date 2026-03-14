@@ -1171,13 +1171,22 @@ export default function OSKanbanPage() {
               <div className="bg-muted/50 rounded-md p-3 text-sm">
                 <p className="font-medium">{editingCard.cliente || editingCard.gc_os_cliente || "—"}</p>
                 <p className="text-muted-foreground text-xs mt-0.5">
-                  OS {editingCard.gc_os_codigo} • Tarefa #{editingCard.auvo_task_id}
+                  OS {editingCard.gc_os_codigo} • Tarefa OS #{editingCard.auvo_task_id}
+                </p>
+                <p className="text-xs mt-1">
+                  {execTaskLoading ? (
+                    <span className="text-muted-foreground flex items-center gap-1"><Loader2 className="h-3 w-3 animate-spin" /> Buscando tarefa de execução...</span>
+                  ) : execTaskId ? (
+                    <span className="text-primary font-medium">✓ Tarefa Execução #{execTaskId}</span>
+                  ) : (
+                    <span className="text-destructive">⚠ Tarefa de execução não encontrada</span>
+                  )}
                 </p>
               </div>
 
               {/* Date picker */}
               <div className="space-y-2">
-                <Label>Data da Tarefa</Label>
+                <Label>Data da Tarefa de Execução</Label>
                 <Popover>
                   <PopoverTrigger asChild>
                     <Button
@@ -1220,7 +1229,7 @@ export default function OSKanbanPage() {
               {/* Save */}
               <div className="flex justify-end gap-2 pt-2">
                 <Button variant="outline" onClick={() => setShowEditModal(false)}>Cancelar</Button>
-                <Button onClick={handleEditSave} disabled={editSaving}>
+                <Button onClick={handleEditSave} disabled={editSaving || execTaskLoading || !execTaskId}>
                   {editSaving ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Save className="h-4 w-4 mr-2" />}
                   Salvar
                 </Button>
