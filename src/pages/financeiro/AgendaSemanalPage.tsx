@@ -478,16 +478,20 @@ function TaskCard({
       )}
     >
       <div className="font-medium text-foreground truncate">{tarefa.cliente || "—"}</div>
-      {tarefa.gc_os_codigo && (
-        <div className="text-[10px] text-muted-foreground mt-0.5">
-          OS #{tarefa.gc_os_codigo}
-          {tarefa.gc_os_valor_total != null && (
-            <span className="ml-1 font-semibold text-emerald-700 dark:text-emerald-400">
-              {formatCurrency(tarefa.gc_os_valor_total)}
-            </span>
-          )}
-        </div>
-      )}
+      <div className="text-[10px] text-muted-foreground mt-0.5">
+        <span>T#{tarefa.auvo_task_id}</span>
+        {tarefa.gc_os_codigo && (
+          <>
+            <span className="mx-0.5">·</span>
+            <span>OS #{tarefa.gc_os_codigo}</span>
+          </>
+        )}
+        {tarefa.gc_os_valor_total != null && (
+          <span className="ml-1 font-semibold text-emerald-700 dark:text-emerald-400">
+            {formatCurrency(tarefa.gc_os_valor_total)}
+          </span>
+        )}
+      </div>
       <div className="flex items-center justify-between mt-1 gap-1">
         {tarefa.hora_inicio && (
           <span className="text-muted-foreground">{tarefa.hora_inicio?.substring(0, 5)}</span>
