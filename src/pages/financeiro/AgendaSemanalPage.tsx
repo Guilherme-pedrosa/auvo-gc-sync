@@ -62,19 +62,16 @@ export default function AgendaSemanalPage() {
     queryKey: ["agenda-semanal", format(weekStart, "yyyy-MM-dd")],
     queryFn: async () => {
       const startStr = format(weekStart, "yyyy-MM-dd");
-      const endStr = format(weekEnd, "yyyy-MM-dd");
+      const endStr = format(addDays(weekStart, 5), "yyyy-MM-dd"); // Mon-Sat
 
-      const { data, error } = await supabase
-        .from("tarefas_central")
-        .select("auvo_task_id, cliente, tecnico, tecnico_id, data_tarefa, status_auvo, descricao, endereco, auvo_task_url, auvo_link, gc_os_codigo, gc_os_situacao, gc_os_cor_situacao, hora_inicio, hora_fim")
-        .gte("data_tarefa", startStr)
-        .lte("data_tarefa", endStr)
-        .order("hora_inicio", { ascending: true });
+      const { data, error } = await supabase.functions.invoke("auvo-agenda", {
+        body: { startDate: startStr, endDate: endStr },
+      });
 
       if (error) throw error;
-      return (data || []) as Tarefa[];
+      return (data?.data || []) as Tarefa[];
     },
-    staleTime: 1000 * 60 * 5,
+    staleTime: 1000 * 60 * 2,
   });
 
   // Group by technician
