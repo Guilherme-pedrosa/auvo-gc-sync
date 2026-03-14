@@ -12,7 +12,8 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   ArrowLeft, CalendarIcon, RefreshCw, ExternalLink,
-  Filter, GripVertical, Check, X, Edit2, Trash2, Plus
+  Filter, GripVertical, Check, X, Edit2, Trash2, Plus,
+  Package, FileText, ClipboardList, MapPin
 } from "lucide-react";
 import { format, startOfMonth } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -29,8 +30,11 @@ type OSItem = {
   status_auvo: string;
   pendencia: string | null;
   descricao: string | null;
+  orientacao: string | null;
+  endereco: string | null;
   auvo_task_url: string | null;
   auvo_link: string | null;
+  auvo_survey_url: string | null;
   gc_os_id: string;
   gc_os_codigo: string;
   gc_os_cliente: string | null;
@@ -41,10 +45,22 @@ type OSItem = {
   gc_os_vendedor: string | null;
   gc_os_data: string | null;
   gc_os_link: string | null;
+  gc_orcamento_id: string | null;
+  gc_orcamento_codigo: string | null;
+  gc_orc_situacao: string | null;
+  gc_orc_cor_situacao: string | null;
+  gc_orc_valor_total: number | null;
+  gc_orc_vendedor: string | null;
+  gc_orc_link: string | null;
+  orcamento_realizado: boolean;
+  os_realizada: boolean;
   check_in: boolean;
   check_out: boolean;
   hora_inicio: string | null;
   hora_fim: string | null;
+  duracao_decimal: number | null;
+  questionario_preenchido: boolean;
+  questionario_respostas: { question: string; reply: string }[] | null;
   _coluna?: string;
 };
 
@@ -89,7 +105,7 @@ export default function OSKanbanPage() {
         .order("data_tarefa", { ascending: false });
 
       if (error) throw error;
-      return (data || []) as OSItem[];
+      return (data || []) as unknown as OSItem[];
     },
     staleTime: 60_000,
   });
@@ -462,7 +478,7 @@ export default function OSKanbanPage() {
                                         }}
                                         onClick={() => setSelectedCard(item)}
                                       >
-                                        <div className="px-3 py-2">
+                                         <div className="px-3 py-2">
                                           <div className="flex items-center justify-between">
                                             <span className="text-xs font-mono text-muted-foreground">
                                               OS {item.gc_os_codigo}
@@ -477,19 +493,35 @@ export default function OSKanbanPage() {
                                           <p className="text-xs text-muted-foreground mt-0.5">
                                             {item.tecnico || "—"} • {item.data_tarefa || "—"}
                                           </p>
+                                          {/* Orientação preview */}
+                                          {item.orientacao && (
+                                            <p className="text-[11px] text-muted-foreground mt-1 line-clamp-2 italic">
+                                              {item.orientacao.substring(0, 80)}{item.orientacao.length > 80 ? "…" : ""}
+                                            </p>
+                                          )}
                                           <div className="flex items-center justify-between mt-1.5">
                                             <span className="text-xs font-medium text-foreground">
                                               {formatCurrency(Number(item.gc_os_valor_total) || 0)}
                                             </span>
                                             <div className="flex items-center gap-1">
+                                              {item.orcamento_realizado && (
+                                                <Badge className="text-[9px] h-4 px-1 bg-emerald-600 text-white">
+                                                  Orçamento
+                                                </Badge>
+                                              )}
                                               {item.pendencia && (
                                                 <Badge variant="destructive" className="text-[9px] h-4 px-1">
                                                   Pendência
                                                 </Badge>
                                               )}
                                               {item.check_in && !item.check_out && (
-                                                <Badge className="text-[9px] h-4 px-1 bg-blue-500">
+                                                <Badge className="text-[9px] h-4 px-1 bg-blue-500 text-white">
                                                   Em campo
+                                                </Badge>
+                                              )}
+                                              {item.questionario_preenchido && (
+                                                <Badge variant="secondary" className="text-[9px] h-4 px-1">
+                                                  📋
                                                 </Badge>
                                               )}
                                             </div>
@@ -515,82 +547,193 @@ export default function OSKanbanPage() {
         </DragDropContext>
       )}
 
-      {/* Card Detail Dialog */}
       <Dialog open={!!selectedCard} onOpenChange={(open) => !open && setSelectedCard(null)}>
-        <DialogContent className="max-w-lg">
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <span>OS {selectedCard?.gc_os_codigo}</span>
-              <span className="text-sm font-normal text-muted-foreground">
-                (Tarefa #{selectedCard?.auvo_task_id})
-              </span>
+              <Badge
+                className="text-xs"
+                style={{ backgroundColor: selectedCard?.gc_os_cor_situacao || undefined }}
+              >
+                {selectedCard?.gc_os_situacao}
+              </Badge>
             </DialogTitle>
+            <p className="text-sm text-muted-foreground">
+              Tarefa Auvo #{selectedCard?.auvo_task_id}
+            </p>
           </DialogHeader>
           {selectedCard && (
             <div className="space-y-4">
-              <div className="grid grid-cols-2 gap-3 text-sm">
+              {/* Info principal */}
+              <div className="grid grid-cols-2 gap-x-6 gap-y-3 text-sm">
                 <div>
-                  <span className="text-muted-foreground">Cliente</span>
+                  <span className="text-muted-foreground text-xs">Cliente</span>
                   <p className="font-medium">{selectedCard.cliente || selectedCard.gc_os_cliente || "—"}</p>
                 </div>
                 <div>
-                  <span className="text-muted-foreground">Técnico</span>
+                  <span className="text-muted-foreground text-xs">Técnico / Vendedor GC</span>
                   <p className="font-medium">{selectedCard.tecnico || "—"}</p>
+                  {selectedCard.gc_os_vendedor && (
+                    <p className="text-xs text-muted-foreground">GC: {selectedCard.gc_os_vendedor}</p>
+                  )}
                 </div>
                 <div>
-                  <span className="text-muted-foreground">Data</span>
+                  <span className="text-muted-foreground text-xs">Data Tarefa</span>
                   <p className="font-medium">{selectedCard.data_tarefa || "—"}</p>
                 </div>
                 <div>
-                  <span className="text-muted-foreground">Valor Total</span>
-                  <p className="font-medium">{formatCurrency(Number(selectedCard.gc_os_valor_total) || 0)}</p>
+                  <span className="text-muted-foreground text-xs">Valor Total OS</span>
+                  <p className="font-semibold text-foreground">{formatCurrency(Number(selectedCard.gc_os_valor_total) || 0)}</p>
                 </div>
                 <div>
-                  <span className="text-muted-foreground">Situação OS</span>
-                  <p className="font-medium">{selectedCard.gc_os_situacao}</p>
-                </div>
-                <div>
-                  <span className="text-muted-foreground">Vendedor</span>
-                  <p className="font-medium">{selectedCard.gc_os_vendedor || "—"}</p>
-                </div>
-                <div>
-                  <span className="text-muted-foreground">Status Auvo</span>
+                  <span className="text-muted-foreground text-xs">Status Auvo</span>
                   <p className="font-medium">{selectedCard.status_auvo || "—"}</p>
                 </div>
                 <div>
-                  <span className="text-muted-foreground">Horário</span>
+                  <span className="text-muted-foreground text-xs">Horário (Check-in / Check-out)</span>
                   <p className="font-medium">
-                    {selectedCard.hora_inicio || "—"} → {selectedCard.hora_fim || "—"}
+                    {selectedCard.check_in ? "✅" : "❌"} In
+                    {selectedCard.hora_inicio ? ` ${selectedCard.hora_inicio}` : ""}
+                    {" → "}
+                    {selectedCard.check_out ? "✅" : "❌"} Out
+                    {selectedCard.hora_fim ? ` ${selectedCard.hora_fim}` : ""}
                   </p>
+                  {selectedCard.duracao_decimal != null && selectedCard.duracao_decimal > 0 && (
+                    <p className="text-xs text-muted-foreground">
+                      Duração: {selectedCard.duracao_decimal.toFixed(1)}h
+                    </p>
+                  )}
                 </div>
               </div>
 
+              {/* Endereço */}
+              {selectedCard.endereco && (
+                <div className="flex items-start gap-2 bg-muted/50 rounded-md p-3">
+                  <MapPin className="h-4 w-4 text-muted-foreground mt-0.5 flex-shrink-0" />
+                  <p className="text-sm">{selectedCard.endereco}</p>
+                </div>
+              )}
+
+              {/* Orientação / Peças da OS */}
+              {selectedCard.orientacao && (
+                <div className="border rounded-md">
+                  <div className="flex items-center gap-2 px-3 py-2 bg-muted/50 border-b">
+                    <Package className="h-4 w-4 text-muted-foreground" />
+                    <span className="text-sm font-semibold">Orientação / Peças da OS</span>
+                  </div>
+                  <div className="p-3">
+                    <pre className="text-sm whitespace-pre-wrap font-sans leading-relaxed text-foreground">
+                      {selectedCard.orientacao}
+                    </pre>
+                  </div>
+                </div>
+              )}
+
+              {/* Orçamento vinculado */}
+              {selectedCard.orcamento_realizado && selectedCard.gc_orcamento_codigo && (
+                <div className="border rounded-md border-emerald-300 bg-emerald-50 dark:bg-emerald-950/20">
+                  <div className="flex items-center gap-2 px-3 py-2 border-b border-emerald-300">
+                    <FileText className="h-4 w-4 text-emerald-600" />
+                    <span className="text-sm font-semibold text-emerald-700 dark:text-emerald-400">
+                      Orçamento #{selectedCard.gc_orcamento_codigo}
+                    </span>
+                    <Badge className="ml-auto text-[10px]" style={{ backgroundColor: selectedCard.gc_orc_cor_situacao || undefined }}>
+                      {selectedCard.gc_orc_situacao || "—"}
+                    </Badge>
+                  </div>
+                  <div className="p-3 grid grid-cols-2 gap-3 text-sm">
+                    <div>
+                      <span className="text-muted-foreground text-xs">Valor</span>
+                      <p className="font-medium">{formatCurrency(Number(selectedCard.gc_orc_valor_total) || 0)}</p>
+                    </div>
+                    <div>
+                      <span className="text-muted-foreground text-xs">Vendedor</span>
+                      <p className="font-medium">{selectedCard.gc_orc_vendedor || "—"}</p>
+                    </div>
+                  </div>
+                  {selectedCard.gc_orc_link && (
+                    <div className="px-3 pb-3">
+                      <Button size="sm" variant="outline" asChild>
+                        <a href={selectedCard.gc_orc_link} target="_blank" rel="noopener noreferrer" className="gap-1">
+                          <ExternalLink className="h-3.5 w-3.5" /> Ver Orçamento no GC
+                        </a>
+                      </Button>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Questionário */}
+              {selectedCard.questionario_preenchido && selectedCard.questionario_respostas && (
+                <div className="border rounded-md">
+                  <div className="flex items-center gap-2 px-3 py-2 bg-muted/50 border-b">
+                    <ClipboardList className="h-4 w-4 text-muted-foreground" />
+                    <span className="text-sm font-semibold">Questionário Preenchido</span>
+                  </div>
+                  <div className="p-3 space-y-2">
+                    {(Array.isArray(selectedCard.questionario_respostas) ? selectedCard.questionario_respostas : [])
+                      .filter((r) => r.reply && !r.reply.startsWith("http"))
+                      .map((r, i) => (
+                        <div key={i} className="text-sm">
+                          <span className="text-muted-foreground text-xs">{r.question}</span>
+                          <p className="font-medium">{r.reply}</p>
+                        </div>
+                      ))}
+                    {/* Show photos */}
+                    {(() => {
+                      const photos = (Array.isArray(selectedCard.questionario_respostas) ? selectedCard.questionario_respostas : [])
+                        .filter((r) => r.reply && r.reply.startsWith("http"));
+                      if (photos.length === 0) return null;
+                      return (
+                        <div className="mt-2">
+                          <span className="text-xs text-muted-foreground">Fotos</span>
+                          <div className="flex gap-2 mt-1 flex-wrap">
+                            {photos.map((r, i) => (
+                              <a key={i} href={r.reply} target="_blank" rel="noopener noreferrer">
+                                <img
+                                  src={r.reply}
+                                  alt={r.question}
+                                  className="h-16 w-16 object-cover rounded border hover:ring-2 ring-primary"
+                                />
+                              </a>
+                            ))}
+                          </div>
+                        </div>
+                      );
+                    })()}
+                  </div>
+                </div>
+              )}
+
+              {/* Pendência */}
               {selectedCard.pendencia && (
                 <div className="bg-destructive/10 border border-destructive/30 rounded-md p-3">
-                  <span className="text-sm font-medium text-destructive">Pendência:</span>
+                  <span className="text-sm font-medium text-destructive">⚠️ Pendência:</span>
                   <p className="text-sm mt-1">{selectedCard.pendencia}</p>
                 </div>
               )}
 
-              {selectedCard.descricao && (
-                <div>
-                  <span className="text-sm text-muted-foreground">Descrição</span>
-                  <p className="text-sm mt-1 whitespace-pre-wrap">{selectedCard.descricao}</p>
-                </div>
-              )}
-
-              <div className="flex gap-2 pt-2">
+              {/* Links */}
+              <div className="flex gap-2 pt-2 border-t">
                 {selectedCard.gc_os_link && (
                   <Button size="sm" variant="outline" asChild>
                     <a href={selectedCard.gc_os_link} target="_blank" rel="noopener noreferrer" className="gap-1">
-                      <ExternalLink className="h-3.5 w-3.5" /> GestãoClick
+                      <ExternalLink className="h-3.5 w-3.5" /> OS no GestãoClick
                     </a>
                   </Button>
                 )}
                 {(selectedCard.auvo_task_url || selectedCard.auvo_link) && (
                   <Button size="sm" variant="outline" asChild>
                     <a href={selectedCard.auvo_task_url || selectedCard.auvo_link || "#"} target="_blank" rel="noopener noreferrer" className="gap-1">
-                      <ExternalLink className="h-3.5 w-3.5" /> Auvo
+                      <ExternalLink className="h-3.5 w-3.5" /> Tarefa Auvo
+                    </a>
+                  </Button>
+                )}
+                {selectedCard.auvo_survey_url && (
+                  <Button size="sm" variant="outline" asChild>
+                    <a href={selectedCard.auvo_survey_url} target="_blank" rel="noopener noreferrer" className="gap-1">
+                      <ExternalLink className="h-3.5 w-3.5" /> Formulário
                     </a>
                   </Button>
                 )}
