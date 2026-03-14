@@ -38,36 +38,67 @@ function auvoHeaders(token: string): Record<string, string> {
   return { Authorization: `Bearer ${token}`, "Content-Type": "application/json" };
 }
 
-// Fetch ALL Auvo tasks for a date range
-async function fetchAuvoTasks(bearerToken: string, startDate: string, endDate: string): Promise<any[]> {
+// Fetch Auvo tasks for a single month window
+async function fetchAuvoTasksForPeriod(bearerToken: string, startDate: string, endDate: string): Promise<any[]> {
   const allTasks: any[] = [];
   let page = 1;
   const pageSize = 100;
-  const MAX_PAGES = 50; // More pages for 6 months
+  const MAX_PAGES = 30;
   const filterObj = { startDate: `${startDate}T00:00:00`, endDate: `${endDate}T23:59:59` };
-
-  console.log(`[central-sync] Auvo paramFilter: ${JSON.stringify(filterObj)}`);
 
   while (page <= MAX_PAGES) {
     const paramFilter = encodeURIComponent(JSON.stringify(filterObj));
     const url = `${AUVO_BASE_URL}/tasks/?page=${page}&pageSize=${pageSize}&order=desc&paramFilter=${paramFilter}`;
 
     const response = await rateLimitedFetch(url, { headers: auvoHeaders(bearerToken) }, "auvo");
-    if (response.status === 404) break;
+    
+    if (response.status === 404) {
+      console.log(`[central-sync] Auvo ${startDate}→${endDate} page ${page}: 404 (fim)`);
+      break;
+    }
     if (!response.ok) {
-      console.error(`[central-sync] Auvo page ${page} error: ${response.status}`);
+      const text = await response.text();
+      console.error(`[central-sync] Auvo ${startDate}→${endDate} page ${page} error ${response.status}: ${text.substring(0, 200)}`);
       break;
     }
 
     const json = await response.json();
     const tasks = json?.result?.tasks || json?.result || [];
-    if (!Array.isArray(tasks) || tasks.length === 0) break;
+    if (!Array.isArray(tasks) || tasks.length === 0) {
+      console.log(`[central-sync] Auvo ${startDate}→${endDate} page ${page}: 0 tasks (fim)`);
+      break;
+    }
 
     allTasks.push(...tasks);
-    console.log(`[central-sync] Auvo page ${page}: ${tasks.length} tasks, total: ${allTasks.length}`);
+    console.log(`[central-sync] Auvo ${startDate}→${endDate} page ${page}: ${tasks.length} tasks`);
 
     if (tasks.length < pageSize) break;
     page++;
+  }
+
+  return allTasks;
+}
+
+// Fetch ALL Auvo tasks month-by-month to avoid API limits
+async function fetchAuvoTasks(bearerToken: string, startDate: string, endDate: string): Promise<any[]> {
+  const allTasks: any[] = [];
+  const start = new Date(startDate);
+  const end = new Date(endDate);
+
+  // Split into monthly chunks
+  const current = new Date(start);
+  while (current <= end) {
+    const monthStart = current.toISOString().split("T")[0];
+    const monthEnd = new Date(current.getFullYear(), current.getMonth() + 1, 0);
+    const clampedEnd = monthEnd > end ? endDate : monthEnd.toISOString().split("T")[0];
+
+    console.log(`[central-sync] Buscando Auvo: ${monthStart} → ${clampedEnd}`);
+    const tasks = await fetchAuvoTasksForPeriod(bearerToken, monthStart, clampedEnd);
+    allTasks.push(...tasks);
+    console.log(`[central-sync] Mês ${monthStart}: ${tasks.length} tarefas (acumulado: ${allTasks.length})`);
+
+    current.setMonth(current.getMonth() + 1);
+    current.setDate(1);
   }
 
   return allTasks;
