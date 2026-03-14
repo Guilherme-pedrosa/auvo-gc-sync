@@ -478,7 +478,7 @@ export default function OSKanbanPage() {
                                         }}
                                         onClick={() => setSelectedCard(item)}
                                       >
-                                        <div className="px-3 py-2">
+                                         <div className="px-3 py-2">
                                           <div className="flex items-center justify-between">
                                             <span className="text-xs font-mono text-muted-foreground">
                                               OS {item.gc_os_codigo}
@@ -493,19 +493,35 @@ export default function OSKanbanPage() {
                                           <p className="text-xs text-muted-foreground mt-0.5">
                                             {item.tecnico || "—"} • {item.data_tarefa || "—"}
                                           </p>
+                                          {/* Orientação preview */}
+                                          {item.orientacao && (
+                                            <p className="text-[11px] text-muted-foreground mt-1 line-clamp-2 italic">
+                                              {item.orientacao.substring(0, 80)}{item.orientacao.length > 80 ? "…" : ""}
+                                            </p>
+                                          )}
                                           <div className="flex items-center justify-between mt-1.5">
                                             <span className="text-xs font-medium text-foreground">
                                               {formatCurrency(Number(item.gc_os_valor_total) || 0)}
                                             </span>
                                             <div className="flex items-center gap-1">
+                                              {item.orcamento_realizado && (
+                                                <Badge className="text-[9px] h-4 px-1 bg-emerald-600 text-white">
+                                                  Orçamento
+                                                </Badge>
+                                              )}
                                               {item.pendencia && (
                                                 <Badge variant="destructive" className="text-[9px] h-4 px-1">
                                                   Pendência
                                                 </Badge>
                                               )}
                                               {item.check_in && !item.check_out && (
-                                                <Badge className="text-[9px] h-4 px-1 bg-blue-500">
+                                                <Badge className="text-[9px] h-4 px-1 bg-blue-500 text-white">
                                                   Em campo
+                                                </Badge>
+                                              )}
+                                              {item.questionario_preenchido && (
+                                                <Badge variant="secondary" className="text-[9px] h-4 px-1">
+                                                  📋
                                                 </Badge>
                                               )}
                                             </div>
