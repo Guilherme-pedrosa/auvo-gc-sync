@@ -319,14 +319,14 @@ export default function AgendaSemanalPage() {
             Nenhuma tarefa encontrada para esta semana
           </div>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full border-collapse min-w-[900px]">
-              <thead>
+          <div className="overflow-x-auto overflow-y-auto flex-1">
+            <table className="w-full border-collapse min-w-[1200px]">
+              <thead className="sticky top-0 z-20">
                 <tr className="border-b border-border bg-muted/50">
-                  <th className="text-left px-3 py-2.5 text-xs font-semibold text-muted-foreground w-40 sticky left-0 bg-muted/50 z-10">
+                  <th className="text-left px-3 py-2.5 text-xs font-semibold text-muted-foreground w-40 sticky left-0 bg-muted/50 z-30">
                     Técnico
                   </th>
-                  {weekDays.map((day) => {
+                  {weekDays.map((day, idx) => {
                     const isToday = isSameDay(day, new Date());
                     return (
                       <th
