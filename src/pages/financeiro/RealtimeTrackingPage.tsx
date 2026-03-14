@@ -339,16 +339,27 @@ export default function RealtimeTrackingPage() {
                             </div>
                           )}
                         </div>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="h-7 text-xs"
-                          onClick={() => {
-                            void Promise.all([refetchAtrasadas(), refetchPendencias()]);
-                          }}
-                        >
-                          <RefreshCw className="h-3 w-3 mr-1" /> Atualizar
-                        </Button>
+                        <div className="flex items-center gap-1">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-7 text-xs"
+                            onClick={exportPDF}
+                            disabled={(!atrasadasMes || atrasadasMes.length === 0) && pendenciasMes.length === 0}
+                          >
+                            <Download className="h-3 w-3 mr-1" /> PDF
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-7 text-xs"
+                            onClick={() => {
+                              void Promise.all([refetchAtrasadas(), refetchPendencias()]);
+                            }}
+                          >
+                            <RefreshCw className="h-3 w-3 mr-1" /> Atualizar
+                          </Button>
+                        </div>
                       </div>
                       <ScrollArea className="h-[calc(100vh-12rem)]">
                         <div className="space-y-4">
