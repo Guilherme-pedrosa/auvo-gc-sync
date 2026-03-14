@@ -692,6 +692,11 @@ export default function BudgetKanbanPage() {
                                                   <span className="text-[10px] text-emerald-700">
                                                     {item.gc_orcamento.gc_situacao}
                                                   </span>
+                                                  {item.gc_orcamento.gc_data && (
+                                                    <span className="text-[10px] text-emerald-600 ml-auto">
+                                                      {new Date(item.gc_orcamento.gc_data).toLocaleDateString("pt-BR")}
+                                                    </span>
+                                                  )}
                                                 </div>
                                               </div>
                                             )}
@@ -715,6 +720,11 @@ export default function BudgetKanbanPage() {
                                                   <span className="text-[10px] text-blue-700">
                                                     {item.gc_os.gc_situacao}
                                                   </span>
+                                                  {item.gc_os.gc_data && (
+                                                    <span className="text-[10px] text-blue-600 ml-auto">
+                                                      {new Date(item.gc_os.gc_data).toLocaleDateString("pt-BR")}
+                                                    </span>
+                                                  )}
                                                 </div>
                                               </div>
                                             )}
