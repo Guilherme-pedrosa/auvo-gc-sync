@@ -1,18 +1,18 @@
-import { useState, useMemo } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useState, useMemo, useCallback, DragEvent } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
-  ArrowLeft, ChevronLeft, ChevronRight, RefreshCw, ExternalLink, CalendarDays
+  ArrowLeft, ChevronLeft, ChevronRight, RefreshCw, CalendarDays, Loader2
 } from "lucide-react";
-import { format, addDays, startOfWeek, endOfWeek, isWithinInterval, parseISO, isSameDay } from "date-fns";
+import { format, addDays, startOfWeek, endOfWeek, parseISO, isSameDay } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { cn } from "@/lib/utils";
 import { useNavigate } from "react-router-dom";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { toast } from "sonner";
 
 type Tarefa = {
   auvo_task_id: string;
@@ -39,12 +39,15 @@ const STATUS_COLORS: Record<string, string> = {
 };
 
 function getWeekStart(refDate: Date): Date {
-  return startOfWeek(refDate, { weekStartsOn: 1 }); // Monday
+  return startOfWeek(refDate, { weekStartsOn: 1 });
 }
 
 export default function AgendaSemanalPage() {
   const navigate = useNavigate();
-  const [weekOffset, setWeekOffset] = useState(1); // 1 = next week
+  const queryClient = useQueryClient();
+  const [weekOffset, setWeekOffset] = useState(1);
+  const [movingTaskId, setMovingTaskId] = useState<string | null>(null);
+  const [dragOverCell, setDragOverCell] = useState<string | null>(null);
 
   const weekStart = useMemo(() => {
     const today = new Date();
@@ -52,29 +55,26 @@ export default function AgendaSemanalPage() {
     return addDays(base, weekOffset * 7);
   }, [weekOffset]);
 
-  const weekEnd = useMemo(() => endOfWeek(weekStart, { weekStartsOn: 1 }), [weekStart]);
-
   const weekDays = useMemo(() => {
-    return Array.from({ length: 6 }, (_, i) => addDays(weekStart, i)); // Mon-Sat
+    return Array.from({ length: 6 }, (_, i) => addDays(weekStart, i));
   }, [weekStart]);
 
+  const queryKey = ["agenda-semanal", format(weekStart, "yyyy-MM-dd")];
+
   const { data: tarefas, isLoading, refetch, isFetching } = useQuery({
-    queryKey: ["agenda-semanal", format(weekStart, "yyyy-MM-dd")],
+    queryKey,
     queryFn: async () => {
       const startStr = format(weekStart, "yyyy-MM-dd");
-      const endStr = format(addDays(weekStart, 5), "yyyy-MM-dd"); // Mon-Sat
-
+      const endStr = format(addDays(weekStart, 5), "yyyy-MM-dd");
       const { data, error } = await supabase.functions.invoke("auvo-agenda", {
         body: { startDate: startStr, endDate: endStr },
       });
-
       if (error) throw error;
       return (data?.data || []) as Tarefa[];
     },
     staleTime: 1000 * 60 * 2,
   });
 
-  // Group by technician
   const tecnicos = useMemo(() => {
     if (!tarefas) return [];
     const map = new Map<string, { nome: string; id: string | null }>();
@@ -85,15 +85,12 @@ export default function AgendaSemanalPage() {
     return Array.from(map.values()).sort((a, b) => a.nome.localeCompare(b.nome));
   }, [tarefas]);
 
-  // Build grid: tecnico -> dayIndex -> tasks
   const grid = useMemo(() => {
     if (!tarefas) return new Map<string, Tarefa[][]>();
     const result = new Map<string, Tarefa[][]>();
-
     for (const tec of tecnicos) {
       const days: Tarefa[][] = weekDays.map(() => []);
       const tecTarefas = tarefas.filter((t) => (t.tecnico || "Sem técnico") === tec.nome);
-
       for (const tarefa of tecTarefas) {
         if (!tarefa.data_tarefa) continue;
         const d = parseISO(tarefa.data_tarefa);
@@ -104,6 +101,103 @@ export default function AgendaSemanalPage() {
     }
     return result;
   }, [tarefas, tecnicos, weekDays]);
+
+  // --- Drag & Drop ---
+  const handleDragStart = useCallback((e: DragEvent, tarefa: Tarefa) => {
+    e.dataTransfer.setData("application/json", JSON.stringify({
+      taskId: tarefa.auvo_task_id,
+      fromTecnico: tarefa.tecnico,
+      fromTecnicoId: tarefa.tecnico_id,
+      fromDate: tarefa.data_tarefa,
+    }));
+    e.dataTransfer.effectAllowed = "move";
+  }, []);
+
+  const handleDragOver = useCallback((e: DragEvent, cellKey: string) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "move";
+    setDragOverCell(cellKey);
+  }, []);
+
+  const handleDragLeave = useCallback(() => {
+    setDragOverCell(null);
+  }, []);
+
+  const handleDrop = useCallback(async (e: DragEvent, toTecNome: string, toTecId: string | null, toDayIdx: number) => {
+    e.preventDefault();
+    setDragOverCell(null);
+
+    const raw = e.dataTransfer.getData("application/json");
+    if (!raw) return;
+
+    const { taskId, fromTecnico, fromTecnicoId, fromDate } = JSON.parse(raw);
+    const newDate = format(weekDays[toDayIdx], "yyyy-MM-dd");
+    const sameDay = fromDate === newDate;
+    const sameTec = fromTecnico === toTecNome;
+
+    if (sameDay && sameTec) return;
+
+    setMovingTaskId(taskId);
+
+    try {
+      // First get the full task to know its current data
+      const { data: taskData } = await supabase.functions.invoke("auvo-task-update", {
+        body: { action: "get", taskId: Number(taskId) },
+      });
+
+      const taskResult = taskData?.data?.result;
+      if (!taskResult) throw new Error("Não foi possível obter dados da tarefa");
+
+      // Build patches
+      const patches: Array<{ op: string; path: string; value: any }> = [];
+
+      if (!sameDay) {
+        const newDateFormatted = format(weekDays[toDayIdx], "yyyy-MM-dd") + "T" + (taskResult.taskDate?.substring(11) || "08:00:00");
+        patches.push({ op: "replace", path: "/taskDate", value: newDateFormatted });
+      }
+
+      if (!sameTec && toTecId) {
+        patches.push({ op: "replace", path: "/idUserTo", value: Number(toTecId) });
+      }
+
+      if (patches.length === 0) {
+        setMovingTaskId(null);
+        return;
+      }
+
+      const { data: patchResult, error } = await supabase.functions.invoke("auvo-task-update", {
+        body: { action: "edit", taskId: Number(taskId), patches },
+      });
+
+      if (error) throw error;
+      if (patchResult?.status && patchResult.status >= 400) {
+        throw new Error(patchResult?.data?.message || `Erro ${patchResult.status}`);
+      }
+
+      // Optimistic update in cache
+      queryClient.setQueryData(queryKey, (old: Tarefa[] | undefined) => {
+        if (!old) return old;
+        return old.map(t => {
+          if (t.auvo_task_id !== taskId) return t;
+          return {
+            ...t,
+            data_tarefa: newDate,
+            ...((!sameTec && toTecId) ? { tecnico: toTecNome, tecnico_id: toTecId } : {}),
+          };
+        });
+      });
+
+      const changes: string[] = [];
+      if (!sameDay) changes.push(`data → ${format(weekDays[toDayIdx], "dd/MM")}`);
+      if (!sameTec) changes.push(`técnico → ${toTecNome}`);
+      toast.success(`Tarefa atualizada: ${changes.join(", ")}`);
+    } catch (err: any) {
+      console.error("[agenda] Erro ao mover tarefa:", err);
+      toast.error(`Erro ao mover tarefa: ${err.message}`);
+    } finally {
+      setMovingTaskId(null);
+    }
+  }, [weekDays, queryClient, queryKey]);
 
   const totalTarefas = tarefas?.length || 0;
 
@@ -123,12 +217,12 @@ export default function AgendaSemanalPage() {
               </h1>
               <p className="text-xs text-muted-foreground">
                 {totalTarefas} tarefa{totalTarefas !== 1 ? "s" : ""} · {tecnicos.length} técnico{tecnicos.length !== 1 ? "s" : ""}
+                {movingTaskId && <span className="ml-2 text-primary">⏳ Movendo tarefa...</span>}
               </p>
             </div>
           </div>
 
           <div className="flex items-center gap-2">
-            {/* Week nav */}
             <div className="flex items-center gap-1 bg-muted rounded-lg px-1 py-0.5">
               <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setWeekOffset((o) => o - 1)}>
                 <ChevronLeft className="h-4 w-4" />
@@ -154,7 +248,6 @@ export default function AgendaSemanalPage() {
           </div>
         </div>
 
-        {/* Week label */}
         <div className="mt-2 text-sm text-muted-foreground text-center">
           {format(weekStart, "dd 'de' MMMM", { locale: ptBR })} — {format(addDays(weekStart, 5), "dd 'de' MMMM, yyyy", { locale: ptBR })}
         </div>
@@ -207,15 +300,34 @@ export default function AgendaSemanalPage() {
                         <div className="font-medium text-sm text-foreground">{tec.nome}</div>
                         <div className="text-[11px] text-muted-foreground">{totalTec} tarefa{totalTec !== 1 ? "s" : ""}</div>
                       </td>
-                      {days.map((dayTasks, dayIdx) => (
-                        <td key={dayIdx} className={cn("px-1.5 py-1.5 align-top", isSameDay(weekDays[dayIdx], new Date()) && "bg-primary/5")}>
-                          <div className="space-y-1">
-                            {dayTasks.map((tarefa) => (
-                              <TaskCard key={tarefa.auvo_task_id} tarefa={tarefa} />
-                            ))}
-                          </div>
-                        </td>
-                      ))}
+                      {days.map((dayTasks, dayIdx) => {
+                        const cellKey = `${tec.nome}::${dayIdx}`;
+                        const isOver = dragOverCell === cellKey;
+                        return (
+                          <td
+                            key={dayIdx}
+                            className={cn(
+                              "px-1.5 py-1.5 align-top transition-colors min-h-[60px]",
+                              isSameDay(weekDays[dayIdx], new Date()) && "bg-primary/5",
+                              isOver && "bg-primary/15 ring-2 ring-inset ring-primary/40 rounded"
+                            )}
+                            onDragOver={(e) => handleDragOver(e, cellKey)}
+                            onDragLeave={handleDragLeave}
+                            onDrop={(e) => handleDrop(e, tec.nome, tec.id, dayIdx)}
+                          >
+                            <div className="space-y-1 min-h-[40px]">
+                              {dayTasks.map((tarefa) => (
+                                <TaskCard
+                                  key={tarefa.auvo_task_id}
+                                  tarefa={tarefa}
+                                  onDragStart={handleDragStart}
+                                  isMoving={movingTaskId === tarefa.auvo_task_id}
+                                />
+                              ))}
+                            </div>
+                          </td>
+                        );
+                      })}
                     </tr>
                   );
                 })}
@@ -228,22 +340,57 @@ export default function AgendaSemanalPage() {
   );
 }
 
-function TaskCard({ tarefa }: { tarefa: Tarefa }) {
+function TaskCard({
+  tarefa,
+  onDragStart,
+  isMoving,
+}: {
+  tarefa: Tarefa;
+  onDragStart: (e: DragEvent<HTMLDivElement>, tarefa: Tarefa) => void;
+  isMoving: boolean;
+}) {
   const statusClass = STATUS_COLORS[tarefa.status_auvo || ""] || "bg-muted text-muted-foreground";
   const linkUrl = tarefa.auvo_link || `https://app2.auvo.com.br/relatorioTarefas/DetalheTarefa/${tarefa.auvo_task_id}`;
+  const canDrag = tarefa.status_auvo === "Agendada";
 
   return (
     <Tooltip delayDuration={200}>
       <TooltipTrigger asChild>
-        <a
-          href={linkUrl}
-          target="_blank"
-          rel="noopener noreferrer"
+        <div
+          draggable={canDrag}
+          onDragStart={canDrag ? (e) => onDragStart(e, tarefa) : undefined}
           className={cn(
-            "block rounded-md border border-border p-1.5 text-[11px] leading-tight transition-all hover:shadow-md hover:border-primary/30 cursor-pointer bg-card"
+            "rounded-md border border-border p-1.5 text-[11px] leading-tight transition-all bg-card",
+            canDrag && "cursor-grab active:cursor-grabbing hover:shadow-md hover:border-primary/30",
+            !canDrag && "opacity-80",
+            isMoving && "opacity-50 ring-2 ring-primary animate-pulse"
           )}
         >
-          <div className="font-medium text-foreground truncate">{tarefa.cliente || "—"}</div>
+          <div className="flex items-center justify-between gap-1">
+            <div className="font-medium text-foreground truncate flex-1">{tarefa.cliente || "—"}</div>
+            {canDrag && (
+              <a
+                href={linkUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-muted-foreground hover:text-primary shrink-0"
+                onClick={(e) => e.stopPropagation()}
+                draggable={false}
+              >
+                ↗
+              </a>
+            )}
+            {!canDrag && (
+              <a
+                href={linkUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-muted-foreground hover:text-primary shrink-0"
+              >
+                ↗
+              </a>
+            )}
+          </div>
           <div className="flex items-center justify-between mt-1 gap-1">
             {tarefa.hora_inicio && (
               <span className="text-muted-foreground">{tarefa.hora_inicio?.substring(0, 5)}</span>
@@ -252,7 +399,13 @@ function TaskCard({ tarefa }: { tarefa: Tarefa }) {
               {tarefa.status_auvo || "—"}
             </span>
           </div>
-        </a>
+          {isMoving && (
+            <div className="flex items-center gap-1 mt-1 text-primary">
+              <Loader2 className="h-3 w-3 animate-spin" />
+              <span className="text-[10px]">Movendo...</span>
+            </div>
+          )}
+        </div>
       </TooltipTrigger>
       <TooltipContent side="top" className="max-w-xs">
         <div className="space-y-1 text-xs">
@@ -263,6 +416,7 @@ function TaskCard({ tarefa }: { tarefa: Tarefa }) {
             <div>🕐 {tarefa.hora_inicio?.substring(0, 5)} – {tarefa.hora_fim?.substring(0, 5)}</div>
           )}
           {tarefa.check_in && <div>✅ Check-in realizado</div>}
+          {!canDrag && <div className="text-amber-600">⚠️ Só tarefas "Agendada" podem ser movidas</div>}
         </div>
       </TooltipContent>
     </Tooltip>
