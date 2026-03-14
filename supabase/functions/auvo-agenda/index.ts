@@ -42,6 +42,27 @@ Deno.serve(async (req) => {
     const bearerToken = await auvoLogin(apiKey, apiToken);
     const headers = { Authorization: `Bearer ${bearerToken}`, "Content-Type": "application/json" };
 
+    // Fetch users for name resolution
+    const usersMap = new Map<string, string>();
+    {
+      let page = 1;
+      const MAX = 10;
+      while (page <= MAX) {
+        const url = `${AUVO_BASE_URL}/users/?page=${page}&pageSize=100`;
+        const resp = await fetch(url, { headers });
+        if (resp.status === 404 || !resp.ok) { await resp.text(); break; }
+        const json = await resp.json();
+        const users = json?.result?.entityList || json?.result || [];
+        if (!Array.isArray(users) || users.length === 0) break;
+        for (const u of users) {
+          usersMap.set(String(u.userID || ""), String(u.name || u.login || ""));
+        }
+        if (users.length < 100) break;
+        page++;
+      }
+      console.log(`[auvo-agenda] ${usersMap.size} users loaded`);
+    }
+
     const allTasks: any[] = [];
     let page = 1;
     const pageSize = 100;
@@ -70,35 +91,60 @@ Deno.serve(async (req) => {
       page++;
     }
 
+    // Debug: log first task's raw keys
+    if (allTasks.length > 0) {
+      const sample = allTasks[0];
+      console.log("[auvo-agenda] Sample task keys:", Object.keys(sample));
+      console.log("[auvo-agenda] Sample task:", JSON.stringify(sample).substring(0, 1000));
+    }
+
     // Map to simplified format
     const mapped = allTasks.map((t: any) => {
       const taskId = String(t.taskID || t.taskId || t.id || "");
-      const customerName = t.customer?.name || t.customerName || t.customer_name || "";
-      const userName = t.userTo?.name || t.user?.name || t.userName || "";
-      const userId = String(t.userTo?.userID || t.idUserTo || t.user_id || "");
-      const rawDate = t.taskDate || t.task_date || "";
+
+      // Customer: try multiple fields; listing may return them empty
+      const custDesc = String(t.customerDescription || "").trim();
+      const custName = String(t.customerName || t.customer?.tradeName || t.customer?.companyName || "").trim();
+      // Fallback: extract from orientation (e.g. first line often has context)
+      const orientation = String(t.orientation || "").trim();
+      const cliente = custDesc || custName || "Sem cliente";
+
+      // Technician - resolve from users map if userToName is empty
+      const rawTecnico = String(t.userToName || "").trim();
+      const tecnicoId = String(t.idUserTo || "");
+      const tecnico = rawTecnico || usersMap.get(tecnicoId) || "Sem técnico";
+
+      // Date
+      const rawDate = String(t.taskDate || "");
       const taskDate = rawDate ? rawDate.substring(0, 10) : "";
-      const startTime = t.startTime || t.start_time || t.hora_inicio || "";
-      const endTime = t.endTime || t.end_time || t.hora_fim || "";
-      const status = t.taskStatus?.description || t.status?.description || t.status || "";
-      const address = t.address?.address || t.address || "";
-      const description = t.orientation || t.description || "";
-      const checkedIn = !!t.checkInDate;
-      const checkedOut = !!t.checkOutDate;
+
+      // Status
+      const statusDesc = String(t.taskStatus?.description || t.status?.description || "").trim();
+      const status = statusDesc || (t.finished ? "Finalizada" : (t.checkIn ? "Em andamento" : "Agendada"));
+
+      // Times
+      const startTime = String(t.startTime || t.startHour || "");
+      const endTime = String(t.endTime || t.endHour || "");
+
+      // Address
+      const address = typeof t.address === "object" ? "" : String(t.address || "").substring(0, 200);
+
+      // Description
+      const description = String(t.orientation || t.description || "").substring(0, 500);
 
       return {
         auvo_task_id: taskId,
-        cliente: customerName,
-        tecnico: userName,
-        tecnico_id: userId,
+        cliente,
+        tecnico,
+        tecnico_id: tecnicoId,
         data_tarefa: taskDate,
         hora_inicio: startTime,
         hora_fim: endTime,
         status_auvo: status,
         endereco: address,
         descricao: description,
-        check_in: checkedIn,
-        check_out: checkedOut,
+        check_in: !!t.checkIn,
+        check_out: !!t.checkOut,
         auvo_link: `https://app2.auvo.com.br/relatorioTarefas/DetalheTarefa/${taskId}`,
       };
     });
