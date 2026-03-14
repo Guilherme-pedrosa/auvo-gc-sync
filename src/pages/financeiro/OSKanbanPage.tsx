@@ -71,6 +71,7 @@ export default function OSKanbanPage() {
   const [showClienteFilter, setShowClienteFilter] = useState(false);
   const [selectedCard, setSelectedCard] = useState<OSItem | null>(null);
   const [isSyncing, setIsSyncing] = useState(false);
+  const [syncStatus, setSyncStatus] = useState("");
 
   const startStr = format(dateRange.from, "yyyy-MM-dd");
   const endStr = format(dateRange.to, "yyyy-MM-dd");
