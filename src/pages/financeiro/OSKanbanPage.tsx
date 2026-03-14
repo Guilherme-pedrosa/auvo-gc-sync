@@ -121,6 +121,8 @@ export default function OSKanbanPage() {
           return;
         }
         const osObj = data?.data?.data ?? data?.data ?? null;
+        console.log("GC OS Detail raw response:", JSON.stringify(data, null, 2));
+        console.log("GC OS Detail parsed:", JSON.stringify(osObj, null, 2));
         setOsDetail(osObj);
         setOsDetailLoading(false);
       })
