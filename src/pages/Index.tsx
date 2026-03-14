@@ -95,15 +95,16 @@ function computeMetrics(items: KanbanItem[], monthItems: KanbanItem[], source: "
     return acc + parseFloat(i.gc_os?.gc_valor_total || "0");
   }, 0);
 
-  // By situation
+  // By situation — only items that have the actual GC document
   const situacaoMap: Record<string, { count: number; valor: number; cor: string }> = {};
   for (const item of comMatch) {
     const doc = source === "orc" ? item.gc_orcamento : item.gc_os;
-    const sit = doc?.gc_situacao || "Sem situação";
-    const cor = doc?.gc_cor_situacao || "#888";
+    if (!doc) continue; // Skip items without GC document
+    const sit = doc.gc_situacao || "Sem situação";
+    const cor = doc.gc_cor_situacao || "#888";
     if (!situacaoMap[sit]) situacaoMap[sit] = { count: 0, valor: 0, cor };
     situacaoMap[sit].count++;
-    situacaoMap[sit].valor += parseFloat(doc?.gc_valor_total || "0");
+    situacaoMap[sit].valor += parseFloat(doc.gc_valor_total || "0");
   }
 
   // By technician — green = has match, yellow = no match
