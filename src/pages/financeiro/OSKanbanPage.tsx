@@ -18,10 +18,13 @@ import {
 import {
   ArrowLeft, CalendarIcon, RefreshCw, ExternalLink,
   Filter, GripVertical, Check, X, Edit2, Trash2, Plus,
-  Package, FileText, ClipboardList, MapPin, ArrowUpDown, ArrowDown, ArrowUp
+  Package, FileText, ClipboardList, MapPin, ArrowUpDown, ArrowDown, ArrowUp,
+  UserCog, Save, Loader2
 } from "lucide-react";
-import { format, startOfMonth } from "date-fns";
+import { format, startOfMonth, parse } from "date-fns";
 import { ptBR } from "date-fns/locale";
+import { Label } from "@/components/ui/label";
+import { cn } from "@/lib/utils";
 import { useNavigate } from "react-router-dom";
 import { DragDropContext, Droppable, Draggable, DropResult } from "@hello-pangea/dnd";
 import { toast } from "sonner";
@@ -102,8 +105,81 @@ export default function OSKanbanPage() {
   const [globalSort, setGlobalSort] = useState<string>("none");
   // Per-column sort
   const [columnSorts, setColumnSorts] = useState<Record<string, string>>({});
+  // Edit task state
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [editingCard, setEditingCard] = useState<OSItem | null>(null);
+  const [editDate, setEditDate] = useState<Date | undefined>(undefined);
+  const [editTecnicoId, setEditTecnicoId] = useState("");
+  const [editSaving, setEditSaving] = useState(false);
 
-  // Fetch OS detail (produtos, serviços, valores) from GC when card is selected
+  // Fetch Auvo users (technicians)
+  const { data: auvoUsers } = useQuery({
+    queryKey: ["auvo-users"],
+    queryFn: async () => {
+      const { data, error } = await supabase.functions.invoke("auvo-task-update", {
+        body: { action: "list-users" },
+      });
+      if (error) throw error;
+      return (data?.data || []) as { userID: number; login: string; name: string }[];
+    },
+    staleTime: 1000 * 60 * 30, // 30 min cache
+  });
+
+  const openEditModal = useCallback((card: OSItem) => {
+    setEditingCard(card);
+    // Parse existing date
+    if (card.data_tarefa) {
+      try {
+        const parsed = parse(card.data_tarefa, "yyyy-MM-dd", new Date());
+        if (!isNaN(parsed.getTime())) setEditDate(parsed);
+        else setEditDate(undefined);
+      } catch { setEditDate(undefined); }
+    } else {
+      setEditDate(undefined);
+    }
+    // Try to match current technician
+    const currentTecnico = auvoUsers?.find(u => u.name === card.tecnico || u.login === card.tecnico);
+    setEditTecnicoId(currentTecnico ? String(currentTecnico.userID) : card.tecnico_id || "");
+    setShowEditModal(true);
+  }, [auvoUsers]);
+
+  const handleEditSave = useCallback(async () => {
+    if (!editingCard) return;
+    setEditSaving(true);
+    try {
+      const patches: { op: string; path: string; value: any }[] = [];
+      if (editDate) {
+        patches.push({ op: "replace", path: "taskDate", value: format(editDate, "yyyy-MM-dd'T'08:00:00") });
+      }
+      if (editTecnicoId) {
+        patches.push({ op: "replace", path: "idUserTo", value: Number(editTecnicoId) });
+      }
+      if (patches.length === 0) {
+        toast.warning("Nenhuma alteração para salvar");
+        setEditSaving(false);
+        return;
+      }
+
+      const { data, error } = await supabase.functions.invoke("auvo-task-update", {
+        body: { action: "edit", taskId: Number(editingCard.auvo_task_id), patches },
+      });
+
+      if (error) throw error;
+      if (data?.status && data.status >= 400) {
+        throw new Error(JSON.stringify(data?.data || "Erro ao atualizar tarefa"));
+      }
+
+      toast.success("Tarefa atualizada no Auvo!");
+      setShowEditModal(false);
+      setEditingCard(null);
+    } catch (err: any) {
+      console.error("Erro ao editar tarefa Auvo:", err);
+      toast.error(`Erro: ${err.message || "Falha ao atualizar"}`);
+    } finally {
+      setEditSaving(false);
+    }
+  }, [editingCard, editDate, editTecnicoId]);
+
   useEffect(() => {
     if (!selectedCard?.gc_os_id) {
       setOsDetail(null);
@@ -1009,8 +1085,11 @@ export default function OSKanbanPage() {
                 </div>
               )}
 
-              {/* Links */}
-              <div className="flex gap-2 pt-2 border-t">
+              {/* Links + Edit */}
+              <div className="flex flex-wrap gap-2 pt-2 border-t">
+                <Button size="sm" variant="default" className="gap-1" onClick={() => { setSelectedCard(null); openEditModal(selectedCard); }}>
+                  <Edit2 className="h-3.5 w-3.5" /> Editar Data/Técnico
+                </Button>
                 {selectedCard.gc_os_link && (
                   <Button size="sm" variant="outline" asChild>
                     <a href={selectedCard.gc_os_link} target="_blank" rel="noopener noreferrer" className="gap-1">
@@ -1032,6 +1111,79 @@ export default function OSKanbanPage() {
                     </a>
                   </Button>
                 )}
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit Task Modal */}
+      <Dialog open={showEditModal} onOpenChange={setShowEditModal}>
+        <DialogContent className="sm:max-w-[420px]">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <UserCog className="h-5 w-5" />
+              Editar Tarefa Auvo
+            </DialogTitle>
+          </DialogHeader>
+          {editingCard && (
+            <div className="space-y-4">
+              <div className="bg-muted/50 rounded-md p-3 text-sm">
+                <p className="font-medium">{editingCard.cliente || editingCard.gc_os_cliente || "—"}</p>
+                <p className="text-muted-foreground text-xs mt-0.5">
+                  OS {editingCard.gc_os_codigo} • Tarefa #{editingCard.auvo_task_id}
+                </p>
+              </div>
+
+              {/* Date picker */}
+              <div className="space-y-2">
+                <Label>Data da Tarefa</Label>
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button
+                      variant="outline"
+                      className={cn("w-full justify-start text-left font-normal", !editDate && "text-muted-foreground")}
+                    >
+                      <CalendarIcon className="mr-2 h-4 w-4" />
+                      {editDate ? format(editDate, "dd/MM/yyyy") : "Selecionar data"}
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-auto p-0" align="start">
+                    <Calendar
+                      mode="single"
+                      selected={editDate}
+                      onSelect={setEditDate}
+                      locale={ptBR}
+                      className={cn("p-3 pointer-events-auto")}
+                    />
+                  </PopoverContent>
+                </Popover>
+              </div>
+
+              {/* Technician select */}
+              <div className="space-y-2">
+                <Label>Técnico</Label>
+                <Select value={editTecnicoId} onValueChange={setEditTecnicoId}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Selecionar técnico" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {auvoUsers?.map((user) => (
+                      <SelectItem key={user.userID} value={String(user.userID)}>
+                        {user.name || user.login}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* Save */}
+              <div className="flex justify-end gap-2 pt-2">
+                <Button variant="outline" onClick={() => setShowEditModal(false)}>Cancelar</Button>
+                <Button onClick={handleEditSave} disabled={editSaving}>
+                  {editSaving ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Save className="h-4 w-4 mr-2" />}
+                  Salvar
+                </Button>
               </div>
             </div>
           )}
