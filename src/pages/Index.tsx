@@ -684,10 +684,10 @@ export default function Index() {
                 {renderMonthKPIs(execMetrics, execLabels)}
               </div>
               <div className="grid lg:grid-cols-2 gap-4">
-                {renderSituacaoChart(execMetrics, "Valor por Situação da OS")}
-                {renderTecnicoChart(execMetrics, execLabels)}
+                {renderSituacaoChart(execMonthMetrics, "Valor por Situação da OS")}
+                {renderTecnicoChart(execMonthMetrics, execLabels)}
               </div>
-              {renderSituacaoTable(execMetrics)}
+              {renderSituacaoTable(execMonthMetrics)}
             </TabsContent>
           </Tabs>
 
