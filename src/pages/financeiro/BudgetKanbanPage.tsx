@@ -575,6 +575,9 @@ export default function BudgetKanbanPage() {
               <Badge variant="secondary" className="gap-1 bg-emerald-100 text-emerald-800 border-emerald-300">
                 <Check className="h-3 w-3" />
                 {resumo.orcamentos_realizados} realizados
+                <span className="text-[10px] text-emerald-600 ml-1">
+                  (hoje: {orcBreakdown.hoje} · sem: {orcBreakdown.semana} · mês: {orcBreakdown.mes})
+                </span>
               </Badge>
             </div>
           )}
