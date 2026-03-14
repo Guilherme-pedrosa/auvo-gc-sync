@@ -192,8 +192,9 @@ export default function Index() {
             end_date: format(dateRange.to, "yyyy-MM-dd"),
           },
         }),
+        supabase.functions.invoke("central-sync"),
       ]);
-      toast.success("Orçamentos sincronizados!");
+      toast.success("Dados sincronizados (Kanban + Central)!");
       await Promise.all([refetchOrc(), refetchExec()]);
     } catch {
       toast.warning("Sincronização em processamento...");
