@@ -105,7 +105,7 @@ export default function OSKanbanPage() {
         .order("data_tarefa", { ascending: false });
 
       if (error) throw error;
-      return (data || []) as OSItem[];
+      return (data || []) as unknown as OSItem[];
     },
     staleTime: 60_000,
   });
