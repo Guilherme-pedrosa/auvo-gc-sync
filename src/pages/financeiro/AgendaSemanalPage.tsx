@@ -134,6 +134,16 @@ export default function AgendaSemanalPage() {
     return Array.from(map.values()).sort((a, b) => a.nome.localeCompare(b.nome));
   }, [tarefas, allUsers]);
 
+  // Daily OS totals
+  const dayTotals = useMemo(() => {
+    if (!tarefas) return weekDays.map(() => 0);
+    return weekDays.map((wd) => {
+      return tarefas
+        .filter(t => t.data_tarefa && isSameDay(parseISO(t.data_tarefa), wd))
+        .reduce((sum, t) => sum + (t.gc_os_valor_total ?? 0), 0);
+    });
+  }, [tarefas, weekDays]);
+
   const grid = useMemo(() => {
     if (!tarefas) return new Map<string, Tarefa[][]>();
     const result = new Map<string, Tarefa[][]>();
