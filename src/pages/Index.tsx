@@ -181,23 +181,30 @@ export default function Index() {
   });
 
   const [isSyncing, setIsSyncing] = useState(false);
+  const [syncStatus, setSyncStatus] = useState("");
   const handleSync = async () => {
     setIsSyncing(true);
+    setSyncStatus("Iniciando sincronização...");
     try {
-      await Promise.all([
-        supabase.functions.invoke("budget-kanban", {
-          body: {
-            mode: "sync",
-            start_date: format(dateRange.from, "yyyy-MM-dd"),
-            end_date: format(dateRange.to, "yyyy-MM-dd"),
-          },
-        }),
-        supabase.functions.invoke("central-sync"),
-      ]);
+      const kanbanPromise = supabase.functions.invoke("budget-kanban", {
+        body: {
+          mode: "sync",
+          start_date: format(dateRange.from, "yyyy-MM-dd"),
+          end_date: format(dateRange.to, "yyyy-MM-dd"),
+        },
+      }).then(() => setSyncStatus(prev => prev.includes("Central") ? "Tudo pronto!" : "Kanban ✓ — Aguardando Central..."));
+
+      const centralPromise = supabase.functions.invoke("central-sync")
+        .then(() => setSyncStatus(prev => prev.includes("Kanban") ? "Tudo pronto!" : "Central ✓ — Aguardando Kanban..."));
+
+      await Promise.all([kanbanPromise, centralPromise]);
+      setSyncStatus("Atualizando dados...");
       toast.success("Dados sincronizados (Kanban + Central)!");
       await Promise.all([refetchOrc(), refetchExec()]);
+      setSyncStatus("");
     } catch {
       toast.warning("Sincronização em processamento...");
+      setSyncStatus("");
     } finally {
       setIsSyncing(false);
     }
@@ -501,10 +508,15 @@ export default function Index() {
                 />
               </PopoverContent>
             </Popover>
-            <Button variant="outline" size="sm" onClick={handleSync} disabled={isSyncing} className="h-8 text-xs">
-              <RefreshCw className={`h-3.5 w-3.5 mr-1.5 ${isSyncing ? "animate-spin" : ""}`} />
-              Sincronizar
-            </Button>
+            <div className="flex items-center gap-2">
+              <Button variant="outline" size="sm" onClick={handleSync} disabled={isSyncing} className="h-8 text-xs">
+                <RefreshCw className={`h-3.5 w-3.5 mr-1.5 ${isSyncing ? "animate-spin" : ""}`} />
+                {isSyncing ? "Sincronizando..." : "Sincronizar"}
+              </Button>
+              {syncStatus && (
+                <span className="text-xs text-muted-foreground animate-pulse">{syncStatus}</span>
+              )}
+            </div>
           </div>
         </div>
       </div>
