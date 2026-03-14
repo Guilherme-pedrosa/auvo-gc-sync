@@ -7,6 +7,7 @@ const corsHeaders = {
 const AUVO_BASE_URL = "https://api.auvo.com.br/v2";
 const GC_BASE_URL = "https://api.gestaoclick.com";
 const GC_ATRIBUTO_TAREFA_OS = "73343";
+const GC_ATRIBUTO_TAREFA_EXEC = "73344";
 const GC_ATRIBUTO_TAREFA_ORC = "73341";
 
 async function auvoLogin(apiKey: string, apiToken: string): Promise<string> {
