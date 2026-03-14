@@ -80,7 +80,7 @@ export default function OSKanbanPage() {
   const navigate = useNavigate();
   const today = new Date();
   const [dateRange, setDateRange] = useState({
-    from: startOfMonth(today),
+    from: new Date(today.getFullYear(), 0, 1),
     to: today,
   });
   const [columns, setColumns] = useState<KanbanColumn[]>([]);
