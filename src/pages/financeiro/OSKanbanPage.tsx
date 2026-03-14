@@ -137,14 +137,25 @@ export default function OSKanbanPage() {
       const osObj = data?.data?.data ?? data?.data ?? null;
       if (!osObj) return null;
       const atributos: any[] = osObj.atributos || [];
+      console.log("[fetchExecTaskId] OS atributos:", JSON.stringify(atributos, null, 2));
+      // Look for attribute 73344 (Tarefa Execução)
+      for (const a of atributos) {
+        const nested = a?.atributo || a;
+        const id = String(nested.atributo_id || nested.id || "");
+        const label = String(nested.descricao || nested.label || nested.nome || "").toLowerCase();
+        const valor = String(nested?.conteudo || nested?.valor || "").trim();
+        console.log(`[fetchExecTaskId] attr id=${id} label="${label}" valor="${valor}"`);
+      }
       const attr = atributos.find((a: any) => {
         const nested = a?.atributo || a;
         const id = String(nested.atributo_id || nested.id || "");
-        return id === "73344";
+        const label = String(nested.descricao || nested.label || nested.nome || "").toLowerCase();
+        return id === "73344" || label.includes("tarefa execu") || label.includes("execução");
       });
       if (!attr) return null;
-      const nested = attr?.atributo || attr;
-      const valor = String(nested?.conteudo || nested?.valor || "").trim();
+      const nestedAttr = attr?.atributo || attr;
+      const valor = String(nestedAttr?.conteudo || nestedAttr?.valor || "").trim();
+      console.log("[fetchExecTaskId] Found exec task:", valor);
       return valor && /^\d+$/.test(valor) ? valor : null;
     } catch { return null; }
   }, []);
