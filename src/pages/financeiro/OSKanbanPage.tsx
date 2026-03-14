@@ -111,6 +111,8 @@ export default function OSKanbanPage() {
   const [editDate, setEditDate] = useState<Date | undefined>(undefined);
   const [editTecnicoId, setEditTecnicoId] = useState("");
   const [editSaving, setEditSaving] = useState(false);
+  const [execTaskId, setExecTaskId] = useState<string | null>(null);
+  const [execTaskLoading, setExecTaskLoading] = useState(false);
 
   // Fetch Auvo users (technicians)
   const { data: auvoUsers } = useQuery({
@@ -122,11 +124,35 @@ export default function OSKanbanPage() {
       if (error) throw error;
       return (data?.data || []) as { userID: number; login: string; name: string }[];
     },
-    staleTime: 1000 * 60 * 30, // 30 min cache
+    staleTime: 1000 * 60 * 30,
   });
 
-  const openEditModal = useCallback((card: OSItem) => {
+  // Fetch execution task ID from GC OS attributes (campo 73344)
+  const fetchExecTaskId = useCallback(async (gcOsId: string): Promise<string | null> => {
+    try {
+      const { data, error } = await supabase.functions.invoke("gc-proxy", {
+        body: { endpoint: `/api/ordens_servicos/${gcOsId}`, method: "GET" },
+      });
+      if (error) return null;
+      const osObj = data?.data?.data ?? data?.data ?? null;
+      if (!osObj) return null;
+      const atributos: any[] = osObj.atributos || [];
+      const attr = atributos.find((a: any) => {
+        const nested = a?.atributo || a;
+        const id = String(nested.atributo_id || nested.id || "");
+        return id === "73344";
+      });
+      if (!attr) return null;
+      const nested = attr?.atributo || attr;
+      const valor = String(nested?.conteudo || nested?.valor || "").trim();
+      return valor && /^\d+$/.test(valor) ? valor : null;
+    } catch { return null; }
+  }, []);
+
+  const openEditModal = useCallback(async (card: OSItem) => {
     setEditingCard(card);
+    setExecTaskId(null);
+    setExecTaskLoading(true);
     // Parse existing date
     if (card.data_tarefa) {
       try {
@@ -141,10 +167,23 @@ export default function OSKanbanPage() {
     const currentTecnico = auvoUsers?.find(u => u.name === card.tecnico || u.login === card.tecnico);
     setEditTecnicoId(currentTecnico ? String(currentTecnico.userID) : card.tecnico_id || "");
     setShowEditModal(true);
-  }, [auvoUsers]);
+
+    // Fetch execution task ID from GC
+    if (card.gc_os_id) {
+      const taskId = await fetchExecTaskId(card.gc_os_id);
+      setExecTaskId(taskId);
+      if (!taskId) {
+        toast.warning("Tarefa de execução não encontrada no atributo 73344 desta OS");
+      }
+    }
+    setExecTaskLoading(false);
+  }, [auvoUsers, fetchExecTaskId]);
 
   const handleEditSave = useCallback(async () => {
-    if (!editingCard) return;
+    if (!editingCard || !execTaskId) {
+      toast.error("ID da tarefa de execução não disponível");
+      return;
+    }
     setEditSaving(true);
     try {
       const patches: { op: string; path: string; value: any }[] = [];
@@ -160,8 +199,9 @@ export default function OSKanbanPage() {
         return;
       }
 
+      console.log(`[edit] Editando tarefa de EXECUÇÃO #${execTaskId} (OS ${editingCard.gc_os_codigo})`);
       const { data, error } = await supabase.functions.invoke("auvo-task-update", {
-        body: { action: "edit", taskId: Number(editingCard.auvo_task_id), patches },
+        body: { action: "edit", taskId: Number(execTaskId), patches },
       });
 
       if (error) throw error;
@@ -169,7 +209,7 @@ export default function OSKanbanPage() {
         throw new Error(JSON.stringify(data?.data || "Erro ao atualizar tarefa"));
       }
 
-      toast.success("Tarefa atualizada no Auvo!");
+      toast.success(`Tarefa de execução #${execTaskId} atualizada no Auvo!`);
       setShowEditModal(false);
       setEditingCard(null);
     } catch (err: any) {
@@ -178,7 +218,7 @@ export default function OSKanbanPage() {
     } finally {
       setEditSaving(false);
     }
-  }, [editingCard, editDate, editTecnicoId]);
+  }, [editingCard, editDate, editTecnicoId, execTaskId]);
 
   useEffect(() => {
     if (!selectedCard?.gc_os_id) {
@@ -1131,13 +1171,22 @@ export default function OSKanbanPage() {
               <div className="bg-muted/50 rounded-md p-3 text-sm">
                 <p className="font-medium">{editingCard.cliente || editingCard.gc_os_cliente || "—"}</p>
                 <p className="text-muted-foreground text-xs mt-0.5">
-                  OS {editingCard.gc_os_codigo} • Tarefa #{editingCard.auvo_task_id}
+                  OS {editingCard.gc_os_codigo} • Tarefa OS #{editingCard.auvo_task_id}
+                </p>
+                <p className="text-xs mt-1">
+                  {execTaskLoading ? (
+                    <span className="text-muted-foreground flex items-center gap-1"><Loader2 className="h-3 w-3 animate-spin" /> Buscando tarefa de execução...</span>
+                  ) : execTaskId ? (
+                    <span className="text-primary font-medium">✓ Tarefa Execução #{execTaskId}</span>
+                  ) : (
+                    <span className="text-destructive">⚠ Tarefa de execução não encontrada</span>
+                  )}
                 </p>
               </div>
 
               {/* Date picker */}
               <div className="space-y-2">
-                <Label>Data da Tarefa</Label>
+                <Label>Data da Tarefa de Execução</Label>
                 <Popover>
                   <PopoverTrigger asChild>
                     <Button
@@ -1180,7 +1229,7 @@ export default function OSKanbanPage() {
               {/* Save */}
               <div className="flex justify-end gap-2 pt-2">
                 <Button variant="outline" onClick={() => setShowEditModal(false)}>Cancelar</Button>
-                <Button onClick={handleEditSave} disabled={editSaving}>
+                <Button onClick={handleEditSave} disabled={editSaving || execTaskLoading || !execTaskId}>
                   {editSaving ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Save className="h-4 w-4 mr-2" />}
                   Salvar
                 </Button>
