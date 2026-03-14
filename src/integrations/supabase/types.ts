@@ -212,6 +212,150 @@ export type Database = {
         }
         Relationships: []
       }
+      tarefas_central: {
+        Row: {
+          atualizado_em: string | null
+          auvo_link: string | null
+          auvo_survey_url: string | null
+          auvo_task_id: string
+          auvo_task_url: string | null
+          check_in: boolean | null
+          check_out: boolean | null
+          cliente: string | null
+          criado_em: string | null
+          data_tarefa: string | null
+          descricao: string | null
+          duracao_decimal: number | null
+          endereco: string | null
+          gc_orc_cliente: string | null
+          gc_orc_cor_situacao: string | null
+          gc_orc_data: string | null
+          gc_orc_link: string | null
+          gc_orc_situacao: string | null
+          gc_orc_situacao_id: string | null
+          gc_orc_valor_total: number | null
+          gc_orc_vendedor: string | null
+          gc_orcamento_codigo: string | null
+          gc_orcamento_id: string | null
+          gc_os_cliente: string | null
+          gc_os_codigo: string | null
+          gc_os_cor_situacao: string | null
+          gc_os_data: string | null
+          gc_os_id: string | null
+          gc_os_link: string | null
+          gc_os_situacao: string | null
+          gc_os_situacao_id: string | null
+          gc_os_valor_total: number | null
+          gc_os_vendedor: string | null
+          hora_fim: string | null
+          hora_inicio: string | null
+          orcamento_realizado: boolean | null
+          orientacao: string | null
+          os_realizada: boolean | null
+          pendencia: string | null
+          questionario_id: string | null
+          questionario_preenchido: boolean | null
+          questionario_respostas: Json | null
+          status_auvo: string | null
+          tecnico: string | null
+          tecnico_id: string | null
+        }
+        Insert: {
+          atualizado_em?: string | null
+          auvo_link?: string | null
+          auvo_survey_url?: string | null
+          auvo_task_id: string
+          auvo_task_url?: string | null
+          check_in?: boolean | null
+          check_out?: boolean | null
+          cliente?: string | null
+          criado_em?: string | null
+          data_tarefa?: string | null
+          descricao?: string | null
+          duracao_decimal?: number | null
+          endereco?: string | null
+          gc_orc_cliente?: string | null
+          gc_orc_cor_situacao?: string | null
+          gc_orc_data?: string | null
+          gc_orc_link?: string | null
+          gc_orc_situacao?: string | null
+          gc_orc_situacao_id?: string | null
+          gc_orc_valor_total?: number | null
+          gc_orc_vendedor?: string | null
+          gc_orcamento_codigo?: string | null
+          gc_orcamento_id?: string | null
+          gc_os_cliente?: string | null
+          gc_os_codigo?: string | null
+          gc_os_cor_situacao?: string | null
+          gc_os_data?: string | null
+          gc_os_id?: string | null
+          gc_os_link?: string | null
+          gc_os_situacao?: string | null
+          gc_os_situacao_id?: string | null
+          gc_os_valor_total?: number | null
+          gc_os_vendedor?: string | null
+          hora_fim?: string | null
+          hora_inicio?: string | null
+          orcamento_realizado?: boolean | null
+          orientacao?: string | null
+          os_realizada?: boolean | null
+          pendencia?: string | null
+          questionario_id?: string | null
+          questionario_preenchido?: boolean | null
+          questionario_respostas?: Json | null
+          status_auvo?: string | null
+          tecnico?: string | null
+          tecnico_id?: string | null
+        }
+        Update: {
+          atualizado_em?: string | null
+          auvo_link?: string | null
+          auvo_survey_url?: string | null
+          auvo_task_id?: string
+          auvo_task_url?: string | null
+          check_in?: boolean | null
+          check_out?: boolean | null
+          cliente?: string | null
+          criado_em?: string | null
+          data_tarefa?: string | null
+          descricao?: string | null
+          duracao_decimal?: number | null
+          endereco?: string | null
+          gc_orc_cliente?: string | null
+          gc_orc_cor_situacao?: string | null
+          gc_orc_data?: string | null
+          gc_orc_link?: string | null
+          gc_orc_situacao?: string | null
+          gc_orc_situacao_id?: string | null
+          gc_orc_valor_total?: number | null
+          gc_orc_vendedor?: string | null
+          gc_orcamento_codigo?: string | null
+          gc_orcamento_id?: string | null
+          gc_os_cliente?: string | null
+          gc_os_codigo?: string | null
+          gc_os_cor_situacao?: string | null
+          gc_os_data?: string | null
+          gc_os_id?: string | null
+          gc_os_link?: string | null
+          gc_os_situacao?: string | null
+          gc_os_situacao_id?: string | null
+          gc_os_valor_total?: number | null
+          gc_os_vendedor?: string | null
+          hora_fim?: string | null
+          hora_inicio?: string | null
+          orcamento_realizado?: boolean | null
+          orientacao?: string | null
+          os_realizada?: boolean | null
+          pendencia?: string | null
+          questionario_id?: string | null
+          questionario_preenchido?: boolean | null
+          questionario_respostas?: Json | null
+          status_auvo?: string | null
+          tecnico?: string | null
+          tecnico_id?: string | null
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
