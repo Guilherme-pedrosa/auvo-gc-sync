@@ -583,7 +583,25 @@ export default function OSKanbanPage() {
                                 {column.title}
                               </span>
                             </div>
-                            <Badge variant="secondary" className="text-xs">{column.items.length}</Badge>
+                            <div className="flex items-center gap-1">
+                              <Select
+                                value={columnSorts[column.id] || "none"}
+                                onValueChange={(v) => setColumnSorts(prev => ({ ...prev, [column.id]: v }))}
+                              >
+                                <SelectTrigger className="h-6 w-6 p-0 border-0 bg-transparent [&>svg]:hidden">
+                                  <ArrowUpDown className="h-3.5 w-3.5 text-muted-foreground" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="none">Padrão</SelectItem>
+                                  <SelectItem value="valor_desc">Maior valor</SelectItem>
+                                  <SelectItem value="valor_asc">Menor valor</SelectItem>
+                                  <SelectItem value="data_desc">Mais recente</SelectItem>
+                                  <SelectItem value="data_asc">Mais antigo</SelectItem>
+                                  <SelectItem value="cliente_az">Cliente A-Z</SelectItem>
+                                </SelectContent>
+                              </Select>
+                              <Badge variant="secondary" className="text-xs">{column.items.length}</Badge>
+                            </div>
                           </div>
 
                           {/* Cards */}
