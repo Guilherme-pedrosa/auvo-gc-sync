@@ -177,6 +177,7 @@ export default function RealtimeTrackingPage() {
     const doc = new jsPDF({ orientation: "landscape", unit: "mm", format: "a4" });
     const mesLabel = format(selectedDate, "MMMM yyyy", { locale: ptBR });
     const now = format(new Date(), "dd/MM/yyyy HH:mm");
+    const pageW = doc.internal.pageSize.getWidth();
 
     doc.setFontSize(14);
     doc.text(`Divergências — ${mesLabel}`, 14, 15);
@@ -185,75 +186,169 @@ export default function RealtimeTrackingPage() {
 
     let startY = 28;
 
-    // Atrasos
-    if (atrasadasMes && atrasadasMes.length > 0) {
-      doc.setFontSize(11);
+    // ── Group atrasos by technician ──
+    const atrasosByTech: Record<string, typeof atrasadasMes> = {};
+    (atrasadasMes || []).forEach((item) => {
+      const key = item.tecnico_nome || "Sem técnico";
+      if (!atrasosByTech[key]) atrasosByTech[key] = [];
+      atrasosByTech[key].push(item);
+    });
+
+    const techNamesAtrasos = Object.keys(atrasosByTech).sort();
+
+    if (techNamesAtrasos.length > 0) {
+      doc.setFontSize(12);
+      doc.setTextColor(220, 53, 69);
       doc.text("Não Atendidas no Dia Planejado", 14, startY);
-      startY += 3;
+      doc.setTextColor(0, 0, 0);
+      startY += 2;
 
-      const atrasosRows = atrasadasMes.map((item) => [
-        item.data_planejada ? format(new Date(item.data_planejada + "T12:00:00"), "dd/MM/yyyy") : "—",
-        item.tecnico_nome || "",
-        item.cliente || "Sem cliente",
-        item.descricao || "",
-        item.motivo || "",
-        item.auvo_task_id,
-      ]);
+      doc.setFontSize(8);
+      doc.text(
+        `Total: ${(atrasadasMes || []).length} ocorrência(s) · ${techNamesAtrasos.length} técnico(s)`,
+        14,
+        startY + 4
+      );
+      startY += 8;
 
-      autoTable(doc, {
-        startY,
-        head: [["Data", "Técnico", "Cliente", "Descrição", "Motivo", "Task ID"]],
-        body: atrasosRows,
-        styles: { fontSize: 7, cellPadding: 2 },
-        headStyles: { fillColor: [220, 53, 69], textColor: 255 },
-        columnStyles: {
-          0: { cellWidth: 22 },
-          1: { cellWidth: 35 },
-          3: { cellWidth: 55 },
-          4: { cellWidth: 45 },
-          5: { cellWidth: 20 },
-        },
-      });
+      for (const techName of techNamesAtrasos) {
+        const items = atrasosByTech[techName];
+        if (startY > 170) { doc.addPage(); startY = 15; }
 
-      startY = (doc as any).lastAutoTable.finalY + 8;
-    }
+        doc.setFontSize(9);
+        doc.setTextColor(80, 80, 80);
+        doc.text(`${techName}  (${items.length})`, 14, startY);
+        doc.setTextColor(0, 0, 0);
+        startY += 2;
 
-    // Pendências
-    if (pendenciasMes.length > 0) {
-      if (startY > 170) {
-        doc.addPage();
-        startY = 15;
+        const rows = items.map((item) => [
+          item.data_planejada ? format(new Date(item.data_planejada + "T12:00:00"), "dd/MM/yyyy") : "—",
+          item.cliente || "Sem cliente",
+          item.descricao || "",
+          item.motivo || "",
+          item.auvo_task_id,
+        ]);
+
+        autoTable(doc, {
+          startY,
+          head: [["Data", "Cliente", "Descrição", "Motivo", "Task ID"]],
+          body: rows,
+          styles: { fontSize: 7, cellPadding: 2 },
+          headStyles: { fillColor: [220, 53, 69], textColor: 255 },
+          columnStyles: {
+            0: { cellWidth: 22 },
+            2: { cellWidth: 60 },
+            3: { cellWidth: 50 },
+            4: { cellWidth: 22 },
+          },
+        });
+
+        startY = (doc as any).lastAutoTable.finalY + 6;
       }
-      doc.setFontSize(11);
-      doc.text("OS com Pendência", 14, startY);
-      startY += 3;
-
-      const pendRows = pendenciasMes.map((item) => [
-        item.data ? format(new Date(item.data + "T12:00:00"), "dd/MM/yyyy") : "—",
-        item.tecnico || "",
-        item.cliente || "Sem cliente",
-        item.formName || "",
-        item.motivosPendencia.length > 0
-          ? item.motivosPendencia.join("; ")
-          : "Motivo não detalhado",
-        item.gcOsCodigo ? `OS #${item.gcOsCodigo}` : item.taskId,
-      ]);
-
-      autoTable(doc, {
-        startY,
-        head: [["Data", "Técnico", "Cliente", "Formulário", "Motivo", "Ref"]],
-        body: pendRows,
-        styles: { fontSize: 7, cellPadding: 2 },
-        headStyles: { fillColor: [217, 149, 24], textColor: 255 },
-        columnStyles: {
-          0: { cellWidth: 22 },
-          1: { cellWidth: 30 },
-          3: { cellWidth: 35 },
-          4: { cellWidth: 65 },
-          5: { cellWidth: 22 },
-        },
-      });
     }
+
+    // ── Group pendências by technician ──
+    const pendByTech: Record<string, typeof pendenciasMes> = {};
+    pendenciasMes.forEach((item) => {
+      const key = item.tecnico || "Sem técnico";
+      if (!pendByTech[key]) pendByTech[key] = [];
+      pendByTech[key].push(item);
+    });
+
+    const techNamesPend = Object.keys(pendByTech).sort();
+
+    if (techNamesPend.length > 0) {
+      if (startY > 160) { doc.addPage(); startY = 15; }
+
+      doc.setFontSize(12);
+      doc.setTextColor(217, 149, 24);
+      doc.text("OS com Pendência", 14, startY);
+      doc.setTextColor(0, 0, 0);
+      startY += 2;
+
+      doc.setFontSize(8);
+      doc.text(
+        `Total: ${pendenciasMes.length} ocorrência(s) · ${techNamesPend.length} técnico(s)`,
+        14,
+        startY + 4
+      );
+      startY += 8;
+
+      for (const techName of techNamesPend) {
+        const items = pendByTech[techName];
+        if (startY > 170) { doc.addPage(); startY = 15; }
+
+        doc.setFontSize(9);
+        doc.setTextColor(80, 80, 80);
+        doc.text(`${techName}  (${items.length})`, 14, startY);
+        doc.setTextColor(0, 0, 0);
+        startY += 2;
+
+        const rows = items.map((item) => [
+          item.data ? format(new Date(item.data + "T12:00:00"), "dd/MM/yyyy") : "—",
+          item.cliente || "Sem cliente",
+          item.formName || "",
+          item.motivosPendencia.length > 0
+            ? item.motivosPendencia.join("; ")
+            : "Motivo não detalhado",
+          item.gcOsCodigo ? `OS #${item.gcOsCodigo}` : item.taskId,
+        ]);
+
+        autoTable(doc, {
+          startY,
+          head: [["Data", "Cliente", "Formulário", "Motivo", "Ref"]],
+          body: rows,
+          styles: { fontSize: 7, cellPadding: 2 },
+          headStyles: { fillColor: [217, 149, 24], textColor: 255 },
+          columnStyles: {
+            0: { cellWidth: 22 },
+            2: { cellWidth: 38 },
+            3: { cellWidth: 70 },
+            4: { cellWidth: 22 },
+          },
+        });
+
+        startY = (doc as any).lastAutoTable.finalY + 6;
+      }
+    }
+
+    // ── Summary page ──
+    doc.addPage();
+    doc.setFontSize(14);
+    doc.text(`Resumo por Técnico — ${mesLabel}`, 14, 15);
+
+    const summaryRows: string[][] = [];
+    const allTechNames = [...new Set([...techNamesAtrasos, ...techNamesPend])].sort();
+    for (const name of allTechNames) {
+      const nAtrasos = (atrasosByTech[name] || []).length;
+      const nPend = (pendByTech[name] || []).length;
+      summaryRows.push([name, String(nAtrasos), String(nPend), String(nAtrasos + nPend)]);
+    }
+    // Total row
+    const totalAtrasos = (atrasadasMes || []).length;
+    const totalPend = pendenciasMes.length;
+    summaryRows.push(["TOTAL", String(totalAtrasos), String(totalPend), String(totalAtrasos + totalPend)]);
+
+    autoTable(doc, {
+      startY: 22,
+      head: [["Técnico", "Não Atendidas", "Pendências", "Total"]],
+      body: summaryRows,
+      styles: { fontSize: 8, cellPadding: 3 },
+      headStyles: { fillColor: [60, 60, 60], textColor: 255 },
+      columnStyles: {
+        0: { cellWidth: 70 },
+        1: { halign: "center" as const },
+        2: { halign: "center" as const },
+        3: { halign: "center" as const, fontStyle: "bold" as const },
+      },
+      didParseCell: (data: any) => {
+        // Bold the total row
+        if (data.row.index === summaryRows.length - 1) {
+          data.cell.styles.fontStyle = "bold";
+          data.cell.styles.fillColor = [240, 240, 240];
+        }
+      },
+    });
 
     doc.save(`divergencias-${format(selectedDate, "yyyy-MM")}.pdf`);
     toast.success("PDF gerado com sucesso!");
