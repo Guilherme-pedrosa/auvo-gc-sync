@@ -23,13 +23,11 @@ type Tarefa = {
   status_auvo: string | null;
   descricao: string | null;
   endereco: string | null;
-  auvo_task_url: string | null;
   auvo_link: string | null;
-  gc_os_codigo: string | null;
-  gc_os_situacao: string | null;
-  gc_os_cor_situacao: string | null;
   hora_inicio: string | null;
   hora_fim: string | null;
+  check_in: boolean;
+  check_out: boolean;
 };
 
 const STATUS_COLORS: Record<string, string> = {
@@ -64,19 +62,16 @@ export default function AgendaSemanalPage() {
     queryKey: ["agenda-semanal", format(weekStart, "yyyy-MM-dd")],
     queryFn: async () => {
       const startStr = format(weekStart, "yyyy-MM-dd");
-      const endStr = format(weekEnd, "yyyy-MM-dd");
+      const endStr = format(addDays(weekStart, 5), "yyyy-MM-dd"); // Mon-Sat
 
-      const { data, error } = await supabase
-        .from("tarefas_central")
-        .select("auvo_task_id, cliente, tecnico, tecnico_id, data_tarefa, status_auvo, descricao, endereco, auvo_task_url, auvo_link, gc_os_codigo, gc_os_situacao, gc_os_cor_situacao, hora_inicio, hora_fim")
-        .gte("data_tarefa", startStr)
-        .lte("data_tarefa", endStr)
-        .order("hora_inicio", { ascending: true });
+      const { data, error } = await supabase.functions.invoke("auvo-agenda", {
+        body: { startDate: startStr, endDate: endStr },
+      });
 
       if (error) throw error;
-      return (data || []) as Tarefa[];
+      return (data?.data || []) as Tarefa[];
     },
-    staleTime: 1000 * 60 * 5,
+    staleTime: 1000 * 60 * 2,
   });
 
   // Group by technician
@@ -235,7 +230,7 @@ export default function AgendaSemanalPage() {
 
 function TaskCard({ tarefa }: { tarefa: Tarefa }) {
   const statusClass = STATUS_COLORS[tarefa.status_auvo || ""] || "bg-muted text-muted-foreground";
-  const linkUrl = tarefa.auvo_link || tarefa.auvo_task_url || `https://app2.auvo.com.br/relatorioTarefas/DetalheTarefa/${tarefa.auvo_task_id}`;
+  const linkUrl = tarefa.auvo_link || `https://app2.auvo.com.br/relatorioTarefas/DetalheTarefa/${tarefa.auvo_task_id}`;
 
   return (
     <Tooltip delayDuration={200}>
@@ -249,9 +244,6 @@ function TaskCard({ tarefa }: { tarefa: Tarefa }) {
           )}
         >
           <div className="font-medium text-foreground truncate">{tarefa.cliente || "—"}</div>
-          {tarefa.gc_os_codigo && (
-            <div className="text-muted-foreground truncate">OS {tarefa.gc_os_codigo}</div>
-          )}
           <div className="flex items-center justify-between mt-1 gap-1">
             {tarefa.hora_inicio && (
               <span className="text-muted-foreground">{tarefa.hora_inicio?.substring(0, 5)}</span>
@@ -270,7 +262,7 @@ function TaskCard({ tarefa }: { tarefa: Tarefa }) {
           {tarefa.hora_inicio && tarefa.hora_fim && (
             <div>🕐 {tarefa.hora_inicio?.substring(0, 5)} – {tarefa.hora_fim?.substring(0, 5)}</div>
           )}
-          {tarefa.gc_os_situacao && <div>OS: {tarefa.gc_os_situacao}</div>}
+          {tarefa.check_in && <div>✅ Check-in realizado</div>}
         </div>
       </TooltipContent>
     </Tooltip>
