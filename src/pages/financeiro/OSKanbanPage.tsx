@@ -112,6 +112,7 @@ export default function OSKanbanPage() {
   const [editTecnicoId, setEditTecnicoId] = useState("");
   const [editSaving, setEditSaving] = useState(false);
   const [execTaskId, setExecTaskId] = useState<string | null>(null);
+  const [execTaskUrl, setExecTaskUrl] = useState<string | null>(null);
   const [execTaskLoading, setExecTaskLoading] = useState(false);
 
   // Fetch Auvo users (technicians)
@@ -162,6 +163,7 @@ export default function OSKanbanPage() {
   const openEditModal = useCallback(async (card: OSItem) => {
     setEditingCard(card);
     setExecTaskId(null);
+    setExecTaskUrl(null);
     setExecTaskLoading(true);
     setEditDate(undefined);
 
@@ -192,6 +194,21 @@ export default function OSKanbanPage() {
 
       if (!taskError) {
         const taskObj = taskData?.data?.result ?? taskData?.data ?? null;
+
+        const rawTaskUrl =
+          taskObj?.taskUrl ||
+          taskObj?.taskURL ||
+          taskObj?.task_url ||
+          taskObj?.url ||
+          taskObj?.link ||
+          null;
+
+        if (rawTaskUrl && /^https?:\/\//i.test(String(rawTaskUrl))) {
+          setExecTaskUrl(String(rawTaskUrl));
+        } else {
+          setExecTaskUrl(`https://app2.auvo.com.br/relatorioTarefas/DetalheTarefa/${fetchedExecTaskId}`);
+        }
+
         const rawTaskDate = taskObj?.taskDate || taskObj?.task_date || taskObj?.date || null;
         if (rawTaskDate) {
           const parsedDate = new Date(rawTaskDate);
@@ -1203,9 +1220,14 @@ export default function OSKanbanPage() {
                   {execTaskLoading ? (
                     <span className="text-muted-foreground flex items-center gap-1"><Loader2 className="h-3 w-3 animate-spin" /> Buscando tarefa de execução...</span>
                   ) : execTaskId ? (
-                    <a href={`https://app.auvo.com.br/task/${execTaskId}`} target="_blank" rel="noopener noreferrer" className="text-primary font-medium hover:underline inline-flex items-center gap-1">
-                      ✓ Tarefa Execução #{execTaskId} <ExternalLink className="h-3 w-3" />
-                    </a>
+                    <span className="text-primary font-medium inline-flex items-center gap-2">
+                      ✓ Tarefa Execução #{execTaskId}
+                      {execTaskUrl ? (
+                        <a href={execTaskUrl} target="_blank" rel="noopener noreferrer" className="hover:underline inline-flex items-center gap-1">
+                          Abrir <ExternalLink className="h-3 w-3" />
+                        </a>
+                      ) : null}
+                    </span>
                   ) : (
                     <span className="text-destructive">⚠ Tarefa de execução não encontrada</span>
                   )}
