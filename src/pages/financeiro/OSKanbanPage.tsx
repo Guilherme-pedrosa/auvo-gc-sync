@@ -194,6 +194,21 @@ export default function OSKanbanPage() {
 
       if (!taskError) {
         const taskObj = taskData?.data?.result ?? taskData?.data ?? null;
+
+        const rawTaskUrl =
+          taskObj?.taskUrl ||
+          taskObj?.taskURL ||
+          taskObj?.task_url ||
+          taskObj?.url ||
+          taskObj?.link ||
+          null;
+
+        if (rawTaskUrl && /^https?:\/\//i.test(String(rawTaskUrl))) {
+          setExecTaskUrl(String(rawTaskUrl));
+        } else {
+          setExecTaskUrl(`https://app2.auvo.com.br/relatorioTarefas/DetalheTarefa/${fetchedExecTaskId}`);
+        }
+
         const rawTaskDate = taskObj?.taskDate || taskObj?.task_date || taskObj?.date || null;
         if (rawTaskDate) {
           const parsedDate = new Date(rawTaskDate);
