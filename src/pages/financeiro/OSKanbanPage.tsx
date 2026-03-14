@@ -95,6 +95,13 @@ export default function OSKanbanPage() {
   const [syncStatus, setSyncStatus] = useState("");
   const [osDetail, setOsDetail] = useState<any>(null);
   const [osDetailLoading, setOsDetailLoading] = useState(false);
+  // Value range filter
+  const [valorMin, setValorMin] = useState("");
+  const [valorMax, setValorMax] = useState("");
+  // Global sort
+  const [globalSort, setGlobalSort] = useState<string>("none");
+  // Per-column sort
+  const [columnSorts, setColumnSorts] = useState<Record<string, string>>({});
 
   // Fetch OS detail (produtos, serviços, valores) from GC when card is selected
   useEffect(() => {
