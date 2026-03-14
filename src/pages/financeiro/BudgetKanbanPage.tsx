@@ -1,5 +1,6 @@
 import { useState, useCallback, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { isAfter, isEqual } from "date-fns";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -425,6 +426,27 @@ export default function BudgetKanbanPage() {
 
   const resumo = data?.resumo;
 
+  // Orçamentos realizados breakdown: hoje, semana, mês
+  const orcBreakdown = useMemo(() => {
+    if (!data?.items) return { hoje: 0, semana: 0, mes: 0 };
+    const now = new Date();
+    const todayStr = format(now, "yyyy-MM-dd");
+    const weekStart = new Date(now);
+    weekStart.setDate(now.getDate() - now.getDay());
+    weekStart.setHours(0, 0, 0, 0);
+    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+
+    let hoje = 0, semana = 0, mes = 0;
+    for (const item of data.items) {
+      if (!item.orcamento_realizado || !item.gc_orcamento?.gc_data) continue;
+      const d = new Date(item.gc_orcamento.gc_data);
+      if (format(d, "yyyy-MM-dd") === todayStr) hoje++;
+      if (isAfter(d, weekStart) || isEqual(d, weekStart)) semana++;
+      if (isAfter(d, monthStart) || isEqual(d, monthStart)) mes++;
+    }
+    return { hoje, semana, mes };
+  }, [data]);
+
   return (
     <div className="min-h-screen bg-background">
       {/* Header */}
@@ -553,6 +575,9 @@ export default function BudgetKanbanPage() {
               <Badge variant="secondary" className="gap-1 bg-emerald-100 text-emerald-800 border-emerald-300">
                 <Check className="h-3 w-3" />
                 {resumo.orcamentos_realizados} realizados
+                <span className="text-[10px] text-emerald-600 ml-1">
+                  (hoje: {orcBreakdown.hoje} · sem: {orcBreakdown.semana} · mês: {orcBreakdown.mes})
+                </span>
               </Badge>
             </div>
           )}
