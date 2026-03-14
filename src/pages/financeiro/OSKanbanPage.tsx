@@ -21,7 +21,7 @@ import {
   Package, FileText, ClipboardList, MapPin, ArrowUpDown, ArrowDown, ArrowUp,
   UserCog, Save, Loader2
 } from "lucide-react";
-import { format, startOfMonth, parse } from "date-fns";
+import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
