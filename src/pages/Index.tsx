@@ -162,37 +162,19 @@ export default function Index() {
     staleTime: 60_000,
   });
 
-  // Fetch execução data from custom cache (all config_ids)
+  // Fetch execução data from the same budget-kanban source (has OS data too)
   const { data: execData, isLoading: execLoading, refetch: refetchExec } = useQuery({
     queryKey: ["dash-exec", format(dateRange.from, "yyyy-MM-dd"), format(dateRange.to, "yyyy-MM-dd")],
     queryFn: async () => {
-      const { data: cached, error } = await supabase
-        .from("kanban_custom_cache")
-        .select("dados, atualizado_em")
-        .order("atualizado_em", { ascending: false });
+      const { data, error } = await supabase.functions.invoke("budget-kanban", {
+        body: {
+          mode: "cache",
+          start_date: format(dateRange.from, "yyyy-MM-dd"),
+          end_date: format(dateRange.to, "yyyy-MM-dd"),
+        },
+      });
       if (error) throw error;
-
-      // Deduplicate by auvo_task_id
-      const seen = new Set<string>();
-      const items: KanbanItem[] = [];
-      for (const row of cached || []) {
-        const d = row.dados as any;
-        if (!d?.auvo_task_id || seen.has(d.auvo_task_id)) continue;
-        // Filter by date range
-        const taskDate = String(d.data_tarefa || "");
-        if (
-          taskDate &&
-          taskDate >= format(dateRange.from, "yyyy-MM-dd") &&
-          taskDate <= format(dateRange.to, "yyyy-MM-dd")
-        ) {
-          seen.add(d.auvo_task_id);
-          items.push(d as KanbanItem);
-        }
-      }
-
-      let ultimoSync: string | null = null;
-      if (cached && cached.length > 0) ultimoSync = cached[0].atualizado_em;
-      return { items, ultimo_sync: ultimoSync };
+      return data as { items: KanbanItem[]; ultimo_sync?: string };
     },
     staleTime: 60_000,
   });
