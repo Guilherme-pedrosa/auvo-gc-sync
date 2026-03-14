@@ -63,7 +63,7 @@ async function fetchAuvoTasksForPeriod(bearerToken: string, startDate: string, e
     }
 
     const json = await response.json();
-    const tasks = json?.result?.tasks || json?.result || [];
+    const tasks = json?.result?.entityList || json?.result?.Entities || json?.result?.tasks || json?.result || [];
     if (!Array.isArray(tasks) || tasks.length === 0) {
       console.log(`[central-sync] Auvo ${startDate}→${endDate} page ${page}: 0 tasks (fim)`);
       break;
