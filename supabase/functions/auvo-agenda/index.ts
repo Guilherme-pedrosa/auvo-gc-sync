@@ -70,6 +70,13 @@ Deno.serve(async (req) => {
       page++;
     }
 
+    // Debug: log first task's raw keys
+    if (allTasks.length > 0) {
+      const sample = allTasks[0];
+      console.log("[auvo-agenda] Sample task keys:", Object.keys(sample));
+      console.log("[auvo-agenda] Sample task:", JSON.stringify(sample).substring(0, 1000));
+    }
+
     // Map to simplified format
     const mapped = allTasks.map((t: any) => {
       const taskId = String(t.taskID || t.taskId || t.id || "");
