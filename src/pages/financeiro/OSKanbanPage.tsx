@@ -163,6 +163,7 @@ export default function OSKanbanPage() {
   const openEditModal = useCallback(async (card: OSItem) => {
     setEditingCard(card);
     setExecTaskId(null);
+    setExecTaskUrl(null);
     setExecTaskLoading(true);
     setEditDate(undefined);
 
