@@ -314,9 +314,9 @@ export default function OSKanbanPage() {
                 />
               </PopoverContent>
             </Popover>
-            <Button variant="outline" size="sm" onClick={handleSync} disabled={isSyncing || isFetching}>
-              <RefreshCw className={`h-4 w-4 mr-2 ${isSyncing ? "animate-spin" : ""}`} />
-              {isSyncing ? "Sincronizando..." : "Sincronizar"}
+            <Button variant="outline" size="sm" onClick={handleSync} disabled={isSyncing || isFetching} className="min-w-[180px]">
+              <RefreshCw className={`h-4 w-4 mr-2 flex-shrink-0 ${isSyncing ? "animate-spin" : ""}`} />
+              <span className="truncate">{isSyncing ? syncStatus || "Sincronizando..." : "Sincronizar"}</span>
             </Button>
           </div>
         </div>
