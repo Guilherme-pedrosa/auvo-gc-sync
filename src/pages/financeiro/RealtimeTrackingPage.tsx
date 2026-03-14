@@ -109,6 +109,20 @@ export default function RealtimeTrackingPage() {
     enabled: sheetOpen,
   });
 
+  // Compute pendências from current day's tracking data
+  const pendenciasMes = useMemo(() => {
+    if (!data?.tecnicos) return [];
+    const items: (TaskItem & { tecnico: string })[] = [];
+    for (const tec of data.tecnicos) {
+      for (const t of tec.tarefas) {
+        if (t.pendencia && t.pendencia.trim() !== "") {
+          items.push({ ...t, tecnico: tec.nome });
+        }
+      }
+    }
+    return items;
+  }, [data]);
+
   const goDay = (dir: number) => setSelectedDate((d) => (dir > 0 ? addDays(d, 1) : subDays(d, 1)));
 
   return (
