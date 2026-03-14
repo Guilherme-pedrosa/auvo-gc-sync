@@ -84,6 +84,19 @@ export default function AgendaSemanalPage() {
 
   const queryKey = ["agenda-semanal", format(weekStart, "yyyy-MM-dd")];
 
+  // Fetch all Auvo users (technicians)
+  const { data: allUsers } = useQuery({
+    queryKey: ["auvo-all-users"],
+    queryFn: async () => {
+      const { data, error } = await supabase.functions.invoke("auvo-task-update", {
+        body: { action: "list-users" },
+      });
+      if (error) throw error;
+      return (data?.data || []) as Array<{ userID: number; name: string; login: string }>;
+    },
+    staleTime: 1000 * 60 * 10,
+  });
+
   const { data: tarefas, isLoading, refetch, isFetching } = useQuery({
     queryKey,
     queryFn: async () => {
@@ -98,15 +111,28 @@ export default function AgendaSemanalPage() {
     staleTime: 1000 * 60 * 2,
   });
 
+  // All technicians: merge Auvo users + any from tasks
   const tecnicos = useMemo(() => {
-    if (!tarefas) return [];
     const map = new Map<string, { nome: string; id: string | null }>();
-    for (const t of tarefas) {
-      const nome = t.tecnico || "Sem técnico";
-      if (!map.has(nome)) map.set(nome, { nome, id: t.tecnico_id });
+    // Add all Auvo users first
+    if (allUsers) {
+      for (const u of allUsers) {
+        const nome = String(u.name || u.login || "").trim();
+        const id = String(u.userID || "");
+        if (nome && nome !== "Sem técnico") {
+          map.set(nome, { nome, id });
+        }
+      }
+    }
+    // Also add any from tasks (in case of mismatches)
+    if (tarefas) {
+      for (const t of tarefas) {
+        const nome = t.tecnico || "Sem técnico";
+        if (!map.has(nome)) map.set(nome, { nome, id: t.tecnico_id });
+      }
     }
     return Array.from(map.values()).sort((a, b) => a.nome.localeCompare(b.nome));
-  }, [tarefas]);
+  }, [tarefas, allUsers]);
 
   const grid = useMemo(() => {
     if (!tarefas) return new Map<string, Tarefa[][]>();
