@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useCallback } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -12,11 +12,13 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/component
 import {
   RefreshCw, CalendarIcon, MapPin, Clock, User,
   CheckCircle2, PlayCircle, CalendarClock, AlertTriangle,
-  ChevronLeft, ChevronRight, FileWarning, ChevronDown
+  ChevronLeft, ChevronRight, FileWarning, ChevronDown, Download
 } from "lucide-react";
 import { format, addDays, subDays, isToday, startOfMonth, endOfMonth } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { toast } from "sonner";
+import jsPDF from "jspdf";
+import autoTable from "jspdf-autotable";
 
 type TaskItem = {
   taskId: string;
@@ -171,6 +173,92 @@ export default function RealtimeTrackingPage() {
 
   const goDay = (dir: number) => setSelectedDate((d) => (dir > 0 ? addDays(d, 1) : subDays(d, 1)));
 
+  const exportPDF = useCallback(() => {
+    const doc = new jsPDF({ orientation: "landscape", unit: "mm", format: "a4" });
+    const mesLabel = format(selectedDate, "MMMM yyyy", { locale: ptBR });
+    const now = format(new Date(), "dd/MM/yyyy HH:mm");
+
+    doc.setFontSize(14);
+    doc.text(`Divergências — ${mesLabel}`, 14, 15);
+    doc.setFontSize(8);
+    doc.text(`Gerado em ${now}`, 14, 21);
+
+    let startY = 28;
+
+    // Atrasos
+    if (atrasadasMes && atrasadasMes.length > 0) {
+      doc.setFontSize(11);
+      doc.text("Não Atendidas no Dia Planejado", 14, startY);
+      startY += 3;
+
+      const atrasosRows = atrasadasMes.map((item) => [
+        item.data_planejada ? format(new Date(item.data_planejada + "T12:00:00"), "dd/MM/yyyy") : "—",
+        item.tecnico_nome || "",
+        item.cliente || "Sem cliente",
+        item.descricao || "",
+        item.motivo || "",
+        item.auvo_task_id,
+      ]);
+
+      autoTable(doc, {
+        startY,
+        head: [["Data", "Técnico", "Cliente", "Descrição", "Motivo", "Task ID"]],
+        body: atrasosRows,
+        styles: { fontSize: 7, cellPadding: 2 },
+        headStyles: { fillColor: [220, 53, 69], textColor: 255 },
+        columnStyles: {
+          0: { cellWidth: 22 },
+          1: { cellWidth: 35 },
+          3: { cellWidth: 55 },
+          4: { cellWidth: 45 },
+          5: { cellWidth: 20 },
+        },
+      });
+
+      startY = (doc as any).lastAutoTable.finalY + 8;
+    }
+
+    // Pendências
+    if (pendenciasMes.length > 0) {
+      if (startY > 170) {
+        doc.addPage();
+        startY = 15;
+      }
+      doc.setFontSize(11);
+      doc.text("OS com Pendência", 14, startY);
+      startY += 3;
+
+      const pendRows = pendenciasMes.map((item) => [
+        item.data ? format(new Date(item.data + "T12:00:00"), "dd/MM/yyyy") : "—",
+        item.tecnico || "",
+        item.cliente || "Sem cliente",
+        item.formName || "",
+        item.motivosPendencia.length > 0
+          ? item.motivosPendencia.join("; ")
+          : "Motivo não detalhado",
+        item.gcOsCodigo ? `OS #${item.gcOsCodigo}` : item.taskId,
+      ]);
+
+      autoTable(doc, {
+        startY,
+        head: [["Data", "Técnico", "Cliente", "Formulário", "Motivo", "Ref"]],
+        body: pendRows,
+        styles: { fontSize: 7, cellPadding: 2 },
+        headStyles: { fillColor: [217, 149, 24], textColor: 255 },
+        columnStyles: {
+          0: { cellWidth: 22 },
+          1: { cellWidth: 30 },
+          3: { cellWidth: 35 },
+          4: { cellWidth: 65 },
+          5: { cellWidth: 22 },
+        },
+      });
+    }
+
+    doc.save(`divergencias-${format(selectedDate, "yyyy-MM")}.pdf`);
+    toast.success("PDF gerado com sucesso!");
+  }, [atrasadasMes, pendenciasMes, selectedDate]);
+
   return (
     <div className="min-h-screen flex flex-col">
       {/* Header */}
@@ -251,16 +339,27 @@ export default function RealtimeTrackingPage() {
                             </div>
                           )}
                         </div>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="h-7 text-xs"
-                          onClick={() => {
-                            void Promise.all([refetchAtrasadas(), refetchPendencias()]);
-                          }}
-                        >
-                          <RefreshCw className="h-3 w-3 mr-1" /> Atualizar
-                        </Button>
+                        <div className="flex items-center gap-1">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-7 text-xs"
+                            onClick={exportPDF}
+                            disabled={(!atrasadasMes || atrasadasMes.length === 0) && pendenciasMes.length === 0}
+                          >
+                            <Download className="h-3 w-3 mr-1" /> PDF
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-7 text-xs"
+                            onClick={() => {
+                              void Promise.all([refetchAtrasadas(), refetchPendencias()]);
+                            }}
+                          >
+                            <RefreshCw className="h-3 w-3 mr-1" /> Atualizar
+                          </Button>
+                        </div>
                       </div>
                       <ScrollArea className="h-[calc(100vh-12rem)]">
                         <div className="space-y-4">
