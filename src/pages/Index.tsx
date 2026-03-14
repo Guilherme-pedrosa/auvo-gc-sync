@@ -85,10 +85,10 @@ function computeMetrics(items: KanbanItem[], monthItems: KanbanItem[], source: "
   // Monthly
   const mesComMatch = source === "orc"
     ? monthItems.filter((i) => i.orcamento_realizado)
-    : monthItems.filter((i) => hasFilledQuestionnaire(i));
+    : monthItems.filter((i) => i.os_realizada);
   const mesSemMatch = source === "orc"
     ? monthItems.filter((i) => !i.orcamento_realizado && !i.os_realizada)
-    : monthItems.filter((i) => !hasFilledQuestionnaire(i));
+    : monthItems.filter((i) => !i.os_realizada);
   const mesValorMatch = mesComMatch.reduce((acc, i) => {
     if (source === "orc") return acc + parseFloat(i.gc_orcamento?.gc_valor_total || "0");
     return acc + parseFloat(i.gc_os?.gc_valor_total || "0");
