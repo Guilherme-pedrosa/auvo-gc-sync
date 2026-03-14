@@ -672,7 +672,146 @@ export default function OSKanbanPage() {
                 </div>
               )}
 
-              {/* Orçamento vinculado */}
+              {/* Produtos e Serviços da OS (do GestãoClick) */}
+              {osDetailLoading && (
+                <div className="border rounded-md p-4 space-y-2">
+                  <Skeleton className="h-4 w-40" />
+                  <Skeleton className="h-8 w-full" />
+                  <Skeleton className="h-8 w-full" />
+                  <Skeleton className="h-8 w-3/4" />
+                </div>
+              )}
+              {!osDetailLoading && osDetail && (() => {
+                const produtos: any[] = osDetail?.produtos || [];
+                const servicos: any[] = osDetail?.servicos || [];
+                const hasItems = produtos.length > 0 || servicos.length > 0;
+
+                // Financial summary from GC detail
+                const valorProdutos = Number(osDetail?.valor_produtos || osDetail?.total_produtos || 0);
+                const valorServicos = Number(osDetail?.valor_servicos || osDetail?.total_servicos || 0);
+                const valorDesconto = Number(osDetail?.desconto || osDetail?.valor_desconto || 0);
+                const valorTotal = Number(osDetail?.valor_total || selectedCard.gc_os_valor_total || 0);
+
+                return (
+                  <>
+                    {/* Resumo financeiro */}
+                    <div className="border rounded-md">
+                      <div className="flex items-center gap-2 px-3 py-2 bg-muted/50 border-b">
+                        <span className="text-sm font-semibold">💰 Resumo Financeiro</span>
+                      </div>
+                      <div className="grid grid-cols-4 gap-2 p-3 text-sm">
+                        <div className="text-center">
+                          <span className="text-muted-foreground text-xs block">Produtos</span>
+                          <p className="font-semibold">{formatCurrency(valorProdutos)}</p>
+                        </div>
+                        <div className="text-center">
+                          <span className="text-muted-foreground text-xs block">Serviços</span>
+                          <p className="font-semibold">{formatCurrency(valorServicos)}</p>
+                        </div>
+                        <div className="text-center">
+                          <span className="text-muted-foreground text-xs block">Desconto</span>
+                          <p className="font-semibold text-destructive">
+                            {valorDesconto > 0 ? `-${formatCurrency(valorDesconto)}` : "—"}
+                          </p>
+                        </div>
+                        <div className="text-center">
+                          <span className="text-muted-foreground text-xs block">Total</span>
+                          <p className="font-bold text-foreground">{formatCurrency(valorTotal)}</p>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Tabela de Produtos */}
+                    {produtos.length > 0 && (
+                      <div className="border rounded-md">
+                        <div className="flex items-center gap-2 px-3 py-2 bg-muted/50 border-b">
+                          <Package className="h-4 w-4 text-muted-foreground" />
+                          <span className="text-sm font-semibold">Produtos ({produtos.length})</span>
+                        </div>
+                        <Table>
+                          <TableHeader>
+                            <TableRow>
+                              <TableHead className="text-xs">Código</TableHead>
+                              <TableHead className="text-xs">Descrição</TableHead>
+                              <TableHead className="text-xs text-right">Qtd</TableHead>
+                              <TableHead className="text-xs text-right">Unit.</TableHead>
+                              <TableHead className="text-xs text-right">Total</TableHead>
+                            </TableRow>
+                          </TableHeader>
+                          <TableBody>
+                            {produtos.map((p: any, i: number) => {
+                              const qtd = Number(p.quantidade || p.qtd || 1);
+                              const unitario = Number(p.valor_unitario || p.preco || p.valor || 0);
+                              const total = Number(p.valor_total || p.subtotal || qtd * unitario);
+                              return (
+                                <TableRow key={i}>
+                                  <TableCell className="text-xs font-mono py-1.5">
+                                    {p.codigo || p.referencia || "—"}
+                                  </TableCell>
+                                  <TableCell className="text-xs py-1.5 max-w-[200px] truncate" title={p.descricao || p.nome || ""}>
+                                    {p.descricao || p.nome || p.produto || "—"}
+                                  </TableCell>
+                                  <TableCell className="text-xs py-1.5 text-right">{qtd}</TableCell>
+                                  <TableCell className="text-xs py-1.5 text-right">{formatCurrency(unitario)}</TableCell>
+                                  <TableCell className="text-xs py-1.5 text-right font-medium">{formatCurrency(total)}</TableCell>
+                                </TableRow>
+                              );
+                            })}
+                          </TableBody>
+                        </Table>
+                      </div>
+                    )}
+
+                    {/* Tabela de Serviços */}
+                    {servicos.length > 0 && (
+                      <div className="border rounded-md">
+                        <div className="flex items-center gap-2 px-3 py-2 bg-muted/50 border-b">
+                          <ClipboardList className="h-4 w-4 text-muted-foreground" />
+                          <span className="text-sm font-semibold">Serviços ({servicos.length})</span>
+                        </div>
+                        <Table>
+                          <TableHeader>
+                            <TableRow>
+                              <TableHead className="text-xs">Código</TableHead>
+                              <TableHead className="text-xs">Descrição</TableHead>
+                              <TableHead className="text-xs text-right">Qtd</TableHead>
+                              <TableHead className="text-xs text-right">Unit.</TableHead>
+                              <TableHead className="text-xs text-right">Total</TableHead>
+                            </TableRow>
+                          </TableHeader>
+                          <TableBody>
+                            {servicos.map((s: any, i: number) => {
+                              const qtd = Number(s.quantidade || s.qtd || 1);
+                              const unitario = Number(s.valor_unitario || s.preco || s.valor || 0);
+                              const total = Number(s.valor_total || s.subtotal || qtd * unitario);
+                              return (
+                                <TableRow key={i}>
+                                  <TableCell className="text-xs font-mono py-1.5">
+                                    {s.codigo || s.referencia || "—"}
+                                  </TableCell>
+                                  <TableCell className="text-xs py-1.5 max-w-[200px] truncate" title={s.descricao || s.nome || ""}>
+                                    {s.descricao || s.nome || s.servico || "—"}
+                                  </TableCell>
+                                  <TableCell className="text-xs py-1.5 text-right">{qtd}</TableCell>
+                                  <TableCell className="text-xs py-1.5 text-right">{formatCurrency(unitario)}</TableCell>
+                                  <TableCell className="text-xs py-1.5 text-right font-medium">{formatCurrency(total)}</TableCell>
+                                </TableRow>
+                              );
+                            })}
+                          </TableBody>
+                        </Table>
+                      </div>
+                    )}
+
+                    {!hasItems && (
+                      <div className="border rounded-md p-3 text-sm text-muted-foreground text-center">
+                        Nenhum produto ou serviço cadastrado nesta OS
+                      </div>
+                    )}
+                  </>
+                );
+              })()}
+
               {selectedCard.orcamento_realizado && selectedCard.gc_orcamento_codigo && (
                 <div className="border rounded-md border-emerald-300 bg-emerald-50 dark:bg-emerald-950/20">
                   <div className="flex items-center gap-2 px-3 py-2 border-b border-emerald-300">
