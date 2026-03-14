@@ -59,15 +59,23 @@ const pieColors = ["hsl(38, 92%, 50%)", "hsl(142, 71%, 45%)", "hsl(217, 91%, 60%
 
 const fmtBRL = (v: number) => v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 
+function hasFilledQuestionnaire(item: KanbanItem) {
+  return item.questionario_respostas?.some(
+    (r) => r.reply && r.reply.trim() !== "" && !r.reply.startsWith("http")
+  );
+}
+
 function computeMetrics(items: KanbanItem[], monthItems: KanbanItem[], source: "orc" | "exec") {
   const total = items.length;
+
+  // For exec: questionnaire filled = "Com OS" (the questionnaire IS the OS evidence)
   const comMatch = source === "orc"
     ? items.filter((i) => i.orcamento_realizado)
-    : items.filter((i) => i.os_realizada);
+    : items.filter((i) => hasFilledQuestionnaire(i));
   const comOs = items.filter((i) => i.os_realizada);
   const semMatch = source === "orc"
     ? items.filter((i) => !i.orcamento_realizado && !i.os_realizada)
-    : items.filter((i) => !i.os_realizada);
+    : items.filter((i) => !hasFilledQuestionnaire(i));
 
   const valorMatch = comMatch.reduce((acc, i) => {
     if (source === "orc") return acc + parseFloat(i.gc_orcamento?.gc_valor_total || "0");
@@ -78,10 +86,10 @@ function computeMetrics(items: KanbanItem[], monthItems: KanbanItem[], source: "
   // Monthly
   const mesComMatch = source === "orc"
     ? monthItems.filter((i) => i.orcamento_realizado)
-    : monthItems.filter((i) => i.os_realizada);
+    : monthItems.filter((i) => hasFilledQuestionnaire(i));
   const mesSemMatch = source === "orc"
     ? monthItems.filter((i) => !i.orcamento_realizado && !i.os_realizada)
-    : monthItems.filter((i) => !i.os_realizada);
+    : monthItems.filter((i) => !hasFilledQuestionnaire(i));
   const mesValorMatch = mesComMatch.reduce((acc, i) => {
     if (source === "orc") return acc + parseFloat(i.gc_orcamento?.gc_valor_total || "0");
     return acc + parseFloat(i.gc_os?.gc_valor_total || "0");
@@ -98,15 +106,16 @@ function computeMetrics(items: KanbanItem[], monthItems: KanbanItem[], source: "
     situacaoMap[sit].valor += parseFloat(doc?.gc_valor_total || "0");
   }
 
-  // By technician — green = has Orçamento OR OS, yellow = neither
+  // By technician — green = has match, yellow = no match
   const tecnicoMap: Record<string, { total: number; comMatch: number; valorMatch: number }> = {};
   for (const item of items) {
     const t = item.tecnico || "Sem técnico";
     if (!tecnicoMap[t]) tecnicoMap[t] = { total: 0, comMatch: 0, valorMatch: 0 };
     tecnicoMap[t].total++;
-    const hasOrc = item.orcamento_realizado;
-    const hasOs = item.os_realizada;
-    if (hasOrc || hasOs) {
+    const hasMatch = source === "orc"
+      ? (item.orcamento_realizado || item.os_realizada)
+      : hasFilledQuestionnaire(item);
+    if (hasMatch) {
       tecnicoMap[t].comMatch++;
       const valorOrc = parseFloat(item.gc_orcamento?.gc_valor_total || "0");
       const valorOs = parseFloat(item.gc_os?.gc_valor_total || "0");
@@ -447,7 +456,7 @@ export default function Index() {
   );
 
   const orcLabels = { match: "Com Orçamento", sem: "Sem Orçamento" };
-  const execLabels = { match: "Com OS (GC)", sem: "Sem OS (GC)" };
+  const execLabels = { match: "Questionário Preenchido", sem: "Sem Preenchimento" };
 
   return (
     <div className="min-h-screen">
