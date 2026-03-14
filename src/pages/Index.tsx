@@ -514,7 +514,7 @@ export default function Index() {
   );
 
   const orcLabels = { match: "Com Orçamento", sem: "Sem Orçamento" };
-  const execLabels = { match: "Questionário Preenchido", sem: "Sem Preenchimento" };
+  const execLabels = { match: "Com OS", sem: "Sem OS" };
 
   return (
     <div className="min-h-screen">
