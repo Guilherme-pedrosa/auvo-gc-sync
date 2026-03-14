@@ -356,7 +356,70 @@ export default function AgendaSemanalPage() {
       </ScrollArea>
 
       {/* Detail Dialog */}
-      <TaskDetailDialog tarefa={selectedTarefa} onClose={() => setSelectedTarefa(null)} />
+      <TaskDetailDialog
+        tarefa={selectedTarefa}
+        onClose={() => setSelectedTarefa(null)}
+        tecnicos={tecnicos}
+        onUpdate={async (taskId, newDate, newTecNome, newTecId) => {
+          setMovingTaskId(taskId);
+          try {
+            const { data: taskData } = await supabase.functions.invoke("auvo-task-update", {
+              body: { action: "get", taskId: Number(taskId) },
+            });
+            const taskResult = taskData?.data?.result;
+            if (!taskResult) throw new Error("Não foi possível obter dados da tarefa");
+
+            const patches: Array<{ op: string; path: string; value: any }> = [];
+            const oldDate = selectedTarefa?.data_tarefa;
+            const oldTec = selectedTarefa?.tecnico;
+
+            if (newDate && newDate !== oldDate) {
+              const newDateFormatted = newDate + "T" + (taskResult.taskDate?.substring(11) || "08:00:00");
+              patches.push({ op: "replace", path: "/taskDate", value: newDateFormatted });
+            }
+            if (newTecId && newTecNome !== oldTec) {
+              patches.push({ op: "replace", path: "/idUserTo", value: Number(newTecId) });
+            }
+
+            if (patches.length === 0) { setMovingTaskId(null); return; }
+
+            const { data: patchResult, error } = await supabase.functions.invoke("auvo-task-update", {
+              body: { action: "edit", taskId: Number(taskId), patches },
+            });
+            if (error) throw error;
+            if (patchResult?.status && patchResult.status >= 400) {
+              throw new Error(patchResult?.data?.message || `Erro ${patchResult.status}`);
+            }
+
+            queryClient.setQueryData(queryKey, (old: Tarefa[] | undefined) => {
+              if (!old) return old;
+              return old.map(t => {
+                if (t.auvo_task_id !== taskId) return t;
+                return {
+                  ...t,
+                  ...(newDate ? { data_tarefa: newDate } : {}),
+                  ...(newTecId ? { tecnico: newTecNome, tecnico_id: newTecId } : {}),
+                };
+              });
+            });
+
+            // Update selected tarefa too
+            setSelectedTarefa(prev => prev ? {
+              ...prev,
+              ...(newDate ? { data_tarefa: newDate } : {}),
+              ...(newTecId ? { tecnico: newTecNome, tecnico_id: newTecId } : {}),
+            } : null);
+
+            toast.success("Tarefa atualizada no Auvo!");
+          } catch (err: any) {
+            console.error("[agenda] Erro ao editar tarefa:", err);
+            toast.error(`Erro: ${err.message}`);
+          } finally {
+            setMovingTaskId(null);
+          }
+        }}
+        isSaving={!!movingTaskId}
+      />
     </div>
   );
 }
