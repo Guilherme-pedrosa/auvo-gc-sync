@@ -136,10 +136,11 @@ export default function Index() {
     from: startOfYear(today),
     to: today,
   });
-  const [monthRange] = useState({
-    from: startOfMonth(today),
-    to: endOfMonth(today),
-  });
+  const [selectedMonth, setSelectedMonth] = useState(today);
+  const monthRange = useMemo(() => ({
+    from: startOfMonth(selectedMonth),
+    to: endOfMonth(selectedMonth),
+  }), [selectedMonth]);
 
   // Fetch orçamentos data
   const { data: orcData, isLoading: orcLoading, refetch: refetchOrc } = useQuery({
