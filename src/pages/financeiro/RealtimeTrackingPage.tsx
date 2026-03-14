@@ -110,7 +110,7 @@ export default function RealtimeTrackingPage() {
   });
 
   // Monthly pendências from tarefas_central
-  const { data: pendenciasMesRaw } = useQuery({
+  const { data: pendenciasMesRaw, refetch: refetchPendencias } = useQuery({
     queryKey: ["pendencias-mes", monthStart, monthEnd],
     queryFn: async () => {
       const { data, error } = await supabase
@@ -127,19 +127,34 @@ export default function RealtimeTrackingPage() {
     enabled: sheetOpen,
   });
 
+  const isBlankChecklistReply = (value: unknown) => {
+    if (value === null || value === undefined) return true;
+    const text = String(value).trim().toLowerCase();
+    return !text || [".", "-", "na", "n/a", "null", "undefined"].includes(text);
+  };
+
   const pendenciasMes = useMemo(() => {
     return (pendenciasMesRaw || []).map((item) => {
       const pendenciaRaw = item.pendencia || "";
-      // Extract form name: "Checklist: FORM_NAME" → "FORM_NAME"
       const formName = pendenciaRaw.startsWith("Checklist: ")
         ? pendenciaRaw.replace("Checklist: ", "")
         : pendenciaRaw;
 
-      // Find empty fields in questionnaire responses
-      const respostas = (item.questionario_respostas as any[] || []);
+      const respostas = Array.isArray(item.questionario_respostas)
+        ? item.questionario_respostas.filter(
+            (r): r is { question?: unknown; reply?: unknown } => typeof r === "object" && r !== null,
+          )
+        : [];
+
       const camposVazios = respostas
-        .filter((r: any) => !r.reply || r.reply.trim() === "")
-        .map((r: any) => r.question || "");
+        .filter((r) => isBlankChecklistReply(r.reply))
+        .map((r) => (typeof r.question === "string" ? r.question.trim() : ""))
+        .filter(Boolean);
+
+      const motivosPendencia = [
+        ...(respostas.length === 0 ? ["Formulário sem respostas enviadas"] : []),
+        ...(camposVazios.length > 0 ? [`Sem preenchimento: ${camposVazios.join(", ")}`] : []),
+      ];
 
       return {
         taskId: item.auvo_task_id,
@@ -148,7 +163,7 @@ export default function RealtimeTrackingPage() {
         data: item.data_tarefa || "",
         pendencia: pendenciaRaw,
         formName,
-        camposVazios,
+        motivosPendencia,
         descricao: item.descricao || "",
         gcOsCodigo: item.gc_os_codigo || "",
       };
