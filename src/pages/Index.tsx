@@ -9,9 +9,10 @@ import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   CalendarIcon, RefreshCw, DollarSign, FileText,
-  ClipboardList, CheckCircle2, XCircle, TrendingUp, BarChart3, Wrench
+  ClipboardList, CheckCircle2, XCircle, TrendingUp, BarChart3, Wrench,
+  ChevronLeft, ChevronRight
 } from "lucide-react";
-import { format, startOfMonth, startOfYear, endOfMonth, isWithinInterval, parseISO } from "date-fns";
+import { format, startOfMonth, startOfYear, endOfMonth, isWithinInterval, parseISO, subMonths, addMonths } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { toast } from "sonner";
 import {
