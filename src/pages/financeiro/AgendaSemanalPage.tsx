@@ -559,6 +559,7 @@ function TaskDetailDialog({
       <DialogContent className="max-w-md">
         <DialogHeader>
           <DialogTitle className="text-base">{tarefa.cliente || "Sem cliente"}</DialogTitle>
+          <div className="text-xs text-muted-foreground">Tarefa #{tarefa.auvo_task_id}</div>
         </DialogHeader>
 
         <div className="space-y-4">
