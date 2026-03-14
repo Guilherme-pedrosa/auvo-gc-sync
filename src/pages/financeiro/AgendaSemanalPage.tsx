@@ -5,14 +5,18 @@ import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
-  ArrowLeft, ChevronLeft, ChevronRight, RefreshCw, CalendarDays, Loader2
+  ArrowLeft, ChevronLeft, ChevronRight, RefreshCw, CalendarDays, Loader2, ExternalLink, MapPin, Clock, AlertTriangle
 } from "lucide-react";
-import { format, addDays, startOfWeek, endOfWeek, parseISO, isSameDay } from "date-fns";
+import { format, addDays, startOfWeek, parseISO, isSameDay } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { cn } from "@/lib/utils";
 import { useNavigate } from "react-router-dom";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { toast } from "sonner";
+import {
+  Dialog, DialogContent, DialogHeader, DialogTitle,
+} from "@/components/ui/dialog";
+import { Badge } from "@/components/ui/badge";
+import { Separator } from "@/components/ui/separator";
 
 type Tarefa = {
   auvo_task_id: string;
@@ -28,6 +32,15 @@ type Tarefa = {
   hora_fim: string | null;
   check_in: boolean;
   check_out: boolean;
+  gc_os_valor_total: number | null;
+  gc_orc_valor_total: number | null;
+  gc_os_situacao: string | null;
+  gc_os_codigo: string | null;
+  gc_os_link: string | null;
+  gc_orc_situacao: string | null;
+  gc_orcamento_codigo: string | null;
+  gc_orc_link: string | null;
+  pendencia: string | null;
 };
 
 const STATUS_COLORS: Record<string, string> = {
@@ -37,6 +50,11 @@ const STATUS_COLORS: Record<string, string> = {
   "Finalizada": "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300",
   "Não Executada": "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300",
 };
+
+function formatCurrency(value: number | null): string {
+  if (value == null) return "—";
+  return value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+}
 
 function getWeekStart(refDate: Date): Date {
   return startOfWeek(refDate, { weekStartsOn: 1 });
@@ -48,6 +66,7 @@ export default function AgendaSemanalPage() {
   const [weekOffset, setWeekOffset] = useState(1);
   const [movingTaskId, setMovingTaskId] = useState<string | null>(null);
   const [dragOverCell, setDragOverCell] = useState<string | null>(null);
+  const [selectedTarefa, setSelectedTarefa] = useState<Tarefa | null>(null);
 
   const weekStart = useMemo(() => {
     const today = new Date();
@@ -130,7 +149,7 @@ export default function AgendaSemanalPage() {
     const raw = e.dataTransfer.getData("application/json");
     if (!raw) return;
 
-    const { taskId, fromTecnico, fromTecnicoId, fromDate } = JSON.parse(raw);
+    const { taskId, fromTecnico, fromDate } = JSON.parse(raw);
     const newDate = format(weekDays[toDayIdx], "yyyy-MM-dd");
     const sameDay = fromDate === newDate;
     const sameTec = fromTecnico === toTecNome;
@@ -140,7 +159,6 @@ export default function AgendaSemanalPage() {
     setMovingTaskId(taskId);
 
     try {
-      // First get the full task to know its current data
       const { data: taskData } = await supabase.functions.invoke("auvo-task-update", {
         body: { action: "get", taskId: Number(taskId) },
       });
@@ -148,7 +166,6 @@ export default function AgendaSemanalPage() {
       const taskResult = taskData?.data?.result;
       if (!taskResult) throw new Error("Não foi possível obter dados da tarefa");
 
-      // Build patches
       const patches: Array<{ op: string; path: string; value: any }> = [];
 
       if (!sameDay) {
@@ -160,10 +177,7 @@ export default function AgendaSemanalPage() {
         patches.push({ op: "replace", path: "/idUserTo", value: Number(toTecId) });
       }
 
-      if (patches.length === 0) {
-        setMovingTaskId(null);
-        return;
-      }
+      if (patches.length === 0) { setMovingTaskId(null); return; }
 
       const { data: patchResult, error } = await supabase.functions.invoke("auvo-task-update", {
         body: { action: "edit", taskId: Number(taskId), patches },
@@ -174,7 +188,6 @@ export default function AgendaSemanalPage() {
         throw new Error(patchResult?.data?.message || `Erro ${patchResult.status}`);
       }
 
-      // Optimistic update in cache
       queryClient.setQueryData(queryKey, (old: Tarefa[] | undefined) => {
         if (!old) return old;
         return old.map(t => {
@@ -322,6 +335,7 @@ export default function AgendaSemanalPage() {
                                   tarefa={tarefa}
                                   onDragStart={handleDragStart}
                                   isMoving={movingTaskId === tarefa.auvo_task_id}
+                                  onClick={() => setSelectedTarefa(tarefa)}
                                 />
                               ))}
                             </div>
@@ -336,6 +350,9 @@ export default function AgendaSemanalPage() {
           </div>
         )}
       </ScrollArea>
+
+      {/* Detail Dialog */}
+      <TaskDetailDialog tarefa={selectedTarefa} onClose={() => setSelectedTarefa(null)} />
     </div>
   );
 }
@@ -344,81 +361,182 @@ function TaskCard({
   tarefa,
   onDragStart,
   isMoving,
+  onClick,
 }: {
   tarefa: Tarefa;
   onDragStart: (e: DragEvent<HTMLDivElement>, tarefa: Tarefa) => void;
   isMoving: boolean;
+  onClick: () => void;
 }) {
   const statusClass = STATUS_COLORS[tarefa.status_auvo || ""] || "bg-muted text-muted-foreground";
-  const linkUrl = tarefa.auvo_link || `https://app2.auvo.com.br/relatorioTarefas/DetalheTarefa/${tarefa.auvo_task_id}`;
   const canDrag = tarefa.status_auvo === "Agendada";
+  const valor = tarefa.gc_os_valor_total ?? tarefa.gc_orc_valor_total;
 
   return (
-    <Tooltip delayDuration={200}>
-      <TooltipTrigger asChild>
-        <div
-          draggable={canDrag}
-          onDragStart={canDrag ? (e) => onDragStart(e, tarefa) : undefined}
-          className={cn(
-            "rounded-md border border-border p-1.5 text-[11px] leading-tight transition-all bg-card",
-            canDrag && "cursor-grab active:cursor-grabbing hover:shadow-md hover:border-primary/30",
-            !canDrag && "opacity-80",
-            isMoving && "opacity-50 ring-2 ring-primary animate-pulse"
-          )}
-        >
-          <div className="flex items-center justify-between gap-1">
-            <div className="font-medium text-foreground truncate flex-1">{tarefa.cliente || "—"}</div>
-            {canDrag && (
-              <a
-                href={linkUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-muted-foreground hover:text-primary shrink-0"
-                onClick={(e) => e.stopPropagation()}
-                draggable={false}
-              >
-                ↗
-              </a>
-            )}
-            {!canDrag && (
-              <a
-                href={linkUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-muted-foreground hover:text-primary shrink-0"
-              >
-                ↗
-              </a>
-            )}
-          </div>
-          <div className="flex items-center justify-between mt-1 gap-1">
-            {tarefa.hora_inicio && (
-              <span className="text-muted-foreground">{tarefa.hora_inicio?.substring(0, 5)}</span>
-            )}
-            <span className={cn("px-1 py-0.5 rounded text-[10px] font-medium leading-none", statusClass)}>
+    <div
+      draggable={canDrag}
+      onDragStart={canDrag ? (e) => onDragStart(e, tarefa) : undefined}
+      onClick={onClick}
+      className={cn(
+        "rounded-md border border-border p-1.5 text-[11px] leading-tight transition-all bg-card cursor-pointer",
+        canDrag && "hover:shadow-md hover:border-primary/30 active:cursor-grabbing",
+        !canDrag && "opacity-80",
+        isMoving && "opacity-50 ring-2 ring-primary animate-pulse"
+      )}
+    >
+      <div className="font-medium text-foreground truncate">{tarefa.cliente || "—"}</div>
+      <div className="flex items-center justify-between mt-1 gap-1">
+        {tarefa.hora_inicio && (
+          <span className="text-muted-foreground">{tarefa.hora_inicio?.substring(0, 5)}</span>
+        )}
+        <span className={cn("px-1 py-0.5 rounded text-[10px] font-medium leading-none", statusClass)}>
+          {tarefa.status_auvo || "—"}
+        </span>
+      </div>
+      {valor != null && (
+        <div className="mt-1 text-[10px] font-semibold text-emerald-700 dark:text-emerald-400">
+          {formatCurrency(valor)}
+        </div>
+      )}
+      {isMoving && (
+        <div className="flex items-center gap-1 mt-1 text-primary">
+          <Loader2 className="h-3 w-3 animate-spin" />
+          <span className="text-[10px]">Movendo...</span>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function TaskDetailDialog({ tarefa, onClose }: { tarefa: Tarefa | null; onClose: () => void }) {
+  if (!tarefa) return null;
+
+  const statusClass = STATUS_COLORS[tarefa.status_auvo || ""] || "bg-muted text-muted-foreground";
+  const auvoUrl = tarefa.auvo_link || `https://app2.auvo.com.br/relatorioTarefas/DetalheTarefa/${tarefa.auvo_task_id}`;
+
+  return (
+    <Dialog open={!!tarefa} onOpenChange={(open) => !open && onClose()}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle className="text-base">{tarefa.cliente || "Sem cliente"}</DialogTitle>
+        </DialogHeader>
+
+        <div className="space-y-4">
+          {/* Status & Date */}
+          <div className="flex items-center gap-2 flex-wrap">
+            <Badge variant="outline" className={cn(statusClass, "border-0")}>
               {tarefa.status_auvo || "—"}
-            </span>
+            </Badge>
+            {tarefa.data_tarefa && (
+              <Badge variant="secondary">
+                {format(parseISO(tarefa.data_tarefa), "EEEE, dd/MM", { locale: ptBR })}
+              </Badge>
+            )}
+            {tarefa.check_in && <Badge variant="secondary">✅ Check-in</Badge>}
           </div>
-          {isMoving && (
-            <div className="flex items-center gap-1 mt-1 text-primary">
-              <Loader2 className="h-3 w-3 animate-spin" />
-              <span className="text-[10px]">Movendo...</span>
+
+          {/* Technician */}
+          <div className="text-sm">
+            <span className="text-muted-foreground">Técnico:</span>{" "}
+            <span className="font-medium text-foreground">{tarefa.tecnico || "—"}</span>
+          </div>
+
+          {/* Time */}
+          {tarefa.hora_inicio && (
+            <div className="flex items-center gap-2 text-sm text-foreground">
+              <Clock className="h-3.5 w-3.5 text-muted-foreground" />
+              {tarefa.hora_inicio?.substring(0, 5)}
+              {tarefa.hora_fim && ` – ${tarefa.hora_fim?.substring(0, 5)}`}
             </div>
           )}
-        </div>
-      </TooltipTrigger>
-      <TooltipContent side="top" className="max-w-xs">
-        <div className="space-y-1 text-xs">
-          <div className="font-semibold">{tarefa.cliente || "Sem cliente"}</div>
-          {tarefa.descricao && <div className="text-muted-foreground">{tarefa.descricao}</div>}
-          {tarefa.endereco && <div className="text-muted-foreground">📍 {tarefa.endereco}</div>}
-          {tarefa.hora_inicio && tarefa.hora_fim && (
-            <div>🕐 {tarefa.hora_inicio?.substring(0, 5)} – {tarefa.hora_fim?.substring(0, 5)}</div>
+
+          {/* Address */}
+          {tarefa.endereco && (
+            <div className="flex items-start gap-2 text-sm text-foreground">
+              <MapPin className="h-3.5 w-3.5 text-muted-foreground mt-0.5 shrink-0" />
+              <span>{tarefa.endereco}</span>
+            </div>
           )}
-          {tarefa.check_in && <div>✅ Check-in realizado</div>}
-          {!canDrag && <div className="text-amber-600">⚠️ Só tarefas "Agendada" podem ser movidas</div>}
+
+          {/* Description */}
+          {tarefa.descricao && (
+            <div className="text-sm text-muted-foreground bg-muted/50 rounded-md p-2">
+              {tarefa.descricao}
+            </div>
+          )}
+
+          {/* Pendência */}
+          {tarefa.pendencia && (
+            <div className="flex items-start gap-2 text-sm text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 rounded-md p-2">
+              <AlertTriangle className="h-3.5 w-3.5 mt-0.5 shrink-0" />
+              <span>{tarefa.pendencia}</span>
+            </div>
+          )}
+
+          <Separator />
+
+          {/* GC Values */}
+          <div className="grid grid-cols-2 gap-3">
+            {/* OS */}
+            <div className="space-y-1">
+              <div className="text-[11px] font-semibold text-muted-foreground uppercase">OS</div>
+              {tarefa.gc_os_codigo ? (
+                <>
+                  <div className="text-sm font-medium text-foreground">
+                    {tarefa.gc_os_link ? (
+                      <a href={tarefa.gc_os_link} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">
+                        #{tarefa.gc_os_codigo}
+                      </a>
+                    ) : `#${tarefa.gc_os_codigo}`}
+                  </div>
+                  {tarefa.gc_os_situacao && <div className="text-[11px] text-muted-foreground">{tarefa.gc_os_situacao}</div>}
+                  {tarefa.gc_os_valor_total != null && (
+                    <div className="text-sm font-semibold text-emerald-700 dark:text-emerald-400">
+                      {formatCurrency(tarefa.gc_os_valor_total)}
+                    </div>
+                  )}
+                </>
+              ) : (
+                <div className="text-xs text-muted-foreground">—</div>
+              )}
+            </div>
+
+            {/* Orçamento */}
+            <div className="space-y-1">
+              <div className="text-[11px] font-semibold text-muted-foreground uppercase">Orçamento</div>
+              {tarefa.gc_orcamento_codigo ? (
+                <>
+                  <div className="text-sm font-medium text-foreground">
+                    {tarefa.gc_orc_link ? (
+                      <a href={tarefa.gc_orc_link} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">
+                        #{tarefa.gc_orcamento_codigo}
+                      </a>
+                    ) : `#${tarefa.gc_orcamento_codigo}`}
+                  </div>
+                  {tarefa.gc_orc_situacao && <div className="text-[11px] text-muted-foreground">{tarefa.gc_orc_situacao}</div>}
+                  {tarefa.gc_orc_valor_total != null && (
+                    <div className="text-sm font-semibold text-emerald-700 dark:text-emerald-400">
+                      {formatCurrency(tarefa.gc_orc_valor_total)}
+                    </div>
+                  )}
+                </>
+              ) : (
+                <div className="text-xs text-muted-foreground">—</div>
+              )}
+            </div>
+          </div>
+
+          {/* Links */}
+          <div className="flex gap-2">
+            <Button variant="outline" size="sm" asChild className="flex-1">
+              <a href={auvoUrl} target="_blank" rel="noopener noreferrer">
+                <ExternalLink className="h-3.5 w-3.5 mr-1" />
+                Ver no Auvo
+              </a>
+            </Button>
+          </div>
         </div>
-      </TooltipContent>
-    </Tooltip>
+      </DialogContent>
+    </Dialog>
   );
 }
