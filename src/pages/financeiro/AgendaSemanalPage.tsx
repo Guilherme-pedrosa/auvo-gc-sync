@@ -338,6 +338,11 @@ export default function AgendaSemanalPage() {
                       >
                         <div>{format(day, "EEEE", { locale: ptBR })}</div>
                         <div className="text-[11px] font-normal mt-0.5">{format(day, "dd/MM")}</div>
+                        {dayTotals[idx] > 0 && (
+                          <div className="text-[10px] font-semibold text-emerald-700 dark:text-emerald-400 mt-0.5">
+                            {formatCurrency(dayTotals[idx])}
+                          </div>
+                        )}
                       </th>
                     );
                   })}
