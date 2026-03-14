@@ -109,19 +109,35 @@ export default function RealtimeTrackingPage() {
     enabled: sheetOpen,
   });
 
-  // Compute pendências from current day's tracking data
+  // Monthly pendências from tarefas_central
+  const { data: pendenciasMesRaw } = useQuery({
+    queryKey: ["pendencias-mes", monthStart, monthEnd],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("tarefas_central")
+        .select("auvo_task_id, cliente, tecnico, data_tarefa, pendencia, descricao, gc_os_codigo, status_auvo")
+        .gte("data_tarefa", monthStart)
+        .lte("data_tarefa", monthEnd)
+        .neq("pendencia", "")
+        .not("pendencia", "is", null)
+        .order("data_tarefa", { ascending: false });
+      if (error) throw error;
+      return data || [];
+    },
+    enabled: sheetOpen,
+  });
+
   const pendenciasMes = useMemo(() => {
-    if (!data?.tecnicos) return [];
-    const items: (TaskItem & { tecnico: string })[] = [];
-    for (const tec of data.tecnicos) {
-      for (const t of tec.tarefas) {
-        if (t.pendencia && t.pendencia.trim() !== "") {
-          items.push({ ...t, tecnico: tec.nome });
-        }
-      }
-    }
-    return items;
-  }, [data]);
+    return (pendenciasMesRaw || []).map((item) => ({
+      taskId: item.auvo_task_id,
+      cliente: item.cliente || "",
+      tecnico: item.tecnico || "",
+      data: item.data_tarefa || "",
+      pendencia: item.pendencia || "",
+      descricao: item.descricao || "",
+      gcOsCodigo: item.gc_os_codigo || "",
+    }));
+  }, [pendenciasMesRaw]);
 
   const goDay = (dir: number) => setSelectedDate((d) => (dir > 0 ? addDays(d, 1) : subDays(d, 1)));
 
