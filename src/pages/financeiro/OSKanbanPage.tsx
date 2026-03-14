@@ -71,6 +71,7 @@ export default function OSKanbanPage() {
   const [showClienteFilter, setShowClienteFilter] = useState(false);
   const [selectedCard, setSelectedCard] = useState<OSItem | null>(null);
   const [isSyncing, setIsSyncing] = useState(false);
+  const [syncStatus, setSyncStatus] = useState("");
 
   const startStr = format(dateRange.from, "yyyy-MM-dd");
   const endStr = format(dateRange.to, "yyyy-MM-dd");
@@ -131,14 +132,42 @@ export default function OSKanbanPage() {
     setColumnsInitialized(true);
   }, [items, columnsInitialized]);
 
-  // Sync via central-sync
+  // Sync via central-sync with progress
   const handleSync = useCallback(async () => {
     setIsSyncing(true);
+    setSyncStatus("Iniciando...");
     try {
-      const { error } = await supabase.functions.invoke("central-sync", {
+      // Step 1: Start sync
+      setSyncStatus("Buscando GC orçamentos e OS...");
+      await new Promise((r) => setTimeout(r, 500));
+
+      const syncPromise = supabase.functions.invoke("central-sync", {
         body: { start_date: startStr, end_date: endStr },
       });
+
+      // Simulate progress stages while waiting
+      const stages = [
+        { label: "Buscando orçamentos GC...", delay: 3000 },
+        { label: "Buscando OS GC...", delay: 5000 },
+        { label: "Buscando tarefas Auvo...", delay: 8000 },
+        { label: "Cruzando dados Auvo ↔ GC...", delay: 15000 },
+        { label: "Salvando no banco...", delay: 25000 },
+        { label: "Quase lá...", delay: 40000 },
+      ];
+
+      let cancelled = false;
+      const progressTimers = stages.map((stage) =>
+        setTimeout(() => {
+          if (!cancelled) setSyncStatus(stage.label);
+        }, stage.delay)
+      );
+
+      const { error } = await syncPromise;
+      cancelled = true;
+      progressTimers.forEach(clearTimeout);
+
       if (error) throw error;
+      setSyncStatus("Atualizando dados...");
       toast.success("Sincronização concluída!");
       setColumnsInitialized(false);
       await refetch();
@@ -146,6 +175,7 @@ export default function OSKanbanPage() {
       toast.error(`Erro: ${e?.message || "Falha na sincronização"}`);
     } finally {
       setIsSyncing(false);
+      setSyncStatus("");
     }
   }, [startStr, endStr, refetch]);
 
@@ -284,9 +314,9 @@ export default function OSKanbanPage() {
                 />
               </PopoverContent>
             </Popover>
-            <Button variant="outline" size="sm" onClick={handleSync} disabled={isSyncing || isFetching}>
-              <RefreshCw className={`h-4 w-4 mr-2 ${isSyncing ? "animate-spin" : ""}`} />
-              {isSyncing ? "Sincronizando..." : "Sincronizar"}
+            <Button variant="outline" size="sm" onClick={handleSync} disabled={isSyncing || isFetching} className="min-w-[180px]">
+              <RefreshCw className={`h-4 w-4 mr-2 flex-shrink-0 ${isSyncing ? "animate-spin" : ""}`} />
+              <span className="truncate">{isSyncing ? syncStatus || "Sincronizando..." : "Sincronizar"}</span>
             </Button>
           </div>
         </div>
