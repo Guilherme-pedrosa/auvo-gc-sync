@@ -97,9 +97,12 @@ export default function OSKanbanPage() {
   // Filter out situations starting with "Executad" (case-insensitive)
   const items = useMemo(() => {
     if (!rawItems) return [];
-    return rawItems.filter(
-      (i) => i.gc_os_situacao && !i.gc_os_situacao.toLowerCase().startsWith("executad")
-    );
+    return rawItems.filter((i) => {
+      const sit = (i.gc_os_situacao || "").toLowerCase();
+      if (sit.startsWith("executad")) return false;
+      if (sit.startsWith("imp cigam faturado total")) return false;
+      return true;
+    });
   }, [rawItems]);
 
   // Build columns from unique situations
