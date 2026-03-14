@@ -1,7 +1,7 @@
 import { useNavigate, useLocation } from "react-router-dom";
 import { cn } from "@/lib/utils";
 import {
-  RefreshCw, BarChart3, Kanban, Settings, LayoutDashboard, DollarSign, ListChecks, Radio
+  RefreshCw, BarChart3, Kanban, Settings, LayoutDashboard, DollarSign, ListChecks, Radio, Wrench
 } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 
@@ -36,7 +36,11 @@ const navItems = [
     icon: Radio,
     path: "/financeiro/acompanhamento",
   },
-  // Dashboard Orçamentos is now the home page
+  {
+    label: "Kanban OS",
+    icon: Wrench,
+    path: "/financeiro/kanban-os",
+  },
 ];
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {

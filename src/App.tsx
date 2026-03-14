@@ -11,6 +11,7 @@ import TechDashboardPage from "./pages/financeiro/TechDashboardPage.tsx";
 import BudgetKanbanPage from "./pages/financeiro/BudgetKanbanPage.tsx";
 import CustomKanbanPage from "./pages/financeiro/CustomKanbanPage.tsx";
 import RealtimeTrackingPage from "./pages/financeiro/RealtimeTrackingPage.tsx";
+import OSKanbanPage from "./pages/financeiro/OSKanbanPage.tsx";
 
 const queryClient = new QueryClient();
 
@@ -28,6 +29,7 @@ const App = () => (
             <Route path="/financeiro/kanban-orcamentos" element={<BudgetKanbanPage />} />
             <Route path="/financeiro/kanban-personalizado" element={<CustomKanbanPage />} />
             <Route path="/financeiro/acompanhamento" element={<RealtimeTrackingPage />} />
+            <Route path="/financeiro/kanban-os" element={<OSKanbanPage />} />
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
             <Route path="*" element={<NotFound />} />
           </Routes>
