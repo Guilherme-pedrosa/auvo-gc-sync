@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -109,6 +109,20 @@ export default function RealtimeTrackingPage() {
     enabled: sheetOpen,
   });
 
+  // Compute pendências from current day's tracking data
+  const pendenciasMes = useMemo(() => {
+    if (!data?.tecnicos) return [];
+    const items: (TaskItem & { tecnico: string })[] = [];
+    for (const tec of data.tecnicos) {
+      for (const t of tec.tarefas) {
+        if (t.pendencia && t.pendencia.trim() !== "") {
+          items.push({ ...t, tecnico: tec.nome });
+        }
+      }
+    }
+    return items;
+  }, [data]);
+
   const goDay = (dir: number) => setSelectedDate((d) => (dir > 0 ? addDays(d, 1) : subDays(d, 1)));
 
   return (
@@ -155,14 +169,14 @@ export default function RealtimeTrackingPage() {
               <SheetTrigger asChild>
                 <Button variant="outline" size="sm" className="h-8 text-xs border-red-200 text-red-700 hover:bg-red-50">
                   <FileWarning className="h-3.5 w-3.5 mr-1.5" />
-                  Atrasadas do Mês
+                  Divergências do Mês
                 </Button>
               </SheetTrigger>
               <SheetContent className="w-[600px] sm:max-w-[600px]">
                 <SheetHeader>
                   <SheetTitle className="flex items-center gap-2">
                     <AlertTriangle className="h-5 w-5 text-red-500" />
-                    Atividades Atrasadas — {format(selectedDate, "MMMM yyyy", { locale: ptBR })}
+                    Divergências — {format(selectedDate, "MMMM yyyy", { locale: ptBR })}
                   </SheetTitle>
                 </SheetHeader>
                 <div className="mt-4">
@@ -170,76 +184,163 @@ export default function RealtimeTrackingPage() {
                     <div className="flex items-center justify-center py-8">
                       <RefreshCw className="h-5 w-5 animate-spin text-muted-foreground" />
                     </div>
-                  ) : !atrasadasMes || atrasadasMes.length === 0 ? (
-                    <div className="flex flex-col items-center justify-center py-12 text-muted-foreground gap-2">
-                      <CheckCircle2 className="h-8 w-8 text-emerald-500" />
-                      <p className="text-sm">Nenhuma atividade atrasada neste mês!</p>
-                    </div>
                   ) : (
                     <>
                       <div className="flex items-center justify-between mb-3">
-                        <Badge variant="destructive" className="text-xs">
-                          {atrasadasMes.length} atividade(s) atrasada(s)
-                        </Badge>
+                        <div className="flex items-center gap-2">
+                          {atrasadasMes && atrasadasMes.length > 0 && (
+                            <Badge variant="destructive" className="text-xs">
+                              {atrasadasMes.length} atraso(s)
+                            </Badge>
+                          )}
+                          {pendenciasMes.length > 0 && (
+                            <Badge className="text-xs bg-amber-100 text-amber-800 border border-amber-300">
+                              {pendenciasMes.length} pendência(s)
+                            </Badge>
+                          )}
+                          {(!atrasadasMes || atrasadasMes.length === 0) && pendenciasMes.length === 0 && (
+                            <div className="flex items-center gap-2 text-muted-foreground">
+                              <CheckCircle2 className="h-5 w-5 text-emerald-500" />
+                              <span className="text-sm">Nenhuma divergência neste mês!</span>
+                            </div>
+                          )}
+                        </div>
                         <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={() => refetchAtrasadas()}>
                           <RefreshCw className="h-3 w-3 mr-1" /> Atualizar
                         </Button>
                       </div>
                       <ScrollArea className="h-[calc(100vh-12rem)]">
-                        <div className="space-y-2">
-                          {(() => {
-                            // Group by technician
-                            const byTech: Record<string, { nome: string; items: typeof atrasadasMes }> = {};
-                            for (const item of atrasadasMes) {
-                              const key = item.tecnico_id;
-                              if (!byTech[key]) byTech[key] = { nome: item.tecnico_nome, items: [] };
-                              byTech[key].items.push(item);
-                            }
-                            // Sort by count desc
-                            const sorted = Object.entries(byTech).sort((a, b) => b[1].items.length - a[1].items.length);
+                        <div className="space-y-4">
+                          {/* SEÇÃO: Atrasadas */}
+                          {atrasadasMes && atrasadasMes.length > 0 && (
+                            <div>
+                              <h3 className="text-xs font-semibold text-red-700 uppercase tracking-wide mb-2 flex items-center gap-1.5">
+                                <AlertTriangle className="h-3.5 w-3.5" />
+                                Não Atendidas no Dia Planejado
+                              </h3>
+                              <div className="space-y-2">
+                                {(() => {
+                                  const byTech: Record<string, { nome: string; items: typeof atrasadasMes }> = {};
+                                  for (const item of atrasadasMes) {
+                                    const key = item.tecnico_id;
+                                    if (!byTech[key]) byTech[key] = { nome: item.tecnico_nome, items: [] };
+                                    byTech[key].items.push(item);
+                                  }
+                                  const sorted = Object.entries(byTech).sort((a, b) => b[1].items.length - a[1].items.length);
 
-                            return sorted.map(([techId, group]) => (
-                              <Collapsible key={techId}>
-                                <CollapsibleTrigger className="w-full flex items-center justify-between px-3 py-2.5 rounded-lg border bg-card hover:bg-muted/50 transition-colors">
-                                  <div className="flex items-center gap-3">
-                                    <div className="h-8 w-8 rounded-full bg-red-100 text-red-700 flex items-center justify-center text-xs font-bold flex-shrink-0">
-                                      {group.nome.split(" ").map(n => n[0]).slice(0, 2).join("")}
-                                    </div>
-                                    <div className="text-left">
-                                      <p className="text-sm font-semibold">{group.nome}</p>
-                                      <p className="text-[10px] text-muted-foreground">
-                                        {group.items.length} atraso(s) no mês
-                                      </p>
-                                    </div>
-                                  </div>
-                                  <div className="flex items-center gap-2">
-                                    <Badge variant="destructive" className="text-[10px] h-5 px-2">
-                                      {group.items.length}
-                                    </Badge>
-                                    <ChevronDown className="h-4 w-4 text-muted-foreground transition-transform data-[state=open]:rotate-180" />
-                                  </div>
-                                </CollapsibleTrigger>
-                                <CollapsibleContent>
-                                  <div className="mt-1 ml-4 border-l-2 border-red-200 pl-3 space-y-1.5 py-1.5">
-                                    {group.items.map((item) => (
-                                      <div key={item.id} className="flex items-start gap-2 text-xs py-1">
-                                        <span className="font-mono text-muted-foreground whitespace-nowrap min-w-[40px]">
-                                          {item.data_planejada ? format(new Date(item.data_planejada + "T12:00:00"), "dd/MM") : "—"}
-                                        </span>
-                                        <div className="flex-1 min-w-0">
-                                          <p className="font-medium truncate">{item.cliente || "Sem cliente"}</p>
-                                          {item.descricao && (
-                                            <p className="text-[10px] text-muted-foreground truncate">{item.descricao}</p>
-                                          )}
+                                  return sorted.map(([techId, group]) => (
+                                    <Collapsible key={techId}>
+                                      <CollapsibleTrigger className="w-full flex items-center justify-between px-3 py-2.5 rounded-lg border bg-card hover:bg-muted/50 transition-colors">
+                                        <div className="flex items-center gap-3">
+                                          <div className="h-8 w-8 rounded-full bg-red-100 text-red-700 flex items-center justify-center text-xs font-bold flex-shrink-0">
+                                            {group.nome.split(" ").map(n => n[0]).slice(0, 2).join("")}
+                                          </div>
+                                          <div className="text-left">
+                                            <p className="text-sm font-semibold">{group.nome}</p>
+                                            <p className="text-[10px] text-muted-foreground">
+                                              {group.items.length} atraso(s) no mês
+                                            </p>
+                                          </div>
                                         </div>
-                                        <span className="text-[10px] text-muted-foreground font-mono">#{item.auvo_task_id}</span>
-                                      </div>
-                                    ))}
-                                  </div>
-                                </CollapsibleContent>
-                              </Collapsible>
-                            ));
-                          })()}
+                                        <div className="flex items-center gap-2">
+                                          <Badge variant="destructive" className="text-[10px] h-5 px-2">
+                                            {group.items.length}
+                                          </Badge>
+                                          <ChevronDown className="h-4 w-4 text-muted-foreground transition-transform data-[state=open]:rotate-180" />
+                                        </div>
+                                      </CollapsibleTrigger>
+                                      <CollapsibleContent>
+                                        <div className="mt-1 ml-4 border-l-2 border-red-200 pl-3 space-y-1.5 py-1.5">
+                                          {group.items.map((item) => (
+                                            <div key={item.id} className="flex items-start gap-2 text-xs py-1">
+                                              <span className="font-mono text-muted-foreground whitespace-nowrap min-w-[40px]">
+                                                {item.data_planejada ? format(new Date(item.data_planejada + "T12:00:00"), "dd/MM") : "—"}
+                                              </span>
+                                              <div className="flex-1 min-w-0">
+                                                <p className="font-medium truncate">{item.cliente || "Sem cliente"}</p>
+                                                {item.descricao && (
+                                                  <p className="text-[10px] text-muted-foreground truncate">{item.descricao}</p>
+                                                )}
+                                              </div>
+                                              <span className="text-[10px] text-muted-foreground font-mono">#{item.auvo_task_id}</span>
+                                            </div>
+                                          ))}
+                                        </div>
+                                      </CollapsibleContent>
+                                    </Collapsible>
+                                  ));
+                                })()}
+                              </div>
+                            </div>
+                          )}
+
+                          {/* SEÇÃO: Pendências */}
+                          {pendenciasMes.length > 0 && (
+                            <div>
+                              <h3 className="text-xs font-semibold text-amber-700 uppercase tracking-wide mb-2 flex items-center gap-1.5">
+                                <FileWarning className="h-3.5 w-3.5" />
+                                OS com Pendência
+                              </h3>
+                              <div className="space-y-2">
+                                {(() => {
+                                  const byTech: Record<string, { nome: string; items: typeof pendenciasMes }> = {};
+                                  for (const item of pendenciasMes) {
+                                    const key = item.tecnico;
+                                    if (!byTech[key]) byTech[key] = { nome: item.tecnico, items: [] };
+                                    byTech[key].items.push(item);
+                                  }
+                                  const sorted = Object.entries(byTech).sort((a, b) => b[1].items.length - a[1].items.length);
+
+                                  return sorted.map(([techName, group]) => (
+                                    <Collapsible key={techName}>
+                                      <CollapsibleTrigger className="w-full flex items-center justify-between px-3 py-2.5 rounded-lg border bg-card hover:bg-muted/50 transition-colors">
+                                        <div className="flex items-center gap-3">
+                                          <div className="h-8 w-8 rounded-full bg-amber-100 text-amber-700 flex items-center justify-center text-xs font-bold flex-shrink-0">
+                                            {group.nome.split(" ").map(n => n[0]).slice(0, 2).join("")}
+                                          </div>
+                                          <div className="text-left">
+                                            <p className="text-sm font-semibold">{group.nome}</p>
+                                            <p className="text-[10px] text-muted-foreground">
+                                              {group.items.length} pendência(s)
+                                            </p>
+                                          </div>
+                                        </div>
+                                        <div className="flex items-center gap-2">
+                                          <Badge className="text-[10px] h-5 px-2 bg-amber-100 text-amber-800 border border-amber-300">
+                                            {group.items.length}
+                                          </Badge>
+                                          <ChevronDown className="h-4 w-4 text-muted-foreground transition-transform data-[state=open]:rotate-180" />
+                                        </div>
+                                      </CollapsibleTrigger>
+                                      <CollapsibleContent>
+                                        <div className="mt-1 ml-4 border-l-2 border-amber-300 pl-3 space-y-1.5 py-1.5">
+                                          {group.items.map((item) => (
+                                            <div key={item.taskId} className="flex items-start gap-2 text-xs py-1">
+                                              <span className="font-mono text-muted-foreground whitespace-nowrap min-w-[40px]">
+                                                {item.data ? format(new Date(item.data + "T12:00:00"), "dd/MM") : "—"}
+                                              </span>
+                                              <div className="flex-1 min-w-0">
+                                                <p className="font-medium truncate">{item.cliente || "Sem cliente"}</p>
+                                                <p className="text-[10px] text-amber-700 truncate">
+                                                  ⚠️ {item.pendencia}
+                                                </p>
+                                                {item.descricao && (
+                                                  <p className="text-[10px] text-muted-foreground truncate">{item.descricao}</p>
+                                                )}
+                                              </div>
+                                              {item.gcOsCodigo && (
+                                                <span className="text-[10px] text-muted-foreground font-mono">OS #{item.gcOsCodigo}</span>
+                                              )}
+                                            </div>
+                                          ))}
+                                        </div>
+                                      </CollapsibleContent>
+                                    </Collapsible>
+                                  ));
+                                })()}
+                              </div>
+                            </div>
+                          )}
                         </div>
                       </ScrollArea>
                     </>
