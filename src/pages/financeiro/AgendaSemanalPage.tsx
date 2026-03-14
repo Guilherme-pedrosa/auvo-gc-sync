@@ -134,6 +134,16 @@ export default function AgendaSemanalPage() {
     return Array.from(map.values()).sort((a, b) => a.nome.localeCompare(b.nome));
   }, [tarefas, allUsers]);
 
+  // Daily OS totals
+  const dayTotals = useMemo(() => {
+    if (!tarefas) return weekDays.map(() => 0);
+    return weekDays.map((wd) => {
+      return tarefas
+        .filter(t => t.data_tarefa && isSameDay(parseISO(t.data_tarefa), wd))
+        .reduce((sum, t) => sum + (t.gc_os_valor_total ?? 0), 0);
+    });
+  }, [tarefas, weekDays]);
+
   const grid = useMemo(() => {
     if (!tarefas) return new Map<string, Tarefa[][]>();
     const result = new Map<string, Tarefa[][]>();
@@ -297,7 +307,7 @@ export default function AgendaSemanalPage() {
       </div>
 
       {/* Grid */}
-      <ScrollArea className="flex-1">
+      <div className="flex-1 overflow-auto">
         {isLoading ? (
           <div className="p-6 space-y-4">
             {Array.from({ length: 5 }).map((_, i) => (
@@ -309,14 +319,14 @@ export default function AgendaSemanalPage() {
             Nenhuma tarefa encontrada para esta semana
           </div>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full border-collapse min-w-[900px]">
-              <thead>
+          <div className="overflow-x-auto overflow-y-auto flex-1">
+            <table className="w-full border-collapse min-w-[1200px]">
+              <thead className="sticky top-0 z-20">
                 <tr className="border-b border-border bg-muted/50">
-                  <th className="text-left px-3 py-2.5 text-xs font-semibold text-muted-foreground w-40 sticky left-0 bg-muted/50 z-10">
+                  <th className="text-left px-3 py-2.5 text-xs font-semibold text-muted-foreground w-40 sticky left-0 bg-muted/50 z-30">
                     Técnico
                   </th>
-                  {weekDays.map((day) => {
+                  {weekDays.map((day, idx) => {
                     const isToday = isSameDay(day, new Date());
                     return (
                       <th
@@ -328,6 +338,11 @@ export default function AgendaSemanalPage() {
                       >
                         <div>{format(day, "EEEE", { locale: ptBR })}</div>
                         <div className="text-[11px] font-normal mt-0.5">{format(day, "dd/MM")}</div>
+                        {dayTotals[idx] > 0 && (
+                          <div className="text-[10px] font-semibold text-emerald-700 dark:text-emerald-400 mt-0.5">
+                            {formatCurrency(dayTotals[idx])}
+                          </div>
+                        )}
                       </th>
                     );
                   })}
@@ -379,7 +394,7 @@ export default function AgendaSemanalPage() {
             </table>
           </div>
         )}
-      </ScrollArea>
+      </div>
 
       {/* Detail Dialog */}
       <TaskDetailDialog
