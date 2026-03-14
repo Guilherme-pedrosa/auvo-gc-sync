@@ -12,7 +12,8 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   ArrowLeft, CalendarIcon, RefreshCw, ExternalLink,
-  Filter, GripVertical, Check, X, Edit2, Trash2, Plus
+  Filter, GripVertical, Check, X, Edit2, Trash2, Plus,
+  Package, FileText, ClipboardList, MapPin
 } from "lucide-react";
 import { format, startOfMonth } from "date-fns";
 import { ptBR } from "date-fns/locale";
