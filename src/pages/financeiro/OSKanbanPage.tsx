@@ -291,18 +291,44 @@ export default function OSKanbanPage() {
     }
   }, [allClientesSelected, allClientes]);
 
+  // Sort helper for items
+  const sortItems = useCallback((items: OSItem[], sortKey: string): OSItem[] => {
+    if (sortKey === "none" || !sortKey) return items;
+    const sorted = [...items];
+    switch (sortKey) {
+      case "valor_desc": return sorted.sort((a, b) => (Number(b.gc_os_valor_total) || 0) - (Number(a.gc_os_valor_total) || 0));
+      case "valor_asc": return sorted.sort((a, b) => (Number(a.gc_os_valor_total) || 0) - (Number(b.gc_os_valor_total) || 0));
+      case "data_desc": return sorted.sort((a, b) => (b.data_tarefa || "").localeCompare(a.data_tarefa || ""));
+      case "data_asc": return sorted.sort((a, b) => (a.data_tarefa || "").localeCompare(b.data_tarefa || ""));
+      case "cliente_freq": {
+        const freq: Record<string, number> = {};
+        sorted.forEach(i => { const c = i.cliente || i.gc_os_cliente || ""; freq[c] = (freq[c] || 0) + 1; });
+        return sorted.sort((a, b) => (freq[b.cliente || b.gc_os_cliente || ""] || 0) - (freq[a.cliente || a.gc_os_cliente || ""] || 0));
+      }
+      case "cliente_az": return sorted.sort((a, b) => (a.cliente || a.gc_os_cliente || "").localeCompare(b.cliente || b.gc_os_cliente || ""));
+      default: return sorted;
+    }
+  }, []);
+
   const filteredColumns = useMemo(() => {
-    console.log("Filter state:", { allClientesSelected, selectedClientesSize: selectedClientes.size, selectedClientes: Array.from(selectedClientes).slice(0, 5) });
-    return columns.map((col) => ({
-      ...col,
-      items: col.items.filter((item) => {
+    const minVal = valorMin ? Number(valorMin) : null;
+    const maxVal = valorMax ? Number(valorMax) : null;
+    return columns.map((col) => {
+      let filtered = col.items.filter((item) => {
         const clientName = item.cliente || item.gc_os_cliente || "";
         if (filterTecnico !== "todos" && item.tecnico !== filterTecnico) return false;
         if (!allClientesSelected && selectedClientes.size > 0 && !selectedClientes.has(clientName)) return false;
+        const val = Number(item.gc_os_valor_total) || 0;
+        if (minVal !== null && val < minVal) return false;
+        if (maxVal !== null && val > maxVal) return false;
         return true;
-      }),
-    }));
-  }, [columns, filterTecnico, allClientesSelected, selectedClientes]);
+      });
+      // Apply sort: column-level overrides global
+      const sortKey = columnSorts[col.id] || globalSort;
+      filtered = sortItems(filtered, sortKey);
+      return { ...col, items: filtered };
+    });
+  }, [columns, filterTecnico, allClientesSelected, selectedClientes, valorMin, valorMax, globalSort, columnSorts, sortItems]);
 
   // Drag & drop
   const onDragEnd = useCallback((result: DropResult) => {
