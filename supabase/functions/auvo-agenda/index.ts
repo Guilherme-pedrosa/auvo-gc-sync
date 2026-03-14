@@ -42,20 +42,25 @@ async function fetchGcOsMap(gcHeaders: Record<string, string>): Promise<Map<stri
 
     for (const os of records) {
       const atributos: any[] = os.atributos || [];
-      const attrTarefa = atributos.find((a: any) => {
-        const nested = a?.atributo || a;
-        return String(nested.atributo_id || nested.id || "") === GC_ATRIBUTO_TAREFA_OS;
-      });
-      if (attrTarefa) {
-        const nested = attrTarefa?.atributo || attrTarefa;
-        const taskId = String(nested?.conteudo || nested?.valor || "").trim();
-        if (taskId && /^\d+$/.test(taskId)) {
-          map.set(taskId, {
-            gc_os_codigo: String(os.codigo || ""),
-            gc_os_situacao: String(os.nome_situacao || ""),
-            gc_os_valor_total: parseFloat(os.valor_total || "0"),
-            gc_os_link: `https://gestaoclick.com/ordens_servicos/editar/${os.id}?retorno=%2Fordens_servicos`,
-          });
+      const osData = {
+        gc_os_codigo: String(os.codigo || ""),
+        gc_os_situacao: String(os.nome_situacao || ""),
+        gc_os_valor_total: parseFloat(os.valor_total || "0"),
+        gc_os_link: `https://gestaoclick.com/ordens_servicos/editar/${os.id}?retorno=%2Fordens_servicos`,
+      };
+
+      // Check both attributes: 73343 (tarefa OS) and 73344 (tarefa execução)
+      for (const attrId of [GC_ATRIBUTO_TAREFA_OS, GC_ATRIBUTO_TAREFA_EXEC]) {
+        const attr = atributos.find((a: any) => {
+          const nested = a?.atributo || a;
+          return String(nested.atributo_id || nested.id || "") === attrId;
+        });
+        if (attr) {
+          const nested = attr?.atributo || attr;
+          const taskId = String(nested?.conteudo || nested?.valor || "").trim();
+          if (taskId && /^\d+$/.test(taskId)) {
+            map.set(taskId, osData);
+          }
         }
       }
     }
