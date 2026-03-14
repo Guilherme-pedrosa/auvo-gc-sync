@@ -149,8 +149,46 @@ Deno.serve(async (req) => {
       };
     });
 
+    // Enrich with GC values from tarefas_central
+    const taskIds = mapped.map(m => m.auvo_task_id);
+    const { createClient } = await import("https://esm.sh/@supabase/supabase-js@2");
+    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+    const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+    const sb = createClient(supabaseUrl, supabaseKey);
+
+    const valoresMap = new Map<string, any>();
+    if (taskIds.length > 0) {
+      // Query in batches of 200
+      for (let i = 0; i < taskIds.length; i += 200) {
+        const batch = taskIds.slice(i, i + 200);
+        const { data: rows } = await sb
+          .from("tarefas_central")
+          .select("auvo_task_id, gc_os_valor_total, gc_orc_valor_total, gc_os_situacao, gc_os_codigo, gc_os_link, gc_orc_situacao, gc_orcamento_codigo, gc_orc_link, pendencia")
+          .in("auvo_task_id", batch);
+        if (rows) {
+          for (const row of rows) valoresMap.set(row.auvo_task_id, row);
+        }
+      }
+    }
+
+    const enriched = mapped.map(m => {
+      const gc = valoresMap.get(m.auvo_task_id);
+      return {
+        ...m,
+        gc_os_valor_total: gc?.gc_os_valor_total ?? null,
+        gc_orc_valor_total: gc?.gc_orc_valor_total ?? null,
+        gc_os_situacao: gc?.gc_os_situacao ?? null,
+        gc_os_codigo: gc?.gc_os_codigo ?? null,
+        gc_os_link: gc?.gc_os_link ?? null,
+        gc_orc_situacao: gc?.gc_orc_situacao ?? null,
+        gc_orcamento_codigo: gc?.gc_orcamento_codigo ?? null,
+        gc_orc_link: gc?.gc_orc_link ?? null,
+        pendencia: gc?.pendencia ?? null,
+      };
+    });
+
     return new Response(
-      JSON.stringify({ data: mapped, total: mapped.length }),
+      JSON.stringify({ data: enriched, total: enriched.length }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   } catch (error) {
