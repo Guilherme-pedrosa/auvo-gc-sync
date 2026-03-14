@@ -115,7 +115,7 @@ export default function RealtimeTrackingPage() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("tarefas_central")
-        .select("auvo_task_id, cliente, tecnico, data_tarefa, pendencia, descricao, gc_os_codigo, status_auvo")
+        .select("auvo_task_id, cliente, tecnico, data_tarefa, pendencia, descricao, gc_os_codigo, status_auvo, questionario_respostas")
         .gte("data_tarefa", monthStart)
         .lte("data_tarefa", monthEnd)
         .neq("pendencia", "")
@@ -128,15 +128,31 @@ export default function RealtimeTrackingPage() {
   });
 
   const pendenciasMes = useMemo(() => {
-    return (pendenciasMesRaw || []).map((item) => ({
-      taskId: item.auvo_task_id,
-      cliente: item.cliente || "",
-      tecnico: item.tecnico || "",
-      data: item.data_tarefa || "",
-      pendencia: item.pendencia || "",
-      descricao: item.descricao || "",
-      gcOsCodigo: item.gc_os_codigo || "",
-    }));
+    return (pendenciasMesRaw || []).map((item) => {
+      const pendenciaRaw = item.pendencia || "";
+      // Extract form name: "Checklist: FORM_NAME" → "FORM_NAME"
+      const formName = pendenciaRaw.startsWith("Checklist: ")
+        ? pendenciaRaw.replace("Checklist: ", "")
+        : pendenciaRaw;
+
+      // Find empty fields in questionnaire responses
+      const respostas = (item.questionario_respostas as any[] || []);
+      const camposVazios = respostas
+        .filter((r: any) => !r.reply || r.reply.trim() === "")
+        .map((r: any) => r.question || "");
+
+      return {
+        taskId: item.auvo_task_id,
+        cliente: item.cliente || "",
+        tecnico: item.tecnico || "",
+        data: item.data_tarefa || "",
+        pendencia: pendenciaRaw,
+        formName,
+        camposVazios,
+        descricao: item.descricao || "",
+        gcOsCodigo: item.gc_os_codigo || "",
+      };
+    });
   }, [pendenciasMesRaw]);
 
   const goDay = (dir: number) => setSelectedDate((d) => (dir > 0 ? addDays(d, 1) : subDays(d, 1)));
@@ -331,17 +347,19 @@ export default function RealtimeTrackingPage() {
                                       <CollapsibleContent>
                                         <div className="mt-1 ml-4 border-l-2 border-amber-300 pl-3 space-y-1.5 py-1.5">
                                           {group.items.map((item) => (
-                                            <div key={item.taskId} className="flex items-start gap-2 text-xs py-1">
+                                             <div key={item.taskId} className="flex items-start gap-2 text-xs py-1.5">
                                               <span className="font-mono text-muted-foreground whitespace-nowrap min-w-[40px]">
                                                 {item.data ? format(new Date(item.data + "T12:00:00"), "dd/MM") : "—"}
                                               </span>
                                               <div className="flex-1 min-w-0">
                                                 <p className="font-medium truncate">{item.cliente || "Sem cliente"}</p>
-                                                <p className="text-[10px] text-amber-700 truncate">
-                                                  ⚠️ {item.pendencia}
+                                                <p className="text-[10px] text-amber-700 font-medium">
+                                                  📋 {item.formName}
                                                 </p>
-                                                {item.descricao && (
-                                                  <p className="text-[10px] text-muted-foreground truncate">{item.descricao}</p>
+                                                {item.camposVazios.length > 0 && (
+                                                  <p className="text-[10px] text-red-600 mt-0.5">
+                                                    ❌ Sem preenchimento: {item.camposVazios.join(", ")}
+                                                  </p>
                                                 )}
                                               </div>
                                               {item.gcOsCodigo && (
