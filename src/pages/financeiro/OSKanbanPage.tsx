@@ -741,15 +741,17 @@ export default function OSKanbanPage() {
                           <TableBody>
                             {produtos.map((p: any, i: number) => {
                               const qtd = Number(p.quantidade || p.qtd || 1);
-                              const unitario = Number(p.valor_unitario || p.preco || p.valor || 0);
+                              const unitario = Number(p.valor_venda || p.valor_unitario || p.preco || p.valor || 0);
                               const total = Number(p.valor_total || p.subtotal || qtd * unitario);
+                              const nome = String(p.nome_produto || p.descricao || p.nome || p.detalhes || "—");
+                              const codigo = String(p.produto_id || p.codigo || p.referencia || "—");
                               return (
                                 <TableRow key={i}>
                                   <TableCell className="text-xs font-mono py-1.5">
-                                    {p.codigo || p.referencia || "—"}
+                                    {codigo}
                                   </TableCell>
-                                  <TableCell className="text-xs py-1.5 max-w-[200px] truncate" title={p.descricao || p.nome || ""}>
-                                    {p.descricao || p.nome || p.produto || "—"}
+                                  <TableCell className="text-xs py-1.5 max-w-[200px] truncate" title={nome}>
+                                    {nome}
                                   </TableCell>
                                   <TableCell className="text-xs py-1.5 text-right">{qtd}</TableCell>
                                   <TableCell className="text-xs py-1.5 text-right">{formatCurrency(unitario)}</TableCell>
