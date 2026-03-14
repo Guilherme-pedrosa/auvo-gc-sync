@@ -11,6 +11,7 @@ import TechDashboardPage from "./pages/financeiro/TechDashboardPage.tsx";
 import BudgetKanbanPage from "./pages/financeiro/BudgetKanbanPage.tsx";
 import CustomKanbanPage from "./pages/financeiro/CustomKanbanPage.tsx";
 import RealtimeTrackingPage from "./pages/financeiro/RealtimeTrackingPage.tsx";
+import OSKanbanPage from "./pages/financeiro/OSKanbanPage.tsx";
 
 const queryClient = new QueryClient();
 
