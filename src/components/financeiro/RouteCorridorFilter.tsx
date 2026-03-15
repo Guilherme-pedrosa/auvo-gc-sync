@@ -229,6 +229,8 @@ export default function RouteCorridorFilter({
     matchCount: number;
     totalCities: number;
     matchedCities: string[];
+    distanceKm: number;
+    durationMin: number;
   } | null>(null);
 
   const applyFilter = useCallback(async () => {
