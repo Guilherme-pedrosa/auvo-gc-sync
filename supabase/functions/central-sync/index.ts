@@ -72,6 +72,44 @@ function extractAddress(addr: unknown): string {
   return String(addr).substring(0, 300);
 }
 
+function normalizeComparable(text: unknown): string {
+  return String(text || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, "")
+    .trim();
+}
+
+function resolveTaskAddress(task: any): string {
+  return extractAddress(
+    task?.address ||
+    task?.customerAddress ||
+    task?.addressDescription ||
+    task?.customer?.address ||
+    task?.customer?.fullAddress ||
+    task?.customer?.location ||
+    ""
+  );
+}
+
+async function fetchAuvoTaskAddress(bearerToken: string, taskId: string): Promise<string> {
+  const url = `${AUVO_BASE_URL}/tasks/${encodeURIComponent(taskId)}`;
+  const response = await rateLimitedFetch(url, { headers: auvoHeaders(bearerToken) }, "auvo");
+  if (!response.ok) return "";
+  const json = await response.json().catch(() => ({}));
+  const result = json?.result || json || {};
+  return extractAddress(
+    result?.address ||
+    result?.customerAddress ||
+    result?.addressDescription ||
+    result?.customer?.address ||
+    result?.customer?.fullAddress ||
+    result?.customer?.location ||
+    ""
+  );
+}
+
 // Fetch Auvo tasks for a single month window
 async function fetchAuvoTasksForPeriod(bearerToken: string, startDate: string, endDate: string): Promise<any[]> {
   const allTasks: any[] = [];
