@@ -47,6 +47,31 @@ function normalizeDate(dateLike: unknown): string | null {
   return d;
 }
 
+function extractAddress(addr: unknown): string {
+  if (!addr) return "";
+  if (typeof addr === "string") return addr.substring(0, 300);
+  if (typeof addr === "object" && addr !== null) {
+    const a = addr as Record<string, unknown>;
+    // Auvo address object can have: street, number, complement, neighborhood, city, state, zipCode, country, fullAddress
+    if (a.fullAddress) return String(a.fullAddress).substring(0, 300);
+    const parts = [
+      a.street || a.logradouro || a.rua || "",
+      a.number || a.numero || "",
+      a.complement || a.complemento || "",
+      a.neighborhood || a.bairro || "",
+      a.city || a.cidade || a.localidade || "",
+      a.state || a.estado || a.uf || "",
+      a.zipCode || a.cep || a.zip || "",
+      a.country || a.pais || "",
+    ].map(v => String(v || "").trim()).filter(Boolean);
+    if (parts.length > 0) return parts.join(", ").substring(0, 300);
+    // Last resort: stringify non-empty keys
+    const vals = Object.values(a).map(v => String(v || "").trim()).filter(Boolean);
+    return vals.join(", ").substring(0, 300);
+  }
+  return String(addr).substring(0, 300);
+}
+
 // Fetch Auvo tasks for a single month window
 async function fetchAuvoTasksForPeriod(bearerToken: string, startDate: string, endDate: string): Promise<any[]> {
   const allTasks: any[] = [];
@@ -329,7 +354,7 @@ Deno.serve(async (req) => {
         hora_fim: String(task.endTime || task.endHour || ""),
         check_in: !!task.checkIn,
         check_out: !!task.checkOut,
-        endereco: typeof task.address === "object" ? "" : String(task.address || "").substring(0, 200),
+        endereco: extractAddress(task.address),
         auvo_link: `https://app2.auvo.com.br/relatorioTarefas/DetalheTarefa/${taskId}`,
         auvo_task_url: String(task.taskUrl || ""),
         auvo_survey_url: String(task.survey || ""),
