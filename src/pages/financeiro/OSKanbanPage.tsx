@@ -23,6 +23,7 @@ import {
 } from "lucide-react";
 import { Map as MapIcon } from "lucide-react";
 import OSMapView from "@/components/financeiro/OSMapView";
+import RouteCorridorFilter from "@/components/financeiro/RouteCorridorFilter";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { Label } from "@/components/ui/label";
@@ -124,6 +125,7 @@ export default function OSKanbanPage() {
   const [execTaskUrl, setExecTaskUrl] = useState<string | null>(null);
   const [execTaskLoading, setExecTaskLoading] = useState(false);
   const [viewMode, setViewMode] = useState<"kanban" | "map">("kanban");
+  const [corridorFilterIds, setCorridorFilterIds] = useState<Set<string> | null>(null);
 
   // Fetch Auvo users (technicians)
   const { data: auvoUsers } = useQuery({
@@ -792,13 +794,17 @@ export default function OSKanbanPage() {
         if (filterOnlyRoutes) {
           if (!routeGroups.has(item.auvo_task_id)) return false;
         }
+        // Corridor filter
+        if (corridorFilterIds !== null) {
+          if (!corridorFilterIds.has(item.auvo_task_id)) return false;
+        }
         return true;
       });
       const sortKey = columnSorts[col.id] || globalSort;
       filtered = sortItems(filtered, sortKey);
       return { ...col, items: filtered };
     });
-  }, [columns, filterTecnico, allClientesSelected, selectedClientes, valorMin, valorMax, globalSort, columnSorts, sortItems, allFlagsSelected, selectedFlags, cityMap, filterOnlyRoutes, routeGroups]);
+  }, [columns, filterTecnico, allClientesSelected, selectedClientes, valorMin, valorMax, globalSort, columnSorts, sortItems, allFlagsSelected, selectedFlags, cityMap, filterOnlyRoutes, routeGroups, corridorFilterIds]);
 
   // Drag & drop
   const onDragEnd = useCallback((result: DropResult) => {
@@ -1082,6 +1088,13 @@ export default function OSKanbanPage() {
               )}
             </PopoverContent>
           </Popover>
+
+          {/* Route corridor filter */}
+          <RouteCorridorFilter
+            allCities={allCities}
+            cityMap={cityMap}
+            onFilterChange={setCorridorFilterIds}
+          />
 
           {/* Global sort */}
           <Select value={globalSort} onValueChange={setGlobalSort}>
