@@ -273,6 +273,18 @@ Deno.serve(async (req) => {
       console.warn("[central-sync] Nenhuma tarefa retornada do Auvo; aplicando fallback apenas com dados do GC");
     }
 
+    // Load existing task IDs to avoid overwriting rows not returned by current Auvo window
+    const existingTaskIdsInDb = new Set<string>();
+    for (let from = 0; ; from += 1000) {
+      const { data: existingChunk, error: existingErr } = await sbClient
+        .from("tarefas_central")
+        .select("auvo_task_id")
+        .range(from, from + 999);
+      if (existingErr || !existingChunk || existingChunk.length === 0) break;
+      for (const row of existingChunk) existingTaskIdsInDb.add(String((row as any).auvo_task_id));
+      if (existingChunk.length < 1000) break;
+    }
+
     // Build rows for upsert
     const rows: any[] = [];
     for (const task of auvoTasks) {
