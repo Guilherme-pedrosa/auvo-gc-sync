@@ -333,6 +333,7 @@ export default function RouteCorridorFilter({
         matchCount: matchingIds.size,
         totalCities: cityList.length,
         matchedCities,
+        cityDirection,
         distanceKm: distKm,
         durationMin: durMin,
       });
