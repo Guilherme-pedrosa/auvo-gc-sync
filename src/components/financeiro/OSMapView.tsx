@@ -53,6 +53,7 @@ interface OSMapViewProps {
 
 const mapContainerStyle = { width: "100%", height: "100%" };
 const defaultCenter = { lat: -15.7942, lng: -47.8822 };
+const LIBRARIES: ("geometry" | "places")[] = ["geometry"];
 
 // Singleton API key cache
 let cachedApiKey: string | null = null;
