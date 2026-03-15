@@ -194,11 +194,20 @@ function OSMapViewInner({
   }, [items]);
 
   // Auto-geocode when map loads
+  const autoOptimizeTriggered = useRef(false);
   useEffect(() => {
     if (isLoaded && items.length > 0 && geocodedItems.length === 0 && !geocoding) {
       geocodeItems();
     }
   }, [isLoaded, items.length]);
+
+  // Auto-optimize after geocoding when autoOptimize is set
+  useEffect(() => {
+    if (autoOptimize && geocodedItems.length >= 2 && !autoOptimizeTriggered.current && !optimizing && !routeResult) {
+      autoOptimizeTriggered.current = true;
+      optimizeRoute();
+    }
+  }, [autoOptimize, geocodedItems.length, optimizing, routeResult]);
 
   // Optimize route
   const optimizeRoute = useCallback(async () => {
