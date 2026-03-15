@@ -72,6 +72,55 @@ function extractAddress(addr: unknown): string {
   return String(addr).substring(0, 300);
 }
 
+function normalizeComparable(text: unknown): string {
+  return String(text || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, "")
+    .trim();
+}
+
+function resolveTaskAddress(task: any): string {
+  return extractAddress(
+    task?.address ||
+    task?.customerAddress ||
+    task?.addressDescription ||
+    task?.customer?.address ||
+    task?.customer?.fullAddress ||
+    task?.customer?.location ||
+    ""
+  );
+}
+
+type AuvoTaskSnapshot = {
+  address: string;
+  orientation: string;
+};
+
+async function fetchAuvoTaskSnapshot(bearerToken: string, taskId: string): Promise<AuvoTaskSnapshot | null> {
+  const url = `${AUVO_BASE_URL}/tasks/${encodeURIComponent(taskId)}`;
+  const response = await rateLimitedFetch(url, { headers: auvoHeaders(bearerToken) }, "auvo");
+  if (!response.ok) return null;
+
+  const json = await response.json().catch(() => ({}));
+  const result = json?.result || json || {};
+
+  const address = extractAddress(
+    result?.address ||
+    result?.customerAddress ||
+    result?.addressDescription ||
+    result?.customer?.address ||
+    result?.customer?.fullAddress ||
+    result?.customer?.location ||
+    ""
+  );
+  const orientation = String(result?.orientation || "").substring(0, 500);
+
+  if (!address && !orientation) return null;
+  return { address, orientation };
+}
+
 // Fetch Auvo tasks for a single month window
 async function fetchAuvoTasksForPeriod(bearerToken: string, startDate: string, endDate: string): Promise<any[]> {
   const allTasks: any[] = [];
@@ -310,6 +359,40 @@ Deno.serve(async (req) => {
       if (existingChunk.length < 1000) break;
     }
 
+    // Enrich missing/weak addresses with direct Auvo task detail fetch (more reliable than list payload)
+    const taskSnapshotById = new Map<string, AuvoTaskSnapshot>();
+    const candidateTaskIds: string[] = [];
+    const seenCandidates = new Set<string>();
+
+    for (const task of auvoTasks) {
+      const taskId = String(task.taskID || "").trim();
+      if (!taskId || !gcOsMap[taskId] || seenCandidates.has(taskId)) continue;
+
+      const baseAddress = resolveTaskAddress(task);
+      const customerName = String(
+        task.customerDescription || task.customerName || task.customer?.tradeName || task.customer?.companyName || ""
+      ).trim();
+
+      const weakAddress =
+        !baseAddress ||
+        baseAddress.length < 8 ||
+        normalizeComparable(baseAddress) === normalizeComparable(customerName);
+
+      if (weakAddress) {
+        candidateTaskIds.push(taskId);
+        seenCandidates.add(taskId);
+      }
+    }
+
+    if (candidateTaskIds.length > 0) {
+      console.log(`[central-sync] Reforçando endereço via Auvo detalhe para ${candidateTaskIds.length} OS...`);
+      for (const taskId of candidateTaskIds) {
+        const snapshot = await fetchAuvoTaskSnapshot(bearerToken, taskId);
+        if (snapshot) taskSnapshotById.set(taskId, snapshot);
+      }
+      console.log(`[central-sync] Endereços reforçados: ${taskSnapshotById.size}/${candidateTaskIds.length}`);
+    }
+
     // Build rows for upsert
     const rows: any[] = [];
     for (const task of auvoTasks) {
@@ -339,6 +422,11 @@ Deno.serve(async (req) => {
         (r: any) => r.reply && r.reply.trim() !== "" && !r.reply.startsWith("http")
       );
 
+      const baseAddress = resolveTaskAddress(task);
+      const snapshot = taskSnapshotById.get(taskId);
+      const resolvedAddress = snapshot?.address || baseAddress;
+      const resolvedOrientation = String(task.orientation || snapshot?.orientation || "").substring(0, 500);
+
       const row: any = {
         auvo_task_id: taskId,
         cliente,
@@ -346,7 +434,7 @@ Deno.serve(async (req) => {
         tecnico_id: String(task.idUserTo || ""),
         data_tarefa: normalizeDate(task.taskDate) || gcOs?.gc_os_data || null,
         status_auvo: task.finished ? "Finalizada" : (task.checkIn ? "Em andamento" : "Aberta"),
-        orientacao: String(task.orientation || "").substring(0, 500),
+        orientacao: resolvedOrientation,
         pendencia: String(task.pendency ?? "").trim(),
         descricao: String(task.description || "").substring(0, 500),
         duracao_decimal: parseFloat(task.durationDecimal || "0") || 0,
@@ -354,7 +442,7 @@ Deno.serve(async (req) => {
         hora_fim: String(task.endTime || task.endHour || ""),
         check_in: !!task.checkIn,
         check_out: !!task.checkOut,
-        endereco: extractAddress(task.address),
+        endereco: resolvedAddress,
         auvo_link: `https://app2.auvo.com.br/relatorioTarefas/DetalheTarefa/${taskId}`,
         auvo_task_url: String(task.taskUrl || ""),
         auvo_survey_url: String(task.survey || ""),
@@ -406,6 +494,12 @@ Deno.serve(async (req) => {
       if (!osDate || osDate < startDate || osDate > endDate) continue;
 
       const gcOrc = gcOrcMap[taskId] || null;
+      let fallbackSnapshot = taskSnapshotById.get(taskId) || null;
+      if (!fallbackSnapshot) {
+        fallbackSnapshot = await fetchAuvoTaskSnapshot(bearerToken, taskId);
+        if (fallbackSnapshot) taskSnapshotById.set(taskId, fallbackSnapshot);
+      }
+
       const fallbackRow: any = {
         auvo_task_id: taskId,
         cliente: gcOs?.gc_os_cliente || gcOrc?.gc_orc_cliente || "Cliente não identificado",
@@ -413,7 +507,7 @@ Deno.serve(async (req) => {
         tecnico_id: "",
         data_tarefa: gcOs?.gc_os_data || null,
         status_auvo: "Sem tarefa Auvo",
-        orientacao: "",
+        orientacao: fallbackSnapshot?.orientation || "",
         pendencia: "",
         descricao: "",
         duracao_decimal: 0,
@@ -421,8 +515,8 @@ Deno.serve(async (req) => {
         hora_fim: "",
         check_in: false,
         check_out: false,
-        endereco: "",
-        auvo_link: `https://app2.auvo.com.br/relatorioTarefas/DetalheTarefa/${taskId}`,
+        endereco: fallbackSnapshot?.address || "",
+        auvo_link: `https://app2.auvo.com.br/relatorioTarefas/DetalheTarefa/${taskId}`, 
         auvo_task_url: "",
         auvo_survey_url: "",
         questionario_id: null,
@@ -457,6 +551,36 @@ Deno.serve(async (req) => {
       }
 
       rows.push(fallbackRow);
+    }
+
+    // Patch existing OS rows in period that still have empty address/orientation
+    const { data: rowsMissingAddress } = await sbClient
+      .from("tarefas_central")
+      .select("auvo_task_id")
+      .not("gc_os_id", "is", null)
+      .gte("data_tarefa", startDate)
+      .lte("data_tarefa", endDate)
+      .or("endereco.is.null,endereco.eq.");
+
+    if (rowsMissingAddress?.length) {
+      for (const r of rowsMissingAddress) {
+        const taskId = String((r as any).auvo_task_id || "").trim();
+        if (!taskId || existingTaskIds.has(taskId)) continue;
+
+        let snapshot = taskSnapshotById.get(taskId) || null;
+        if (!snapshot) {
+          snapshot = await fetchAuvoTaskSnapshot(bearerToken, taskId);
+          if (snapshot) taskSnapshotById.set(taskId, snapshot);
+        }
+        if (!snapshot || (!snapshot.address && !snapshot.orientation)) continue;
+
+        rows.push({
+          auvo_task_id: taskId,
+          endereco: snapshot.address || "",
+          orientacao: snapshot.orientation || "",
+          atualizado_em: new Date().toISOString(),
+        });
+      }
     }
 
     // Upsert in batches of 100

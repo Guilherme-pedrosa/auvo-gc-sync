@@ -494,49 +494,59 @@ export default function OSKanbanPage() {
     }
   }, []);
 
-  // Extract city from endereco field (multiple patterns)
-  const extractCity = useCallback((endereco: string | null, orientacao?: string | null): string | null => {
+  // Extract city from Auvo address and text fallbacks (orientation + customer names)
+  const extractCity = useCallback((
+    endereco: string | null,
+    orientacao?: string | null,
+    cliente?: string | null,
+    gcOsCliente?: string | null,
+  ): string | null => {
+    const sanitizeCity = (raw: string): string | null => {
+      const clean = raw
+        .replace(/\s+/g, " ")
+        .replace(/^[,\s.-]+|[,\s.-]+$/g, "")
+        .trim();
+      if (!clean || clean.length < 3) return null;
+      const parts = clean.split(",").map((p) => p.trim()).filter(Boolean);
+      const candidate = parts.length > 1 ? parts[parts.length - 1] : clean;
+      return candidate.length >= 3 ? candidate : null;
+    };
+
     const tryExtract = (text: string): string | null => {
       if (!text || /^https?:\/\//i.test(text) || text.length < 5) return null;
-      // "Cidade - UF, CEP" or "Cidade - UF, CEP-..."
-      const m1 = text.match(/,\s*([A-Za-zÀ-ú\s]+?)\s*-\s*[A-Z]{2}\s*,?\s*\d{5}/);
-      if (m1) return m1[1].trim();
-      // "Cidade, UF, digits"
-      const m2 = text.match(/,\s*([A-Z][A-Za-zÀ-ú\s]+?)\s*,\s*[A-Z]{2}\s*,\s*[\d.]+/);
-      if (m2) return m2[1].trim();
-      // "Cidade - UF" at end or before ", Brasil"
-      const m3 = text.match(/,\s*([A-Za-zÀ-ú\s]+?)\s*-\s*[A-Z]{2}\s*(?:,\s*Brasil)?$/i);
-      if (m3) return m3[1].trim();
-      // "Cidade - UF, Brasil" anywhere
-      const m3b = text.match(/([A-Za-zÀ-ú\s]{3,}?)\s*-\s*[A-Z]{2}\s*,\s*Brasil/i);
-      if (m3b) return m3b[1].trim();
-      // "Cidade/UF" pattern (common in Ecolab descriptions)
-      const m4 = text.match(/([A-Za-zÀ-ú\s]{3,})\/[A-Z]{2}(?:\s|$|,|\n)/);
-      if (m4) return m4[1].trim();
+
+      const patterns = [
+        /,\s*([A-Za-zÀ-ú\s]+?)\s*-\s*[A-Z]{2}\s*,?\s*\d{5}/i, // Cidade - UF, CEP
+        /,\s*([A-Za-zÀ-ú\s]+?)\s*,\s*[A-Z]{2}\s*,\s*[\d.\-]+/i, // Cidade, UF, CEP
+        /,\s*([A-Za-zÀ-ú\s]+?)\s*-\s*[A-Z]{2}\s*(?:,\s*Brasil)?$/i, // ..., Cidade - UF
+        /([A-Za-zÀ-ú\s]{3,}?)\s*-\s*[A-Z]{2}\s*,\s*Brasil/i, // Cidade - UF, Brasil
+        /([A-Za-zÀ-ú\s]{3,})\/[A-Z]{2}(?:\s|$|,|\n)/i, // Cidade/UF
+        /ENDERE[ÇC]O:\s*[^\n,]*,\s*[^\n,]*,\s*([A-Za-zÀ-ú\s]+)\/[A-Z]{2}/i, // ENDEREÇO: ..., CIDADE/UF
+      ];
+
+      for (const pattern of patterns) {
+        const match = text.match(pattern);
+        if (match?.[1]) {
+          const city = sanitizeCity(match[1]);
+          if (city) return city;
+        }
+      }
+
       return null;
     };
 
-    // Try endereco first
-    const fromEndereco = tryExtract(endereco || "");
-    if (fromEndereco) return fromEndereco;
-
-    // Fallback: try orientacao (description often has city info)
-    if (orientacao) {
-      // Look for ENDEREÇO: line pattern
-      const endMatch = orientacao.match(/ENDERE[ÇC]O:\s*[^,\n]*,\s*[^,\n]*,\s*([A-Za-zÀ-ú\s]+)\/[A-Z]{2}/i);
-      if (endMatch) return endMatch[1].trim();
-      // Generic CIDADE/UF in text
-      const citySlash = orientacao.match(/([A-Za-zÀ-ú\s]{3,})\/[A-Z]{2}(?:\s|$|,|\n)/);
-      if (citySlash) return citySlash[1].trim();
-    }
-
-    return null;
+    return (
+      tryExtract(endereco || "") ||
+      tryExtract(orientacao || "") ||
+      tryExtract(cliente || "") ||
+      tryExtract(gcOsCliente || "")
+    );
   }, []);
 
   const cityMap = useMemo(() => {
     const map = new Map<string, string>();
     for (const item of items) {
-      const city = extractCity(item.endereco, item.orientacao);
+      const city = extractCity(item.endereco, item.orientacao, item.cliente, item.gc_os_cliente);
       if (city) map.set(item.auvo_task_id, city);
     }
     return map;
