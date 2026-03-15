@@ -48,11 +48,20 @@ function haversineKm(lat1: number, lng1: number, lat2: number, lng2: number): nu
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
-// Minimum distance from a point to any point on a polyline (sampled)
-function minDistToPolyline(
+// Minimum distance from a point to any point on a polyline, returns { dist, index }
+function minDistToPolylineWithIndex(
   lat: number,
   lng: number,
   polylinePoints: { lat: number; lng: number }[],
+): { dist: number; index: number } {
+  let min = Infinity;
+  let minIdx = 0;
+  for (let i = 0; i < polylinePoints.length; i++) {
+    const d = haversineKm(lat, lng, polylinePoints[i].lat, polylinePoints[i].lng);
+    if (d < min) { min = d; minIdx = i; }
+  }
+  return { dist: min, index: minIdx };
+}
 ): number {
   let min = Infinity;
   for (const p of polylinePoints) {
