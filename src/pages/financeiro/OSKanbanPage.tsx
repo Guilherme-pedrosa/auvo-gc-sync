@@ -415,7 +415,7 @@ export default function OSKanbanPage() {
       if (error) throw error;
       setSyncStatus("Atualizando dados...");
       toast.success("Sincronização concluída!");
-      setColumnsInitialized(false);
+      // columns rebuild automatically via useEffect on items change
       await refetch();
     } catch (e: any) {
       toast.error(`Erro: ${e?.message || "Falha na sincronização"}`);
