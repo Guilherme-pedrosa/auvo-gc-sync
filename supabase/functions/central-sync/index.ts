@@ -385,7 +385,7 @@ Deno.serve(async (req) => {
     const { count: deleted } = await sbClient
       .from("tarefas_central")
       .delete({ count: "exact" })
-      .lt("data_tarefa", startDate);
+      .lt("data_tarefa", cleanupCutoff);
 
     console.log(`[central-sync] Concluído: ${upserted} upserted, ${errors} erros, ${deleted || 0} removidos (> 6 meses)`);
 
