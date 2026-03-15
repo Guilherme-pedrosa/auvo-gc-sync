@@ -1100,6 +1100,7 @@ export default function OSKanbanPage() {
               cidade: cityMap.get(it.auvo_task_id),
             }))}
             onFilterChange={setCorridorFilterIds}
+            onShowMap={() => setViewMode("map")}
           />
 
           {/* Global sort */}
