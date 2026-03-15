@@ -989,7 +989,7 @@ export default function OSKanbanPage() {
                                                                 </span>
                                                               </div>
                                                               <p className="font-medium truncate mt-0.5">{p.cliente || p.gc_os_cliente || "—"}</p>
-                                                              <p className="text-muted-foreground">{p.tecnico || "—"} • {p.gc_os_situacao || p.status_auvo || "—"}</p>
+                                                              <p className="text-muted-foreground">{p.tecnico || "—"} • {p.data_tarefa || "—"} • {p.gc_os_situacao || p.status_auvo || "—"}</p>
                                                             </div>
                                                           ))}
                                                         </div>
