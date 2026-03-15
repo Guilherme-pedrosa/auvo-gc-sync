@@ -19,8 +19,9 @@ import {
   ArrowLeft, CalendarIcon, RefreshCw, ExternalLink,
   Filter, GripVertical, Check, X, Edit2, Trash2, Plus,
   Package, FileText, ClipboardList, MapPin, ArrowUpDown, ArrowDown, ArrowUp,
-  UserCog, Save, Loader2
+  UserCog, Save, Loader2, Map, LayoutGrid, Navigation
 } from "lucide-react";
+import OSMapView from "@/components/financeiro/OSMapView";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { Label } from "@/components/ui/label";
