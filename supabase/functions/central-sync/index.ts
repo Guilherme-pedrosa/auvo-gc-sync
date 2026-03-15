@@ -553,6 +553,36 @@ Deno.serve(async (req) => {
       rows.push(fallbackRow);
     }
 
+    // Patch existing OS rows in period that still have empty address/orientation
+    const { data: rowsMissingAddress } = await sbClient
+      .from("tarefas_central")
+      .select("auvo_task_id")
+      .not("gc_os_id", "is", null)
+      .gte("data_tarefa", startDate)
+      .lte("data_tarefa", endDate)
+      .or("endereco.is.null,endereco.eq.");
+
+    if (rowsMissingAddress?.length) {
+      for (const r of rowsMissingAddress) {
+        const taskId = String((r as any).auvo_task_id || "").trim();
+        if (!taskId || existingTaskIds.has(taskId)) continue;
+
+        let snapshot = taskSnapshotById.get(taskId) || null;
+        if (!snapshot) {
+          snapshot = await fetchAuvoTaskSnapshot(bearerToken, taskId);
+          if (snapshot) taskSnapshotById.set(taskId, snapshot);
+        }
+        if (!snapshot || (!snapshot.address && !snapshot.orientation)) continue;
+
+        rows.push({
+          auvo_task_id: taskId,
+          endereco: snapshot.address || "",
+          orientacao: snapshot.orientation || "",
+          atualizado_em: new Date().toISOString(),
+        });
+      }
+    }
+
     // Upsert in batches of 100
     let upserted = 0;
     let errors = 0;
