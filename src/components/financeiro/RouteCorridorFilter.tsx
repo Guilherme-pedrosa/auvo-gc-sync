@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useMemo, useRef } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -7,12 +7,21 @@ import { Slider } from "@/components/ui/slider";
 import { Badge } from "@/components/ui/badge";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Loader2, Route, X, MapPin } from "lucide-react";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { Loader2, Route, X, MapPin, Search } from "lucide-react";
 import { toast } from "sonner";
+
+interface OSInfo {
+  auvo_task_id: string;
+  gc_os_codigo?: string;
+  cliente?: string;
+  cidade?: string;
+}
 
 interface RouteCorridorFilterProps {
   allCities: string[];
   cityMap: Map<string, string>; // taskId → city/region
+  osItems?: OSInfo[];
   onFilterChange: (matchingTaskIds: Set<string> | null) => void;
 }
 
