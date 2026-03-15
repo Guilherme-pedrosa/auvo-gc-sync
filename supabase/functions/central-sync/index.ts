@@ -372,10 +372,14 @@ Deno.serve(async (req) => {
       rows.push(row);
     }
 
-    // Fallback: include GC OS linked to tarefa that was not returned by Auvo list (e.g. taskDate = 0001-01-01)
+    // Fallback: include only NEW GC OS tasks not returned by current Auvo window
+    // (prevents overwriting existing rows when sync window is narrow)
     const existingTaskIds = new Set(rows.map((r) => String(r.auvo_task_id)));
     for (const [taskId, gcOs] of Object.entries(gcOsMap)) {
-      if (existingTaskIds.has(taskId)) continue;
+      if (existingTaskIds.has(taskId) || existingTaskIdsInDb.has(taskId)) continue;
+      const osDate = normalizeDate(gcOs?.gc_os_data);
+      if (!osDate || osDate < startDate || osDate > endDate) continue;
+
       const gcOrc = gcOrcMap[taskId] || null;
       const fallbackRow: any = {
         auvo_task_id: taskId,
