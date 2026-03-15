@@ -629,9 +629,34 @@ export default function OSKanbanPage() {
   // locationMap: task ID → LocationInfo { region, city }
   const locationMap = useMemo(() => {
     const map = new Map<string, LocationInfo>();
+    // First pass: extract from own fields
     for (const item of items) {
       const loc = extractLocation(item.endereco, item.orientacao, item.cliente, item.gc_os_cliente, item.descricao);
       if (loc) map.set(item.auvo_task_id, loc);
+    }
+    // Second pass: inherit city from another item with the same client name
+    const clientCityCache = new Map<string, LocationInfo>();
+    for (const [, loc] of map) {
+      // Build cache of client→city from resolved items (skip if already cached)
+    }
+    for (const item of items) {
+      if (map.has(item.auvo_task_id)) {
+        // Cache this client's city
+        const clientKey = (item.cliente || "").toUpperCase().trim();
+        if (clientKey && !clientCityCache.has(clientKey)) {
+          clientCityCache.set(clientKey, map.get(item.auvo_task_id)!);
+        }
+      }
+    }
+    for (const item of items) {
+      if (!map.has(item.auvo_task_id)) {
+        const clientKey = (item.cliente || "").toUpperCase().trim();
+        const gcClientKey = (item.gc_os_cliente || "").toUpperCase().trim();
+        const inherited = clientCityCache.get(clientKey) || clientCityCache.get(gcClientKey);
+        if (inherited) {
+          map.set(item.auvo_task_id, inherited);
+        }
+      }
     }
     return map;
   }, [items, extractLocation]);
