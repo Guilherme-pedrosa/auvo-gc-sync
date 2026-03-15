@@ -69,7 +69,7 @@ export default function OSMapView({ items, cityColorMap, cityMap, formatCurrency
   // Load Google Maps JS
   useEffect(() => {
     if (!apiKey || mapLoaded) return;
-    if (window.google?.maps) { setMapLoaded(true); return; }
+    if ((window as any).google?.maps) { setMapLoaded(true); return; }
 
     const script = document.createElement("script");
     script.src = `https://maps.googleapis.com/maps/api/js?key=${apiKey}&libraries=geometry,marker&v=weekly`;
