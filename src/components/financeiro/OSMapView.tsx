@@ -1,11 +1,13 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { useState, useEffect, useRef, useCallback, useMemo } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Loader2, Navigation, MapPin, ExternalLink, Route } from "lucide-react";
 import { toast } from "sonner";
+
+declare const google: any;
 
 type OSItem = {
   auvo_task_id: string;
@@ -37,8 +39,8 @@ type RouteResult = {
 
 interface OSMapViewProps {
   items: OSItem[];
-  cityColorMap: Map<string, { bg: string; text: string }>;
-  cityMap: Map<string, string>;
+  cityColorMap: globalThis.Map<string, { bg: string; text: string }>;
+  cityMap: globalThis.Map<string, string>;
   formatCurrency: (val: number) => string;
   onSelectCard: (item: OSItem) => void;
 }
