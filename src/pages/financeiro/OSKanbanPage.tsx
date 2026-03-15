@@ -1093,6 +1093,12 @@ export default function OSKanbanPage() {
           <RouteCorridorFilter
             allCities={allCities}
             cityMap={cityMap}
+            osItems={items.map((it) => ({
+              auvo_task_id: it.auvo_task_id,
+              gc_os_codigo: it.gc_os_codigo,
+              cliente: it.gc_os_cliente || it.cliente,
+              cidade: cityMap.get(it.auvo_task_id),
+            }))}
             onFilterChange={setCorridorFilterIds}
           />
 
