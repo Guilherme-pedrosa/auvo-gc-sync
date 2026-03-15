@@ -82,12 +82,14 @@ type KanbanColumn = {
 export default function OSKanbanPage() {
   const navigate = useNavigate();
   const today = new Date();
+  // Add 1 day buffer to ensure today is always included regardless of timezone
+  const todayPlus1 = new Date(today);
+  todayPlus1.setDate(todayPlus1.getDate() + 1);
   const [dateRange, setDateRange] = useState({
     from: new Date(today.getFullYear(), 0, 1),
-    to: today,
+    to: todayPlus1,
   });
   const [columns, setColumns] = useState<KanbanColumn[]>([]);
-  const [columnsInitialized, setColumnsInitialized] = useState(false);
   const [filterTecnico, setFilterTecnico] = useState("todos");
   const [filterClienteSearch, setFilterClienteSearch] = useState("");
   const [selectedClientes, setSelectedClientes] = useState<Set<string>>(new Set());
@@ -332,8 +334,9 @@ export default function OSKanbanPage() {
   }, [rawItems]);
 
   // Build columns: OS with status "Agendada" go to a special first column
+  // Rebuild every time items change (no columnsInitialized gate)
   useEffect(() => {
-    if (!items.length || columnsInitialized) return;
+    if (!items.length) return;
 
     const agendadoItems: OSItem[] = [];
     const situacaoMap: Record<string, { items: OSItem[]; color: string; sitId: string }> = {};
@@ -373,8 +376,7 @@ export default function OSKanbanPage() {
     };
 
     setColumns([agendadoCol, ...osCols]);
-    setColumnsInitialized(true);
-  }, [items, columnsInitialized]);
+  }, [items]);
 
   // Sync via central-sync with progress
   const handleSync = useCallback(async () => {
@@ -413,7 +415,7 @@ export default function OSKanbanPage() {
       if (error) throw error;
       setSyncStatus("Atualizando dados...");
       toast.success("Sincronização concluída!");
-      setColumnsInitialized(false);
+      // columns rebuild automatically via useEffect on items change
       await refetch();
     } catch (e: any) {
       toast.error(`Erro: ${e?.message || "Falha na sincronização"}`);
@@ -577,7 +579,7 @@ export default function OSKanbanPage() {
                   onSelect={(range) => {
                     if (range?.from && range?.to) {
                       setDateRange({ from: range.from, to: range.to });
-                      setColumnsInitialized(false);
+                      // columns rebuild automatically via useEffect
                     }
                   }}
                   locale={ptBR}
