@@ -147,7 +147,15 @@ export default function AgendaSemanalPage() {
     return Array.from(map.values()).sort((a, b) => a.nome.localeCompare(b.nome));
   }, [tarefas, allUsers]);
 
-  // Daily OS totals
+  // Persist filter to localStorage (only when tecnicos are loaded)
+  useEffect(() => {
+    if (selectedTecnicos && selectedTecnicos.size > 0) {
+      localStorage.setItem("agenda_selectedTecnicos", JSON.stringify([...selectedTecnicos]));
+    } else if (selectedTecnicos === null && tecnicos.length > 0) {
+      localStorage.removeItem("agenda_selectedTecnicos");
+    }
+  }, [selectedTecnicos, tecnicos.length]);
+
   const dayTotals = useMemo(() => {
     if (!tarefas) return weekDays.map(() => 0);
     return weekDays.map((wd) => {
