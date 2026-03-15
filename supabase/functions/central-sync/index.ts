@@ -11,6 +11,7 @@ const QUESTIONNAIRE_ID = "216040";
 const GC_ATRIBUTO_TAREFA_ORC = "73341";
 const GC_ATRIBUTO_TAREFA_OS = "73343";
 const MIN_DELAY_MS = 200;
+const FUTURE_DAYS_WINDOW = 30;
 let lastAuvoCall = 0;
 let lastGcCall = 0;
 
