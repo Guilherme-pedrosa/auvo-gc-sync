@@ -380,6 +380,52 @@ function OSMapViewInner({
               }}
             />
           )}
+
+          {/* Corridor route polyline + origin/destination markers */}
+          {corridorRoute && isLoaded && (() => {
+            const path = google.maps.geometry.encoding.decodePath(corridorRoute.encodedPolyline);
+            const corridorPath = path.map((p: google.maps.LatLng) => ({ lat: p.lat(), lng: p.lng() }));
+            return (
+              <>
+                <Polyline
+                  path={corridorPath}
+                  options={{
+                    strokeColor: "#8b5cf6",
+                    strokeOpacity: 0.6,
+                    strokeWeight: 5,
+                    geodesic: true,
+                    zIndex: 1,
+                  }}
+                />
+                <Marker
+                  position={corridorRoute.originCoord}
+                  label={{ text: "A", color: "#fff", fontWeight: "bold", fontSize: "12px" }}
+                  title={corridorRoute.originLabel}
+                  icon={{
+                    path: google.maps.SymbolPath.CIRCLE,
+                    scale: 14,
+                    fillColor: "#22c55e",
+                    fillOpacity: 1,
+                    strokeColor: "#fff",
+                    strokeWeight: 2,
+                  }}
+                />
+                <Marker
+                  position={corridorRoute.destCoord}
+                  label={{ text: "B", color: "#fff", fontWeight: "bold", fontSize: "12px" }}
+                  title={corridorRoute.destLabel}
+                  icon={{
+                    path: google.maps.SymbolPath.CIRCLE,
+                    scale: 14,
+                    fillColor: "#ef4444",
+                    fillOpacity: 1,
+                    strokeColor: "#fff",
+                    strokeWeight: 2,
+                  }}
+                />
+              </>
+            );
+          })()}
         </GoogleMap>
 
         {/* Map overlay controls */}
