@@ -48,6 +48,7 @@ interface OSMapViewProps {
   cityMap: globalThis.Map<string, string>;
   formatCurrency: (val: number) => string;
   onSelectCard: (item: OSItem) => void;
+  autoOptimize?: boolean;
 }
 
 const mapContainerStyle = { width: "100%", height: "100%" };
