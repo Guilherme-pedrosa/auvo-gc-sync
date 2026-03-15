@@ -499,6 +499,11 @@ export default function OSKanbanPage() {
         const val = Number(item.gc_os_valor_total) || 0;
         if (minVal !== null && val < minVal) return false;
         if (maxVal !== null && val > maxVal) return false;
+        // City filter
+        if (filterCidade !== "todas") {
+          const city = cityMap.get(item.auvo_task_id);
+          if (!city || city !== filterCidade) return false;
+        }
         return true;
       });
       // Apply sort: column-level overrides global
@@ -506,7 +511,7 @@ export default function OSKanbanPage() {
       filtered = sortItems(filtered, sortKey);
       return { ...col, items: filtered };
     });
-  }, [columns, filterTecnico, allClientesSelected, selectedClientes, valorMin, valorMax, globalSort, columnSorts, sortItems]);
+  }, [columns, filterTecnico, allClientesSelected, selectedClientes, valorMin, valorMax, globalSort, columnSorts, sortItems, filterCidade, cityMap]);
 
   // Drag & drop
   const onDragEnd = useCallback((result: DropResult) => {
