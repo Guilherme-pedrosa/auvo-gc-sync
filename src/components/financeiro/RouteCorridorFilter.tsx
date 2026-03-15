@@ -552,14 +552,34 @@ export default function RouteCorridorFilter({
               <ScrollArea className="max-h-[200px]">
                 <div className="divide-y">
                   {activeFilter.matchedCities
-                    .sort((a, b) => (cityCounts.get(b) || 0) - (cityCounts.get(a) || 0))
-                    .map((c) => (
+                    .sort((a, b) => {
+                      // Sort: ida first, then volta, within each group by count
+                      const dirA = activeFilter.cityDirection.get(a) || "ida";
+                      const dirB = activeFilter.cityDirection.get(b) || "ida";
+                      if (dirA !== dirB) return dirA === "ida" ? -1 : 1;
+                      return (cityCounts.get(b) || 0) - (cityCounts.get(a) || 0);
+                    })
+                    .map((c) => {
+                      const dir = activeFilter.cityDirection.get(c);
+                      return (
                     <div key={c} className="flex items-center justify-between px-4 py-1.5 hover:bg-muted/40 group">
                       <div className="flex items-center gap-2 min-w-0">
                         <MapPin className="h-3 w-3 text-muted-foreground shrink-0" />
                         <span className="text-xs truncate">{c}</span>
                       </div>
                       <div className="flex items-center gap-1.5 shrink-0">
+                        {dir && (
+                          <Badge
+                            variant="outline"
+                            className={`text-[9px] h-4 px-1.5 ${
+                              dir === "ida"
+                                ? "border-green-300 text-green-700 bg-green-50"
+                                : "border-blue-300 text-blue-700 bg-blue-50"
+                            }`}
+                          >
+                            {dir === "ida" ? "↗ Ida" : "↩ Volta"}
+                          </Badge>
+                        )}
                         <Badge variant="outline" className="text-[9px] h-4 px-1 font-mono">
                           {cityCounts.get(c) || 0}
                         </Badge>
@@ -572,7 +592,8 @@ export default function RouteCorridorFilter({
                         </button>
                       </div>
                     </div>
-                  ))}
+                      );
+                    })}
                 </div>
               </ScrollArea>
 
