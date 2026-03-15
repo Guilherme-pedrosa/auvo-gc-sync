@@ -230,6 +230,7 @@ export default function RouteCorridorFilter({
     matchCount: number;
     totalCities: number;
     matchedCities: string[];
+    cityDirection: Map<string, "ida" | "volta">;
     distanceKm: number;
     durationMin: number;
   } | null>(null);
