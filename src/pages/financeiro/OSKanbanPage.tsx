@@ -1350,7 +1350,16 @@ export default function OSKanbanPage() {
               {selectedCard.endereco && (
                 <div className="flex items-start gap-2 bg-muted/50 rounded-md p-3">
                   <MapPin className="h-4 w-4 text-muted-foreground mt-0.5 flex-shrink-0" />
-                  <p className="text-sm">{selectedCard.endereco}</p>
+                  <p className="text-sm flex-1">{selectedCard.endereco}</p>
+                  <Button size="sm" variant="outline" className="flex-shrink-0 gap-1 h-7 text-xs" asChild>
+                    <a
+                      href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(selectedCard.endereco)}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                    >
+                      <Navigation className="h-3 w-3" /> Maps
+                    </a>
+                  </Button>
                 </div>
               )}
 
