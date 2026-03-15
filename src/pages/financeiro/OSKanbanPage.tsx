@@ -630,7 +630,7 @@ export default function OSKanbanPage() {
   const locationMap = useMemo(() => {
     const map = new Map<string, LocationInfo>();
     for (const item of items) {
-      const loc = extractLocation(item.endereco, item.orientacao, item.cliente, item.gc_os_cliente);
+      const loc = extractLocation(item.endereco, item.orientacao, item.cliente, item.gc_os_cliente, item.descricao);
       if (loc) map.set(item.auvo_task_id, loc);
     }
     return map;
