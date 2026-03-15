@@ -387,7 +387,7 @@ export default function AgendaSemanalPage() {
                       <th
                         key={day.toISOString()}
                         className={cn(
-                          "text-center px-2 py-2.5 text-xs font-semibold min-w-[140px]",
+                          "text-center px-2 py-2.5 text-xs font-semibold min-w-[140px] border-r border-border last:border-r-0",
                           isToday ? "text-primary bg-primary/5" : "text-muted-foreground"
                         )}
                       >
