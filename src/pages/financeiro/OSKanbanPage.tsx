@@ -107,8 +107,11 @@ export default function OSKanbanPage() {
   const [globalSort, setGlobalSort] = useState<string>("none");
   // Per-column sort
   const [columnSorts, setColumnSorts] = useState<Record<string, string>>({});
-  // City filter
-  const [filterCidade, setFilterCidade] = useState("todas");
+  // City/flag filter (multi-select)
+  const [selectedFlags, setSelectedFlags] = useState<Set<string>>(new Set());
+  const [allFlagsSelected, setAllFlagsSelected] = useState(true);
+  const [showFlagFilter, setShowFlagFilter] = useState(false);
+  const [filterOnlyRoutes, setFilterOnlyRoutes] = useState(false);
   // Edit task state
   const [showEditModal, setShowEditModal] = useState(false);
   const [editingCard, setEditingCard] = useState<OSItem | null>(null);
