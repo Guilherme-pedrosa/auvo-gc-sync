@@ -48,18 +48,19 @@ function haversineKm(lat1: number, lng1: number, lat2: number, lng2: number): nu
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
-// Minimum distance from a point to any point on a polyline (sampled)
-function minDistToPolyline(
+// Minimum distance from a point to any point on a polyline, returns { dist, index }
+function minDistToPolylineWithIndex(
   lat: number,
   lng: number,
   polylinePoints: { lat: number; lng: number }[],
-): number {
+): { dist: number; index: number } {
   let min = Infinity;
-  for (const p of polylinePoints) {
-    const d = haversineKm(lat, lng, p.lat, p.lng);
-    if (d < min) min = d;
+  let minIdx = 0;
+  for (let i = 0; i < polylinePoints.length; i++) {
+    const d = haversineKm(lat, lng, polylinePoints[i].lat, polylinePoints[i].lng);
+    if (d < min) { min = d; minIdx = i; }
   }
-  return min;
+  return { dist: min, index: minIdx };
 }
 
 // Decode Google encoded polyline
@@ -229,6 +230,7 @@ export default function RouteCorridorFilter({
     matchCount: number;
     totalCities: number;
     matchedCities: string[];
+    cityDirection: Map<string, "ida" | "volta">;
     distanceKm: number;
     durationMin: number;
   } | null>(null);
@@ -303,10 +305,13 @@ export default function RouteCorridorFilter({
 
       // 5. Check each city's distance to route
       const matchedCities: string[] = [];
+      const cityDirection = new Map<string, "ida" | "volta">();
+      const midIndex = Math.floor(sampledPath.length / 2);
       for (const [city, coords] of cityCoords) {
-        const dist = minDistToPolyline(coords.lat, coords.lng, sampledPath);
+        const { dist, index } = minDistToPolylineWithIndex(coords.lat, coords.lng, sampledPath);
         if (dist <= radiusKm) {
           matchedCities.push(city);
+          cityDirection.set(city, index <= midIndex ? "ida" : "volta");
         }
       }
 
@@ -328,6 +333,7 @@ export default function RouteCorridorFilter({
         matchCount: matchingIds.size,
         totalCities: cityList.length,
         matchedCities,
+        cityDirection,
         distanceKm: distKm,
         durationMin: durMin,
       });
@@ -546,14 +552,34 @@ export default function RouteCorridorFilter({
               <ScrollArea className="max-h-[200px]">
                 <div className="divide-y">
                   {activeFilter.matchedCities
-                    .sort((a, b) => (cityCounts.get(b) || 0) - (cityCounts.get(a) || 0))
-                    .map((c) => (
+                    .sort((a, b) => {
+                      // Sort: ida first, then volta, within each group by count
+                      const dirA = activeFilter.cityDirection.get(a) || "ida";
+                      const dirB = activeFilter.cityDirection.get(b) || "ida";
+                      if (dirA !== dirB) return dirA === "ida" ? -1 : 1;
+                      return (cityCounts.get(b) || 0) - (cityCounts.get(a) || 0);
+                    })
+                    .map((c) => {
+                      const dir = activeFilter.cityDirection.get(c);
+                      return (
                     <div key={c} className="flex items-center justify-between px-4 py-1.5 hover:bg-muted/40 group">
                       <div className="flex items-center gap-2 min-w-0">
                         <MapPin className="h-3 w-3 text-muted-foreground shrink-0" />
                         <span className="text-xs truncate">{c}</span>
                       </div>
                       <div className="flex items-center gap-1.5 shrink-0">
+                        {dir && (
+                          <Badge
+                            variant="outline"
+                            className={`text-[9px] h-4 px-1.5 ${
+                              dir === "ida"
+                                ? "border-green-300 text-green-700 bg-green-50"
+                                : "border-blue-300 text-blue-700 bg-blue-50"
+                            }`}
+                          >
+                            {dir === "ida" ? "↗ Ida" : "↩ Volta"}
+                          </Badge>
+                        )}
                         <Badge variant="outline" className="text-[9px] h-4 px-1 font-mono">
                           {cityCounts.get(c) || 0}
                         </Badge>
@@ -566,7 +592,8 @@ export default function RouteCorridorFilter({
                         </button>
                       </div>
                     </div>
-                  ))}
+                      );
+                    })}
                 </div>
               </ScrollArea>
 
