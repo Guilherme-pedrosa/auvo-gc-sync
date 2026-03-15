@@ -510,20 +510,26 @@ export default function OSKanbanPage() {
     return map;
   }, [items, extractCity]);
 
-  const routeMatches = useMemo(() => {
-    const groups = new Map<string, string[]>();
+  // routeGroups: maps each task ID to its route partners (same city + date, 2+ items)
+  const routeGroups = useMemo(() => {
+    const groups = new Map<string, { city: string; date: string; taskIds: string[] }>();
     for (const item of items) {
       const city = cityMap.get(item.auvo_task_id);
       if (!city || !item.data_tarefa) continue;
       const key = `${city.toLowerCase()}|${item.data_tarefa}`;
-      if (!groups.has(key)) groups.set(key, []);
-      groups.get(key)!.push(item.auvo_task_id);
+      if (!groups.has(key)) groups.set(key, { city, date: item.data_tarefa, taskIds: [] });
+      groups.get(key)!.taskIds.push(item.auvo_task_id);
     }
-    const matchSet = new Set<string>();
-    for (const [, ids] of groups) {
-      if (ids.length >= 2) ids.forEach((id) => matchSet.add(id));
+    // Map each task to its group info (only groups with 2+)
+    const taskToGroup = new Map<string, { city: string; date: string; partners: OSItem[] }>();
+    for (const [, group] of groups) {
+      if (group.taskIds.length < 2) continue;
+      const partnerItems = items.filter((i) => group.taskIds.includes(i.auvo_task_id));
+      for (const id of group.taskIds) {
+        taskToGroup.set(id, { city: group.city, date: group.date, partners: partnerItems });
+      }
     }
-    return matchSet;
+    return taskToGroup;
   }, [items, cityMap]);
 
   const allCities = useMemo(() => {
@@ -894,8 +900,8 @@ export default function OSKanbanPage() {
                                           {/* City + Route badges */}
                                           {(() => {
                                             const city = cityMap.get(item.auvo_task_id);
-                                            const isRoute = routeMatches.has(item.auvo_task_id);
-                                            return (city || isRoute) ? (
+                                            const routeGroup = routeGroups.get(item.auvo_task_id);
+                                            return (city || routeGroup) ? (
                                               <div className="flex items-center gap-1 mt-1 flex-wrap">
                                                 {city && (
                                                   <Badge variant="outline" className="text-[9px] h-4 px-1 gap-0.5">
@@ -903,10 +909,54 @@ export default function OSKanbanPage() {
                                                     {city}
                                                   </Badge>
                                                 )}
-                                                {isRoute && (
-                                                  <Badge className="text-[9px] h-4 px-1 bg-amber-500 text-amber-950 border-amber-600">
-                                                    🔗 Rota
-                                                  </Badge>
+                                                {routeGroup && (
+                                                  <Popover>
+                                                    <PopoverTrigger asChild>
+                                                      <button
+                                                        onClick={(e) => e.stopPropagation()}
+                                                        className="inline-flex"
+                                                      >
+                                                        <Badge className="text-[9px] h-4 px-1 bg-amber-500 text-amber-950 border-amber-600 cursor-pointer hover:bg-amber-400 transition-colors">
+                                                          🔗 Rota ({routeGroup.partners.length})
+                                                        </Badge>
+                                                      </button>
+                                                    </PopoverTrigger>
+                                                    <PopoverContent className="w-[320px] p-0" align="start" onClick={(e) => e.stopPropagation()}>
+                                                      <div className="px-3 py-2 border-b bg-amber-50 dark:bg-amber-950/30">
+                                                        <p className="text-sm font-semibold flex items-center gap-1.5">
+                                                          <MapPin className="h-3.5 w-3.5" />
+                                                          Rota: {routeGroup.city}
+                                                        </p>
+                                                        <p className="text-xs text-muted-foreground">{routeGroup.date} • {routeGroup.partners.length} atendimentos</p>
+                                                      </div>
+                                                      <ScrollArea className="max-h-[250px]">
+                                                        <div className="p-2 space-y-1.5">
+                                                          {routeGroup.partners.map((p) => (
+                                                            <div
+                                                              key={p.auvo_task_id}
+                                                              className={cn(
+                                                                "rounded border px-2.5 py-1.5 text-xs",
+                                                                p.auvo_task_id === item.auvo_task_id
+                                                                  ? "bg-amber-100 dark:bg-amber-900/40 border-amber-300"
+                                                                  : "bg-card"
+                                                              )}
+                                                            >
+                                                              <div className="flex items-center justify-between">
+                                                                <span className="font-mono text-muted-foreground">
+                                                                  {p.gc_os_codigo ? `OS ${p.gc_os_codigo}` : `T#${p.auvo_task_id}`}
+                                                                </span>
+                                                                <span className="font-medium">
+                                                                  {formatCurrency(Number(p.gc_os_valor_total) || 0)}
+                                                                </span>
+                                                              </div>
+                                                              <p className="font-medium truncate mt-0.5">{p.cliente || p.gc_os_cliente || "—"}</p>
+                                                              <p className="text-muted-foreground">{p.tecnico || "—"} • {p.gc_os_situacao || p.status_auvo || "—"}</p>
+                                                            </div>
+                                                          ))}
+                                                        </div>
+                                                      </ScrollArea>
+                                                    </PopoverContent>
+                                                  </Popover>
                                                 )}
                                               </div>
                                             ) : null;
