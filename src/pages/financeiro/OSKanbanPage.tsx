@@ -966,8 +966,9 @@ export default function OSKanbanPage() {
                 </div>
               )}
               {!osDetailLoading && osDetail && (() => {
-                const produtos: any[] = osDetail?.produtos || [];
-                const servicos: any[] = osDetail?.servicos || [];
+                // GC returns nested: produtos[].produto, servicos[].servico
+                const produtos: any[] = (osDetail?.produtos || []).map((p: any) => p?.produto || p);
+                const servicos: any[] = (osDetail?.servicos || []).map((s: any) => s?.servico || s);
                 const hasItems = produtos.length > 0 || servicos.length > 0;
 
                 // Financial summary from GC detail
