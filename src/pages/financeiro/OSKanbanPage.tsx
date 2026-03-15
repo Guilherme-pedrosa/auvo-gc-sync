@@ -597,64 +597,6 @@ export default function OSKanbanPage() {
   const formatCurrency = (val: number) =>
     val.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 
-  // Extract city from endereco field
-  const extractCity = useCallback((endereco: string | null): string | null => {
-    if (!endereco) return null;
-    // Skip URLs and very short strings
-    if (/^https?:\/\//i.test(endereco) || endereco.length < 5) return null;
-    
-    // Pattern: "Cidade - UF" or "CIDADE, UF" with CEP
-    // Try: "..., Cidade - GO, CEP..." or "..., CIDADE, GO, CEP..."
-    const match1 = endereco.match(/,\s*([A-Za-zÀ-ú\s]+?)\s*-\s*[A-Z]{2}\s*,?\s*\d{5}/);
-    if (match1) return match1[1].trim();
-    
-    // Try: "CIDADE, UF, CEP"
-    const match2 = endereco.match(/,\s*([A-Z][A-Za-zÀ-ú\s]+?)\s*,\s*[A-Z]{2}\s*,\s*[\d.]+/);
-    if (match2) return match2[1].trim();
-    
-    // Try: "Cidade - UF," at end
-    const match3 = endereco.match(/,\s*([A-Za-zÀ-ú\s]+?)\s*-\s*[A-Z]{2}\s*$/);
-    if (match3) return match3[1].trim();
-    
-    return null;
-  }, []);
-
-  // Build city map for all items
-  const cityMap = useMemo(() => {
-    const map = new Map<string, string>(); // auvo_task_id -> city
-    for (const item of items) {
-      const city = extractCity(item.endereco);
-      if (city) map.set(item.auvo_task_id, city);
-    }
-    return map;
-  }, [items, extractCity]);
-
-  // Build route matches: items in the same city + same date (potential routes)
-  const routeMatches = useMemo(() => {
-    const groups = new Map<string, string[]>(); // "city|date" -> [auvo_task_id, ...]
-    for (const item of items) {
-      const city = cityMap.get(item.auvo_task_id);
-      if (!city || !item.data_tarefa) continue;
-      const key = `${city.toLowerCase()}|${item.data_tarefa}`;
-      if (!groups.has(key)) groups.set(key, []);
-      groups.get(key)!.push(item.auvo_task_id);
-    }
-    // Only keep groups with 2+ items (actual routes)
-    const matchSet = new Set<string>();
-    for (const [, ids] of groups) {
-      if (ids.length >= 2) ids.forEach((id) => matchSet.add(id));
-    }
-    return matchSet;
-  }, [items, cityMap]);
-
-  // All cities for filter
-  const allCities = useMemo(() => {
-    const set = new Set<string>();
-    for (const [, city] of cityMap) set.add(city);
-    return Array.from(set).sort();
-  }, [cityMap]);
-
-  // filterCidade state declared above with other states
 
   return (
     <div className="min-h-screen bg-background">
