@@ -411,6 +411,9 @@ Deno.serve(async (req) => {
         (r: any) => r.reply && r.reply.trim() !== "" && !r.reply.startsWith("http")
       );
 
+      const baseAddress = resolveTaskAddress(task);
+      const resolvedAddress = detailAddressByTaskId.get(taskId) || baseAddress;
+
       const row: any = {
         auvo_task_id: taskId,
         cliente,
@@ -426,7 +429,7 @@ Deno.serve(async (req) => {
         hora_fim: String(task.endTime || task.endHour || ""),
         check_in: !!task.checkIn,
         check_out: !!task.checkOut,
-        endereco: extractAddress(task.address),
+        endereco: resolvedAddress,
         auvo_link: `https://app2.auvo.com.br/relatorioTarefas/DetalheTarefa/${taskId}`,
         auvo_task_url: String(task.taskUrl || ""),
         auvo_survey_url: String(task.survey || ""),
