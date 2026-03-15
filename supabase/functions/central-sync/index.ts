@@ -348,6 +348,40 @@ Deno.serve(async (req) => {
       if (existingChunk.length < 1000) break;
     }
 
+    // Enrich missing/weak addresses with direct Auvo task detail fetch (more reliable than list payload)
+    const detailAddressByTaskId = new Map<string, string>();
+    const candidateTaskIds: string[] = [];
+    const seenCandidates = new Set<string>();
+
+    for (const task of auvoTasks) {
+      const taskId = String(task.taskID || "").trim();
+      if (!taskId || !gcOsMap[taskId] || seenCandidates.has(taskId)) continue;
+
+      const baseAddress = resolveTaskAddress(task);
+      const customerName = String(
+        task.customerDescription || task.customerName || task.customer?.tradeName || task.customer?.companyName || ""
+      ).trim();
+
+      const weakAddress =
+        !baseAddress ||
+        baseAddress.length < 8 ||
+        normalizeComparable(baseAddress) === normalizeComparable(customerName);
+
+      if (weakAddress) {
+        candidateTaskIds.push(taskId);
+        seenCandidates.add(taskId);
+      }
+    }
+
+    if (candidateTaskIds.length > 0) {
+      console.log(`[central-sync] Reforçando endereço via Auvo detalhe para ${candidateTaskIds.length} OS...`);
+      for (const taskId of candidateTaskIds) {
+        const detailedAddress = await fetchAuvoTaskAddress(bearerToken, taskId);
+        if (detailedAddress) detailAddressByTaskId.set(taskId, detailedAddress);
+      }
+      console.log(`[central-sync] Endereços reforçados: ${detailAddressByTaskId.size}/${candidateTaskIds.length}`);
+    }
+
     // Build rows for upsert
     const rows: any[] = [];
     for (const task of auvoTasks) {
