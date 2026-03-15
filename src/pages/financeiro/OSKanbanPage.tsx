@@ -784,19 +784,75 @@ export default function OSKanbanPage() {
             </PopoverContent>
           </Popover>
 
-          {/* City filter */}
-          <Select value={filterCidade} onValueChange={setFilterCidade}>
-            <SelectTrigger className="w-[180px]">
-              <MapPin className="h-3.5 w-3.5 mr-1.5" />
-              <SelectValue placeholder="Cidade" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="todas">Todas as cidades</SelectItem>
-              {allCities.map((c) => (
-                <SelectItem key={c} value={c}>{c}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          {/* Flag filter */}
+          <Popover open={showFlagFilter} onOpenChange={setShowFlagFilter}>
+            <PopoverTrigger asChild>
+              <Button variant="outline" size="sm" className="gap-2 min-w-[160px] justify-start">
+                🚩 Flags
+                {!allFlagsSelected && selectedFlags.size > 0 && (
+                  <Badge variant="secondary" className="text-[10px] h-4 px-1 ml-1">
+                    {selectedFlags.size}
+                  </Badge>
+                )}
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent className="w-[300px] p-0" align="start">
+              <div className="p-2 border-b">
+                <label className="flex items-center gap-2 px-2 py-1 cursor-pointer hover:bg-accent rounded text-sm">
+                  <Checkbox
+                    checked={allFlagsSelected}
+                    onCheckedChange={() => {
+                      if (allFlagsSelected) {
+                        setSelectedFlags(new Set());
+                        setAllFlagsSelected(false);
+                      } else {
+                        setSelectedFlags(new Set(allCities));
+                        setAllFlagsSelected(true);
+                      }
+                    }}
+                  />
+                  <span className="font-medium">Todas as cidades</span>
+                </label>
+                <label className="flex items-center gap-2 px-2 py-1 cursor-pointer hover:bg-accent rounded text-sm mt-1">
+                  <Checkbox
+                    checked={filterOnlyRoutes}
+                    onCheckedChange={(v) => setFilterOnlyRoutes(!!v)}
+                  />
+                  <span className="font-medium">🔗 Apenas com rota</span>
+                </label>
+              </div>
+              <ScrollArea className="max-h-[300px]">
+                <div className="p-2 space-y-0.5">
+                  {allCities.map((city) => {
+                    const color = cityColorMap.get(city);
+                    const count = cityCounts.get(city) || 0;
+                    return (
+                      <label key={city} className="flex items-center gap-2 px-2 py-1.5 cursor-pointer hover:bg-accent rounded text-sm">
+                        <Checkbox
+                          checked={allFlagsSelected || selectedFlags.has(city)}
+                          onCheckedChange={() => {
+                            setSelectedFlags((prev) => {
+                              const next = new Set(allFlagsSelected ? allCities : prev);
+                              if (next.has(city)) next.delete(city);
+                              else next.add(city);
+                              return next;
+                            });
+                            setAllFlagsSelected(false);
+                          }}
+                        />
+                        <span
+                          className="w-3 h-3 rounded-full flex-shrink-0 border"
+                          style={{ backgroundColor: color?.bg || "#6b7280" }}
+                        />
+                        <span className="truncate flex-1">{city}</span>
+                        <span className="text-xs text-muted-foreground">{count}</span>
+                      </label>
+                    );
+                  })}
+                </div>
+              </ScrollArea>
+            </PopoverContent>
+          </Popover>
 
           {/* Value range filter */}
           <Popover>
