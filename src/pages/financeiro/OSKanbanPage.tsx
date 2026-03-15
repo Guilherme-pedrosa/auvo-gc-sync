@@ -1089,6 +1089,13 @@ export default function OSKanbanPage() {
             </PopoverContent>
           </Popover>
 
+          {/* Route corridor filter */}
+          <RouteCorridorFilter
+            allCities={allCities}
+            cityMap={cityMap}
+            onFilterChange={setCorridorFilterIds}
+          />
+
           {/* Global sort */}
           <Select value={globalSort} onValueChange={setGlobalSort}>
             <SelectTrigger className="w-[180px]">
