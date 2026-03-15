@@ -126,6 +126,7 @@ export default function OSKanbanPage() {
   const [execTaskLoading, setExecTaskLoading] = useState(false);
   const [viewMode, setViewMode] = useState<"kanban" | "map">("kanban");
   const [corridorFilterIds, setCorridorFilterIds] = useState<Set<string> | null>(null);
+  const [corridorRoute, setCorridorRoute] = useState<any>(null);
 
   // Fetch Auvo users (technicians)
   const { data: auvoUsers } = useQuery({

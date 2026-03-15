@@ -42,6 +42,14 @@ type RouteResult = {
   legs: { distance: string; duration: string; start_address: string; end_address: string }[];
 };
 
+interface CorridorRoute {
+  encodedPolyline: string;
+  originCoord: { lat: number; lng: number };
+  destCoord: { lat: number; lng: number };
+  originLabel: string;
+  destLabel: string;
+}
+
 interface OSMapViewProps {
   items: OSItem[];
   cityColorMap: globalThis.Map<string, { bg: string; text: string }>;
@@ -49,6 +57,7 @@ interface OSMapViewProps {
   formatCurrency: (val: number) => string;
   onSelectCard: (item: OSItem) => void;
   autoOptimize?: boolean;
+  corridorRoute?: CorridorRoute | null;
 }
 
 const mapContainerStyle = { width: "100%", height: "100%" };
