@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useMemo, useRef } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -7,12 +7,21 @@ import { Slider } from "@/components/ui/slider";
 import { Badge } from "@/components/ui/badge";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Loader2, Route, X, MapPin } from "lucide-react";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { Loader2, Route, X, MapPin, Search } from "lucide-react";
 import { toast } from "sonner";
+
+interface OSInfo {
+  auvo_task_id: string;
+  gc_os_codigo?: string;
+  cliente?: string;
+  cidade?: string;
+}
 
 interface RouteCorridorFilterProps {
   allCities: string[];
   cityMap: Map<string, string>; // taskId → city/region
+  osItems?: OSInfo[];
   onFilterChange: (matchingTaskIds: Set<string> | null) => void;
 }
 
@@ -90,6 +99,99 @@ function samplePolyline(points: { lat: number; lng: number }[], maxPoints = 200)
   return sampled;
 }
 
+// Autocomplete for destination field
+function DestinationAutocomplete({
+  value,
+  onChange,
+  allCities,
+  osItems,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  allCities: string[];
+  osItems: OSInfo[];
+}) {
+  const [focused, setFocused] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const query = value.toLowerCase().trim();
+
+  const suggestions = useMemo(() => {
+    if (!query) return [];
+    const results: { label: string; sublabel?: string; value: string; type: "city" | "os" }[] = [];
+
+    // Match cities
+    for (const city of allCities) {
+      if (city.toLowerCase().includes(query)) {
+        results.push({ label: city, value: city, type: "city" });
+      }
+      if (results.length >= 8) break;
+    }
+
+    // Match OS by code or client
+    for (const os of osItems) {
+      if (results.length >= 12) break;
+      const code = os.gc_os_codigo || "";
+      const client = os.cliente || "";
+      if (code.toLowerCase().includes(query) || client.toLowerCase().includes(query)) {
+        const city = os.cidade || "Sem cidade";
+        results.push({
+          label: `OS ${code}`,
+          sublabel: `${client} • ${city}`,
+          value: city,
+          type: "os",
+        });
+      }
+    }
+
+    return results;
+  }, [query, allCities, osItems]);
+
+  const showDropdown = focused && query.length > 0 && suggestions.length > 0;
+
+  return (
+    <div className="relative" ref={containerRef}>
+      <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3 w-3 text-muted-foreground" />
+      <Input
+        className="h-8 text-sm pl-8"
+        placeholder="Nº da OS ou cidade (ex: Cuiabá - MT)"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        onFocus={() => setFocused(true)}
+        onBlur={() => setTimeout(() => setFocused(false), 200)}
+      />
+      {showDropdown && (
+        <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-popover border rounded-md shadow-md overflow-hidden">
+          <ScrollArea className="max-h-[200px]">
+            {suggestions.map((s, i) => (
+              <button
+                key={`${s.type}-${s.value}-${i}`}
+                className="w-full text-left px-3 py-1.5 text-sm hover:bg-accent flex items-center gap-2"
+                onMouseDown={(e) => {
+                  e.preventDefault();
+                  onChange(s.value);
+                  setFocused(false);
+                }}
+              >
+                {s.type === "city" ? (
+                  <MapPin className="h-3 w-3 text-muted-foreground shrink-0" />
+                ) : (
+                  <Badge variant="outline" className="text-[9px] h-4 px-1 shrink-0">OS</Badge>
+                )}
+                <div className="min-w-0">
+                  <span className="block truncate">{s.label}</span>
+                  {s.sublabel && (
+                    <span className="block text-[10px] text-muted-foreground truncate">{s.sublabel}</span>
+                  )}
+                </div>
+              </button>
+            ))}
+          </ScrollArea>
+        </div>
+      )}
+    </div>
+  );
+}
+
 const PRESET_ORIGINS = [
   "Anápolis - GO",
   "Goiânia - GO",
@@ -100,6 +202,7 @@ const PRESET_ORIGINS = [
 export default function RouteCorridorFilter({
   allCities,
   cityMap,
+  osItems = [],
   onFilterChange,
 }: RouteCorridorFilterProps) {
   const [open, setOpen] = useState(false);
@@ -282,15 +385,12 @@ export default function RouteCorridorFilter({
 
             <div className="space-y-2">
               <Label className="text-xs">Destino</Label>
-              <div className="relative">
-                <MapPin className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3 w-3 text-red-500" />
-                <Input
-                  className="h-8 text-sm pl-8"
-                  placeholder="Digite a cidade destino (ex: Cuiabá - MT)"
-                  value={destination}
-                  onChange={(e) => setDestination(e.target.value)}
-                />
-              </div>
+              <DestinationAutocomplete
+                value={destination}
+                onChange={setDestination}
+                allCities={allCities}
+                osItems={osItems}
+              />
             </div>
 
             <div className="space-y-2">
