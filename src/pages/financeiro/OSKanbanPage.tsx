@@ -340,7 +340,8 @@ export default function OSKanbanPage() {
 
     for (const item of items) {
       const statusAuvo = (item.status_auvo || "").toLowerCase();
-      if (statusAuvo.includes("agendad")) {
+      // "Aberta" = agendada no Auvo, "Em andamento" = em execução
+      if (statusAuvo === "aberta" || statusAuvo.includes("agendad")) {
         agendadoItems.push(item);
         continue;
       }
