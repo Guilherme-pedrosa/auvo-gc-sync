@@ -107,6 +107,8 @@ export default function OSKanbanPage() {
   const [globalSort, setGlobalSort] = useState<string>("none");
   // Per-column sort
   const [columnSorts, setColumnSorts] = useState<Record<string, string>>({});
+  // City filter
+  const [filterCidade, setFilterCidade] = useState("todas");
   // Edit task state
   const [showEditModal, setShowEditModal] = useState(false);
   const [editingCard, setEditingCard] = useState<OSItem | null>(null);
