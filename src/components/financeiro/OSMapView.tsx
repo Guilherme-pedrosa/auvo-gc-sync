@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import {
   GoogleMap,
@@ -149,6 +149,17 @@ function OSMapViewInner({
   const [optimizing, setOptimizing] = useState(false);
   const [selectedMarker, setSelectedMarker] = useState<GeocodedItem | null>(null);
 
+  const corridorPath = useMemo(() => {
+    if (!isLoaded || !corridorRoute?.encodedPolyline) return [];
+    try {
+      const decodedPath = google.maps.geometry.encoding.decodePath(corridorRoute.encodedPolyline);
+      return decodedPath.map((p: google.maps.LatLng) => ({ lat: p.lat(), lng: p.lng() }));
+    } catch (error) {
+      console.error("Erro ao decodificar rota do corredor:", error);
+      return [];
+    }
+  }, [isLoaded, corridorRoute?.encodedPolyline]);
+
   const onMapLoad = useCallback((map: google.maps.Map) => {
     mapRef.current = map;
   }, []);
@@ -221,6 +232,14 @@ function OSMapViewInner({
       optimizeRoute();
     }
   }, [autoOptimize, geocodedItems.length, optimizing, routeResult]);
+
+  // Reenquadra o mapa quando a rota de corredor muda
+  useEffect(() => {
+    if (!mapRef.current || corridorPath.length === 0) return;
+    const bounds = new google.maps.LatLngBounds();
+    corridorPath.forEach((point) => bounds.extend(point));
+    mapRef.current.fitBounds(bounds, 60);
+  }, [corridorPath]);
 
   // Optimize route
   const optimizeRoute = useCallback(async () => {
@@ -384,50 +403,49 @@ function OSMapViewInner({
           )}
 
           {/* Corridor route polyline + origin/destination markers */}
-          {corridorRoute && isLoaded && (() => {
-            const path = google.maps.geometry.encoding.decodePath(corridorRoute.encodedPolyline);
-            const corridorPath = path.map((p: google.maps.LatLng) => ({ lat: p.lat(), lng: p.lng() }));
-            return (
-              <>
-                <Polyline
-                  path={corridorPath}
-                  options={{
-                    strokeColor: "#8b5cf6",
-                    strokeOpacity: 0.6,
-                    strokeWeight: 5,
-                    geodesic: true,
-                    zIndex: 1,
-                  }}
-                />
-                <Marker
-                  position={corridorRoute.originCoord}
-                  label={{ text: "A", color: "#fff", fontWeight: "bold", fontSize: "12px" }}
-                  title={corridorRoute.originLabel}
-                  icon={{
-                    path: google.maps.SymbolPath.CIRCLE,
-                    scale: 14,
-                    fillColor: "#22c55e",
-                    fillOpacity: 1,
-                    strokeColor: "#fff",
-                    strokeWeight: 2,
-                  }}
-                />
-                <Marker
-                  position={corridorRoute.destCoord}
-                  label={{ text: "B", color: "#fff", fontWeight: "bold", fontSize: "12px" }}
-                  title={corridorRoute.destLabel}
-                  icon={{
-                    path: google.maps.SymbolPath.CIRCLE,
-                    scale: 14,
-                    fillColor: "#ef4444",
-                    fillOpacity: 1,
-                    strokeColor: "#fff",
-                    strokeWeight: 2,
-                  }}
-                />
-              </>
-            );
-          })()}
+          {corridorRoute && corridorPath.length > 0 && (
+            <>
+              <Polyline
+                key={`corridor-line-${corridorRoute.encodedPolyline}`}
+                path={corridorPath}
+                options={{
+                  strokeColor: "#8b5cf6",
+                  strokeOpacity: 0.6,
+                  strokeWeight: 5,
+                  geodesic: true,
+                  zIndex: 1,
+                }}
+              />
+              <Marker
+                key={`corridor-origin-${corridorRoute.encodedPolyline}`}
+                position={corridorRoute.originCoord}
+                label={{ text: "A", color: "#fff", fontWeight: "bold", fontSize: "12px" }}
+                title={corridorRoute.originLabel}
+                icon={{
+                  path: google.maps.SymbolPath.CIRCLE,
+                  scale: 14,
+                  fillColor: "#22c55e",
+                  fillOpacity: 1,
+                  strokeColor: "#fff",
+                  strokeWeight: 2,
+                }}
+              />
+              <Marker
+                key={`corridor-dest-${corridorRoute.encodedPolyline}`}
+                position={corridorRoute.destCoord}
+                label={{ text: "B", color: "#fff", fontWeight: "bold", fontSize: "12px" }}
+                title={corridorRoute.destLabel}
+                icon={{
+                  path: google.maps.SymbolPath.CIRCLE,
+                  scale: 14,
+                  fillColor: "#ef4444",
+                  fillOpacity: 1,
+                  strokeColor: "#fff",
+                  strokeWeight: 2,
+                }}
+              />
+            </>
+          )}
         </GoogleMap>
 
         {/* Map overlay controls */}
