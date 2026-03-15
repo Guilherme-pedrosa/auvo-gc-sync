@@ -229,6 +229,8 @@ export default function RouteCorridorFilter({
     matchCount: number;
     totalCities: number;
     matchedCities: string[];
+    distanceKm: number;
+    durationMin: number;
   } | null>(null);
 
   const applyFilter = useCallback(async () => {
@@ -316,6 +318,9 @@ export default function RouteCorridorFilter({
         }
       }
 
+      const distKm = dirData?.total_distance_km || 0;
+      const durMin = dirData?.total_duration_min || 0;
+
       setActiveFilter({
         origin,
         destination,
@@ -323,6 +328,8 @@ export default function RouteCorridorFilter({
         matchCount: matchingIds.size,
         totalCities: cityList.length,
         matchedCities,
+        distanceKm: distKm,
+        durationMin: durMin,
       });
 
       onFilterChange(matchingIds);
@@ -491,17 +498,48 @@ export default function RouteCorridorFilter({
           {activeFilter && (
             <div className="border-t">
               {/* Route summary */}
-              <div className="px-4 py-2.5 bg-muted/30 flex items-center justify-between">
-                <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                  <span className="h-2 w-2 rounded-full bg-green-500" />
-                  <span className="font-medium text-foreground">{activeFilter.origin.split(" - ")[0]}</span>
-                  <span>→</span>
-                  <span className="font-medium text-foreground">{activeFilter.destination.split(" - ")[0]}</span>
-                  <span className="text-[10px]">(±{activeFilter.radius}km)</span>
+              <div className="px-4 py-2.5 bg-muted/30 space-y-2">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                    <span className="h-2 w-2 rounded-full bg-green-500" />
+                    <span className="font-medium text-foreground">{activeFilter.origin.split(" - ")[0]}</span>
+                    <span>→</span>
+                    <span className="font-medium text-foreground">{activeFilter.destination.split(" - ")[0]}</span>
+                    <span className="text-[10px]">(±{activeFilter.radius}km)</span>
+                  </div>
+                  <Button variant="ghost" size="sm" className="h-6 px-2 text-[10px] text-muted-foreground hover:text-destructive" onClick={clearFilter}>
+                    <X className="h-3 w-3 mr-0.5" /> Limpar
+                  </Button>
                 </div>
-                <Button variant="ghost" size="sm" className="h-6 px-2 text-[10px] text-muted-foreground hover:text-destructive" onClick={clearFilter}>
-                  <X className="h-3 w-3 mr-0.5" /> Limpar
-                </Button>
+                {activeFilter.distanceKm > 0 && (
+                  <div className="flex gap-3 text-[11px]">
+                    <div className="flex items-center gap-1.5 bg-background rounded px-2 py-1 border">
+                      <span>🚗</span>
+                      <span className="text-muted-foreground">Ida:</span>
+                      <span className="font-medium">{Math.round(activeFilter.distanceKm)} km</span>
+                      <span className="text-muted-foreground">·</span>
+                      <span className="font-medium">
+                        {activeFilter.durationMin >= 60
+                          ? `${Math.floor(activeFilter.durationMin / 60)}h${Math.round(activeFilter.durationMin % 60).toString().padStart(2, "0")}`
+                          : `${Math.round(activeFilter.durationMin)} min`}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-1.5 bg-background rounded px-2 py-1 border">
+                      <span>🔄</span>
+                      <span className="text-muted-foreground">Ida+Volta:</span>
+                      <span className="font-medium">{Math.round(activeFilter.distanceKm * 2)} km</span>
+                      <span className="text-muted-foreground">·</span>
+                      <span className="font-medium">
+                        {(() => {
+                          const totalMin = activeFilter.durationMin * 2;
+                          return totalMin >= 60
+                            ? `${Math.floor(totalMin / 60)}h${Math.round(totalMin % 60).toString().padStart(2, "0")}`
+                            : `${Math.round(totalMin)} min`;
+                        })()}
+                      </span>
+                    </div>
+                  </div>
+                )}
               </div>
 
               {/* City list */}
