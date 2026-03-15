@@ -107,6 +107,8 @@ export default function OSKanbanPage() {
   const [globalSort, setGlobalSort] = useState<string>("none");
   // Per-column sort
   const [columnSorts, setColumnSorts] = useState<Record<string, string>>({});
+  // City filter
+  const [filterCidade, setFilterCidade] = useState("todas");
   // Edit task state
   const [showEditModal, setShowEditModal] = useState(false);
   const [editingCard, setEditingCard] = useState<OSItem | null>(null);
@@ -486,6 +488,50 @@ export default function OSKanbanPage() {
     }
   }, []);
 
+  // Extract city from endereco field
+  const extractCity = useCallback((endereco: string | null): string | null => {
+    if (!endereco) return null;
+    if (/^https?:\/\//i.test(endereco) || endereco.length < 5) return null;
+    const match1 = endereco.match(/,\s*([A-Za-zÀ-ú\s]+?)\s*-\s*[A-Z]{2}\s*,?\s*\d{5}/);
+    if (match1) return match1[1].trim();
+    const match2 = endereco.match(/,\s*([A-Z][A-Za-zÀ-ú\s]+?)\s*,\s*[A-Z]{2}\s*,\s*[\d.]+/);
+    if (match2) return match2[1].trim();
+    const match3 = endereco.match(/,\s*([A-Za-zÀ-ú\s]+?)\s*-\s*[A-Z]{2}\s*$/);
+    if (match3) return match3[1].trim();
+    return null;
+  }, []);
+
+  const cityMap = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const item of items) {
+      const city = extractCity(item.endereco);
+      if (city) map.set(item.auvo_task_id, city);
+    }
+    return map;
+  }, [items, extractCity]);
+
+  const routeMatches = useMemo(() => {
+    const groups = new Map<string, string[]>();
+    for (const item of items) {
+      const city = cityMap.get(item.auvo_task_id);
+      if (!city || !item.data_tarefa) continue;
+      const key = `${city.toLowerCase()}|${item.data_tarefa}`;
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key)!.push(item.auvo_task_id);
+    }
+    const matchSet = new Set<string>();
+    for (const [, ids] of groups) {
+      if (ids.length >= 2) ids.forEach((id) => matchSet.add(id));
+    }
+    return matchSet;
+  }, [items, cityMap]);
+
+  const allCities = useMemo(() => {
+    const set = new Set<string>();
+    for (const [, city] of cityMap) set.add(city);
+    return Array.from(set).sort();
+  }, [cityMap]);
+
   const filteredColumns = useMemo(() => {
     const minVal = valorMin ? Number(valorMin) : null;
     const maxVal = valorMax ? Number(valorMax) : null;
@@ -497,14 +543,17 @@ export default function OSKanbanPage() {
         const val = Number(item.gc_os_valor_total) || 0;
         if (minVal !== null && val < minVal) return false;
         if (maxVal !== null && val > maxVal) return false;
+        if (filterCidade !== "todas") {
+          const city = cityMap.get(item.auvo_task_id);
+          if (!city || city !== filterCidade) return false;
+        }
         return true;
       });
-      // Apply sort: column-level overrides global
       const sortKey = columnSorts[col.id] || globalSort;
       filtered = sortItems(filtered, sortKey);
       return { ...col, items: filtered };
     });
-  }, [columns, filterTecnico, allClientesSelected, selectedClientes, valorMin, valorMax, globalSort, columnSorts, sortItems]);
+  }, [columns, filterTecnico, allClientesSelected, selectedClientes, valorMin, valorMax, globalSort, columnSorts, sortItems, filterCidade, cityMap]);
 
   // Drag & drop
   const onDragEnd = useCallback((result: DropResult) => {
@@ -547,6 +596,7 @@ export default function OSKanbanPage() {
 
   const formatCurrency = (val: number) =>
     val.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+
 
   return (
     <div className="min-h-screen bg-background">
@@ -644,6 +694,20 @@ export default function OSKanbanPage() {
               </ScrollArea>
             </PopoverContent>
           </Popover>
+
+          {/* City filter */}
+          <Select value={filterCidade} onValueChange={setFilterCidade}>
+            <SelectTrigger className="w-[180px]">
+              <MapPin className="h-3.5 w-3.5 mr-1.5" />
+              <SelectValue placeholder="Cidade" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="todas">Todas as cidades</SelectItem>
+              {allCities.map((c) => (
+                <SelectItem key={c} value={c}>{c}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
 
           {/* Value range filter */}
           <Popover>
@@ -827,6 +891,26 @@ export default function OSKanbanPage() {
                                               {item.orientacao.substring(0, 80)}{item.orientacao.length > 80 ? "…" : ""}
                                             </p>
                                           )}
+                                          {/* City + Route badges */}
+                                          {(() => {
+                                            const city = cityMap.get(item.auvo_task_id);
+                                            const isRoute = routeMatches.has(item.auvo_task_id);
+                                            return (city || isRoute) ? (
+                                              <div className="flex items-center gap-1 mt-1 flex-wrap">
+                                                {city && (
+                                                  <Badge variant="outline" className="text-[9px] h-4 px-1 gap-0.5">
+                                                    <MapPin className="h-2.5 w-2.5" />
+                                                    {city}
+                                                  </Badge>
+                                                )}
+                                                {isRoute && (
+                                                  <Badge className="text-[9px] h-4 px-1 bg-amber-500 text-amber-950 border-amber-600">
+                                                    🔗 Rota
+                                                  </Badge>
+                                                )}
+                                              </div>
+                                            ) : null;
+                                          })()}
                                           <div className="flex items-center justify-between mt-1.5">
                                             <span className="text-xs font-medium text-foreground">
                                               {formatCurrency(Number(item.gc_os_valor_total) || 0)}
