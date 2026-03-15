@@ -23,6 +23,17 @@ serve(async (req) => {
     const body = await req.json();
     const { action } = body;
 
+    // ACTION: debug - test raw geocode response
+    if (action === "debug_geocode") {
+      const { address } = body;
+      const url = `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(address || "Goiânia, GO, Brasil")}&key=${GOOGLE_MAPS_API_KEY}&region=br&language=pt-BR`;
+      const res = await fetch(url);
+      const data = await res.json();
+      return new Response(JSON.stringify({ raw_google_response: data, key_prefix: GOOGLE_MAPS_API_KEY.substring(0, 10) + "..." }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
     // ACTION: geocode - convert address to lat/lng
     if (action === "geocode") {
       const { addresses } = body; // string[]
@@ -48,6 +59,11 @@ serve(async (req) => {
           const res = await fetch(url);
           const data = await res.json();
 
+          // Debug: log Google's response status for first few addresses
+          if (i < 3) {
+            console.log(`[google-maps] Geocode "${addr.substring(0, 50)}..." → status=${data.status}, error=${data.error_message || "none"}, results=${data.results?.length || 0}`);
+          }
+
           if (data.status === "OK" && data.results?.length > 0) {
             const loc = data.results[0].geometry.location;
             results.push({
@@ -57,9 +73,13 @@ serve(async (req) => {
               formatted: data.results[0].formatted_address,
             });
           } else {
+            if (data.error_message) {
+              console.error(`[google-maps] Geocode error: ${data.status} - ${data.error_message}`);
+            }
             results.push({ address: addr, lat: null, lng: null, formatted: null });
           }
-        } catch {
+        } catch (e) {
+          console.error(`[google-maps] Geocode fetch error:`, e);
           results.push({ address: addr, lat: null, lng: null, formatted: null });
         }
 
