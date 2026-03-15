@@ -410,11 +410,14 @@ export default function OSKanbanPage() {
         }, stage.delay)
       );
 
-      const { error } = await syncPromise;
+      const { data, error } = await syncPromise;
       cancelled = true;
       progressTimers.forEach(clearTimeout);
 
       if (error) throw error;
+      if (data?.success === false) {
+        throw new Error(data?.error || "Sincronização retornou falha");
+      }
       setSyncStatus("Atualizando dados...");
       toast.success("Sincronização concluída!");
       // columns rebuild automatically via useEffect on items change
