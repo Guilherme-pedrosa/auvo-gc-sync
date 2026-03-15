@@ -352,7 +352,7 @@ export default function RouteCorridorFilter({
       matchCount: matchingIds.size,
     });
     onFilterChange(matchingIds);
-    toast.info(`${cityToRemove} removida do corredor`);
+    toast.info(`${cityToRemove} removida do corredor`, { duration: 1500, position: "bottom-center" });
   }, [activeFilter, cityMap, onFilterChange, clearFilter]);
 
   // Count OS per city for display
