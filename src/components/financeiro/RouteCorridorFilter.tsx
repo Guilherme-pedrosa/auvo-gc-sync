@@ -8,7 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Loader2, Route, X, MapPin, Search } from "lucide-react";
+import { Loader2, Route, X, MapPin, Search, Map as MapIcon } from "lucide-react";
 import { toast } from "sonner";
 
 interface OSInfo {
