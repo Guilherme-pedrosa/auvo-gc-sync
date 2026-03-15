@@ -794,13 +794,17 @@ export default function OSKanbanPage() {
         if (filterOnlyRoutes) {
           if (!routeGroups.has(item.auvo_task_id)) return false;
         }
+        // Corridor filter
+        if (corridorFilterIds !== null) {
+          if (!corridorFilterIds.has(item.auvo_task_id)) return false;
+        }
         return true;
       });
       const sortKey = columnSorts[col.id] || globalSort;
       filtered = sortItems(filtered, sortKey);
       return { ...col, items: filtered };
     });
-  }, [columns, filterTecnico, allClientesSelected, selectedClientes, valorMin, valorMax, globalSort, columnSorts, sortItems, allFlagsSelected, selectedFlags, cityMap, filterOnlyRoutes, routeGroups]);
+  }, [columns, filterTecnico, allClientesSelected, selectedClientes, valorMin, valorMax, globalSort, columnSorts, sortItems, allFlagsSelected, selectedFlags, cityMap, filterOnlyRoutes, routeGroups, corridorFilterIds]);
 
   // Drag & drop
   const onDragEnd = useCallback((result: DropResult) => {
