@@ -332,7 +332,7 @@ export default function OSKanbanPage() {
   }, [rawItems]);
 
   // Build columns: OS with status "Agendada" go to a special first column
-  useMemo(() => {
+  useEffect(() => {
     if (!items.length || columnsInitialized) return;
 
     const agendadoItems: OSItem[] = [];
@@ -340,7 +340,6 @@ export default function OSKanbanPage() {
 
     for (const item of items) {
       const statusAuvo = (item.status_auvo || "").toLowerCase();
-      // "Aberta" = agendada no Auvo, "Em andamento" = em execução
       if (statusAuvo === "aberta" || statusAuvo.includes("agendad")) {
         agendadoItems.push(item);
         continue;
