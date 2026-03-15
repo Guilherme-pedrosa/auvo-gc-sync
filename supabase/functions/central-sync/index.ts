@@ -417,8 +417,10 @@ Deno.serve(async (req) => {
 
       const baseAddress = resolveTaskAddress(task);
       const snapshot = taskSnapshotById.get(taskId);
-      const resolvedAddress = snapshot?.address || baseAddress;
-      const resolvedOrientation = String(task.orientation || snapshot?.orientation || "").substring(0, 500);
+      // Always prefer snapshot (detail endpoint) - it's more reliable than list
+      const snapshotAddr = snapshot?.address && snapshot.address.length > 5 ? snapshot.address : "";
+      const resolvedAddress = snapshotAddr || baseAddress;
+      const resolvedOrientation = String(snapshot?.orientation || task.orientation || "").substring(0, 500);
 
       const row: any = {
         auvo_task_id: taskId,
