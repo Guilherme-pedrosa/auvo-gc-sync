@@ -48,6 +48,7 @@ interface OSMapViewProps {
   cityMap: globalThis.Map<string, string>;
   formatCurrency: (val: number) => string;
   onSelectCard: (item: OSItem) => void;
+  autoOptimize?: boolean;
 }
 
 const mapContainerStyle = { width: "100%", height: "100%" };
@@ -71,7 +72,7 @@ async function fetchApiKey(): Promise<string> {
   return keyPromise;
 }
 
-export default function OSMapView({ items, cityColorMap, cityMap, formatCurrency, onSelectCard }: OSMapViewProps) {
+export default function OSMapView({ items, cityColorMap, cityMap, formatCurrency, onSelectCard, autoOptimize }: OSMapViewProps) {
   const [apiKey, setApiKey] = useState<string | null>(cachedApiKey);
   const [loadingKey, setLoadingKey] = useState(!cachedApiKey);
   const [keyError, setKeyError] = useState<string | null>(null);
@@ -107,6 +108,7 @@ export default function OSMapView({ items, cityColorMap, cityMap, formatCurrency
       cityMap={cityMap}
       formatCurrency={formatCurrency}
       onSelectCard={onSelectCard}
+      autoOptimize={autoOptimize}
     />
   );
 }
@@ -118,6 +120,7 @@ function OSMapViewInner({
   cityMap,
   formatCurrency,
   onSelectCard,
+  autoOptimize,
 }: OSMapViewProps & { apiKey: string }) {
   const { isLoaded, loadError } = useJsApiLoader({
     googleMapsApiKey: apiKey,
@@ -191,11 +194,20 @@ function OSMapViewInner({
   }, [items]);
 
   // Auto-geocode when map loads
+  const autoOptimizeTriggered = useRef(false);
   useEffect(() => {
     if (isLoaded && items.length > 0 && geocodedItems.length === 0 && !geocoding) {
       geocodeItems();
     }
   }, [isLoaded, items.length]);
+
+  // Auto-optimize after geocoding when autoOptimize is set
+  useEffect(() => {
+    if (autoOptimize && geocodedItems.length >= 2 && !autoOptimizeTriggered.current && !optimizing && !routeResult) {
+      autoOptimizeTriggered.current = true;
+      optimizeRoute();
+    }
+  }, [autoOptimize, geocodedItems.length, optimizing, routeResult]);
 
   // Optimize route
   const optimizeRoute = useCallback(async () => {

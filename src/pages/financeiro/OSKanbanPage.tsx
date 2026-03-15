@@ -956,6 +956,22 @@ export default function OSKanbanPage() {
                   })}
                 </div>
               </ScrollArea>
+              {/* Roteirizar button */}
+              {!allFlagsSelected && selectedFlags.size > 0 && (
+                <div className="p-2 border-t">
+                  <Button
+                    size="sm"
+                    className="w-full gap-2"
+                    onClick={() => {
+                      setShowFlagFilter(false);
+                      setViewMode("map");
+                    }}
+                  >
+                    <Navigation className="h-3.5 w-3.5" />
+                    Roteirizar {selectedFlags.size} cidade{selectedFlags.size !== 1 ? "s" : ""} selecionada{selectedFlags.size !== 1 ? "s" : ""}
+                  </Button>
+                </div>
+              )}
             </PopoverContent>
           </Popover>
 
@@ -1042,11 +1058,22 @@ export default function OSKanbanPage() {
       {/* Map View */}
       {!isLoading && viewMode === "map" && (
         <OSMapView
-          items={items}
+          items={(() => {
+            if (allFlagsSelected && !filterOnlyRoutes) return items;
+            return items.filter((item) => {
+              if (!allFlagsSelected && selectedFlags.size > 0) {
+                const city = cityMap.get(item.auvo_task_id);
+                if (!city || !selectedFlags.has(city)) return false;
+              }
+              if (filterOnlyRoutes && !routeGroups.has(item.auvo_task_id)) return false;
+              return true;
+            });
+          })()}
           cityColorMap={cityColorMap}
           cityMap={cityMap}
           formatCurrency={formatCurrency}
           onSelectCard={(item) => setSelectedCard(item as any)}
+          autoOptimize={!allFlagsSelected && selectedFlags.size > 0}
         />
       )}
 
