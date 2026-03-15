@@ -1102,6 +1102,7 @@ export default function OSKanbanPage() {
             }))}
             onFilterChange={setCorridorFilterIds}
             onShowMap={() => setViewMode("map")}
+            onCorridorRouteChange={setCorridorRoute}
           />
 
           {/* Global sort */}
