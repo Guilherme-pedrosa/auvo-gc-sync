@@ -270,11 +270,7 @@ Deno.serve(async (req) => {
     console.log(`[central-sync] Auvo: ${auvoTasks.length} tarefas, GC Orç: ${Object.keys(gcOrcMap).length}, GC OS: ${Object.keys(gcOsMap).length}`);
 
     if (auvoTasks.length === 0) {
-      return new Response(JSON.stringify({ 
-        success: false, error: "Nenhuma tarefa retornada do Auvo" 
-      }), {
-        status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+      console.warn("[central-sync] Nenhuma tarefa retornada do Auvo; aplicando fallback apenas com dados do GC");
     }
 
     // Build rows for upsert
