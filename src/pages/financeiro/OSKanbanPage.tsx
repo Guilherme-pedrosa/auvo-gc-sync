@@ -966,7 +966,7 @@ export default function OSKanbanPage() {
                                                           <MapPin className="h-3.5 w-3.5" />
                                                           Rota: {routeGroup.city}
                                                         </p>
-                                                        <p className="text-xs text-muted-foreground">{routeGroup.date} • {routeGroup.partners.length} atendimentos</p>
+                                                        <p className="text-xs text-muted-foreground">{routeGroup.label} • {routeGroup.partners.length} atendimentos</p>
                                                       </div>
                                                       <ScrollArea className="max-h-[250px]">
                                                         <div className="p-2 space-y-1.5">
