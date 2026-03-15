@@ -47,9 +47,9 @@ interface OSMapViewProps {
 
 export default function OSMapView({ items, cityColorMap, cityMap, formatCurrency, onSelectCard }: OSMapViewProps) {
   const mapRef = useRef<HTMLDivElement>(null);
-  const mapInstanceRef = useRef<google.maps.Map | null>(null);
-  const markersRef = useRef<google.maps.marker.AdvancedMarkerElement[]>([]);
-  const polylineRef = useRef<google.maps.Polyline | null>(null);
+  const mapInstanceRef = useRef<any>(null);
+  const markersRef = useRef<any[]>([]);
+  const polylineRef = useRef<any>(null);
 
   const [apiKey, setApiKey] = useState<string | null>(null);
   const [mapLoaded, setMapLoaded] = useState(false);
