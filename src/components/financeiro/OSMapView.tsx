@@ -233,6 +233,14 @@ function OSMapViewInner({
     }
   }, [autoOptimize, geocodedItems.length, optimizing, routeResult]);
 
+  // Reenquadra o mapa quando a rota de corredor muda
+  useEffect(() => {
+    if (!mapRef.current || corridorPath.length === 0) return;
+    const bounds = new google.maps.LatLngBounds();
+    corridorPath.forEach((point) => bounds.extend(point));
+    mapRef.current.fitBounds(bounds, 60);
+  }, [corridorPath]);
+
   // Optimize route
   const optimizeRoute = useCallback(async () => {
     if (geocodedItems.length < 2) {
