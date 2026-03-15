@@ -120,6 +120,7 @@ function OSMapViewInner({
   cityMap,
   formatCurrency,
   onSelectCard,
+  autoOptimize,
 }: OSMapViewProps & { apiKey: string }) {
   const { isLoaded, loadError } = useJsApiLoader({
     googleMapsApiKey: apiKey,
