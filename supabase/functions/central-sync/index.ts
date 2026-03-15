@@ -360,7 +360,7 @@ Deno.serve(async (req) => {
     }
 
     // Enrich missing/weak addresses with direct Auvo task detail fetch (more reliable than list payload)
-    const detailAddressByTaskId = new Map<string, string>();
+    const taskSnapshotById = new Map<string, AuvoTaskSnapshot>();
     const candidateTaskIds: string[] = [];
     const seenCandidates = new Set<string>();
 
@@ -387,10 +387,10 @@ Deno.serve(async (req) => {
     if (candidateTaskIds.length > 0) {
       console.log(`[central-sync] Reforçando endereço via Auvo detalhe para ${candidateTaskIds.length} OS...`);
       for (const taskId of candidateTaskIds) {
-        const detailedAddress = await fetchAuvoTaskAddress(bearerToken, taskId);
-        if (detailedAddress) detailAddressByTaskId.set(taskId, detailedAddress);
+        const snapshot = await fetchAuvoTaskSnapshot(bearerToken, taskId);
+        if (snapshot) taskSnapshotById.set(taskId, snapshot);
       }
-      console.log(`[central-sync] Endereços reforçados: ${detailAddressByTaskId.size}/${candidateTaskIds.length}`);
+      console.log(`[central-sync] Endereços reforçados: ${taskSnapshotById.size}/${candidateTaskIds.length}`);
     }
 
     // Build rows for upsert
