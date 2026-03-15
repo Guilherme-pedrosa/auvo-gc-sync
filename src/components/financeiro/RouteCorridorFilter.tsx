@@ -215,6 +215,7 @@ export default function RouteCorridorFilter({
   osItems = [],
   onFilterChange,
   onShowMap,
+  onCorridorRouteChange,
 }: RouteCorridorFilterProps) {
   const [open, setOpen] = useState(false);
   const [origin, setOrigin] = useState("Anápolis - GO");
