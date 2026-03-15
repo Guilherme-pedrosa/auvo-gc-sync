@@ -62,14 +62,6 @@ function minDistToPolylineWithIndex(
   }
   return { dist: min, index: minIdx };
 }
-): number {
-  let min = Infinity;
-  for (const p of polylinePoints) {
-    const d = haversineKm(lat, lng, p.lat, p.lng);
-    if (d < min) min = d;
-  }
-  return min;
-}
 
 // Decode Google encoded polyline
 function decodePolyline(encoded: string): { lat: number; lng: number }[] {
