@@ -1170,6 +1170,7 @@ export default function OSKanbanPage() {
           formatCurrency={formatCurrency}
           onSelectCard={(item) => setSelectedCard(item as any)}
           autoOptimize={!allFlagsSelected && selectedFlags.size > 0}
+          corridorRoute={corridorRoute}
         />
       )}
 
