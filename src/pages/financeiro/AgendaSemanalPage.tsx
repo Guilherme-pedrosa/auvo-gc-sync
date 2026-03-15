@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback, DragEvent } from "react";
+import { useState, useMemo, useCallback, useEffect, DragEvent } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -73,7 +73,25 @@ export default function AgendaSemanalPage() {
   const [movingTaskId, setMovingTaskId] = useState<string | null>(null);
   const [dragOverCell, setDragOverCell] = useState<string | null>(null);
   const [selectedTarefa, setSelectedTarefa] = useState<Tarefa | null>(null);
-  const [selectedTecnicos, setSelectedTecnicos] = useState<Set<string> | null>(null); // null = all
+  const [selectedTecnicos, setSelectedTecnicos] = useState<Set<string> | null>(() => {
+    try {
+      const saved = localStorage.getItem("agenda_selectedTecnicos");
+      if (saved) {
+        const arr = JSON.parse(saved) as string[];
+        return arr.length > 0 ? new Set(arr) : null;
+      }
+    } catch { /* ignore */ }
+    return null;
+  });
+
+  // Persist filter to localStorage
+  useEffect(() => {
+    if (selectedTecnicos) {
+      localStorage.setItem("agenda_selectedTecnicos", JSON.stringify([...selectedTecnicos]));
+    } else {
+      localStorage.removeItem("agenda_selectedTecnicos");
+    }
+  }, [selectedTecnicos]);
 
   const weekStart = useMemo(() => {
     const today = new Date();
