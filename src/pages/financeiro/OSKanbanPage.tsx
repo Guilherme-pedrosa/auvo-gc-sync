@@ -334,8 +334,9 @@ export default function OSKanbanPage() {
   }, [rawItems]);
 
   // Build columns: OS with status "Agendada" go to a special first column
+  // Rebuild every time items change (no columnsInitialized gate)
   useEffect(() => {
-    if (!items.length || columnsInitialized) return;
+    if (!items.length) return;
 
     const agendadoItems: OSItem[] = [];
     const situacaoMap: Record<string, { items: OSItem[]; color: string; sitId: string }> = {};
@@ -375,8 +376,7 @@ export default function OSKanbanPage() {
     };
 
     setColumns([agendadoCol, ...osCols]);
-    setColumnsInitialized(true);
-  }, [items, columnsInitialized]);
+  }, [items]);
 
   // Sync via central-sync with progress
   const handleSync = useCallback(async () => {
