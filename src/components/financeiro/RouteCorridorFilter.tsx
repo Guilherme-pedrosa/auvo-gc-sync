@@ -332,6 +332,29 @@ export default function RouteCorridorFilter({
     onFilterChange(null);
   }, [onFilterChange]);
 
+  const excludeCity = useCallback((cityToRemove: string) => {
+    if (!activeFilter) return;
+    const newCities = activeFilter.matchedCities.filter((c) => c !== cityToRemove);
+    if (newCities.length === 0) {
+      clearFilter();
+      return;
+    }
+    // Rebuild matching IDs without the excluded city
+    const matchingIds = new Set<string>();
+    for (const [taskId, city] of cityMap) {
+      if (newCities.includes(city)) {
+        matchingIds.add(taskId);
+      }
+    }
+    setActiveFilter({
+      ...activeFilter,
+      matchedCities: newCities,
+      matchCount: matchingIds.size,
+    });
+    onFilterChange(matchingIds);
+    toast.info(`${cityToRemove} removida do corredor`);
+  }, [activeFilter, cityMap, onFilterChange, clearFilter]);
+
   return (
     <>
       <Popover open={open} onOpenChange={setOpen}>
