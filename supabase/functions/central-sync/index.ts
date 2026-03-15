@@ -494,6 +494,12 @@ Deno.serve(async (req) => {
       if (!osDate || osDate < startDate || osDate > endDate) continue;
 
       const gcOrc = gcOrcMap[taskId] || null;
+      let fallbackSnapshot = taskSnapshotById.get(taskId) || null;
+      if (!fallbackSnapshot) {
+        fallbackSnapshot = await fetchAuvoTaskSnapshot(bearerToken, taskId);
+        if (fallbackSnapshot) taskSnapshotById.set(taskId, fallbackSnapshot);
+      }
+
       const fallbackRow: any = {
         auvo_task_id: taskId,
         cliente: gcOs?.gc_os_cliente || gcOrc?.gc_orc_cliente || "Cliente não identificado",
@@ -501,7 +507,7 @@ Deno.serve(async (req) => {
         tecnico_id: "",
         data_tarefa: gcOs?.gc_os_data || null,
         status_auvo: "Sem tarefa Auvo",
-        orientacao: "",
+        orientacao: fallbackSnapshot?.orientation || "",
         pendencia: "",
         descricao: "",
         duracao_decimal: 0,
@@ -509,8 +515,8 @@ Deno.serve(async (req) => {
         hora_fim: "",
         check_in: false,
         check_out: false,
-        endereco: "",
-        auvo_link: `https://app2.auvo.com.br/relatorioTarefas/DetalheTarefa/${taskId}`,
+        endereco: fallbackSnapshot?.address || "",
+        auvo_link: `https://app2.auvo.com.br/relatorioTarefas/DetalheTarefa/${taskId}`, 
         auvo_task_url: "",
         auvo_survey_url: "",
         questionario_id: null,
