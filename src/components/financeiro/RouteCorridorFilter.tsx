@@ -355,6 +355,18 @@ export default function RouteCorridorFilter({
     toast.info(`${cityToRemove} removida do corredor`);
   }, [activeFilter, cityMap, onFilterChange, clearFilter]);
 
+  // Count OS per city for display
+  const cityCounts = useMemo(() => {
+    if (!activeFilter) return new Map<string, number>();
+    const counts = new Map<string, number>();
+    for (const [, city] of cityMap) {
+      if (activeFilter.matchedCities.includes(city)) {
+        counts.set(city, (counts.get(city) || 0) + 1);
+      }
+    }
+    return counts;
+  }, [activeFilter, cityMap]);
+
   return (
     <>
       <Popover open={open} onOpenChange={setOpen}>
@@ -362,66 +374,70 @@ export default function RouteCorridorFilter({
           <Button
             variant={activeFilter ? "default" : "outline"}
             size="sm"
-            className="gap-2 min-w-[160px] justify-start"
+            className="gap-2 min-w-[140px] justify-start"
           >
             <Route className="h-4 w-4" />
             {activeFilter
-              ? `🛤️ ${activeFilter.matchedCities.length} cidades no caminho`
+              ? `🛤️ ${activeFilter.matchCount} OS no caminho`
               : "🛤️ Corredor de Rota"}
-            {activeFilter && (
-              <Badge variant="secondary" className="text-[10px] h-4 px-1 ml-1">
-                {activeFilter.matchCount} OS
-              </Badge>
-            )}
           </Button>
         </PopoverTrigger>
-        <PopoverContent className="w-[380px] p-4" align="start">
-          <div className="space-y-4">
-            <div>
-              <p className="text-sm font-semibold mb-1">🛤️ Corredor de Rota</p>
-              <p className="text-xs text-muted-foreground">
-                Encontre OS que ficam no caminho entre duas cidades
-              </p>
+        <PopoverContent className="w-[420px] p-0" align="start">
+          {/* Header */}
+          <div className="px-4 pt-4 pb-3 border-b bg-muted/30">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-semibold">🛤️ Corredor de Rota</p>
+                <p className="text-[11px] text-muted-foreground mt-0.5">
+                  Encontre OS no caminho entre duas cidades
+                </p>
+              </div>
+              {activeFilter && (
+                <Badge className="text-[10px] h-5">{activeFilter.matchCount} OS</Badge>
+              )}
             </div>
+          </div>
 
-            <div className="space-y-2">
-              <Label className="text-xs">Origem</Label>
-              <Select value={origin} onValueChange={setOrigin}>
-                <SelectTrigger className="h-8 text-sm">
-                  <MapPin className="h-3 w-3 mr-1 text-green-500" />
-                  <SelectValue placeholder="Selecione a origem" />
-                </SelectTrigger>
-                <SelectContent>
-                  {PRESET_ORIGINS.map((o) => (
-                    <SelectItem key={o} value={o}>
-                      {o}
-                    </SelectItem>
-                  ))}
-                  {allCities
-                    .filter((c) => !PRESET_ORIGINS.includes(c))
-                    .map((c) => (
-                      <SelectItem key={c} value={c}>
-                        {c}
-                      </SelectItem>
+          <div className="p-4 space-y-3">
+            {/* Origin & Destination in a compact grid */}
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label className="text-[11px] text-muted-foreground uppercase tracking-wide">Origem</Label>
+                <Select value={origin} onValueChange={setOrigin}>
+                  <SelectTrigger className="h-8 text-xs">
+                    <div className="flex items-center gap-1.5 truncate">
+                      <span className="h-2 w-2 rounded-full bg-green-500 shrink-0" />
+                      <SelectValue placeholder="Origem" />
+                    </div>
+                  </SelectTrigger>
+                  <SelectContent>
+                    {PRESET_ORIGINS.map((o) => (
+                      <SelectItem key={o} value={o} className="text-xs">{o}</SelectItem>
                     ))}
-                </SelectContent>
-              </Select>
+                    {allCities
+                      .filter((c) => !PRESET_ORIGINS.includes(c))
+                      .map((c) => (
+                        <SelectItem key={c} value={c} className="text-xs">{c}</SelectItem>
+                      ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-[11px] text-muted-foreground uppercase tracking-wide">Destino</Label>
+                <DestinationAutocomplete
+                  value={destination}
+                  onChange={setDestination}
+                  allCities={allCities}
+                  osItems={osItems}
+                />
+              </div>
             </div>
 
-            <div className="space-y-2">
-              <Label className="text-xs">Destino</Label>
-              <DestinationAutocomplete
-                value={destination}
-                onChange={setDestination}
-                allCities={allCities}
-                osItems={osItems}
-              />
-            </div>
-
-            <div className="space-y-2">
+            {/* Radius slider */}
+            <div className="space-y-1.5">
               <div className="flex items-center justify-between">
-                <Label className="text-xs">Raio de desvio</Label>
-                <span className="text-xs font-mono text-muted-foreground">{radiusKm} km</span>
+                <Label className="text-[11px] text-muted-foreground uppercase tracking-wide">Raio de desvio</Label>
+                <Badge variant="outline" className="text-[10px] h-5 font-mono">{radiusKm} km</Badge>
               </div>
               <Slider
                 value={[radiusKm]}
@@ -431,13 +447,14 @@ export default function RouteCorridorFilter({
                 step={10}
                 className="w-full"
               />
-              <div className="flex justify-between text-[10px] text-muted-foreground">
+              <div className="flex justify-between text-[10px] text-muted-foreground px-0.5">
                 <span>10km</span>
                 <span>100km</span>
                 <span>200km</span>
               </div>
             </div>
 
+            {/* Search button */}
             <Button
               className="w-full gap-2"
               onClick={applyFilter}
@@ -450,40 +467,60 @@ export default function RouteCorridorFilter({
               )}
               {loading ? "Calculando corredor..." : "Buscar OS no caminho"}
             </Button>
+          </div>
 
-            {activeFilter && (
-              <div className="border rounded-md p-2.5 bg-muted/50 space-y-1.5">
-                <div className="flex items-center justify-between">
-                  <p className="text-xs font-medium">
-                    Filtro ativo ({activeFilter.matchCount} OS)
-                  </p>
-                  <Button variant="ghost" size="sm" className="h-5 px-1.5 text-[10px]" onClick={clearFilter}>
-                    <X className="h-3 w-3 mr-0.5" /> Limpar
-                  </Button>
+          {/* Active filter results */}
+          {activeFilter && (
+            <div className="border-t">
+              {/* Route summary */}
+              <div className="px-4 py-2.5 bg-muted/30 flex items-center justify-between">
+                <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                  <span className="h-2 w-2 rounded-full bg-green-500" />
+                  <span className="font-medium text-foreground">{activeFilter.origin.split(" - ")[0]}</span>
+                  <span>→</span>
+                  <span className="font-medium text-foreground">{activeFilter.destination.split(" - ")[0]}</span>
+                  <span className="text-[10px]">(±{activeFilter.radius}km)</span>
                 </div>
-                <p className="text-[11px] text-muted-foreground">
-                  {activeFilter.origin} → {activeFilter.destination} (±{activeFilter.radius}km)
-                </p>
-                <div className="flex flex-wrap gap-1 mt-1">
-                  {activeFilter.matchedCities.map((c) => (
-                    <Badge
-                      key={c}
-                      variant="secondary"
-                      className="text-[10px] h-5 px-1.5 gap-0.5 cursor-pointer hover:bg-destructive/20 group"
-                    >
-                      {c}
-                      <X
-                        className="h-2.5 w-2.5 opacity-50 group-hover:opacity-100"
-                        onClick={() => excludeCity(c)}
-                      />
-                    </Badge>
+                <Button variant="ghost" size="sm" className="h-6 px-2 text-[10px] text-muted-foreground hover:text-destructive" onClick={clearFilter}>
+                  <X className="h-3 w-3 mr-0.5" /> Limpar
+                </Button>
+              </div>
+
+              {/* City list */}
+              <ScrollArea className="max-h-[200px]">
+                <div className="divide-y">
+                  {activeFilter.matchedCities
+                    .sort((a, b) => (cityCounts.get(b) || 0) - (cityCounts.get(a) || 0))
+                    .map((c) => (
+                    <div key={c} className="flex items-center justify-between px-4 py-1.5 hover:bg-muted/40 group">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <MapPin className="h-3 w-3 text-muted-foreground shrink-0" />
+                        <span className="text-xs truncate">{c}</span>
+                      </div>
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        <Badge variant="outline" className="text-[9px] h-4 px-1 font-mono">
+                          {cityCounts.get(c) || 0}
+                        </Badge>
+                        <button
+                          className="h-4 w-4 rounded-sm flex items-center justify-center opacity-0 group-hover:opacity-100 hover:bg-destructive/20 transition-opacity"
+                          onClick={() => excludeCity(c)}
+                          title={`Remover ${c}`}
+                        >
+                          <X className="h-2.5 w-2.5 text-muted-foreground" />
+                        </button>
+                      </div>
+                    </div>
                   ))}
                 </div>
+              </ScrollArea>
+
+              {/* Footer actions */}
+              <div className="px-4 py-2.5 border-t bg-muted/20 flex gap-2">
                 {onShowMap && (
                   <Button
                     variant="outline"
                     size="sm"
-                    className="w-full gap-2 mt-1.5 text-xs"
+                    className="flex-1 gap-1.5 text-xs h-7"
                     onClick={() => {
                       setOpen(false);
                       onShowMap();
@@ -494,8 +531,8 @@ export default function RouteCorridorFilter({
                   </Button>
                 )}
               </div>
-            )}
-          </div>
+            </div>
+          )}
         </PopoverContent>
       </Popover>
     </>
