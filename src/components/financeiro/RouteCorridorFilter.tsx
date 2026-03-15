@@ -342,12 +342,13 @@ export default function RouteCorridorFilter({
     } finally {
       setLoading(false);
     }
-  }, [origin, destination, radiusKm, cityMap, onFilterChange]);
+  }, [origin, destination, radiusKm, cityMap, onFilterChange, onCorridorRouteChange]);
 
   const clearFilter = useCallback(() => {
     setActiveFilter(null);
     onFilterChange(null);
-  }, [onFilterChange]);
+    onCorridorRouteChange?.(null);
+  }, [onFilterChange, onCorridorRouteChange]);
 
   const excludeCity = useCallback((cityToRemove: string) => {
     if (!activeFilter) return;
