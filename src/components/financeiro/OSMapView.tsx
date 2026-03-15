@@ -132,6 +132,7 @@ function OSMapViewInner({
   formatCurrency,
   onSelectCard,
   autoOptimize,
+  corridorRoute,
 }: OSMapViewProps & { apiKey: string }) {
   const { isLoaded, loadError } = useJsApiLoader({
     googleMapsApiKey: apiKey,
