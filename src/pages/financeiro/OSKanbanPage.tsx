@@ -1073,6 +1073,7 @@ export default function OSKanbanPage() {
           cityMap={cityMap}
           formatCurrency={formatCurrency}
           onSelectCard={(item) => setSelectedCard(item as any)}
+          autoOptimize={!allFlagsSelected && selectedFlags.size > 0}
         />
       )}
 
