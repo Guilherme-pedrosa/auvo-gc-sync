@@ -311,7 +311,7 @@ Deno.serve(async (req) => {
         cliente,
         tecnico: String(task.userToName || ""),
         tecnico_id: String(task.idUserTo || ""),
-        data_tarefa: String(task.taskDate || "").split("T")[0] || null,
+        data_tarefa: normalizeDate(task.taskDate) || gcOs?.gc_os_data || null,
         status_auvo: task.finished ? "Finalizada" : (task.checkIn ? "Em andamento" : "Aberta"),
         orientacao: String(task.orientation || "").substring(0, 500),
         pendencia: String(task.pendency ?? "").trim(),
