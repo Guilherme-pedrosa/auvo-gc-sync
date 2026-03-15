@@ -1148,15 +1148,20 @@ export default function OSKanbanPage() {
       {!isLoading && viewMode === "map" && (
         <OSMapView
           items={(() => {
-            if (allFlagsSelected && !filterOnlyRoutes) return items;
-            return items.filter((item) => {
-              if (!allFlagsSelected && selectedFlags.size > 0) {
+            let filtered = items;
+            if (!allFlagsSelected && selectedFlags.size > 0) {
+              filtered = filtered.filter((item) => {
                 const city = cityMap.get(item.auvo_task_id);
-                if (!city || !selectedFlags.has(city)) return false;
-              }
-              if (filterOnlyRoutes && !routeGroups.has(item.auvo_task_id)) return false;
-              return true;
-            });
+                return city && selectedFlags.has(city);
+              });
+            }
+            if (filterOnlyRoutes) {
+              filtered = filtered.filter((item) => routeGroups.has(item.auvo_task_id));
+            }
+            if (corridorFilterIds !== null) {
+              filtered = filtered.filter((item) => corridorFilterIds.has(item.auvo_task_id));
+            }
+            return filtered;
           })()}
           cityColorMap={cityColorMap}
           cityMap={cityMap}
