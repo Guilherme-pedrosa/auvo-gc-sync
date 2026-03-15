@@ -360,6 +360,64 @@ Deno.serve(async (req) => {
       rows.push(row);
     }
 
+    // Fallback: include GC OS linked to tarefa that was not returned by Auvo list (e.g. taskDate = 0001-01-01)
+    const existingTaskIds = new Set(rows.map((r) => String(r.auvo_task_id)));
+    for (const [taskId, gcOs] of Object.entries(gcOsMap)) {
+      if (existingTaskIds.has(taskId)) continue;
+      const gcOrc = gcOrcMap[taskId] || null;
+      const fallbackRow: any = {
+        auvo_task_id: taskId,
+        cliente: gcOs?.gc_os_cliente || gcOrc?.gc_orc_cliente || "Cliente não identificado",
+        tecnico: "",
+        tecnico_id: "",
+        data_tarefa: gcOs?.gc_os_data || null,
+        status_auvo: "Sem tarefa Auvo",
+        orientacao: "",
+        pendencia: "",
+        descricao: "",
+        duracao_decimal: 0,
+        hora_inicio: "",
+        hora_fim: "",
+        check_in: false,
+        check_out: false,
+        endereco: "",
+        auvo_link: `https://app2.auvo.com.br/relatorioTarefas/DetalheTarefa/${taskId}`,
+        auvo_task_url: "",
+        auvo_survey_url: "",
+        questionario_id: null,
+        questionario_respostas: [],
+        questionario_preenchido: false,
+        orcamento_realizado: !!gcOrc,
+        os_realizada: true,
+        atualizado_em: new Date().toISOString(),
+        gc_os_id: gcOs.gc_os_id,
+        gc_os_codigo: gcOs.gc_os_codigo,
+        gc_os_cliente: gcOs.gc_os_cliente,
+        gc_os_situacao: gcOs.gc_os_situacao,
+        gc_os_situacao_id: gcOs.gc_os_situacao_id,
+        gc_os_cor_situacao: gcOs.gc_os_cor_situacao,
+        gc_os_valor_total: gcOs.gc_os_valor_total,
+        gc_os_vendedor: gcOs.gc_os_vendedor,
+        gc_os_data: gcOs.gc_os_data,
+        gc_os_link: gcOs.gc_os_link,
+      };
+
+      if (gcOrc) {
+        fallbackRow.gc_orcamento_id = gcOrc.gc_orcamento_id;
+        fallbackRow.gc_orcamento_codigo = gcOrc.gc_orcamento_codigo;
+        fallbackRow.gc_orc_cliente = gcOrc.gc_orc_cliente;
+        fallbackRow.gc_orc_situacao = gcOrc.gc_orc_situacao;
+        fallbackRow.gc_orc_situacao_id = gcOrc.gc_orc_situacao_id;
+        fallbackRow.gc_orc_cor_situacao = gcOrc.gc_orc_cor_situacao;
+        fallbackRow.gc_orc_valor_total = gcOrc.gc_orc_valor_total;
+        fallbackRow.gc_orc_vendedor = gcOrc.gc_orc_vendedor;
+        fallbackRow.gc_orc_data = gcOrc.gc_orc_data;
+        fallbackRow.gc_orc_link = gcOrc.gc_orc_link;
+      }
+
+      rows.push(fallbackRow);
+    }
+
     // Upsert in batches of 100
     let upserted = 0;
     let errors = 0;
