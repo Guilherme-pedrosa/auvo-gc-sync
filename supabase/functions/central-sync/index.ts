@@ -11,6 +11,7 @@ const QUESTIONNAIRE_ID = "216040";
 const GC_ATRIBUTO_TAREFA_ORC = "73341";
 const GC_ATRIBUTO_TAREFA_OS = "73343";
 const MIN_DELAY_MS = 200;
+const FUTURE_DAYS_WINDOW = 30;
 let lastAuvoCall = 0;
 let lastGcCall = 0;
 
@@ -36,6 +37,14 @@ async function auvoLogin(apiKey: string, apiToken: string): Promise<string> {
 
 function auvoHeaders(token: string): Record<string, string> {
   return { Authorization: `Bearer ${token}`, "Content-Type": "application/json" };
+}
+
+function normalizeDate(dateLike: unknown): string | null {
+  const raw = String(dateLike || "").trim();
+  if (!raw) return null;
+  const d = raw.split("T")[0];
+  if (!d || d === "0001-01-01") return null;
+  return d;
 }
 
 // Fetch Auvo tasks for a single month window
@@ -195,7 +204,7 @@ async function fetchGcOs(gcHeaders: Record<string, string>): Promise<Record<stri
             gc_os_cor_situacao: String(os.cor_situacao || ""),
             gc_os_valor_total: parseFloat(os.valor_total || "0"),
             gc_os_vendedor: String(os.nome_vendedor || ""),
-            gc_os_data: String(os.data || "").split("T")[0] || null,
+            gc_os_data: String(os.data_entrada || os.data || "").split("T")[0] || null,
             gc_os_link: `https://gestaoclick.com/ordens_servicos/editar/${os.id}?retorno=%2Fordens_servicos`,
           };
         }
@@ -227,14 +236,22 @@ Deno.serve(async (req) => {
       });
     }
 
-    // Calculate 6-month window
+    // Calculate period (request body overrides default 6-month + future window)
     const now = new Date();
     const sixMonthsAgo = new Date(now);
     sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
-    const startDate = sixMonthsAgo.toISOString().split("T")[0];
-    const endDate = now.toISOString().split("T")[0];
+    const futureDate = new Date(now);
+    futureDate.setDate(futureDate.getDate() + FUTURE_DAYS_WINDOW);
 
-    console.log(`[central-sync] Período: ${startDate} a ${endDate}`);
+    const body = await req.json().catch(() => ({}));
+    const bodyStart = normalizeDate(body?.start_date);
+    const bodyEnd = normalizeDate(body?.end_date);
+
+    const startDate = bodyStart || sixMonthsAgo.toISOString().split("T")[0];
+    const endDate = bodyEnd || futureDate.toISOString().split("T")[0];
+    const cleanupCutoff = sixMonthsAgo.toISOString().split("T")[0];
+
+    console.log(`[central-sync] Período: ${startDate} a ${endDate} (limpeza < ${cleanupCutoff})`);
 
     const bearerToken = await auvoLogin(auvoApiKey, auvoApiToken);
     const gcH: Record<string, string> = {
@@ -253,11 +270,19 @@ Deno.serve(async (req) => {
     console.log(`[central-sync] Auvo: ${auvoTasks.length} tarefas, GC Orç: ${Object.keys(gcOrcMap).length}, GC OS: ${Object.keys(gcOsMap).length}`);
 
     if (auvoTasks.length === 0) {
-      return new Response(JSON.stringify({ 
-        success: false, error: "Nenhuma tarefa retornada do Auvo" 
-      }), {
-        status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+      console.warn("[central-sync] Nenhuma tarefa retornada do Auvo; aplicando fallback apenas com dados do GC");
+    }
+
+    // Load existing task IDs to avoid overwriting rows not returned by current Auvo window
+    const existingTaskIdsInDb = new Set<string>();
+    for (let from = 0; ; from += 1000) {
+      const { data: existingChunk, error: existingErr } = await sbClient
+        .from("tarefas_central")
+        .select("auvo_task_id")
+        .range(from, from + 999);
+      if (existingErr || !existingChunk || existingChunk.length === 0) break;
+      for (const row of existingChunk) existingTaskIdsInDb.add(String((row as any).auvo_task_id));
+      if (existingChunk.length < 1000) break;
     }
 
     // Build rows for upsert
@@ -294,7 +319,7 @@ Deno.serve(async (req) => {
         cliente,
         tecnico: String(task.userToName || ""),
         tecnico_id: String(task.idUserTo || ""),
-        data_tarefa: String(task.taskDate || "").split("T")[0] || null,
+        data_tarefa: normalizeDate(task.taskDate) || gcOs?.gc_os_data || null,
         status_auvo: task.finished ? "Finalizada" : (task.checkIn ? "Em andamento" : "Aberta"),
         orientacao: String(task.orientation || "").substring(0, 500),
         pendencia: String(task.pendency ?? "").trim(),
@@ -347,6 +372,68 @@ Deno.serve(async (req) => {
       rows.push(row);
     }
 
+    // Fallback: include only NEW GC OS tasks not returned by current Auvo window
+    // (prevents overwriting existing rows when sync window is narrow)
+    const existingTaskIds = new Set(rows.map((r) => String(r.auvo_task_id)));
+    for (const [taskId, gcOs] of Object.entries(gcOsMap)) {
+      if (existingTaskIds.has(taskId) || existingTaskIdsInDb.has(taskId)) continue;
+      const osDate = normalizeDate(gcOs?.gc_os_data);
+      if (!osDate || osDate < startDate || osDate > endDate) continue;
+
+      const gcOrc = gcOrcMap[taskId] || null;
+      const fallbackRow: any = {
+        auvo_task_id: taskId,
+        cliente: gcOs?.gc_os_cliente || gcOrc?.gc_orc_cliente || "Cliente não identificado",
+        tecnico: "",
+        tecnico_id: "",
+        data_tarefa: gcOs?.gc_os_data || null,
+        status_auvo: "Sem tarefa Auvo",
+        orientacao: "",
+        pendencia: "",
+        descricao: "",
+        duracao_decimal: 0,
+        hora_inicio: "",
+        hora_fim: "",
+        check_in: false,
+        check_out: false,
+        endereco: "",
+        auvo_link: `https://app2.auvo.com.br/relatorioTarefas/DetalheTarefa/${taskId}`,
+        auvo_task_url: "",
+        auvo_survey_url: "",
+        questionario_id: null,
+        questionario_respostas: [],
+        questionario_preenchido: false,
+        orcamento_realizado: !!gcOrc,
+        os_realizada: true,
+        atualizado_em: new Date().toISOString(),
+        gc_os_id: gcOs.gc_os_id,
+        gc_os_codigo: gcOs.gc_os_codigo,
+        gc_os_cliente: gcOs.gc_os_cliente,
+        gc_os_situacao: gcOs.gc_os_situacao,
+        gc_os_situacao_id: gcOs.gc_os_situacao_id,
+        gc_os_cor_situacao: gcOs.gc_os_cor_situacao,
+        gc_os_valor_total: gcOs.gc_os_valor_total,
+        gc_os_vendedor: gcOs.gc_os_vendedor,
+        gc_os_data: gcOs.gc_os_data,
+        gc_os_link: gcOs.gc_os_link,
+      };
+
+      if (gcOrc) {
+        fallbackRow.gc_orcamento_id = gcOrc.gc_orcamento_id;
+        fallbackRow.gc_orcamento_codigo = gcOrc.gc_orcamento_codigo;
+        fallbackRow.gc_orc_cliente = gcOrc.gc_orc_cliente;
+        fallbackRow.gc_orc_situacao = gcOrc.gc_orc_situacao;
+        fallbackRow.gc_orc_situacao_id = gcOrc.gc_orc_situacao_id;
+        fallbackRow.gc_orc_cor_situacao = gcOrc.gc_orc_cor_situacao;
+        fallbackRow.gc_orc_valor_total = gcOrc.gc_orc_valor_total;
+        fallbackRow.gc_orc_vendedor = gcOrc.gc_orc_vendedor;
+        fallbackRow.gc_orc_data = gcOrc.gc_orc_data;
+        fallbackRow.gc_orc_link = gcOrc.gc_orc_link;
+      }
+
+      rows.push(fallbackRow);
+    }
+
     // Upsert in batches of 100
     let upserted = 0;
     let errors = 0;
@@ -368,7 +455,7 @@ Deno.serve(async (req) => {
     const { count: deleted } = await sbClient
       .from("tarefas_central")
       .delete({ count: "exact" })
-      .lt("data_tarefa", startDate);
+      .lt("data_tarefa", cleanupCutoff);
 
     console.log(`[central-sync] Concluído: ${upserted} upserted, ${errors} erros, ${deleted || 0} removidos (> 6 meses)`);
 
