@@ -560,7 +560,7 @@ export default function RouteCorridorFilter({
                       return (cityCounts.get(b) || 0) - (cityCounts.get(a) || 0);
                     })
                     .map((c) => {
-                      const dir = activeFilter.cityDirection.get(c);
+                      const dir = activeFilter.cityDirection?.get(c);
                       return (
                     <div key={c} className="flex items-center justify-between px-4 py-1.5 hover:bg-muted/40 group">
                       <div className="flex items-center gap-2 min-w-0">
