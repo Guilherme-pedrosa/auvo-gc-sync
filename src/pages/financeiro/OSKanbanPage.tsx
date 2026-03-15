@@ -848,6 +848,12 @@ export default function OSKanbanPage() {
   const formatCurrency = (val: number) =>
     val.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 
+          {/* Route corridor filter */}
+          <RouteCorridorFilter
+            allCities={allCities}
+            cityMap={cityMap}
+            onFilterChange={setCorridorFilterIds}
+          />
 
   return (
     <div className="min-h-screen bg-background">
