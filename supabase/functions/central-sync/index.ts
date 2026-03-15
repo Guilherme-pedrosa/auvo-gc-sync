@@ -329,7 +329,7 @@ Deno.serve(async (req) => {
         hora_fim: String(task.endTime || task.endHour || ""),
         check_in: !!task.checkIn,
         check_out: !!task.checkOut,
-        endereco: typeof task.address === "object" ? "" : String(task.address || "").substring(0, 200),
+        endereco: extractAddress(task.address),
         auvo_link: `https://app2.auvo.com.br/relatorioTarefas/DetalheTarefa/${taskId}`,
         auvo_task_url: String(task.taskUrl || ""),
         auvo_survey_url: String(task.survey || ""),
