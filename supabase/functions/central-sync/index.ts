@@ -359,7 +359,7 @@ Deno.serve(async (req) => {
       if (existingChunk.length < 1000) break;
     }
 
-    // Enrich missing/weak addresses with direct Auvo task detail fetch (more reliable than list payload)
+    // Enrich ALL OS-linked tasks with direct Auvo task detail (list endpoint is unreliable for addresses)
     const taskSnapshotById = new Map<string, AuvoTaskSnapshot>();
     const candidateTaskIds: string[] = [];
     const seenCandidates = new Set<string>();
@@ -367,26 +367,13 @@ Deno.serve(async (req) => {
     for (const task of auvoTasks) {
       const taskId = String(task.taskID || "").trim();
       if (!taskId || !gcOsMap[taskId] || seenCandidates.has(taskId)) continue;
-
-      const baseAddress = resolveTaskAddress(task);
-      const customerName = String(
-        task.customerDescription || task.customerName || task.customer?.tradeName || task.customer?.companyName || ""
-      ).trim();
-
-      const weakAddress =
-        !baseAddress ||
-        baseAddress.length < 8 ||
-        normalizeComparable(baseAddress) === normalizeComparable(customerName);
-
-      if (weakAddress) {
-        candidateTaskIds.push(taskId);
-        seenCandidates.add(taskId);
-      }
+      candidateTaskIds.push(taskId);
+      seenCandidates.add(taskId);
     }
 
     if (candidateTaskIds.length > 0) {
-      console.log(`[central-sync] Reforçando endereço via Auvo detalhe para ${candidateTaskIds.length} OS (paralelo 5)...`);
-      const PARALLEL = 5;
+      console.log(`[central-sync] Buscando endereço via Auvo detalhe para TODAS ${candidateTaskIds.length} OS (paralelo 10)...`);
+      const PARALLEL = 10;
       for (let i = 0; i < candidateTaskIds.length; i += PARALLEL) {
         const batch = candidateTaskIds.slice(i, i + PARALLEL);
         const results = await Promise.all(
@@ -396,7 +383,7 @@ Deno.serve(async (req) => {
           if (results[idx]) taskSnapshotById.set(id, results[idx]!);
         });
       }
-      console.log(`[central-sync] Endereços reforçados: ${taskSnapshotById.size}/${candidateTaskIds.length}`);
+      console.log(`[central-sync] Endereços obtidos: ${taskSnapshotById.size}/${candidateTaskIds.length}`);
     }
 
     // Build rows for upsert
@@ -430,8 +417,10 @@ Deno.serve(async (req) => {
 
       const baseAddress = resolveTaskAddress(task);
       const snapshot = taskSnapshotById.get(taskId);
-      const resolvedAddress = snapshot?.address || baseAddress;
-      const resolvedOrientation = String(task.orientation || snapshot?.orientation || "").substring(0, 500);
+      // Always prefer snapshot (detail endpoint) - it's more reliable than list
+      const snapshotAddr = snapshot?.address && snapshot.address.length > 5 ? snapshot.address : "";
+      const resolvedAddress = snapshotAddr || baseAddress;
+      const resolvedOrientation = String(snapshot?.orientation || task.orientation || "").substring(0, 500);
 
       const row: any = {
         auvo_task_id: taskId,
