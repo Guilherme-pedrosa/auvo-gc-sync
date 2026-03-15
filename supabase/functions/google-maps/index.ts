@@ -23,6 +23,17 @@ serve(async (req) => {
     const body = await req.json();
     const { action } = body;
 
+    // ACTION: debug - test raw geocode response
+    if (action === "debug_geocode") {
+      const { address } = body;
+      const url = `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(address || "Goiânia, GO, Brasil")}&key=${GOOGLE_MAPS_API_KEY}&region=br&language=pt-BR`;
+      const res = await fetch(url);
+      const data = await res.json();
+      return new Response(JSON.stringify({ raw_google_response: data, key_prefix: GOOGLE_MAPS_API_KEY.substring(0, 10) + "..." }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
     // ACTION: geocode - convert address to lat/lng
     if (action === "geocode") {
       const { addresses } = body; // string[]
