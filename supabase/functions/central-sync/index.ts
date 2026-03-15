@@ -385,10 +385,16 @@ Deno.serve(async (req) => {
     }
 
     if (candidateTaskIds.length > 0) {
-      console.log(`[central-sync] Reforçando endereço via Auvo detalhe para ${candidateTaskIds.length} OS...`);
-      for (const taskId of candidateTaskIds) {
-        const snapshot = await fetchAuvoTaskSnapshot(bearerToken, taskId);
-        if (snapshot) taskSnapshotById.set(taskId, snapshot);
+      console.log(`[central-sync] Reforçando endereço via Auvo detalhe para ${candidateTaskIds.length} OS (paralelo 5)...`);
+      const PARALLEL = 5;
+      for (let i = 0; i < candidateTaskIds.length; i += PARALLEL) {
+        const batch = candidateTaskIds.slice(i, i + PARALLEL);
+        const results = await Promise.all(
+          batch.map((id) => fetchAuvoTaskSnapshot(bearerToken, id))
+        );
+        batch.forEach((id, idx) => {
+          if (results[idx]) taskSnapshotById.set(id, results[idx]!);
+        });
       }
       console.log(`[central-sync] Endereços reforçados: ${taskSnapshotById.size}/${candidateTaskIds.length}`);
     }
