@@ -554,8 +554,8 @@ export default function RouteCorridorFilter({
                   {activeFilter.matchedCities
                     .sort((a, b) => {
                       // Sort: ida first, then volta, within each group by count
-                      const dirA = activeFilter.cityDirection.get(a) || "ida";
-                      const dirB = activeFilter.cityDirection.get(b) || "ida";
+                      const dirA = activeFilter.cityDirection?.get(a) || "ida";
+                      const dirB = activeFilter.cityDirection?.get(b) || "ida";
                       if (dirA !== dirB) return dirA === "ida" ? -1 : 1;
                       return (cityCounts.get(b) || 0) - (cityCounts.get(a) || 0);
                     })
