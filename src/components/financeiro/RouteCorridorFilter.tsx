@@ -109,6 +109,7 @@ const PRESET_ORIGINS = [
 export default function RouteCorridorFilter({
   allCities,
   cityMap,
+  osItems = [],
   onFilterChange,
 }: RouteCorridorFilterProps) {
   const [open, setOpen] = useState(false);
