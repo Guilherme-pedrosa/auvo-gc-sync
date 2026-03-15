@@ -19,8 +19,10 @@ import {
   ArrowLeft, CalendarIcon, RefreshCw, ExternalLink,
   Filter, GripVertical, Check, X, Edit2, Trash2, Plus,
   Package, FileText, ClipboardList, MapPin, ArrowUpDown, ArrowDown, ArrowUp,
-  UserCog, Save, Loader2
+  UserCog, Save, Loader2, LayoutGrid, Navigation
 } from "lucide-react";
+import { Map as MapIcon } from "lucide-react";
+import OSMapView from "@/components/financeiro/OSMapView";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { Label } from "@/components/ui/label";
@@ -121,6 +123,7 @@ export default function OSKanbanPage() {
   const [execTaskId, setExecTaskId] = useState<string | null>(null);
   const [execTaskUrl, setExecTaskUrl] = useState<string | null>(null);
   const [execTaskLoading, setExecTaskLoading] = useState(false);
+  const [viewMode, setViewMode] = useState<"kanban" | "map">("kanban");
 
   // Fetch Auvo users (technicians)
   const { data: auvoUsers } = useQuery({
@@ -814,6 +817,24 @@ export default function OSKanbanPage() {
               <RefreshCw className={`h-4 w-4 mr-2 flex-shrink-0 ${isSyncing ? "animate-spin" : ""}`} />
               <span className="truncate">{isSyncing ? syncStatus || "Sincronizando..." : "Sincronizar"}</span>
             </Button>
+            <div className="flex items-center border rounded-md overflow-hidden">
+              <Button
+                variant={viewMode === "kanban" ? "default" : "ghost"}
+                size="sm"
+                className="rounded-none gap-1.5"
+                onClick={() => setViewMode("kanban")}
+              >
+                <LayoutGrid className="h-4 w-4" /> Kanban
+              </Button>
+              <Button
+                variant={viewMode === "map" ? "default" : "ghost"}
+                size="sm"
+                className="rounded-none gap-1.5"
+                onClick={() => setViewMode("map")}
+              >
+                <MapIcon className="h-4 w-4" /> Mapa
+              </Button>
+            </div>
           </div>
         </div>
 
@@ -1018,8 +1039,19 @@ export default function OSKanbanPage() {
         </div>
       )}
 
+      {/* Map View */}
+      {!isLoading && viewMode === "map" && (
+        <OSMapView
+          items={items}
+          cityColorMap={cityColorMap}
+          cityMap={cityMap}
+          formatCurrency={formatCurrency}
+          onSelectCard={(item) => setSelectedCard(item as any)}
+        />
+      )}
+
       {/* Kanban Board */}
-      {!isLoading && (
+      {!isLoading && viewMode === "kanban" && (
         <DragDropContext onDragEnd={onDragEnd}>
           <Droppable droppableId="board" type="COLUMN" direction="horizontal">
             {(boardProvided) => (
@@ -1318,7 +1350,16 @@ export default function OSKanbanPage() {
               {selectedCard.endereco && (
                 <div className="flex items-start gap-2 bg-muted/50 rounded-md p-3">
                   <MapPin className="h-4 w-4 text-muted-foreground mt-0.5 flex-shrink-0" />
-                  <p className="text-sm">{selectedCard.endereco}</p>
+                  <p className="text-sm flex-1">{selectedCard.endereco}</p>
+                  <Button size="sm" variant="outline" className="flex-shrink-0 gap-1 h-7 text-xs" asChild>
+                    <a
+                      href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(selectedCard.endereco)}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                    >
+                      <Navigation className="h-3 w-3" /> Maps
+                    </a>
+                  </Button>
                 </div>
               )}
 
