@@ -387,7 +387,7 @@ export default function AgendaSemanalPage() {
                       <th
                         key={day.toISOString()}
                         className={cn(
-                          "text-center px-2 py-2.5 text-xs font-semibold min-w-[140px]",
+                          "text-center px-2 py-2.5 text-xs font-semibold min-w-[140px] border-r border-border last:border-r-0",
                           isToday ? "text-primary bg-primary/5" : "text-muted-foreground"
                         )}
                       >
@@ -418,7 +418,7 @@ export default function AgendaSemanalPage() {
                           <td
                             key={dayIdx}
                             className={cn(
-                              "px-1.5 py-1.5 align-top transition-colors min-h-[60px]",
+                              "px-1.5 py-1.5 align-top transition-colors min-h-[60px] border-r border-border last:border-r-0",
                               isSameDay(weekDays[dayIdx], new Date()) && "bg-primary/5",
                               isOver && "bg-primary/15 ring-2 ring-inset ring-primary/40 rounded"
                             )}
