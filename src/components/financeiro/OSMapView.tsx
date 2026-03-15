@@ -108,6 +108,7 @@ export default function OSMapView({ items, cityColorMap, cityMap, formatCurrency
       cityMap={cityMap}
       formatCurrency={formatCurrency}
       onSelectCard={onSelectCard}
+      autoOptimize={autoOptimize}
     />
   );
 }
