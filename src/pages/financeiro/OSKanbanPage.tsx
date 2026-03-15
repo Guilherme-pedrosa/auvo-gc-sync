@@ -488,6 +488,50 @@ export default function OSKanbanPage() {
     }
   }, []);
 
+  // Extract city from endereco field
+  const extractCity = useCallback((endereco: string | null): string | null => {
+    if (!endereco) return null;
+    if (/^https?:\/\//i.test(endereco) || endereco.length < 5) return null;
+    const match1 = endereco.match(/,\s*([A-Za-zÀ-ú\s]+?)\s*-\s*[A-Z]{2}\s*,?\s*\d{5}/);
+    if (match1) return match1[1].trim();
+    const match2 = endereco.match(/,\s*([A-Z][A-Za-zÀ-ú\s]+?)\s*,\s*[A-Z]{2}\s*,\s*[\d.]+/);
+    if (match2) return match2[1].trim();
+    const match3 = endereco.match(/,\s*([A-Za-zÀ-ú\s]+?)\s*-\s*[A-Z]{2}\s*$/);
+    if (match3) return match3[1].trim();
+    return null;
+  }, []);
+
+  const cityMap = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const item of items) {
+      const city = extractCity(item.endereco);
+      if (city) map.set(item.auvo_task_id, city);
+    }
+    return map;
+  }, [items, extractCity]);
+
+  const routeMatches = useMemo(() => {
+    const groups = new Map<string, string[]>();
+    for (const item of items) {
+      const city = cityMap.get(item.auvo_task_id);
+      if (!city || !item.data_tarefa) continue;
+      const key = `${city.toLowerCase()}|${item.data_tarefa}`;
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key)!.push(item.auvo_task_id);
+    }
+    const matchSet = new Set<string>();
+    for (const [, ids] of groups) {
+      if (ids.length >= 2) ids.forEach((id) => matchSet.add(id));
+    }
+    return matchSet;
+  }, [items, cityMap]);
+
+  const allCities = useMemo(() => {
+    const set = new Set<string>();
+    for (const [, city] of cityMap) set.add(city);
+    return Array.from(set).sort();
+  }, [cityMap]);
+
   const filteredColumns = useMemo(() => {
     const minVal = valorMin ? Number(valorMin) : null;
     const maxVal = valorMax ? Number(valorMax) : null;
@@ -499,14 +543,12 @@ export default function OSKanbanPage() {
         const val = Number(item.gc_os_valor_total) || 0;
         if (minVal !== null && val < minVal) return false;
         if (maxVal !== null && val > maxVal) return false;
-        // City filter
         if (filterCidade !== "todas") {
           const city = cityMap.get(item.auvo_task_id);
           if (!city || city !== filterCidade) return false;
         }
         return true;
       });
-      // Apply sort: column-level overrides global
       const sortKey = columnSorts[col.id] || globalSort;
       filtered = sortItems(filtered, sortKey);
       return { ...col, items: filtered };
