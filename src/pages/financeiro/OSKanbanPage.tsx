@@ -510,20 +510,26 @@ export default function OSKanbanPage() {
     return map;
   }, [items, extractCity]);
 
-  const routeMatches = useMemo(() => {
-    const groups = new Map<string, string[]>();
+  // routeGroups: maps each task ID to its route partners (same city + date, 2+ items)
+  const routeGroups = useMemo(() => {
+    const groups = new Map<string, { city: string; date: string; taskIds: string[] }>();
     for (const item of items) {
       const city = cityMap.get(item.auvo_task_id);
       if (!city || !item.data_tarefa) continue;
       const key = `${city.toLowerCase()}|${item.data_tarefa}`;
-      if (!groups.has(key)) groups.set(key, []);
-      groups.get(key)!.push(item.auvo_task_id);
+      if (!groups.has(key)) groups.set(key, { city, date: item.data_tarefa, taskIds: [] });
+      groups.get(key)!.taskIds.push(item.auvo_task_id);
     }
-    const matchSet = new Set<string>();
-    for (const [, ids] of groups) {
-      if (ids.length >= 2) ids.forEach((id) => matchSet.add(id));
+    // Map each task to its group info (only groups with 2+)
+    const taskToGroup = new Map<string, { city: string; date: string; partners: OSItem[] }>();
+    for (const [, group] of groups) {
+      if (group.taskIds.length < 2) continue;
+      const partnerItems = items.filter((i) => group.taskIds.includes(i.auvo_task_id));
+      for (const id of group.taskIds) {
+        taskToGroup.set(id, { city: group.city, date: group.date, partners: partnerItems });
+      }
     }
-    return matchSet;
+    return taskToGroup;
   }, [items, cityMap]);
 
   const allCities = useMemo(() => {
