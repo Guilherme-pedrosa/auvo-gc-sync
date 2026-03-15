@@ -125,6 +125,7 @@ function OSMapViewInner({
   const { isLoaded, loadError } = useJsApiLoader({
     googleMapsApiKey: apiKey,
     language: "pt-BR",
+    libraries: ["geometry"],
   });
 
   const mapRef = useRef<google.maps.Map | null>(null);
