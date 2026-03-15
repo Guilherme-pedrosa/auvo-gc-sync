@@ -292,15 +292,12 @@ export default function RouteCorridorFilter({
 
             <div className="space-y-2">
               <Label className="text-xs">Destino</Label>
-              <div className="relative">
-                <MapPin className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3 w-3 text-red-500" />
-                <Input
-                  className="h-8 text-sm pl-8"
-                  placeholder="Digite a cidade destino (ex: Cuiabá - MT)"
-                  value={destination}
-                  onChange={(e) => setDestination(e.target.value)}
-                />
-              </div>
+              <DestinationAutocomplete
+                value={destination}
+                onChange={setDestination}
+                allCities={allCities}
+                osItems={osItems}
+              />
             </div>
 
             <div className="space-y-2">
