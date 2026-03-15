@@ -82,12 +82,14 @@ type KanbanColumn = {
 export default function OSKanbanPage() {
   const navigate = useNavigate();
   const today = new Date();
+  // Add 1 day buffer to ensure today is always included regardless of timezone
+  const todayPlus1 = new Date(today);
+  todayPlus1.setDate(todayPlus1.getDate() + 1);
   const [dateRange, setDateRange] = useState({
     from: new Date(today.getFullYear(), 0, 1),
-    to: today,
+    to: todayPlus1,
   });
   const [columns, setColumns] = useState<KanbanColumn[]>([]);
-  const [columnsInitialized, setColumnsInitialized] = useState(false);
   const [filterTecnico, setFilterTecnico] = useState("todos");
   const [filterClienteSearch, setFilterClienteSearch] = useState("");
   const [selectedClientes, setSelectedClientes] = useState<Set<string>>(new Set());
