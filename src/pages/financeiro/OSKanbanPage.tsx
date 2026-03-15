@@ -494,41 +494,77 @@ export default function OSKanbanPage() {
     }
   }, []);
 
-  // Extract city from Auvo address and text fallbacks (orientation + customer names)
-  const extractCity = useCallback((
+  // Extract location info from address: { region: "Bairro, Cidade - UF", city: "Cidade" }
+  type LocationInfo = { region: string; city: string };
+
+  const extractLocation = useCallback((
     endereco: string | null,
     orientacao?: string | null,
     cliente?: string | null,
     gcOsCliente?: string | null,
-  ): string | null => {
-    const sanitizeCity = (raw: string): string | null => {
-      const clean = raw
-        .replace(/\s+/g, " ")
-        .replace(/^[,\s.-]+|[,\s.-]+$/g, "")
-        .trim();
-      if (!clean || clean.length < 3) return null;
-      const parts = clean.split(",").map((p) => p.trim()).filter(Boolean);
-      const candidate = parts.length > 1 ? parts[parts.length - 1] : clean;
-      return candidate.length >= 3 ? candidate : null;
-    };
-
-    const tryExtract = (text: string): string | null => {
+  ): LocationInfo | null => {
+    const tryExtract = (text: string): LocationInfo | null => {
       if (!text || /^https?:\/\//i.test(text) || text.length < 5) return null;
 
-      const patterns = [
-        /,\s*([A-Za-zÀ-ú\s]+?)\s*-\s*[A-Z]{2}\s*,?\s*\d{5}/i, // Cidade - UF, CEP
-        /,\s*([A-Za-zÀ-ú\s]+?)\s*,\s*[A-Z]{2}\s*,\s*[\d.\-]+/i, // Cidade, UF, CEP
-        /,\s*([A-Za-zÀ-ú\s]+?)\s*-\s*[A-Z]{2}\s*(?:,\s*Brasil)?$/i, // ..., Cidade - UF
-        /([A-Za-zÀ-ú\s]{3,}?)\s*-\s*[A-Z]{2}\s*,\s*Brasil/i, // Cidade - UF, Brasil
-        /([A-Za-zÀ-ú\s]{3,})\/[A-Z]{2}(?:\s|$|,|\n)/i, // Cidade/UF
-        /ENDERE[ÇC]O:\s*[^\n,]*,\s*[^\n,]*,\s*([A-Za-zÀ-ú\s]+)\/[A-Z]{2}/i, // ENDEREÇO: ..., CIDADE/UF
-      ];
+      // Full pattern: "..., Bairro, Cidade - UF, CEP, ..." 
+      // e.g. "Rua Contorno Leste, Distrito Agro Industrial, Senador Canedo - GO, 75252-282, Brasil"
+      const mFull = text.match(/,\s*([A-Za-zÀ-ú\s]+?),\s*([A-Za-zÀ-ú\s]+?)\s*-\s*([A-Z]{2})\s*,?\s*\d{5}/i);
+      if (mFull) {
+        const bairro = mFull[1].trim();
+        const cidade = mFull[2].trim();
+        const uf = mFull[3].trim();
+        if (cidade.length >= 3) {
+          return { region: `${bairro}, ${cidade} - ${uf}`, city: cidade };
+        }
+      }
 
-      for (const pattern of patterns) {
-        const match = text.match(pattern);
-        if (match?.[1]) {
-          const city = sanitizeCity(match[1]);
-          if (city) return city;
+      // "BAIRRO, CIDADE, UF, CEP"
+      const mComma = text.match(/,\s*([A-Za-zÀ-ú\s]+?),\s*([A-Za-zÀ-ú\s]+?),\s*([A-Z]{2})\s*,\s*[\d.\-]+/i);
+      if (mComma) {
+        const bairro = mComma[1].trim();
+        const cidade = mComma[2].trim();
+        const uf = mComma[3].trim();
+        if (cidade.length >= 3) {
+          return { region: `${bairro}, ${cidade} - ${uf}`, city: cidade };
+        }
+      }
+
+      // "Cidade - UF, CEP" (no bairro)
+      const m1 = text.match(/,\s*([A-Za-zÀ-ú\s]+?)\s*-\s*([A-Z]{2})\s*,?\s*\d{5}/i);
+      if (m1 && m1[1].trim().length >= 3) {
+        const cidade = m1[1].trim();
+        return { region: `${cidade} - ${m1[2]}`, city: cidade };
+      }
+
+      // "Cidade - UF" at end or ", Brasil"
+      const m3 = text.match(/,\s*([A-Za-zÀ-ú\s]+?)\s*-\s*([A-Z]{2})\s*(?:,\s*Brasil)?$/i);
+      if (m3 && m3[1].trim().length >= 3) {
+        const cidade = m3[1].trim();
+        return { region: `${cidade} - ${m3[2]}`, city: cidade };
+      }
+
+      // "Cidade - UF, Brasil" anywhere
+      const m3b = text.match(/([A-Za-zÀ-ú\s]{3,}?)\s*-\s*([A-Z]{2})\s*,\s*Brasil/i);
+      if (m3b && m3b[1].trim().length >= 3) {
+        const cidade = m3b[1].trim();
+        return { region: `${cidade} - ${m3b[2]}`, city: cidade };
+      }
+
+      // "Cidade/UF" (common in ECOLAB)
+      const m4 = text.match(/([A-Za-zÀ-ú\s]{3,})\/([A-Z]{2})(?:\s|$|,|\n)/i);
+      if (m4 && m4[1].trim().length >= 3) {
+        const cidade = m4[1].trim();
+        return { region: `${cidade} - ${m4[2]}`, city: cidade };
+      }
+
+      // ENDEREÇO: line with CIDADE/UF
+      const mEnd = text.match(/ENDERE[ÇC]O:\s*[^\n,]*,\s*([^\n,]+),\s*([A-Za-zÀ-ú\s]+)\/([A-Z]{2})/i);
+      if (mEnd) {
+        const bairro = mEnd[1].trim();
+        const cidade = mEnd[2].trim();
+        const uf = mEnd[3].trim();
+        if (cidade.length >= 3) {
+          return { region: `${bairro}, ${cidade} - ${uf}`, city: cidade };
         }
       }
 
@@ -543,38 +579,49 @@ export default function OSKanbanPage() {
     );
   }, []);
 
-  const cityMap = useMemo(() => {
-    const map = new Map<string, string>();
+  // locationMap: task ID → LocationInfo { region, city }
+  const locationMap = useMemo(() => {
+    const map = new Map<string, LocationInfo>();
     for (const item of items) {
-      const city = extractCity(item.endereco, item.orientacao, item.cliente, item.gc_os_cliente);
-      if (city) map.set(item.auvo_task_id, city);
+      const loc = extractLocation(item.endereco, item.orientacao, item.cliente, item.gc_os_cliente);
+      if (loc) map.set(item.auvo_task_id, loc);
     }
     return map;
-  }, [items, extractCity]);
+  }, [items, extractLocation]);
+
+  // cityMap for backward compat (flags, route grouping uses region)
+  const cityMap = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const [id, loc] of locationMap) {
+      map.set(id, loc.region);
+    }
+    return map;
+  }, [locationMap]);
 
   // routeGroups: maps each task ID to route partners
-  // Criteria: same city + same date OR same city + same client
+  // Criteria: same CITY + same date OR same CITY + same client
+  // (uses city for grouping since routes cross neighborhoods within same city)
   const routeGroups = useMemo(() => {
     const byDateCity = new Map<string, { label: string; taskIds: Set<string> }>();
     const byClientCity = new Map<string, { label: string; taskIds: Set<string> }>();
 
     for (const item of items) {
-      const city = cityMap.get(item.auvo_task_id);
-      if (!city) continue;
-      const cityLow = city.toLowerCase();
+      const loc = locationMap.get(item.auvo_task_id);
+      if (!loc) continue;
+      const cityLow = loc.city.toLowerCase();
       const client = (item.cliente || item.gc_os_cliente || "").trim().toLowerCase();
 
       // Group by city + date
       if (item.data_tarefa) {
         const key = `date|${cityLow}|${item.data_tarefa}`;
-        if (!byDateCity.has(key)) byDateCity.set(key, { label: `${city} • ${item.data_tarefa}`, taskIds: new Set() });
+        if (!byDateCity.has(key)) byDateCity.set(key, { label: `${loc.city} • ${item.data_tarefa}`, taskIds: new Set() });
         byDateCity.get(key)!.taskIds.add(item.auvo_task_id);
       }
 
       // Group by city + client
       if (client) {
         const key = `client|${cityLow}|${client}`;
-        if (!byClientCity.has(key)) byClientCity.set(key, { label: `${city} • ${item.cliente || item.gc_os_cliente || ""}`, taskIds: new Set() });
+        if (!byClientCity.has(key)) byClientCity.set(key, { label: `${loc.city} • ${item.cliente || item.gc_os_cliente || ""}`, taskIds: new Set() });
         byClientCity.get(key)!.taskIds.add(item.auvo_task_id);
       }
     }
@@ -602,16 +649,17 @@ export default function OSKanbanPage() {
     // Build final map
     const taskToGroup = new Map<string, { city: string; label: string; partners: OSItem[] }>();
     for (const [taskId, partnerIds] of taskPartnerIds) {
-      const city = cityMap.get(taskId) || "";
+      const loc = locationMap.get(taskId);
+      const region = loc?.region || cityMap.get(taskId) || "";
       const partnerItems = items.filter((i) => partnerIds.has(i.auvo_task_id));
       taskToGroup.set(taskId, {
-        city,
-        label: taskLabels.get(taskId) || city,
+        city: region,
+        label: taskLabels.get(taskId) || region,
         partners: partnerItems,
       });
     }
     return taskToGroup;
-  }, [items, cityMap]);
+  }, [items, locationMap, cityMap]);
 
   // Color palette for city flags
   const FLAG_COLORS = [
@@ -1066,6 +1114,13 @@ export default function OSKanbanPage() {
                                           <p className="text-xs text-muted-foreground mt-0.5">
                                             {item.tecnico || "—"} • {item.data_tarefa || "—"}
                                           </p>
+                                          {/* Address preview */}
+                                          {item.endereco && item.endereco.length > 5 && (
+                                            <p className="text-[10px] text-muted-foreground/70 mt-0.5 truncate flex items-center gap-0.5" title={item.endereco}>
+                                              <MapPin className="h-2.5 w-2.5 flex-shrink-0" />
+                                              {item.endereco.length > 60 ? item.endereco.substring(0, 60) + "…" : item.endereco}
+                                            </p>
+                                          )}
                                           {/* Orientação preview */}
                                           {item.orientacao && (
                                             <p className="text-[11px] text-muted-foreground mt-1 line-clamp-2 italic">

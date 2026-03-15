@@ -385,10 +385,16 @@ Deno.serve(async (req) => {
     }
 
     if (candidateTaskIds.length > 0) {
-      console.log(`[central-sync] Reforçando endereço via Auvo detalhe para ${candidateTaskIds.length} OS...`);
-      for (const taskId of candidateTaskIds) {
-        const snapshot = await fetchAuvoTaskSnapshot(bearerToken, taskId);
-        if (snapshot) taskSnapshotById.set(taskId, snapshot);
+      console.log(`[central-sync] Reforçando endereço via Auvo detalhe para ${candidateTaskIds.length} OS (paralelo 5)...`);
+      const PARALLEL = 5;
+      for (let i = 0; i < candidateTaskIds.length; i += PARALLEL) {
+        const batch = candidateTaskIds.slice(i, i + PARALLEL);
+        const results = await Promise.all(
+          batch.map((id) => fetchAuvoTaskSnapshot(bearerToken, id))
+        );
+        batch.forEach((id, idx) => {
+          if (results[idx]) taskSnapshotById.set(id, results[idx]!);
+        });
       }
       console.log(`[central-sync] Endereços reforçados: ${taskSnapshotById.size}/${candidateTaskIds.length}`);
     }
@@ -563,22 +569,30 @@ Deno.serve(async (req) => {
       .or("endereco.is.null,endereco.eq.");
 
     if (rowsMissingAddress?.length) {
-      for (const r of rowsMissingAddress) {
-        const taskId = String((r as any).auvo_task_id || "").trim();
-        if (!taskId || existingTaskIds.has(taskId)) continue;
+      const patchIds = rowsMissingAddress
+        .map((r) => String((r as any).auvo_task_id || "").trim())
+        .filter((id) => id && !existingTaskIds.has(id));
 
-        let snapshot = taskSnapshotById.get(taskId) || null;
-        if (!snapshot) {
-          snapshot = await fetchAuvoTaskSnapshot(bearerToken, taskId);
-          if (snapshot) taskSnapshotById.set(taskId, snapshot);
-        }
-        if (!snapshot || (!snapshot.address && !snapshot.orientation)) continue;
-
-        rows.push({
-          auvo_task_id: taskId,
-          endereco: snapshot.address || "",
-          orientacao: snapshot.orientation || "",
-          atualizado_em: new Date().toISOString(),
+      console.log(`[central-sync] Patch endereço para ${patchIds.length} OS existentes sem endereço...`);
+      const PARALLEL = 5;
+      for (let i = 0; i < patchIds.length; i += PARALLEL) {
+        const batch = patchIds.slice(i, i + PARALLEL);
+        const results = await Promise.all(
+          batch.map((id) => {
+            const cached = taskSnapshotById.get(id);
+            return cached ? Promise.resolve(cached) : fetchAuvoTaskSnapshot(bearerToken, id);
+          })
+        );
+        batch.forEach((id, idx) => {
+          const snapshot = results[idx];
+          if (!snapshot || (!snapshot.address && !snapshot.orientation)) return;
+          taskSnapshotById.set(id, snapshot);
+          rows.push({
+            auvo_task_id: id,
+            endereco: snapshot.address || "",
+            orientacao: snapshot.orientation || "",
+            atualizado_em: new Date().toISOString(),
+          });
         });
       }
     }
