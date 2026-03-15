@@ -500,11 +500,32 @@ export default function OSKanbanPage() {
   // Extract location info from address: { region: "Bairro, Cidade - UF", city: "Cidade" }
   type LocationInfo = { region: string; city: string };
 
+  // Known cities dictionary for fallback extraction from client names
+  const KNOWN_CITIES: { pattern: RegExp; city: string; uf: string }[] = useMemo(() => [
+    { pattern: /GOI[AÂ]NIA/i, city: "Goiânia", uf: "GO" },
+    { pattern: /AN[AÁ]POLIS/i, city: "Anápolis", uf: "GO" },
+    { pattern: /APARECIDA\s+DE\s+GOI[AÂ]NIA/i, city: "Aparecida de Goiânia", uf: "GO" },
+    { pattern: /SENADOR\s+CANEDO/i, city: "Senador Canedo", uf: "GO" },
+    { pattern: /TRINDADE/i, city: "Trindade", uf: "GO" },
+    { pattern: /CALDAS\s+NOVAS/i, city: "Caldas Novas", uf: "GO" },
+    { pattern: /CATAL[AÃ]O/i, city: "Catalão", uf: "GO" },
+    { pattern: /MINEIROS/i, city: "Mineiros", uf: "GO" },
+    { pattern: /RIO\s+VERDE/i, city: "Rio Verde", uf: "GO" },
+    { pattern: /JATA[IÍ]/i, city: "Jataí", uf: "GO" },
+    { pattern: /ITUMBIARA/i, city: "Itumbiara", uf: "GO" },
+    { pattern: /MARA\s+ROSA/i, city: "Mara Rosa", uf: "GO" },
+    { pattern: /CAMPO\s+VERDE/i, city: "Campo Verde", uf: "MT" },
+    { pattern: /BRAS[IÍ]LIA/i, city: "Brasília", uf: "DF" },
+    { pattern: /UBERL[AÂ]NDIA/i, city: "Uberlândia", uf: "MG" },
+    { pattern: /CHAPAD[AÃ]O/i, city: "Chapadão", uf: "GO" },
+  ], []);
+
   const extractLocation = useCallback((
     endereco: string | null,
     orientacao?: string | null,
     cliente?: string | null,
     gcOsCliente?: string | null,
+    descricao?: string | null,
   ): LocationInfo | null => {
     const tryExtract = (text: string): LocationInfo | null => {
       if (!text || /^https?:\/\//i.test(text) || text.length < 5) return null;
@@ -521,7 +542,8 @@ export default function OSKanbanPage() {
         }
       }
 
-      // "BAIRRO, CIDADE, UF, CEP"
+      // "BAIRRO, CIDADE, UF, CEP" (comma between city and UF)
+      // e.g. "VILA JARDIM SALVADOR, TRINDADE, GO, 75.388-454"
       const mComma = text.match(/,\s*([A-Za-zÀ-ú\s]+?),\s*([A-Za-zÀ-ú\s]+?),\s*([A-Z]{2})\s*,\s*[\d.\-]+/i);
       if (mComma) {
         const bairro = mComma[1].trim();
@@ -530,6 +552,14 @@ export default function OSKanbanPage() {
         if (cidade.length >= 3) {
           return { region: `${bairro}, ${cidade} - ${uf}`, city: cidade };
         }
+      }
+
+      // "CIDADE, UF, CEP" (no bairro, comma format)
+      // e.g. "TRINDADE, GO, 75.388-454" or "ANAPOLIS, GO, 75110-580"
+      const mCityComma = text.match(/(?:^|,\s*)([A-Za-zÀ-ú\s]{3,}?),\s*([A-Z]{2})\s*,\s*[\d.\-]{5,}/i);
+      if (mCityComma && mCityComma[1].trim().length >= 3) {
+        const cidade = mCityComma[1].trim();
+        return { region: `${cidade} - ${mCityComma[2]}`, city: cidade };
       }
 
       // "Cidade - UF, CEP" (no bairro)
@@ -574,19 +604,33 @@ export default function OSKanbanPage() {
       return null;
     };
 
+    // Known-cities fallback: scan all fields for known city names
+    const tryKnownCities = (...texts: (string | null | undefined)[]): LocationInfo | null => {
+      const combined = texts.filter(Boolean).join(" ");
+      if (combined.length < 3) return null;
+      for (const kc of KNOWN_CITIES) {
+        if (kc.pattern.test(combined)) {
+          return { region: `${kc.city} - ${kc.uf}`, city: kc.city };
+        }
+      }
+      return null;
+    };
+
     return (
       tryExtract(endereco || "") ||
       tryExtract(orientacao || "") ||
       tryExtract(cliente || "") ||
-      tryExtract(gcOsCliente || "")
+      tryExtract(gcOsCliente || "") ||
+      tryExtract(descricao || "") ||
+      tryKnownCities(endereco, orientacao, cliente, gcOsCliente, descricao)
     );
-  }, []);
+  }, [KNOWN_CITIES]);
 
   // locationMap: task ID → LocationInfo { region, city }
   const locationMap = useMemo(() => {
     const map = new Map<string, LocationInfo>();
     for (const item of items) {
-      const loc = extractLocation(item.endereco, item.orientacao, item.cliente, item.gc_os_cliente);
+      const loc = extractLocation(item.endereco, item.orientacao, item.cliente, item.gc_os_cliente, item.descricao);
       if (loc) map.set(item.auvo_task_id, loc);
     }
     return map;
