@@ -48,6 +48,11 @@ serve(async (req) => {
           const res = await fetch(url);
           const data = await res.json();
 
+          // Debug: log Google's response status for first few addresses
+          if (i < 3) {
+            console.log(`[google-maps] Geocode "${addr.substring(0, 50)}..." → status=${data.status}, error=${data.error_message || "none"}, results=${data.results?.length || 0}`);
+          }
+
           if (data.status === "OK" && data.results?.length > 0) {
             const loc = data.results[0].geometry.location;
             results.push({
@@ -57,9 +62,13 @@ serve(async (req) => {
               formatted: data.results[0].formatted_address,
             });
           } else {
+            if (data.error_message) {
+              console.error(`[google-maps] Geocode error: ${data.status} - ${data.error_message}`);
+            }
             results.push({ address: addr, lat: null, lng: null, formatted: null });
           }
-        } catch {
+        } catch (e) {
+          console.error(`[google-maps] Geocode fetch error:`, e);
           results.push({ address: addr, lat: null, lng: null, formatted: null });
         }
 
