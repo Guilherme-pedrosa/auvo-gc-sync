@@ -1,5 +1,4 @@
 import { useState, useCallback, useMemo, useEffect } from "react";
-import { startOfWeek, endOfWeek, addWeeks } from "date-fns";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -304,10 +303,6 @@ export default function OSKanbanPage() {
   const endStr = format(dateRange.to, "yyyy-MM-dd");
 
   // Query tarefas_central directly
-  // Week range for "Agendado" column (current week + next week)
-  const agendaStart = useMemo(() => format(startOfWeek(today, { weekStartsOn: 1 }), "yyyy-MM-dd"), []);
-  const agendaEnd = useMemo(() => format(endOfWeek(addWeeks(today, 1), { weekStartsOn: 1 }), "yyyy-MM-dd"), []);
-
   const { data: rawItems, isLoading, refetch, isFetching } = useQuery({
     queryKey: ["os-kanban", startStr, endStr],
     queryFn: async () => {
@@ -318,24 +313,6 @@ export default function OSKanbanPage() {
         .gte("data_tarefa", startStr)
         .lte("data_tarefa", endStr)
         .order("data_tarefa", { ascending: false });
-
-      if (error) throw error;
-      return (data || []) as unknown as OSItem[];
-    },
-    staleTime: 60_000,
-  });
-
-  // Fetch scheduled tasks for the "Agendado" column
-  const { data: agendadoRaw } = useQuery({
-    queryKey: ["os-kanban-agendado", agendaStart, agendaEnd],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from("tarefas_central")
-        .select("*")
-        .gte("data_tarefa", agendaStart)
-        .lte("data_tarefa", agendaEnd)
-        .ilike("status_auvo", "%Agendad%")
-        .order("data_tarefa", { ascending: true });
 
       if (error) throw error;
       return (data || []) as unknown as OSItem[];
@@ -354,14 +331,20 @@ export default function OSKanbanPage() {
     });
   }, [rawItems]);
 
-  // Build columns from unique situations + "Agendado" column
+  // Build columns: OS with status "Agendada" go to a special first column
   useMemo(() => {
-    if (columnsInitialized) return;
-    if (!items.length && !agendadoRaw?.length) return;
+    if (!items.length || columnsInitialized) return;
 
-    // Build OS situation columns
+    const agendadoItems: OSItem[] = [];
     const situacaoMap: Record<string, { items: OSItem[]; color: string; sitId: string }> = {};
+
     for (const item of items) {
+      const statusAuvo = (item.status_auvo || "").toLowerCase();
+      if (statusAuvo.includes("agendad")) {
+        agendadoItems.push(item);
+        continue;
+      }
+
       const sit = item.gc_os_situacao || "Sem situação";
       if (!situacaoMap[sit]) {
         situacaoMap[sit] = {
@@ -382,20 +365,16 @@ export default function OSKanbanPage() {
         items: data.items,
       }));
 
-    // "Agendado" column — exclude tasks already in OS columns
-    const osTaskIds = new Set(items.map((i) => i.auvo_task_id));
-    const agendadoItems = (agendadoRaw || []).filter((t) => !osTaskIds.has(t.auvo_task_id));
-
     const agendadoCol: KanbanColumn = {
       id: "col_agendado",
-      title: "📅 Agendado (Sem OS)",
+      title: "📅 Agendado",
       color: "#3b82f6",
       items: agendadoItems,
     };
 
     setColumns([agendadoCol, ...osCols]);
     setColumnsInitialized(true);
-  }, [items, agendadoRaw, columnsInitialized]);
+  }, [items, columnsInitialized]);
 
   // Sync via central-sync with progress
   const handleSync = useCallback(async () => {
