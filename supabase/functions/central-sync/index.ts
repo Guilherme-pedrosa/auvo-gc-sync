@@ -39,6 +39,14 @@ function auvoHeaders(token: string): Record<string, string> {
   return { Authorization: `Bearer ${token}`, "Content-Type": "application/json" };
 }
 
+function normalizeDate(dateLike: unknown): string | null {
+  const raw = String(dateLike || "").trim();
+  if (!raw) return null;
+  const d = raw.split("T")[0];
+  if (!d || d === "0001-01-01") return null;
+  return d;
+}
+
 // Fetch Auvo tasks for a single month window
 async function fetchAuvoTasksForPeriod(bearerToken: string, startDate: string, endDate: string): Promise<any[]> {
   const allTasks: any[] = [];
