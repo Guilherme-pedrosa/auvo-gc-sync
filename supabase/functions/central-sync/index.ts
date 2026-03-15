@@ -93,13 +93,20 @@ function resolveTaskAddress(task: any): string {
   );
 }
 
-async function fetchAuvoTaskAddress(bearerToken: string, taskId: string): Promise<string> {
+type AuvoTaskSnapshot = {
+  address: string;
+  orientation: string;
+};
+
+async function fetchAuvoTaskSnapshot(bearerToken: string, taskId: string): Promise<AuvoTaskSnapshot | null> {
   const url = `${AUVO_BASE_URL}/tasks/${encodeURIComponent(taskId)}`;
   const response = await rateLimitedFetch(url, { headers: auvoHeaders(bearerToken) }, "auvo");
-  if (!response.ok) return "";
+  if (!response.ok) return null;
+
   const json = await response.json().catch(() => ({}));
   const result = json?.result || json || {};
-  return extractAddress(
+
+  const address = extractAddress(
     result?.address ||
     result?.customerAddress ||
     result?.addressDescription ||
@@ -108,6 +115,10 @@ async function fetchAuvoTaskAddress(bearerToken: string, taskId: string): Promis
     result?.customer?.location ||
     ""
   );
+  const orientation = String(result?.orientation || "").substring(0, 500);
+
+  if (!address && !orientation) return null;
+  return { address, orientation };
 }
 
 // Fetch Auvo tasks for a single month window
