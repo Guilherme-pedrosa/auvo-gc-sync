@@ -956,6 +956,22 @@ export default function OSKanbanPage() {
                   })}
                 </div>
               </ScrollArea>
+              {/* Roteirizar button */}
+              {!allFlagsSelected && selectedFlags.size > 0 && (
+                <div className="p-2 border-t">
+                  <Button
+                    size="sm"
+                    className="w-full gap-2"
+                    onClick={() => {
+                      setShowFlagFilter(false);
+                      setViewMode("map");
+                    }}
+                  >
+                    <Navigation className="h-3.5 w-3.5" />
+                    Roteirizar {selectedFlags.size} cidade{selectedFlags.size !== 1 ? "s" : ""} selecionada{selectedFlags.size !== 1 ? "s" : ""}
+                  </Button>
+                </div>
+              )}
             </PopoverContent>
           </Popover>
 
