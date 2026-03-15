@@ -891,6 +891,26 @@ export default function OSKanbanPage() {
                                               {item.orientacao.substring(0, 80)}{item.orientacao.length > 80 ? "…" : ""}
                                             </p>
                                           )}
+                                          {/* City + Route badges */}
+                                          {(() => {
+                                            const city = cityMap.get(item.auvo_task_id);
+                                            const isRoute = routeMatches.has(item.auvo_task_id);
+                                            return (city || isRoute) ? (
+                                              <div className="flex items-center gap-1 mt-1 flex-wrap">
+                                                {city && (
+                                                  <Badge variant="outline" className="text-[9px] h-4 px-1 gap-0.5">
+                                                    <MapPin className="h-2.5 w-2.5" />
+                                                    {city}
+                                                  </Badge>
+                                                )}
+                                                {isRoute && (
+                                                  <Badge className="text-[9px] h-4 px-1 bg-amber-500 text-amber-950 border-amber-600">
+                                                    🔗 Rota
+                                                  </Badge>
+                                                )}
+                                              </div>
+                                            ) : null;
+                                          })()}
                                           <div className="flex items-center justify-between mt-1.5">
                                             <span className="text-xs font-medium text-foreground">
                                               {formatCurrency(Number(item.gc_os_valor_total) || 0)}
