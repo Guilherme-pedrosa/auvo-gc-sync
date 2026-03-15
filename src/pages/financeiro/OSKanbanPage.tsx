@@ -23,6 +23,7 @@ import {
 } from "lucide-react";
 import { Map as MapIcon } from "lucide-react";
 import OSMapView from "@/components/financeiro/OSMapView";
+import RouteCorridorFilter from "@/components/financeiro/RouteCorridorFilter";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { Label } from "@/components/ui/label";
