@@ -149,6 +149,17 @@ function OSMapViewInner({
   const [optimizing, setOptimizing] = useState(false);
   const [selectedMarker, setSelectedMarker] = useState<GeocodedItem | null>(null);
 
+  const corridorPath = useMemo(() => {
+    if (!isLoaded || !corridorRoute?.encodedPolyline) return [];
+    try {
+      const decodedPath = google.maps.geometry.encoding.decodePath(corridorRoute.encodedPolyline);
+      return decodedPath.map((p: google.maps.LatLng) => ({ lat: p.lat(), lng: p.lng() }));
+    } catch (error) {
+      console.error("Erro ao decodificar rota do corredor:", error);
+      return [];
+    }
+  }, [isLoaded, corridorRoute?.encodedPolyline]);
+
   const onMapLoad = useCallback((map: google.maps.Map) => {
     mapRef.current = map;
   }, []);
