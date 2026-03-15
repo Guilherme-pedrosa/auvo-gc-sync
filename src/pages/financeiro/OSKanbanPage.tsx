@@ -607,7 +607,7 @@ export default function OSKanbanPage() {
     return Array.from(set).sort();
   }, [cityMap]);
 
-  const [filterCidade, setFilterCidade] = useState("todas");
+  // filterCidade state declared above with other states
 
   return (
     <div className="min-h-screen bg-background">
