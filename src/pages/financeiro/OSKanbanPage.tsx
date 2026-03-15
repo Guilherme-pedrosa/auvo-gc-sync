@@ -107,8 +107,11 @@ export default function OSKanbanPage() {
   const [globalSort, setGlobalSort] = useState<string>("none");
   // Per-column sort
   const [columnSorts, setColumnSorts] = useState<Record<string, string>>({});
-  // City filter
-  const [filterCidade, setFilterCidade] = useState("todas");
+  // City/flag filter (multi-select)
+  const [selectedFlags, setSelectedFlags] = useState<Set<string>>(new Set());
+  const [allFlagsSelected, setAllFlagsSelected] = useState(true);
+  const [showFlagFilter, setShowFlagFilter] = useState(false);
+  const [filterOnlyRoutes, setFilterOnlyRoutes] = useState(false);
   // Edit task state
   const [showEditModal, setShowEditModal] = useState(false);
   const [editingCard, setEditingCard] = useState<OSItem | null>(null);
@@ -574,10 +577,43 @@ export default function OSKanbanPage() {
     return taskToGroup;
   }, [items, cityMap]);
 
+  // Color palette for city flags
+  const FLAG_COLORS = [
+    { bg: "#ef4444", text: "#fff" }, // red
+    { bg: "#f97316", text: "#fff" }, // orange
+    { bg: "#eab308", text: "#000" }, // yellow
+    { bg: "#22c55e", text: "#fff" }, // green
+    { bg: "#06b6d4", text: "#fff" }, // cyan
+    { bg: "#3b82f6", text: "#fff" }, // blue
+    { bg: "#8b5cf6", text: "#fff" }, // violet
+    { bg: "#ec4899", text: "#fff" }, // pink
+    { bg: "#14b8a6", text: "#fff" }, // teal
+    { bg: "#f59e0b", text: "#000" }, // amber
+    { bg: "#6366f1", text: "#fff" }, // indigo
+    { bg: "#d946ef", text: "#fff" }, // fuchsia
+  ];
+
   const allCities = useMemo(() => {
     const set = new Set<string>();
     for (const [, city] of cityMap) set.add(city);
     return Array.from(set).sort();
+  }, [cityMap]);
+
+  const cityColorMap = useMemo(() => {
+    const map = new Map<string, { bg: string; text: string }>();
+    allCities.forEach((city, i) => {
+      map.set(city, FLAG_COLORS[i % FLAG_COLORS.length]);
+    });
+    return map;
+  }, [allCities]);
+
+  // Count items per city
+  const cityCounts = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const [, city] of cityMap) {
+      counts.set(city, (counts.get(city) || 0) + 1);
+    }
+    return counts;
   }, [cityMap]);
 
   const filteredColumns = useMemo(() => {
@@ -591,9 +627,14 @@ export default function OSKanbanPage() {
         const val = Number(item.gc_os_valor_total) || 0;
         if (minVal !== null && val < minVal) return false;
         if (maxVal !== null && val > maxVal) return false;
-        if (filterCidade !== "todas") {
+        // Flag filter
+        if (!allFlagsSelected && selectedFlags.size > 0) {
           const city = cityMap.get(item.auvo_task_id);
-          if (!city || city !== filterCidade) return false;
+          if (!city || !selectedFlags.has(city)) return false;
+        }
+        // Only routes filter
+        if (filterOnlyRoutes) {
+          if (!routeGroups.has(item.auvo_task_id)) return false;
         }
         return true;
       });
@@ -601,7 +642,7 @@ export default function OSKanbanPage() {
       filtered = sortItems(filtered, sortKey);
       return { ...col, items: filtered };
     });
-  }, [columns, filterTecnico, allClientesSelected, selectedClientes, valorMin, valorMax, globalSort, columnSorts, sortItems, filterCidade, cityMap]);
+  }, [columns, filterTecnico, allClientesSelected, selectedClientes, valorMin, valorMax, globalSort, columnSorts, sortItems, allFlagsSelected, selectedFlags, cityMap, filterOnlyRoutes, routeGroups]);
 
   // Drag & drop
   const onDragEnd = useCallback((result: DropResult) => {
@@ -743,19 +784,75 @@ export default function OSKanbanPage() {
             </PopoverContent>
           </Popover>
 
-          {/* City filter */}
-          <Select value={filterCidade} onValueChange={setFilterCidade}>
-            <SelectTrigger className="w-[180px]">
-              <MapPin className="h-3.5 w-3.5 mr-1.5" />
-              <SelectValue placeholder="Cidade" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="todas">Todas as cidades</SelectItem>
-              {allCities.map((c) => (
-                <SelectItem key={c} value={c}>{c}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          {/* Flag filter */}
+          <Popover open={showFlagFilter} onOpenChange={setShowFlagFilter}>
+            <PopoverTrigger asChild>
+              <Button variant="outline" size="sm" className="gap-2 min-w-[160px] justify-start">
+                🚩 Flags
+                {!allFlagsSelected && selectedFlags.size > 0 && (
+                  <Badge variant="secondary" className="text-[10px] h-4 px-1 ml-1">
+                    {selectedFlags.size}
+                  </Badge>
+                )}
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent className="w-[300px] p-0" align="start">
+              <div className="p-2 border-b">
+                <label className="flex items-center gap-2 px-2 py-1 cursor-pointer hover:bg-accent rounded text-sm">
+                  <Checkbox
+                    checked={allFlagsSelected}
+                    onCheckedChange={() => {
+                      if (allFlagsSelected) {
+                        setSelectedFlags(new Set());
+                        setAllFlagsSelected(false);
+                      } else {
+                        setSelectedFlags(new Set(allCities));
+                        setAllFlagsSelected(true);
+                      }
+                    }}
+                  />
+                  <span className="font-medium">Todas as cidades</span>
+                </label>
+                <label className="flex items-center gap-2 px-2 py-1 cursor-pointer hover:bg-accent rounded text-sm mt-1">
+                  <Checkbox
+                    checked={filterOnlyRoutes}
+                    onCheckedChange={(v) => setFilterOnlyRoutes(!!v)}
+                  />
+                  <span className="font-medium">🔗 Apenas com rota</span>
+                </label>
+              </div>
+              <ScrollArea className="max-h-[300px]">
+                <div className="p-2 space-y-0.5">
+                  {allCities.map((city) => {
+                    const color = cityColorMap.get(city);
+                    const count = cityCounts.get(city) || 0;
+                    return (
+                      <label key={city} className="flex items-center gap-2 px-2 py-1.5 cursor-pointer hover:bg-accent rounded text-sm">
+                        <Checkbox
+                          checked={allFlagsSelected || selectedFlags.has(city)}
+                          onCheckedChange={() => {
+                            setSelectedFlags((prev) => {
+                              const next = new Set(allFlagsSelected ? allCities : prev);
+                              if (next.has(city)) next.delete(city);
+                              else next.add(city);
+                              return next;
+                            });
+                            setAllFlagsSelected(false);
+                          }}
+                        />
+                        <span
+                          className="w-3 h-3 rounded-full flex-shrink-0 border"
+                          style={{ backgroundColor: color?.bg || "#6b7280" }}
+                        />
+                        <span className="truncate flex-1">{city}</span>
+                        <span className="text-xs text-muted-foreground">{count}</span>
+                      </label>
+                    );
+                  })}
+                </div>
+              </ScrollArea>
+            </PopoverContent>
+          </Popover>
 
           {/* Value range filter */}
           <Popover>
@@ -939,17 +1036,20 @@ export default function OSKanbanPage() {
                                               {item.orientacao.substring(0, 80)}{item.orientacao.length > 80 ? "…" : ""}
                                             </p>
                                           )}
-                                          {/* City + Route badges */}
+                                          {/* City flag + Route flag */}
                                           {(() => {
                                             const city = cityMap.get(item.auvo_task_id);
                                             const routeGroup = routeGroups.get(item.auvo_task_id);
+                                            const color = city ? cityColorMap.get(city) : null;
                                             return (city || routeGroup) ? (
                                               <div className="flex items-center gap-1 mt-1 flex-wrap">
-                                                {city && (
-                                                  <Badge variant="outline" className="text-[9px] h-4 px-1 gap-0.5">
-                                                    <MapPin className="h-2.5 w-2.5" />
-                                                    {city}
-                                                  </Badge>
+                                                {city && color && (
+                                                  <span
+                                                    className="inline-flex items-center gap-0.5 rounded-full px-1.5 py-px text-[9px] font-semibold border"
+                                                    style={{ backgroundColor: color.bg, color: color.text, borderColor: color.bg }}
+                                                  >
+                                                    🚩 {city}
+                                                  </span>
                                                 )}
                                                 {routeGroup && (
                                                   <Popover>
@@ -958,13 +1058,13 @@ export default function OSKanbanPage() {
                                                         onClick={(e) => e.stopPropagation()}
                                                         className="inline-flex"
                                                       >
-                                                        <Badge className="text-[9px] h-4 px-1 bg-amber-500 text-amber-950 border-amber-600 cursor-pointer hover:bg-amber-400 transition-colors">
+                                                        <span className="inline-flex items-center gap-0.5 rounded-full px-1.5 py-px text-[9px] font-semibold border cursor-pointer bg-foreground/10 hover:bg-foreground/20 transition-colors text-foreground border-foreground/20">
                                                           🔗 Rota ({routeGroup.partners.length})
-                                                        </Badge>
+                                                        </span>
                                                       </button>
                                                     </PopoverTrigger>
                                                     <PopoverContent className="w-[320px] p-0" align="start" onClick={(e) => e.stopPropagation()}>
-                                                      <div className="px-3 py-2 border-b bg-amber-50 dark:bg-amber-950/30">
+                                                      <div className="px-3 py-2 border-b bg-muted">
                                                         <p className="text-sm font-semibold flex items-center gap-1.5">
                                                           <MapPin className="h-3.5 w-3.5" />
                                                           Rota: {routeGroup.city}
@@ -973,28 +1073,40 @@ export default function OSKanbanPage() {
                                                       </div>
                                                       <ScrollArea className="max-h-[250px]">
                                                         <div className="p-2 space-y-1.5">
-                                                          {routeGroup.partners.map((p) => (
-                                                            <div
-                                                              key={p.auvo_task_id}
-                                                              className={cn(
-                                                                "rounded border px-2.5 py-1.5 text-xs",
-                                                                p.auvo_task_id === item.auvo_task_id
-                                                                  ? "bg-amber-100 dark:bg-amber-900/40 border-amber-300"
-                                                                  : "bg-card"
-                                                              )}
-                                                            >
-                                                              <div className="flex items-center justify-between">
-                                                                <span className="font-mono text-muted-foreground">
-                                                                  {p.gc_os_codigo ? `OS ${p.gc_os_codigo}` : `T#${p.auvo_task_id}`}
-                                                                </span>
-                                                                <span className="font-medium">
-                                                                  {formatCurrency(Number(p.gc_os_valor_total) || 0)}
-                                                                </span>
+                                                          {routeGroup.partners.map((p) => {
+                                                            const pCity = cityMap.get(p.auvo_task_id);
+                                                            const pColor = pCity ? cityColorMap.get(pCity) : null;
+                                                            return (
+                                                              <div
+                                                                key={p.auvo_task_id}
+                                                                className={cn(
+                                                                  "rounded border px-2.5 py-1.5 text-xs",
+                                                                  p.auvo_task_id === item.auvo_task_id
+                                                                    ? "bg-accent border-primary/30"
+                                                                    : "bg-card"
+                                                                )}
+                                                              >
+                                                                <div className="flex items-center justify-between">
+                                                                  <div className="flex items-center gap-1.5">
+                                                                    {pColor && (
+                                                                      <span
+                                                                        className="w-2.5 h-2.5 rounded-full flex-shrink-0"
+                                                                        style={{ backgroundColor: pColor.bg }}
+                                                                      />
+                                                                    )}
+                                                                    <span className="font-mono text-muted-foreground">
+                                                                      {p.gc_os_codigo ? `OS ${p.gc_os_codigo}` : `T#${p.auvo_task_id}`}
+                                                                    </span>
+                                                                  </div>
+                                                                  <span className="font-medium">
+                                                                    {formatCurrency(Number(p.gc_os_valor_total) || 0)}
+                                                                  </span>
+                                                                </div>
+                                                                <p className="font-medium truncate mt-0.5">{p.cliente || p.gc_os_cliente || "—"}</p>
+                                                                <p className="text-muted-foreground">{p.tecnico || "—"} • {p.data_tarefa || "—"}</p>
                                                               </div>
-                                                              <p className="font-medium truncate mt-0.5">{p.cliente || p.gc_os_cliente || "—"}</p>
-                                                              <p className="text-muted-foreground">{p.tecnico || "—"} • {p.data_tarefa || "—"} • {p.gc_os_situacao || p.status_auvo || "—"}</p>
-                                                            </div>
-                                                          ))}
+                                                            );
+                                                          })}
                                                         </div>
                                                       </ScrollArea>
                                                     </PopoverContent>
