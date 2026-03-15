@@ -423,7 +423,9 @@ Deno.serve(async (req) => {
       );
 
       const baseAddress = resolveTaskAddress(task);
-      const resolvedAddress = detailAddressByTaskId.get(taskId) || baseAddress;
+      const snapshot = taskSnapshotById.get(taskId);
+      const resolvedAddress = snapshot?.address || baseAddress;
+      const resolvedOrientation = String(task.orientation || snapshot?.orientation || "").substring(0, 500);
 
       const row: any = {
         auvo_task_id: taskId,
@@ -432,7 +434,7 @@ Deno.serve(async (req) => {
         tecnico_id: String(task.idUserTo || ""),
         data_tarefa: normalizeDate(task.taskDate) || gcOs?.gc_os_data || null,
         status_auvo: task.finished ? "Finalizada" : (task.checkIn ? "Em andamento" : "Aberta"),
-        orientacao: String(task.orientation || "").substring(0, 500),
+        orientacao: resolvedOrientation,
         pendencia: String(task.pendency ?? "").trim(),
         descricao: String(task.description || "").substring(0, 500),
         duracao_decimal: parseFloat(task.durationDecimal || "0") || 0,
