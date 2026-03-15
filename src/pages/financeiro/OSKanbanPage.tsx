@@ -599,28 +599,29 @@ export default function OSKanbanPage() {
   }, [locationMap]);
 
   // routeGroups: maps each task ID to route partners
-  // Criteria: same city + same date OR same city + same client
+  // Criteria: same CITY + same date OR same CITY + same client
+  // (uses city for grouping since routes cross neighborhoods within same city)
   const routeGroups = useMemo(() => {
     const byDateCity = new Map<string, { label: string; taskIds: Set<string> }>();
     const byClientCity = new Map<string, { label: string; taskIds: Set<string> }>();
 
     for (const item of items) {
-      const city = cityMap.get(item.auvo_task_id);
-      if (!city) continue;
-      const cityLow = city.toLowerCase();
+      const loc = locationMap.get(item.auvo_task_id);
+      if (!loc) continue;
+      const cityLow = loc.city.toLowerCase();
       const client = (item.cliente || item.gc_os_cliente || "").trim().toLowerCase();
 
       // Group by city + date
       if (item.data_tarefa) {
         const key = `date|${cityLow}|${item.data_tarefa}`;
-        if (!byDateCity.has(key)) byDateCity.set(key, { label: `${city} • ${item.data_tarefa}`, taskIds: new Set() });
+        if (!byDateCity.has(key)) byDateCity.set(key, { label: `${loc.city} • ${item.data_tarefa}`, taskIds: new Set() });
         byDateCity.get(key)!.taskIds.add(item.auvo_task_id);
       }
 
       // Group by city + client
       if (client) {
         const key = `client|${cityLow}|${client}`;
-        if (!byClientCity.has(key)) byClientCity.set(key, { label: `${city} • ${item.cliente || item.gc_os_cliente || ""}`, taskIds: new Set() });
+        if (!byClientCity.has(key)) byClientCity.set(key, { label: `${loc.city} • ${item.cliente || item.gc_os_cliente || ""}`, taskIds: new Set() });
         byClientCity.get(key)!.taskIds.add(item.auvo_task_id);
       }
     }
@@ -648,16 +649,17 @@ export default function OSKanbanPage() {
     // Build final map
     const taskToGroup = new Map<string, { city: string; label: string; partners: OSItem[] }>();
     for (const [taskId, partnerIds] of taskPartnerIds) {
-      const city = cityMap.get(taskId) || "";
+      const loc = locationMap.get(taskId);
+      const region = loc?.region || cityMap.get(taskId) || "";
       const partnerItems = items.filter((i) => partnerIds.has(i.auvo_task_id));
       taskToGroup.set(taskId, {
-        city,
-        label: taskLabels.get(taskId) || city,
+        city: region,
+        label: taskLabels.get(taskId) || region,
         partners: partnerItems,
       });
     }
     return taskToGroup;
-  }, [items, cityMap]);
+  }, [items, locationMap, cityMap]);
 
   // Color palette for city flags
   const FLAG_COLORS = [
