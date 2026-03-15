@@ -282,24 +282,15 @@ export default function RouteCorridorFilter({
 
             <div className="space-y-2">
               <Label className="text-xs">Destino</Label>
-              <Select value={destination} onValueChange={setDestination}>
-                <SelectTrigger className="h-8 text-sm">
-                  <MapPin className="h-3 w-3 mr-1 text-red-500" />
-                  <SelectValue placeholder="Selecione o destino" />
-                </SelectTrigger>
-                <SelectContent>
-                  {allCities.map((c) => (
-                    <SelectItem key={c} value={c}>
-                      {c}
-                    </SelectItem>
-                  ))}
-                  <SelectItem value="Cuiabá - MT">Cuiabá - MT</SelectItem>
-                  <SelectItem value="Campo Grande - MS">Campo Grande - MS</SelectItem>
-                  <SelectItem value="Rondonópolis - MT">Rondonópolis - MT</SelectItem>
-                  <SelectItem value="Três Lagoas - MS">Três Lagoas - MS</SelectItem>
-                  <SelectItem value="Uberlândia - MG">Uberlândia - MG</SelectItem>
-                </SelectContent>
-              </Select>
+              <div className="relative">
+                <MapPin className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3 w-3 text-red-500" />
+                <Input
+                  className="h-8 text-sm pl-8"
+                  placeholder="Digite a cidade destino (ex: Cuiabá - MT)"
+                  value={destination}
+                  onChange={(e) => setDestination(e.target.value)}
+                />
+              </div>
             </div>
 
             <div className="space-y-2">
