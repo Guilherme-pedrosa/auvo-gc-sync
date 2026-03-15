@@ -18,12 +18,21 @@ interface OSInfo {
   cidade?: string;
 }
 
+export interface CorridorRouteData {
+  encodedPolyline: string;
+  originCoord: { lat: number; lng: number };
+  destCoord: { lat: number; lng: number };
+  originLabel: string;
+  destLabel: string;
+}
+
 interface RouteCorridorFilterProps {
   allCities: string[];
   cityMap: Map<string, string>; // taskId → city/region
   osItems?: OSInfo[];
   onFilterChange: (matchingTaskIds: Set<string> | null) => void;
   onShowMap?: () => void;
+  onCorridorRouteChange?: (route: CorridorRouteData | null) => void;
 }
 
 // Haversine distance in km
