@@ -23,6 +23,7 @@ interface RouteCorridorFilterProps {
   cityMap: Map<string, string>; // taskId → city/region
   osItems?: OSInfo[];
   onFilterChange: (matchingTaskIds: Set<string> | null) => void;
+  onShowMap?: () => void;
 }
 
 // Haversine distance in km
