@@ -236,14 +236,22 @@ Deno.serve(async (req) => {
       });
     }
 
-    // Calculate 6-month window
+    // Calculate period (request body overrides default 6-month + future window)
     const now = new Date();
     const sixMonthsAgo = new Date(now);
     sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
-    const startDate = sixMonthsAgo.toISOString().split("T")[0];
-    const endDate = now.toISOString().split("T")[0];
+    const futureDate = new Date(now);
+    futureDate.setDate(futureDate.getDate() + FUTURE_DAYS_WINDOW);
 
-    console.log(`[central-sync] Período: ${startDate} a ${endDate}`);
+    const body = await req.json().catch(() => ({}));
+    const bodyStart = normalizeDate(body?.start_date);
+    const bodyEnd = normalizeDate(body?.end_date);
+
+    const startDate = bodyStart || sixMonthsAgo.toISOString().split("T")[0];
+    const endDate = bodyEnd || futureDate.toISOString().split("T")[0];
+    const cleanupCutoff = sixMonthsAgo.toISOString().split("T")[0];
+
+    console.log(`[central-sync] Período: ${startDate} a ${endDate} (limpeza < ${cleanupCutoff})`);
 
     const bearerToken = await auvoLogin(auvoApiKey, auvoApiToken);
     const gcH: Record<string, string> = {
