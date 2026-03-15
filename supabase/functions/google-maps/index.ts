@@ -94,11 +94,9 @@ serve(async (req) => {
       });
     }
 
-    // ACTION: directions - get optimized route
+    // ACTION: directions - get optimized route (supports >25 waypoints via chunking)
     if (action === "directions") {
       const { origin, destination, waypoints } = body;
-      // origin/destination: "lat,lng" strings
-      // waypoints: array of "lat,lng" strings
 
       if (!origin || !destination) {
         return new Response(JSON.stringify({ error: "origin and destination required" }), {
@@ -107,42 +105,98 @@ serve(async (req) => {
         });
       }
 
-      let url = `https://maps.googleapis.com/maps/api/directions/json?origin=${encodeURIComponent(origin)}&destination=${encodeURIComponent(destination)}&key=${GOOGLE_MAPS_API_KEY}&language=pt-BR&region=br`;
+      const MAX_WAYPOINTS = 23; // Google allows 25 waypoints + origin + destination
 
-      if (waypoints && waypoints.length > 0) {
-        // optimize:true tells Google to reorder waypoints for shortest route
-        const waypointStr = "optimize:true|" + waypoints.join("|");
-        url += `&waypoints=${encodeURIComponent(waypointStr)}`;
+      // Helper to call Directions API for a single chunk
+      async function fetchDirections(orig: string, dest: string, wps: string[]) {
+        let url = `https://maps.googleapis.com/maps/api/directions/json?origin=${encodeURIComponent(orig)}&destination=${encodeURIComponent(dest)}&key=${GOOGLE_MAPS_API_KEY}&language=pt-BR&region=br`;
+        if (wps.length > 0) {
+          const waypointStr = "optimize:true|" + wps.join("|");
+          url += `&waypoints=${encodeURIComponent(waypointStr)}`;
+        }
+        const res = await fetch(url);
+        return await res.json();
       }
 
-      const res = await fetch(url);
-      const data = await res.json();
+      const allWaypoints = waypoints || [];
 
-      if (data.status !== "OK") {
-        return new Response(JSON.stringify({ error: `Directions API error: ${data.status}`, details: data.error_message }), {
-          status: 400,
+      if (allWaypoints.length <= MAX_WAYPOINTS) {
+        // Simple case: fits in one request
+        const data = await fetchDirections(origin, destination, allWaypoints);
+        if (data.status !== "OK") {
+          return new Response(JSON.stringify({ error: `Directions API error: ${data.status}`, details: data.error_message }), {
+            status: 400,
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
+          });
+        }
+        const route = data.routes?.[0];
+        const legs = route?.legs || [];
+        const totalDistance = legs.reduce((sum: number, l: any) => sum + (l.distance?.value || 0), 0);
+        const totalDuration = legs.reduce((sum: number, l: any) => sum + (l.duration?.value || 0), 0);
+        return new Response(JSON.stringify({
+          polyline: route?.overview_polyline?.points || null,
+          waypoint_order: route?.waypoint_order || [],
+          total_distance_km: Math.round(totalDistance / 100) / 10,
+          total_duration_min: Math.round(totalDuration / 60),
+          legs: legs.map((l: any) => ({
+            distance: l.distance?.text,
+            duration: l.duration?.text,
+            start_address: l.start_address,
+            end_address: l.end_address,
+          })),
+        }), {
           headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
 
-      const route = data.routes?.[0];
-      const legs = route?.legs || [];
-      const waypointOrder = route?.waypoint_order || [];
+      // Chunked case: split waypoints into batches of MAX_WAYPOINTS
+      const chunks: string[][] = [];
+      for (let i = 0; i < allWaypoints.length; i += MAX_WAYPOINTS) {
+        chunks.push(allWaypoints.slice(i, i + MAX_WAYPOINTS));
+      }
 
-      const totalDistance = legs.reduce((sum: number, l: any) => sum + (l.distance?.value || 0), 0);
-      const totalDuration = legs.reduce((sum: number, l: any) => sum + (l.duration?.value || 0), 0);
+      console.log(`[google-maps] Splitting ${allWaypoints.length} waypoints into ${chunks.length} chunks`);
 
-      return new Response(JSON.stringify({
-        polyline: route?.overview_polyline?.points || null,
-        waypoint_order: waypointOrder,
-        total_distance_km: Math.round(totalDistance / 100) / 10,
-        total_duration_min: Math.round(totalDuration / 60),
-        legs: legs.map((l: any) => ({
+      const allLegs: any[] = [];
+      const allPolylines: string[] = [];
+      let totalDistance = 0;
+      let totalDuration = 0;
+
+      for (let c = 0; c < chunks.length; c++) {
+        const chunkOrigin = c === 0 ? origin : allWaypoints[c * MAX_WAYPOINTS - 1] || origin;
+        const chunkDest = c === chunks.length - 1 ? destination : chunks[c][chunks[c].length - 1];
+        const chunkWps = c === chunks.length - 1 ? chunks[c] : chunks[c].slice(0, -1);
+
+        const data = await fetchDirections(chunkOrigin, chunkDest, chunkWps);
+        if (data.status !== "OK") {
+          console.error(`[google-maps] Chunk ${c + 1} failed: ${data.status} - ${data.error_message}`);
+          continue;
+        }
+
+        const route = data.routes?.[0];
+        const legs = route?.legs || [];
+        allLegs.push(...legs.map((l: any) => ({
           distance: l.distance?.text,
           duration: l.duration?.text,
           start_address: l.start_address,
           end_address: l.end_address,
-        })),
+        })));
+        if (route?.overview_polyline?.points) {
+          allPolylines.push(route.overview_polyline.points);
+        }
+        totalDistance += legs.reduce((sum: number, l: any) => sum + (l.distance?.value || 0), 0);
+        totalDuration += legs.reduce((sum: number, l: any) => sum + (l.duration?.value || 0), 0);
+      }
+
+      return new Response(JSON.stringify({
+        polyline: allPolylines[0] || null,
+        polylines: allPolylines,
+        waypoint_order: [],
+        total_distance_km: Math.round(totalDistance / 100) / 10,
+        total_duration_min: Math.round(totalDuration / 60),
+        legs: allLegs,
+        chunked: true,
+        chunks_count: chunks.length,
       }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
