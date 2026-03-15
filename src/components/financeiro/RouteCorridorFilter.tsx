@@ -305,10 +305,13 @@ export default function RouteCorridorFilter({
 
       // 5. Check each city's distance to route
       const matchedCities: string[] = [];
+      const cityDirection = new Map<string, "ida" | "volta">();
+      const midIndex = Math.floor(sampledPath.length / 2);
       for (const [city, coords] of cityCoords) {
-        const dist = minDistToPolyline(coords.lat, coords.lng, sampledPath);
+        const { dist, index } = minDistToPolylineWithIndex(coords.lat, coords.lng, sampledPath);
         if (dist <= radiusKm) {
           matchedCities.push(city);
+          cityDirection.set(city, index <= midIndex ? "ida" : "volta");
         }
       }
 
