@@ -579,7 +579,7 @@ export default function OSKanbanPage() {
                   onSelect={(range) => {
                     if (range?.from && range?.to) {
                       setDateRange({ from: range.from, to: range.to });
-                      setColumnsInitialized(false);
+                      // columns rebuild automatically via useEffect
                     }
                   }}
                   locale={ptBR}
