@@ -318,6 +318,9 @@ export default function RouteCorridorFilter({
         }
       }
 
+      const distKm = dirData?.total_distance_km || 0;
+      const durMin = dirData?.total_duration_min || 0;
+
       setActiveFilter({
         origin,
         destination,
@@ -325,6 +328,8 @@ export default function RouteCorridorFilter({
         matchCount: matchingIds.size,
         totalCities: cityList.length,
         matchedCities,
+        distanceKm: distKm,
+        durationMin: durMin,
       });
 
       onFilterChange(matchingIds);
