@@ -494,41 +494,77 @@ export default function OSKanbanPage() {
     }
   }, []);
 
-  // Extract city from Auvo address and text fallbacks (orientation + customer names)
-  const extractCity = useCallback((
+  // Extract location info from address: { region: "Bairro, Cidade - UF", city: "Cidade" }
+  type LocationInfo = { region: string; city: string };
+
+  const extractLocation = useCallback((
     endereco: string | null,
     orientacao?: string | null,
     cliente?: string | null,
     gcOsCliente?: string | null,
-  ): string | null => {
-    const sanitizeCity = (raw: string): string | null => {
-      const clean = raw
-        .replace(/\s+/g, " ")
-        .replace(/^[,\s.-]+|[,\s.-]+$/g, "")
-        .trim();
-      if (!clean || clean.length < 3) return null;
-      const parts = clean.split(",").map((p) => p.trim()).filter(Boolean);
-      const candidate = parts.length > 1 ? parts[parts.length - 1] : clean;
-      return candidate.length >= 3 ? candidate : null;
-    };
-
-    const tryExtract = (text: string): string | null => {
+  ): LocationInfo | null => {
+    const tryExtract = (text: string): LocationInfo | null => {
       if (!text || /^https?:\/\//i.test(text) || text.length < 5) return null;
 
-      const patterns = [
-        /,\s*([A-Za-zÀ-ú\s]+?)\s*-\s*[A-Z]{2}\s*,?\s*\d{5}/i, // Cidade - UF, CEP
-        /,\s*([A-Za-zÀ-ú\s]+?)\s*,\s*[A-Z]{2}\s*,\s*[\d.\-]+/i, // Cidade, UF, CEP
-        /,\s*([A-Za-zÀ-ú\s]+?)\s*-\s*[A-Z]{2}\s*(?:,\s*Brasil)?$/i, // ..., Cidade - UF
-        /([A-Za-zÀ-ú\s]{3,}?)\s*-\s*[A-Z]{2}\s*,\s*Brasil/i, // Cidade - UF, Brasil
-        /([A-Za-zÀ-ú\s]{3,})\/[A-Z]{2}(?:\s|$|,|\n)/i, // Cidade/UF
-        /ENDERE[ÇC]O:\s*[^\n,]*,\s*[^\n,]*,\s*([A-Za-zÀ-ú\s]+)\/[A-Z]{2}/i, // ENDEREÇO: ..., CIDADE/UF
-      ];
+      // Full pattern: "..., Bairro, Cidade - UF, CEP, ..." 
+      // e.g. "Rua Contorno Leste, Distrito Agro Industrial, Senador Canedo - GO, 75252-282, Brasil"
+      const mFull = text.match(/,\s*([A-Za-zÀ-ú\s]+?),\s*([A-Za-zÀ-ú\s]+?)\s*-\s*([A-Z]{2})\s*,?\s*\d{5}/i);
+      if (mFull) {
+        const bairro = mFull[1].trim();
+        const cidade = mFull[2].trim();
+        const uf = mFull[3].trim();
+        if (cidade.length >= 3) {
+          return { region: `${bairro}, ${cidade} - ${uf}`, city: cidade };
+        }
+      }
 
-      for (const pattern of patterns) {
-        const match = text.match(pattern);
-        if (match?.[1]) {
-          const city = sanitizeCity(match[1]);
-          if (city) return city;
+      // "BAIRRO, CIDADE, UF, CEP"
+      const mComma = text.match(/,\s*([A-Za-zÀ-ú\s]+?),\s*([A-Za-zÀ-ú\s]+?),\s*([A-Z]{2})\s*,\s*[\d.\-]+/i);
+      if (mComma) {
+        const bairro = mComma[1].trim();
+        const cidade = mComma[2].trim();
+        const uf = mComma[3].trim();
+        if (cidade.length >= 3) {
+          return { region: `${bairro}, ${cidade} - ${uf}`, city: cidade };
+        }
+      }
+
+      // "Cidade - UF, CEP" (no bairro)
+      const m1 = text.match(/,\s*([A-Za-zÀ-ú\s]+?)\s*-\s*([A-Z]{2})\s*,?\s*\d{5}/i);
+      if (m1 && m1[1].trim().length >= 3) {
+        const cidade = m1[1].trim();
+        return { region: `${cidade} - ${m1[2]}`, city: cidade };
+      }
+
+      // "Cidade - UF" at end or ", Brasil"
+      const m3 = text.match(/,\s*([A-Za-zÀ-ú\s]+?)\s*-\s*([A-Z]{2})\s*(?:,\s*Brasil)?$/i);
+      if (m3 && m3[1].trim().length >= 3) {
+        const cidade = m3[1].trim();
+        return { region: `${cidade} - ${m3[2]}`, city: cidade };
+      }
+
+      // "Cidade - UF, Brasil" anywhere
+      const m3b = text.match(/([A-Za-zÀ-ú\s]{3,}?)\s*-\s*([A-Z]{2})\s*,\s*Brasil/i);
+      if (m3b && m3b[1].trim().length >= 3) {
+        const cidade = m3b[1].trim();
+        return { region: `${cidade} - ${m3b[2]}`, city: cidade };
+      }
+
+      // "Cidade/UF" (common in ECOLAB)
+      const m4 = text.match(/([A-Za-zÀ-ú\s]{3,})\/([A-Z]{2})(?:\s|$|,|\n)/i);
+      if (m4 && m4[1].trim().length >= 3) {
+        const cidade = m4[1].trim();
+        return { region: `${cidade} - ${m4[2]}`, city: cidade };
+      }
+
+      // ENDEREÇO: line with CIDADE/UF
+      const mEnd = text.match(/ENDERE[ÇC]O:\s*[^\n,]*,\s*([^\n,]+),\s*([A-Za-zÀ-ú\s]+)\/([A-Z]{2})/i);
+      if (mEnd) {
+        const bairro = mEnd[1].trim();
+        const cidade = mEnd[2].trim();
+        const uf = mEnd[3].trim();
+        if (cidade.length >= 3) {
+          return { region: `${bairro}, ${cidade} - ${uf}`, city: cidade };
         }
       }
 
@@ -543,14 +579,24 @@ export default function OSKanbanPage() {
     );
   }, []);
 
-  const cityMap = useMemo(() => {
-    const map = new Map<string, string>();
+  // locationMap: task ID → LocationInfo { region, city }
+  const locationMap = useMemo(() => {
+    const map = new Map<string, LocationInfo>();
     for (const item of items) {
-      const city = extractCity(item.endereco, item.orientacao, item.cliente, item.gc_os_cliente);
-      if (city) map.set(item.auvo_task_id, city);
+      const loc = extractLocation(item.endereco, item.orientacao, item.cliente, item.gc_os_cliente);
+      if (loc) map.set(item.auvo_task_id, loc);
     }
     return map;
-  }, [items, extractCity]);
+  }, [items, extractLocation]);
+
+  // cityMap for backward compat (flags, route grouping uses region)
+  const cityMap = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const [id, loc] of locationMap) {
+      map.set(id, loc.region);
+    }
+    return map;
+  }, [locationMap]);
 
   // routeGroups: maps each task ID to route partners
   // Criteria: same city + same date OR same city + same client
