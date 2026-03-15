@@ -510,24 +510,63 @@ export default function OSKanbanPage() {
     return map;
   }, [items, extractCity]);
 
-  // routeGroups: maps each task ID to its route partners (same city + date, 2+ items)
+  // routeGroups: maps each task ID to route partners
+  // Criteria: same city + same date OR same city + same client
   const routeGroups = useMemo(() => {
-    const groups = new Map<string, { city: string; date: string; taskIds: string[] }>();
+    const byDateCity = new Map<string, { label: string; taskIds: Set<string> }>();
+    const byClientCity = new Map<string, { label: string; taskIds: Set<string> }>();
+
     for (const item of items) {
       const city = cityMap.get(item.auvo_task_id);
-      if (!city || !item.data_tarefa) continue;
-      const key = `${city.toLowerCase()}|${item.data_tarefa}`;
-      if (!groups.has(key)) groups.set(key, { city, date: item.data_tarefa, taskIds: [] });
-      groups.get(key)!.taskIds.push(item.auvo_task_id);
-    }
-    // Map each task to its group info (only groups with 2+)
-    const taskToGroup = new Map<string, { city: string; date: string; partners: OSItem[] }>();
-    for (const [, group] of groups) {
-      if (group.taskIds.length < 2) continue;
-      const partnerItems = items.filter((i) => group.taskIds.includes(i.auvo_task_id));
-      for (const id of group.taskIds) {
-        taskToGroup.set(id, { city: group.city, date: group.date, partners: partnerItems });
+      if (!city) continue;
+      const cityLow = city.toLowerCase();
+      const client = (item.cliente || item.gc_os_cliente || "").trim().toLowerCase();
+
+      // Group by city + date
+      if (item.data_tarefa) {
+        const key = `date|${cityLow}|${item.data_tarefa}`;
+        if (!byDateCity.has(key)) byDateCity.set(key, { label: `${city} • ${item.data_tarefa}`, taskIds: new Set() });
+        byDateCity.get(key)!.taskIds.add(item.auvo_task_id);
       }
+
+      // Group by city + client
+      if (client) {
+        const key = `client|${cityLow}|${client}`;
+        if (!byClientCity.has(key)) byClientCity.set(key, { label: `${city} • ${item.cliente || item.gc_os_cliente || ""}`, taskIds: new Set() });
+        byClientCity.get(key)!.taskIds.add(item.auvo_task_id);
+      }
+    }
+
+    // Merge: for each task, collect all unique partners from both groupings
+    const taskPartnerIds = new Map<string, Set<string>>();
+    const taskLabels = new Map<string, string>();
+
+    const processGroup = (groups: Map<string, { label: string; taskIds: Set<string> }>) => {
+      for (const [, group] of groups) {
+        if (group.taskIds.size < 2) continue;
+        for (const id of group.taskIds) {
+          if (!taskPartnerIds.has(id)) taskPartnerIds.set(id, new Set());
+          if (!taskLabels.has(id)) taskLabels.set(id, group.label);
+          for (const partnerId of group.taskIds) {
+            taskPartnerIds.get(id)!.add(partnerId);
+          }
+        }
+      }
+    };
+
+    processGroup(byDateCity);
+    processGroup(byClientCity);
+
+    // Build final map
+    const taskToGroup = new Map<string, { city: string; label: string; partners: OSItem[] }>();
+    for (const [taskId, partnerIds] of taskPartnerIds) {
+      const city = cityMap.get(taskId) || "";
+      const partnerItems = items.filter((i) => partnerIds.has(i.auvo_task_id));
+      taskToGroup.set(taskId, {
+        city,
+        label: taskLabels.get(taskId) || city,
+        partners: partnerItems,
+      });
     }
     return taskToGroup;
   }, [items, cityMap]);
@@ -927,7 +966,7 @@ export default function OSKanbanPage() {
                                                           <MapPin className="h-3.5 w-3.5" />
                                                           Rota: {routeGroup.city}
                                                         </p>
-                                                        <p className="text-xs text-muted-foreground">{routeGroup.date} • {routeGroup.partners.length} atendimentos</p>
+                                                        <p className="text-xs text-muted-foreground">{routeGroup.label} • {routeGroup.partners.length} atendimentos</p>
                                                       </div>
                                                       <ScrollArea className="max-h-[250px]">
                                                         <div className="p-2 space-y-1.5">
@@ -950,7 +989,7 @@ export default function OSKanbanPage() {
                                                                 </span>
                                                               </div>
                                                               <p className="font-medium truncate mt-0.5">{p.cliente || p.gc_os_cliente || "—"}</p>
-                                                              <p className="text-muted-foreground">{p.tecnico || "—"} • {p.gc_os_situacao || p.status_auvo || "—"}</p>
+                                                              <p className="text-muted-foreground">{p.tecnico || "—"} • {p.data_tarefa || "—"} • {p.gc_os_situacao || p.status_auvo || "—"}</p>
                                                             </div>
                                                           ))}
                                                         </div>
