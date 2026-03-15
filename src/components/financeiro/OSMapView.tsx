@@ -82,7 +82,7 @@ async function fetchApiKey(): Promise<string> {
   return keyPromise;
 }
 
-export default function OSMapView({ items, cityColorMap, cityMap, formatCurrency, onSelectCard, autoOptimize }: OSMapViewProps) {
+export default function OSMapView({ items, cityColorMap, cityMap, formatCurrency, onSelectCard, autoOptimize, corridorRoute }: OSMapViewProps) {
   const [apiKey, setApiKey] = useState<string | null>(cachedApiKey);
   const [loadingKey, setLoadingKey] = useState(!cachedApiKey);
   const [keyError, setKeyError] = useState<string | null>(null);
