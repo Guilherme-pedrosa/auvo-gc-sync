@@ -1046,7 +1046,7 @@ export default function OSKanbanPage() {
           cityColorMap={cityColorMap}
           cityMap={cityMap}
           formatCurrency={formatCurrency}
-          onSelectCard={setSelectedCard}
+          onSelectCard={(item) => setSelectedCard(item as any)}
         />
       )}
 
