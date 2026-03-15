@@ -695,6 +695,20 @@ export default function OSKanbanPage() {
             </PopoverContent>
           </Popover>
 
+          {/* City filter */}
+          <Select value={filterCidade} onValueChange={setFilterCidade}>
+            <SelectTrigger className="w-[180px]">
+              <MapPin className="h-3.5 w-3.5 mr-1.5" />
+              <SelectValue placeholder="Cidade" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="todas">Todas as cidades</SelectItem>
+              {allCities.map((c) => (
+                <SelectItem key={c} value={c}>{c}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+
           {/* Value range filter */}
           <Popover>
             <PopoverTrigger asChild>
