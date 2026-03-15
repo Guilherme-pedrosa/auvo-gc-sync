@@ -8,7 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Loader2, Route, X, MapPin, Search } from "lucide-react";
+import { Loader2, Route, X, MapPin, Search, Map as MapIcon } from "lucide-react";
 import { toast } from "sonner";
 
 interface OSInfo {
@@ -23,6 +23,7 @@ interface RouteCorridorFilterProps {
   cityMap: Map<string, string>; // taskId → city/region
   osItems?: OSInfo[];
   onFilterChange: (matchingTaskIds: Set<string> | null) => void;
+  onShowMap?: () => void;
 }
 
 // Haversine distance in km
@@ -204,6 +205,7 @@ export default function RouteCorridorFilter({
   cityMap,
   osItems = [],
   onFilterChange,
+  onShowMap,
 }: RouteCorridorFilterProps) {
   const [open, setOpen] = useState(false);
   const [origin, setOrigin] = useState("Anápolis - GO");
@@ -330,6 +332,29 @@ export default function RouteCorridorFilter({
     onFilterChange(null);
   }, [onFilterChange]);
 
+  const excludeCity = useCallback((cityToRemove: string) => {
+    if (!activeFilter) return;
+    const newCities = activeFilter.matchedCities.filter((c) => c !== cityToRemove);
+    if (newCities.length === 0) {
+      clearFilter();
+      return;
+    }
+    // Rebuild matching IDs without the excluded city
+    const matchingIds = new Set<string>();
+    for (const [taskId, city] of cityMap) {
+      if (newCities.includes(city)) {
+        matchingIds.add(taskId);
+      }
+    }
+    setActiveFilter({
+      ...activeFilter,
+      matchedCities: newCities,
+      matchCount: matchingIds.size,
+    });
+    onFilterChange(matchingIds);
+    toast.info(`${cityToRemove} removida do corredor`);
+  }, [activeFilter, cityMap, onFilterChange, clearFilter]);
+
   return (
     <>
       <Popover open={open} onOpenChange={setOpen}>
@@ -429,7 +454,9 @@ export default function RouteCorridorFilter({
             {activeFilter && (
               <div className="border rounded-md p-2.5 bg-muted/50 space-y-1.5">
                 <div className="flex items-center justify-between">
-                  <p className="text-xs font-medium">Filtro ativo</p>
+                  <p className="text-xs font-medium">
+                    Filtro ativo ({activeFilter.matchCount} OS)
+                  </p>
                   <Button variant="ghost" size="sm" className="h-5 px-1.5 text-[10px]" onClick={clearFilter}>
                     <X className="h-3 w-3 mr-0.5" /> Limpar
                   </Button>
@@ -439,11 +466,33 @@ export default function RouteCorridorFilter({
                 </p>
                 <div className="flex flex-wrap gap-1 mt-1">
                   {activeFilter.matchedCities.map((c) => (
-                    <Badge key={c} variant="secondary" className="text-[10px] h-4 px-1.5">
+                    <Badge
+                      key={c}
+                      variant="secondary"
+                      className="text-[10px] h-5 px-1.5 gap-0.5 cursor-pointer hover:bg-destructive/20 group"
+                    >
                       {c}
+                      <X
+                        className="h-2.5 w-2.5 opacity-50 group-hover:opacity-100"
+                        onClick={() => excludeCity(c)}
+                      />
                     </Badge>
                   ))}
                 </div>
+                {onShowMap && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="w-full gap-2 mt-1.5 text-xs"
+                    onClick={() => {
+                      setOpen(false);
+                      onShowMap();
+                    }}
+                  >
+                    <MapIcon className="h-3.5 w-3.5" />
+                    Ver no Mapa
+                  </Button>
+                )}
               </div>
             )}
           </div>
