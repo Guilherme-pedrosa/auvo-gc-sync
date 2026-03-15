@@ -123,6 +123,7 @@ export default function OSKanbanPage() {
   const [execTaskId, setExecTaskId] = useState<string | null>(null);
   const [execTaskUrl, setExecTaskUrl] = useState<string | null>(null);
   const [execTaskLoading, setExecTaskLoading] = useState(false);
+  const [viewMode, setViewMode] = useState<"kanban" | "map">("kanban");
 
   // Fetch Auvo users (technicians)
   const { data: auvoUsers } = useQuery({
