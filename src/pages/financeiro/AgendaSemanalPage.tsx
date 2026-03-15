@@ -84,14 +84,15 @@ export default function AgendaSemanalPage() {
     return null;
   });
 
-  // Persist filter to localStorage
+  // Persist filter to localStorage (only when tecnicos are loaded)
   useEffect(() => {
-    if (selectedTecnicos) {
+    if (selectedTecnicos && selectedTecnicos.size > 0) {
       localStorage.setItem("agenda_selectedTecnicos", JSON.stringify([...selectedTecnicos]));
-    } else {
+    } else if (selectedTecnicos === null && tecnicos.length > 0) {
+      // Only clear if we explicitly set to "all" with techs loaded
       localStorage.removeItem("agenda_selectedTecnicos");
     }
-  }, [selectedTecnicos]);
+  }, [selectedTecnicos, tecnicos.length]);
 
   const weekStart = useMemo(() => {
     const today = new Date();
