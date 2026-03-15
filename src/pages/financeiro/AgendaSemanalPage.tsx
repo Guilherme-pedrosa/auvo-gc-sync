@@ -82,7 +82,7 @@ export default function AgendaSemanalPage() {
   }, [weekOffset]);
 
   const weekDays = useMemo(() => {
-    return Array.from({ length: 6 }, (_, i) => addDays(weekStart, i));
+    return Array.from({ length: 7 }, (_, i) => addDays(weekStart, i));
   }, [weekStart]);
 
   const queryKey = ["agenda-semanal", format(weekStart, "yyyy-MM-dd")];
