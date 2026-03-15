@@ -810,7 +810,7 @@ export default function OSKanbanPage() {
                                 }`}
                               >
                                 {column.items.map((item, index) => (
-                                  <Draggable key={`${item.auvo_task_id}-${item.gc_os_id}`} draggableId={`${item.auvo_task_id}-${item.gc_os_id}`} index={index}>
+                                  <Draggable key={`${item.auvo_task_id}-${item.gc_os_id || 'no-os'}`} draggableId={`${item.auvo_task_id}-${item.gc_os_id || 'no-os'}`} index={index}>
                                     {(provided, snapshot) => (
                                       <div
                                         ref={provided.innerRef}
