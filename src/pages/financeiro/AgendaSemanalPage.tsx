@@ -84,15 +84,6 @@ export default function AgendaSemanalPage() {
     return null;
   });
 
-  // Persist filter to localStorage (only when users are loaded)
-  useEffect(() => {
-    if (selectedTecnicos && selectedTecnicos.size > 0) {
-      localStorage.setItem("agenda_selectedTecnicos", JSON.stringify([...selectedTecnicos]));
-    } else if (selectedTecnicos === null && allUsers && allUsers.length > 0) {
-      // Only clear if we explicitly set to "all" with users loaded
-      localStorage.removeItem("agenda_selectedTecnicos");
-    }
-  }, [selectedTecnicos, allUsers]);
 
   const weekStart = useMemo(() => {
     const today = new Date();
