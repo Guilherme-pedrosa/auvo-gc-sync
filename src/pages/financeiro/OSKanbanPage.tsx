@@ -828,7 +828,7 @@ export default function OSKanbanPage() {
                                          <div className="px-3 py-2">
                                           <div className="flex items-center justify-between">
                                             <span className="text-xs font-mono text-muted-foreground">
-                                              OS {item.gc_os_codigo}
+                                              {item.gc_os_codigo ? `OS ${item.gc_os_codigo}` : `T#${item.auvo_task_id}`}
                                             </span>
                                             <Badge variant="outline" className="text-[10px] h-5">
                                               {item.status_auvo || "—"}
