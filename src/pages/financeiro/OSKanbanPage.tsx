@@ -817,6 +817,24 @@ export default function OSKanbanPage() {
               <RefreshCw className={`h-4 w-4 mr-2 flex-shrink-0 ${isSyncing ? "animate-spin" : ""}`} />
               <span className="truncate">{isSyncing ? syncStatus || "Sincronizando..." : "Sincronizar"}</span>
             </Button>
+            <div className="flex items-center border rounded-md overflow-hidden">
+              <Button
+                variant={viewMode === "kanban" ? "default" : "ghost"}
+                size="sm"
+                className="rounded-none gap-1.5"
+                onClick={() => setViewMode("kanban")}
+              >
+                <LayoutGrid className="h-4 w-4" /> Kanban
+              </Button>
+              <Button
+                variant={viewMode === "map" ? "default" : "ghost"}
+                size="sm"
+                className="rounded-none gap-1.5"
+                onClick={() => setViewMode("map")}
+              >
+                <MapIcon className="h-4 w-4" /> Mapa
+              </Button>
+            </div>
           </div>
         </div>
 
