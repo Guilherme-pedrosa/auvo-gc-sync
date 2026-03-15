@@ -355,7 +355,9 @@ export default function AgendaSemanalPage() {
                               const set = new Set(prev || tecnicos.map(x => x.nome));
                               if (val) set.add(t.nome);
                               else set.delete(t.nome);
-                              return set.size === tecnicos.length ? null : set;
+                              // Only reset to null (all) if we actually have techs loaded
+                              if (tecnicos.length > 0 && set.size >= tecnicos.length) return null;
+                              return set;
                             });
                           }}
                         />
