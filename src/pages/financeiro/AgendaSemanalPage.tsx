@@ -84,14 +84,6 @@ export default function AgendaSemanalPage() {
     return null;
   });
 
-  // Persist filter to localStorage
-  useEffect(() => {
-    if (selectedTecnicos) {
-      localStorage.setItem("agenda_selectedTecnicos", JSON.stringify([...selectedTecnicos]));
-    } else {
-      localStorage.removeItem("agenda_selectedTecnicos");
-    }
-  }, [selectedTecnicos]);
 
   const weekStart = useMemo(() => {
     const today = new Date();
@@ -155,7 +147,15 @@ export default function AgendaSemanalPage() {
     return Array.from(map.values()).sort((a, b) => a.nome.localeCompare(b.nome));
   }, [tarefas, allUsers]);
 
-  // Daily OS totals
+  // Persist filter to localStorage (only when tecnicos are loaded)
+  useEffect(() => {
+    if (selectedTecnicos && selectedTecnicos.size > 0) {
+      localStorage.setItem("agenda_selectedTecnicos", JSON.stringify([...selectedTecnicos]));
+    } else if (selectedTecnicos === null && tecnicos.length > 0) {
+      localStorage.removeItem("agenda_selectedTecnicos");
+    }
+  }, [selectedTecnicos, tecnicos.length]);
+
   const dayTotals = useMemo(() => {
     if (!tarefas) return weekDays.map(() => 0);
     return weekDays.map((wd) => {
@@ -355,7 +355,9 @@ export default function AgendaSemanalPage() {
                               const set = new Set(prev || tecnicos.map(x => x.nome));
                               if (val) set.add(t.nome);
                               else set.delete(t.nome);
-                              return set.size === tecnicos.length ? null : set;
+                              // Only reset to null (all) if we actually have techs loaded
+                              if (tecnicos.length > 0 && set.size >= tecnicos.length) return null;
+                              return set;
                             });
                           }}
                         />
