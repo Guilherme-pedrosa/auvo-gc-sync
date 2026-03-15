@@ -1039,8 +1039,19 @@ export default function OSKanbanPage() {
         </div>
       )}
 
+      {/* Map View */}
+      {!isLoading && viewMode === "map" && (
+        <OSMapView
+          items={items}
+          cityColorMap={cityColorMap}
+          cityMap={cityMap}
+          formatCurrency={formatCurrency}
+          onSelectCard={setSelectedCard}
+        />
+      )}
+
       {/* Kanban Board */}
-      {!isLoading && (
+      {!isLoading && viewMode === "kanban" && (
         <DragDropContext onDragEnd={onDragEnd}>
           <Droppable droppableId="board" type="COLUMN" direction="horizontal">
             {(boardProvided) => (
