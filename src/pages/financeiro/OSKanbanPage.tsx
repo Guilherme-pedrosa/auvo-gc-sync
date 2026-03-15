@@ -1114,6 +1114,13 @@ export default function OSKanbanPage() {
                                           <p className="text-xs text-muted-foreground mt-0.5">
                                             {item.tecnico || "—"} • {item.data_tarefa || "—"}
                                           </p>
+                                          {/* Address preview */}
+                                          {item.endereco && item.endereco.length > 5 && (
+                                            <p className="text-[10px] text-muted-foreground/70 mt-0.5 truncate flex items-center gap-0.5" title={item.endereco}>
+                                              <MapPin className="h-2.5 w-2.5 flex-shrink-0" />
+                                              {item.endereco.length > 60 ? item.endereco.substring(0, 60) + "…" : item.endereco}
+                                            </p>
+                                          )}
                                           {/* Orientação preview */}
                                           {item.orientacao && (
                                             <p className="text-[11px] text-muted-foreground mt-1 line-clamp-2 italic">
