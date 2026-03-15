@@ -326,6 +326,13 @@ export default function RouteCorridorFilter({
       });
 
       onFilterChange(matchingIds);
+      onCorridorRouteChange?.({
+        encodedPolyline: encodedPolyline,
+        originCoord: { lat: originCoord.lat, lng: originCoord.lng },
+        destCoord: { lat: destCoord.lat, lng: destCoord.lng },
+        originLabel: origin,
+        destLabel: destination,
+      });
       setOpen(false);
       toast.success(
         `${matchedCities.length} cidade${matchedCities.length !== 1 ? "s" : ""} no corredor (${matchingIds.size} OS)`,
