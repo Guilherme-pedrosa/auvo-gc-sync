@@ -126,6 +126,7 @@ export default function OSKanbanPage() {
   const [execTaskLoading, setExecTaskLoading] = useState(false);
   const [viewMode, setViewMode] = useState<"kanban" | "map">("kanban");
   const [corridorFilterIds, setCorridorFilterIds] = useState<Set<string> | null>(null);
+  const [corridorRoute, setCorridorRoute] = useState<any>(null);
 
   // Fetch Auvo users (technicians)
   const { data: auvoUsers } = useQuery({
@@ -1101,6 +1102,7 @@ export default function OSKanbanPage() {
             }))}
             onFilterChange={setCorridorFilterIds}
             onShowMap={() => setViewMode("map")}
+            onCorridorRouteChange={setCorridorRoute}
           />
 
           {/* Global sort */}
@@ -1168,6 +1170,7 @@ export default function OSKanbanPage() {
           formatCurrency={formatCurrency}
           onSelectCard={(item) => setSelectedCard(item as any)}
           autoOptimize={!allFlagsSelected && selectedFlags.size > 0}
+          corridorRoute={corridorRoute}
         />
       )}
 

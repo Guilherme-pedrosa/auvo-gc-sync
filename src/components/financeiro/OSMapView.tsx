@@ -42,6 +42,14 @@ type RouteResult = {
   legs: { distance: string; duration: string; start_address: string; end_address: string }[];
 };
 
+interface CorridorRoute {
+  encodedPolyline: string;
+  originCoord: { lat: number; lng: number };
+  destCoord: { lat: number; lng: number };
+  originLabel: string;
+  destLabel: string;
+}
+
 interface OSMapViewProps {
   items: OSItem[];
   cityColorMap: globalThis.Map<string, { bg: string; text: string }>;
@@ -49,6 +57,7 @@ interface OSMapViewProps {
   formatCurrency: (val: number) => string;
   onSelectCard: (item: OSItem) => void;
   autoOptimize?: boolean;
+  corridorRoute?: CorridorRoute | null;
 }
 
 const mapContainerStyle = { width: "100%", height: "100%" };
@@ -73,7 +82,7 @@ async function fetchApiKey(): Promise<string> {
   return keyPromise;
 }
 
-export default function OSMapView({ items, cityColorMap, cityMap, formatCurrency, onSelectCard, autoOptimize }: OSMapViewProps) {
+export default function OSMapView({ items, cityColorMap, cityMap, formatCurrency, onSelectCard, autoOptimize, corridorRoute }: OSMapViewProps) {
   const [apiKey, setApiKey] = useState<string | null>(cachedApiKey);
   const [loadingKey, setLoadingKey] = useState(!cachedApiKey);
   const [keyError, setKeyError] = useState<string | null>(null);
@@ -110,6 +119,7 @@ export default function OSMapView({ items, cityColorMap, cityMap, formatCurrency
       formatCurrency={formatCurrency}
       onSelectCard={onSelectCard}
       autoOptimize={autoOptimize}
+      corridorRoute={corridorRoute}
     />
   );
 }
@@ -122,6 +132,7 @@ function OSMapViewInner({
   formatCurrency,
   onSelectCard,
   autoOptimize,
+  corridorRoute,
 }: OSMapViewProps & { apiKey: string }) {
   const { isLoaded, loadError } = useJsApiLoader({
     googleMapsApiKey: apiKey,
@@ -371,6 +382,52 @@ function OSMapViewInner({
               }}
             />
           )}
+
+          {/* Corridor route polyline + origin/destination markers */}
+          {corridorRoute && isLoaded && (() => {
+            const path = google.maps.geometry.encoding.decodePath(corridorRoute.encodedPolyline);
+            const corridorPath = path.map((p: google.maps.LatLng) => ({ lat: p.lat(), lng: p.lng() }));
+            return (
+              <>
+                <Polyline
+                  path={corridorPath}
+                  options={{
+                    strokeColor: "#8b5cf6",
+                    strokeOpacity: 0.6,
+                    strokeWeight: 5,
+                    geodesic: true,
+                    zIndex: 1,
+                  }}
+                />
+                <Marker
+                  position={corridorRoute.originCoord}
+                  label={{ text: "A", color: "#fff", fontWeight: "bold", fontSize: "12px" }}
+                  title={corridorRoute.originLabel}
+                  icon={{
+                    path: google.maps.SymbolPath.CIRCLE,
+                    scale: 14,
+                    fillColor: "#22c55e",
+                    fillOpacity: 1,
+                    strokeColor: "#fff",
+                    strokeWeight: 2,
+                  }}
+                />
+                <Marker
+                  position={corridorRoute.destCoord}
+                  label={{ text: "B", color: "#fff", fontWeight: "bold", fontSize: "12px" }}
+                  title={corridorRoute.destLabel}
+                  icon={{
+                    path: google.maps.SymbolPath.CIRCLE,
+                    scale: 14,
+                    fillColor: "#ef4444",
+                    fillOpacity: 1,
+                    strokeColor: "#fff",
+                    strokeWeight: 2,
+                  }}
+                />
+              </>
+            );
+          })()}
         </GoogleMap>
 
         {/* Map overlay controls */}

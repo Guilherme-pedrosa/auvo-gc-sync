@@ -18,12 +18,21 @@ interface OSInfo {
   cidade?: string;
 }
 
+export interface CorridorRouteData {
+  encodedPolyline: string;
+  originCoord: { lat: number; lng: number };
+  destCoord: { lat: number; lng: number };
+  originLabel: string;
+  destLabel: string;
+}
+
 interface RouteCorridorFilterProps {
   allCities: string[];
   cityMap: Map<string, string>; // taskId → city/region
   osItems?: OSInfo[];
   onFilterChange: (matchingTaskIds: Set<string> | null) => void;
   onShowMap?: () => void;
+  onCorridorRouteChange?: (route: CorridorRouteData | null) => void;
 }
 
 // Haversine distance in km
@@ -206,6 +215,7 @@ export default function RouteCorridorFilter({
   osItems = [],
   onFilterChange,
   onShowMap,
+  onCorridorRouteChange,
 }: RouteCorridorFilterProps) {
   const [open, setOpen] = useState(false);
   const [origin, setOrigin] = useState("Anápolis - GO");
@@ -316,6 +326,13 @@ export default function RouteCorridorFilter({
       });
 
       onFilterChange(matchingIds);
+      onCorridorRouteChange?.({
+        encodedPolyline: encodedPolyline,
+        originCoord: { lat: originCoord.lat, lng: originCoord.lng },
+        destCoord: { lat: destCoord.lat, lng: destCoord.lng },
+        originLabel: origin,
+        destLabel: destination,
+      });
       setOpen(false);
       toast.success(
         `${matchedCities.length} cidade${matchedCities.length !== 1 ? "s" : ""} no corredor (${matchingIds.size} OS)`,
@@ -325,12 +342,13 @@ export default function RouteCorridorFilter({
     } finally {
       setLoading(false);
     }
-  }, [origin, destination, radiusKm, cityMap, onFilterChange]);
+  }, [origin, destination, radiusKm, cityMap, onFilterChange, onCorridorRouteChange]);
 
   const clearFilter = useCallback(() => {
     setActiveFilter(null);
     onFilterChange(null);
-  }, [onFilterChange]);
+    onCorridorRouteChange?.(null);
+  }, [onFilterChange, onCorridorRouteChange]);
 
   const excludeCity = useCallback((cityToRemove: string) => {
     if (!activeFilter) return;
