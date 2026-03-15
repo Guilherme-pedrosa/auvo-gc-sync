@@ -530,9 +530,11 @@ export default function OSKanbanPage() {
     const tryExtract = (text: string): LocationInfo | null => {
       if (!text || /^https?:\/\//i.test(text) || text.length < 5) return null;
 
+      // Character class for city/bairro names (letters, spaces, dots, apostrophes)
+      const C = "[A-Za-zÀ-ú\\s.']";
+
       // Full pattern: "..., Bairro, Cidade - UF, CEP, ..." 
-      // e.g. "Rua Contorno Leste, Distrito Agro Industrial, Senador Canedo - GO, 75252-282, Brasil"
-      const mFull = text.match(/,\s*([A-Za-zÀ-ú\s]+?),\s*([A-Za-zÀ-ú\s]+?)\s*-\s*([A-Z]{2})\s*,?\s*\d{5}/i);
+      const mFull = text.match(new RegExp(`,\\s*(${C}+?),\\s*(${C}+?)\\s*-\\s*([A-Z]{2})\\s*,?\\s*\\d{5}`, "i"));
       if (mFull) {
         const bairro = mFull[1].trim();
         const cidade = mFull[2].trim();
@@ -543,8 +545,7 @@ export default function OSKanbanPage() {
       }
 
       // "BAIRRO, CIDADE, UF, CEP" (comma between city and UF)
-      // e.g. "VILA JARDIM SALVADOR, TRINDADE, GO, 75.388-454"
-      const mComma = text.match(/,\s*([A-Za-zÀ-ú\s]+?),\s*([A-Za-zÀ-ú\s]+?),\s*([A-Z]{2})\s*,\s*[\d.\-]+/i);
+      const mComma = text.match(new RegExp(`,\\s*(${C}+?),\\s*(${C}+?),\\s*([A-Z]{2})\\s*,\\s*[\\d.\\-]+`, "i"));
       if (mComma) {
         const bairro = mComma[1].trim();
         const cidade = mComma[2].trim();
@@ -555,43 +556,42 @@ export default function OSKanbanPage() {
       }
 
       // "CIDADE, UF, CEP" (no bairro, comma format)
-      // e.g. "TRINDADE, GO, 75.388-454" or "ANAPOLIS, GO, 75110-580"
-      const mCityComma = text.match(/(?:^|,\s*)([A-Za-zÀ-ú\s]{3,}?),\s*([A-Z]{2})\s*,\s*[\d.\-]{5,}/i);
+      const mCityComma = text.match(new RegExp(`(?:^|,\\s*)(${C}{3,}?),\\s*([A-Z]{2})\\s*,\\s*[\\d.\\-]{5,}`, "i"));
       if (mCityComma && mCityComma[1].trim().length >= 3) {
         const cidade = mCityComma[1].trim();
         return { region: `${cidade} - ${mCityComma[2]}`, city: cidade };
       }
 
       // "Cidade - UF, CEP" (no bairro)
-      const m1 = text.match(/,\s*([A-Za-zÀ-ú\s]+?)\s*-\s*([A-Z]{2})\s*,?\s*\d{5}/i);
+      const m1 = text.match(new RegExp(`,\\s*(${C}+?)\\s*-\\s*([A-Z]{2})\\s*,?\\s*\\d{5}`, "i"));
       if (m1 && m1[1].trim().length >= 3) {
         const cidade = m1[1].trim();
         return { region: `${cidade} - ${m1[2]}`, city: cidade };
       }
 
       // "Cidade - UF" at end or ", Brasil"
-      const m3 = text.match(/,\s*([A-Za-zÀ-ú\s]+?)\s*-\s*([A-Z]{2})\s*(?:,\s*Brasil)?$/i);
+      const m3 = text.match(new RegExp(`,\\s*(${C}+?)\\s*-\\s*([A-Z]{2})\\s*(?:,\\s*Brasil)?$`, "i"));
       if (m3 && m3[1].trim().length >= 3) {
         const cidade = m3[1].trim();
         return { region: `${cidade} - ${m3[2]}`, city: cidade };
       }
 
       // "Cidade - UF, Brasil" anywhere
-      const m3b = text.match(/([A-Za-zÀ-ú\s]{3,}?)\s*-\s*([A-Z]{2})\s*,\s*Brasil/i);
+      const m3b = text.match(new RegExp(`(${C}{3,}?)\\s*-\\s*([A-Z]{2})\\s*,\\s*Brasil`, "i"));
       if (m3b && m3b[1].trim().length >= 3) {
         const cidade = m3b[1].trim();
         return { region: `${cidade} - ${m3b[2]}`, city: cidade };
       }
 
       // "Cidade/UF" (common in ECOLAB)
-      const m4 = text.match(/([A-Za-zÀ-ú\s]{3,})\/([A-Z]{2})(?:\s|$|,|\n)/i);
+      const m4 = text.match(new RegExp(`(${C}{3,})\\/([A-Z]{2})(?:\\s|$|,|\\n)`, "i"));
       if (m4 && m4[1].trim().length >= 3) {
         const cidade = m4[1].trim();
         return { region: `${cidade} - ${m4[2]}`, city: cidade };
       }
 
       // ENDEREÇO: line with CIDADE/UF
-      const mEnd = text.match(/ENDERE[ÇC]O:\s*[^\n,]*,\s*([^\n,]+),\s*([A-Za-zÀ-ú\s]+)\/([A-Z]{2})/i);
+      const mEnd = text.match(new RegExp(`ENDERE[ÇC]O:\\s*[^\\n,]*,\\s*([^\\n,]+),\\s*(${C}+)\\/([A-Z]{2})`, "i"));
       if (mEnd) {
         const bairro = mEnd[1].trim();
         const cidade = mEnd[2].trim();
