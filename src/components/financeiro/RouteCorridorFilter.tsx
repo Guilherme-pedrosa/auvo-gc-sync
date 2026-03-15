@@ -242,6 +242,7 @@ export default function RouteCorridorFilter({
     }
 
     setLoading(true);
+    onCorridorRouteChange?.(null);
     try {
       // 1. Get unique cities from cityMap
       const uniqueCities = new Set<string>();
