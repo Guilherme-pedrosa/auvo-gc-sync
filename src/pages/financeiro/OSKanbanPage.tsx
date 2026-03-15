@@ -577,10 +577,43 @@ export default function OSKanbanPage() {
     return taskToGroup;
   }, [items, cityMap]);
 
+  // Color palette for city flags
+  const FLAG_COLORS = [
+    { bg: "#ef4444", text: "#fff" }, // red
+    { bg: "#f97316", text: "#fff" }, // orange
+    { bg: "#eab308", text: "#000" }, // yellow
+    { bg: "#22c55e", text: "#fff" }, // green
+    { bg: "#06b6d4", text: "#fff" }, // cyan
+    { bg: "#3b82f6", text: "#fff" }, // blue
+    { bg: "#8b5cf6", text: "#fff" }, // violet
+    { bg: "#ec4899", text: "#fff" }, // pink
+    { bg: "#14b8a6", text: "#fff" }, // teal
+    { bg: "#f59e0b", text: "#000" }, // amber
+    { bg: "#6366f1", text: "#fff" }, // indigo
+    { bg: "#d946ef", text: "#fff" }, // fuchsia
+  ];
+
   const allCities = useMemo(() => {
     const set = new Set<string>();
     for (const [, city] of cityMap) set.add(city);
     return Array.from(set).sort();
+  }, [cityMap]);
+
+  const cityColorMap = useMemo(() => {
+    const map = new Map<string, { bg: string; text: string }>();
+    allCities.forEach((city, i) => {
+      map.set(city, FLAG_COLORS[i % FLAG_COLORS.length]);
+    });
+    return map;
+  }, [allCities]);
+
+  // Count items per city
+  const cityCounts = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const [, city] of cityMap) {
+      counts.set(city, (counts.get(city) || 0) + 1);
+    }
+    return counts;
   }, [cityMap]);
 
   const filteredColumns = useMemo(() => {
@@ -594,9 +627,14 @@ export default function OSKanbanPage() {
         const val = Number(item.gc_os_valor_total) || 0;
         if (minVal !== null && val < minVal) return false;
         if (maxVal !== null && val > maxVal) return false;
-        if (filterCidade !== "todas") {
+        // Flag filter
+        if (!allFlagsSelected && selectedFlags.size > 0) {
           const city = cityMap.get(item.auvo_task_id);
-          if (!city || city !== filterCidade) return false;
+          if (!city || !selectedFlags.has(city)) return false;
+        }
+        // Only routes filter
+        if (filterOnlyRoutes) {
+          if (!routeGroups.has(item.auvo_task_id)) return false;
         }
         return true;
       });
@@ -604,7 +642,7 @@ export default function OSKanbanPage() {
       filtered = sortItems(filtered, sortKey);
       return { ...col, items: filtered };
     });
-  }, [columns, filterTecnico, allClientesSelected, selectedClientes, valorMin, valorMax, globalSort, columnSorts, sortItems, filterCidade, cityMap]);
+  }, [columns, filterTecnico, allClientesSelected, selectedClientes, valorMin, valorMax, globalSort, columnSorts, sortItems, allFlagsSelected, selectedFlags, cityMap, filterOnlyRoutes, routeGroups]);
 
   // Drag & drop
   const onDragEnd = useCallback((result: DropResult) => {
