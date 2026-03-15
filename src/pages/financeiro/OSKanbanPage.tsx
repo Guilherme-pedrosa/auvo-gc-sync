@@ -1,4 +1,5 @@
 import { useState, useCallback, useMemo, useEffect } from "react";
+import { startOfWeek, endOfWeek, addWeeks } from "date-fns";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -303,6 +304,10 @@ export default function OSKanbanPage() {
   const endStr = format(dateRange.to, "yyyy-MM-dd");
 
   // Query tarefas_central directly
+  // Week range for "Agendado" column (current week + next week)
+  const agendaStart = useMemo(() => format(startOfWeek(today, { weekStartsOn: 1 }), "yyyy-MM-dd"), []);
+  const agendaEnd = useMemo(() => format(endOfWeek(addWeeks(today, 1), { weekStartsOn: 1 }), "yyyy-MM-dd"), []);
+
   const { data: rawItems, isLoading, refetch, isFetching } = useQuery({
     queryKey: ["os-kanban", startStr, endStr],
     queryFn: async () => {
@@ -313,6 +318,24 @@ export default function OSKanbanPage() {
         .gte("data_tarefa", startStr)
         .lte("data_tarefa", endStr)
         .order("data_tarefa", { ascending: false });
+
+      if (error) throw error;
+      return (data || []) as unknown as OSItem[];
+    },
+    staleTime: 60_000,
+  });
+
+  // Fetch scheduled tasks for the "Agendado" column
+  const { data: agendadoRaw } = useQuery({
+    queryKey: ["os-kanban-agendado", agendaStart, agendaEnd],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("tarefas_central")
+        .select("*")
+        .gte("data_tarefa", agendaStart)
+        .lte("data_tarefa", agendaEnd)
+        .ilike("status_auvo", "%Agendad%")
+        .order("data_tarefa", { ascending: true });
 
       if (error) throw error;
       return (data || []) as unknown as OSItem[];
@@ -331,10 +354,12 @@ export default function OSKanbanPage() {
     });
   }, [rawItems]);
 
-  // Build columns from unique situations
+  // Build columns from unique situations + "Agendado" column
   useMemo(() => {
-    if (!items.length || columnsInitialized) return;
+    if (columnsInitialized) return;
+    if (!items.length && !agendadoRaw?.length) return;
 
+    // Build OS situation columns
     const situacaoMap: Record<string, { items: OSItem[]; color: string; sitId: string }> = {};
     for (const item of items) {
       const sit = item.gc_os_situacao || "Sem situação";
@@ -348,7 +373,7 @@ export default function OSKanbanPage() {
       situacaoMap[sit].items.push(item);
     }
 
-    const cols: KanbanColumn[] = Object.entries(situacaoMap)
+    const osCols: KanbanColumn[] = Object.entries(situacaoMap)
       .sort(([a], [b]) => a.localeCompare(b))
       .map(([sit, data]) => ({
         id: `sit_${data.sitId || sit.replace(/\s+/g, "_")}`,
@@ -357,9 +382,20 @@ export default function OSKanbanPage() {
         items: data.items,
       }));
 
-    setColumns(cols);
+    // "Agendado" column — exclude tasks already in OS columns
+    const osTaskIds = new Set(items.map((i) => i.auvo_task_id));
+    const agendadoItems = (agendadoRaw || []).filter((t) => !osTaskIds.has(t.auvo_task_id));
+
+    const agendadoCol: KanbanColumn = {
+      id: "col_agendado",
+      title: "📅 Agendado (Sem OS)",
+      color: "#3b82f6",
+      items: agendadoItems,
+    };
+
+    setColumns([agendadoCol, ...osCols]);
     setColumnsInitialized(true);
-  }, [items, columnsInitialized]);
+  }, [items, agendadoRaw, columnsInitialized]);
 
   // Sync via central-sync with progress
   const handleSync = useCallback(async () => {
@@ -774,7 +810,7 @@ export default function OSKanbanPage() {
                                 }`}
                               >
                                 {column.items.map((item, index) => (
-                                  <Draggable key={`${item.auvo_task_id}-${item.gc_os_id}`} draggableId={`${item.auvo_task_id}-${item.gc_os_id}`} index={index}>
+                                  <Draggable key={`${item.auvo_task_id}-${item.gc_os_id || 'no-os'}`} draggableId={`${item.auvo_task_id}-${item.gc_os_id || 'no-os'}`} index={index}>
                                     {(provided, snapshot) => (
                                       <div
                                         ref={provided.innerRef}
@@ -792,7 +828,7 @@ export default function OSKanbanPage() {
                                          <div className="px-3 py-2">
                                           <div className="flex items-center justify-between">
                                             <span className="text-xs font-mono text-muted-foreground">
-                                              OS {item.gc_os_codigo}
+                                              {item.gc_os_codigo ? `OS ${item.gc_os_codigo}` : `T#${item.auvo_task_id}`}
                                             </span>
                                             <Badge variant="outline" className="text-[10px] h-5">
                                               {item.status_auvo || "—"}
