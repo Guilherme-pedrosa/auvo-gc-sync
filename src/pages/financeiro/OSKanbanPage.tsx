@@ -1058,7 +1058,17 @@ export default function OSKanbanPage() {
       {/* Map View */}
       {!isLoading && viewMode === "map" && (
         <OSMapView
-          items={items}
+          items={(() => {
+            if (allFlagsSelected && !filterOnlyRoutes) return items;
+            return items.filter((item) => {
+              if (!allFlagsSelected && selectedFlags.size > 0) {
+                const city = cityMap.get(item.auvo_task_id);
+                if (!city || !selectedFlags.has(city)) return false;
+              }
+              if (filterOnlyRoutes && !routeGroups.has(item.auvo_task_id)) return false;
+              return true;
+            });
+          })()}
           cityColorMap={cityColorMap}
           cityMap={cityMap}
           formatCurrency={formatCurrency}
