@@ -418,7 +418,7 @@ export default function AgendaSemanalPage() {
                           <td
                             key={dayIdx}
                             className={cn(
-                              "px-1.5 py-1.5 align-top transition-colors min-h-[60px]",
+                              "px-1.5 py-1.5 align-top transition-colors min-h-[60px] border-r border-border last:border-r-0",
                               isSameDay(weekDays[dayIdx], new Date()) && "bg-primary/5",
                               isOver && "bg-primary/15 ring-2 ring-inset ring-primary/40 rounded"
                             )}
