@@ -1,5 +1,5 @@
 import { useState, useMemo } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -132,6 +132,7 @@ function computeMetrics(items: KanbanItem[], monthItems: KanbanItem[], source: "
 }
 
 export default function Index() {
+  const queryClient = useQueryClient();
   const today = new Date();
   const [dateRange, setDateRange] = useState({
     from: startOfYear(today),
@@ -266,6 +267,7 @@ export default function Index() {
       setSyncStatus("Atualizando dados...");
       toast.success("Dados sincronizados (Kanban + Central)!");
       await Promise.all([refetchOrc(), refetchExec()]);
+      queryClient.invalidateQueries({ queryKey: ["last-sync-timestamp"] });
       setSyncStatus("");
     } catch {
       toast.warning("Sincronização em processamento...");

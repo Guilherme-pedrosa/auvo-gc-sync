@@ -79,6 +79,8 @@ export default function RealtimeTrackingPage() {
   const [sheetOpen, setSheetOpen] = useState(false);
   const dateStr = format(selectedDate, "yyyy-MM-dd");
 
+  const [lastFetchTime, setLastFetchTime] = useState<string | null>(null);
+
   const { data, isLoading, refetch, isFetching } = useQuery({
     queryKey: ["realtime-tracking", dateStr],
     queryFn: async () => {
@@ -87,6 +89,7 @@ export default function RealtimeTrackingPage() {
       });
       if (error) throw error;
       if (data?.error) throw new Error(data.error);
+      setLastFetchTime(new Date().toISOString());
       return data as TrackingData;
     },
     refetchInterval: 120_000,
@@ -365,7 +368,7 @@ export default function RealtimeTrackingPage() {
             <p className="text-xs text-muted-foreground">
               Acompanhamento em tempo real — Auvo
             </p>
-            <LastSyncBadge className="mt-0.5" />
+            <LastSyncBadge className="mt-0.5" overrideTimestamp={lastFetchTime} />
           </div>
 
           <div className="flex items-center gap-2">

@@ -54,6 +54,7 @@ const METAS = {
 
 const TechDashboardPage = () => {
   const navigate = useNavigate();
+  const [lastFetchTime, setLastFetchTime] = useState<string | null>(null);
   const [periodo, setPeriodo] = useState<"hoje" | "semana" | "mes" | "custom">("hoje");
   const [customStart, setCustomStart] = useState<Date | undefined>(undefined);
   const [customEnd, setCustomEnd] = useState<Date | undefined>(undefined);
@@ -85,6 +86,7 @@ const TechDashboardPage = () => {
       });
       if (error) throw error;
       if (data?.error) throw new Error(data.error);
+      setLastFetchTime(new Date().toISOString());
       return data as DashboardData;
     },
     refetchInterval: 60000,
@@ -130,7 +132,7 @@ const TechDashboardPage = () => {
         <div className="flex-1">
           <h1 className="text-3xl font-bold tracking-tight">📊 Dashboard de Técnicos</h1>
           <p className="text-muted-foreground">Indicadores de desempenho em tempo real via Auvo</p>
-          <LastSyncBadge className="mt-1" />
+          <LastSyncBadge className="mt-1" overrideTimestamp={lastFetchTime} />
         </div>
         <Button variant="ghost" size="icon" onClick={() => refetch()} disabled={isLoading}>
           <RefreshCw className={`h-4 w-4 ${isLoading ? "animate-spin" : ""}`} />

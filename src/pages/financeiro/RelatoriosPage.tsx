@@ -88,6 +88,7 @@ export default function RelatoriosPage() {
 
       queryClient.invalidateQueries({ queryKey: ["relatorios-tarefas-os"] });
       queryClient.invalidateQueries({ queryKey: ["relatorios-todas-tarefas"] });
+      queryClient.invalidateQueries({ queryKey: ["last-sync-timestamp"] });
     } catch (err: any) {
       if (err?.message?.includes("context canceled") || err?.message?.includes("FunctionsHttpError")) {
         toast.info("Sync iniciado em background — aguarde ~1 min e recarregue a página");
