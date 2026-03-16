@@ -120,6 +120,8 @@ export default function OSKanbanPage() {
   const [showEditModal, setShowEditModal] = useState(false);
   const [editingCard, setEditingCard] = useState<OSItem | null>(null);
   const [editDate, setEditDate] = useState<Date | undefined>(undefined);
+  const [editHour, setEditHour] = useState("08");
+  const [editMinute, setEditMinute] = useState("00");
   const [editTecnicoId, setEditTecnicoId] = useState("");
   const [editSaving, setEditSaving] = useState(false);
   const [execTaskId, setExecTaskId] = useState<string | null>(null);
