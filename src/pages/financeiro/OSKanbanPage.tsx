@@ -408,7 +408,7 @@ export default function OSKanbanPage() {
     if (!items.length) return;
 
     const agendadoItems: OSItem[] = [];
-    const situacaoMap: Record<string, { items: OSItem[]; color: string; sitId: string }> = {};
+    const situacaoMap: Record<string, { items: OSItem[]; color: string; sitId: string; displayName: string }> = {};
 
     for (const item of items) {
       const statusAuvo = (item.status_auvo || "").toLowerCase();
