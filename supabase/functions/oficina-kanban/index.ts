@@ -608,6 +608,17 @@ Deno.serve(async (req) => {
       let equipamento_modelo = "";
       let equipamento_serie = "";
 
+      // Helper: check if a reply is a real value (not just S/N confirmation)
+      const isRealReply = (r: string) => {
+        const trimmed = r.trim();
+        if (!trimmed || trimmed.length <= 2) return false;
+        const lower = trimmed.toLowerCase();
+        if (["s", "n", "sim", "não", "nao", ".", "-", "ok"].includes(lower)) return false;
+        if (trimmed.startsWith("http")) return false;
+        return true;
+      };
+
+      // 1) Try equipment registration API
       for (const eqId of eqIds) {
         if (equipmentNameMap[eqId]) {
           equipamento_nome = equipmentNameMap[eqId];
@@ -615,22 +626,39 @@ Deno.serve(async (req) => {
         }
       }
 
-      // Fallback: extract from questionnaire answers
+      // 2) Fallback: extract from questionnaire answers (skip confirmations)
       if (!equipamento_nome) {
         for (const ans of answers) {
           const q = ans.question.toLowerCase();
+          if (!isRealReply(ans.reply)) continue;
           if (q.includes("equipamento") || q.includes("aparelho") || q.includes("máquina") || q.includes("maquina")) {
             if (q.includes("modelo") || q.includes("type") || q.includes("tipo")) {
               equipamento_modelo = ans.reply;
             } else if (q.includes("série") || q.includes("serie") || q.includes("serial")) {
               equipamento_serie = ans.reply;
-            } else if (!equipamento_nome) {
+            } else if (!equipamento_nome && !q.includes("acessório") && !q.includes("acessorio")) {
               equipamento_nome = ans.reply;
             }
           }
           if (!equipamento_nome && (q.includes("nome") || q.includes("descrição") || q.includes("descricao")) && !q.includes("cliente")) {
             equipamento_nome = ans.reply;
           }
+        }
+      }
+
+      // 3) Fallback: use task description
+      if (!equipamento_nome) {
+        const desc = String(task.taskDescription || task.description || "").trim();
+        if (desc && desc.length > 3 && !desc.toLowerCase().startsWith("retirada") && !desc.toLowerCase().startsWith("entrada")) {
+          equipamento_nome = desc;
+        }
+      }
+
+      // 4) Fallback: use task type/title
+      if (!equipamento_nome) {
+        const title = String(task.taskTypeName || task.title || "").trim();
+        if (title && title.length > 3) {
+          equipamento_nome = title;
         }
       }
 
