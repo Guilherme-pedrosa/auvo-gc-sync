@@ -162,18 +162,30 @@ export default function HorasTrabalhadasTab({
     return 0;
   };
 
+  // Calculate task value: GC OS → GC Orçamento → hourly rate fallback
+  const getTaskValor = (t: any, tecnico: string): number => {
+    const gcOsValor = Number(t.gc_os_valor_total) || 0;
+    const gcOrcValor = Number(t.gc_orc_valor_total) || 0;
+    if (gcOsValor > 0) return gcOsValor;
+    if (gcOrcValor > 0) return gcOrcValor;
+    const horas = Number(t.duracao_decimal) || 0;
+    const cliente = t.cliente || t.gc_os_cliente || "";
+    const clienteGc = t.gc_os_cliente || "";
+    const rate = getHourlyRate(tecnico, cliente, clienteGc);
+    return horas * rate;
+  };
+
   // Summary by technician
-  type TaskDetail = { auvo_task_id: string; descricao: string; hora_inicio: string; hora_fim: string; horas: number; deslocamento: number; data_tarefa: string };
+  type TaskDetail = { auvo_task_id: string; descricao: string; hora_inicio: string; hora_fim: string; horas: number; deslocamento: number; data_tarefa: string; valor: number };
   type ClienteData = { horas: number; deslocamento: number; tarefas: number; valor: number; tipos: Map<string, number>; tasks: TaskDetail[] };
   const tecnicoSummary = useMemo(() => {
     const map = new Map<string, { tecnico: string; horas: number; deslocamento: number; tarefas: number; valor: number; byCliente: Map<string, ClienteData> }>();
     for (const t of filtered) {
       const tec = t.tecnico || "Desconhecido";
       const cliente = t.cliente || t.gc_os_cliente || "Sem cliente";
-      const clienteGc = t.gc_os_cliente || "";
       const horas = Number(t.duracao_decimal) || 0;
       const deslocamento = Number(t.duracao_deslocamento) || 0;
-      const rate = getHourlyRate(tec, cliente, clienteGc);
+      const valor = getTaskValor(t, tec);
 
       let entry = map.get(tec);
       if (!entry) {
@@ -183,7 +195,7 @@ export default function HorasTrabalhadasTab({
       entry.horas += horas;
       entry.deslocamento += deslocamento;
       entry.tarefas++;
-      entry.valor += horas * rate;
+      entry.valor += valor;
 
       let clienteEntry = entry.byCliente.get(cliente);
       if (!clienteEntry) {
@@ -193,7 +205,7 @@ export default function HorasTrabalhadasTab({
       clienteEntry.horas += horas;
       clienteEntry.deslocamento += deslocamento;
       clienteEntry.tarefas++;
-      clienteEntry.valor += horas * rate;
+      clienteEntry.valor += valor;
 
       const tipo = getTipoLabel(t.descricao);
       clienteEntry.tipos.set(tipo, (clienteEntry.tipos.get(tipo) || 0) + horas);
@@ -205,9 +217,10 @@ export default function HorasTrabalhadasTab({
         horas,
         deslocamento,
         data_tarefa: t.data_tarefa || "",
+        valor,
       });
     }
-    return Array.from(map.values()).sort((a, b) => b.horas - a.horas);
+    return Array.from(map.values()).sort((a, b) => b.valor - a.valor);
   }, [filtered, valorHoraConfigs, grupos, grupoClienteMap]);
 
   const totalHoras = useMemo(() => tecnicoSummary.reduce((s, t) => s + t.horas, 0), [tecnicoSummary]);
