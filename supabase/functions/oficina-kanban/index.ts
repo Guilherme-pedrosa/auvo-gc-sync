@@ -39,15 +39,22 @@ function auvoHeaders(token: string): Record<string, string> {
   return { Authorization: `Bearer ${token}`, "Content-Type": "application/json" };
 }
 
-async function fetchAuvoTasksWithQuestionnaire(
+// Fetch ALL tasks in range, separating entry/return tasks and all others
+async function fetchAllAuvoTasks(
   bearerToken: string,
   startDate: string,
   endDate: string
-): Promise<{ tasks: any[]; hadError: boolean; errorMessage: string | null }> {
+): Promise<{
+  entryTasks: any[];
+  allTasks: any[];
+  hadError: boolean;
+  errorMessage: string | null;
+}> {
+  const entryTasks: any[] = [];
   const allTasks: any[] = [];
   let page = 1;
   const pageSize = 100;
-  const MAX_PAGES = 20;
+  const MAX_PAGES = 30;
   const filterObj = { startDate: `${startDate}T00:00:00`, endDate: `${endDate}T23:59:59` };
   let hadError = false;
   let errorMessage: string | null = null;
@@ -68,17 +75,18 @@ async function fetchAuvoTasksWithQuestionnaire(
     const entities = data?.result?.entityList || data?.result?.Entities || [];
 
     for (const task of entities) {
+      allTasks.push(task);
       const questionnaires = task.questionnaires || [];
       const hasEntrada = questionnaires.some((q: any) => String(q.questionnaireId) === QUESTIONNAIRE_ID);
       const hasDevolucao = questionnaires.some((q: any) => String(q.questionnaireId) === QUESTIONNAIRE_DEVOLUCAO_ID);
-      if (hasEntrada || hasDevolucao) allTasks.push(task);
+      if (hasEntrada || hasDevolucao) entryTasks.push(task);
     }
 
     if (entities.length < pageSize) break;
     page++;
   }
 
-  return { tasks: allTasks, hadError, errorMessage };
+  return { entryTasks, allTasks, hadError, errorMessage };
 }
 
 async function fetchGcOsMap(gcHeaders: Record<string, string>): Promise<Record<string, any>> {
@@ -315,28 +323,32 @@ Deno.serve(async (req) => {
 
     // Fetch in parallel
     const [auvoResult, gcOsMap, gcOrcMap] = await Promise.all([
-      fetchAuvoTasksWithQuestionnaire(bearerToken, startDate, endDate),
+      fetchAllAuvoTasks(bearerToken, startDate, endDate),
       fetchGcOsMap(gcH),
       fetchGcOrcamentosMap(gcH),
     ]);
 
-    let auvoTasks = auvoResult.tasks;
+    let entryTasks = auvoResult.entryTasks;
+    let allAuvoTasks = auvoResult.allTasks;
 
     // Fallback: if empty, try wider range
-    if ((auvoResult.hadError || auvoTasks.length === 0) && startDate !== "2020-01-01") {
+    if ((auvoResult.hadError || entryTasks.length === 0) && startDate !== "2020-01-01") {
       console.warn("[oficina-kanban] Fallback com range amplo");
-      const fallback = await fetchAuvoTasksWithQuestionnaire(bearerToken, "2020-01-01", "2030-12-31");
-      const filtered = fallback.tasks.filter((t: any) => {
+      const fallback = await fetchAllAuvoTasks(bearerToken, "2020-01-01", "2030-12-31");
+      const filteredEntry = fallback.entryTasks.filter((t: any) => {
         const d = String(t.taskDate || "").split("T")[0];
         return d >= startDate && d <= endDate;
       });
-      if (filtered.length > 0) auvoTasks = filtered;
+      if (filteredEntry.length > 0) {
+        entryTasks = filteredEntry;
+        allAuvoTasks = fallback.allTasks;
+      }
     }
 
-    console.log(`[oficina-kanban] Auvo tasks: ${auvoTasks.length}, GC OS: ${Object.keys(gcOsMap).length}, GC Orç: ${Object.keys(gcOrcMap).length}`);
+    console.log(`[oficina-kanban] Entry tasks: ${entryTasks.length}, All tasks: ${allAuvoTasks.length}, GC OS: ${Object.keys(gcOsMap).length}, GC Orç: ${Object.keys(gcOrcMap).length}`);
 
     // If Auvo failed, preserve cache
-    if (auvoTasks.length === 0 && auvoResult.errorMessage) {
+    if (entryTasks.length === 0 && auvoResult.errorMessage) {
       const { data: cached } = await sbClient
         .from("kanban_oficina_cache").select("*").order("coluna").order("posicao");
       const items = (cached || []).map((row: any) => ({ ...row.dados, _coluna: row.coluna, _posicao: row.posicao }));
@@ -346,9 +358,21 @@ Deno.serve(async (req) => {
       }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
-    // Collect all equipment IDs to fetch names
+    // === BUILD EQUIPMENT → SIBLING TASKS INDEX ===
+    // Map equipment_id → list of task IDs that reference it
+    const equipToTasks: Record<number, string[]> = {};
+    for (const task of allAuvoTasks) {
+      const taskId = String(task.taskID || "");
+      const eqIds: number[] = task.equipmentsId || [];
+      for (const eqId of eqIds) {
+        if (!equipToTasks[eqId]) equipToTasks[eqId] = [];
+        equipToTasks[eqId].push(taskId);
+      }
+    }
+
+    // Collect all equipment IDs from entry tasks to fetch names
     const allEquipmentIds = new Set<number>();
-    for (const task of auvoTasks) {
+    for (const task of entryTasks) {
       const eqIds: number[] = task.equipmentsId || [];
       for (const id of eqIds) allEquipmentIds.add(id);
     }
@@ -379,11 +403,40 @@ Deno.serve(async (req) => {
       console.log(`[oficina-kanban] Equipamentos resolvidos: ${Object.keys(equipmentNameMap).length}/${allEquipmentIds.size}`);
     }
 
-    // Build items
-    const items = auvoTasks.map((task: any) => {
+    // Build items — entry tasks define cards, sibling tasks provide GC links
+    const items = entryTasks.map((task: any) => {
       const taskId = String(task.taskID || "");
-      const gcOsMatch = gcOsMap[taskId] || null;
-      const gcOrcMatch = gcOrcMap[taskId] || null;
+      const eqIds: number[] = task.equipmentsId || [];
+
+      // Find GC OS/Orçamento via SIBLING tasks (same equipment, different task)
+      let gcOsMatch: any = null;
+      let gcOrcMatch: any = null;
+      let osSiblingTaskId: string | null = null;
+
+      // First check the entry task itself (direct match)
+      if (gcOsMap[taskId]) gcOsMatch = gcOsMap[taskId];
+      if (gcOrcMap[taskId]) gcOrcMatch = gcOrcMap[taskId];
+
+      // Then check sibling tasks that share the same equipment
+      if (!gcOsMatch || !gcOrcMatch) {
+        for (const eqId of eqIds) {
+          const siblingTaskIds = equipToTasks[eqId] || [];
+          for (const sibId of siblingTaskIds) {
+            if (sibId === taskId) continue; // skip self
+            if (!gcOsMatch && gcOsMap[sibId]) {
+              gcOsMatch = gcOsMap[sibId];
+              osSiblingTaskId = sibId;
+              console.log(`[oficina-kanban] Task ${taskId} → OS found via sibling task ${sibId} (equipment ${eqId})`);
+            }
+            if (!gcOrcMatch && gcOrcMap[sibId]) {
+              gcOrcMatch = gcOrcMap[sibId];
+              console.log(`[oficina-kanban] Task ${taskId} → Orçamento found via sibling task ${sibId} (equipment ${eqId})`);
+            }
+            if (gcOsMatch && gcOrcMatch) break;
+          }
+          if (gcOsMatch && gcOrcMatch) break;
+        }
+      }
 
       const targetQ = (task.questionnaires || []).find(
         (q: any) => String(q.questionnaireId) === QUESTIONNAIRE_ID
@@ -397,25 +450,60 @@ Deno.serve(async (req) => {
         (a: any) => a.reply && a.reply.trim() !== "" && !a.reply.startsWith("http")
       );
 
-      // Check return form (215147)
+      // Check return form (215147) on entry task AND sibling tasks
+      let devolucaoPreenchida = false;
+      let devolucaoAnswers: any[] = [];
+
+      // Check on entry task itself
       const devolucaoQ = (task.questionnaires || []).find(
         (q: any) => String(q.questionnaireId) === QUESTIONNAIRE_DEVOLUCAO_ID
       );
-      const devolucaoAnswers = (devolucaoQ?.answers || []).map((a: any) => ({
-        question: String(a.questionDescription || ""),
-        reply: String(a.reply || ""),
-      }));
-      const devolucaoPreenchida = devolucaoAnswers.some(
-        (a: any) => a.reply && a.reply.trim() !== "" && !a.reply.startsWith("http")
-      );
+      if (devolucaoQ) {
+        devolucaoAnswers = (devolucaoQ.answers || []).map((a: any) => ({
+          question: String(a.questionDescription || ""),
+          reply: String(a.reply || ""),
+        }));
+        devolucaoPreenchida = devolucaoAnswers.some(
+          (a: any) => a.reply && a.reply.trim() !== "" && !a.reply.startsWith("http")
+        );
+      }
 
-      // Resolve equipment name: 1) Auvo equipment API, 2) questionnaire fallback
-      const eqIds: number[] = task.equipmentsId || [];
+      // Also check sibling tasks for return form
+      if (!devolucaoPreenchida) {
+        for (const eqId of eqIds) {
+          const siblingTaskIds = equipToTasks[eqId] || [];
+          for (const sibId of siblingTaskIds) {
+            if (sibId === taskId) continue;
+            const sibTask = allAuvoTasks.find((t: any) => String(t.taskID) === sibId);
+            if (!sibTask) continue;
+            const sibDevQ = (sibTask.questionnaires || []).find(
+              (q: any) => String(q.questionnaireId) === QUESTIONNAIRE_DEVOLUCAO_ID
+            );
+            if (sibDevQ) {
+              const sibDevAnswers = (sibDevQ.answers || []).map((a: any) => ({
+                question: String(a.questionDescription || ""),
+                reply: String(a.reply || ""),
+              }));
+              const sibDevFilled = sibDevAnswers.some(
+                (a: any) => a.reply && a.reply.trim() !== "" && !a.reply.startsWith("http")
+              );
+              if (sibDevFilled) {
+                devolucaoPreenchida = true;
+                devolucaoAnswers = sibDevAnswers;
+                console.log(`[oficina-kanban] Task ${taskId} → Devolução found via sibling task ${sibId}`);
+                break;
+              }
+            }
+          }
+          if (devolucaoPreenchida) break;
+        }
+      }
+
+      // Resolve equipment name
       let equipamento_nome = "";
       let equipamento_modelo = "";
       let equipamento_serie = "";
 
-      // Try equipment registration first
       for (const eqId of eqIds) {
         if (equipmentNameMap[eqId]) {
           equipamento_nome = equipmentNameMap[eqId];
@@ -453,6 +541,8 @@ Deno.serve(async (req) => {
         auvo_task_id: taskId,
         auvo_link: `https://app2.auvo.com.br/relatorioTarefas/DetalheTarefa/${taskId}`,
         auvo_task_url: String(task.taskUrl || ""),
+        os_task_id: osSiblingTaskId,
+        os_task_link: osSiblingTaskId ? `https://app2.auvo.com.br/relatorioTarefas/DetalheTarefa/${osSiblingTaskId}` : null,
         equipamento_nome: equipamento_nome || "Equipamento não identificado",
         equipamento_modelo,
         equipamento_serie,

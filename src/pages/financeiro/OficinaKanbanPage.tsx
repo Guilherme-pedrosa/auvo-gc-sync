@@ -39,6 +39,8 @@ type OficinaItem = {
   auvo_task_id: string;
   auvo_link: string;
   auvo_task_url?: string;
+  os_task_id?: string | null;
+  os_task_link?: string | null;
   equipamento_nome: string;
   equipamento_modelo: string;
   equipamento_serie: string;
@@ -753,8 +755,14 @@ export default function OficinaKanbanPage() {
                 <div className="flex gap-3 flex-wrap">
                   <a href={selectedCard.auvo_link} target="_blank" rel="noopener noreferrer"
                     className="inline-flex items-center gap-1.5 text-sm text-blue-600 hover:underline font-medium">
-                    <ExternalLink className="h-4 w-4" /> Abrir no Auvo
+                    <ExternalLink className="h-4 w-4" /> Entrada Auvo
                   </a>
+                  {selectedCard.os_task_link && (
+                    <a href={selectedCard.os_task_link} target="_blank" rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1.5 text-sm text-orange-600 hover:underline font-medium">
+                      <ExternalLink className="h-4 w-4" /> Tarefa OS Auvo
+                    </a>
+                  )}
                   {selectedCard.gc_orcamento && (
                     <a href={selectedCard.gc_orcamento.gc_link} target="_blank" rel="noopener noreferrer"
                       className="inline-flex items-center gap-1.5 text-sm text-violet-600 hover:underline font-medium">
