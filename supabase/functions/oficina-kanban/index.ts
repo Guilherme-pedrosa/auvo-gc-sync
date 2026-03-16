@@ -545,22 +545,12 @@ Deno.serve(async (req) => {
 
     // === BUILD EQUIPMENT → SIBLING TASKS INDEX ===
     const equipToTasks: Record<number, string[]> = {};
-    // Also build client+tech → task index for fallback matching
-    const clientTechToTasks: Record<string, string[]> = {};
     for (const task of allAuvoTasks) {
       const taskId = String(task.taskID || "");
       const eqIds = extractTaskEquipmentIds(task);
       for (const eqId of eqIds) {
         if (!equipToTasks[eqId]) equipToTasks[eqId] = [];
         equipToTasks[eqId].push(taskId);
-      }
-      // Index by normalized client+tech for fallback
-      const client = normalizeText(String(task.customerDescription || task.customerName || task.customer?.tradeName || ""));
-      const tech = normalizeText(String(task.userToName || ""));
-      if (client && tech) {
-        const key = `${client}|||${tech}`;
-        if (!clientTechToTasks[key]) clientTechToTasks[key] = [];
-        clientTechToTasks[key].push(taskId);
       }
     }
 
