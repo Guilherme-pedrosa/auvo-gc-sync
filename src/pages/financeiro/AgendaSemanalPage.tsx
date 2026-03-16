@@ -711,12 +711,14 @@ function TaskDetailDialog({
   tarefa: Tarefa | null;
   onClose: () => void;
   tecnicos: { nome: string; id: string | null }[];
-  onUpdate: (taskId: string, newDate: string | null, newTecNome: string | null, newTecId: string | null) => Promise<void>;
+  onUpdate: (taskId: string, newDate: string | null, newTecNome: string | null, newTecId: string | null, newHour?: string, newMinute?: string) => Promise<void>;
   isSaving: boolean;
 }) {
   const [editing, setEditing] = useState(false);
   const [editDate, setEditDate] = useState("");
   const [editTecId, setEditTecId] = useState("");
+  const [editHour, setEditHour] = useState("08");
+  const [editMinute, setEditMinute] = useState("00");
 
   if (!tarefa) return null;
 
@@ -727,6 +729,9 @@ function TaskDetailDialog({
   const startEditing = () => {
     setEditDate(tarefa.data_tarefa || "");
     setEditTecId(tarefa.tecnico_id || "");
+    const hi = tarefa.hora_inicio || "";
+    setEditHour(hi.substring(0, 2) || "08");
+    setEditMinute(hi.substring(3, 5) || "00");
     setEditing(true);
   };
 
@@ -741,6 +746,8 @@ function TaskDetailDialog({
       editDate !== tarefa.data_tarefa ? editDate : null,
       newTec ? newTec.nome : null,
       editTecId !== tarefa.tecnico_id ? editTecId : null,
+      editHour,
+      editMinute,
     );
     setEditing(false);
   };
