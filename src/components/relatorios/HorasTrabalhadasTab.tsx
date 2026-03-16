@@ -32,6 +32,10 @@ interface Props {
   grupos: any[];
   membros: any[];
   valorHoraConfigs: any[];
+  dateFrom: Date;
+  dateTo: Date;
+  onDateFromChange: (d: Date) => void;
+  onDateToChange: (d: Date) => void;
 }
 
 const CHART_COLORS = [
