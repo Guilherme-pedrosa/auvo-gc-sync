@@ -561,6 +561,7 @@ export default function HorasTrabalhadasTab({
                 <TableHead>Técnico</TableHead>
                 <TableHead className="text-center">Tarefas</TableHead>
                 <TableHead className="text-right">Horas</TableHead>
+                <TableHead className="text-right">Deslocamento</TableHead>
                 <TableHead className="text-right">Valor</TableHead>
               </TableRow>
             </TableHeader>
