@@ -349,6 +349,19 @@ export default function AgendaSemanalPage() {
         });
       });
 
+      const { error: persistError } = await supabase.functions.invoke("auvo-task-update", {
+        body: {
+          action: "persist-central",
+          row: {
+            auvo_task_id: taskId,
+            data_tarefa: newDate,
+            hora_inicio: horaInicio || null,
+            ...((!sameTec && toTecId) ? { tecnico: toTecNome, tecnico_id: toTecId } : {}),
+          },
+        },
+      });
+      if (persistError) throw persistError;
+
       const changes: string[] = [];
       if (!sameDay) changes.push(`data → ${format(weekDays[toDayIdx], "dd/MM")}`);
       if (!sameTec) changes.push(`técnico → ${toTecNome}`);
