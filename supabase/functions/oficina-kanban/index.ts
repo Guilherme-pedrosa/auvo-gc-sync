@@ -678,7 +678,7 @@ Deno.serve(async (req) => {
           const siblingTaskIds = equipToTasks[eqId] || [];
           for (const sibId of siblingTaskIds) {
             if (sibId === taskId) continue;
-            const sibTask = allAuvoTasks.find((t: any) => String(t.taskID) === sibId);
+            const sibTask = taskById.get(sibId);
             if (!sibTask) continue;
             const sibDevQ = (sibTask.questionnaires || []).find(
               (q: any) => String(q.questionnaireId) === QUESTIONNAIRE_DEVOLUCAO_ID
