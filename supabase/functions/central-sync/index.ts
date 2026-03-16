@@ -431,7 +431,7 @@ Deno.serve(async (req) => {
         status_auvo: task.finished ? "Finalizada" : (task.checkIn ? "Em andamento" : "Aberta"),
         orientacao: resolvedOrientation,
         pendencia: String(task.pendency ?? "").trim(),
-        descricao: String(task.description || "").substring(0, 500),
+        descricao: String(task.taskType?.description || task.description || "").substring(0, 500),
         duracao_decimal: parseFloat(task.durationDecimal || "0") || 0,
         hora_inicio: String(task.startTime || task.startHour || ""),
         hora_fim: String(task.endTime || task.endHour || ""),
