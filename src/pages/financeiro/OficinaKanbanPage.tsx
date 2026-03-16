@@ -1,5 +1,5 @@
-import { useState, useCallback, useMemo } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useState, useCallback, useMemo, useEffect } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -10,10 +10,11 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Checkbox } from "@/components/ui/checkbox";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   ArrowLeft, CalendarIcon, RefreshCw, ExternalLink,
   GripVertical, Filter, Wrench, Clock, Package, AlertTriangle, Link2, Save,
-  Plus, Trash2, Pencil
+  Plus, Trash2, Pencil, History, ShoppingCart
 } from "lucide-react";
 import { format, startOfMonth, subMonths } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -103,6 +104,13 @@ export default function OficinaKanbanPage() {
   const [newColumnName, setNewColumnName] = useState("");
   const [renamingColumnId, setRenamingColumnId] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState("");
+  const [modalTab, setModalTab] = useState("detalhes");
+  const [jobItems, setJobItems] = useState<any[]>([]);
+  const [jobEvents, setJobEvents] = useState<any[]>([]);
+  const [newItemDesc, setNewItemDesc] = useState("");
+  const [newItemQty, setNewItemQty] = useState("1");
+  const [newItemPrice, setNewItemPrice] = useState("");
+  const [newItemTipo, setNewItemTipo] = useState("peca");
 
   const { data, isLoading, refetch, isFetching } = useQuery({
     queryKey: ["oficina-kanban", format(dateRange.from, "yyyy-MM-dd"), format(dateRange.to, "yyyy-MM-dd")],
@@ -392,6 +400,20 @@ export default function OficinaKanbanPage() {
       const [moved] = srcCol.items.splice(source.index, 1);
       destCol.items.splice(destination.index, 0, moved);
       savePositions(newCols);
+
+      // Log event when card moves to a different column
+      if (source.droppableId !== destination.droppableId) {
+        const fromTitle = prev.find(c => c.id === source.droppableId)?.title || source.droppableId;
+        const toTitle = prev.find(c => c.id === destination.droppableId)?.title || destination.droppableId;
+        supabase.from("workshop_job_events").insert({
+          auvo_task_id: moved.auvo_task_id,
+          from_status: fromTitle,
+          to_status: toTitle,
+          event_type: "status_change",
+          note: `Movido de "${fromTitle}" para "${toTitle}"`,
+        } as any).then(({ error }) => { if (error) console.warn("Erro ao logar evento:", error); });
+      }
+
       return newCols;
     });
   }, [savePositions]);
@@ -446,6 +468,44 @@ export default function OficinaKanbanPage() {
     setRenameValue("");
     toast.success("Coluna renomeada");
   }, [renameValue, savePositions]);
+
+  const loadJobData = useCallback(async (taskId: string) => {
+    const [{ data: items }, { data: events }] = await Promise.all([
+      supabase.from("workshop_job_items").select("*").eq("auvo_task_id", taskId).order("criado_em", { ascending: false }),
+      supabase.from("workshop_job_events").select("*").eq("auvo_task_id", taskId).order("criado_em", { ascending: false }).limit(50),
+    ]);
+    setJobItems((items as any[]) || []);
+    setJobEvents((events as any[]) || []);
+  }, []);
+
+  const handleAddItem = useCallback(async () => {
+    if (!selectedCard || !newItemDesc.trim()) return;
+    const { error } = await supabase.from("workshop_job_items").insert({
+      auvo_task_id: selectedCard.auvo_task_id,
+      tipo: newItemTipo,
+      descricao: newItemDesc.trim(),
+      quantidade: parseFloat(newItemQty) || 1,
+      preco_unitario: parseFloat(newItemPrice) || 0,
+    } as any);
+    if (error) { toast.error("Erro ao adicionar item"); return; }
+    setNewItemDesc(""); setNewItemQty("1"); setNewItemPrice("");
+    loadJobData(selectedCard.auvo_task_id);
+    toast.success("Item adicionado");
+  }, [selectedCard, newItemDesc, newItemQty, newItemPrice, newItemTipo, loadJobData]);
+
+  const handleDeleteItem = useCallback(async (itemId: string) => {
+    if (!selectedCard) return;
+    await supabase.from("workshop_job_items").delete().eq("id", itemId);
+    loadJobData(selectedCard.auvo_task_id);
+  }, [selectedCard, loadJobData]);
+
+  // Load items/events when card is opened
+  useEffect(() => {
+    if (selectedCard) {
+      setModalTab("detalhes");
+      loadJobData(selectedCard.auvo_task_id);
+    }
+  }, [selectedCard, loadJobData]);
 
   const abbreviateName = (name: string, maxLen = 28) => {
     if (name.length <= maxLen) return name;
@@ -900,7 +960,6 @@ export default function OficinaKanbanPage() {
         </DragDropContext>
       )}
 
-      {/* Card Detail Dialog */}
       <Dialog open={!!selectedCard} onOpenChange={(open) => !open && setSelectedCard(null)}>
         <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
           {selectedCard && (
@@ -912,187 +971,215 @@ export default function OficinaKanbanPage() {
                 </DialogTitle>
               </DialogHeader>
 
-              <div className="space-y-4">
-                <div className="grid grid-cols-2 gap-3 text-sm">
-                  <div>
-                    <span className="text-muted-foreground">Cliente:</span>
-                    <span className="ml-2 font-medium">{selectedCard.cliente}</span>
-                  </div>
-                  <div>
-                    <span className="text-muted-foreground">Técnico:</span>
-                    <span className="ml-2">{selectedCard.tecnico}</span>
-                  </div>
-                  <div>
-                    <span className="text-muted-foreground">Data de entrada:</span>
-                    <span className="ml-2">{selectedCard.data_entrada && new Date(selectedCard.data_entrada + "T12:00:00").toLocaleDateString("pt-BR")}</span>
-                  </div>
-                  <div>
-                    <span className="text-muted-foreground">Dias no galpão:</span>
-                    <span className={`ml-2 font-bold ${getDiasColor(selectedCard.dias_no_galpao)}`}>
-                      {selectedCard.dias_no_galpao} dias
-                    </span>
-                  </div>
-                  {selectedCard.equipamento_modelo && (
-                    <div>
-                      <span className="text-muted-foreground">Modelo:</span>
-                      <span className="ml-2">{selectedCard.equipamento_modelo}</span>
-                    </div>
-                  )}
-                  {selectedCard.equipamento_serie && (
-                    <div>
-                      <span className="text-muted-foreground">Nº Série:</span>
-                      <span className="ml-2 font-mono">{selectedCard.equipamento_serie}</span>
-                    </div>
-                  )}
-                  <div>
-                    <span className="text-muted-foreground">Tarefa Auvo:</span>
-                    <span className="ml-2 font-mono">#{selectedCard.auvo_task_id}</span>
-                  </div>
-                  {selectedCard.equipments_id && selectedCard.equipments_id.length > 0 && (
-                    <div>
-                      <span className="text-muted-foreground">ID Equipamento:</span>
-                      <span className="ml-2 font-mono">{selectedCard.equipments_id.join(", ")}</span>
-                    </div>
-                  )}
-                </div>
+              <Tabs value={modalTab} onValueChange={setModalTab}>
+                <TabsList className="w-full">
+                  <TabsTrigger value="detalhes" className="flex-1 gap-1.5"><Wrench className="h-3.5 w-3.5" />Detalhes</TabsTrigger>
+                  <TabsTrigger value="itens" className="flex-1 gap-1.5"><ShoppingCart className="h-3.5 w-3.5" />Peças/Serviços <Badge variant="secondary" className="ml-1 text-[10px] px-1">{jobItems.length}</Badge></TabsTrigger>
+                  <TabsTrigger value="historico" className="flex-1 gap-1.5"><History className="h-3.5 w-3.5" />Histórico <Badge variant="secondary" className="ml-1 text-[10px] px-1">{jobEvents.length}</Badge></TabsTrigger>
+                </TabsList>
 
-                {/* Links */}
-                <div className="flex gap-3 flex-wrap">
-                  <a href={selectedCard.auvo_link} target="_blank" rel="noopener noreferrer"
-                    className="inline-flex items-center gap-1.5 text-sm text-blue-600 hover:underline font-medium">
-                    <ExternalLink className="h-4 w-4" /> Entrada Auvo
-                  </a>
-                  {selectedCard.os_task_link && (
-                    <a href={selectedCard.os_task_link} target="_blank" rel="noopener noreferrer"
-                      className="inline-flex items-center gap-1.5 text-sm text-orange-600 hover:underline font-medium">
-                      <ExternalLink className="h-4 w-4" /> Tarefa OS Auvo
-                    </a>
+                {/* TAB: DETALHES */}
+                <TabsContent value="detalhes" className="space-y-4 mt-4">
+                  <div className="grid grid-cols-2 gap-3 text-sm">
+                    <div><span className="text-muted-foreground">Cliente:</span><span className="ml-2 font-medium">{selectedCard.cliente}</span></div>
+                    <div><span className="text-muted-foreground">Técnico:</span><span className="ml-2">{selectedCard.tecnico}</span></div>
+                    <div><span className="text-muted-foreground">Data de entrada:</span><span className="ml-2">{selectedCard.data_entrada && new Date(selectedCard.data_entrada + "T12:00:00").toLocaleDateString("pt-BR")}</span></div>
+                    <div><span className="text-muted-foreground">Dias no galpão:</span><span className={`ml-2 font-bold ${getDiasColor(selectedCard.dias_no_galpao)}`}>{selectedCard.dias_no_galpao} dias</span></div>
+                    {selectedCard.equipamento_modelo && <div><span className="text-muted-foreground">Modelo:</span><span className="ml-2">{selectedCard.equipamento_modelo}</span></div>}
+                    {selectedCard.equipamento_serie && <div><span className="text-muted-foreground">Nº Série:</span><span className="ml-2 font-mono">{selectedCard.equipamento_serie}</span></div>}
+                    <div><span className="text-muted-foreground">Tarefa Auvo:</span><span className="ml-2 font-mono">#{selectedCard.auvo_task_id}</span></div>
+                    {selectedCard.equipments_id && selectedCard.equipments_id.length > 0 && (
+                      <div><span className="text-muted-foreground">ID Equipamento:</span><span className="ml-2 font-mono">{selectedCard.equipments_id.join(", ")}</span></div>
+                    )}
+                  </div>
+
+                  <div className="flex gap-3 flex-wrap">
+                    <a href={selectedCard.auvo_link} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 text-sm text-blue-600 hover:underline font-medium"><ExternalLink className="h-4 w-4" /> Entrada Auvo</a>
+                    {selectedCard.os_task_link && <a href={selectedCard.os_task_link} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 text-sm text-orange-600 hover:underline font-medium"><ExternalLink className="h-4 w-4" /> Tarefa OS Auvo</a>}
+                    {selectedCard.gc_orcamento && <a href={selectedCard.gc_orcamento.gc_link} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 text-sm text-violet-600 hover:underline font-medium"><ExternalLink className="h-4 w-4" /> Orçamento GC</a>}
+                    {selectedCard.gc_os && <a href={selectedCard.gc_os.gc_link} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 text-sm text-blue-600 hover:underline font-medium"><ExternalLink className="h-4 w-4" /> OS GC</a>}
+                  </div>
+
+                  {/* Manual Link Section */}
+                  {(!selectedCard.equipments_id || selectedCard.equipments_id.length === 0) && (
+                    <div className="p-3 rounded-lg bg-amber-50 border border-amber-200 space-y-3">
+                      <h4 className="text-sm font-semibold text-amber-800 flex items-center gap-2"><Link2 className="h-4 w-4" />Vincular manualmente</h4>
+                      <div className="grid grid-cols-1 gap-2">
+                        {!selectedCard.os_task_id && (
+                          <div className="flex items-center gap-2">
+                            <label className="text-xs text-muted-foreground whitespace-nowrap w-28">Tarefa OS Auvo:</label>
+                            <Input placeholder="Ex: 70970640" value={manualOsTaskId} onChange={(e) => setManualOsTaskId(e.target.value)} className="h-8 text-xs" />
+                          </div>
+                        )}
+                        {!selectedCard.gc_os && (
+                          <div className="flex items-center gap-2">
+                            <label className="text-xs text-muted-foreground whitespace-nowrap w-28">Código OS GC:</label>
+                            <Input placeholder="Ex: OS-12345" value={manualGcOsCode} onChange={(e) => setManualGcOsCode(e.target.value)} className="h-8 text-xs" />
+                          </div>
+                        )}
+                        {!selectedCard.gc_orcamento && (
+                          <div className="flex items-center gap-2">
+                            <label className="text-xs text-muted-foreground whitespace-nowrap w-28">Código Orç. GC:</label>
+                            <Input placeholder="Ex: ORC-12345" value={manualGcOrcCode} onChange={(e) => setManualGcOrcCode(e.target.value)} className="h-8 text-xs" />
+                          </div>
+                        )}
+                      </div>
+                      <Button size="sm" onClick={handleSaveManualLink} disabled={isSavingLink || (!manualOsTaskId && !manualGcOsCode && !manualGcOrcCode)} className="w-full gap-2">
+                        <Save className="h-3.5 w-3.5" />{isSavingLink ? "Salvando..." : "Salvar vínculo"}
+                      </Button>
+                    </div>
                   )}
+
                   {selectedCard.gc_orcamento && (
-                    <a href={selectedCard.gc_orcamento.gc_link} target="_blank" rel="noopener noreferrer"
-                      className="inline-flex items-center gap-1.5 text-sm text-violet-600 hover:underline font-medium">
-                      <ExternalLink className="h-4 w-4" /> Orçamento GC
-                    </a>
-                  )}
-                  {selectedCard.gc_os && (
-                    <a href={selectedCard.gc_os.gc_link} target="_blank" rel="noopener noreferrer"
-                      className="inline-flex items-center gap-1.5 text-sm text-blue-600 hover:underline font-medium">
-                      <ExternalLink className="h-4 w-4" /> OS GC
-                    </a>
-                  )}
-                </div>
-
-                {/* Manual Link Section — shown when no equipment ID */}
-                {(!selectedCard.equipments_id || selectedCard.equipments_id.length === 0) && (
-                  <div className="p-3 rounded-lg bg-amber-50 border border-amber-200 space-y-3">
-                    <h4 className="text-sm font-semibold text-amber-800 flex items-center gap-2">
-                      <Link2 className="h-4 w-4" />
-                      Vincular manualmente (sem ID equipamento)
-                    </h4>
-                    <div className="grid grid-cols-1 gap-2">
-                      {!selectedCard.os_task_id && (
-                        <div className="flex items-center gap-2">
-                          <label className="text-xs text-muted-foreground whitespace-nowrap w-28">Tarefa OS Auvo:</label>
-                          <Input
-                            placeholder="Ex: 70970640"
-                            value={manualOsTaskId}
-                            onChange={(e) => setManualOsTaskId(e.target.value)}
-                            className="h-8 text-xs"
-                          />
-                        </div>
-                      )}
-                      {!selectedCard.gc_os && (
-                        <div className="flex items-center gap-2">
-                          <label className="text-xs text-muted-foreground whitespace-nowrap w-28">Código OS GC:</label>
-                          <Input
-                            placeholder="Ex: OS-12345"
-                            value={manualGcOsCode}
-                            onChange={(e) => setManualGcOsCode(e.target.value)}
-                            className="h-8 text-xs"
-                          />
-                        </div>
-                      )}
-                      {!selectedCard.gc_orcamento && (
-                        <div className="flex items-center gap-2">
-                          <label className="text-xs text-muted-foreground whitespace-nowrap w-28">Código Orç. GC:</label>
-                          <Input
-                            placeholder="Ex: ORC-12345"
-                            value={manualGcOrcCode}
-                            onChange={(e) => setManualGcOrcCode(e.target.value)}
-                            className="h-8 text-xs"
-                          />
-                        </div>
-                      )}
+                    <div className="p-3 rounded-lg bg-violet-50 border border-violet-200 space-y-2">
+                      <h4 className="text-sm font-semibold text-violet-800">Orçamento #{selectedCard.gc_orcamento.gc_orcamento_codigo}</h4>
+                      <div className="grid grid-cols-2 gap-2 text-xs">
+                        <div>Situação: <span className="font-medium">{selectedCard.gc_orcamento.gc_situacao}</span></div>
+                        <div>Valor: <span className="font-bold">R$ {parseFloat(selectedCard.gc_orcamento.gc_valor_total).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}</span></div>
+                        <div>Vendedor: {selectedCard.gc_orcamento.gc_vendedor}</div>
+                        {selectedCard.gc_orcamento.gc_data && <div>Data: {new Date(selectedCard.gc_orcamento.gc_data).toLocaleDateString("pt-BR")}</div>}
+                      </div>
                     </div>
-                    <Button
-                      size="sm"
-                      onClick={handleSaveManualLink}
-                      disabled={isSavingLink || (!manualOsTaskId && !manualGcOsCode && !manualGcOrcCode)}
-                      className="w-full gap-2"
-                    >
-                      <Save className="h-3.5 w-3.5" />
-                      {isSavingLink ? "Salvando..." : "Salvar vínculo"}
+                  )}
+
+                  {selectedCard.gc_os && (
+                    <div className="p-3 rounded-lg bg-blue-50 border border-blue-200 space-y-2">
+                      <h4 className="text-sm font-semibold text-blue-800">OS #{selectedCard.gc_os.gc_os_codigo}</h4>
+                      <div className="grid grid-cols-2 gap-2 text-xs">
+                        <div>Situação: <span className="font-medium">{selectedCard.gc_os.gc_situacao}</span></div>
+                        <div>Valor: <span className="font-bold">R$ {parseFloat(selectedCard.gc_os.gc_valor_total).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}</span></div>
+                        <div>Vendedor: {selectedCard.gc_os.gc_vendedor}</div>
+                        {selectedCard.gc_os.gc_data && <div>Data: {new Date(selectedCard.gc_os.gc_data).toLocaleDateString("pt-BR")}</div>}
+                      </div>
+                    </div>
+                  )}
+
+                  {selectedCard.questionario_respostas.length > 0 && (
+                    <div className="space-y-2">
+                      <h4 className="text-sm font-semibold text-foreground">Formulário de Entrada</h4>
+                      <div className="space-y-1.5 max-h-[300px] overflow-y-auto">
+                        {selectedCard.questionario_respostas
+                          .filter((r) => r.reply && r.reply.trim() !== "")
+                          .map((r, i) => (
+                            <div key={i} className="text-xs">
+                              <span className="text-muted-foreground">{r.question}:</span>
+                              {r.reply.startsWith("http") ? (
+                                <a href={r.reply} target="_blank" rel="noopener noreferrer" className="ml-1 text-blue-600 hover:underline">
+                                  {r.reply.includes("image") || r.reply.match(/\.(jpg|jpeg|png|gif|webp)/i) ? (
+                                    <img src={r.reply} alt="" className="mt-1 max-h-40 rounded border" />
+                                  ) : "Ver anexo"}
+                                </a>
+                              ) : (
+                                <span className="ml-1 font-medium">{r.reply}</span>
+                              )}
+                            </div>
+                          ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {selectedCard.devolucao_respostas && selectedCard.devolucao_respostas.length > 0 && (
+                    <div className="space-y-2">
+                      <h4 className="text-sm font-semibold text-foreground">Formulário de Devolução</h4>
+                      <div className="space-y-1.5 max-h-[300px] overflow-y-auto">
+                        {selectedCard.devolucao_respostas
+                          .filter((r) => r.reply && r.reply.trim() !== "")
+                          .map((r, i) => (
+                            <div key={i} className="text-xs">
+                              <span className="text-muted-foreground">{r.question}:</span>
+                              {r.reply.startsWith("http") ? (
+                                <a href={r.reply} target="_blank" rel="noopener noreferrer" className="ml-1 text-blue-600 hover:underline">
+                                  {r.reply.includes("image") || r.reply.match(/\.(jpg|jpeg|png|gif|webp)/i) ? (
+                                    <img src={r.reply} alt="" className="mt-1 max-h-40 rounded border" />
+                                  ) : "Ver anexo"}
+                                </a>
+                              ) : (
+                                <span className="ml-1 font-medium">{r.reply}</span>
+                              )}
+                            </div>
+                          ))}
+                      </div>
+                    </div>
+                  )}
+                </TabsContent>
+
+                {/* TAB: PEÇAS/SERVIÇOS */}
+                <TabsContent value="itens" className="space-y-4 mt-4">
+                  <div className="p-3 rounded-lg border bg-muted/30 space-y-3">
+                    <h4 className="text-sm font-semibold flex items-center gap-2"><Plus className="h-4 w-4" />Adicionar item</h4>
+                    <div className="grid grid-cols-2 gap-2">
+                      <Select value={newItemTipo} onValueChange={setNewItemTipo}>
+                        <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="peca">Peça</SelectItem>
+                          <SelectItem value="servico">Serviço</SelectItem>
+                          <SelectItem value="insumo">Insumo</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <Input placeholder="Descrição" value={newItemDesc} onChange={(e) => setNewItemDesc(e.target.value)} className="h-8 text-xs" />
+                      <Input placeholder="Qtd" type="number" value={newItemQty} onChange={(e) => setNewItemQty(e.target.value)} className="h-8 text-xs" />
+                      <Input placeholder="Preço unit. (R$)" type="number" step="0.01" value={newItemPrice} onChange={(e) => setNewItemPrice(e.target.value)} className="h-8 text-xs" />
+                    </div>
+                    <Button size="sm" onClick={handleAddItem} disabled={!newItemDesc.trim()} className="w-full gap-1">
+                      <Plus className="h-3.5 w-3.5" />Adicionar
                     </Button>
                   </div>
-                )}
-                {selectedCard.gc_orcamento && (
-                  <div className="p-3 rounded-lg bg-violet-50 border border-violet-200 space-y-2">
-                    <h4 className="text-sm font-semibold text-violet-800">
-                      Orçamento #{selectedCard.gc_orcamento.gc_orcamento_codigo}
-                    </h4>
-                    <div className="grid grid-cols-2 gap-2 text-xs">
-                      <div>Situação: <span className="font-medium">{selectedCard.gc_orcamento.gc_situacao}</span></div>
-                      <div>Valor: <span className="font-bold">R$ {parseFloat(selectedCard.gc_orcamento.gc_valor_total).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}</span></div>
-                      <div>Vendedor: {selectedCard.gc_orcamento.gc_vendedor}</div>
-                      {selectedCard.gc_orcamento.gc_data && (
-                        <div>Data: {new Date(selectedCard.gc_orcamento.gc_data).toLocaleDateString("pt-BR")}</div>
-                      )}
-                    </div>
-                  </div>
-                )}
 
-                {/* GC OS */}
-                {selectedCard.gc_os && (
-                  <div className="p-3 rounded-lg bg-blue-50 border border-blue-200 space-y-2">
-                    <h4 className="text-sm font-semibold text-blue-800">
-                      OS #{selectedCard.gc_os.gc_os_codigo}
-                    </h4>
-                    <div className="grid grid-cols-2 gap-2 text-xs">
-                      <div>Situação: <span className="font-medium">{selectedCard.gc_os.gc_situacao}</span></div>
-                      <div>Valor: <span className="font-bold">R$ {parseFloat(selectedCard.gc_os.gc_valor_total).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}</span></div>
-                      <div>Vendedor: {selectedCard.gc_os.gc_vendedor}</div>
-                      {selectedCard.gc_os.gc_data && (
-                        <div>Data: {new Date(selectedCard.gc_os.gc_data).toLocaleDateString("pt-BR")}</div>
-                      )}
+                  {jobItems.length === 0 ? (
+                    <p className="text-sm text-muted-foreground text-center py-6">Nenhum item cadastrado</p>
+                  ) : (
+                    <div className="space-y-1.5">
+                      {jobItems.map((item: any) => (
+                        <div key={item.id} className="flex items-center justify-between p-2 rounded border bg-card text-sm">
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2">
+                              <Badge variant="outline" className="text-[10px] capitalize">{item.tipo}</Badge>
+                              <span className="font-medium truncate">{item.descricao}</span>
+                            </div>
+                            <div className="text-xs text-muted-foreground mt-0.5">
+                              {item.quantidade}x • R$ {parseFloat(item.preco_unitario || 0).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+                              {" = "}
+                              <span className="font-semibold">R$ {(item.quantidade * parseFloat(item.preco_unitario || 0)).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}</span>
+                            </div>
+                          </div>
+                          <Button variant="ghost" size="icon" className="h-6 w-6 text-muted-foreground hover:text-destructive" onClick={() => handleDeleteItem(item.id)}>
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </Button>
+                        </div>
+                      ))}
+                      <div className="flex justify-end pt-2 border-t text-sm font-bold">
+                        Total: R$ {jobItems.reduce((sum: number, i: any) => sum + (i.quantidade * parseFloat(i.preco_unitario || 0)), 0).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+                      </div>
                     </div>
-                  </div>
-                )}
+                  )}
+                </TabsContent>
 
-                {/* Questionário Answers */}
-                {selectedCard.questionario_respostas.length > 0 && (
-                  <div className="space-y-2">
-                    <h4 className="text-sm font-semibold text-foreground">Formulário de Entrada</h4>
-                    <div className="space-y-1.5 max-h-[300px] overflow-y-auto">
-                      {selectedCard.questionario_respostas
-                        .filter((r) => r.reply && r.reply.trim() !== "")
-                        .map((r, i) => (
-                          <div key={i} className="text-xs">
-                            <span className="text-muted-foreground">{r.question}:</span>
-                            {r.reply.startsWith("http") ? (
-                              <a href={r.reply} target="_blank" rel="noopener noreferrer" className="ml-1 text-blue-600 hover:underline">
-                                {r.reply.includes("image") || r.reply.match(/\.(jpg|jpeg|png|gif|webp)/i) ? (
-                                  <img src={r.reply} alt="" className="mt-1 max-h-40 rounded border" />
-                                ) : "Ver anexo"}
-                              </a>
+                {/* TAB: HISTÓRICO */}
+                <TabsContent value="historico" className="space-y-2 mt-4">
+                  {jobEvents.length === 0 ? (
+                    <p className="text-sm text-muted-foreground text-center py-6">Nenhum evento registrado</p>
+                  ) : (
+                    <div className="space-y-2">
+                      {jobEvents.map((ev: any) => (
+                        <div key={ev.id} className="flex items-start gap-3 p-2 rounded border bg-card text-sm">
+                          <div className="mt-0.5">
+                            {ev.event_type === "status_change" ? (
+                              <div className="h-6 w-6 rounded-full bg-primary/10 flex items-center justify-center"><RefreshCw className="h-3.5 w-3.5 text-primary" /></div>
                             ) : (
-                              <span className="ml-1 font-medium">{r.reply}</span>
+                              <div className="h-6 w-6 rounded-full bg-muted flex items-center justify-center"><History className="h-3.5 w-3.5 text-muted-foreground" /></div>
                             )}
                           </div>
-                        ))}
+                          <div className="flex-1 min-w-0">
+                            <p className="text-xs font-medium">{ev.note || `${ev.from_status} → ${ev.to_status}`}</p>
+                            {ev.user_name && <p className="text-[10px] text-muted-foreground">por {ev.user_name}</p>}
+                            <p className="text-[10px] text-muted-foreground">{new Date(ev.criado_em).toLocaleString("pt-BR")}</p>
+                          </div>
+                        </div>
+                      ))}
                     </div>
-                  </div>
-                )}
-              </div>
+                  )}
+                </TabsContent>
+              </Tabs>
             </>
           )}
         </DialogContent>
