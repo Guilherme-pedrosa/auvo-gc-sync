@@ -71,9 +71,11 @@ export default function RelatoriosPage() {
   const handleSync = async () => {
     setSyncing(true);
     startProgressSimulation();
+    const syncFrom = format(dateFrom, "yyyy-MM-dd");
+    const syncTo = format(dateTo, "yyyy-MM-dd");
     try {
       const { data, error } = await supabase.functions.invoke("central-sync", {
-        body: {},
+        body: { start_date: syncFrom, end_date: syncTo },
       });
       if (error) throw error;
       if (data?.success === false) throw new Error(data.error || "Erro na sincronização");
