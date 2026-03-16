@@ -851,6 +851,43 @@ export default function OficinaKanbanPage() {
                   </Draggable>
                 ))}
                 {boardProvided.placeholder}
+
+                {/* Add Column Button */}
+                <div className="flex-shrink-0 w-[340px]">
+                  {showAddColumn ? (
+                    <div className="bg-muted/50 rounded-lg border p-4 space-y-3">
+                      <h3 className="text-sm font-semibold text-foreground">Nova coluna</h3>
+                      <Input
+                        placeholder="Nome da coluna..."
+                        value={newColumnName}
+                        onChange={(e) => setNewColumnName(e.target.value)}
+                        autoFocus
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") handleAddColumn();
+                          if (e.key === "Escape") { setShowAddColumn(false); setNewColumnName(""); }
+                        }}
+                      />
+                      <div className="flex gap-2">
+                        <Button size="sm" onClick={handleAddColumn} disabled={!newColumnName.trim()}>
+                          <Plus className="h-4 w-4 mr-1" />
+                          Adicionar
+                        </Button>
+                        <Button size="sm" variant="ghost" onClick={() => { setShowAddColumn(false); setNewColumnName(""); }}>
+                          Cancelar
+                        </Button>
+                      </div>
+                    </div>
+                  ) : (
+                    <Button
+                      variant="outline"
+                      className="w-full h-12 border-dashed text-muted-foreground hover:text-foreground"
+                      onClick={() => setShowAddColumn(true)}
+                    >
+                      <Plus className="h-5 w-5 mr-2" />
+                      Adicionar coluna
+                    </Button>
+                  )}
+                </div>
               </div>
             )}
           </Droppable>
