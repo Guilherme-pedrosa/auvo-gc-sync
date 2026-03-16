@@ -187,11 +187,10 @@ export default function AgendaSemanalPage() {
       }));
 
       if (upsertRows.length > 0) {
-        // Upsert in batches of 200
-        for (let i = 0; i < upsertRows.length; i += 200) {
-          const batch = upsertRows.slice(i, i + 200);
-          await supabase.from("tarefas_central").upsert(batch, { onConflict: "auvo_task_id" });
-        }
+        const { error: persistError } = await supabase.functions.invoke("auvo-task-update", {
+          body: { action: "persist-central", rows: upsertRows },
+        });
+        if (persistError) throw persistError;
       }
 
       toast.success(`${apiTarefas.length} tarefas atualizadas da API`);
