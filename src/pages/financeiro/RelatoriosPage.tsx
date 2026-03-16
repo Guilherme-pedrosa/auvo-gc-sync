@@ -1,21 +1,72 @@
-import { useState, useMemo, useEffect, useCallback } from "react";
+import { useState, useMemo, useEffect, useCallback, useRef } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
+import { Progress } from "@/components/ui/progress";
 import { FileText, Clock, Settings, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 import OSAbertasTab from "@/components/relatorios/OSAbertasTab";
 import HorasTrabalhadasTab from "@/components/relatorios/HorasTrabalhadasTab";
 import ConfiguracoesTab from "@/components/relatorios/ConfiguracoesTab";
 
+const SYNC_STEPS = [
+  { label: "Autenticando no Auvo...", progress: 5 },
+  { label: "Buscando tarefas do Auvo...", progress: 15 },
+  { label: "Buscando orçamentos do GestãoClick...", progress: 35 },
+  { label: "Buscando OS do GestãoClick...", progress: 50 },
+  { label: "Cruzando dados Auvo × GC...", progress: 65 },
+  { label: "Buscando endereços detalhados...", progress: 75 },
+  { label: "Salvando no banco de dados...", progress: 88 },
+  { label: "Finalizando...", progress: 95 },
+];
+
 export default function RelatoriosPage() {
   const queryClient = useQueryClient();
   const [syncing, setSyncing] = useState(false);
+  const [syncStep, setSyncStep] = useState(0);
+  const [syncProgress, setSyncProgress] = useState(0);
+  const stepTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const startProgressSimulation = () => {
+    setSyncStep(0);
+    setSyncProgress(0);
+    let currentStep = 0;
+
+    stepTimerRef.current = setInterval(() => {
+      currentStep++;
+      if (currentStep < SYNC_STEPS.length) {
+        setSyncStep(currentStep);
+        setSyncProgress(SYNC_STEPS[currentStep].progress);
+      } else {
+        // Hold at last step
+        if (stepTimerRef.current) clearInterval(stepTimerRef.current);
+      }
+    }, 8000); // ~8s per step for a ~1min sync
+  };
+
+  const stopProgressSimulation = (success: boolean) => {
+    if (stepTimerRef.current) {
+      clearInterval(stepTimerRef.current);
+      stepTimerRef.current = null;
+    }
+    if (success) {
+      setSyncProgress(100);
+      setTimeout(() => {
+        setSyncing(false);
+        setSyncProgress(0);
+        setSyncStep(0);
+      }, 1500);
+    } else {
+      setSyncing(false);
+      setSyncProgress(0);
+      setSyncStep(0);
+    }
+  };
 
   const handleSync = async () => {
     setSyncing(true);
-    const toastId = toast.loading("Sincronizando tarefas do Auvo...");
+    startProgressSimulation();
     try {
       const { data, error } = await supabase.functions.invoke("central-sync", {
         body: {},
@@ -24,24 +75,28 @@ export default function RelatoriosPage() {
       if (data?.success === false) throw new Error(data.error || "Erro na sincronização");
 
       toast.success(
-        `Sync concluído: ${data.auvo_tarefas || 0} tarefas do Auvo, ${data.upserted || 0} atualizadas`,
-        { id: toastId }
+        `Sync concluído: ${data.auvo_tarefas || 0} tarefas do Auvo, ${data.upserted || 0} atualizadas`
       );
+      stopProgressSimulation(true);
 
-      // Refresh all queries
       queryClient.invalidateQueries({ queryKey: ["relatorios-tarefas-os"] });
       queryClient.invalidateQueries({ queryKey: ["relatorios-todas-tarefas"] });
     } catch (err: any) {
-      // Edge function timeout returns error but sync may still complete
       if (err?.message?.includes("context canceled") || err?.message?.includes("FunctionsHttpError")) {
-        toast.info("Sync iniciado em background — aguarde ~1 min e recarregue a página", { id: toastId });
+        toast.info("Sync iniciado em background — aguarde ~1 min e recarregue a página");
+        stopProgressSimulation(true);
       } else {
-        toast.error(`Erro: ${err.message}`, { id: toastId });
+        toast.error(`Erro: ${err.message}`);
+        stopProgressSimulation(false);
       }
-    } finally {
-      setSyncing(false);
     }
   };
+
+  useEffect(() => {
+    return () => {
+      if (stepTimerRef.current) clearInterval(stepTimerRef.current);
+    };
+  }, []);
 
   // Fetch OS-linked tasks (for OS em Aberto tab)
   const { data: tarefasOS, isLoading: isLoadingOS } = useQuery({
@@ -72,7 +127,6 @@ export default function RelatoriosPage() {
     staleTime: 60_000,
   });
 
-  // Fetch groups
   const { data: grupos, refetch: refetchGrupos } = useQuery({
     queryKey: ["grupos-clientes"],
     queryFn: async () => {
@@ -81,7 +135,6 @@ export default function RelatoriosPage() {
     },
   });
 
-  // Fetch group members
   const { data: membros, refetch: refetchMembros } = useQuery({
     queryKey: ["grupo-membros"],
     queryFn: async () => {
@@ -90,7 +143,6 @@ export default function RelatoriosPage() {
     },
   });
 
-  // Fetch valor_hora configs
   const { data: valorHoraConfigs, refetch: refetchValorHora } = useQuery({
     queryKey: ["valor-hora-config"],
     queryFn: async () => {
@@ -99,7 +151,6 @@ export default function RelatoriosPage() {
     },
   });
 
-  // Filter out executed OS (same logic as kanban)
   const osAbertas = useMemo(() => {
     if (!tarefasOS) return [];
     return tarefasOS.filter((t) => {
@@ -108,21 +159,18 @@ export default function RelatoriosPage() {
     });
   }, [tarefasOS]);
 
-  // All unique client names from ALL tarefas (for horas/config tabs)
   const allClientes = useMemo(() => {
     if (!todasTarefas) return [] as string[];
     const set = new Set(todasTarefas.map((t) => t.cliente || t.gc_os_cliente || "").filter(Boolean));
     return Array.from(set).sort() as string[];
   }, [todasTarefas]);
 
-  // All unique technicians
   const allTecnicos = useMemo(() => {
     if (!todasTarefas) return [] as string[];
     const set = new Set(todasTarefas.map((t) => t.tecnico || "").filter(Boolean));
     return Array.from(set).sort() as string[];
   }, [todasTarefas]);
 
-  // All unique task descriptions (types)
   const allTiposTarefa = useMemo(() => {
     if (!todasTarefas) return [] as string[];
     const set = new Set(todasTarefas.map((t) => t.descricao || "").filter(Boolean));
@@ -136,16 +184,26 @@ export default function RelatoriosPage() {
           <h1 className="text-2xl font-bold text-foreground">Relatórios</h1>
           <p className="text-sm text-muted-foreground">Visão consolidada de OS abertas e horas trabalhadas</p>
         </div>
-        <Button
-          variant="outline"
-          size="sm"
-          className="gap-1.5"
-          onClick={handleSync}
-          disabled={syncing}
-        >
-          <RefreshCw className={`h-4 w-4 ${syncing ? "animate-spin" : ""}`} />
-          {syncing ? "Sincronizando..." : "Atualizar do Auvo"}
-        </Button>
+        <div className="flex flex-col items-end gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            className="gap-1.5"
+            onClick={handleSync}
+            disabled={syncing}
+          >
+            <RefreshCw className={`h-4 w-4 ${syncing ? "animate-spin" : ""}`} />
+            {syncing ? "Sincronizando..." : "Atualizar do Auvo"}
+          </Button>
+          {syncing && (
+            <div className="w-64 space-y-1.5">
+              <Progress value={syncProgress} className="h-2" />
+              <p className="text-[11px] text-muted-foreground text-right">
+                {SYNC_STEPS[syncStep]?.label}
+              </p>
+            </div>
+          )}
+        </div>
       </div>
 
       <Tabs defaultValue="os-abertas" className="space-y-4">
