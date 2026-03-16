@@ -357,7 +357,7 @@ export default function AgendaSemanalPage() {
           row: {
             auvo_task_id: taskId,
             data_tarefa: newDate,
-            hora_inicio: horaInicio || null,
+            hora_inicio: persistedHoraInicio,
             ...((!sameTec && toTecId) ? { tecnico: toTecNome, tecnico_id: toTecId } : {}),
           },
         },
