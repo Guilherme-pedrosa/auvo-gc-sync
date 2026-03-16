@@ -591,6 +591,19 @@ export default function BudgetKanbanPage() {
             </PopoverContent>
           </Popover>
 
+          <Select value={sortBy} onValueChange={(v) => setSortBy(v as any)}>
+            <SelectTrigger className="w-[180px]">
+              <SelectValue placeholder="Ordenar por..." />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="manual">🔀 Manual (arrastar)</SelectItem>
+              <SelectItem value="data">📅 Data</SelectItem>
+              <SelectItem value="cliente">👤 Cliente</SelectItem>
+              <SelectItem value="tecnico">🔧 Técnico</SelectItem>
+              <SelectItem value="valor">💰 Valor (maior)</SelectItem>
+            </SelectContent>
+          </Select>
+
           {resumo && (
             <div className="flex items-center gap-4 ml-auto text-sm">
               <Badge variant="outline" className="gap-1">
