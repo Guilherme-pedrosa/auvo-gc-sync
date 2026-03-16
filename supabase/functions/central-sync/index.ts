@@ -457,15 +457,17 @@ Deno.serve(async (req) => {
       const resolvedOrientation = String(snapshot?.orientation || task.orientation || "").substring(0, 500);
 
       // Resolve checkout date for monthly accounting
-      const checkOutDateRaw = normalizeDate(task.checkOutDate || task.checkoutDate);
-      // displacementStart is a datetime string from Auvo
-      const displacementStartRaw = String(task.displacementStart || "").trim();
+      const checkOutDateRaw = normalizeDate(task.checkOutDate || task.checkoutDate || snapshot?.checkOutDate);
+      // displacementStart: try list endpoint first, then snapshot
+      const displacementStartRaw = String(task.displacementStart || task.displacement_start || snapshot?.displacementStart || "").trim();
+      // checkInDate: try list endpoint first, then snapshot
+      const checkInDateRaw = String(task.checkInDate || task.checkinDate || snapshot?.checkInDate || "").trim();
 
       // Calculate displacement duration (displacementStart → checkInDate) in decimal hours
       let duracaoDeslocamento: number | null = null;
-      if (displacementStartRaw && task.checkInDate) {
+      if (displacementStartRaw && checkInDateRaw) {
         const dStart = new Date(displacementStartRaw);
-        const dEnd = new Date(String(task.checkInDate));
+        const dEnd = new Date(checkInDateRaw);
         if (!isNaN(dStart.getTime()) && !isNaN(dEnd.getTime())) {
           const diffMs = dEnd.getTime() - dStart.getTime();
           if (diffMs > 0 && diffMs < 24 * 60 * 60 * 1000) { // sanity: < 24h
