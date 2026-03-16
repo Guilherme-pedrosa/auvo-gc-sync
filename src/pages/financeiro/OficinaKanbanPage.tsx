@@ -249,20 +249,25 @@ export default function OficinaKanbanPage() {
       const colMap: Record<string, OficinaItem[]> = {};
       for (const dc of DEFAULT_COLUMNS) colMap[dc.id] = [];
 
+      const mapOrcSitToCol = (situacao: string): string => {
+        const s = (situacao || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+        if (s.includes("comprado") || s.includes("chegada")) return "pecas_solicitadas";
+        if (s.includes("aprovado")) return "aprovado";
+        return "orcamento";
+      };
+
       for (const item of items) {
         const { _coluna, _posicao, ...cleanItem } = item as any;
-        // Simple auto-assign based on data
         let col = "entrada";
         if (cleanItem.gc_os) {
           const sit = (cleanItem.gc_os.gc_situacao || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
           if (sit.includes("conclu") || sit.includes("finaliz") || sit.includes("entregue")) col = "concluido";
           else if (sit.includes("execu")) col = "em_execucao";
           else if (sit.includes("peca") || sit.includes("material") || sit.includes("solicit")) col = "pecas_solicitadas";
+          else if (cleanItem.gc_orcamento) col = mapOrcSitToCol(cleanItem.gc_orcamento.gc_situacao);
           else col = "em_execucao";
         } else if (cleanItem.gc_orcamento) {
-          const orcSit = (cleanItem.gc_orcamento.gc_situacao || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-          if (orcSit.includes("aprov") && !orcSit.includes("aguardando")) col = "aprovado";
-          else col = "orcamento";
+          col = mapOrcSitToCol(cleanItem.gc_orcamento.gc_situacao);
         } else if (cleanItem.questionario_preenchido) {
           col = "aguardando_os";
         }

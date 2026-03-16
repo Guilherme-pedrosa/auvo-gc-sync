@@ -187,30 +187,33 @@ async function fetchGcOrcamentosMap(gcHeaders: Record<string, string>): Promise<
   return map;
 }
 
+// Map orçamento situation to kanban column
+function orcamentoSituacaoToColumn(situacao: string): string {
+  const sit = (situacao || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+  // "COMPRADO - AGUARDANDO CHEGADA" → peças solicitadas
+  if (sit.includes("comprado") || sit.includes("chegada")) return "pecas_solicitadas";
+  // "APROVADO - AGUARDANDO COMPRA" → aprovado (contains "aprovado" but NOT "aguardando aprovação")
+  if (sit.includes("aprovado")) return "aprovado";
+  // "Aguardando Aprovação", "Ag Informações / Correções" → orçamento
+  return "orcamento";
+}
+
 // Determine which column an item belongs to based on its data
 function autoAssignColumn(item: any): string {
   // If return form (215147) was filled → Devolvido (cycle complete)
   if (item.devolucao_preenchida) return "devolvido";
 
-  // Has OS with completed situation → Em Execução or Concluído
+  // Has OS with completed situation
   if (item.gc_os) {
     const sit = (item.gc_os.gc_situacao || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
     if (sit.includes("conclu") || sit.includes("finaliz") || sit.includes("entregue")) return "concluido";
     if (sit.includes("execu")) return "em_execucao";
     if (sit.includes("peca") || sit.includes("material") || sit.includes("solicit")) return "pecas_solicitadas";
-    if (item.gc_orcamento) {
-      const orcSit = (item.gc_orcamento.gc_situacao || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-      if (orcSit.includes("aprov") && !orcSit.includes("aguardando")) return "aprovado";
-      return "orcamento";
-    }
+    if (item.gc_orcamento) return orcamentoSituacaoToColumn(item.gc_orcamento.gc_situacao);
     return "em_execucao";
   }
   
-  if (item.gc_orcamento) {
-    const orcSit = (item.gc_orcamento.gc_situacao || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-    if (orcSit.includes("aprov") && !orcSit.includes("aguardando")) return "aprovado";
-    return "orcamento";
-  }
+  if (item.gc_orcamento) return orcamentoSituacaoToColumn(item.gc_orcamento.gc_situacao);
 
   if (item.questionario_preenchido) return "aguardando_os";
 
