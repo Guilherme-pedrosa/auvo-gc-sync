@@ -343,6 +343,39 @@ Deno.serve(async (req) => {
       }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
+    // Collect all equipment IDs to fetch names
+    const allEquipmentIds = new Set<number>();
+    for (const task of auvoTasks) {
+      const eqIds: number[] = task.equipmentsId || [];
+      for (const id of eqIds) allEquipmentIds.add(id);
+    }
+
+    // Fetch equipment names from Auvo API
+    const equipmentNameMap: Record<number, string> = {};
+    if (allEquipmentIds.size > 0) {
+      console.log(`[oficina-kanban] Buscando ${allEquipmentIds.size} equipamentos via API`);
+      for (const eqId of allEquipmentIds) {
+        try {
+          const url = `${AUVO_BASE_URL}/equipments/${eqId}`;
+          const resp = await rateLimitedFetch(url, { headers: auvoHeaders(bearerToken) }, "auvo");
+          if (resp.ok) {
+            const eqData = await resp.json();
+            const eq = eqData?.result;
+            const name = String(eq?.description || eq?.name || eq?.identifier || "").trim();
+            if (name) {
+              equipmentNameMap[eqId] = name;
+              console.log(`[oficina-kanban] Equipment ${eqId} → ${name}`);
+            }
+          } else {
+            console.warn(`[oficina-kanban] Equipment ${eqId} fetch failed: ${resp.status}`);
+          }
+        } catch (e) {
+          console.warn(`[oficina-kanban] Equipment ${eqId} error:`, e);
+        }
+      }
+      console.log(`[oficina-kanban] Equipamentos resolvidos: ${Object.keys(equipmentNameMap).length}/${allEquipmentIds.size}`);
+    }
+
     // Build items
     const items = auvoTasks.map((task: any) => {
       const taskId = String(task.taskID || "");
@@ -361,42 +394,54 @@ Deno.serve(async (req) => {
         (a: any) => a.reply && a.reply.trim() !== "" && !a.reply.startsWith("http")
       );
 
-      // Extract equipment info from answers
+      // Resolve equipment name: 1) Auvo equipment API, 2) questionnaire fallback
+      const eqIds: number[] = task.equipmentsId || [];
       let equipamento_nome = "";
       let equipamento_modelo = "";
       let equipamento_serie = "";
-      for (const ans of answers) {
-        const q = ans.question.toLowerCase();
-        if (q.includes("equipamento") || q.includes("aparelho") || q.includes("máquina") || q.includes("maquina")) {
-          if (q.includes("modelo") || q.includes("type") || q.includes("tipo")) {
-            equipamento_modelo = ans.reply;
-          } else if (q.includes("série") || q.includes("serie") || q.includes("serial")) {
-            equipamento_serie = ans.reply;
-          } else if (!equipamento_nome) {
+
+      // Try equipment registration first
+      for (const eqId of eqIds) {
+        if (equipmentNameMap[eqId]) {
+          equipamento_nome = equipmentNameMap[eqId];
+          break;
+        }
+      }
+
+      // Fallback: extract from questionnaire answers
+      if (!equipamento_nome) {
+        for (const ans of answers) {
+          const q = ans.question.toLowerCase();
+          if (q.includes("equipamento") || q.includes("aparelho") || q.includes("máquina") || q.includes("maquina")) {
+            if (q.includes("modelo") || q.includes("type") || q.includes("tipo")) {
+              equipamento_modelo = ans.reply;
+            } else if (q.includes("série") || q.includes("serie") || q.includes("serial")) {
+              equipamento_serie = ans.reply;
+            } else if (!equipamento_nome) {
+              equipamento_nome = ans.reply;
+            }
+          }
+          if (!equipamento_nome && (q.includes("nome") || q.includes("descrição") || q.includes("descricao")) && !q.includes("cliente")) {
             equipamento_nome = ans.reply;
           }
-        }
-        if (!equipamento_nome && (q.includes("nome") || q.includes("descrição") || q.includes("descricao")) && !q.includes("cliente")) {
-          equipamento_nome = ans.reply;
         }
       }
 
       const cliente = String(task.customerDescription || task.customerName || task.customer?.tradeName || "").trim();
       const dataTarefa = String(task.taskDate || "").split("T")[0];
 
-      // Calculate days in warehouse
       const entryDate = new Date(dataTarefa);
       const todayDate = new Date();
       const diasNoGalpao = Math.max(0, Math.floor((todayDate.getTime() - entryDate.getTime()) / (1000 * 60 * 60 * 24)));
 
-      const item = {
+      return {
         auvo_task_id: taskId,
         auvo_link: `https://app2.auvo.com.br/relatorioTarefas/DetalheTarefa/${taskId}`,
         auvo_task_url: String(task.taskUrl || ""),
         equipamento_nome: equipamento_nome || "Equipamento não identificado",
         equipamento_modelo,
         equipamento_serie,
-        equipments_id: task.equipmentsId || [],
+        equipments_id: eqIds,
         cliente: cliente || "Cliente não identificado",
         tecnico: String(task.userToName || ""),
         data_tarefa: dataTarefa,
@@ -408,8 +453,6 @@ Deno.serve(async (req) => {
         gc_os: gcOsMatch,
         gc_orcamento: gcOrcMatch,
       };
-
-      return item;
     });
 
     // Read existing cache to preserve positions
