@@ -70,6 +70,18 @@ export default function HorasTrabalhadasTab({
       .replace(/\s+/g, " ")
       .trim();
 
+  const getTipoLabel = (tipo: string | null | undefined) => {
+    const normalized = (tipo || "").replace(/\s+/g, " ").trim();
+    return normalized || "Sem tipo";
+  };
+
+  const getTipoKey = (tipo: string | null | undefined) => {
+    return getTipoLabel(tipo)
+      .toLocaleLowerCase("pt-BR")
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "");
+  };
+
   // Resolve group members
   const grupoClienteMap = useMemo(() => {
     const map = new Map<string, string[]>();
@@ -109,8 +121,8 @@ export default function HorasTrabalhadasTab({
       }
 
       if (!allTiposSelected && selectedTipos.size > 0) {
-        const tipoTarefa = (t.descricao || "").trim() || "Sem tipo";
-        if (!selectedTipos.has(tipoTarefa)) return false;
+        const tipoTarefaKey = getTipoKey(t.descricao);
+        if (!selectedTipos.has(tipoTarefaKey)) return false;
       }
 
       return true;
@@ -176,11 +188,11 @@ export default function HorasTrabalhadasTab({
       clienteEntry.tarefas++;
       clienteEntry.valor += horas * rate;
 
-      const tipo = (t.descricao || "").trim() || "Sem tipo";
+      const tipo = getTipoLabel(t.descricao);
       clienteEntry.tipos.set(tipo, (clienteEntry.tipos.get(tipo) || 0) + horas);
       clienteEntry.tasks.push({
         auvo_task_id: t.auvo_task_id || "",
-        descricao: (t.descricao || "").trim() || "Sem tipo",
+        descricao: getTipoLabel(t.descricao),
         hora_inicio: t.hora_inicio || "",
         hora_fim: t.hora_fim || "",
         horas,
@@ -213,10 +225,25 @@ export default function HorasTrabalhadasTab({
     }));
   }, [filtered]);
 
+  const tipoOptions = useMemo(() => {
+    const map = new Map<string, string>();
+
+    for (const tipo of allTiposTarefa) {
+      const label = getTipoLabel(tipo);
+      const key = getTipoKey(label);
+      if (!map.has(key)) map.set(key, label);
+    }
+
+    return Array.from(map.entries())
+      .map(([key, label]) => ({ key, label }))
+      .sort((a, b) => a.label.localeCompare(b.label, "pt-BR"));
+  }, [allTiposTarefa]);
+
   const filteredTipos = useMemo(() => {
-    if (!searchTipo) return allTiposTarefa;
-    return allTiposTarefa.filter((t) => t.toLowerCase().includes(searchTipo.toLowerCase()));
-  }, [allTiposTarefa, searchTipo]);
+    if (!searchTipo) return tipoOptions;
+    const term = searchTipo.toLocaleLowerCase("pt-BR");
+    return tipoOptions.filter((t) => t.label.toLocaleLowerCase("pt-BR").includes(term));
+  }, [tipoOptions, searchTipo]);
 
   const handleExportPDF = () => {
     const doc = new jsPDF();
@@ -393,20 +420,20 @@ export default function HorasTrabalhadasTab({
                   <ScrollArea className="h-48">
                     <div className="space-y-1">
                       {filteredTipos.map((tipo) => (
-                        <div key={tipo} className="flex items-center gap-2">
+                        <div key={tipo.key} className="flex items-center gap-2">
                           <Checkbox
-                            checked={allTiposSelected || selectedTipos.has(tipo)}
+                            checked={allTiposSelected || selectedTipos.has(tipo.key)}
                             onCheckedChange={() => {
                               setAllTiposSelected(false);
                               setSelectedTipos((prev) => {
                                 const next = new Set(prev);
-                                if (next.has(tipo)) next.delete(tipo);
-                                else next.add(tipo);
+                                if (next.has(tipo.key)) next.delete(tipo.key);
+                                else next.add(tipo.key);
                                 return next;
                               });
                             }}
                           />
-                          <span className="text-xs truncate">{tipo}</span>
+                          <span className="text-xs truncate">{tipo.label}</span>
                         </div>
                       ))}
                     </div>
