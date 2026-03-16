@@ -126,7 +126,7 @@ export default function HorasTrabalhadasTab({
     const toStr = format(dateTo, "yyyy-MM-dd");
 
     return data.filter((t) => {
-      if (t.duracao_decimal == null) return false;
+      if (!t.hora_inicio && !t.hora_fim && t.duracao_decimal == null) return false;
 
       // Use completion date (data_conclusao) when available, otherwise data_tarefa
       const dateRef = t.data_conclusao || t.data_tarefa;
