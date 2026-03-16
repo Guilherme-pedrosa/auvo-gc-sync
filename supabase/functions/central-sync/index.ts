@@ -47,6 +47,32 @@ function normalizeDate(dateLike: unknown): string | null {
   return d;
 }
 
+function resolveTaskType(task: any): string {
+  const candidates = [
+    task?.taskTypeDescription,
+    task?.taskType?.description,
+    task?.taskType?.name,
+    task?.typeDescription,
+    task?.serviceTypeDescription,
+    task?.description,
+  ];
+
+  for (const candidate of candidates) {
+    const value = String(candidate ?? "").trim();
+    if (value && value !== "null" && value !== "undefined") {
+      return value.substring(0, 500);
+    }
+  }
+
+  const taskTypeId = task?.taskTypeId ?? (typeof task?.taskType === "number" ? task.taskType : null);
+  if (taskTypeId !== null && taskTypeId !== undefined) {
+    const idValue = String(taskTypeId).trim();
+    if (idValue) return `Tipo ${idValue}`;
+  }
+
+  return "";
+}
+
 function extractAddress(addr: unknown): string {
   if (!addr) return "";
   if (typeof addr === "string") return addr.substring(0, 300);
@@ -431,7 +457,7 @@ Deno.serve(async (req) => {
         status_auvo: task.finished ? "Finalizada" : (task.checkIn ? "Em andamento" : "Aberta"),
         orientacao: resolvedOrientation,
         pendencia: String(task.pendency ?? "").trim(),
-        descricao: String(task.taskType?.description || task.description || "").substring(0, 500),
+        descricao: resolveTaskType(task),
         duracao_decimal: parseFloat(task.durationDecimal || "0") || 0,
         hora_inicio: String(task.startTime || task.startHour || ""),
         hora_fim: String(task.endTime || task.endHour || ""),
