@@ -220,6 +220,15 @@ function autoAssignColumn(item: any): string {
   return "entrada";
 }
 
+function normalizeCode(value: string): string {
+  return String(value || "").trim().toUpperCase().replace(/[^A-Z0-9]/g, "");
+}
+
+function isUnknownEquipmentName(name: string): boolean {
+  const n = String(name || "").trim().toLowerCase();
+  return !n || n === "s" || n === "equipamento não identificado" || n === "equipamento nao identificado";
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
@@ -325,6 +334,8 @@ Deno.serve(async (req) => {
       }
 
       const dados = cached.dados as any;
+      let osMatched = !manualGcOsCode;
+      let orcMatched = !manualGcOrcCode;
 
       // Update manual links
       if (manualOsTaskId) {
@@ -332,18 +343,20 @@ Deno.serve(async (req) => {
         dados.os_task_link = `https://app2.auvo.com.br/relatorioTarefas/DetalheTarefa/${manualOsTaskId}`;
       }
 
-      // Try to fetch GC OS by code
+      // Try to fetch GC OS by code (accepts formats like "OS-123", "123", "#123")
       if (manualGcOsCode) {
         const gcAccessToken = Deno.env.get("GC_ACCESS_TOKEN");
         const gcSecretToken = Deno.env.get("GC_SECRET_TOKEN");
         if (gcAccessToken && gcSecretToken) {
+          const normalizedInput = normalizeCode(manualGcOsCode);
+          const codeForQuery = String(manualGcOsCode).replace(/[^0-9A-Za-z-]/g, "") || String(manualGcOsCode);
           const gcH = { "access-token": gcAccessToken, "secret-access-token": gcSecretToken, "Content-Type": "application/json" };
-          const url = `${GC_BASE_URL}/api/ordens_servicos?codigo=${encodeURIComponent(manualGcOsCode)}&limite=5`;
+          const url = `${GC_BASE_URL}/api/ordens_servicos?codigo=${encodeURIComponent(codeForQuery)}&limite=20`;
           const resp = await rateLimitedFetch(url, { headers: gcH }, "gc");
           if (resp.ok) {
             const gcData = await resp.json();
             const records: any[] = Array.isArray(gcData?.data) ? gcData.data : [];
-            const os = records.find((r: any) => String(r.codigo) === manualGcOsCode);
+            const os = records.find((r: any) => normalizeCode(String(r.codigo || "")) === normalizedInput);
             if (os) {
               dados.gc_os = {
                 gc_os_id: String(os.id),
@@ -357,23 +370,26 @@ Deno.serve(async (req) => {
                 gc_data: String(os.data || ""),
                 gc_link: `https://gestaoclick.com/ordens_servicos/editar/${os.id}?retorno=%2Fordens_servicos`,
               };
+              osMatched = true;
             }
           }
         }
       }
 
-      // Try to fetch GC Orçamento by code
+      // Try to fetch GC Orçamento by code (accepts formats like "Orç. #4974" or "4974")
       if (manualGcOrcCode) {
         const gcAccessToken = Deno.env.get("GC_ACCESS_TOKEN");
         const gcSecretToken = Deno.env.get("GC_SECRET_TOKEN");
         if (gcAccessToken && gcSecretToken) {
+          const normalizedInput = normalizeCode(manualGcOrcCode);
+          const codeForQuery = String(manualGcOrcCode).replace(/[^0-9A-Za-z-]/g, "") || String(manualGcOrcCode);
           const gcH = { "access-token": gcAccessToken, "secret-access-token": gcSecretToken, "Content-Type": "application/json" };
-          const url = `${GC_BASE_URL}/api/orcamentos?codigo=${encodeURIComponent(manualGcOrcCode)}&limite=5`;
+          const url = `${GC_BASE_URL}/api/orcamentos?codigo=${encodeURIComponent(codeForQuery)}&limite=20`;
           const resp = await rateLimitedFetch(url, { headers: gcH }, "gc");
           if (resp.ok) {
             const gcData = await resp.json();
             const records: any[] = Array.isArray(gcData?.data) ? gcData.data : [];
-            const orc = records.find((r: any) => String(r.codigo) === manualGcOrcCode);
+            const orc = records.find((r: any) => normalizeCode(String(r.codigo || "")) === normalizedInput);
             if (orc) {
               dados.gc_orcamento = {
                 gc_orcamento_id: String(orc.id),
@@ -387,24 +403,34 @@ Deno.serve(async (req) => {
                 gc_data: String(orc.data || ""),
                 gc_link: `https://gestaoclick.com/orcamentos_servicos/editar/${orc.id}?retorno=%2Forcamentos_servicos`,
               };
+              orcMatched = true;
             }
           }
         }
       }
 
-      // Update equipment name from GC client if still unidentified
-      const currentName = (dados.equipamento_nome || "").trim().toLowerCase();
-      if (!currentName || currentName === "equipamento não identificado" || currentName === "s") {
-        const gcCliente = dados.gc_os?.gc_cliente || dados.gc_orcamento?.gc_cliente || "";
-        if (gcCliente) {
-          dados.equipamento_nome = gcCliente;
-          dados.cliente = gcCliente;
-        }
+      if (!osMatched || !orcMatched) {
+        const errors: string[] = [];
+        if (!osMatched) errors.push(`OS não encontrada para o código "${manualGcOsCode}"`);
+        if (!orcMatched) errors.push(`Orçamento não encontrado para o código "${manualGcOrcCode}"`);
+        return new Response(JSON.stringify({ error: errors.join(" | ") }), {
+          status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
       }
 
-      // Update cliente from GC if empty
-      if (!dados.cliente) {
-        dados.cliente = dados.gc_os?.gc_cliente || dados.gc_orcamento?.gc_cliente || "";
+      // Update equipment / client data from GC after manual link
+      const gcCliente = dados.gc_os?.gc_cliente || dados.gc_orcamento?.gc_cliente || "";
+      if (isUnknownEquipmentName(dados.equipamento_nome) && gcCliente) {
+        dados.equipamento_nome = gcCliente;
+      }
+
+      if ((!dados.cliente || dados.cliente === "Cliente não identificado") && gcCliente) {
+        dados.cliente = gcCliente;
+      }
+
+      const gcData = dados.gc_os?.gc_data || dados.gc_orcamento?.gc_data || "";
+      if ((!dados.data_entrada || dados.data_entrada === "") && gcData) {
+        dados.data_entrada = gcData;
       }
 
       // Auto-reassign column based on new data
@@ -755,8 +781,41 @@ Deno.serve(async (req) => {
     }
 
     const now = new Date().toISOString();
-    const upsertRows = items.map((item: any, idx: number) => {
-      const existing = existingMap[item.auvo_task_id];
+    const upsertRows = items.map((rawItem: any, idx: number) => {
+      const existing = existingMap[rawItem.auvo_task_id];
+      const item = { ...rawItem };
+
+      if (existing?.dados) {
+        const oldData = existing.dados || {};
+
+        // Preserve manually linked docs when API sync doesn't return them
+        if (!item.gc_os && oldData.gc_os) item.gc_os = oldData.gc_os;
+        if (!item.gc_orcamento && oldData.gc_orcamento) item.gc_orcamento = oldData.gc_orcamento;
+
+        // Preserve manual OS task linkage
+        if (!item.os_task_id && oldData.os_task_id) {
+          item.os_task_id = oldData.os_task_id;
+          item.os_task_link = oldData.os_task_link || `https://app2.auvo.com.br/relatorioTarefas/DetalheTarefa/${oldData.os_task_id}`;
+        }
+
+        // Preserve best known equipment/client data
+        if (isUnknownEquipmentName(item.equipamento_nome) && oldData.equipamento_nome && !isUnknownEquipmentName(oldData.equipamento_nome)) {
+          item.equipamento_nome = oldData.equipamento_nome;
+        }
+        if (!item.equipamento_modelo && oldData.equipamento_modelo) item.equipamento_modelo = oldData.equipamento_modelo;
+        if (!item.equipamento_serie && oldData.equipamento_serie) item.equipamento_serie = oldData.equipamento_serie;
+        if ((!item.cliente || item.cliente === "Cliente não identificado") && oldData.cliente) item.cliente = oldData.cliente;
+      }
+
+      // Final fallback: GC client name as equipment name when unidentified
+      if (isUnknownEquipmentName(item.equipamento_nome)) {
+        const gcName = item.gc_os?.gc_cliente || item.gc_orcamento?.gc_cliente || "";
+        if (gcName) {
+          item.equipamento_nome = gcName;
+          if (!item.cliente || item.cliente === "Cliente não identificado") item.cliente = gcName;
+        }
+      }
+
       const autoCol = autoAssignColumn(item);
 
       let finalColuna: string;
@@ -766,7 +825,6 @@ Deno.serve(async (req) => {
         finalColuna = autoCol;
         finalPosicao = idx;
       } else {
-        // Check if data changed meaningfully
         const oldData = existing.dados || {};
         const hadUpdate =
           (!oldData.gc_os && item.gc_os) ||
@@ -775,7 +833,7 @@ Deno.serve(async (req) => {
           (oldData.gc_orcamento?.gc_situacao !== item.gc_orcamento?.gc_situacao) ||
           (!oldData.devolucao_preenchida && item.devolucao_preenchida) ||
           (!oldData.os_task_id && item.os_task_id) ||
-          (oldData.equipamento_nome === "S" || oldData.equipamento_nome === "Equipamento não identificado");
+          (isUnknownEquipmentName(oldData.equipamento_nome) && !isUnknownEquipmentName(item.equipamento_nome));
 
         if (hadUpdate) {
           finalColuna = autoCol;
@@ -783,15 +841,6 @@ Deno.serve(async (req) => {
         } else {
           finalColuna = existing.coluna;
           finalPosicao = existing.posicao;
-        }
-      }
-
-      // If name is still unidentified but we have GC data, fix it
-      if (item.equipamento_nome === "Equipamento não identificado" || item.equipamento_nome === "S") {
-        const gcName = item.gc_os?.gc_cliente || item.gc_orcamento?.gc_cliente || "";
-        if (gcName) {
-          item.equipamento_nome = gcName;
-          item.cliente = gcName;
         }
       }
 
