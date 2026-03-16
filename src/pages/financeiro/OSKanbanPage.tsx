@@ -408,7 +408,7 @@ export default function OSKanbanPage() {
     if (!items.length) return;
 
     const agendadoItems: OSItem[] = [];
-    const situacaoMap: Record<string, { items: OSItem[]; color: string; sitId: string }> = {};
+    const situacaoMap: Record<string, { items: OSItem[]; color: string; sitId: string; displayName: string }> = {};
 
     for (const item of items) {
       const statusAuvo = (item.status_auvo || "").toLowerCase();
@@ -417,22 +417,25 @@ export default function OSKanbanPage() {
         continue;
       }
 
-      const sit = item.gc_os_situacao || "Sem situação";
-      if (!situacaoMap[sit]) {
-        situacaoMap[sit] = {
+      const sitRaw = item.gc_os_situacao || "Sem situação";
+      // Normalize key to avoid duplicates from accents/whitespace differences
+      const sitKey = sitRaw.trim().toUpperCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+      if (!situacaoMap[sitKey]) {
+        situacaoMap[sitKey] = {
           items: [],
           color: item.gc_os_cor_situacao || "#6b7280",
           sitId: item.gc_os_situacao_id || "",
+          displayName: sitRaw.trim(),
         };
       }
-      situacaoMap[sit].items.push(item);
+      situacaoMap[sitKey].items.push(item);
     }
 
     const osCols: KanbanColumn[] = Object.entries(situacaoMap)
       .sort(([a], [b]) => a.localeCompare(b))
       .map(([sit, data]) => ({
         id: `sit_${data.sitId || sit.replace(/\s+/g, "_")}`,
-        title: sit,
+        title: data.displayName,
         color: data.color,
         items: data.items,
       }));
