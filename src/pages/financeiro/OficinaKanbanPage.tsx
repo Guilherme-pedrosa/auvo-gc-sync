@@ -261,7 +261,7 @@ export default function OficinaKanbanPage() {
           else col = "em_execucao";
         } else if (cleanItem.gc_orcamento) {
           const orcSit = (cleanItem.gc_orcamento.gc_situacao || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-          if (orcSit.includes("aprov")) col = "aprovado";
+          if (orcSit.includes("aprov") && !orcSit.includes("aguardando")) col = "aprovado";
           else col = "orcamento";
         } else if (cleanItem.questionario_preenchido) {
           col = "aguardando_os";
