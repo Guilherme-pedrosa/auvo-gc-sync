@@ -585,7 +585,7 @@ Deno.serve(async (req) => {
     // Build items — entry tasks define cards, sibling tasks provide GC links
     const items = entryTasks.map((task: any) => {
       const taskId = String(task.taskID || "");
-      const eqIds: number[] = task.equipmentsId || [];
+      const eqIds = extractTaskEquipmentIds(task);
 
       // Find GC OS/Orçamento via SIBLING tasks (same equipment, different task)
       let gcOsMatch: any = null;
