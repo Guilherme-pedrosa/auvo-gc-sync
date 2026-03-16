@@ -460,13 +460,21 @@ export default function HorasTrabalhadasTab({
       </Card>
 
       {/* Summary cards */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
         <Card>
           <CardHeader className="py-3 px-4">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Horas Totais</CardTitle>
+            <CardTitle className="text-sm font-medium text-muted-foreground">Horas Trabalhadas</CardTitle>
           </CardHeader>
           <CardContent className="px-4 pb-3">
             <p className="text-2xl font-bold text-foreground">{totalHoras.toFixed(1)}h</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="py-3 px-4">
+            <CardTitle className="text-sm font-medium text-muted-foreground">Horas Deslocamento</CardTitle>
+          </CardHeader>
+          <CardContent className="px-4 pb-3">
+            <p className="text-2xl font-bold text-foreground">{totalDeslocamento.toFixed(1)}h</p>
           </CardContent>
         </Card>
         <Card>
