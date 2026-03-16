@@ -200,7 +200,7 @@ function autoAssignColumn(item: any): string {
     if (sit.includes("peca") || sit.includes("material") || sit.includes("solicit")) return "pecas_solicitadas";
     if (item.gc_orcamento) {
       const orcSit = (item.gc_orcamento.gc_situacao || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-      if (orcSit.includes("aprov")) return "aprovado";
+      if (orcSit.includes("aprov") && !orcSit.includes("aguardando")) return "aprovado";
       return "orcamento";
     }
     return "em_execucao";
