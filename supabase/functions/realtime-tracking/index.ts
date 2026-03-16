@@ -151,10 +151,11 @@ Deno.serve(async (req) => {
 
     const bearerToken = await auvoLogin(auvoApiKey, auvoApiToken);
 
-    // Fetch Auvo tasks and GC OS map in parallel
-    const [tasks, gcOsMap] = await Promise.all([
+    // Fetch Auvo tasks + GC OS + GC Orçamentos in parallel
+    const [tasks, gcOsMap, gcOrcMap] = await Promise.all([
       fetchAllTasks(bearerToken, targetDate, targetDate),
       gcHeaders ? fetchGcOsMap(gcHeaders) : Promise.resolve({} as Record<string, { codigo: string; valor: string }>),
+      gcHeaders ? fetchGcOrcMap(gcHeaders) : Promise.resolve({} as Record<string, { codigo: string; valor: string }>),
     ]);
 
     console.log(`[realtime-tracking] Total: ${tasks.length} tarefas`);
