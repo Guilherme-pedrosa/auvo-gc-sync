@@ -379,6 +379,7 @@ Deno.serve(async (req) => {
       if (manualOsTaskId) {
         dados.os_task_id = manualOsTaskId;
         dados.os_task_link = `https://app2.auvo.com.br/relatorioTarefas/DetalheTarefa/${manualOsTaskId}`;
+        dados.manual_os_task_linked = true;
       }
 
       // Try to fetch GC OS by code (accepts formats like "OS-123", "123", "#123")
