@@ -1,7 +1,8 @@
 import { useNavigate, useLocation } from "react-router-dom";
 import { cn } from "@/lib/utils";
+import { useAuth } from "@/hooks/useAuth";
 import {
-  RefreshCw, BarChart3, Kanban, LayoutDashboard, ListChecks, Radio, Wrench, CalendarDays, ChevronDown
+  RefreshCw, BarChart3, Kanban, LayoutDashboard, ListChecks, Radio, Wrench, CalendarDays, ChevronDown, Users, LogOut, Shield
 } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useState } from "react";
@@ -45,17 +46,16 @@ const navGroups: NavGroup[] = [
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   const navigate = useNavigate();
   const location = useLocation();
+  const { profile, isAdmin, signOut } = useAuth();
 
-  // Auto-expand groups that contain the active route
+  const allGroups: NavGroup[] = isAdmin
+    ? [...navGroups, { label: "Administração", items: [{ label: "Usuários", icon: Users, path: "/admin/usuarios" }] }]
+    : navGroups;
+
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(() => {
     const initial = new Set<string>();
-    navGroups.forEach((g) => {
-      if (g.items.some((i) => i.path === location.pathname)) {
-        initial.add(g.label);
-      }
-    });
-    // Always expand single-item groups
-    navGroups.forEach((g) => {
+    allGroups.forEach((g) => {
+      if (g.items.some((i) => i.path === location.pathname)) initial.add(g.label);
       if (g.items.length === 1) initial.add(g.label);
     });
     return initial;
@@ -70,57 +70,45 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     });
   };
 
+  const handleSignOut = async () => {
+    await signOut();
+    navigate("/login");
+  };
+
   return (
     <div className="flex min-h-screen">
-      {/* Sidebar */}
       <aside className="w-16 lg:w-56 flex-shrink-0 bg-sidebar border-r border-sidebar-border flex flex-col">
-        {/* Logo */}
         <div className="h-14 flex items-center px-4 border-b border-sidebar-border">
           <div className="flex items-center gap-2.5">
             <div className="h-8 w-8 rounded-lg bg-sidebar-primary flex items-center justify-center flex-shrink-0">
               <span className="text-sidebar-primary-foreground font-bold text-sm">W</span>
             </div>
-            <span className="text-sidebar-foreground font-semibold text-sm hidden lg:block">
-              WeDo
-            </span>
+            <span className="text-sidebar-foreground font-semibold text-sm hidden lg:block">WeDo</span>
           </div>
         </div>
 
-        {/* Nav */}
         <nav className="flex-1 py-3 px-2 space-y-3 overflow-y-auto">
-          {navGroups.map((group) => {
+          {allGroups.map((group) => {
             const isExpanded = expandedGroups.has(group.label);
             const hasActiveItem = group.items.some((i) => i.path === location.pathname);
 
             return (
               <div key={group.label}>
-                {/* Group header — hidden on mobile (icon-only sidebar) */}
                 <button
                   onClick={() => toggleGroup(group.label)}
                   className={cn(
                     "w-full hidden lg:flex items-center justify-between rounded-md px-2.5 py-1.5 text-[11px] font-semibold uppercase tracking-wider transition-colors",
-                    hasActiveItem
-                      ? "text-sidebar-primary"
-                      : "text-sidebar-foreground/40 hover:text-sidebar-foreground/60"
+                    hasActiveItem ? "text-sidebar-primary" : "text-sidebar-foreground/40 hover:text-sidebar-foreground/60"
                   )}
                 >
                   <span>{group.label}</span>
-                  <ChevronDown
-                    className={cn(
-                      "h-3 w-3 transition-transform duration-200",
-                      !isExpanded && "-rotate-90"
-                    )}
-                  />
+                  <ChevronDown className={cn("h-3 w-3 transition-transform duration-200", !isExpanded && "-rotate-90")} />
                 </button>
 
-                {/* Items */}
-                <div
-                  className={cn(
-                    "space-y-0.5 mt-0.5 overflow-hidden transition-all duration-200",
-                    // On desktop, respect collapsed state; on mobile always show icons
-                    !isExpanded ? "lg:max-h-0 lg:opacity-0" : "lg:max-h-96 lg:opacity-100"
-                  )}
-                >
+                <div className={cn(
+                  "space-y-0.5 mt-0.5 overflow-hidden transition-all duration-200",
+                  !isExpanded ? "lg:max-h-0 lg:opacity-0" : "lg:max-h-96 lg:opacity-100"
+                )}>
                   {group.items.map((item) => {
                     const isActive = location.pathname === item.path;
                     return (
@@ -139,9 +127,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
                             <span className="hidden lg:block truncate">{item.label}</span>
                           </button>
                         </TooltipTrigger>
-                        <TooltipContent side="right" className="lg:hidden">
-                          {item.label}
-                        </TooltipContent>
+                        <TooltipContent side="right" className="lg:hidden">{item.label}</TooltipContent>
                       </Tooltip>
                     );
                   })}
@@ -151,21 +137,38 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
           })}
         </nav>
 
-        {/* Footer */}
-        <div className="p-3 border-t border-sidebar-border">
+        {/* User footer */}
+        <div className="p-3 border-t border-sidebar-border space-y-2">
           <div className="flex items-center gap-2 px-2">
             <div className="h-7 w-7 rounded-full bg-sidebar-accent flex items-center justify-center flex-shrink-0">
-              <span className="text-[10px] text-sidebar-foreground/60 font-medium">v1</span>
+              <span className="text-[10px] text-sidebar-foreground/80 font-medium">
+                {profile?.nome?.charAt(0)?.toUpperCase() || "?"}
+              </span>
             </div>
-            <span className="text-xs text-sidebar-foreground/50 hidden lg:block">WeDo v1.0</span>
+            <div className="hidden lg:block min-w-0 flex-1">
+              <p className="text-xs text-sidebar-foreground truncate">{profile?.nome || "Usuário"}</p>
+              <p className="text-[10px] text-sidebar-foreground/50 flex items-center gap-1">
+                {isAdmin && <Shield className="h-2.5 w-2.5" />}
+                {isAdmin ? "Admin" : "Usuário"}
+              </p>
+            </div>
           </div>
+          <Tooltip delayDuration={0}>
+            <TooltipTrigger asChild>
+              <button
+                onClick={handleSignOut}
+                className="w-full flex items-center gap-2 px-2 py-1.5 rounded-md text-sidebar-foreground/50 hover:text-sidebar-foreground hover:bg-sidebar-accent/50 transition-colors"
+              >
+                <LogOut className="h-4 w-4 flex-shrink-0" />
+                <span className="hidden lg:block text-xs">Sair</span>
+              </button>
+            </TooltipTrigger>
+            <TooltipContent side="right" className="lg:hidden">Sair</TooltipContent>
+          </Tooltip>
         </div>
       </aside>
 
-      {/* Main content */}
-      <main className="flex-1 min-w-0 overflow-auto">
-        {children}
-      </main>
+      <main className="flex-1 min-w-0 overflow-auto">{children}</main>
     </div>
   );
 }
