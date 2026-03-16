@@ -295,7 +295,111 @@ Deno.serve(async (req) => {
       });
     }
 
-    // === MODE: SYNC ===
+    // === MODE: SAVE_MANUAL_LINK ===
+    if (mode === "save_manual_link") {
+      const auvoTaskId = body.auvo_task_id;
+      const manualOsTaskId = body.os_task_id || null;
+      const manualGcOsCode = body.gc_os_code || null;
+      const manualGcOrcCode = body.gc_orc_code || null;
+
+      if (!auvoTaskId) {
+        return new Response(JSON.stringify({ error: "auvo_task_id é obrigatório" }), {
+          status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      // Read current cached item
+      const { data: cached } = await sbClient
+        .from("kanban_oficina_cache")
+        .select("dados")
+        .eq("auvo_task_id", auvoTaskId)
+        .single();
+
+      if (!cached) {
+        return new Response(JSON.stringify({ error: "Card não encontrado no cache" }), {
+          status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      const dados = cached.dados as any;
+
+      // Update manual links
+      if (manualOsTaskId) {
+        dados.os_task_id = manualOsTaskId;
+        dados.os_task_link = `https://app2.auvo.com.br/relatorioTarefas/DetalheTarefa/${manualOsTaskId}`;
+      }
+
+      // Try to fetch GC OS by code
+      if (manualGcOsCode) {
+        const gcAccessToken = Deno.env.get("GC_ACCESS_TOKEN");
+        const gcSecretToken = Deno.env.get("GC_SECRET_TOKEN");
+        if (gcAccessToken && gcSecretToken) {
+          const gcH = { "access-token": gcAccessToken, "secret-access-token": gcSecretToken, "Content-Type": "application/json" };
+          const url = `${GC_BASE_URL}/api/ordens_servicos?codigo=${encodeURIComponent(manualGcOsCode)}&limite=5`;
+          const resp = await rateLimitedFetch(url, { headers: gcH }, "gc");
+          if (resp.ok) {
+            const gcData = await resp.json();
+            const records: any[] = Array.isArray(gcData?.data) ? gcData.data : [];
+            const os = records.find((r: any) => String(r.codigo) === manualGcOsCode);
+            if (os) {
+              dados.gc_os = {
+                gc_os_id: String(os.id),
+                gc_os_codigo: String(os.codigo || ""),
+                gc_cliente: String(os.nome_cliente || ""),
+                gc_situacao: String(os.nome_situacao || ""),
+                gc_situacao_id: String(os.situacao_id || ""),
+                gc_cor_situacao: String(os.cor_situacao || ""),
+                gc_valor_total: String(os.valor_total || "0"),
+                gc_vendedor: String(os.nome_vendedor || ""),
+                gc_data: String(os.data || ""),
+                gc_link: `https://gestaoclick.com/ordens_servicos/editar/${os.id}?retorno=%2Fordens_servicos`,
+              };
+            }
+          }
+        }
+      }
+
+      // Try to fetch GC Orçamento by code
+      if (manualGcOrcCode) {
+        const gcAccessToken = Deno.env.get("GC_ACCESS_TOKEN");
+        const gcSecretToken = Deno.env.get("GC_SECRET_TOKEN");
+        if (gcAccessToken && gcSecretToken) {
+          const gcH = { "access-token": gcAccessToken, "secret-access-token": gcSecretToken, "Content-Type": "application/json" };
+          const url = `${GC_BASE_URL}/api/orcamentos?codigo=${encodeURIComponent(manualGcOrcCode)}&limite=5`;
+          const resp = await rateLimitedFetch(url, { headers: gcH }, "gc");
+          if (resp.ok) {
+            const gcData = await resp.json();
+            const records: any[] = Array.isArray(gcData?.data) ? gcData.data : [];
+            const orc = records.find((r: any) => String(r.codigo) === manualGcOrcCode);
+            if (orc) {
+              dados.gc_orcamento = {
+                gc_orcamento_id: String(orc.id),
+                gc_orcamento_codigo: String(orc.codigo || ""),
+                gc_cliente: String(orc.nome_cliente || ""),
+                gc_situacao: String(orc.nome_situacao || ""),
+                gc_situacao_id: String(orc.situacao_id || ""),
+                gc_cor_situacao: String(orc.cor_situacao || ""),
+                gc_valor_total: String(orc.valor_total || "0"),
+                gc_vendedor: String(orc.nome_vendedor || ""),
+                gc_data: String(orc.data || ""),
+                gc_link: `https://gestaoclick.com/orcamentos_servicos/editar/${orc.id}?retorno=%2Forcamentos_servicos`,
+              };
+            }
+          }
+        }
+      }
+
+      // Save updated dados
+      await sbClient
+        .from("kanban_oficina_cache")
+        .update({ dados, atualizado_em: new Date().toISOString() })
+        .eq("auvo_task_id", auvoTaskId);
+
+      return new Response(JSON.stringify({ ok: true, dados }), {
+        status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
     const auvoApiKey = Deno.env.get("AUVO_APP_KEY");
     const auvoApiToken = Deno.env.get("AUVO_TOKEN");
     const gcAccessToken = Deno.env.get("GC_ACCESS_TOKEN");
