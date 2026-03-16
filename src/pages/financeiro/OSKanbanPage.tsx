@@ -230,7 +230,11 @@ export default function OSKanbanPage() {
         const rawTaskDate = taskObj?.taskDate || taskObj?.task_date || taskObj?.date || null;
         if (rawTaskDate) {
           const parsedDate = new Date(rawTaskDate);
-          if (!isNaN(parsedDate.getTime())) setEditDate(parsedDate);
+          if (!isNaN(parsedDate.getTime())) {
+            setEditDate(parsedDate);
+            setEditHour(String(parsedDate.getHours()).padStart(2, "0"));
+            setEditMinute(String(parsedDate.getMinutes()).padStart(2, "0"));
+          }
         }
         const rawUserTo = taskObj?.idUserTo ?? taskObj?.id_user_to ?? null;
         if (rawUserTo) setEditTecnicoId(String(rawUserTo));
