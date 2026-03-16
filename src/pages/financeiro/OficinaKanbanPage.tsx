@@ -258,11 +258,10 @@ export default function OficinaKanbanPage() {
           if (sit.includes("conclu") || sit.includes("finaliz") || sit.includes("entregue")) col = "concluido";
           else if (sit.includes("execu")) col = "em_execucao";
           else if (sit.includes("peca") || sit.includes("material") || sit.includes("solicit")) col = "pecas_solicitadas";
+          else if (cleanItem.gc_orcamento) col = mapOrcSitToCol(cleanItem.gc_orcamento.gc_situacao);
           else col = "em_execucao";
         } else if (cleanItem.gc_orcamento) {
-          const orcSit = (cleanItem.gc_orcamento.gc_situacao || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-          if (orcSit.includes("aprov") && !orcSit.includes("aguardando")) col = "aprovado";
-          else col = "orcamento";
+          col = mapOrcSitToCol(cleanItem.gc_orcamento.gc_situacao);
         } else if (cleanItem.questionario_preenchido) {
           col = "aguardando_os";
         }
