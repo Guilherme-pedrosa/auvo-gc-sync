@@ -842,8 +842,7 @@ function DayView({
     </div>
   );
 }
-
-
+function TaskCard({
   tarefa,
   onDragStart,
   isMoving,
