@@ -224,6 +224,30 @@ function normalizeCode(value: string): string {
   return String(value || "").trim().toUpperCase().replace(/[^A-Z0-9]/g, "");
 }
 
+function normalizeText(value: string): string {
+  return String(value || "")
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9\s]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function extractTaskEquipmentIds(task: any): number[] {
+  const fromDirect = Array.isArray(task?.equipmentsId) ? task.equipmentsId :
+    Array.isArray(task?.equipmentsID) ? task.equipmentsID :
+    Array.isArray(task?.equipmentIds) ? task.equipmentIds :
+    Array.isArray(task?.equipments) ? task.equipments.map((e: any) => e?.equipmentID ?? e?.equipmentId ?? e?.id) :
+    [];
+
+  const parsed = fromDirect
+    .map((id: any) => Number(id))
+    .filter((n: number) => Number.isFinite(n) && n > 0);
+
+  return Array.from(new Set(parsed));
+}
+
 function isUnknownEquipmentName(name: string): boolean {
   const n = String(name || "").trim().toLowerCase();
   return !n || n === "s" || n === "equipamento não identificado" || n === "equipamento nao identificado";
