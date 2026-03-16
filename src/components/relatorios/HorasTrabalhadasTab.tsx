@@ -47,9 +47,9 @@ const CHART_COLORS = [
 export default function HorasTrabalhadasTab({
   data, isLoading, allClientes, allTecnicos, allTiposTarefa,
   grupos, membros, valorHoraConfigs,
+  dateFrom, dateTo, onDateFromChange, onDateToChange,
 }: Props) {
-  const today = new Date();
-  const [dateFrom, setDateFrom] = useState<Date>(startOfMonth(today));
+  const [filterTecnico, setFilterTecnico] = useState("todos");
   const [dateTo, setDateTo] = useState<Date>(endOfMonth(today));
   const [filterTecnico, setFilterTecnico] = useState("todos");
   const [filterCliente, setFilterCliente] = useState("todos");
