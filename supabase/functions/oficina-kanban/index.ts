@@ -358,7 +358,7 @@ Deno.serve(async (req) => {
       // Read current cached item
       const { data: cached } = await sbClient
         .from("kanban_oficina_cache")
-        .select("dados")
+        .select("dados, coluna")
         .eq("auvo_task_id", auvoTaskId)
         .single();
 
@@ -369,6 +369,7 @@ Deno.serve(async (req) => {
       }
 
       const dados = cached.dados as any;
+      const preservedColuna = String(cached.coluna || autoAssignColumn(dados));
       let osMatched = !manualGcOsCode;
       let orcMatched = !manualGcOrcCode;
 
@@ -468,15 +469,12 @@ Deno.serve(async (req) => {
         dados.data_entrada = gcData;
       }
 
-      // Auto-reassign column based on new data
-      const newCol = autoAssignColumn(dados);
-
       await sbClient
         .from("kanban_oficina_cache")
-        .update({ dados, coluna: newCol, atualizado_em: new Date().toISOString() })
+        .update({ dados, atualizado_em: new Date().toISOString() })
         .eq("auvo_task_id", auvoTaskId);
 
-      return new Response(JSON.stringify({ ok: true, dados, coluna: newCol }), {
+      return new Response(JSON.stringify({ ok: true, dados, coluna: preservedColuna }), {
         status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
