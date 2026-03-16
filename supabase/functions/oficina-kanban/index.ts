@@ -208,7 +208,7 @@ function autoAssignColumn(item: any): string {
   
   if (item.gc_orcamento) {
     const orcSit = (item.gc_orcamento.gc_situacao || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-    if (orcSit.includes("aprov")) return "aprovado";
+    if (orcSit.includes("aprov") && !orcSit.includes("aguardando")) return "aprovado";
     return "orcamento";
   }
 
