@@ -611,7 +611,7 @@ export default function OficinaKanbanPage() {
                                         className={`rounded-md border bg-card shadow-sm transition-shadow cursor-pointer ${
                                           snapshot.isDragging ? "shadow-lg ring-2 ring-primary/20" : "hover:shadow-md"
                                         }`}
-                                        onClick={() => setSelectedCard(item)}
+                                        onClick={() => { setSelectedCard(item); setManualOsTaskId(""); setManualGcOsCode(""); setManualGcOrcCode(""); }}
                                       >
                                         <div className="px-3 py-2 space-y-1.5">
                                           {/* Equipment name */}
