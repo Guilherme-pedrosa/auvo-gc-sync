@@ -364,6 +364,7 @@ export default function RealtimeTrackingPage() {
             <p className="text-xs text-muted-foreground">
               Acompanhamento em tempo real — Auvo
             </p>
+            <LastSyncBadge className="mt-0.5" />
           </div>
 
           <div className="flex items-center gap-2">
