@@ -174,7 +174,7 @@ export default function HorasTrabalhadasTab({
       clienteEntry.tarefas++;
       clienteEntry.valor += horas * rate;
 
-      const tipo = t.descricao || "Sem tipo";
+      const tipo = (t.descricao || "").trim() || "Sem tipo";
       clienteEntry.tipos.set(tipo, (clienteEntry.tipos.get(tipo) || 0) + horas);
       clienteEntry.tasks.push({
         auvo_task_id: t.auvo_task_id || "",
