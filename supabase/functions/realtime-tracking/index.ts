@@ -238,6 +238,9 @@ Deno.serve(async (req) => {
 
       const auvoTaskId = String(task.taskID || task.id || "");
       const gcOs = gcOsMap[auvoTaskId] || null;
+      const gcOrc = gcOrcMap[auvoTaskId] || null;
+      const gcDoc = gcOs || gcOrc;
+      const gcDocTipo = gcOs ? "OS" : (gcOrc ? "ORÇ" : "");
 
       techMap[techId].tarefas.push({
         taskId: auvoTaskId,
@@ -253,8 +256,9 @@ Deno.serve(async (req) => {
         pendencia: String(task.pendency ?? task.pendencia ?? "").trim(),
         descricao: String(task.description || task.orientation || "").substring(0, 150),
         duration: String(task.duration || ""),
-        gcOsCodigo: gcOs?.codigo || "",
-        gcOsValor: gcOs?.valor || "",
+        gcOsCodigo: gcDoc?.codigo || "",
+        gcOsValor: gcDoc?.valor || "",
+        gcOsTipo: gcDocTipo,
       });
     }
 
