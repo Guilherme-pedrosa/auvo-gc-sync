@@ -417,7 +417,7 @@ Deno.serve(async (req) => {
         const gcSecretToken = Deno.env.get("GC_SECRET_TOKEN");
         if (gcAccessToken && gcSecretToken) {
           const normalizedInput = normalizeCode(manualGcOrcCode);
-          const codeForQuery = String(manualGcOrcCode).replace(/[^0-9A-Za-z-]/g, "") || String(manualGcOrcCode);
+          const codeForQuery = normalizeCode(manualGcOrcCode) || String(manualGcOrcCode);
           const gcH = { "access-token": gcAccessToken, "secret-access-token": gcSecretToken, "Content-Type": "application/json" };
           const url = `${GC_BASE_URL}/api/orcamentos?codigo=${encodeURIComponent(codeForQuery)}&limite=20`;
           const resp = await rateLimitedFetch(url, { headers: gcH }, "gc");
