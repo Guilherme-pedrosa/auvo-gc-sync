@@ -84,7 +84,7 @@ export default function HorasTrabalhadasTab({
     const toStr = format(dateTo, "yyyy-MM-dd");
 
     return data.filter((t) => {
-      if (!t.data_tarefa || !t.duracao_decimal || Number(t.duracao_decimal) <= 0) return false;
+      if (!t.data_tarefa || t.duracao_decimal == null) return false;
       if (t.data_tarefa < fromStr || t.data_tarefa > toStr) return false;
 
       // Must have check_out (completed work)
