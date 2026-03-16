@@ -40,15 +40,7 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
 }
 
 const AppRoutes = () => {
-  const { user, loading } = useAuth();
-
-  if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-background">
-        <Loader2 className="h-8 w-8 animate-spin text-primary" />
-      </div>
-    );
-  }
+  const { user } = useAuth();
 
   return (
     <Routes>
