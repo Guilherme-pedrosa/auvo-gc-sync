@@ -651,31 +651,8 @@ Deno.serve(async (req) => {
         }
       }
 
-      // FALLBACK: if equipment matching didn't find OS/Orç, try client+tech matching
-      // This catches cases where the execution task doesn't have the same equipmentId
-      if (!gcOsMatch || !gcOrcMatch) {
-        const baseClient = normalizeText(String(task.customerDescription || task.customerName || task.customer?.tradeName || ""));
-        const baseTech = normalizeText(String(task.userToName || ""));
-        const key = `${baseClient}|||${baseTech}`;
-        const candidateIds = clientTechToTasks[key] || [];
-
-        for (const candId of candidateIds) {
-          if (candId === taskId) continue;
-
-          if (!gcOsMatch && gcOsMap[candId] && !claimedOs.has(gcOsMap[candId].gc_os_id)) {
-            gcOsMatch = gcOsMap[candId];
-            osSiblingTaskId = candId;
-            claimedOs.add(gcOsMatch.gc_os_id);
-            console.log(`[oficina-kanban] Task ${taskId} → OS found via client+tech fallback (task ${candId})`);
-          }
-          if (!gcOrcMatch && gcOrcMap[candId] && !claimedOrc.has(gcOrcMap[candId].gc_orcamento_id)) {
-            gcOrcMatch = gcOrcMap[candId];
-            claimedOrc.add(gcOrcMatch.gc_orcamento_id);
-            console.log(`[oficina-kanban] Task ${taskId} → Orçamento found via client+tech fallback (task ${candId})`);
-          }
-          if (gcOsMatch && gcOrcMatch) break;
-        }
-      }
+      // NOTE: client+tech fallback removed — causes false matches for clients with multiple equipment.
+      // If equipment ID matching fails, the user must link OS/Orçamento manually via the UI.
 
       const targetQ = (task.questionnaires || []).find(
         (q: any) => String(q.questionnaireId) === QUESTIONNAIRE_ID
