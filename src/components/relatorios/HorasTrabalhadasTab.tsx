@@ -225,10 +225,25 @@ export default function HorasTrabalhadasTab({
     }));
   }, [filtered]);
 
+  const tipoOptions = useMemo(() => {
+    const map = new Map<string, string>();
+
+    for (const tipo of allTiposTarefa) {
+      const label = getTipoLabel(tipo);
+      const key = getTipoKey(label);
+      if (!map.has(key)) map.set(key, label);
+    }
+
+    return Array.from(map.entries())
+      .map(([key, label]) => ({ key, label }))
+      .sort((a, b) => a.label.localeCompare(b.label, "pt-BR"));
+  }, [allTiposTarefa]);
+
   const filteredTipos = useMemo(() => {
-    if (!searchTipo) return allTiposTarefa;
-    return allTiposTarefa.filter((t) => t.toLowerCase().includes(searchTipo.toLowerCase()));
-  }, [allTiposTarefa, searchTipo]);
+    if (!searchTipo) return tipoOptions;
+    const term = searchTipo.toLocaleLowerCase("pt-BR");
+    return tipoOptions.filter((t) => t.label.toLocaleLowerCase("pt-BR").includes(term));
+  }, [tipoOptions, searchTipo]);
 
   const handleExportPDF = () => {
     const doc = new jsPDF();
