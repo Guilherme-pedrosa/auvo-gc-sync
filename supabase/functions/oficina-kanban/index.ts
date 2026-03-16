@@ -221,7 +221,42 @@ function autoAssignColumn(item: any): string {
 }
 
 function normalizeCode(value: string): string {
-  return String(value || "").trim().toUpperCase().replace(/[^A-Z0-9]/g, "");
+  const raw = String(value || "")
+    .trim()
+    .toUpperCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "");
+
+  const digitGroups = raw.match(/\d+/g);
+  if (digitGroups && digitGroups.length > 0) {
+    return digitGroups[digitGroups.length - 1];
+  }
+
+  return raw.replace(/[^A-Z0-9]/g, "");
+}
+
+function normalizeText(value: string): string {
+  return String(value || "")
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9\s]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function extractTaskEquipmentIds(task: any): number[] {
+  const fromDirect = Array.isArray(task?.equipmentsId) ? task.equipmentsId :
+    Array.isArray(task?.equipmentsID) ? task.equipmentsID :
+    Array.isArray(task?.equipmentIds) ? task.equipmentIds :
+    Array.isArray(task?.equipments) ? task.equipments.map((e: any) => e?.equipmentID ?? e?.equipmentId ?? e?.id) :
+    [];
+
+  const parsed = fromDirect
+    .map((id: any) => Number(id))
+    .filter((n: number) => Number.isFinite(n) && n > 0);
+
+  return Array.from(new Set(parsed));
 }
 
 function isUnknownEquipmentName(name: string): boolean {
@@ -349,7 +384,7 @@ Deno.serve(async (req) => {
         const gcSecretToken = Deno.env.get("GC_SECRET_TOKEN");
         if (gcAccessToken && gcSecretToken) {
           const normalizedInput = normalizeCode(manualGcOsCode);
-          const codeForQuery = String(manualGcOsCode).replace(/[^0-9A-Za-z-]/g, "") || String(manualGcOsCode);
+          const codeForQuery = normalizeCode(manualGcOsCode) || String(manualGcOsCode);
           const gcH = { "access-token": gcAccessToken, "secret-access-token": gcSecretToken, "Content-Type": "application/json" };
           const url = `${GC_BASE_URL}/api/ordens_servicos?codigo=${encodeURIComponent(codeForQuery)}&limite=20`;
           const resp = await rateLimitedFetch(url, { headers: gcH }, "gc");
@@ -382,7 +417,7 @@ Deno.serve(async (req) => {
         const gcSecretToken = Deno.env.get("GC_SECRET_TOKEN");
         if (gcAccessToken && gcSecretToken) {
           const normalizedInput = normalizeCode(manualGcOrcCode);
-          const codeForQuery = String(manualGcOrcCode).replace(/[^0-9A-Za-z-]/g, "") || String(manualGcOrcCode);
+          const codeForQuery = normalizeCode(manualGcOrcCode) || String(manualGcOrcCode);
           const gcH = { "access-token": gcAccessToken, "secret-access-token": gcSecretToken, "Content-Type": "application/json" };
           const url = `${GC_BASE_URL}/api/orcamentos?codigo=${encodeURIComponent(codeForQuery)}&limite=20`;
           const resp = await rateLimitedFetch(url, { headers: gcH }, "gc");
@@ -413,8 +448,8 @@ Deno.serve(async (req) => {
         const errors: string[] = [];
         if (!osMatched) errors.push(`OS não encontrada para o código "${manualGcOsCode}"`);
         if (!orcMatched) errors.push(`Orçamento não encontrado para o código "${manualGcOrcCode}"`);
-        return new Response(JSON.stringify({ error: errors.join(" | ") }), {
-          status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        return new Response(JSON.stringify({ ok: false, error: errors.join(" | ") }), {
+          status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
 
@@ -513,7 +548,7 @@ Deno.serve(async (req) => {
     const equipToTasks: Record<number, string[]> = {};
     for (const task of allAuvoTasks) {
       const taskId = String(task.taskID || "");
-      const eqIds: number[] = task.equipmentsId || [];
+      const eqIds = extractTaskEquipmentIds(task);
       for (const eqId of eqIds) {
         if (!equipToTasks[eqId]) equipToTasks[eqId] = [];
         equipToTasks[eqId].push(taskId);
@@ -523,7 +558,7 @@ Deno.serve(async (req) => {
     // Collect all equipment IDs from entry tasks to fetch names
     const allEquipmentIds = new Set<number>();
     for (const task of entryTasks) {
-      const eqIds: number[] = task.equipmentsId || [];
+      const eqIds = extractTaskEquipmentIds(task);
       for (const id of eqIds) allEquipmentIds.add(id);
     }
 
@@ -556,12 +591,12 @@ Deno.serve(async (req) => {
     // Track claimed GC documents to prevent one OS/Orç being assigned to multiple cards
     const claimedOs = new Set<string>();
     const claimedOrc = new Set<string>();
-    const claimedSiblings = new Set<string>();
+    const taskById = new Map(allAuvoTasks.map((t: any) => [String(t.taskID || ""), t]));
 
     // Build items — entry tasks define cards, sibling tasks provide GC links
     const items = entryTasks.map((task: any) => {
       const taskId = String(task.taskID || "");
-      const eqIds: number[] = task.equipmentsId || [];
+      const eqIds = extractTaskEquipmentIds(task);
 
       // Find GC OS/Orçamento via SIBLING tasks (same equipment, different task)
       let gcOsMatch: any = null;
@@ -578,39 +613,39 @@ Deno.serve(async (req) => {
         claimedOrc.add(gcOrcMatch.gc_orcamento_id);
       }
 
-      // Then check sibling tasks that share the SAME equipment
-      // Only match if sibling has EXACTLY this equipment (not multi-equipment tasks ambiguously)
+      // Then check sibling tasks that share the same equipment.
+      // Relaxed rule: if sibling has multiple equipamentos, still allow when cliente+técnico batem.
       if (!gcOsMatch || !gcOrcMatch) {
+        const baseClient = normalizeText(String(task.customerDescription || task.customerName || task.customer?.tradeName || ""));
+        const baseTech = normalizeText(String(task.userToName || ""));
+
         for (const eqId of eqIds) {
           const siblingTaskIds = equipToTasks[eqId] || [];
           for (const sibId of siblingTaskIds) {
             if (sibId === taskId) continue;
 
-            // Check if this sibling task has ONLY this equipment (or few)
-            // to avoid cross-contamination from multi-equipment tasks
-            const sibTask = allAuvoTasks.find((t: any) => String(t.taskID) === sibId);
-            const sibEqIds: number[] = sibTask?.equipmentsId || [];
+            const sibTask = taskById.get(sibId);
+            const sibEqIds = extractTaskEquipmentIds(sibTask);
+            if (!sibEqIds.includes(eqId)) continue;
 
-            // Only match if sibling shares THIS specific equipment
-            // and hasn't been claimed by another entry task for a DIFFERENT equipment
-            const sibKey = `${sibId}:${eqId}`;
+            const sibClient = normalizeText(String(sibTask?.customerDescription || sibTask?.customerName || sibTask?.customer?.tradeName || ""));
+            const sibTech = normalizeText(String(sibTask?.userToName || ""));
+            const strictEquipmentMatch = sibEqIds.length <= 1 || sibEqIds.every((id: number) => eqIds.includes(id));
+            const sameClientAndTech = !!baseClient && baseClient === sibClient && !!baseTech && baseTech === sibTech;
+            const canUseSibling = strictEquipmentMatch || sameClientAndTech;
+
+            if (!canUseSibling) continue;
 
             if (!gcOsMatch && gcOsMap[sibId] && !claimedOs.has(gcOsMap[sibId].gc_os_id)) {
-              // Prefer siblings that only have this one equipment
-              if (sibEqIds.length <= 1 || sibEqIds.every(id => eqIds.includes(id))) {
-                gcOsMatch = gcOsMap[sibId];
-                osSiblingTaskId = sibId;
-                claimedOs.add(gcOsMatch.gc_os_id);
-                claimedSiblings.add(sibKey);
-                console.log(`[oficina-kanban] Task ${taskId} → OS found via sibling task ${sibId} (equipment ${eqId})`);
-              }
+              gcOsMatch = gcOsMap[sibId];
+              osSiblingTaskId = sibId;
+              claimedOs.add(gcOsMatch.gc_os_id);
+              console.log(`[oficina-kanban] Task ${taskId} → OS found via sibling ${sibId} (eq ${eqId}, strict=${strictEquipmentMatch}, sameClientTech=${sameClientAndTech})`);
             }
             if (!gcOrcMatch && gcOrcMap[sibId] && !claimedOrc.has(gcOrcMap[sibId].gc_orcamento_id)) {
-              if (sibEqIds.length <= 1 || sibEqIds.every(id => eqIds.includes(id))) {
-                gcOrcMatch = gcOrcMap[sibId];
-                claimedOrc.add(gcOrcMatch.gc_orcamento_id);
-                console.log(`[oficina-kanban] Task ${taskId} → Orçamento found via sibling task ${sibId} (equipment ${eqId})`);
-              }
+              gcOrcMatch = gcOrcMap[sibId];
+              claimedOrc.add(gcOrcMatch.gc_orcamento_id);
+              console.log(`[oficina-kanban] Task ${taskId} → Orçamento found via sibling ${sibId} (eq ${eqId}, strict=${strictEquipmentMatch}, sameClientTech=${sameClientAndTech})`);
             }
             if (gcOsMatch && gcOrcMatch) break;
           }
@@ -654,7 +689,7 @@ Deno.serve(async (req) => {
           const siblingTaskIds = equipToTasks[eqId] || [];
           for (const sibId of siblingTaskIds) {
             if (sibId === taskId) continue;
-            const sibTask = allAuvoTasks.find((t: any) => String(t.taskID) === sibId);
+            const sibTask = taskById.get(sibId);
             if (!sibTask) continue;
             const sibDevQ = (sibTask.questionnaires || []).find(
               (q: any) => String(q.questionnaireId) === QUESTIONNAIRE_DEVOLUCAO_ID
