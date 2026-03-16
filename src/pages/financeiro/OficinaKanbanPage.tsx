@@ -829,7 +829,59 @@ export default function OficinaKanbanPage() {
                   )}
                 </div>
 
-                {/* GC Orçamento */}
+                {/* Manual Link Section — shown when no equipment ID */}
+                {(!selectedCard.equipments_id || selectedCard.equipments_id.length === 0) && (
+                  <div className="p-3 rounded-lg bg-amber-50 border border-amber-200 space-y-3">
+                    <h4 className="text-sm font-semibold text-amber-800 flex items-center gap-2">
+                      <Link2 className="h-4 w-4" />
+                      Vincular manualmente (sem ID equipamento)
+                    </h4>
+                    <div className="grid grid-cols-1 gap-2">
+                      {!selectedCard.os_task_id && (
+                        <div className="flex items-center gap-2">
+                          <label className="text-xs text-muted-foreground whitespace-nowrap w-28">Tarefa OS Auvo:</label>
+                          <Input
+                            placeholder="Ex: 70970640"
+                            value={manualOsTaskId}
+                            onChange={(e) => setManualOsTaskId(e.target.value)}
+                            className="h-8 text-xs"
+                          />
+                        </div>
+                      )}
+                      {!selectedCard.gc_os && (
+                        <div className="flex items-center gap-2">
+                          <label className="text-xs text-muted-foreground whitespace-nowrap w-28">Código OS GC:</label>
+                          <Input
+                            placeholder="Ex: OS-12345"
+                            value={manualGcOsCode}
+                            onChange={(e) => setManualGcOsCode(e.target.value)}
+                            className="h-8 text-xs"
+                          />
+                        </div>
+                      )}
+                      {!selectedCard.gc_orcamento && (
+                        <div className="flex items-center gap-2">
+                          <label className="text-xs text-muted-foreground whitespace-nowrap w-28">Código Orç. GC:</label>
+                          <Input
+                            placeholder="Ex: ORC-12345"
+                            value={manualGcOrcCode}
+                            onChange={(e) => setManualGcOrcCode(e.target.value)}
+                            className="h-8 text-xs"
+                          />
+                        </div>
+                      )}
+                    </div>
+                    <Button
+                      size="sm"
+                      onClick={handleSaveManualLink}
+                      disabled={isSavingLink || (!manualOsTaskId && !manualGcOsCode && !manualGcOrcCode)}
+                      className="w-full gap-2"
+                    >
+                      <Save className="h-3.5 w-3.5" />
+                      {isSavingLink ? "Salvando..." : "Salvar vínculo"}
+                    </Button>
+                  </div>
+                )}
                 {selectedCard.gc_orcamento && (
                   <div className="p-3 rounded-lg bg-violet-50 border border-violet-200 space-y-2">
                     <h4 className="text-sm font-semibold text-violet-800">
