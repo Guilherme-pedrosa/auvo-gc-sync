@@ -420,20 +420,20 @@ export default function HorasTrabalhadasTab({
                   <ScrollArea className="h-48">
                     <div className="space-y-1">
                       {filteredTipos.map((tipo) => (
-                        <div key={tipo} className="flex items-center gap-2">
+                        <div key={tipo.key} className="flex items-center gap-2">
                           <Checkbox
-                            checked={allTiposSelected || selectedTipos.has(tipo)}
+                            checked={allTiposSelected || selectedTipos.has(tipo.key)}
                             onCheckedChange={() => {
                               setAllTiposSelected(false);
                               setSelectedTipos((prev) => {
                                 const next = new Set(prev);
-                                if (next.has(tipo)) next.delete(tipo);
-                                else next.add(tipo);
+                                if (next.has(tipo.key)) next.delete(tipo.key);
+                                else next.add(tipo.key);
                                 return next;
                               });
                             }}
                           />
-                          <span className="text-xs truncate">{tipo}</span>
+                          <span className="text-xs truncate">{tipo.label}</span>
                         </div>
                       ))}
                     </div>
