@@ -70,6 +70,18 @@ export default function HorasTrabalhadasTab({
       .replace(/\s+/g, " ")
       .trim();
 
+  const getTipoLabel = (tipo: string | null | undefined) => {
+    const normalized = (tipo || "").replace(/\s+/g, " ").trim();
+    return normalized || "Sem tipo";
+  };
+
+  const getTipoKey = (tipo: string | null | undefined) => {
+    return getTipoLabel(tipo)
+      .toLocaleLowerCase("pt-BR")
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "");
+  };
+
   // Resolve group members
   const grupoClienteMap = useMemo(() => {
     const map = new Map<string, string[]>();
