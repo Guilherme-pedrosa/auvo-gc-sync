@@ -465,6 +465,8 @@ Deno.serve(async (req) => {
         status_auvo: task.finished ? "Finalizada" : (task.checkIn ? "Em andamento" : "Aberta"),
         questionario_preenchido: hasFilledAnswers,
         questionario_respostas: answers,
+        devolucao_preenchida: devolucaoPreenchida,
+        devolucao_respostas: devolucaoAnswers,
         gc_os: gcOsMatch,
         gc_orcamento: gcOrcMatch,
       };

@@ -218,6 +218,8 @@ export default function OficinaKanbanPage() {
         } else if (cleanItem.questionario_preenchido) {
           col = "aguardando_os";
         }
+        // Return form overrides everything
+        if (cleanItem.devolucao_preenchida) col = "devolvido";
         if (!colMap[col]) colMap[col] = [];
         colMap[col].push(cleanItem);
       }
