@@ -8,14 +8,28 @@ import HorasTrabalhadasTab from "@/components/relatorios/HorasTrabalhadasTab";
 import ConfiguracoesTab from "@/components/relatorios/ConfiguracoesTab";
 
 export default function RelatoriosPage() {
-  // Fetch all OS from tarefas_central (same logic as kanban)
-  const { data: tarefas, isLoading } = useQuery({
-    queryKey: ["relatorios-tarefas"],
+  // Fetch OS-linked tasks (for OS em Aberto tab)
+  const { data: tarefasOS, isLoading: isLoadingOS } = useQuery({
+    queryKey: ["relatorios-tarefas-os"],
     queryFn: async () => {
       const { data, error } = await supabase
         .from("tarefas_central")
         .select("*")
         .not("gc_os_id", "is", null)
+        .order("data_tarefa", { ascending: false });
+      if (error) throw error;
+      return data || [];
+    },
+    staleTime: 60_000,
+  });
+
+  // Fetch ALL tasks (for Horas Trabalhadas tab - includes tasks without OS)
+  const { data: todasTarefas, isLoading: isLoadingAll } = useQuery({
+    queryKey: ["relatorios-todas-tarefas"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("tarefas_central")
+        .select("*")
         .order("data_tarefa", { ascending: false });
       if (error) throw error;
       return data || [];
