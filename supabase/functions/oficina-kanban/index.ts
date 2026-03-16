@@ -341,18 +341,20 @@ Deno.serve(async (req) => {
         dados.os_task_link = `https://app2.auvo.com.br/relatorioTarefas/DetalheTarefa/${manualOsTaskId}`;
       }
 
-      // Try to fetch GC OS by code
+      // Try to fetch GC OS by code (accepts formats like "OS-123", "123", "#123")
       if (manualGcOsCode) {
         const gcAccessToken = Deno.env.get("GC_ACCESS_TOKEN");
         const gcSecretToken = Deno.env.get("GC_SECRET_TOKEN");
         if (gcAccessToken && gcSecretToken) {
+          const normalizedInput = normalizeCode(manualGcOsCode);
+          const codeForQuery = String(manualGcOsCode).replace(/[^0-9A-Za-z-]/g, "") || String(manualGcOsCode);
           const gcH = { "access-token": gcAccessToken, "secret-access-token": gcSecretToken, "Content-Type": "application/json" };
-          const url = `${GC_BASE_URL}/api/ordens_servicos?codigo=${encodeURIComponent(manualGcOsCode)}&limite=5`;
+          const url = `${GC_BASE_URL}/api/ordens_servicos?codigo=${encodeURIComponent(codeForQuery)}&limite=20`;
           const resp = await rateLimitedFetch(url, { headers: gcH }, "gc");
           if (resp.ok) {
             const gcData = await resp.json();
             const records: any[] = Array.isArray(gcData?.data) ? gcData.data : [];
-            const os = records.find((r: any) => String(r.codigo) === manualGcOsCode);
+            const os = records.find((r: any) => normalizeCode(String(r.codigo || "")) === normalizedInput);
             if (os) {
               dados.gc_os = {
                 gc_os_id: String(os.id),
@@ -371,18 +373,20 @@ Deno.serve(async (req) => {
         }
       }
 
-      // Try to fetch GC Orçamento by code
+      // Try to fetch GC Orçamento by code (accepts formats like "Orç. #4974" or "4974")
       if (manualGcOrcCode) {
         const gcAccessToken = Deno.env.get("GC_ACCESS_TOKEN");
         const gcSecretToken = Deno.env.get("GC_SECRET_TOKEN");
         if (gcAccessToken && gcSecretToken) {
+          const normalizedInput = normalizeCode(manualGcOrcCode);
+          const codeForQuery = String(manualGcOrcCode).replace(/[^0-9A-Za-z-]/g, "") || String(manualGcOrcCode);
           const gcH = { "access-token": gcAccessToken, "secret-access-token": gcSecretToken, "Content-Type": "application/json" };
-          const url = `${GC_BASE_URL}/api/orcamentos?codigo=${encodeURIComponent(manualGcOrcCode)}&limite=5`;
+          const url = `${GC_BASE_URL}/api/orcamentos?codigo=${encodeURIComponent(codeForQuery)}&limite=20`;
           const resp = await rateLimitedFetch(url, { headers: gcH }, "gc");
           if (resp.ok) {
             const gcData = await resp.json();
             const records: any[] = Array.isArray(gcData?.data) ? gcData.data : [];
-            const orc = records.find((r: any) => String(r.codigo) === manualGcOrcCode);
+            const orc = records.find((r: any) => normalizeCode(String(r.codigo || "")) === normalizedInput);
             if (orc) {
               dados.gc_orcamento = {
                 gc_orcamento_id: String(orc.id),
