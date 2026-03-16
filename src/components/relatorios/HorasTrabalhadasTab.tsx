@@ -202,6 +202,15 @@ export default function HorasTrabalhadasTab({
 
   const [expanded, setExpanded] = useState<string | null>(null);
 
+  // Detect negative-duration tasks
+  const negativeTasks = useMemo(() => {
+    return filtered.filter((t) => Number(t.duracao_decimal) < 0).map((t) => ({
+      id: t.auvo_task_id,
+      cliente: t.cliente || t.gc_os_cliente || "?",
+      horas: Number(t.duracao_decimal),
+    }));
+  }, [filtered]);
+
   const filteredTipos = useMemo(() => {
     if (!searchTipo) return allTiposTarefa;
     return allTiposTarefa.filter((t) => t.toLowerCase().includes(searchTipo.toLowerCase()));
