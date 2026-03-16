@@ -12,7 +12,8 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   ArrowLeft, CalendarIcon, RefreshCw, ExternalLink,
-  GripVertical, Filter, Wrench, Clock, Package, AlertTriangle, Link2, Save
+  GripVertical, Filter, Wrench, Clock, Package, AlertTriangle, Link2, Save,
+  Plus, Trash2, Pencil
 } from "lucide-react";
 import { format, startOfMonth, subMonths } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -98,6 +99,10 @@ export default function OficinaKanbanPage() {
   const [manualGcOsCode, setManualGcOsCode] = useState("");
   const [manualGcOrcCode, setManualGcOrcCode] = useState("");
   const [isSavingLink, setIsSavingLink] = useState(false);
+  const [showAddColumn, setShowAddColumn] = useState(false);
+  const [newColumnName, setNewColumnName] = useState("");
+  const [renamingColumnId, setRenamingColumnId] = useState<string | null>(null);
+  const [renameValue, setRenameValue] = useState("");
 
   const { data, isLoading, refetch, isFetching } = useQuery({
     queryKey: ["oficina-kanban", format(dateRange.from, "yyyy-MM-dd"), format(dateRange.to, "yyyy-MM-dd")],
@@ -390,6 +395,57 @@ export default function OficinaKanbanPage() {
     });
   }, [savePositions]);
 
+  const handleAddColumn = useCallback(() => {
+    const name = newColumnName.trim();
+    if (!name) return;
+    const id = name.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "");
+    if (columns.some((c) => c.id === id)) {
+      toast.error("Já existe uma coluna com esse nome");
+      return;
+    }
+    const newCol: KanbanColumn = { id, title: name, color: "#6b7280", items: [] };
+    setColumns((prev) => {
+      const next = [...prev, newCol];
+      savePositions(next);
+      return next;
+    });
+    setNewColumnName("");
+    setShowAddColumn(false);
+    toast.success(`Coluna "${name}" adicionada`);
+  }, [newColumnName, columns, savePositions]);
+
+  const handleDeleteColumn = useCallback((colId: string) => {
+    const col = columns.find((c) => c.id === colId);
+    if (!col) return;
+    if (col.items.length > 0) {
+      toast.error("Mova os cards desta coluna antes de excluí-la");
+      return;
+    }
+    if (DEFAULT_COLUMNS.some((dc) => dc.id === colId)) {
+      toast.error("Não é possível excluir colunas padrão");
+      return;
+    }
+    setColumns((prev) => {
+      const next = prev.filter((c) => c.id !== colId);
+      savePositions(next);
+      return next;
+    });
+    toast.success(`Coluna "${col.title}" removida`);
+  }, [columns, savePositions]);
+
+  const handleRenameColumn = useCallback((colId: string) => {
+    const name = renameValue.trim();
+    if (!name) return;
+    setColumns((prev) => {
+      const next = prev.map((c) => c.id === colId ? { ...c, title: name } : c);
+      savePositions(next);
+      return next;
+    });
+    setRenamingColumnId(null);
+    setRenameValue("");
+    toast.success("Coluna renomeada");
+  }, [renameValue, savePositions]);
+
   const abbreviateName = (name: string, maxLen = 28) => {
     if (name.length <= maxLen) return name;
     const words = name.split(/\s+/);
@@ -601,11 +657,48 @@ export default function OficinaKanbanPage() {
                             {...colProvided.dragHandleProps}
                             className="flex items-center justify-between px-3 py-2 border-b cursor-grab active:cursor-grabbing"
                           >
-                            <div className="flex items-center gap-1.5">
-                              <GripVertical className="h-4 w-4 text-muted-foreground/50" />
-                              <span className="font-semibold text-sm text-foreground">{column.title}</span>
+                            <div className="flex items-center gap-1.5 min-w-0">
+                              <GripVertical className="h-4 w-4 text-muted-foreground/50 flex-shrink-0" />
+                              {renamingColumnId === column.id ? (
+                                <form
+                                  onSubmit={(e) => { e.preventDefault(); handleRenameColumn(column.id); }}
+                                  className="flex items-center gap-1"
+                                >
+                                  <Input
+                                    value={renameValue}
+                                    onChange={(e) => setRenameValue(e.target.value)}
+                                    className="h-6 text-xs w-[120px]"
+                                    autoFocus
+                                    onBlur={() => setRenamingColumnId(null)}
+                                  />
+                                </form>
+                              ) : (
+                                <span className="font-semibold text-sm text-foreground truncate">{column.title}</span>
+                              )}
                             </div>
-                            <Badge variant="secondary" className="text-xs">{column.items.length}</Badge>
+                            <div className="flex items-center gap-1">
+                              <Badge variant="secondary" className="text-xs">{column.items.length}</Badge>
+                              {!DEFAULT_COLUMNS.some((dc) => dc.id === column.id) && (
+                                <>
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    className="h-5 w-5 text-muted-foreground hover:text-foreground"
+                                    onClick={(e) => { e.stopPropagation(); setRenamingColumnId(column.id); setRenameValue(column.title); }}
+                                  >
+                                    <Pencil className="h-3 w-3" />
+                                  </Button>
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    className="h-5 w-5 text-muted-foreground hover:text-destructive"
+                                    onClick={(e) => { e.stopPropagation(); handleDeleteColumn(column.id); }}
+                                  >
+                                    <Trash2 className="h-3 w-3" />
+                                  </Button>
+                                </>
+                              )}
+                            </div>
                           </div>
 
                           {/* Droppable Area */}
@@ -758,6 +851,43 @@ export default function OficinaKanbanPage() {
                   </Draggable>
                 ))}
                 {boardProvided.placeholder}
+
+                {/* Add Column Button */}
+                <div className="flex-shrink-0 w-[340px]">
+                  {showAddColumn ? (
+                    <div className="bg-muted/50 rounded-lg border p-4 space-y-3">
+                      <h3 className="text-sm font-semibold text-foreground">Nova coluna</h3>
+                      <Input
+                        placeholder="Nome da coluna..."
+                        value={newColumnName}
+                        onChange={(e) => setNewColumnName(e.target.value)}
+                        autoFocus
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") handleAddColumn();
+                          if (e.key === "Escape") { setShowAddColumn(false); setNewColumnName(""); }
+                        }}
+                      />
+                      <div className="flex gap-2">
+                        <Button size="sm" onClick={handleAddColumn} disabled={!newColumnName.trim()}>
+                          <Plus className="h-4 w-4 mr-1" />
+                          Adicionar
+                        </Button>
+                        <Button size="sm" variant="ghost" onClick={() => { setShowAddColumn(false); setNewColumnName(""); }}>
+                          Cancelar
+                        </Button>
+                      </div>
+                    </div>
+                  ) : (
+                    <Button
+                      variant="outline"
+                      className="w-full h-12 border-dashed text-muted-foreground hover:text-foreground"
+                      onClick={() => setShowAddColumn(true)}
+                    >
+                      <Plus className="h-5 w-5 mr-2" />
+                      Adicionar coluna
+                    </Button>
+                  )}
+                </div>
               </div>
             )}
           </Droppable>
