@@ -722,7 +722,10 @@ Deno.serve(async (req) => {
           (!oldData.gc_os && item.gc_os) ||
           (!oldData.gc_orcamento && item.gc_orcamento) ||
           (oldData.gc_os?.gc_situacao !== item.gc_os?.gc_situacao) ||
-          (oldData.gc_orcamento?.gc_situacao !== item.gc_orcamento?.gc_situacao);
+          (oldData.gc_orcamento?.gc_situacao !== item.gc_orcamento?.gc_situacao) ||
+          (!oldData.devolucao_preenchida && item.devolucao_preenchida) ||
+          (!oldData.os_task_id && item.os_task_id) ||
+          (oldData.equipamento_nome === "S" || oldData.equipamento_nome === "Equipamento não identificado");
 
         if (hadUpdate) {
           finalColuna = autoCol;
