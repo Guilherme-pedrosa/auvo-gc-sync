@@ -759,6 +759,23 @@ function parseTimeToMinutes(timeStr: string | null | undefined): number {
   return isNaN(h) ? -1 : h * 60 + (isNaN(m) ? 0 : m);
 }
 
+function minutesToTime(mins: number): string {
+  const h = Math.floor(mins / 60);
+  const m = mins % 60;
+  return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
+}
+
+function getTaskDurationMinutes(tarefa: Tarefa): number {
+  const startMin = parseTimeToMinutes(tarefa.hora_inicio);
+  const endMin = parseTimeToMinutes(tarefa.hora_fim);
+  if (startMin >= 0 && endMin > startMin) return endMin - startMin;
+
+  const duracaoDecimal = Number(tarefa.duracao_decimal || 0);
+  if (duracaoDecimal > 0) return Math.max(30, Math.round(duracaoDecimal * 60));
+
+  return 60;
+}
+
 function DayView({
   tarefas,
   filteredTecnicos,
