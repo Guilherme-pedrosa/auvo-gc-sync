@@ -93,8 +93,8 @@ export default function RealtimeTrackingPage() {
       setLastFetchTime(new Date().toISOString());
       return data as TrackingData;
     },
-    refetchInterval: 120_000,
-    staleTime: 30_000,
+    refetchInterval: 60_000,
+    staleTime: 15_000,
   });
 
   // Monthly late tasks query
@@ -405,7 +405,7 @@ export default function RealtimeTrackingPage() {
               disabled={isFetching}
             >
               <RefreshCw className={`h-3.5 w-3.5 mr-1.5 ${isFetching ? "animate-spin" : ""}`} />
-              Atualizar
+              Sincronizar
             </Button>
 
             {isToday(selectedDate) && (
