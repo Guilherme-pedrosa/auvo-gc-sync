@@ -220,6 +220,15 @@ function autoAssignColumn(item: any): string {
   return "entrada";
 }
 
+function normalizeCode(value: string): string {
+  return String(value || "").trim().toUpperCase().replace(/[^A-Z0-9]/g, "");
+}
+
+function isUnknownEquipmentName(name: string): boolean {
+  const n = String(name || "").trim().toLowerCase();
+  return !n || n === "s" || n === "equipamento não identificado" || n === "equipamento nao identificado";
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
