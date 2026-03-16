@@ -199,7 +199,7 @@ export default function RelatoriosPage() {
             disabled={syncing}
           >
             <RefreshCw className={`h-4 w-4 ${syncing ? "animate-spin" : ""}`} />
-            {syncing ? "Sincronizando..." : "Atualizar do Auvo"}
+            {syncing ? "Sincronizando..." : `Atualizar do Auvo (${format(dateFrom, "dd/MM")} – ${format(dateTo, "dd/MM")})`}
           </Button>
           {syncing && (
             <div className="w-64 space-y-1.5">
