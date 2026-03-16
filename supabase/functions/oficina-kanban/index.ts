@@ -397,6 +397,18 @@ Deno.serve(async (req) => {
         (a: any) => a.reply && a.reply.trim() !== "" && !a.reply.startsWith("http")
       );
 
+      // Check return form (215147)
+      const devolucaoQ = (task.questionnaires || []).find(
+        (q: any) => String(q.questionnaireId) === QUESTIONNAIRE_DEVOLUCAO_ID
+      );
+      const devolucaoAnswers = (devolucaoQ?.answers || []).map((a: any) => ({
+        question: String(a.questionDescription || ""),
+        reply: String(a.reply || ""),
+      }));
+      const devolucaoPreenchida = devolucaoAnswers.some(
+        (a: any) => a.reply && a.reply.trim() !== "" && !a.reply.startsWith("http")
+      );
+
       // Resolve equipment name: 1) Auvo equipment API, 2) questionnaire fallback
       const eqIds: number[] = task.equipmentsId || [];
       let equipamento_nome = "";
