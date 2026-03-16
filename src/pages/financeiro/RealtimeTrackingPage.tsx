@@ -37,7 +37,7 @@ type TaskItem = {
   duration: string;
   gcOsCodigo: string;
   gcOsValor: string;
-};
+  gcOsTipo?: string;
 
 type TecnicoGroup = {
   id: string;
