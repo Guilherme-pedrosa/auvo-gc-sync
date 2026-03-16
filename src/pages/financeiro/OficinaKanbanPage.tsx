@@ -469,6 +469,44 @@ export default function OficinaKanbanPage() {
     toast.success("Coluna renomeada");
   }, [renameValue, savePositions]);
 
+  const loadJobData = useCallback(async (taskId: string) => {
+    const [{ data: items }, { data: events }] = await Promise.all([
+      supabase.from("workshop_job_items").select("*").eq("auvo_task_id", taskId).order("criado_em", { ascending: false }),
+      supabase.from("workshop_job_events").select("*").eq("auvo_task_id", taskId).order("criado_em", { ascending: false }).limit(50),
+    ]);
+    setJobItems((items as any[]) || []);
+    setJobEvents((events as any[]) || []);
+  }, []);
+
+  const handleAddItem = useCallback(async () => {
+    if (!selectedCard || !newItemDesc.trim()) return;
+    const { error } = await supabase.from("workshop_job_items").insert({
+      auvo_task_id: selectedCard.auvo_task_id,
+      tipo: newItemTipo,
+      descricao: newItemDesc.trim(),
+      quantidade: parseFloat(newItemQty) || 1,
+      preco_unitario: parseFloat(newItemPrice) || 0,
+    } as any);
+    if (error) { toast.error("Erro ao adicionar item"); return; }
+    setNewItemDesc(""); setNewItemQty("1"); setNewItemPrice("");
+    loadJobData(selectedCard.auvo_task_id);
+    toast.success("Item adicionado");
+  }, [selectedCard, newItemDesc, newItemQty, newItemPrice, newItemTipo, loadJobData]);
+
+  const handleDeleteItem = useCallback(async (itemId: string) => {
+    if (!selectedCard) return;
+    await supabase.from("workshop_job_items").delete().eq("id", itemId);
+    loadJobData(selectedCard.auvo_task_id);
+  }, [selectedCard, loadJobData]);
+
+  // Load items/events when card is opened
+  useEffect(() => {
+    if (selectedCard) {
+      setModalTab("detalhes");
+      loadJobData(selectedCard.auvo_task_id);
+    }
+  }, [selectedCard, loadJobData]);
+
   const abbreviateName = (name: string, maxLen = 28) => {
     if (name.length <= maxLen) return name;
     const words = name.split(/\s+/);
