@@ -527,22 +527,26 @@ export default function AgendaSemanalPage() {
             filteredTecnicos={filteredTecnicos}
             selectedDay={selectedDay}
             onTaskClick={setSelectedTarefa}
-            onDayDrop={async (taskId, toTecNome, toTecId, newHour, fromDate) => {
+            onDayDrop={async (taskId, toTecNome, toTecId, newHour) => {
               setMovingTaskId(taskId);
               try {
                 const newDate = format(selectedDay, "yyyy-MM-dd");
-                const { data: taskData } = await supabase.functions.invoke("auvo-task-update", {
-                  body: { action: "get", taskId: Number(taskId) },
-                });
-                const taskResult = taskData?.data?.result;
-                if (!taskResult) throw new Error("Não foi possível obter dados da tarefa");
+                const oldTarefa = (tarefas || []).find(t => t.auvo_task_id === taskId);
+                if (!oldTarefa) throw new Error("Tarefa não encontrada para mover");
+
+                const oldStartMin = parseTimeToMinutes(oldTarefa.hora_inicio);
+                const minute = oldStartMin >= 0 ? oldStartMin % 60 : 0;
+                const durationMin = getTaskDurationMinutes(oldTarefa);
+                const newStartMin = (newHour * 60) + minute;
+                const newEndMin = newStartMin + durationMin;
+
+                const updatedHoraInicio = `${minutesToTime(newStartMin)}:00`;
+                const updatedHoraFim = `${minutesToTime(newEndMin)}:00`;
 
                 const patches: Array<{ op: string; path: string; value: any }> = [];
-                const newDateFormatted = newDate + `T${String(newHour).padStart(2, "0")}:00:00`;
-                patches.push({ op: "replace", path: "/taskDate", value: newDateFormatted });
-                
-                const oldTarefa = (tarefas || []).find(t => t.auvo_task_id === taskId);
-                const sameTec = oldTarefa?.tecnico === toTecNome;
+                patches.push({ op: "replace", path: "/taskDate", value: `${newDate}T${minutesToTime(newStartMin)}:00` });
+
+                const sameTec = oldTarefa.tecnico === toTecNome;
                 if (!sameTec && toTecId) {
                   patches.push({ op: "replace", path: "/idUserTo", value: Number(toTecId) });
                 }
@@ -553,23 +557,29 @@ export default function AgendaSemanalPage() {
                 if (error) throw error;
                 if (patchResult?.status && patchResult.status >= 400) throw new Error(patchResult?.data?.message || `Erro ${patchResult.status}`);
 
-                const updatedHoraInicio = `${String(newHour).padStart(2, "0")}:00:00`;
                 queryClient.setQueryData(queryKey, (old: Tarefa[] | undefined) => {
                   if (!old) return old;
                   return old.map(t => t.auvo_task_id !== taskId ? t : {
-                    ...t, data_tarefa: newDate, hora_inicio: updatedHoraInicio,
+                    ...t,
+                    data_tarefa: newDate,
+                    hora_inicio: updatedHoraInicio,
+                    hora_fim: updatedHoraFim,
                     ...(!sameTec && toTecId ? { tecnico: toTecNome, tecnico_id: toTecId } : {}),
                   });
                 });
 
                 await supabase.functions.invoke("auvo-task-update", {
                   body: { action: "persist-central", row: {
-                    auvo_task_id: taskId, data_tarefa: newDate, hora_inicio: updatedHoraInicio,
+                    auvo_task_id: taskId,
+                    data_tarefa: newDate,
+                    hora_inicio: updatedHoraInicio,
+                    hora_fim: updatedHoraFim,
+                    duracao_decimal: oldTarefa.duracao_decimal,
                     ...(!sameTec && toTecId ? { tecnico: toTecNome, tecnico_id: toTecId } : {}),
                   }},
                 });
 
-                const changes: string[] = [`horário → ${String(newHour).padStart(2, "0")}:00`];
+                const changes: string[] = [`horário → ${minutesToTime(newStartMin)}`];
                 if (!sameTec) changes.push(`técnico → ${toTecNome}`);
                 toast.success(`Tarefa atualizada: ${changes.join(", ")}`);
               } catch (err: any) {
