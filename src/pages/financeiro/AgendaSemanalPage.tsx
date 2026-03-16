@@ -406,21 +406,43 @@ export default function AgendaSemanalPage() {
 
           <div className="flex items-center gap-2">
             <div className="flex items-center gap-1 bg-muted rounded-lg px-1 py-0.5">
-              <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setWeekOffset((o) => o - 1)}>
+              <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => {
+                if (viewMode === "dia") setDayOffset(o => o - 1);
+                else setWeekOffset(o => o - 1);
+              }}>
                 <ChevronLeft className="h-4 w-4" />
               </Button>
               <button
-                onClick={() => setWeekOffset(0)}
+                onClick={() => { setWeekOffset(0); setDayOffset(0); }}
                 className={cn(
                   "px-3 py-1 text-xs font-medium rounded-md transition-colors",
-                  weekOffset === 0 ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"
+                  (viewMode === "dia" ? dayOffset === 0 : weekOffset === 0) ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"
                 )}
               >
                 Hoje
               </button>
-              <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setWeekOffset((o) => o + 1)}>
+              <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => {
+                if (viewMode === "dia") setDayOffset(o => o + 1);
+                else setWeekOffset(o => o + 1);
+              }}>
                 <ChevronRight className="h-4 w-4" />
               </Button>
+            </div>
+
+            {/* View mode toggle */}
+            <div className="flex items-center bg-muted rounded-lg px-0.5 py-0.5">
+              {(["dia", "semana", "mes"] as ViewMode[]).map(mode => (
+                <button
+                  key={mode}
+                  onClick={() => setViewMode(mode)}
+                  className={cn(
+                    "px-2.5 py-1 text-xs font-medium rounded-md transition-colors capitalize",
+                    viewMode === mode ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"
+                  )}
+                >
+                  {mode === "dia" ? "Dia" : mode === "semana" ? "Semana" : "Mês"}
+                </button>
+              ))}
             </div>
 
             <Popover>
@@ -457,7 +479,6 @@ export default function AgendaSemanalPage() {
                               const set = new Set(prev || tecnicos.map(x => x.nome));
                               if (val) set.add(t.nome);
                               else set.delete(t.nome);
-                              // Only reset to null (all) if we actually have techs loaded
                               if (tecnicos.length > 0 && set.size >= tecnicos.length) return null;
                               return set;
                             });
@@ -479,7 +500,10 @@ export default function AgendaSemanalPage() {
         </div>
 
         <div className="mt-2 text-sm text-muted-foreground text-center">
-          {format(weekStart, "dd 'de' MMMM", { locale: ptBR })} — {format(addDays(weekStart, 5), "dd 'de' MMMM, yyyy", { locale: ptBR })}
+          {viewMode === "dia"
+            ? format(selectedDay, "EEEE, dd 'de' MMMM, yyyy", { locale: ptBR })
+            : `${format(weekStart, "dd 'de' MMMM", { locale: ptBR })} — ${format(addDays(weekStart, 5), "dd 'de' MMMM, yyyy", { locale: ptBR })}`
+          }
         </div>
       </div>
 
