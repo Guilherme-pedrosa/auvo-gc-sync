@@ -275,6 +275,7 @@ export default function AgendaSemanalPage() {
       fromTecnico: tarefa.tecnico,
       fromTecnicoId: tarefa.tecnico_id,
       fromDate: tarefa.data_tarefa,
+      horaInicio: tarefa.hora_inicio,
     }));
     e.dataTransfer.effectAllowed = "move";
   }, []);
