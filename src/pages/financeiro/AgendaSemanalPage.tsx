@@ -152,8 +152,8 @@ export default function AgendaSemanalPage() {
   const refreshFromApi = useCallback(async () => {
     setIsRefreshingFromApi(true);
     try {
-      const startStr = format(weekStart, "yyyy-MM-dd");
-      const endStr = format(addDays(weekStart, 5), "yyyy-MM-dd");
+      const startStr = queryStartDate;
+      const endStr = queryEndDate;
       const { data, error } = await supabase.functions.invoke("auvo-agenda", {
         body: { startDate: startStr, endDate: endStr },
       });
