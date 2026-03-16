@@ -344,6 +344,9 @@ const TechDashboardPage = () => {
                         </span>
                       </TableCell>
                       <TableCell className="text-center font-mono text-sm">{tech.tempo_horas}h</TableCell>
+                      <TableCell className="text-center font-mono text-sm text-muted-foreground">
+                        {(tech.deslocamento_horas || 0) > 0 ? `${tech.deslocamento_horas}h` : "—"}
+                      </TableCell>
                       <TableCell className="text-center">
                         {metaBadge(tech.tempo_atividade_pct, METAS.tempo_atividade)}
                       </TableCell>
