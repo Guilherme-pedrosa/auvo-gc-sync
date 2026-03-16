@@ -696,8 +696,154 @@ export default function AgendaSemanalPage() {
     </div>
   );
 }
+const HOURS = Array.from({ length: 15 }, (_, i) => i + 6); // 06:00 to 20:00
 
-function TaskCard({
+function getTaskHour(tarefa: Tarefa): number {
+  const hi = tarefa.hora_inicio || "";
+  const h = parseInt(hi.substring(0, 2), 10);
+  return isNaN(h) ? -1 : h;
+}
+
+function DayView({
+  tarefas,
+  filteredTecnicos,
+  selectedDay,
+  onTaskClick,
+  onDragStart,
+  movingTaskId,
+}: {
+  tarefas: Tarefa[];
+  filteredTecnicos: { nome: string; id: string | null }[];
+  selectedDay: Date;
+  onTaskClick: (t: Tarefa) => void;
+  onDragStart: (e: DragEvent<HTMLDivElement>, t: Tarefa) => void;
+  movingTaskId: string | null;
+}) {
+  const dayStr = format(selectedDay, "yyyy-MM-dd");
+
+  // Build grid: tecnico -> hour -> tasks
+  const techHourGrid = useMemo(() => {
+    const result = new Map<string, Map<number, Tarefa[]>>();
+    for (const tec of filteredTecnicos) {
+      const hourMap = new Map<number, Tarefa[]>();
+      HOURS.forEach(h => hourMap.set(h, []));
+      // Also a bucket for "sem horário"
+      hourMap.set(-1, []);
+      result.set(tec.nome, hourMap);
+    }
+
+    const dayTarefas = tarefas.filter(t => t.data_tarefa === dayStr);
+    for (const t of dayTarefas) {
+      const tecNome = t.tecnico || "Sem técnico";
+      const hourMap = result.get(tecNome);
+      if (!hourMap) continue;
+      const h = getTaskHour(t);
+      const bucket = hourMap.get(HOURS.includes(h) ? h : -1);
+      if (bucket) bucket.push(t);
+    }
+
+    return result;
+  }, [tarefas, filteredTecnicos, dayStr]);
+
+  return (
+    <div className="overflow-x-auto overflow-y-auto flex-1">
+      <table className="w-full border-collapse" style={{ minWidth: `${140 + filteredTecnicos.length * 180}px` }}>
+        <thead className="sticky top-0 z-20">
+          <tr className="border-b border-border bg-muted/50">
+            <th className="text-left px-3 py-2.5 text-xs font-semibold text-muted-foreground w-20 sticky left-0 bg-muted/50 z-30">
+              Horário
+            </th>
+            {filteredTecnicos.map(tec => {
+              const hourMap = techHourGrid.get(tec.nome);
+              const totalTec = hourMap
+                ? Array.from(hourMap.values()).reduce((sum, arr) => sum + arr.length, 0)
+                : 0;
+              const totalValor = hourMap
+                ? Array.from(hourMap.values()).flat().reduce((sum, t) => sum + (t.gc_os_valor_total ?? 0), 0)
+                : 0;
+              return (
+                <th key={tec.nome} className="text-center px-2 py-2.5 text-xs font-semibold min-w-[170px] border-r border-border last:border-r-0">
+                  <div className="font-medium text-foreground">{tec.nome}</div>
+                  <div className="text-[10px] text-muted-foreground font-normal">{totalTec} tarefa{totalTec !== 1 ? "s" : ""}</div>
+                  {totalValor > 0 && (
+                    <div className="text-[10px] font-semibold text-emerald-700 dark:text-emerald-400">
+                      {formatCurrency(totalValor)}
+                    </div>
+                  )}
+                </th>
+              );
+            })}
+          </tr>
+        </thead>
+        <tbody>
+          {/* Sem horário row */}
+          {filteredTecnicos.some(tec => {
+            const hourMap = techHourGrid.get(tec.nome);
+            return hourMap && (hourMap.get(-1)?.length || 0) > 0;
+          }) && (
+            <tr className="border-b border-border">
+              <td className="px-3 py-1.5 sticky left-0 bg-card z-10 border-r border-border text-xs text-muted-foreground font-medium">
+                s/ hora
+              </td>
+              {filteredTecnicos.map(tec => {
+                const tasks = techHourGrid.get(tec.nome)?.get(-1) || [];
+                return (
+                  <td key={tec.nome} className="px-1.5 py-1 align-top border-r border-border last:border-r-0">
+                    <div className="space-y-1">
+                      {tasks.map(t => (
+                        <TaskCard
+                          key={t.auvo_task_id}
+                          tarefa={t}
+                          onDragStart={onDragStart}
+                          isMoving={movingTaskId === t.auvo_task_id}
+                          onClick={() => onTaskClick(t)}
+                        />
+                      ))}
+                    </div>
+                  </td>
+                );
+              })}
+            </tr>
+          )}
+          {HOURS.map(hour => {
+            const label = `${String(hour).padStart(2, "0")}:00`;
+            const hasAny = filteredTecnicos.some(tec => {
+              const tasks = techHourGrid.get(tec.nome)?.get(hour) || [];
+              return tasks.length > 0;
+            });
+            return (
+              <tr key={hour} className={cn("border-b border-border", !hasAny && "opacity-50")}>
+                <td className="px-3 py-1.5 sticky left-0 bg-card z-10 border-r border-border text-xs text-muted-foreground font-medium whitespace-nowrap">
+                  {label}
+                </td>
+                {filteredTecnicos.map(tec => {
+                  const tasks = techHourGrid.get(tec.nome)?.get(hour) || [];
+                  return (
+                    <td key={tec.nome} className="px-1.5 py-1 align-top border-r border-border last:border-r-0 min-h-[36px]">
+                      <div className="space-y-1 min-h-[32px]">
+                        {tasks.map(t => (
+                          <TaskCard
+                            key={t.auvo_task_id}
+                            tarefa={t}
+                            onDragStart={onDragStart}
+                            isMoving={movingTaskId === t.auvo_task_id}
+                            onClick={() => onTaskClick(t)}
+                          />
+                        ))}
+                      </div>
+                    </td>
+                  );
+                })}
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+
   tarefa,
   onDragStart,
   isMoving,
