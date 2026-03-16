@@ -162,12 +162,8 @@ export default function HorasTrabalhadasTab({
     return 0;
   };
 
-  // Calculate task value: GC OS → GC Orçamento → hourly rate fallback
+  // Calculate task value: only hourly rate (no GC values)
   const getTaskValor = (t: any, tecnico: string): number => {
-    const gcOsValor = Number(t.gc_os_valor_total) || 0;
-    const gcOrcValor = Number(t.gc_orc_valor_total) || 0;
-    if (gcOsValor > 0) return gcOsValor;
-    if (gcOrcValor > 0) return gcOrcValor;
     const horas = Number(t.duracao_decimal) || 0;
     const cliente = t.cliente || t.gc_os_cliente || "";
     const clienteGc = t.gc_os_cliente || "";
