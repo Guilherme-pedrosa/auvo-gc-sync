@@ -792,6 +792,7 @@ function DayView({
   selectedDay,
   onTaskClick,
   onDayDrop,
+  onResize,
   movingTaskId,
 }: {
   tarefas: Tarefa[];
@@ -799,10 +800,16 @@ function DayView({
   selectedDay: Date;
   onTaskClick: (t: Tarefa) => void;
   onDayDrop: (taskId: string, toTecNome: string, toTecId: string | null, newHour: number) => void;
+  onResize: (taskId: string, newEndMinutes: number) => void;
   movingTaskId: string | null;
 }) {
   const dayStr = format(selectedDay, "yyyy-MM-dd");
   const [dragOverCell, setDragOverCell] = useState<string | null>(null);
+
+  // Resize state
+  const containerRef = React.useRef<HTMLDivElement>(null);
+  const [resizing, setResizing] = useState<{ taskId: string; startX: number; origWidthPct: number; origEndMin: number; startMin: number } | null>(null);
+  const [resizeDelta, setResizeDelta] = useState<Record<string, number>>({}); // taskId -> new endMin override
 
   const tecTasks = useMemo(() => {
     const result = new Map<string, Tarefa[]>();
