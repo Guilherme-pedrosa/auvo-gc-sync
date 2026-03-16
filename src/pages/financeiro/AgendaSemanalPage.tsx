@@ -609,9 +609,7 @@ export default function AgendaSemanalPage() {
               throw new Error(patchResult?.data?.message || `Erro ${patchResult.status}`);
             }
 
-            const updatedHoraInicio = hasTimeChange
-              ? `${(newHour ?? "08").padStart(2, "0")}:${(newMinute ?? "00").padStart(2, "0")}:00`
-              : undefined;
+            const updatedHoraInicio = `${(newHour ?? "08").padStart(2, "0")}:${(newMinute ?? "00").padStart(2, "0")}:00`;
 
             queryClient.setQueryData(queryKey, (old: Tarefa[] | undefined) => {
               if (!old) return old;
@@ -621,7 +619,7 @@ export default function AgendaSemanalPage() {
                   ...t,
                   ...(newDate ? { data_tarefa: newDate } : {}),
                   ...(newTecId ? { tecnico: newTecNome, tecnico_id: newTecId } : {}),
-                  ...(updatedHoraInicio ? { hora_inicio: updatedHoraInicio } : {}),
+                  hora_inicio: updatedHoraInicio,
                 };
               });
             });
@@ -630,8 +628,21 @@ export default function AgendaSemanalPage() {
               ...prev,
               ...(newDate ? { data_tarefa: newDate } : {}),
               ...(newTecId ? { tecnico: newTecNome, tecnico_id: newTecId } : {}),
-              ...(updatedHoraInicio ? { hora_inicio: updatedHoraInicio } : {}),
+              hora_inicio: updatedHoraInicio,
             } : null);
+
+            const { error: persistError } = await supabase.functions.invoke("auvo-task-update", {
+              body: {
+                action: "persist-central",
+                row: {
+                  auvo_task_id: taskId,
+                  data_tarefa: newDate || oldDate,
+                  hora_inicio: updatedHoraInicio,
+                  ...(newTecId ? { tecnico: newTecNome, tecnico_id: newTecId } : {}),
+                },
+              },
+            });
+            if (persistError) throw persistError;
 
             toast.success("Tarefa atualizada no Auvo!");
           } catch (err: any) {
