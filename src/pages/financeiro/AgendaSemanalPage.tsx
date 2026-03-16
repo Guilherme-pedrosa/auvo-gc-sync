@@ -346,13 +346,13 @@ export default function AgendaSemanalPage() {
                 <ChevronLeft className="h-4 w-4" />
               </Button>
               <button
-                onClick={() => setWeekOffset(1)}
+                onClick={() => setWeekOffset(0)}
                 className={cn(
                   "px-3 py-1 text-xs font-medium rounded-md transition-colors",
-                  weekOffset === 1 ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"
+                  weekOffset === 0 ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"
                 )}
               >
-                Próx. Semana
+                Hoje
               </button>
               <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setWeekOffset((o) => o + 1)}>
                 <ChevronRight className="h-4 w-4" />
