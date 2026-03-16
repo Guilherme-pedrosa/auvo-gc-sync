@@ -51,11 +51,14 @@ type Tarefa = {
 };
 
 const STATUS_COLORS: Record<string, string> = {
-  "Agendada": "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300",
-  "A caminho": "bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300",
-  "Iniciada": "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-300",
+  "Agendada": "bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300",
+  "Aberta": "bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300",
+  "A caminho": "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300",
+  "Iniciada": "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300",
+  "Em andamento": "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300",
   "Finalizada": "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300",
   "Não Executada": "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300",
+  "Cancelada": "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300",
 };
 
 function formatCurrency(value: number | null): string {
@@ -155,6 +158,42 @@ export default function AgendaSemanalPage() {
       const apiTarefas = (data?.data || []) as Tarefa[];
       // Update react-query cache directly with fresh API data
       queryClient.setQueryData(queryKey, apiTarefas);
+
+      // Persist to tarefas_central so values survive page reload
+      const upsertRows = apiTarefas.map((t) => ({
+        auvo_task_id: t.auvo_task_id,
+        cliente: t.cliente,
+        tecnico: t.tecnico,
+        tecnico_id: t.tecnico_id,
+        data_tarefa: t.data_tarefa,
+        status_auvo: t.status_auvo,
+        hora_inicio: t.hora_inicio,
+        hora_fim: t.hora_fim,
+        check_in: t.check_in,
+        check_out: t.check_out,
+        endereco: t.endereco,
+        auvo_link: t.auvo_link,
+        orientacao: t.descricao,
+        gc_os_codigo: t.gc_os_codigo,
+        gc_os_situacao: t.gc_os_situacao,
+        gc_os_valor_total: t.gc_os_valor_total,
+        gc_os_link: t.gc_os_link,
+        gc_orcamento_codigo: t.gc_orcamento_codigo,
+        gc_orc_situacao: t.gc_orc_situacao,
+        gc_orc_valor_total: t.gc_orc_valor_total,
+        gc_orc_link: t.gc_orc_link,
+        pendencia: t.pendencia,
+        atualizado_em: new Date().toISOString(),
+      }));
+
+      if (upsertRows.length > 0) {
+        // Upsert in batches of 200
+        for (let i = 0; i < upsertRows.length; i += 200) {
+          const batch = upsertRows.slice(i, i + 200);
+          await supabase.from("tarefas_central").upsert(batch, { onConflict: "auvo_task_id" });
+        }
+      }
+
       toast.success(`${apiTarefas.length} tarefas atualizadas da API`);
     } catch (err: any) {
       console.error("[agenda] Erro ao atualizar da API:", err);
@@ -590,7 +629,7 @@ function TaskCard({
   onClick: () => void;
 }) {
   const statusClass = STATUS_COLORS[tarefa.status_auvo || ""] || "bg-muted text-muted-foreground";
-  const canDrag = tarefa.status_auvo === "Agendada";
+  const canDrag = tarefa.status_auvo === "Agendada" || tarefa.status_auvo === "Aberta";
   const valor = tarefa.gc_os_valor_total ?? tarefa.gc_orc_valor_total;
 
   return (
@@ -659,7 +698,7 @@ function TaskDetailDialog({
 
   const statusClass = STATUS_COLORS[tarefa.status_auvo || ""] || "bg-muted text-muted-foreground";
   const auvoUrl = tarefa.auvo_link || `https://app2.auvo.com.br/relatorioTarefas/DetalheTarefa/${tarefa.auvo_task_id}`;
-  const canEdit = tarefa.status_auvo === "Agendada";
+  const canEdit = tarefa.status_auvo === "Agendada" || tarefa.status_auvo === "Aberta";
 
   const startEditing = () => {
     setEditDate(tarefa.data_tarefa || "");
