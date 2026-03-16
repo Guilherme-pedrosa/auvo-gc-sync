@@ -379,6 +379,7 @@ Deno.serve(async (req) => {
       if (manualOsTaskId) {
         dados.os_task_id = manualOsTaskId;
         dados.os_task_link = `https://app2.auvo.com.br/relatorioTarefas/DetalheTarefa/${manualOsTaskId}`;
+        dados.manual_os_task_linked = true;
       }
 
       // Try to fetch GC OS by code (accepts formats like "OS-123", "123", "#123")
@@ -408,6 +409,7 @@ Deno.serve(async (req) => {
                 gc_data: String(os.data || ""),
                 gc_link: `https://gestaoclick.com/ordens_servicos/editar/${os.id}?retorno=%2Fordens_servicos`,
               };
+              dados.manual_gc_os_linked = true;
               osMatched = true;
             }
           }
@@ -441,6 +443,7 @@ Deno.serve(async (req) => {
                 gc_data: String(orc.data || ""),
                 gc_link: `https://gestaoclick.com/orcamentos_servicos/editar/${orc.id}?retorno=%2Forcamentos_servicos`,
               };
+              dados.manual_gc_orc_linked = true;
               orcMatched = true;
             }
           }
@@ -605,6 +608,7 @@ Deno.serve(async (req) => {
       // First check the entry task itself (direct match)
       if (gcOsMap[taskId] && !claimedOs.has(gcOsMap[taskId].gc_os_id)) {
         gcOsMatch = gcOsMap[taskId];
+        osSiblingTaskId = taskId;
         claimedOs.add(gcOsMatch.gc_os_id);
       }
       if (gcOrcMap[taskId] && !claimedOrc.has(gcOrcMap[taskId].gc_orcamento_id)) {
@@ -614,9 +618,6 @@ Deno.serve(async (req) => {
 
       // Then check sibling tasks that share the same equipment.
       if (!gcOsMatch || !gcOrcMatch) {
-        const baseClient = normalizeText(String(task.customerDescription || task.customerName || task.customer?.tradeName || ""));
-        const baseTech = normalizeText(String(task.userToName || ""));
-
         for (const eqId of eqIds) {
           const siblingTaskIds = equipToTasks[eqId] || [];
           for (const sibId of siblingTaskIds) {
@@ -626,13 +627,8 @@ Deno.serve(async (req) => {
             const sibEqIds = extractTaskEquipmentIds(sibTask);
             if (!sibEqIds.includes(eqId)) continue;
 
-            const sibClient = normalizeText(String(sibTask?.customerDescription || sibTask?.customerName || sibTask?.customer?.tradeName || ""));
-            const sibTech = normalizeText(String(sibTask?.userToName || ""));
             const strictEquipmentMatch = sibEqIds.length <= 1 || sibEqIds.every((id: number) => eqIds.includes(id));
-            const sameClientAndTech = !!baseClient && baseClient === sibClient && !!baseTech && baseTech === sibTech;
-            const canUseSibling = strictEquipmentMatch || sameClientAndTech;
-
-            if (!canUseSibling) continue;
+            if (!strictEquipmentMatch) continue;
 
             if (!gcOsMatch && gcOsMap[sibId] && !claimedOs.has(gcOsMap[sibId].gc_os_id)) {
               gcOsMatch = gcOsMap[sibId];
@@ -651,8 +647,11 @@ Deno.serve(async (req) => {
         }
       }
 
-      // NOTE: client+tech fallback removed — causes false matches for clients with multiple equipment.
-      // If equipment ID matching fails, the user must link OS/Orçamento manually via the UI.
+      // Sem tarefa OS mapeada, não amarra automaticamente GC (usuário preenche manualmente).
+      if (!osSiblingTaskId) {
+        gcOsMatch = null;
+        gcOrcMatch = null;
+      }
 
       const targetQ = (task.questionnaires || []).find(
         (q: any) => String(q.questionnaireId) === QUESTIONNAIRE_ID
@@ -824,12 +823,12 @@ Deno.serve(async (req) => {
       if (existing?.dados) {
         const oldData = existing.dados || {};
 
-        // Preserve manually linked docs when API sync doesn't return them
-        if (!item.gc_os && oldData.gc_os) item.gc_os = oldData.gc_os;
-        if (!item.gc_orcamento && oldData.gc_orcamento) item.gc_orcamento = oldData.gc_orcamento;
+        // Preserve only explicit manual links; stale automatic links are discarded.
+        if (!item.gc_os && oldData.gc_os && oldData.manual_gc_os_linked === true) item.gc_os = oldData.gc_os;
+        if (!item.gc_orcamento && oldData.gc_orcamento && oldData.manual_gc_orc_linked === true) item.gc_orcamento = oldData.gc_orcamento;
 
-        // Preserve manual OS task linkage
-        if (!item.os_task_id && oldData.os_task_id) {
+        // Preserve manual OS task linkage only
+        if (!item.os_task_id && oldData.os_task_id && oldData.manual_os_task_linked === true) {
           item.os_task_id = oldData.os_task_id;
           item.os_task_link = oldData.os_task_link || `https://app2.auvo.com.br/relatorioTarefas/DetalheTarefa/${oldData.os_task_id}`;
         }
