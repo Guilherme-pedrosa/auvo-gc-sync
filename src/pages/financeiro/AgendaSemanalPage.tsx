@@ -88,8 +88,8 @@ export default function AgendaSemanalPage() {
 
   const weekStart = useMemo(() => {
     const today = new Date();
-    const base = getWeekStart(today);
-    return addDays(base, weekOffset * 7);
+    // Today is always the first column; offset shifts by 7 days
+    return addDays(today, weekOffset * 7);
   }, [weekOffset]);
 
   const weekDays = useMemo(() => {
