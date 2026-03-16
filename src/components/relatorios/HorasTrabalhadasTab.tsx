@@ -714,7 +714,53 @@ export default function HorasTrabalhadasTab({
         </Card>
       )}
 
-      {/* Detailed table */}
+      {/* Summary by Client */}
+      {clienteSummary.length > 0 && (
+        <Card>
+          <CardHeader className="py-3 px-4">
+            <CardTitle className="text-sm font-medium">Resumo por Cliente</CardTitle>
+          </CardHeader>
+          <CardContent className="p-0">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Cliente</TableHead>
+                  <TableHead className="text-center">Tarefas</TableHead>
+                  <TableHead className="text-right">Horas</TableHead>
+                  <TableHead className="text-right">Desloc.</TableHead>
+                  <TableHead className="text-center">Técnicos</TableHead>
+                  <TableHead className="text-right">Valor</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {clienteSummary.map((c) => (
+                  <TableRow key={c.cliente}>
+                    <TableCell className="font-medium text-sm">{c.cliente}</TableCell>
+                    <TableCell className="text-center"><Badge variant="secondary">{c.tarefas}</Badge></TableCell>
+                    <TableCell className="text-right font-mono text-sm">{c.horas.toFixed(1)}h</TableCell>
+                    <TableCell className="text-right font-mono text-sm text-muted-foreground">{c.deslocamento > 0 ? `${c.deslocamento.toFixed(1)}h` : "—"}</TableCell>
+                    <TableCell className="text-center text-sm">{c.tecnicos.size}</TableCell>
+                    <TableCell className="text-right font-semibold text-sm">
+                      {c.valor > 0 ? c.valor.toLocaleString("pt-BR", { style: "currency", currency: "BRL" }) : "—"}
+                    </TableCell>
+                  </TableRow>
+                ))}
+                <TableRow className="bg-muted/50 font-bold">
+                  <TableCell>TOTAL</TableCell>
+                  <TableCell className="text-center"><Badge>{totalTarefas}</Badge></TableCell>
+                  <TableCell className="text-right font-mono">{totalHoras.toFixed(1)}h</TableCell>
+                  <TableCell className="text-right font-mono text-muted-foreground">{totalDeslocamento.toFixed(1)}h</TableCell>
+                  <TableCell className="text-center">{tecnicoSummary.length}</TableCell>
+                  <TableCell className="text-right">
+                    {totalValor > 0 ? totalValor.toLocaleString("pt-BR", { style: "currency", currency: "BRL" }) : "—"}
+                  </TableCell>
+                </TableRow>
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
+      )}
+
       <Card>
         <CardContent className="p-0">
           <Table>
