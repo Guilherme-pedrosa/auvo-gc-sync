@@ -16,6 +16,7 @@ import RealtimeTrackingPage from "./pages/financeiro/RealtimeTrackingPage.tsx";
 import OSKanbanPage from "./pages/financeiro/OSKanbanPage.tsx";
 import AgendaSemanalPage from "./pages/financeiro/AgendaSemanalPage.tsx";
 import UsersPage from "./pages/admin/UsersPage.tsx";
+import RelatoriosPage from "./pages/financeiro/RelatoriosPage.tsx";
 import { Loader2 } from "lucide-react";
 
 const queryClient = new QueryClient();
