@@ -657,11 +657,48 @@ export default function OficinaKanbanPage() {
                             {...colProvided.dragHandleProps}
                             className="flex items-center justify-between px-3 py-2 border-b cursor-grab active:cursor-grabbing"
                           >
-                            <div className="flex items-center gap-1.5">
-                              <GripVertical className="h-4 w-4 text-muted-foreground/50" />
-                              <span className="font-semibold text-sm text-foreground">{column.title}</span>
+                            <div className="flex items-center gap-1.5 min-w-0">
+                              <GripVertical className="h-4 w-4 text-muted-foreground/50 flex-shrink-0" />
+                              {renamingColumnId === column.id ? (
+                                <form
+                                  onSubmit={(e) => { e.preventDefault(); handleRenameColumn(column.id); }}
+                                  className="flex items-center gap-1"
+                                >
+                                  <Input
+                                    value={renameValue}
+                                    onChange={(e) => setRenameValue(e.target.value)}
+                                    className="h-6 text-xs w-[120px]"
+                                    autoFocus
+                                    onBlur={() => setRenamingColumnId(null)}
+                                  />
+                                </form>
+                              ) : (
+                                <span className="font-semibold text-sm text-foreground truncate">{column.title}</span>
+                              )}
                             </div>
-                            <Badge variant="secondary" className="text-xs">{column.items.length}</Badge>
+                            <div className="flex items-center gap-1">
+                              <Badge variant="secondary" className="text-xs">{column.items.length}</Badge>
+                              {!DEFAULT_COLUMNS.some((dc) => dc.id === column.id) && (
+                                <>
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    className="h-5 w-5 text-muted-foreground hover:text-foreground"
+                                    onClick={(e) => { e.stopPropagation(); setRenamingColumnId(column.id); setRenameValue(column.title); }}
+                                  >
+                                    <Pencil className="h-3 w-3" />
+                                  </Button>
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    className="h-5 w-5 text-muted-foreground hover:text-destructive"
+                                    onClick={(e) => { e.stopPropagation(); handleDeleteColumn(column.id); }}
+                                  >
+                                    <Trash2 className="h-3 w-3" />
+                                  </Button>
+                                </>
+                              )}
+                            </div>
                           </div>
 
                           {/* Droppable Area */}
