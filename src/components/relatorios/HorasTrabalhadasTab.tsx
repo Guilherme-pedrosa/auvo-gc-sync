@@ -130,8 +130,9 @@ export default function HorasTrabalhadasTab({
     for (const t of filtered) {
       const tec = t.tecnico || "Desconhecido";
       const cliente = t.cliente || t.gc_os_cliente || "Sem cliente";
+      const clienteGc = t.gc_os_cliente || "";
       const horas = Number(t.duracao_decimal) || 0;
-      const rate = getHourlyRate(tec, cliente);
+      const rate = getHourlyRate(tec, cliente, clienteGc);
 
       let entry = map.get(tec);
       if (!entry) {
