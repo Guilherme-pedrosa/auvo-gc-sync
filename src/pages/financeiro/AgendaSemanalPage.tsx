@@ -70,10 +70,14 @@ function getWeekStart(refDate: Date): Date {
   return startOfWeek(refDate, { weekStartsOn: 1 });
 }
 
+type ViewMode = "dia" | "semana" | "mes";
+
 export default function AgendaSemanalPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [weekOffset, setWeekOffset] = useState(0);
+  const [dayOffset, setDayOffset] = useState(0);
+  const [viewMode, setViewMode] = useState<ViewMode>("semana");
   const [movingTaskId, setMovingTaskId] = useState<string | null>(null);
   const [dragOverCell, setDragOverCell] = useState<string | null>(null);
   const [selectedTarefa, setSelectedTarefa] = useState<Tarefa | null>(null);
