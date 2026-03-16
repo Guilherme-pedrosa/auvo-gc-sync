@@ -37,6 +37,7 @@ type Tarefa = {
   auvo_link: string | null;
   hora_inicio: string | null;
   hora_fim: string | null;
+  duracao_decimal: number | null;
   check_in: boolean;
   check_out: boolean;
   gc_os_valor_total: number | null;
