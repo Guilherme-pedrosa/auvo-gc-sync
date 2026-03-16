@@ -158,6 +158,42 @@ export default function AgendaSemanalPage() {
       const apiTarefas = (data?.data || []) as Tarefa[];
       // Update react-query cache directly with fresh API data
       queryClient.setQueryData(queryKey, apiTarefas);
+
+      // Persist to tarefas_central so values survive page reload
+      const upsertRows = apiTarefas.map((t) => ({
+        auvo_task_id: t.auvo_task_id,
+        cliente: t.cliente,
+        tecnico: t.tecnico,
+        tecnico_id: t.tecnico_id,
+        data_tarefa: t.data_tarefa,
+        status_auvo: t.status_auvo,
+        hora_inicio: t.hora_inicio,
+        hora_fim: t.hora_fim,
+        check_in: t.check_in,
+        check_out: t.check_out,
+        endereco: t.endereco,
+        auvo_link: t.auvo_link,
+        orientacao: t.descricao,
+        gc_os_codigo: t.gc_os_codigo,
+        gc_os_situacao: t.gc_os_situacao,
+        gc_os_valor_total: t.gc_os_valor_total,
+        gc_os_link: t.gc_os_link,
+        gc_orcamento_codigo: t.gc_orcamento_codigo,
+        gc_orc_situacao: t.gc_orc_situacao,
+        gc_orc_valor_total: t.gc_orc_valor_total,
+        gc_orc_link: t.gc_orc_link,
+        pendencia: t.pendencia,
+        atualizado_em: new Date().toISOString(),
+      }));
+
+      if (upsertRows.length > 0) {
+        // Upsert in batches of 200
+        for (let i = 0; i < upsertRows.length; i += 200) {
+          const batch = upsertRows.slice(i, i + 200);
+          await supabase.from("tarefas_central").upsert(batch, { onConflict: "auvo_task_id" });
+        }
+      }
+
       toast.success(`${apiTarefas.length} tarefas atualizadas da API`);
     } catch (err: any) {
       console.error("[agenda] Erro ao atualizar da API:", err);
