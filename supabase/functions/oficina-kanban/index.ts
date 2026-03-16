@@ -221,7 +221,18 @@ function autoAssignColumn(item: any): string {
 }
 
 function normalizeCode(value: string): string {
-  return String(value || "").trim().toUpperCase().replace(/[^A-Z0-9]/g, "");
+  const raw = String(value || "")
+    .trim()
+    .toUpperCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "");
+
+  const digitGroups = raw.match(/\d+/g);
+  if (digitGroups && digitGroups.length > 0) {
+    return digitGroups[digitGroups.length - 1];
+  }
+
+  return raw.replace(/[^A-Z0-9]/g, "");
 }
 
 function normalizeText(value: string): string {
