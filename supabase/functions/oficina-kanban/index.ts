@@ -580,7 +580,7 @@ Deno.serve(async (req) => {
     // Track claimed GC documents to prevent one OS/Orç being assigned to multiple cards
     const claimedOs = new Set<string>();
     const claimedOrc = new Set<string>();
-    const claimedSiblings = new Set<string>();
+    const taskById = new Map(allAuvoTasks.map((t: any) => [String(t.taskID || ""), t]));
 
     // Build items — entry tasks define cards, sibling tasks provide GC links
     const items = entryTasks.map((task: any) => {
