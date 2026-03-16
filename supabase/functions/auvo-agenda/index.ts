@@ -224,6 +224,9 @@ Deno.serve(async (req) => {
       const rawDate = String(t.taskDate || "");
       const taskDate = rawDate ? rawDate.substring(0, 10) : "";
 
+      const statusDesc = String(t.taskStatus?.description || t.status?.description || "").trim();
+      const status = statusDesc || (t.finished ? "Finalizada" : (t.checkIn ? "Em andamento" : "Agendada"));
+
       // Extract time from taskDate as fallback (format: 2025-03-16T08:00:00)
       const taskDateTime = rawDate.length >= 16 ? rawDate.substring(11, 16) : "";
       const startTime = String(t.startTime || t.startHour || "").trim() || taskDateTime || "";
