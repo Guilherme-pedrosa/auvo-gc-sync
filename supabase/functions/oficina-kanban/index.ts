@@ -392,13 +392,30 @@ Deno.serve(async (req) => {
         }
       }
 
-      // Save updated dados
+      // Update equipment name from GC client if still unidentified
+      const currentName = (dados.equipamento_nome || "").trim().toLowerCase();
+      if (!currentName || currentName === "equipamento não identificado" || currentName === "s") {
+        const gcCliente = dados.gc_os?.gc_cliente || dados.gc_orcamento?.gc_cliente || "";
+        if (gcCliente) {
+          dados.equipamento_nome = gcCliente;
+          dados.cliente = gcCliente;
+        }
+      }
+
+      // Update cliente from GC if empty
+      if (!dados.cliente) {
+        dados.cliente = dados.gc_os?.gc_cliente || dados.gc_orcamento?.gc_cliente || "";
+      }
+
+      // Auto-reassign column based on new data
+      const newCol = autoAssignColumn(dados);
+
       await sbClient
         .from("kanban_oficina_cache")
-        .update({ dados, atualizado_em: new Date().toISOString() })
+        .update({ dados, coluna: newCol, atualizado_em: new Date().toISOString() })
         .eq("auvo_task_id", auvoTaskId);
 
-      return new Response(JSON.stringify({ ok: true, dados }), {
+      return new Response(JSON.stringify({ ok: true, dados, coluna: newCol }), {
         status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }

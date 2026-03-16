@@ -162,15 +162,27 @@ export default function OficinaKanbanPage() {
       if (error) throw error;
       if (result?.ok) {
         toast.success("Vínculo salvo com sucesso!");
-        // Update local card data
+        // Update local card data and move to correct column
         if (result.dados) {
           setSelectedCard(result.dados);
-          setColumns(prev => prev.map(col => ({
-            ...col,
-            items: col.items.map(item =>
-              item.auvo_task_id === selectedCard.auvo_task_id ? { ...item, ...result.dados } : item
-            ),
-          })));
+          const newCol = result.coluna || null;
+          setColumns(prev => {
+            // Remove from current column
+            const cleaned = prev.map(col => ({
+              ...col,
+              items: col.items.filter(item => item.auvo_task_id !== selectedCard.auvo_task_id),
+            }));
+            // Add to new/correct column
+            return cleaned.map(col => {
+              if (newCol && col.id === newCol) {
+                return { ...col, items: [...col.items, { ...result.dados }] };
+              }
+              if (!newCol && col.items.some(item => item.auvo_task_id === selectedCard.auvo_task_id)) {
+                return { ...col, items: [...col.items, { ...result.dados }] };
+              }
+              return col;
+            });
+          });
         }
         setManualOsTaskId("");
         setManualGcOsCode("");
