@@ -881,7 +881,7 @@ export default function OSKanbanPage() {
                   selected={{ from: dateRange.from, to: dateRange.to }}
                   onSelect={(range) => {
                     if (range?.from) {
-                      setDateRange({ from: range.from, to: range.to || range.from });
+                      setDateRange({ from: range.from, to: range.to ?? dateRange.to });
                     }
                   }}
                   locale={ptBR}
