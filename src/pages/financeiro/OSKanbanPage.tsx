@@ -364,16 +364,43 @@ export default function OSKanbanPage() {
     staleTime: 60_000,
   });
 
-  // Filter out situations starting with "Executad" (case-insensitive)
+  // All unique GC situações (from rawItems, before filtering)
+  const allSituacoes = useMemo(() => {
+    if (!rawItems) return [];
+    const set = new Set(rawItems.map((i) => i.gc_os_situacao || "").filter(Boolean));
+    return Array.from(set).sort();
+  }, [rawItems]);
+
+  const filteredSituacaoOptions = useMemo(() => {
+    if (!searchSituacao) return allSituacoes;
+    return allSituacoes.filter((s) => s.toLowerCase().includes(searchSituacao.toLowerCase()));
+  }, [allSituacoes, searchSituacao]);
+
+  // Persist situação selection to localStorage
+  useEffect(() => {
+    if (allSituacoesSelected) {
+      localStorage.setItem("oskanban_selectedSituacoes", JSON.stringify([]));
+    } else {
+      localStorage.setItem("oskanban_selectedSituacoes", JSON.stringify(Array.from(selectedSituacoes)));
+    }
+  }, [selectedSituacoes, allSituacoesSelected]);
+
+  // Filter by selected situações
   const items = useMemo(() => {
     if (!rawItems) return [];
     return rawItems.filter((i) => {
-      const sit = (i.gc_os_situacao || "").toLowerCase();
-      if (sit.startsWith("executad")) return false;
-      if (sit.startsWith("imp cigam faturado total")) return false;
+      const sit = i.gc_os_situacao || "";
+      // If user has specific situações selected, only show those
+      if (!allSituacoesSelected && selectedSituacoes.size > 0) {
+        return selectedSituacoes.has(sit);
+      }
+      // Default: filter out "Executad*" and "Imp Cigam Faturado Total"
+      const sitLower = sit.toLowerCase();
+      if (sitLower.startsWith("executad")) return false;
+      if (sitLower.startsWith("imp cigam faturado total")) return false;
       return true;
     });
-  }, [rawItems]);
+  }, [rawItems, allSituacoesSelected, selectedSituacoes]);
 
   // Build columns: OS with status "Agendada" go to a special first column
   // Rebuild every time items change (no columnsInitialized gate)
