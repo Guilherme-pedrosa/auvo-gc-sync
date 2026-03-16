@@ -176,12 +176,20 @@ Deno.serve(async (req) => {
         tech.deslocamento_total_minutos += deslocamento * 60;
       }
 
-      // Value: use hourly rate config
-      const cliente = t.cliente || t.gc_os_cliente || "";
-      const clienteGc = t.gc_os_cliente || "";
-      const rate = getHourlyRate(techName, cliente, clienteGc);
-      if (rate > 0 && duracao > 0) {
-        tech.valor_total += duracao * rate;
+      // Value: use GC OS value first, then GC orçamento, then hourly rate as fallback
+      const gcOsValor = Number(t.gc_os_valor_total) || 0;
+      const gcOrcValor = Number(t.gc_orc_valor_total) || 0;
+      if (gcOsValor > 0) {
+        tech.valor_total += gcOsValor;
+      } else if (gcOrcValor > 0) {
+        tech.valor_total += gcOrcValor;
+      } else {
+        const cliente = t.cliente || t.gc_os_cliente || "";
+        const clienteGc = t.gc_os_cliente || "";
+        const rate = getHourlyRate(techName, cliente, clienteGc);
+        if (rate > 0 && duracao > 0) {
+          tech.valor_total += duracao * rate;
+        }
       }
 
       // Tasks per day (use completion date)
