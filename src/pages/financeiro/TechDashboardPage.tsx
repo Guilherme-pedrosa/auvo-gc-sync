@@ -129,6 +129,7 @@ const TechDashboardPage = () => {
         <div className="flex-1">
           <h1 className="text-3xl font-bold tracking-tight">📊 Dashboard de Técnicos</h1>
           <p className="text-muted-foreground">Indicadores de desempenho em tempo real via Auvo</p>
+          <LastSyncBadge className="mt-1" />
         </div>
         <Button variant="ghost" size="icon" onClick={() => refetch()} disabled={isLoading}>
           <RefreshCw className={`h-4 w-4 ${isLoading ? "animate-spin" : ""}`} />
