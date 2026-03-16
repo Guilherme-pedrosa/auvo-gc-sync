@@ -411,7 +411,7 @@ export default function OficinaKanbanPage() {
           to_status: toTitle,
           event_type: "status_change",
           note: `Movido de "${fromTitle}" para "${toTitle}"`,
-        }).then(() => {}).catch(e => console.warn("Erro ao logar evento:", e));
+        } as any).then(({ error }) => { if (error) console.warn("Erro ao logar evento:", error); });
       }
 
       return newCols;
