@@ -92,14 +92,18 @@ export default function HorasTrabalhadasTab({
     return map;
   }, [grupos, membros]);
 
-  // Filter data
+  // Filter data - use data_conclusao (checkout date) for monthly accounting, fallback to data_tarefa
   const filtered = useMemo(() => {
     const fromStr = format(dateFrom, "yyyy-MM-dd");
     const toStr = format(dateTo, "yyyy-MM-dd");
 
     return data.filter((t) => {
-      if (!t.data_tarefa || t.duracao_decimal == null) return false;
-      if (t.data_tarefa < fromStr || t.data_tarefa > toStr) return false;
+      if (t.duracao_decimal == null) return false;
+
+      // Use completion date (data_conclusao) when available, otherwise data_tarefa
+      const dateRef = t.data_conclusao || t.data_tarefa;
+      if (!dateRef) return false;
+      if (dateRef < fromStr || dateRef > toStr) return false;
 
       // Must have check_out (completed work)
       if (!t.check_out) return false;
