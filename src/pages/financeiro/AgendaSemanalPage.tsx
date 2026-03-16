@@ -173,6 +173,7 @@ export default function AgendaSemanalPage() {
         status_auvo: t.status_auvo,
         hora_inicio: t.hora_inicio,
         hora_fim: t.hora_fim,
+        duracao_decimal: t.duracao_decimal,
         check_in: t.check_in,
         check_out: t.check_out,
         endereco: t.endereco,
