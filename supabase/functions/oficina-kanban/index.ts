@@ -370,6 +370,7 @@ Deno.serve(async (req) => {
                 gc_data: String(os.data || ""),
                 gc_link: `https://gestaoclick.com/ordens_servicos/editar/${os.id}?retorno=%2Fordens_servicos`,
               };
+              osMatched = true;
             }
           }
         }
