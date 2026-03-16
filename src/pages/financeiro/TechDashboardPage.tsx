@@ -314,9 +314,10 @@ const TechDashboardPage = () => {
                   <TableHead className="text-center">Taxa Final.</TableHead>
                   <TableHead className="text-center">Exec/Dia</TableHead>
                   <TableHead className="text-center">Tempo (h)</TableHead>
+                  <TableHead className="text-center">Desloc. (h)</TableHead>
                   <TableHead className="text-center">% Atividade</TableHead>
                    <TableHead className="text-center">Pendências</TableHead>
-                   <TableHead className="text-right">Valor OS</TableHead>
+                   <TableHead className="text-right">Valor</TableHead>
                    <TableHead className="text-right">R$/Hora</TableHead>
                    <TableHead className="text-center">Atingimento</TableHead>
                 </TableRow>
