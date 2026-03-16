@@ -798,7 +798,7 @@ function DayView({
   filteredTecnicos: { nome: string; id: string | null }[];
   selectedDay: Date;
   onTaskClick: (t: Tarefa) => void;
-  onDayDrop: (taskId: string, toTecNome: string, toTecId: string | null, newHour: number, fromDate: string) => void;
+  onDayDrop: (taskId: string, toTecNome: string, toTecId: string | null, newHour: number) => void;
   movingTaskId: string | null;
 }) {
   const dayStr = format(selectedDay, "yyyy-MM-dd");
