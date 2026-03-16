@@ -247,6 +247,7 @@ export default function DashboardOrcamentosPage() {
               <p className="text-sm text-muted-foreground">
                 Métricas e análises de orçamentos Auvo × GestãoClick
               </p>
+              <LastSyncBadge className="mt-0.5" />
             </div>
           </div>
           <div className="flex items-center gap-3">
