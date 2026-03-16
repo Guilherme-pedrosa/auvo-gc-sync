@@ -588,6 +588,54 @@ export default function AgendaSemanalPage() {
                 setMovingTaskId(null);
               }
             }}
+            onResize={async (taskId, newEndMinutes) => {
+              setMovingTaskId(taskId);
+              try {
+                const oldTarefa = (tarefas || []).find(t => t.auvo_task_id === taskId);
+                if (!oldTarefa) throw new Error("Tarefa não encontrada");
+                const startMin = parseTimeToMinutes(oldTarefa.hora_inicio);
+                if (startMin < 0) throw new Error("Hora de início não definida");
+
+                const newDate = oldTarefa.data_tarefa || format(selectedDay, "yyyy-MM-dd");
+                const updatedHoraFim = `${minutesToTime(newEndMinutes)}:00`;
+                const newDurationDecimal = (newEndMinutes - startMin) / 60;
+
+                // Update Auvo
+                const patches: Array<{ op: string; path: string; value: any }> = [];
+                patches.push({ op: "replace", path: "/taskDate", value: `${newDate}T${oldTarefa.hora_inicio?.substring(0, 5)}:00` });
+
+                const { data: patchResult, error } = await supabase.functions.invoke("auvo-task-update", {
+                  body: { action: "edit", taskId: Number(taskId), patches },
+                });
+                if (error) throw error;
+                if (patchResult?.status && patchResult.status >= 400) throw new Error(patchResult?.data?.message || `Erro ${patchResult.status}`);
+
+                // Update local cache
+                queryClient.setQueryData(queryKey, (old: Tarefa[] | undefined) => {
+                  if (!old) return old;
+                  return old.map(t => t.auvo_task_id !== taskId ? t : {
+                    ...t,
+                    hora_fim: updatedHoraFim,
+                    duracao_decimal: newDurationDecimal,
+                  });
+                });
+
+                // Persist
+                await supabase.functions.invoke("auvo-task-update", {
+                  body: { action: "persist-central", row: {
+                    auvo_task_id: taskId,
+                    hora_fim: updatedHoraFim,
+                    duracao_decimal: newDurationDecimal,
+                  }},
+                });
+
+                toast.success(`Duração alterada: ${oldTarefa.hora_inicio?.substring(0, 5)}–${minutesToTime(newEndMinutes)}`);
+              } catch (err: any) {
+                toast.error(`Erro ao redimensionar: ${err.message}`);
+              } finally {
+                setMovingTaskId(null);
+              }
+            }}
             movingTaskId={movingTaskId}
           />
         ) : (
