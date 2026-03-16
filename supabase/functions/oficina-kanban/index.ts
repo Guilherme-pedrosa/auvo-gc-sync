@@ -409,6 +409,15 @@ Deno.serve(async (req) => {
         }
       }
 
+      if (!osMatched || !orcMatched) {
+        const errors: string[] = [];
+        if (!osMatched) errors.push(`OS não encontrada para o código "${manualGcOsCode}"`);
+        if (!orcMatched) errors.push(`Orçamento não encontrado para o código "${manualGcOrcCode}"`);
+        return new Response(JSON.stringify({ error: errors.join(" | ") }), {
+          status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
       // Update equipment / client data from GC after manual link
       const gcCliente = dados.gc_os?.gc_cliente || dados.gc_orcamento?.gc_cliente || "";
       if (isUnknownEquipmentName(dados.equipamento_nome) && gcCliente) {
