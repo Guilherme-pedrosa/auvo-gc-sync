@@ -435,7 +435,7 @@ export default function OSKanbanPage() {
       .sort(([a], [b]) => a.localeCompare(b))
       .map(([sit, data]) => ({
         id: `sit_${data.sitId || sit.replace(/\s+/g, "_")}`,
-        title: sit,
+        title: data.displayName,
         color: data.color,
         items: data.items,
       }));
