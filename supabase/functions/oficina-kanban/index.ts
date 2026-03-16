@@ -786,6 +786,15 @@ Deno.serve(async (req) => {
         }
       }
 
+      // If name is still unidentified but we have GC data, fix it
+      if (item.equipamento_nome === "Equipamento não identificado" || item.equipamento_nome === "S") {
+        const gcName = item.gc_os?.gc_cliente || item.gc_orcamento?.gc_cliente || "";
+        if (gcName) {
+          item.equipamento_nome = gcName;
+          item.cliente = gcName;
+        }
+      }
+
       return {
         auvo_task_id: item.auvo_task_id,
         dados: item,
