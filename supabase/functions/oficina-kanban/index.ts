@@ -403,6 +403,7 @@ Deno.serve(async (req) => {
                 gc_data: String(orc.data || ""),
                 gc_link: `https://gestaoclick.com/orcamentos_servicos/editar/${orc.id}?retorno=%2Forcamentos_servicos`,
               };
+              orcMatched = true;
             }
           }
         }
