@@ -93,10 +93,10 @@ export default function AgendaSemanalPage() {
     return null;
   });
 
+  const selectedDay = useMemo(() => addDays(new Date(), dayOffset), [dayOffset]);
 
   const weekStart = useMemo(() => {
     const today = new Date();
-    // Today is always the first column; offset shifts by 7 days
     return addDays(today, weekOffset * 7);
   }, [weekOffset]);
 
@@ -104,7 +104,10 @@ export default function AgendaSemanalPage() {
     return Array.from({ length: 7 }, (_, i) => addDays(weekStart, i));
   }, [weekStart]);
 
-  const queryKey = ["agenda-semanal", format(weekStart, "yyyy-MM-dd")];
+  // For day view, we query for that single day; for week view, the week range
+  const queryStartDate = viewMode === "dia" ? format(selectedDay, "yyyy-MM-dd") : format(weekStart, "yyyy-MM-dd");
+  const queryEndDate = viewMode === "dia" ? format(selectedDay, "yyyy-MM-dd") : format(addDays(weekStart, 5), "yyyy-MM-dd");
+  const queryKey = ["agenda-semanal", queryStartDate, queryEndDate];
 
   // Fetch all Auvo users (technicians)
   const { data: allUsers } = useQuery({
