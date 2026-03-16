@@ -520,8 +520,8 @@ export default function HorasTrabalhadasTab({
                               <TableHeader>
                                 <TableRow>
                                   <TableHead className="text-xs">Cliente</TableHead>
-                                  <TableHead className="text-xs">Tipos de Tarefa</TableHead>
-                                  <TableHead className="text-xs text-center">Tarefas</TableHead>
+                                  <TableHead className="text-xs">Tarefas (ID · Horário)</TableHead>
+                                  <TableHead className="text-xs text-center">Qtd</TableHead>
                                   <TableHead className="text-xs text-right">Horas</TableHead>
                                   <TableHead className="text-xs text-right">Valor</TableHead>
                                 </TableRow>
@@ -530,23 +530,23 @@ export default function HorasTrabalhadasTab({
                                 {Array.from(tec.byCliente.entries())
                                   .sort(([, a], [, b]) => b.horas - a.horas)
                                   .map(([cliente, cd]) => (
-                                    <TableRow key={cliente} className="text-xs">
-                                      <TableCell>{cliente}</TableCell>
+                                    <TableRow key={cliente} className="text-xs align-top">
+                                      <TableCell className="font-medium">{cliente}</TableCell>
                                       <TableCell>
                                         <div className="flex flex-wrap gap-1">
-                                          {Array.from(cd.tipos.entries())
-                                            .sort(([, a], [, b]) => b - a)
-                                            .slice(0, 3)
-                                            .map(([tipo, hrs]) => (
-                                              <Badge key={tipo} variant="outline" className="text-[9px]">
-                                                {tipo.substring(0, 25)}: {hrs.toFixed(1)}h
+                                          {cd.tasks
+                                            .sort((a, b) => a.data_tarefa.localeCompare(b.data_tarefa) || a.hora_inicio.localeCompare(b.hora_inicio))
+                                            .map((task, idx) => (
+                                              <Badge key={idx} variant="outline" className="text-[9px] font-mono gap-1">
+                                                #{task.auvo_task_id}
+                                                {task.hora_inicio && task.hora_fim
+                                                  ? ` ${task.hora_inicio}–${task.hora_fim}`
+                                                  : task.hora_inicio
+                                                  ? ` ${task.hora_inicio}`
+                                                  : ""}
+                                                {" · "}{task.horas.toFixed(1)}h
                                               </Badge>
                                             ))}
-                                          {cd.tipos.size > 3 && (
-                                            <Badge variant="outline" className="text-[9px]">
-                                              +{cd.tipos.size - 3}
-                                            </Badge>
-                                          )}
                                         </div>
                                       </TableCell>
                                       <TableCell className="text-center">{cd.tarefas}</TableCell>
