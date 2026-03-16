@@ -51,11 +51,14 @@ type Tarefa = {
 };
 
 const STATUS_COLORS: Record<string, string> = {
-  "Agendada": "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300",
-  "A caminho": "bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300",
-  "Iniciada": "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-300",
+  "Agendada": "bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300",
+  "Aberta": "bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300",
+  "A caminho": "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300",
+  "Iniciada": "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300",
+  "Em andamento": "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300",
   "Finalizada": "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300",
   "Não Executada": "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300",
+  "Cancelada": "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300",
 };
 
 function formatCurrency(value: number | null): string {
