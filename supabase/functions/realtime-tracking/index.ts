@@ -75,7 +75,7 @@ async function fetchAllTasks(
   const allTasks: any[] = [];
   let page = 1;
   const pageSize = 100;
-  const MAX_PAGES = 15;
+  const MAX_PAGES = 30;
 
   const filterObj: any = {
     startDate: `${startDate}T00:00:00`,
