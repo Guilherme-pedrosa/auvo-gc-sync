@@ -67,6 +67,7 @@ const AppRoutes = () => {
                 <Route path="/financeiro/acompanhamento" element={<RealtimeTrackingPage />} />
                 <Route path="/financeiro/kanban-os" element={<OSKanbanPage />} />
                 <Route path="/financeiro/agenda-semanal" element={<AgendaSemanalPage />} />
+                <Route path="/financeiro/relatorios" element={<RelatoriosPage />} />
                 <Route path="/admin/usuarios" element={<UsersPage />} />
                 <Route path="*" element={<NotFound />} />
               </Routes>
