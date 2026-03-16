@@ -384,7 +384,7 @@ Deno.serve(async (req) => {
         const gcSecretToken = Deno.env.get("GC_SECRET_TOKEN");
         if (gcAccessToken && gcSecretToken) {
           const normalizedInput = normalizeCode(manualGcOsCode);
-          const codeForQuery = String(manualGcOsCode).replace(/[^0-9A-Za-z-]/g, "") || String(manualGcOsCode);
+          const codeForQuery = normalizeCode(manualGcOsCode) || String(manualGcOsCode);
           const gcH = { "access-token": gcAccessToken, "secret-access-token": gcSecretToken, "Content-Type": "application/json" };
           const url = `${GC_BASE_URL}/api/ordens_servicos?codigo=${encodeURIComponent(codeForQuery)}&limite=20`;
           const resp = await rateLimitedFetch(url, { headers: gcH }, "gc");
