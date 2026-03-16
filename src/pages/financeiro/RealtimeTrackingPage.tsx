@@ -388,6 +388,20 @@ export default function RealtimeTrackingPage() {
               </button>
             </div>
 
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-8 text-xs"
+              onClick={() => {
+                refetch();
+                toast.info("Atualizando dados...");
+              }}
+              disabled={isFetching}
+            >
+              <RefreshCw className={`h-3.5 w-3.5 mr-1.5 ${isFetching ? "animate-spin" : ""}`} />
+              Atualizar
+            </Button>
+
             {isToday(selectedDate) && (
               <Badge variant="outline" className="text-[10px] h-6 bg-blue-50 text-blue-700 border-blue-200">
                 🔴 AO VIVO
