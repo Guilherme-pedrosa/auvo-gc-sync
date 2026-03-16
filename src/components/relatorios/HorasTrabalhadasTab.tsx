@@ -235,7 +235,7 @@ export default function HorasTrabalhadasTab({
                   </Button>
                 </PopoverTrigger>
                 <PopoverContent className="w-auto p-0" align="start">
-                  <Calendar mode="single" selected={dateTo} onSelect={(d) => d && setDateTo(d)} locale={ptBR} />
+                  <Calendar mode="single" selected={dateTo} onSelect={(d) => d && onDateToChange(d)} locale={ptBR} />
                 </PopoverContent>
               </Popover>
             </div>
