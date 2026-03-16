@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback, useEffect, DragEvent } from "react";
+import React, { useState, useMemo, useCallback, useEffect, DragEvent, useRef } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -588,6 +588,54 @@ export default function AgendaSemanalPage() {
                 setMovingTaskId(null);
               }
             }}
+            onResize={async (taskId, newEndMinutes) => {
+              setMovingTaskId(taskId);
+              try {
+                const oldTarefa = (tarefas || []).find(t => t.auvo_task_id === taskId);
+                if (!oldTarefa) throw new Error("Tarefa não encontrada");
+                const startMin = parseTimeToMinutes(oldTarefa.hora_inicio);
+                if (startMin < 0) throw new Error("Hora de início não definida");
+
+                const newDate = oldTarefa.data_tarefa || format(selectedDay, "yyyy-MM-dd");
+                const updatedHoraFim = `${minutesToTime(newEndMinutes)}:00`;
+                const newDurationDecimal = (newEndMinutes - startMin) / 60;
+
+                // Update Auvo
+                const patches: Array<{ op: string; path: string; value: any }> = [];
+                patches.push({ op: "replace", path: "/taskDate", value: `${newDate}T${oldTarefa.hora_inicio?.substring(0, 5)}:00` });
+
+                const { data: patchResult, error } = await supabase.functions.invoke("auvo-task-update", {
+                  body: { action: "edit", taskId: Number(taskId), patches },
+                });
+                if (error) throw error;
+                if (patchResult?.status && patchResult.status >= 400) throw new Error(patchResult?.data?.message || `Erro ${patchResult.status}`);
+
+                // Update local cache
+                queryClient.setQueryData(queryKey, (old: Tarefa[] | undefined) => {
+                  if (!old) return old;
+                  return old.map(t => t.auvo_task_id !== taskId ? t : {
+                    ...t,
+                    hora_fim: updatedHoraFim,
+                    duracao_decimal: newDurationDecimal,
+                  });
+                });
+
+                // Persist
+                await supabase.functions.invoke("auvo-task-update", {
+                  body: { action: "persist-central", row: {
+                    auvo_task_id: taskId,
+                    hora_fim: updatedHoraFim,
+                    duracao_decimal: newDurationDecimal,
+                  }},
+                });
+
+                toast.success(`Duração alterada: ${oldTarefa.hora_inicio?.substring(0, 5)}–${minutesToTime(newEndMinutes)}`);
+              } catch (err: any) {
+                toast.error(`Erro ao redimensionar: ${err.message}`);
+              } finally {
+                setMovingTaskId(null);
+              }
+            }}
             movingTaskId={movingTaskId}
           />
         ) : (
@@ -792,6 +840,7 @@ function DayView({
   selectedDay,
   onTaskClick,
   onDayDrop,
+  onResize,
   movingTaskId,
 }: {
   tarefas: Tarefa[];
@@ -799,10 +848,16 @@ function DayView({
   selectedDay: Date;
   onTaskClick: (t: Tarefa) => void;
   onDayDrop: (taskId: string, toTecNome: string, toTecId: string | null, newHour: number) => void;
+  onResize: (taskId: string, newEndMinutes: number) => void;
   movingTaskId: string | null;
 }) {
   const dayStr = format(selectedDay, "yyyy-MM-dd");
   const [dragOverCell, setDragOverCell] = useState<string | null>(null);
+
+  // Resize state
+  const containerRef = React.useRef<HTMLDivElement>(null);
+  const [resizing, setResizing] = useState<{ taskId: string; startX: number; origWidthPct: number; origEndMin: number; startMin: number } | null>(null);
+  const [resizeDelta, setResizeDelta] = useState<Record<string, number>>({}); // taskId -> new endMin override
 
   const tecTasks = useMemo(() => {
     const result = new Map<string, Tarefa[]>();
@@ -820,8 +875,41 @@ function DayView({
   const gridEndMin = (HOURS[HOURS.length - 1] + 1) * 60;
   const totalMin = gridEndMin - gridStartMin;
 
+  // Resize handlers
+  const gridWidthPx = HOURS.length * HOUR_COL_WIDTH;
+
+  const handleResizeStart = useCallback((e: React.MouseEvent, taskId: string, startMin: number, endMin: number) => {
+    e.stopPropagation();
+    e.preventDefault();
+    setResizing({ taskId, startX: e.clientX, origWidthPct: 0, origEndMin: endMin, startMin });
+  }, []);
+
+  useEffect(() => {
+    if (!resizing) return;
+    const handleMouseMove = (e: MouseEvent) => {
+      const deltaPx = e.clientX - resizing.startX;
+      const deltaMin = (deltaPx / gridWidthPx) * totalMin;
+      const newEnd = Math.max(resizing.startMin + 15, Math.min(gridEndMin, Math.round((resizing.origEndMin + deltaMin) / 15) * 15));
+      setResizeDelta(prev => ({ ...prev, [resizing.taskId]: newEnd }));
+    };
+    const handleMouseUp = () => {
+      const newEnd = resizeDelta[resizing.taskId];
+      if (newEnd && newEnd !== resizing.origEndMin) {
+        onResize(resizing.taskId, newEnd);
+      }
+      setResizing(null);
+      setResizeDelta({});
+    };
+    window.addEventListener("mousemove", handleMouseMove);
+    window.addEventListener("mouseup", handleMouseUp);
+    return () => {
+      window.removeEventListener("mousemove", handleMouseMove);
+      window.removeEventListener("mouseup", handleMouseUp);
+    };
+  }, [resizing, resizeDelta, gridWidthPx, totalMin, gridEndMin, onResize]);
+
   return (
-    <div className="overflow-auto flex-1">
+    <div className="overflow-auto flex-1" ref={containerRef}>
       <div style={{ minWidth: `${TEC_COL_WIDTH + HOURS.length * HOUR_COL_WIDTH}px` }}>
         {/* Header: hour labels */}
         <div className="flex sticky top-0 z-20 bg-muted/80 backdrop-blur border-b border-border">
@@ -877,7 +965,7 @@ function DayView({
                   const startMin = parseTimeToMinutes(tarefa.hora_inicio);
                   const durationMin = getTaskDurationMinutes(tarefa);
                   const effStart = startMin >= 0 ? startMin : gridStartMin;
-                  const effEnd = effStart + durationMin;
+                  const effEnd = resizeDelta[tarefa.auvo_task_id] ?? (effStart + durationMin);
                   const cStart = Math.max(effStart, gridStartMin);
                   const cEnd = Math.min(effEnd, gridEndMin);
                   const leftPct = ((cStart - gridStartMin) / totalMin) * 100;
@@ -886,22 +974,24 @@ function DayView({
                   const statusClass = STATUS_COLORS[tarefa.status_auvo || ""] || "bg-muted text-muted-foreground";
                   const canDrag = tarefa.status_auvo === "Agendada" || tarefa.status_auvo === "Aberta";
                   const isMoving = movingTaskId === tarefa.auvo_task_id;
+                  const isResizing = resizing?.taskId === tarefa.auvo_task_id;
                   return (
                     <div
                       key={tarefa.auvo_task_id}
-                      draggable={canDrag}
-                      onDragStart={canDrag ? (e) => {
+                      draggable={canDrag && !isResizing}
+                      onDragStart={canDrag && !isResizing ? (e) => {
                         e.dataTransfer.setData("application/json", JSON.stringify({
                           taskId: tarefa.auvo_task_id, fromTecnico: tarefa.tecnico, fromTecnicoId: tarefa.tecnico_id, fromDate: tarefa.data_tarefa, horaInicio: tarefa.hora_inicio,
                         }));
                         e.dataTransfer.effectAllowed = "move";
                       } : undefined}
-                      onClick={() => onTaskClick(tarefa)}
+                      onClick={() => { if (!isResizing) onTaskClick(tarefa); }}
                       className={cn(
                         "absolute top-1 bottom-1 rounded-md border border-border p-1.5 text-[11px] leading-tight bg-card cursor-pointer overflow-hidden z-10 transition-all",
                         canDrag && "hover:shadow-md hover:border-primary/30 active:cursor-grabbing",
                         !canDrag && "opacity-80",
-                        isMoving && "opacity-50 ring-2 ring-primary animate-pulse"
+                        isMoving && "opacity-50 ring-2 ring-primary animate-pulse",
+                        isResizing && "ring-2 ring-primary shadow-lg"
                       )}
                       style={{ left: `${leftPct}%`, width: `${Math.max(widthPct, 3)}%` }}
                     >
@@ -910,7 +1000,7 @@ function DayView({
                           <span className="text-[10px] font-semibold text-primary flex items-center gap-0.5 whitespace-nowrap">
                             <Clock className="h-2.5 w-2.5" />
                             {tarefa.hora_inicio?.substring(0, 5)}
-                            {`–${(tarefa.hora_fim?.substring(0, 5) || displayEnd)}`}
+                            {`–${displayEnd}`}
                           </span>
                         )}
                       </div>
@@ -929,6 +1019,15 @@ function DayView({
                         <div className="flex items-center gap-1 mt-0.5 text-primary">
                           <Loader2 className="h-3 w-3 animate-spin" />
                           <span className="text-[10px]">Movendo...</span>
+                        </div>
+                      )}
+                      {/* Resize handle on right edge */}
+                      {canDrag && (
+                        <div
+                          className="absolute top-0 right-0 w-2 h-full cursor-ew-resize z-20 group hover:bg-primary/20 rounded-r-md"
+                          onMouseDown={(e) => handleResizeStart(e, tarefa.auvo_task_id, effStart, effEnd)}
+                        >
+                          <div className="absolute right-0 top-1/2 -translate-y-1/2 w-0.5 h-6 bg-primary/40 rounded group-hover:bg-primary/80 transition-colors" />
                         </div>
                       )}
                     </div>
