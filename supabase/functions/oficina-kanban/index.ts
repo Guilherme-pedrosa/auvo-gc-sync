@@ -69,8 +69,9 @@ async function fetchAuvoTasksWithQuestionnaire(
 
     for (const task of entities) {
       const questionnaires = task.questionnaires || [];
-      const hasTarget = questionnaires.some((q: any) => String(q.questionnaireId) === QUESTIONNAIRE_ID);
-      if (hasTarget) allTasks.push(task);
+      const hasEntrada = questionnaires.some((q: any) => String(q.questionnaireId) === QUESTIONNAIRE_ID);
+      const hasDevolucao = questionnaires.some((q: any) => String(q.questionnaireId) === QUESTIONNAIRE_DEVOLUCAO_ID);
+      if (hasEntrada || hasDevolucao) allTasks.push(task);
     }
 
     if (entities.length < pageSize) break;
