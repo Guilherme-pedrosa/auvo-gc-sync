@@ -12,7 +12,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   ArrowLeft, CalendarIcon, RefreshCw, ExternalLink,
-  GripVertical, Filter, Wrench, Clock, Package, AlertTriangle
+  GripVertical, Filter, Wrench, Clock, Package, AlertTriangle, Link2, Save
 } from "lucide-react";
 import { format, startOfMonth, subMonths } from "date-fns";
 import { ptBR } from "date-fns/locale";
