@@ -525,7 +525,57 @@ export default function AgendaSemanalPage() {
             filteredTecnicos={filteredTecnicos}
             selectedDay={selectedDay}
             onTaskClick={setSelectedTarefa}
-            onDragStart={handleDragStart}
+            onDayDrop={async (taskId, toTecNome, toTecId, newHour, fromDate) => {
+              setMovingTaskId(taskId);
+              try {
+                const newDate = format(selectedDay, "yyyy-MM-dd");
+                const { data: taskData } = await supabase.functions.invoke("auvo-task-update", {
+                  body: { action: "get", taskId: Number(taskId) },
+                });
+                const taskResult = taskData?.data?.result;
+                if (!taskResult) throw new Error("Não foi possível obter dados da tarefa");
+
+                const patches: Array<{ op: string; path: string; value: any }> = [];
+                const newDateFormatted = newDate + `T${String(newHour).padStart(2, "0")}:00:00`;
+                patches.push({ op: "replace", path: "/taskDate", value: newDateFormatted });
+                
+                const oldTarefa = (tarefas || []).find(t => t.auvo_task_id === taskId);
+                const sameTec = oldTarefa?.tecnico === toTecNome;
+                if (!sameTec && toTecId) {
+                  patches.push({ op: "replace", path: "/idUserTo", value: Number(toTecId) });
+                }
+
+                const { data: patchResult, error } = await supabase.functions.invoke("auvo-task-update", {
+                  body: { action: "edit", taskId: Number(taskId), patches },
+                });
+                if (error) throw error;
+                if (patchResult?.status && patchResult.status >= 400) throw new Error(patchResult?.data?.message || `Erro ${patchResult.status}`);
+
+                const updatedHoraInicio = `${String(newHour).padStart(2, "0")}:00:00`;
+                queryClient.setQueryData(queryKey, (old: Tarefa[] | undefined) => {
+                  if (!old) return old;
+                  return old.map(t => t.auvo_task_id !== taskId ? t : {
+                    ...t, data_tarefa: newDate, hora_inicio: updatedHoraInicio,
+                    ...(!sameTec && toTecId ? { tecnico: toTecNome, tecnico_id: toTecId } : {}),
+                  });
+                });
+
+                await supabase.functions.invoke("auvo-task-update", {
+                  body: { action: "persist-central", row: {
+                    auvo_task_id: taskId, data_tarefa: newDate, hora_inicio: updatedHoraInicio,
+                    ...(!sameTec && toTecId ? { tecnico: toTecNome, tecnico_id: toTecId } : {}),
+                  }},
+                });
+
+                const changes: string[] = [`horário → ${String(newHour).padStart(2, "0")}:00`];
+                if (!sameTec) changes.push(`técnico → ${toTecNome}`);
+                toast.success(`Tarefa atualizada: ${changes.join(", ")}`);
+              } catch (err: any) {
+                toast.error(`Erro ao mover: ${err.message}`);
+              } finally {
+                setMovingTaskId(null);
+              }
+            }}
             movingTaskId={movingTaskId}
           />
         ) : (
@@ -697,11 +747,14 @@ export default function AgendaSemanalPage() {
   );
 }
 const HOURS = Array.from({ length: 15 }, (_, i) => i + 6); // 06:00 to 20:00
+const HOUR_COL_WIDTH = 140;
+const TEC_COL_WIDTH = 160;
 
-function getTaskHour(tarefa: Tarefa): number {
-  const hi = tarefa.hora_inicio || "";
-  const h = parseInt(hi.substring(0, 2), 10);
-  return isNaN(h) ? -1 : h;
+function parseTimeToMinutes(timeStr: string | null | undefined): number {
+  if (!timeStr) return -1;
+  const h = parseInt(timeStr.substring(0, 2), 10);
+  const m = parseInt(timeStr.substring(3, 5), 10);
+  return isNaN(h) ? -1 : h * 60 + (isNaN(m) ? 0 : m);
 }
 
 function DayView({
@@ -709,136 +762,153 @@ function DayView({
   filteredTecnicos,
   selectedDay,
   onTaskClick,
-  onDragStart,
+  onDayDrop,
   movingTaskId,
 }: {
   tarefas: Tarefa[];
   filteredTecnicos: { nome: string; id: string | null }[];
   selectedDay: Date;
   onTaskClick: (t: Tarefa) => void;
-  onDragStart: (e: DragEvent<HTMLDivElement>, t: Tarefa) => void;
+  onDayDrop: (taskId: string, toTecNome: string, toTecId: string | null, newHour: number, fromDate: string) => void;
   movingTaskId: string | null;
 }) {
   const dayStr = format(selectedDay, "yyyy-MM-dd");
+  const [dragOverCell, setDragOverCell] = useState<string | null>(null);
 
-  // Build grid: tecnico -> hour -> tasks
-  const techHourGrid = useMemo(() => {
-    const result = new Map<string, Map<number, Tarefa[]>>();
-    for (const tec of filteredTecnicos) {
-      const hourMap = new Map<number, Tarefa[]>();
-      HOURS.forEach(h => hourMap.set(h, []));
-      // Also a bucket for "sem horário"
-      hourMap.set(-1, []);
-      result.set(tec.nome, hourMap);
-    }
-
+  const tecTasks = useMemo(() => {
+    const result = new Map<string, Tarefa[]>();
+    for (const tec of filteredTecnicos) result.set(tec.nome, []);
     const dayTarefas = tarefas.filter(t => t.data_tarefa === dayStr);
     for (const t of dayTarefas) {
       const tecNome = t.tecnico || "Sem técnico";
-      const hourMap = result.get(tecNome);
-      if (!hourMap) continue;
-      const h = getTaskHour(t);
-      const bucket = hourMap.get(HOURS.includes(h) ? h : -1);
-      if (bucket) bucket.push(t);
+      const arr = result.get(tecNome);
+      if (arr) arr.push(t);
     }
-
     return result;
   }, [tarefas, filteredTecnicos, dayStr]);
 
+  const gridStartMin = HOURS[0] * 60;
+  const gridEndMin = (HOURS[HOURS.length - 1] + 1) * 60;
+  const totalMin = gridEndMin - gridStartMin;
+
   return (
-    <div className="overflow-x-auto overflow-y-auto flex-1">
-      <table className="w-full border-collapse" style={{ minWidth: `${140 + filteredTecnicos.length * 180}px` }}>
-        <thead className="sticky top-0 z-20">
-          <tr className="border-b border-border bg-muted/50">
-            <th className="text-left px-3 py-2.5 text-xs font-semibold text-muted-foreground w-20 sticky left-0 bg-muted/50 z-30">
-              Horário
-            </th>
-            {filteredTecnicos.map(tec => {
-              const hourMap = techHourGrid.get(tec.nome);
-              const totalTec = hourMap
-                ? Array.from(hourMap.values()).reduce((sum, arr) => sum + arr.length, 0)
-                : 0;
-              const totalValor = hourMap
-                ? Array.from(hourMap.values()).flat().reduce((sum, t) => sum + (t.gc_os_valor_total ?? 0), 0)
-                : 0;
-              return (
-                <th key={tec.nome} className="text-center px-2 py-2.5 text-xs font-semibold min-w-[170px] border-r border-border last:border-r-0">
-                  <div className="font-medium text-foreground">{tec.nome}</div>
-                  <div className="text-[10px] text-muted-foreground font-normal">{totalTec} tarefa{totalTec !== 1 ? "s" : ""}</div>
-                  {totalValor > 0 && (
-                    <div className="text-[10px] font-semibold text-emerald-700 dark:text-emerald-400">
-                      {formatCurrency(totalValor)}
-                    </div>
-                  )}
-                </th>
-              );
-            })}
-          </tr>
-        </thead>
-        <tbody>
-          {/* Sem horário row */}
-          {filteredTecnicos.some(tec => {
-            const hourMap = techHourGrid.get(tec.nome);
-            return hourMap && (hourMap.get(-1)?.length || 0) > 0;
-          }) && (
-            <tr className="border-b border-border">
-              <td className="px-3 py-1.5 sticky left-0 bg-card z-10 border-r border-border text-xs text-muted-foreground font-medium">
-                s/ hora
-              </td>
-              {filteredTecnicos.map(tec => {
-                const tasks = techHourGrid.get(tec.nome)?.get(-1) || [];
-                return (
-                  <td key={tec.nome} className="px-1.5 py-1 align-top border-r border-border last:border-r-0">
-                    <div className="space-y-1">
-                      {tasks.map(t => (
-                        <TaskCard
-                          key={t.auvo_task_id}
-                          tarefa={t}
-                          onDragStart={onDragStart}
-                          isMoving={movingTaskId === t.auvo_task_id}
-                          onClick={() => onTaskClick(t)}
-                        />
-                      ))}
-                    </div>
-                  </td>
-                );
-              })}
-            </tr>
-          )}
-          {HOURS.map(hour => {
-            const label = `${String(hour).padStart(2, "0")}:00`;
-            const hasAny = filteredTecnicos.some(tec => {
-              const tasks = techHourGrid.get(tec.nome)?.get(hour) || [];
-              return tasks.length > 0;
-            });
-            return (
-              <tr key={hour} className={cn("border-b border-border", !hasAny && "opacity-50")}>
-                <td className="px-3 py-1.5 sticky left-0 bg-card z-10 border-r border-border text-xs text-muted-foreground font-medium whitespace-nowrap">
-                  {label}
-                </td>
-                {filteredTecnicos.map(tec => {
-                  const tasks = techHourGrid.get(tec.nome)?.get(hour) || [];
+    <div className="overflow-auto flex-1">
+      <div style={{ minWidth: `${TEC_COL_WIDTH + HOURS.length * HOUR_COL_WIDTH}px` }}>
+        {/* Header: hour labels */}
+        <div className="flex sticky top-0 z-20 bg-muted/80 backdrop-blur border-b border-border">
+          <div className="flex-shrink-0 px-3 py-2 text-xs font-semibold text-muted-foreground border-r border-border" style={{ width: TEC_COL_WIDTH }}>
+            Técnico
+          </div>
+          {HOURS.map(hour => (
+            <div key={hour} className="text-center py-2 text-xs font-medium text-muted-foreground border-r border-border last:border-r-0" style={{ width: HOUR_COL_WIDTH, minWidth: HOUR_COL_WIDTH }}>
+              {String(hour).padStart(2, "0")}:00
+            </div>
+          ))}
+        </div>
+
+        {/* Rows: one per technician */}
+        {filteredTecnicos.map(tec => {
+          const tasks = tecTasks.get(tec.nome) || [];
+          const totalValor = tasks.reduce((sum, t) => sum + (t.gc_os_valor_total ?? 0), 0);
+          return (
+            <div key={tec.nome} className="flex border-b border-border hover:bg-muted/20 transition-colors" style={{ minHeight: 80 }}>
+              <div className="flex-shrink-0 px-3 py-2 border-r border-border bg-card sticky left-0 z-10" style={{ width: TEC_COL_WIDTH }}>
+                <div className="font-medium text-sm text-foreground truncate">{tec.nome}</div>
+                <div className="text-[10px] text-muted-foreground">{tasks.length} tarefa{tasks.length !== 1 ? "s" : ""}</div>
+                {totalValor > 0 && (
+                  <div className="text-[10px] font-semibold text-emerald-700 dark:text-emerald-400">{formatCurrency(totalValor)}</div>
+                )}
+              </div>
+              <div className="flex-1 relative" style={{ width: HOURS.length * HOUR_COL_WIDTH }}>
+                {/* Drop zone grid */}
+                <div className="flex absolute inset-0">
+                  {HOURS.map(hour => {
+                    const cellKey = `${tec.nome}::${hour}`;
+                    return (
+                      <div
+                        key={hour}
+                        className={cn("border-r border-border last:border-r-0 transition-colors", dragOverCell === cellKey && "bg-primary/15 ring-2 ring-inset ring-primary/40")}
+                        style={{ width: HOUR_COL_WIDTH, minWidth: HOUR_COL_WIDTH }}
+                        onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = "move"; setDragOverCell(cellKey); }}
+                        onDragLeave={() => setDragOverCell(null)}
+                        onDrop={(e) => {
+                          e.preventDefault();
+                          setDragOverCell(null);
+                          const raw = e.dataTransfer.getData("application/json");
+                          if (!raw) return;
+                          const { taskId, fromDate } = JSON.parse(raw);
+                          onDayDrop(taskId, tec.nome, tec.id, hour, fromDate);
+                        }}
+                      />
+                    );
+                  })}
+                </div>
+                {/* Task cards positioned absolutely spanning start→end */}
+                {tasks.map(tarefa => {
+                  const startMin = parseTimeToMinutes(tarefa.hora_inicio);
+                  const endMin = parseTimeToMinutes(tarefa.hora_fim);
+                  const effStart = startMin >= 0 ? startMin : gridStartMin;
+                  const effEnd = endMin > effStart ? endMin : effStart + 60;
+                  const cStart = Math.max(effStart, gridStartMin);
+                  const cEnd = Math.min(effEnd, gridEndMin);
+                  const leftPct = ((cStart - gridStartMin) / totalMin) * 100;
+                  const widthPct = ((cEnd - cStart) / totalMin) * 100;
+                  const statusClass = STATUS_COLORS[tarefa.status_auvo || ""] || "bg-muted text-muted-foreground";
+                  const canDrag = tarefa.status_auvo === "Agendada" || tarefa.status_auvo === "Aberta";
+                  const isMoving = movingTaskId === tarefa.auvo_task_id;
                   return (
-                    <td key={tec.nome} className="px-1.5 py-1 align-top border-r border-border last:border-r-0 min-h-[36px]">
-                      <div className="space-y-1 min-h-[32px]">
-                        {tasks.map(t => (
-                          <TaskCard
-                            key={t.auvo_task_id}
-                            tarefa={t}
-                            onDragStart={onDragStart}
-                            isMoving={movingTaskId === t.auvo_task_id}
-                            onClick={() => onTaskClick(t)}
-                          />
-                        ))}
+                    <div
+                      key={tarefa.auvo_task_id}
+                      draggable={canDrag}
+                      onDragStart={canDrag ? (e) => {
+                        e.dataTransfer.setData("application/json", JSON.stringify({
+                          taskId: tarefa.auvo_task_id, fromTecnico: tarefa.tecnico, fromTecnicoId: tarefa.tecnico_id, fromDate: tarefa.data_tarefa, horaInicio: tarefa.hora_inicio,
+                        }));
+                        e.dataTransfer.effectAllowed = "move";
+                      } : undefined}
+                      onClick={() => onTaskClick(tarefa)}
+                      className={cn(
+                        "absolute top-1 bottom-1 rounded-md border border-border p-1.5 text-[11px] leading-tight bg-card cursor-pointer overflow-hidden z-10 transition-all",
+                        canDrag && "hover:shadow-md hover:border-primary/30 active:cursor-grabbing",
+                        !canDrag && "opacity-80",
+                        isMoving && "opacity-50 ring-2 ring-primary animate-pulse"
+                      )}
+                      style={{ left: `${leftPct}%`, width: `${Math.max(widthPct, 3)}%` }}
+                    >
+                      <div className="flex items-center gap-1 mb-0.5">
+                        {tarefa.hora_inicio && (
+                          <span className="text-[10px] font-semibold text-primary flex items-center gap-0.5 whitespace-nowrap">
+                            <Clock className="h-2.5 w-2.5" />
+                            {tarefa.hora_inicio?.substring(0, 5)}
+                            {tarefa.hora_fim && `–${tarefa.hora_fim?.substring(0, 5)}`}
+                          </span>
+                        )}
                       </div>
-                    </td>
+                      <div className="font-medium text-foreground truncate">{tarefa.cliente || "—"}</div>
+                      <div className="text-[10px] text-muted-foreground truncate">
+                        T#{tarefa.auvo_task_id}
+                        {tarefa.gc_os_codigo && <> · OS #{tarefa.gc_os_codigo}</>}
+                      </div>
+                      {tarefa.gc_os_valor_total != null && (
+                        <div className="text-[10px] font-semibold text-emerald-700 dark:text-emerald-400">{formatCurrency(tarefa.gc_os_valor_total)}</div>
+                      )}
+                      <div className="flex items-center justify-end mt-0.5">
+                        <span className={cn("px-1 py-0.5 rounded text-[9px] font-medium leading-none", statusClass)}>{tarefa.status_auvo || "—"}</span>
+                      </div>
+                      {isMoving && (
+                        <div className="flex items-center gap-1 mt-0.5 text-primary">
+                          <Loader2 className="h-3 w-3 animate-spin" />
+                          <span className="text-[10px]">Movendo...</span>
+                        </div>
+                      )}
+                    </div>
                   );
                 })}
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
+              </div>
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }
