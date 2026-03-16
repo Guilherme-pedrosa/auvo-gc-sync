@@ -527,6 +527,7 @@ export default function Index() {
             <p className="text-xs text-muted-foreground">
               Orçamentos e Execução de Serviços — Auvo × GestãoClick
             </p>
+            <LastSyncBadge className="mt-0.5" />
           </div>
           <div className="flex items-center gap-3">
             <Popover>
