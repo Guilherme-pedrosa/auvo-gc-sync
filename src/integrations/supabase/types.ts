@@ -300,9 +300,12 @@ export type Database = {
           check_out: boolean | null
           cliente: string | null
           criado_em: string | null
+          data_conclusao: string | null
           data_tarefa: string | null
           descricao: string | null
+          deslocamento_inicio: string | null
           duracao_decimal: number | null
+          duracao_deslocamento: number | null
           endereco: string | null
           gc_orc_cliente: string | null
           gc_orc_cor_situacao: string | null
@@ -347,9 +350,12 @@ export type Database = {
           check_out?: boolean | null
           cliente?: string | null
           criado_em?: string | null
+          data_conclusao?: string | null
           data_tarefa?: string | null
           descricao?: string | null
+          deslocamento_inicio?: string | null
           duracao_decimal?: number | null
+          duracao_deslocamento?: number | null
           endereco?: string | null
           gc_orc_cliente?: string | null
           gc_orc_cor_situacao?: string | null
@@ -394,9 +400,12 @@ export type Database = {
           check_out?: boolean | null
           cliente?: string | null
           criado_em?: string | null
+          data_conclusao?: string | null
           data_tarefa?: string | null
           descricao?: string | null
+          deslocamento_inicio?: string | null
           duracao_decimal?: number | null
+          duracao_deslocamento?: number | null
           endereco?: string | null
           gc_orc_cliente?: string | null
           gc_orc_cor_situacao?: string | null

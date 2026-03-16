@@ -92,14 +92,18 @@ export default function HorasTrabalhadasTab({
     return map;
   }, [grupos, membros]);
 
-  // Filter data
+  // Filter data - use data_conclusao (checkout date) for monthly accounting, fallback to data_tarefa
   const filtered = useMemo(() => {
     const fromStr = format(dateFrom, "yyyy-MM-dd");
     const toStr = format(dateTo, "yyyy-MM-dd");
 
     return data.filter((t) => {
-      if (!t.data_tarefa || t.duracao_decimal == null) return false;
-      if (t.data_tarefa < fromStr || t.data_tarefa > toStr) return false;
+      if (t.duracao_decimal == null) return false;
+
+      // Use completion date (data_conclusao) when available, otherwise data_tarefa
+      const dateRef = t.data_conclusao || t.data_tarefa;
+      if (!dateRef) return false;
+      if (dateRef < fromStr || dateRef > toStr) return false;
 
       // Must have check_out (completed work)
       if (!t.check_out) return false;
@@ -159,32 +163,35 @@ export default function HorasTrabalhadasTab({
   };
 
   // Summary by technician
-  type TaskDetail = { auvo_task_id: string; descricao: string; hora_inicio: string; hora_fim: string; horas: number; data_tarefa: string };
-  type ClienteData = { horas: number; tarefas: number; valor: number; tipos: Map<string, number>; tasks: TaskDetail[] };
+  type TaskDetail = { auvo_task_id: string; descricao: string; hora_inicio: string; hora_fim: string; horas: number; deslocamento: number; data_tarefa: string };
+  type ClienteData = { horas: number; deslocamento: number; tarefas: number; valor: number; tipos: Map<string, number>; tasks: TaskDetail[] };
   const tecnicoSummary = useMemo(() => {
-    const map = new Map<string, { tecnico: string; horas: number; tarefas: number; valor: number; byCliente: Map<string, ClienteData> }>();
+    const map = new Map<string, { tecnico: string; horas: number; deslocamento: number; tarefas: number; valor: number; byCliente: Map<string, ClienteData> }>();
     for (const t of filtered) {
       const tec = t.tecnico || "Desconhecido";
       const cliente = t.cliente || t.gc_os_cliente || "Sem cliente";
       const clienteGc = t.gc_os_cliente || "";
       const horas = Number(t.duracao_decimal) || 0;
+      const deslocamento = Number(t.duracao_deslocamento) || 0;
       const rate = getHourlyRate(tec, cliente, clienteGc);
 
       let entry = map.get(tec);
       if (!entry) {
-        entry = { tecnico: tec, horas: 0, tarefas: 0, valor: 0, byCliente: new Map() };
+        entry = { tecnico: tec, horas: 0, deslocamento: 0, tarefas: 0, valor: 0, byCliente: new Map() };
         map.set(tec, entry);
       }
       entry.horas += horas;
+      entry.deslocamento += deslocamento;
       entry.tarefas++;
       entry.valor += horas * rate;
 
       let clienteEntry = entry.byCliente.get(cliente);
       if (!clienteEntry) {
-        clienteEntry = { horas: 0, tarefas: 0, valor: 0, tipos: new Map(), tasks: [] };
+        clienteEntry = { horas: 0, deslocamento: 0, tarefas: 0, valor: 0, tipos: new Map(), tasks: [] };
         entry.byCliente.set(cliente, clienteEntry);
       }
       clienteEntry.horas += horas;
+      clienteEntry.deslocamento += deslocamento;
       clienteEntry.tarefas++;
       clienteEntry.valor += horas * rate;
 
@@ -196,6 +203,7 @@ export default function HorasTrabalhadasTab({
         hora_inicio: t.hora_inicio || "",
         hora_fim: t.hora_fim || "",
         horas,
+        deslocamento,
         data_tarefa: t.data_tarefa || "",
       });
     }
@@ -203,6 +211,7 @@ export default function HorasTrabalhadasTab({
   }, [filtered, valorHoraConfigs, grupos, grupoClienteMap]);
 
   const totalHoras = useMemo(() => tecnicoSummary.reduce((s, t) => s + t.horas, 0), [tecnicoSummary]);
+  const totalDeslocamento = useMemo(() => tecnicoSummary.reduce((s, t) => s + t.deslocamento, 0), [tecnicoSummary]);
   const totalValor = useMemo(() => tecnicoSummary.reduce((s, t) => s + t.valor, 0), [tecnicoSummary]);
   const totalTarefas = useMemo(() => tecnicoSummary.reduce((s, t) => s + t.tarefas, 0), [tecnicoSummary]);
 
@@ -451,13 +460,21 @@ export default function HorasTrabalhadasTab({
       </Card>
 
       {/* Summary cards */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
         <Card>
           <CardHeader className="py-3 px-4">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Horas Totais</CardTitle>
+            <CardTitle className="text-sm font-medium text-muted-foreground">Horas Trabalhadas</CardTitle>
           </CardHeader>
           <CardContent className="px-4 pb-3">
             <p className="text-2xl font-bold text-foreground">{totalHoras.toFixed(1)}h</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="py-3 px-4">
+            <CardTitle className="text-sm font-medium text-muted-foreground">Horas Deslocamento</CardTitle>
+          </CardHeader>
+          <CardContent className="px-4 pb-3">
+            <p className="text-2xl font-bold text-foreground">{totalDeslocamento.toFixed(1)}h</p>
           </CardContent>
         </Card>
         <Card>
@@ -544,13 +561,14 @@ export default function HorasTrabalhadasTab({
                 <TableHead>Técnico</TableHead>
                 <TableHead className="text-center">Tarefas</TableHead>
                 <TableHead className="text-right">Horas</TableHead>
+                <TableHead className="text-right">Deslocamento</TableHead>
                 <TableHead className="text-right">Valor</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {tecnicoSummary.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={4} className="text-center py-8 text-muted-foreground">
+                  <TableCell colSpan={5} className="text-center py-8 text-muted-foreground">
                     Nenhuma tarefa encontrada no período
                   </TableCell>
                 </TableRow>
@@ -567,13 +585,14 @@ export default function HorasTrabalhadasTab({
                         <Badge variant="secondary">{tec.tarefas}</Badge>
                       </TableCell>
                       <TableCell className="text-right font-semibold">{tec.horas.toFixed(2)}h</TableCell>
+                      <TableCell className="text-right text-muted-foreground">{tec.deslocamento > 0 ? `${tec.deslocamento.toFixed(2)}h` : "—"}</TableCell>
                       <TableCell className="text-right font-semibold">
                         {tec.valor > 0 ? tec.valor.toLocaleString("pt-BR", { style: "currency", currency: "BRL" }) : "—"}
                       </TableCell>
                     </TableRow>
                     {expanded === tec.tecnico && (
                       <TableRow key={`${tec.tecnico}-detail`}>
-                        <TableCell colSpan={4} className="p-0">
+                          <TableCell colSpan={6} className="p-0">
                           <div className="bg-muted/30 px-6 py-3">
                             <Table>
                               <TableHeader>
@@ -582,6 +601,7 @@ export default function HorasTrabalhadasTab({
                                   <TableHead className="text-xs">Tarefas (ID · Horário)</TableHead>
                                   <TableHead className="text-xs text-center">Qtd</TableHead>
                                   <TableHead className="text-xs text-right">Horas</TableHead>
+                                  <TableHead className="text-xs text-right">Desloc.</TableHead>
                                   <TableHead className="text-xs text-right">Valor</TableHead>
                                 </TableRow>
                               </TableHeader>
@@ -618,6 +638,7 @@ export default function HorasTrabalhadasTab({
                                       </TableCell>
                                       <TableCell className="text-center">{cd.tarefas}</TableCell>
                                       <TableCell className={cn("text-right font-medium", cd.horas < 0 && "text-destructive font-bold")}>{cd.horas.toFixed(2)}h</TableCell>
+                                      <TableCell className="text-right text-muted-foreground text-xs">{cd.deslocamento > 0 ? `${cd.deslocamento.toFixed(2)}h` : "—"}</TableCell>
                                       <TableCell className="text-right font-medium">
                                         {cd.valor > 0 ? cd.valor.toLocaleString("pt-BR", { style: "currency", currency: "BRL" }) : "—"}
                                       </TableCell>
