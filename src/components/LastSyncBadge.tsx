@@ -3,8 +3,15 @@ import { format, parseISO, formatDistanceToNow } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { Database } from "lucide-react";
 
-export default function LastSyncBadge({ className = "" }: { className?: string }) {
-  const { data: lastSync } = useLastSync();
+interface LastSyncBadgeProps {
+  className?: string;
+  /** Override timestamp (ISO string) — if provided, skips the DB query */
+  overrideTimestamp?: string | null;
+}
+
+export default function LastSyncBadge({ className = "", overrideTimestamp }: LastSyncBadgeProps) {
+  const { data: dbSync } = useLastSync();
+  const lastSync = overrideTimestamp ?? dbSync;
 
   if (!lastSync) return null;
 
