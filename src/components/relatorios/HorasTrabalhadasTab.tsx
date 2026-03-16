@@ -32,6 +32,10 @@ interface Props {
   grupos: any[];
   membros: any[];
   valorHoraConfigs: any[];
+  dateFrom: Date;
+  dateTo: Date;
+  onDateFromChange: (d: Date) => void;
+  onDateToChange: (d: Date) => void;
 }
 
 const CHART_COLORS = [
@@ -43,10 +47,8 @@ const CHART_COLORS = [
 export default function HorasTrabalhadasTab({
   data, isLoading, allClientes, allTecnicos, allTiposTarefa,
   grupos, membros, valorHoraConfigs,
+  dateFrom, dateTo, onDateFromChange, onDateToChange,
 }: Props) {
-  const today = new Date();
-  const [dateFrom, setDateFrom] = useState<Date>(startOfMonth(today));
-  const [dateTo, setDateTo] = useState<Date>(endOfMonth(today));
   const [filterTecnico, setFilterTecnico] = useState("todos");
   const [filterCliente, setFilterCliente] = useState("todos");
   const [filterGrupo, setFilterGrupo] = useState("todos");
@@ -219,7 +221,7 @@ export default function HorasTrabalhadasTab({
                   </Button>
                 </PopoverTrigger>
                 <PopoverContent className="w-auto p-0" align="start">
-                  <Calendar mode="single" selected={dateFrom} onSelect={(d) => d && setDateFrom(d)} locale={ptBR} />
+                  <Calendar mode="single" selected={dateFrom} onSelect={(d) => d && onDateFromChange(d)} locale={ptBR} />
                 </PopoverContent>
               </Popover>
             </div>
@@ -233,7 +235,7 @@ export default function HorasTrabalhadasTab({
                   </Button>
                 </PopoverTrigger>
                 <PopoverContent className="w-auto p-0" align="start">
-                  <Calendar mode="single" selected={dateTo} onSelect={(d) => d && setDateTo(d)} locale={ptBR} />
+                  <Calendar mode="single" selected={dateTo} onSelect={(d) => d && onDateToChange(d)} locale={ptBR} />
                 </PopoverContent>
               </Popover>
             </div>

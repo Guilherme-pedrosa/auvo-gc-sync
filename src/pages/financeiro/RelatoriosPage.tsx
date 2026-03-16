@@ -1,5 +1,6 @@
 import { useState, useMemo, useEffect, useCallback, useRef } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { startOfMonth, endOfMonth, format } from "date-fns";
 import { supabase } from "@/integrations/supabase/client";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
@@ -27,6 +28,9 @@ export default function RelatoriosPage() {
   const [syncStep, setSyncStep] = useState(0);
   const [syncProgress, setSyncProgress] = useState(0);
   const stepTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const today = new Date();
+  const [dateFrom, setDateFrom] = useState<Date>(startOfMonth(today));
+  const [dateTo, setDateTo] = useState<Date>(endOfMonth(today));
 
   const startProgressSimulation = () => {
     setSyncStep(0);
@@ -67,15 +71,17 @@ export default function RelatoriosPage() {
   const handleSync = async () => {
     setSyncing(true);
     startProgressSimulation();
+    const syncFrom = format(dateFrom, "yyyy-MM-dd");
+    const syncTo = format(dateTo, "yyyy-MM-dd");
     try {
       const { data, error } = await supabase.functions.invoke("central-sync", {
-        body: {},
+        body: { start_date: syncFrom, end_date: syncTo },
       });
       if (error) throw error;
       if (data?.success === false) throw new Error(data.error || "Erro na sincronização");
 
       toast.success(
-        `Sync concluído: ${data.auvo_tarefas || 0} tarefas do Auvo, ${data.upserted || 0} atualizadas`
+        `Sync ${syncFrom} → ${syncTo}: ${data.auvo_tarefas || 0} tarefas, ${data.upserted || 0} atualizadas`
       );
       stopProgressSimulation(true);
 
@@ -193,7 +199,7 @@ export default function RelatoriosPage() {
             disabled={syncing}
           >
             <RefreshCw className={`h-4 w-4 ${syncing ? "animate-spin" : ""}`} />
-            {syncing ? "Sincronizando..." : "Atualizar do Auvo"}
+            {syncing ? "Sincronizando..." : `Atualizar do Auvo (${format(dateFrom, "dd/MM")} – ${format(dateTo, "dd/MM")})`}
           </Button>
           {syncing && (
             <div className="w-64 space-y-1.5">
@@ -236,6 +242,10 @@ export default function RelatoriosPage() {
             grupos={grupos || []}
             membros={membros || []}
             valorHoraConfigs={valorHoraConfigs || []}
+            dateFrom={dateFrom}
+            dateTo={dateTo}
+            onDateFromChange={setDateFrom}
+            onDateToChange={setDateTo}
           />
         </TabsContent>
 
