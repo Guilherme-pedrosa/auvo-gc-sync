@@ -267,6 +267,7 @@ export default function Index() {
       setSyncStatus("Atualizando dados...");
       toast.success("Dados sincronizados (Kanban + Central)!");
       await Promise.all([refetchOrc(), refetchExec()]);
+      queryClient.invalidateQueries({ queryKey: ["last-sync-timestamp"] });
       setSyncStatus("");
     } catch {
       toast.warning("Sincronização em processamento...");
