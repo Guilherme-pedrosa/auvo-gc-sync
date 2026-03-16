@@ -1772,6 +1772,34 @@ export default function OSKanbanPage() {
                 </Popover>
               </div>
 
+              {/* Time picker */}
+              <div className="space-y-2">
+                <Label>Horário</Label>
+                <div className="flex items-center gap-2">
+                  <Select value={editHour} onValueChange={setEditHour}>
+                    <SelectTrigger className="w-[80px]">
+                      <SelectValue placeholder="HH" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {Array.from({ length: 24 }, (_, i) => String(i).padStart(2, "0")).map((h) => (
+                        <SelectItem key={h} value={h}>{h}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <span className="text-lg font-bold text-muted-foreground">:</span>
+                  <Select value={editMinute} onValueChange={setEditMinute}>
+                    <SelectTrigger className="w-[80px]">
+                      <SelectValue placeholder="MM" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {["00", "15", "30", "45"].map((m) => (
+                        <SelectItem key={m} value={m}>{m}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+
               {/* Technician select */}
               <div className="space-y-2">
                 <Label>Técnico</Label>
