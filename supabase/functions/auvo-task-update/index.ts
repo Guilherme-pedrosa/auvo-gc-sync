@@ -74,6 +74,44 @@ Deno.serve(async (req) => {
     const body = await req.json();
     const { action } = body;
 
+    if (action === "persist-central") {
+      const rowsInput = Array.isArray(body?.rows)
+        ? body.rows
+        : body?.row
+          ? [body.row]
+          : [];
+
+      if (rowsInput.length === 0) {
+        return new Response(
+          JSON.stringify({ error: "rows é obrigatório" }),
+          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
+      const rows = rowsInput
+        .map((r: any) => sanitizeCentralRow(r))
+        .filter((r: any) => !!r);
+
+      if (rows.length === 0) {
+        return new Response(
+          JSON.stringify({ error: "Nenhuma linha válida para persistir" }),
+          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
+      const admin = getAdminClient();
+      const { error } = await admin
+        .from("tarefas_central")
+        .upsert(rows, { onConflict: "auvo_task_id" });
+
+      if (error) throw error;
+
+      return new Response(
+        JSON.stringify({ success: true, count: rows.length, status: 200 }),
+        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
     // Login to Auvo
     const bearerToken = await auvoLogin(apiKey, apiToken);
     const headers = { Authorization: `Bearer ${bearerToken}`, "Content-Type": "application/json" };
