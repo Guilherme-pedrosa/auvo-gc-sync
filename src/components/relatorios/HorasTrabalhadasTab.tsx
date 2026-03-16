@@ -53,9 +53,19 @@ export default function HorasTrabalhadasTab({
   const [filterTecnico, setFilterTecnico] = useState("todos");
   const [filterCliente, setFilterCliente] = useState("todos");
   const [filterGrupo, setFilterGrupo] = useState("todos");
+  const [grupoOpen, setGrupoOpen] = useState(false);
   const [selectedTipos, setSelectedTipos] = useState<Set<string>>(new Set());
   const [allTiposSelected, setAllTiposSelected] = useState(true);
   const [searchTipo, setSearchTipo] = useState("");
+
+  // Normalize client name for matching (strip LTDA, ME, SA, EPP, EIRELI, etc.)
+  const normalizeName = (name: string) =>
+    name
+      .toUpperCase()
+      .replace(/\s*(LTDA|ME|SA|EPP|EIRELI|S\/A|S\.A\.|LTDA\.?|MEI)\s*/g, "")
+      .replace(/[.\-\/]/g, "")
+      .replace(/\s+/g, " ")
+      .trim();
 
   // Resolve group members
   const grupoClienteMap = useMemo(() => {
