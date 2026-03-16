@@ -638,6 +638,7 @@ export default function HorasTrabalhadasTab({
                                       </TableCell>
                                       <TableCell className="text-center">{cd.tarefas}</TableCell>
                                       <TableCell className={cn("text-right font-medium", cd.horas < 0 && "text-destructive font-bold")}>{cd.horas.toFixed(2)}h</TableCell>
+                                      <TableCell className="text-right text-muted-foreground text-xs">{cd.deslocamento > 0 ? `${cd.deslocamento.toFixed(2)}h` : "—"}</TableCell>
                                       <TableCell className="text-right font-medium">
                                         {cd.valor > 0 ? cd.valor.toLocaleString("pt-BR", { style: "currency", currency: "BRL" }) : "—"}
                                       </TableCell>
