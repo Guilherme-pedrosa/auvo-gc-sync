@@ -334,6 +334,8 @@ Deno.serve(async (req) => {
       }
 
       const dados = cached.dados as any;
+      let osMatched = !manualGcOsCode;
+      let orcMatched = !manualGcOrcCode;
 
       // Update manual links
       if (manualOsTaskId) {
