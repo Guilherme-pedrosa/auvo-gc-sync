@@ -119,7 +119,7 @@ export default function HorasTrabalhadasTab({
         const clienteGc = normalizeName(t.gc_os_cliente || "");
         const matched = grupoClientes.some((gc: string) => {
           const nGc = normalizeName(gc);
-          return nGc === clienteAuvo || nGc === clienteGc || (clienteAuvo && nGc.includes(clienteAuvo)) || (clienteAuvo && clienteAuvo.includes(nGc));
+          return nGc === clienteAuvo || nGc === clienteGc;
         });
         if (!matched) return false;
       }
