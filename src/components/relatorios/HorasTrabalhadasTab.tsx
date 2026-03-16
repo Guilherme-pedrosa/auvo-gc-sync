@@ -107,7 +107,8 @@ export default function HorasTrabalhadasTab({
       }
 
       if (!allTiposSelected && selectedTipos.size > 0) {
-        if (!selectedTipos.has(t.descricao || "")) return false;
+        const tipoTarefa = (t.descricao || "").trim() || "Sem tipo";
+        if (!selectedTipos.has(tipoTarefa)) return false;
       }
 
       return true;
@@ -173,11 +174,11 @@ export default function HorasTrabalhadasTab({
       clienteEntry.tarefas++;
       clienteEntry.valor += horas * rate;
 
-      const tipo = t.descricao || "Sem tipo";
+      const tipo = (t.descricao || "").trim() || "Sem tipo";
       clienteEntry.tipos.set(tipo, (clienteEntry.tipos.get(tipo) || 0) + horas);
       clienteEntry.tasks.push({
         auvo_task_id: t.auvo_task_id || "",
-        descricao: t.descricao || "Sem tipo",
+        descricao: (t.descricao || "").trim() || "Sem tipo",
         hora_inicio: t.hora_inicio || "",
         hora_fim: t.hora_fim || "",
         horas,

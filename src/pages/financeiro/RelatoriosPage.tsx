@@ -179,8 +179,13 @@ export default function RelatoriosPage() {
 
   const allTiposTarefa = useMemo(() => {
     if (!todasTarefas) return [] as string[];
-    const set = new Set(todasTarefas.map((t) => t.descricao || "").filter(Boolean));
-    return Array.from(set).sort() as string[];
+    const set = new Set(
+      todasTarefas.map((t) => {
+        const tipo = (t.descricao || "").trim();
+        return tipo.length > 0 ? tipo : "Sem tipo";
+      })
+    );
+    return Array.from(set).sort((a, b) => a.localeCompare(b, "pt-BR")) as string[];
   }, [todasTarefas]);
 
   return (
