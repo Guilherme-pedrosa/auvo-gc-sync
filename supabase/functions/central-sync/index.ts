@@ -448,12 +448,33 @@ Deno.serve(async (req) => {
       const resolvedAddress = snapshotAddr || baseAddress;
       const resolvedOrientation = String(snapshot?.orientation || task.orientation || "").substring(0, 500);
 
+      // Resolve checkout date for monthly accounting
+      const checkOutDateRaw = normalizeDate(task.checkOutDate || task.checkoutDate);
+      // displacementStart is a datetime string from Auvo
+      const displacementStartRaw = String(task.displacementStart || "").trim();
+
+      // Calculate displacement duration (displacementStart → checkInDate) in decimal hours
+      let duracaoDeslocamento: number | null = null;
+      if (displacementStartRaw && task.checkInDate) {
+        const dStart = new Date(displacementStartRaw);
+        const dEnd = new Date(String(task.checkInDate));
+        if (!isNaN(dStart.getTime()) && !isNaN(dEnd.getTime())) {
+          const diffMs = dEnd.getTime() - dStart.getTime();
+          if (diffMs > 0 && diffMs < 24 * 60 * 60 * 1000) { // sanity: < 24h
+            duracaoDeslocamento = Math.round((diffMs / 3600000) * 100) / 100;
+          }
+        }
+      }
+
       const row: any = {
         auvo_task_id: taskId,
         cliente,
         tecnico: String(task.userToName || ""),
         tecnico_id: String(task.idUserTo || ""),
         data_tarefa: normalizeDate(task.taskDate) || gcOs?.gc_os_data || null,
+        data_conclusao: checkOutDateRaw || null,
+        deslocamento_inicio: displacementStartRaw || null,
+        duracao_deslocamento: duracaoDeslocamento,
         status_auvo: task.finished ? "Finalizada" : (task.checkIn ? "Em andamento" : "Aberta"),
         orientacao: resolvedOrientation,
         pendencia: String(task.pendency ?? "").trim(),
