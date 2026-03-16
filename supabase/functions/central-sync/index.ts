@@ -122,6 +122,9 @@ function resolveTaskAddress(task: any): string {
 type AuvoTaskSnapshot = {
   address: string;
   orientation: string;
+  displacementStart: string;
+  checkInDate: string;
+  checkOutDate: string;
 };
 
 async function fetchAuvoTaskSnapshot(bearerToken: string, taskId: string): Promise<AuvoTaskSnapshot | null> {
@@ -142,9 +145,11 @@ async function fetchAuvoTaskSnapshot(bearerToken: string, taskId: string): Promi
     ""
   );
   const orientation = String(result?.orientation || "").substring(0, 500);
+  const displacementStart = String(result?.displacementStart || result?.displacement_start || "").trim();
+  const checkInDate = String(result?.checkInDate || result?.checkinDate || result?.checkin_date || "").trim();
+  const checkOutDate = String(result?.checkOutDate || result?.checkoutDate || result?.checkout_date || "").trim();
 
-  if (!address && !orientation) return null;
-  return { address, orientation };
+  return { address, orientation, displacementStart, checkInDate, checkOutDate };
 }
 
 // Fetch Auvo tasks for a single month window
@@ -385,20 +390,23 @@ Deno.serve(async (req) => {
       if (existingChunk.length < 1000) break;
     }
 
-    // Enrich ALL OS-linked tasks with direct Auvo task detail (list endpoint is unreliable for addresses)
+    // Enrich ALL completed tasks with direct Auvo task detail (list endpoint lacks displacement data)
     const taskSnapshotById = new Map<string, AuvoTaskSnapshot>();
     const candidateTaskIds: string[] = [];
     const seenCandidates = new Set<string>();
 
     for (const task of auvoTasks) {
       const taskId = String(task.taskID || "").trim();
-      if (!taskId || !gcOsMap[taskId] || seenCandidates.has(taskId)) continue;
-      candidateTaskIds.push(taskId);
-      seenCandidates.add(taskId);
+      if (!taskId || seenCandidates.has(taskId)) continue;
+      // Fetch snapshot for: OS-linked tasks (address) OR completed tasks (displacement data)
+      if (gcOsMap[taskId] || task.checkOut || task.finished) {
+        candidateTaskIds.push(taskId);
+        seenCandidates.add(taskId);
+      }
     }
 
     if (candidateTaskIds.length > 0) {
-      console.log(`[central-sync] Buscando endereço via Auvo detalhe para TODAS ${candidateTaskIds.length} OS (paralelo 10)...`);
+      console.log(`[central-sync] Buscando detalhe via Auvo para ${candidateTaskIds.length} tarefas (paralelo 10)...`);
       const PARALLEL = 10;
       for (let i = 0; i < candidateTaskIds.length; i += PARALLEL) {
         const batch = candidateTaskIds.slice(i, i + PARALLEL);
@@ -409,7 +417,7 @@ Deno.serve(async (req) => {
           if (results[idx]) taskSnapshotById.set(id, results[idx]!);
         });
       }
-      console.log(`[central-sync] Endereços obtidos: ${taskSnapshotById.size}/${candidateTaskIds.length}`);
+      console.log(`[central-sync] Snapshots obtidos: ${taskSnapshotById.size}/${candidateTaskIds.length}`);
     }
 
     // Build rows for upsert
@@ -449,15 +457,17 @@ Deno.serve(async (req) => {
       const resolvedOrientation = String(snapshot?.orientation || task.orientation || "").substring(0, 500);
 
       // Resolve checkout date for monthly accounting
-      const checkOutDateRaw = normalizeDate(task.checkOutDate || task.checkoutDate);
-      // displacementStart is a datetime string from Auvo
-      const displacementStartRaw = String(task.displacementStart || "").trim();
+      const checkOutDateRaw = normalizeDate(task.checkOutDate || task.checkoutDate || snapshot?.checkOutDate);
+      // displacementStart: try list endpoint first, then snapshot
+      const displacementStartRaw = String(task.displacementStart || task.displacement_start || snapshot?.displacementStart || "").trim();
+      // checkInDate: try list endpoint first, then snapshot
+      const checkInDateRaw = String(task.checkInDate || task.checkinDate || snapshot?.checkInDate || "").trim();
 
       // Calculate displacement duration (displacementStart → checkInDate) in decimal hours
       let duracaoDeslocamento: number | null = null;
-      if (displacementStartRaw && task.checkInDate) {
+      if (displacementStartRaw && checkInDateRaw) {
         const dStart = new Date(displacementStartRaw);
-        const dEnd = new Date(String(task.checkInDate));
+        const dEnd = new Date(checkInDateRaw);
         if (!isNaN(dStart.getTime()) && !isNaN(dEnd.getTime())) {
           const diffMs = dEnd.getTime() - dStart.getTime();
           if (diffMs > 0 && diffMs < 24 * 60 * 60 * 1000) { // sanity: < 24h
