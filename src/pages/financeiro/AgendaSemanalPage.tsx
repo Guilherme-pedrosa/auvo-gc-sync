@@ -525,7 +525,57 @@ export default function AgendaSemanalPage() {
             filteredTecnicos={filteredTecnicos}
             selectedDay={selectedDay}
             onTaskClick={setSelectedTarefa}
-            onDragStart={handleDragStart}
+            onDayDrop={async (taskId, toTecNome, toTecId, newHour, fromDate) => {
+              setMovingTaskId(taskId);
+              try {
+                const newDate = format(selectedDay, "yyyy-MM-dd");
+                const { data: taskData } = await supabase.functions.invoke("auvo-task-update", {
+                  body: { action: "get", taskId: Number(taskId) },
+                });
+                const taskResult = taskData?.data?.result;
+                if (!taskResult) throw new Error("Não foi possível obter dados da tarefa");
+
+                const patches: Array<{ op: string; path: string; value: any }> = [];
+                const newDateFormatted = newDate + `T${String(newHour).padStart(2, "0")}:00:00`;
+                patches.push({ op: "replace", path: "/taskDate", value: newDateFormatted });
+                
+                const oldTarefa = (tarefas || []).find(t => t.auvo_task_id === taskId);
+                const sameTec = oldTarefa?.tecnico === toTecNome;
+                if (!sameTec && toTecId) {
+                  patches.push({ op: "replace", path: "/idUserTo", value: Number(toTecId) });
+                }
+
+                const { data: patchResult, error } = await supabase.functions.invoke("auvo-task-update", {
+                  body: { action: "edit", taskId: Number(taskId), patches },
+                });
+                if (error) throw error;
+                if (patchResult?.status && patchResult.status >= 400) throw new Error(patchResult?.data?.message || `Erro ${patchResult.status}`);
+
+                const updatedHoraInicio = `${String(newHour).padStart(2, "0")}:00:00`;
+                queryClient.setQueryData(queryKey, (old: Tarefa[] | undefined) => {
+                  if (!old) return old;
+                  return old.map(t => t.auvo_task_id !== taskId ? t : {
+                    ...t, data_tarefa: newDate, hora_inicio: updatedHoraInicio,
+                    ...(!sameTec && toTecId ? { tecnico: toTecNome, tecnico_id: toTecId } : {}),
+                  });
+                });
+
+                await supabase.functions.invoke("auvo-task-update", {
+                  body: { action: "persist-central", row: {
+                    auvo_task_id: taskId, data_tarefa: newDate, hora_inicio: updatedHoraInicio,
+                    ...(!sameTec && toTecId ? { tecnico: toTecNome, tecnico_id: toTecId } : {}),
+                  }},
+                });
+
+                const changes: string[] = [`horário → ${String(newHour).padStart(2, "0")}:00`];
+                if (!sameTec) changes.push(`técnico → ${toTecNome}`);
+                toast.success(`Tarefa atualizada: ${changes.join(", ")}`);
+              } catch (err: any) {
+                toast.error(`Erro ao mover: ${err.message}`);
+              } finally {
+                setMovingTaskId(null);
+              }
+            }}
             movingTaskId={movingTaskId}
           />
         ) : (
