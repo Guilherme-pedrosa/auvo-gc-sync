@@ -417,15 +417,18 @@ export default function OSKanbanPage() {
         continue;
       }
 
-      const sit = item.gc_os_situacao || "Sem situação";
-      if (!situacaoMap[sit]) {
-        situacaoMap[sit] = {
+      const sitRaw = item.gc_os_situacao || "Sem situação";
+      // Normalize key to avoid duplicates from accents/whitespace differences
+      const sitKey = sitRaw.trim().toUpperCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+      if (!situacaoMap[sitKey]) {
+        situacaoMap[sitKey] = {
           items: [],
           color: item.gc_os_cor_situacao || "#6b7280",
           sitId: item.gc_os_situacao_id || "",
+          displayName: sitRaw.trim(),
         };
       }
-      situacaoMap[sit].items.push(item);
+      situacaoMap[sitKey].items.push(item);
     }
 
     const osCols: KanbanColumn[] = Object.entries(situacaoMap)
