@@ -601,6 +601,7 @@ export default function HorasTrabalhadasTab({
                                   <TableHead className="text-xs">Tarefas (ID · Horário)</TableHead>
                                   <TableHead className="text-xs text-center">Qtd</TableHead>
                                   <TableHead className="text-xs text-right">Horas</TableHead>
+                                  <TableHead className="text-xs text-right">Desloc.</TableHead>
                                   <TableHead className="text-xs text-right">Valor</TableHead>
                                 </TableRow>
                               </TableHeader>
