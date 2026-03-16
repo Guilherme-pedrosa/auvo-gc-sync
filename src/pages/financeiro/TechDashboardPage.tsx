@@ -24,6 +24,7 @@ type TecnicoData = {
   taxa_finalizacao: number;
   media_execucoes_dia: number;
   tempo_horas: number;
+  deslocamento_horas: number;
   tempo_atividade_pct: number;
   dias_trabalhados: number;
   valor_total: number;
