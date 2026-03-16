@@ -96,9 +96,13 @@ export default function HorasTrabalhadasTab({
 
       if (filterGrupo !== "todos") {
         const grupoClientes = grupoClienteMap.get(filterGrupo) || [];
-        const clienteAuvo = t.cliente || "";
-        const clienteGc = t.gc_os_cliente || "";
-        if (!grupoClientes.some((gc: string) => gc === clienteAuvo || gc === clienteGc || clienteAuvo.includes(gc) || gc.includes(clienteAuvo))) return false;
+        const clienteAuvo = normalizeName(t.cliente || "");
+        const clienteGc = normalizeName(t.gc_os_cliente || "");
+        const matched = grupoClientes.some((gc: string) => {
+          const nGc = normalizeName(gc);
+          return nGc === clienteAuvo || nGc === clienteGc || (clienteAuvo && nGc.includes(clienteAuvo)) || (clienteAuvo && clienteAuvo.includes(nGc));
+        });
+        if (!matched) return false;
       }
 
       if (!allTiposSelected && selectedTipos.size > 0) {
