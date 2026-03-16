@@ -568,7 +568,7 @@ export default function HorasTrabalhadasTab({
             <TableBody>
               {tecnicoSummary.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={4} className="text-center py-8 text-muted-foreground">
+                  <TableCell colSpan={5} className="text-center py-8 text-muted-foreground">
                     Nenhuma tarefa encontrada no período
                   </TableCell>
                 </TableRow>
