@@ -17,8 +17,9 @@ import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip,
   ResponsiveContainer, Cell,
 } from "recharts";
-import { CalendarIcon, Search, Filter, Download } from "lucide-react";
+import { CalendarIcon, Search, Filter, Download, ChevronsUpDown, Check } from "lucide-react";
 import { format, startOfMonth, endOfMonth } from "date-fns";
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import { ptBR } from "date-fns/locale";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
