@@ -517,8 +517,17 @@ export default function AgendaSemanalPage() {
           </div>
         ) : tecnicos.length === 0 ? (
           <div className="flex items-center justify-center h-64 text-muted-foreground">
-            Nenhuma tarefa encontrada para esta semana
+            Nenhuma tarefa encontrada
           </div>
+        ) : viewMode === "dia" ? (
+          <DayView
+            tarefas={tarefas || []}
+            filteredTecnicos={filteredTecnicos}
+            selectedDay={selectedDay}
+            onTaskClick={setSelectedTarefa}
+            onDragStart={handleDragStart}
+            movingTaskId={movingTaskId}
+          />
         ) : (
           <div className="overflow-x-auto overflow-y-auto flex-1">
             <table className="w-full border-collapse min-w-[1200px]">
