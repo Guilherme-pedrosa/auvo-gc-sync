@@ -55,7 +55,7 @@ export default function RelatoriosPage() {
     if (!tarefas) return [];
     return tarefas.filter((t) => {
       const sit = (t.gc_os_situacao || "").toLowerCase();
-      return !sit.startsWith("executad") && !sit.startsWith("imp cigam faturado total");
+      return !sit.startsWith("executad") && !sit.startsWith("imp cigam faturado total") && !sit.startsWith("financeiro separado / baixa cigam");
     });
   }, [tarefas]);
 
