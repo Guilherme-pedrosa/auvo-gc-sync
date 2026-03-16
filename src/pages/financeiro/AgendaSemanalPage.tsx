@@ -407,8 +407,8 @@ export default function AgendaSemanalPage() {
               </PopoverContent>
             </Popover>
 
-            <Button variant="outline" size="sm" onClick={() => refetch()} disabled={isFetching}>
-              <RefreshCw className={cn("h-3.5 w-3.5 mr-1", isFetching && "animate-spin")} />
+            <Button variant="outline" size="sm" onClick={refreshFromApi} disabled={isRefreshingFromApi || isFetching}>
+              <RefreshCw className={cn("h-3.5 w-3.5 mr-1", (isRefreshingFromApi || isFetching) && "animate-spin")} />
               Atualizar
             </Button>
           </div>
