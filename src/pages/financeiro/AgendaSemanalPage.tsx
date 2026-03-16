@@ -910,7 +910,7 @@ function DayView({
                           <span className="text-[10px] font-semibold text-primary flex items-center gap-0.5 whitespace-nowrap">
                             <Clock className="h-2.5 w-2.5" />
                             {tarefa.hora_inicio?.substring(0, 5)}
-                            {tarefa.hora_fim && `–${tarefa.hora_fim?.substring(0, 5)}`}
+                            {`–${(tarefa.hora_fim?.substring(0, 5) || displayEnd)}`}
                           </span>
                         )}
                       </div>
