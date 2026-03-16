@@ -259,27 +259,6 @@ export type Database = {
         }
         Relationships: []
       }
-      os_operation_locks: {
-        Row: {
-          gc_os_id: string
-          locked_at: string
-          locked_by: string
-          operation: string
-        }
-        Insert: {
-          gc_os_id: string
-          locked_at?: string
-          locked_by: string
-          operation?: string
-        }
-        Update: {
-          gc_os_id?: string
-          locked_at?: string
-          locked_by?: string
-          operation?: string
-        }
-        Relationships: []
-      }
       profiles: {
         Row: {
           atualizado_em: string
