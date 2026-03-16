@@ -585,6 +585,7 @@ export default function HorasTrabalhadasTab({
                         <Badge variant="secondary">{tec.tarefas}</Badge>
                       </TableCell>
                       <TableCell className="text-right font-semibold">{tec.horas.toFixed(2)}h</TableCell>
+                      <TableCell className="text-right text-muted-foreground">{tec.deslocamento > 0 ? `${tec.deslocamento.toFixed(2)}h` : "—"}</TableCell>
                       <TableCell className="text-right font-semibold">
                         {tec.valor > 0 ? tec.valor.toLocaleString("pt-BR", { style: "currency", currency: "BRL" }) : "—"}
                       </TableCell>
