@@ -28,6 +28,9 @@ export default function RelatoriosPage() {
   const [syncStep, setSyncStep] = useState(0);
   const [syncProgress, setSyncProgress] = useState(0);
   const stepTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const today = new Date();
+  const [dateFrom, setDateFrom] = useState<Date>(startOfMonth(today));
+  const [dateTo, setDateTo] = useState<Date>(endOfMonth(today));
 
   const startProgressSimulation = () => {
     setSyncStep(0);
