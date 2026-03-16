@@ -613,7 +613,7 @@ Deno.serve(async (req) => {
             // Check if this sibling task has ONLY this equipment (or few)
             // to avoid cross-contamination from multi-equipment tasks
             const sibTask = allAuvoTasks.find((t: any) => String(t.taskID) === sibId);
-            const sibEqIds: number[] = sibTask?.equipmentsId || [];
+            const sibEqIds = extractTaskEquipmentIds(sibTask);
 
             // Only match if sibling shares THIS specific equipment
             // and hasn't been claimed by another entry task for a DIFFERENT equipment
