@@ -14,6 +14,7 @@ import { format, startOfMonth, startOfYear, endOfMonth, isWithinInterval, parseI
 import { ptBR } from "date-fns/locale";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
+import LastSyncBadge from "@/components/LastSyncBadge";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   PieChart, Pie, Cell, Legend

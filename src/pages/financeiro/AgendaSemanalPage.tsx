@@ -11,6 +11,7 @@ import { format, addDays, startOfWeek, parseISO, isSameDay } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { cn } from "@/lib/utils";
 import { useNavigate } from "react-router-dom";
+import LastSyncBadge from "@/components/LastSyncBadge";
 import { toast } from "sonner";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle,

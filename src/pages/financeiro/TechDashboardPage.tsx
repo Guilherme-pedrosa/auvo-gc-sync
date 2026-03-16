@@ -13,6 +13,7 @@ import { ArrowLeft, CalendarIcon, RefreshCw, Users, CheckCircle, Clock, Trending
 import { format, subDays, startOfWeek, startOfMonth } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { useNavigate } from "react-router-dom";
+import LastSyncBadge from "@/components/LastSyncBadge";
 
 type TecnicoData = {
   id: string;

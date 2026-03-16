@@ -15,6 +15,7 @@ import {
 import { format, startOfMonth, startOfYear, endOfMonth, isWithinInterval, parseISO, subMonths, addMonths } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { toast } from "sonner";
+import LastSyncBadge from "@/components/LastSyncBadge";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   PieChart, Pie, Cell, Legend

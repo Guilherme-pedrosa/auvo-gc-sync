@@ -17,6 +17,7 @@ import {
 import { format, addDays, subDays, isToday, startOfMonth, endOfMonth } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { toast } from "sonner";
+import LastSyncBadge from "@/components/LastSyncBadge";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 
