@@ -162,18 +162,30 @@ export default function HorasTrabalhadasTab({
     return 0;
   };
 
+  // Calculate task value: GC OS → GC Orçamento → hourly rate fallback
+  const getTaskValor = (t: any, tecnico: string): number => {
+    const gcOsValor = Number(t.gc_os_valor_total) || 0;
+    const gcOrcValor = Number(t.gc_orc_valor_total) || 0;
+    if (gcOsValor > 0) return gcOsValor;
+    if (gcOrcValor > 0) return gcOrcValor;
+    const horas = Number(t.duracao_decimal) || 0;
+    const cliente = t.cliente || t.gc_os_cliente || "";
+    const clienteGc = t.gc_os_cliente || "";
+    const rate = getHourlyRate(tecnico, cliente, clienteGc);
+    return horas * rate;
+  };
+
   // Summary by technician
-  type TaskDetail = { auvo_task_id: string; descricao: string; hora_inicio: string; hora_fim: string; horas: number; deslocamento: number; data_tarefa: string };
+  type TaskDetail = { auvo_task_id: string; descricao: string; hora_inicio: string; hora_fim: string; horas: number; deslocamento: number; data_tarefa: string; valor: number };
   type ClienteData = { horas: number; deslocamento: number; tarefas: number; valor: number; tipos: Map<string, number>; tasks: TaskDetail[] };
   const tecnicoSummary = useMemo(() => {
     const map = new Map<string, { tecnico: string; horas: number; deslocamento: number; tarefas: number; valor: number; byCliente: Map<string, ClienteData> }>();
     for (const t of filtered) {
       const tec = t.tecnico || "Desconhecido";
       const cliente = t.cliente || t.gc_os_cliente || "Sem cliente";
-      const clienteGc = t.gc_os_cliente || "";
       const horas = Number(t.duracao_decimal) || 0;
       const deslocamento = Number(t.duracao_deslocamento) || 0;
-      const rate = getHourlyRate(tec, cliente, clienteGc);
+      const valor = getTaskValor(t, tec);
 
       let entry = map.get(tec);
       if (!entry) {
@@ -183,7 +195,7 @@ export default function HorasTrabalhadasTab({
       entry.horas += horas;
       entry.deslocamento += deslocamento;
       entry.tarefas++;
-      entry.valor += horas * rate;
+      entry.valor += valor;
 
       let clienteEntry = entry.byCliente.get(cliente);
       if (!clienteEntry) {
@@ -193,7 +205,7 @@ export default function HorasTrabalhadasTab({
       clienteEntry.horas += horas;
       clienteEntry.deslocamento += deslocamento;
       clienteEntry.tarefas++;
-      clienteEntry.valor += horas * rate;
+      clienteEntry.valor += valor;
 
       const tipo = getTipoLabel(t.descricao);
       clienteEntry.tipos.set(tipo, (clienteEntry.tipos.get(tipo) || 0) + horas);
@@ -205,10 +217,31 @@ export default function HorasTrabalhadasTab({
         horas,
         deslocamento,
         data_tarefa: t.data_tarefa || "",
+        valor,
       });
     }
-    return Array.from(map.values()).sort((a, b) => b.horas - a.horas);
+    return Array.from(map.values()).sort((a, b) => b.valor - a.valor);
   }, [filtered, valorHoraConfigs, grupos, grupoClienteMap]);
+
+  // Summary by client (across all technicians)
+  const clienteSummary = useMemo(() => {
+    const map = new Map<string, { cliente: string; horas: number; deslocamento: number; tarefas: number; valor: number; tecnicos: Set<string> }>();
+    for (const tec of tecnicoSummary) {
+      for (const [cliente, cd] of tec.byCliente) {
+        let entry = map.get(cliente);
+        if (!entry) {
+          entry = { cliente, horas: 0, deslocamento: 0, tarefas: 0, valor: 0, tecnicos: new Set() };
+          map.set(cliente, entry);
+        }
+        entry.horas += cd.horas;
+        entry.deslocamento += cd.deslocamento;
+        entry.tarefas += cd.tarefas;
+        entry.valor += cd.valor;
+        entry.tecnicos.add(tec.tecnico);
+      }
+    }
+    return Array.from(map.values()).sort((a, b) => b.valor - a.valor);
+  }, [tecnicoSummary]);
 
   const totalHoras = useMemo(() => tecnicoSummary.reduce((s, t) => s + t.horas, 0), [tecnicoSummary]);
   const totalDeslocamento = useMemo(() => tecnicoSummary.reduce((s, t) => s + t.deslocamento, 0), [tecnicoSummary]);
@@ -254,33 +287,162 @@ export default function HorasTrabalhadasTab({
     return tipoOptions.filter((t) => t.label.toLocaleLowerCase("pt-BR").includes(term));
   }, [tipoOptions, searchTipo]);
 
+  const fmtBRL = (v: number) => v > 0 ? "R$ " + v.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : "—";
+
   const handleExportPDF = () => {
     const doc = new jsPDF();
-    doc.setFontSize(16);
+    const pageW = doc.internal.pageSize.getWidth();
+    const periodoStr = `${format(dateFrom, "dd/MM/yyyy")} a ${format(dateTo, "dd/MM/yyyy")}`;
+
+    // ── Header ──
+    doc.setFontSize(18);
+    doc.setFont("helvetica", "bold");
     doc.text("Relatório de Horas Trabalhadas", 14, 20);
     doc.setFontSize(10);
-    doc.text(`Período: ${format(dateFrom, "dd/MM/yyyy")} a ${format(dateTo, "dd/MM/yyyy")}`, 14, 28);
+    doc.setFont("helvetica", "normal");
+    doc.text(`Período: ${periodoStr}`, 14, 28);
 
-    const tableData: any[] = [];
+    // ── Resumo Geral ──
+    doc.setFontSize(12);
+    doc.setFont("helvetica", "bold");
+    doc.text("Resumo Geral", 14, 40);
+
+    autoTable(doc, {
+      startY: 44,
+      head: [["Horas Trabalhadas", "Horas Deslocamento", "Tarefas", "Técnicos", "Valor Total"]],
+      body: [[
+        `${totalHoras.toFixed(1)}h`,
+        `${totalDeslocamento.toFixed(1)}h`,
+        String(totalTarefas),
+        String(tecnicoSummary.length),
+        fmtBRL(totalValor),
+      ]],
+      styles: { fontSize: 9, halign: "center" },
+      headStyles: { fillColor: [37, 99, 235], halign: "center" },
+      theme: "grid",
+    });
+
+    let curY = (doc as any).lastAutoTable.finalY + 12;
+
+    // ── Resumo por Cliente ──
+    doc.setFontSize(12);
+    doc.setFont("helvetica", "bold");
+    doc.text("Resumo por Cliente", 14, curY);
+    curY += 4;
+
+    const clienteRows = clienteSummary.map((c) => [
+      c.cliente,
+      String(c.tarefas),
+      `${c.horas.toFixed(1)}h`,
+      `${c.deslocamento.toFixed(1)}h`,
+      String(c.tecnicos.size),
+      fmtBRL(c.valor),
+    ]);
+    clienteRows.push([
+      "TOTAL",
+      String(totalTarefas),
+      `${totalHoras.toFixed(1)}h`,
+      `${totalDeslocamento.toFixed(1)}h`,
+      "",
+      fmtBRL(totalValor),
+    ]);
+
+    autoTable(doc, {
+      startY: curY,
+      head: [["Cliente", "Tarefas", "Horas", "Desloc.", "Técnicos", "Valor"]],
+      body: clienteRows,
+      styles: { fontSize: 8 },
+      headStyles: { fillColor: [37, 99, 235] },
+      columnStyles: { 0: { cellWidth: 55 }, 5: { halign: "right" } },
+      didParseCell: (data: any) => {
+        if (data.section === "body" && data.row.index === clienteRows.length - 1) {
+          data.cell.styles.fontStyle = "bold";
+          data.cell.styles.fillColor = [230, 237, 250];
+        }
+      },
+    });
+
+    curY = (doc as any).lastAutoTable.finalY + 12;
+
+    // ── Resumo por Técnico ──
+    if (curY > 240) { doc.addPage(); curY = 20; }
+    doc.setFontSize(12);
+    doc.setFont("helvetica", "bold");
+    doc.text("Resumo por Técnico", 14, curY);
+    curY += 4;
+
+    const tecRows = tecnicoSummary.map((t) => [
+      t.tecnico,
+      String(t.tarefas),
+      `${t.horas.toFixed(1)}h`,
+      `${t.deslocamento.toFixed(1)}h`,
+      fmtBRL(t.valor),
+    ]);
+    tecRows.push([
+      "TOTAL",
+      String(totalTarefas),
+      `${totalHoras.toFixed(1)}h`,
+      `${totalDeslocamento.toFixed(1)}h`,
+      fmtBRL(totalValor),
+    ]);
+
+    autoTable(doc, {
+      startY: curY,
+      head: [["Técnico", "Tarefas", "Horas", "Desloc.", "Valor"]],
+      body: tecRows,
+      styles: { fontSize: 8 },
+      headStyles: { fillColor: [37, 99, 235] },
+      columnStyles: { 4: { halign: "right" } },
+      didParseCell: (data: any) => {
+        if (data.section === "body" && data.row.index === tecRows.length - 1) {
+          data.cell.styles.fontStyle = "bold";
+          data.cell.styles.fillColor = [230, 237, 250];
+        }
+      },
+    });
+
+    curY = (doc as any).lastAutoTable.finalY + 12;
+
+    // ── Detalhamento Técnico × Cliente ──
+    if (curY > 240) { doc.addPage(); curY = 20; }
+    doc.setFontSize(12);
+    doc.setFont("helvetica", "bold");
+    doc.text("Detalhamento por Técnico e Cliente", 14, curY);
+    curY += 4;
+
+    const detailRows: any[] = [];
     for (const tec of tecnicoSummary) {
-      for (const [cliente, cd] of tec.byCliente) {
-        tableData.push([
+      for (const [cliente, cd] of Array.from(tec.byCliente.entries()).sort(([, a], [, b]) => b.valor - a.valor)) {
+        detailRows.push([
           tec.tecnico,
           cliente,
-          cd.tarefas,
-          cd.horas.toFixed(2) + "h",
-          cd.valor > 0 ? "R$ " + cd.valor.toFixed(2) : "—",
+          String(cd.tarefas),
+          `${cd.horas.toFixed(2)}h`,
+          `${cd.deslocamento.toFixed(2)}h`,
+          fmtBRL(cd.valor),
         ]);
       }
     }
 
     autoTable(doc, {
-      startY: 34,
-      head: [["Técnico", "Cliente", "Tarefas", "Horas", "Valor"]],
-      body: tableData,
-      styles: { fontSize: 8 },
+      startY: curY,
+      head: [["Técnico", "Cliente", "Tarefas", "Horas", "Desloc.", "Valor"]],
+      body: detailRows,
+      styles: { fontSize: 7 },
       headStyles: { fillColor: [37, 99, 235] },
+      columnStyles: { 0: { cellWidth: 35 }, 1: { cellWidth: 50 }, 5: { halign: "right" } },
     });
+
+    // ── Footer ──
+    const pages = doc.getNumberOfPages();
+    for (let i = 1; i <= pages; i++) {
+      doc.setPage(i);
+      doc.setFontSize(7);
+      doc.setFont("helvetica", "normal");
+      doc.setTextColor(130);
+      doc.text(`Gerado em ${format(new Date(), "dd/MM/yyyy HH:mm")} · Página ${i}/${pages}`, pageW / 2, doc.internal.pageSize.getHeight() - 8, { align: "center" });
+      doc.setTextColor(0);
+    }
 
     doc.save(`horas-trabalhadas-${format(dateFrom, "yyyyMMdd")}-${format(dateTo, "yyyyMMdd")}.pdf`);
   };
@@ -552,7 +714,53 @@ export default function HorasTrabalhadasTab({
         </Card>
       )}
 
-      {/* Detailed table */}
+      {/* Summary by Client */}
+      {clienteSummary.length > 0 && (
+        <Card>
+          <CardHeader className="py-3 px-4">
+            <CardTitle className="text-sm font-medium">Resumo por Cliente</CardTitle>
+          </CardHeader>
+          <CardContent className="p-0">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Cliente</TableHead>
+                  <TableHead className="text-center">Tarefas</TableHead>
+                  <TableHead className="text-right">Horas</TableHead>
+                  <TableHead className="text-right">Desloc.</TableHead>
+                  <TableHead className="text-center">Técnicos</TableHead>
+                  <TableHead className="text-right">Valor</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {clienteSummary.map((c) => (
+                  <TableRow key={c.cliente}>
+                    <TableCell className="font-medium text-sm">{c.cliente}</TableCell>
+                    <TableCell className="text-center"><Badge variant="secondary">{c.tarefas}</Badge></TableCell>
+                    <TableCell className="text-right font-mono text-sm">{c.horas.toFixed(1)}h</TableCell>
+                    <TableCell className="text-right font-mono text-sm text-muted-foreground">{c.deslocamento > 0 ? `${c.deslocamento.toFixed(1)}h` : "—"}</TableCell>
+                    <TableCell className="text-center text-sm">{c.tecnicos.size}</TableCell>
+                    <TableCell className="text-right font-semibold text-sm">
+                      {c.valor > 0 ? c.valor.toLocaleString("pt-BR", { style: "currency", currency: "BRL" }) : "—"}
+                    </TableCell>
+                  </TableRow>
+                ))}
+                <TableRow className="bg-muted/50 font-bold">
+                  <TableCell>TOTAL</TableCell>
+                  <TableCell className="text-center"><Badge>{totalTarefas}</Badge></TableCell>
+                  <TableCell className="text-right font-mono">{totalHoras.toFixed(1)}h</TableCell>
+                  <TableCell className="text-right font-mono text-muted-foreground">{totalDeslocamento.toFixed(1)}h</TableCell>
+                  <TableCell className="text-center">{tecnicoSummary.length}</TableCell>
+                  <TableCell className="text-right">
+                    {totalValor > 0 ? totalValor.toLocaleString("pt-BR", { style: "currency", currency: "BRL" }) : "—"}
+                  </TableCell>
+                </TableRow>
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
+      )}
+
       <Card>
         <CardContent className="p-0">
           <Table>
