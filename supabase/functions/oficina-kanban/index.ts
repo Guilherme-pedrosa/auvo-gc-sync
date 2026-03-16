@@ -547,7 +547,7 @@ Deno.serve(async (req) => {
     // Collect all equipment IDs from entry tasks to fetch names
     const allEquipmentIds = new Set<number>();
     for (const task of entryTasks) {
-      const eqIds: number[] = task.equipmentsId || [];
+      const eqIds = extractTaskEquipmentIds(task);
       for (const id of eqIds) allEquipmentIds.add(id);
     }
 
