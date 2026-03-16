@@ -192,7 +192,7 @@ export default function HorasTrabalhadasTab({
 
   // Calculate task value: only hourly rate (no GC values)
   const getTaskValor = (t: any, tecnico: string): number => {
-    const horas = Number(t.duracao_decimal) || 0;
+    const horas = getTaskHoras(t);
     const cliente = t.cliente || t.gc_os_cliente || "";
     const clienteGc = t.gc_os_cliente || "";
     const rate = getHourlyRate(tecnico, cliente, clienteGc);
