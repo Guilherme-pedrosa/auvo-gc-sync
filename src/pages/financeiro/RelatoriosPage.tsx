@@ -1,13 +1,48 @@
 import { useState, useMemo, useEffect, useCallback } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { FileText, Clock, Settings } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { FileText, Clock, Settings, RefreshCw } from "lucide-react";
+import { toast } from "sonner";
 import OSAbertasTab from "@/components/relatorios/OSAbertasTab";
 import HorasTrabalhadasTab from "@/components/relatorios/HorasTrabalhadasTab";
 import ConfiguracoesTab from "@/components/relatorios/ConfiguracoesTab";
 
 export default function RelatoriosPage() {
+  const queryClient = useQueryClient();
+  const [syncing, setSyncing] = useState(false);
+
+  const handleSync = async () => {
+    setSyncing(true);
+    const toastId = toast.loading("Sincronizando tarefas do Auvo...");
+    try {
+      const { data, error } = await supabase.functions.invoke("central-sync", {
+        body: {},
+      });
+      if (error) throw error;
+      if (data?.success === false) throw new Error(data.error || "Erro na sincronização");
+
+      toast.success(
+        `Sync concluído: ${data.auvo_tarefas || 0} tarefas do Auvo, ${data.upserted || 0} atualizadas`,
+        { id: toastId }
+      );
+
+      // Refresh all queries
+      queryClient.invalidateQueries({ queryKey: ["relatorios-tarefas-os"] });
+      queryClient.invalidateQueries({ queryKey: ["relatorios-todas-tarefas"] });
+    } catch (err: any) {
+      // Edge function timeout returns error but sync may still complete
+      if (err?.message?.includes("context canceled") || err?.message?.includes("FunctionsHttpError")) {
+        toast.info("Sync iniciado em background — aguarde ~1 min e recarregue a página", { id: toastId });
+      } else {
+        toast.error(`Erro: ${err.message}`, { id: toastId });
+      }
+    } finally {
+      setSyncing(false);
+    }
+  };
+
   // Fetch OS-linked tasks (for OS em Aberto tab)
   const { data: tarefasOS, isLoading: isLoadingOS } = useQuery({
     queryKey: ["relatorios-tarefas-os"],
@@ -96,9 +131,21 @@ export default function RelatoriosPage() {
 
   return (
     <div className="p-6 space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold text-foreground">Relatórios</h1>
-        <p className="text-sm text-muted-foreground">Visão consolidada de OS abertas e horas trabalhadas</p>
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold text-foreground">Relatórios</h1>
+          <p className="text-sm text-muted-foreground">Visão consolidada de OS abertas e horas trabalhadas</p>
+        </div>
+        <Button
+          variant="outline"
+          size="sm"
+          className="gap-1.5"
+          onClick={handleSync}
+          disabled={syncing}
+        >
+          <RefreshCw className={`h-4 w-4 ${syncing ? "animate-spin" : ""}`} />
+          {syncing ? "Sincronizando..." : "Atualizar do Auvo"}
+        </Button>
       </div>
 
       <Tabs defaultValue="os-abertas" className="space-y-4">
