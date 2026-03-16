@@ -72,6 +72,7 @@ const DEFAULT_COLUMNS: { id: string; title: string; color: string }[] = [
   { id: "pecas_solicitadas", title: "📦 Peças Solicitadas", color: "#3b82f6" },
   { id: "em_execucao", title: "🔧 Em Execução", color: "#f97316" },
   { id: "concluido", title: "🏁 Concluído", color: "#22c55e" },
+  { id: "devolvido", title: "🔄 Devolvido", color: "#06b6d4" },
 ];
 
 export default function OficinaKanbanPage() {
