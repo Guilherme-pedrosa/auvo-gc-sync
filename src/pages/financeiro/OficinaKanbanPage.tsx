@@ -269,6 +269,7 @@ export default function OficinaKanbanPage() {
       const mapOrcSitToCol = (situacao: string): string => {
         const s = (situacao || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
         if (s.includes("comprado") || s.includes("chegada")) return "pecas_solicitadas";
+        if (s.includes("aguardando aprov") || s.includes("aprovacao") || s.includes("ag aprov")) return "orcamento";
         if (s.includes("aprovado")) return "aprovado";
         return "orcamento";
       };
@@ -667,36 +668,41 @@ export default function OficinaKanbanPage() {
                                   <Input
                                     value={renameValue}
                                     onChange={(e) => setRenameValue(e.target.value)}
-                                    className="h-6 text-xs w-[120px]"
+                                    className="h-6 text-xs w-[150px]"
                                     autoFocus
                                     onBlur={() => setRenamingColumnId(null)}
                                   />
                                 </form>
                               ) : (
-                                <span className="font-semibold text-sm text-foreground truncate">{column.title}</span>
+                                <button
+                                  type="button"
+                                  className="font-semibold text-sm text-foreground truncate text-left"
+                                  onClick={(e) => { e.stopPropagation(); setRenamingColumnId(column.id); setRenameValue(column.title); }}
+                                  title="Editar nome da coluna"
+                                >
+                                  {column.title}
+                                </button>
                               )}
                             </div>
                             <div className="flex items-center gap-1">
                               <Badge variant="secondary" className="text-xs">{column.items.length}</Badge>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-5 w-5 text-muted-foreground hover:text-foreground"
+                                onClick={(e) => { e.stopPropagation(); setRenamingColumnId(column.id); setRenameValue(column.title); }}
+                              >
+                                <Pencil className="h-3 w-3" />
+                              </Button>
                               {!DEFAULT_COLUMNS.some((dc) => dc.id === column.id) && (
-                                <>
-                                  <Button
-                                    variant="ghost"
-                                    size="icon"
-                                    className="h-5 w-5 text-muted-foreground hover:text-foreground"
-                                    onClick={(e) => { e.stopPropagation(); setRenamingColumnId(column.id); setRenameValue(column.title); }}
-                                  >
-                                    <Pencil className="h-3 w-3" />
-                                  </Button>
-                                  <Button
-                                    variant="ghost"
-                                    size="icon"
-                                    className="h-5 w-5 text-muted-foreground hover:text-destructive"
-                                    onClick={(e) => { e.stopPropagation(); handleDeleteColumn(column.id); }}
-                                  >
-                                    <Trash2 className="h-3 w-3" />
-                                  </Button>
-                                </>
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-5 w-5 text-muted-foreground hover:text-destructive"
+                                  onClick={(e) => { e.stopPropagation(); handleDeleteColumn(column.id); }}
+                                >
+                                  <Trash2 className="h-3 w-3" />
+                                </Button>
                               )}
                             </div>
                           </div>
