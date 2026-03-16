@@ -2,11 +2,15 @@ import { useState, useMemo } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Button } from "@/components/ui/button";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Search, ArrowDownWideNarrow, ExternalLink } from "lucide-react";
+import { Search, ArrowDownWideNarrow, ExternalLink, Filter } from "lucide-react";
 
 interface Props {
   data: any[];
@@ -16,11 +20,29 @@ interface Props {
 
 export default function OSAbertasTab({ data, isLoading, allClientes }: Props) {
   const [search, setSearch] = useState("");
+  const [selectedSituacoes, setSelectedSituacoes] = useState<Set<string>>(new Set());
+  const [allSituacoesSelected, setAllSituacoesSelected] = useState(true);
+  const [searchSituacao, setSearchSituacao] = useState("");
+
+  // All unique situações
+  const allSituacoes = useMemo(() => {
+    const set = new Set(data.map((t) => t.gc_os_situacao || "").filter(Boolean));
+    return Array.from(set).sort();
+  }, [data]);
+
+  const filteredSituacoes = useMemo(() => {
+    if (!searchSituacao) return allSituacoes;
+    return allSituacoes.filter((s) => s.toLowerCase().includes(searchSituacao.toLowerCase()));
+  }, [allSituacoes, searchSituacao]);
 
   // Group by client, sum values
   const clienteSummary = useMemo(() => {
+    const filtered = !allSituacoesSelected && selectedSituacoes.size > 0
+      ? data.filter((t) => selectedSituacoes.has(t.gc_os_situacao || ""))
+      : data;
+
     const map = new Map<string, { cliente: string; count: number; total: number; items: any[] }>();
-    for (const item of data) {
+    for (const item of filtered) {
       const cliente = item.cliente || item.gc_os_cliente || "Sem cliente";
       const entry = map.get(cliente) || { cliente, count: 0, total: 0, items: [] };
       entry.count++;
@@ -29,7 +51,7 @@ export default function OSAbertasTab({ data, isLoading, allClientes }: Props) {
       map.set(cliente, entry);
     }
     return Array.from(map.values()).sort((a, b) => b.total - a.total);
-  }, [data]);
+  }, [data, allSituacoesSelected, selectedSituacoes]);
 
   const filtered = useMemo(() => {
     if (!search) return clienteSummary;
@@ -82,15 +104,70 @@ export default function OSAbertasTab({ data, isLoading, allClientes }: Props) {
         </Card>
       </div>
 
-      {/* Search */}
-      <div className="relative max-w-sm">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-        <Input
-          placeholder="Buscar cliente..."
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          className="pl-9"
-        />
+      {/* Filters */}
+      <div className="flex flex-wrap gap-3 items-center">
+        <div className="relative max-w-sm">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+          <Input
+            placeholder="Buscar cliente..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="pl-9"
+          />
+        </div>
+
+        <Popover>
+          <PopoverTrigger asChild>
+            <Button variant="outline" size="sm" className="gap-1.5">
+              <Filter className="h-3.5 w-3.5" />
+              Situação
+              {!allSituacoesSelected && selectedSituacoes.size > 0 && (
+                <Badge variant="secondary" className="ml-1 text-[10px]">{selectedSituacoes.size}</Badge>
+              )}
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent className="w-72" align="start">
+            <div className="space-y-2">
+              <Input
+                placeholder="Buscar situação..."
+                value={searchSituacao}
+                onChange={(e) => setSearchSituacao(e.target.value)}
+                className="h-8 text-xs"
+              />
+              <div className="flex items-center gap-2 pb-1">
+                <Checkbox
+                  checked={allSituacoesSelected}
+                  onCheckedChange={(checked) => {
+                    setAllSituacoesSelected(!!checked);
+                    if (checked) setSelectedSituacoes(new Set());
+                  }}
+                />
+                <span className="text-xs font-medium">Todas</span>
+              </div>
+              <ScrollArea className="h-48">
+                <div className="space-y-1">
+                  {filteredSituacoes.map((sit) => (
+                    <div key={sit} className="flex items-center gap-2">
+                      <Checkbox
+                        checked={allSituacoesSelected || selectedSituacoes.has(sit)}
+                        onCheckedChange={() => {
+                          setAllSituacoesSelected(false);
+                          setSelectedSituacoes((prev) => {
+                            const next = new Set(prev);
+                            if (next.has(sit)) next.delete(sit);
+                            else next.add(sit);
+                            return next;
+                          });
+                        }}
+                      />
+                      <span className="text-xs truncate">{sit}</span>
+                    </div>
+                  ))}
+                </div>
+              </ScrollArea>
+            </div>
+          </PopoverContent>
+        </Popover>
       </div>
 
       {/* Table */}
