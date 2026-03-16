@@ -875,13 +875,14 @@ function DayView({
                 {/* Task cards positioned absolutely spanning start→end */}
                 {tasks.map(tarefa => {
                   const startMin = parseTimeToMinutes(tarefa.hora_inicio);
-                  const endMin = parseTimeToMinutes(tarefa.hora_fim);
+                  const durationMin = getTaskDurationMinutes(tarefa);
                   const effStart = startMin >= 0 ? startMin : gridStartMin;
-                  const effEnd = endMin > effStart ? endMin : effStart + 60;
+                  const effEnd = effStart + durationMin;
                   const cStart = Math.max(effStart, gridStartMin);
                   const cEnd = Math.min(effEnd, gridEndMin);
                   const leftPct = ((cStart - gridStartMin) / totalMin) * 100;
                   const widthPct = ((cEnd - cStart) / totalMin) * 100;
+                  const displayEnd = minutesToTime(effEnd);
                   const statusClass = STATUS_COLORS[tarefa.status_auvo || ""] || "bg-muted text-muted-foreground";
                   const canDrag = tarefa.status_auvo === "Agendada" || tarefa.status_auvo === "Aberta";
                   const isMoving = movingTaskId === tarefa.auvo_task_id;
