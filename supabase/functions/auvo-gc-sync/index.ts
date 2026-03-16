@@ -754,37 +754,61 @@ Deno.serve(async (req) => {
           status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
-      console.log(`[auvo-gc-sync] REVERT: OS ${gcOsCodigo} (${gcOsId}) → situação ${situacaoAnteriorId} | vendedor: ${vendedorNome || "N/A"} (${vendedorId || "N/A"}) | data_saida: ${dataSaida || "N/A"}`);
-      const revertResult = await atualizarSituacaoOsGC(gcOsId, situacaoAnteriorId, gcHeaders, { vendedorId, vendedorNome, dataSaida });
-      
-      await supabase.from("auvo_gc_sync_log").insert({
-        executado_em: new Date().toISOString(),
-        os_candidatas: 1,
-        os_atualizadas: revertResult.success ? 1 : 0,
-        erros: revertResult.success ? 0 : 1,
-        dry_run: false,
-        duracao_ms: Date.now() - startTime,
-        observacao: `REVERSÃO manual: OS ${gcOsCodigo}`,
-        detalhes: [{
-          gc_os_id: gcOsId, gc_os_codigo: gcOsCodigo, auvo_task_id: "",
-          resultado: revertResult.success ? "revertida" : "erro_gc",
-          detalhe: revertResult.success 
-            ? `Revertida para situação ${situacaoAnteriorId} | HTTP ${revertResult.status}`
-            : `Erro ao reverter: HTTP ${revertResult.status} — ${JSON.stringify(revertResult.body)}`,
-          situacao_antes: "EXECUTADO – AGUARDANDO NEGOCIAÇÃO FINANCEIRA",
-          situacao_depois: revertResult.success ? `Revertida (${situacaoAnteriorId})` : null,
-          situacao_id_antes: "7116099",
-          situacao_id_depois: revertResult.success ? situacaoAnteriorId : null,
-        }],
-      });
 
-      return new Response(JSON.stringify({ 
-        success: revertResult.success, gc_os_id: gcOsId, gc_os_codigo: gcOsCodigo,
-        status: revertResult.status, body: revertResult.body,
-      }), {
-        status: 200, 
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      // ─── Lock: impedir operação duplicada na mesma OS ───
+      const userId = (await supabase.auth.getUser())?.data?.user?.id || "anonymous";
+      const { error: lockError } = await supabase.from("os_operation_locks").insert({
+        gc_os_id: gcOsId,
+        locked_by: userId,
+        operation: "revert_os",
       });
+      if (lockError) {
+        // Unique constraint violation = already locked
+        console.warn(`[auvo-gc-sync] OS ${gcOsCodigo} já está sendo processada por outro usuário`);
+        return new Response(JSON.stringify({ 
+          error: `OS ${gcOsCodigo} já está sendo processada por outro usuário. Aguarde e tente novamente.`,
+          locked: true 
+        }), {
+          status: 409, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      try {
+        console.log(`[auvo-gc-sync] REVERT: OS ${gcOsCodigo} (${gcOsId}) → situação ${situacaoAnteriorId} | vendedor: ${vendedorNome || "N/A"} (${vendedorId || "N/A"}) | data_saida: ${dataSaida || "N/A"}`);
+        const revertResult = await atualizarSituacaoOsGC(gcOsId, situacaoAnteriorId, gcHeaders, { vendedorId, vendedorNome, dataSaida });
+        
+        await supabase.from("auvo_gc_sync_log").insert({
+          executado_em: new Date().toISOString(),
+          os_candidatas: 1,
+          os_atualizadas: revertResult.success ? 1 : 0,
+          erros: revertResult.success ? 0 : 1,
+          dry_run: false,
+          duracao_ms: Date.now() - startTime,
+          observacao: `REVERSÃO manual: OS ${gcOsCodigo}`,
+          detalhes: [{
+            gc_os_id: gcOsId, gc_os_codigo: gcOsCodigo, auvo_task_id: "",
+            resultado: revertResult.success ? "revertida" : "erro_gc",
+            detalhe: revertResult.success 
+              ? `Revertida para situação ${situacaoAnteriorId} | HTTP ${revertResult.status}`
+              : `Erro ao reverter: HTTP ${revertResult.status} — ${JSON.stringify(revertResult.body)}`,
+            situacao_antes: "EXECUTADO – AGUARDANDO NEGOCIAÇÃO FINANCEIRA",
+            situacao_depois: revertResult.success ? `Revertida (${situacaoAnteriorId})` : null,
+            situacao_id_antes: "7116099",
+            situacao_id_depois: revertResult.success ? situacaoAnteriorId : null,
+          }],
+        });
+
+        return new Response(JSON.stringify({ 
+          success: revertResult.success, gc_os_id: gcOsId, gc_os_codigo: gcOsCodigo,
+          status: revertResult.status, body: revertResult.body,
+        }), {
+          status: 200, 
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      } finally {
+        // Always release the lock
+        await supabase.from("os_operation_locks").delete().eq("gc_os_id", gcOsId);
+      }
     }
 
     // ─── Action: get_last_conciliacao — carregar último snapshot salvo ───
