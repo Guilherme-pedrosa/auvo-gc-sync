@@ -61,6 +61,34 @@ export default function HorasTrabalhadasTab({
   const [allTiposSelected, setAllTiposSelected] = useState(true);
   const [searchTipo, setSearchTipo] = useState("");
 
+  // Calculate duration from hora_inicio/hora_fim (checkin→checkout) instead of Auvo's durationDecimal
+  const calcHorasFromTimes = (horaInicio: string, horaFim: string): number | null => {
+    if (!horaInicio || !horaFim) return null;
+    // Parse time strings like "09:14:37" or "2026-03-09T09:14:37"
+    const parseTime = (s: string): Date | null => {
+      const d = new Date(s);
+      if (!isNaN(d.getTime())) return d;
+      // Try HH:mm:ss format
+      const match = s.match(/(\d{1,2}):(\d{2})(?::(\d{2}))?/);
+      if (!match) return null;
+      const dt = new Date(2000, 0, 1, Number(match[1]), Number(match[2]), Number(match[3] || 0));
+      return isNaN(dt.getTime()) ? null : dt;
+    };
+    const start = parseTime(horaInicio);
+    const end = parseTime(horaFim);
+    if (!start || !end) return null;
+    const diffMs = end.getTime() - start.getTime();
+    if (diffMs <= 0) return null; // Negative or zero = invalid
+    return diffMs / (1000 * 60 * 60); // Convert to decimal hours
+  };
+
+  // Get task hours: prefer calculated checkin→checkout, fallback to duracao_decimal
+  const getTaskHoras = (t: any): number => {
+    const calculated = calcHorasFromTimes(t.hora_inicio, t.hora_fim);
+    if (calculated !== null && calculated > 0) return calculated;
+    return Number(t.duracao_decimal) || 0;
+  };
+
   // Normalize client name for matching (strip LTDA, ME, SA, EPP, EIRELI, etc.)
   const normalizeName = (name: string) =>
     name
@@ -98,7 +126,7 @@ export default function HorasTrabalhadasTab({
     const toStr = format(dateTo, "yyyy-MM-dd");
 
     return data.filter((t) => {
-      if (t.duracao_decimal == null) return false;
+      if (!t.hora_inicio && !t.hora_fim && t.duracao_decimal == null) return false;
 
       // Use completion date (data_conclusao) when available, otherwise data_tarefa
       const dateRef = t.data_conclusao || t.data_tarefa;
@@ -164,7 +192,7 @@ export default function HorasTrabalhadasTab({
 
   // Calculate task value: only hourly rate (no GC values)
   const getTaskValor = (t: any, tecnico: string): number => {
-    const horas = Number(t.duracao_decimal) || 0;
+    const horas = getTaskHoras(t);
     const cliente = t.cliente || t.gc_os_cliente || "";
     const clienteGc = t.gc_os_cliente || "";
     const rate = getHourlyRate(tecnico, cliente, clienteGc);
@@ -179,7 +207,7 @@ export default function HorasTrabalhadasTab({
     for (const t of filtered) {
       const tec = t.tecnico || "Desconhecido";
       const cliente = t.cliente || t.gc_os_cliente || "Sem cliente";
-      const horas = Number(t.duracao_decimal) || 0;
+      const horas = getTaskHoras(t);
       const deslocamento = Number(t.duracao_deslocamento) || 0;
       const valor = getTaskValor(t, tec);
 
@@ -256,10 +284,10 @@ export default function HorasTrabalhadasTab({
 
   // Detect negative-duration tasks
   const negativeTasks = useMemo(() => {
-    return filtered.filter((t) => Number(t.duracao_decimal) < 0).map((t) => ({
+    return filtered.filter((t) => getTaskHoras(t) < 0).map((t) => ({
       id: t.auvo_task_id,
       cliente: t.cliente || t.gc_os_cliente || "?",
-      horas: Number(t.duracao_decimal),
+      horas: getTaskHoras(t),
     }));
   }, [filtered]);
 
