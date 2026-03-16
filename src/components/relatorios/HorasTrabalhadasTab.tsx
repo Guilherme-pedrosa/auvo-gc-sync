@@ -223,6 +223,26 @@ export default function HorasTrabalhadasTab({
     return Array.from(map.values()).sort((a, b) => b.valor - a.valor);
   }, [filtered, valorHoraConfigs, grupos, grupoClienteMap]);
 
+  // Summary by client (across all technicians)
+  const clienteSummary = useMemo(() => {
+    const map = new Map<string, { cliente: string; horas: number; deslocamento: number; tarefas: number; valor: number; tecnicos: Set<string> }>();
+    for (const tec of tecnicoSummary) {
+      for (const [cliente, cd] of tec.byCliente) {
+        let entry = map.get(cliente);
+        if (!entry) {
+          entry = { cliente, horas: 0, deslocamento: 0, tarefas: 0, valor: 0, tecnicos: new Set() };
+          map.set(cliente, entry);
+        }
+        entry.horas += cd.horas;
+        entry.deslocamento += cd.deslocamento;
+        entry.tarefas += cd.tarefas;
+        entry.valor += cd.valor;
+        entry.tecnicos.add(tec.tecnico);
+      }
+    }
+    return Array.from(map.values()).sort((a, b) => b.valor - a.valor);
+  }, [tecnicoSummary]);
+
   const totalHoras = useMemo(() => tecnicoSummary.reduce((s, t) => s + t.horas, 0), [tecnicoSummary]);
   const totalDeslocamento = useMemo(() => tecnicoSummary.reduce((s, t) => s + t.deslocamento, 0), [tecnicoSummary]);
   const totalValor = useMemo(() => tecnicoSummary.reduce((s, t) => s + t.valor, 0), [tecnicoSummary]);
