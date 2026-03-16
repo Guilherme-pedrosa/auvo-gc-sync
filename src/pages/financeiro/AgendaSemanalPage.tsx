@@ -275,6 +275,7 @@ export default function AgendaSemanalPage() {
       fromTecnico: tarefa.tecnico,
       fromTecnicoId: tarefa.tecnico_id,
       fromDate: tarefa.data_tarefa,
+      horaInicio: tarefa.hora_inicio,
     }));
     e.dataTransfer.effectAllowed = "move";
   }, []);
@@ -296,7 +297,7 @@ export default function AgendaSemanalPage() {
     const raw = e.dataTransfer.getData("application/json");
     if (!raw) return;
 
-    const { taskId, fromTecnico, fromDate } = JSON.parse(raw);
+    const { taskId, fromTecnico, fromDate, horaInicio } = JSON.parse(raw);
     const newDate = format(weekDays[toDayIdx], "yyyy-MM-dd");
     const sameDay = fromDate === newDate;
     const sameTec = fromTecnico === toTecNome;
@@ -316,7 +317,9 @@ export default function AgendaSemanalPage() {
       const patches: Array<{ op: string; path: string; value: any }> = [];
 
       if (!sameDay) {
-        const newDateFormatted = format(weekDays[toDayIdx], "yyyy-MM-dd") + "T" + (taskResult.taskDate?.substring(11) || "08:00:00");
+        // Preserve existing time from the task
+        const existingTime = horaInicio ? horaInicio.substring(0, 5) + ":00" : (taskResult.taskDate?.substring(11) || "08:00:00");
+        const newDateFormatted = format(weekDays[toDayIdx], "yyyy-MM-dd") + "T" + existingTime;
         patches.push({ op: "replace", path: "/taskDate", value: newDateFormatted });
       }
 
@@ -555,7 +558,7 @@ export default function AgendaSemanalPage() {
         tarefa={selectedTarefa}
         onClose={() => setSelectedTarefa(null)}
         tecnicos={tecnicos}
-        onUpdate={async (taskId, newDate, newTecNome, newTecId) => {
+        onUpdate={async (taskId, newDate, newTecNome, newTecId, newHour, newMinute) => {
           setMovingTaskId(taskId);
           try {
             const { data: taskData } = await supabase.functions.invoke("auvo-task-update", {
@@ -568,10 +571,18 @@ export default function AgendaSemanalPage() {
             const oldDate = selectedTarefa?.data_tarefa;
             const oldTec = selectedTarefa?.tecnico;
 
-            if (newDate && newDate !== oldDate) {
-              const newDateFormatted = newDate + "T" + (taskResult.taskDate?.substring(11) || "08:00:00");
+            // Build date+time
+            const dateToUse = newDate || oldDate || format(new Date(), "yyyy-MM-dd");
+            const hasTimeChange = newHour !== undefined && newMinute !== undefined;
+            const hasDateChange = newDate && newDate !== oldDate;
+
+            if (hasDateChange || hasTimeChange) {
+              const h = (newHour ?? "08").padStart(2, "0");
+              const m = (newMinute ?? "00").padStart(2, "0");
+              const newDateFormatted = dateToUse + `T${h}:${m}:00`;
               patches.push({ op: "replace", path: "/taskDate", value: newDateFormatted });
             }
+
             if (newTecId && newTecNome !== oldTec) {
               patches.push({ op: "replace", path: "/idUserTo", value: Number(newTecId) });
             }
@@ -586,6 +597,10 @@ export default function AgendaSemanalPage() {
               throw new Error(patchResult?.data?.message || `Erro ${patchResult.status}`);
             }
 
+            const updatedHoraInicio = hasTimeChange
+              ? `${(newHour ?? "08").padStart(2, "0")}:${(newMinute ?? "00").padStart(2, "0")}:00`
+              : undefined;
+
             queryClient.setQueryData(queryKey, (old: Tarefa[] | undefined) => {
               if (!old) return old;
               return old.map(t => {
@@ -594,15 +609,16 @@ export default function AgendaSemanalPage() {
                   ...t,
                   ...(newDate ? { data_tarefa: newDate } : {}),
                   ...(newTecId ? { tecnico: newTecNome, tecnico_id: newTecId } : {}),
+                  ...(updatedHoraInicio ? { hora_inicio: updatedHoraInicio } : {}),
                 };
               });
             });
 
-            // Update selected tarefa too
             setSelectedTarefa(prev => prev ? {
               ...prev,
               ...(newDate ? { data_tarefa: newDate } : {}),
               ...(newTecId ? { tecnico: newTecNome, tecnico_id: newTecId } : {}),
+              ...(updatedHoraInicio ? { hora_inicio: updatedHoraInicio } : {}),
             } : null);
 
             toast.success("Tarefa atualizada no Auvo!");
@@ -646,6 +662,15 @@ function TaskCard({
         isMoving && "opacity-50 ring-2 ring-primary animate-pulse"
       )}
     >
+      <div className="flex items-center gap-1">
+        {tarefa.hora_inicio && (
+          <span className="text-[10px] font-semibold text-primary flex items-center gap-0.5">
+            <Clock className="h-2.5 w-2.5" />
+            {tarefa.hora_inicio?.substring(0, 5)}
+            {tarefa.hora_fim && `–${tarefa.hora_fim?.substring(0, 5)}`}
+          </span>
+        )}
+      </div>
       <div className="font-medium text-foreground truncate">{tarefa.cliente || "—"}</div>
       <div className="text-[10px] text-muted-foreground mt-0.5">
         <span>T#{tarefa.auvo_task_id}</span>
@@ -661,10 +686,7 @@ function TaskCard({
           </span>
         )}
       </div>
-      <div className="flex items-center justify-between mt-1 gap-1">
-        {tarefa.hora_inicio && (
-          <span className="text-muted-foreground">{tarefa.hora_inicio?.substring(0, 5)}</span>
-        )}
+      <div className="flex items-center justify-end mt-1">
         <span className={cn("px-1 py-0.5 rounded text-[10px] font-medium leading-none", statusClass)}>
           {tarefa.status_auvo || "—"}
         </span>
@@ -689,12 +711,14 @@ function TaskDetailDialog({
   tarefa: Tarefa | null;
   onClose: () => void;
   tecnicos: { nome: string; id: string | null }[];
-  onUpdate: (taskId: string, newDate: string | null, newTecNome: string | null, newTecId: string | null) => Promise<void>;
+  onUpdate: (taskId: string, newDate: string | null, newTecNome: string | null, newTecId: string | null, newHour?: string, newMinute?: string) => Promise<void>;
   isSaving: boolean;
 }) {
   const [editing, setEditing] = useState(false);
   const [editDate, setEditDate] = useState("");
   const [editTecId, setEditTecId] = useState("");
+  const [editHour, setEditHour] = useState("08");
+  const [editMinute, setEditMinute] = useState("00");
 
   if (!tarefa) return null;
 
@@ -705,6 +729,9 @@ function TaskDetailDialog({
   const startEditing = () => {
     setEditDate(tarefa.data_tarefa || "");
     setEditTecId(tarefa.tecnico_id || "");
+    const hi = tarefa.hora_inicio || "";
+    setEditHour(hi.substring(0, 2) || "08");
+    setEditMinute(hi.substring(3, 5) || "00");
     setEditing(true);
   };
 
@@ -719,6 +746,8 @@ function TaskDetailDialog({
       editDate !== tarefa.data_tarefa ? editDate : null,
       newTec ? newTec.nome : null,
       editTecId !== tarefa.tecnico_id ? editTecId : null,
+      editHour,
+      editMinute,
     );
     setEditing(false);
   };
@@ -756,6 +785,32 @@ function TaskDetailDialog({
                   onChange={(e) => setEditDate(e.target.value)}
                   className="h-8 text-sm"
                 />
+              </div>
+              <div>
+                <label className="text-xs font-medium text-muted-foreground mb-1 block">Horário</label>
+                <div className="flex items-center gap-1">
+                  <Select value={editHour} onValueChange={setEditHour}>
+                    <SelectTrigger className="h-8 text-sm w-20">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {Array.from({ length: 24 }, (_, i) => String(i).padStart(2, "0")).map(h => (
+                        <SelectItem key={h} value={h}>{h}h</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <span className="text-muted-foreground font-bold">:</span>
+                  <Select value={editMinute} onValueChange={setEditMinute}>
+                    <SelectTrigger className="h-8 text-sm w-20">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {["00", "15", "30", "45"].map(m => (
+                        <SelectItem key={m} value={m}>{m}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
               </div>
               <div>
                 <label className="text-xs font-medium text-muted-foreground mb-1 block">Técnico</label>
