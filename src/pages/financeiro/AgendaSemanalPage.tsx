@@ -314,10 +314,12 @@ export default function AgendaSemanalPage() {
       if (!taskResult) throw new Error("Não foi possível obter dados da tarefa");
 
       const patches: Array<{ op: string; path: string; value: any }> = [];
+      const fallbackTimeFromTask = String(taskResult.taskDate || "").substring(11, 19);
+      const persistedHoraInicio = horaInicio || (fallbackTimeFromTask || null);
 
       if (!sameDay) {
         // Preserve existing time from the task
-        const existingTime = horaInicio ? horaInicio.substring(0, 5) + ":00" : (taskResult.taskDate?.substring(11) || "08:00:00");
+        const existingTime = persistedHoraInicio ? persistedHoraInicio.substring(0, 5) + ":00" : "08:00:00";
         const newDateFormatted = format(weekDays[toDayIdx], "yyyy-MM-dd") + "T" + existingTime;
         patches.push({ op: "replace", path: "/taskDate", value: newDateFormatted });
       }
