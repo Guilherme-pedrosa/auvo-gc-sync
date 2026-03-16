@@ -1689,7 +1689,7 @@ export default function OSKanbanPage() {
               {/* Links + Edit */}
               <div className="flex flex-wrap gap-2 pt-2 border-t">
                 <Button size="sm" variant="default" className="gap-1" onClick={() => { setSelectedCard(null); openEditModal(selectedCard); }}>
-                  <Edit2 className="h-3.5 w-3.5" /> Editar Data/Técnico
+                  <Edit2 className="h-3.5 w-3.5" /> Editar Agendamento
                 </Button>
                 {selectedCard.gc_os_link && (
                   <Button size="sm" variant="outline" asChild>
