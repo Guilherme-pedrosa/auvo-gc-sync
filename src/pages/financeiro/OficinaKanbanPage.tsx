@@ -395,6 +395,57 @@ export default function OficinaKanbanPage() {
     });
   }, [savePositions]);
 
+  const handleAddColumn = useCallback(() => {
+    const name = newColumnName.trim();
+    if (!name) return;
+    const id = name.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "");
+    if (columns.some((c) => c.id === id)) {
+      toast.error("Já existe uma coluna com esse nome");
+      return;
+    }
+    const newCol: KanbanColumn = { id, title: name, color: "#6b7280", items: [] };
+    setColumns((prev) => {
+      const next = [...prev, newCol];
+      savePositions(next);
+      return next;
+    });
+    setNewColumnName("");
+    setShowAddColumn(false);
+    toast.success(`Coluna "${name}" adicionada`);
+  }, [newColumnName, columns, savePositions]);
+
+  const handleDeleteColumn = useCallback((colId: string) => {
+    const col = columns.find((c) => c.id === colId);
+    if (!col) return;
+    if (col.items.length > 0) {
+      toast.error("Mova os cards desta coluna antes de excluí-la");
+      return;
+    }
+    if (DEFAULT_COLUMNS.some((dc) => dc.id === colId)) {
+      toast.error("Não é possível excluir colunas padrão");
+      return;
+    }
+    setColumns((prev) => {
+      const next = prev.filter((c) => c.id !== colId);
+      savePositions(next);
+      return next;
+    });
+    toast.success(`Coluna "${col.title}" removida`);
+  }, [columns, savePositions]);
+
+  const handleRenameColumn = useCallback((colId: string) => {
+    const name = renameValue.trim();
+    if (!name) return;
+    setColumns((prev) => {
+      const next = prev.map((c) => c.id === colId ? { ...c, title: name } : c);
+      savePositions(next);
+      return next;
+    });
+    setRenamingColumnId(null);
+    setRenameValue("");
+    toast.success("Coluna renomeada");
+  }, [renameValue, savePositions]);
+
   const abbreviateName = (name: string, maxLen = 28) => {
     if (name.length <= maxLen) return name;
     const words = name.split(/\s+/);
