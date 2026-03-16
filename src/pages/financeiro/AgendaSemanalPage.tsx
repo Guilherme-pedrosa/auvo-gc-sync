@@ -37,6 +37,7 @@ type Tarefa = {
   auvo_link: string | null;
   hora_inicio: string | null;
   hora_fim: string | null;
+  duracao_decimal: number | null;
   check_in: boolean;
   check_out: boolean;
   gc_os_valor_total: number | null;
@@ -129,7 +130,7 @@ export default function AgendaSemanalPage() {
         .from("tarefas_central")
         .select(
           "auvo_task_id, cliente, tecnico, tecnico_id, data_tarefa, status_auvo, " +
-          "orientacao, endereco, auvo_link, hora_inicio, hora_fim, check_in, check_out, " +
+          "orientacao, endereco, auvo_link, hora_inicio, hora_fim, duracao_decimal, check_in, check_out, " +
           "gc_os_valor_total, gc_orc_valor_total, gc_os_situacao, gc_os_codigo, gc_os_link, " +
           "gc_orc_situacao, gc_orcamento_codigo, gc_orc_link, pendencia"
         )
@@ -172,6 +173,7 @@ export default function AgendaSemanalPage() {
         status_auvo: t.status_auvo,
         hora_inicio: t.hora_inicio,
         hora_fim: t.hora_fim,
+        duracao_decimal: t.duracao_decimal,
         check_in: t.check_in,
         check_out: t.check_out,
         endereco: t.endereco,
@@ -525,22 +527,26 @@ export default function AgendaSemanalPage() {
             filteredTecnicos={filteredTecnicos}
             selectedDay={selectedDay}
             onTaskClick={setSelectedTarefa}
-            onDayDrop={async (taskId, toTecNome, toTecId, newHour, fromDate) => {
+            onDayDrop={async (taskId, toTecNome, toTecId, newHour) => {
               setMovingTaskId(taskId);
               try {
                 const newDate = format(selectedDay, "yyyy-MM-dd");
-                const { data: taskData } = await supabase.functions.invoke("auvo-task-update", {
-                  body: { action: "get", taskId: Number(taskId) },
-                });
-                const taskResult = taskData?.data?.result;
-                if (!taskResult) throw new Error("Não foi possível obter dados da tarefa");
+                const oldTarefa = (tarefas || []).find(t => t.auvo_task_id === taskId);
+                if (!oldTarefa) throw new Error("Tarefa não encontrada para mover");
+
+                const oldStartMin = parseTimeToMinutes(oldTarefa.hora_inicio);
+                const minute = oldStartMin >= 0 ? oldStartMin % 60 : 0;
+                const durationMin = getTaskDurationMinutes(oldTarefa);
+                const newStartMin = (newHour * 60) + minute;
+                const newEndMin = newStartMin + durationMin;
+
+                const updatedHoraInicio = `${minutesToTime(newStartMin)}:00`;
+                const updatedHoraFim = `${minutesToTime(newEndMin)}:00`;
 
                 const patches: Array<{ op: string; path: string; value: any }> = [];
-                const newDateFormatted = newDate + `T${String(newHour).padStart(2, "0")}:00:00`;
-                patches.push({ op: "replace", path: "/taskDate", value: newDateFormatted });
-                
-                const oldTarefa = (tarefas || []).find(t => t.auvo_task_id === taskId);
-                const sameTec = oldTarefa?.tecnico === toTecNome;
+                patches.push({ op: "replace", path: "/taskDate", value: `${newDate}T${minutesToTime(newStartMin)}:00` });
+
+                const sameTec = oldTarefa.tecnico === toTecNome;
                 if (!sameTec && toTecId) {
                   patches.push({ op: "replace", path: "/idUserTo", value: Number(toTecId) });
                 }
@@ -551,23 +557,29 @@ export default function AgendaSemanalPage() {
                 if (error) throw error;
                 if (patchResult?.status && patchResult.status >= 400) throw new Error(patchResult?.data?.message || `Erro ${patchResult.status}`);
 
-                const updatedHoraInicio = `${String(newHour).padStart(2, "0")}:00:00`;
                 queryClient.setQueryData(queryKey, (old: Tarefa[] | undefined) => {
                   if (!old) return old;
                   return old.map(t => t.auvo_task_id !== taskId ? t : {
-                    ...t, data_tarefa: newDate, hora_inicio: updatedHoraInicio,
+                    ...t,
+                    data_tarefa: newDate,
+                    hora_inicio: updatedHoraInicio,
+                    hora_fim: updatedHoraFim,
                     ...(!sameTec && toTecId ? { tecnico: toTecNome, tecnico_id: toTecId } : {}),
                   });
                 });
 
                 await supabase.functions.invoke("auvo-task-update", {
                   body: { action: "persist-central", row: {
-                    auvo_task_id: taskId, data_tarefa: newDate, hora_inicio: updatedHoraInicio,
+                    auvo_task_id: taskId,
+                    data_tarefa: newDate,
+                    hora_inicio: updatedHoraInicio,
+                    hora_fim: updatedHoraFim,
+                    duracao_decimal: oldTarefa.duracao_decimal,
                     ...(!sameTec && toTecId ? { tecnico: toTecNome, tecnico_id: toTecId } : {}),
                   }},
                 });
 
-                const changes: string[] = [`horário → ${String(newHour).padStart(2, "0")}:00`];
+                const changes: string[] = [`horário → ${minutesToTime(newStartMin)}`];
                 if (!sameTec) changes.push(`técnico → ${toTecNome}`);
                 toast.success(`Tarefa atualizada: ${changes.join(", ")}`);
               } catch (err: any) {
@@ -757,6 +769,23 @@ function parseTimeToMinutes(timeStr: string | null | undefined): number {
   return isNaN(h) ? -1 : h * 60 + (isNaN(m) ? 0 : m);
 }
 
+function minutesToTime(mins: number): string {
+  const h = Math.floor(mins / 60);
+  const m = mins % 60;
+  return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
+}
+
+function getTaskDurationMinutes(tarefa: Tarefa): number {
+  const startMin = parseTimeToMinutes(tarefa.hora_inicio);
+  const endMin = parseTimeToMinutes(tarefa.hora_fim);
+  if (startMin >= 0 && endMin > startMin) return endMin - startMin;
+
+  const duracaoDecimal = Number(tarefa.duracao_decimal || 0);
+  if (duracaoDecimal > 0) return Math.max(30, Math.round(duracaoDecimal * 60));
+
+  return 60;
+}
+
 function DayView({
   tarefas,
   filteredTecnicos,
@@ -769,7 +798,7 @@ function DayView({
   filteredTecnicos: { nome: string; id: string | null }[];
   selectedDay: Date;
   onTaskClick: (t: Tarefa) => void;
-  onDayDrop: (taskId: string, toTecNome: string, toTecId: string | null, newHour: number, fromDate: string) => void;
+  onDayDrop: (taskId: string, toTecNome: string, toTecId: string | null, newHour: number) => void;
   movingTaskId: string | null;
 }) {
   const dayStr = format(selectedDay, "yyyy-MM-dd");
@@ -836,8 +865,8 @@ function DayView({
                           setDragOverCell(null);
                           const raw = e.dataTransfer.getData("application/json");
                           if (!raw) return;
-                          const { taskId, fromDate } = JSON.parse(raw);
-                          onDayDrop(taskId, tec.nome, tec.id, hour, fromDate);
+                          const { taskId } = JSON.parse(raw);
+                          onDayDrop(taskId, tec.nome, tec.id, hour);
                         }}
                       />
                     );
@@ -846,13 +875,14 @@ function DayView({
                 {/* Task cards positioned absolutely spanning start→end */}
                 {tasks.map(tarefa => {
                   const startMin = parseTimeToMinutes(tarefa.hora_inicio);
-                  const endMin = parseTimeToMinutes(tarefa.hora_fim);
+                  const durationMin = getTaskDurationMinutes(tarefa);
                   const effStart = startMin >= 0 ? startMin : gridStartMin;
-                  const effEnd = endMin > effStart ? endMin : effStart + 60;
+                  const effEnd = effStart + durationMin;
                   const cStart = Math.max(effStart, gridStartMin);
                   const cEnd = Math.min(effEnd, gridEndMin);
                   const leftPct = ((cStart - gridStartMin) / totalMin) * 100;
                   const widthPct = ((cEnd - cStart) / totalMin) * 100;
+                  const displayEnd = minutesToTime(effEnd);
                   const statusClass = STATUS_COLORS[tarefa.status_auvo || ""] || "bg-muted text-muted-foreground";
                   const canDrag = tarefa.status_auvo === "Agendada" || tarefa.status_auvo === "Aberta";
                   const isMoving = movingTaskId === tarefa.auvo_task_id;
@@ -880,7 +910,7 @@ function DayView({
                           <span className="text-[10px] font-semibold text-primary flex items-center gap-0.5 whitespace-nowrap">
                             <Clock className="h-2.5 w-2.5" />
                             {tarefa.hora_inicio?.substring(0, 5)}
-                            {tarefa.hora_fim && `–${tarefa.hora_fim?.substring(0, 5)}`}
+                            {`–${(tarefa.hora_fim?.substring(0, 5) || displayEnd)}`}
                           </span>
                         )}
                       </div>
