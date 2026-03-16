@@ -1001,16 +1001,14 @@ export default function OficinaKanbanPage() {
                   </div>
 
                   {/* Manual Link Section */}
-                  {(!selectedCard.equipments_id || selectedCard.equipments_id.length === 0) && (
+                  {!selectedCard.os_task_id && (
                     <div className="p-3 rounded-lg bg-amber-50 border border-amber-200 space-y-3">
                       <h4 className="text-sm font-semibold text-amber-800 flex items-center gap-2"><Link2 className="h-4 w-4" />Vincular manualmente</h4>
                       <div className="grid grid-cols-1 gap-2">
-                        {!selectedCard.os_task_id && (
-                          <div className="flex items-center gap-2">
-                            <label className="text-xs text-muted-foreground whitespace-nowrap w-28">Tarefa OS Auvo:</label>
-                            <Input placeholder="Ex: 70970640" value={manualOsTaskId} onChange={(e) => setManualOsTaskId(e.target.value)} className="h-8 text-xs" />
-                          </div>
-                        )}
+                        <div className="flex items-center gap-2">
+                          <label className="text-xs text-muted-foreground whitespace-nowrap w-28">Tarefa OS Auvo:</label>
+                          <Input placeholder="Ex: 70970640" value={manualOsTaskId} onChange={(e) => setManualOsTaskId(e.target.value)} className="h-8 text-xs" />
+                        </div>
                         {!selectedCard.gc_os && (
                           <div className="flex items-center gap-2">
                             <label className="text-xs text-muted-foreground whitespace-nowrap w-28">Código OS GC:</label>

@@ -823,12 +823,12 @@ Deno.serve(async (req) => {
       if (existing?.dados) {
         const oldData = existing.dados || {};
 
-        // Preserve manually linked docs when API sync doesn't return them
-        if (!item.gc_os && oldData.gc_os) item.gc_os = oldData.gc_os;
-        if (!item.gc_orcamento && oldData.gc_orcamento) item.gc_orcamento = oldData.gc_orcamento;
+        // Preserve only explicit manual links; stale automatic links are discarded.
+        if (!item.gc_os && oldData.gc_os && oldData.manual_gc_os_linked === true) item.gc_os = oldData.gc_os;
+        if (!item.gc_orcamento && oldData.gc_orcamento && oldData.manual_gc_orc_linked === true) item.gc_orcamento = oldData.gc_orcamento;
 
-        // Preserve manual OS task linkage
-        if (!item.os_task_id && oldData.os_task_id) {
+        // Preserve manual OS task linkage only
+        if (!item.os_task_id && oldData.os_task_id && oldData.manual_os_task_linked === true) {
           item.os_task_id = oldData.os_task_id;
           item.os_task_link = oldData.os_task_link || `https://app2.auvo.com.br/relatorioTarefas/DetalheTarefa/${oldData.os_task_id}`;
         }
