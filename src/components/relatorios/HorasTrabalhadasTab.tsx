@@ -188,11 +188,11 @@ export default function HorasTrabalhadasTab({
       clienteEntry.tarefas++;
       clienteEntry.valor += horas * rate;
 
-      const tipo = (t.descricao || "").trim() || "Sem tipo";
+      const tipo = getTipoLabel(t.descricao);
       clienteEntry.tipos.set(tipo, (clienteEntry.tipos.get(tipo) || 0) + horas);
       clienteEntry.tasks.push({
         auvo_task_id: t.auvo_task_id || "",
-        descricao: (t.descricao || "").trim() || "Sem tipo",
+        descricao: getTipoLabel(t.descricao),
         hora_inicio: t.hora_inicio || "",
         hora_fim: t.hora_fim || "",
         horas,
