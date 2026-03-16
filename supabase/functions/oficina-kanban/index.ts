@@ -8,6 +8,7 @@ const corsHeaders = {
 const AUVO_BASE_URL = "https://api.auvo.com.br/v2";
 const GC_BASE_URL = "https://api.gestaoclick.com";
 const QUESTIONNAIRE_ID = "215146"; // Formulário de entrada oficina
+const QUESTIONNAIRE_DEVOLUCAO_ID = "215147"; // Formulário de devolução
 const GC_ATRIBUTO_TAREFA_OS = "73343";
 const GC_ATRIBUTO_TAREFA_ORC = "73341";
 const MIN_DELAY_MS = 200;
