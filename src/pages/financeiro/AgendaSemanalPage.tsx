@@ -73,6 +73,7 @@ export default function AgendaSemanalPage() {
   const [movingTaskId, setMovingTaskId] = useState<string | null>(null);
   const [dragOverCell, setDragOverCell] = useState<string | null>(null);
   const [selectedTarefa, setSelectedTarefa] = useState<Tarefa | null>(null);
+  const [isRefreshingFromApi, setIsRefreshingFromApi] = useState(false);
   const [selectedTecnicos, setSelectedTecnicos] = useState<Set<string> | null>(() => {
     try {
       const saved = localStorage.getItem("agenda_selectedTecnicos");
@@ -140,7 +141,28 @@ export default function AgendaSemanalPage() {
     staleTime: 1000 * 60 * 5,
   });
 
-  // All technicians: merge Auvo users + any from tasks
+  // Refresh from live API (Auvo + GC) and update cache
+  const refreshFromApi = useCallback(async () => {
+    setIsRefreshingFromApi(true);
+    try {
+      const startStr = format(weekStart, "yyyy-MM-dd");
+      const endStr = format(addDays(weekStart, 5), "yyyy-MM-dd");
+      const { data, error } = await supabase.functions.invoke("auvo-agenda", {
+        body: { startDate: startStr, endDate: endStr },
+      });
+      if (error) throw error;
+      const apiTarefas = (data?.data || []) as Tarefa[];
+      // Update react-query cache directly with fresh API data
+      queryClient.setQueryData(queryKey, apiTarefas);
+      toast.success(`${apiTarefas.length} tarefas atualizadas da API`);
+    } catch (err: any) {
+      console.error("[agenda] Erro ao atualizar da API:", err);
+      toast.error(`Erro ao atualizar: ${err.message}`);
+    } finally {
+      setIsRefreshingFromApi(false);
+    }
+  }, [weekStart, queryClient, queryKey]);
+
   const tecnicos = useMemo(() => {
     const map = new Map<string, { nome: string; id: string | null }>();
     // Add all Auvo users first
@@ -385,8 +407,8 @@ export default function AgendaSemanalPage() {
               </PopoverContent>
             </Popover>
 
-            <Button variant="outline" size="sm" onClick={() => refetch()} disabled={isFetching}>
-              <RefreshCw className={cn("h-3.5 w-3.5 mr-1", isFetching && "animate-spin")} />
+            <Button variant="outline" size="sm" onClick={refreshFromApi} disabled={isRefreshingFromApi || isFetching}>
+              <RefreshCw className={cn("h-3.5 w-3.5 mr-1", (isRefreshingFromApi || isFetching) && "animate-spin")} />
               Atualizar
             </Button>
           </div>
