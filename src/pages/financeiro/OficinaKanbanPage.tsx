@@ -142,7 +142,49 @@ export default function OficinaKanbanPage() {
     }
   }, [dateRange, refetch]);
 
-  // All unique clients
+  const handleSaveManualLink = useCallback(async () => {
+    if (!selectedCard) return;
+    if (!manualOsTaskId && !manualGcOsCode && !manualGcOrcCode) {
+      toast.error("Preencha pelo menos um campo para vincular");
+      return;
+    }
+    setIsSavingLink(true);
+    try {
+      const { data: result, error } = await supabase.functions.invoke("oficina-kanban", {
+        body: {
+          mode: "save_manual_link",
+          auvo_task_id: selectedCard.auvo_task_id,
+          os_task_id: manualOsTaskId || null,
+          gc_os_code: manualGcOsCode || null,
+          gc_orc_code: manualGcOrcCode || null,
+        },
+      });
+      if (error) throw error;
+      if (result?.ok) {
+        toast.success("Vínculo salvo com sucesso!");
+        // Update local card data
+        if (result.dados) {
+          setSelectedCard(result.dados);
+          setColumns(prev => prev.map(col => ({
+            ...col,
+            items: col.items.map(item =>
+              item.auvo_task_id === selectedCard.auvo_task_id ? { ...item, ...result.dados } : item
+            ),
+          })));
+        }
+        setManualOsTaskId("");
+        setManualGcOsCode("");
+        setManualGcOrcCode("");
+      } else {
+        toast.error(result?.error || "Erro ao salvar vínculo");
+      }
+    } catch (e: any) {
+      toast.error("Erro ao salvar: " + (e?.message || ""));
+    } finally {
+      setIsSavingLink(false);
+    }
+  }, [selectedCard, manualOsTaskId, manualGcOsCode, manualGcOrcCode]);
+
   const allClientes = useMemo(() => {
     if (!data?.items) return [];
     const set = new Set((data.items as OficinaItem[]).map((i) => i.cliente).filter(Boolean));
