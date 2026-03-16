@@ -73,6 +73,7 @@ export default function AgendaSemanalPage() {
   const [movingTaskId, setMovingTaskId] = useState<string | null>(null);
   const [dragOverCell, setDragOverCell] = useState<string | null>(null);
   const [selectedTarefa, setSelectedTarefa] = useState<Tarefa | null>(null);
+  const [isRefreshingFromApi, setIsRefreshingFromApi] = useState(false);
   const [selectedTecnicos, setSelectedTecnicos] = useState<Set<string> | null>(() => {
     try {
       const saved = localStorage.getItem("agenda_selectedTecnicos");
