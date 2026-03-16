@@ -461,6 +461,26 @@ export default function HorasTrabalhadasTab({
         </Card>
       </div>
 
+      {/* Warning for negative durations */}
+      {negativeTasks.length > 0 && (
+        <Alert variant="destructive">
+          <AlertTriangle className="h-4 w-4" />
+          <AlertTitle>⚠️ {negativeTasks.length} tarefa(s) com duração negativa</AlertTitle>
+          <AlertDescription className="mt-2">
+            <p className="text-xs mb-2">
+              Essas tarefas vieram do Auvo com horas negativas e estão distorcendo os totais. Corrija no Auvo:
+            </p>
+            <div className="flex flex-wrap gap-1.5">
+              {negativeTasks.map((t) => (
+                <Badge key={t.id} variant="destructive" className="text-[10px] font-mono">
+                  #{t.id} · {t.cliente} · {t.horas.toFixed(1)}h
+                </Badge>
+              ))}
+            </div>
+          </AlertDescription>
+        </Alert>
+      )}
+
       {/* Chart */}
       {chartData.length > 0 && (
         <Card>
