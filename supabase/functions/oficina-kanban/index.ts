@@ -405,19 +405,19 @@ Deno.serve(async (req) => {
         }
       }
 
-      // Update equipment name from GC client if still unidentified
-      const currentName = (dados.equipamento_nome || "").trim().toLowerCase();
-      if (!currentName || currentName === "equipamento não identificado" || currentName === "s") {
-        const gcCliente = dados.gc_os?.gc_cliente || dados.gc_orcamento?.gc_cliente || "";
-        if (gcCliente) {
-          dados.equipamento_nome = gcCliente;
-          dados.cliente = gcCliente;
-        }
+      // Update equipment / client data from GC after manual link
+      const gcCliente = dados.gc_os?.gc_cliente || dados.gc_orcamento?.gc_cliente || "";
+      if (isUnknownEquipmentName(dados.equipamento_nome) && gcCliente) {
+        dados.equipamento_nome = gcCliente;
       }
 
-      // Update cliente from GC if empty
-      if (!dados.cliente) {
-        dados.cliente = dados.gc_os?.gc_cliente || dados.gc_orcamento?.gc_cliente || "";
+      if ((!dados.cliente || dados.cliente === "Cliente não identificado") && gcCliente) {
+        dados.cliente = gcCliente;
+      }
+
+      const gcData = dados.gc_os?.gc_data || dados.gc_orcamento?.gc_data || "";
+      if ((!dados.data_entrada || dados.data_entrada === "") && gcData) {
+        dados.data_entrada = gcData;
       }
 
       // Auto-reassign column based on new data
