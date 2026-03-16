@@ -39,15 +39,22 @@ function auvoHeaders(token: string): Record<string, string> {
   return { Authorization: `Bearer ${token}`, "Content-Type": "application/json" };
 }
 
-async function fetchAuvoTasksWithQuestionnaire(
+// Fetch ALL tasks in range, separating entry/return tasks and all others
+async function fetchAllAuvoTasks(
   bearerToken: string,
   startDate: string,
   endDate: string
-): Promise<{ tasks: any[]; hadError: boolean; errorMessage: string | null }> {
+): Promise<{
+  entryTasks: any[];
+  allTasks: any[];
+  hadError: boolean;
+  errorMessage: string | null;
+}> {
+  const entryTasks: any[] = [];
   const allTasks: any[] = [];
   let page = 1;
   const pageSize = 100;
-  const MAX_PAGES = 20;
+  const MAX_PAGES = 30;
   const filterObj = { startDate: `${startDate}T00:00:00`, endDate: `${endDate}T23:59:59` };
   let hadError = false;
   let errorMessage: string | null = null;
@@ -68,17 +75,18 @@ async function fetchAuvoTasksWithQuestionnaire(
     const entities = data?.result?.entityList || data?.result?.Entities || [];
 
     for (const task of entities) {
+      allTasks.push(task);
       const questionnaires = task.questionnaires || [];
       const hasEntrada = questionnaires.some((q: any) => String(q.questionnaireId) === QUESTIONNAIRE_ID);
       const hasDevolucao = questionnaires.some((q: any) => String(q.questionnaireId) === QUESTIONNAIRE_DEVOLUCAO_ID);
-      if (hasEntrada || hasDevolucao) allTasks.push(task);
+      if (hasEntrada || hasDevolucao) entryTasks.push(task);
     }
 
     if (entities.length < pageSize) break;
     page++;
   }
 
-  return { tasks: allTasks, hadError, errorMessage };
+  return { entryTasks, allTasks, hadError, errorMessage };
 }
 
 async function fetchGcOsMap(gcHeaders: Record<string, string>): Promise<Record<string, any>> {
