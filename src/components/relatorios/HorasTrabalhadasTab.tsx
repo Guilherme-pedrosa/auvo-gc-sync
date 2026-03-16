@@ -98,18 +98,23 @@ export default function HorasTrabalhadasTab({
     });
   }, [data, dateFrom, dateTo, filterTecnico, filterCliente, filterGrupo, selectedTipos, allTiposSelected, grupoClienteMap]);
 
-  // Build hourly rate lookup
-  const getHourlyRate = (tecnico: string, cliente: string): number => {
-    // First check direct client config
-    const directConfig = valorHoraConfigs.find(
-      (c: any) => c.tecnico_nome === tecnico && c.tipo_referencia === "cliente" && c.referencia_nome === cliente
-    );
-    if (directConfig) return Number(directConfig.valor_hora) || 0;
+  // Build hourly rate lookup - checks both auvo and gc client names against group members
+  const getHourlyRate = (tecnico: string, clienteAuvo: string, clienteGc?: string): number => {
+    // First check direct client config (try both names)
+    for (const nome of [clienteAuvo, clienteGc].filter(Boolean)) {
+      const directConfig = valorHoraConfigs.find(
+        (c: any) => c.tecnico_nome === tecnico && c.tipo_referencia === "cliente" && c.referencia_nome === nome
+      );
+      if (directConfig) return Number(directConfig.valor_hora) || 0;
+    }
 
-    // Check group config
+    // Check group config - match if either client name is in the group
     for (const g of grupos) {
       const gClientes = grupoClienteMap.get(g.id) || [];
-      if (gClientes.includes(cliente)) {
+      const isInGroup = gClientes.some((gc: string) =>
+        gc === clienteAuvo || gc === clienteGc || clienteAuvo.includes(gc) || gc.includes(clienteAuvo)
+      );
+      if (isInGroup) {
         const groupConfig = valorHoraConfigs.find(
           (c: any) => c.tecnico_nome === tecnico && c.tipo_referencia === "grupo" && c.grupo_id === g.id
         );
