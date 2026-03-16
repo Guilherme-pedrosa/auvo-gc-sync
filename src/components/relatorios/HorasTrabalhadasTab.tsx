@@ -121,8 +121,8 @@ export default function HorasTrabalhadasTab({
       }
 
       if (!allTiposSelected && selectedTipos.size > 0) {
-        const tipoTarefa = (t.descricao || "").trim() || "Sem tipo";
-        if (!selectedTipos.has(tipoTarefa)) return false;
+        const tipoTarefaKey = getTipoKey(t.descricao);
+        if (!selectedTipos.has(tipoTarefaKey)) return false;
       }
 
       return true;
