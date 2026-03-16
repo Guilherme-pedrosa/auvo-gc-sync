@@ -86,6 +86,7 @@ const TechDashboardPage = () => {
       });
       if (error) throw error;
       if (data?.error) throw new Error(data.error);
+      setLastFetchTime(new Date().toISOString());
       return data as DashboardData;
     },
     refetchInterval: 60000,
