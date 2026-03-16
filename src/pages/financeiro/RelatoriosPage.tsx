@@ -66,33 +66,33 @@ export default function RelatoriosPage() {
 
   // Filter out executed OS (same logic as kanban)
   const osAbertas = useMemo(() => {
-    if (!tarefas) return [];
-    return tarefas.filter((t) => {
+    if (!tarefasOS) return [];
+    return tarefasOS.filter((t) => {
       const sit = (t.gc_os_situacao || "").toLowerCase();
       return !sit.startsWith("executad") && !sit.startsWith("imp cigam faturado total") && !sit.startsWith("financeiro separado / baixa cigam");
     });
-  }, [tarefas]);
+  }, [tarefasOS]);
 
-  // All unique client names from all tarefas
+  // All unique client names from ALL tarefas (for horas/config tabs)
   const allClientes = useMemo(() => {
-    if (!tarefas) return [];
-    const set = new Set(tarefas.map((t) => t.cliente || t.gc_os_cliente || "").filter(Boolean));
-    return Array.from(set).sort();
-  }, [tarefas]);
+    if (!todasTarefas) return [] as string[];
+    const set = new Set(todasTarefas.map((t) => t.cliente || t.gc_os_cliente || "").filter(Boolean));
+    return Array.from(set).sort() as string[];
+  }, [todasTarefas]);
 
   // All unique technicians
   const allTecnicos = useMemo(() => {
-    if (!tarefas) return [];
-    const set = new Set(tarefas.map((t) => t.tecnico || "").filter(Boolean));
-    return Array.from(set).sort();
-  }, [tarefas]);
+    if (!todasTarefas) return [] as string[];
+    const set = new Set(todasTarefas.map((t) => t.tecnico || "").filter(Boolean));
+    return Array.from(set).sort() as string[];
+  }, [todasTarefas]);
 
   // All unique task descriptions (types)
   const allTiposTarefa = useMemo(() => {
-    if (!tarefas) return [];
-    const set = new Set(tarefas.map((t) => t.descricao || "").filter(Boolean));
-    return Array.from(set).sort();
-  }, [tarefas]);
+    if (!todasTarefas) return [] as string[];
+    const set = new Set(todasTarefas.map((t) => t.descricao || "").filter(Boolean));
+    return Array.from(set).sort() as string[];
+  }, [todasTarefas]);
 
   return (
     <div className="p-6 space-y-6">
@@ -118,13 +118,13 @@ export default function RelatoriosPage() {
         </TabsList>
 
         <TabsContent value="os-abertas">
-          <OSAbertasTab data={osAbertas} isLoading={isLoading} allClientes={allClientes} />
+          <OSAbertasTab data={osAbertas} isLoading={isLoadingOS} allClientes={allClientes} />
         </TabsContent>
 
         <TabsContent value="horas">
           <HorasTrabalhadasTab
-            data={tarefas || []}
-            isLoading={isLoading}
+            data={todasTarefas || []}
+            isLoading={isLoadingAll}
             allClientes={allClientes}
             allTecnicos={allTecnicos}
             allTiposTarefa={allTiposTarefa}
