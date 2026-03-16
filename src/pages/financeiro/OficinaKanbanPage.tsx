@@ -166,11 +166,11 @@ export default function OficinaKanbanPage() {
         colMap[col].sort((a: any, b: any) => ((a as any)._posicao || 0) - ((b as any)._posicao || 0));
       }
 
-      const savedCols = data.custom_columns || [];
-      const savedOrderMap = new Map(savedCols.map((cc: any) => [cc.id, cc]));
+      const savedCols: { id: string; title: string; order: number }[] = data.custom_columns || [];
+      const savedOrderMap = new Map(savedCols.map((cc) => [cc.id, cc]));
 
       const orderedIds: string[] = savedCols.length > 0
-        ? savedCols.sort((a: any, b: any) => a.order - b.order).map((cc: any) => cc.id)
+        ? [...savedCols].sort((a, b) => a.order - b.order).map((cc) => cc.id)
         : DEFAULT_COLUMNS.map((c) => c.id);
 
       // Add any columns from data not in saved order
