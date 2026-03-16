@@ -194,6 +194,7 @@ export default function RelatoriosPage() {
         <div>
           <h1 className="text-2xl font-bold text-foreground">Relatórios</h1>
           <p className="text-sm text-muted-foreground">Visão consolidada de OS abertas e horas trabalhadas</p>
+          <LastSyncBadge className="mt-0.5" />
         </div>
         <div className="flex flex-col items-end gap-2">
           <Button
