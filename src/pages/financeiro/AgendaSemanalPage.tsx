@@ -130,7 +130,7 @@ export default function AgendaSemanalPage() {
         .from("tarefas_central")
         .select(
           "auvo_task_id, cliente, tecnico, tecnico_id, data_tarefa, status_auvo, " +
-          "orientacao, endereco, auvo_link, hora_inicio, hora_fim, check_in, check_out, " +
+          "orientacao, endereco, auvo_link, hora_inicio, hora_fim, duracao_decimal, check_in, check_out, " +
           "gc_os_valor_total, gc_orc_valor_total, gc_os_situacao, gc_os_codigo, gc_os_link, " +
           "gc_orc_situacao, gc_orcamento_codigo, gc_orc_link, pendencia"
         )
