@@ -297,7 +297,7 @@ export default function AgendaSemanalPage() {
     const raw = e.dataTransfer.getData("application/json");
     if (!raw) return;
 
-    const { taskId, fromTecnico, fromDate } = JSON.parse(raw);
+    const { taskId, fromTecnico, fromDate, horaInicio } = JSON.parse(raw);
     const newDate = format(weekDays[toDayIdx], "yyyy-MM-dd");
     const sameDay = fromDate === newDate;
     const sameTec = fromTecnico === toTecNome;
@@ -317,7 +317,9 @@ export default function AgendaSemanalPage() {
       const patches: Array<{ op: string; path: string; value: any }> = [];
 
       if (!sameDay) {
-        const newDateFormatted = format(weekDays[toDayIdx], "yyyy-MM-dd") + "T" + (taskResult.taskDate?.substring(11) || "08:00:00");
+        // Preserve existing time from the task
+        const existingTime = horaInicio ? horaInicio.substring(0, 5) + ":00" : (taskResult.taskDate?.substring(11) || "08:00:00");
+        const newDateFormatted = format(weekDays[toDayIdx], "yyyy-MM-dd") + "T" + existingTime;
         patches.push({ op: "replace", path: "/taskDate", value: newDateFormatted });
       }
 
