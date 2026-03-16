@@ -144,8 +144,10 @@ export default function HorasTrabalhadasTab({
   };
 
   // Summary by technician
+  type TaskDetail = { auvo_task_id: string; descricao: string; hora_inicio: string; hora_fim: string; horas: number; data_tarefa: string };
+  type ClienteData = { horas: number; tarefas: number; valor: number; tipos: Map<string, number>; tasks: TaskDetail[] };
   const tecnicoSummary = useMemo(() => {
-    const map = new Map<string, { tecnico: string; horas: number; tarefas: number; valor: number; byCliente: Map<string, { horas: number; tarefas: number; valor: number; tipos: Map<string, number> }> }>();
+    const map = new Map<string, { tecnico: string; horas: number; tarefas: number; valor: number; byCliente: Map<string, ClienteData> }>();
     for (const t of filtered) {
       const tec = t.tecnico || "Desconhecido";
       const cliente = t.cliente || t.gc_os_cliente || "Sem cliente";
@@ -164,7 +166,7 @@ export default function HorasTrabalhadasTab({
 
       let clienteEntry = entry.byCliente.get(cliente);
       if (!clienteEntry) {
-        clienteEntry = { horas: 0, tarefas: 0, valor: 0, tipos: new Map() };
+        clienteEntry = { horas: 0, tarefas: 0, valor: 0, tipos: new Map(), tasks: [] };
         entry.byCliente.set(cliente, clienteEntry);
       }
       clienteEntry.horas += horas;
@@ -173,6 +175,14 @@ export default function HorasTrabalhadasTab({
 
       const tipo = t.descricao || "Sem tipo";
       clienteEntry.tipos.set(tipo, (clienteEntry.tipos.get(tipo) || 0) + horas);
+      clienteEntry.tasks.push({
+        auvo_task_id: t.auvo_task_id || "",
+        descricao: t.descricao || "Sem tipo",
+        hora_inicio: t.hora_inicio || "",
+        hora_fim: t.hora_fim || "",
+        horas,
+        data_tarefa: t.data_tarefa || "",
+      });
     }
     return Array.from(map.values()).sort((a, b) => b.horas - a.horas);
   }, [filtered, valorHoraConfigs, grupos, grupoClienteMap]);
@@ -510,8 +520,8 @@ export default function HorasTrabalhadasTab({
                               <TableHeader>
                                 <TableRow>
                                   <TableHead className="text-xs">Cliente</TableHead>
-                                  <TableHead className="text-xs">Tipos de Tarefa</TableHead>
-                                  <TableHead className="text-xs text-center">Tarefas</TableHead>
+                                  <TableHead className="text-xs">Tarefas (ID · Horário)</TableHead>
+                                  <TableHead className="text-xs text-center">Qtd</TableHead>
                                   <TableHead className="text-xs text-right">Horas</TableHead>
                                   <TableHead className="text-xs text-right">Valor</TableHead>
                                 </TableRow>
@@ -520,23 +530,23 @@ export default function HorasTrabalhadasTab({
                                 {Array.from(tec.byCliente.entries())
                                   .sort(([, a], [, b]) => b.horas - a.horas)
                                   .map(([cliente, cd]) => (
-                                    <TableRow key={cliente} className="text-xs">
-                                      <TableCell>{cliente}</TableCell>
+                                    <TableRow key={cliente} className="text-xs align-top">
+                                      <TableCell className="font-medium">{cliente}</TableCell>
                                       <TableCell>
                                         <div className="flex flex-wrap gap-1">
-                                          {Array.from(cd.tipos.entries())
-                                            .sort(([, a], [, b]) => b - a)
-                                            .slice(0, 3)
-                                            .map(([tipo, hrs]) => (
-                                              <Badge key={tipo} variant="outline" className="text-[9px]">
-                                                {tipo.substring(0, 25)}: {hrs.toFixed(1)}h
+                                          {cd.tasks
+                                            .sort((a, b) => a.data_tarefa.localeCompare(b.data_tarefa) || a.hora_inicio.localeCompare(b.hora_inicio))
+                                            .map((task, idx) => (
+                                              <Badge key={idx} variant="outline" className="text-[9px] font-mono gap-1">
+                                                #{task.auvo_task_id}
+                                                {task.hora_inicio && task.hora_fim
+                                                  ? ` ${task.hora_inicio}–${task.hora_fim}`
+                                                  : task.hora_inicio
+                                                  ? ` ${task.hora_inicio}`
+                                                  : ""}
+                                                {" · "}{task.horas.toFixed(1)}h
                                               </Badge>
                                             ))}
-                                          {cd.tipos.size > 3 && (
-                                            <Badge variant="outline" className="text-[9px]">
-                                              +{cd.tipos.size - 3}
-                                            </Badge>
-                                          )}
                                         </div>
                                       </TableCell>
                                       <TableCell className="text-center">{cd.tarefas}</TableCell>
