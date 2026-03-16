@@ -131,6 +131,26 @@ export default function OSKanbanPage() {
   const [corridorFilterIds, setCorridorFilterIds] = useState<Set<string> | null>(null);
   const [corridorRoute, setCorridorRoute] = useState<any>(null);
 
+  // GC Situação filter with localStorage persistence
+  const [selectedSituacoes, setSelectedSituacoes] = useState<Set<string>>(() => {
+    try {
+      const saved = localStorage.getItem("oskanban_selectedSituacoes");
+      if (saved) return new Set(JSON.parse(saved) as string[]);
+    } catch { /* ignore */ }
+    return new Set();
+  });
+  const [allSituacoesSelected, setAllSituacoesSelected] = useState(() => {
+    try {
+      const saved = localStorage.getItem("oskanban_selectedSituacoes");
+      if (saved) {
+        const arr = JSON.parse(saved) as string[];
+        return arr.length === 0;
+      }
+    } catch { /* ignore */ }
+    return true;
+  });
+  const [searchSituacao, setSearchSituacao] = useState("");
+
   // Fetch Auvo users (technicians)
   const { data: auvoUsers } = useQuery({
     queryKey: ["auvo-users"],
