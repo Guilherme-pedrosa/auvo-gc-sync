@@ -249,9 +249,15 @@ export default function OficinaKanbanPage() {
       const colMap: Record<string, OficinaItem[]> = {};
       for (const dc of DEFAULT_COLUMNS) colMap[dc.id] = [];
 
+      const mapOrcSitToCol = (situacao: string): string => {
+        const s = (situacao || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+        if (s.includes("comprado") || s.includes("chegada")) return "pecas_solicitadas";
+        if (s.includes("aprovado")) return "aprovado";
+        return "orcamento";
+      };
+
       for (const item of items) {
         const { _coluna, _posicao, ...cleanItem } = item as any;
-        // Simple auto-assign based on data
         let col = "entrada";
         if (cleanItem.gc_os) {
           const sit = (cleanItem.gc_os.gc_situacao || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
