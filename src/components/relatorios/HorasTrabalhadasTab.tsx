@@ -144,8 +144,10 @@ export default function HorasTrabalhadasTab({
   };
 
   // Summary by technician
+  type TaskDetail = { auvo_task_id: string; descricao: string; hora_inicio: string; hora_fim: string; horas: number; data_tarefa: string };
+  type ClienteData = { horas: number; tarefas: number; valor: number; tipos: Map<string, number>; tasks: TaskDetail[] };
   const tecnicoSummary = useMemo(() => {
-    const map = new Map<string, { tecnico: string; horas: number; tarefas: number; valor: number; byCliente: Map<string, { horas: number; tarefas: number; valor: number; tipos: Map<string, number> }> }>();
+    const map = new Map<string, { tecnico: string; horas: number; tarefas: number; valor: number; byCliente: Map<string, ClienteData> }>();
     for (const t of filtered) {
       const tec = t.tecnico || "Desconhecido";
       const cliente = t.cliente || t.gc_os_cliente || "Sem cliente";
@@ -164,7 +166,7 @@ export default function HorasTrabalhadasTab({
 
       let clienteEntry = entry.byCliente.get(cliente);
       if (!clienteEntry) {
-        clienteEntry = { horas: 0, tarefas: 0, valor: 0, tipos: new Map() };
+        clienteEntry = { horas: 0, tarefas: 0, valor: 0, tipos: new Map(), tasks: [] };
         entry.byCliente.set(cliente, clienteEntry);
       }
       clienteEntry.horas += horas;
@@ -173,6 +175,14 @@ export default function HorasTrabalhadasTab({
 
       const tipo = t.descricao || "Sem tipo";
       clienteEntry.tipos.set(tipo, (clienteEntry.tipos.get(tipo) || 0) + horas);
+      clienteEntry.tasks.push({
+        auvo_task_id: t.auvo_task_id || "",
+        descricao: t.descricao || "Sem tipo",
+        hora_inicio: t.hora_inicio || "",
+        hora_fim: t.hora_fim || "",
+        horas,
+        data_tarefa: t.data_tarefa || "",
+      });
     }
     return Array.from(map.values()).sort((a, b) => b.horas - a.horas);
   }, [filtered, valorHoraConfigs, grupos, grupoClienteMap]);
