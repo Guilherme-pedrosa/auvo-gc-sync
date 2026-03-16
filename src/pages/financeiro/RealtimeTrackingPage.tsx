@@ -721,7 +721,17 @@ export default function RealtimeTrackingPage() {
                           {tech.nome.split(" ").map(n => n[0]).slice(0, 2).join("")}
                         </div>
                         <div className="flex-1 min-w-0">
-                          <p className="font-semibold text-sm truncate">{tech.nome}</p>
+                          <div className="flex items-center justify-between">
+                            <p className="font-semibold text-sm truncate">{tech.nome}</p>
+                            {(() => {
+                              const totalValor = tech.tarefas.reduce((sum, t) => sum + (parseFloat(t.gcOsValor) || 0), 0);
+                              return totalValor > 0 ? (
+                                <span className="text-xs font-bold text-emerald-700 whitespace-nowrap ml-2">
+                                  R$ {totalValor.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+                                </span>
+                              ) : null;
+                            })()}
+                          </div>
                           <div className="flex items-center gap-2 mt-0.5">
                             <span className="text-[10px] text-muted-foreground">{tech.resumo.total} tarefa(s)</span>
                             {hasActive && (
