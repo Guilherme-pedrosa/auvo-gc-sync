@@ -629,7 +629,7 @@ function TaskCard({
   onClick: () => void;
 }) {
   const statusClass = STATUS_COLORS[tarefa.status_auvo || ""] || "bg-muted text-muted-foreground";
-  const canDrag = tarefa.status_auvo === "Agendada";
+  const canDrag = tarefa.status_auvo === "Agendada" || tarefa.status_auvo === "Aberta";
   const valor = tarefa.gc_os_valor_total ?? tarefa.gc_orc_valor_total;
 
   return (
