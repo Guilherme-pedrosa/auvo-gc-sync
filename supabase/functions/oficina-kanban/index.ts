@@ -537,7 +537,7 @@ Deno.serve(async (req) => {
     const equipToTasks: Record<number, string[]> = {};
     for (const task of allAuvoTasks) {
       const taskId = String(task.taskID || "");
-      const eqIds: number[] = task.equipmentsId || [];
+      const eqIds = extractTaskEquipmentIds(task);
       for (const eqId of eqIds) {
         if (!equipToTasks[eqId]) equipToTasks[eqId] = [];
         equipToTasks[eqId].push(taskId);
