@@ -14,6 +14,8 @@ import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { AlertTriangle } from "lucide-react";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip,
   ResponsiveContainer, Cell,
@@ -84,7 +86,7 @@ export default function HorasTrabalhadasTab({
     const toStr = format(dateTo, "yyyy-MM-dd");
 
     return data.filter((t) => {
-      if (!t.data_tarefa || !t.duracao_decimal || Number(t.duracao_decimal) <= 0) return false;
+      if (!t.data_tarefa || t.duracao_decimal == null) return false;
       if (t.data_tarefa < fromStr || t.data_tarefa > toStr) return false;
 
       // Must have check_out (completed work)
@@ -201,6 +203,15 @@ export default function HorasTrabalhadasTab({
   [tecnicoSummary]);
 
   const [expanded, setExpanded] = useState<string | null>(null);
+
+  // Detect negative-duration tasks
+  const negativeTasks = useMemo(() => {
+    return filtered.filter((t) => Number(t.duracao_decimal) < 0).map((t) => ({
+      id: t.auvo_task_id,
+      cliente: t.cliente || t.gc_os_cliente || "?",
+      horas: Number(t.duracao_decimal),
+    }));
+  }, [filtered]);
 
   const filteredTipos = useMemo(() => {
     if (!searchTipo) return allTiposTarefa;
@@ -450,6 +461,26 @@ export default function HorasTrabalhadasTab({
         </Card>
       </div>
 
+      {/* Warning for negative durations */}
+      {negativeTasks.length > 0 && (
+        <Alert variant="destructive">
+          <AlertTriangle className="h-4 w-4" />
+          <AlertTitle>⚠️ {negativeTasks.length} tarefa(s) com duração negativa</AlertTitle>
+          <AlertDescription className="mt-2">
+            <p className="text-xs mb-2">
+              Essas tarefas vieram do Auvo com horas negativas e estão distorcendo os totais. Corrija no Auvo:
+            </p>
+            <div className="flex flex-wrap gap-1.5">
+              {negativeTasks.map((t) => (
+                <Badge key={t.id} variant="destructive" className="text-[10px] font-mono">
+                  #{t.id} · {t.cliente} · {t.horas.toFixed(1)}h
+                </Badge>
+              ))}
+            </div>
+          </AlertDescription>
+        </Alert>
+      )}
+
       {/* Chart */}
       {chartData.length > 0 && (
         <Card>
@@ -538,7 +569,14 @@ export default function HorasTrabalhadasTab({
                                           {cd.tasks
                                             .sort((a, b) => a.data_tarefa.localeCompare(b.data_tarefa) || a.hora_inicio.localeCompare(b.hora_inicio))
                                             .map((task, idx) => (
-                                              <Badge key={idx} variant="outline" className="text-[9px] font-mono gap-1">
+                                              <Badge
+                                                key={idx}
+                                                variant={task.horas < 0 ? "destructive" : "outline"}
+                                                className={cn(
+                                                  "text-[9px] font-mono gap-1",
+                                                  task.horas < 0 && "animate-pulse"
+                                                )}
+                                              >
                                                 #{task.auvo_task_id}
                                                 {task.hora_inicio && task.hora_fim
                                                   ? ` ${task.hora_inicio}–${task.hora_fim}`
@@ -546,12 +584,13 @@ export default function HorasTrabalhadasTab({
                                                   ? ` ${task.hora_inicio}`
                                                   : ""}
                                                 {" · "}{task.horas.toFixed(1)}h
+                                                {task.horas < 0 && " ⚠️"}
                                               </Badge>
                                             ))}
                                         </div>
                                       </TableCell>
                                       <TableCell className="text-center">{cd.tarefas}</TableCell>
-                                      <TableCell className="text-right font-medium">{cd.horas.toFixed(2)}h</TableCell>
+                                      <TableCell className={cn("text-right font-medium", cd.horas < 0 && "text-destructive font-bold")}>{cd.horas.toFixed(2)}h</TableCell>
                                       <TableCell className="text-right font-medium">
                                         {cd.valor > 0 ? cd.valor.toLocaleString("pt-BR", { style: "currency", currency: "BRL" }) : "—"}
                                       </TableCell>
