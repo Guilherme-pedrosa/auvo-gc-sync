@@ -394,7 +394,7 @@ export default function AgendaSemanalPage() {
             <div>
               <h1 className="text-lg font-semibold text-foreground flex items-center gap-2">
                 <CalendarDays className="h-5 w-5 text-primary" />
-                Agenda Semanal
+                Agenda {viewMode === "dia" ? "Diária" : viewMode === "semana" ? "Semanal" : "Mensal"}
               </h1>
               <p className="text-xs text-muted-foreground">
                 {totalTarefas} tarefa{totalTarefas !== 1 ? "s" : ""} · {tecnicos.length} técnico{tecnicos.length !== 1 ? "s" : ""}
