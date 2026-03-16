@@ -749,6 +749,12 @@ export default function OficinaKanbanPage() {
                     <span className="text-muted-foreground">Tarefa Auvo:</span>
                     <span className="ml-2 font-mono">#{selectedCard.auvo_task_id}</span>
                   </div>
+                  {selectedCard.equipments_id && selectedCard.equipments_id.length > 0 && (
+                    <div>
+                      <span className="text-muted-foreground">ID Equipamento:</span>
+                      <span className="ml-2 font-mono">{selectedCard.equipments_id.join(", ")}</span>
+                    </div>
+                  )}
                 </div>
 
                 {/* Links */}
