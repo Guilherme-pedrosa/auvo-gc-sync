@@ -284,10 +284,10 @@ export default function HorasTrabalhadasTab({
 
   // Detect negative-duration tasks
   const negativeTasks = useMemo(() => {
-    return filtered.filter((t) => Number(t.duracao_decimal) < 0).map((t) => ({
+    return filtered.filter((t) => getTaskHoras(t) < 0).map((t) => ({
       id: t.auvo_task_id,
       cliente: t.cliente || t.gc_os_cliente || "?",
-      horas: Number(t.duracao_decimal),
+      horas: getTaskHoras(t),
     }));
   }, [filtered]);
 
