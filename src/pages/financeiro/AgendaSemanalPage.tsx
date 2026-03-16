@@ -649,6 +649,15 @@ function TaskCard({
         isMoving && "opacity-50 ring-2 ring-primary animate-pulse"
       )}
     >
+      <div className="flex items-center gap-1">
+        {tarefa.hora_inicio && (
+          <span className="text-[10px] font-semibold text-primary flex items-center gap-0.5">
+            <Clock className="h-2.5 w-2.5" />
+            {tarefa.hora_inicio?.substring(0, 5)}
+            {tarefa.hora_fim && `–${tarefa.hora_fim?.substring(0, 5)}`}
+          </span>
+        )}
+      </div>
       <div className="font-medium text-foreground truncate">{tarefa.cliente || "—"}</div>
       <div className="text-[10px] text-muted-foreground mt-0.5">
         <span>T#{tarefa.auvo_task_id}</span>
@@ -664,10 +673,7 @@ function TaskCard({
           </span>
         )}
       </div>
-      <div className="flex items-center justify-between mt-1 gap-1">
-        {tarefa.hora_inicio && (
-          <span className="text-muted-foreground">{tarefa.hora_inicio?.substring(0, 5)}</span>
-        )}
+      <div className="flex items-center justify-end mt-1">
         <span className={cn("px-1 py-0.5 rounded text-[10px] font-medium leading-none", statusClass)}>
           {tarefa.status_auvo || "—"}
         </span>
