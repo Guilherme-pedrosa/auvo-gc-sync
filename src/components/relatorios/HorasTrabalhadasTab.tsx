@@ -294,18 +294,48 @@ export default function HorasTrabalhadasTab({
               </Select>
             </div>
 
-            {/* Group filter */}
+            {/* Group filter - searchable */}
             <div className="space-y-1">
               <Label className="text-xs">Grupo</Label>
-              <Select value={filterGrupo} onValueChange={setFilterGrupo}>
-                <SelectTrigger className="w-[160px] h-9 text-xs">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="todos">Todos</SelectItem>
-                  {grupos.map((g: any) => <SelectItem key={g.id} value={g.id}>{g.nome}</SelectItem>)}
-                </SelectContent>
-              </Select>
+              <Popover open={grupoOpen} onOpenChange={setGrupoOpen}>
+                <PopoverTrigger asChild>
+                  <Button variant="outline" size="sm" className="w-[200px] h-9 justify-between text-xs font-normal">
+                    {filterGrupo === "todos"
+                      ? "Todos"
+                      : grupos.find((g: any) => g.id === filterGrupo)?.nome || "Todos"}
+                    <ChevronsUpDown className="ml-2 h-3 w-3 shrink-0 opacity-50" />
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-[200px] p-0" align="start">
+                  <Command>
+                    <CommandInput placeholder="Buscar grupo..." className="h-8 text-xs" />
+                    <CommandList>
+                      <CommandEmpty>Nenhum grupo.</CommandEmpty>
+                      <CommandGroup>
+                        <CommandItem
+                          value="todos"
+                          onSelect={() => { setFilterGrupo("todos"); setGrupoOpen(false); }}
+                          className="text-xs"
+                        >
+                          <Check className={cn("mr-2 h-3 w-3", filterGrupo === "todos" ? "opacity-100" : "opacity-0")} />
+                          Todos
+                        </CommandItem>
+                        {grupos.map((g: any) => (
+                          <CommandItem
+                            key={g.id}
+                            value={g.nome}
+                            onSelect={() => { setFilterGrupo(g.id); setGrupoOpen(false); }}
+                            className="text-xs"
+                          >
+                            <Check className={cn("mr-2 h-3 w-3", filterGrupo === g.id ? "opacity-100" : "opacity-0")} />
+                            {g.nome}
+                          </CommandItem>
+                        ))}
+                      </CommandGroup>
+                    </CommandList>
+                  </Command>
+                </PopoverContent>
+              </Popover>
             </div>
 
             {/* Task type filter */}
