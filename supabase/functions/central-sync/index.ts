@@ -10,7 +10,6 @@ const GC_BASE_URL = "https://api.gestaoclick.com";
 const QUESTIONNAIRE_ID = "216040";
 const GC_ATRIBUTO_TAREFA_ORC = "73341";
 const GC_ATRIBUTO_TAREFA_OS = "73343";
-const GC_ATRIBUTO_TAREFA_EXEC = "73344";
 const MIN_DELAY_MS = 200;
 const FUTURE_DAYS_WINDOW = 30;
 let lastAuvoCall = 0;
@@ -293,31 +292,26 @@ async function fetchGcOs(gcHeaders: Record<string, string>): Promise<Record<stri
 
     for (const os of records) {
       const atributos: any[] = os.atributos || [];
-      const osData = {
-        gc_os_id: String(os.id),
-        gc_os_codigo: String(os.codigo || ""),
-        gc_os_cliente: String(os.nome_cliente || ""),
-        gc_os_situacao: String(os.nome_situacao || ""),
-        gc_os_situacao_id: String(os.situacao_id || ""),
-        gc_os_cor_situacao: String(os.cor_situacao || ""),
-        gc_os_valor_total: parseFloat(os.valor_total || "0"),
-        gc_os_vendedor: String(os.nome_vendedor || ""),
-        gc_os_data: String(os.data_entrada || os.data || "").split("T")[0] || null,
-        gc_os_link: `https://gestaoclick.com/ordens_servicos/editar/${os.id}?retorno=%2Fordens_servicos`,
-      };
-
-      // Check both attributes: 73343 (tarefa OS) and 73344 (tarefa execução)
-      for (const attrId of [GC_ATRIBUTO_TAREFA_OS, GC_ATRIBUTO_TAREFA_EXEC]) {
-        const attr = atributos.find((a: any) => {
-          const nested = a?.atributo || a;
-          return String(nested.atributo_id || nested.id || "") === attrId;
-        });
-        if (attr) {
-          const nested = attr?.atributo || attr;
-          const taskId = String(nested?.conteudo || nested?.valor || "").trim();
-          if (taskId && /^\d+$/.test(taskId) && !map[taskId]) {
-            map[taskId] = osData;
-          }
+      const attrTarefa = atributos.find((a: any) => {
+        const nested = a?.atributo || a;
+        return String(nested.atributo_id || nested.id || "") === GC_ATRIBUTO_TAREFA_OS;
+      });
+      if (attrTarefa) {
+        const nested = attrTarefa?.atributo || attrTarefa;
+        const taskId = String(nested?.conteudo || nested?.valor || "").trim();
+        if (taskId && /^\d+$/.test(taskId)) {
+          map[taskId] = {
+            gc_os_id: String(os.id),
+            gc_os_codigo: String(os.codigo || ""),
+            gc_os_cliente: String(os.nome_cliente || ""),
+            gc_os_situacao: String(os.nome_situacao || ""),
+            gc_os_situacao_id: String(os.situacao_id || ""),
+            gc_os_cor_situacao: String(os.cor_situacao || ""),
+            gc_os_valor_total: parseFloat(os.valor_total || "0"),
+            gc_os_vendedor: String(os.nome_vendedor || ""),
+            gc_os_data: String(os.data_entrada || os.data || "").split("T")[0] || null,
+            gc_os_link: `https://gestaoclick.com/ordens_servicos/editar/${os.id}?retorno=%2Fordens_servicos`,
+          };
         }
       }
     }

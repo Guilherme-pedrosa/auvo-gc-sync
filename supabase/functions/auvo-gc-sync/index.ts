@@ -674,7 +674,7 @@ Deno.serve(async (req) => {
 
     // ─── Action: batch_revert — reverter OS em lote para uma situação específica ───
     if (body?.action === "batch_revert") {
-      const osList: Array<{ id: string; codigo: string; situacao_destino_id: string; gc_vendedor_id?: string; gc_vendedor_nome?: string }> = body.os_list || [];
+      const osList: Array<{ id: string; codigo: string; situacao_destino_id: string }> = body.os_list || [];
       const dryRunRevert: boolean = body.dry_run === true;
       
       if (!osList.length) {

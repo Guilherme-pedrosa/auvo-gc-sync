@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback, useEffect } from "react";
+import { useState, useMemo, useCallback } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -76,18 +76,7 @@ const statusBarColor: Record<string, string> = {
 export default function RealtimeTrackingPage() {
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
   const [sheetOpen, setSheetOpen] = useState(false);
-  const [followToday, setFollowToday] = useState(true);
   const dateStr = format(selectedDate, "yyyy-MM-dd");
-
-  useEffect(() => {
-    if (!followToday) return;
-
-    const syncSelectedDate = () => setSelectedDate(new Date());
-    syncSelectedDate();
-
-    const interval = window.setInterval(syncSelectedDate, 60_000);
-    return () => window.clearInterval(interval);
-  }, [followToday]);
 
   const { data, isLoading, refetch, isFetching } = useQuery({
     queryKey: ["realtime-tracking", dateStr],
@@ -100,9 +89,6 @@ export default function RealtimeTrackingPage() {
       return data as TrackingData;
     },
     refetchInterval: 120_000,
-    refetchIntervalInBackground: true,
-    refetchOnWindowFocus: true,
-    refetchOnReconnect: true,
     staleTime: 30_000,
   });
 
@@ -185,18 +171,7 @@ export default function RealtimeTrackingPage() {
     });
   }, [pendenciasMesRaw]);
 
-  const setDateAndTracking = (newDate: Date) => {
-    setSelectedDate(newDate);
-    setFollowToday(isToday(newDate));
-  };
-
-  const goDay = (dir: number) => {
-    setSelectedDate((current) => {
-      const nextDate = dir > 0 ? addDays(current, 1) : subDays(current, 1);
-      setFollowToday(isToday(nextDate));
-      return nextDate;
-    });
-  };
+  const goDay = (dir: number) => setSelectedDate((d) => (dir > 0 ? addDays(d, 1) : subDays(d, 1)));
 
   const exportPDF = useCallback(() => {
     const doc = new jsPDF({ orientation: "landscape", unit: "mm", format: "a4" });
@@ -405,7 +380,7 @@ export default function RealtimeTrackingPage() {
                   </button>
                 </PopoverTrigger>
                 <PopoverContent className="w-auto p-0" align="end">
-                  <Calendar mode="single" selected={selectedDate} onSelect={(d) => d && setDateAndTracking(d)} locale={ptBR} />
+                  <Calendar mode="single" selected={selectedDate} onSelect={(d) => d && setSelectedDate(d)} locale={ptBR} />
                 </PopoverContent>
               </Popover>
               <button onClick={() => goDay(1)} className="px-2 h-full hover:bg-muted transition-colors">
