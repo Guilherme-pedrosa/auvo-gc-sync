@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { FileText, Clock, Settings, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
+import LastSyncBadge from "@/components/LastSyncBadge";
 import OSAbertasTab from "@/components/relatorios/OSAbertasTab";
 import HorasTrabalhadasTab from "@/components/relatorios/HorasTrabalhadasTab";
 import ConfiguracoesTab from "@/components/relatorios/ConfiguracoesTab";
@@ -194,6 +195,7 @@ export default function RelatoriosPage() {
         <div>
           <h1 className="text-2xl font-bold text-foreground">Relatórios</h1>
           <p className="text-sm text-muted-foreground">Visão consolidada de OS abertas e horas trabalhadas</p>
+          <LastSyncBadge className="mt-0.5" />
         </div>
         <div className="flex flex-col items-end gap-2">
           <Button

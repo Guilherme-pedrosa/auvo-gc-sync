@@ -17,6 +17,7 @@ import {
 import { format, addDays, subDays, isToday, startOfMonth, endOfMonth } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { toast } from "sonner";
+import LastSyncBadge from "@/components/LastSyncBadge";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 
@@ -364,6 +365,7 @@ export default function RealtimeTrackingPage() {
             <p className="text-xs text-muted-foreground">
               Acompanhamento em tempo real — Auvo
             </p>
+            <LastSyncBadge className="mt-0.5" />
           </div>
 
           <div className="flex items-center gap-2">

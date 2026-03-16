@@ -14,6 +14,7 @@ import { format, startOfMonth, startOfYear, endOfMonth, isWithinInterval, parseI
 import { ptBR } from "date-fns/locale";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
+import LastSyncBadge from "@/components/LastSyncBadge";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   PieChart, Pie, Cell, Legend
@@ -247,6 +248,7 @@ export default function DashboardOrcamentosPage() {
               <p className="text-sm text-muted-foreground">
                 Métricas e análises de orçamentos Auvo × GestãoClick
               </p>
+              <LastSyncBadge className="mt-0.5" />
             </div>
           </div>
           <div className="flex items-center gap-3">

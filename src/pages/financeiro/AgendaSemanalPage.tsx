@@ -11,6 +11,7 @@ import { format, addDays, startOfWeek, parseISO, isSameDay } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { cn } from "@/lib/utils";
 import { useNavigate } from "react-router-dom";
+import LastSyncBadge from "@/components/LastSyncBadge";
 import { toast } from "sonner";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle,
@@ -336,6 +337,7 @@ export default function AgendaSemanalPage() {
               <p className="text-xs text-muted-foreground">
                 {totalTarefas} tarefa{totalTarefas !== 1 ? "s" : ""} · {tecnicos.length} técnico{tecnicos.length !== 1 ? "s" : ""}
                 {movingTaskId && <span className="ml-2 text-primary">⏳ Movendo tarefa...</span>}
+                <LastSyncBadge className="ml-3" />
               </p>
             </div>
           </div>
