@@ -725,7 +725,7 @@ Deno.serve(async (req) => {
         auvo_task_url: String(task.taskUrl || ""),
         os_task_id: osSiblingTaskId,
         os_task_link: osSiblingTaskId ? `https://app2.auvo.com.br/relatorioTarefas/DetalheTarefa/${osSiblingTaskId}` : null,
-        equipamento_nome: equipamento_nome || "Equipamento não identificado",
+        equipamento_nome: equipamento_nome || (gcOsMatch?.gc_cliente || gcOrcMatch?.gc_cliente || "") || "Equipamento não identificado",
         equipamento_modelo,
         equipamento_serie,
         equipments_id: eqIds,
@@ -783,6 +783,15 @@ Deno.serve(async (req) => {
         } else {
           finalColuna = existing.coluna;
           finalPosicao = existing.posicao;
+        }
+      }
+
+      // If name is still unidentified but we have GC data, fix it
+      if (item.equipamento_nome === "Equipamento não identificado" || item.equipamento_nome === "S") {
+        const gcName = item.gc_os?.gc_cliente || item.gc_orcamento?.gc_cliente || "";
+        if (gcName) {
+          item.equipamento_nome = gcName;
+          item.cliente = gcName;
         }
       }
 
