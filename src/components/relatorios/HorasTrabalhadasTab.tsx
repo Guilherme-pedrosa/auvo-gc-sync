@@ -50,7 +50,7 @@ export default function HorasTrabalhadasTab({
   dateFrom, dateTo, onDateFromChange, onDateToChange,
 }: Props) {
   const [filterTecnico, setFilterTecnico] = useState("todos");
-  const [dateTo, setDateTo] = useState<Date>(endOfMonth(today));
+  const [filterCliente, setFilterCliente] = useState("todos");
   const [filterTecnico, setFilterTecnico] = useState("todos");
   const [filterCliente, setFilterCliente] = useState("todos");
   const [filterGrupo, setFilterGrupo] = useState("todos");

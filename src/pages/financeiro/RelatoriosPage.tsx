@@ -242,6 +242,10 @@ export default function RelatoriosPage() {
             grupos={grupos || []}
             membros={membros || []}
             valorHoraConfigs={valorHoraConfigs || []}
+            dateFrom={dateFrom}
+            dateTo={dateTo}
+            onDateFromChange={setDateFrom}
+            onDateToChange={setDateTo}
           />
         </TabsContent>
 
