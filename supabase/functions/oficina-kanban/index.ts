@@ -621,7 +621,6 @@ Deno.serve(async (req) => {
       }
 
       // Then check sibling tasks that share the same equipment.
-      // Relaxed rule: if sibling has multiple equipamentos, still allow when cliente+técnico batem.
       if (!gcOsMatch || !gcOrcMatch) {
         const baseClient = normalizeText(String(task.customerDescription || task.customerName || task.customer?.tradeName || ""));
         const baseTech = normalizeText(String(task.userToName || ""));
@@ -647,14 +646,40 @@ Deno.serve(async (req) => {
               gcOsMatch = gcOsMap[sibId];
               osSiblingTaskId = sibId;
               claimedOs.add(gcOsMatch.gc_os_id);
-              console.log(`[oficina-kanban] Task ${taskId} → OS found via sibling ${sibId} (eq ${eqId}, strict=${strictEquipmentMatch}, sameClientTech=${sameClientAndTech})`);
+              console.log(`[oficina-kanban] Task ${taskId} → OS found via sibling ${sibId} (eq ${eqId})`);
             }
             if (!gcOrcMatch && gcOrcMap[sibId] && !claimedOrc.has(gcOrcMap[sibId].gc_orcamento_id)) {
               gcOrcMatch = gcOrcMap[sibId];
               claimedOrc.add(gcOrcMatch.gc_orcamento_id);
-              console.log(`[oficina-kanban] Task ${taskId} → Orçamento found via sibling ${sibId} (eq ${eqId}, strict=${strictEquipmentMatch}, sameClientTech=${sameClientAndTech})`);
+              console.log(`[oficina-kanban] Task ${taskId} → Orçamento found via sibling ${sibId} (eq ${eqId})`);
             }
             if (gcOsMatch && gcOrcMatch) break;
+          }
+          if (gcOsMatch && gcOrcMatch) break;
+        }
+      }
+
+      // FALLBACK: if equipment matching didn't find OS/Orç, try client+tech matching
+      // This catches cases where the execution task doesn't have the same equipmentId
+      if (!gcOsMatch || !gcOrcMatch) {
+        const baseClient = normalizeText(String(task.customerDescription || task.customerName || task.customer?.tradeName || ""));
+        const baseTech = normalizeText(String(task.userToName || ""));
+        const key = `${baseClient}|||${baseTech}`;
+        const candidateIds = clientTechToTasks[key] || [];
+
+        for (const candId of candidateIds) {
+          if (candId === taskId) continue;
+
+          if (!gcOsMatch && gcOsMap[candId] && !claimedOs.has(gcOsMap[candId].gc_os_id)) {
+            gcOsMatch = gcOsMap[candId];
+            osSiblingTaskId = candId;
+            claimedOs.add(gcOsMatch.gc_os_id);
+            console.log(`[oficina-kanban] Task ${taskId} → OS found via client+tech fallback (task ${candId})`);
+          }
+          if (!gcOrcMatch && gcOrcMap[candId] && !claimedOrc.has(gcOrcMap[candId].gc_orcamento_id)) {
+            gcOrcMatch = gcOrcMap[candId];
+            claimedOrc.add(gcOrcMatch.gc_orcamento_id);
+            console.log(`[oficina-kanban] Task ${taskId} → Orçamento found via client+tech fallback (task ${candId})`);
           }
           if (gcOsMatch && gcOrcMatch) break;
         }
