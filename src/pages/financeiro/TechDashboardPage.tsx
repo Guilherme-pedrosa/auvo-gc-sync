@@ -54,6 +54,7 @@ const METAS = {
 
 const TechDashboardPage = () => {
   const navigate = useNavigate();
+  const [lastFetchTime, setLastFetchTime] = useState<string | null>(null);
   const [periodo, setPeriodo] = useState<"hoje" | "semana" | "mes" | "custom">("hoje");
   const [customStart, setCustomStart] = useState<Date | undefined>(undefined);
   const [customEnd, setCustomEnd] = useState<Date | undefined>(undefined);
