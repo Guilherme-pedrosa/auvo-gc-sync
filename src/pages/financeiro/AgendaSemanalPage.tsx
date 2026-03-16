@@ -69,7 +69,7 @@ function getWeekStart(refDate: Date): Date {
 export default function AgendaSemanalPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const [weekOffset, setWeekOffset] = useState(1);
+  const [weekOffset, setWeekOffset] = useState(0);
   const [movingTaskId, setMovingTaskId] = useState<string | null>(null);
   const [dragOverCell, setDragOverCell] = useState<string | null>(null);
   const [selectedTarefa, setSelectedTarefa] = useState<Tarefa | null>(null);
