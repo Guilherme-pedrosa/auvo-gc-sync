@@ -8,14 +8,28 @@ import HorasTrabalhadasTab from "@/components/relatorios/HorasTrabalhadasTab";
 import ConfiguracoesTab from "@/components/relatorios/ConfiguracoesTab";
 
 export default function RelatoriosPage() {
-  // Fetch all OS from tarefas_central (same logic as kanban)
-  const { data: tarefas, isLoading } = useQuery({
-    queryKey: ["relatorios-tarefas"],
+  // Fetch OS-linked tasks (for OS em Aberto tab)
+  const { data: tarefasOS, isLoading: isLoadingOS } = useQuery({
+    queryKey: ["relatorios-tarefas-os"],
     queryFn: async () => {
       const { data, error } = await supabase
         .from("tarefas_central")
         .select("*")
         .not("gc_os_id", "is", null)
+        .order("data_tarefa", { ascending: false });
+      if (error) throw error;
+      return data || [];
+    },
+    staleTime: 60_000,
+  });
+
+  // Fetch ALL tasks (for Horas Trabalhadas tab - includes tasks without OS)
+  const { data: todasTarefas, isLoading: isLoadingAll } = useQuery({
+    queryKey: ["relatorios-todas-tarefas"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("tarefas_central")
+        .select("*")
         .order("data_tarefa", { ascending: false });
       if (error) throw error;
       return data || [];
@@ -52,33 +66,33 @@ export default function RelatoriosPage() {
 
   // Filter out executed OS (same logic as kanban)
   const osAbertas = useMemo(() => {
-    if (!tarefas) return [];
-    return tarefas.filter((t) => {
+    if (!tarefasOS) return [];
+    return tarefasOS.filter((t) => {
       const sit = (t.gc_os_situacao || "").toLowerCase();
       return !sit.startsWith("executad") && !sit.startsWith("imp cigam faturado total") && !sit.startsWith("financeiro separado / baixa cigam");
     });
-  }, [tarefas]);
+  }, [tarefasOS]);
 
-  // All unique client names from all tarefas
+  // All unique client names from ALL tarefas (for horas/config tabs)
   const allClientes = useMemo(() => {
-    if (!tarefas) return [];
-    const set = new Set(tarefas.map((t) => t.cliente || t.gc_os_cliente || "").filter(Boolean));
-    return Array.from(set).sort();
-  }, [tarefas]);
+    if (!todasTarefas) return [] as string[];
+    const set = new Set(todasTarefas.map((t) => t.cliente || t.gc_os_cliente || "").filter(Boolean));
+    return Array.from(set).sort() as string[];
+  }, [todasTarefas]);
 
   // All unique technicians
   const allTecnicos = useMemo(() => {
-    if (!tarefas) return [];
-    const set = new Set(tarefas.map((t) => t.tecnico || "").filter(Boolean));
-    return Array.from(set).sort();
-  }, [tarefas]);
+    if (!todasTarefas) return [] as string[];
+    const set = new Set(todasTarefas.map((t) => t.tecnico || "").filter(Boolean));
+    return Array.from(set).sort() as string[];
+  }, [todasTarefas]);
 
   // All unique task descriptions (types)
   const allTiposTarefa = useMemo(() => {
-    if (!tarefas) return [];
-    const set = new Set(tarefas.map((t) => t.descricao || "").filter(Boolean));
-    return Array.from(set).sort();
-  }, [tarefas]);
+    if (!todasTarefas) return [] as string[];
+    const set = new Set(todasTarefas.map((t) => t.descricao || "").filter(Boolean));
+    return Array.from(set).sort() as string[];
+  }, [todasTarefas]);
 
   return (
     <div className="p-6 space-y-6">
@@ -104,13 +118,13 @@ export default function RelatoriosPage() {
         </TabsList>
 
         <TabsContent value="os-abertas">
-          <OSAbertasTab data={osAbertas} isLoading={isLoading} allClientes={allClientes} />
+          <OSAbertasTab data={osAbertas} isLoading={isLoadingOS} allClientes={allClientes} />
         </TabsContent>
 
         <TabsContent value="horas">
           <HorasTrabalhadasTab
-            data={tarefas || []}
-            isLoading={isLoading}
+            data={todasTarefas || []}
+            isLoading={isLoadingAll}
             allClientes={allClientes}
             allTecnicos={allTecnicos}
             allTiposTarefa={allTiposTarefa}
