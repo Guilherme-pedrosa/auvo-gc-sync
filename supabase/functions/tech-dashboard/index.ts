@@ -100,9 +100,9 @@ Deno.serve(async (req) => {
       const nGc = normalizeName(clienteGc);
       for (const g of gruposList) {
         const gClientes = grupoMembrosMap[g.id] || [];
-        const isInGroup = gClientes.some((gc: string) => {
+      const isInGroup = gClientes.some((gc: string) => {
           const n = normalizeName(gc);
-          return n === nAuvo || n === nGc || (nAuvo && n.includes(nAuvo)) || (nAuvo && nAuvo.includes(n));
+          return n === nAuvo || n === nGc;
         });
         if (isInGroup) {
           const groupConfig = configs.find(
