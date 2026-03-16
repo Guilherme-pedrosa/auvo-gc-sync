@@ -559,7 +559,7 @@ export default function HorasTrabalhadasTab({
                                         </div>
                                       </TableCell>
                                       <TableCell className="text-center">{cd.tarefas}</TableCell>
-                                      <TableCell className="text-right font-medium">{cd.horas.toFixed(2)}h</TableCell>
+                                      <TableCell className={cn("text-right font-medium", cd.horas < 0 && "text-destructive font-bold")}>{cd.horas.toFixed(2)}h</TableCell>
                                       <TableCell className="text-right font-medium">
                                         {cd.valor > 0 ? cd.valor.toLocaleString("pt-BR", { style: "currency", currency: "BRL" }) : "—"}
                                       </TableCell>
