@@ -181,13 +181,15 @@ async function fetchGcOrcamentosMap(gcHeaders: Record<string, string>): Promise<
 
 // Determine which column an item belongs to based on its data
 function autoAssignColumn(item: any): string {
+  // If return form (215147) was filled → Devolvido (cycle complete)
+  if (item.devolucao_preenchida) return "devolvido";
+
   // Has OS with completed situation → Em Execução or Concluído
   if (item.gc_os) {
     const sit = (item.gc_os.gc_situacao || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
     if (sit.includes("conclu") || sit.includes("finaliz") || sit.includes("entregue")) return "concluido";
     if (sit.includes("execu")) return "em_execucao";
     if (sit.includes("peca") || sit.includes("material") || sit.includes("solicit")) return "pecas_solicitadas";
-    // Has OS → at minimum "Aguardando OS" is done
     if (item.gc_orcamento) {
       const orcSit = (item.gc_orcamento.gc_situacao || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
       if (orcSit.includes("aprov")) return "aprovado";
@@ -202,7 +204,6 @@ function autoAssignColumn(item: any): string {
     return "orcamento";
   }
 
-  // Has questionnaire filled but no OS/Orc yet
   if (item.questionario_preenchido) return "aguardando_os";
 
   return "entrada";
