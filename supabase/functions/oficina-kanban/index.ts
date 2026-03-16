@@ -437,8 +437,8 @@ Deno.serve(async (req) => {
         const errors: string[] = [];
         if (!osMatched) errors.push(`OS não encontrada para o código "${manualGcOsCode}"`);
         if (!orcMatched) errors.push(`Orçamento não encontrado para o código "${manualGcOrcCode}"`);
-        return new Response(JSON.stringify({ error: errors.join(" | ") }), {
-          status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        return new Response(JSON.stringify({ ok: false, error: errors.join(" | ") }), {
+          status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
 
