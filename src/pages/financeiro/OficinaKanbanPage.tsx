@@ -269,6 +269,7 @@ export default function OficinaKanbanPage() {
       const mapOrcSitToCol = (situacao: string): string => {
         const s = (situacao || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
         if (s.includes("comprado") || s.includes("chegada")) return "pecas_solicitadas";
+        if (s.includes("aguardando aprov") || s.includes("aprovacao") || s.includes("ag aprov")) return "orcamento";
         if (s.includes("aprovado")) return "aprovado";
         return "orcamento";
       };
