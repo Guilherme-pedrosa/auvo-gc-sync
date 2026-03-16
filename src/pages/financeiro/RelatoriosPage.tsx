@@ -81,7 +81,7 @@ export default function RelatoriosPage() {
       if (data?.success === false) throw new Error(data.error || "Erro na sincronização");
 
       toast.success(
-        `Sync concluído: ${data.auvo_tarefas || 0} tarefas do Auvo, ${data.upserted || 0} atualizadas`
+        `Sync ${syncFrom} → ${syncTo}: ${data.auvo_tarefas || 0} tarefas, ${data.upserted || 0} atualizadas`
       );
       stopProgressSimulation(true);
 
