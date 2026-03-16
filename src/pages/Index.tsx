@@ -132,6 +132,7 @@ function computeMetrics(items: KanbanItem[], monthItems: KanbanItem[], source: "
 }
 
 export default function Index() {
+  const queryClient = useQueryClient();
   const today = new Date();
   const [dateRange, setDateRange] = useState({
     from: startOfYear(today),
