@@ -215,7 +215,7 @@ const TechDashboardPage = () => {
 
       {/* Resumo Cards */}
       {data?.resumo && (
-        <div className="grid gap-4 md:grid-cols-5">
+        <div className="grid gap-4 md:grid-cols-6">
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="text-sm font-medium">Técnicos Ativos</CardTitle>
@@ -248,6 +248,17 @@ const TechDashboardPage = () => {
           </Card>
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Horas Deslocamento</CardTitle>
+              <Navigation className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">
+                {data.tecnicos.reduce((sum, t) => sum + (t.deslocamento_horas || 0), 0).toFixed(1)}h
+              </div>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="text-sm font-medium">Pendentes</CardTitle>
               <AlertTriangle className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
@@ -257,19 +268,22 @@ const TechDashboardPage = () => {
           </Card>
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Valor Total OS</CardTitle>
+              <CardTitle className="text-sm font-medium">Valor Total</CardTitle>
               <DollarSign className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold">
-                R$ {data.tecnicos.reduce((sum, t) => sum + (t.valor_total || 0), 0).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+                {(() => {
+                  const total = data.tecnicos.reduce((sum, t) => sum + (t.valor_total || 0), 0);
+                  return total > 0 ? `R$ ${total.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}` : "—";
+                })()}
               </div>
               <p className="text-xs text-muted-foreground">
                 {(() => {
                   const totalHoras = data.tecnicos.reduce((sum, t) => sum + (t.tempo_horas || 0), 0);
                   const totalValor = data.tecnicos.reduce((sum, t) => sum + (t.valor_total || 0), 0);
                   const mediaHora = totalHoras > 0 ? (totalValor / totalHoras) : 0;
-                  return `R$ ${mediaHora.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}/h média`;
+                  return mediaHora > 0 ? `R$ ${mediaHora.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}/h média` : "";
                 })()}
               </p>
             </CardContent>
