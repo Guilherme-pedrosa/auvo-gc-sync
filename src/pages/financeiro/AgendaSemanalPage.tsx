@@ -787,6 +787,32 @@ function TaskDetailDialog({
                 />
               </div>
               <div>
+                <label className="text-xs font-medium text-muted-foreground mb-1 block">Horário</label>
+                <div className="flex items-center gap-1">
+                  <Select value={editHour} onValueChange={setEditHour}>
+                    <SelectTrigger className="h-8 text-sm w-20">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {Array.from({ length: 24 }, (_, i) => String(i).padStart(2, "0")).map(h => (
+                        <SelectItem key={h} value={h}>{h}h</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <span className="text-muted-foreground font-bold">:</span>
+                  <Select value={editMinute} onValueChange={setEditMinute}>
+                    <SelectTrigger className="h-8 text-sm w-20">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {["00", "15", "30", "45"].map(m => (
+                        <SelectItem key={m} value={m}>{m}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+              <div>
                 <label className="text-xs font-medium text-muted-foreground mb-1 block">Técnico</label>
                 <Select value={editTecId} onValueChange={setEditTecId}>
                   <SelectTrigger className="h-8 text-sm">
