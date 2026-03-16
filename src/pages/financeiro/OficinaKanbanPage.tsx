@@ -21,11 +21,6 @@ import { ptBR } from "date-fns/locale";
 import { useNavigate } from "react-router-dom";
 import { DragDropContext, Droppable, Draggable, DropResult } from "@hello-pangea/dnd";
 import { toast } from "sonner";
-import { format, startOfMonth, subMonths } from "date-fns";
-import { ptBR } from "date-fns/locale";
-import { useNavigate } from "react-router-dom";
-import { DragDropContext, Droppable, Draggable, DropResult } from "@hello-pangea/dnd";
-import { toast } from "sonner";
 
 type GcDocData = {
   gc_os_id?: string;
