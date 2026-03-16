@@ -205,7 +205,7 @@ export default function AgendaSemanalPage() {
     } finally {
       setIsRefreshingFromApi(false);
     }
-  }, [weekStart, queryClient, queryKey]);
+  }, [queryStartDate, queryEndDate, queryClient, queryKey]);
 
   const tecnicos = useMemo(() => {
     const map = new Map<string, { nome: string; id: string | null }>();
