@@ -85,7 +85,9 @@ export default function HorasTrabalhadasTab({
 
       if (filterGrupo !== "todos") {
         const grupoClientes = grupoClienteMap.get(filterGrupo) || [];
-        if (!grupoClientes.includes(cliente)) return false;
+        const clienteAuvo = t.cliente || "";
+        const clienteGc = t.gc_os_cliente || "";
+        if (!grupoClientes.some((gc: string) => gc === clienteAuvo || gc === clienteGc || clienteAuvo.includes(gc) || gc.includes(clienteAuvo))) return false;
       }
 
       if (!allTiposSelected && selectedTipos.size > 0) {
