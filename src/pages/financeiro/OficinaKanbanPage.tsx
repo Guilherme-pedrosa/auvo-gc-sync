@@ -400,6 +400,20 @@ export default function OficinaKanbanPage() {
       const [moved] = srcCol.items.splice(source.index, 1);
       destCol.items.splice(destination.index, 0, moved);
       savePositions(newCols);
+
+      // Log event when card moves to a different column
+      if (source.droppableId !== destination.droppableId) {
+        const fromTitle = prev.find(c => c.id === source.droppableId)?.title || source.droppableId;
+        const toTitle = prev.find(c => c.id === destination.droppableId)?.title || destination.droppableId;
+        supabase.from("workshop_job_events").insert({
+          auvo_task_id: moved.auvo_task_id,
+          from_status: fromTitle,
+          to_status: toTitle,
+          event_type: "status_change",
+          note: `Movido de "${fromTitle}" para "${toTitle}"`,
+        }).then(() => {}).catch(e => console.warn("Erro ao logar evento:", e));
+      }
+
       return newCols;
     });
   }, [savePositions]);
