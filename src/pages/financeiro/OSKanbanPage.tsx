@@ -120,6 +120,8 @@ export default function OSKanbanPage() {
   const [showEditModal, setShowEditModal] = useState(false);
   const [editingCard, setEditingCard] = useState<OSItem | null>(null);
   const [editDate, setEditDate] = useState<Date | undefined>(undefined);
+  const [editHour, setEditHour] = useState("08");
+  const [editMinute, setEditMinute] = useState("00");
   const [editTecnicoId, setEditTecnicoId] = useState("");
   const [editSaving, setEditSaving] = useState(false);
   const [execTaskId, setExecTaskId] = useState<string | null>(null);
@@ -180,6 +182,8 @@ export default function OSKanbanPage() {
     setExecTaskUrl(null);
     setExecTaskLoading(true);
     setEditDate(undefined);
+    setEditHour("08");
+    setEditMinute("00");
 
     // Fallback technician from card (will be replaced by execution task data if available)
     const currentTecnico = auvoUsers?.find((u) => u.name === card.tecnico || u.login === card.tecnico);
@@ -226,7 +230,11 @@ export default function OSKanbanPage() {
         const rawTaskDate = taskObj?.taskDate || taskObj?.task_date || taskObj?.date || null;
         if (rawTaskDate) {
           const parsedDate = new Date(rawTaskDate);
-          if (!isNaN(parsedDate.getTime())) setEditDate(parsedDate);
+          if (!isNaN(parsedDate.getTime())) {
+            setEditDate(parsedDate);
+            setEditHour(String(parsedDate.getHours()).padStart(2, "0"));
+            setEditMinute(String(parsedDate.getMinutes()).padStart(2, "0"));
+          }
         }
         const rawUserTo = taskObj?.idUserTo ?? taskObj?.id_user_to ?? null;
         if (rawUserTo) setEditTecnicoId(String(rawUserTo));
@@ -245,7 +253,9 @@ export default function OSKanbanPage() {
     try {
       const patches: { op: string; path: string; value: any }[] = [];
       if (editDate) {
-        patches.push({ op: "replace", path: "taskDate", value: format(editDate, "yyyy-MM-dd'T'08:00:00") });
+        const h = editHour.padStart(2, "0");
+        const m = editMinute.padStart(2, "0");
+        patches.push({ op: "replace", path: "taskDate", value: format(editDate, `yyyy-MM-dd'T'${h}:${m}:00`) });
       }
       if (editTecnicoId) {
         patches.push({ op: "replace", path: "idUserTo", value: Number(editTecnicoId) });
@@ -1679,7 +1689,7 @@ export default function OSKanbanPage() {
               {/* Links + Edit */}
               <div className="flex flex-wrap gap-2 pt-2 border-t">
                 <Button size="sm" variant="default" className="gap-1" onClick={() => { setSelectedCard(null); openEditModal(selectedCard); }}>
-                  <Edit2 className="h-3.5 w-3.5" /> Editar Data/Técnico
+                  <Edit2 className="h-3.5 w-3.5" /> Editar Agendamento
                 </Button>
                 {selectedCard.gc_os_link && (
                   <Button size="sm" variant="outline" asChild>
@@ -1760,6 +1770,34 @@ export default function OSKanbanPage() {
                     />
                   </PopoverContent>
                 </Popover>
+              </div>
+
+              {/* Time picker */}
+              <div className="space-y-2">
+                <Label>Horário</Label>
+                <div className="flex items-center gap-2">
+                  <Select value={editHour} onValueChange={setEditHour}>
+                    <SelectTrigger className="w-[80px]">
+                      <SelectValue placeholder="HH" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {Array.from({ length: 24 }, (_, i) => String(i).padStart(2, "0")).map((h) => (
+                        <SelectItem key={h} value={h}>{h}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <span className="text-lg font-bold text-muted-foreground">:</span>
+                  <Select value={editMinute} onValueChange={setEditMinute}>
+                    <SelectTrigger className="w-[80px]">
+                      <SelectValue placeholder="MM" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {["00", "15", "30", "45"].map((m) => (
+                        <SelectItem key={m} value={m}>{m}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
               </div>
 
               {/* Technician select */}
