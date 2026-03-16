@@ -8,29 +8,32 @@ const corsHeaders = {
 const AUVO_BASE_URL = "https://api.auvo.com.br/v2";
 const GC_BASE_URL = "https://api.gestaoclick.com";
 
-// Fetch GC OS and build a map of auvo_task_id → { codigo, valor_total }
-async function fetchGcOsMap(gcHeaders: Record<string, string>): Promise<Record<string, { codigo: string; valor: string }>> {
-  const atributoId = Deno.env.get("GC_ATRIBUTO_TAREFA_ID") || "73344";
-  const atributoLabel = (Deno.env.get("AUVO_ATRIBUTO_LABEL") || "Tarefa Execução").toLowerCase();
+// Fetch GC docs and build a map of auvo_task_id → { codigo, valor_total }
+async function fetchGcDocMap(
+  gcHeaders: Record<string, string>,
+  endpoint: "ordens_servicos" | "orcamentos",
+  atributoId: string,
+  labelHints: string[]
+): Promise<Record<string, { codigo: string; valor: string }>> {
   const map: Record<string, { codigo: string; valor: string }> = {};
   let page = 1;
   let totalPages = 1;
 
   while (page <= totalPages && page <= 30) {
-    const url = `${GC_BASE_URL}/api/ordens_servicos?limite=100&pagina=${page}`;
+    const url = `${GC_BASE_URL}/api/${endpoint}?limite=100&pagina=${page}`;
     const response = await fetch(url, { headers: gcHeaders });
     if (!response.ok) break;
     const data = await response.json();
     const records: any[] = Array.isArray(data?.data) ? data.data : [];
     totalPages = data?.meta?.total_paginas || 1;
 
-    for (const os of records) {
-      const atributos: any[] = os.atributos || [];
+    for (const doc of records) {
+      const atributos: any[] = doc.atributos || [];
       const atributoTarefa = atributos.find((a: any) => {
         const nested = a?.atributo || a;
         const id = String(nested.atributo_id || nested.id || "");
         const label = String(nested.descricao || nested.label || nested.nome || "").toLowerCase();
-        return id === atributoId || label === atributoLabel || label.includes("tarefa execu");
+        return id === atributoId || labelHints.some((hint) => label.includes(hint));
       });
       if (!atributoTarefa) continue;
       const nested2 = atributoTarefa?.atributo || atributoTarefa;
@@ -38,14 +41,29 @@ async function fetchGcOsMap(gcHeaders: Record<string, string>): Promise<Record<s
       if (!taskIdValue || !/^\d+$/.test(taskIdValue)) continue;
 
       map[taskIdValue] = {
-        codigo: String(os.codigo || os.id),
-        valor: String(os.valor_total || "0"),
+        codigo: String(doc.codigo || doc.id),
+        valor: String(doc.valor_total || "0"),
       };
     }
     page++;
   }
 
+  return map;
+}
+
+async function fetchGcOsMap(gcHeaders: Record<string, string>): Promise<Record<string, { codigo: string; valor: string }>> {
+  const atributoId = Deno.env.get("GC_ATRIBUTO_TAREFA_ID") || "73344";
+  const label = (Deno.env.get("AUVO_ATRIBUTO_LABEL") || "Tarefa Execução").toLowerCase();
+  const map = await fetchGcDocMap(gcHeaders, "ordens_servicos", atributoId, [label, "tarefa execu"]);
   console.log(`[realtime-tracking] GC map: ${Object.keys(map).length} OS mapeadas`);
+  return map;
+}
+
+async function fetchGcOrcMap(gcHeaders: Record<string, string>): Promise<Record<string, { codigo: string; valor: string }>> {
+  const atributoId = Deno.env.get("GC_ATRIBUTO_ORCAMENTO_ID") || "73341";
+  const label = (Deno.env.get("AUVO_ATRIBUTO_ORCAMENTO_LABEL") || "Tarefa Orçamento").toLowerCase();
+  const map = await fetchGcDocMap(gcHeaders, "orcamentos", atributoId, [label, "tarefa orç", "tarefa orc", "orcamento"]);
+  console.log(`[realtime-tracking] GC map: ${Object.keys(map).length} Orçamentos mapeados`);
   return map;
 }
 
