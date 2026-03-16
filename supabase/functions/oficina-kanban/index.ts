@@ -602,39 +602,39 @@ Deno.serve(async (req) => {
         claimedOrc.add(gcOrcMatch.gc_orcamento_id);
       }
 
-      // Then check sibling tasks that share the SAME equipment
-      // Only match if sibling has EXACTLY this equipment (not multi-equipment tasks ambiguously)
+      // Then check sibling tasks that share the same equipment.
+      // Relaxed rule: if sibling has multiple equipamentos, still allow when cliente+técnico batem.
       if (!gcOsMatch || !gcOrcMatch) {
+        const baseClient = normalizeText(String(task.customerDescription || task.customerName || task.customer?.tradeName || ""));
+        const baseTech = normalizeText(String(task.userToName || ""));
+
         for (const eqId of eqIds) {
           const siblingTaskIds = equipToTasks[eqId] || [];
           for (const sibId of siblingTaskIds) {
             if (sibId === taskId) continue;
 
-            // Check if this sibling task has ONLY this equipment (or few)
-            // to avoid cross-contamination from multi-equipment tasks
-            const sibTask = allAuvoTasks.find((t: any) => String(t.taskID) === sibId);
+            const sibTask = taskById.get(sibId);
             const sibEqIds = extractTaskEquipmentIds(sibTask);
+            if (!sibEqIds.includes(eqId)) continue;
 
-            // Only match if sibling shares THIS specific equipment
-            // and hasn't been claimed by another entry task for a DIFFERENT equipment
-            const sibKey = `${sibId}:${eqId}`;
+            const sibClient = normalizeText(String(sibTask?.customerDescription || sibTask?.customerName || sibTask?.customer?.tradeName || ""));
+            const sibTech = normalizeText(String(sibTask?.userToName || ""));
+            const strictEquipmentMatch = sibEqIds.length <= 1 || sibEqIds.every((id: number) => eqIds.includes(id));
+            const sameClientAndTech = !!baseClient && baseClient === sibClient && !!baseTech && baseTech === sibTech;
+            const canUseSibling = strictEquipmentMatch || sameClientAndTech;
+
+            if (!canUseSibling) continue;
 
             if (!gcOsMatch && gcOsMap[sibId] && !claimedOs.has(gcOsMap[sibId].gc_os_id)) {
-              // Prefer siblings that only have this one equipment
-              if (sibEqIds.length <= 1 || sibEqIds.every(id => eqIds.includes(id))) {
-                gcOsMatch = gcOsMap[sibId];
-                osSiblingTaskId = sibId;
-                claimedOs.add(gcOsMatch.gc_os_id);
-                claimedSiblings.add(sibKey);
-                console.log(`[oficina-kanban] Task ${taskId} → OS found via sibling task ${sibId} (equipment ${eqId})`);
-              }
+              gcOsMatch = gcOsMap[sibId];
+              osSiblingTaskId = sibId;
+              claimedOs.add(gcOsMatch.gc_os_id);
+              console.log(`[oficina-kanban] Task ${taskId} → OS found via sibling ${sibId} (eq ${eqId}, strict=${strictEquipmentMatch}, sameClientTech=${sameClientAndTech})`);
             }
             if (!gcOrcMatch && gcOrcMap[sibId] && !claimedOrc.has(gcOrcMap[sibId].gc_orcamento_id)) {
-              if (sibEqIds.length <= 1 || sibEqIds.every(id => eqIds.includes(id))) {
-                gcOrcMatch = gcOrcMap[sibId];
-                claimedOrc.add(gcOrcMatch.gc_orcamento_id);
-                console.log(`[oficina-kanban] Task ${taskId} → Orçamento found via sibling task ${sibId} (equipment ${eqId})`);
-              }
+              gcOrcMatch = gcOrcMap[sibId];
+              claimedOrc.add(gcOrcMatch.gc_orcamento_id);
+              console.log(`[oficina-kanban] Task ${taskId} → Orçamento found via sibling ${sibId} (eq ${eqId}, strict=${strictEquipmentMatch}, sameClientTech=${sameClientAndTech})`);
             }
             if (gcOsMatch && gcOrcMatch) break;
           }
