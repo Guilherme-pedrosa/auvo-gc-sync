@@ -114,7 +114,7 @@ export default function OSKanbanPage() {
   // City/flag filter (multi-select)
   const [selectedFlags, setSelectedFlags] = useState<Set<string>>(new Set());
   const [allFlagsSelected, setAllFlagsSelected] = useState(true);
-  const [showFlagFilter, setShowFlagFilter] = useState(false);
+  
   const [filterOnlyRoutes, setFilterOnlyRoutes] = useState(false);
   // Edit task state
   const [showEditModal, setShowEditModal] = useState(false);
