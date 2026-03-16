@@ -182,6 +182,8 @@ export default function OSKanbanPage() {
     setExecTaskUrl(null);
     setExecTaskLoading(true);
     setEditDate(undefined);
+    setEditHour("08");
+    setEditMinute("00");
 
     // Fallback technician from card (will be replaced by execution task data if available)
     const currentTecnico = auvoUsers?.find((u) => u.name === card.tecnico || u.login === card.tecnico);
