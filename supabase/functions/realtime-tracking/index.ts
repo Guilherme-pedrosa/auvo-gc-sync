@@ -16,7 +16,7 @@ async function fetchGcOsMap(gcHeaders: Record<string, string>): Promise<Record<s
   let page = 1;
   let totalPages = 1;
 
-  while (page <= totalPages && page <= 10) {
+  while (page <= totalPages && page <= 30) {
     const url = `${GC_BASE_URL}/api/ordens_servicos?limite=100&pagina=${page}`;
     const response = await fetch(url, { headers: gcHeaders });
     if (!response.ok) break;
@@ -75,7 +75,7 @@ async function fetchAllTasks(
   const allTasks: any[] = [];
   let page = 1;
   const pageSize = 100;
-  const MAX_PAGES = 15;
+  const MAX_PAGES = 30;
 
   const filterObj: any = {
     startDate: `${startDate}T00:00:00`,
