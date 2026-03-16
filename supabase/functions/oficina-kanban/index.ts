@@ -768,8 +768,41 @@ Deno.serve(async (req) => {
     }
 
     const now = new Date().toISOString();
-    const upsertRows = items.map((item: any, idx: number) => {
-      const existing = existingMap[item.auvo_task_id];
+    const upsertRows = items.map((rawItem: any, idx: number) => {
+      const existing = existingMap[rawItem.auvo_task_id];
+      const item = { ...rawItem };
+
+      if (existing?.dados) {
+        const oldData = existing.dados || {};
+
+        // Preserve manually linked docs when API sync doesn't return them
+        if (!item.gc_os && oldData.gc_os) item.gc_os = oldData.gc_os;
+        if (!item.gc_orcamento && oldData.gc_orcamento) item.gc_orcamento = oldData.gc_orcamento;
+
+        // Preserve manual OS task linkage
+        if (!item.os_task_id && oldData.os_task_id) {
+          item.os_task_id = oldData.os_task_id;
+          item.os_task_link = oldData.os_task_link || `https://app2.auvo.com.br/relatorioTarefas/DetalheTarefa/${oldData.os_task_id}`;
+        }
+
+        // Preserve best known equipment/client data
+        if (isUnknownEquipmentName(item.equipamento_nome) && oldData.equipamento_nome && !isUnknownEquipmentName(oldData.equipamento_nome)) {
+          item.equipamento_nome = oldData.equipamento_nome;
+        }
+        if (!item.equipamento_modelo && oldData.equipamento_modelo) item.equipamento_modelo = oldData.equipamento_modelo;
+        if (!item.equipamento_serie && oldData.equipamento_serie) item.equipamento_serie = oldData.equipamento_serie;
+        if ((!item.cliente || item.cliente === "Cliente não identificado") && oldData.cliente) item.cliente = oldData.cliente;
+      }
+
+      // Final fallback: GC client name as equipment name when unidentified
+      if (isUnknownEquipmentName(item.equipamento_nome)) {
+        const gcName = item.gc_os?.gc_cliente || item.gc_orcamento?.gc_cliente || "";
+        if (gcName) {
+          item.equipamento_nome = gcName;
+          if (!item.cliente || item.cliente === "Cliente não identificado") item.cliente = gcName;
+        }
+      }
+
       const autoCol = autoAssignColumn(item);
 
       let finalColuna: string;
@@ -779,7 +812,6 @@ Deno.serve(async (req) => {
         finalColuna = autoCol;
         finalPosicao = idx;
       } else {
-        // Check if data changed meaningfully
         const oldData = existing.dados || {};
         const hadUpdate =
           (!oldData.gc_os && item.gc_os) ||
@@ -788,7 +820,7 @@ Deno.serve(async (req) => {
           (oldData.gc_orcamento?.gc_situacao !== item.gc_orcamento?.gc_situacao) ||
           (!oldData.devolucao_preenchida && item.devolucao_preenchida) ||
           (!oldData.os_task_id && item.os_task_id) ||
-          (oldData.equipamento_nome === "S" || oldData.equipamento_nome === "Equipamento não identificado");
+          (isUnknownEquipmentName(oldData.equipamento_nome) && !isUnknownEquipmentName(item.equipamento_nome));
 
         if (hadUpdate) {
           finalColuna = autoCol;
@@ -796,15 +828,6 @@ Deno.serve(async (req) => {
         } else {
           finalColuna = existing.coluna;
           finalPosicao = existing.posicao;
-        }
-      }
-
-      // If name is still unidentified but we have GC data, fix it
-      if (item.equipamento_nome === "Equipamento não identificado" || item.equipamento_nome === "S") {
-        const gcName = item.gc_os?.gc_cliente || item.gc_orcamento?.gc_cliente || "";
-        if (gcName) {
-          item.equipamento_nome = gcName;
-          item.cliente = gcName;
         }
       }
 
