@@ -195,6 +195,8 @@ export default function AgendaSemanalPage() {
       }
 
       toast.success(`${apiTarefas.length} tarefas atualizadas da API`);
+      // Refresh the last-sync badge
+      queryClient.invalidateQueries({ queryKey: ["last-sync-timestamp"] });
     } catch (err: any) {
       console.error("[agenda] Erro ao atualizar da API:", err);
       toast.error(`Erro ao atualizar: ${err.message}`);
