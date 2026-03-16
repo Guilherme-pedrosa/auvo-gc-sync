@@ -18,6 +18,46 @@ async function auvoLogin(apiKey: string, apiToken: string): Promise<string> {
   return token;
 }
 
+function getAdminClient() {
+  const supabaseUrl = Deno.env.get("SUPABASE_URL");
+  const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+  if (!supabaseUrl || !serviceRoleKey) {
+    throw new Error("Credenciais internas de banco não configuradas");
+  }
+  return createClient(supabaseUrl, serviceRoleKey, { auth: { persistSession: false } });
+}
+
+function sanitizeCentralRow(row: any) {
+  const taskId = String(row?.auvo_task_id || "").trim();
+  if (!taskId) return null;
+
+  return {
+    auvo_task_id: taskId,
+    cliente: row?.cliente ?? null,
+    tecnico: row?.tecnico ?? null,
+    tecnico_id: row?.tecnico_id ?? null,
+    data_tarefa: row?.data_tarefa ?? null,
+    status_auvo: row?.status_auvo ?? null,
+    hora_inicio: row?.hora_inicio ?? null,
+    hora_fim: row?.hora_fim ?? null,
+    check_in: row?.check_in ?? null,
+    check_out: row?.check_out ?? null,
+    endereco: row?.endereco ?? null,
+    auvo_link: row?.auvo_link ?? null,
+    orientacao: row?.orientacao ?? row?.descricao ?? null,
+    gc_os_codigo: row?.gc_os_codigo ?? null,
+    gc_os_situacao: row?.gc_os_situacao ?? null,
+    gc_os_valor_total: row?.gc_os_valor_total ?? null,
+    gc_os_link: row?.gc_os_link ?? null,
+    gc_orcamento_codigo: row?.gc_orcamento_codigo ?? null,
+    gc_orc_situacao: row?.gc_orc_situacao ?? null,
+    gc_orc_valor_total: row?.gc_orc_valor_total ?? null,
+    gc_orc_link: row?.gc_orc_link ?? null,
+    pendencia: row?.pendencia ?? null,
+    atualizado_em: new Date().toISOString(),
+  };
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
