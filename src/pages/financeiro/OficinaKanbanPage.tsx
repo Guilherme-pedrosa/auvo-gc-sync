@@ -39,6 +39,8 @@ type OficinaItem = {
   auvo_task_id: string;
   auvo_link: string;
   auvo_task_url?: string;
+  os_task_id?: string | null;
+  os_task_link?: string | null;
   equipamento_nome: string;
   equipamento_modelo: string;
   equipamento_serie: string;
