@@ -1,4 +1,5 @@
 import { useState, useMemo } from "react";
+import { cn } from "@/lib/utils";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -17,8 +18,9 @@ import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip,
   ResponsiveContainer, Cell,
 } from "recharts";
-import { CalendarIcon, Search, Filter, Download } from "lucide-react";
+import { CalendarIcon, Search, Filter, Download, ChevronsUpDown, Check } from "lucide-react";
 import { format, startOfMonth, endOfMonth } from "date-fns";
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import { ptBR } from "date-fns/locale";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
@@ -52,9 +54,19 @@ export default function HorasTrabalhadasTab({
   const [filterTecnico, setFilterTecnico] = useState("todos");
   const [filterCliente, setFilterCliente] = useState("todos");
   const [filterGrupo, setFilterGrupo] = useState("todos");
+  const [grupoOpen, setGrupoOpen] = useState(false);
   const [selectedTipos, setSelectedTipos] = useState<Set<string>>(new Set());
   const [allTiposSelected, setAllTiposSelected] = useState(true);
   const [searchTipo, setSearchTipo] = useState("");
+
+  // Normalize client name for matching (strip LTDA, ME, SA, EPP, EIRELI, etc.)
+  const normalizeName = (name: string) =>
+    name
+      .toUpperCase()
+      .replace(/\s*(LTDA|ME|SA|EPP|EIRELI|S\/A|S\.A\.|LTDA\.?|MEI)\s*/g, "")
+      .replace(/[.\-\/]/g, "")
+      .replace(/\s+/g, " ")
+      .trim();
 
   // Resolve group members
   const grupoClienteMap = useMemo(() => {
@@ -85,9 +97,13 @@ export default function HorasTrabalhadasTab({
 
       if (filterGrupo !== "todos") {
         const grupoClientes = grupoClienteMap.get(filterGrupo) || [];
-        const clienteAuvo = t.cliente || "";
-        const clienteGc = t.gc_os_cliente || "";
-        if (!grupoClientes.some((gc: string) => gc === clienteAuvo || gc === clienteGc || clienteAuvo.includes(gc) || gc.includes(clienteAuvo))) return false;
+        const clienteAuvo = normalizeName(t.cliente || "");
+        const clienteGc = normalizeName(t.gc_os_cliente || "");
+        const matched = grupoClientes.some((gc: string) => {
+          const nGc = normalizeName(gc);
+          return nGc === clienteAuvo || nGc === clienteGc || (clienteAuvo && nGc.includes(clienteAuvo)) || (clienteAuvo && clienteAuvo.includes(nGc));
+        });
+        if (!matched) return false;
       }
 
       if (!allTiposSelected && selectedTipos.size > 0) {
@@ -108,12 +124,15 @@ export default function HorasTrabalhadasTab({
       if (directConfig) return Number(directConfig.valor_hora) || 0;
     }
 
-    // Check group config - match if either client name is in the group
+    // Check group config - match if either client name is in the group (normalized)
     for (const g of grupos) {
       const gClientes = grupoClienteMap.get(g.id) || [];
-      const isInGroup = gClientes.some((gc: string) =>
-        gc === clienteAuvo || gc === clienteGc || clienteAuvo.includes(gc) || gc.includes(clienteAuvo)
-      );
+      const nAuvo = normalizeName(clienteAuvo);
+      const nGc = normalizeName(clienteGc || "");
+      const isInGroup = gClientes.some((gc: string) => {
+        const n = normalizeName(gc);
+        return n === nAuvo || n === nGc || (nAuvo && n.includes(nAuvo)) || (nAuvo && nAuvo.includes(n));
+      });
       if (isInGroup) {
         const groupConfig = valorHoraConfigs.find(
           (c: any) => c.tecnico_nome === tecnico && c.tipo_referencia === "grupo" && c.grupo_id === g.id
@@ -276,18 +295,48 @@ export default function HorasTrabalhadasTab({
               </Select>
             </div>
 
-            {/* Group filter */}
+            {/* Group filter - searchable */}
             <div className="space-y-1">
               <Label className="text-xs">Grupo</Label>
-              <Select value={filterGrupo} onValueChange={setFilterGrupo}>
-                <SelectTrigger className="w-[160px] h-9 text-xs">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="todos">Todos</SelectItem>
-                  {grupos.map((g: any) => <SelectItem key={g.id} value={g.id}>{g.nome}</SelectItem>)}
-                </SelectContent>
-              </Select>
+              <Popover open={grupoOpen} onOpenChange={setGrupoOpen}>
+                <PopoverTrigger asChild>
+                  <Button variant="outline" size="sm" className="w-[200px] h-9 justify-between text-xs font-normal">
+                    {filterGrupo === "todos"
+                      ? "Todos"
+                      : grupos.find((g: any) => g.id === filterGrupo)?.nome || "Todos"}
+                    <ChevronsUpDown className="ml-2 h-3 w-3 shrink-0 opacity-50" />
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-[200px] p-0" align="start">
+                  <Command>
+                    <CommandInput placeholder="Buscar grupo..." className="h-8 text-xs" />
+                    <CommandList>
+                      <CommandEmpty>Nenhum grupo.</CommandEmpty>
+                      <CommandGroup>
+                        <CommandItem
+                          value="todos"
+                          onSelect={() => { setFilterGrupo("todos"); setGrupoOpen(false); }}
+                          className="text-xs"
+                        >
+                          <Check className={cn("mr-2 h-3 w-3", filterGrupo === "todos" ? "opacity-100" : "opacity-0")} />
+                          Todos
+                        </CommandItem>
+                        {grupos.map((g: any) => (
+                          <CommandItem
+                            key={g.id}
+                            value={g.nome}
+                            onSelect={() => { setFilterGrupo(g.id); setGrupoOpen(false); }}
+                            className="text-xs"
+                          >
+                            <Check className={cn("mr-2 h-3 w-3", filterGrupo === g.id ? "opacity-100" : "opacity-0")} />
+                            {g.nome}
+                          </CommandItem>
+                        ))}
+                      </CommandGroup>
+                    </CommandList>
+                  </Command>
+                </PopoverContent>
+              </Popover>
             </div>
 
             {/* Task type filter */}
