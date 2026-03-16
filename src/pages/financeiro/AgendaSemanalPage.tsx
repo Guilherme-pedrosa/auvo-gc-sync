@@ -336,6 +336,7 @@ export default function AgendaSemanalPage() {
               <p className="text-xs text-muted-foreground">
                 {totalTarefas} tarefa{totalTarefas !== 1 ? "s" : ""} · {tecnicos.length} técnico{tecnicos.length !== 1 ? "s" : ""}
                 {movingTaskId && <span className="ml-2 text-primary">⏳ Movendo tarefa...</span>}
+                <LastSyncBadge className="ml-3" />
               </p>
             </div>
           </div>
