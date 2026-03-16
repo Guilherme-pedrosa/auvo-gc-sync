@@ -99,6 +99,10 @@ export default function OficinaKanbanPage() {
   const [manualGcOsCode, setManualGcOsCode] = useState("");
   const [manualGcOrcCode, setManualGcOrcCode] = useState("");
   const [isSavingLink, setIsSavingLink] = useState(false);
+  const [showAddColumn, setShowAddColumn] = useState(false);
+  const [newColumnName, setNewColumnName] = useState("");
+  const [renamingColumnId, setRenamingColumnId] = useState<string | null>(null);
+  const [renameValue, setRenameValue] = useState("");
 
   const { data, isLoading, refetch, isFetching } = useQuery({
     queryKey: ["oficina-kanban", format(dateRange.from, "yyyy-MM-dd"), format(dateRange.to, "yyyy-MM-dd")],
