@@ -549,6 +549,81 @@ export type Database = {
           },
         ]
       }
+      workshop_job_events: {
+        Row: {
+          auvo_task_id: string
+          criado_em: string
+          event_type: string
+          from_status: string | null
+          id: string
+          note: string | null
+          to_status: string | null
+          user_id: string | null
+          user_name: string | null
+        }
+        Insert: {
+          auvo_task_id: string
+          criado_em?: string
+          event_type?: string
+          from_status?: string | null
+          id?: string
+          note?: string | null
+          to_status?: string | null
+          user_id?: string | null
+          user_name?: string | null
+        }
+        Update: {
+          auvo_task_id?: string
+          criado_em?: string
+          event_type?: string
+          from_status?: string | null
+          id?: string
+          note?: string | null
+          to_status?: string | null
+          user_id?: string | null
+          user_name?: string | null
+        }
+        Relationships: []
+      }
+      workshop_job_items: {
+        Row: {
+          atualizado_em: string
+          auvo_task_id: string
+          criado_em: string
+          descricao: string
+          id: string
+          origem: string | null
+          preco_unitario: number
+          quantidade: number
+          status_item: string | null
+          tipo: string
+        }
+        Insert: {
+          atualizado_em?: string
+          auvo_task_id: string
+          criado_em?: string
+          descricao?: string
+          id?: string
+          origem?: string | null
+          preco_unitario?: number
+          quantidade?: number
+          status_item?: string | null
+          tipo?: string
+        }
+        Update: {
+          atualizado_em?: string
+          auvo_task_id?: string
+          criado_em?: string
+          descricao?: string
+          id?: string
+          origem?: string | null
+          preco_unitario?: number
+          quantidade?: number
+          status_item?: string | null
+          tipo?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
