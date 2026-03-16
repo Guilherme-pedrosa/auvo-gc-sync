@@ -8,6 +8,7 @@ const corsHeaders = {
 const AUVO_BASE_URL = "https://api.auvo.com.br/v2";
 const GC_BASE_URL = "https://api.gestaoclick.com";
 const QUESTIONNAIRE_ID = "215146"; // Formulário de entrada oficina
+const QUESTIONNAIRE_DEVOLUCAO_ID = "215147"; // Formulário de devolução
 const GC_ATRIBUTO_TAREFA_OS = "73343";
 const GC_ATRIBUTO_TAREFA_ORC = "73341";
 const MIN_DELAY_MS = 200;
@@ -68,8 +69,9 @@ async function fetchAuvoTasksWithQuestionnaire(
 
     for (const task of entities) {
       const questionnaires = task.questionnaires || [];
-      const hasTarget = questionnaires.some((q: any) => String(q.questionnaireId) === QUESTIONNAIRE_ID);
-      if (hasTarget) allTasks.push(task);
+      const hasEntrada = questionnaires.some((q: any) => String(q.questionnaireId) === QUESTIONNAIRE_ID);
+      const hasDevolucao = questionnaires.some((q: any) => String(q.questionnaireId) === QUESTIONNAIRE_DEVOLUCAO_ID);
+      if (hasEntrada || hasDevolucao) allTasks.push(task);
     }
 
     if (entities.length < pageSize) break;
@@ -179,13 +181,15 @@ async function fetchGcOrcamentosMap(gcHeaders: Record<string, string>): Promise<
 
 // Determine which column an item belongs to based on its data
 function autoAssignColumn(item: any): string {
+  // If return form (215147) was filled → Devolvido (cycle complete)
+  if (item.devolucao_preenchida) return "devolvido";
+
   // Has OS with completed situation → Em Execução or Concluído
   if (item.gc_os) {
     const sit = (item.gc_os.gc_situacao || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
     if (sit.includes("conclu") || sit.includes("finaliz") || sit.includes("entregue")) return "concluido";
     if (sit.includes("execu")) return "em_execucao";
     if (sit.includes("peca") || sit.includes("material") || sit.includes("solicit")) return "pecas_solicitadas";
-    // Has OS → at minimum "Aguardando OS" is done
     if (item.gc_orcamento) {
       const orcSit = (item.gc_orcamento.gc_situacao || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
       if (orcSit.includes("aprov")) return "aprovado";
@@ -200,7 +204,6 @@ function autoAssignColumn(item: any): string {
     return "orcamento";
   }
 
-  // Has questionnaire filled but no OS/Orc yet
   if (item.questionario_preenchido) return "aguardando_os";
 
   return "entrada";
@@ -394,6 +397,18 @@ Deno.serve(async (req) => {
         (a: any) => a.reply && a.reply.trim() !== "" && !a.reply.startsWith("http")
       );
 
+      // Check return form (215147)
+      const devolucaoQ = (task.questionnaires || []).find(
+        (q: any) => String(q.questionnaireId) === QUESTIONNAIRE_DEVOLUCAO_ID
+      );
+      const devolucaoAnswers = (devolucaoQ?.answers || []).map((a: any) => ({
+        question: String(a.questionDescription || ""),
+        reply: String(a.reply || ""),
+      }));
+      const devolucaoPreenchida = devolucaoAnswers.some(
+        (a: any) => a.reply && a.reply.trim() !== "" && !a.reply.startsWith("http")
+      );
+
       // Resolve equipment name: 1) Auvo equipment API, 2) questionnaire fallback
       const eqIds: number[] = task.equipmentsId || [];
       let equipamento_nome = "";
@@ -450,6 +465,8 @@ Deno.serve(async (req) => {
         status_auvo: task.finished ? "Finalizada" : (task.checkIn ? "Em andamento" : "Aberta"),
         questionario_preenchido: hasFilledAnswers,
         questionario_respostas: answers,
+        devolucao_preenchida: devolucaoPreenchida,
+        devolucao_respostas: devolucaoAnswers,
         gc_os: gcOsMatch,
         gc_orcamento: gcOrcMatch,
       };

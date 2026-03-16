@@ -53,6 +53,8 @@ type OficinaItem = {
   questionario_respostas: { question: string; reply: string }[];
   gc_os: GcDocData | null;
   gc_orcamento: GcDocData | null;
+  devolucao_preenchida?: boolean;
+  devolucao_respostas?: { question: string; reply: string }[];
 };
 
 type KanbanColumn = {
@@ -70,6 +72,7 @@ const DEFAULT_COLUMNS: { id: string; title: string; color: string }[] = [
   { id: "pecas_solicitadas", title: "📦 Peças Solicitadas", color: "#3b82f6" },
   { id: "em_execucao", title: "🔧 Em Execução", color: "#f97316" },
   { id: "concluido", title: "🏁 Concluído", color: "#22c55e" },
+  { id: "devolvido", title: "🔄 Devolvido", color: "#06b6d4" },
 ];
 
 export default function OficinaKanbanPage() {
@@ -215,6 +218,8 @@ export default function OficinaKanbanPage() {
         } else if (cleanItem.questionario_preenchido) {
           col = "aguardando_os";
         }
+        // Return form overrides everything
+        if (cleanItem.devolucao_preenchida) col = "devolvido";
         if (!colMap[col]) colMap[col] = [];
         colMap[col].push(cleanItem);
       }
