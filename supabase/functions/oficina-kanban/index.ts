@@ -409,6 +409,7 @@ Deno.serve(async (req) => {
                 gc_data: String(os.data || ""),
                 gc_link: `https://gestaoclick.com/ordens_servicos/editar/${os.id}?retorno=%2Fordens_servicos`,
               };
+              dados.manual_gc_os_linked = true;
               osMatched = true;
             }
           }
@@ -442,6 +443,7 @@ Deno.serve(async (req) => {
                 gc_data: String(orc.data || ""),
                 gc_link: `https://gestaoclick.com/orcamentos_servicos/editar/${orc.id}?retorno=%2Forcamentos_servicos`,
               };
+              dados.manual_gc_orc_linked = true;
               orcMatched = true;
             }
           }
