@@ -192,9 +192,11 @@ function orcamentoSituacaoToColumn(situacao: string): string {
   const sit = (situacao || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
   // "COMPRADO - AGUARDANDO CHEGADA" → peças solicitadas
   if (sit.includes("comprado") || sit.includes("chegada")) return "pecas_solicitadas";
-  // "APROVADO - AGUARDANDO COMPRA" → aprovado (contains "aprovado" but NOT "aguardando aprovação")
+  // "AGUARDANDO APROVAÇÃO" e variações NÃO podem cair em aprovado
+  if (sit.includes("aguardando aprov") || sit.includes("aprovacao") || sit.includes("ag aprov")) return "orcamento";
+  // "APROVADO - AGUARDANDO COMPRA" → aprovado
   if (sit.includes("aprovado")) return "aprovado";
-  // "Aguardando Aprovação", "Ag Informações / Correções" → orçamento
+  // "Ag Informações / Correções" e demais → orçamento
   return "orcamento";
 }
 
