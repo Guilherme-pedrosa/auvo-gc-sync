@@ -115,13 +115,29 @@ export default function AgendaSemanalPage() {
     queryFn: async () => {
       const startStr = format(weekStart, "yyyy-MM-dd");
       const endStr = format(addDays(weekStart, 5), "yyyy-MM-dd");
-      const { data, error } = await supabase.functions.invoke("auvo-agenda", {
-        body: { startDate: startStr, endDate: endStr },
-      });
+
+      // Read from cached tarefas_central table (fast)
+      const { data: rows, error } = await supabase
+        .from("tarefas_central")
+        .select(
+          "auvo_task_id, cliente, tecnico, tecnico_id, data_tarefa, status_auvo, " +
+          "orientacao, endereco, auvo_link, hora_inicio, hora_fim, check_in, check_out, " +
+          "gc_os_valor_total, gc_orc_valor_total, gc_os_situacao, gc_os_codigo, gc_os_link, " +
+          "gc_orc_situacao, gc_orcamento_codigo, gc_orc_link, pendencia"
+        )
+        .gte("data_tarefa", startStr)
+        .lte("data_tarefa", endStr)
+        .order("data_tarefa", { ascending: true });
+
       if (error) throw error;
-      return (data?.data || []) as Tarefa[];
+
+      // Map orientacao -> descricao for component compatibility
+      return (rows || []).map((r: any) => ({
+        ...r,
+        descricao: r.orientacao || r.descricao || null,
+      })) as Tarefa[];
     },
-    staleTime: 1000 * 60 * 2,
+    staleTime: 1000 * 60 * 5,
   });
 
   // All technicians: merge Auvo users + any from tasks
