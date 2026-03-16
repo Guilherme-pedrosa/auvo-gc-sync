@@ -850,32 +850,8 @@ Deno.serve(async (req) => {
       }
 
       const autoCol = autoAssignColumn(item);
-
-      let finalColuna: string;
-      let finalPosicao: number;
-
-      if (!existing) {
-        finalColuna = autoCol;
-        finalPosicao = idx;
-      } else {
-        const oldData = existing.dados || {};
-        const hadUpdate =
-          (!oldData.gc_os && item.gc_os) ||
-          (!oldData.gc_orcamento && item.gc_orcamento) ||
-          (oldData.gc_os?.gc_situacao !== item.gc_os?.gc_situacao) ||
-          (oldData.gc_orcamento?.gc_situacao !== item.gc_orcamento?.gc_situacao) ||
-          (!oldData.devolucao_preenchida && item.devolucao_preenchida) ||
-          (!oldData.os_task_id && item.os_task_id) ||
-          (isUnknownEquipmentName(oldData.equipamento_nome) && !isUnknownEquipmentName(item.equipamento_nome));
-
-        if (hadUpdate) {
-          finalColuna = autoCol;
-          finalPosicao = 0;
-        } else {
-          finalColuna = existing.coluna;
-          finalPosicao = existing.posicao;
-        }
-      }
+      const finalColuna = existing?.coluna || autoCol;
+      const finalPosicao = existing ? existing.posicao : idx;
 
       return {
         auvo_task_id: item.auvo_task_id,
