@@ -125,10 +125,6 @@ export default function AgendaSemanalPage() {
   const { data: tarefas, isLoading, refetch, isFetching } = useQuery({
     queryKey,
     queryFn: async () => {
-      const startStr = format(weekStart, "yyyy-MM-dd");
-      const endStr = format(addDays(weekStart, 5), "yyyy-MM-dd");
-
-      // Read from cached tarefas_central table (fast)
       const { data: rows, error } = await supabase
         .from("tarefas_central")
         .select(
@@ -137,8 +133,8 @@ export default function AgendaSemanalPage() {
           "gc_os_valor_total, gc_orc_valor_total, gc_os_situacao, gc_os_codigo, gc_os_link, " +
           "gc_orc_situacao, gc_orcamento_codigo, gc_orc_link, pendencia"
         )
-        .gte("data_tarefa", startStr)
-        .lte("data_tarefa", endStr)
+        .gte("data_tarefa", queryStartDate)
+        .lte("data_tarefa", queryEndDate)
         .order("data_tarefa", { ascending: true });
 
       if (error) throw error;
