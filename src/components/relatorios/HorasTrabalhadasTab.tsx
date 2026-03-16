@@ -123,12 +123,15 @@ export default function HorasTrabalhadasTab({
       if (directConfig) return Number(directConfig.valor_hora) || 0;
     }
 
-    // Check group config - match if either client name is in the group
+    // Check group config - match if either client name is in the group (normalized)
     for (const g of grupos) {
       const gClientes = grupoClienteMap.get(g.id) || [];
-      const isInGroup = gClientes.some((gc: string) =>
-        gc === clienteAuvo || gc === clienteGc || clienteAuvo.includes(gc) || gc.includes(clienteAuvo)
-      );
+      const nAuvo = normalizeName(clienteAuvo);
+      const nGc = normalizeName(clienteGc || "");
+      const isInGroup = gClientes.some((gc: string) => {
+        const n = normalizeName(gc);
+        return n === nAuvo || n === nGc || (nAuvo && n.includes(nAuvo)) || (nAuvo && nAuvo.includes(n));
+      });
       if (isInGroup) {
         const groupConfig = valorHoraConfigs.find(
           (c: any) => c.tecnico_nome === tecnico && c.tipo_referencia === "grupo" && c.grupo_id === g.id
