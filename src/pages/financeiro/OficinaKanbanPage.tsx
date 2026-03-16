@@ -104,6 +104,13 @@ export default function OficinaKanbanPage() {
   const [newColumnName, setNewColumnName] = useState("");
   const [renamingColumnId, setRenamingColumnId] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState("");
+  const [modalTab, setModalTab] = useState("detalhes");
+  const [jobItems, setJobItems] = useState<any[]>([]);
+  const [jobEvents, setJobEvents] = useState<any[]>([]);
+  const [newItemDesc, setNewItemDesc] = useState("");
+  const [newItemQty, setNewItemQty] = useState("1");
+  const [newItemPrice, setNewItemPrice] = useState("");
+  const [newItemTipo, setNewItemTipo] = useState("peca");
 
   const { data, isLoading, refetch, isFetching } = useQuery({
     queryKey: ["oficina-kanban", format(dateRange.from, "yyyy-MM-dd"), format(dateRange.to, "yyyy-MM-dd")],
