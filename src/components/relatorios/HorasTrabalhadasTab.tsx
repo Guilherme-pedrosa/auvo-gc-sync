@@ -592,7 +592,7 @@ export default function HorasTrabalhadasTab({
                     </TableRow>
                     {expanded === tec.tecnico && (
                       <TableRow key={`${tec.tecnico}-detail`}>
-                        <TableCell colSpan={4} className="p-0">
+                          <TableCell colSpan={6} className="p-0">
                           <div className="bg-muted/30 px-6 py-3">
                             <Table>
                               <TableHeader>
