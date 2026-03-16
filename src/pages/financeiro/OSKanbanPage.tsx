@@ -253,7 +253,9 @@ export default function OSKanbanPage() {
     try {
       const patches: { op: string; path: string; value: any }[] = [];
       if (editDate) {
-        patches.push({ op: "replace", path: "taskDate", value: format(editDate, "yyyy-MM-dd'T'08:00:00") });
+        const h = editHour.padStart(2, "0");
+        const m = editMinute.padStart(2, "0");
+        patches.push({ op: "replace", path: "taskDate", value: format(editDate, `yyyy-MM-dd'T'${h}:${m}:00`) });
       }
       if (editTecnicoId) {
         patches.push({ op: "replace", path: "idUserTo", value: Number(editTecnicoId) });
