@@ -1,0 +1,495 @@
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+
+const corsHeaders = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
+};
+
+const AUVO_BASE_URL = "https://api.auvo.com.br/v2";
+const GC_BASE_URL = "https://api.gestaoclick.com";
+const QUESTIONNAIRE_ID = "215146"; // Formulário de entrada oficina
+const GC_ATRIBUTO_TAREFA_OS = "73343";
+const GC_ATRIBUTO_TAREFA_ORC = "73341";
+const MIN_DELAY_MS = 200;
+let lastAuvoCall = 0;
+let lastGcCall = 0;
+
+async function rateLimitedFetch(url: string, options: RequestInit, type: "gc" | "auvo"): Promise<Response> {
+  const now = Date.now();
+  const last = type === "gc" ? lastGcCall : lastAuvoCall;
+  const elapsed = now - last;
+  if (elapsed < MIN_DELAY_MS) await new Promise(r => setTimeout(r, MIN_DELAY_MS - elapsed));
+  if (type === "gc") lastGcCall = Date.now();
+  else lastAuvoCall = Date.now();
+  return fetch(url, options);
+}
+
+async function auvoLogin(apiKey: string, apiToken: string): Promise<string> {
+  const url = `${AUVO_BASE_URL}/login/?apiKey=${encodeURIComponent(apiKey)}&apiToken=${encodeURIComponent(apiToken)}`;
+  const response = await fetch(url, { method: "GET", headers: { "Content-Type": "application/json" } });
+  if (!response.ok) throw new Error(`Auvo login failed (${response.status})`);
+  const data = await response.json();
+  const token = data?.result?.accessToken;
+  if (!token) throw new Error("Auvo login: accessToken não retornado");
+  return token;
+}
+
+function auvoHeaders(token: string): Record<string, string> {
+  return { Authorization: `Bearer ${token}`, "Content-Type": "application/json" };
+}
+
+async function fetchAuvoTasksWithQuestionnaire(
+  bearerToken: string,
+  startDate: string,
+  endDate: string
+): Promise<{ tasks: any[]; hadError: boolean; errorMessage: string | null }> {
+  const allTasks: any[] = [];
+  let page = 1;
+  const pageSize = 100;
+  const MAX_PAGES = 20;
+  const filterObj = { startDate: `${startDate}T00:00:00`, endDate: `${endDate}T23:59:59` };
+  let hadError = false;
+  let errorMessage: string | null = null;
+
+  while (page <= MAX_PAGES) {
+    const paramFilter = encodeURIComponent(JSON.stringify(filterObj));
+    const url = `${AUVO_BASE_URL}/tasks/?page=${page}&pageSize=${pageSize}&order=desc&paramFilter=${paramFilter}`;
+    const response = await rateLimitedFetch(url, { headers: auvoHeaders(bearerToken) }, "auvo");
+
+    if (response.status === 404) break;
+    if (!response.ok) {
+      hadError = true;
+      errorMessage = `Auvo /tasks erro ${response.status}`;
+      break;
+    }
+
+    const data = await response.json();
+    const entities = data?.result?.entityList || data?.result?.Entities || [];
+
+    for (const task of entities) {
+      const questionnaires = task.questionnaires || [];
+      const hasTarget = questionnaires.some((q: any) => String(q.questionnaireId) === QUESTIONNAIRE_ID);
+      if (hasTarget) allTasks.push(task);
+    }
+
+    if (entities.length < pageSize) break;
+    page++;
+  }
+
+  return { tasks: allTasks, hadError, errorMessage };
+}
+
+async function fetchGcOsMap(gcHeaders: Record<string, string>): Promise<Record<string, any>> {
+  const map: Record<string, any> = {};
+  let page = 1;
+  let totalPages = 1;
+  const MAX_PAGES = 30;
+
+  while (page <= totalPages && page <= MAX_PAGES) {
+    const url = `${GC_BASE_URL}/api/ordens_servicos?limite=100&pagina=${page}`;
+    const response = await rateLimitedFetch(url, { headers: gcHeaders }, "gc");
+    if (response.status === 429) {
+      await new Promise(r => setTimeout(r, 3000));
+      continue;
+    }
+    if (!response.ok) break;
+
+    const data = await response.json();
+    const records: any[] = Array.isArray(data?.data) ? data.data : [];
+    totalPages = data?.meta?.total_paginas || 1;
+
+    for (const os of records) {
+      const atributos: any[] = os.atributos || [];
+      const attrTarefa = atributos.find((a: any) => {
+        const nested = a?.atributo || a;
+        return String(nested.atributo_id || nested.id || "") === GC_ATRIBUTO_TAREFA_OS;
+      });
+      if (attrTarefa) {
+        const nested = attrTarefa?.atributo || attrTarefa;
+        const taskId = String(nested?.conteudo || nested?.valor || "").trim();
+        if (taskId && /^\d+$/.test(taskId)) {
+          map[taskId] = {
+            gc_os_id: String(os.id),
+            gc_os_codigo: String(os.codigo || ""),
+            gc_cliente: String(os.nome_cliente || ""),
+            gc_situacao: String(os.nome_situacao || ""),
+            gc_situacao_id: String(os.situacao_id || ""),
+            gc_cor_situacao: String(os.cor_situacao || ""),
+            gc_valor_total: String(os.valor_total || "0"),
+            gc_vendedor: String(os.nome_vendedor || ""),
+            gc_data: String(os.data || ""),
+            gc_link: `https://gestaoclick.com/ordens_servicos/editar/${os.id}?retorno=%2Fordens_servicos`,
+          };
+        }
+      }
+    }
+    page++;
+  }
+  return map;
+}
+
+async function fetchGcOrcamentosMap(gcHeaders: Record<string, string>): Promise<Record<string, any>> {
+  const map: Record<string, any> = {};
+  let page = 1;
+  let totalPages = 1;
+  const MAX_PAGES = 30;
+
+  while (page <= totalPages && page <= MAX_PAGES) {
+    const url = `${GC_BASE_URL}/api/orcamentos?limite=100&pagina=${page}`;
+    const response = await rateLimitedFetch(url, { headers: gcHeaders }, "gc");
+    if (response.status === 429) {
+      await new Promise(r => setTimeout(r, 3000));
+      continue;
+    }
+    if (!response.ok) break;
+
+    const data = await response.json();
+    const records: any[] = Array.isArray(data?.data) ? data.data : [];
+    totalPages = data?.meta?.total_paginas || 1;
+
+    for (const orc of records) {
+      const atributos: any[] = orc.atributos || [];
+      const attrTarefa = atributos.find((a: any) => {
+        const nested = a?.atributo || a;
+        return String(nested.atributo_id || nested.id || "") === GC_ATRIBUTO_TAREFA_ORC;
+      });
+      if (attrTarefa) {
+        const nested = attrTarefa?.atributo || attrTarefa;
+        const taskId = String(nested?.conteudo || nested?.valor || "").trim();
+        if (taskId && /^\d+$/.test(taskId)) {
+          map[taskId] = {
+            gc_orcamento_id: String(orc.id),
+            gc_orcamento_codigo: String(orc.codigo || ""),
+            gc_cliente: String(orc.nome_cliente || ""),
+            gc_situacao: String(orc.nome_situacao || ""),
+            gc_situacao_id: String(orc.situacao_id || ""),
+            gc_cor_situacao: String(orc.cor_situacao || ""),
+            gc_valor_total: String(orc.valor_total || "0"),
+            gc_vendedor: String(orc.nome_vendedor || ""),
+            gc_data: String(orc.data || ""),
+            gc_link: `https://gestaoclick.com/orcamentos_servicos/editar/${orc.id}?retorno=%2Forcamentos_servicos`,
+          };
+        }
+      }
+    }
+    page++;
+  }
+  return map;
+}
+
+// Determine which column an item belongs to based on its data
+function autoAssignColumn(item: any): string {
+  // Has OS with completed situation → Em Execução or Concluído
+  if (item.gc_os) {
+    const sit = (item.gc_os.gc_situacao || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+    if (sit.includes("conclu") || sit.includes("finaliz") || sit.includes("entregue")) return "concluido";
+    if (sit.includes("execu")) return "em_execucao";
+    if (sit.includes("peca") || sit.includes("material") || sit.includes("solicit")) return "pecas_solicitadas";
+    // Has OS → at minimum "Aguardando OS" is done
+    if (item.gc_orcamento) {
+      const orcSit = (item.gc_orcamento.gc_situacao || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+      if (orcSit.includes("aprov")) return "aprovado";
+      return "orcamento";
+    }
+    return "em_execucao";
+  }
+  
+  if (item.gc_orcamento) {
+    const orcSit = (item.gc_orcamento.gc_situacao || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+    if (orcSit.includes("aprov")) return "aprovado";
+    return "orcamento";
+  }
+
+  // Has questionnaire filled but no OS/Orc yet
+  if (item.questionario_preenchido) return "aguardando_os";
+
+  return "entrada";
+}
+
+Deno.serve(async (req) => {
+  if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
+
+  try {
+    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+    const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+    const sbClient = createClient(supabaseUrl, supabaseKey);
+
+    let body: any = {};
+    try { const text = await req.text(); if (text) body = JSON.parse(text); } catch {}
+
+    const mode = body.mode || "cache";
+    const today = new Date().toISOString().split("T")[0];
+    const startDate = body.start_date || "2025-01-01";
+    const endDate = body.end_date || today;
+
+    // === MODE: CACHE ===
+    if (mode === "cache") {
+      const [{ data: cached }, { data: meta }, { data: colMeta }] = await Promise.all([
+        sbClient.from("kanban_oficina_cache").select("*").order("coluna").order("posicao"),
+        sbClient.from("kanban_sync_meta").select("*").eq("id", "oficina_default").single(),
+        sbClient.from("kanban_sync_meta").select("*").eq("id", "oficina_columns").single(),
+      ]);
+
+      let customColumns: { id: string; title: string; order: number }[] = [];
+      try {
+        if (colMeta?.periodo_inicio) customColumns = JSON.parse(colMeta.periodo_inicio);
+      } catch {}
+
+      const items = (cached || []).map((row: any) => ({
+        ...row.dados,
+        _coluna: row.coluna,
+        _posicao: row.posicao,
+      }));
+
+      return new Response(JSON.stringify({
+        items,
+        ultimo_sync: meta?.ultimo_sync || null,
+        custom_columns: customColumns,
+        from_cache: true,
+        total: items.length,
+      }), {
+        status: 200,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    // === MODE: SAVE_POSITIONS ===
+    if (mode === "save_positions") {
+      const positions: { auvo_task_id: string; coluna: string; posicao: number }[] = body.positions || [];
+      const customColumns: { id: string; title: string; order: number }[] = body.custom_columns || [];
+
+      if (positions.length > 0) {
+        for (let i = 0; i < positions.length; i += 50) {
+          const batch = positions.slice(i, i + 50).map((p) => ({
+            auvo_task_id: p.auvo_task_id,
+            coluna: p.coluna,
+            posicao: p.posicao,
+            atualizado_em: new Date().toISOString(),
+          }));
+          await sbClient
+            .from("kanban_oficina_cache")
+            .upsert(batch, { onConflict: "auvo_task_id", ignoreDuplicates: false });
+        }
+      }
+
+      if (customColumns.length > 0) {
+        await sbClient
+          .from("kanban_sync_meta")
+          .upsert({ id: "oficina_columns", periodo_inicio: JSON.stringify(customColumns) });
+      }
+
+      return new Response(JSON.stringify({ ok: true, saved: positions.length }), {
+        status: 200,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    // === MODE: SYNC ===
+    const auvoApiKey = Deno.env.get("AUVO_APP_KEY");
+    const auvoApiToken = Deno.env.get("AUVO_TOKEN");
+    const gcAccessToken = Deno.env.get("GC_ACCESS_TOKEN");
+    const gcSecretToken = Deno.env.get("GC_SECRET_TOKEN");
+
+    if (!auvoApiKey || !auvoApiToken) {
+      return new Response(JSON.stringify({ error: "Credenciais Auvo não configuradas" }), {
+        status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+    if (!gcAccessToken || !gcSecretToken) {
+      return new Response(JSON.stringify({ error: "Credenciais GC não configuradas" }), {
+        status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    console.log(`[oficina-kanban] Sync período: ${startDate} a ${endDate}`);
+    const bearerToken = await auvoLogin(auvoApiKey, auvoApiToken);
+
+    const gcH: Record<string, string> = {
+      "access-token": gcAccessToken,
+      "secret-access-token": gcSecretToken,
+      "Content-Type": "application/json",
+    };
+
+    // Fetch in parallel
+    const [auvoResult, gcOsMap, gcOrcMap] = await Promise.all([
+      fetchAuvoTasksWithQuestionnaire(bearerToken, startDate, endDate),
+      fetchGcOsMap(gcH),
+      fetchGcOrcamentosMap(gcH),
+    ]);
+
+    let auvoTasks = auvoResult.tasks;
+
+    // Fallback: if empty, try wider range
+    if ((auvoResult.hadError || auvoTasks.length === 0) && startDate !== "2020-01-01") {
+      console.warn("[oficina-kanban] Fallback com range amplo");
+      const fallback = await fetchAuvoTasksWithQuestionnaire(bearerToken, "2020-01-01", "2030-12-31");
+      const filtered = fallback.tasks.filter((t: any) => {
+        const d = String(t.taskDate || "").split("T")[0];
+        return d >= startDate && d <= endDate;
+      });
+      if (filtered.length > 0) auvoTasks = filtered;
+    }
+
+    console.log(`[oficina-kanban] Auvo tasks: ${auvoTasks.length}, GC OS: ${Object.keys(gcOsMap).length}, GC Orç: ${Object.keys(gcOrcMap).length}`);
+
+    // If Auvo failed, preserve cache
+    if (auvoTasks.length === 0 && auvoResult.errorMessage) {
+      const { data: cached } = await sbClient
+        .from("kanban_oficina_cache").select("*").order("coluna").order("posicao");
+      const items = (cached || []).map((row: any) => ({ ...row.dados, _coluna: row.coluna, _posicao: row.posicao }));
+      return new Response(JSON.stringify({
+        success: false, error: auvoResult.errorMessage,
+        items, from_cache: true, total: items.length,
+      }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
+
+    // Build items
+    const items = auvoTasks.map((task: any) => {
+      const taskId = String(task.taskID || "");
+      const gcOsMatch = gcOsMap[taskId] || null;
+      const gcOrcMatch = gcOrcMap[taskId] || null;
+
+      const targetQ = (task.questionnaires || []).find(
+        (q: any) => String(q.questionnaireId) === QUESTIONNAIRE_ID
+      );
+      const answers = (targetQ?.answers || []).map((a: any) => ({
+        question: String(a.questionDescription || ""),
+        reply: String(a.reply || ""),
+      }));
+
+      const hasFilledAnswers = answers.some(
+        (a: any) => a.reply && a.reply.trim() !== "" && !a.reply.startsWith("http")
+      );
+
+      // Extract equipment info from answers
+      let equipamento_nome = "";
+      let equipamento_modelo = "";
+      let equipamento_serie = "";
+      for (const ans of answers) {
+        const q = ans.question.toLowerCase();
+        if (q.includes("equipamento") || q.includes("aparelho") || q.includes("máquina") || q.includes("maquina")) {
+          if (q.includes("modelo") || q.includes("type") || q.includes("tipo")) {
+            equipamento_modelo = ans.reply;
+          } else if (q.includes("série") || q.includes("serie") || q.includes("serial")) {
+            equipamento_serie = ans.reply;
+          } else if (!equipamento_nome) {
+            equipamento_nome = ans.reply;
+          }
+        }
+        if (!equipamento_nome && (q.includes("nome") || q.includes("descrição") || q.includes("descricao")) && !q.includes("cliente")) {
+          equipamento_nome = ans.reply;
+        }
+      }
+
+      const cliente = String(task.customerDescription || task.customerName || task.customer?.tradeName || "").trim();
+      const dataTarefa = String(task.taskDate || "").split("T")[0];
+
+      // Calculate days in warehouse
+      const entryDate = new Date(dataTarefa);
+      const todayDate = new Date();
+      const diasNoGalpao = Math.max(0, Math.floor((todayDate.getTime() - entryDate.getTime()) / (1000 * 60 * 60 * 24)));
+
+      const item = {
+        auvo_task_id: taskId,
+        auvo_link: `https://app2.auvo.com.br/relatorioTarefas/DetalheTarefa/${taskId}`,
+        auvo_task_url: String(task.taskUrl || ""),
+        equipamento_nome: equipamento_nome || "Equipamento não identificado",
+        equipamento_modelo,
+        equipamento_serie,
+        equipments_id: task.equipmentsId || [],
+        cliente: cliente || "Cliente não identificado",
+        tecnico: String(task.userToName || ""),
+        data_tarefa: dataTarefa,
+        data_entrada: dataTarefa,
+        dias_no_galpao: diasNoGalpao,
+        status_auvo: task.finished ? "Finalizada" : (task.checkIn ? "Em andamento" : "Aberta"),
+        questionario_preenchido: hasFilledAnswers,
+        questionario_respostas: answers,
+        gc_os: gcOsMatch,
+        gc_orcamento: gcOrcMatch,
+      };
+
+      return item;
+    });
+
+    // Read existing cache to preserve positions
+    const { data: existingCache } = await sbClient
+      .from("kanban_oficina_cache")
+      .select("auvo_task_id, coluna, posicao, dados");
+
+    const existingMap: Record<string, { coluna: string; posicao: number; dados: any }> = {};
+    for (const row of existingCache || []) {
+      existingMap[row.auvo_task_id] = { coluna: row.coluna, posicao: row.posicao, dados: row.dados };
+    }
+
+    const now = new Date().toISOString();
+    const upsertRows = items.map((item: any, idx: number) => {
+      const existing = existingMap[item.auvo_task_id];
+      const autoCol = autoAssignColumn(item);
+
+      let finalColuna: string;
+      let finalPosicao: number;
+
+      if (!existing) {
+        finalColuna = autoCol;
+        finalPosicao = idx;
+      } else {
+        // Check if data changed meaningfully
+        const oldData = existing.dados || {};
+        const hadUpdate =
+          (!oldData.gc_os && item.gc_os) ||
+          (!oldData.gc_orcamento && item.gc_orcamento) ||
+          (oldData.gc_os?.gc_situacao !== item.gc_os?.gc_situacao) ||
+          (oldData.gc_orcamento?.gc_situacao !== item.gc_orcamento?.gc_situacao);
+
+        if (hadUpdate) {
+          finalColuna = autoCol;
+          finalPosicao = 0;
+        } else {
+          finalColuna = existing.coluna;
+          finalPosicao = existing.posicao;
+        }
+      }
+
+      return {
+        auvo_task_id: item.auvo_task_id,
+        dados: item,
+        coluna: finalColuna,
+        posicao: finalPosicao,
+        atualizado_em: now,
+      };
+    });
+
+    // Upsert in batches
+    for (let i = 0; i < upsertRows.length; i += 50) {
+      const batch = upsertRows.slice(i, i + 50);
+      await sbClient.from("kanban_oficina_cache").upsert(batch, { onConflict: "auvo_task_id" });
+    }
+
+    // Update sync metadata
+    await sbClient.from("kanban_sync_meta").upsert({
+      id: "oficina_default",
+      ultimo_sync: now,
+      periodo_inicio: startDate,
+      periodo_fim: endDate,
+    });
+
+    console.log(`[oficina-kanban] Cache atualizado: ${upsertRows.length} itens`);
+
+    return new Response(JSON.stringify({
+      total: items.length,
+      updated: upsertRows.length,
+      ultimo_sync: now,
+      from_cache: false,
+    }), {
+      status: 200,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  } catch (err) {
+    console.error("[oficina-kanban] Error:", err);
+    return new Response(JSON.stringify({ error: (err as Error).message }), {
+      status: 500,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
+});

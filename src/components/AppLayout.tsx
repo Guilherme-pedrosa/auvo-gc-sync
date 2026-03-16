@@ -34,6 +34,7 @@ const navGroups: NavGroup[] = [
       { label: "Orçamentos", icon: Kanban, path: "/financeiro/kanban-orcamentos" },
       { label: "Personalizado", icon: ListChecks, path: "/financeiro/kanban-personalizado" },
       { label: "Ordens de Serviço", icon: Wrench, path: "/financeiro/kanban-os" },
+      { label: "Oficina", icon: Wrench, path: "/financeiro/kanban-oficina" },
     ],
   },
   {
