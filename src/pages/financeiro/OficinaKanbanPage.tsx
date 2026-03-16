@@ -94,6 +94,10 @@ export default function OficinaKanbanPage() {
   const [selectedCard, setSelectedCard] = useState<OficinaItem | null>(null);
   const [sortBy, setSortBy] = useState<"manual" | "data" | "cliente" | "tecnico" | "dias">("manual");
   const [isSyncing, setIsSyncing] = useState(false);
+  const [manualOsTaskId, setManualOsTaskId] = useState("");
+  const [manualGcOsCode, setManualGcOsCode] = useState("");
+  const [manualGcOrcCode, setManualGcOrcCode] = useState("");
+  const [isSavingLink, setIsSavingLink] = useState(false);
 
   const { data, isLoading, refetch, isFetching } = useQuery({
     queryKey: ["oficina-kanban", format(dateRange.from, "yyyy-MM-dd"), format(dateRange.to, "yyyy-MM-dd")],
