@@ -51,8 +51,6 @@ export default function HorasTrabalhadasTab({
 }: Props) {
   const [filterTecnico, setFilterTecnico] = useState("todos");
   const [filterCliente, setFilterCliente] = useState("todos");
-  const [filterTecnico, setFilterTecnico] = useState("todos");
-  const [filterCliente, setFilterCliente] = useState("todos");
   const [filterGrupo, setFilterGrupo] = useState("todos");
   const [selectedTipos, setSelectedTipos] = useState<Set<string>>(new Set());
   const [allTiposSelected, setAllTiposSelected] = useState(true);
