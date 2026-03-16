@@ -1038,6 +1038,68 @@ export default function OSKanbanPage() {
             </PopoverContent>
           </Popover>
 
+          {/* Situação GC filter */}
+          <Popover>
+            <PopoverTrigger asChild>
+              <Button variant="outline" size="sm" className="gap-2">
+                <Filter className="h-3.5 w-3.5" />
+                {allSituacoesSelected
+                  ? "Todas situações"
+                  : `${selectedSituacoes.size} situaç${selectedSituacoes.size !== 1 ? "ões" : "ão"}`}
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent className="w-[320px] p-0" align="start">
+              <div className="p-3 border-b">
+                <Input
+                  placeholder="Buscar situação..."
+                  value={searchSituacao}
+                  onChange={(e) => setSearchSituacao(e.target.value)}
+                  className="h-8"
+                />
+              </div>
+              <div className="p-2 border-b">
+                <label className="flex items-center gap-2 px-2 py-1 cursor-pointer hover:bg-accent rounded text-sm">
+                  <Checkbox
+                    checked={allSituacoesSelected}
+                    onCheckedChange={(checked) => {
+                      setAllSituacoesSelected(!!checked);
+                      if (checked) setSelectedSituacoes(new Set());
+                    }}
+                  />
+                  <span className="font-medium">Todas (padrão)</span>
+                </label>
+              </div>
+              <ScrollArea className="h-[280px]">
+                <div className="p-2 space-y-0.5">
+                  {filteredSituacaoOptions.map((sit) => {
+                    const corItem = rawItems?.find((i) => i.gc_os_situacao === sit);
+                    const cor = corItem?.gc_os_cor_situacao || undefined;
+                    return (
+                      <label key={sit} className="flex items-center gap-2 px-2 py-1.5 cursor-pointer hover:bg-accent rounded text-sm">
+                        <Checkbox
+                          checked={allSituacoesSelected || selectedSituacoes.has(sit)}
+                          onCheckedChange={() => {
+                            setAllSituacoesSelected(false);
+                            setSelectedSituacoes((prev) => {
+                              const next = new Set(prev);
+                              if (next.has(sit)) next.delete(sit);
+                              else next.add(sit);
+                              return next;
+                            });
+                          }}
+                        />
+                        {cor && (
+                          <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: cor }} />
+                        )}
+                        <span className="truncate">{sit}</span>
+                      </label>
+                    );
+                  })}
+                </div>
+              </ScrollArea>
+            </PopoverContent>
+          </Popover>
+
           {/* Flag filter */}
           <FlagFilterPopover
             allCities={allCities}
