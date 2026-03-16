@@ -42,54 +42,59 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     let isMounted = true;
 
-    const applySession = async (session: { user: User } | null) => {
+    const releaseLoading = () => {
+      if (isMounted) setLoading(false);
+    };
+
+    // Fail-safe: never allow infinite spinner
+    const loadingTimeout = window.setTimeout(() => {
+      console.warn("Auth loading timeout reached, releasing UI");
+      releaseLoading();
+    }, 2500);
+
+    const applySession = (session: Session | null) => {
       if (!isMounted) return;
+
       const u = session?.user ?? null;
       setUser(u);
 
       if (!u) {
         setProfile(null);
         setIsAdmin(false);
+        releaseLoading();
         return;
       }
 
-      await fetchUserData(u);
+      // Do not block UI on profile/role fetch
+      void fetchUserData(u).finally(() => {
+        releaseLoading();
+      });
     };
 
-    const initialize = async () => {
-      try {
-        const {
-          data: { session },
-        } = await supabase.auth.getSession();
-        await applySession(session as any);
-      } catch (err) {
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, session) => {
+      applySession(session);
+    });
+
+    supabase.auth
+      .getSession()
+      .then(({ data: { session } }) => {
+        applySession(session);
+      })
+      .catch((err) => {
         console.error("Error initializing auth:", err);
         if (isMounted) {
           setUser(null);
           setProfile(null);
           setIsAdmin(false);
         }
-      } finally {
-        if (isMounted) setLoading(false);
-      }
-    };
-
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange(async (_event, session) => {
-      try {
-        await applySession(session as any);
-      } catch (err) {
-        console.error("Error on auth state change:", err);
-      } finally {
-        if (isMounted) setLoading(false);
-      }
-    });
-
-    initialize();
+        releaseLoading();
+      });
 
     return () => {
       isMounted = false;
+      window.clearTimeout(loadingTimeout);
       subscription.unsubscribe();
     };
   }, []);
