@@ -5,215 +5,136 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
-const AUVO_BASE_URL = "https://api.auvo.com.br/v2";
-
-function parseCurrency(value: unknown): number {
-  if (typeof value === "number") return Number.isFinite(value) ? value : 0;
-  if (typeof value !== "string") return 0;
-  const raw = value.trim();
-  if (!raw) return 0;
-  const hasDot = raw.includes(".");
-  const hasComma = raw.includes(",");
-  let normalized = raw;
-  if (hasDot && hasComma) normalized = raw.replace(/\./g, "").replace(",", ".");
-  else if (hasComma) normalized = raw.replace(",", ".");
-  const parsed = Number.parseFloat(normalized);
-  return Number.isFinite(parsed) ? parsed : 0;
-}
-
-async function auvoLogin(apiKey: string, apiToken: string): Promise<string> {
-  const url = `${AUVO_BASE_URL}/login/?apiKey=${encodeURIComponent(apiKey)}&apiToken=${encodeURIComponent(apiToken)}`;
-  const response = await fetch(url, { method: "GET", headers: { "Content-Type": "application/json" } });
-  if (!response.ok) {
-    const errBody = await response.text().catch(() => "");
-    throw new Error(`Auvo login failed (${response.status}): ${errBody.substring(0, 200)}`);
-  }
-  const data = await response.json();
-  const token = data?.result?.accessToken;
-  if (!token) throw new Error("Auvo login: accessToken não retornado");
-  return token;
-}
-
-function auvoHeaders(token: string): Record<string, string> {
-  return { Authorization: `Bearer ${token}`, "Content-Type": "application/json" };
-}
-
-/**
- * Fetch all FINALIZED tasks from Auvo for a date range, paginated.
- * 
- * IMPORTANT - Auvo API V2 spec:
- * - paramFilter é JSON string URL-encoded
- * - startDate e endDate são OBRIGATÓRIOS no formato yyyy-MM-ddTHH:mm:ss (sem timezone, sem Z)
- * - status=3 = finalizedAutomaticallyOrManually
- */
-async function fetchAllAuvoTasks(
-  bearerToken: string,
-  startDate: string, // yyyy-MM-dd
-  endDate: string    // yyyy-MM-dd
-): Promise<{ tasks: any[]; error: string | null }> {
-  const allTasks: any[] = [];
-  let page = 1;
-  const pageSize = 100;
-  const MAX_PAGES = 10; // Safety limit
-
-  // Formato exigido pela spec: yyyy-MM-ddTHH:mm:ss (sem Z, sem timezone)
-  const formattedStart = `${startDate}T00:00:00`;
-  const formattedEnd = `${endDate}T23:59:59`;
-
-  console.log(`[tech-dashboard] startDate=${formattedStart}, endDate=${formattedEnd}`);
-
-  while (page <= MAX_PAGES) {
-    // paramFilter: JSON stringified + URL encoded, com status=3 (finalizadas)
-    const filterObj = {
-      startDate: formattedStart,
-      endDate: formattedEnd,
-      status: 3,
-    };
-    const paramFilter = encodeURIComponent(JSON.stringify(filterObj));
-    const url = `${AUVO_BASE_URL}/tasks/?page=${page}&pageSize=${pageSize}&order=asc&paramFilter=${paramFilter}`;
-
-    console.log(`[tech-dashboard] Fetching page ${page} (filter: startDate=${formattedStart}, endDate=${formattedEnd}, status=3)`);
-
-    const response = await fetch(url, { headers: auvoHeaders(bearerToken) });
-
-    if (response.status === 404) {
-      console.log(`[tech-dashboard] Page ${page}: 404 — sem tarefas no período`);
-      return { tasks: allTasks, error: null };
-    }
-
-    if (!response.ok) {
-      const errBody = await response.text().catch(() => "");
-      const errorMsg = `Auvo tasks API retornou ${response.status}: ${errBody.substring(0, 500)}`;
-      console.error(`[tech-dashboard] ${errorMsg}`);
-      return { tasks: allTasks, error: errorMsg };
-    }
-
-    const responseText = await response.text();
-    let data: any;
-    try {
-      data = JSON.parse(responseText);
-    } catch {
-      console.error(`[tech-dashboard] JSON parse error on page ${page}`);
-      return { tasks: allTasks, error: "Resposta inválida (não é JSON) da API Auvo" };
-    }
-
-    const entities = data?.result?.entityList || data?.result?.Entities || [];
-
-    if (page === 1 && entities.length > 0) {
-      console.log(`[tech-dashboard] First task keys: ${Object.keys(entities[0]).join(", ")}`);
-      console.log(`[tech-dashboard] First task sample: ${JSON.stringify(entities[0]).substring(0, 1000)}`);
-      // Log value-related fields
-      const t0 = entities[0];
-      console.log(`[tech-dashboard] Value fields: expense=${JSON.stringify(t0.expense)?.substring(0,200)}, services=${JSON.stringify(t0.services)?.substring(0,500)}, products=${JSON.stringify(t0.products)?.substring(0,500)}, additionalCosts=${JSON.stringify(t0.additionalCosts)?.substring(0,200)}`);
-    }
-
-    allTasks.push(...entities);
-    console.log(`[tech-dashboard] Page ${page}: ${entities.length} tasks (total acumulado: ${allTasks.length})`);
-
-    if (entities.length < pageSize) break;
-    page++;
-  }
-
-  if (page > MAX_PAGES) {
-    console.warn(`[tech-dashboard] Atingiu limite de ${MAX_PAGES} páginas, total parcial: ${allTasks.length}`);
-  }
-
-  return { tasks: allTasks, error: null };
-}
-
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   try {
-    const auvoApiKey = Deno.env.get("AUVO_APP_KEY");
-    const auvoApiToken = Deno.env.get("AUVO_TOKEN");
-
-    if (!auvoApiKey || !auvoApiToken) {
-      return new Response(JSON.stringify({ error: "Credenciais Auvo não configuradas" }), {
-        status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
+    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+    const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+    const sb = createClient(supabaseUrl, supabaseKey);
 
     let body: any = {};
     try { const text = await req.text(); if (text) body = JSON.parse(text); } catch {}
 
-    const today = new Date();
-    const startDate = body.start_date || today.toISOString().split("T")[0];
-    const endDate = body.end_date || today.toISOString().split("T")[0];
+    const today = new Date().toISOString().split("T")[0];
+    const startDate = body.start_date || today;
+    const endDate = body.end_date || today;
 
-    console.log(`[tech-dashboard] Período solicitado: ${startDate} a ${endDate}`);
+    console.log(`[tech-dashboard] Período: ${startDate} a ${endDate}`);
 
-    // Login Auvo
-    const bearerToken = await auvoLogin(auvoApiKey, auvoApiToken);
-
-    // Fetch finalized tasks
-    const { tasks, error: auvoError } = await fetchAllAuvoTasks(bearerToken, startDate, endDate);
-    console.log(`[tech-dashboard] Total tasks retornadas: ${tasks.length}`);
-
-
-
-    // Build maps from conciliation snapshot: task→valor AND tecnico→valor_total
-    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
-    const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-    const supabase = createClient(supabaseUrl, supabaseKey);
-
-    const auvoTaskValorMap: Record<string, number> = {};
-    // Aggregate valor by auvo_tecnico_id from snapshot (all OS, all periods)
-    const tecnicoValorFromSnapshot: Record<string, number> = {};
-    const tecnicoNomeFromSnapshot: Record<string, string> = {};
-    try {
-      const { data: snapshotRows } = await supabase
-        .from("auvo_gc_sync_log")
-        .select("detalhes")
-        .eq("observacao", "CONCILIACAO_SNAPSHOT")
-        .order("executado_em", { ascending: false })
-        .limit(1);
-
-      const detalhes = snapshotRows?.[0]?.detalhes as any;
-      const itens: any[] = Array.isArray(detalhes?.itens) ? detalhes.itens : (Array.isArray(detalhes) ? detalhes : []);
-      
-      for (const item of itens) {
-        const auvoTaskId = String(item.auvo_task_id || "").trim();
-        const valor = parseCurrency(item.gc_valor_total);
-        if (auvoTaskId && valor > 0) {
-          auvoTaskValorMap[auvoTaskId] = valor;
-        }
-        // Aggregate by technician — ONLY for OS within the requested date range
-        const tecId = String(item.auvo_tecnico_id || "").trim();
-        const tecNome = String(item.auvo_tecnico_nome || "").trim();
-        const dataOs = String(item.data_os || "").trim();
-        const withinRange = dataOs >= startDate && dataOs <= endDate;
-        if (tecId && valor > 0 && withinRange) {
-          tecnicoValorFromSnapshot[tecId] = (tecnicoValorFromSnapshot[tecId] || 0) + valor;
-          if (tecNome) tecnicoNomeFromSnapshot[tecId] = tecNome;
-        }
-      }
-      console.log(`[tech-dashboard] Snapshot: ${itens.length} itens, ${Object.keys(auvoTaskValorMap).length} com valor, ${Object.keys(tecnicoValorFromSnapshot).length} técnicos com faturamento`);
-    } catch (err) {
-      console.warn(`[tech-dashboard] Erro ao carregar snapshot:`, err);
+    // Fetch tasks from tarefas_central using data_conclusao (completion date) with fallback to data_tarefa
+    const allTasks: any[] = [];
+    for (let from = 0; ; from += 1000) {
+      const { data: chunk, error } = await sb
+        .from("tarefas_central")
+        .select("*")
+        .gte("data_tarefa", startDate)
+        .lte("data_tarefa", endDate)
+        .range(from, from + 999);
+      if (error) { console.error("[tech-dashboard] DB error:", error.message); break; }
+      if (!chunk || chunk.length === 0) break;
+      allTasks.push(...chunk);
+      if (chunk.length < 1000) break;
     }
 
+    // Also fetch tasks that have data_conclusao in range but data_tarefa outside (cross-month tasks)
+    const crossMonthTasks: any[] = [];
+    for (let from = 0; ; from += 1000) {
+      const { data: chunk, error } = await sb
+        .from("tarefas_central")
+        .select("*")
+        .not("data_conclusao", "is", null)
+        .gte("data_conclusao", startDate)
+        .lte("data_conclusao", endDate)
+        .or(`data_tarefa.lt.${startDate},data_tarefa.gt.${endDate},data_tarefa.is.null`)
+        .range(from, from + 999);
+      if (error) { console.error("[tech-dashboard] DB cross-month error:", error.message); break; }
+      if (!chunk || chunk.length === 0) break;
+      crossMonthTasks.push(...chunk);
+      if (chunk.length < 1000) break;
+    }
+
+    // Merge, dedup by auvo_task_id
+    const seen = new Set(allTasks.map((t: any) => t.auvo_task_id));
+    for (const t of crossMonthTasks) {
+      if (!seen.has(t.auvo_task_id)) {
+        allTasks.push(t);
+        seen.add(t.auvo_task_id);
+      }
+    }
+
+    console.log(`[tech-dashboard] Total tasks from DB: ${allTasks.length} (${crossMonthTasks.length} cross-month)`);
+
+    // Load valor_hora_config for cost calculation
+    const { data: valorHoraConfigs } = await sb.from("valor_hora_config").select("*");
+    const { data: grupos } = await sb.from("grupos_clientes").select("*");
+    const { data: membros } = await sb.from("grupo_cliente_membros").select("*");
+
+    const configs = valorHoraConfigs || [];
+    const gruposList = grupos || [];
+    const membrosList = membros || [];
+
+    // Build group→members map
+    const grupoMembrosMap: Record<string, string[]> = {};
+    for (const g of gruposList) {
+      grupoMembrosMap[g.id] = membrosList
+        .filter((m: any) => m.grupo_id === g.id)
+        .map((m: any) => m.cliente_nome);
+    }
+
+    const normalizeName = (name: string) =>
+      name.toUpperCase()
+        .replace(/\s*(LTDA|ME|SA|EPP|EIRELI|S\/A|S\.A\.|LTDA\.?|MEI)\s*/g, "")
+        .replace(/[.\-\/]/g, "")
+        .replace(/\s+/g, " ")
+        .trim();
+
+    function getHourlyRate(tecnico: string, clienteAuvo: string, clienteGc: string): number {
+      for (const nome of [clienteAuvo, clienteGc].filter(Boolean)) {
+        const direct = configs.find(
+          (c: any) => c.tecnico_nome === tecnico && c.tipo_referencia === "cliente" && c.referencia_nome === nome
+        );
+        if (direct) return Number(direct.valor_hora) || 0;
+      }
+      const nAuvo = normalizeName(clienteAuvo);
+      const nGc = normalizeName(clienteGc);
+      for (const g of gruposList) {
+        const gClientes = grupoMembrosMap[g.id] || [];
+        const isInGroup = gClientes.some((gc: string) => {
+          const n = normalizeName(gc);
+          return n === nAuvo || n === nGc || (nAuvo && n.includes(nAuvo)) || (nAuvo && nAuvo.includes(n));
+        });
+        if (isInGroup) {
+          const groupConfig = configs.find(
+            (c: any) => c.tecnico_nome === tecnico && c.tipo_referencia === "grupo" && c.grupo_id === g.id
+          );
+          if (groupConfig) return Number(groupConfig.valor_hora) || 0;
+        }
+      }
+      return 0;
+    }
 
     // Group by technician
-    const techMap: Record<string, {
+    type TechAccum = {
       id: string;
       nome: string;
       tarefas_total: number;
       tarefas_finalizadas: number;
       tarefas_abertas: number;
-      tarefas_com_checkin: number;
-      tarefas_com_checkout: number;
       tarefas_com_pendencia: number;
       tempo_total_minutos: number;
+      deslocamento_total_minutos: number;
       valor_total: number;
       tarefas_por_dia: Record<string, number>;
       finalizadas_por_dia: Record<string, number>;
-    }> = {};
+    };
 
-    for (const task of tasks) {
-      const techId = String(task.idUserTo || task.userToId || task.collaboratorId || "");
-      const techName = String(task.userToName || task.collaboratorName || "Desconhecido").trim();
-      if (!techId || techName === "Desconhecido") continue;
+    const techMap: Record<string, TechAccum> = {};
+
+    for (const t of allTasks) {
+      const techId = String(t.tecnico_id || "").trim();
+      const techName = String(t.tecnico || "").trim();
+      if (!techId || !techName) continue;
 
       if (!techMap[techId]) {
         techMap[techId] = {
@@ -222,10 +143,9 @@ Deno.serve(async (req) => {
           tarefas_total: 0,
           tarefas_finalizadas: 0,
           tarefas_abertas: 0,
-          tarefas_com_checkin: 0,
-          tarefas_com_checkout: 0,
           tarefas_com_pendencia: 0,
           tempo_total_minutos: 0,
+          deslocamento_total_minutos: 0,
           valor_total: 0,
           tarefas_por_dia: {},
           finalizadas_por_dia: {},
@@ -235,50 +155,44 @@ Deno.serve(async (req) => {
       const tech = techMap[techId];
       tech.tarefas_total++;
 
-      // Como filtramos status=3 (finalizadas), todas são finalizadas
-      // Mas verificamos o campo finished por segurança
-      const finished = task.finished === true || task.finished === "true" || task.status === 3;
+      const finished = t.check_out === true;
       if (finished) tech.tarefas_finalizadas++;
       else tech.tarefas_abertas++;
 
-      if (task.checkIn === true) tech.tarefas_com_checkin++;
-      if (task.checkOut === true) tech.tarefas_com_checkout++;
-
-      const pendency = String(task.pendency ?? task.pendencia ?? "").trim();
-      if (pendency && pendency.toLowerCase() !== "nenhuma" && pendency !== "" && pendency !== "0") {
+      const pendencia = String(t.pendencia || "").trim();
+      if (pendencia && pendencia.toLowerCase() !== "nenhuma" && pendencia !== "0") {
         tech.tarefas_com_pendencia++;
       }
 
-      // Usar durationDecimal do Auvo (horas decimais) — é o tempo real de trabalho na tarefa
-      // calculado pelo próprio Auvo, evita somar check-in/check-out sobrepostos
-      const durationDecimal = parseFloat(task.durationDecimal);
-      if (!isNaN(durationDecimal) && durationDecimal > 0) {
-        tech.tempo_total_minutos += durationDecimal * 60;
-      } else {
-        // Fallback: parse campo duration "HH:MM:SS"
-        const durationStr = String(task.duration || "");
-        const match = durationStr.match(/^(\d+):(\d+):(\d+)$/);
-        if (match) {
-          tech.tempo_total_minutos += parseInt(match[1]) * 60 + parseInt(match[2]) + parseInt(match[3]) / 60;
-        }
+      // Hours from duracao_decimal
+      const duracao = Number(t.duracao_decimal) || 0;
+      if (duracao > 0) {
+        tech.tempo_total_minutos += duracao * 60;
       }
 
-      // Valor: per-task lookup (soma individual)
-      const taskId = String(task.taskID || "").trim();
-      const valorDoSnapshot = auvoTaskValorMap[taskId];
-      if (valorDoSnapshot && valorDoSnapshot > 0) {
-        tech.valor_total += valorDoSnapshot;
+      // Displacement
+      const deslocamento = Number(t.duracao_deslocamento) || 0;
+      if (deslocamento > 0) {
+        tech.deslocamento_total_minutos += deslocamento * 60;
       }
 
-      // Tasks per day
-      const taskDate = String(task.taskDate || task.date || startDate).split("T")[0];
+      // Value: use hourly rate config
+      const cliente = t.cliente || t.gc_os_cliente || "";
+      const clienteGc = t.gc_os_cliente || "";
+      const rate = getHourlyRate(techName, cliente, clienteGc);
+      if (rate > 0 && duracao > 0) {
+        tech.valor_total += duracao * rate;
+      }
+
+      // Tasks per day (use completion date)
+      const taskDate = t.data_conclusao || t.data_tarefa || startDate;
       tech.tarefas_por_dia[taskDate] = (tech.tarefas_por_dia[taskDate] || 0) + 1;
       if (finished) {
         tech.finalizadas_por_dia[taskDate] = (tech.finalizadas_por_dia[taskDate] || 0) + 1;
       }
     }
 
-    // Calculate metrics per technician
+    // Calculate metrics
     const tecnicos = Object.values(techMap).map((tech) => {
       const dias = Object.keys(tech.tarefas_por_dia).length || 1;
       const taxaFinalizacao = tech.tarefas_total > 0
@@ -286,14 +200,12 @@ Deno.serve(async (req) => {
         : 0;
       const mediaExecucoesDia = Math.round((tech.tarefas_finalizadas / dias) * 10) / 10;
       const tempoHoras = Math.round(tech.tempo_total_minutos / 60 * 10) / 10;
+      const deslocamentoHoras = Math.round(tech.deslocamento_total_minutos / 60 * 10) / 10;
       const tempoAtividadePct = dias > 0
         ? Math.round((tech.tempo_total_minutos / (dias * 480)) * 100)
         : 0;
 
-      // Usar valor agregado do snapshot (todas as OS do técnico) se maior que a soma por task
-      const valorPorTask = Math.round(tech.valor_total * 100) / 100;
-      const valorDoSnapshotTotal = Math.round((tecnicoValorFromSnapshot[tech.id] || 0) * 100) / 100;
-      const valorTotal = Math.max(valorPorTask, valorDoSnapshotTotal);
+      const valorTotal = Math.round(tech.valor_total * 100) / 100;
       const faturamentoHora = tempoHoras > 0 ? Math.round((valorTotal / tempoHoras) * 100) / 100 : 0;
 
       return {
@@ -306,6 +218,7 @@ Deno.serve(async (req) => {
         taxa_finalizacao: taxaFinalizacao,
         media_execucoes_dia: mediaExecucoesDia,
         tempo_horas: tempoHoras,
+        deslocamento_horas: deslocamentoHoras,
         tempo_atividade_pct: tempoAtividadePct,
         dias_trabalhados: dias,
         valor_total: valorTotal,
@@ -315,15 +228,14 @@ Deno.serve(async (req) => {
       };
     }).sort((a, b) => b.faturamento_hora - a.faturamento_hora);
 
-    // Summary
     const resumo = {
       periodo: { inicio: startDate, fim: endDate },
-      total_tarefas: tasks.length,
-      total_finalizadas: tasks.filter((t: any) => t.finished === true || t.finished === "true" || t.status === 3).length,
+      total_tarefas: allTasks.length,
+      total_finalizadas: allTasks.filter((t: any) => t.check_out === true).length,
       total_tecnicos: tecnicos.length,
     };
 
-    return new Response(JSON.stringify({ resumo, tecnicos, auvo_error: auvoError }), {
+    return new Response(JSON.stringify({ resumo, tecnicos }), {
       status: 200,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
