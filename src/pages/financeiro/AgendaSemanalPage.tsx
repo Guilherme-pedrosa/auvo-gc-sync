@@ -698,7 +698,7 @@ function TaskDetailDialog({
 
   const statusClass = STATUS_COLORS[tarefa.status_auvo || ""] || "bg-muted text-muted-foreground";
   const auvoUrl = tarefa.auvo_link || `https://app2.auvo.com.br/relatorioTarefas/DetalheTarefa/${tarefa.auvo_task_id}`;
-  const canEdit = tarefa.status_auvo === "Agendada";
+  const canEdit = tarefa.status_auvo === "Agendada" || tarefa.status_auvo === "Aberta";
 
   const startEditing = () => {
     setEditDate(tarefa.data_tarefa || "");
