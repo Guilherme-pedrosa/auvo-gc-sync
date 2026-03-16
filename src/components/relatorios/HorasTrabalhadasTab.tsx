@@ -163,32 +163,35 @@ export default function HorasTrabalhadasTab({
   };
 
   // Summary by technician
-  type TaskDetail = { auvo_task_id: string; descricao: string; hora_inicio: string; hora_fim: string; horas: number; data_tarefa: string };
-  type ClienteData = { horas: number; tarefas: number; valor: number; tipos: Map<string, number>; tasks: TaskDetail[] };
+  type TaskDetail = { auvo_task_id: string; descricao: string; hora_inicio: string; hora_fim: string; horas: number; deslocamento: number; data_tarefa: string };
+  type ClienteData = { horas: number; deslocamento: number; tarefas: number; valor: number; tipos: Map<string, number>; tasks: TaskDetail[] };
   const tecnicoSummary = useMemo(() => {
-    const map = new Map<string, { tecnico: string; horas: number; tarefas: number; valor: number; byCliente: Map<string, ClienteData> }>();
+    const map = new Map<string, { tecnico: string; horas: number; deslocamento: number; tarefas: number; valor: number; byCliente: Map<string, ClienteData> }>();
     for (const t of filtered) {
       const tec = t.tecnico || "Desconhecido";
       const cliente = t.cliente || t.gc_os_cliente || "Sem cliente";
       const clienteGc = t.gc_os_cliente || "";
       const horas = Number(t.duracao_decimal) || 0;
+      const deslocamento = Number(t.duracao_deslocamento) || 0;
       const rate = getHourlyRate(tec, cliente, clienteGc);
 
       let entry = map.get(tec);
       if (!entry) {
-        entry = { tecnico: tec, horas: 0, tarefas: 0, valor: 0, byCliente: new Map() };
+        entry = { tecnico: tec, horas: 0, deslocamento: 0, tarefas: 0, valor: 0, byCliente: new Map() };
         map.set(tec, entry);
       }
       entry.horas += horas;
+      entry.deslocamento += deslocamento;
       entry.tarefas++;
       entry.valor += horas * rate;
 
       let clienteEntry = entry.byCliente.get(cliente);
       if (!clienteEntry) {
-        clienteEntry = { horas: 0, tarefas: 0, valor: 0, tipos: new Map(), tasks: [] };
+        clienteEntry = { horas: 0, deslocamento: 0, tarefas: 0, valor: 0, tipos: new Map(), tasks: [] };
         entry.byCliente.set(cliente, clienteEntry);
       }
       clienteEntry.horas += horas;
+      clienteEntry.deslocamento += deslocamento;
       clienteEntry.tarefas++;
       clienteEntry.valor += horas * rate;
 
@@ -200,6 +203,7 @@ export default function HorasTrabalhadasTab({
         hora_inicio: t.hora_inicio || "",
         hora_fim: t.hora_fim || "",
         horas,
+        deslocamento,
         data_tarefa: t.data_tarefa || "",
       });
     }
@@ -207,6 +211,7 @@ export default function HorasTrabalhadasTab({
   }, [filtered, valorHoraConfigs, grupos, grupoClienteMap]);
 
   const totalHoras = useMemo(() => tecnicoSummary.reduce((s, t) => s + t.horas, 0), [tecnicoSummary]);
+  const totalDeslocamento = useMemo(() => tecnicoSummary.reduce((s, t) => s + t.deslocamento, 0), [tecnicoSummary]);
   const totalValor = useMemo(() => tecnicoSummary.reduce((s, t) => s + t.valor, 0), [tecnicoSummary]);
   const totalTarefas = useMemo(() => tecnicoSummary.reduce((s, t) => s + t.tarefas, 0), [tecnicoSummary]);
 
