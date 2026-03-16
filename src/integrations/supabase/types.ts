@@ -134,6 +134,53 @@ export type Database = {
         }
         Relationships: []
       }
+      grupo_cliente_membros: {
+        Row: {
+          cliente_nome: string
+          criado_em: string
+          grupo_id: string
+          id: string
+        }
+        Insert: {
+          cliente_nome: string
+          criado_em?: string
+          grupo_id: string
+          id?: string
+        }
+        Update: {
+          cliente_nome?: string
+          criado_em?: string
+          grupo_id?: string
+          id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "grupo_cliente_membros_grupo_id_fkey"
+            columns: ["grupo_id"]
+            isOneToOne: false
+            referencedRelation: "grupos_clientes"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      grupos_clientes: {
+        Row: {
+          criado_em: string
+          id: string
+          nome: string
+        }
+        Insert: {
+          criado_em?: string
+          id?: string
+          nome: string
+        }
+        Update: {
+          criado_em?: string
+          id?: string
+          nome?: string
+        }
+        Relationships: []
+      }
       kanban_custom_cache: {
         Row: {
           atualizado_em: string
@@ -403,6 +450,47 @@ export type Database = {
           user_id?: string
         }
         Relationships: []
+      }
+      valor_hora_config: {
+        Row: {
+          atualizado_em: string
+          criado_em: string
+          grupo_id: string | null
+          id: string
+          referencia_nome: string
+          tecnico_nome: string
+          tipo_referencia: string
+          valor_hora: number
+        }
+        Insert: {
+          atualizado_em?: string
+          criado_em?: string
+          grupo_id?: string | null
+          id?: string
+          referencia_nome: string
+          tecnico_nome: string
+          tipo_referencia?: string
+          valor_hora?: number
+        }
+        Update: {
+          atualizado_em?: string
+          criado_em?: string
+          grupo_id?: string | null
+          id?: string
+          referencia_nome?: string
+          tecnico_nome?: string
+          tipo_referencia?: string
+          valor_hora?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "valor_hora_config_grupo_id_fkey"
+            columns: ["grupo_id"]
+            isOneToOne: false
+            referencedRelation: "grupos_clientes"
+            referencedColumns: ["id"]
+          },
+        ]
       }
     }
     Views: {
