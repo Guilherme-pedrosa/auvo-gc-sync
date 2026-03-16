@@ -287,33 +287,162 @@ export default function HorasTrabalhadasTab({
     return tipoOptions.filter((t) => t.label.toLocaleLowerCase("pt-BR").includes(term));
   }, [tipoOptions, searchTipo]);
 
+  const fmtBRL = (v: number) => v > 0 ? "R$ " + v.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : "—";
+
   const handleExportPDF = () => {
     const doc = new jsPDF();
-    doc.setFontSize(16);
+    const pageW = doc.internal.pageSize.getWidth();
+    const periodoStr = `${format(dateFrom, "dd/MM/yyyy")} a ${format(dateTo, "dd/MM/yyyy")}`;
+
+    // ── Header ──
+    doc.setFontSize(18);
+    doc.setFont("helvetica", "bold");
     doc.text("Relatório de Horas Trabalhadas", 14, 20);
     doc.setFontSize(10);
-    doc.text(`Período: ${format(dateFrom, "dd/MM/yyyy")} a ${format(dateTo, "dd/MM/yyyy")}`, 14, 28);
+    doc.setFont("helvetica", "normal");
+    doc.text(`Período: ${periodoStr}`, 14, 28);
 
-    const tableData: any[] = [];
+    // ── Resumo Geral ──
+    doc.setFontSize(12);
+    doc.setFont("helvetica", "bold");
+    doc.text("Resumo Geral", 14, 40);
+
+    autoTable(doc, {
+      startY: 44,
+      head: [["Horas Trabalhadas", "Horas Deslocamento", "Tarefas", "Técnicos", "Valor Total"]],
+      body: [[
+        `${totalHoras.toFixed(1)}h`,
+        `${totalDeslocamento.toFixed(1)}h`,
+        String(totalTarefas),
+        String(tecnicoSummary.length),
+        fmtBRL(totalValor),
+      ]],
+      styles: { fontSize: 9, halign: "center" },
+      headStyles: { fillColor: [37, 99, 235], halign: "center" },
+      theme: "grid",
+    });
+
+    let curY = (doc as any).lastAutoTable.finalY + 12;
+
+    // ── Resumo por Cliente ──
+    doc.setFontSize(12);
+    doc.setFont("helvetica", "bold");
+    doc.text("Resumo por Cliente", 14, curY);
+    curY += 4;
+
+    const clienteRows = clienteSummary.map((c) => [
+      c.cliente,
+      String(c.tarefas),
+      `${c.horas.toFixed(1)}h`,
+      `${c.deslocamento.toFixed(1)}h`,
+      String(c.tecnicos.size),
+      fmtBRL(c.valor),
+    ]);
+    clienteRows.push([
+      "TOTAL",
+      String(totalTarefas),
+      `${totalHoras.toFixed(1)}h`,
+      `${totalDeslocamento.toFixed(1)}h`,
+      "",
+      fmtBRL(totalValor),
+    ]);
+
+    autoTable(doc, {
+      startY: curY,
+      head: [["Cliente", "Tarefas", "Horas", "Desloc.", "Técnicos", "Valor"]],
+      body: clienteRows,
+      styles: { fontSize: 8 },
+      headStyles: { fillColor: [37, 99, 235] },
+      columnStyles: { 0: { cellWidth: 55 }, 5: { halign: "right" } },
+      didParseCell: (data: any) => {
+        if (data.section === "body" && data.row.index === clienteRows.length - 1) {
+          data.cell.styles.fontStyle = "bold";
+          data.cell.styles.fillColor = [230, 237, 250];
+        }
+      },
+    });
+
+    curY = (doc as any).lastAutoTable.finalY + 12;
+
+    // ── Resumo por Técnico ──
+    if (curY > 240) { doc.addPage(); curY = 20; }
+    doc.setFontSize(12);
+    doc.setFont("helvetica", "bold");
+    doc.text("Resumo por Técnico", 14, curY);
+    curY += 4;
+
+    const tecRows = tecnicoSummary.map((t) => [
+      t.tecnico,
+      String(t.tarefas),
+      `${t.horas.toFixed(1)}h`,
+      `${t.deslocamento.toFixed(1)}h`,
+      fmtBRL(t.valor),
+    ]);
+    tecRows.push([
+      "TOTAL",
+      String(totalTarefas),
+      `${totalHoras.toFixed(1)}h`,
+      `${totalDeslocamento.toFixed(1)}h`,
+      fmtBRL(totalValor),
+    ]);
+
+    autoTable(doc, {
+      startY: curY,
+      head: [["Técnico", "Tarefas", "Horas", "Desloc.", "Valor"]],
+      body: tecRows,
+      styles: { fontSize: 8 },
+      headStyles: { fillColor: [37, 99, 235] },
+      columnStyles: { 4: { halign: "right" } },
+      didParseCell: (data: any) => {
+        if (data.section === "body" && data.row.index === tecRows.length - 1) {
+          data.cell.styles.fontStyle = "bold";
+          data.cell.styles.fillColor = [230, 237, 250];
+        }
+      },
+    });
+
+    curY = (doc as any).lastAutoTable.finalY + 12;
+
+    // ── Detalhamento Técnico × Cliente ──
+    if (curY > 240) { doc.addPage(); curY = 20; }
+    doc.setFontSize(12);
+    doc.setFont("helvetica", "bold");
+    doc.text("Detalhamento por Técnico e Cliente", 14, curY);
+    curY += 4;
+
+    const detailRows: any[] = [];
     for (const tec of tecnicoSummary) {
-      for (const [cliente, cd] of tec.byCliente) {
-        tableData.push([
+      for (const [cliente, cd] of Array.from(tec.byCliente.entries()).sort(([, a], [, b]) => b.valor - a.valor)) {
+        detailRows.push([
           tec.tecnico,
           cliente,
-          cd.tarefas,
-          cd.horas.toFixed(2) + "h",
-          cd.valor > 0 ? "R$ " + cd.valor.toFixed(2) : "—",
+          String(cd.tarefas),
+          `${cd.horas.toFixed(2)}h`,
+          `${cd.deslocamento.toFixed(2)}h`,
+          fmtBRL(cd.valor),
         ]);
       }
     }
 
     autoTable(doc, {
-      startY: 34,
-      head: [["Técnico", "Cliente", "Tarefas", "Horas", "Valor"]],
-      body: tableData,
-      styles: { fontSize: 8 },
+      startY: curY,
+      head: [["Técnico", "Cliente", "Tarefas", "Horas", "Desloc.", "Valor"]],
+      body: detailRows,
+      styles: { fontSize: 7 },
       headStyles: { fillColor: [37, 99, 235] },
+      columnStyles: { 0: { cellWidth: 35 }, 1: { cellWidth: 50 }, 5: { halign: "right" } },
     });
+
+    // ── Footer ──
+    const pages = doc.getNumberOfPages();
+    for (let i = 1; i <= pages; i++) {
+      doc.setPage(i);
+      doc.setFontSize(7);
+      doc.setFont("helvetica", "normal");
+      doc.setTextColor(130);
+      doc.text(`Gerado em ${format(new Date(), "dd/MM/yyyy HH:mm")} · Página ${i}/${pages}`, pageW / 2, doc.internal.pageSize.getHeight() - 8, { align: "center" });
+      doc.setTextColor(0);
+    }
 
     doc.save(`horas-trabalhadas-${format(dateFrom, "yyyyMMdd")}-${format(dateTo, "yyyyMMdd")}.pdf`);
   };
