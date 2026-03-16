@@ -24,6 +24,7 @@ import {
 import { Map as MapIcon } from "lucide-react";
 import OSMapView from "@/components/financeiro/OSMapView";
 import RouteCorridorFilter from "@/components/financeiro/RouteCorridorFilter";
+import FlagFilterPopover from "@/components/financeiro/FlagFilterPopover";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { Label } from "@/components/ui/label";
@@ -113,7 +114,7 @@ export default function OSKanbanPage() {
   // City/flag filter (multi-select)
   const [selectedFlags, setSelectedFlags] = useState<Set<string>>(new Set());
   const [allFlagsSelected, setAllFlagsSelected] = useState(true);
-  const [showFlagFilter, setShowFlagFilter] = useState(false);
+  
   const [filterOnlyRoutes, setFilterOnlyRoutes] = useState(false);
   // Edit task state
   const [showEditModal, setShowEditModal] = useState(false);
@@ -966,90 +967,20 @@ export default function OSKanbanPage() {
           </Popover>
 
           {/* Flag filter */}
-          <Popover open={showFlagFilter} onOpenChange={setShowFlagFilter}>
-            <PopoverTrigger asChild>
-              <Button variant="outline" size="sm" className="gap-2 min-w-[160px] justify-start">
-                🚩 Flags
-                {!allFlagsSelected && selectedFlags.size > 0 && (
-                  <Badge variant="secondary" className="text-[10px] h-4 px-1 ml-1">
-                    {selectedFlags.size}
-                  </Badge>
-                )}
-              </Button>
-            </PopoverTrigger>
-            <PopoverContent className="w-[300px] p-0" align="start">
-              <div className="p-2 border-b">
-                <label className="flex items-center gap-2 px-2 py-1 cursor-pointer hover:bg-accent rounded text-sm">
-                  <Checkbox
-                    checked={allFlagsSelected}
-                    onCheckedChange={() => {
-                      if (allFlagsSelected) {
-                        setSelectedFlags(new Set());
-                        setAllFlagsSelected(false);
-                      } else {
-                        setSelectedFlags(new Set(allCities));
-                        setAllFlagsSelected(true);
-                      }
-                    }}
-                  />
-                  <span className="font-medium">Todas as cidades</span>
-                </label>
-                <label className="flex items-center gap-2 px-2 py-1 cursor-pointer hover:bg-accent rounded text-sm mt-1">
-                  <Checkbox
-                    checked={filterOnlyRoutes}
-                    onCheckedChange={(v) => setFilterOnlyRoutes(!!v)}
-                  />
-                  <span className="font-medium">🔗 Apenas com rota</span>
-                </label>
-              </div>
-              <ScrollArea className="max-h-[300px]">
-                <div className="p-2 space-y-0.5">
-                  {allCities.map((city) => {
-                    const color = cityColorMap.get(city);
-                    const count = cityCounts.get(city) || 0;
-                    return (
-                      <label key={city} className="flex items-center gap-2 px-2 py-1.5 cursor-pointer hover:bg-accent rounded text-sm">
-                        <Checkbox
-                          checked={allFlagsSelected || selectedFlags.has(city)}
-                          onCheckedChange={() => {
-                            setSelectedFlags((prev) => {
-                              const next = new Set(allFlagsSelected ? allCities : prev);
-                              if (next.has(city)) next.delete(city);
-                              else next.add(city);
-                              return next;
-                            });
-                            setAllFlagsSelected(false);
-                          }}
-                        />
-                        <span
-                          className="w-3 h-3 rounded-full flex-shrink-0 border"
-                          style={{ backgroundColor: color?.bg || "#6b7280" }}
-                        />
-                        <span className="truncate flex-1">{city}</span>
-                        <span className="text-xs text-muted-foreground">{count}</span>
-                      </label>
-                    );
-                  })}
-                </div>
-              </ScrollArea>
-              {/* Roteirizar button */}
-              {!allFlagsSelected && selectedFlags.size > 0 && (
-                <div className="p-2 border-t">
-                  <Button
-                    size="sm"
-                    className="w-full gap-2"
-                    onClick={() => {
-                      setShowFlagFilter(false);
-                      setViewMode("map");
-                    }}
-                  >
-                    <Navigation className="h-3.5 w-3.5" />
-                    Roteirizar {selectedFlags.size} cidade{selectedFlags.size !== 1 ? "s" : ""} selecionada{selectedFlags.size !== 1 ? "s" : ""}
-                  </Button>
-                </div>
-              )}
-            </PopoverContent>
-          </Popover>
+          <FlagFilterPopover
+            allCities={allCities}
+            cityColorMap={cityColorMap}
+            cityCounts={cityCounts}
+            selectedFlags={selectedFlags}
+            allFlagsSelected={allFlagsSelected}
+            filterOnlyRoutes={filterOnlyRoutes}
+            onApply={(flags, allSelected, onlyRoutes) => {
+              setSelectedFlags(flags);
+              setAllFlagsSelected(allSelected);
+              setFilterOnlyRoutes(onlyRoutes);
+            }}
+            onRoteirizar={() => setViewMode("map")}
+          />
 
           {/* Value range filter */}
           <Popover>
