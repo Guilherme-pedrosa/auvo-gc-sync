@@ -865,8 +865,8 @@ function DayView({
                           setDragOverCell(null);
                           const raw = e.dataTransfer.getData("application/json");
                           if (!raw) return;
-                          const { taskId, fromDate } = JSON.parse(raw);
-                          onDayDrop(taskId, tec.nome, tec.id, hour, fromDate);
+                          const { taskId } = JSON.parse(raw);
+                          onDayDrop(taskId, tec.nome, tec.id, hour);
                         }}
                       />
                     );
