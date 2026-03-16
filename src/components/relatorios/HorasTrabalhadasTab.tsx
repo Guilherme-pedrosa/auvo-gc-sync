@@ -538,7 +538,14 @@ export default function HorasTrabalhadasTab({
                                           {cd.tasks
                                             .sort((a, b) => a.data_tarefa.localeCompare(b.data_tarefa) || a.hora_inicio.localeCompare(b.hora_inicio))
                                             .map((task, idx) => (
-                                              <Badge key={idx} variant="outline" className="text-[9px] font-mono gap-1">
+                                              <Badge
+                                                key={idx}
+                                                variant={task.horas < 0 ? "destructive" : "outline"}
+                                                className={cn(
+                                                  "text-[9px] font-mono gap-1",
+                                                  task.horas < 0 && "animate-pulse"
+                                                )}
+                                              >
                                                 #{task.auvo_task_id}
                                                 {task.hora_inicio && task.hora_fim
                                                   ? ` ${task.hora_inicio}–${task.hora_fim}`
@@ -546,6 +553,7 @@ export default function HorasTrabalhadasTab({
                                                   ? ` ${task.hora_inicio}`
                                                   : ""}
                                                 {" · "}{task.horas.toFixed(1)}h
+                                                {task.horas < 0 && " ⚠️"}
                                               </Badge>
                                             ))}
                                         </div>
