@@ -12,7 +12,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   ArrowLeft, CalendarIcon, RefreshCw, ExternalLink,
-  GripVertical, Filter, Wrench, Clock, Package, AlertTriangle
+  GripVertical, Filter, Wrench, Clock, Package, AlertTriangle, Link2, Save
 } from "lucide-react";
 import { format, startOfMonth, subMonths } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -94,6 +94,10 @@ export default function OficinaKanbanPage() {
   const [selectedCard, setSelectedCard] = useState<OficinaItem | null>(null);
   const [sortBy, setSortBy] = useState<"manual" | "data" | "cliente" | "tecnico" | "dias">("manual");
   const [isSyncing, setIsSyncing] = useState(false);
+  const [manualOsTaskId, setManualOsTaskId] = useState("");
+  const [manualGcOsCode, setManualGcOsCode] = useState("");
+  const [manualGcOrcCode, setManualGcOrcCode] = useState("");
+  const [isSavingLink, setIsSavingLink] = useState(false);
 
   const { data, isLoading, refetch, isFetching } = useQuery({
     queryKey: ["oficina-kanban", format(dateRange.from, "yyyy-MM-dd"), format(dateRange.to, "yyyy-MM-dd")],
@@ -138,7 +142,49 @@ export default function OficinaKanbanPage() {
     }
   }, [dateRange, refetch]);
 
-  // All unique clients
+  const handleSaveManualLink = useCallback(async () => {
+    if (!selectedCard) return;
+    if (!manualOsTaskId && !manualGcOsCode && !manualGcOrcCode) {
+      toast.error("Preencha pelo menos um campo para vincular");
+      return;
+    }
+    setIsSavingLink(true);
+    try {
+      const { data: result, error } = await supabase.functions.invoke("oficina-kanban", {
+        body: {
+          mode: "save_manual_link",
+          auvo_task_id: selectedCard.auvo_task_id,
+          os_task_id: manualOsTaskId || null,
+          gc_os_code: manualGcOsCode || null,
+          gc_orc_code: manualGcOrcCode || null,
+        },
+      });
+      if (error) throw error;
+      if (result?.ok) {
+        toast.success("Vínculo salvo com sucesso!");
+        // Update local card data
+        if (result.dados) {
+          setSelectedCard(result.dados);
+          setColumns(prev => prev.map(col => ({
+            ...col,
+            items: col.items.map(item =>
+              item.auvo_task_id === selectedCard.auvo_task_id ? { ...item, ...result.dados } : item
+            ),
+          })));
+        }
+        setManualOsTaskId("");
+        setManualGcOsCode("");
+        setManualGcOrcCode("");
+      } else {
+        toast.error(result?.error || "Erro ao salvar vínculo");
+      }
+    } catch (e: any) {
+      toast.error("Erro ao salvar: " + (e?.message || ""));
+    } finally {
+      setIsSavingLink(false);
+    }
+  }, [selectedCard, manualOsTaskId, manualGcOsCode, manualGcOrcCode]);
+
   const allClientes = useMemo(() => {
     if (!data?.items) return [];
     const set = new Set((data.items as OficinaItem[]).map((i) => i.cliente).filter(Boolean));
@@ -565,7 +611,7 @@ export default function OficinaKanbanPage() {
                                         className={`rounded-md border bg-card shadow-sm transition-shadow cursor-pointer ${
                                           snapshot.isDragging ? "shadow-lg ring-2 ring-primary/20" : "hover:shadow-md"
                                         }`}
-                                        onClick={() => setSelectedCard(item)}
+                                        onClick={() => { setSelectedCard(item); setManualOsTaskId(""); setManualGcOsCode(""); setManualGcOrcCode(""); }}
                                       >
                                         <div className="px-3 py-2 space-y-1.5">
                                           {/* Equipment name */}
@@ -783,7 +829,59 @@ export default function OficinaKanbanPage() {
                   )}
                 </div>
 
-                {/* GC Orçamento */}
+                {/* Manual Link Section — shown when no equipment ID */}
+                {(!selectedCard.equipments_id || selectedCard.equipments_id.length === 0) && (
+                  <div className="p-3 rounded-lg bg-amber-50 border border-amber-200 space-y-3">
+                    <h4 className="text-sm font-semibold text-amber-800 flex items-center gap-2">
+                      <Link2 className="h-4 w-4" />
+                      Vincular manualmente (sem ID equipamento)
+                    </h4>
+                    <div className="grid grid-cols-1 gap-2">
+                      {!selectedCard.os_task_id && (
+                        <div className="flex items-center gap-2">
+                          <label className="text-xs text-muted-foreground whitespace-nowrap w-28">Tarefa OS Auvo:</label>
+                          <Input
+                            placeholder="Ex: 70970640"
+                            value={manualOsTaskId}
+                            onChange={(e) => setManualOsTaskId(e.target.value)}
+                            className="h-8 text-xs"
+                          />
+                        </div>
+                      )}
+                      {!selectedCard.gc_os && (
+                        <div className="flex items-center gap-2">
+                          <label className="text-xs text-muted-foreground whitespace-nowrap w-28">Código OS GC:</label>
+                          <Input
+                            placeholder="Ex: OS-12345"
+                            value={manualGcOsCode}
+                            onChange={(e) => setManualGcOsCode(e.target.value)}
+                            className="h-8 text-xs"
+                          />
+                        </div>
+                      )}
+                      {!selectedCard.gc_orcamento && (
+                        <div className="flex items-center gap-2">
+                          <label className="text-xs text-muted-foreground whitespace-nowrap w-28">Código Orç. GC:</label>
+                          <Input
+                            placeholder="Ex: ORC-12345"
+                            value={manualGcOrcCode}
+                            onChange={(e) => setManualGcOrcCode(e.target.value)}
+                            className="h-8 text-xs"
+                          />
+                        </div>
+                      )}
+                    </div>
+                    <Button
+                      size="sm"
+                      onClick={handleSaveManualLink}
+                      disabled={isSavingLink || (!manualOsTaskId && !manualGcOsCode && !manualGcOrcCode)}
+                      className="w-full gap-2"
+                    >
+                      <Save className="h-3.5 w-3.5" />
+                      {isSavingLink ? "Salvando..." : "Salvar vínculo"}
+                    </Button>
+                  </div>
+                )}
                 {selectedCard.gc_orcamento && (
                   <div className="p-3 rounded-lg bg-violet-50 border border-violet-200 space-y-2">
                     <h4 className="text-sm font-semibold text-violet-800">
