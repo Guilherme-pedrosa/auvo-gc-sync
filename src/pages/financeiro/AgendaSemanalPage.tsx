@@ -558,7 +558,7 @@ export default function AgendaSemanalPage() {
         tarefa={selectedTarefa}
         onClose={() => setSelectedTarefa(null)}
         tecnicos={tecnicos}
-        onUpdate={async (taskId, newDate, newTecNome, newTecId) => {
+        onUpdate={async (taskId, newDate, newTecNome, newTecId, newHour, newMinute) => {
           setMovingTaskId(taskId);
           try {
             const { data: taskData } = await supabase.functions.invoke("auvo-task-update", {
@@ -571,10 +571,18 @@ export default function AgendaSemanalPage() {
             const oldDate = selectedTarefa?.data_tarefa;
             const oldTec = selectedTarefa?.tecnico;
 
-            if (newDate && newDate !== oldDate) {
-              const newDateFormatted = newDate + "T" + (taskResult.taskDate?.substring(11) || "08:00:00");
+            // Build date+time
+            const dateToUse = newDate || oldDate || format(new Date(), "yyyy-MM-dd");
+            const hasTimeChange = newHour !== undefined && newMinute !== undefined;
+            const hasDateChange = newDate && newDate !== oldDate;
+
+            if (hasDateChange || hasTimeChange) {
+              const h = (newHour ?? "08").padStart(2, "0");
+              const m = (newMinute ?? "00").padStart(2, "0");
+              const newDateFormatted = dateToUse + `T${h}:${m}:00`;
               patches.push({ op: "replace", path: "/taskDate", value: newDateFormatted });
             }
+
             if (newTecId && newTecNome !== oldTec) {
               patches.push({ op: "replace", path: "/idUserTo", value: Number(newTecId) });
             }
@@ -589,6 +597,10 @@ export default function AgendaSemanalPage() {
               throw new Error(patchResult?.data?.message || `Erro ${patchResult.status}`);
             }
 
+            const updatedHoraInicio = hasTimeChange
+              ? `${(newHour ?? "08").padStart(2, "0")}:${(newMinute ?? "00").padStart(2, "0")}:00`
+              : undefined;
+
             queryClient.setQueryData(queryKey, (old: Tarefa[] | undefined) => {
               if (!old) return old;
               return old.map(t => {
@@ -597,15 +609,16 @@ export default function AgendaSemanalPage() {
                   ...t,
                   ...(newDate ? { data_tarefa: newDate } : {}),
                   ...(newTecId ? { tecnico: newTecNome, tecnico_id: newTecId } : {}),
+                  ...(updatedHoraInicio ? { hora_inicio: updatedHoraInicio } : {}),
                 };
               });
             });
 
-            // Update selected tarefa too
             setSelectedTarefa(prev => prev ? {
               ...prev,
               ...(newDate ? { data_tarefa: newDate } : {}),
               ...(newTecId ? { tecnico: newTecNome, tecnico_id: newTecId } : {}),
+              ...(updatedHoraInicio ? { hora_inicio: updatedHoraInicio } : {}),
             } : null);
 
             toast.success("Tarefa atualizada no Auvo!");
