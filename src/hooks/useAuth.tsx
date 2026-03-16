@@ -40,31 +40,58 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   useEffect(() => {
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (_event, session) => {
-        const u = session?.user ?? null;
-        setUser(u);
-        if (u) {
-          await fetchUserData(u);
-        } else {
+    let isMounted = true;
+
+    const applySession = async (session: { user: User } | null) => {
+      if (!isMounted) return;
+      const u = session?.user ?? null;
+      setUser(u);
+
+      if (!u) {
+        setProfile(null);
+        setIsAdmin(false);
+        return;
+      }
+
+      await fetchUserData(u);
+    };
+
+    const initialize = async () => {
+      try {
+        const {
+          data: { session },
+        } = await supabase.auth.getSession();
+        await applySession(session as any);
+      } catch (err) {
+        console.error("Error initializing auth:", err);
+        if (isMounted) {
+          setUser(null);
           setProfile(null);
           setIsAdmin(false);
         }
-        setLoading(false);
+      } finally {
+        if (isMounted) setLoading(false);
       }
-    );
+    };
 
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      const u = session?.user ?? null;
-      setUser(u);
-      if (u) {
-        fetchUserData(u).then(() => setLoading(false));
-      } else {
-        setLoading(false);
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange(async (_event, session) => {
+      try {
+        await applySession(session as any);
+      } catch (err) {
+        console.error("Error on auth state change:", err);
+      } finally {
+        if (isMounted) setLoading(false);
       }
     });
 
-    return () => subscription.unsubscribe();
+    initialize();
+
+    return () => {
+      isMounted = false;
+      subscription.unsubscribe();
+    };
   }, []);
 
   const signOut = async () => {
