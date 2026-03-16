@@ -784,8 +784,8 @@ export default function RealtimeTrackingPage() {
                               </p>
                               {task.gcOsCodigo && (
                                 <div className="flex items-center gap-1.5 mt-0.5">
-                                  <Badge variant="outline" className="text-[9px] h-4 px-1.5 font-mono">
-                                    OS {task.gcOsCodigo}
+                                    <Badge variant="outline" className="text-[9px] h-4 px-1.5 font-mono">
+                                      {task.gcOsTipo || "OS"} {task.gcOsCodigo}
                                   </Badge>
                                   {task.gcOsValor && task.gcOsValor !== "0" && (
                                     <span className="text-[10px] font-semibold text-emerald-600">
