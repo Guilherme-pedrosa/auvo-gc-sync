@@ -70,10 +70,14 @@ function getWeekStart(refDate: Date): Date {
   return startOfWeek(refDate, { weekStartsOn: 1 });
 }
 
+type ViewMode = "dia" | "semana" | "mes";
+
 export default function AgendaSemanalPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [weekOffset, setWeekOffset] = useState(0);
+  const [dayOffset, setDayOffset] = useState(0);
+  const [viewMode, setViewMode] = useState<ViewMode>("semana");
   const [movingTaskId, setMovingTaskId] = useState<string | null>(null);
   const [dragOverCell, setDragOverCell] = useState<string | null>(null);
   const [selectedTarefa, setSelectedTarefa] = useState<Tarefa | null>(null);
@@ -89,10 +93,10 @@ export default function AgendaSemanalPage() {
     return null;
   });
 
+  const selectedDay = useMemo(() => addDays(new Date(), dayOffset), [dayOffset]);
 
   const weekStart = useMemo(() => {
     const today = new Date();
-    // Today is always the first column; offset shifts by 7 days
     return addDays(today, weekOffset * 7);
   }, [weekOffset]);
 
@@ -100,7 +104,10 @@ export default function AgendaSemanalPage() {
     return Array.from({ length: 7 }, (_, i) => addDays(weekStart, i));
   }, [weekStart]);
 
-  const queryKey = ["agenda-semanal", format(weekStart, "yyyy-MM-dd")];
+  // For day view, we query for that single day; for week view, the week range
+  const queryStartDate = viewMode === "dia" ? format(selectedDay, "yyyy-MM-dd") : format(weekStart, "yyyy-MM-dd");
+  const queryEndDate = viewMode === "dia" ? format(selectedDay, "yyyy-MM-dd") : format(addDays(weekStart, 5), "yyyy-MM-dd");
+  const queryKey = ["agenda-semanal", queryStartDate, queryEndDate];
 
   // Fetch all Auvo users (technicians)
   const { data: allUsers } = useQuery({
@@ -118,10 +125,6 @@ export default function AgendaSemanalPage() {
   const { data: tarefas, isLoading, refetch, isFetching } = useQuery({
     queryKey,
     queryFn: async () => {
-      const startStr = format(weekStart, "yyyy-MM-dd");
-      const endStr = format(addDays(weekStart, 5), "yyyy-MM-dd");
-
-      // Read from cached tarefas_central table (fast)
       const { data: rows, error } = await supabase
         .from("tarefas_central")
         .select(
@@ -130,8 +133,8 @@ export default function AgendaSemanalPage() {
           "gc_os_valor_total, gc_orc_valor_total, gc_os_situacao, gc_os_codigo, gc_os_link, " +
           "gc_orc_situacao, gc_orcamento_codigo, gc_orc_link, pendencia"
         )
-        .gte("data_tarefa", startStr)
-        .lte("data_tarefa", endStr)
+        .gte("data_tarefa", queryStartDate)
+        .lte("data_tarefa", queryEndDate)
         .order("data_tarefa", { ascending: true });
 
       if (error) throw error;
@@ -149,8 +152,8 @@ export default function AgendaSemanalPage() {
   const refreshFromApi = useCallback(async () => {
     setIsRefreshingFromApi(true);
     try {
-      const startStr = format(weekStart, "yyyy-MM-dd");
-      const endStr = format(addDays(weekStart, 5), "yyyy-MM-dd");
+      const startStr = queryStartDate;
+      const endStr = queryEndDate;
       const { data, error } = await supabase.functions.invoke("auvo-agenda", {
         body: { startDate: startStr, endDate: endStr },
       });
@@ -202,7 +205,7 @@ export default function AgendaSemanalPage() {
     } finally {
       setIsRefreshingFromApi(false);
     }
-  }, [weekStart, queryClient, queryKey]);
+  }, [queryStartDate, queryEndDate, queryClient, queryKey]);
 
   const tecnicos = useMemo(() => {
     const map = new Map<string, { nome: string; id: string | null }>();
@@ -391,7 +394,7 @@ export default function AgendaSemanalPage() {
             <div>
               <h1 className="text-lg font-semibold text-foreground flex items-center gap-2">
                 <CalendarDays className="h-5 w-5 text-primary" />
-                Agenda Semanal
+                Agenda {viewMode === "dia" ? "Diária" : viewMode === "semana" ? "Semanal" : "Mensal"}
               </h1>
               <p className="text-xs text-muted-foreground">
                 {totalTarefas} tarefa{totalTarefas !== 1 ? "s" : ""} · {tecnicos.length} técnico{tecnicos.length !== 1 ? "s" : ""}
@@ -403,21 +406,43 @@ export default function AgendaSemanalPage() {
 
           <div className="flex items-center gap-2">
             <div className="flex items-center gap-1 bg-muted rounded-lg px-1 py-0.5">
-              <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setWeekOffset((o) => o - 1)}>
+              <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => {
+                if (viewMode === "dia") setDayOffset(o => o - 1);
+                else setWeekOffset(o => o - 1);
+              }}>
                 <ChevronLeft className="h-4 w-4" />
               </Button>
               <button
-                onClick={() => setWeekOffset(0)}
+                onClick={() => { setWeekOffset(0); setDayOffset(0); }}
                 className={cn(
                   "px-3 py-1 text-xs font-medium rounded-md transition-colors",
-                  weekOffset === 0 ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"
+                  (viewMode === "dia" ? dayOffset === 0 : weekOffset === 0) ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"
                 )}
               >
                 Hoje
               </button>
-              <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setWeekOffset((o) => o + 1)}>
+              <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => {
+                if (viewMode === "dia") setDayOffset(o => o + 1);
+                else setWeekOffset(o => o + 1);
+              }}>
                 <ChevronRight className="h-4 w-4" />
               </Button>
+            </div>
+
+            {/* View mode toggle */}
+            <div className="flex items-center bg-muted rounded-lg px-0.5 py-0.5">
+              {(["dia", "semana", "mes"] as ViewMode[]).map(mode => (
+                <button
+                  key={mode}
+                  onClick={() => setViewMode(mode)}
+                  className={cn(
+                    "px-2.5 py-1 text-xs font-medium rounded-md transition-colors capitalize",
+                    viewMode === mode ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"
+                  )}
+                >
+                  {mode === "dia" ? "Dia" : mode === "semana" ? "Semana" : "Mês"}
+                </button>
+              ))}
             </div>
 
             <Popover>
@@ -454,7 +479,6 @@ export default function AgendaSemanalPage() {
                               const set = new Set(prev || tecnicos.map(x => x.nome));
                               if (val) set.add(t.nome);
                               else set.delete(t.nome);
-                              // Only reset to null (all) if we actually have techs loaded
                               if (tecnicos.length > 0 && set.size >= tecnicos.length) return null;
                               return set;
                             });
@@ -476,7 +500,10 @@ export default function AgendaSemanalPage() {
         </div>
 
         <div className="mt-2 text-sm text-muted-foreground text-center">
-          {format(weekStart, "dd 'de' MMMM", { locale: ptBR })} — {format(addDays(weekStart, 5), "dd 'de' MMMM, yyyy", { locale: ptBR })}
+          {viewMode === "dia"
+            ? format(selectedDay, "EEEE, dd 'de' MMMM, yyyy", { locale: ptBR })
+            : `${format(weekStart, "dd 'de' MMMM", { locale: ptBR })} — ${format(addDays(weekStart, 5), "dd 'de' MMMM, yyyy", { locale: ptBR })}`
+          }
         </div>
       </div>
 
@@ -490,8 +517,17 @@ export default function AgendaSemanalPage() {
           </div>
         ) : tecnicos.length === 0 ? (
           <div className="flex items-center justify-center h-64 text-muted-foreground">
-            Nenhuma tarefa encontrada para esta semana
+            Nenhuma tarefa encontrada
           </div>
+        ) : viewMode === "dia" ? (
+          <DayView
+            tarefas={tarefas || []}
+            filteredTecnicos={filteredTecnicos}
+            selectedDay={selectedDay}
+            onTaskClick={setSelectedTarefa}
+            onDragStart={handleDragStart}
+            movingTaskId={movingTaskId}
+          />
         ) : (
           <div className="overflow-x-auto overflow-y-auto flex-1">
             <table className="w-full border-collapse min-w-[1200px]">
@@ -660,7 +696,152 @@ export default function AgendaSemanalPage() {
     </div>
   );
 }
+const HOURS = Array.from({ length: 15 }, (_, i) => i + 6); // 06:00 to 20:00
 
+function getTaskHour(tarefa: Tarefa): number {
+  const hi = tarefa.hora_inicio || "";
+  const h = parseInt(hi.substring(0, 2), 10);
+  return isNaN(h) ? -1 : h;
+}
+
+function DayView({
+  tarefas,
+  filteredTecnicos,
+  selectedDay,
+  onTaskClick,
+  onDragStart,
+  movingTaskId,
+}: {
+  tarefas: Tarefa[];
+  filteredTecnicos: { nome: string; id: string | null }[];
+  selectedDay: Date;
+  onTaskClick: (t: Tarefa) => void;
+  onDragStart: (e: DragEvent<HTMLDivElement>, t: Tarefa) => void;
+  movingTaskId: string | null;
+}) {
+  const dayStr = format(selectedDay, "yyyy-MM-dd");
+
+  // Build grid: tecnico -> hour -> tasks
+  const techHourGrid = useMemo(() => {
+    const result = new Map<string, Map<number, Tarefa[]>>();
+    for (const tec of filteredTecnicos) {
+      const hourMap = new Map<number, Tarefa[]>();
+      HOURS.forEach(h => hourMap.set(h, []));
+      // Also a bucket for "sem horário"
+      hourMap.set(-1, []);
+      result.set(tec.nome, hourMap);
+    }
+
+    const dayTarefas = tarefas.filter(t => t.data_tarefa === dayStr);
+    for (const t of dayTarefas) {
+      const tecNome = t.tecnico || "Sem técnico";
+      const hourMap = result.get(tecNome);
+      if (!hourMap) continue;
+      const h = getTaskHour(t);
+      const bucket = hourMap.get(HOURS.includes(h) ? h : -1);
+      if (bucket) bucket.push(t);
+    }
+
+    return result;
+  }, [tarefas, filteredTecnicos, dayStr]);
+
+  return (
+    <div className="overflow-x-auto overflow-y-auto flex-1">
+      <table className="w-full border-collapse" style={{ minWidth: `${140 + filteredTecnicos.length * 180}px` }}>
+        <thead className="sticky top-0 z-20">
+          <tr className="border-b border-border bg-muted/50">
+            <th className="text-left px-3 py-2.5 text-xs font-semibold text-muted-foreground w-20 sticky left-0 bg-muted/50 z-30">
+              Horário
+            </th>
+            {filteredTecnicos.map(tec => {
+              const hourMap = techHourGrid.get(tec.nome);
+              const totalTec = hourMap
+                ? Array.from(hourMap.values()).reduce((sum, arr) => sum + arr.length, 0)
+                : 0;
+              const totalValor = hourMap
+                ? Array.from(hourMap.values()).flat().reduce((sum, t) => sum + (t.gc_os_valor_total ?? 0), 0)
+                : 0;
+              return (
+                <th key={tec.nome} className="text-center px-2 py-2.5 text-xs font-semibold min-w-[170px] border-r border-border last:border-r-0">
+                  <div className="font-medium text-foreground">{tec.nome}</div>
+                  <div className="text-[10px] text-muted-foreground font-normal">{totalTec} tarefa{totalTec !== 1 ? "s" : ""}</div>
+                  {totalValor > 0 && (
+                    <div className="text-[10px] font-semibold text-emerald-700 dark:text-emerald-400">
+                      {formatCurrency(totalValor)}
+                    </div>
+                  )}
+                </th>
+              );
+            })}
+          </tr>
+        </thead>
+        <tbody>
+          {/* Sem horário row */}
+          {filteredTecnicos.some(tec => {
+            const hourMap = techHourGrid.get(tec.nome);
+            return hourMap && (hourMap.get(-1)?.length || 0) > 0;
+          }) && (
+            <tr className="border-b border-border">
+              <td className="px-3 py-1.5 sticky left-0 bg-card z-10 border-r border-border text-xs text-muted-foreground font-medium">
+                s/ hora
+              </td>
+              {filteredTecnicos.map(tec => {
+                const tasks = techHourGrid.get(tec.nome)?.get(-1) || [];
+                return (
+                  <td key={tec.nome} className="px-1.5 py-1 align-top border-r border-border last:border-r-0">
+                    <div className="space-y-1">
+                      {tasks.map(t => (
+                        <TaskCard
+                          key={t.auvo_task_id}
+                          tarefa={t}
+                          onDragStart={onDragStart}
+                          isMoving={movingTaskId === t.auvo_task_id}
+                          onClick={() => onTaskClick(t)}
+                        />
+                      ))}
+                    </div>
+                  </td>
+                );
+              })}
+            </tr>
+          )}
+          {HOURS.map(hour => {
+            const label = `${String(hour).padStart(2, "0")}:00`;
+            const hasAny = filteredTecnicos.some(tec => {
+              const tasks = techHourGrid.get(tec.nome)?.get(hour) || [];
+              return tasks.length > 0;
+            });
+            return (
+              <tr key={hour} className={cn("border-b border-border", !hasAny && "opacity-50")}>
+                <td className="px-3 py-1.5 sticky left-0 bg-card z-10 border-r border-border text-xs text-muted-foreground font-medium whitespace-nowrap">
+                  {label}
+                </td>
+                {filteredTecnicos.map(tec => {
+                  const tasks = techHourGrid.get(tec.nome)?.get(hour) || [];
+                  return (
+                    <td key={tec.nome} className="px-1.5 py-1 align-top border-r border-border last:border-r-0 min-h-[36px]">
+                      <div className="space-y-1 min-h-[32px]">
+                        {tasks.map(t => (
+                          <TaskCard
+                            key={t.auvo_task_id}
+                            tarefa={t}
+                            onDragStart={onDragStart}
+                            isMoving={movingTaskId === t.auvo_task_id}
+                            onClick={() => onTaskClick(t)}
+                          />
+                        ))}
+                      </div>
+                    </td>
+                  );
+                })}
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
+  );
+}
 function TaskCard({
   tarefa,
   onDragStart,
