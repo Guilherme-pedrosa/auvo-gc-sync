@@ -880,9 +880,8 @@ export default function OSKanbanPage() {
                   mode="range"
                   selected={{ from: dateRange.from, to: dateRange.to }}
                   onSelect={(range) => {
-                    if (range?.from && range?.to) {
-                      setDateRange({ from: range.from, to: range.to });
-                      // columns rebuild automatically via useEffect
+                    if (range?.from) {
+                      setDateRange({ from: range.from, to: range.to || range.from });
                     }
                   }}
                   locale={ptBR}
