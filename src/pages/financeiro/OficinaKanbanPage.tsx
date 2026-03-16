@@ -53,6 +53,8 @@ type OficinaItem = {
   questionario_respostas: { question: string; reply: string }[];
   gc_os: GcDocData | null;
   gc_orcamento: GcDocData | null;
+  devolucao_preenchida?: boolean;
+  devolucao_respostas?: { question: string; reply: string }[];
 };
 
 type KanbanColumn = {
