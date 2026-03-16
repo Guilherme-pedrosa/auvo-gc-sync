@@ -346,6 +346,7 @@ export default function AgendaSemanalPage() {
           return {
             ...t,
             data_tarefa: newDate,
+            hora_inicio: persistedHoraInicio,
             ...((!sameTec && toTecId) ? { tecnico: toTecNome, tecnico_id: toTecId } : {}),
           };
         });
