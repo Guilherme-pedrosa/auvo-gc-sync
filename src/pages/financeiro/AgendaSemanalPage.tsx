@@ -187,11 +187,10 @@ export default function AgendaSemanalPage() {
       }));
 
       if (upsertRows.length > 0) {
-        // Upsert in batches of 200
-        for (let i = 0; i < upsertRows.length; i += 200) {
-          const batch = upsertRows.slice(i, i + 200);
-          await supabase.from("tarefas_central").upsert(batch, { onConflict: "auvo_task_id" });
-        }
+        const { error: persistError } = await supabase.functions.invoke("auvo-task-update", {
+          body: { action: "persist-central", rows: upsertRows },
+        });
+        if (persistError) throw persistError;
       }
 
       toast.success(`${apiTarefas.length} tarefas atualizadas da API`);
@@ -315,10 +314,12 @@ export default function AgendaSemanalPage() {
       if (!taskResult) throw new Error("Não foi possível obter dados da tarefa");
 
       const patches: Array<{ op: string; path: string; value: any }> = [];
+      const fallbackTimeFromTask = String(taskResult.taskDate || "").substring(11, 19);
+      const persistedHoraInicio = horaInicio || (fallbackTimeFromTask || null);
 
       if (!sameDay) {
         // Preserve existing time from the task
-        const existingTime = horaInicio ? horaInicio.substring(0, 5) + ":00" : (taskResult.taskDate?.substring(11) || "08:00:00");
+        const existingTime = persistedHoraInicio ? persistedHoraInicio.substring(0, 5) + ":00" : "08:00:00";
         const newDateFormatted = format(weekDays[toDayIdx], "yyyy-MM-dd") + "T" + existingTime;
         patches.push({ op: "replace", path: "/taskDate", value: newDateFormatted });
       }
@@ -345,10 +346,24 @@ export default function AgendaSemanalPage() {
           return {
             ...t,
             data_tarefa: newDate,
+            hora_inicio: persistedHoraInicio,
             ...((!sameTec && toTecId) ? { tecnico: toTecNome, tecnico_id: toTecId } : {}),
           };
         });
       });
+
+      const { error: persistError } = await supabase.functions.invoke("auvo-task-update", {
+        body: {
+          action: "persist-central",
+          row: {
+            auvo_task_id: taskId,
+            data_tarefa: newDate,
+            hora_inicio: persistedHoraInicio,
+            ...((!sameTec && toTecId) ? { tecnico: toTecNome, tecnico_id: toTecId } : {}),
+          },
+        },
+      });
+      if (persistError) throw persistError;
 
       const changes: string[] = [];
       if (!sameDay) changes.push(`data → ${format(weekDays[toDayIdx], "dd/MM")}`);
@@ -597,9 +612,7 @@ export default function AgendaSemanalPage() {
               throw new Error(patchResult?.data?.message || `Erro ${patchResult.status}`);
             }
 
-            const updatedHoraInicio = hasTimeChange
-              ? `${(newHour ?? "08").padStart(2, "0")}:${(newMinute ?? "00").padStart(2, "0")}:00`
-              : undefined;
+            const updatedHoraInicio = `${(newHour ?? "08").padStart(2, "0")}:${(newMinute ?? "00").padStart(2, "0")}:00`;
 
             queryClient.setQueryData(queryKey, (old: Tarefa[] | undefined) => {
               if (!old) return old;
@@ -609,7 +622,7 @@ export default function AgendaSemanalPage() {
                   ...t,
                   ...(newDate ? { data_tarefa: newDate } : {}),
                   ...(newTecId ? { tecnico: newTecNome, tecnico_id: newTecId } : {}),
-                  ...(updatedHoraInicio ? { hora_inicio: updatedHoraInicio } : {}),
+                  hora_inicio: updatedHoraInicio,
                 };
               });
             });
@@ -618,8 +631,21 @@ export default function AgendaSemanalPage() {
               ...prev,
               ...(newDate ? { data_tarefa: newDate } : {}),
               ...(newTecId ? { tecnico: newTecNome, tecnico_id: newTecId } : {}),
-              ...(updatedHoraInicio ? { hora_inicio: updatedHoraInicio } : {}),
+              hora_inicio: updatedHoraInicio,
             } : null);
+
+            const { error: persistError } = await supabase.functions.invoke("auvo-task-update", {
+              body: {
+                action: "persist-central",
+                row: {
+                  auvo_task_id: taskId,
+                  data_tarefa: newDate || oldDate,
+                  hora_inicio: updatedHoraInicio,
+                  ...(newTecId ? { tecnico: newTecNome, tecnico_id: newTecId } : {}),
+                },
+              },
+            });
+            if (persistError) throw persistError;
 
             toast.success("Tarefa atualizada no Auvo!");
           } catch (err: any) {
