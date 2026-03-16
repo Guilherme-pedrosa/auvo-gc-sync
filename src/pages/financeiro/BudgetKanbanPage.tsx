@@ -308,17 +308,28 @@ export default function BudgetKanbanPage() {
     }
   }, [allClientesSelected, allClientes]);
 
-  // Apply filters
+  // Apply filters + sorting
   const filteredColumns = useMemo(() => {
-    return columns.map((col) => ({
-      ...col,
-      items: col.items.filter((item) => {
+    const sortFn = (a: KanbanItem, b: KanbanItem) => {
+      if (sortBy === "data") return (a.data_tarefa || "").localeCompare(b.data_tarefa || "");
+      if (sortBy === "cliente") return (a.cliente || "").localeCompare(b.cliente || "");
+      if (sortBy === "tecnico") return (a.tecnico || "").localeCompare(b.tecnico || "");
+      if (sortBy === "valor") {
+        const va = parseFloat(a.gc_orcamento?.gc_valor_total || a.gc_os?.gc_valor_total || "0");
+        const vb = parseFloat(b.gc_orcamento?.gc_valor_total || b.gc_os?.gc_valor_total || "0");
+        return vb - va;
+      }
+      return 0;
+    };
+    return columns.map((col) => {
+      const items = col.items.filter((item) => {
         if (filterTecnico !== "todos" && item.tecnico !== filterTecnico) return false;
         if (!allClientesSelected && !selectedClientes.has(item.cliente)) return false;
         return true;
-      }),
-    }));
-  }, [columns, filterTecnico, allClientesSelected, selectedClientes]);
+      });
+      return { ...col, items: sortBy === "manual" ? items : [...items].sort(sortFn) };
+    });
+  }, [columns, filterTecnico, allClientesSelected, selectedClientes, sortBy]);
 
   // Save positions + custom columns to DB
   const savePositions = useCallback((cols: KanbanColumn[]) => {
