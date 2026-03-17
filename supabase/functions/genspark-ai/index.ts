@@ -19,21 +19,17 @@ serve(async (req) => {
     const messages: any[] = [];
 
     if (action === "improve") {
-      systemPrompt = `Você é um engenheiro técnico especializado em manutenção industrial, refrigeração, climatização e equipamentos comerciais/industriais. 
-Sua tarefa é melhorar o texto fornecido pelo técnico de campo, tornando-o mais:
-- Técnico e profissional
-- Detalhado e explicativo
-- Organizado e bem formatado
-- Mantendo TODAS as informações originais
-- Adicionando termos técnicos corretos quando possível
-- Corrigindo erros de português
+      systemPrompt = `Você é um técnico especializado em manutenção industrial, refrigeração, climatização e equipamentos.
+Sua ÚNICA tarefa é corrigir o texto fornecido:
+- Corrigir erros de ortografia e gramática
+- Corrigir termos técnicos incorretos
+- NÃO adicionar informações novas
+- NÃO adicionar cabeçalhos, títulos ou formatação extra
+- NÃO adicionar contexto como nome de cliente, técnico etc
+- Manter EXATAMENTE o mesmo formato e estrutura do original
+- Retornar APENAS o texto corrigido, nada mais`;
 
-Retorne APENAS o texto melhorado, sem explicações adicionais. Mantenha o mesmo formato (lista, parágrafo etc).`;
-
-      let userPrompt = `Melhore o seguinte texto técnico de um orçamento de serviço:\n\n${text}`;
-      if (context) {
-        userPrompt += `\n\nContexto adicional do orçamento:\nCliente: ${context.cliente}\nTécnico: ${context.tecnico}\nOrientação: ${context.orientacao || "N/A"}`;
-      }
+      const userPrompt = `Corrija o texto abaixo (apenas ortografia e termos técnicos, sem adicionar nada):\n\n${text}`;
 
       messages.push({ role: "system", content: systemPrompt });
       messages.push({ role: "user", content: userPrompt });
@@ -46,20 +42,20 @@ Você DEVE analisar TODOS os dados fornecidos: texto, contexto, equipamento, fot
 Sua análise deve cobrir OBRIGATORIAMENTE:
 
 1. **📋 Resumo do Serviço** - O que está sendo feito, para qual equipamento
-2. **🔍 Identificação do Equipamento** - Identifique marca, modelo, tipo do equipamento pelas fotos e/ou descrição. Pesquise sobre as características técnicas desse equipamento específico.
-3. **✅ Verificação do Diagnóstico do Técnico** - O diagnóstico do técnico faz sentido técnico? As peças solicitadas são compatíveis com o equipamento identificado? O técnico está correto ou há inconsistências? Aponte qualquer erro ou exagero.
-4. **⚠️ Peças Complementares Obrigatórias** - Liste peças que o técnico DEVERIA ter incluído mas não incluiu. Exemplos:
+2. **🔍 Identificação do Equipamento** - Identifique marca, modelo, tipo do equipamento pelas fotos e/ou descrição. Comente características técnicas relevantes.
+3. **✅ Verificação do Diagnóstico do Técnico** - O diagnóstico faz sentido? As peças são compatíveis com o equipamento? O técnico está correto ou há inconsistências? Aponte erros ou exageros.
+4. **⚠️ Peças Complementares** - Liste peças que o técnico DEVERIA ter incluído mas não incluiu. Exemplos:
    - Pediu resistência → deveria pedir terminais, cabos, isolamento térmico?
    - Pediu compressor → deveria pedir filtro secador, gás, óleo?
    - Pediu placa eletrônica → deveria pedir fusíveis, conectores?
    - Pediu motor → deveria pedir capacitor, rolamentos, correias?
-5. **💰 Análise de Valor** - O valor do orçamento está coerente com o mercado para este tipo de serviço/equipamento?
-6. **⚡ Pontos de Atenção e Riscos** - Possíveis problemas, cuidados na execução
-7. **🎯 Recomendações Finais** - Sugestões de melhoria, serviços preventivos adicionais
-8. **📊 Complexidade** - Baixa/Média/Alta com justificativa
+5. **⚡ Pontos de Atenção e Riscos** - Cuidados na execução
+6. **🎯 Recomendações** - Sugestões de melhoria ou serviços preventivos
+7. **📊 Complexidade** - Baixa/Média/Alta com justificativa
 
-Seja DIRETO, TÉCNICO e CRÍTICO. Se o técnico errou, aponte claramente. Se faltam peças complementares, liste TODAS.
-Use formatação com emojis, negrito e tópicos para facilitar a leitura.`;
+NÃO faça análise de valor/preço.
+Seja DIRETO, TÉCNICO e CRÍTICO. Se o técnico errou, aponte. Se faltam peças, liste TODAS.
+Use emojis, negrito e tópicos.`;
 
       // Build user content parts (text + images for vision)
       const userContentParts: any[] = [];
@@ -88,34 +84,55 @@ Use formatação com emojis, negrito e tópicos para facilitar a leitura.`;
 
       // Add photos as base64 for GPT vision (OpenAI can't always fetch external URLs)
       if (context?.fotos && Array.isArray(context.fotos) && context.fotos.length > 0) {
-        textPrompt += `\n\n📷 ${context.fotos.length} foto(s) do equipamento/serviço anexadas abaixo. ANALISE CADA FOTO para identificar o equipamento, estado, e verificar a coerência com o diagnóstico do técnico.\n`;
-        userContentParts[0] = { type: "text", text: textPrompt };
+        // Filter only URLs that look like images
+        const imageUrls = context.fotos.filter((u: string) => 
+          /\.(jpg|jpeg|png|gif|webp|bmp)/i.test(u) || u.includes("image") || u.includes("foto") || u.includes("photo")
+        );
         
-        for (const url of context.fotos.slice(0, 6)) { // max 6 photos
-          try {
-            console.log(`[analyze] Downloading photo: ${url.substring(0, 80)}...`);
-            const imgResp = await fetch(url);
-            if (!imgResp.ok) {
-              console.warn(`[analyze] Failed to download photo: ${imgResp.status}`);
-              continue;
+        if (imageUrls.length > 0) {
+          textPrompt += `\n\n📷 ${imageUrls.length} foto(s) do equipamento/serviço anexadas. ANALISE CADA FOTO para identificar o equipamento, estado, e verificar a coerência com o diagnóstico do técnico.\n`;
+          userContentParts[0] = { type: "text", text: textPrompt };
+          
+          for (const url of imageUrls.slice(0, 6)) {
+            try {
+              console.log(`[analyze] Downloading photo: ${url.substring(0, 100)}...`);
+              const imgResp = await fetch(url);
+              if (!imgResp.ok) {
+                console.warn(`[analyze] Failed to download photo: ${imgResp.status}`);
+                continue;
+              }
+              
+              const rawCt = imgResp.headers.get("content-type") || "";
+              // Force a valid image MIME - many servers return wrong content-type
+              let mime = "image/jpeg";
+              if (rawCt.includes("png")) mime = "image/png";
+              else if (rawCt.includes("webp")) mime = "image/webp";
+              else if (rawCt.includes("gif")) mime = "image/gif";
+              
+              const arrayBuf = await imgResp.arrayBuffer();
+              const bytes = new Uint8Array(arrayBuf);
+              
+              // Detect actual format from magic bytes
+              if (bytes[0] === 0x89 && bytes[1] === 0x50) mime = "image/png";
+              else if (bytes[0] === 0xFF && bytes[1] === 0xD8) mime = "image/jpeg";
+              else if (bytes[0] === 0x47 && bytes[1] === 0x49) mime = "image/gif";
+              else if (bytes[0] === 0x52 && bytes[1] === 0x49) mime = "image/webp";
+              
+              let binary = "";
+              for (let i = 0; i < bytes.length; i++) {
+                binary += String.fromCharCode(bytes[i]);
+              }
+              const base64 = btoa(binary);
+              const dataUrl = `data:${mime};base64,${base64}`;
+              
+              userContentParts.push({
+                type: "image_url",
+                image_url: { url: dataUrl, detail: "high" },
+              });
+              console.log(`[analyze] Photo added (${mime}, ${Math.round(base64.length / 1024)}KB)`);
+            } catch (imgErr) {
+              console.warn(`[analyze] Error downloading photo: ${imgErr}`);
             }
-            const arrayBuf = await imgResp.arrayBuffer();
-            const bytes = new Uint8Array(arrayBuf);
-            let binary = "";
-            for (let i = 0; i < bytes.length; i++) {
-              binary += String.fromCharCode(bytes[i]);
-            }
-            const base64 = btoa(binary);
-            const contentType = imgResp.headers.get("content-type") || "image/jpeg";
-            const dataUrl = `data:${contentType};base64,${base64}`;
-            
-            userContentParts.push({
-              type: "image_url",
-              image_url: { url: dataUrl, detail: "high" },
-            });
-            console.log(`[analyze] Photo added as base64 (${Math.round(base64.length / 1024)}KB)`);
-          } catch (imgErr) {
-            console.warn(`[analyze] Error downloading photo: ${imgErr}`);
           }
         }
       }
