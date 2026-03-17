@@ -93,7 +93,7 @@ export default function BudgetKanbanPage() {
   const [editingColumnId, setEditingColumnId] = useState<string | null>(null);
   const [editingColumnTitle, setEditingColumnTitle] = useState("");
   const [selectedCard, setSelectedCard] = useState<KanbanItem | null>(null);
-  const [expandedPhoto, setExpandedPhoto] = useState<string | null>(null);
+  // expandedPhoto removed — using PhotoGallery component
   const [sortBy, setSortBy] = useState<"manual" | "data" | "cliente" | "tecnico" | "valor">("manual");
 
   const { data, isLoading, refetch, isFetching } = useQuery<ApiResponse>({
