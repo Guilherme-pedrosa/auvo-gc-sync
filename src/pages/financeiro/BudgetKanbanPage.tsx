@@ -172,6 +172,24 @@ export default function BudgetKanbanPage() {
     return Array.from(set).sort();
   }, [data]);
 
+  // All unique equipment names
+  const allEquipamentos = useMemo(() => {
+    if (!data?.items) return [];
+    const set = new Set<string>();
+    for (const item of data.items) {
+      const nome = (item as any).equipamento_nome;
+      if (nome) set.add(nome);
+    }
+    return Array.from(set).sort();
+  }, [data]);
+
+  // Initialize equipment selection
+  useMemo(() => {
+    if (allEquipamentos.length > 0 && selectedEquipamentos.size === 0 && allEquipSelected) {
+      setSelectedEquipamentos(new Set(allEquipamentos));
+    }
+  }, [allEquipamentos]);
+
   // Initialize client selection when data loads
   useMemo(() => {
     if (allClientes.length > 0 && selectedClientes.size === 0 && allClientesSelected) {
