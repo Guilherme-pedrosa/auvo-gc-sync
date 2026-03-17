@@ -488,6 +488,7 @@ export default function BudgetKanbanPage() {
     }
   }, [selectedCard]);
 
+  const resumo = data?.resumo;
 
 
   // Orçamentos realizados breakdown: hoje, semana, mês
