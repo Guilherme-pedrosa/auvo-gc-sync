@@ -16,6 +16,7 @@ import {
   GripVertical, Filter, Wrench, Clock, Package, AlertTriangle, Link2, Save,
   Plus, Trash2, Pencil, History, ShoppingCart
 } from "lucide-react";
+import PhotoGallery from "@/components/financeiro/PhotoGallery";
 import { format, startOfMonth, subMonths } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { useNavigate } from "react-router-dom";
