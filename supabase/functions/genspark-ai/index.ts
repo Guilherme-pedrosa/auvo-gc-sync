@@ -318,8 +318,8 @@ Para cada item:
 - Base:
 - Status: confirmado / recomendar / verificar
 
-Máximo padrão: 6 itens no total.
-Pode expandir somente se houver alta complexidade, conflito forte, risco relevante ou evidência insuficiente.
+Sem limite de itens. Liste TODOS os itens necessários, incluindo insumos de montagem complementares para cada peça principal.
+A prioridade é garantir que o orçamento esteja COMPLETO, não enxuto.
 
 7) MELHORIA DO PREENCHIMENTO DA OS
 Informar objetivamente:
