@@ -46,6 +46,81 @@ async function addPhotosToContent(contentParts: any[], fotos: string[], maxPhoto
     }
   }
 }
+// =========================================================================
+// PERPLEXITY WEB SEARCH — pesquisa técnica na internet sobre o equipamento
+// =========================================================================
+async function searchEquipmentOnWeb(equipamento: string, descricao: string, orientacao: string, pecas: string): Promise<string> {
+  const PERPLEXITY_API_KEY = Deno.env.get("PERPLEXITY_API_KEY");
+  if (!PERPLEXITY_API_KEY) {
+    console.log("[genspark-ai] PERPLEXITY_API_KEY não disponível, pulando pesquisa web");
+    return "";
+  }
+
+  const equipClean = (equipamento || "").replace(/n\/a/gi, "").trim();
+  const descClean = (descricao || "").replace(/n\/a/gi, "").trim();
+  const oriClean = (orientacao || "").replace(/n\/a/gi, "").trim();
+  const pecasClean = (pecas || "").replace(/n\/a/gi, "").trim();
+
+  if (!equipClean && !descClean) {
+    console.log("[genspark-ai] Sem equipamento/descrição para pesquisar");
+    return "";
+  }
+
+  const searchQuery = `Equipamento industrial/comercial: "${equipClean || descClean}".
+Problema reportado: ${oriClean || "manutenção geral"}.
+Peças mencionadas: ${pecasClean || "não informadas"}.
+
+Preciso saber:
+1. Especificações técnicas deste equipamento (componentes principais, subsistemas)
+2. Problemas mais comuns e causas raiz típicas
+3. Lista de peças de desgaste e consumíveis específicos deste modelo
+4. Pontos críticos de manutenção preventiva
+5. Insumos e ferramentas específicas para este tipo de equipamento`;
+
+  try {
+    console.log(`[genspark-ai] Pesquisando Perplexity: "${(equipClean || descClean).substring(0, 80)}..."`);
+    
+    const response = await fetch("https://api.perplexity.ai/chat/completions", {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${PERPLEXITY_API_KEY}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model: "sonar",
+        messages: [
+          {
+            role: "system",
+            content: "Você é um engenheiro de manutenção industrial. Responda em português brasileiro de forma técnica e objetiva. Foque em dados concretos: especificações, peças, componentes, problemas comuns. Sem floreios."
+          },
+          { role: "user", content: searchQuery }
+        ],
+        temperature: 0.1,
+      }),
+    });
+
+    if (!response.ok) {
+      const errText = await response.text();
+      console.error(`[genspark-ai] Perplexity error ${response.status}: ${errText.substring(0, 200)}`);
+      return "";
+    }
+
+    const data = await response.json();
+    const answer = data.choices?.[0]?.message?.content || "";
+    const citations = data.citations || [];
+
+    console.log(`[genspark-ai] Perplexity respondeu: ${answer.length} chars, ${citations.length} fontes`);
+
+    let result = `PESQUISA WEB (fontes reais da internet):\n${answer}`;
+    if (citations.length > 0) {
+      result += `\n\nFONTES: ${citations.slice(0, 5).join(", ")}`;
+    }
+    return result;
+  } catch (e) {
+    console.error("[genspark-ai] Perplexity search failed:", e);
+    return "";
+  }
+}
 
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
