@@ -550,14 +550,30 @@ export default function BudgetKanbanPage() {
         return;
       }
 
-      const local = extractEquipmentFromCard(selectedCard);
-      setResolvedEquipment(local.nome || local.id ? local : null);
-
-      if (local.nome && local.id) {
+      // 1. Check if already persisted in tarefas_central
+      const persistedNome = (selectedCard as any).equipamento_nome;
+      const persistedId = (selectedCard as any).equipamento_id_serie;
+      if (persistedNome || persistedId) {
+        setResolvedEquipment({ nome: persistedNome || "", id: persistedId || "" });
         setIsEquipmentLoading(false);
         return;
       }
 
+      // 2. Try local extraction from questionnaire/description
+      const local = extractEquipmentFromCard(selectedCard);
+      setResolvedEquipment(local.nome || local.id ? local : null);
+
+      if (local.nome && local.id) {
+        // Persist to DB so we don't re-extract next time
+        supabase.from("tarefas_central").update({
+          equipamento_nome: local.nome,
+          equipamento_id_serie: local.id,
+        } as any).eq("auvo_task_id", selectedCard.auvo_task_id).then(() => {});
+        setIsEquipmentLoading(false);
+        return;
+      }
+
+      // 3. Only call API as last resort
       setIsEquipmentLoading(true);
       try {
         const { data: taskResp, error: taskErr } = await supabase.functions.invoke("auvo-task-update", {
@@ -595,6 +611,14 @@ export default function BudgetKanbanPage() {
 
         if (!cancelled) {
           setResolvedEquipment(resolvedNome || resolvedId ? { nome: resolvedNome, id: resolvedId } : null);
+          
+          // Persist resolved equipment to DB
+          if (resolvedNome || resolvedId) {
+            supabase.from("tarefas_central").update({
+              equipamento_nome: resolvedNome || null,
+              equipamento_id_serie: resolvedId || null,
+            } as any).eq("auvo_task_id", selectedCard.auvo_task_id).then(() => {});
+          }
         }
       } catch (error) {
         console.warn("[budget-kanban] Falha ao resolver equipamento:", error);
