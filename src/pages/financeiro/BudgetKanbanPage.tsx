@@ -491,6 +491,71 @@ export default function BudgetKanbanPage() {
     }
   }, [selectedCard]);
 
+  // AI improve text
+  const handleAiImprove = useCallback(async (keyword: string) => {
+    if (!selectedCard) return;
+    const currentText = getAnswer(selectedCard, keyword);
+    if (!currentText) { toast.error("Sem texto para melhorar"); return; }
+    setAiLoadingSection(keyword);
+    try {
+      const { data: result, error } = await supabase.functions.invoke("genspark-ai", {
+        body: {
+          action: "improve",
+          text: currentText,
+          context: {
+            cliente: selectedCard.cliente,
+            tecnico: selectedCard.tecnico,
+            orientacao: selectedCard.orientacao,
+          },
+        },
+      });
+      if (error) throw error;
+      if (result?.error) throw new Error(result.error);
+      if (result?.result) {
+        setEditingSection(keyword);
+        setEditValue(result.result);
+        toast.success("Texto melhorado pela IA! Revise e salve.");
+      }
+    } catch (e: any) {
+      toast.error("Erro na IA: " + (e?.message || "Tente novamente"));
+    } finally {
+      setAiLoadingSection(null);
+    }
+  }, [selectedCard]);
+
+  // AI technical analysis
+  const handleAiAnalysis = useCallback(async () => {
+    if (!selectedCard) return;
+    setIsAnalyzing(true);
+    setAiAnalysis(null);
+    try {
+      const { data: result, error } = await supabase.functions.invoke("genspark-ai", {
+        body: {
+          action: "analyze",
+          context: {
+            cliente: selectedCard.cliente,
+            tecnico: selectedCard.tecnico,
+            data_tarefa: selectedCard.data_tarefa,
+            orientacao: selectedCard.orientacao,
+            pecas: getAnswer(selectedCard, "peças"),
+            servicos: getAnswer(selectedCard, "serviços"),
+            tempo: getAnswer(selectedCard, "horas"),
+            observacoes: getAnswer(selectedCard, "observ"),
+            gc_valor: selectedCard.gc_orcamento?.gc_valor_total || selectedCard.gc_os?.gc_valor_total || "",
+            gc_situacao: selectedCard.gc_orcamento?.gc_situacao || selectedCard.gc_os?.gc_situacao || "",
+          },
+        },
+      });
+      if (error) throw error;
+      if (result?.error) throw new Error(result.error);
+      setAiAnalysis(result?.result || "Sem resultado");
+    } catch (e: any) {
+      toast.error("Erro na análise: " + (e?.message || "Tente novamente"));
+    } finally {
+      setIsAnalyzing(false);
+    }
+  }, [selectedCard]);
+
   const resumo = data?.resumo;
 
 
