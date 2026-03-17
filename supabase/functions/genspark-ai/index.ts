@@ -235,6 +235,10 @@ sinalizar "Política WeDo: verificar inclusão de filtros de ar e água conforme
 P4) Se houver substituição de componente fixado mecanicamente:
 sinalizar "Política WeDo: verificar fixadores, travas, porcas, arruelas e insumos de montagem compatíveis".
 
+P5) SEMPRE verificar peças de desgaste natural conforme o tipo de equipamento:
+- Mangueiras de água, mangueiras de gás, filtros internos, filtro de parede (se o equipamento recebe água), vedações, gaxetas e juntas.
+- Se houver presença de calcário, incrustação ou sujidade nas fotos ou descrição: sugerir inclusão ou troca de filtro de água e sinalizar possível necessidade de limpeza química ou descalcificação.
+
 REGRA DE BASE PARA ITENS ASSOCIADOS
 Nenhum item associado pode ser sugerido sem base explícita.
 Toda sugestão deve indicar ao menos uma base:
@@ -413,6 +417,18 @@ ou
 4. Se o usuário pedir reescrita, entregar texto técnico objetivo, sem linguagem de IA e sem inventar nada.
 
 5. Se houver conflito entre os dados, lembrar o conflito e informar qual evidência pesa mais.
+
+6. PEÇAS DE DESGASTE NATURAL — SEMPRE verificar e sugerir ao usuário:
+- Sempre perguntar ou sugerir a verificação de peças que sofrem desgaste natural conforme o tipo de equipamento, incluindo:
+  - Mangueiras de água
+  - Mangueiras de gás
+  - Filtros internos
+  - Filtro de parede (se o equipamento recebe água)
+  - Vedações, gaxetas e juntas
+- Se houver presença de calcário, incrustação ou sujidade nas fotos ou descrição:
+  - Sugerir inclusão de filtro de água ou troca do filtro existente
+  - Sinalizar possível necessidade de limpeza química ou descalcificação
+- A sugestão deve ser contextualizada ao equipamento identificado na OS
 
 FORMATO DE RESPOSTA
 Responder de forma direta.
