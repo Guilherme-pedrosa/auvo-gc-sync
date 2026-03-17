@@ -90,6 +90,10 @@ export default function BudgetKanbanPage() {
   const [filterClienteSearch, setFilterClienteSearch] = useState("");
   const [selectedClientes, setSelectedClientes] = useState<Set<string>>(new Set());
   const [allClientesSelected, setAllClientesSelected] = useState(true);
+  const [filterEquipSearch, setFilterEquipSearch] = useState("");
+  const [selectedEquipamentos, setSelectedEquipamentos] = useState<Set<string>>(new Set());
+  const [allEquipSelected, setAllEquipSelected] = useState(true);
+  const [showEquipFilter, setShowEquipFilter] = useState(false);
   const [showClienteFilter, setShowClienteFilter] = useState(false);
   const [newColumnTitle, setNewColumnTitle] = useState("");
   const [showAddColumn, setShowAddColumn] = useState(false);
