@@ -16,7 +16,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   ArrowLeft, CalendarIcon, RefreshCw, ExternalLink, ClipboardList,
   FileText, Plus, GripVertical, Trash2, Edit2, Check, X, Filter, FileDown, Star,
-  Pencil, Save
+  Pencil, Save, Sparkles, Brain, Loader2
 } from "lucide-react";
 import { format, startOfMonth } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -100,6 +100,9 @@ export default function BudgetKanbanPage() {
   const [editingSection, setEditingSection] = useState<string | null>(null);
   const [editValue, setEditValue] = useState("");
   const [isSavingField, setIsSavingField] = useState(false);
+  const [aiLoadingSection, setAiLoadingSection] = useState<string | null>(null);
+  const [aiAnalysis, setAiAnalysis] = useState<string | null>(null);
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
 
   const { data, isLoading, refetch, isFetching } = useQuery<ApiResponse>({
     queryKey: ["budget-kanban", format(dateRange.from, "yyyy-MM-dd"), format(dateRange.to, "yyyy-MM-dd")],
@@ -485,6 +488,71 @@ export default function BudgetKanbanPage() {
       toast.error("Erro ao salvar: " + (e?.message || ""));
     } finally {
       setIsSavingField(false);
+    }
+  }, [selectedCard]);
+
+  // AI improve text
+  const handleAiImprove = useCallback(async (keyword: string) => {
+    if (!selectedCard) return;
+    const currentText = getAnswer(selectedCard, keyword);
+    if (!currentText) { toast.error("Sem texto para melhorar"); return; }
+    setAiLoadingSection(keyword);
+    try {
+      const { data: result, error } = await supabase.functions.invoke("genspark-ai", {
+        body: {
+          action: "improve",
+          text: currentText,
+          context: {
+            cliente: selectedCard.cliente,
+            tecnico: selectedCard.tecnico,
+            orientacao: selectedCard.orientacao,
+          },
+        },
+      });
+      if (error) throw error;
+      if (result?.error) throw new Error(result.error);
+      if (result?.result) {
+        setEditingSection(keyword);
+        setEditValue(result.result);
+        toast.success("Texto melhorado pela IA! Revise e salve.");
+      }
+    } catch (e: any) {
+      toast.error("Erro na IA: " + (e?.message || "Tente novamente"));
+    } finally {
+      setAiLoadingSection(null);
+    }
+  }, [selectedCard]);
+
+  // AI technical analysis
+  const handleAiAnalysis = useCallback(async () => {
+    if (!selectedCard) return;
+    setIsAnalyzing(true);
+    setAiAnalysis(null);
+    try {
+      const { data: result, error } = await supabase.functions.invoke("genspark-ai", {
+        body: {
+          action: "analyze",
+          context: {
+            cliente: selectedCard.cliente,
+            tecnico: selectedCard.tecnico,
+            data_tarefa: selectedCard.data_tarefa,
+            orientacao: selectedCard.orientacao,
+            pecas: getAnswer(selectedCard, "peças"),
+            servicos: getAnswer(selectedCard, "serviços"),
+            tempo: getAnswer(selectedCard, "horas"),
+            observacoes: getAnswer(selectedCard, "observ"),
+            gc_valor: selectedCard.gc_orcamento?.gc_valor_total || selectedCard.gc_os?.gc_valor_total || "",
+            gc_situacao: selectedCard.gc_orcamento?.gc_situacao || selectedCard.gc_os?.gc_situacao || "",
+          },
+        },
+      });
+      if (error) throw error;
+      if (result?.error) throw new Error(result.error);
+      setAiAnalysis(result?.result || "Sem resultado");
+    } catch (e: any) {
+      toast.error("Erro na análise: " + (e?.message || "Tente novamente"));
+    } finally {
+      setIsAnalyzing(false);
     }
   }, [selectedCard]);
 
@@ -1125,6 +1193,30 @@ export default function BudgetKanbanPage() {
                   </div>
                 )}
 
+                {/* AI Technical Analysis Button */}
+                <Button
+                  variant="outline"
+                  className="w-full gap-2 border-purple-300 text-purple-700 hover:bg-purple-50"
+                  onClick={handleAiAnalysis}
+                  disabled={isAnalyzing}
+                >
+                  {isAnalyzing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Brain className="h-4 w-4" />}
+                  {isAnalyzing ? "Analisando com IA..." : "🤖 Análise Técnica com IA"}
+                </Button>
+
+                {/* AI Analysis Result */}
+                {aiAnalysis && (
+                  <div className="p-4 rounded-lg bg-purple-50 border border-purple-200 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <h4 className="font-semibold text-sm text-purple-900 flex items-center gap-1.5">
+                        <Brain className="h-4 w-4" /> Análise Técnica (IA)
+                      </h4>
+                      <button type="button" className="text-purple-400 hover:text-purple-600 text-xs" onClick={() => setAiAnalysis(null)}>✕ Fechar</button>
+                    </div>
+                    <div className="text-sm text-purple-900 whitespace-pre-wrap leading-relaxed">{aiAnalysis}</div>
+                  </div>
+                )}
+
                 {/* Peças Necessárias */}
                 {(() => {
                   const answer = getAnswer(selectedCard, "peças");
@@ -1133,9 +1225,20 @@ export default function BudgetKanbanPage() {
                     <div className="space-y-1">
                       <div className="flex items-center justify-between">
                         <h4 className="font-semibold text-sm text-foreground">🔧 Peças Necessárias</h4>
-                        <button type="button" className="text-muted-foreground hover:text-foreground" onClick={() => { setEditingSection("peças"); setEditValue(answer); }}>
-                          <Pencil className="h-3.5 w-3.5" />
-                        </button>
+                        <div className="flex items-center gap-1">
+                          <button
+                            type="button"
+                            className="text-purple-500 hover:text-purple-700 disabled:opacity-50"
+                            title="Melhorar com IA"
+                            disabled={aiLoadingSection === "peças"}
+                            onClick={() => handleAiImprove("peças")}
+                          >
+                            {aiLoadingSection === "peças" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
+                          </button>
+                          <button type="button" className="text-muted-foreground hover:text-foreground" onClick={() => { setEditingSection("peças"); setEditValue(answer); }}>
+                            <Pencil className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
                       </div>
                       {editingSection === "peças" ? (
                         <div className="space-y-1.5">
@@ -1162,9 +1265,20 @@ export default function BudgetKanbanPage() {
                     <div className="space-y-1">
                       <div className="flex items-center justify-between">
                         <h4 className="font-semibold text-sm text-foreground">⚙️ Serviços Necessários</h4>
-                        <button type="button" className="text-muted-foreground hover:text-foreground" onClick={() => { setEditingSection("serviços"); setEditValue(answer); }}>
-                          <Pencil className="h-3.5 w-3.5" />
-                        </button>
+                        <div className="flex items-center gap-1">
+                          <button
+                            type="button"
+                            className="text-purple-500 hover:text-purple-700 disabled:opacity-50"
+                            title="Melhorar com IA"
+                            disabled={aiLoadingSection === "serviços"}
+                            onClick={() => handleAiImprove("serviços")}
+                          >
+                            {aiLoadingSection === "serviços" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
+                          </button>
+                          <button type="button" className="text-muted-foreground hover:text-foreground" onClick={() => { setEditingSection("serviços"); setEditValue(answer); }}>
+                            <Pencil className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
                       </div>
                       {editingSection === "serviços" ? (
                         <div className="space-y-1.5">
@@ -1191,9 +1305,20 @@ export default function BudgetKanbanPage() {
                     <div className="space-y-1">
                       <div className="flex items-center justify-between">
                         <h4 className="font-semibold text-sm text-foreground">⏱️ Tempo para Execução</h4>
-                        <button type="button" className="text-muted-foreground hover:text-foreground" onClick={() => { setEditingSection("horas"); setEditValue(answer); }}>
-                          <Pencil className="h-3.5 w-3.5" />
-                        </button>
+                        <div className="flex items-center gap-1">
+                          <button
+                            type="button"
+                            className="text-purple-500 hover:text-purple-700 disabled:opacity-50"
+                            title="Melhorar com IA"
+                            disabled={aiLoadingSection === "horas"}
+                            onClick={() => handleAiImprove("horas")}
+                          >
+                            {aiLoadingSection === "horas" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
+                          </button>
+                          <button type="button" className="text-muted-foreground hover:text-foreground" onClick={() => { setEditingSection("horas"); setEditValue(answer); }}>
+                            <Pencil className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
                       </div>
                       {editingSection === "horas" ? (
                         <div className="space-y-1.5">
@@ -1220,9 +1345,20 @@ export default function BudgetKanbanPage() {
                     <div className="space-y-1">
                       <div className="flex items-center justify-between">
                         <h4 className="font-semibold text-sm text-foreground">📝 Observações</h4>
-                        <button type="button" className="text-muted-foreground hover:text-foreground" onClick={() => { setEditingSection("observ"); setEditValue(answer); }}>
-                          <Pencil className="h-3.5 w-3.5" />
-                        </button>
+                        <div className="flex items-center gap-1">
+                          <button
+                            type="button"
+                            className="text-purple-500 hover:text-purple-700 disabled:opacity-50"
+                            title="Melhorar com IA"
+                            disabled={aiLoadingSection === "observ"}
+                            onClick={() => handleAiImprove("observ")}
+                          >
+                            {aiLoadingSection === "observ" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
+                          </button>
+                          <button type="button" className="text-muted-foreground hover:text-foreground" onClick={() => { setEditingSection("observ"); setEditValue(answer); }}>
+                            <Pencil className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
                       </div>
                       {editingSection === "observ" ? (
                         <div className="space-y-1.5">
