@@ -1262,27 +1262,64 @@ export default function BudgetKanbanPage() {
                   </div>
                 )}
 
-                {/* AI Technical Analysis Button */}
-                <Button
-                  variant="outline"
-                  className="w-full gap-2 border-purple-300 text-purple-700 hover:bg-purple-50"
-                  onClick={handleAiAnalysis}
-                  disabled={isAnalyzing}
-                >
-                  {isAnalyzing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Brain className="h-4 w-4" />}
-                  {isAnalyzing ? "Analisando com IA..." : "🤖 Análise Técnica com IA"}
-                </Button>
+                {/* AI Action Buttons */}
+                <div className="flex gap-2">
+                  <Button
+                    variant="outline"
+                    className="flex-1 gap-2 border-purple-300 text-purple-700 hover:bg-purple-50"
+                    onClick={handleAiAnalysis}
+                    disabled={isAnalyzing}
+                  >
+                    {isAnalyzing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Brain className="h-4 w-4" />}
+                    {isAnalyzing ? "Analisando..." : "Analisar com IA"}
+                  </Button>
+                  <Button
+                    variant="outline"
+                    className="flex-1 gap-2 border-indigo-300 text-indigo-700 hover:bg-indigo-50"
+                    onClick={() => { setShowChat(!showChat); }}
+                  >
+                    <MessageCircle className="h-4 w-4" />
+                    Tirar Dúvidas
+                  </Button>
+                </div>
 
-                {/* AI Analysis Result */}
-                {aiAnalysis && (
-                  <div className="p-4 rounded-lg bg-purple-50 border border-purple-200 space-y-2">
+                {/* AI Chat Panel */}
+                {showChat && (
+                  <div className="p-3 rounded-lg bg-indigo-50 border border-indigo-200 space-y-3">
                     <div className="flex items-center justify-between">
-                      <h4 className="font-semibold text-sm text-purple-900 flex items-center gap-1.5">
-                        <Brain className="h-4 w-4" /> Análise Técnica (IA)
+                      <h4 className="font-semibold text-sm text-indigo-900 flex items-center gap-1.5">
+                        <MessageCircle className="h-4 w-4" /> Conversar sobre este Orçamento
                       </h4>
-                      <button type="button" className="text-purple-400 hover:text-purple-600 text-xs" onClick={() => setAiAnalysis(null)}>✕ Fechar</button>
+                      <button type="button" className="text-indigo-400 hover:text-indigo-600 text-xs" onClick={() => { setShowChat(false); setChatMessages([]); }}>✕ Fechar</button>
                     </div>
-                    <div className="text-sm text-purple-900 whitespace-pre-wrap leading-relaxed">{aiAnalysis}</div>
+                    {chatMessages.length > 0 && (
+                      <div className="max-h-[300px] overflow-y-auto space-y-2">
+                        {chatMessages.map((msg, i) => (
+                          <div key={i} className={`text-sm p-2.5 rounded-lg ${msg.role === "user" ? "bg-indigo-100 text-indigo-900 ml-6" : "bg-white text-foreground mr-6 border border-indigo-100"}`}>
+                            <span className="font-semibold text-xs block mb-1">{msg.role === "user" ? "Você" : "IA WeDo"}</span>
+                            <div className="whitespace-pre-wrap leading-relaxed">{msg.content}</div>
+                          </div>
+                        ))}
+                        {isChatLoading && (
+                          <div className="flex items-center gap-2 text-sm text-indigo-500 p-2">
+                            <Loader2 className="h-3.5 w-3.5 animate-spin" /> Pensando...
+                          </div>
+                        )}
+                      </div>
+                    )}
+                    <div className="flex gap-2">
+                      <Input
+                        placeholder="Faça uma pergunta sobre este orçamento..."
+                        value={chatInput}
+                        onChange={(e) => setChatInput(e.target.value)}
+                        onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && handleChatSend()}
+                        className="text-sm"
+                        disabled={isChatLoading}
+                      />
+                      <Button size="sm" className="gap-1 shrink-0" disabled={isChatLoading || !chatInput.trim()} onClick={handleChatSend}>
+                        <Send className="h-3.5 w-3.5" />
+                      </Button>
+                    </div>
                   </div>
                 )}
 
