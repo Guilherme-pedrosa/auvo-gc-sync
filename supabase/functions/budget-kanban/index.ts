@@ -302,17 +302,33 @@ Deno.serve(async (req) => {
         inDateRange(item.data_tarefa, startDate, endDate)
       );
 
+      const persistedEquipmentMap = await loadPersistedEquipmentMap(
+        sbClient,
+        filteredItems.map((item: any) => String(item.auvo_task_id || ""))
+      );
+
+      const enrichedItems = filteredItems.map((item: any) => {
+        const persisted = persistedEquipmentMap[String(item.auvo_task_id || "")];
+        if (!persisted) return item;
+
+        return {
+          ...item,
+          equipamento_nome: item.equipamento_nome || persisted.equipamento_nome || null,
+          equipamento_id_serie: item.equipamento_id_serie || persisted.equipamento_id_serie || null,
+        };
+      });
+
       const resumo = {
         periodo: { inicio: startDate, fim: endDate },
-        total_tarefas_com_questionario: filteredItems.length,
-        orcamentos_realizados: filteredItems.filter((i: any) => i.orcamento_realizado).length,
-        os_realizadas: filteredItems.filter((i: any) => i.os_realizada).length,
-        pendentes: filteredItems.filter((i: any) => !i.orcamento_realizado && !i.os_realizada).length,
+        total_tarefas_com_questionario: enrichedItems.length,
+        orcamentos_realizados: enrichedItems.filter((i: any) => i.orcamento_realizado).length,
+        os_realizadas: enrichedItems.filter((i: any) => i.os_realizada).length,
+        pendentes: enrichedItems.filter((i: any) => !i.orcamento_realizado && !i.os_realizada).length,
       };
 
       return new Response(JSON.stringify({
         resumo,
-        items: filteredItems,
+        items: enrichedItems,
         ultimo_sync: meta?.ultimo_sync || null,
         custom_columns: customColumns,
         from_cache: true,
