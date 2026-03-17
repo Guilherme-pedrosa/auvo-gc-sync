@@ -450,6 +450,112 @@ export default function BudgetKanbanPage() {
       .join("\n");
   };
 
+  const normalizeText = (value: string) =>
+    String(value || "")
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .toLowerCase();
+
+  const extractEquipmentFromCard = (item: KanbanItem) => {
+    const textReplies = item.questionario_respostas.filter((r) => r.reply && !r.reply.startsWith("http"));
+
+    const collectByQuestionKeywords = (keywords: string[]) => {
+      const values = textReplies
+        .filter((r) => {
+          const q = normalizeText(r.question);
+          return keywords.some((k) => q.includes(k));
+        })
+        .map((r) => String(r.reply || "").trim())
+        .filter(Boolean);
+      return [...new Set(values)].join(" | ");
+    };
+
+    let nome = collectByQuestionKeywords(["equip", "equipamento", "modelo", "maquina", "marca"]);
+    let id = collectByQuestionKeywords(["patrimon", "serie", "serial", "tag", "placa", "id do equip", "id equipamento"]);
+
+    const blob = `${item.orientacao || ""}\n${getAnswer(item, "descri") || ""}`;
+    if (!nome) {
+      const matchNome = blob.match(/(?:equipamento|modelo)\s*[:\-]\s*([^\n;]+)/i);
+      if (matchNome?.[1]) nome = matchNome[1].trim();
+    }
+    if (!id) {
+      const matchId = blob.match(/(?:patrim[oô]nio|s[eé]rie|serial|tag|placa|id(?: do)? equipamento)\s*[:#\-]\s*([^\n;]+)/i);
+      if (matchId?.[1]) id = matchId[1].trim();
+    }
+
+    return { nome, id };
+  };
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const resolveEquipment = async () => {
+      if (!selectedCard) {
+        setResolvedEquipment(null);
+        setIsEquipmentLoading(false);
+        return;
+      }
+
+      const local = extractEquipmentFromCard(selectedCard);
+      setResolvedEquipment(local.nome || local.id ? local : null);
+
+      if (local.nome && local.id) {
+        setIsEquipmentLoading(false);
+        return;
+      }
+
+      setIsEquipmentLoading(true);
+      try {
+        const { data: taskResp, error: taskErr } = await supabase.functions.invoke("auvo-task-update", {
+          body: { action: "get", taskId: Number(selectedCard.auvo_task_id) },
+        });
+        if (taskErr) throw taskErr;
+
+        const task = taskResp?.data?.result || taskResp?.result || {};
+        const idsRaw = Array.isArray(task?.equipmentsId)
+          ? task.equipmentsId
+          : Array.isArray(task?.equipmentsID)
+            ? task.equipmentsID
+            : Array.isArray(task?.equipmentIds)
+              ? task.equipmentIds
+              : [];
+
+        const equipmentIds = [...new Set(idsRaw.map((v: any) => String(v)).filter(Boolean))];
+        const resolvedId = local.id || (equipmentIds.length ? equipmentIds.join(", ") : "");
+
+        let resolvedNome = local.nome;
+        if (!resolvedNome && equipmentIds.length) {
+          for (const eqId of equipmentIds) {
+            const { data: eqResp, error: eqErr } = await supabase.functions.invoke("auvo-task-update", {
+              body: { action: "get-equipment", equipmentId: eqId },
+            });
+            if (eqErr) continue;
+            const eq = eqResp?.data?.result || eqResp?.result || eqResp?.data || {};
+            const eqName = String(eq?.description || eq?.name || eq?.identifier || eq?.model || "").trim();
+            if (eqName) {
+              resolvedNome = eqName;
+              break;
+            }
+          }
+        }
+
+        if (!cancelled) {
+          setResolvedEquipment(resolvedNome || resolvedId ? { nome: resolvedNome, id: resolvedId } : null);
+        }
+      } catch (error) {
+        console.warn("[budget-kanban] Falha ao resolver equipamento:", error);
+      } finally {
+        if (!cancelled) setIsEquipmentLoading(false);
+      }
+    };
+
+    resolveEquipment();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedCard]);
+
   // Save edited questionnaire field
   const handleSaveFieldEdit = useCallback(async (keyword: string, newValue: string) => {
     if (!selectedCard) return;
