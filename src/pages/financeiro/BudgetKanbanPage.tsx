@@ -555,6 +555,10 @@ export default function BudgetKanbanPage() {
         .map((r) => `${r.question}: ${r.reply}`)
         .join("\n");
 
+      // Extract equipment identification from questionnaire
+      const equipamento = getAnswer(selectedCard, "equip") || getAnswer(selectedCard, "modelo") || getAnswer(selectedCard, "máquina") || getAnswer(selectedCard, "maquina") || getAnswer(selectedCard, "marca") || "";
+      const equipamentoId = getAnswer(selectedCard, "patrimôn") || getAnswer(selectedCard, "patrimon") || getAnswer(selectedCard, "serie") || getAnswer(selectedCard, "série") || getAnswer(selectedCard, "número de série") || getAnswer(selectedCard, "placa") || getAnswer(selectedCard, "tag") || getAnswer(selectedCard, "id do equip") || "";
+
       const { data: result, error } = await supabase.functions.invoke("genspark-ai", {
         body: {
           action: "analyze",
@@ -563,7 +567,9 @@ export default function BudgetKanbanPage() {
             tecnico: selectedCard.tecnico,
             data_tarefa: selectedCard.data_tarefa,
             orientacao: selectedCard.orientacao,
-            descricao: getAnswer(selectedCard, "descri") || getAnswer(selectedCard, "equip") || "",
+            equipamento: equipamento,
+            equipamento_id: equipamentoId,
+            descricao: getAnswer(selectedCard, "descri") || "",
             pecas: getAnswer(selectedCard, "peças") || getAnswer(selectedCard, "material") || getAnswer(selectedCard, "peca") || "",
             servicos: getAnswer(selectedCard, "serviços") || getAnswer(selectedCard, "servico") || "",
             tempo: getAnswer(selectedCard, "horas") || getAnswer(selectedCard, "tempo") || "",
