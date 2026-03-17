@@ -582,11 +582,20 @@ Para CADA item, formato em linha:
 
 Status: ✅ Confirmado | ⚡ Recomendar | ❓ Verificar
 🌐 = Item identificado via pesquisa web (USE ESTE ÍCONE para itens que vieram da pesquisa web)
+📂 = Item identificado via materiais internos (Drive)
+
+⚠️ REGRA CRÍTICA DE COMPLETUDE ⚠️
+ANTES de finalizar esta seção, você DEVE aplicar o RACIOCÍNIO DE COMPONENTES ADJACENTES definido acima.
+Para CADA componente que está sendo trocado/verificado, percorra a árvore de subsistemas e LISTE os componentes adjacentes.
+Exemplo: Se há troca de ROLAMENTO, OBRIGATORIAMENTE verifique e liste: retentor, eixo (folga/desgaste), mancal, lubrificante, correia (se houver).
+Se há troca de MOTOR, OBRIGATORIAMENTE verifique e liste: correia, polias, rolamentos do motor, capacitor, protetor térmico, ventilador.
+Esta regra tem PRIORIDADE MÁXIMA — mesmo que a pesquisa web ou os materiais internos não mencionem esses itens, LISTE-OS.
 
 IMPORTANTE: Liste TUDO que precisa para executar o serviço completo:
 - Peças solicitadas pelo técnico
+- ⚡ COMPONENTES ADJACENTES obrigatórios conforme raciocínio de subsistemas (retentor, selo, eixo, etc.)
 - 🌐 Peças e componentes identificados pela PESQUISA WEB que o técnico não mencionou
-- COMPONENTES ADJACENTES que devem ser verificados/substituídos (motor, correia, rolamentos, selo, etc.)
+- 📂 Peças identificadas nos materiais internos (Drive) que o técnico não mencionou
 - Insumos de montagem (veda-rosca, abraçadeiras, conexões...)
 - Produtos químicos para limpeza/higienização
 - Consumíveis (solda, gás, óleo, nitrogênio...)
@@ -657,7 +666,7 @@ TOM: Telegráfico, técnico, zero enrolação.`;
       } else {
         textPrompt += `\nMATERIAIS INTERNOS\nNão fornecidos\n`;
       }
-      textPrompt += `\nSua resposta deve seguir exatamente o formato definido no system prompt.`;
+      textPrompt += `\n⚠️ LEMBRETE FINAL OBRIGATÓRIO: A pesquisa web e os materiais internos são COMPLEMENTARES ao seu raciocínio de componentes adjacentes. Você DEVE aplicar a árvore de subsistemas (rolamento→retentor+eixo+mancal, motor→correia+polias+capacitor, etc.) INDEPENDENTEMENTE do que a web ou o Drive dizem. Se a web não menciona retentor mas o técnico vai trocar rolamento, LISTE O RETENTOR. Sua resposta deve seguir exatamente o formato definido no system prompt.`;
 
       userContentParts.push({ type: "text", text: textPrompt });
 
