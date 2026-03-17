@@ -1123,30 +1123,7 @@ export default function BudgetKanbanPage() {
                 )}
 
                 {/* Fotos */}
-                {selectedCard.questionario_respostas.some((r) => r.reply.startsWith("http")) && (
-                  <div className="space-y-1">
-                    <h4 className="font-semibold text-sm text-foreground">📷 Fotos</h4>
-                    <div className="grid grid-cols-3 gap-2">
-                      {selectedCard.questionario_respostas
-                        .filter((r) => r.reply.startsWith("http"))
-                        .map((r, i) => (
-                          <button
-                            key={i}
-                            type="button"
-                            onClick={() => setExpandedPhoto(r.reply)}
-                            className="block rounded-md overflow-hidden border hover:ring-2 ring-primary/30 transition-all cursor-zoom-in"
-                          >
-                            <img
-                              src={r.reply}
-                              alt={r.question}
-                              className="w-full h-24 object-cover"
-                              loading="lazy"
-                            />
-                          </button>
-                        ))}
-                    </div>
-                  </div>
-                )}
+                <PhotoGallery images={selectedCard.questionario_respostas.filter((r) => r.reply.startsWith("http")).map((r) => r.reply)} />
               </div>
             </>
           )}
