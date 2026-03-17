@@ -1038,6 +1038,58 @@ export default function BudgetKanbanPage() {
             </PopoverContent>
           </Popover>
 
+          {/* Multi-select equipment filter */}
+          <Popover open={showEquipFilter} onOpenChange={setShowEquipFilter}>
+            <PopoverTrigger asChild>
+              <Button variant="outline" size="sm" className="gap-2 min-w-[200px] justify-start">
+                <Filter className="h-4 w-4" />
+                {allEquipSelected
+                  ? "Todos equipamentos"
+                  : `${selectedEquipamentos.size} equipamento${selectedEquipamentos.size !== 1 ? "s" : ""}`}
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent className="w-[350px] p-0" align="start">
+              <div className="p-3 border-b">
+                <Input
+                  placeholder="Buscar equipamento..."
+                  value={filterEquipSearch}
+                  onChange={(e) => setFilterEquipSearch(e.target.value)}
+                  className="h-8"
+                />
+              </div>
+              <div className="p-2 border-b">
+                <label className="flex items-center gap-2 px-2 py-1 cursor-pointer hover:bg-accent rounded text-sm">
+                  <Checkbox
+                    checked={allEquipSelected}
+                    onCheckedChange={toggleAllEquip}
+                  />
+                  <span className="font-medium">Selecionar todos</span>
+                </label>
+              </div>
+              <ScrollArea className="h-[300px]">
+                <div className="p-2 space-y-0.5">
+                  {filteredEquipOptions.map((equip) => (
+                    <label
+                      key={equip}
+                      className="flex items-center gap-2 px-2 py-1.5 cursor-pointer hover:bg-accent rounded text-sm"
+                    >
+                      <Checkbox
+                        checked={selectedEquipamentos.has(equip)}
+                        onCheckedChange={() => toggleEquip(equip)}
+                      />
+                      <span className="truncate">{equip}</span>
+                    </label>
+                  ))}
+                  {filteredEquipOptions.length === 0 && (
+                    <p className="text-xs text-muted-foreground text-center py-4">
+                      Nenhum equipamento encontrado
+                    </p>
+                  )}
+                </div>
+              </ScrollArea>
+            </PopoverContent>
+          </Popover>
+
           <Select value={sortBy} onValueChange={(v) => setSortBy(v as any)}>
             <SelectTrigger className="w-[180px]">
               <SelectValue placeholder="Ordenar por..." />
