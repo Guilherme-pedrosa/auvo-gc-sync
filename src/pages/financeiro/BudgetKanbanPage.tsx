@@ -16,7 +16,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   ArrowLeft, CalendarIcon, RefreshCw, ExternalLink, ClipboardList,
   FileText, Plus, GripVertical, Trash2, Edit2, Check, X, Filter, FileDown, Star,
-  Pencil, Save, Sparkles, Brain, Loader2
+  Pencil, Save, Sparkles, Brain, Loader2, MessageCircle, Send
 } from "lucide-react";
 import { format, startOfMonth } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -103,6 +103,10 @@ export default function BudgetKanbanPage() {
   const [aiLoadingSection, setAiLoadingSection] = useState<string | null>(null);
   const [aiAnalysis, setAiAnalysis] = useState<string | null>(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [showChat, setShowChat] = useState(false);
+  const [chatMessages, setChatMessages] = useState<{ role: "user" | "assistant"; content: string }[]>([]);
+  const [chatInput, setChatInput] = useState("");
+  const [isChatLoading, setIsChatLoading] = useState(false);
 
   const { data, isLoading, refetch, isFetching } = useQuery<ApiResponse>({
     queryKey: ["budget-kanban", format(dateRange.from, "yyyy-MM-dd"), format(dateRange.to, "yyyy-MM-dd")],
@@ -581,9 +585,49 @@ export default function BudgetKanbanPage() {
     }
   }, [selectedCard]);
 
+  // AI Chat about this budget
+  const handleChatSend = useCallback(async () => {
+    if (!selectedCard || !chatInput.trim()) return;
+    const userMsg = chatInput.trim();
+    setChatInput("");
+    setChatMessages(prev => [...prev, { role: "user", content: userMsg }]);
+    setIsChatLoading(true);
+    try {
+      const todasRespostas = selectedCard.questionario_respostas
+        .filter((r) => r.reply && !r.reply.startsWith("http"))
+        .map((r) => `${r.question}: ${r.reply}`)
+        .join("\n");
+
+      const { data: result, error } = await supabase.functions.invoke("genspark-ai", {
+        body: {
+          action: "chat",
+          context: {
+            cliente: selectedCard.cliente,
+            tecnico: selectedCard.tecnico,
+            data_tarefa: selectedCard.data_tarefa,
+            orientacao: selectedCard.orientacao,
+            pecas: getAnswer(selectedCard, "peças") || getAnswer(selectedCard, "material") || getAnswer(selectedCard, "peca") || "",
+            servicos: getAnswer(selectedCard, "serviços") || getAnswer(selectedCard, "servico") || "",
+            observacoes: getAnswer(selectedCard, "observ") || "",
+            todas_respostas: todasRespostas,
+          },
+          analysis: aiAnalysis || "",
+          userMessage: userMsg,
+          chatHistory: chatMessages,
+        },
+      });
+      if (error) throw error;
+      if (result?.error) throw new Error(result.error);
+      setChatMessages(prev => [...prev, { role: "assistant", content: result?.result || "Sem resposta" }]);
+    } catch (e: any) {
+      toast.error("Erro no chat: " + (e?.message || "Tente novamente"));
+      setChatMessages(prev => [...prev, { role: "assistant", content: "Erro ao processar. Tente novamente." }]);
+    } finally {
+      setIsChatLoading(false);
+    }
+  }, [selectedCard, chatInput, chatMessages, aiAnalysis]);
+
   const resumo = data?.resumo;
-
-
   // Orçamentos realizados breakdown: hoje, semana, mês
   const orcBreakdown = useMemo(() => {
     if (!data?.items) return { hoje: 0, semana: 0, mes: 0 };
@@ -1057,7 +1101,7 @@ export default function BudgetKanbanPage() {
       )}
 
       {/* Card Detail Dialog */}
-      <Dialog open={!!selectedCard} onOpenChange={(open) => !open && setSelectedCard(null)}>
+      <Dialog open={!!selectedCard} onOpenChange={(open) => { if (!open) { setSelectedCard(null); setAiAnalysis(null); setShowChat(false); setChatMessages([]); } }}>
         <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
           {selectedCard && (
             <>
@@ -1218,16 +1262,66 @@ export default function BudgetKanbanPage() {
                   </div>
                 )}
 
-                {/* AI Technical Analysis Button */}
-                <Button
-                  variant="outline"
-                  className="w-full gap-2 border-purple-300 text-purple-700 hover:bg-purple-50"
-                  onClick={handleAiAnalysis}
-                  disabled={isAnalyzing}
-                >
-                  {isAnalyzing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Brain className="h-4 w-4" />}
-                  {isAnalyzing ? "Analisando com IA..." : "🤖 Análise Técnica com IA"}
-                </Button>
+                {/* AI Action Buttons */}
+                <div className="flex gap-2">
+                  <Button
+                    variant="outline"
+                    className="flex-1 gap-2 border-purple-300 text-purple-700 hover:bg-purple-50"
+                    onClick={handleAiAnalysis}
+                    disabled={isAnalyzing}
+                  >
+                    {isAnalyzing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Brain className="h-4 w-4" />}
+                    {isAnalyzing ? "Analisando..." : "Analisar com IA"}
+                  </Button>
+                  <Button
+                    variant="outline"
+                    className="flex-1 gap-2 border-indigo-300 text-indigo-700 hover:bg-indigo-50"
+                    onClick={() => { setShowChat(!showChat); }}
+                  >
+                    <MessageCircle className="h-4 w-4" />
+                    Tirar Dúvidas
+                  </Button>
+                </div>
+
+                {/* AI Chat Panel */}
+                {showChat && (
+                  <div className="p-3 rounded-lg bg-indigo-50 border border-indigo-200 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <h4 className="font-semibold text-sm text-indigo-900 flex items-center gap-1.5">
+                        <MessageCircle className="h-4 w-4" /> Conversar sobre este Orçamento
+                      </h4>
+                      <button type="button" className="text-indigo-400 hover:text-indigo-600 text-xs" onClick={() => { setShowChat(false); setChatMessages([]); }}>✕ Fechar</button>
+                    </div>
+                    {chatMessages.length > 0 && (
+                      <div className="max-h-[300px] overflow-y-auto space-y-2">
+                        {chatMessages.map((msg, i) => (
+                          <div key={i} className={`text-sm p-2.5 rounded-lg ${msg.role === "user" ? "bg-indigo-100 text-indigo-900 ml-6" : "bg-white text-foreground mr-6 border border-indigo-100"}`}>
+                            <span className="font-semibold text-xs block mb-1">{msg.role === "user" ? "Você" : "IA WeDo"}</span>
+                            <div className="whitespace-pre-wrap leading-relaxed">{msg.content}</div>
+                          </div>
+                        ))}
+                        {isChatLoading && (
+                          <div className="flex items-center gap-2 text-sm text-indigo-500 p-2">
+                            <Loader2 className="h-3.5 w-3.5 animate-spin" /> Pensando...
+                          </div>
+                        )}
+                      </div>
+                    )}
+                    <div className="flex gap-2">
+                      <Input
+                        placeholder="Faça uma pergunta sobre este orçamento..."
+                        value={chatInput}
+                        onChange={(e) => setChatInput(e.target.value)}
+                        onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && handleChatSend()}
+                        className="text-sm"
+                        disabled={isChatLoading}
+                      />
+                      <Button size="sm" className="gap-1 shrink-0" disabled={isChatLoading || !chatInput.trim()} onClick={handleChatSend}>
+                        <Send className="h-3.5 w-3.5" />
+                      </Button>
+                    </div>
+                  </div>
+                )}
 
                 {/* AI Analysis Result */}
                 {aiAnalysis && (
