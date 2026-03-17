@@ -49,13 +49,72 @@ async function addPhotosToContent(contentParts: any[], fotos: string[], maxPhoto
 // =========================================================================
 // PERPLEXITY WEB SEARCH — pesquisa técnica na internet sobre o equipamento
 // =========================================================================
-async function searchEquipmentOnWeb(equipamento: string, descricao: string, orientacao: string, pecas: string): Promise<string> {
+async function searchPerplexity(
+  query: string,
+  systemInstruction: string,
+  options?: { domains?: string[]; recency?: string }
+): Promise<{ answer: string; citations: string[] }> {
   const PERPLEXITY_API_KEY = Deno.env.get("PERPLEXITY_API_KEY");
   if (!PERPLEXITY_API_KEY) {
     console.log("[genspark-ai] PERPLEXITY_API_KEY não disponível, pulando pesquisa web");
-    return "";
+    return { answer: "", citations: [] };
   }
 
+  if (!query.trim()) {
+    console.log("[genspark-ai] Query vazia, pulando pesquisa web");
+    return { answer: "", citations: [] };
+  }
+
+  try {
+    console.log(`[genspark-ai] Pesquisando Perplexity: "${query.substring(0, 100)}..."`);
+
+    const bodyPayload: any = {
+      model: "sonar-pro",
+      messages: [
+        { role: "system", content: systemInstruction },
+        { role: "user", content: query }
+      ],
+      temperature: 0.1,
+    };
+
+    // Filtro de domínios se fornecido
+    if (options?.domains && options.domains.length > 0) {
+      bodyPayload.search_domain_filter = options.domains;
+    }
+
+    // Filtro de recência
+    if (options?.recency) {
+      bodyPayload.search_recency_filter = options.recency;
+    }
+
+    const response = await fetch("https://api.perplexity.ai/chat/completions", {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${PERPLEXITY_API_KEY}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(bodyPayload),
+    });
+
+    if (!response.ok) {
+      const errText = await response.text();
+      console.error(`[genspark-ai] Perplexity error ${response.status}: ${errText.substring(0, 200)}`);
+      return { answer: "", citations: [] };
+    }
+
+    const data = await response.json();
+    const answer = data.choices?.[0]?.message?.content || "";
+    const citations = data.citations || [];
+
+    console.log(`[genspark-ai] Perplexity respondeu: ${answer.length} chars, ${citations.length} fontes`);
+    return { answer, citations };
+  } catch (e) {
+    console.error("[genspark-ai] Perplexity search failed:", e);
+    return { answer: "", citations: [] };
+  }
+}
+
+async function searchEquipmentOnWeb(equipamento: string, descricao: string, orientacao: string, pecas: string): Promise<string> {
   const equipClean = (equipamento || "").replace(/n\/a/gi, "").trim();
   const descClean = (descricao || "").replace(/n\/a/gi, "").trim();
   const oriClean = (orientacao || "").replace(/n\/a/gi, "").trim();
@@ -77,49 +136,49 @@ Preciso saber:
 4. Pontos críticos de manutenção preventiva
 5. Insumos e ferramentas específicas para este tipo de equipamento`;
 
-  try {
-    console.log(`[genspark-ai] Pesquisando Perplexity: "${(equipClean || descClean).substring(0, 80)}..."`);
-    
-    const response = await fetch("https://api.perplexity.ai/chat/completions", {
-      method: "POST",
-      headers: {
-        "Authorization": `Bearer ${PERPLEXITY_API_KEY}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: "sonar",
-        messages: [
-          {
-            role: "system",
-            content: "Você é um engenheiro de manutenção industrial. Responda em português brasileiro de forma técnica e objetiva. Foque em dados concretos: especificações, peças, componentes, problemas comuns. Sem floreios."
-          },
-          { role: "user", content: searchQuery }
-        ],
-        temperature: 0.1,
-      }),
-    });
+  const { answer, citations } = await searchPerplexity(
+    searchQuery,
+    "Você é um engenheiro de manutenção industrial. Responda em português brasileiro de forma técnica e objetiva. Foque em dados concretos: especificações, peças, componentes, problemas comuns. Sem floreios."
+  );
 
-    if (!response.ok) {
-      const errText = await response.text();
-      console.error(`[genspark-ai] Perplexity error ${response.status}: ${errText.substring(0, 200)}`);
-      return "";
-    }
+  if (!answer) return "";
 
-    const data = await response.json();
-    const answer = data.choices?.[0]?.message?.content || "";
-    const citations = data.citations || [];
-
-    console.log(`[genspark-ai] Perplexity respondeu: ${answer.length} chars, ${citations.length} fontes`);
-
-    let result = `PESQUISA WEB (fontes reais da internet):\n${answer}`;
-    if (citations.length > 0) {
-      result += `\n\nFONTES: ${citations.slice(0, 5).join(", ")}`;
-    }
-    return result;
-  } catch (e) {
-    console.error("[genspark-ai] Perplexity search failed:", e);
-    return "";
+  let result = `PESQUISA WEB (fontes reais da internet):\n${answer}`;
+  if (citations.length > 0) {
+    result += `\n\nFONTES: ${citations.slice(0, 5).join(", ")}`;
   }
+  return result;
+}
+
+// Pesquisa contextual para o chat — busca na web baseada na dúvida do usuário
+async function searchForChatQuestion(
+  userMessage: string,
+  equipamento: string,
+  orientacao: string,
+  analysis: string
+): Promise<string> {
+  const equipClean = (equipamento || "").replace(/n\/a/gi, "").trim();
+
+  const searchQuery = `Contexto: equipamento "${equipClean || "industrial"}".
+${orientacao ? `Problema: ${orientacao}` : ""}
+
+Dúvida técnica: ${userMessage}
+
+Responda com dados técnicos reais: especificações, manuais, experiência documentada, normas técnicas.`;
+
+  const { answer, citations } = await searchPerplexity(
+    searchQuery,
+    "Você é um engenheiro de manutenção industrial sênior. Pesquise na web e responda com dados técnicos concretos, citando fontes. Foque em: especificações de fabricante, manuais técnicos, normas, problemas documentados. Responda em português brasileiro. Seja preciso e direto."
+  );
+
+  if (!answer) return "";
+
+  let result = `\n\n========== 🌐 PESQUISA WEB (PERPLEXITY) ==========\n${answer}`;
+  if (citations.length > 0) {
+    result += `\n\nFontes consultadas:\n${citations.slice(0, 8).map((c: string, i: number) => `[${i + 1}] ${c}`).join("\n")}`;
+  }
+  result += `\n==========================================================`;
+  return result;
 }
 
 serve(async (req) => {
