@@ -523,12 +523,23 @@ export default function BudgetKanbanPage() {
     }
   }, [selectedCard]);
 
-  // AI technical analysis
+  // AI technical analysis with GPT-5 vision (photos + text + context)
   const handleAiAnalysis = useCallback(async () => {
     if (!selectedCard) return;
     setIsAnalyzing(true);
     setAiAnalysis(null);
     try {
+      // Collect photo URLs from questionnaire responses
+      const fotos = selectedCard.questionario_respostas
+        .filter((r) => r.reply && r.reply.startsWith("http"))
+        .map((r) => r.reply);
+
+      // Collect ALL text answers for full context
+      const todasRespostas = selectedCard.questionario_respostas
+        .filter((r) => r.reply && !r.reply.startsWith("http"))
+        .map((r) => `${r.question}: ${r.reply}`)
+        .join("\n");
+
       const { data: result, error } = await supabase.functions.invoke("genspark-ai", {
         body: {
           action: "analyze",
@@ -537,12 +548,15 @@ export default function BudgetKanbanPage() {
             tecnico: selectedCard.tecnico,
             data_tarefa: selectedCard.data_tarefa,
             orientacao: selectedCard.orientacao,
-            pecas: getAnswer(selectedCard, "peças"),
-            servicos: getAnswer(selectedCard, "serviços"),
-            tempo: getAnswer(selectedCard, "horas"),
-            observacoes: getAnswer(selectedCard, "observ"),
+            descricao: getAnswer(selectedCard, "descri") || getAnswer(selectedCard, "equip") || "",
+            pecas: getAnswer(selectedCard, "peças") || getAnswer(selectedCard, "material") || getAnswer(selectedCard, "peca") || "",
+            servicos: getAnswer(selectedCard, "serviços") || getAnswer(selectedCard, "servico") || "",
+            tempo: getAnswer(selectedCard, "horas") || getAnswer(selectedCard, "tempo") || "",
+            observacoes: getAnswer(selectedCard, "observ") || "",
             gc_valor: selectedCard.gc_orcamento?.gc_valor_total || selectedCard.gc_os?.gc_valor_total || "",
             gc_situacao: selectedCard.gc_orcamento?.gc_situacao || selectedCard.gc_os?.gc_situacao || "",
+            fotos,
+            todas_respostas: todasRespostas,
           },
         },
       });
