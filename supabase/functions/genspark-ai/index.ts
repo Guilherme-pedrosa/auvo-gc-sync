@@ -521,6 +521,7 @@ Se o diagnóstico diz "DANO" em um componente, a recomendação OBRIGATÓRIA é 
 - "Motor superaquecendo" → ⚡ Verificar/trocar protetor térmico, capacitor, ventilador. Se há dano, é TROCA.
 - "Placa danificada" → ⚡ Troca da placa. Não "limpeza técnica" como solução principal.
 - "Sensor ausente" → ⚡ Troca do sensor. Não "verificar" como ação final.
+- Se o relatório trouxer "conjunto suporte do motor e eixo", "mancal", "eixo com folga" ou "rolamento danificado", NÃO aceite só item genérico: explicite em linhas separadas os itens críticos do conjunto (ROLAMENTO e RETENTOR, além de eixo/mancal quando aplicável).
 REGRA: Se o defeito é DANO/DANIFICADO/COMPROMETIDO/QUEIMADO/AUSENTE → a ação principal é TROCA/SUBSTITUIÇÃO.
 Lubrificação só se aplica a componentes FUNCIONAIS em manutenção preventiva.
 
@@ -530,6 +531,7 @@ Quando identificar o equipamento, PENSE nos subsistemas:
 - Máquina com BOMBA → verificar: selo mecânico, gaxetas, rolamentos, acoplamento, eixo, impulsor
 - Máquina com COMPRESSOR → verificar: válvulas, pressostato, capacitor, relé, gás, óleo, filtro secador, ventilador do condensador
 - Máquina com RESISTÊNCIA → verificar: terminais, conectores, termostato, fusível térmico, fiação
+- GATILHO EIXO/MANCAL (abertura do conjunto) → incluir obrigatoriamente: rolamento(s) + retentor(es) + verificação de eixo/mancal; se houver dano, marcar TROCA.
 - Máquina com ROLAMENTOS DANIFICADOS → TROCAR: rolamentos + retentor + verificar eixo (folga/desgaste) + mancal. Se funcionais: lubrificar + verificar correia
 - Máquina com REDUTOR → verificar: engrenagens, rolamentos, óleo, retentores, acoplamento
 - Máquina com CORREIA → verificar: polias (desgaste/alinhamento), tensor, rolamentos dos eixos
@@ -599,6 +601,7 @@ ANTES de finalizar esta seção, você DEVE:
 1) Ler o relatório e classificar os itens em: confirmado, recomendado, verificar.
 2) Complementar cada intervenção com os itens NECESSÁRIOS do mesmo subsistema.
 3) Garantir que nenhum item essencial da execução ficou de fora.
+4) Rodar checklist final por gatilho técnico: se houver intervenção em eixo/mancal/rolamento/suporte de eixo, precisam existir linhas explícitas para ROLAMENTO e RETENTOR (não apenas "conjunto" genérico).
 Exemplo: se o relatório indica dano em rolamento/mancal/eixo, completar com os adjacentes necessários (retentor, mancal, eixo, lubrificação de montagem, etc.).
 Se o relatório NÃO indica intervenção nesse subsistema, NÃO force itens desse subsistema.
 Prioridade máxima: COMPLETAR tecnicamente o relatório, sem inventar.
@@ -678,7 +681,7 @@ TOM: Telegráfico, técnico, zero enrolação.`;
       } else {
         textPrompt += `\nMATERIAIS INTERNOS\nNão fornecidos\n`;
       }
-      textPrompt += `\n⚠️ LEMBRETE FINAL OBRIGATÓRIO: Analise PRIMEIRO o relatório/fotos e classifique o que é confirmado, recomendado e a verificar. Depois complemente tecnicamente com itens necessários do MESMO subsistema. Não force item fora de contexto. Se houver dano em rolamento/mancal/eixo, complete com os adjacentes necessários (ex.: retentor/mancal/eixo) e mantenha coerência: dano pede troca; lubrificação só para componente funcional.`;
+      textPrompt += `\n⚠️ LEMBRETE FINAL OBRIGATÓRIO: Analise PRIMEIRO o relatório/fotos e classifique o que é confirmado, recomendado e a verificar. Depois complemente tecnicamente com itens necessários do MESMO subsistema. Não force item fora de contexto. Se houver intervenção em suporte do motor/eixo, mancal ou rolamento, detalhe EXPLICITAMENTE em linhas próprias: ROLAMENTO e RETENTOR (além de eixo/mancal quando aplicável), sem esconder em item genérico de conjunto. Mantenha coerência: dano pede troca; lubrificação só para componente funcional.`;
 
       userContentParts.push({ type: "text", text: textPrompt });
 
