@@ -107,6 +107,8 @@ export default function BudgetKanbanPage() {
   const [chatMessages, setChatMessages] = useState<{ role: "user" | "assistant"; content: string }[]>([]);
   const [chatInput, setChatInput] = useState("");
   const [isChatLoading, setIsChatLoading] = useState(false);
+  const [resolvedEquipment, setResolvedEquipment] = useState<{ nome: string; id: string } | null>(null);
+  const [isEquipmentLoading, setIsEquipmentLoading] = useState(false);
 
   const { data, isLoading, refetch, isFetching } = useQuery<ApiResponse>({
     queryKey: ["budget-kanban", format(dateRange.from, "yyyy-MM-dd"), format(dateRange.to, "yyyy-MM-dd")],
