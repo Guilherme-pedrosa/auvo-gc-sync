@@ -235,6 +235,10 @@ sinalizar "Política WeDo: verificar inclusão de filtros de ar e água conforme
 P4) Se houver substituição de componente fixado mecanicamente:
 sinalizar "Política WeDo: verificar fixadores, travas, porcas, arruelas e insumos de montagem compatíveis".
 
+P5) SEMPRE verificar peças de desgaste natural conforme o tipo de equipamento:
+- Mangueiras de água, mangueiras de gás, filtros internos, filtro de parede (se o equipamento recebe água), vedações, gaxetas e juntas.
+- Se houver presença de calcário, incrustação ou sujidade nas fotos ou descrição: sugerir inclusão ou troca de filtro de água e sinalizar possível necessidade de limpeza química ou descalcificação.
+
 REGRA DE BASE PARA ITENS ASSOCIADOS
 Nenhum item associado pode ser sugerido sem base explícita.
 Toda sugestão deve indicar ao menos uma base:
