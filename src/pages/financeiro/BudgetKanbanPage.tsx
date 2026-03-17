@@ -398,6 +398,33 @@ export default function BudgetKanbanPage() {
     }
   }, [allClientesSelected, allClientes]);
 
+  const filteredEquipOptions = useMemo(() => {
+    if (!filterEquipSearch) return allEquipamentos;
+    return allEquipamentos.filter((e) =>
+      e.toLowerCase().includes(filterEquipSearch.toLowerCase())
+    );
+  }, [allEquipamentos, filterEquipSearch]);
+
+  const toggleEquip = useCallback((equip: string) => {
+    setSelectedEquipamentos((prev) => {
+      const next = new Set(prev);
+      if (next.has(equip)) next.delete(equip);
+      else next.add(equip);
+      return next;
+    });
+    setAllEquipSelected(false);
+  }, []);
+
+  const toggleAllEquip = useCallback(() => {
+    if (allEquipSelected) {
+      setSelectedEquipamentos(new Set());
+      setAllEquipSelected(false);
+    } else {
+      setSelectedEquipamentos(new Set(allEquipamentos));
+      setAllEquipSelected(true);
+    }
+  }, [allEquipSelected, allEquipamentos]);
+
   // Apply filters + sorting
   const filteredColumns = useMemo(() => {
     const sortFn = (a: KanbanItem, b: KanbanItem) => {
