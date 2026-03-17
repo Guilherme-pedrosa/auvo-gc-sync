@@ -112,6 +112,9 @@ export default function OficinaKanbanPage() {
   const [newItemQty, setNewItemQty] = useState("1");
   const [newItemPrice, setNewItemPrice] = useState("");
   const [newItemTipo, setNewItemTipo] = useState("peca");
+  const [editingField, setEditingField] = useState<{ type: "entrada" | "devolucao"; index: number } | null>(null);
+  const [editValue, setEditValue] = useState("");
+  const [isSavingField, setIsSavingField] = useState(false);
 
   const { data, isLoading, refetch, isFetching } = useQuery({
     queryKey: ["oficina-kanban", format(dateRange.from, "yyyy-MM-dd"), format(dateRange.to, "yyyy-MM-dd")],
