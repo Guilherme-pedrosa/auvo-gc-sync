@@ -1323,6 +1323,19 @@ export default function BudgetKanbanPage() {
                   </div>
                 )}
 
+                {/* AI Analysis Result */}
+                {aiAnalysis && (
+                  <div className="p-4 rounded-lg bg-purple-50 border border-purple-200 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <h4 className="font-semibold text-sm text-purple-900 flex items-center gap-1.5">
+                        <Brain className="h-4 w-4" /> Análise Técnica (IA)
+                      </h4>
+                      <button type="button" className="text-purple-400 hover:text-purple-600 text-xs" onClick={() => setAiAnalysis(null)}>✕ Fechar</button>
+                    </div>
+                    <div className="text-sm text-purple-900 whitespace-pre-wrap leading-relaxed">{aiAnalysis}</div>
+                  </div>
+                )}
+
                 {/* Peças Necessárias */}
                 {(() => {
                   const answer = getAnswer(selectedCard, "peças");
