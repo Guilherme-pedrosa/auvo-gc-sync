@@ -751,7 +751,7 @@ export default function BudgetKanbanPage() {
     } finally {
       setIsChatLoading(false);
     }
-  }, [selectedCard, chatInput, chatMessages, aiAnalysis]);
+  }, [selectedCard, chatInput, chatMessages, aiAnalysis, resolvedEquipment]);
 
   const resumo = data?.resumo;
   // Orçamentos realizados breakdown: hoje, semana, mês
