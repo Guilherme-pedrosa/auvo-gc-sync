@@ -61,11 +61,11 @@ async function fetchDriveDocuments(equipamentoFilter?: string): Promise<string> 
 
   const results: string[] = [];
   let totalFilesRead = 0;
-  const MAX_FILES = 15; // max files to actually read content from
-  const MAX_TOTAL_CHARS = 25000; // max total characters to avoid huge prompts
   let totalChars = 0;
+  const MAX_FILES = 8;
+  const MAX_TOTAL_CHARS = 15000;
+  const DRIVE_TIMEOUT = 12000; // 12s max for entire Drive operation
 
-  // Helper to extract text from a PDF buffer (best-effort)
   const extractPdfText = (bytes: Uint8Array): string => {
     try {
       const raw = new TextDecoder("latin1").decode(bytes);
@@ -91,14 +91,15 @@ async function fetchDriveDocuments(equipamentoFilter?: string): Promise<string> 
     /\.(txt|csv|md|json|xml|html|htm|log|ini|cfg|yaml|yml|tsv)$/i.test(name);
 
   const addResult = (name: string, text: string, icon = "📄") => {
-    if (text.length > 3000) text = text.substring(0, 3000) + "\n... [truncado]";
+    if (text.length > 2500) text = text.substring(0, 2500) + "\n... [truncado]";
     results.push(`${icon} ${name}:\n${text}`);
     totalChars += text.length;
     totalFilesRead++;
     console.log(`[genspark-ai] Drive loaded: ${name} (${text.length} chars)`);
   };
 
-  // List files in a folder
+  const limitReached = () => totalFilesRead >= MAX_FILES || totalChars >= MAX_TOTAL_CHARS;
+
   async function listFolder(folderId: string): Promise<any[]> {
     const url = `https://www.googleapis.com/drive/v3/files?q='${folderId}'+in+parents+and+trashed=false&key=${API_KEY}&fields=files(id,name,mimeType,size)&pageSize=100`;
     const resp = await fetch(url);
@@ -107,86 +108,51 @@ async function fetchDriveDocuments(equipamentoFilter?: string): Promise<string> 
     return data.files || [];
   }
 
-  // Process a single file
+  // Process only lightweight files (skip ZIPs entirely — too slow)
   async function processFile(file: any, parentPath: string) {
-    if (totalFilesRead >= MAX_FILES || totalChars >= MAX_TOTAL_CHARS) return;
-
+    if (limitReached()) return;
     const fileName = file.name || "";
     const mimeType = file.mimeType || "";
     const fullPath = parentPath ? `${parentPath}/${fileName}` : fileName;
+    const fileSize = parseInt(file.size || "0", 10);
+
+    // SKIP large files and ZIPs to keep it fast
+    if (fileSize > 3 * 1024 * 1024) {
+      results.push(`📎 ${fullPath} — arquivo grande (${Math.round(fileSize / 1024 / 1024)}MB), listado como referência`);
+      return;
+    }
 
     if (mimeType === "application/vnd.google-apps.document") {
       try {
-        const exportUrl = `https://www.googleapis.com/drive/v3/files/${file.id}/export?mimeType=text/plain&key=${API_KEY}`;
-        const resp = await fetch(exportUrl);
+        const resp = await fetch(`https://www.googleapis.com/drive/v3/files/${file.id}/export?mimeType=text/plain&key=${API_KEY}`);
         if (resp.ok) addResult(fullPath, await resp.text());
+        else await resp.text(); // consume
       } catch (e) { console.error(`[genspark-ai] Doc error ${fullPath}:`, e); }
     }
     else if (mimeType === "application/vnd.google-apps.spreadsheet") {
       try {
-        const exportUrl = `https://www.googleapis.com/drive/v3/files/${file.id}/export?mimeType=text/csv&key=${API_KEY}`;
-        const resp = await fetch(exportUrl);
+        const resp = await fetch(`https://www.googleapis.com/drive/v3/files/${file.id}/export?mimeType=text/csv&key=${API_KEY}`);
         if (resp.ok) addResult(fullPath, await resp.text(), "📊");
+        else await resp.text();
       } catch (e) { console.error(`[genspark-ai] Sheet error ${fullPath}:`, e); }
     }
     else if (mimeType.startsWith("text/") || isTextFile(fileName)) {
       try {
-        const dlUrl = `https://www.googleapis.com/drive/v3/files/${file.id}?alt=media&key=${API_KEY}`;
-        const resp = await fetch(dlUrl);
+        const resp = await fetch(`https://www.googleapis.com/drive/v3/files/${file.id}?alt=media&key=${API_KEY}`);
         if (resp.ok) addResult(fullPath, await resp.text());
+        else await resp.text();
       } catch (e) { console.error(`[genspark-ai] Text error ${fullPath}:`, e); }
     }
     else if (mimeType === "application/pdf" || fileName.toLowerCase().endsWith(".pdf")) {
       try {
-        const dlUrl = `https://www.googleapis.com/drive/v3/files/${file.id}?alt=media&key=${API_KEY}`;
-        const resp = await fetch(dlUrl);
+        const resp = await fetch(`https://www.googleapis.com/drive/v3/files/${file.id}?alt=media&key=${API_KEY}`);
         if (resp.ok) {
           const buf = new Uint8Array(await resp.arrayBuffer());
-          if (buf.length <= 5 * 1024 * 1024) {
-            const pdfText = extractPdfText(buf);
-            if (pdfText.length > 50) {
-              addResult(fullPath, pdfText, "📕");
-            } else {
-              results.push(`📕 ${fullPath} — PDF (texto não extraível, provavelmente scan)`);
-            }
-          } else {
-            results.push(`📕 ${fullPath} — PDF muito grande (${Math.round(buf.length / 1024 / 1024)}MB)`);
-          }
-        }
+          const pdfText = extractPdfText(buf);
+          if (pdfText.length > 50) addResult(fullPath, pdfText, "📕");
+          else results.push(`📕 ${fullPath} — PDF (scan/imagem)`);
+        } else await resp.text();
       } catch (e) { console.error(`[genspark-ai] PDF error ${fullPath}:`, e); }
-    }
-    else if (mimeType === "application/zip" || fileName.toLowerCase().endsWith(".zip")) {
-      try {
-        const dlUrl = `https://www.googleapis.com/drive/v3/files/${file.id}?alt=media&key=${API_KEY}`;
-        const resp = await fetch(dlUrl);
-        if (resp.ok) {
-          const zipBuf = new Uint8Array(await resp.arrayBuffer());
-          if (zipBuf.length > 10 * 1024 * 1024) {
-            results.push(`📦 ${fullPath} — ZIP muito grande (${Math.round(zipBuf.length / 1024 / 1024)}MB)`);
-            return;
-          }
-          console.log(`[genspark-ai] Extraindo ZIP: ${fullPath} (${Math.round(zipBuf.length / 1024)}KB)`);
-          const unzipped = unzipSync(zipBuf);
-          let zipCount = 0;
-          for (const [entryName, entryData] of Object.entries(unzipped)) {
-            if (zipCount >= 10 || totalFilesRead >= MAX_FILES || totalChars >= MAX_TOTAL_CHARS) break;
-            const data = entryData as Uint8Array;
-            if (entryName.endsWith("/") || entryName.startsWith("__MACOSX") || entryName.startsWith(".")) continue;
-
-            if (isTextFile(entryName)) {
-              const text = new TextDecoder("utf-8", { fatal: false }).decode(data);
-              if (text.trim().length > 10) { addResult(`${fullPath}/${entryName}`, text, "📦"); zipCount++; }
-            } else if (entryName.toLowerCase().endsWith(".pdf") && data.length <= 5 * 1024 * 1024) {
-              const pdfText = extractPdfText(data);
-              if (pdfText.length > 50) { addResult(`${fullPath}/${entryName}`, pdfText, "📦📕"); zipCount++; }
-              else { results.push(`📦📕 ${fullPath}/${entryName} — PDF no ZIP (scan)`); zipCount++; }
-            }
-          }
-        }
-      } catch (e) {
-        console.error(`[genspark-ai] ZIP error ${fullPath}:`, e);
-        results.push(`📦 ${fullPath} — erro ao extrair ZIP`);
-      }
     }
     else {
       results.push(`📎 ${fullPath} (${mimeType})`);
@@ -194,48 +160,23 @@ async function fetchDriveDocuments(equipamentoFilter?: string): Promise<string> 
   }
 
   try {
-    console.log(`[genspark-ai] Listando subpastas do Drive...`);
-    const topItems = await listFolder(DRIVE_FOLDER_ID);
-    console.log(`[genspark-ai] Drive: ${topItems.length} itens no topo`);
+    // Wrap entire Drive operation in a timeout
+    const drivePromise = (async () => {
+      console.log(`[genspark-ai] Drive: listando pasta raiz...`);
+      const topItems = await listFolder(DRIVE_FOLDER_ID);
 
-    // Separate folders and files
-    const folders = topItems.filter((f: any) => f.mimeType === "application/vnd.google-apps.folder");
-    const topFiles = topItems.filter((f: any) => f.mimeType !== "application/vnd.google-apps.folder");
+      const folders = topItems.filter((f: any) => f.mimeType === "application/vnd.google-apps.folder");
+      const topFiles = topItems.filter((f: any) => f.mimeType !== "application/vnd.google-apps.folder");
 
-    // Build search terms from equipment filter
-    const filterTerms = (equipamentoFilter || "")
-      .toLowerCase()
-      .split(/[\s\-_,./]+/)
-      .filter((t: string) => t.length > 2);
+      const filterTerms = (equipamentoFilter || "")
+        .toLowerCase()
+        .split(/[\s\-_,./]+/)
+        .filter((t: string) => t.length > 2);
 
-    console.log(`[genspark-ai] Drive: ${folders.length} subpastas, ${topFiles.length} arquivos soltos, filtro=[${filterTerms.join(",")}]`);
+      console.log(`[genspark-ai] Drive: ${folders.length} pastas, ${topFiles.length} soltos, filtro=[${filterTerms.join(",")}]`);
 
-    // Process top-level files first
-    for (const file of topFiles) {
-      if (totalFilesRead >= MAX_FILES || totalChars >= MAX_TOTAL_CHARS) break;
-      await processFile(file, "");
-    }
-
-    // Smart folder selection: prioritize folders whose name matches the equipment
-    const scoredFolders = folders.map((f: any) => {
-      const nameLower = (f.name || "").toLowerCase();
-      let score = 0;
-      for (const term of filterTerms) {
-        if (nameLower.includes(term)) score += 2;
-      }
-      return { ...f, score };
-    }).sort((a: any, b: any) => b.score - a.score);
-
-    // Process matching folders first, then others (up to 3 folders total to save time)
-    const foldersToScan = scoredFolders.slice(0, 5);
-    for (const folder of foldersToScan) {
-      if (totalFilesRead >= MAX_FILES || totalChars >= MAX_TOTAL_CHARS) break;
-      console.log(`[genspark-ai] Entrando na pasta: ${folder.name} (score=${folder.score})`);
-      const subFiles = await listFolder(folder.id);
-      console.log(`[genspark-ai] Pasta "${folder.name}": ${subFiles.length} arquivos`);
-
-      // Within subfolder, prioritize files matching equipment name
-      const scoredFiles = subFiles.map((f: any) => {
+      // Score folders by relevance
+      const scoredFolders = folders.map((f: any) => {
         const nameLower = (f.name || "").toLowerCase();
         let score = 0;
         for (const term of filterTerms) {
@@ -244,22 +185,80 @@ async function fetchDriveDocuments(equipamentoFilter?: string): Promise<string> 
         return { ...f, score };
       }).sort((a: any, b: any) => b.score - a.score);
 
-      for (const file of scoredFiles) {
-        if (totalFilesRead >= MAX_FILES || totalChars >= MAX_TOTAL_CHARS) break;
-        // Skip subfolders within subfolders (only 1 level deep)
-        if (file.mimeType === "application/vnd.google-apps.folder") continue;
-        await processFile(file, folder.name);
-      }
-    }
+      // ONLY scan folders that match the equipment (score > 0)
+      // If none match, scan just the top 2 folders (lightweight scan)
+      const matchingFolders = scoredFolders.filter((f: any) => f.score > 0);
+      const foldersToScan = matchingFolders.length > 0
+        ? matchingFolders.slice(0, 3)
+        : scoredFolders.slice(0, 2);
 
-    console.log(`[genspark-ai] Drive total: ${totalFilesRead} arquivos lidos, ${totalChars} chars`);
+      // Process top-level text files only (skip ZIPs at root)
+      for (const file of topFiles) {
+        if (limitReached()) break;
+        const mime = file.mimeType || "";
+        const name = (file.name || "").toLowerCase();
+        // Skip ZIPs at root level — too slow
+        if (mime === "application/zip" || name.endsWith(".zip")) {
+          // Only mention if it matches the filter
+          if (filterTerms.some((t: string) => name.includes(t))) {
+            results.push(`📦 ${file.name} — ZIP disponível (não processado por performance)`);
+          }
+          continue;
+        }
+        await processFile(file, "");
+      }
+
+      // Scan matched subfolders
+      for (const folder of foldersToScan) {
+        if (limitReached()) break;
+        console.log(`[genspark-ai] Entrando: ${folder.name} (score=${folder.score})`);
+        const subFiles = await listFolder(folder.id);
+
+        // Prioritize files matching equipment, skip ZIPs
+        const scoredFiles = subFiles
+          .filter((f: any) => f.mimeType !== "application/vnd.google-apps.folder")
+          .map((f: any) => {
+            const nameLower = (f.name || "").toLowerCase();
+            const isZip = f.mimeType === "application/zip" || nameLower.endsWith(".zip");
+            let score = isZip ? -10 : 0; // Penalize ZIPs heavily
+            for (const term of filterTerms) {
+              if (nameLower.includes(term)) score += 3;
+            }
+            return { ...f, score };
+          })
+          .sort((a: any, b: any) => b.score - a.score);
+
+        for (const file of scoredFiles) {
+          if (limitReached()) break;
+          // Skip ZIPs inside subfolders too
+          const name = (file.name || "").toLowerCase();
+          if (file.mimeType === "application/zip" || name.endsWith(".zip")) continue;
+          await processFile(file, folder.name);
+        }
+      }
+
+      console.log(`[genspark-ai] Drive total: ${totalFilesRead} arquivos, ${totalChars} chars`);
+    })();
+
+    // Race with timeout
+    await Promise.race([
+      drivePromise,
+      new Promise<void>((_, reject) => setTimeout(() => reject(new Error("Drive timeout")), DRIVE_TIMEOUT)),
+    ]);
+
     if (results.length === 0) return "";
     return `MATERIAIS INTERNOS (Google Drive WeDo):\n${results.join("\n\n")}`;
   } catch (e) {
-    console.error("[genspark-ai] Drive fetch error:", e);
+    const msg = e instanceof Error ? e.message : String(e);
+    console.warn(`[genspark-ai] Drive: ${msg} (${totalFilesRead} arquivos lidos até aqui)`);
+    if (results.length > 0) {
+      return `MATERIAIS INTERNOS (Google Drive WeDo) [parcial]:\n${results.join("\n\n")}`;
+    }
     return "";
   }
 }
+
+
 
 // =========================================================================
 // PERPLEXITY WEB SEARCH — pesquisa técnica na internet sobre o equipamento
