@@ -585,9 +585,49 @@ export default function BudgetKanbanPage() {
     }
   }, [selectedCard]);
 
+  // AI Chat about this budget
+  const handleChatSend = useCallback(async () => {
+    if (!selectedCard || !chatInput.trim()) return;
+    const userMsg = chatInput.trim();
+    setChatInput("");
+    setChatMessages(prev => [...prev, { role: "user", content: userMsg }]);
+    setIsChatLoading(true);
+    try {
+      const todasRespostas = selectedCard.questionario_respostas
+        .filter((r) => r.reply && !r.reply.startsWith("http"))
+        .map((r) => `${r.question}: ${r.reply}`)
+        .join("\n");
+
+      const { data: result, error } = await supabase.functions.invoke("genspark-ai", {
+        body: {
+          action: "chat",
+          context: {
+            cliente: selectedCard.cliente,
+            tecnico: selectedCard.tecnico,
+            data_tarefa: selectedCard.data_tarefa,
+            orientacao: selectedCard.orientacao,
+            pecas: getAnswer(selectedCard, "peças") || getAnswer(selectedCard, "material") || getAnswer(selectedCard, "peca") || "",
+            servicos: getAnswer(selectedCard, "serviços") || getAnswer(selectedCard, "servico") || "",
+            observacoes: getAnswer(selectedCard, "observ") || "",
+            todas_respostas: todasRespostas,
+          },
+          analysis: aiAnalysis || "",
+          userMessage: userMsg,
+          chatHistory: chatMessages,
+        },
+      });
+      if (error) throw error;
+      if (result?.error) throw new Error(result.error);
+      setChatMessages(prev => [...prev, { role: "assistant", content: result?.result || "Sem resposta" }]);
+    } catch (e: any) {
+      toast.error("Erro no chat: " + (e?.message || "Tente novamente"));
+      setChatMessages(prev => [...prev, { role: "assistant", content: "Erro ao processar. Tente novamente." }]);
+    } finally {
+      setIsChatLoading(false);
+    }
+  }, [selectedCard, chatInput, chatMessages, aiAnalysis]);
+
   const resumo = data?.resumo;
-
-
   // Orçamentos realizados breakdown: hoje, semana, mês
   const orcBreakdown = useMemo(() => {
     if (!data?.items) return { hoje: 0, semana: 0, mes: 0 };
