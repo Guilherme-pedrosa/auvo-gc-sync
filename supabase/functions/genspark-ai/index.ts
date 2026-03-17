@@ -660,20 +660,28 @@ Técnico, direto, sem floreio. Potente e fundamentado.`;
         contextText += `\nANÁLISE TÉCNICA JÁ GERADA:\n${analysis}\n`;
       }
 
-      // *** PERPLEXITY WEB SEARCH — pesquisa na web para enriquecer a resposta do chat ***
-      const chatWebResearch = await searchForChatQuestion(
-        userMessage,
-        context?.equipamento || context?.descricao || "",
-        context?.orientacao || "",
-        analysis || ""
-      );
+      // *** PARALLEL: Perplexity web search + Google Drive docs ***
+      const [chatWebResearch, chatDriveContext] = await Promise.all([
+        searchForChatQuestion(
+          userMessage,
+          context?.equipamento || context?.descricao || "",
+          context?.orientacao || "",
+          analysis || ""
+        ),
+        fetchDriveDocuments(context?.equipamento || context?.descricao || ""),
+      ]);
 
       if (chatWebResearch) {
         contextText += chatWebResearch;
         contextText += `\n\nINSTRUÇÃO: Você RECEBEU dados de pesquisa web acima. Use-os para fundamentar sua resposta com dados reais. Cite as fontes quando relevante. Se a pesquisa web contradizer algo, explique a divergência.`;
       }
 
-      contextText += `\n\nMATERIAIS INTERNOS:\nNão fornecidos\n`;
+      if (chatDriveContext) {
+        contextText += `\n\n========== 📂 ${chatDriveContext} ==========\n`;
+        contextText += `\nINSTRUÇÃO: Use os materiais internos da WeDo acima para fundamentar sua resposta. Marque com 📂 informações vindas dos materiais internos.`;
+      } else {
+        contextText += `\n\nMATERIAIS INTERNOS:\nNão fornecidos\n`;
+      }
       contextText += `\nPERGUNTA DO USUÁRIO:\n${userMessage}`;
 
       // Add photos if available (vision support for chat)
