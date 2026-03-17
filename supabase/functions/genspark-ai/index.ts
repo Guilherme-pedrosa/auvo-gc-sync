@@ -545,7 +545,20 @@ Técnico, direto, sem floreio.`;
         contextText += `\nANÁLISE TÉCNICA JÁ GERADA:\n${analysis}\n`;
       }
 
-      contextText += `\nMATERIAIS INTERNOS:\nNão fornecidos\n`;
+      // *** PERPLEXITY WEB SEARCH — pesquisa na web para enriquecer a resposta do chat ***
+      const chatWebResearch = await searchForChatQuestion(
+        userMessage,
+        context?.equipamento || context?.descricao || "",
+        context?.orientacao || "",
+        analysis || ""
+      );
+
+      if (chatWebResearch) {
+        contextText += chatWebResearch;
+        contextText += `\n\nINSTRUÇÃO: Você RECEBEU dados de pesquisa web acima. Use-os para fundamentar sua resposta com dados reais. Cite as fontes quando relevante. Se a pesquisa web contradizer algo, explique a divergência.`;
+      }
+
+      contextText += `\n\nMATERIAIS INTERNOS:\nNão fornecidos\n`;
       contextText += `\nPERGUNTA DO USUÁRIO:\n${userMessage}`;
 
       // Add photos if available (vision support for chat)
@@ -570,7 +583,7 @@ Técnico, direto, sem floreio.`;
       }
       messages.push({ role: "user", content: userContentParts });
 
-      console.log(`[genspark-ai] [chat] cliente=${context?.cliente}, hasAnalysis=${!!analysis}, fotos=${context?.fotos?.length || 0}, msgLength=${userMessage?.length}`);
+      console.log(`[genspark-ai] [chat] cliente=${context?.cliente}, hasAnalysis=${!!analysis}, fotos=${context?.fotos?.length || 0}, webResearch=${!!chatWebResearch}, msgLength=${userMessage?.length}`);
 
     } else {
       throw new Error("Ação inválida. Use 'improve', 'analyze' ou 'chat'.");
