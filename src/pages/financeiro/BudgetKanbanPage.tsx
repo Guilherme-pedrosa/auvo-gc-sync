@@ -441,7 +441,54 @@ export default function BudgetKanbanPage() {
       .join("\n");
   };
 
-  const resumo = data?.resumo;
+  // Save edited questionnaire field
+  const handleSaveFieldEdit = useCallback(async (keyword: string, newValue: string) => {
+    if (!selectedCard) return;
+    setIsSavingField(true);
+    try {
+      const respostas = [...selectedCard.questionario_respostas];
+      // Find and update matching responses
+      const matchingIndices = respostas
+        .map((r, i) => ({ r, i }))
+        .filter(({ r }) => r.question.toLowerCase().includes(keyword.toLowerCase()) && r.reply && !r.reply.startsWith("http"));
+      
+      if (matchingIndices.length === 0) { toast.error("Campo não encontrado"); setIsSavingField(false); return; }
+      
+      // If multiple lines were joined, split back; otherwise update first match
+      const lines = newValue.split("\n");
+      if (matchingIndices.length === 1 || lines.length <= 1) {
+        respostas[matchingIndices[0].i] = { ...respostas[matchingIndices[0].i], reply: newValue };
+      } else {
+        matchingIndices.forEach(({ i }, idx) => {
+          respostas[i] = { ...respostas[i], reply: lines[idx] ?? respostas[i].reply };
+        });
+      }
+
+      const { error } = await supabase.functions.invoke("auvo-task-update", {
+        body: {
+          action: "persist-central",
+          rows: [{ auvo_task_id: selectedCard.auvo_task_id, questionario_respostas: respostas }],
+        },
+      });
+      if (error) throw error;
+
+      const updatedCard = { ...selectedCard, questionario_respostas: respostas };
+      setSelectedCard(updatedCard);
+      setColumns(prev => prev.map(col => ({
+        ...col,
+        items: col.items.map(item => item.auvo_task_id === selectedCard.auvo_task_id ? updatedCard : item),
+      })));
+      setEditingSection(null);
+      setEditValue("");
+      toast.success("Campo atualizado!");
+    } catch (e: any) {
+      toast.error("Erro ao salvar: " + (e?.message || ""));
+    } finally {
+      setIsSavingField(false);
+    }
+  }, [selectedCard]);
+
+
 
   // Orçamentos realizados breakdown: hoje, semana, mês
   const orcBreakdown = useMemo(() => {
