@@ -52,9 +52,9 @@ async function addPhotosToContent(contentParts: any[], fotos: string[], maxPhoto
 const DRIVE_FOLDER_ID = "1Sum9oUAzqfDew0FH1UC7_cIQyxEvAdcd";
 
 async function fetchDriveDocuments(equipamentoFilter?: string): Promise<string> {
-  const API_KEY = Deno.env.get("GOOGLE_MAPS_API_KEY");
+  const API_KEY = Deno.env.get("GOOGLE_DRIVE_API_KEY");
   if (!API_KEY) {
-    console.log("[genspark-ai] GOOGLE_MAPS_API_KEY não disponível, pulando Drive");
+    console.log("[genspark-ai] GOOGLE_DRIVE_API_KEY não disponível, pulando Drive");
     return "";
   }
 
