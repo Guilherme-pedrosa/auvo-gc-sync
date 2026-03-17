@@ -678,7 +678,7 @@ TOM: Telegráfico, técnico, zero enrolação.`;
       } else {
         textPrompt += `\nMATERIAIS INTERNOS\nNão fornecidos\n`;
       }
-      textPrompt += `\n⚠️ LEMBRETE FINAL OBRIGATÓRIO: A pesquisa web e os materiais internos são COMPLEMENTARES ao seu raciocínio de componentes adjacentes. Você DEVE aplicar a árvore de subsistemas (rolamento→retentor+eixo+mancal, motor→correia+polias+capacitor, etc.) INDEPENDENTEMENTE do que a web ou o Drive dizem. Se a web não menciona retentor mas o técnico vai trocar rolamento, LISTE O RETENTOR. Sua resposta deve seguir exatamente o formato definido no system prompt.`;
+      textPrompt += `\n⚠️ LEMBRETE FINAL OBRIGATÓRIO: Analise PRIMEIRO o relatório/fotos e classifique o que é confirmado, recomendado e a verificar. Depois complemente tecnicamente com itens necessários do MESMO subsistema. Não force item fora de contexto. Se houver dano em rolamento/mancal/eixo, complete com os adjacentes necessários (ex.: retentor/mancal/eixo) e mantenha coerência: dano pede troca; lubrificação só para componente funcional.`;
 
       userContentParts.push({ type: "text", text: textPrompt });
 
