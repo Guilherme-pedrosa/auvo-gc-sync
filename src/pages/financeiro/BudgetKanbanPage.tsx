@@ -1,4 +1,5 @@
 import { useState, useCallback, useMemo } from "react";
+import PhotoGallery from "@/components/financeiro/PhotoGallery";
 import { useQuery } from "@tanstack/react-query";
 import { isAfter, isEqual } from "date-fns";
 import { supabase } from "@/integrations/supabase/client";
@@ -93,7 +94,7 @@ export default function BudgetKanbanPage() {
   const [editingColumnId, setEditingColumnId] = useState<string | null>(null);
   const [editingColumnTitle, setEditingColumnTitle] = useState("");
   const [selectedCard, setSelectedCard] = useState<KanbanItem | null>(null);
-  const [expandedPhoto, setExpandedPhoto] = useState<string | null>(null);
+  // expandedPhoto removed — using PhotoGallery component
   const [sortBy, setSortBy] = useState<"manual" | "data" | "cliente" | "tecnico" | "valor">("manual");
 
   const { data, isLoading, refetch, isFetching } = useQuery<ApiResponse>({
@@ -1123,48 +1124,13 @@ export default function BudgetKanbanPage() {
                 )}
 
                 {/* Fotos */}
-                {selectedCard.questionario_respostas.some((r) => r.reply.startsWith("http")) && (
-                  <div className="space-y-1">
-                    <h4 className="font-semibold text-sm text-foreground">📷 Fotos</h4>
-                    <div className="grid grid-cols-3 gap-2">
-                      {selectedCard.questionario_respostas
-                        .filter((r) => r.reply.startsWith("http"))
-                        .map((r, i) => (
-                          <button
-                            key={i}
-                            type="button"
-                            onClick={() => setExpandedPhoto(r.reply)}
-                            className="block rounded-md overflow-hidden border hover:ring-2 ring-primary/30 transition-all cursor-zoom-in"
-                          >
-                            <img
-                              src={r.reply}
-                              alt={r.question}
-                              className="w-full h-24 object-cover"
-                              loading="lazy"
-                            />
-                          </button>
-                        ))}
-                    </div>
-                  </div>
-                )}
+                <PhotoGallery images={selectedCard.questionario_respostas.filter((r) => r.reply.startsWith("http")).map((r) => r.reply)} />
               </div>
             </>
           )}
         </DialogContent>
       </Dialog>
 
-      {/* Photo Lightbox */}
-      <Dialog open={!!expandedPhoto} onOpenChange={(open) => !open && setExpandedPhoto(null)}>
-        <DialogContent className="max-w-[90vw] max-h-[90vh] p-2 flex items-center justify-center bg-black/95 border-none">
-          {expandedPhoto && (
-            <img
-              src={expandedPhoto}
-              alt="Foto ampliada"
-              className="max-w-full max-h-[85vh] object-contain rounded"
-            />
-          )}
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }
