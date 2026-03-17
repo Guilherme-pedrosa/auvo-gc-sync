@@ -47,6 +47,104 @@ async function addPhotosToContent(contentParts: any[], fotos: string[], maxPhoto
   }
 }
 // =========================================================================
+// GOOGLE DRIVE — busca documentos técnicos da pasta pública da WeDo
+// =========================================================================
+const DRIVE_FOLDER_ID = "1Sum9oUAzqfDew0FH1UC7_cIQyxEvAdcd";
+
+async function fetchDriveDocuments(equipamentoFilter?: string): Promise<string> {
+  const API_KEY = Deno.env.get("GOOGLE_MAPS_API_KEY");
+  if (!API_KEY) {
+    console.log("[genspark-ai] GOOGLE_MAPS_API_KEY não disponível, pulando Drive");
+    return "";
+  }
+
+  try {
+    // List files in the public folder
+    const listUrl = `https://www.googleapis.com/drive/v3/files?q='${DRIVE_FOLDER_ID}'+in+parents+and+trashed=false&key=${API_KEY}&fields=files(id,name,mimeType,size)&pageSize=50`;
+    console.log(`[genspark-ai] Listando arquivos do Drive...`);
+
+    const listResp = await fetch(listUrl);
+    if (!listResp.ok) {
+      const errText = await listResp.text();
+      console.error(`[genspark-ai] Drive API error ${listResp.status}: ${errText.substring(0, 200)}`);
+      return "";
+    }
+
+    const listData = await listResp.json();
+    const files = listData.files || [];
+    console.log(`[genspark-ai] Drive: ${files.length} arquivos encontrados`);
+
+    if (files.length === 0) return "";
+
+    const results: string[] = [];
+    const filterLower = (equipamentoFilter || "").toLowerCase();
+
+    for (const file of files) {
+      const fileName = file.name || "";
+      const mimeType = file.mimeType || "";
+
+      // For Google Docs, export as plain text
+      if (mimeType === "application/vnd.google-apps.document") {
+        try {
+          const exportUrl = `https://www.googleapis.com/drive/v3/files/${file.id}/export?mimeType=text/plain&key=${API_KEY}`;
+          const docResp = await fetch(exportUrl);
+          if (docResp.ok) {
+            let text = await docResp.text();
+            // Truncate to avoid giant prompts
+            if (text.length > 3000) text = text.substring(0, 3000) + "\n... [documento truncado]";
+            results.push(`📄 ${fileName}:\n${text}`);
+            console.log(`[genspark-ai] Drive doc loaded: ${fileName} (${text.length} chars)`);
+          }
+        } catch (e) {
+          console.error(`[genspark-ai] Error exporting doc ${fileName}:`, e);
+        }
+      }
+      // For Google Sheets, export as CSV
+      else if (mimeType === "application/vnd.google-apps.spreadsheet") {
+        try {
+          const exportUrl = `https://www.googleapis.com/drive/v3/files/${file.id}/export?mimeType=text/csv&key=${API_KEY}`;
+          const sheetResp = await fetch(exportUrl);
+          if (sheetResp.ok) {
+            let text = await sheetResp.text();
+            if (text.length > 3000) text = text.substring(0, 3000) + "\n... [planilha truncada]";
+            results.push(`📊 ${fileName}:\n${text}`);
+            console.log(`[genspark-ai] Drive sheet loaded: ${fileName} (${text.length} chars)`);
+          }
+        } catch (e) {
+          console.error(`[genspark-ai] Error exporting sheet ${fileName}:`, e);
+        }
+      }
+      // For text files, download directly
+      else if (mimeType.startsWith("text/") || fileName.endsWith(".txt") || fileName.endsWith(".csv") || fileName.endsWith(".md")) {
+        try {
+          const dlUrl = `https://www.googleapis.com/drive/v3/files/${file.id}?alt=media&key=${API_KEY}`;
+          const dlResp = await fetch(dlUrl);
+          if (dlResp.ok) {
+            let text = await dlResp.text();
+            if (text.length > 3000) text = text.substring(0, 3000) + "\n... [arquivo truncado]";
+            results.push(`📄 ${fileName}:\n${text}`);
+            console.log(`[genspark-ai] Drive text loaded: ${fileName} (${text.length} chars)`);
+          }
+        } catch (e) {
+          console.error(`[genspark-ai] Error downloading ${fileName}:`, e);
+        }
+      }
+      // For PDFs and other files, just list them (can't parse in Deno easily)
+      else {
+        results.push(`📎 ${fileName} (${mimeType}) — disponível na pasta do Drive`);
+      }
+    }
+
+    if (results.length === 0) return "";
+
+    return `MATERIAIS INTERNOS (Google Drive WeDo):\n${results.join("\n\n")}`;
+  } catch (e) {
+    console.error("[genspark-ai] Drive fetch error:", e);
+    return "";
+  }
+}
+
+// =========================================================================
 // PERPLEXITY WEB SEARCH — pesquisa técnica na internet sobre o equipamento
 // =========================================================================
 async function searchPerplexity(
