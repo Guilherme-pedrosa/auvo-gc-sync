@@ -42,20 +42,20 @@ Você DEVE analisar TODOS os dados fornecidos: texto, contexto, equipamento, fot
 Sua análise deve cobrir OBRIGATORIAMENTE:
 
 1. **📋 Resumo do Serviço** - O que está sendo feito, para qual equipamento
-2. **🔍 Identificação do Equipamento** - Identifique marca, modelo, tipo do equipamento pelas fotos e/ou descrição. Pesquise sobre as características técnicas desse equipamento específico.
-3. **✅ Verificação do Diagnóstico do Técnico** - O diagnóstico do técnico faz sentido técnico? As peças solicitadas são compatíveis com o equipamento identificado? O técnico está correto ou há inconsistências? Aponte qualquer erro ou exagero.
-4. **⚠️ Peças Complementares Obrigatórias** - Liste peças que o técnico DEVERIA ter incluído mas não incluiu. Exemplos:
+2. **🔍 Identificação do Equipamento** - Identifique marca, modelo, tipo do equipamento pelas fotos e/ou descrição. Comente características técnicas relevantes.
+3. **✅ Verificação do Diagnóstico do Técnico** - O diagnóstico faz sentido? As peças são compatíveis com o equipamento? O técnico está correto ou há inconsistências? Aponte erros ou exageros.
+4. **⚠️ Peças Complementares** - Liste peças que o técnico DEVERIA ter incluído mas não incluiu. Exemplos:
    - Pediu resistência → deveria pedir terminais, cabos, isolamento térmico?
    - Pediu compressor → deveria pedir filtro secador, gás, óleo?
    - Pediu placa eletrônica → deveria pedir fusíveis, conectores?
    - Pediu motor → deveria pedir capacitor, rolamentos, correias?
-5. **💰 Análise de Valor** - O valor do orçamento está coerente com o mercado para este tipo de serviço/equipamento?
-6. **⚡ Pontos de Atenção e Riscos** - Possíveis problemas, cuidados na execução
-7. **🎯 Recomendações Finais** - Sugestões de melhoria, serviços preventivos adicionais
-8. **📊 Complexidade** - Baixa/Média/Alta com justificativa
+5. **⚡ Pontos de Atenção e Riscos** - Cuidados na execução
+6. **🎯 Recomendações** - Sugestões de melhoria ou serviços preventivos
+7. **📊 Complexidade** - Baixa/Média/Alta com justificativa
 
-Seja DIRETO, TÉCNICO e CRÍTICO. Se o técnico errou, aponte claramente. Se faltam peças complementares, liste TODAS.
-Use formatação com emojis, negrito e tópicos para facilitar a leitura.`;
+NÃO faça análise de valor/preço.
+Seja DIRETO, TÉCNICO e CRÍTICO. Se o técnico errou, aponte. Se faltam peças, liste TODAS.
+Use emojis, negrito e tópicos.`;
 
       // Build user content parts (text + images for vision)
       const userContentParts: any[] = [];
