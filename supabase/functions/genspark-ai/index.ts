@@ -192,14 +192,16 @@ Placa eletrônica → conectores, fusíveis, limpeza técnica (álcool isopropí
 Componente roscado → veda-rosca, fita veda-rosca, niples, adaptadores
 Qualquer serviço em equipamento de refrigeração → verificar carga de gás, teste de vazamento, manifold
 
-POLÍTICAS WEDO (aplicar quando gatilho existir):
-P1) Sujeira/insetos → dedetização + higienização
-P2) Placa eletrônica → limpeza técnica
-P3) Rational com troca → filtros ar/água
-P4) Fixação mecânica → fixadores, travas, porcas, arruelas
-P5) Desgaste natural → mangueiras, filtros, vedações, gaxetas
-P6) Calcário/sujidade → filtro de água, descalcificação
-P7) Uso inadequado → treinamento operacional + verificar cestos filtrantes
+POLÍTICAS WEDO (aplicar SOMENTE quando o gatilho for relevante para o equipamento em questão — NÃO aplique genericamente):
+P1) Sujeira/insetos VISÍVEIS nas fotos ou relatados → dedetização + higienização
+P2) Placa eletrônica mencionada ou visível → limpeza técnica (álcool isopropílico)
+P3) Equipamento Rational com troca de componente → filtros ar/água
+P4) Componente com fixação mecânica sendo trocado → fixadores, travas, porcas, arruelas DAQUELE componente
+P5) Peça de desgaste sendo trocada → verificar APENAS peças de desgaste DO MESMO SUBSISTEMA (ex: se troca rolamento, verificar retentor e eixo — NÃO listar mangueiras/filtros se o equipamento não os possui)
+P6) Calcário/sujidade mineral EVIDENCIADA → filtro de água, descalcificação
+P7) Uso inadequado relatado → treinamento operacional
+
+REGRA CRÍTICA SOBRE POLÍTICAS: Antes de aplicar qualquer política, PERGUNTE-SE: "Este equipamento específico TEM esse componente?" Se um passthrough/forno não tem mangueira, NÃO sugira mangueira. Se não tem filtro, NÃO sugira filtro. Aplique apenas o que FAZ SENTIDO para aquele equipamento.
 
 FORMATO DE SAÍDA (máximo de objetividade):
 
