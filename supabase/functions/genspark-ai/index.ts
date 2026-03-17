@@ -346,6 +346,8 @@ Direto, técnico, crítico, sem floreio, sem linguagem de IA.`;
         textPrompt += `- Técnico: ${context.tecnico || "N/A"}\n`;
         textPrompt += `- Data: ${context.data_tarefa || "N/A"}\n`;
         textPrompt += `- Equipamento: ${context.equipamento || context.descricao || "N/A"}\n`;
+        textPrompt += `- ID / Patrimônio / Nº de Série do Equipamento: ${context.equipamento_id || "N/A"}\n`;
+        textPrompt += `- Descrição do equipamento/chamado: ${context.descricao || "N/A"}\n`;
         textPrompt += `- Orientação inicial / descrição do chamado: ${context.orientacao || "N/A"}\n`;
         textPrompt += `- Peças informadas: ${context.pecas || "N/A"}\n`;
         textPrompt += `- Serviços informados: ${context.servicos || "N/A"}\n`;
