@@ -465,12 +465,15 @@ Quando útil, usar:
 TOM
 Técnico, direto, sem floreio.`;
 
-      // Build context message
+      // Build context message with photos support
+      const userContentParts: any[] = [];
       let contextText = `CONTEXTO DO ORÇAMENTO ATUAL\n\nOS:\n`;
       if (context) {
         contextText += `- Cliente: ${context.cliente || "N/A"}\n`;
         contextText += `- Técnico: ${context.tecnico || "N/A"}\n`;
         contextText += `- Data: ${context.data_tarefa || "N/A"}\n`;
+        contextText += `- Equipamento: ${context.equipamento || "N/A"}\n`;
+        contextText += `- ID / Série: ${context.equipamento_id || "N/A"}\n`;
         contextText += `- Orientação: ${context.orientacao || "N/A"}\n`;
         contextText += `- Peças: ${context.pecas || "N/A"}\n`;
         contextText += `- Serviços: ${context.servicos || "N/A"}\n`;
@@ -485,6 +488,12 @@ Técnico, direto, sem floreio.`;
       contextText += `\nMATERIAIS INTERNOS:\nNão fornecidos\n`;
       contextText += `\nPERGUNTA DO USUÁRIO:\n${userMessage}`;
 
+      // Add photos if available (vision support for chat)
+      const hasFotos = context?.fotos?.length > 0;
+      if (hasFotos) {
+        contextText += `\n\nFOTOS DA OS: ${filterImageUrls(context.fotos).length} foto(s) anexadas. Use-as para responder com mais precisão.`;
+      }
+
       messages.push({ role: "system", content: systemPrompt });
 
       // Add chat history if present
@@ -494,9 +503,14 @@ Técnico, direto, sem floreio.`;
         }
       }
 
-      messages.push({ role: "user", content: contextText });
+      // Build multimodal user message with photos
+      userContentParts.push({ type: "text", text: contextText });
+      if (hasFotos) {
+        await addPhotosToContent(userContentParts, context.fotos, 6, "low");
+      }
+      messages.push({ role: "user", content: userContentParts });
 
-      console.log(`[genspark-ai] [chat] cliente=${context?.cliente}, hasAnalysis=${!!analysis}, msgLength=${userMessage?.length}`);
+      console.log(`[genspark-ai] [chat] cliente=${context?.cliente}, hasAnalysis=${!!analysis}, fotos=${context?.fotos?.length || 0}, msgLength=${userMessage?.length}`);
 
     } else {
       throw new Error("Ação inválida. Use 'improve', 'analyze' ou 'chat'.");
