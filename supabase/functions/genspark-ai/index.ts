@@ -435,6 +435,11 @@ ou
   - Sinalizar possível necessidade de limpeza química ou descalcificação
 - A sugestão deve ser contextualizada ao equipamento identificado na OS
 
+7. USO INADEQUADO DO EQUIPAMENTO — Se houver evidência de uso incorreto (resíduos de alimentos como sementes, cascas, ossos ou objetos estranhos em locais indevidos, entupimentos por mal uso, danos por operação incorreta):
+- Recomendar treinamento operacional para o cliente sobre utilização correta conforme manual do fabricante
+- Se o equipamento possuir cestos filtrantes, filtros ou telas de retenção, destacar a importância do uso correto e verificar estado de conservação
+- Classificar como serviço adicional recomendado
+
 FORMATO DE RESPOSTA
 Responder de forma direta.
 Quando útil, usar:
