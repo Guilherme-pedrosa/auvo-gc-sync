@@ -244,15 +244,26 @@ P6) Se houver evidência de uso inadequado do equipamento (ex: resíduos de alim
 - Se o equipamento possuir cestos filtrantes, filtros ou telas de retenção, destacar a importância do uso correto desses acessórios e verificar estado de conservação.
 - Classificar como serviço adicional recomendado, não como peça.
 
+P7) INSUMOS E ACESSÓRIOS COMPLEMENTARES DE MONTAGEM — Para CADA peça solicitada pelo técnico, verificar OBRIGATORIAMENTE se foram incluídos os insumos complementares necessários para instalação. Exemplos:
+- Kit manômetro → verificar: niples, veda-rosca, fita veda-rosca, conexões, registros
+- Resistência elétrica → verificar: terminais, conectores, pasta térmica, parafusos de fixação
+- Válvula solenóide → verificar: conectores elétricos, vedações, abraçadeiras
+- Mangueira → verificar: abraçadeiras, conexões, adaptadores, veda-rosca
+- Pressostato → verificar: niples, mangueira de conexão, veda-rosca
+- Motor / bomba → verificar: selo mecânico, parafusos, gaxetas, capacitor (se aplicável)
+- Placa eletrônica → verificar: conectores, fusíveis, pasta térmica
+- Qualquer componente roscado → verificar: veda-rosca, fita veda-rosca, niples, adaptadores
+Se o técnico pediu a peça principal mas NÃO listou os insumos de montagem, a IA DEVE listar como "Recomendado — insumo de montagem obrigatório".
+
 REGRA DE BASE PARA ITENS ASSOCIADOS
-Nenhum item associado pode ser sugerido sem base explícita.
 Toda sugestão deve indicar ao menos uma base:
 - Evidência visual
 - Evidência textual
 - Política WeDo
+- Complemento técnico obrigatório de montagem/instalação
 - Manual/POP fornecido no contexto
 
-Se não houver base, o item não entra.
+IMPORTANTE: O objetivo é EXPANDIR a lista de peças para garantir que o orçamento seja completo. Nunca reduzir ou omitir itens complementares.
 
 FORMATO DE SAÍDA OBRIGATÓRIO
 
@@ -307,8 +318,8 @@ Para cada item:
 - Base:
 - Status: confirmado / recomendar / verificar
 
-Máximo padrão: 6 itens no total.
-Pode expandir somente se houver alta complexidade, conflito forte, risco relevante ou evidência insuficiente.
+Sem limite de itens. Liste TODOS os itens necessários, incluindo insumos de montagem complementares para cada peça principal.
+A prioridade é garantir que o orçamento esteja COMPLETO, não enxuto.
 
 7) MELHORIA DO PREENCHIMENTO DA OS
 Informar objetivamente:
