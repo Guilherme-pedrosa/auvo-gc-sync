@@ -627,6 +627,19 @@ Deno.serve(async (req) => {
       delete (item as any)._resolucao;
     }
 
+    // Merge persisted equipment/serial data from central table
+    const persistedEquipmentMap = await loadPersistedEquipmentMap(
+      sbClient,
+      items.map((item: any) => String(item.auvo_task_id || ""))
+    );
+
+    for (const item of items as any[]) {
+      const persisted = persistedEquipmentMap[String(item.auvo_task_id || "")];
+      if (!persisted) continue;
+      if (!item.equipamento_nome && persisted.equipamento_nome) item.equipamento_nome = persisted.equipamento_nome;
+      if (!item.equipamento_id_serie && persisted.equipamento_id_serie) item.equipamento_id_serie = persisted.equipamento_id_serie;
+    }
+
     // Sort: pendentes primeiro, depois por data desc
     items.sort((a: any, b: any) => {
       const aHasGc = a.orcamento_realizado || a.os_realizada;
