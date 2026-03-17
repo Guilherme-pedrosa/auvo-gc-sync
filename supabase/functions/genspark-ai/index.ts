@@ -53,6 +53,10 @@ Sua análise deve cobrir OBRIGATORIAMENTE:
 6. **🎯 Recomendações** - Sugestões de melhoria ou serviços preventivos
 7. **📊 Complexidade** - Baixa/Média/Alta com justificativa
 
+REGRAS ESPECIAIS OBRIGATÓRIAS:
+- Se houver QUALQUER menção a sujidade, sujeira, acúmulo de gordura, insetos, baratas, formigas ou pragas: SEMPRE recomendar DEDETIZAÇÃO do local/equipamento.
+- Se o equipamento possuir PLACA ELETRÔNICA (placa de controle, placa principal, controlador digital, etc.): SEMPRE recomendar LIMPEZA POR CAVITAÇÃO da placa eletrônica.
+
 NÃO faça análise de valor/preço.
 Seja DIRETO, TÉCNICO e CRÍTICO. Se o técnico errou, aponte. Se faltam peças, liste TODAS.
 Use emojis, negrito e tópicos.`;
