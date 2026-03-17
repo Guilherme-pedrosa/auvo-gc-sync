@@ -102,6 +102,9 @@ Use formatação com emojis, negrito e tópicos para facilitar a leitura.`;
       messages.push({ role: "system", content: systemPrompt });
       messages.push({ role: "user", content: userContentParts });
 
+      const numFotos = context?.fotos?.length || 0;
+      console.log(`[analyze] cliente=${context?.cliente}, fotos=${numFotos}, contentParts=${userContentParts.length}`);
+
     } else {
       throw new Error("Ação inválida. Use 'improve' ou 'analyze'.");
     }
