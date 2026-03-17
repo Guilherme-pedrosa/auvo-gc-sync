@@ -19,21 +19,17 @@ serve(async (req) => {
     const messages: any[] = [];
 
     if (action === "improve") {
-      systemPrompt = `Você é um engenheiro técnico especializado em manutenção industrial, refrigeração, climatização e equipamentos comerciais/industriais. 
-Sua tarefa é melhorar o texto fornecido pelo técnico de campo, tornando-o mais:
-- Técnico e profissional
-- Detalhado e explicativo
-- Organizado e bem formatado
-- Mantendo TODAS as informações originais
-- Adicionando termos técnicos corretos quando possível
-- Corrigindo erros de português
+      systemPrompt = `Você é um técnico especializado em manutenção industrial, refrigeração, climatização e equipamentos.
+Sua ÚNICA tarefa é corrigir o texto fornecido:
+- Corrigir erros de ortografia e gramática
+- Corrigir termos técnicos incorretos
+- NÃO adicionar informações novas
+- NÃO adicionar cabeçalhos, títulos ou formatação extra
+- NÃO adicionar contexto como nome de cliente, técnico etc
+- Manter EXATAMENTE o mesmo formato e estrutura do original
+- Retornar APENAS o texto corrigido, nada mais`;
 
-Retorne APENAS o texto melhorado, sem explicações adicionais. Mantenha o mesmo formato (lista, parágrafo etc).`;
-
-      let userPrompt = `Melhore o seguinte texto técnico de um orçamento de serviço:\n\n${text}`;
-      if (context) {
-        userPrompt += `\n\nContexto adicional do orçamento:\nCliente: ${context.cliente}\nTécnico: ${context.tecnico}\nOrientação: ${context.orientacao || "N/A"}`;
-      }
+      const userPrompt = `Corrija o texto abaixo (apenas ortografia e termos técnicos, sem adicionar nada):\n\n${text}`;
 
       messages.push({ role: "system", content: systemPrompt });
       messages.push({ role: "user", content: userPrompt });
