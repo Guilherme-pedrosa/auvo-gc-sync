@@ -28,6 +28,35 @@ function inDateRange(dateValue: string | undefined, startDate: string, endDate: 
   return dateOnly >= startDate && dateOnly <= endDate;
 }
 
+async function loadPersistedEquipmentMap(sbClient: any, taskIds: string[]) {
+  const uniqueTaskIds = [...new Set(taskIds.map((id) => String(id || "").trim()).filter(Boolean))];
+  const map: Record<string, { equipamento_nome: string | null; equipamento_id_serie: string | null }> = {};
+
+  for (let i = 0; i < uniqueTaskIds.length; i += 200) {
+    const batch = uniqueTaskIds.slice(i, i + 200);
+    const { data, error } = await sbClient
+      .from("tarefas_central")
+      .select("auvo_task_id, equipamento_nome, equipamento_id_serie")
+      .in("auvo_task_id", batch);
+
+    if (error) {
+      console.warn("[budget-kanban] Erro ao carregar equipamentos persistidos:", error.message);
+      continue;
+    }
+
+    for (const row of data || []) {
+      const taskId = String(row.auvo_task_id || "").trim();
+      if (!taskId) continue;
+      map[taskId] = {
+        equipamento_nome: row.equipamento_nome || null,
+        equipamento_id_serie: row.equipamento_id_serie || null,
+      };
+    }
+  }
+
+  return map;
+}
+
 async function rateLimitedFetch(url: string, options: RequestInit, type: "gc" | "auvo"): Promise<Response> {
   const now = Date.now();
   const last = type === "gc" ? lastGcCall : lastAuvoCall;
@@ -273,17 +302,33 @@ Deno.serve(async (req) => {
         inDateRange(item.data_tarefa, startDate, endDate)
       );
 
+      const persistedEquipmentMap = await loadPersistedEquipmentMap(
+        sbClient,
+        filteredItems.map((item: any) => String(item.auvo_task_id || ""))
+      );
+
+      const enrichedItems = filteredItems.map((item: any) => {
+        const persisted = persistedEquipmentMap[String(item.auvo_task_id || "")];
+        if (!persisted) return item;
+
+        return {
+          ...item,
+          equipamento_nome: item.equipamento_nome || persisted.equipamento_nome || null,
+          equipamento_id_serie: item.equipamento_id_serie || persisted.equipamento_id_serie || null,
+        };
+      });
+
       const resumo = {
         periodo: { inicio: startDate, fim: endDate },
-        total_tarefas_com_questionario: filteredItems.length,
-        orcamentos_realizados: filteredItems.filter((i: any) => i.orcamento_realizado).length,
-        os_realizadas: filteredItems.filter((i: any) => i.os_realizada).length,
-        pendentes: filteredItems.filter((i: any) => !i.orcamento_realizado && !i.os_realizada).length,
+        total_tarefas_com_questionario: enrichedItems.length,
+        orcamentos_realizados: enrichedItems.filter((i: any) => i.orcamento_realizado).length,
+        os_realizadas: enrichedItems.filter((i: any) => i.os_realizada).length,
+        pendentes: enrichedItems.filter((i: any) => !i.orcamento_realizado && !i.os_realizada).length,
       };
 
       return new Response(JSON.stringify({
         resumo,
-        items: filteredItems,
+        items: enrichedItems,
         ultimo_sync: meta?.ultimo_sync || null,
         custom_columns: customColumns,
         from_cache: true,
@@ -580,6 +625,19 @@ Deno.serve(async (req) => {
       delete (item as any)._customerId;
       delete (item as any)._externalId;
       delete (item as any)._resolucao;
+    }
+
+    // Merge persisted equipment/serial data from central table
+    const persistedEquipmentMap = await loadPersistedEquipmentMap(
+      sbClient,
+      items.map((item: any) => String(item.auvo_task_id || ""))
+    );
+
+    for (const item of items as any[]) {
+      const persisted = persistedEquipmentMap[String(item.auvo_task_id || "")];
+      if (!persisted) continue;
+      if (!item.equipamento_nome && persisted.equipamento_nome) item.equipamento_nome = persisted.equipamento_nome;
+      if (!item.equipamento_id_serie && persisted.equipamento_id_serie) item.equipamento_id_serie = persisted.equipamento_id_serie;
     }
 
     // Sort: pendentes primeiro, depois por data desc
