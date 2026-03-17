@@ -84,34 +84,55 @@ Use emojis, negrito e tópicos.`;
 
       // Add photos as base64 for GPT vision (OpenAI can't always fetch external URLs)
       if (context?.fotos && Array.isArray(context.fotos) && context.fotos.length > 0) {
-        textPrompt += `\n\n📷 ${context.fotos.length} foto(s) do equipamento/serviço anexadas abaixo. ANALISE CADA FOTO para identificar o equipamento, estado, e verificar a coerência com o diagnóstico do técnico.\n`;
-        userContentParts[0] = { type: "text", text: textPrompt };
+        // Filter only URLs that look like images
+        const imageUrls = context.fotos.filter((u: string) => 
+          /\.(jpg|jpeg|png|gif|webp|bmp)/i.test(u) || u.includes("image") || u.includes("foto") || u.includes("photo")
+        );
         
-        for (const url of context.fotos.slice(0, 6)) { // max 6 photos
-          try {
-            console.log(`[analyze] Downloading photo: ${url.substring(0, 80)}...`);
-            const imgResp = await fetch(url);
-            if (!imgResp.ok) {
-              console.warn(`[analyze] Failed to download photo: ${imgResp.status}`);
-              continue;
+        if (imageUrls.length > 0) {
+          textPrompt += `\n\n📷 ${imageUrls.length} foto(s) do equipamento/serviço anexadas. ANALISE CADA FOTO para identificar o equipamento, estado, e verificar a coerência com o diagnóstico do técnico.\n`;
+          userContentParts[0] = { type: "text", text: textPrompt };
+          
+          for (const url of imageUrls.slice(0, 6)) {
+            try {
+              console.log(`[analyze] Downloading photo: ${url.substring(0, 100)}...`);
+              const imgResp = await fetch(url);
+              if (!imgResp.ok) {
+                console.warn(`[analyze] Failed to download photo: ${imgResp.status}`);
+                continue;
+              }
+              
+              const rawCt = imgResp.headers.get("content-type") || "";
+              // Force a valid image MIME - many servers return wrong content-type
+              let mime = "image/jpeg";
+              if (rawCt.includes("png")) mime = "image/png";
+              else if (rawCt.includes("webp")) mime = "image/webp";
+              else if (rawCt.includes("gif")) mime = "image/gif";
+              
+              const arrayBuf = await imgResp.arrayBuffer();
+              const bytes = new Uint8Array(arrayBuf);
+              
+              // Detect actual format from magic bytes
+              if (bytes[0] === 0x89 && bytes[1] === 0x50) mime = "image/png";
+              else if (bytes[0] === 0xFF && bytes[1] === 0xD8) mime = "image/jpeg";
+              else if (bytes[0] === 0x47 && bytes[1] === 0x49) mime = "image/gif";
+              else if (bytes[0] === 0x52 && bytes[1] === 0x49) mime = "image/webp";
+              
+              let binary = "";
+              for (let i = 0; i < bytes.length; i++) {
+                binary += String.fromCharCode(bytes[i]);
+              }
+              const base64 = btoa(binary);
+              const dataUrl = `data:${mime};base64,${base64}`;
+              
+              userContentParts.push({
+                type: "image_url",
+                image_url: { url: dataUrl, detail: "high" },
+              });
+              console.log(`[analyze] Photo added (${mime}, ${Math.round(base64.length / 1024)}KB)`);
+            } catch (imgErr) {
+              console.warn(`[analyze] Error downloading photo: ${imgErr}`);
             }
-            const arrayBuf = await imgResp.arrayBuffer();
-            const bytes = new Uint8Array(arrayBuf);
-            let binary = "";
-            for (let i = 0; i < bytes.length; i++) {
-              binary += String.fromCharCode(bytes[i]);
-            }
-            const base64 = btoa(binary);
-            const contentType = imgResp.headers.get("content-type") || "image/jpeg";
-            const dataUrl = `data:${contentType};base64,${base64}`;
-            
-            userContentParts.push({
-              type: "image_url",
-              image_url: { url: dataUrl, detail: "high" },
-            });
-            console.log(`[analyze] Photo added as base64 (${Math.round(base64.length / 1024)}KB)`);
-          } catch (imgErr) {
-            console.warn(`[analyze] Error downloading photo: ${imgErr}`);
           }
         }
       }
