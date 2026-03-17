@@ -28,6 +28,35 @@ function inDateRange(dateValue: string | undefined, startDate: string, endDate: 
   return dateOnly >= startDate && dateOnly <= endDate;
 }
 
+async function loadPersistedEquipmentMap(sbClient: any, taskIds: string[]) {
+  const uniqueTaskIds = [...new Set(taskIds.map((id) => String(id || "").trim()).filter(Boolean))];
+  const map: Record<string, { equipamento_nome: string | null; equipamento_id_serie: string | null }> = {};
+
+  for (let i = 0; i < uniqueTaskIds.length; i += 200) {
+    const batch = uniqueTaskIds.slice(i, i + 200);
+    const { data, error } = await sbClient
+      .from("tarefas_central")
+      .select("auvo_task_id, equipamento_nome, equipamento_id_serie")
+      .in("auvo_task_id", batch);
+
+    if (error) {
+      console.warn("[budget-kanban] Erro ao carregar equipamentos persistidos:", error.message);
+      continue;
+    }
+
+    for (const row of data || []) {
+      const taskId = String(row.auvo_task_id || "").trim();
+      if (!taskId) continue;
+      map[taskId] = {
+        equipamento_nome: row.equipamento_nome || null,
+        equipamento_id_serie: row.equipamento_id_serie || null,
+      };
+    }
+  }
+
+  return map;
+}
+
 async function rateLimitedFetch(url: string, options: RequestInit, type: "gc" | "auvo"): Promise<Response> {
   const now = Date.now();
   const last = type === "gc" ? lastGcCall : lastAuvoCall;
