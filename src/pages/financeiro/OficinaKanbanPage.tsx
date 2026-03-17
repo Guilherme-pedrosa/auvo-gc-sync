@@ -16,6 +16,7 @@ import {
   GripVertical, Filter, Wrench, Clock, Package, AlertTriangle, Link2, Save,
   Plus, Trash2, Pencil, History, ShoppingCart
 } from "lucide-react";
+import PhotoGallery from "@/components/financeiro/PhotoGallery";
 import { format, startOfMonth, subMonths } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { useNavigate } from "react-router-dom";
@@ -1052,53 +1053,58 @@ export default function OficinaKanbanPage() {
                     </div>
                   )}
 
-                  {selectedCard.questionario_respostas.length > 0 && (
-                    <div className="space-y-2">
-                      <h4 className="text-sm font-semibold text-foreground">Formulário de Entrada</h4>
-                      <div className="space-y-1.5 max-h-[300px] overflow-y-auto">
-                        {selectedCard.questionario_respostas
-                          .filter((r) => r.reply && r.reply.trim() !== "")
-                          .map((r, i) => (
-                            <div key={i} className="text-xs">
-                              <span className="text-muted-foreground">{r.question}:</span>
-                              {r.reply.startsWith("http") ? (
-                                <a href={r.reply} target="_blank" rel="noopener noreferrer" className="ml-1 text-blue-600 hover:underline">
-                                  {r.reply.includes("image") || r.reply.match(/\.(jpg|jpeg|png|gif|webp)/i) ? (
-                                    <img src={r.reply} alt="" className="mt-1 max-h-40 rounded border" />
-                                  ) : "Ver anexo"}
-                                </a>
-                              ) : (
-                                <span className="ml-1 font-medium">{r.reply}</span>
-                              )}
-                            </div>
-                          ))}
-                      </div>
-                    </div>
-                  )}
+                  {(() => {
+                    const isImage = (url: string) => url.startsWith("http") && (url.includes("image") || /\.(jpg|jpeg|png|gif|webp)/i.test(url));
+                    const allRespostas = [
+                      ...selectedCard.questionario_respostas,
+                      ...(selectedCard.devolucao_respostas || []),
+                    ];
+                    const allPhotos = allRespostas.filter((r) => r.reply && isImage(r.reply)).map((r) => r.reply);
+                    const entradaTexts = selectedCard.questionario_respostas.filter((r) => r.reply?.trim() && !isImage(r.reply));
+                    const devolucaoTexts = (selectedCard.devolucao_respostas || []).filter((r) => r.reply?.trim() && !isImage(r.reply));
 
-                  {selectedCard.devolucao_respostas && selectedCard.devolucao_respostas.length > 0 && (
-                    <div className="space-y-2">
-                      <h4 className="text-sm font-semibold text-foreground">Formulário de Devolução</h4>
-                      <div className="space-y-1.5 max-h-[300px] overflow-y-auto">
-                        {selectedCard.devolucao_respostas
-                          .filter((r) => r.reply && r.reply.trim() !== "")
-                          .map((r, i) => (
-                            <div key={i} className="text-xs">
-                              <span className="text-muted-foreground">{r.question}:</span>
-                              {r.reply.startsWith("http") ? (
-                                <a href={r.reply} target="_blank" rel="noopener noreferrer" className="ml-1 text-blue-600 hover:underline">
-                                  {r.reply.includes("image") || r.reply.match(/\.(jpg|jpeg|png|gif|webp)/i) ? (
-                                    <img src={r.reply} alt="" className="mt-1 max-h-40 rounded border" />
-                                  ) : "Ver anexo"}
-                                </a>
-                              ) : (
-                                <span className="ml-1 font-medium">{r.reply}</span>
-                              )}
+                    return (
+                      <>
+                        <PhotoGallery images={allPhotos} />
+
+                        {entradaTexts.length > 0 && (
+                          <div className="space-y-2">
+                            <h4 className="text-sm font-semibold text-foreground">Formulário de Entrada</h4>
+                            <div className="space-y-1.5 max-h-[300px] overflow-y-auto">
+                              {entradaTexts.map((r, i) => (
+                                <div key={i} className="text-xs">
+                                  <span className="text-muted-foreground">{r.question}:</span>
+                                  {r.reply.startsWith("http") ? (
+                                    <a href={r.reply} target="_blank" rel="noopener noreferrer" className="ml-1 text-blue-600 hover:underline">Ver anexo</a>
+                                  ) : (
+                                    <span className="ml-1 font-medium">{r.reply}</span>
+                                  )}
+                                </div>
+                              ))}
                             </div>
-                          ))}
-                      </div>
-                    </div>
-                  )}
+                          </div>
+                        )}
+
+                        {devolucaoTexts.length > 0 && (
+                          <div className="space-y-2">
+                            <h4 className="text-sm font-semibold text-foreground">Formulário de Devolução</h4>
+                            <div className="space-y-1.5 max-h-[300px] overflow-y-auto">
+                              {devolucaoTexts.map((r, i) => (
+                                <div key={i} className="text-xs">
+                                  <span className="text-muted-foreground">{r.question}:</span>
+                                  {r.reply.startsWith("http") ? (
+                                    <a href={r.reply} target="_blank" rel="noopener noreferrer" className="ml-1 text-blue-600 hover:underline">Ver anexo</a>
+                                  ) : (
+                                    <span className="ml-1 font-medium">{r.reply}</span>
+                                  )}
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </>
+                    );
+                  })()}
                 </TabsContent>
 
                 {/* TAB: PEÇAS/SERVIÇOS */}
