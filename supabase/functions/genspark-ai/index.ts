@@ -201,7 +201,9 @@ Use emojis, negrito e tópicos.`;
       throw new Error("Ação inválida. Use 'improve' ou 'analyze'.");
     }
 
-    const model = action === "analyze" ? "gpt-4o" : "gpt-4o-mini";
+    // Use gpt-4o for analysis and observações (vision needed), gpt-4o-mini for simple corrections
+    const hasImages = messages.some((m: any) => Array.isArray(m.content) && m.content.some((p: any) => p.type === "image_url"));
+    const model = (action === "analyze" || hasImages) ? "gpt-4o" : "gpt-4o-mini";
 
     const response = await fetch("https://api.openai.com/v1/chat/completions", {
       method: "POST",
