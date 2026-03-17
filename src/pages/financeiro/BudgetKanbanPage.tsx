@@ -1121,6 +1121,22 @@ export default function BudgetKanbanPage() {
               </DialogHeader>
 
               <div className="space-y-4">
+                {/* Equipment identification */}
+                {(() => {
+                  const equipNome = getAnswer(selectedCard, "equip") || getAnswer(selectedCard, "modelo") || getAnswer(selectedCard, "máquina") || getAnswer(selectedCard, "maquina") || getAnswer(selectedCard, "marca") || "";
+                  const equipId = getAnswer(selectedCard, "patrimôn") || getAnswer(selectedCard, "patrimon") || getAnswer(selectedCard, "serie") || getAnswer(selectedCard, "série") || getAnswer(selectedCard, "número de série") || getAnswer(selectedCard, "placa") || getAnswer(selectedCard, "tag") || getAnswer(selectedCard, "id do equip") || "";
+                  if (!equipNome && !equipId) return null;
+                  return (
+                    <div className="bg-accent/50 border border-accent rounded-lg p-3 flex items-center gap-3">
+                      <span className="text-lg">🔧</span>
+                      <div className="text-sm">
+                        {equipNome && <div><span className="text-muted-foreground">Equipamento:</span> <span className="font-semibold">{equipNome}</span></div>}
+                        {equipId && <div><span className="text-muted-foreground">ID / Série:</span> <span className="font-mono font-semibold">{equipId}</span></div>}
+                      </div>
+                    </div>
+                  );
+                })()}
+
                 {/* Basic info */}
                 <div className="grid grid-cols-2 gap-3 text-sm">
                   <div>
