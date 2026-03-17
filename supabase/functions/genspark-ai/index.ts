@@ -681,7 +681,7 @@ TOM: Telegráfico, técnico, zero enrolação.`;
       } else {
         textPrompt += `\nMATERIAIS INTERNOS\nNão fornecidos\n`;
       }
-      textPrompt += `\n⚠️ LEMBRETE FINAL OBRIGATÓRIO: Analise PRIMEIRO o relatório/fotos e classifique o que é confirmado, recomendado e a verificar. Depois complemente tecnicamente com itens necessários do MESMO subsistema. Não force item fora de contexto. Se houver dano em rolamento/mancal/eixo, complete com os adjacentes necessários (ex.: retentor/mancal/eixo) e mantenha coerência: dano pede troca; lubrificação só para componente funcional.`;
+      textPrompt += `\n⚠️ LEMBRETE FINAL OBRIGATÓRIO: Analise PRIMEIRO o relatório/fotos e classifique o que é confirmado, recomendado e a verificar. Depois complemente tecnicamente com itens necessários do MESMO subsistema. Não force item fora de contexto. Se houver intervenção em suporte do motor/eixo, mancal ou rolamento, detalhe EXPLICITAMENTE em linhas próprias: ROLAMENTO e RETENTOR (além de eixo/mancal quando aplicável), sem esconder em item genérico de conjunto. Mantenha coerência: dano pede troca; lubrificação só para componente funcional.`;
 
       userContentParts.push({ type: "text", text: textPrompt });
 
