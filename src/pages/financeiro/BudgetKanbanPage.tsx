@@ -1126,44 +1126,120 @@ export default function BudgetKanbanPage() {
                 )}
 
                 {/* Peças Necessárias */}
-                {getAnswer(selectedCard, "peças") && (
-                  <div className="space-y-1">
-                    <h4 className="font-semibold text-sm text-foreground">🔧 Peças Necessárias</h4>
-                    <p className="text-sm text-muted-foreground whitespace-pre-wrap bg-muted/50 p-3 rounded-md">
-                      {getAnswer(selectedCard, "peças")}
-                    </p>
-                  </div>
-                )}
+                {(() => {
+                  const answer = getAnswer(selectedCard, "peças");
+                  if (!answer) return null;
+                  return (
+                    <div className="space-y-1">
+                      <div className="flex items-center justify-between">
+                        <h4 className="font-semibold text-sm text-foreground">🔧 Peças Necessárias</h4>
+                        <button type="button" className="text-muted-foreground hover:text-foreground" onClick={() => { setEditingSection("peças"); setEditValue(answer); }}>
+                          <Pencil className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+                      {editingSection === "peças" ? (
+                        <div className="space-y-1.5">
+                          <Textarea value={editValue} onChange={(e) => setEditValue(e.target.value)} className="text-sm min-h-[80px]" autoFocus />
+                          <div className="flex gap-1.5">
+                            <Button size="sm" className="h-7 text-xs gap-1" disabled={isSavingField} onClick={() => handleSaveFieldEdit("peças", editValue)}>
+                              <Save className="h-3 w-3" />{isSavingField ? "Salvando..." : "Salvar"}
+                            </Button>
+                            <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => { setEditingSection(null); setEditValue(""); }}>Cancelar</Button>
+                          </div>
+                        </div>
+                      ) : (
+                        <p className="text-sm text-muted-foreground whitespace-pre-wrap bg-muted/50 p-3 rounded-md">{answer}</p>
+                      )}
+                    </div>
+                  );
+                })()}
 
                 {/* Serviços */}
-                {getAnswer(selectedCard, "serviços") && (
-                  <div className="space-y-1">
-                    <h4 className="font-semibold text-sm text-foreground">⚙️ Serviços Necessários</h4>
-                    <p className="text-sm text-muted-foreground whitespace-pre-wrap bg-muted/50 p-3 rounded-md">
-                      {getAnswer(selectedCard, "serviços")}
-                    </p>
-                  </div>
-                )}
+                {(() => {
+                  const answer = getAnswer(selectedCard, "serviços");
+                  if (!answer) return null;
+                  return (
+                    <div className="space-y-1">
+                      <div className="flex items-center justify-between">
+                        <h4 className="font-semibold text-sm text-foreground">⚙️ Serviços Necessários</h4>
+                        <button type="button" className="text-muted-foreground hover:text-foreground" onClick={() => { setEditingSection("serviços"); setEditValue(answer); }}>
+                          <Pencil className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+                      {editingSection === "serviços" ? (
+                        <div className="space-y-1.5">
+                          <Textarea value={editValue} onChange={(e) => setEditValue(e.target.value)} className="text-sm min-h-[80px]" autoFocus />
+                          <div className="flex gap-1.5">
+                            <Button size="sm" className="h-7 text-xs gap-1" disabled={isSavingField} onClick={() => handleSaveFieldEdit("serviços", editValue)}>
+                              <Save className="h-3 w-3" />{isSavingField ? "Salvando..." : "Salvar"}
+                            </Button>
+                            <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => { setEditingSection(null); setEditValue(""); }}>Cancelar</Button>
+                          </div>
+                        </div>
+                      ) : (
+                        <p className="text-sm text-muted-foreground whitespace-pre-wrap bg-muted/50 p-3 rounded-md">{answer}</p>
+                      )}
+                    </div>
+                  );
+                })()}
 
                 {/* Tempo */}
-                {getAnswer(selectedCard, "horas") && (
-                  <div className="space-y-1">
-                    <h4 className="font-semibold text-sm text-foreground">⏱️ Tempo para Execução</h4>
-                    <p className="text-sm text-muted-foreground bg-muted/50 p-3 rounded-md">
-                      {getAnswer(selectedCard, "horas")}
-                    </p>
-                  </div>
-                )}
+                {(() => {
+                  const answer = getAnswer(selectedCard, "horas");
+                  if (!answer) return null;
+                  return (
+                    <div className="space-y-1">
+                      <div className="flex items-center justify-between">
+                        <h4 className="font-semibold text-sm text-foreground">⏱️ Tempo para Execução</h4>
+                        <button type="button" className="text-muted-foreground hover:text-foreground" onClick={() => { setEditingSection("horas"); setEditValue(answer); }}>
+                          <Pencil className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+                      {editingSection === "horas" ? (
+                        <div className="space-y-1.5">
+                          <Textarea value={editValue} onChange={(e) => setEditValue(e.target.value)} className="text-sm min-h-[60px]" autoFocus />
+                          <div className="flex gap-1.5">
+                            <Button size="sm" className="h-7 text-xs gap-1" disabled={isSavingField} onClick={() => handleSaveFieldEdit("horas", editValue)}>
+                              <Save className="h-3 w-3" />{isSavingField ? "Salvando..." : "Salvar"}
+                            </Button>
+                            <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => { setEditingSection(null); setEditValue(""); }}>Cancelar</Button>
+                          </div>
+                        </div>
+                      ) : (
+                        <p className="text-sm text-muted-foreground bg-muted/50 p-3 rounded-md">{answer}</p>
+                      )}
+                    </div>
+                  );
+                })()}
 
                 {/* Observações */}
-                {getAnswer(selectedCard, "observ") && (
-                  <div className="space-y-1">
-                    <h4 className="font-semibold text-sm text-foreground">📝 Observações</h4>
-                    <p className="text-sm text-muted-foreground whitespace-pre-wrap bg-muted/50 p-3 rounded-md">
-                      {getAnswer(selectedCard, "observ")}
-                    </p>
-                  </div>
-                )}
+                {(() => {
+                  const answer = getAnswer(selectedCard, "observ");
+                  if (!answer) return null;
+                  return (
+                    <div className="space-y-1">
+                      <div className="flex items-center justify-between">
+                        <h4 className="font-semibold text-sm text-foreground">📝 Observações</h4>
+                        <button type="button" className="text-muted-foreground hover:text-foreground" onClick={() => { setEditingSection("observ"); setEditValue(answer); }}>
+                          <Pencil className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+                      {editingSection === "observ" ? (
+                        <div className="space-y-1.5">
+                          <Textarea value={editValue} onChange={(e) => setEditValue(e.target.value)} className="text-sm min-h-[80px]" autoFocus />
+                          <div className="flex gap-1.5">
+                            <Button size="sm" className="h-7 text-xs gap-1" disabled={isSavingField} onClick={() => handleSaveFieldEdit("observ", editValue)}>
+                              <Save className="h-3 w-3" />{isSavingField ? "Salvando..." : "Salvar"}
+                            </Button>
+                            <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => { setEditingSection(null); setEditValue(""); }}>Cancelar</Button>
+                          </div>
+                        </div>
+                      ) : (
+                        <p className="text-sm text-muted-foreground whitespace-pre-wrap bg-muted/50 p-3 rounded-md">{answer}</p>
+                      )}
+                    </div>
+                  );
+                })()}
 
                 {/* Orientação */}
                 {selectedCard.orientacao && (
