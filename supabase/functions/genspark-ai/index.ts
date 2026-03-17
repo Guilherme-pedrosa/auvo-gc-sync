@@ -256,8 +256,9 @@ Se não houver base, o item não entra.
 
 FORMATO DE SAÍDA OBRIGATÓRIO
 
-1) LEITURA TÉCNICA DA OS
-- Equipamento aparente
+1) IDENTIFICAÇÃO DO EQUIPAMENTO E LEITURA TÉCNICA DA OS
+- Equipamento: marca, modelo, tipo (OBRIGATÓRIO — extrair dos dados da OS, questionário, orientação ou fotos)
+- ID do Equipamento: patrimônio, número de série, tag ou placa (OBRIGATÓRIO — se não informado, declarar "NÃO IDENTIFICADO" e incluir como pendência)
 - Defeito principal aparente
 - O que está sendo pedido de fato
 - O que está mal descrito ou genérico demais
