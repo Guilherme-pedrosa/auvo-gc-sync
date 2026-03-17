@@ -1,4 +1,5 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { unzipSync } from "https://esm.sh/fflate@0.8.2";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -79,57 +80,150 @@ async function fetchDriveDocuments(equipamentoFilter?: string): Promise<string> 
     const results: string[] = [];
     const filterLower = (equipamentoFilter || "").toLowerCase();
 
+    // Helper to process a single readable file
+    const processTextContent = (name: string, text: string, icon = "📄") => {
+      if (text.length > 3000) text = text.substring(0, 3000) + "\n... [truncado]";
+      results.push(`${icon} ${name}:\n${text}`);
+      console.log(`[genspark-ai] Drive loaded: ${name} (${text.length} chars)`);
+    };
+
+    // Helper to extract text from a PDF buffer (best-effort: grabs text streams)
+    const extractPdfText = (bytes: Uint8Array): string => {
+      try {
+        const raw = new TextDecoder("latin1").decode(bytes);
+        const textParts: string[] = [];
+        // Extract text between BT...ET blocks
+        const btEtRegex = /BT\s([\s\S]*?)ET/g;
+        let m;
+        while ((m = btEtRegex.exec(raw)) !== null) {
+          const block = m[1];
+          const tjRegex = /\(([^)]*)\)\s*Tj|\[(.*?)\]\s*TJ/g;
+          let tj;
+          while ((tj = tjRegex.exec(block)) !== null) {
+            const content = tj[1] || (tj[2] || "").replace(/\([^)]*\)/g, (s) => s.slice(1, -1)).replace(/-?\d+\.?\d*/g, " ");
+            if (content.trim()) textParts.push(content.trim());
+          }
+        }
+        return textParts.join(" ").replace(/\s+/g, " ").trim();
+      } catch {
+        return "";
+      }
+    };
+
+    // Helper to check if a filename is a readable text file
+    const isTextFile = (name: string) =>
+      /\.(txt|csv|md|json|xml|html|htm|log|ini|cfg|yaml|yml|tsv)$/i.test(name);
+
     for (const file of files) {
       const fileName = file.name || "";
       const mimeType = file.mimeType || "";
 
-      // For Google Docs, export as plain text
+      // Google Docs → export as plain text
       if (mimeType === "application/vnd.google-apps.document") {
         try {
           const exportUrl = `https://www.googleapis.com/drive/v3/files/${file.id}/export?mimeType=text/plain&key=${API_KEY}`;
           const docResp = await fetch(exportUrl);
-          if (docResp.ok) {
-            let text = await docResp.text();
-            // Truncate to avoid giant prompts
-            if (text.length > 3000) text = text.substring(0, 3000) + "\n... [documento truncado]";
-            results.push(`📄 ${fileName}:\n${text}`);
-            console.log(`[genspark-ai] Drive doc loaded: ${fileName} (${text.length} chars)`);
-          }
+          if (docResp.ok) processTextContent(fileName, await docResp.text());
         } catch (e) {
           console.error(`[genspark-ai] Error exporting doc ${fileName}:`, e);
         }
       }
-      // For Google Sheets, export as CSV
+      // Google Sheets → export as CSV
       else if (mimeType === "application/vnd.google-apps.spreadsheet") {
         try {
           const exportUrl = `https://www.googleapis.com/drive/v3/files/${file.id}/export?mimeType=text/csv&key=${API_KEY}`;
           const sheetResp = await fetch(exportUrl);
-          if (sheetResp.ok) {
-            let text = await sheetResp.text();
-            if (text.length > 3000) text = text.substring(0, 3000) + "\n... [planilha truncada]";
-            results.push(`📊 ${fileName}:\n${text}`);
-            console.log(`[genspark-ai] Drive sheet loaded: ${fileName} (${text.length} chars)`);
-          }
+          if (sheetResp.ok) processTextContent(fileName, await sheetResp.text(), "📊");
         } catch (e) {
           console.error(`[genspark-ai] Error exporting sheet ${fileName}:`, e);
         }
       }
-      // For text files, download directly
-      else if (mimeType.startsWith("text/") || fileName.endsWith(".txt") || fileName.endsWith(".csv") || fileName.endsWith(".md")) {
+      // Text files → download directly
+      else if (mimeType.startsWith("text/") || isTextFile(fileName)) {
         try {
           const dlUrl = `https://www.googleapis.com/drive/v3/files/${file.id}?alt=media&key=${API_KEY}`;
           const dlResp = await fetch(dlUrl);
-          if (dlResp.ok) {
-            let text = await dlResp.text();
-            if (text.length > 3000) text = text.substring(0, 3000) + "\n... [arquivo truncado]";
-            results.push(`📄 ${fileName}:\n${text}`);
-            console.log(`[genspark-ai] Drive text loaded: ${fileName} (${text.length} chars)`);
-          }
+          if (dlResp.ok) processTextContent(fileName, await dlResp.text());
         } catch (e) {
           console.error(`[genspark-ai] Error downloading ${fileName}:`, e);
         }
       }
-      // For PDFs and other files, just list them (can't parse in Deno easily)
+      // PDF → download and extract text
+      else if (mimeType === "application/pdf" || fileName.toLowerCase().endsWith(".pdf")) {
+        try {
+          const dlUrl = `https://www.googleapis.com/drive/v3/files/${file.id}?alt=media&key=${API_KEY}`;
+          const dlResp = await fetch(dlUrl);
+          if (dlResp.ok) {
+            const buf = new Uint8Array(await dlResp.arrayBuffer());
+            // Limit to 5MB to avoid memory issues
+            if (buf.length <= 5 * 1024 * 1024) {
+              const pdfText = extractPdfText(buf);
+              if (pdfText.length > 50) {
+                processTextContent(fileName, pdfText, "📕");
+              } else {
+                results.push(`📕 ${fileName} — PDF presente mas texto não extraível (provavelmente imagem/scan)`);
+              }
+            } else {
+              results.push(`📕 ${fileName} — PDF muito grande (${Math.round(buf.length / 1024 / 1024)}MB), listado como referência`);
+            }
+          }
+        } catch (e) {
+          console.error(`[genspark-ai] Error processing PDF ${fileName}:`, e);
+        }
+      }
+      // ZIP → download, extract and read text files inside
+      else if (mimeType === "application/zip" || fileName.toLowerCase().endsWith(".zip")) {
+        try {
+          const dlUrl = `https://www.googleapis.com/drive/v3/files/${file.id}?alt=media&key=${API_KEY}`;
+          const dlResp = await fetch(dlUrl);
+          if (dlResp.ok) {
+            const zipBuf = new Uint8Array(await dlResp.arrayBuffer());
+            // Limit to 10MB zips
+            if (zipBuf.length > 10 * 1024 * 1024) {
+              results.push(`📦 ${fileName} — ZIP muito grande (${Math.round(zipBuf.length / 1024 / 1024)}MB), ignorado`);
+              continue;
+            }
+            console.log(`[genspark-ai] Extraindo ZIP: ${fileName} (${Math.round(zipBuf.length / 1024)}KB)`);
+            const unzipped = unzipSync(zipBuf);
+            let zipFilesRead = 0;
+            for (const [entryName, entryData] of Object.entries(unzipped)) {
+              if (zipFilesRead >= 10) {
+                results.push(`📦 ... e mais arquivos em ${fileName} (limite atingido)`);
+                break;
+              }
+              const data = entryData as Uint8Array;
+              const entryLower = entryName.toLowerCase();
+              // Skip directories and hidden files
+              if (entryName.endsWith("/") || entryName.startsWith("__MACOSX") || entryName.startsWith(".")) continue;
+
+              if (isTextFile(entryName) || entryLower.endsWith(".doc")) {
+                const text = new TextDecoder("utf-8", { fatal: false }).decode(data);
+                if (text.trim().length > 10) {
+                  processTextContent(`${fileName}/${entryName}`, text, "📦");
+                  zipFilesRead++;
+                }
+              } else if (entryLower.endsWith(".pdf") && data.length <= 5 * 1024 * 1024) {
+                const pdfText = extractPdfText(data);
+                if (pdfText.length > 50) {
+                  processTextContent(`${fileName}/${entryName}`, pdfText, "📦📕");
+                  zipFilesRead++;
+                } else {
+                  results.push(`📦📕 ${fileName}/${entryName} — PDF dentro do ZIP (texto não extraível)`);
+                  zipFilesRead++;
+                }
+              } else {
+                results.push(`📦 ${fileName}/${entryName} — arquivo binário, listado como referência`);
+                zipFilesRead++;
+              }
+            }
+            console.log(`[genspark-ai] ZIP ${fileName}: ${zipFilesRead} arquivos processados`);
+          }
+        } catch (e) {
+          console.error(`[genspark-ai] Error processing ZIP ${fileName}:`, e);
+          results.push(`📦 ${fileName} — erro ao extrair ZIP`);
+        }
+      }
+      // Other files
       else {
         results.push(`📎 ${fileName} (${mimeType}) — disponível na pasta do Drive`);
       }
