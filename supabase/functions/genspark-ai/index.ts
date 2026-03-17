@@ -518,12 +518,18 @@ FORMATO DE RESPOSTA
 Responder de forma direta.
 Quando útil, usar:
 - Resposta objetiva
-- Base
+- Base (indicar se veio de: evidência visual, evidência textual, política WeDo, pesquisa web 🌐, manual/POP)
 - Risco de seguir sem validar
 - Próximo passo
 
+Se houver dados de PESQUISA WEB no contexto:
+- Use-os para fundamentar sua resposta com dados reais
+- Cite as fontes relevantes com [fonte]
+- Se a web contradizer a análise, explique a divergência
+- Marque informações vindas da web com 🌐
+
 TOM
-Técnico, direto, sem floreio.`;
+Técnico, direto, sem floreio. Potente e fundamentado.`;
 
       // Build context message with photos support
       const userContentParts: any[] = [];
