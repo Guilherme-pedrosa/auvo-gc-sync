@@ -449,7 +449,8 @@ export default function BudgetKanbanPage() {
         if (!allClientesSelected && !selectedClientes.has(item.cliente)) return false;
         if (!allEquipSelected) {
           const equipNome = (item as any).equipamento_nome || "";
-          if (!selectedEquipamentos.has(equipNome)) return false;
+          const key = equipNome || SEM_EQUIP;
+          if (!selectedEquipamentos.has(key)) return false;
         }
         return true;
       });
