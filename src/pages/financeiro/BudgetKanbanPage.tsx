@@ -175,7 +175,7 @@ export default function BudgetKanbanPage() {
     }
   }, [allClientes]);
 
-  // Initialize columns from API data
+  // Initialize columns from API data (smart merge: preserve manual moves, only update changed cards)
   useMemo(() => {
     if (!data?.items || columnsInitialized) return;
 
@@ -184,7 +184,61 @@ export default function BudgetKanbanPage() {
         (r) => r.reply && r.reply.trim() !== "" && !r.reply.startsWith("http")
       );
 
-    // If data came from cache with saved positions, use them
+    // Build a map of fresh API data by task id
+    const freshDataMap = new Map<string, KanbanItem>();
+    for (const item of data.items) {
+      const { _coluna, _posicao, ...cleanItem } = item as any;
+      freshDataMap.set(cleanItem.auvo_task_id, cleanItem);
+    }
+
+    // SMART MERGE: if columns already have data (re-sync scenario), preserve positions and only update card data
+    if (columns.length > 0 && columns.some((c) => c.items.length > 0)) {
+      const existingTaskIds = new Set<string>();
+
+      const mergedCols = columns.map((col) => ({
+        ...col,
+        items: col.items.map((card) => {
+          existingTaskIds.add(card.auvo_task_id);
+          const fresh = freshDataMap.get(card.auvo_task_id);
+          // If API has updated data for this card, merge it; otherwise keep as-is
+          return fresh ? { ...fresh } : card;
+        }),
+      }));
+
+      // Add new cards (from API but not in any column yet) to appropriate column
+      const newCards: KanbanItem[] = [];
+      for (const [taskId, item] of freshDataMap) {
+        if (!existingTaskIds.has(taskId)) newCards.push(item);
+      }
+
+      if (newCards.length > 0) {
+        for (const card of newCards) {
+          let targetCol = "a_fazer";
+          if (!card.orcamento_realizado && !card.os_realizada && !hasFilledQuestionnaire(card)) {
+            targetCol = "falta_preenchimento";
+          } else if (card.os_realizada) {
+            targetCol = "os_realizada";
+          } else if (card.orcamento_realizado) {
+            const sit = card.gc_orcamento?.gc_situacao || "Sem situação";
+            targetCol = `orc_${sit.replace(/\s+/g, "_").toLowerCase()}`;
+          }
+          const col = mergedCols.find((c) => c.id === targetCol) || mergedCols.find((c) => c.id === "a_fazer");
+          if (col) col.items.push(card);
+        }
+      }
+
+      // Remove cards that no longer exist in API
+      const finalCols = mergedCols.map((col) => ({
+        ...col,
+        items: col.items.filter((card) => freshDataMap.has(card.auvo_task_id)),
+      }));
+
+      setColumns(finalCols);
+      setColumnsInitialized(true);
+      return;
+    }
+
+    // FIRST LOAD: build from scratch
     const hasSavedPositions = data.from_cache && data.items.some((i: any) => i._coluna);
 
     if (hasSavedPositions) {
