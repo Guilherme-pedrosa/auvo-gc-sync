@@ -16,7 +16,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   ArrowLeft, CalendarIcon, RefreshCw, ExternalLink, ClipboardList,
   FileText, Plus, GripVertical, Trash2, Edit2, Check, X, Filter, FileDown, Star,
-  Pencil, Save, Sparkles, Brain, Loader2
+  Pencil, Save, Sparkles, Brain, Loader2, MessageCircle, Send
 } from "lucide-react";
 import { format, startOfMonth } from "date-fns";
 import { ptBR } from "date-fns/locale";
