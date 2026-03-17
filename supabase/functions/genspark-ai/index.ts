@@ -601,6 +601,7 @@ ANTES de finalizar esta seção, você DEVE:
 1) Ler o relatório e classificar os itens em: confirmado, recomendado, verificar.
 2) Complementar cada intervenção com os itens NECESSÁRIOS do mesmo subsistema.
 3) Garantir que nenhum item essencial da execução ficou de fora.
+4) Rodar checklist final por gatilho técnico: se houver intervenção em eixo/mancal/rolamento/suporte de eixo, precisam existir linhas explícitas para ROLAMENTO e RETENTOR (não apenas "conjunto" genérico).
 Exemplo: se o relatório indica dano em rolamento/mancal/eixo, completar com os adjacentes necessários (retentor, mancal, eixo, lubrificação de montagem, etc.).
 Se o relatório NÃO indica intervenção nesse subsistema, NÃO force itens desse subsistema.
 Prioridade máxima: COMPLETAR tecnicamente o relatório, sem inventar.
