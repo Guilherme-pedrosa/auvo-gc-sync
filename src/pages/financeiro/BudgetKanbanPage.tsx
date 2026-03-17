@@ -90,6 +90,10 @@ export default function BudgetKanbanPage() {
   const [filterClienteSearch, setFilterClienteSearch] = useState("");
   const [selectedClientes, setSelectedClientes] = useState<Set<string>>(new Set());
   const [allClientesSelected, setAllClientesSelected] = useState(true);
+  const [filterEquipSearch, setFilterEquipSearch] = useState("");
+  const [selectedEquipamentos, setSelectedEquipamentos] = useState<Set<string>>(new Set());
+  const [allEquipSelected, setAllEquipSelected] = useState(true);
+  const [showEquipFilter, setShowEquipFilter] = useState(false);
   const [showClienteFilter, setShowClienteFilter] = useState(false);
   const [newColumnTitle, setNewColumnTitle] = useState("");
   const [showAddColumn, setShowAddColumn] = useState(false);
@@ -167,6 +171,29 @@ export default function BudgetKanbanPage() {
     const set = new Set(data.items.map((i) => i.cliente).filter(Boolean));
     return Array.from(set).sort();
   }, [data]);
+
+  // All unique equipment names
+  const SEM_EQUIP = "(Sem equipamento)";
+  const allEquipamentos = useMemo(() => {
+    if (!data?.items) return [];
+    const set = new Set<string>();
+    let hasSemEquip = false;
+    for (const item of data.items) {
+      const nome = (item as any).equipamento_nome;
+      if (nome) set.add(nome);
+      else hasSemEquip = true;
+    }
+    const sorted = Array.from(set).sort();
+    if (hasSemEquip) sorted.push(SEM_EQUIP);
+    return sorted;
+  }, [data]);
+
+  // Initialize equipment selection
+  useMemo(() => {
+    if (allEquipamentos.length > 0 && selectedEquipamentos.size === 0 && allEquipSelected) {
+      setSelectedEquipamentos(new Set(allEquipamentos));
+    }
+  }, [allEquipamentos]);
 
   // Initialize client selection when data loads
   useMemo(() => {
@@ -376,6 +403,33 @@ export default function BudgetKanbanPage() {
     }
   }, [allClientesSelected, allClientes]);
 
+  const filteredEquipOptions = useMemo(() => {
+    if (!filterEquipSearch) return allEquipamentos;
+    return allEquipamentos.filter((e) =>
+      e.toLowerCase().includes(filterEquipSearch.toLowerCase())
+    );
+  }, [allEquipamentos, filterEquipSearch]);
+
+  const toggleEquip = useCallback((equip: string) => {
+    setSelectedEquipamentos((prev) => {
+      const next = new Set(prev);
+      if (next.has(equip)) next.delete(equip);
+      else next.add(equip);
+      return next;
+    });
+    setAllEquipSelected(false);
+  }, []);
+
+  const toggleAllEquip = useCallback(() => {
+    if (allEquipSelected) {
+      setSelectedEquipamentos(new Set());
+      setAllEquipSelected(false);
+    } else {
+      setSelectedEquipamentos(new Set(allEquipamentos));
+      setAllEquipSelected(true);
+    }
+  }, [allEquipSelected, allEquipamentos]);
+
   // Apply filters + sorting
   const filteredColumns = useMemo(() => {
     const sortFn = (a: KanbanItem, b: KanbanItem) => {
@@ -393,11 +447,16 @@ export default function BudgetKanbanPage() {
       const items = col.items.filter((item) => {
         if (filterTecnico !== "todos" && item.tecnico !== filterTecnico) return false;
         if (!allClientesSelected && !selectedClientes.has(item.cliente)) return false;
+        if (!allEquipSelected) {
+          const equipNome = (item as any).equipamento_nome || "";
+          const key = equipNome || SEM_EQUIP;
+          if (!selectedEquipamentos.has(key)) return false;
+        }
         return true;
       });
       return { ...col, items: sortBy === "manual" ? items : [...items].sort(sortFn) };
     });
-  }, [columns, filterTecnico, allClientesSelected, selectedClientes, sortBy]);
+  }, [columns, filterTecnico, allClientesSelected, selectedClientes, allEquipSelected, selectedEquipamentos, sortBy]);
 
   // Save positions + custom columns to DB
   const savePositions = useCallback((cols: KanbanColumn[]) => {
@@ -980,6 +1039,58 @@ export default function BudgetKanbanPage() {
                       <span className="truncate">{cliente}</span>
                     </label>
                   ))}
+                </div>
+              </ScrollArea>
+            </PopoverContent>
+          </Popover>
+
+          {/* Multi-select equipment filter */}
+          <Popover open={showEquipFilter} onOpenChange={setShowEquipFilter}>
+            <PopoverTrigger asChild>
+              <Button variant="outline" size="sm" className="gap-2 min-w-[200px] justify-start">
+                <Filter className="h-4 w-4" />
+                {allEquipSelected
+                  ? "Todos equipamentos"
+                  : `${selectedEquipamentos.size} equipamento${selectedEquipamentos.size !== 1 ? "s" : ""}`}
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent className="w-[350px] p-0" align="start">
+              <div className="p-3 border-b">
+                <Input
+                  placeholder="Buscar equipamento..."
+                  value={filterEquipSearch}
+                  onChange={(e) => setFilterEquipSearch(e.target.value)}
+                  className="h-8"
+                />
+              </div>
+              <div className="p-2 border-b">
+                <label className="flex items-center gap-2 px-2 py-1 cursor-pointer hover:bg-accent rounded text-sm">
+                  <Checkbox
+                    checked={allEquipSelected}
+                    onCheckedChange={toggleAllEquip}
+                  />
+                  <span className="font-medium">Selecionar todos</span>
+                </label>
+              </div>
+              <ScrollArea className="h-[300px]">
+                <div className="p-2 space-y-0.5">
+                  {filteredEquipOptions.map((equip) => (
+                    <label
+                      key={equip}
+                      className="flex items-center gap-2 px-2 py-1.5 cursor-pointer hover:bg-accent rounded text-sm"
+                    >
+                      <Checkbox
+                        checked={selectedEquipamentos.has(equip)}
+                        onCheckedChange={() => toggleEquip(equip)}
+                      />
+                      <span className="truncate">{equip}</span>
+                    </label>
+                  ))}
+                  {filteredEquipOptions.length === 0 && (
+                    <p className="text-xs text-muted-foreground text-center py-4">
+                      Nenhum equipamento encontrado
+                    </p>
+                  )}
                 </div>
               </ScrollArea>
             </PopoverContent>
