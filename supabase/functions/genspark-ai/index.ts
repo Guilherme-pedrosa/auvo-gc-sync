@@ -284,10 +284,20 @@ FORMATO DE SAÍDA (máximo de objetividade):
 Equipamento: [nome/modelo]
 ID/Série: [valor ou NÃO IDENTIFICADO]
 
+🌐 PESQUISA WEB (OBRIGATÓRIO se dados de pesquisa web foram fornecidos)
+Se recebeu dados de PESQUISA WEB, OBRIGATORIAMENTE inclua esta seção:
+- Modelo identificado: [modelo exato encontrado na web]
+- Especificações relevantes: [specs que impactam o diagnóstico, 2-3 linhas]
+- Componentes típicos deste equipamento: [lista dos componentes principais conforme manual/web]
+- Problemas comuns documentados: [1-3 problemas mais frequentes encontrados na web]
+- Fontes: [citar fontes se disponíveis]
+Se NÃO recebeu dados de pesquisa web, escreva: "Pesquisa web não disponível para este equipamento."
+
 🔍 DIAGNÓSTICO
 Defeito: [1-2 frases]
 Coerência do técnico: [sim/não/parcial + motivo em 1 frase]
 Inconsistências: [lista curta ou "nenhuma"]
+Dados da web vs técnico: [O que a pesquisa web revelou que o técnico NÃO mencionou — peças faltantes, verificações omitidas, etc. Se não houver pesquisa web, omitir esta linha]
 
 ⚠️ BLOQUEIOS
 [SIM/NÃO] — [motivo ou "nenhum"]
@@ -298,9 +308,11 @@ Para CADA item, formato em linha:
 [Status] | [Item] | [Tipo] | [Motivo curto]
 
 Status: ✅ Confirmado | ⚡ Recomendar | ❓ Verificar
+🌐 = Item identificado via pesquisa web (USE ESTE ÍCONE para itens que vieram da pesquisa web)
 
 IMPORTANTE: Liste TUDO que precisa para executar o serviço completo:
 - Peças solicitadas pelo técnico
+- 🌐 Peças e componentes identificados pela PESQUISA WEB que o técnico não mencionou
 - COMPONENTES ADJACENTES que devem ser verificados/substituídos (motor, correia, rolamentos, selo, etc.)
 - Insumos de montagem (veda-rosca, abraçadeiras, conexões...)
 - Produtos químicos para limpeza/higienização
@@ -350,8 +362,12 @@ TOM: Telegráfico, técnico, zero enrolação.`;
 
       // Inject web research if available
       if (webResearch) {
-        textPrompt += `\n🌐 ${webResearch}\n`;
-        textPrompt += `\nIMPORTANTE: Use as informações da pesquisa web acima para ENRIQUECER sua análise. Compare o que o técnico informou com o que a internet diz sobre este equipamento. Identifique peças e componentes que o técnico pode ter esquecido baseado nas specs reais do equipamento.\n`;
+        textPrompt += `\n\n========== 🌐 DADOS DA PESQUISA WEB (PERPLEXITY) ==========\n${webResearch}\n==========================================================\n`;
+        textPrompt += `\nINSTRUÇÃO OBRIGATÓRIA: Você RECEBEU dados de pesquisa web acima. Você DEVE:
+1. Preencher a seção "🌐 PESQUISA WEB" com os dados encontrados
+2. Na seção DIAGNÓSTICO, incluir "Dados da web vs técnico" comparando o que a web diz vs o que o técnico informou
+3. Na seção PEÇAS, marcar com 🌐 os itens que vieram da pesquisa web e que o técnico NÃO mencionou
+4. Se a web revelou componentes específicos deste modelo que o técnico omitiu, LISTE-OS como ⚡🌐 Recomendar\n`;
       }
 
       const hasFotos = context?.fotos?.length > 0;
