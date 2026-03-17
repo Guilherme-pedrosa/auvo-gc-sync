@@ -227,11 +227,52 @@ export default function OficinaKanbanPage() {
     }
   }, [allClientes]);
 
-  // Initialize columns from data
+  // Initialize columns from data (smart merge: preserve manual moves, only update changed cards)
   useMemo(() => {
     if (!data?.items || columnsInitialized) return;
 
     const items = data.items as (OficinaItem & { _coluna?: string; _posicao?: number })[];
+
+    // Build a map of fresh API data by task id
+    const freshDataMap = new Map<string, OficinaItem>();
+    for (const item of items) {
+      const { _coluna, _posicao, ...cleanItem } = item as any;
+      freshDataMap.set(cleanItem.auvo_task_id, cleanItem);
+    }
+
+    // SMART MERGE: if columns already have data (re-sync scenario), preserve positions and only update card data
+    if (columns.length > 0 && columns.some((c) => c.items.length > 0)) {
+      const existingTaskIds = new Set<string>();
+
+      const mergedCols = columns.map((col) => ({
+        ...col,
+        items: col.items.map((card) => {
+          existingTaskIds.add(card.auvo_task_id);
+          const fresh = freshDataMap.get(card.auvo_task_id);
+          return fresh ? { ...fresh } : card;
+        }),
+      }));
+
+      // Add new cards not in any column yet
+      for (const [taskId, item] of freshDataMap) {
+        if (!existingTaskIds.has(taskId)) {
+          const col = mergedCols.find((c) => c.id === "entrada") || mergedCols[0];
+          if (col) col.items.push(item);
+        }
+      }
+
+      // Remove cards that no longer exist in API
+      const finalCols = mergedCols.map((col) => ({
+        ...col,
+        items: col.items.filter((card) => freshDataMap.has(card.auvo_task_id)),
+      }));
+
+      setColumns(finalCols);
+      setColumnsInitialized(true);
+      return;
+    }
+
+    // FIRST LOAD: build from scratch
     const hasSavedPositions = data.from_cache && items.some((i) => i._coluna);
 
     if (hasSavedPositions) {

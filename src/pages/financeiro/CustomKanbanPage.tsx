@@ -278,7 +278,7 @@ export default function CustomKanbanPage() {
     }
   }, [allClientes]);
 
-  // Initialize columns
+  // Initialize columns (smart merge: preserve manual moves, only update changed cards)
   useMemo(() => {
     if (!data?.items || columnsInitialized) return;
 
@@ -287,6 +287,48 @@ export default function CustomKanbanPage() {
         (r) => r.reply && r.reply.trim() !== "" && !r.reply.startsWith("http")
       );
 
+    // Build a map of fresh API data by task id
+    const freshDataMap = new Map<string, KanbanItem>();
+    for (const item of data.items) {
+      const { _coluna, _posicao, ...cleanItem } = item as any;
+      freshDataMap.set(cleanItem.auvo_task_id, cleanItem);
+    }
+
+    // SMART MERGE: if columns already have data (re-sync scenario), preserve positions and only update card data
+    if (columns.length > 0 && columns.some((c) => c.items.length > 0)) {
+      const existingTaskIds = new Set<string>();
+
+      const mergedCols = columns.map((col) => ({
+        ...col,
+        items: col.items.map((card) => {
+          existingTaskIds.add(card.auvo_task_id);
+          const fresh = freshDataMap.get(card.auvo_task_id);
+          return fresh ? { ...fresh } : card;
+        }),
+      }));
+
+      // Add new cards not in any column yet
+      for (const [taskId, item] of freshDataMap) {
+        if (!existingTaskIds.has(taskId)) {
+          let targetCol = "a_fazer";
+          if (!item.os_realizada && !hasFilledQuestionnaire(item)) targetCol = "falta_preenchimento";
+          const col = mergedCols.find((c) => c.id === targetCol) || mergedCols.find((c) => c.id === "a_fazer");
+          if (col) col.items.push(item);
+        }
+      }
+
+      // Remove cards that no longer exist in API
+      const finalCols = mergedCols.map((col) => ({
+        ...col,
+        items: col.items.filter((card) => freshDataMap.has(card.auvo_task_id)),
+      }));
+
+      setColumns(finalCols);
+      setColumnsInitialized(true);
+      return;
+    }
+
+    // FIRST LOAD: build from scratch
     const hasSavedPositions = data.from_cache && data.items.some((i: any) => i._coluna);
 
     if (hasSavedPositions) {
