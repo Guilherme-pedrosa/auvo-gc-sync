@@ -257,18 +257,8 @@ async function fetchDriveDocuments(equipamentoFilter?: string): Promise<string> 
     return "";
   }
 }
-        await processFile(file, folder.name);
-      }
-    }
 
-    console.log(`[genspark-ai] Drive total: ${totalFilesRead} arquivos lidos, ${totalChars} chars`);
-    if (results.length === 0) return "";
-    return `MATERIAIS INTERNOS (Google Drive WeDo):\n${results.join("\n\n")}`;
-  } catch (e) {
-    console.error("[genspark-ai] Drive fetch error:", e);
-    return "";
-  }
-}
+
 
 // =========================================================================
 // PERPLEXITY WEB SEARCH — pesquisa técnica na internet sobre o equipamento
