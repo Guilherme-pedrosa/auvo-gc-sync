@@ -54,6 +54,8 @@ type KanbanItem = {
   os_realizada: boolean;
   gc_orcamento: GcDocData | null;
   gc_os: GcDocData | null;
+  equipamento_nome?: string | null;
+  equipamento_id_serie?: string | null;
 };
 
 type KanbanColumn = {
