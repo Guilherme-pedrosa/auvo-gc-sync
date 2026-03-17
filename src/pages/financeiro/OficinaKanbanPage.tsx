@@ -512,33 +512,24 @@ export default function OficinaKanbanPage() {
         ? [...selectedCard.questionario_respostas]
         : [...(selectedCard.devolucao_respostas || [])];
       
-      // Find the actual index in the full array (text-only items are filtered, so we need the real index)
       const isImage = (url: string) => url.startsWith("http") && (url.includes("image") || /\.(jpg|jpeg|png|gif|webp)/i.test(url));
       const textItems = respostas.filter((r) => r.reply?.trim() && !isImage(r.reply));
       const originalItem = textItems[index];
       const realIndex = respostas.findIndex((r) => r === originalItem);
-      if (realIndex === -1) { toast.error("Campo não encontrado"); return; }
+      if (realIndex === -1) { toast.error("Campo não encontrado"); setIsSavingField(false); return; }
 
       respostas[realIndex] = { ...respostas[realIndex], reply: newValue };
 
-      // Persist to tarefas_central
-      const updateField = type === "entrada" ? "questionario_respostas" : "devolucao_respostas";
-      // We store as JSON, need to use the edge function to update since the column is jsonb
+      // Persist to tarefas_central via edge function
       const { error } = await supabase.functions.invoke("auvo-task-update", {
         body: {
           action: "persist-central",
           rows: [{
             auvo_task_id: selectedCard.auvo_task_id,
-            [updateField === "questionario_respostas" ? "questionario_respostas" : "devolucao_respostas"]: respostas,
+            questionario_respostas: type === "entrada" ? respostas : undefined,
           }],
         },
       });
-      // Also update via direct DB
-      await supabase
-        .from("tarefas_central")
-        .update({ [updateField === "questionario_respostas" ? "questionario_respostas" : "questionario_respostas"]: undefined } as any)
-        .eq("auvo_task_id", "___never___"); // no-op, we use the function above
-
       if (error) throw error;
 
       // Update local state
@@ -549,8 +540,6 @@ export default function OficinaKanbanPage() {
         updatedCard.devolucao_respostas = respostas;
       }
       setSelectedCard(updatedCard);
-
-      // Update in columns too
       setColumns(prev => prev.map(col => ({
         ...col,
         items: col.items.map(item => item.auvo_task_id === selectedCard.auvo_task_id ? updatedCard : item),
