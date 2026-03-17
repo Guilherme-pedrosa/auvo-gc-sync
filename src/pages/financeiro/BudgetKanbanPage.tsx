@@ -1,4 +1,5 @@
 import { useState, useCallback, useMemo } from "react";
+import PhotoGallery from "@/components/financeiro/PhotoGallery";
 import { useQuery } from "@tanstack/react-query";
 import { isAfter, isEqual } from "date-fns";
 import { supabase } from "@/integrations/supabase/client";
