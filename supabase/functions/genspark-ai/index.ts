@@ -58,10 +58,10 @@ Seja objetivo e técnico. Use formatação com negrito e tópicos.`;
       throw new Error("Ação inválida. Use 'improve' ou 'analyze'.");
     }
 
-    const response = await fetch("https://api.genspark.ai/v1/chat/completions", {
+    const response = await fetch("https://api.openai.com/v1/chat/completions", {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${GENSPARK_API_KEY}`,
+        Authorization: `Bearer ${OPENAI_API_KEY}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
