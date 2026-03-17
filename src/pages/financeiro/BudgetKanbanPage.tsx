@@ -498,17 +498,28 @@ export default function BudgetKanbanPage() {
     if (!currentText) { toast.error("Sem texto para melhorar"); return; }
     setAiLoadingSection(keyword);
     try {
-      const { data: result, error } = await supabase.functions.invoke("genspark-ai", {
-        body: {
-          action: "improve",
-          text: currentText,
-          context: {
-            cliente: selectedCard.cliente,
-            tecnico: selectedCard.tecnico,
-            orientacao: selectedCard.orientacao,
-          },
-        },
-      });
+      const isObservacao = keyword.toLowerCase().includes("observ");
+      
+      // For observações, send full context (peças, fotos, equipamento) for richer improvement
+      const body: any = {
+        action: "improve",
+        text: currentText,
+        field: keyword,
+      };
+
+      if (isObservacao) {
+        const fotos = selectedCard.questionario_respostas
+          .filter((r) => r.reply && r.reply.startsWith("http"))
+          .map((r) => r.reply);
+
+        body.context = {
+          orientacao: selectedCard.orientacao,
+          pecas: getAnswer(selectedCard, "peças") || getAnswer(selectedCard, "material") || getAnswer(selectedCard, "peca") || "",
+          fotos,
+        };
+      }
+
+      const { data: result, error } = await supabase.functions.invoke("genspark-ai", { body });
       if (error) throw error;
       if (result?.error) throw new Error(result.error);
       if (result?.result) {
