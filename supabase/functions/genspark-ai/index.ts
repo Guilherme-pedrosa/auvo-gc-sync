@@ -514,13 +514,22 @@ REGRA #4 — Separe FATO de INFERÊNCIA de HIPÓTESE.
 REGRA #5 — Nunca fale de preço/valor/margem.
 REGRA #6 — NÃO LISTE EPIs BÁSICOS. Luvas, óculos de proteção, capacete e sapato de segurança são fornecidos pela empresa e NÃO devem aparecer na lista. Só liste EPIs ESPECÍFICOS para aquele serviço (ex: máscara PFF2 para gás refrigerante, protetor auricular para martelete, avental químico para ácido).
 
+REGRA #7 — COERÊNCIA DIAGNÓSTICO ↔ PEÇAS (CRÍTICO):
+Se o diagnóstico diz "DANO" em um componente, a recomendação OBRIGATÓRIA é TROCA, nunca lubrificação/manutenção.
+- "Dano nos rolamentos" → ⚡ Troca de rolamentos + retentor + verificar eixo. NUNCA "lubrificante para rolamentos".
+- "Motor superaquecendo" → ⚡ Verificar/trocar protetor térmico, capacitor, ventilador. Se há dano, é TROCA.
+- "Placa danificada" → ⚡ Troca da placa. Não "limpeza técnica" como solução.
+- "Sensor ausente" → ⚡ Troca do sensor. Não "verificar".
+REGRA: Se o defeito é DANO/DANIFICADO/COMPROMETIDO/QUEIMADO/AUSENTE → a ação é TROCA/SUBSTITUIÇÃO, não manutenção preventiva.
+Lubrificação só se aplica a componentes que estão FUNCIONAIS e precisam de manutenção preventiva.
+
 RACIOCÍNIO DE COMPONENTES ADJACENTES (OBRIGATÓRIO):
 Quando identificar o equipamento, PENSE nos subsistemas:
 - Máquina com MOTOR → verificar: correia, polias, rolamentos do motor, capacitor, protetor térmico, ventilador
 - Máquina com BOMBA → verificar: selo mecânico, gaxetas, rolamentos, acoplamento, eixo, impulsor
 - Máquina com COMPRESSOR → verificar: válvulas, pressostato, capacitor, relé, gás, óleo, filtro secador, ventilador do condensador
 - Máquina com RESISTÊNCIA → verificar: terminais, conectores, termostato, fusível térmico, fiação
-- Máquina com ROLAMENTOS → verificar: eixo (folga/desgaste), retentor, mancal, lubrificante, correia (se houver)
+- Máquina com ROLAMENTOS DANIFICADOS → TROCAR: rolamentos + retentor + verificar eixo (folga/desgaste) + mancal. Se funcionais: lubrificar + verificar correia
 - Máquina com REDUTOR → verificar: engrenagens, rolamentos, óleo, retentores, acoplamento
 - Máquina com CORREIA → verificar: polias (desgaste/alinhamento), tensor, rolamentos dos eixos
 - Máquina com ELETROVÁLVULA → verificar: bobina, vedações, filtro de linha, conexões
