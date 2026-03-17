@@ -13,13 +13,64 @@ serve(async (req) => {
     const OPENAI_API_KEY = Deno.env.get("OPENAI_API_KEY");
     if (!OPENAI_API_KEY) throw new Error("OPENAI_API_KEY não configurada");
 
-    const { action, text, context } = await req.json();
+    const { action, text, context, field } = await req.json();
 
     let systemPrompt = "";
     const messages: any[] = [];
 
     if (action === "improve") {
-      systemPrompt = `Você é um técnico especializado em manutenção industrial, refrigeração, climatização e equipamentos.
+      const isObservacao = field && field.toLowerCase().includes("observ");
+      
+      if (isObservacao) {
+        // Observações: melhoria técnica usando contexto de peças e equipamento
+        systemPrompt = `Você é um técnico especializado em manutenção industrial, refrigeração, climatização e equipamentos.
+Sua tarefa é melhorar TECNICAMENTE a observação do técnico de campo:
+- Manter a informação original como base
+- Usar termos técnicos corretos e precisos
+- Enriquecer com detalhes técnicos relevantes baseado nas peças solicitadas e no contexto do equipamento
+- Ser cauteloso e preciso na descrição técnica
+- Corrigir erros de ortografia e gramática
+- NÃO adicionar cabeçalhos, títulos ou formatação extra
+- NÃO inventar problemas que não foram mencionados
+- Manter formato conciso de observação técnica
+- Retornar APENAS o texto melhorado`;
+
+        const userContentParts: any[] = [];
+        let userText = `Melhore tecnicamente esta observação do técnico:\n\n"${text}"`;
+        if (context?.pecas) userText += `\n\nPeças solicitadas pelo técnico: ${context.pecas}`;
+        if (context?.orientacao) userText += `\nOrientação do serviço: ${context.orientacao}`;
+        
+        userContentParts.push({ type: "text", text: userText });
+
+        // Add photos for visual context if available
+        if (context?.fotos && Array.isArray(context.fotos) && context.fotos.length > 0) {
+          const imageUrls = context.fotos.filter((u: string) =>
+            /\.(jpg|jpeg|png|gif|webp|bmp)/i.test(u) || u.includes("image") || u.includes("foto") || u.includes("photo")
+          );
+          for (const url of imageUrls.slice(0, 4)) {
+            try {
+              const imgResp = await fetch(url);
+              if (!imgResp.ok) continue;
+              const arrayBuf = await imgResp.arrayBuffer();
+              const bytes = new Uint8Array(arrayBuf);
+              let mime = "image/jpeg";
+              if (bytes[0] === 0x89 && bytes[1] === 0x50) mime = "image/png";
+              else if (bytes[0] === 0xFF && bytes[1] === 0xD8) mime = "image/jpeg";
+              else if (bytes[0] === 0x47 && bytes[1] === 0x49) mime = "image/gif";
+              else if (bytes[0] === 0x52 && bytes[1] === 0x49) mime = "image/webp";
+              let binary = "";
+              for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
+              const base64 = btoa(binary);
+              userContentParts.push({ type: "image_url", image_url: { url: `data:${mime};base64,${base64}`, detail: "low" } });
+            } catch { /* skip */ }
+          }
+        }
+
+        messages.push({ role: "system", content: systemPrompt });
+        messages.push({ role: "user", content: userContentParts });
+      } else {
+        // Outros campos: apenas correção ortográfica e técnica
+        systemPrompt = `Você é um técnico especializado em manutenção industrial, refrigeração, climatização e equipamentos.
 Sua ÚNICA tarefa é corrigir o texto fornecido:
 - Corrigir erros de ortografia e gramática
 - Corrigir termos técnicos incorretos
@@ -29,10 +80,9 @@ Sua ÚNICA tarefa é corrigir o texto fornecido:
 - Manter EXATAMENTE o mesmo formato e estrutura do original
 - Retornar APENAS o texto corrigido, nada mais`;
 
-      const userPrompt = `Corrija o texto abaixo (apenas ortografia e termos técnicos, sem adicionar nada):\n\n${text}`;
-
-      messages.push({ role: "system", content: systemPrompt });
-      messages.push({ role: "user", content: userPrompt });
+        messages.push({ role: "system", content: systemPrompt });
+        messages.push({ role: "user", content: `Corrija o texto abaixo (apenas ortografia e termos técnicos, sem adicionar nada):\n\n${text}` });
+      }
 
     } else if (action === "analyze") {
       systemPrompt = `Você é um engenheiro técnico sênior com 20+ anos de experiência em manutenção industrial, refrigeração, climatização, equipamentos comerciais e industriais.
@@ -151,7 +201,9 @@ Use emojis, negrito e tópicos.`;
       throw new Error("Ação inválida. Use 'improve' ou 'analyze'.");
     }
 
-    const model = action === "analyze" ? "gpt-4o" : "gpt-4o-mini";
+    // Use gpt-4o for analysis and observações (vision needed), gpt-4o-mini for simple corrections
+    const hasImages = messages.some((m: any) => Array.isArray(m.content) && m.content.some((p: any) => p.type === "image_url"));
+    const model = (action === "analyze" || hasImages) ? "gpt-4o" : "gpt-4o-mini";
 
     const response = await fetch("https://api.openai.com/v1/chat/completions", {
       method: "POST",
