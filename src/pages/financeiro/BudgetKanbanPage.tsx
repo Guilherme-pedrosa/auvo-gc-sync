@@ -601,6 +601,43 @@ export default function BudgetKanbanPage() {
     return { nome, id };
   };
 
+  const applyResolvedEquipmentToCard = useCallback((taskId: string, nome: string, id: string) => {
+    const equipmentPatch = {
+      equipamento_nome: nome || null,
+      equipamento_id_serie: id || null,
+    };
+
+    setColumns((prev) => prev.map((col) => ({
+      ...col,
+      items: col.items.map((item) =>
+        item.auvo_task_id === taskId ? { ...item, ...equipmentPatch } : item
+      ),
+    })));
+
+    setSelectedCard((prev) => {
+      if (!prev || prev.auvo_task_id !== taskId) return prev;
+      const sameNome = ((prev as any).equipamento_nome || null) === equipmentPatch.equipamento_nome;
+      const sameId = ((prev as any).equipamento_id_serie || null) === equipmentPatch.equipamento_id_serie;
+      if (sameNome && sameId) return prev;
+      return { ...prev, ...equipmentPatch };
+    });
+  }, []);
+
+  const persistResolvedEquipment = useCallback((taskId: string, nome: string, id: string) => {
+    supabase
+      .from("tarefas_central")
+      .update({
+        equipamento_nome: nome || null,
+        equipamento_id_serie: id || null,
+      } as any)
+      .eq("auvo_task_id", taskId)
+      .then(({ error }) => {
+        if (error) {
+          console.warn("[budget-kanban] Falha ao persistir equipamento:", error);
+        }
+      });
+  }, []);
+
   useEffect(() => {
     let cancelled = false;
 
@@ -611,11 +648,13 @@ export default function BudgetKanbanPage() {
         return;
       }
 
-      // 1. Check if already persisted in tarefas_central
-      const persistedNome = (selectedCard as any).equipamento_nome;
-      const persistedId = (selectedCard as any).equipamento_id_serie;
+      const taskId = selectedCard.auvo_task_id;
+
+      // 1. Check if already persisted on card payload
+      const persistedNome = ((selectedCard as any).equipamento_nome || "").trim();
+      const persistedId = ((selectedCard as any).equipamento_id_serie || "").trim();
       if (persistedNome || persistedId) {
-        setResolvedEquipment({ nome: persistedNome || "", id: persistedId || "" });
+        setResolvedEquipment({ nome: persistedNome, id: persistedId });
         setIsEquipmentLoading(false);
         return;
       }
@@ -625,11 +664,8 @@ export default function BudgetKanbanPage() {
       setResolvedEquipment(local.nome || local.id ? local : null);
 
       if (local.nome && local.id) {
-        // Persist to DB so we don't re-extract next time
-        supabase.from("tarefas_central").update({
-          equipamento_nome: local.nome,
-          equipamento_id_serie: local.id,
-        } as any).eq("auvo_task_id", selectedCard.auvo_task_id).then(() => {});
+        applyResolvedEquipmentToCard(taskId, local.nome, local.id);
+        persistResolvedEquipment(taskId, local.nome, local.id);
         setIsEquipmentLoading(false);
         return;
       }
@@ -638,7 +674,7 @@ export default function BudgetKanbanPage() {
       setIsEquipmentLoading(true);
       try {
         const { data: taskResp, error: taskErr } = await supabase.functions.invoke("auvo-task-update", {
-          body: { action: "get", taskId: Number(selectedCard.auvo_task_id) },
+          body: { action: "get", taskId: Number(taskId) },
         });
         if (taskErr) throw taskErr;
 
@@ -652,33 +688,36 @@ export default function BudgetKanbanPage() {
               : [];
 
         const equipmentIds = [...new Set(idsRaw.map((v: any) => String(v)).filter(Boolean))];
-        const resolvedId = local.id || (equipmentIds.length ? equipmentIds.join(", ") : "");
 
         let resolvedNome = local.nome;
-        if (!resolvedNome && equipmentIds.length) {
-          for (const eqId of equipmentIds) {
-            const { data: eqResp, error: eqErr } = await supabase.functions.invoke("auvo-task-update", {
-              body: { action: "get-equipment", equipmentId: eqId },
-            });
-            if (eqErr) continue;
-            const eq = eqResp?.data?.result || eqResp?.result || eqResp?.data || {};
-            const eqName = String(eq?.description || eq?.name || eq?.identifier || eq?.model || "").trim();
-            if (eqName) {
-              resolvedNome = eqName;
-              break;
-            }
-          }
+        let resolvedSerial = "";
+
+        for (const eqId of equipmentIds) {
+          const { data: eqResp, error: eqErr } = await supabase.functions.invoke("auvo-task-update", {
+            body: { action: "get-equipment", equipmentId: eqId },
+          });
+          if (eqErr) continue;
+
+          const eq = eqResp?.data?.result || eqResp?.result || eqResp?.data || {};
+          const eqName = String(eq?.description || eq?.name || eq?.model || "").trim();
+          const eqIdentifier = String(eq?.identifier || eq?.serial || eq?.code || "").trim();
+
+          if (!resolvedNome && eqName) resolvedNome = eqName;
+          if (!resolvedSerial && eqIdentifier) resolvedSerial = eqIdentifier;
+
+          if (resolvedNome && (local.id || resolvedSerial)) break;
         }
 
+        const fallbackEquipmentId = equipmentIds.length ? equipmentIds.join(", ") : "";
+        const resolvedId = local.id || resolvedSerial || fallbackEquipmentId;
+
         if (!cancelled) {
-          setResolvedEquipment(resolvedNome || resolvedId ? { nome: resolvedNome, id: resolvedId } : null);
-          
-          // Persist resolved equipment to DB
-          if (resolvedNome || resolvedId) {
-            supabase.from("tarefas_central").update({
-              equipamento_nome: resolvedNome || null,
-              equipamento_id_serie: resolvedId || null,
-            } as any).eq("auvo_task_id", selectedCard.auvo_task_id).then(() => {});
+          const resolved = resolvedNome || resolvedId ? { nome: resolvedNome, id: resolvedId } : null;
+          setResolvedEquipment(resolved);
+
+          if (resolved) {
+            applyResolvedEquipmentToCard(taskId, resolved.nome, resolved.id);
+            persistResolvedEquipment(taskId, resolved.nome, resolved.id);
           }
         }
       } catch (error) {
@@ -693,7 +732,7 @@ export default function BudgetKanbanPage() {
     return () => {
       cancelled = true;
     };
-  }, [selectedCard]);
+  }, [selectedCard, applyResolvedEquipmentToCard, persistResolvedEquipment]);
 
   // Save edited questionnaire field
   const handleSaveFieldEdit = useCallback(async (keyword: string, newValue: string) => {
