@@ -10,8 +10,8 @@ serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   try {
-    const GENSPARK_API_KEY = Deno.env.get("GENSPARK_API_KEY");
-    if (!GENSPARK_API_KEY) throw new Error("GENSPARK_API_KEY não configurada");
+    const OPENAI_API_KEY = Deno.env.get("OPENAI_API_KEY");
+    if (!OPENAI_API_KEY) throw new Error("OPENAI_API_KEY não configurada");
 
     const { action, text, context } = await req.json();
 
@@ -58,10 +58,10 @@ Seja objetivo e técnico. Use formatação com negrito e tópicos.`;
       throw new Error("Ação inválida. Use 'improve' ou 'analyze'.");
     }
 
-    const response = await fetch("https://api.genspark.ai/v1/chat/completions", {
+    const response = await fetch("https://api.openai.com/v1/chat/completions", {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${GENSPARK_API_KEY}`,
+        Authorization: `Bearer ${OPENAI_API_KEY}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
