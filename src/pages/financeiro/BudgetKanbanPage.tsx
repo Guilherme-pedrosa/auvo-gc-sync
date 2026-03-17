@@ -442,6 +442,10 @@ export default function BudgetKanbanPage() {
       const items = col.items.filter((item) => {
         if (filterTecnico !== "todos" && item.tecnico !== filterTecnico) return false;
         if (!allClientesSelected && !selectedClientes.has(item.cliente)) return false;
+        if (!allEquipSelected) {
+          const equipNome = (item as any).equipamento_nome || "";
+          if (!selectedEquipamentos.has(equipNome)) return false;
+        }
         return true;
       });
       return { ...col, items: sortBy === "manual" ? items : [...items].sort(sortFn) };
