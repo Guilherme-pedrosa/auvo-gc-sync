@@ -450,7 +450,7 @@ export default function BudgetKanbanPage() {
       });
       return { ...col, items: sortBy === "manual" ? items : [...items].sort(sortFn) };
     });
-  }, [columns, filterTecnico, allClientesSelected, selectedClientes, sortBy]);
+  }, [columns, filterTecnico, allClientesSelected, selectedClientes, allEquipSelected, selectedEquipamentos, sortBy]);
 
   // Save positions + custom columns to DB
   const savePositions = useCallback((cols: KanbanColumn[]) => {
