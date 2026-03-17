@@ -86,16 +86,37 @@ Use formatação com emojis, negrito e tópicos para facilitar a leitura.`;
 
       userContentParts.push({ type: "text", text: textPrompt });
 
-      // Add photos as image_url for GPT vision
+      // Add photos as base64 for GPT vision (OpenAI can't always fetch external URLs)
       if (context?.fotos && Array.isArray(context.fotos) && context.fotos.length > 0) {
         textPrompt += `\n\n📷 ${context.fotos.length} foto(s) do equipamento/serviço anexadas abaixo. ANALISE CADA FOTO para identificar o equipamento, estado, e verificar a coerência com o diagnóstico do técnico.\n`;
         userContentParts[0] = { type: "text", text: textPrompt };
         
-        for (const url of context.fotos.slice(0, 8)) { // max 8 photos
-          userContentParts.push({
-            type: "image_url",
-            image_url: { url, detail: "high" },
-          });
+        for (const url of context.fotos.slice(0, 6)) { // max 6 photos
+          try {
+            console.log(`[analyze] Downloading photo: ${url.substring(0, 80)}...`);
+            const imgResp = await fetch(url);
+            if (!imgResp.ok) {
+              console.warn(`[analyze] Failed to download photo: ${imgResp.status}`);
+              continue;
+            }
+            const arrayBuf = await imgResp.arrayBuffer();
+            const bytes = new Uint8Array(arrayBuf);
+            let binary = "";
+            for (let i = 0; i < bytes.length; i++) {
+              binary += String.fromCharCode(bytes[i]);
+            }
+            const base64 = btoa(binary);
+            const contentType = imgResp.headers.get("content-type") || "image/jpeg";
+            const dataUrl = `data:${contentType};base64,${base64}`;
+            
+            userContentParts.push({
+              type: "image_url",
+              image_url: { url: dataUrl, detail: "high" },
+            });
+            console.log(`[analyze] Photo added as base64 (${Math.round(base64.length / 1024)}KB)`);
+          } catch (imgErr) {
+            console.warn(`[analyze] Error downloading photo: ${imgErr}`);
+          }
         }
       }
 
