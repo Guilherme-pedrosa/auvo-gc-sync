@@ -1138,12 +1138,37 @@ export default function OficinaKanbanPage() {
                             <h4 className="text-sm font-semibold text-foreground">Formulário de Entrada</h4>
                             <div className="space-y-1.5 max-h-[300px] overflow-y-auto">
                               {entradaTexts.map((r, i) => (
-                                <div key={i} className="text-xs">
+                                <div key={i} className="text-xs group">
                                   <span className="text-muted-foreground">{r.question}:</span>
-                                  {r.reply.startsWith("http") ? (
+                                  {editingField?.type === "entrada" && editingField?.index === i ? (
+                                    <div className="mt-1 space-y-1.5">
+                                      <Textarea
+                                        value={editValue}
+                                        onChange={(e) => setEditValue(e.target.value)}
+                                        className="text-xs min-h-[60px]"
+                                        autoFocus
+                                      />
+                                      <div className="flex gap-1.5">
+                                        <Button size="sm" className="h-6 text-[10px] gap-1" disabled={isSavingField} onClick={() => handleSaveFieldEdit("entrada", i, editValue)}>
+                                          <Save className="h-3 w-3" />{isSavingField ? "Salvando..." : "Salvar"}
+                                        </Button>
+                                        <Button size="sm" variant="ghost" className="h-6 text-[10px]" onClick={() => { setEditingField(null); setEditValue(""); }}>Cancelar</Button>
+                                      </div>
+                                    </div>
+                                  ) : r.reply.startsWith("http") ? (
                                     <a href={r.reply} target="_blank" rel="noopener noreferrer" className="ml-1 text-blue-600 hover:underline">Ver anexo</a>
                                   ) : (
-                                    <span className="ml-1 font-medium">{r.reply}</span>
+                                    <span className="ml-1 font-medium">
+                                      {r.reply}
+                                      <button
+                                        type="button"
+                                        className="ml-1.5 opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-foreground inline-flex items-center"
+                                        onClick={() => { setEditingField({ type: "entrada", index: i }); setEditValue(r.reply); }}
+                                        title="Editar campo"
+                                      >
+                                        <Pencil className="h-3 w-3" />
+                                      </button>
+                                    </span>
                                   )}
                                 </div>
                               ))}
@@ -1156,12 +1181,37 @@ export default function OficinaKanbanPage() {
                             <h4 className="text-sm font-semibold text-foreground">Formulário de Devolução</h4>
                             <div className="space-y-1.5 max-h-[300px] overflow-y-auto">
                               {devolucaoTexts.map((r, i) => (
-                                <div key={i} className="text-xs">
+                                <div key={i} className="text-xs group">
                                   <span className="text-muted-foreground">{r.question}:</span>
-                                  {r.reply.startsWith("http") ? (
+                                  {editingField?.type === "devolucao" && editingField?.index === i ? (
+                                    <div className="mt-1 space-y-1.5">
+                                      <Textarea
+                                        value={editValue}
+                                        onChange={(e) => setEditValue(e.target.value)}
+                                        className="text-xs min-h-[60px]"
+                                        autoFocus
+                                      />
+                                      <div className="flex gap-1.5">
+                                        <Button size="sm" className="h-6 text-[10px] gap-1" disabled={isSavingField} onClick={() => handleSaveFieldEdit("devolucao", i, editValue)}>
+                                          <Save className="h-3 w-3" />{isSavingField ? "Salvando..." : "Salvar"}
+                                        </Button>
+                                        <Button size="sm" variant="ghost" className="h-6 text-[10px]" onClick={() => { setEditingField(null); setEditValue(""); }}>Cancelar</Button>
+                                      </div>
+                                    </div>
+                                  ) : r.reply.startsWith("http") ? (
                                     <a href={r.reply} target="_blank" rel="noopener noreferrer" className="ml-1 text-blue-600 hover:underline">Ver anexo</a>
                                   ) : (
-                                    <span className="ml-1 font-medium">{r.reply}</span>
+                                    <span className="ml-1 font-medium">
+                                      {r.reply}
+                                      <button
+                                        type="button"
+                                        className="ml-1.5 opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-foreground inline-flex items-center"
+                                        onClick={() => { setEditingField({ type: "devolucao", index: i }); setEditValue(r.reply); }}
+                                        title="Editar campo"
+                                      >
+                                        <Pencil className="h-3 w-3" />
+                                      </button>
+                                    </span>
                                   )}
                                 </div>
                               ))}
