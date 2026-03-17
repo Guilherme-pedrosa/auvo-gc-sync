@@ -100,6 +100,9 @@ export default function BudgetKanbanPage() {
   const [editingSection, setEditingSection] = useState<string | null>(null);
   const [editValue, setEditValue] = useState("");
   const [isSavingField, setIsSavingField] = useState(false);
+  const [aiLoadingSection, setAiLoadingSection] = useState<string | null>(null);
+  const [aiAnalysis, setAiAnalysis] = useState<string | null>(null);
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
 
   const { data, isLoading, refetch, isFetching } = useQuery<ApiResponse>({
     queryKey: ["budget-kanban", format(dateRange.from, "yyyy-MM-dd"), format(dateRange.to, "yyyy-MM-dd")],
