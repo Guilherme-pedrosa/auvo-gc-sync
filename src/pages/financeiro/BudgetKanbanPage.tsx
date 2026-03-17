@@ -1130,18 +1130,6 @@ export default function BudgetKanbanPage() {
         </DialogContent>
       </Dialog>
 
-      {/* Photo Lightbox */}
-      <Dialog open={!!expandedPhoto} onOpenChange={(open) => !open && setExpandedPhoto(null)}>
-        <DialogContent className="max-w-[90vw] max-h-[90vh] p-2 flex items-center justify-center bg-black/95 border-none">
-          {expandedPhoto && (
-            <img
-              src={expandedPhoto}
-              alt="Foto ampliada"
-              className="max-w-full max-h-[85vh] object-contain rounded"
-            />
-          )}
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }
