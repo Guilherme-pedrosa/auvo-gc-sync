@@ -74,6 +74,10 @@ async function fetchDriveDocuments(equipamentoFilter?: string): Promise<string> 
     const listData = await listResp.json();
     const files = listData.files || [];
     console.log(`[genspark-ai] Drive: ${files.length} arquivos encontrados`);
+    // Debug: log file types
+    for (const f of files.slice(0, 10)) {
+      console.log(`[genspark-ai] Drive file: "${f.name}" mime=${f.mimeType} size=${f.size || '?'}`);
+    }
 
     if (files.length === 0) return "";
 
