@@ -239,6 +239,11 @@ P5) SEMPRE verificar peças de desgaste natural conforme o tipo de equipamento:
 - Mangueiras de água, mangueiras de gás, filtros internos, filtro de parede (se o equipamento recebe água), vedações, gaxetas e juntas.
 - Se houver presença de calcário, incrustação ou sujidade nas fotos ou descrição: sugerir inclusão ou troca de filtro de água e sinalizar possível necessidade de limpeza química ou descalcificação.
 
+P6) Se houver evidência de uso inadequado do equipamento (ex: resíduos de alimentos como sementes, cascas, ossos ou objetos estranhos em locais onde não deveriam estar, entupimentos por mal uso, danos por operação incorreta):
+- Sinalizar "Política WeDo: recomendar treinamento operacional para o cliente sobre a utilização correta do equipamento conforme manual do fabricante".
+- Se o equipamento possuir cestos filtrantes, filtros ou telas de retenção, destacar a importância do uso correto desses acessórios e verificar estado de conservação.
+- Classificar como serviço adicional recomendado, não como peça.
+
 REGRA DE BASE PARA ITENS ASSOCIADOS
 Nenhum item associado pode ser sugerido sem base explícita.
 Toda sugestão deve indicar ao menos uma base:
