@@ -492,13 +492,17 @@ TOM: Telegráfico, técnico, zero enrolação.`;
 
       const userContentParts: any[] = [];
 
-      // *** PERPLEXITY WEB SEARCH — pesquisa na internet ANTES da análise ***
-      const webResearch = await searchEquipmentOnWeb(
-        context?.equipamento || context?.descricao || "",
-        context?.descricao || "",
-        context?.orientacao || "",
-        context?.pecas || ""
-      );
+      // *** PARALLEL: Perplexity web search + Google Drive docs ***
+      const equipForSearch = context?.equipamento || context?.descricao || "";
+      const [webResearch, driveContext] = await Promise.all([
+        searchEquipmentOnWeb(
+          equipForSearch,
+          context?.descricao || "",
+          context?.orientacao || "",
+          context?.pecas || ""
+        ),
+        fetchDriveDocuments(equipForSearch),
+      ]);
 
       let textPrompt = `Analise a OS abaixo para apoio à elaboração de orçamento técnico.\n\nDADOS DA OS\n`;
       if (context) {
@@ -529,7 +533,14 @@ TOM: Telegráfico, técnico, zero enrolação.`;
 
       const hasFotos = context?.fotos?.length > 0;
       textPrompt += `\nFOTOS\n${hasFotos ? `${filterImageUrls(context.fotos).length} foto(s) anexadas. ANALISE CADA FOTO.` : "Não fornecidas"}\n`;
-      textPrompt += `\nMATERIAIS INTERNOS\nNão fornecidos\n`;
+      
+      // Inject Drive documents if available
+      if (driveContext) {
+        textPrompt += `\n\n========== 📂 ${driveContext} ==========\n`;
+        textPrompt += `\nINSTRUÇÃO: Use os materiais internos acima para fundamentar o diagnóstico. Se houver manuais, tabelas de peças ou procedimentos relevantes, cite-os na análise. Marque com 📂 informações vindas dos materiais internos.\n`;
+      } else {
+        textPrompt += `\nMATERIAIS INTERNOS\nNão fornecidos\n`;
+      }
       textPrompt += `\nSua resposta deve seguir exatamente o formato definido no system prompt.`;
 
       userContentParts.push({ type: "text", text: textPrompt });
