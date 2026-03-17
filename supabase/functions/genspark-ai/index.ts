@@ -362,8 +362,12 @@ TOM: Telegráfico, técnico, zero enrolação.`;
 
       // Inject web research if available
       if (webResearch) {
-        textPrompt += `\n🌐 ${webResearch}\n`;
-        textPrompt += `\nIMPORTANTE: Use as informações da pesquisa web acima para ENRIQUECER sua análise. Compare o que o técnico informou com o que a internet diz sobre este equipamento. Identifique peças e componentes que o técnico pode ter esquecido baseado nas specs reais do equipamento.\n`;
+        textPrompt += `\n\n========== 🌐 DADOS DA PESQUISA WEB (PERPLEXITY) ==========\n${webResearch}\n==========================================================\n`;
+        textPrompt += `\nINSTRUÇÃO OBRIGATÓRIA: Você RECEBEU dados de pesquisa web acima. Você DEVE:
+1. Preencher a seção "🌐 PESQUISA WEB" com os dados encontrados
+2. Na seção DIAGNÓSTICO, incluir "Dados da web vs técnico" comparando o que a web diz vs o que o técnico informou
+3. Na seção PEÇAS, marcar com 🌐 os itens que vieram da pesquisa web e que o técnico NÃO mencionou
+4. Se a web revelou componentes específicos deste modelo que o técnico omitiu, LISTE-OS como ⚡🌐 Recomendar\n`;
       }
 
       const hasFotos = context?.fotos?.length > 0;
