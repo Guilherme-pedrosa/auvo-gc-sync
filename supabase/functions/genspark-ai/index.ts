@@ -322,6 +322,15 @@ NÃO incluir EPIs básicos (luvas, óculos, capacete, sapato). Só EPIs específ
 TOM: Telegráfico, técnico, zero enrolação.`;
 
       const userContentParts: any[] = [];
+
+      // *** PERPLEXITY WEB SEARCH — pesquisa na internet ANTES da análise ***
+      const webResearch = await searchEquipmentOnWeb(
+        context?.equipamento || context?.descricao || "",
+        context?.descricao || "",
+        context?.orientacao || "",
+        context?.pecas || ""
+      );
+
       let textPrompt = `Analise a OS abaixo para apoio à elaboração de orçamento técnico.\n\nDADOS DA OS\n`;
       if (context) {
         textPrompt += `- Cliente: ${context.cliente || "N/A"}\n`;
