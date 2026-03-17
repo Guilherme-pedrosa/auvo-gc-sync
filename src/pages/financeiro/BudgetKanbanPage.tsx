@@ -697,7 +697,7 @@ export default function BudgetKanbanPage() {
     } finally {
       setIsAnalyzing(false);
     }
-  }, [selectedCard]);
+  }, [selectedCard, resolvedEquipment]);
 
   // AI Chat about this budget
   const handleChatSend = useCallback(async () => {
