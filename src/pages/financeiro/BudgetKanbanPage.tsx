@@ -1101,7 +1101,7 @@ export default function BudgetKanbanPage() {
       )}
 
       {/* Card Detail Dialog */}
-      <Dialog open={!!selectedCard} onOpenChange={(open) => !open && setSelectedCard(null)}>
+      <Dialog open={!!selectedCard} onOpenChange={(open) => { if (!open) { setSelectedCard(null); setAiAnalysis(null); setShowChat(false); setChatMessages([]); } }}>
         <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
           {selectedCard && (
             <>
