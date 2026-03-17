@@ -199,6 +199,25 @@ Deno.serve(async (req) => {
       );
     }
 
+    if (action === "get-equipment") {
+      const { equipmentId } = body;
+      if (!equipmentId) {
+        return new Response(
+          JSON.stringify({ error: "equipmentId é obrigatório" }),
+          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
+      const url = `${AUVO_BASE_URL}/equipments/${equipmentId}`;
+      const response = await fetch(url, { headers });
+      const data = await response.json().catch(() => ({}));
+
+      return new Response(
+        JSON.stringify({ data, status: response.status }),
+        { status: response.ok ? 200 : response.status, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
     if (action === "list-users") {
       // List users (to get technician IDs)
       let page = 1;

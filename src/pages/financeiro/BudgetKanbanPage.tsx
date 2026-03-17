@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo } from "react";
+import { useState, useCallback, useMemo, useEffect } from "react";
 import PhotoGallery from "@/components/financeiro/PhotoGallery";
 import { useQuery } from "@tanstack/react-query";
 import { isAfter, isEqual } from "date-fns";
@@ -107,6 +107,8 @@ export default function BudgetKanbanPage() {
   const [chatMessages, setChatMessages] = useState<{ role: "user" | "assistant"; content: string }[]>([]);
   const [chatInput, setChatInput] = useState("");
   const [isChatLoading, setIsChatLoading] = useState(false);
+  const [resolvedEquipment, setResolvedEquipment] = useState<{ nome: string; id: string } | null>(null);
+  const [isEquipmentLoading, setIsEquipmentLoading] = useState(false);
 
   const { data, isLoading, refetch, isFetching } = useQuery<ApiResponse>({
     queryKey: ["budget-kanban", format(dateRange.from, "yyyy-MM-dd"), format(dateRange.to, "yyyy-MM-dd")],
@@ -448,6 +450,112 @@ export default function BudgetKanbanPage() {
       .join("\n");
   };
 
+  const normalizeText = (value: string) =>
+    String(value || "")
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .toLowerCase();
+
+  const extractEquipmentFromCard = (item: KanbanItem) => {
+    const textReplies = item.questionario_respostas.filter((r) => r.reply && !r.reply.startsWith("http"));
+
+    const collectByQuestionKeywords = (keywords: string[]) => {
+      const values = textReplies
+        .filter((r) => {
+          const q = normalizeText(r.question);
+          return keywords.some((k) => q.includes(k));
+        })
+        .map((r) => String(r.reply || "").trim())
+        .filter(Boolean);
+      return [...new Set(values)].join(" | ");
+    };
+
+    let nome = collectByQuestionKeywords(["equip", "equipamento", "modelo", "maquina", "marca"]);
+    let id = collectByQuestionKeywords(["patrimon", "serie", "serial", "tag", "placa", "id do equip", "id equipamento"]);
+
+    const blob = `${item.orientacao || ""}\n${getAnswer(item, "descri") || ""}`;
+    if (!nome) {
+      const matchNome = blob.match(/(?:equipamento|modelo)\s*[:\-]\s*([^\n;]+)/i);
+      if (matchNome?.[1]) nome = matchNome[1].trim();
+    }
+    if (!id) {
+      const matchId = blob.match(/(?:patrim[oô]nio|s[eé]rie|serial|tag|placa|id(?: do)? equipamento)\s*[:#\-]\s*([^\n;]+)/i);
+      if (matchId?.[1]) id = matchId[1].trim();
+    }
+
+    return { nome, id };
+  };
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const resolveEquipment = async () => {
+      if (!selectedCard) {
+        setResolvedEquipment(null);
+        setIsEquipmentLoading(false);
+        return;
+      }
+
+      const local = extractEquipmentFromCard(selectedCard);
+      setResolvedEquipment(local.nome || local.id ? local : null);
+
+      if (local.nome && local.id) {
+        setIsEquipmentLoading(false);
+        return;
+      }
+
+      setIsEquipmentLoading(true);
+      try {
+        const { data: taskResp, error: taskErr } = await supabase.functions.invoke("auvo-task-update", {
+          body: { action: "get", taskId: Number(selectedCard.auvo_task_id) },
+        });
+        if (taskErr) throw taskErr;
+
+        const task = taskResp?.data?.result || taskResp?.result || {};
+        const idsRaw = Array.isArray(task?.equipmentsId)
+          ? task.equipmentsId
+          : Array.isArray(task?.equipmentsID)
+            ? task.equipmentsID
+            : Array.isArray(task?.equipmentIds)
+              ? task.equipmentIds
+              : [];
+
+        const equipmentIds = [...new Set(idsRaw.map((v: any) => String(v)).filter(Boolean))];
+        const resolvedId = local.id || (equipmentIds.length ? equipmentIds.join(", ") : "");
+
+        let resolvedNome = local.nome;
+        if (!resolvedNome && equipmentIds.length) {
+          for (const eqId of equipmentIds) {
+            const { data: eqResp, error: eqErr } = await supabase.functions.invoke("auvo-task-update", {
+              body: { action: "get-equipment", equipmentId: eqId },
+            });
+            if (eqErr) continue;
+            const eq = eqResp?.data?.result || eqResp?.result || eqResp?.data || {};
+            const eqName = String(eq?.description || eq?.name || eq?.identifier || eq?.model || "").trim();
+            if (eqName) {
+              resolvedNome = eqName;
+              break;
+            }
+          }
+        }
+
+        if (!cancelled) {
+          setResolvedEquipment(resolvedNome || resolvedId ? { nome: resolvedNome, id: resolvedId } : null);
+        }
+      } catch (error) {
+        console.warn("[budget-kanban] Falha ao resolver equipamento:", error);
+      } finally {
+        if (!cancelled) setIsEquipmentLoading(false);
+      }
+    };
+
+    resolveEquipment();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedCard]);
+
   // Save edited questionnaire field
   const handleSaveFieldEdit = useCallback(async (keyword: string, newValue: string) => {
     if (!selectedCard) return;
@@ -555,9 +663,9 @@ export default function BudgetKanbanPage() {
         .map((r) => `${r.question}: ${r.reply}`)
         .join("\n");
 
-      // Extract equipment identification from questionnaire
-      const equipamento = getAnswer(selectedCard, "equip") || getAnswer(selectedCard, "modelo") || getAnswer(selectedCard, "máquina") || getAnswer(selectedCard, "maquina") || getAnswer(selectedCard, "marca") || "";
-      const equipamentoId = getAnswer(selectedCard, "patrimôn") || getAnswer(selectedCard, "patrimon") || getAnswer(selectedCard, "serie") || getAnswer(selectedCard, "série") || getAnswer(selectedCard, "número de série") || getAnswer(selectedCard, "placa") || getAnswer(selectedCard, "tag") || getAnswer(selectedCard, "id do equip") || "";
+      const localEquipment = extractEquipmentFromCard(selectedCard);
+      const equipamento = resolvedEquipment?.nome || localEquipment.nome || "";
+      const equipamentoId = resolvedEquipment?.id || localEquipment.id || "";
 
       const { data: result, error } = await supabase.functions.invoke("genspark-ai", {
         body: {
@@ -589,7 +697,7 @@ export default function BudgetKanbanPage() {
     } finally {
       setIsAnalyzing(false);
     }
-  }, [selectedCard]);
+  }, [selectedCard, resolvedEquipment]);
 
   // AI Chat about this budget
   const handleChatSend = useCallback(async () => {
@@ -609,8 +717,9 @@ export default function BudgetKanbanPage() {
         .filter((r) => r.reply && r.reply.startsWith("http"))
         .map((r) => r.reply);
 
-      const equipamento = getAnswer(selectedCard, "equip") || getAnswer(selectedCard, "modelo") || getAnswer(selectedCard, "máquina") || getAnswer(selectedCard, "maquina") || getAnswer(selectedCard, "marca") || "";
-      const equipamentoId = getAnswer(selectedCard, "patrimôn") || getAnswer(selectedCard, "patrimon") || getAnswer(selectedCard, "serie") || getAnswer(selectedCard, "série") || getAnswer(selectedCard, "número de série") || getAnswer(selectedCard, "placa") || getAnswer(selectedCard, "tag") || getAnswer(selectedCard, "id do equip") || "";
+      const localEquipment = extractEquipmentFromCard(selectedCard);
+      const equipamento = resolvedEquipment?.nome || localEquipment.nome || "";
+      const equipamentoId = resolvedEquipment?.id || localEquipment.id || "";
 
       const { data: result, error } = await supabase.functions.invoke("genspark-ai", {
         body: {
@@ -642,7 +751,7 @@ export default function BudgetKanbanPage() {
     } finally {
       setIsChatLoading(false);
     }
-  }, [selectedCard, chatInput, chatMessages, aiAnalysis]);
+  }, [selectedCard, chatInput, chatMessages, aiAnalysis, resolvedEquipment]);
 
   const resumo = data?.resumo;
   // Orçamentos realizados breakdown: hoje, semana, mês
@@ -1133,20 +1242,22 @@ export default function BudgetKanbanPage() {
 
               <div className="space-y-4">
                 {/* Equipment identification */}
-                {(() => {
-                  const equipNome = getAnswer(selectedCard, "equip") || getAnswer(selectedCard, "modelo") || getAnswer(selectedCard, "máquina") || getAnswer(selectedCard, "maquina") || getAnswer(selectedCard, "marca") || "";
-                  const equipId = getAnswer(selectedCard, "patrimôn") || getAnswer(selectedCard, "patrimon") || getAnswer(selectedCard, "serie") || getAnswer(selectedCard, "série") || getAnswer(selectedCard, "número de série") || getAnswer(selectedCard, "placa") || getAnswer(selectedCard, "tag") || getAnswer(selectedCard, "id do equip") || "";
-                  if (!equipNome && !equipId) return null;
-                  return (
-                    <div className="bg-accent/50 border border-accent rounded-lg p-3 flex items-center gap-3">
-                      <span className="text-lg">🔧</span>
-                      <div className="text-sm">
-                        {equipNome && <div><span className="text-muted-foreground">Equipamento:</span> <span className="font-semibold">{equipNome}</span></div>}
-                        {equipId && <div><span className="text-muted-foreground">ID / Série:</span> <span className="font-mono font-semibold">{equipId}</span></div>}
-                      </div>
+                <div className="bg-accent/50 border border-accent rounded-lg p-3 flex items-center gap-3">
+                  <span className="text-lg">🔧</span>
+                  <div className="text-sm">
+                    <div>
+                      <span className="text-muted-foreground">Equipamento:</span>{" "}
+                      <span className="font-semibold">{resolvedEquipment?.nome || "Não identificado"}</span>
                     </div>
-                  );
-                })()}
+                    <div>
+                      <span className="text-muted-foreground">ID / Série:</span>{" "}
+                      <span className="font-mono font-semibold">{resolvedEquipment?.id || "Não identificado"}</span>
+                    </div>
+                    {isEquipmentLoading && (
+                      <div className="text-xs text-muted-foreground mt-1">Buscando identificação completa no Auvo...</div>
+                    )}
+                  </div>
+                </div>
 
                 {/* Basic info */}
                 <div className="grid grid-cols-2 gap-3 text-sm">
