@@ -173,14 +173,19 @@ export default function BudgetKanbanPage() {
   }, [data]);
 
   // All unique equipment names
+  const SEM_EQUIP = "(Sem equipamento)";
   const allEquipamentos = useMemo(() => {
     if (!data?.items) return [];
     const set = new Set<string>();
+    let hasSemEquip = false;
     for (const item of data.items) {
       const nome = (item as any).equipamento_nome;
       if (nome) set.add(nome);
+      else hasSemEquip = true;
     }
-    return Array.from(set).sort();
+    const sorted = Array.from(set).sort();
+    if (hasSemEquip) sorted.push(SEM_EQUIP);
+    return sorted;
   }, [data]);
 
   // Initialize equipment selection
