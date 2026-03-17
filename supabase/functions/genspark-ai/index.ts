@@ -10,8 +10,8 @@ serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   try {
-    const GENSPARK_API_KEY = Deno.env.get("GENSPARK_API_KEY");
-    if (!GENSPARK_API_KEY) throw new Error("GENSPARK_API_KEY não configurada");
+    const OPENAI_API_KEY = Deno.env.get("OPENAI_API_KEY");
+    if (!OPENAI_API_KEY) throw new Error("OPENAI_API_KEY não configurada");
 
     const { action, text, context } = await req.json();
 
