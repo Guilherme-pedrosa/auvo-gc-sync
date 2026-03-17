@@ -604,6 +604,14 @@ export default function BudgetKanbanPage() {
         .map((r) => `${r.question}: ${r.reply}`)
         .join("\n");
 
+      // Collect photo URLs for vision context
+      const fotos = selectedCard.questionario_respostas
+        .filter((r) => r.reply && r.reply.startsWith("http"))
+        .map((r) => r.reply);
+
+      const equipamento = getAnswer(selectedCard, "equip") || getAnswer(selectedCard, "modelo") || getAnswer(selectedCard, "máquina") || getAnswer(selectedCard, "maquina") || getAnswer(selectedCard, "marca") || "";
+      const equipamentoId = getAnswer(selectedCard, "patrimôn") || getAnswer(selectedCard, "patrimon") || getAnswer(selectedCard, "serie") || getAnswer(selectedCard, "série") || getAnswer(selectedCard, "número de série") || getAnswer(selectedCard, "placa") || getAnswer(selectedCard, "tag") || getAnswer(selectedCard, "id do equip") || "";
+
       const { data: result, error } = await supabase.functions.invoke("genspark-ai", {
         body: {
           action: "chat",
