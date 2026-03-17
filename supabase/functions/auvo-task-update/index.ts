@@ -31,7 +31,7 @@ function sanitizeCentralRow(row: any) {
   const taskId = String(row?.auvo_task_id || "").trim();
   if (!taskId) return null;
 
-  return {
+  const result: any = {
     auvo_task_id: taskId,
     cliente: row?.cliente ?? null,
     tecnico: row?.tecnico ?? null,
@@ -56,6 +56,13 @@ function sanitizeCentralRow(row: any) {
     pendencia: row?.pendencia ?? null,
     atualizado_em: new Date().toISOString(),
   };
+
+  // Include questionario_respostas if provided
+  if (row?.questionario_respostas !== undefined) {
+    result.questionario_respostas = row.questionario_respostas;
+  }
+
+  return result;
 }
 
 Deno.serve(async (req) => {

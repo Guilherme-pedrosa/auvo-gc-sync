@@ -2,6 +2,7 @@ import { useState, useCallback, useMemo, useEffect } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
+import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -112,6 +113,9 @@ export default function OficinaKanbanPage() {
   const [newItemQty, setNewItemQty] = useState("1");
   const [newItemPrice, setNewItemPrice] = useState("");
   const [newItemTipo, setNewItemTipo] = useState("peca");
+  const [editingField, setEditingField] = useState<{ type: "entrada" | "devolucao"; index: number } | null>(null);
+  const [editValue, setEditValue] = useState("");
+  const [isSavingField, setIsSavingField] = useState(false);
 
   const { data, isLoading, refetch, isFetching } = useQuery({
     queryKey: ["oficina-kanban", format(dateRange.from, "yyyy-MM-dd"), format(dateRange.to, "yyyy-MM-dd")],
@@ -500,7 +504,58 @@ export default function OficinaKanbanPage() {
     loadJobData(selectedCard.auvo_task_id);
   }, [selectedCard, loadJobData]);
 
-  // Load items/events when card is opened
+  const handleSaveFieldEdit = useCallback(async (type: "entrada" | "devolucao", index: number, newValue: string) => {
+    if (!selectedCard) return;
+    setIsSavingField(true);
+    try {
+      const respostas = type === "entrada"
+        ? [...selectedCard.questionario_respostas]
+        : [...(selectedCard.devolucao_respostas || [])];
+      
+      const isImage = (url: string) => url.startsWith("http") && (url.includes("image") || /\.(jpg|jpeg|png|gif|webp)/i.test(url));
+      const textItems = respostas.filter((r) => r.reply?.trim() && !isImage(r.reply));
+      const originalItem = textItems[index];
+      const realIndex = respostas.findIndex((r) => r === originalItem);
+      if (realIndex === -1) { toast.error("Campo não encontrado"); setIsSavingField(false); return; }
+
+      respostas[realIndex] = { ...respostas[realIndex], reply: newValue };
+
+      // Persist to tarefas_central via edge function
+      const { error } = await supabase.functions.invoke("auvo-task-update", {
+        body: {
+          action: "persist-central",
+          rows: [{
+            auvo_task_id: selectedCard.auvo_task_id,
+            questionario_respostas: type === "entrada" ? respostas : undefined,
+          }],
+        },
+      });
+      if (error) throw error;
+
+      // Update local state
+      const updatedCard = { ...selectedCard };
+      if (type === "entrada") {
+        updatedCard.questionario_respostas = respostas;
+      } else {
+        updatedCard.devolucao_respostas = respostas;
+      }
+      setSelectedCard(updatedCard);
+      setColumns(prev => prev.map(col => ({
+        ...col,
+        items: col.items.map(item => item.auvo_task_id === selectedCard.auvo_task_id ? updatedCard : item),
+      })));
+
+      setEditingField(null);
+      setEditValue("");
+      toast.success("Campo atualizado!");
+    } catch (e: any) {
+      toast.error("Erro ao salvar: " + (e?.message || ""));
+    } finally {
+      setIsSavingField(false);
+    }
+  }, [selectedCard]);
+
+
   useEffect(() => {
     if (selectedCard) {
       setModalTab("detalhes");
@@ -1072,12 +1127,37 @@ export default function OficinaKanbanPage() {
                             <h4 className="text-sm font-semibold text-foreground">Formulário de Entrada</h4>
                             <div className="space-y-1.5 max-h-[300px] overflow-y-auto">
                               {entradaTexts.map((r, i) => (
-                                <div key={i} className="text-xs">
+                                <div key={i} className="text-xs group">
                                   <span className="text-muted-foreground">{r.question}:</span>
-                                  {r.reply.startsWith("http") ? (
+                                  {editingField?.type === "entrada" && editingField?.index === i ? (
+                                    <div className="mt-1 space-y-1.5">
+                                      <Textarea
+                                        value={editValue}
+                                        onChange={(e) => setEditValue(e.target.value)}
+                                        className="text-xs min-h-[60px]"
+                                        autoFocus
+                                      />
+                                      <div className="flex gap-1.5">
+                                        <Button size="sm" className="h-6 text-[10px] gap-1" disabled={isSavingField} onClick={() => handleSaveFieldEdit("entrada", i, editValue)}>
+                                          <Save className="h-3 w-3" />{isSavingField ? "Salvando..." : "Salvar"}
+                                        </Button>
+                                        <Button size="sm" variant="ghost" className="h-6 text-[10px]" onClick={() => { setEditingField(null); setEditValue(""); }}>Cancelar</Button>
+                                      </div>
+                                    </div>
+                                  ) : r.reply.startsWith("http") ? (
                                     <a href={r.reply} target="_blank" rel="noopener noreferrer" className="ml-1 text-blue-600 hover:underline">Ver anexo</a>
                                   ) : (
-                                    <span className="ml-1 font-medium">{r.reply}</span>
+                                    <span className="ml-1 font-medium">
+                                      {r.reply}
+                                      <button
+                                        type="button"
+                                        className="ml-1.5 opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-foreground inline-flex items-center"
+                                        onClick={() => { setEditingField({ type: "entrada", index: i }); setEditValue(r.reply); }}
+                                        title="Editar campo"
+                                      >
+                                        <Pencil className="h-3 w-3" />
+                                      </button>
+                                    </span>
                                   )}
                                 </div>
                               ))}
@@ -1090,12 +1170,37 @@ export default function OficinaKanbanPage() {
                             <h4 className="text-sm font-semibold text-foreground">Formulário de Devolução</h4>
                             <div className="space-y-1.5 max-h-[300px] overflow-y-auto">
                               {devolucaoTexts.map((r, i) => (
-                                <div key={i} className="text-xs">
+                                <div key={i} className="text-xs group">
                                   <span className="text-muted-foreground">{r.question}:</span>
-                                  {r.reply.startsWith("http") ? (
+                                  {editingField?.type === "devolucao" && editingField?.index === i ? (
+                                    <div className="mt-1 space-y-1.5">
+                                      <Textarea
+                                        value={editValue}
+                                        onChange={(e) => setEditValue(e.target.value)}
+                                        className="text-xs min-h-[60px]"
+                                        autoFocus
+                                      />
+                                      <div className="flex gap-1.5">
+                                        <Button size="sm" className="h-6 text-[10px] gap-1" disabled={isSavingField} onClick={() => handleSaveFieldEdit("devolucao", i, editValue)}>
+                                          <Save className="h-3 w-3" />{isSavingField ? "Salvando..." : "Salvar"}
+                                        </Button>
+                                        <Button size="sm" variant="ghost" className="h-6 text-[10px]" onClick={() => { setEditingField(null); setEditValue(""); }}>Cancelar</Button>
+                                      </div>
+                                    </div>
+                                  ) : r.reply.startsWith("http") ? (
                                     <a href={r.reply} target="_blank" rel="noopener noreferrer" className="ml-1 text-blue-600 hover:underline">Ver anexo</a>
                                   ) : (
-                                    <span className="ml-1 font-medium">{r.reply}</span>
+                                    <span className="ml-1 font-medium">
+                                      {r.reply}
+                                      <button
+                                        type="button"
+                                        className="ml-1.5 opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-foreground inline-flex items-center"
+                                        onClick={() => { setEditingField({ type: "devolucao", index: i }); setEditValue(r.reply); }}
+                                        title="Editar campo"
+                                      >
+                                        <Pencil className="h-3 w-3" />
+                                      </button>
+                                    </span>
                                   )}
                                 </div>
                               ))}
