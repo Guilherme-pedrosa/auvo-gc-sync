@@ -348,6 +348,12 @@ TOM: Telegráfico, técnico, zero enrolação.`;
         if (context.todas_respostas) textPrompt += `- Respostas do questionário:\n${context.todas_respostas}\n`;
       }
 
+      // Inject web research if available
+      if (webResearch) {
+        textPrompt += `\n🌐 ${webResearch}\n`;
+        textPrompt += `\nIMPORTANTE: Use as informações da pesquisa web acima para ENRIQUECER sua análise. Compare o que o técnico informou com o que a internet diz sobre este equipamento. Identifique peças e componentes que o técnico pode ter esquecido baseado nas specs reais do equipamento.\n`;
+      }
+
       const hasFotos = context?.fotos?.length > 0;
       textPrompt += `\nFOTOS\n${hasFotos ? `${filterImageUrls(context.fotos).length} foto(s) anexadas. ANALISE CADA FOTO.` : "Não fornecidas"}\n`;
       textPrompt += `\nMATERIAIS INTERNOS\nNão fornecidos\n`;
