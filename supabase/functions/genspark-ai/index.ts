@@ -666,7 +666,7 @@ TOM: Telegráfico, técnico, zero enrolação.`;
       } else {
         textPrompt += `\nMATERIAIS INTERNOS\nNão fornecidos\n`;
       }
-      textPrompt += `\nSua resposta deve seguir exatamente o formato definido no system prompt.`;
+      textPrompt += `\n⚠️ LEMBRETE FINAL OBRIGATÓRIO: A pesquisa web e os materiais internos são COMPLEMENTARES ao seu raciocínio de componentes adjacentes. Você DEVE aplicar a árvore de subsistemas (rolamento→retentor+eixo+mancal, motor→correia+polias+capacitor, etc.) INDEPENDENTEMENTE do que a web ou o Drive dizem. Se a web não menciona retentor mas o técnico vai trocar rolamento, LISTE O RETENTOR. Sua resposta deve seguir exatamente o formato definido no system prompt.`;
 
       userContentParts.push({ type: "text", text: textPrompt });
 
