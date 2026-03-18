@@ -934,18 +934,16 @@ export default function BudgetKanbanPage() {
     }
   }, [selectedCard]);
 
-  // AI technical analysis with GPT-5 vision (photos + text + context)
+  // AI technical analysis — budget_analysis_agent (standard or auto-expanded)
   const handleAiAnalysis = useCallback(async () => {
     if (!selectedCard) return;
     setIsAnalyzing(true);
     setAiAnalysis(null);
     try {
-      // Collect photo URLs from questionnaire responses
       const fotos = selectedCard.questionario_respostas
         .filter((r) => r.reply && r.reply.startsWith("http"))
         .map((r) => r.reply);
 
-      // Collect ALL text answers for full context
       const todasRespostas = selectedCard.questionario_respostas
         .filter((r) => r.reply && !r.reply.startsWith("http"))
         .map((r) => `${r.question}: ${r.reply}`)
@@ -955,7 +953,6 @@ export default function BudgetKanbanPage() {
       const equipamento = resolvedEquipment?.nome || localEquipment.nome || "";
       const equipamentoId = resolvedEquipment?.id || localEquipment.id || "";
       const descricao = getAnswer(selectedCard, "descri") || "";
-      // Fallback: never send empty equipamento — use description substring
       const equipamentoFinal = equipamento || (descricao ? descricao.substring(0, 120) : (selectedCard.orientacao || "").substring(0, 120));
 
       const { data: result, error } = await supabase.functions.invoke("genspark-ai", {
@@ -968,7 +965,7 @@ export default function BudgetKanbanPage() {
             orientacao: selectedCard.orientacao,
             equipamento: equipamentoFinal,
             equipamento_id: equipamentoId,
-            descricao: descricao,
+            descricao,
             pecas: getAnswer(selectedCard, "peças") || getAnswer(selectedCard, "material") || getAnswer(selectedCard, "peca") || "",
             servicos: getAnswer(selectedCard, "serviços") || getAnswer(selectedCard, "servico") || "",
             tempo: getAnswer(selectedCard, "horas") || getAnswer(selectedCard, "tempo") || "",
@@ -982,7 +979,11 @@ export default function BudgetKanbanPage() {
       });
       if (error) throw error;
       if (result?.error) throw new Error(result.error);
+
       setAiAnalysis(result?.result || "Sem resultado");
+      if (result?.mode === "expanded") {
+        toast.info(`Análise expandida ativada: ${(result?.reasons || []).join(", ")}`);
+      }
     } catch (e: any) {
       toast.error("Erro na análise: " + (e?.message || "Tente novamente"));
     } finally {
@@ -990,7 +991,59 @@ export default function BudgetKanbanPage() {
     }
   }, [selectedCard, resolvedEquipment]);
 
-  // AI Chat about this budget
+  // Deep analysis — budget_deep_analysis_agent (always expanded)
+  const handleDeepAnalysis = useCallback(async () => {
+    if (!selectedCard) return;
+    setIsAnalyzing(true);
+    setAiAnalysis(null);
+    try {
+      const fotos = selectedCard.questionario_respostas
+        .filter((r) => r.reply && r.reply.startsWith("http"))
+        .map((r) => r.reply);
+
+      const todasRespostas = selectedCard.questionario_respostas
+        .filter((r) => r.reply && !r.reply.startsWith("http"))
+        .map((r) => `${r.question}: ${r.reply}`)
+        .join("\n");
+
+      const localEquipment = extractEquipmentFromCard(selectedCard);
+      const equipamento = resolvedEquipment?.nome || localEquipment.nome || "";
+      const equipamentoId = resolvedEquipment?.id || localEquipment.id || "";
+      const descricao = getAnswer(selectedCard, "descri") || "";
+      const equipamentoFinal = equipamento || (descricao ? descricao.substring(0, 120) : (selectedCard.orientacao || "").substring(0, 120));
+
+      const { data: result, error } = await supabase.functions.invoke("genspark-ai", {
+        body: {
+          action: "deep_analyze",
+          context: {
+            cliente: selectedCard.cliente,
+            tecnico: selectedCard.tecnico,
+            data_tarefa: selectedCard.data_tarefa,
+            orientacao: selectedCard.orientacao,
+            equipamento: equipamentoFinal,
+            equipamento_id: equipamentoId,
+            descricao,
+            pecas: getAnswer(selectedCard, "peças") || getAnswer(selectedCard, "material") || getAnswer(selectedCard, "peca") || "",
+            servicos: getAnswer(selectedCard, "serviços") || getAnswer(selectedCard, "servico") || "",
+            tempo: getAnswer(selectedCard, "horas") || getAnswer(selectedCard, "tempo") || "",
+            observacoes: getAnswer(selectedCard, "observ") || "",
+            fotos,
+            todas_respostas: todasRespostas,
+          },
+        },
+      });
+      if (error) throw error;
+      if (result?.error) throw new Error(result.error);
+      setAiAnalysis(result?.result || "Sem resultado");
+      toast.success(`Análise aprofundada concluída (${result?.docs || 0} docs, web: ${result?.web ? "sim" : "não"})`);
+    } catch (e: any) {
+      toast.error("Erro na análise: " + (e?.message || "Tente novamente"));
+    } finally {
+      setIsAnalyzing(false);
+    }
+  }, [selectedCard, resolvedEquipment]);
+
+  // AI Chat — budget_chat_agent (lightweight, uses analysis as context)
   const handleChatSend = useCallback(async () => {
     if (!selectedCard || !chatInput.trim()) return;
     const userMsg = chatInput.trim();
@@ -998,21 +1051,9 @@ export default function BudgetKanbanPage() {
     setChatMessages(prev => [...prev, { role: "user", content: userMsg }]);
     setIsChatLoading(true);
     try {
-      const todasRespostas = selectedCard.questionario_respostas
-        .filter((r) => r.reply && !r.reply.startsWith("http"))
-        .map((r) => `${r.question}: ${r.reply}`)
-        .join("\n");
-
-      // Collect photo URLs for vision context
-      const fotos = selectedCard.questionario_respostas
-        .filter((r) => r.reply && r.reply.startsWith("http"))
-        .map((r) => r.reply);
-
       const localEquipment = extractEquipmentFromCard(selectedCard);
       const equipamento = resolvedEquipment?.nome || localEquipment.nome || "";
       const equipamentoId = resolvedEquipment?.id || localEquipment.id || "";
-      const descricaoChat = getAnswer(selectedCard, "descri") || "";
-      const equipamentoFinalChat = equipamento || (descricaoChat ? descricaoChat.substring(0, 120) : (selectedCard.orientacao || "").substring(0, 120));
 
       const { data: result, error } = await supabase.functions.invoke("genspark-ai", {
         body: {
@@ -1020,15 +1061,12 @@ export default function BudgetKanbanPage() {
           context: {
             cliente: selectedCard.cliente,
             tecnico: selectedCard.tecnico,
-            data_tarefa: selectedCard.data_tarefa,
             orientacao: selectedCard.orientacao,
-            equipamento: equipamentoFinalChat,
+            equipamento: equipamento || (selectedCard.orientacao || "").substring(0, 120),
             equipamento_id: equipamentoId,
-            pecas: getAnswer(selectedCard, "peças") || getAnswer(selectedCard, "material") || getAnswer(selectedCard, "peca") || "",
+            pecas: getAnswer(selectedCard, "peças") || getAnswer(selectedCard, "material") || "",
             servicos: getAnswer(selectedCard, "serviços") || getAnswer(selectedCard, "servico") || "",
             observacoes: getAnswer(selectedCard, "observ") || "",
-            todas_respostas: todasRespostas,
-            fotos,
           },
           analysis: aiAnalysis || "",
           userMessage: userMsg,
@@ -1751,70 +1789,34 @@ export default function BudgetKanbanPage() {
                   </div>
                 )}
 
-                {/* AI Action Buttons */}
+                {/* AI Action Buttons — Analisar como principal */}
                 <div className="flex gap-2">
                   <Button
-                    variant="outline"
-                    className="flex-1 gap-2 border-purple-300 text-purple-700 hover:bg-purple-50"
+                    className="flex-1 gap-2 bg-purple-600 hover:bg-purple-700 text-white"
                     onClick={handleAiAnalysis}
                     disabled={isAnalyzing}
                   >
                     {isAnalyzing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Brain className="h-4 w-4" />}
                     {isAnalyzing ? "Analisando..." : "Analisar com IA"}
                   </Button>
-                  <Button
-                    variant="outline"
-                    className="flex-1 gap-2 border-indigo-300 text-indigo-700 hover:bg-indigo-50"
-                    onClick={() => { setShowChat(!showChat); }}
-                  >
-                    <MessageCircle className="h-4 w-4" />
-                    Tirar Dúvidas
-                  </Button>
+                  {aiAnalysis && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="gap-1.5 border-orange-300 text-orange-700 hover:bg-orange-50"
+                      onClick={handleDeepAnalysis}
+                      disabled={isAnalyzing}
+                      title="Análise aprofundada com docs internos + pesquisa web"
+                    >
+                      {isAnalyzing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
+                      Aprofundar
+                    </Button>
+                  )}
                 </div>
-
-                {/* AI Chat Panel */}
-                {showChat && (
-                  <div className="p-3 rounded-lg bg-indigo-50 border border-indigo-200 space-y-3">
-                    <div className="flex items-center justify-between">
-                      <h4 className="font-semibold text-sm text-indigo-900 flex items-center gap-1.5">
-                        <MessageCircle className="h-4 w-4" /> Conversar sobre este Orçamento
-                      </h4>
-                      <button type="button" className="text-indigo-400 hover:text-indigo-600 text-xs" onClick={() => { setShowChat(false); setChatMessages([]); }}>✕ Fechar</button>
-                    </div>
-                    {chatMessages.length > 0 && (
-                      <div className="max-h-[300px] overflow-y-auto space-y-2">
-                        {chatMessages.map((msg, i) => (
-                          <div key={i} className={`text-sm p-2.5 rounded-lg ${msg.role === "user" ? "bg-indigo-100 text-indigo-900 ml-6" : "bg-white text-foreground mr-6 border border-indigo-100"}`}>
-                            <span className="font-semibold text-xs block mb-1">{msg.role === "user" ? "Você" : "IA WeDo"}</span>
-                            <div className="whitespace-pre-wrap leading-relaxed">{msg.content}</div>
-                          </div>
-                        ))}
-                        {isChatLoading && (
-                          <div className="flex items-center gap-2 text-sm text-indigo-500 p-2">
-                            <Loader2 className="h-3.5 w-3.5 animate-spin" /> Pensando...
-                          </div>
-                        )}
-                      </div>
-                    )}
-                    <div className="flex gap-2">
-                      <Input
-                        placeholder="Faça uma pergunta sobre este orçamento..."
-                        value={chatInput}
-                        onChange={(e) => setChatInput(e.target.value)}
-                        onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && handleChatSend()}
-                        className="text-sm"
-                        disabled={isChatLoading}
-                      />
-                      <Button size="sm" className="gap-1 shrink-0" disabled={isChatLoading || !chatInput.trim()} onClick={handleChatSend}>
-                        <Send className="h-3.5 w-3.5" />
-                      </Button>
-                    </div>
-                  </div>
-                )}
 
                 {/* AI Analysis Result */}
                 {aiAnalysis && (
-                  <div className="p-4 rounded-lg bg-purple-50 border border-purple-200 space-y-2">
+                  <div className="p-4 rounded-lg bg-purple-50 border border-purple-200 space-y-3">
                     <div className="flex items-center justify-between">
                       <h4 className="font-semibold text-sm text-purple-900 flex items-center gap-1.5">
                         <Brain className="h-4 w-4" /> Análise Técnica (IA)
@@ -1822,6 +1824,58 @@ export default function BudgetKanbanPage() {
                       <button type="button" className="text-purple-400 hover:text-purple-600 text-xs" onClick={() => setAiAnalysis(null)}>✕ Fechar</button>
                     </div>
                     <div className="text-sm text-purple-900 whitespace-pre-wrap leading-relaxed">{aiAnalysis}</div>
+
+                    {/* Chat contextual — aparece DENTRO da análise, só depois que existe análise */}
+                    <div className="border-t border-purple-200 pt-3 mt-3">
+                      {!showChat ? (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="gap-1.5 text-indigo-600 hover:text-indigo-800 hover:bg-indigo-50 w-full"
+                          onClick={() => setShowChat(true)}
+                        >
+                          <MessageCircle className="h-3.5 w-3.5" />
+                          Conversar sobre este orçamento
+                        </Button>
+                      ) : (
+                        <div className="space-y-2">
+                          <div className="flex items-center justify-between">
+                            <span className="text-xs font-semibold text-indigo-700 flex items-center gap-1">
+                              <MessageCircle className="h-3 w-3" /> Chat contextual
+                            </span>
+                            <button type="button" className="text-indigo-400 hover:text-indigo-600 text-xs" onClick={() => { setShowChat(false); setChatMessages([]); }}>✕</button>
+                          </div>
+                          {chatMessages.length > 0 && (
+                            <div className="max-h-[250px] overflow-y-auto space-y-2">
+                              {chatMessages.map((msg, i) => (
+                                <div key={i} className={`text-sm p-2.5 rounded-lg ${msg.role === "user" ? "bg-indigo-100 text-indigo-900 ml-6" : "bg-white text-foreground mr-6 border border-indigo-100"}`}>
+                                  <span className="font-semibold text-xs block mb-1">{msg.role === "user" ? "Você" : "IA WeDo"}</span>
+                                  <div className="whitespace-pre-wrap leading-relaxed">{msg.content}</div>
+                                </div>
+                              ))}
+                              {isChatLoading && (
+                                <div className="flex items-center gap-2 text-sm text-indigo-500 p-2">
+                                  <Loader2 className="h-3.5 w-3.5 animate-spin" /> Pensando...
+                                </div>
+                              )}
+                            </div>
+                          )}
+                          <div className="flex gap-2">
+                            <Input
+                              placeholder="Pergunte sobre este orçamento..."
+                              value={chatInput}
+                              onChange={(e) => setChatInput(e.target.value)}
+                              onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && handleChatSend()}
+                              className="text-sm"
+                              disabled={isChatLoading}
+                            />
+                            <Button size="sm" className="gap-1 shrink-0" disabled={isChatLoading || !chatInput.trim()} onClick={handleChatSend}>
+                              <Send className="h-3.5 w-3.5" />
+                            </Button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
                   </div>
                 )}
 

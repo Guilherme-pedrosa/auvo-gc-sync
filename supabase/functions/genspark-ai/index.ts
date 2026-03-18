@@ -6,6 +6,9 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
+// =========================================================================
+// IMAGE HELPERS
+// =========================================================================
 async function downloadImageAsBase64(url: string): Promise<{ mime: string; base64: string } | null> {
   try {
     const imgResp = await fetch(url);
@@ -33,7 +36,7 @@ function filterImageUrls(urls: string[]): string[] {
   );
 }
 
-async function addPhotosToContent(contentParts: any[], fotos: string[], maxPhotos: number, detail: "low" | "high" = "high") {
+async function addPhotosToContent(contentParts: any[], fotos: string[], maxPhotos: number, detail: "low" | "high" = "low") {
   const imageUrls = filterImageUrls(fotos);
   for (const url of imageUrls.slice(0, maxPhotos)) {
     console.log(`[genspark-ai] Downloading photo: ${url.substring(0, 100)}...`);
@@ -51,7 +54,7 @@ async function addPhotosToContent(contentParts: any[], fotos: string[], maxPhoto
 // INTERNAL TECH DOCS — busca documentos técnicos da pasta pública WeDo
 // =========================================================================
 const DRIVE_FOLDER_ID = "1Sum9oUAzqfDew0FH1UC7_cIQyxEvAdcd";
-const INTERNAL_DOCS_TIMEOUT = 35000; // 35s — mais tempo para OCR dos docs corretos
+const INTERNAL_DOCS_TIMEOUT = 35000;
 const MAX_DOCS = 6;
 const MAX_TOTAL_CHARS = 30000;
 
@@ -67,23 +70,17 @@ type InternalDocsResult = {
 };
 
 // =========================================================================
-// IDENTIFY MANUFACTURER — quick Perplexity call to find the real manufacturer
+// IDENTIFY MANUFACTURER — quick Perplexity call
 // =========================================================================
-// Strip serial numbers, "SERIAL", "MOD", long alphanumeric codes from equipment string
 function cleanEquipmentString(raw: string): string {
   return raw
-    // Remove "SERIAL <code>" pattern
     .replace(/\bSERIAL\s+\S+/gi, "")
-    // Remove "MOD " prefix (but keep the model code after it)
     .replace(/\bMOD\b/gi, "")
-    // Remove long alphanumeric codes (likely serial numbers, 8+ chars with mixed letters+digits)
     .replace(/\b[A-Za-z0-9]{8,}\b/g, (match) => {
-      // Keep if it looks like a model name (short, mostly letters like "LM100DE", "SCC201")
       const digitRatio = (match.replace(/[^0-9]/g, "").length) / match.length;
       if (match.length <= 8 && digitRatio < 0.6) return match;
-      return ""; // strip long serial-like codes
+      return "";
     })
-    // Clean up extra spaces
     .replace(/\s+/g, " ")
     .trim();
 }
@@ -134,8 +131,6 @@ iCombi Pro` },
     if (!brandLine || brandLine.toLowerCase() === "desconhecido") return { manufacturer: [], modelFamily: null };
 
     const terms = brandLine.toLowerCase().split(/[\s\-_]+/).filter((t: string) => t.length > 2);
-
-    // Expand with brand aliases
     const expandedTerms = [...terms];
     const brandAliases: Record<string, string[]> = {
       "hobart": ["hobart", "vulcan"],
@@ -162,6 +157,9 @@ iCombi Pro` },
   }
 }
 
+// =========================================================================
+// FETCH INTERNAL TECH DOCS (Drive + OCR)
+// =========================================================================
 async function fetchInternalTechDocs(query?: string, equipamento?: string, options?: { skipOcr?: boolean; maxDocs?: number; timeout?: number }): Promise<InternalDocsResult> {
   const EFFECTIVE_MAX_DOCS = options?.maxDocs ?? MAX_DOCS;
   const EFFECTIVE_TIMEOUT = options?.timeout ?? INTERNAL_DOCS_TIMEOUT;
@@ -182,11 +180,9 @@ async function fetchInternalTechDocs(query?: string, equipamento?: string, optio
   if (!API_KEY) {
     result.error = "GOOGLE_DRIVE_API_KEY não configurada no ambiente";
     result.elapsed_ms = Date.now() - startTime;
-    console.error(`[genspark-ai] [internal-docs] ${result.error}`);
     return result;
   }
 
-  // Step 1: Identify manufacturer AND model family via Perplexity
   const equipStr = cleanEquipmentString(equipamento || query || "");
   const { manufacturer: manufacturerTerms, modelFamily } = await identifyManufacturerAndModel(equipStr);
   result.manufacturer_identified = manufacturerTerms.length > 0 ? manufacturerTerms.join(" ") : null;
@@ -194,7 +190,6 @@ async function fetchInternalTechDocs(query?: string, equipamento?: string, optio
     (result as any).model_family = modelFamily;
   }
 
-  // Build filter terms: manufacturer terms FIRST, then model family, then equipment terms
   const functionWords = [
     "lava", "louça", "louças", "lavalouças", "forno", "fogão", "fogao",
     "geladeira", "freezer", "refrigerador", "máquina", "maquina",
@@ -211,23 +206,18 @@ async function fetchInternalTechDocs(query?: string, equipamento?: string, optio
     .split(/[\s\-_,./]+/)
     .filter((t: string) => t.length > 2)
     .filter((t: string) => !functionWords.includes(t))
-    // Also strip terms that look like serial numbers (8+ chars with digits)
     .filter((t: string) => !(t.length >= 8 && /\d/.test(t) && /[a-z]/i.test(t)));
 
-  // Add model family terms (e.g. "iCombi Pro" → ["icombi", "pro"])
   const modelFamilyTerms: string[] = [];
   if (modelFamily) {
     const mfTerms = modelFamily.toLowerCase().split(/[\s\-_]+/).filter((t: string) => t.length > 1);
     modelFamilyTerms.push(...mfTerms);
   }
 
-  // Combine: manufacturer + model family + equipment terms, dedup
   const allTermsSet = new Set([...manufacturerTerms, ...modelFamilyTerms, ...equipTerms]);
   const filterTerms = Array.from(allTermsSet);
 
   console.log(`[genspark-ai] [internal-docs] Termos: [${filterTerms.join(",")}], modelFamily="${modelFamily || "?"}"`);
-
-  console.log(`[genspark-ai] [internal-docs] Iniciando busca. equipamento="${equipStr.substring(0, 80)}", fabricante="${result.manufacturer_identified || "não identificado"}", filtros=[${filterTerms.join(",")}]`);
 
   const results: string[] = [];
   let totalFilesRead = 0;
@@ -254,39 +244,29 @@ async function fetchInternalTechDocs(query?: string, equipamento?: string, optio
     }
   };
 
-  // ---- OCR via Google Cloud Vision API (para PDFs escaneados) ----
-  // Vision API limita a 5 páginas por chamada — fazemos batches de 5
   const ocrPdfViaVision = async (pdfBytes: Uint8Array, fileName: string): Promise<string> => {
     try {
-      // Convert bytes to base64
       let binary = "";
       for (let i = 0; i < pdfBytes.length; i++) binary += String.fromCharCode(pdfBytes[i]);
       const base64Content = btoa(binary);
 
-      const MAX_PAGES = 15; // processar até 15 páginas no total
-      const BATCH_SIZE = 5; // Vision API aceita no máximo 5 por chamada
+      const MAX_PAGES = 15;
+      const BATCH_SIZE = 5;
       const allTextParts: string[] = [];
 
       for (let startPage = 1; startPage <= MAX_PAGES; startPage += BATCH_SIZE) {
         if (limitReached()) break;
-        
         const pages: number[] = [];
-        for (let p = startPage; p < startPage + BATCH_SIZE && p <= MAX_PAGES; p++) {
-          pages.push(p);
-        }
+        for (let p = startPage; p < startPage + BATCH_SIZE && p <= MAX_PAGES; p++) pages.push(p);
 
         console.log(`[genspark-ai] [OCR] ${fileName} — batch páginas ${pages[0]}-${pages[pages.length - 1]}`);
-
         const visionUrl = `https://vision.googleapis.com/v1/files:annotate?key=${API_KEY}`;
         const visionResp = await fetch(visionUrl, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             requests: [{
-              inputConfig: {
-                content: base64Content,
-                mimeType: "application/pdf",
-              },
+              inputConfig: { content: base64Content, mimeType: "application/pdf" },
               features: [{ type: "DOCUMENT_TEXT_DETECTION" }],
               pages,
             }],
@@ -296,12 +276,11 @@ async function fetchInternalTechDocs(query?: string, equipamento?: string, optio
         if (!visionResp.ok) {
           const errBody = await visionResp.text();
           console.error(`[genspark-ai] [OCR] Vision API HTTP ${visionResp.status}: ${errBody.substring(0, 200)}`);
-          break; // stop batching on error (e.g. PDF has fewer pages)
+          break;
         }
 
         const visionData = await visionResp.json();
         const responses = visionData.responses || [];
-
         for (const resp of responses) {
           const innerPages = resp.responses || [];
           for (const page of innerPages) {
@@ -309,9 +288,7 @@ async function fetchInternalTechDocs(query?: string, equipamento?: string, optio
             if (fullText) allTextParts.push(fullText);
           }
         }
-
-        // Se o batch retornou menos texto que o esperado, provavelmente acabaram as páginas
-        if (allTextParts.length > 0 && allTextParts.join("").length > 6000) break; // já temos conteúdo suficiente
+        if (allTextParts.length > 0 && allTextParts.join("").length > 6000) break;
       }
 
       const ocrText = allTextParts.join("\n\n").trim();
@@ -342,7 +319,7 @@ async function fetchInternalTechDocs(query?: string, equipamento?: string, optio
     const resp = await fetch(url);
     if (!resp.ok) {
       const errBody = await resp.text();
-      console.error(`[genspark-ai] [internal-docs] Drive list FAILED: HTTP ${resp.status} — ${errBody.substring(0, 200)}`);
+      console.error(`[genspark-ai] [internal-docs] Drive list FAILED: HTTP ${resp.status}`);
       throw new Error(`Drive API HTTP ${resp.status}: ${errBody.substring(0, 100)}`);
     }
     const data = await resp.json();
@@ -356,11 +333,8 @@ async function fetchInternalTechDocs(query?: string, equipamento?: string, optio
     const fullPath = parentPath ? `${parentPath}/${fileName}` : fileName;
     const fileSize = parseInt(file.size || "0", 10);
 
-    console.log(`[genspark-ai] [internal-docs] processFile: ${fullPath} (mime=${mimeType}, size=${fileSize})`);
-
     if (fileSize > 3 * 1024 * 1024) {
       result.skipped_files.push(`${fullPath} (${Math.round(fileSize / 1024 / 1024)}MB — muito grande)`);
-      results.push(`📎 ${fullPath} — arquivo grande (${Math.round(fileSize / 1024 / 1024)}MB), listado como referência`);
       return;
     }
 
@@ -368,7 +342,7 @@ async function fetchInternalTechDocs(query?: string, equipamento?: string, optio
       try {
         const resp = await fetch(`https://www.googleapis.com/drive/v3/files/${file.id}/export?mimeType=text/plain&key=${API_KEY}`);
         if (resp.ok) addResult(fullPath, await resp.text());
-        else { const e = await resp.text(); console.warn(`[genspark-ai] [internal-docs] Doc export FAILED ${fullPath}: HTTP ${resp.status} — ${e.substring(0, 200)}`); }
+        else await resp.text();
       } catch (e) { console.error(`[genspark-ai] [internal-docs] Doc error ${fullPath}:`, e); }
     }
     else if (mimeType === "application/vnd.google-apps.spreadsheet") {
@@ -394,19 +368,14 @@ async function fetchInternalTechDocs(query?: string, equipamento?: string, optio
           if (pdfText.length > 50) {
             addResult(fullPath, pdfText, "📕");
           } else {
-            // PDF escaneado — tentar OCR via Google Cloud Vision API (se não for modo leve)
             if (SKIP_OCR) {
-              result.skipped_files.push(`${fullPath} (PDF scan — OCR ignorado no modo chat)`);
-              results.push(`📕 ${fullPath} — PDF escaneado (disponível para consulta, OCR não executado neste modo)`);
+              result.skipped_files.push(`${fullPath} (PDF scan — OCR ignorado)`);
             } else {
-              console.log(`[genspark-ai] [internal-docs] PDF sem texto extraível, tentando OCR: ${fullPath}`);
               const ocrText = await ocrPdfViaVision(buf, fullPath);
               if (ocrText.length > 50) {
                 addResult(fullPath, ocrText, "🔍");
-                console.log(`[genspark-ai] [OCR] Sucesso! ${ocrText.length} chars extraídos de ${fullPath}`);
               } else {
-                result.skipped_files.push(`${fullPath} (PDF scan — OCR sem resultado útil)`);
-                results.push(`📕 ${fullPath} — PDF escaneado (OCR não extraiu texto suficiente)`);
+                result.skipped_files.push(`${fullPath} (PDF scan — OCR sem resultado)`);
               }
             }
           }
@@ -415,27 +384,20 @@ async function fetchInternalTechDocs(query?: string, equipamento?: string, optio
     }
     else {
       result.skipped_files.push(`${fullPath} (${mimeType})`);
-      results.push(`📎 ${fullPath} (${mimeType})`);
     }
   }
 
   try {
     const drivePromise = (async () => {
-      console.log(`[genspark-ai] [internal-docs] Listando pasta raiz ${DRIVE_FOLDER_ID}...`);
       const topItems = await listFolder(DRIVE_FOLDER_ID);
-
       const folders = topItems.filter((f: any) => f.mimeType === "application/vnd.google-apps.folder");
       const topFiles = topItems.filter((f: any) => f.mimeType !== "application/vnd.google-apps.folder");
 
-      console.log(`[genspark-ai] [internal-docs] ${folders.length} pastas, ${topFiles.length} arquivos na raiz`);
-
-      // Score folders by relevance — manufacturer terms get EXTRA weight
       const scoredFolders = folders.map((f: any) => {
         const nameLower = (f.name || "").toLowerCase();
         let score = 0;
         for (const term of filterTerms) {
           if (nameLower.includes(term)) {
-            // Manufacturer terms get 5 points, equipment terms get 2
             score += manufacturerTerms.includes(term) ? 5 : 2;
           }
         }
@@ -443,110 +405,62 @@ async function fetchInternalTechDocs(query?: string, equipamento?: string, optio
       }).sort((a: any, b: any) => b.score - a.score);
 
       const matchingFolders = scoredFolders.filter((f: any) => f.score > 0);
-      // ONLY scan folders that actually matched — don't fallback to random folders (avoids scanning AUVO with 100+ PDFs)
       const foldersToScan = matchingFolders.slice(0, 3);
 
-      if (foldersToScan.length === 0) {
-        console.warn(`[genspark-ai] [internal-docs] NENHUMA pasta correspondeu aos termos [${filterTerms.join(",")}]. Pastas disponíveis: ${folders.map((f: any) => f.name).join(", ")}`);
-      }
-
-      // Process top-level files (skip ZIPs)
       for (const file of topFiles) {
         if (limitReached()) break;
         const mime = file.mimeType || "";
         const name = (file.name || "").toLowerCase();
-        if (mime === "application/zip" || name.endsWith(".zip")) {
-          if (filterTerms.some((t: string) => name.includes(t))) {
-            results.push(`📦 ${file.name} — ZIP disponível (não processado por performance)`);
-          }
-          continue;
-        }
+        if (mime === "application/zip" || name.endsWith(".zip")) continue;
         await processFile(file, "");
       }
 
-      // List all matched subfolders IN PARALLEL for speed
       const folderListings = await Promise.all(
         foldersToScan.map(async (folder: any) => {
-          console.log(`[genspark-ai] [internal-docs] Listando subpasta: ${folder.name} (score=${folder.score})`);
           const subFiles = await listFolder(folder.id);
           return { folder, subFiles };
         })
       );
 
-      // Collect ALL files from ALL folders, score them GLOBALLY, then process in score order
       const modelTerms = filterTerms.filter((t: string) => !manufacturerTerms.includes(t));
-      
       const allScoredFiles: { file: any; folderName: string; score: number }[] = [];
-      
+
       for (const { folder, subFiles } of folderListings) {
-        console.log(`[genspark-ai] [internal-docs] Processando: ${folder.name} (${subFiles.length} arquivos)`);
-        
         for (const f of subFiles) {
           if (f.mimeType === "application/vnd.google-apps.folder") continue;
           const nameLower = (f.name || "").toLowerCase();
-          const isZip = f.mimeType === "application/zip" || nameLower.endsWith(".zip");
-          if (isZip) continue;
-          
+          if (f.mimeType === "application/zip" || nameLower.endsWith(".zip")) continue;
+
           let score = 0;
-          
-          // Model family terms get HIGHEST weight (e.g. "icombi" = 15 points)
           for (const term of modelFamilyTerms) {
             if (nameLower.includes(term)) score += 15;
           }
-
-          // Check each term individually
           for (const term of filterTerms) {
             if (nameLower.includes(term)) {
               if (modelFamilyTerms.includes(term)) continue;
               score += manufacturerTerms.includes(term) ? 2 : 5;
             }
           }
-          
-          // Bonus: combined model terms
           if (modelFamilyTerms.length > 1) {
             const combined = modelFamilyTerms.join(" ");
             if (nameLower.includes(combined)) score += 20;
-            const noSpace = modelFamilyTerms.join("");
-            if (nameLower.includes(noSpace)) score += 15;
           }
-          
-          if (modelTerms.length > 1) {
-            const combined = modelTerms.join(" ");
-            if (nameLower.includes(combined)) score += 10;
-            const noSpace = modelTerms.join("");
-            if (nameLower.includes(noSpace)) score += 8;
-          }
-
-          // Preventiva/manutenção docs get bonus
-          if (nameLower.includes("preventiv") || nameLower.includes("manutencao") || nameLower.includes("manutenção")) {
-            score += 8;
-          }
-          
-          // Negative score for files that match a DIFFERENT model family (e.g. "SCC" when looking for "iCombi")
+          if (nameLower.includes("preventiv") || nameLower.includes("manutencao") || nameLower.includes("manutenção")) score += 8;
           if (modelFamily) {
             const otherModels = ["scc", "icombi", "ivario", "selfcookingcenter", "combimaster"];
             for (const other of otherModels) {
-              if (!modelFamilyTerms.includes(other) && nameLower.includes(other)) {
-                score -= 10; // penalize wrong model
-              }
+              if (!modelFamilyTerms.includes(other) && nameLower.includes(other)) score -= 10;
             }
           }
-          
           allScoredFiles.push({ file: f, folderName: folder.name, score });
         }
       }
-      
-      // Sort GLOBALLY by score (highest first)
-      allScoredFiles.sort((a, b) => b.score - a.score);
-      
-      console.log(`[genspark-ai] [internal-docs] ${allScoredFiles.length} arquivos scored. Top 5: ${allScoredFiles.slice(0, 5).map(f => `${f.file.name}(${f.score})`).join(", ")}`);
 
+      allScoredFiles.sort((a, b) => b.score - a.score);
       for (const { file, folderName } of allScoredFiles) {
         if (limitReached()) break;
         await processFile(file, folderName);
       }
-
-      console.log(`[genspark-ai] [internal-docs] Busca concluída: ${totalFilesRead} docs, ${totalChars} chars`);
     })();
 
     await Promise.race([
@@ -555,9 +469,8 @@ async function fetchInternalTechDocs(query?: string, equipamento?: string, optio
     ]);
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
-    console.error(`[genspark-ai] [internal-docs] ERRO: ${msg} (${totalFilesRead} docs lidos até aqui)`);
+    console.error(`[genspark-ai] [internal-docs] ERRO: ${msg}`);
     result.error = msg;
-    // Keep partial results if any
   }
 
   result.docs_count = totalFilesRead;
@@ -570,7 +483,6 @@ async function fetchInternalTechDocs(query?: string, equipamento?: string, optio
     }
   }
 
-  console.log(`[genspark-ai] [internal-docs] Resultado final: ${result.docs_count} docs, ${result.elapsed_ms}ms, error=${result.error || "nenhum"}`);
   return result;
 }
 
@@ -583,19 +495,10 @@ async function searchPerplexity(
   options?: { domains?: string[]; recency?: string }
 ): Promise<{ answer: string; citations: string[] }> {
   const PERPLEXITY_API_KEY = Deno.env.get("PERPLEXITY_API_KEY");
-  if (!PERPLEXITY_API_KEY) {
-    console.log("[genspark-ai] PERPLEXITY_API_KEY não disponível, pulando pesquisa web");
-    return { answer: "", citations: [] };
-  }
-
-  if (!query.trim()) {
-    console.log("[genspark-ai] Query vazia, pulando pesquisa web");
-    return { answer: "", citations: [] };
-  }
+  if (!PERPLEXITY_API_KEY || !query.trim()) return { answer: "", citations: [] };
 
   try {
     console.log(`[genspark-ai] Pesquisando Perplexity: "${query.substring(0, 100)}..."`);
-
     const bodyPayload: any = {
       model: "sonar-pro",
       messages: [
@@ -604,13 +507,8 @@ async function searchPerplexity(
       ],
       temperature: 0.1,
     };
-
-    if (options?.domains && options.domains.length > 0) {
-      bodyPayload.search_domain_filter = options.domains;
-    }
-    if (options?.recency) {
-      bodyPayload.search_recency_filter = options.recency;
-    }
+    if (options?.domains && options.domains.length > 0) bodyPayload.search_domain_filter = options.domains;
+    if (options?.recency) bodyPayload.search_recency_filter = options.recency;
 
     const response = await fetch("https://api.perplexity.ai/chat/completions", {
       method: "POST",
@@ -628,11 +526,10 @@ async function searchPerplexity(
     }
 
     const data = await response.json();
-    const answer = data.choices?.[0]?.message?.content || "";
-    const citations = data.citations || [];
-
-    console.log(`[genspark-ai] Perplexity respondeu: ${answer.length} chars, ${citations.length} fontes`);
-    return { answer, citations };
+    return {
+      answer: data.choices?.[0]?.message?.content || "",
+      citations: data.citations || [],
+    };
   } catch (e) {
     console.error("[genspark-ai] Perplexity search failed:", e);
     return { answer: "", citations: [] };
@@ -645,48 +542,23 @@ async function searchEquipmentOnWeb(equipamento: string, descricao: string, orie
   const oriClean = (orientacao || "").replace(/n\/a/gi, "").trim();
   const pecasClean = (pecas || "").replace(/n\/a/gi, "").trim();
 
-  if (!equipClean && !descClean) {
-    console.log("[genspark-ai] Sem equipamento/descrição para pesquisar");
-    return "";
-  }
+  if (!equipClean && !descClean) return "";
 
   const target = equipClean || descClean;
 
-  // ── Query 1: INTERNATIONAL (English/French/German) — targets global sources ──
   const intlQuery = `Commercial/industrial kitchen equipment: "${target}".
 Problem/issue: ${oriClean || "general maintenance"}.
 Parts mentioned: ${pecasClean || "none specified"}.
+I need: 1. Technical specifications 2. Common failures 3. Wear parts list 4. Preventive maintenance 5. Tools/supplies 6. Forum discussions`;
 
-I need:
-1. Technical specifications (components, subsystems, voltage, power)
-2. Most common failures and root causes
-3. Wear parts list (consumables specific to this model, with part numbers)
-4. Preventive maintenance critical points
-5. Tools and supplies needed
-6. Forum discussions, field technician experiences
-
-Search manufacturer websites (e.g. robot-coupe.com, rational-online.com, hobartcorp.com), parts catalogs (PartsTown, WebstaurantStore, KaTom), repair forums (iFixit, Reddit r/appliancerepair, HVAC-Talk, FixYa), YouTube repair videos, and OEM service manuals.`;
-
-  // ── Query 2: NATIONAL (Portuguese) — targets Brazilian sources ──
   const brQuery = `Equipamento de cozinha industrial: "${target}".
 Problema: ${oriClean || "manutenção geral"}.
 Peças: ${pecasClean || "não informadas"}.
+Preciso de: 1. Especificações técnicas 2. Problemas comuns 3. Peças de desgaste 4. Manutenção preventiva 5. Ferramentas 6. Fóruns técnicos`;
 
-Preciso de:
-1. Especificações técnicas e componentes
-2. Problemas mais comuns (causas raiz)
-3. Peças de desgaste e consumíveis deste modelo
-4. Manutenção preventiva
-5. Ferramentas e insumos
-6. Discussões em fóruns técnicos brasileiros
+  const intlSystem = "You are a senior industrial kitchen maintenance engineer. Search ONLY international sources. Respond in pt-BR. Be technical, cite sources.";
+  const brSystem = "You are a senior industrial kitchen maintenance engineer. Search ONLY Brazilian sources. Respond in pt-BR. Be technical.";
 
-Pesquisar em: sites de fabricantes nacionais, Mercado Livre, fóruns técnicos BR, lojas de peças, YouTube BR.`;
-
-  const intlSystem = "You are a senior industrial kitchen maintenance engineer. Search ONLY international sources — manufacturer websites (.com, .fr, .de, .co.uk, .it), global parts catalogs (PartsTown, WebstaurantStore, KaTom), repair forums (Reddit, iFixit, HVAC-Talk, FixYa, ApplianceBlog), YouTube repair channels, and OEM documentation. DO NOT prioritize Brazilian sources. Respond in Brazilian Portuguese (pt-BR). Be technical, precise, cite sources with part numbers.";
-
-  const brSystem = "You are a senior industrial kitchen maintenance engineer specialized in the Brazilian market. Search Brazilian sources: fabricantes nacionais, Mercado Livre, fóruns técnicos BR, revendedores, YouTube BR. Respond in Brazilian Portuguese (pt-BR). Be technical, precise.";
-
-  // Run BOTH searches in parallel
   const [intlResult, brResult] = await Promise.all([
     searchPerplexity(intlQuery, intlSystem),
     searchPerplexity(brQuery, brSystem),
@@ -695,53 +567,26 @@ Pesquisar em: sites de fabricantes nacionais, Mercado Livre, fóruns técnicos B
   if (!intlResult.answer && !brResult.answer) return "";
 
   let result = "PESQUISA WEB (fontes reais da internet):\n";
-
   if (intlResult.answer) {
     result += `\n🌍 FONTES INTERNACIONAIS:\n${intlResult.answer}`;
-    if (intlResult.citations.length > 0) {
-      result += `\nFontes: ${intlResult.citations.slice(0, 6).join(", ")}`;
-    }
+    if (intlResult.citations.length > 0) result += `\nFontes: ${intlResult.citations.slice(0, 6).join(", ")}`;
   }
-
   if (brResult.answer) {
     result += `\n\n🇧🇷 FONTES NACIONAIS:\n${brResult.answer}`;
-    if (brResult.citations.length > 0) {
-      result += `\nFontes: ${brResult.citations.slice(0, 6).join(", ")}`;
-    }
+    if (brResult.citations.length > 0) result += `\nFontes: ${brResult.citations.slice(0, 6).join(", ")}`;
   }
-
   return result;
 }
 
-async function searchForChatQuestion(
-  userMessage: string,
-  equipamento: string,
-  orientacao: string,
-  analysis: string
-): Promise<string> {
+async function searchForChatQuestion(userMessage: string, equipamento: string, orientacao: string, analysis: string): Promise<string> {
   const equipClean = (equipamento || "").replace(/n\/a/gi, "").trim();
   const target = equipClean || "industrial kitchen equipment";
 
-  // ── International search (EN) ──
-  const intlQuery = `Equipment: "${target}".
-${orientacao ? `Issue: ${orientacao}` : ""}
-${analysis ? `Prior analysis summary: ${analysis.substring(0, 300)}` : ""}
+  const intlQuery = `Equipment: "${target}". ${orientacao ? `Issue: ${orientacao}` : ""} Technical question: ${userMessage}`;
+  const brQuery = `Equipamento: "${target}". ${orientacao ? `Problema: ${orientacao}` : ""} Dúvida técnica: ${userMessage}`;
 
-Technical question: ${userMessage}
-
-Search service manuals, OEM documentation, repair forums (Reddit, iFixit, HVAC-Talk, FixYa, ApplianceBlog), parts catalogs (PartsTown, WebstaurantStore, KaTom), manufacturer websites, YouTube repair guides.`;
-
-  // ── Brazilian search (PT) ──
-  const brQuery = `Equipamento: "${target}".
-${orientacao ? `Problema: ${orientacao}` : ""}
-${analysis ? `Resumo da análise: ${analysis.substring(0, 300)}` : ""}
-
-Dúvida técnica: ${userMessage}
-
-Pesquisar em fóruns técnicos BR, Mercado Livre, fabricantes nacionais, YouTube BR, revendedores de peças.`;
-
-  const intlSystem = "You are a senior industrial kitchen maintenance engineer. Search ONLY international sources — manufacturer websites (.com, .fr, .de, .co.uk), global parts catalogs, repair forums (Reddit, iFixit, HVAC-Talk), YouTube, OEM docs. DO NOT prioritize Brazilian sources. Respond in Brazilian Portuguese (pt-BR). Be technical, cite sources with part numbers.";
-  const brSystem = "You are a senior industrial kitchen maintenance engineer. Search ONLY Brazilian sources: fóruns BR, Mercado Livre, fabricantes nacionais, YouTube BR. Respond in Brazilian Portuguese (pt-BR). Be technical.";
+  const intlSystem = "You are a senior industrial kitchen maintenance engineer. Search international sources. Respond in pt-BR.";
+  const brSystem = "You are a senior industrial kitchen maintenance engineer. Search Brazilian sources. Respond in pt-BR.";
 
   const [intlResult, brResult] = await Promise.all([
     searchPerplexity(intlQuery, intlSystem),
@@ -751,27 +596,81 @@ Pesquisar em fóruns técnicos BR, Mercado Livre, fabricantes nacionais, YouTube
   if (!intlResult.answer && !brResult.answer) return "";
 
   let result = `\n\n========== 🌐 PESQUISA WEB ==========`;
-
   if (intlResult.answer) {
     result += `\n\n🌍 FONTES INTERNACIONAIS:\n${intlResult.answer}`;
-    if (intlResult.citations.length > 0) {
-      result += `\n\nFontes internacionais:\n${intlResult.citations.slice(0, 5).map((c: string, i: number) => `[${i + 1}] ${c}`).join("\n")}`;
-    }
+    if (intlResult.citations.length > 0) result += `\n\nFontes: ${intlResult.citations.slice(0, 5).map((c: string, i: number) => `[${i + 1}] ${c}`).join("\n")}`;
   }
-
   if (brResult.answer) {
     result += `\n\n🇧🇷 FONTES NACIONAIS:\n${brResult.answer}`;
-    if (brResult.citations.length > 0) {
-      result += `\n\nFontes nacionais:\n${brResult.citations.slice(0, 5).map((c: string, i: number) => `[${i + 1}] ${c}`).join("\n")}`;
-    }
+    if (brResult.citations.length > 0) result += `\n\nFontes: ${brResult.citations.slice(0, 5).map((c: string, i: number) => `[${i + 1}] ${c}`).join("\n")}`;
   }
-
   result += `\n==========================================================`;
   return result;
 }
 
 // =========================================================================
-// Helper: build internal docs block for prompt
+// HELPER: decide se análise precisa do modo expandido
+// Gatilhos: conflito forte, equipamento crítico, marca não identificada
+// quando essencial, baixa confiança, risco de acidente, pedido explícito
+// =========================================================================
+interface AnalyzeContext {
+  equipamento?: string;
+  equipamento_id?: string;
+  descricao?: string;
+  orientacao?: string;
+  pecas?: string;
+  servicos?: string;
+  observacoes?: string;
+  fotos?: string[];
+  todas_respostas?: string;
+  cliente?: string;
+  tecnico?: string;
+  data_tarefa?: string;
+  [key: string]: any;
+}
+
+function shouldExpandAnalysis(context: AnalyzeContext, manufacturerIdentified: string | null): { expand: boolean; reasons: string[] } {
+  const reasons: string[] = [];
+  const allText = `${context.orientacao || ""} ${context.descricao || ""} ${context.observacoes || ""} ${context.pecas || ""} ${context.todas_respostas || ""}`.toLowerCase();
+
+  // 1. Equipamento crítico (câmara fria, refrigeração, autoclave, caldeira)
+  const criticalKeywords = ["câmara fria", "câmara congelada", "camara fria", "camara congelada", "autoclave", "caldeira", "compressor", "refrigeração", "gas refrigerante", "gás refrigerante"];
+  if (criticalKeywords.some(k => allText.includes(k))) {
+    reasons.push("equipamento_critico");
+  }
+
+  // 2. Risco de acidente mencionado
+  const riskKeywords = ["vazamento de gás", "vazamento gas", "curto circuito", "curto-circuito", "incêndio", "incendio", "explosão", "explosao", "choque", "risco elétrico", "risco eletrico"];
+  if (riskKeywords.some(k => allText.includes(k))) {
+    reasons.push("risco_acidente");
+  }
+
+  // 3. Marca não identificada E equipamento parece complexo
+  const complexKeywords = ["forno", "rational", "combi", "passthrough", "lavalouça", "lava louça", "ultracongelador"];
+  if (!manufacturerIdentified && complexKeywords.some(k => allText.includes(k))) {
+    reasons.push("marca_nao_identificada_equipamento_complexo");
+  }
+
+  // 4. Conflito forte: texto menciona dano/troca mas peças parecem insuficientes
+  const damageKeywords = ["danificado", "queimado", "quebrado", "trincado", "vazando", "comprometido", "ausente", "faltando"];
+  const hasDamage = damageKeywords.some(k => allText.includes(k));
+  const pecasText = (context.pecas || "").trim();
+  if (hasDamage && (!pecasText || pecasText.length < 20)) {
+    reasons.push("conflito_dano_sem_pecas");
+  }
+
+  // 5. Pedido explícito de aprofundamento
+  if (/aprofund|detalh|investig|analise completa|análise completa/i.test(allText)) {
+    reasons.push("pedido_aprofundamento");
+  }
+
+  const expand = reasons.length > 0;
+  console.log(`[genspark-ai] [expand-check] expand=${expand}, reasons=[${reasons.join(",")}]`);
+  return { expand, reasons };
+}
+
+// =========================================================================
+// HELPER: build prompt blocks
 // =========================================================================
 function buildInternalDocsBlock(docsResult: InternalDocsResult): string {
   if (docsResult.docs_count > 0 && docsResult.text) {
@@ -782,22 +681,107 @@ function buildInternalDocsBlock(docsResult: InternalDocsResult): string {
     }
     return block;
   }
-
-  // No docs found — explain why explicitly
   let reason = "Nenhum documento retornado";
-  if (docsResult.error) {
-    reason = `Erro na busca: ${docsResult.error}`;
-  }
-  return `\n\nMATERIAIS INTERNOS (API Banco Técnico WeDo):\n📂 Sem material interno retornado pela API (${reason}). Tempo: ${docsResult.elapsed_ms}ms.\n`;
+  if (docsResult.error) reason = `Erro na busca: ${docsResult.error}`;
+  return `\n\nMATERIAIS INTERNOS: Sem material interno retornado (${reason}).\n`;
 }
 
 function buildWebBlock(webResearch: string): string {
-  if (!webResearch) {
-    return `\n\nPESQUISA WEB:\n🌐 Pesquisa web não disponível.\n`;
-  }
-  return `\n\n========== 🌐 DADOS DA PESQUISA WEB (PERPLEXITY) ==========\n${webResearch}\n==========================================================\n`;
+  if (!webResearch) return "";
+  return `\n\n========== 🌐 DADOS DA PESQUISA WEB ==========\n${webResearch}\n==========================================================\n`;
 }
 
+// =========================================================================
+// AI GATEWAY HELPER — calls Lovable AI or OpenAI
+// =========================================================================
+async function callAI(messages: any[], model: string, maxTokens: number): Promise<{ result: string; error?: string; status?: number }> {
+  const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
+
+  // Use Lovable AI gateway for gpt-5 models
+  if (LOVABLE_API_KEY && model.startsWith("openai/")) {
+    console.log(`[genspark-ai] Calling Lovable AI gateway: model=${model}, messages=${messages.length}`);
+    const MAX_RETRIES = 2;
+    let response: Response | null = null;
+
+    for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+      response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${LOVABLE_API_KEY}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ model, messages, temperature: 0.5, max_tokens: maxTokens }),
+      });
+
+      if (response.status !== 429 || attempt === MAX_RETRIES) break;
+      const waitMs = Math.min(2000 * Math.pow(2, attempt), 15000);
+      console.warn(`[genspark-ai] Lovable AI 429 — tentativa ${attempt + 1}, aguardando ${waitMs}ms`);
+      await response.text();
+      await new Promise((r) => setTimeout(r, waitMs));
+    }
+
+    if (!response || !response.ok) {
+      const errText = response ? await response.text() : "no response";
+      const status = response?.status || 500;
+      console.error(`[genspark-ai] Lovable AI error: ${status}`, errText.substring(0, 200));
+
+      if (status === 429) return { result: "", error: "Rate limit atingido. Tente novamente em alguns segundos.", status: 429 };
+      if (status === 402) return { result: "", error: "Créditos insuficientes no Lovable AI.", status: 402 };
+      return { result: "", error: `Erro na IA: ${status}`, status };
+    }
+
+    const data = await response.json();
+    return { result: data.choices?.[0]?.message?.content || "" };
+  }
+
+  // Fallback to OpenAI direct
+  const OPENAI_API_KEY = Deno.env.get("OPENAI_API_KEY");
+  if (!OPENAI_API_KEY) return { result: "", error: "Nenhuma API key configurada", status: 500 };
+
+  // Map model names for OpenAI direct
+  let openaiModel = model;
+  if (model === "openai/gpt-5.2") openaiModel = "gpt-4o";
+  else if (model === "openai/gpt-5-mini") openaiModel = "gpt-4o-mini";
+  else if (model === "openai/gpt-5") openaiModel = "gpt-4o";
+  else if (model.startsWith("openai/")) openaiModel = "gpt-4o";
+
+  console.log(`[genspark-ai] Calling OpenAI direct: model=${openaiModel}, messages=${messages.length}`);
+
+  const MAX_RETRIES = 3;
+  let response: Response | null = null;
+  for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+    response = await fetch("https://api.openai.com/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${OPENAI_API_KEY}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ model: openaiModel, messages, temperature: 0.5, max_tokens: maxTokens }),
+    });
+
+    if (response.status !== 429 || attempt === MAX_RETRIES) break;
+    const retryAfter = response.headers.get("retry-after");
+    const waitMs = retryAfter ? parseInt(retryAfter, 10) * 1000 : Math.min(1000 * Math.pow(2, attempt), 30000);
+    console.warn(`[genspark-ai] OpenAI 429 — tentativa ${attempt + 1}, aguardando ${waitMs}ms`);
+    await response.text();
+    await new Promise((r) => setTimeout(r, waitMs));
+  }
+
+  if (!response || !response.ok) {
+    const errText = response ? await response.text() : "no response";
+    const status = response?.status || 500;
+    console.error("OpenAI API error:", status, errText);
+    const userMsg = status === 429 ? "Rate limit atingido. Tente novamente em alguns segundos." : `Erro na API: ${status}`;
+    return { result: "", error: userMsg, status };
+  }
+
+  const data = await response.json();
+  return { result: data.choices?.[0]?.message?.content || "" };
+}
+
+// =========================================================================
+// MAIN HANDLER
+// =========================================================================
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
@@ -805,13 +789,12 @@ serve(async (req) => {
     const body = await req.json();
     const { action } = body;
 
-    // =========================================================================
+    // =====================================================================
     // 0) DIAGNOSTIC MODE — test internal docs fetch
-    // =========================================================================
+    // =====================================================================
     if (action === "internal_docs_test") {
       const { query, equipamento } = body;
       const searchQuery = query || equipamento || "Rational iCombi";
-      console.log(`[genspark-ai] [internal_docs_test] query="${searchQuery}"`);
       const docsResult = await fetchInternalTechDocs(searchQuery, equipamento);
       return new Response(JSON.stringify({
         api_source: docsResult.api_source,
@@ -822,22 +805,16 @@ serve(async (req) => {
         skipped_files: docsResult.skipped_files.slice(0, 20),
         elapsed_ms: docsResult.elapsed_ms,
         error: docsResult.error,
-      }), {
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+      }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
-    const OPENAI_API_KEY = Deno.env.get("OPENAI_API_KEY");
-    if (!OPENAI_API_KEY) throw new Error("OPENAI_API_KEY não configurada");
-
-    const messages: any[] = [];
-    let model = "gpt-4o-mini";
-
-    // =========================================================================
-    // 1) MELHORAR PREENCHIMENTO
-    // =========================================================================
+    // =====================================================================
+    // 1) MELHORAR PREENCHIMENTO — INTOCADO (action = "improve")
+    // Agente: gpt-5-mini (texto) ou gpt-5 (com fotos)
+    // =====================================================================
     if (action === "improve") {
       const { text, field, context } = body;
+      let model = "openai/gpt-5-mini";
 
       let tipoCampo = "Campo Livre";
       const fl = (field || "").toLowerCase();
@@ -855,7 +832,6 @@ VOCÊ DEVE:
 - corrigir erros evidentes de ortografia, digitação e concordância
 - melhorar clareza técnica
 - organizar melhor o texto quando necessário
-- deixar o conteúdo mais útil para quem vai montar o orçamento
 - preservar o sentido original
 - manter foco técnico e operacional
 
@@ -863,45 +839,19 @@ VOCÊ NÃO DEVE:
 - inventar defeitos, peças, códigos, medidas, causas, quantidades ou serviços
 - adicionar informações não sustentadas pelo texto original
 - transformar hipótese em certeza
-- prometer item que não foi citado
 - falar de preço, valor, margem ou negociação
-- florear ou usar linguagem genérica de IA
 
 REGRAS POR TIPO DE CAMPO
 
-1. Se o campo for PEÇAS NECESSÁRIAS:
-- melhorar nomes e clareza dos itens
-- separar itens de forma limpa
-- não inventar peças
-- se houver termo genérico demais, manter e apenas melhorar a legibilidade
-- não completar com peças associadas não citadas
+1. PEÇAS NECESSÁRIAS: melhorar nomes, separar itens limpo, não inventar peças
+2. SERVIÇOS NECESSÁRIOS: descrever de forma mais clara e técnica
+3. TEMPO PARA EXECUÇÃO: padronizar formato, não alterar valor
+4. OBSERVAÇÕES: transformar texto solto em observação técnica clara
 
-2. Se o campo for SERVIÇOS NECESSÁRIOS:
-- descrever o serviço de forma mais clara e técnica
-- manter somente o que o texto sustenta
-- não adicionar etapas que não foram mencionadas
-- se houver lista confusa, reorganizar em formato mais limpo
-
-3. Se o campo for TEMPO PARA EXECUÇÃO:
-- apenas padronizar formato quando possível
-- não aumentar nem reduzir tempo
-- se o valor estiver ambíguo, preservar e sinalizar no final com "tempo informado de forma ambígua", sem inventar correção
-
-4. Se o campo for OBSERVAÇÕES:
-- transformar texto solto em observação técnica mais clara
-- destacar defeito, condição encontrada, risco e necessidade informada
-- manter estritamente o conteúdo original
-- não adicionar diagnóstico novo sem base textual
-
-FORMATO DE SAÍDA
-Retorne apenas o texto melhorado do campo.
-Sem explicação, sem título, sem comentários extras.
-
-TOM
-Direto, técnico, útil para orçamento.`;
+FORMATO: Retorne apenas o texto melhorado, sem explicação.`;
 
       const userContentParts: any[] = [];
-      let userText = `Melhore o preenchimento do campo abaixo para uso em orçamento técnico, sem inventar informação.\n\nTIPO DE CAMPO:\n${tipoCampo}\n\nTEXTO ORIGINAL:\n${text}`;
+      let userText = `Melhore o preenchimento do campo abaixo para uso em orçamento técnico.\n\nTIPO DE CAMPO:\n${tipoCampo}\n\nTEXTO ORIGINAL:\n${text}`;
 
       if (tipoCampo === "OBSERVAÇÕES" && context) {
         if (context.pecas) userText += `\n\nPeças solicitadas: ${context.pecas}`;
@@ -912,487 +862,418 @@ Direto, técnico, útil para orçamento.`;
 
       if (tipoCampo === "OBSERVAÇÕES" && context?.fotos?.length > 0) {
         await addPhotosToContent(userContentParts, context.fotos, 4, "low");
-        model = "gpt-4o";
+        model = "openai/gpt-5"; // needs vision
       }
 
-      messages.push({ role: "system", content: systemPrompt });
-      messages.push({ role: "user", content: userContentParts.length === 1 ? userText : userContentParts });
+      const messages = [
+        { role: "system", content: systemPrompt },
+        { role: "user", content: userContentParts.length === 1 ? userText : userContentParts },
+      ];
 
-    // =========================================================================
-    // 2) ANALISAR OS PARA ORÇAMENTO
-    // =========================================================================
-    } else if (action === "analyze") {
-      const { context } = body;
-      model = "gpt-4o";
+      const aiResult = await callAI(messages, model, 4000);
+      if (aiResult.error) {
+        return new Response(JSON.stringify({ error: aiResult.error }), {
+          status: aiResult.status || 500,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
 
-      const systemPrompt = `Você é o engenheiro técnico sênior da WeDo. Analise OS para orçamento.
+      return new Response(JSON.stringify({ result: aiResult.result }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
 
-MISSÃO: Diagnóstico técnico preciso + lista COMPLETA de tudo que precisa para executar o serviço.
+    // =====================================================================
+    // 2) ANALISAR OS PARA ORÇAMENTO — REFATORADO
+    // Agente: budget_analysis_agent (openai/gpt-5.2)
+    // Modo padrão: texto + até 3 fotos detail:low, SEM web, SEM OCR, SEM docs
+    // Modo expandido: gatilho real → web + docs + OCR + mais fotos
+    // =====================================================================
+    if (action === "analyze") {
+      const { context } = body as { context: AnalyzeContext };
+      const ANALYSIS_MODEL = "openai/gpt-5.2"; // budget_analysis_agent
 
-REGRA #0 — ANALISE O RELATÓRIO ANTES DE LISTAR ITENS. Primeiro extraia: defeitos confirmados, sintomas, peças citadas, serviço solicitado e contexto das fotos.
-REGRA #1 — SEJA OBJETIVO. Frases curtas. Sem floreio. Sem repetição. Sem linguagem de IA.
-REGRA #2 — COMPLEMENTE O RELATÓRIO COM LÓGICA TÉCNICA. Para cada defeito/intervenção do relatório, complete com os componentes, consumíveis e verificações NECESSÁRIOS do mesmo subsistema.
-REGRA #3 — NÃO INVENTE DEFEITOS. Só trabalhe com dados/fotos/material fornecido. Pode recomendar verificações adjacentes quando fizer sentido técnico.
-REGRA #4 — Separe FATO de INFERÊNCIA de HIPÓTESE.
-REGRA #5 — Nunca fale de preço/valor/margem.
-REGRA #6 — NÃO LISTE EPIs BÁSICOS. Luvas, óculos de proteção, capacete e sapato de segurança são fornecidos pela empresa e NÃO devem aparecer na lista. Só liste EPIs ESPECÍFICOS para aquele serviço (ex: máscara PFF2 para gás refrigerante, protetor auricular para martelete, avental químico para ácido).
-
-REGRA #7 — COERÊNCIA DIAGNÓSTICO ↔ PEÇAS (CRÍTICO):
-Se o diagnóstico diz "DANO" em um componente, a recomendação OBRIGATÓRIA é TROCA do componente danificado (não manutenção preventiva).
-- "Dano nos rolamentos" → ⚡ Troca de rolamentos + itens adjacentes necessários do subsistema (ex.: retentor/eixo/mancal quando aplicável).
-- "Motor superaquecendo" → ⚡ Verificar/trocar protetor térmico, capacitor, ventilador. Se há dano, é TROCA.
-- "Placa danificada" → ⚡ Troca da placa. Não "limpeza técnica" como solução principal.
-- "Sensor ausente" → ⚡ Troca do sensor. Não "verificar" como ação final.
-- Se o relatório trouxer "conjunto suporte do motor e eixo", "mancal", "eixo com folga" ou "rolamento danificado", NÃO aceite só item genérico: explicite em linhas separadas os itens críticos do conjunto (ROLAMENTO e RETENTOR, além de eixo/mancal quando aplicável).
-REGRA: Se o defeito é DANO/DANIFICADO/COMPROMETIDO/QUEIMADO/AUSENTE → a ação principal é TROCA/SUBSTITUIÇÃO.
-Lubrificação só se aplica a componentes FUNCIONAIS em manutenção preventiva.
-
-RACIOCÍNIO DE COMPONENTES ADJACENTES (OBRIGATÓRIO):
-Quando identificar o equipamento, PENSE nos subsistemas:
-- Máquina com MOTOR → verificar: correia, polias, rolamentos do motor, capacitor, protetor térmico, ventilador
-- Máquina com BOMBA → verificar: selo mecânico, gaxetas, rolamentos, acoplamento, eixo, impulsor
-- Máquina com COMPRESSOR → verificar: válvulas, pressostato, capacitor, relé, gás, óleo, filtro secador, ventilador do condensador
-- Máquina com RESISTÊNCIA → verificar: terminais, conectores, termostato, fusível térmico, fiação
-- GATILHO EIXO/MANCAL (abertura do conjunto) → incluir obrigatoriamente: rolamento(s) + retentor(es) + verificação de eixo/mancal; se houver dano, marcar TROCA.
-- Máquina com ROLAMENTOS DANIFICADOS → TROCAR: rolamentos + retentor + verificar eixo (folga/desgaste) + mancal. Se funcionais: lubrificar + verificar correia
-- Máquina com REDUTOR → verificar: engrenagens, rolamentos, óleo, retentores, acoplamento
-- Máquina com CORREIA → verificar: polias (desgaste/alinhamento), tensor, rolamentos dos eixos
-- Máquina com ELETROVÁLVULA → verificar: bobina, vedações, filtro de linha, conexões
-- Equipamento de REFRIGERAÇÃO → verificar: carga de gás, teste de vazamento, limpeza do condensador, dreno, isolamento térmico
-- CÂMARA FRIA ou CÂMARA CONGELADA → verificar OBRIGATORIAMENTE: gaxetas de vedação (borrachas das portas), relé de falta de fase, contatores, controlador de temperatura, disjuntores, estabilizador de tensão, resistência de degelo, timer de degelo, válvula de expansão, pressostato de alta/baixa, ventiladores do evaporador, ventiladores do condensador, isolamento térmico (portas e painéis), dreno do evaporador, termômetro/sensor de temperatura. PESQUISAR NA WEB itens de preventiva específicos do modelo/fabricante da câmara.
-
-TABELA DE INSUMOS OBRIGATÓRIOS POR CONTEXTO:
-
-Compressor → gás refrigerante (tipo conforme etiqueta), óleo lubrificante, válvula de serviço, tubo de cobre, solda prata, fluxo de solda, nitrogênio para pressurização, filtro secador, MÁSCARA PFF2
-Higienização → produto químico adequado (desengordurante, desincrustante alcalino/ácido conforme sujidade), esponjas/escovas, pano técnico. GORDURA NÃO SAI SÓ COM ÁGUA.
-Resistência elétrica → terminais, conectores, pasta térmica, parafusos, multímetro (verificar)
-Motor/bomba → selo mecânico, parafusos, gaxetas, capacitor (se aplicável), rolamentos
-Kit manômetro → niples, veda-rosca, conexões, registros
-Válvula solenóide → conectores elétricos, vedações, abraçadeiras
-Mangueira → abraçadeiras, conexões, adaptadores, veda-rosca
-Pressostato → niples, mangueira de conexão, veda-rosca
-Placa eletrônica → conectores, fusíveis, limpeza técnica (álcool isopropílico)
-Componente roscado → veda-rosca, fita veda-rosca, niples, adaptadores
-Qualquer serviço em equipamento de refrigeração → verificar carga de gás, teste de vazamento, manifold
-Câmara fria/congelada → gaxetas de vedação, relé falta de fase, contatores, controlador temperatura, disjuntores, estabilizador tensão, resistência degelo, timer degelo, válvula expansão, pressostato alta/baixa, ventiladores evaporador/condensador, sensor temperatura, isolamento térmico portas/painéis
-
-POLÍTICAS WEDO (aplicar SOMENTE quando o gatilho for relevante para o equipamento em questão — NÃO aplique genericamente):
-P1) Sujeira/insetos VISÍVEIS nas fotos ou relatados → dedetização + higienização
-P2) Placa eletrônica mencionada ou visível → limpeza técnica (álcool isopropílico)
-P3) Equipamento Rational (QUALQUER serviço, não apenas troca de componente) → SEMPRE recomendar: filtro de ar, filtro de água, descalcificante, juntas de porta/câmara, sensor de temperatura. Estes são peças de DESGASTE NATURAL que todo forno Rational precisa em manutenção preventiva. Marcar como ⚡ Recomendar.
-P4) Componente com fixação mecânica sendo trocado → fixadores, travas, porcas, arruelas DAQUELE componente
-P5) Peça de desgaste sendo trocada → verificar APENAS peças de desgaste DO MESMO SUBSISTEMA (ex: se troca rolamento, verificar retentor e eixo — NÃO listar mangueiras/filtros se o equipamento não os possui)
-P6) Calcário/sujidade mineral EVIDENCIADA → filtro de água, descalcificação
-P7) Uso inadequado relatado → treinamento operacional
-
-REGRA CRÍTICA SOBRE POLÍTICAS: Antes de aplicar qualquer política, PERGUNTE-SE: "Este equipamento específico TEM esse componente?" Se um passthrough/forno não tem mangueira, NÃO sugira mangueira. Se não tem filtro, NÃO sugira filtro. Aplique apenas o que FAZ SENTIDO para aquele equipamento.
-
-FORMATO DE SAÍDA (máximo de objetividade):
-
-📋 EQUIPAMENTO
-Equipamento: [nome/modelo]
-ID/Série: [valor ou NÃO IDENTIFICADO]
-Marca/Fabricante: [marca — OBRIGATÓRIO. Use o valor fornecido no campo "Marca/Fabricante identificada" dos DADOS DA OS. Se não foi identificada ou se está como "Não identificada", escreva: "⚠️ NÃO IDENTIFICADA — Favor informar a marca/fabricante do equipamento para melhor análise e busca de materiais técnicos."]
-
-📂 MATERIAIS INTERNOS (se fornecidos)
-Se recebeu materiais internos (📂), OBRIGATORIAMENTE inclua esta seção:
-- Documentos encontrados: [nomes dos docs]
-- Informações relevantes extraídas: [dados técnicos, procedimentos, peças recomendadas]
-- Aplicação ao caso: [como os materiais internos se relacionam com esta OS]
-Se NÃO recebeu materiais internos, escreva: "Sem material interno retornado pela API."
-
-🌐 PESQUISA WEB (OBRIGATÓRIO se dados de pesquisa web foram fornecidos)
-Se recebeu dados de PESQUISA WEB, OBRIGATORIAMENTE inclua esta seção:
-- Modelo identificado: [modelo exato encontrado na web]
-- Especificações relevantes: [specs que impactam o diagnóstico, 2-3 linhas]
-- Componentes típicos deste equipamento: [lista dos componentes principais conforme manual/web]
-- Problemas comuns documentados: [1-3 problemas mais frequentes encontrados na web]
-- Fontes: [citar fontes se disponíveis]
-Se NÃO recebeu dados de pesquisa web, escreva: "Pesquisa web não disponível para este equipamento."
-
-🔍 DIAGNÓSTICO
-Defeito: [1-2 frases]
-Coerência do técnico: [sim/não/parcial + motivo em 1 frase]
-Inconsistências: [lista curta ou "nenhuma"]
-Dados da web vs técnico: [O que a pesquisa web revelou que o técnico NÃO mencionou — peças faltantes, verificações omitidas, etc. Se não houver pesquisa web, omitir esta linha]
-
-⚠️ BLOQUEIOS
-[SIM/NÃO] — [motivo ou "nenhum"]
-Pendências: [lista objetiva]
-
-🔧 PEÇAS, INSUMOS E QUÍMICOS
-Para CADA item, formato em linha:
-[Status] | [Item] | [Tipo] | [Motivo curto]
-
-Status: ✅ Confirmado | ⚡ Recomendar | ❓ Verificar
-🌐 = Item identificado via pesquisa web (USE ESTE ÍCONE para itens que vieram da pesquisa web)
-📂 = Item identificado via materiais internos (Drive)
-
-⚠️ REGRA CRÍTICA DE COMPLETUDE ⚠️
-ANTES de finalizar esta seção, você DEVE:
-1) Ler o relatório e classificar os itens em: confirmado, recomendado, verificar.
-2) Complementar cada intervenção com os itens NECESSÁRIOS do mesmo subsistema.
-3) Garantir que nenhum item essencial da execução ficou de fora.
-4) Rodar checklist final por gatilho técnico: se houver intervenção em eixo/mancal/rolamento/suporte de eixo, precisam existir linhas explícitas para ROLAMENTO e RETENTOR (não apenas "conjunto" genérico).
-Exemplo: se o relatório indica dano em rolamento/mancal/eixo, completar com os adjacentes necessários (retentor, mancal, eixo, lubrificação de montagem, etc.).
-Se o relatório NÃO indica intervenção nesse subsistema, NÃO force itens desse subsistema.
-Prioridade máxima: COMPLETAR tecnicamente o relatório, sem inventar.
-
-IMPORTANTE: Liste APENAS itens que serão VENDIDOS/COBRADOS no orçamento:
-- Peças solicitadas pelo técnico
-- ⚡ Componentes adjacentes necessários conforme diagnóstico e subsistema
-- 🌐 Peças e componentes identificados pela PESQUISA WEB que o técnico não mencionou
-- 📂 Peças identificadas nos materiais internos (Drive) que o técnico não mencionou
-- Insumos de montagem que serão cobrados (veda-rosca, abraçadeiras, conexões...)
-- Produtos químicos para limpeza/higienização
-- Consumíveis cobráveis (solda, gás refrigerante, óleo...)
-- Peças de desgaste natural do equipamento
-
-⛔ NÃO INCLUIR na lista (são ferramentas/recursos internos da equipe, NÃO são vendidos):
-- Ferramentas: multímetro, chaves Allen/Torx, chave de fenda, alicate, torquímetro, manifold, bomba de vácuo, etc.
-- EPIs: luvas, óculos, capacete, sapato, máscara PFF2, protetor auricular, avental químico, etc.
-- Equipamentos de diagnóstico: termômetro infravermelho, detector de vazamento, manômetro (quando usado só para teste), etc.
-- Lubrificantes genéricos internos (graxa, lubrificante alimentício) — SÓ inclua se for um insumo específico que será cobrado no orçamento.
-A lista é exclusivamente de PEÇAS, COMPONENTES, INSUMOS e QUÍMICOS que entrarão na nota fiscal / orçamento para o cliente.
-
-🏭 POLÍTICAS WEDO
-[Listar só as aplicáveis, 1 linha cada]
-
-📝 OBSERVAÇÃO TÉCNICA (reescrita)
-[Texto melhorado, máximo 5 linhas]
-
-❓ PERGUNTAS (máx 5)
-[Só as que realmente travam o orçamento]
-
-🚦 STATUS: [Pode seguir / Ressalvas / Precisa validar] — [1 frase]
-
-📂🌐 FONTES
-- Materiais internos: [listar documentos utilizados ou "nenhum"]
-- Fontes web: [listar URLs ou "nenhuma"]
-
-TOM: Telegráfico, técnico, zero enrolação.`;
-
-      const userContentParts: any[] = [];
-
-      // *** PARALLEL: Internal docs + Perplexity web search ***
+      // Step 1: Quick manufacturer identification (always, via Perplexity sonar — cheap)
       const equipForSearch = context?.equipamento || context?.descricao || "";
-      console.log(`[genspark-ai] [analyze] Buscando docs internos + web em paralelo para: "${equipForSearch.substring(0, 80)}"`);
+      const equipStr = cleanEquipmentString(equipForSearch);
+      const { manufacturer: mfrTerms, modelFamily } = await identifyManufacturerAndModel(equipStr);
+      const manufacturerIdentified = mfrTerms.length > 0 ? mfrTerms.join(" ") : null;
 
-      const [internalDocs, webResearch] = await Promise.all([
-        fetchInternalTechDocs(equipForSearch, equipForSearch),
-        searchEquipmentOnWeb(
-          equipForSearch,
-          context?.descricao || "",
-          context?.orientacao || "",
-          context?.pecas || ""
-        ),
-      ]);
+      // Step 2: Decide mode
+      const { expand, reasons } = shouldExpandAnalysis(context || {}, manufacturerIdentified);
+      console.log(`[genspark-ai] [analyze] MODO=${expand ? "EXPANDIDO" : "PADRÃO"}, equipamento="${equipForSearch.substring(0, 80)}", fabricante="${manufacturerIdentified || "?"}", reasons=[${reasons.join(",")}]`);
 
-      let textPrompt = `Analise a OS abaixo para apoio à elaboração de orçamento técnico.\n\nDADOS DA OS\n`;
+      // Step 3: Fetch external data ONLY in expanded mode
+      let internalDocs: InternalDocsResult | null = null;
+      let webResearch = "";
+
+      if (expand) {
+        // Modo expandido: buscar docs internos + web em paralelo
+        [internalDocs, webResearch] = await Promise.all([
+          fetchInternalTechDocs(equipForSearch, equipForSearch),
+          searchEquipmentOnWeb(equipForSearch, context?.descricao || "", context?.orientacao || "", context?.pecas || ""),
+        ]);
+      }
+
+      // Step 4: Build system prompt — NOVO, enxuto, focado em triagem
+      const systemPrompt = `Você é o copiloto de triagem técnica para orçamento da WeDo.
+
+MISSÃO: Ler a OS, validar coerência, apontar inconsistências, sugerir peças/insumos/serviços com cautela e base explícita, indicar lacunas, melhorar a observação técnica.
+
+REGRAS ABSOLUTAS:
+- NÃO inventar peças, defeitos, códigos, medidas, causas, procedimentos, quantidades ou conclusões
+- NÃO tratar hipótese como fato — se faltar dado, declarar "não informado" ou "não evidenciado"
+- Se houver conflito entre texto, fotos, peças e serviços, apontar a inconsistência
+- NÃO falar de preço, custo, margem ou valor
+- Só sugerir item associado se houver base no texto, foto, material interno ou política WeDo
+- Separar FATO / INFERÊNCIA / HIPÓTESE / POLÍTICA WEDO
+- NÃO listar EPIs básicos (luvas, óculos, capacete, sapato) — só EPIs ESPECÍFICOS para o serviço
+- Se diagnóstico diz DANO/DANIFICADO/QUEIMADO/AUSENTE → ação principal é TROCA, não manutenção preventiva
+- Máximo 6 itens associados no modo padrão, expandir apenas se caso realmente complexo
+
+POLÍTICAS WEDO (aplicar apenas quando o gatilho for relevante):
+P1) Sujeira/insetos visíveis → dedetização + higienização
+P2) Placa eletrônica mencionada → limpeza técnica (álcool isopropílico)
+P3) Equipamento Rational (qualquer serviço) → recomendar filtro ar/água, descalcificante, juntas, sensor temp
+P4) Componente com fixação sendo trocado → fixadores daquele componente
+P5) Peça de desgaste trocada → verificar peças de desgaste do MESMO subsistema
+P6) Calcário/sujidade mineral evidenciada → filtro de água, descalcificação
+P7) Uso inadequado relatado → treinamento operacional
+REGRA: Antes de aplicar política, perguntar "Este equipamento TEM esse componente?"
+
+FORMATO DE SAÍDA OBRIGATÓRIO:
+
+1. 📖 LEITURA TÉCNICA DA OS
+- Equipamento aparente:
+- Marca/Fabricante: [usar valor fornecido ou "⚠️ NÃO IDENTIFICADA"]
+- ID/Série:
+- Defeito principal aparente:
+- O que está sendo pedido de fato:
+- O que está mal descrito ou genérico demais:
+
+2. 🔍 RESUMO DO DIAGNÓSTICO
+- Diagnóstico do técnico coerente? [sim / não / parcialmente]
+- O que faz sentido:
+- O que está inconsistente:
+- O que parece principal:
+- O que parece acessório:
+
+3. ✅ CHECKLIST PARA ORÇAMENTO
+BLOQUEIO: [SIM/NÃO]
+Motivo do bloqueio:
+Pendências objetivas:
+- fotos faltantes
+- informação faltante
+- identificação faltante
+- teste faltante
+- evidência não informada
+
+4. 📌 FATOS OBSERVADOS
+Para cada fato:
+- Fato:
+- Evidência:
+
+5. 🤔 INFERÊNCIAS E HIPÓTESES
+Para cada inferência:
+- Inferência/Hipótese:
+- Justificativa:
+- Confiança: [baixa / média / alta]
+- Precisa validar: [sim / não]
+
+6. 🔧 PEÇAS, INSUMOS E SERVIÇOS ASSOCIADOS
+Separar em:
+A. Confirmados pelos dados
+B. Recomendados por indício técnico
+C. Verificar em campo antes de incluir
+
+Para cada item:
+[Status] | [Item] | [Tipo: peça/insumo/serviço] | [Motivo] | [Base]
+Status: ✅ Confirmado | ⚡ Recomendar | ❓ Verificar
+🌐 = Item via pesquisa web | 📂 = Item via materiais internos
+
+Limite padrão: máximo 6 itens
+
+7. 📝 MELHORIA DO PREENCHIMENTO DA OS
+- O que faltou descrever melhor:
+- O que faltou fotografar:
+- O que faltou medir ou testar:
+- O que faltou identificar:
+
+8. 📋 OBSERVAÇÃO TÉCNICA MELHORADA
+[Reescrever observação de forma profissional, objetiva, útil para orçamento, sem inventar]
+
+9. 🏭 POLÍTICAS WEDO APLICÁVEIS
+[Listar apenas as realmente acionadas, 1 linha cada, rotular como "política interna"]
+
+10. ❓ PERGUNTAS QUE DESTRAVAM O ORÇAMENTO
+[Máximo 8 perguntas]
+
+11. 🚦 STATUS PARA ORÇAMENTO
+Escolher UMA:
+- Orçamento pode seguir
+- Orçamento pode seguir com ressalvas
+- Necessária validação técnica adicional antes do orçamento
+Justificar em máximo 3 frases.
+
+TOM: Telegráfico, técnico, zero enrolação. Prefira disciplina e auditabilidade a "texto bonito".`;
+
+      // Step 5: Build user payload
+      const userContentParts: any[] = [];
+      let textPrompt = `Analise esta OS para triagem técnica de orçamento.\n\nDADOS DA OS\n`;
       if (context) {
         textPrompt += `- Cliente: ${context.cliente || "N/A"}\n`;
         textPrompt += `- Técnico: ${context.tecnico || "N/A"}\n`;
         textPrompt += `- Data: ${context.data_tarefa || "N/A"}\n`;
         textPrompt += `- Equipamento: ${context.equipamento || context.descricao || "N/A"}\n`;
-        textPrompt += `- ID / Patrimônio / Nº de Série do Equipamento: ${context.equipamento_id || "N/A"}\n`;
-        textPrompt += `- Marca/Fabricante identificada: ${internalDocs.manufacturer_identified || "Não identificada"}\n`;
-        textPrompt += `- Família/Linha do modelo: ${(internalDocs as any).model_family || "Não identificada"}\n`;
-        textPrompt += `- Descrição do equipamento/chamado: ${context.descricao || "N/A"}\n`;
-        textPrompt += `- Orientação inicial / descrição do chamado: ${context.orientacao || "N/A"}\n`;
+        textPrompt += `- ID / Patrimônio / Série: ${context.equipamento_id || "N/A"}\n`;
+        textPrompt += `- Marca/Fabricante identificada: ${manufacturerIdentified || "Não identificada"}\n`;
+        textPrompt += `- Família/Linha do modelo: ${modelFamily || "Não identificada"}\n`;
+        textPrompt += `- Descrição: ${context.descricao || "N/A"}\n`;
+        textPrompt += `- Orientação / chamado: ${context.orientacao || "N/A"}\n`;
         textPrompt += `- Peças informadas: ${context.pecas || "N/A"}\n`;
         textPrompt += `- Serviços informados: ${context.servicos || "N/A"}\n`;
         textPrompt += `- Tempo informado: ${context.tempo || "N/A"}\n`;
         textPrompt += `- Observações do técnico: ${context.observacoes || "N/A"}\n`;
-        if (context.riscos) textPrompt += `- Riscos informados: ${context.riscos}\n`;
         if (context.todas_respostas) textPrompt += `- Respostas do questionário:\n${context.todas_respostas}\n`;
       }
 
-      // Inject internal docs block (ALWAYS present — either with data or explicit "no docs" message)
-      textPrompt += buildInternalDocsBlock(internalDocs);
-
-      // Inject web research block (ALWAYS present)
-      textPrompt += buildWebBlock(webResearch);
-
-      if (webResearch) {
-        textPrompt += `\nINSTRUÇÃO OBRIGATÓRIA: Você RECEBEU dados de pesquisa web acima. Você DEVE:
-1. Preencher a seção "🌐 PESQUISA WEB" com os dados encontrados
-2. Na seção DIAGNÓSTICO, incluir "Dados da web vs técnico" comparando o que a web diz vs o que o técnico informou
-3. Na seção PEÇAS, marcar com 🌐 os itens que vieram da pesquisa web e que o técnico NÃO mencionou
-4. Se a web revelou componentes específicos deste modelo que o técnico omitiu, LISTE-OS como ⚡🌐 Recomendar\n`;
-      }
-
-      if (internalDocs.docs_count > 0) {
-        textPrompt += `\nINSTRUÇÃO OBRIGATÓRIA: Você RECEBEU ${internalDocs.docs_count} documento(s) interno(s). Você DEVE:
-1. Preencher a seção "📂 MATERIAIS INTERNOS" com os documentos encontrados
-2. Na seção PEÇAS, marcar com 📂 itens fundamentados pelos materiais internos
-3. Citar procedimentos ou especificações dos documentos internos quando relevante\n`;
-      }
-
-      const hasFotos = context?.fotos?.length > 0;
-      textPrompt += `\nFOTOS\n${hasFotos ? `${filterImageUrls(context.fotos).length} foto(s) anexadas. ANALISE CADA FOTO.` : "Não fornecidas"}\n`;
-
-      // Instrução sobre marca/fabricante
-      const mfr = internalDocs.manufacturer_identified;
-      if (mfr) {
-        textPrompt += `\n⚠️ INSTRUÇÃO MARCA/FABRICANTE: A marca identificada é "${mfr.toUpperCase()}". Você DEVE incluir esta marca na seção EQUIPAMENTO no campo "Marca/Fabricante". NÃO omita este campo.\n`;
+      // Marca instruction
+      if (manufacturerIdentified) {
+        textPrompt += `\n⚠️ Marca identificada: "${manufacturerIdentified.toUpperCase()}". Incluir na seção LEITURA TÉCNICA.\n`;
       } else {
-        textPrompt += `\n⚠️ INSTRUÇÃO MARCA/FABRICANTE: A marca NÃO foi identificada automaticamente. Na seção EQUIPAMENTO, escreva "Marca/Fabricante: ⚠️ NÃO IDENTIFICADA". Na seção ❓ PERGUNTAS, inclua OBRIGATORIAMENTE: "Qual é a marca/fabricante deste equipamento? (necessário para busca de materiais técnicos e peças corretas)".\n`;
+        textPrompt += `\n⚠️ Marca NÃO identificada. Na seção LEITURA TÉCNICA, escrever "⚠️ NÃO IDENTIFICADA". Na seção PERGUNTAS, incluir: "Qual é a marca/fabricante deste equipamento?"\n`;
       }
 
-      textPrompt += `\n⚠️ LEMBRETE FINAL OBRIGATÓRIO: Analise PRIMEIRO o relatório/fotos e classifique o que é confirmado, recomendado e a verificar. Depois complemente tecnicamente com itens necessários do MESMO subsistema. Não force item fora de contexto. Se houver intervenção em suporte do motor/eixo, mancal ou rolamento, detalhe EXPLICITAMENTE em linhas próprias: ROLAMENTO e RETENTOR (além de eixo/mancal quando aplicável), sem esconder em item genérico de conjunto. Mantenha coerência: dano pede troca; lubrificação só para componente funcional.`;
+      // Expanded mode: inject docs + web
+      if (expand && internalDocs) {
+        textPrompt += buildInternalDocsBlock(internalDocs);
+        if (internalDocs.docs_count > 0) {
+          textPrompt += `\nINSTRUÇÃO: Você RECEBEU ${internalDocs.docs_count} documento(s) interno(s). Preencha seção MATERIAIS INTERNOS e marque itens com 📂.\n`;
+        }
+      }
+      if (expand && webResearch) {
+        textPrompt += buildWebBlock(webResearch);
+        textPrompt += `\nINSTRUÇÃO: Dados de pesquisa web recebidos. Marque itens vindos da web com 🌐.\n`;
+      }
+
+      if (!expand) {
+        textPrompt += `\n[MODO PADRÃO] Análise baseada nos dados textuais + fotos da OS. Sem pesquisa web ou docs internos nesta rodada.\n`;
+      } else {
+        textPrompt += `\n[MODO EXPANDIDO] Motivo: ${reasons.join(", ")}. Dados externos incluídos quando disponíveis.\n`;
+      }
+
+      // Photos
+      const hasFotos = context?.fotos?.length > 0;
+      const maxPhotos = expand ? 6 : 3;
+      const photoDetail = expand ? "high" as const : "low" as const;
+      textPrompt += `\nFOTOS: ${hasFotos ? `${filterImageUrls(context!.fotos!).length} foto(s) anexadas.` : "Não fornecidas"}\n`;
 
       userContentParts.push({ type: "text", text: textPrompt });
-
       if (hasFotos) {
-        await addPhotosToContent(userContentParts, context.fotos, 6, "high");
+        await addPhotosToContent(userContentParts, context!.fotos!, maxPhotos, photoDetail);
       }
 
-      messages.push({ role: "system", content: systemPrompt });
-      messages.push({ role: "user", content: userContentParts });
+      const messages = [
+        { role: "system", content: systemPrompt },
+        { role: "user", content: userContentParts },
+      ];
 
-      console.log(`[genspark-ai] [analyze] cliente=${context?.cliente}, fotos=${context?.fotos?.length || 0}, internalDocs=${internalDocs.docs_count}(${internalDocs.elapsed_ms}ms), webResearch=${webResearch ? "sim" : "não"}, contentParts=${userContentParts.length}`);
+      console.log(`[genspark-ai] [analyze] mode=${expand ? "expanded" : "standard"}, model=${ANALYSIS_MODEL}, fotos=${context?.fotos?.length || 0}→max${maxPhotos}(${photoDetail}), docs=${internalDocs?.docs_count || 0}, web=${webResearch ? "yes" : "no"}, contentParts=${userContentParts.length}`);
 
-    // =========================================================================
-    // 3) CONVERSAR SOBRE ESTE ORÇAMENTO
-    // =========================================================================
-    } else if (action === "chat") {
+      const aiResult = await callAI(messages, ANALYSIS_MODEL, 5000);
+      if (aiResult.error) {
+        return new Response(JSON.stringify({ error: aiResult.error }), {
+          status: aiResult.status || 500,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      return new Response(JSON.stringify({ result: aiResult.result, mode: expand ? "expanded" : "standard", reasons }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    // =====================================================================
+    // 3) CHAT CONTEXTUAL DO ORÇAMENTO — REFATORADO
+    // Agente: budget_chat_agent (openai/gpt-5-mini)
+    // Base principal: análise já gerada + dados da OS
+    // SEM web/docs/OCR por padrão — só escala se pergunta exige fonte/manual
+    // =====================================================================
+    if (action === "chat") {
       const { context, analysis, userMessage, chatHistory } = body;
-      model = "gpt-4o";
+      const CHAT_MODEL = "openai/gpt-5-mini"; // budget_chat_agent
 
-      const systemPrompt = `Você é o assistente técnico contextual de um orçamento da WeDo.
+      const systemPrompt = `Você é o assistente de chat contextual do orçamento da WeDo.
 
-CONTEXTO
-Você sempre responderá com base no orçamento em análise, na OS, nas fotos, na análise técnica já gerada e nos materiais efetivamente fornecidos no contexto desta conversa.
+CONTEXTO PRINCIPAL: Você responde com base na análise técnica já gerada e nos dados da OS. NÃO refaça a análise.
 
-OBJETIVO
-Ajudar o usuário a tirar dúvidas sobre este orçamento específico, com respostas técnicas, claras, diretas e sem invenções.
+OBJETIVO: Ajudar o usuário a tirar dúvidas sobre este orçamento específico.
 
 VOCÊ DEVE:
-- responder dúvidas sobre o diagnóstico
-- explicar por que determinada peça, insumo ou serviço foi sugerido
-- dizer o que está confirmado, o que é provável e o que precisa validar
-- ajudar a melhorar observações técnicas
-- ajudar a decidir se o orçamento pode seguir ou não
-- apontar o que ainda falta de informação, foto, teste ou identificação
-- manter coerência com a análise principal já gerada
+- Responder dúvidas sobre o diagnóstico
+- Explicar por que determinada peça/serviço foi sugerido
+- Dizer o que está confirmado, provável ou precisa validar
+- Ajudar a decidir se item entra ou não no orçamento
+- Apontar o que falta de informação
 
 VOCÊ NÃO DEVE:
-- inventar dados que não estejam neste caso
-- contradizer a análise principal sem explicar claramente a razão
-- transformar hipótese em certeza
-- falar de preço, margem ou negociação
-- responder de forma genérica sem se apoiar no caso concreto
+- Inventar dados que não estejam neste caso
+- Contradizer a análise sem explicar a razão
+- Transformar hipótese em certeza
+- Falar de preço, margem ou negociação
+- Responder genericamente sem se apoiar no caso concreto
 
-REGRAS
-1. Sempre que responder sobre peça, serviço ou defeito, indicar a base:
-- evidência visual
-- evidência textual
-- política WeDo
-- material interno 📂
-- manual/POP fornecido
+FORMATO: Resposta direta com:
+- O que está confirmado
+- O que é provável
+- O que precisa validar
+- Base da resposta (evidência visual/textual/política WeDo/análise)
 
-2. Se o usuário perguntar algo sem base suficiente, responder claramente:
-- não há evidência suficiente no caso
-ou
-- isso depende de validação adicional
+TOM: Técnico, direto, sem floreio.`;
 
-3. Se o usuário pedir opinião sobre inclusão de item no orçamento, classificar a resposta em uma destas categorias:
-- pode incluir com base atual
-- pode considerar, mas precisa validar
-- não há base suficiente para incluir
-
-4. Se o usuário pedir reescrita, entregar texto técnico objetivo, sem linguagem de IA e sem inventar nada.
-
-5. Se houver conflito entre os dados, lembrar o conflito e informar qual evidência pesa mais.
-
-6. PEÇAS DE DESGASTE NATURAL — SEMPRE verificar e sugerir ao usuário:
-- Sempre perguntar ou sugerir a verificação de peças que sofrem desgaste natural conforme o tipo de equipamento, incluindo:
-  - Mangueiras de água
-  - Mangueiras de gás
-  - Filtros internos
-  - Filtro de parede (se o equipamento recebe água)
-  - Vedações, gaxetas e juntas
-- Se houver presença de calcário, incrustação ou sujidade nas fotos ou descrição:
-  - Sugerir inclusão de filtro de água ou troca do filtro existente
-  - Sinalizar possível necessidade de limpeza química ou descalcificação
-- A sugestão deve ser contextualizada ao equipamento identificado na OS
-
-7. USO INADEQUADO DO EQUIPAMENTO — Se houver evidência de uso incorreto (resíduos de alimentos como sementes, cascas, ossos ou objetos estranhos em locais indevidos, entupimentos por mal uso, danos por operação incorreta):
-- Recomendar treinamento operacional para o cliente sobre utilização correta conforme manual do fabricante
-- Se o equipamento possuir cestos filtrantes, filtros ou telas de retenção, destacar a importância do uso correto e verificar estado de conservação
-- Classificar como serviço adicional recomendado
-
-FORMATO DE RESPOSTA
-Responder de forma direta.
-Quando útil, usar:
-- Resposta objetiva
-- Base (indicar se veio de: evidência visual, evidência textual, política WeDo, material interno 📂, pesquisa web 🌐, manual/POP)
-- Risco de seguir sem validar
-- Próximo passo
-
-Se houver dados de PESQUISA WEB no contexto:
-- Use-os para fundamentar sua resposta com dados reais
-- Cite as fontes relevantes com [fonte]
-- Se a web contradizer a análise, explique a divergência
-- Marque informações vindas da web com 🌐
-
-Se houver dados de MATERIAIS INTERNOS no contexto:
-- Use-os para fundamentar sua resposta
-- Marque informações vindas dos materiais internos com 📂
-- OBRIGATÓRIO: abrir a resposta com "📂 Materiais internos consultados:" e listar os arquivos internos recebidos no contexto
-- OBRIGATÓRIO: incluir pelo menos 1 orientação técnica baseada em material interno 📂 (quando houver conteúdo interno)
-- Se não houver material interno carregado, declarar explicitamente: "Não encontrei material interno útil nesta consulta."
-
-TOM
-Técnico, direto, sem floreio. Potente e fundamentado.`;
-
-      // Build context message with photos support
-      const userContentParts: any[] = [];
-      let contextText = `CONTEXTO DO ORÇAMENTO ATUAL\n\nOS:\n`;
+      // Build context from analysis + OS data (lightweight)
+      let contextText = `CONTEXTO DO ORÇAMENTO\n\nOS:\n`;
       if (context) {
         contextText += `- Cliente: ${context.cliente || "N/A"}\n`;
         contextText += `- Técnico: ${context.tecnico || "N/A"}\n`;
-        contextText += `- Data: ${context.data_tarefa || "N/A"}\n`;
         contextText += `- Equipamento: ${context.equipamento || "N/A"}\n`;
-        contextText += `- ID / Série: ${context.equipamento_id || "N/A"}\n`;
+        contextText += `- ID/Série: ${context.equipamento_id || "N/A"}\n`;
         contextText += `- Orientação: ${context.orientacao || "N/A"}\n`;
         contextText += `- Peças: ${context.pecas || "N/A"}\n`;
         contextText += `- Serviços: ${context.servicos || "N/A"}\n`;
         contextText += `- Observações: ${context.observacoes || "N/A"}\n`;
-        if (context.todas_respostas) contextText += `- Questionário:\n${context.todas_respostas}\n`;
       }
 
       if (analysis) {
         contextText += `\nANÁLISE TÉCNICA JÁ GERADA:\n${analysis}\n`;
       }
 
-      // *** PARALLEL: Internal docs + Perplexity web search ***
-      const equipForChat = context?.equipamento || context?.descricao || "";
-      const asksForInternalSource = /manual|arquivo|pdf|fonte|material|base|consult(a|ou)|documento/i.test(userMessage || "");
-      const fastDocsOptions = { skipOcr: true, maxDocs: 3, timeout: 12000 };
-      const deepDocsOptions = { skipOcr: false, maxDocs: 2, timeout: 22000 };
-      const primaryDocsOptions = asksForInternalSource ? deepDocsOptions : fastDocsOptions;
+      // Check if user asks for source/manual/deep info — only then fetch external data
+      const needsExternalData = /manual|arquivo|pdf|fonte|material|especificação|especificacao|fabricante|datasheet|catalogo|catálogo/i.test(userMessage || "");
 
-      console.log(
-        `[genspark-ai] [chat] Buscando docs internos (${asksForInternalSource ? "modo fonte/manual" : "modo leve"}) + web para: "${equipForChat.substring(0, 80)}"`
-      );
+      if (needsExternalData) {
+        console.log(`[genspark-ai] [chat] Pergunta pede fonte externa — buscando docs/web`);
+        const equipForChat = context?.equipamento || "";
+        const [chatDocs, chatWeb] = await Promise.all([
+          fetchInternalTechDocs(equipForChat, equipForChat, { skipOcr: true, maxDocs: 2, timeout: 12000 }),
+          searchForChatQuestion(userMessage, equipForChat, context?.orientacao || "", analysis || ""),
+        ]);
 
-      const [initialInternalDocs, chatWebResearch] = await Promise.all([
-        fetchInternalTechDocs(equipForChat, equipForChat, primaryDocsOptions),
-        searchForChatQuestion(
-          userMessage,
-          equipForChat,
-          context?.orientacao || "",
-          analysis || ""
-        ),
-      ]);
-
-      let chatInternalDocs = initialInternalDocs;
-
-      // Fallback: se modo leve não trouxe material, força tentativa profunda com OCR
-      if (!asksForInternalSource && chatInternalDocs.docs_count === 0 && equipForChat.trim()) {
-        console.log("[genspark-ai] [chat] Fallback docs internos: modo profundo com OCR");
-        const fallbackInternalDocs = await fetchInternalTechDocs(equipForChat, equipForChat, deepDocsOptions);
-        if (
-          fallbackInternalDocs.docs_count > chatInternalDocs.docs_count ||
-          (!!chatInternalDocs.error && !fallbackInternalDocs.error)
-        ) {
-          chatInternalDocs = fallbackInternalDocs;
+        if (chatDocs.docs_count > 0) {
+          contextText += buildInternalDocsBlock(chatDocs);
+          contextText += `\nARQUIVOS CONSULTADOS: ${chatDocs.docs_titles.slice(0, 5).join(" | ")}\n`;
         }
-      }
-
-      // Internal docs block (sempre incluir para o modelo saber se consultou ou não)
-      contextText += buildInternalDocsBlock(chatInternalDocs);
-      if (chatInternalDocs.docs_count > 0 && chatInternalDocs.docs_titles.length > 0) {
-        contextText += `\nARQUIVOS INTERNOS CONSULTADOS: ${chatInternalDocs.docs_titles.slice(0, 8).join(" | ")}\n`;
-        contextText += "INSTRUÇÃO: ao responder, cite explicitamente os arquivos internos usados.";
-      }
-
-      // Web research block
-      if (chatWebResearch) {
-        contextText += chatWebResearch;
-        contextText += `\n\nINSTRUÇÃO: Você RECEBEU dados de pesquisa web acima. Use-os para fundamentar sua resposta com dados reais. Cite as fontes quando relevante. Se a pesquisa web contradizer algo, explique a divergência.`;
+        if (chatWeb) {
+          contextText += chatWeb;
+        }
       }
 
       contextText += `\nPERGUNTA DO USUÁRIO:\n${userMessage}`;
 
-      // Add photos if available
-      const hasFotos = context?.fotos?.length > 0;
-      if (hasFotos) {
-        contextText += `\n\nFOTOS DA OS: ${filterImageUrls(context.fotos).length} foto(s) anexadas. Use-as para responder com mais precisão.`;
-      }
-
-      messages.push({ role: "system", content: systemPrompt });
-
+      const messages: any[] = [{ role: "system", content: systemPrompt }];
       if (chatHistory && Array.isArray(chatHistory)) {
         for (const msg of chatHistory) {
           messages.push({ role: msg.role, content: msg.content });
         }
       }
+      messages.push({ role: "user", content: contextText });
 
-      userContentParts.push({ type: "text", text: contextText });
-      if (hasFotos) {
-        await addPhotosToContent(userContentParts, context.fotos, 6, "low");
+      console.log(`[genspark-ai] [chat] model=${CHAT_MODEL}, hasAnalysis=${!!analysis}, needsExternalData=${needsExternalData}, msgLen=${userMessage?.length}`);
+
+      const aiResult = await callAI(messages, CHAT_MODEL, 3000);
+      if (aiResult.error) {
+        return new Response(JSON.stringify({ error: aiResult.error }), {
+          status: aiResult.status || 500,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
       }
-      messages.push({ role: "user", content: userContentParts });
 
-      console.log(`[genspark-ai] [chat] cliente=${context?.cliente}, hasAnalysis=${!!analysis}, fotos=${context?.fotos?.length || 0}, asksSource=${asksForInternalSource}, internalDocs=${chatInternalDocs.docs_count}(${chatInternalDocs.elapsed_ms}ms, error=${chatInternalDocs.error || "none"}), webResearch=${!!chatWebResearch}, msgLength=${userMessage?.length}`);
-
-    } else {
-      throw new Error("Ação inválida. Use 'improve', 'analyze', 'chat' ou 'internal_docs_test'.");
-    }
-
-    // Check if any message has images
-    const hasImages = messages.some((m: any) => Array.isArray(m.content) && m.content.some((p: any) => p.type === "image_url"));
-    if (hasImages) model = "gpt-4o";
-
-    // Retry with exponential backoff for rate limits (429)
-    const MAX_RETRIES = 3;
-    let response: Response | null = null;
-    for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
-      response = await fetch("https://api.openai.com/v1/chat/completions", {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${OPENAI_API_KEY}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          model,
-          messages,
-          temperature: 0.7,
-          max_tokens: action === "analyze" ? 6000 : 4000,
-        }),
-      });
-
-      if (response.status !== 429 || attempt === MAX_RETRIES) break;
-
-      // Parse retry-after header or use exponential backoff
-      const retryAfter = response.headers.get("retry-after");
-      const waitMs = retryAfter ? parseInt(retryAfter, 10) * 1000 : Math.min(1000 * Math.pow(2, attempt), 30000);
-      console.warn(`[genspark-ai] OpenAI 429 — tentativa ${attempt + 1}/${MAX_RETRIES}, aguardando ${waitMs}ms...`);
-      await response.text(); // consume body
-      await new Promise((r) => setTimeout(r, waitMs));
-    }
-
-    if (!response || !response.ok) {
-      const errText = response ? await response.text() : "no response";
-      const status = response?.status || 500;
-      console.error("OpenAI API error:", status, errText);
-      const userMsg = status === 429
-        ? "Rate limit da OpenAI atingido. Tente novamente em alguns segundos."
-        : `Erro na API OpenAI: ${status}`;
-      return new Response(JSON.stringify({ error: userMsg }), {
-        status: status === 429 ? 429 : 500,
+      return new Response(JSON.stringify({ result: aiResult.result }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
-    const data = await response.json();
-    const result = data.choices?.[0]?.message?.content || "";
+    // =====================================================================
+    // 4) ANÁLISE APROFUNDADA — budget_deep_analysis_agent
+    // Mesmo modelo do analyze, mas SEMPRE modo expandido
+    // Ativado por pedido explícito do usuário
+    // =====================================================================
+    if (action === "deep_analyze") {
+      // Redireciona para analyze com flag forceExpand
+      const { context } = body as { context: AnalyzeContext };
+      const DEEP_MODEL = "openai/gpt-5.2";
 
-    return new Response(JSON.stringify({ result }), {
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
+      const equipForSearch = context?.equipamento || context?.descricao || "";
+      const equipStr = cleanEquipmentString(equipForSearch);
+      const { manufacturer: mfrTerms, modelFamily } = await identifyManufacturerAndModel(equipStr);
+      const manufacturerIdentified = mfrTerms.length > 0 ? mfrTerms.join(" ") : null;
+
+      console.log(`[genspark-ai] [deep_analyze] MODO EXPANDIDO FORÇADO`);
+
+      const [internalDocs, webResearch] = await Promise.all([
+        fetchInternalTechDocs(equipForSearch, equipForSearch),
+        searchEquipmentOnWeb(equipForSearch, context?.descricao || "", context?.orientacao || "", context?.pecas || ""),
+      ]);
+
+      // Reuse same system prompt as analyze
+      const systemPrompt = `Você é o copiloto de triagem técnica para orçamento da WeDo operando em MODO APROFUNDADO.
+
+MISSÃO: Análise técnica completa com consulta a documentos internos e pesquisa web.
+Use TODAS as fontes disponíveis para fundamentar o diagnóstico.
+
+[Mesmo formato de saída da análise padrão, mas com permissão para expandir além de 6 itens se necessário e incluir mais detalhes técnicos das fontes externas.]
+
+REGRAS: Mesmas da análise padrão — NÃO inventar, separar fato/inferência/hipótese, sem preços.
+
+FORMATO: Mesmo formato de 11 seções da análise padrão.
+
+TOM: Telegráfico, técnico, fundamentado.`;
+
+      const userContentParts: any[] = [];
+      let textPrompt = `ANÁLISE APROFUNDADA — Consulta completa a docs internos e web.\n\nDADOS DA OS\n`;
+      if (context) {
+        textPrompt += `- Cliente: ${context.cliente || "N/A"}\n`;
+        textPrompt += `- Equipamento: ${context.equipamento || "N/A"}\n`;
+        textPrompt += `- Marca: ${manufacturerIdentified || "Não identificada"}\n`;
+        textPrompt += `- Modelo: ${modelFamily || "Não identificado"}\n`;
+        textPrompt += `- Orientação: ${context.orientacao || "N/A"}\n`;
+        textPrompt += `- Peças: ${context.pecas || "N/A"}\n`;
+        textPrompt += `- Serviços: ${context.servicos || "N/A"}\n`;
+        textPrompt += `- Observações: ${context.observacoes || "N/A"}\n`;
+        if (context.todas_respostas) textPrompt += `- Questionário:\n${context.todas_respostas}\n`;
+      }
+
+      if (internalDocs) textPrompt += buildInternalDocsBlock(internalDocs);
+      if (webResearch) textPrompt += buildWebBlock(webResearch);
+
+      const hasFotos = context?.fotos?.length > 0;
+      textPrompt += `\nFOTOS: ${hasFotos ? `${filterImageUrls(context!.fotos!).length} foto(s)` : "Não fornecidas"}\n`;
+
+      userContentParts.push({ type: "text", text: textPrompt });
+      if (hasFotos) {
+        await addPhotosToContent(userContentParts, context!.fotos!, 6, "high");
+      }
+
+      const messages = [
+        { role: "system", content: systemPrompt },
+        { role: "user", content: userContentParts },
+      ];
+
+      const aiResult = await callAI(messages, DEEP_MODEL, 6000);
+      if (aiResult.error) {
+        return new Response(JSON.stringify({ error: aiResult.error }), {
+          status: aiResult.status || 500,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      return new Response(JSON.stringify({ result: aiResult.result, mode: "deep", docs: internalDocs?.docs_count || 0, web: !!webResearch }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    throw new Error("Ação inválida. Use 'improve', 'analyze', 'chat', 'deep_analyze' ou 'internal_docs_test'.");
+
   } catch (e) {
     console.error("genspark-ai error:", e);
     return new Response(JSON.stringify({ error: e instanceof Error ? e.message : "Erro desconhecido" }), {
