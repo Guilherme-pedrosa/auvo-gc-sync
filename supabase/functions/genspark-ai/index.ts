@@ -1405,7 +1405,7 @@ TOM: Técnico, direto, sem floreio.`;
       console.log(`[genspark-ai] [chat] model=${CHAT_MODEL}, hasAnalysis=${!!analysis}, needsExternalData=${needsExternalData}, msgLen=${userMessage?.length}`);
 
       const aiResult = await callAI(messages, CHAT_MODEL, 1800, {
-        temperature: 0.2,
+        temperature: 0.2, action: "chat",
       });
       if (aiResult.error) {
         return buildAiErrorResponse(aiResult);
