@@ -818,9 +818,9 @@ async function callAI(
 
   // Normaliza modelo — envia direto para a API OpenAI
   let openaiModel = model;
-  if (model === "openai/gpt-5.2" || model === "openai/gpt-5") openaiModel = "gpt-5.4-nano";
+  if (model === "openai/gpt-5.2" || model === "openai/gpt-5") openaiModel = "gpt-4o";
   else if (model === "openai/gpt-5-mini") openaiModel = "gpt-4o-mini";
-  else if (model.startsWith("openai/")) openaiModel = "gpt-5.4-nano";
+  else if (model.startsWith("openai/")) openaiModel = "gpt-4o";
   else if (model.startsWith("google/")) openaiModel = "gpt-4o-mini";
 
   // Log key prefix for diagnostic (safe — only first 8 chars)
@@ -997,15 +997,15 @@ serve(async (req) => {
         status: t1.status || null,
       });
 
-      // Test 2: gpt-5.4-nano (main model used by analyze)
+      // Test 2: gpt-4o (main model used by analyze)
       const t2 = await callAI(
         [{ role: "user", content: "Responda apenas: OK" }],
-        "openai/gpt-5.2", // maps to gpt-5.4-nano
+        "openai/gpt-5.2", // maps to gpt-4o
         10,
-        { temperature: 0, action: "sanity_test_nano" },
+        { temperature: 0, action: "sanity_test_4o" },
       );
       tests.push({
-        test: "gpt-5.4-nano",
+        test: "gpt-4o",
         ok: !t2.error,
         result: t2.result?.substring(0, 50),
         error: t2.error || null,
@@ -1022,9 +1022,9 @@ serve(async (req) => {
         keyPrefix: keyPrefix.substring(0, 8) + "...",
         tests,
         diagnosis: allPassed
-          ? "Key válida, ambos os modelos funcionam. Problema é payload/contexto do analyze."
+          ? "Key válida, ambos os modelos funcionam (gpt-4o-mini + gpt-4o)."
           : tests[0]?.ok && !tests[1]?.ok
-            ? `Key funciona com gpt-4o-mini mas NÃO com gpt-5.4-nano. Erro: ${tests[1]?.errorCode}. Pode ser modelo indisponível para esta key/org.`
+            ? `Key funciona com gpt-4o-mini mas NÃO com gpt-4o. Erro: ${tests[1]?.errorCode}.`
             : `Nenhum modelo funcionou. Erro: ${tests[0]?.errorCode}. Provável problema de key/quota/billing.`,
       }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
@@ -1160,6 +1160,7 @@ P4) Componente com fixação sendo trocado → fixadores daquele componente
 P5) Peça de desgaste trocada → verificar peças de desgaste do MESMO subsistema
 P6) Calcário/sujidade mineral evidenciada → filtro de água, descalcificação
 P7) Uso inadequado relatado → treinamento operacional
+P8) Motor com troca de rolamento → OBRIGATÓRIO sugerir retentor E verificação de eixo como itens separados. Rolamentos e retentores NUNCA devem ser agrupados em "kit" ou "conjunto genérico" — listar cada um como linha individual com especificação.
 REGRA: Antes de aplicar política, perguntar "Este equipamento TEM esse componente?"
 
 FORMATO DE SAÍDA OBRIGATÓRIO:
