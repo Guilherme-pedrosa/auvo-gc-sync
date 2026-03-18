@@ -864,7 +864,6 @@ FORMATO: Retorne apenas o texto melhorado, sem explicação.`;
 
       const improveMaxTokens = model === "openai/gpt-5" ? 3200 : 2200;
       const aiResult = await callAI(messages, model, improveMaxTokens, {
-        fallbackModel: "openai/gpt-5-mini",
         temperature: 0.25,
       });
       if (aiResult.error) {
