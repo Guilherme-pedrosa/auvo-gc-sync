@@ -663,21 +663,25 @@ export default function BudgetKanbanPage() {
 
     if (!normalizedTaskId || (!sanitizedNome && !sanitizedId)) return;
 
-    // Persist to tarefas_central
-    supabase
-      .from("tarefas_central")
-      .update({
-        equipamento_nome: sanitizedNome || null,
-        equipamento_id_serie: sanitizedId || null,
-      } as any)
-      .eq("auvo_task_id", normalizedTaskId)
+    // Persist via backend function (service role) to bypass RLS on tarefas_central
+    supabase.functions
+      .invoke("auvo-task-update", {
+        body: {
+          action: "persist-central",
+          row: {
+            auvo_task_id: normalizedTaskId,
+            equipamento_nome: sanitizedNome || null,
+            equipamento_id_serie: sanitizedId || null,
+          },
+        },
+      })
       .then(({ error }) => {
         if (error) {
-          console.warn("[budget-kanban] Falha ao persistir equipamento em tarefas_central:", error);
+          console.warn("[budget-kanban] Falha ao persistir equipamento em tarefas_central via função:", error);
         }
       });
 
-    // Also update kanban_orcamentos_cache.dados to avoid re-fetching on next load
+    // Also update kanban_orcamentos_cache.dados so UI reloads with equipment immediately
     supabase
       .from("kanban_orcamentos_cache" as any)
       .select("dados")
@@ -685,7 +689,11 @@ export default function BudgetKanbanPage() {
       .maybeSingle()
       .then(({ data: cacheRow, error: cacheErr }) => {
         if (cacheErr || !cacheRow) return;
-        const updatedDados = { ...(cacheRow as any).dados, equipamento_nome: sanitizedNome || null, equipamento_id_serie: sanitizedId || null };
+        const updatedDados = {
+          ...(cacheRow as any).dados,
+          equipamento_nome: sanitizedNome || null,
+          equipamento_id_serie: sanitizedId || null,
+        };
         supabase
           .from("kanban_orcamentos_cache" as any)
           .update({ dados: updatedDados, atualizado_em: new Date().toISOString() } as any)
