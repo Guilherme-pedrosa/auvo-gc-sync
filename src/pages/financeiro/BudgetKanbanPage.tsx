@@ -2047,34 +2047,8 @@ export default function BudgetKanbanPage() {
                     <div className="space-y-1">
                       <div className="flex items-center justify-between">
                         <h4 className="font-semibold text-sm text-foreground">⏱️ Tempo para Execução</h4>
-                        <div className="flex items-center gap-1">
-                          <button
-                            type="button"
-                            className="text-purple-500 hover:text-purple-700 disabled:opacity-50"
-                            title="Melhorar com IA"
-                            disabled={aiLoadingSection === "horas"}
-                            onClick={() => handleAiImprove("horas")}
-                          >
-                            {aiLoadingSection === "horas" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
-                          </button>
-                          <button type="button" className="text-muted-foreground hover:text-foreground" onClick={() => { setEditingSection("horas"); setEditValue(answer); }}>
-                            <Pencil className="h-3.5 w-3.5" />
-                          </button>
-                        </div>
                       </div>
-                      {editingSection === "horas" ? (
-                        <div className="space-y-1.5">
-                          <Textarea value={editValue} onChange={(e) => setEditValue(e.target.value)} className="text-sm min-h-[60px]" autoFocus />
-                          <div className="flex gap-1.5">
-                            <Button size="sm" className="h-7 text-xs gap-1" disabled={isSavingField} onClick={() => handleSaveFieldEdit("horas", editValue)}>
-                              <Save className="h-3 w-3" />{isSavingField ? "Salvando..." : "Salvar"}
-                            </Button>
-                            <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => { setEditingSection(null); setEditValue(""); }}>Cancelar</Button>
-                          </div>
-                        </div>
-                      ) : (
-                        <p className="text-sm text-muted-foreground bg-muted/50 p-3 rounded-md">{answer}</p>
-                      )}
+                      <p className="text-sm text-muted-foreground bg-muted/50 p-3 rounded-md">{answer}</p>
                     </div>
                   );
                 })()}
