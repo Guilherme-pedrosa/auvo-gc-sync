@@ -912,7 +912,7 @@ Direto, técnico, útil para orçamento.`;
 
       if (tipoCampo === "OBSERVAÇÕES" && context?.fotos?.length > 0) {
         await addPhotosToContent(userContentParts, context.fotos, 4, "low");
-        model = "gpt-4o";
+        model = "google/gemini-2.5-pro";
       }
 
       messages.push({ role: "system", content: systemPrompt });
