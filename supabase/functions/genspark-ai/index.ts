@@ -650,20 +650,21 @@ async function searchEquipmentOnWeb(equipamento: string, descricao: string, orie
     return "";
   }
 
-  const searchQuery = `Equipamento industrial/comercial: "${equipClean || descClean}".
-Problema reportado: ${oriClean || "manutenção geral"}.
-Peças mencionadas: ${pecasClean || "não informadas"}.
+  const searchQuery = `Commercial/industrial kitchen equipment: "${equipClean || descClean}".
+Reported issue: ${oriClean || "general maintenance"}.
+Parts mentioned: ${pecasClean || "none specified"}.
 
-Preciso saber:
-1. Especificações técnicas deste equipamento (componentes principais, subsistemas)
-2. Problemas mais comuns e causas raiz típicas
-3. Lista de peças de desgaste e consumíveis específicos deste modelo
-4. Pontos críticos de manutenção preventiva
-5. Insumos e ferramentas específicas para este tipo de equipamento`;
+I need:
+1. Technical specifications of this equipment (main components, subsystems)
+2. Most common problems and typical root causes
+3. Wear parts and consumables list specific to this model
+4. Preventive maintenance critical points
+5. Specific supplies and tools for this equipment type
+6. Forum discussions, field experience, and technician tips about this model`;
 
   const { answer, citations } = await searchPerplexity(
     searchQuery,
-    "Você é um engenheiro de manutenção industrial. Pesquise em fontes técnicas internacionais (manuais oficiais, service manuals, documentação de fabricantes globais), sem restringir ao Brasil. Responda em português brasileiro de forma técnica e objetiva. Foque em dados concretos: especificações, peças, componentes e problemas comuns. Sem floreios."
+    "You are a senior industrial kitchen maintenance engineer. Search globally across manufacturer documentation, service manuals, technical forums (e.g. appliance repair forums, HVAC-Talk, FixYa, Reddit r/appliancerepair, iFixit), parts catalogs, and OEM websites. Include information from any country/language — do not restrict to Brazil. ALWAYS respond in Brazilian Portuguese (pt-BR). Be technical, precise, and cite sources. Include part numbers when available."
   );
 
   if (!answer) return "";
