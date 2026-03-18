@@ -314,9 +314,10 @@ async function fetchGcOrcamentos(gcHeaders: Record<string, string>): Promise<{ b
 
 // Fetch ALL GC OS (no date filter)
 // Returns { byTaskId, byCodigo } — byCodigo is a reverse map for secondary linkage
-async function fetchGcOs(gcHeaders: Record<string, string>): Promise<{ byTaskId: Record<string, any>; byCodigo: Record<string, any> }> {
+async function fetchGcOs(gcHeaders: Record<string, string>): Promise<{ byTaskId: Record<string, any>; byCodigo: Record<string, any>; byOrcNumero: Record<string, any> }> {
   const map: Record<string, any> = {};
   const byCodigo: Record<string, any> = {};
+  const byOrcNumero: Record<string, any> = {}; // attribute 81831 "NÚMERO ORÇAMENTO" → OS
   let page = 1;
   let totalPages = 1;
   const MAX_PAGES = 50;
@@ -353,8 +354,20 @@ async function fetchGcOs(gcHeaders: Record<string, string>): Promise<{ byTaskId:
       const codigo = String(os.codigo || "").trim();
       if (codigo) byCodigo[codigo] = osPayload;
 
+      // Reverse map by NÚMERO ORÇAMENTO (attribute 81831) → OS
+      const attrOrcNum = atributos.find((a: any) => {
+        const nested = a?.atributo || a;
+        return String(nested.atributo_id || nested.id || "") === "81831";
+      });
+      if (attrOrcNum) {
+        const nested = attrOrcNum?.atributo || attrOrcNum;
+        const orcNum = String(nested?.conteudo || nested?.valor || "").trim();
+        if (orcNum && /^\d+$/.test(orcNum)) {
+          byOrcNumero[orcNum] = osPayload;
+        }
+      }
+
       // 73343 = tarefa OS, 73344 = tarefa execução
-      // Prioridade para 73343 quando ambos existirem
       for (const attrId of [GC_ATRIBUTO_TAREFA_EXEC, GC_ATRIBUTO_TAREFA_OS]) {
         const attrTarefa = atributos.find((a: any) => {
           const nested = a?.atributo || a;
@@ -377,7 +390,7 @@ async function fetchGcOs(gcHeaders: Record<string, string>): Promise<{ byTaskId:
     console.log(`[central-sync] GC OS page ${page}/${totalPages}: ${records.length} registros, ${Object.keys(map).length} com tarefa`);
     page++;
   }
-  return { byTaskId: map, byCodigo };
+  return { byTaskId: map, byCodigo, byOrcNumero };
 }
 
 Deno.serve(async (req) => {
