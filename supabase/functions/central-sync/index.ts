@@ -481,14 +481,77 @@ Deno.serve(async (req) => {
       console.log(`[central-sync] Snapshots obtidos: ${taskSnapshotById.size}/${candidateTaskIds.length}`);
     }
 
+    // Secondary linkage: parse orientacao for OS/Orçamento/Tarefa references
+    function secondaryLinkage(orientation: string, taskId: string): { os: any | null; orc: any | null } {
+      let os: any = null;
+      let orc: any = null;
+      if (!orientation) return { os, orc };
+
+      // Try "TAREFA OS: XXXXX" or "TAREFA OS XXXXX" → look up in gcOsMap by referenced taskId
+      const tarefaOsMatch = orientation.match(/TAREFA\s+OS[:\s]+(\d{5,})/i);
+      if (tarefaOsMatch) {
+        const refTaskId = tarefaOsMatch[1];
+        if (refTaskId !== taskId && gcOsMap[refTaskId]) {
+          os = gcOsMap[refTaskId];
+        }
+      }
+
+      // Try "OS N° XXXX" or "OS: XXXX" or "OS Nº XXXX" → look up by OS código
+      if (!os) {
+        const osNumMatch = orientation.match(/OS\s*(?:N[°º]|:)\s*(\d{3,})/i);
+        if (osNumMatch && gcOsByCodigo[osNumMatch[1]]) {
+          os = gcOsByCodigo[osNumMatch[1]];
+        }
+      }
+
+      // Try "OR N° XXXX" or "Orçamento #XXXX" or "OR: XXXX" → look up by orçamento código
+      if (!orc) {
+        const orcMatch = orientation.match(/(?:OR|Or[çc]amento)\s*(?:N[°º]|#|:)\s*(\d{3,})/i);
+        if (orcMatch && gcOrcByCodigo[orcMatch[1]]) {
+          orc = gcOrcByCodigo[orcMatch[1]];
+        }
+      }
+
+      // Also try "OS ref. Orçamento #XXXX" pattern
+      if (!orc) {
+        const orcRefMatch = orientation.match(/ref\.\s*Or[çc]amento\s*#?\s*(\d{3,})/i);
+        if (orcRefMatch && gcOrcByCodigo[orcRefMatch[1]]) {
+          orc = gcOrcByCodigo[orcRefMatch[1]];
+        }
+      }
+
+      return { os, orc };
+    }
+
     // Build rows for upsert
+    let secondaryMatches = 0;
     const rows: any[] = [];
     for (const task of auvoTasks) {
       const taskId = String(task.taskID || "");
       if (!taskId) continue;
 
-      const gcOrc = gcOrcMap[taskId] || null;
-      const gcOs = gcOsMap[taskId] || null;
+      let gcOrc = gcOrcMap[taskId] || null;
+      let gcOs = gcOsMap[taskId] || null;
+
+      // Secondary linkage: if no direct match, parse orientacao for references
+      if (!gcOs || !gcOrc) {
+        const orientation = String(task.orientation || "");
+        const snapshot = taskSnapshotById.get(taskId);
+        const snapshotOrientation = String(snapshot?.orientation || "");
+        const fullOrientation = snapshotOrientation || orientation;
+
+        if (fullOrientation) {
+          const secondary = secondaryLinkage(fullOrientation, taskId);
+          if (!gcOs && secondary.os) {
+            gcOs = secondary.os;
+            secondaryMatches++;
+          }
+          if (!gcOrc && secondary.orc) {
+            gcOrc = secondary.orc;
+            if (!secondary.os) secondaryMatches++;
+          }
+        }
+      }
 
       // Customer resolution chain
       const desc = String(task.customerDescription || "").trim();
