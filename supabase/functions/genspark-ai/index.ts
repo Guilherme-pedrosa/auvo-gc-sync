@@ -1174,6 +1174,9 @@ Se houver dados de PESQUISA WEB no contexto:
 Se houver dados de MATERIAIS INTERNOS no contexto:
 - Use-os para fundamentar sua resposta
 - Marque informações vindas dos materiais internos com 📂
+- OBRIGATÓRIO: abrir a resposta com "📂 Materiais internos consultados:" e listar os arquivos internos recebidos no contexto
+- OBRIGATÓRIO: incluir pelo menos 1 orientação técnica baseada em material interno 📂 (quando houver conteúdo interno)
+- Se não houver material interno carregado, declarar explicitamente: "Não encontrei material interno útil nesta consulta."
 
 TOM
 Técnico, direto, sem floreio. Potente e fundamentado.`;
