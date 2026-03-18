@@ -1131,11 +1131,23 @@ export default function BudgetKanbanPage() {
           chatHistory: chatMessages,
         },
       });
-      if (error) throw error;
-      if (result?.error) throw new Error(result.error);
+
+      if (error || result?.error || result?.errorCode) {
+        if (isQuotaError(result, error)) {
+          toast.warning("⚠️ Chat IA indisponível: quota da OpenAI esgotada.");
+          setChatMessages(prev => [...prev, { role: "assistant", content: "⚠️ Chat indisponível no momento — quota da OpenAI esgotada. Verifique o billing da conta OpenAI." }]);
+          return;
+        }
+        const msg = result?.message || result?.error || error?.message || "Erro desconhecido";
+        toast.error(`Erro no chat: ${msg}`);
+        setChatMessages(prev => [...prev, { role: "assistant", content: `Erro: ${msg}` }]);
+        return;
+      }
+
       setChatMessages(prev => [...prev, { role: "assistant", content: result?.result || "Sem resposta" }]);
     } catch (e: any) {
-      toast.error("Erro no chat: " + (e?.message || "Tente novamente"));
+      console.error("[BudgetKanban] Chat error:", e);
+      toast.error("Erro no chat IA.");
       setChatMessages(prev => [...prev, { role: "assistant", content: "Erro ao processar. Tente novamente." }]);
     } finally {
       setIsChatLoading(false);
