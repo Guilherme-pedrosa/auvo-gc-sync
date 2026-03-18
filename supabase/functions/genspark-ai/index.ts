@@ -230,11 +230,19 @@ async function fetchInternalTechDocs(query?: string, equipamento?: string): Prom
         await processFile(file, "");
       }
 
-      // Scan matched subfolders
-      for (const folder of foldersToScan) {
+      // List all matched subfolders IN PARALLEL for speed
+      const folderListings = await Promise.all(
+        foldersToScan.map(async (folder: any) => {
+          console.log(`[genspark-ai] [internal-docs] Listando subpasta: ${folder.name} (score=${folder.score})`);
+          const subFiles = await listFolder(folder.id);
+          return { folder, subFiles };
+        })
+      );
+
+      // Process files from all folders
+      for (const { folder, subFiles } of folderListings) {
         if (limitReached()) break;
-        console.log(`[genspark-ai] [internal-docs] Entrando: ${folder.name} (score=${folder.score})`);
-        const subFiles = await listFolder(folder.id);
+        console.log(`[genspark-ai] [internal-docs] Processando: ${folder.name} (${subFiles.length} arquivos)`);
 
         const scoredFiles = subFiles
           .filter((f: any) => f.mimeType !== "application/vnd.google-apps.folder")
