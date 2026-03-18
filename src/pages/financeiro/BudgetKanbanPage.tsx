@@ -998,9 +998,10 @@ export default function BudgetKanbanPage() {
     setIsAnalyzing(true);
     setAiAnalysis(null);
     try {
-      const fotos = selectedCard.questionario_respostas
+      const fotosBrutas = selectedCard.questionario_respostas
         .filter((r) => r.reply && r.reply.startsWith("http"))
         .map((r) => r.reply);
+      const fotos = fotosBrutas.slice(0, 6);
 
       const todasRespostas = selectedCard.questionario_respostas
         .filter((r) => r.reply && !r.reply.startsWith("http"))
