@@ -169,14 +169,28 @@ async function fetchInternalTechDocs(query?: string, equipamento?: string): Prom
   result.manufacturer_identified = manufacturerTerms.length > 0 ? manufacturerTerms.join(" ") : null;
 
   // Build filter terms: manufacturer terms FIRST (higher priority), then equipment terms
+  // Strip common equipment function words that pollute search (lava louças, forno, fogão, etc.)
+  const functionWords = [
+    "lava", "louça", "louças", "lavalouças", "forno", "fogão", "fogao",
+    "geladeira", "freezer", "refrigerador", "máquina", "maquina",
+    "equipamento", "industrial", "comercial", "profissional",
+    "elétrico", "eletrico", "elétrica", "eletrica", "gas", "gás",
+    "mesa", "balcão", "balcao", "bancada", "piso", "parede",
+    "processador", "cortador", "moedor", "misturador", "batedeira",
+    "chapa", "grill", "coifa", "exaustor", "pass", "through",
+  ];
+
   const equipTerms = equipStr
     .toLowerCase()
     .split(/[\s\-_,./]+/)
-    .filter((t: string) => t.length > 2);
+    .filter((t: string) => t.length > 2)
+    .filter((t: string) => !functionWords.includes(t));
 
   // Combine manufacturer + equipment terms, dedup
   const allTermsSet = new Set([...manufacturerTerms, ...equipTerms]);
   const filterTerms = Array.from(allTermsSet);
+
+  console.log(`[genspark-ai] [internal-docs] Termos de busca (sem palavras genéricas): [${filterTerms.join(",")}]`);
 
   console.log(`[genspark-ai] [internal-docs] Iniciando busca. equipamento="${equipStr.substring(0, 80)}", fabricante="${result.manufacturer_identified || "não identificado"}", filtros=[${filterTerms.join(",")}]`);
 
