@@ -10,6 +10,7 @@ const GC_BASE_URL = "https://api.gestaoclick.com";
 const QUESTIONNAIRE_ID = "216040";
 const GC_ATRIBUTO_TAREFA_ORC = "73341";
 const GC_ATRIBUTO_TAREFA_OS = "73343";
+const GC_ATRIBUTO_TAREFA_EXEC = "73344";
 const MIN_DELAY_MS = 200;
 const FUTURE_DAYS_WINDOW = 30;
 let lastAuvoCall = 0;
@@ -325,26 +326,36 @@ async function fetchGcOs(gcHeaders: Record<string, string>): Promise<Record<stri
 
     for (const os of records) {
       const atributos: any[] = os.atributos || [];
-      const attrTarefa = atributos.find((a: any) => {
-        const nested = a?.atributo || a;
-        return String(nested.atributo_id || nested.id || "") === GC_ATRIBUTO_TAREFA_OS;
-      });
-      if (attrTarefa) {
+      const osPayload = {
+        gc_os_id: String(os.id),
+        gc_os_codigo: String(os.codigo || ""),
+        gc_os_cliente: String(os.nome_cliente || ""),
+        gc_os_situacao: String(os.nome_situacao || ""),
+        gc_os_situacao_id: String(os.situacao_id || ""),
+        gc_os_cor_situacao: String(os.cor_situacao || ""),
+        gc_os_valor_total: parseFloat(os.valor_total || "0"),
+        gc_os_vendedor: String(os.nome_vendedor || ""),
+        gc_os_data: String(os.data_entrada || os.data || "").split("T")[0] || null,
+        gc_os_link: `https://gestaoclick.com/ordens_servicos/editar/${os.id}?retorno=%2Fordens_servicos`,
+      };
+
+      // 73343 = tarefa OS, 73344 = tarefa execução
+      // Prioridade para 73343 quando ambos existirem
+      for (const attrId of [GC_ATRIBUTO_TAREFA_EXEC, GC_ATRIBUTO_TAREFA_OS]) {
+        const attrTarefa = atributos.find((a: any) => {
+          const nested = a?.atributo || a;
+          return String(nested.atributo_id || nested.id || "") === attrId;
+        });
+
+        if (!attrTarefa) continue;
+
         const nested = attrTarefa?.atributo || attrTarefa;
         const taskId = String(nested?.conteudo || nested?.valor || "").trim();
-        if (taskId && /^\d+$/.test(taskId)) {
-          map[taskId] = {
-            gc_os_id: String(os.id),
-            gc_os_codigo: String(os.codigo || ""),
-            gc_os_cliente: String(os.nome_cliente || ""),
-            gc_os_situacao: String(os.nome_situacao || ""),
-            gc_os_situacao_id: String(os.situacao_id || ""),
-            gc_os_cor_situacao: String(os.cor_situacao || ""),
-            gc_os_valor_total: parseFloat(os.valor_total || "0"),
-            gc_os_vendedor: String(os.nome_vendedor || ""),
-            gc_os_data: String(os.data_entrada || os.data || "").split("T")[0] || null,
-            gc_os_link: `https://gestaoclick.com/ordens_servicos/editar/${os.id}?retorno=%2Fordens_servicos`,
-          };
+        if (!taskId || !/^\d+$/.test(taskId)) continue;
+
+        const shouldOverride = attrId === GC_ATRIBUTO_TAREFA_OS;
+        if (!map[taskId] || shouldOverride) {
+          map[taskId] = osPayload;
         }
       }
     }
@@ -677,31 +688,113 @@ Deno.serve(async (req) => {
       }
     }
 
-    // Preserve existing equipment values: load from DB and don't overwrite with null
+    // Preserve existing values from DB to avoid losing GC/equipment data in partial syncs
     const rowTaskIds = rows.map((r) => String(r.auvo_task_id)).filter(Boolean);
-    const existingEquipMap: Record<string, { equipamento_nome: string | null; equipamento_id_serie: string | null }> = {};
+    type ExistingTaskData = {
+      equipamento_nome: string | null;
+      equipamento_id_serie: string | null;
+      gc_os_id: string | null;
+      gc_os_codigo: string | null;
+      gc_os_cliente: string | null;
+      gc_os_situacao: string | null;
+      gc_os_situacao_id: string | null;
+      gc_os_cor_situacao: string | null;
+      gc_os_valor_total: number | null;
+      gc_os_vendedor: string | null;
+      gc_os_data: string | null;
+      gc_os_link: string | null;
+      gc_orcamento_id: string | null;
+      gc_orcamento_codigo: string | null;
+      gc_orc_cliente: string | null;
+      gc_orc_situacao: string | null;
+      gc_orc_situacao_id: string | null;
+      gc_orc_cor_situacao: string | null;
+      gc_orc_valor_total: number | null;
+      gc_orc_vendedor: string | null;
+      gc_orc_data: string | null;
+      gc_orc_link: string | null;
+      os_realizada: boolean | null;
+      orcamento_realizado: boolean | null;
+    };
+
+    const existingTaskMap: Record<string, ExistingTaskData> = {};
     for (let i = 0; i < rowTaskIds.length; i += 200) {
       const batch = rowTaskIds.slice(i, i + 200);
-      const { data: eqRows } = await sbClient
+      const { data: dbRows } = await sbClient
         .from("tarefas_central")
-        .select("auvo_task_id, equipamento_nome, equipamento_id_serie")
+        .select("auvo_task_id, equipamento_nome, equipamento_id_serie, gc_os_id, gc_os_codigo, gc_os_cliente, gc_os_situacao, gc_os_situacao_id, gc_os_cor_situacao, gc_os_valor_total, gc_os_vendedor, gc_os_data, gc_os_link, gc_orcamento_id, gc_orcamento_codigo, gc_orc_cliente, gc_orc_situacao, gc_orc_situacao_id, gc_orc_cor_situacao, gc_orc_valor_total, gc_orc_vendedor, gc_orc_data, gc_orc_link, os_realizada, orcamento_realizado")
         .in("auvo_task_id", batch);
-      for (const r of eqRows || []) {
-        if (r.equipamento_nome || r.equipamento_id_serie) {
-          existingEquipMap[r.auvo_task_id] = {
-            equipamento_nome: r.equipamento_nome || null,
-            equipamento_id_serie: r.equipamento_id_serie || null,
-          };
-        }
+
+      for (const r of dbRows || []) {
+        existingTaskMap[r.auvo_task_id] = {
+          equipamento_nome: r.equipamento_nome || null,
+          equipamento_id_serie: r.equipamento_id_serie || null,
+          gc_os_id: r.gc_os_id || null,
+          gc_os_codigo: r.gc_os_codigo || null,
+          gc_os_cliente: r.gc_os_cliente || null,
+          gc_os_situacao: r.gc_os_situacao || null,
+          gc_os_situacao_id: r.gc_os_situacao_id || null,
+          gc_os_cor_situacao: r.gc_os_cor_situacao || null,
+          gc_os_valor_total: r.gc_os_valor_total ?? null,
+          gc_os_vendedor: r.gc_os_vendedor || null,
+          gc_os_data: r.gc_os_data || null,
+          gc_os_link: r.gc_os_link || null,
+          gc_orcamento_id: r.gc_orcamento_id || null,
+          gc_orcamento_codigo: r.gc_orcamento_codigo || null,
+          gc_orc_cliente: r.gc_orc_cliente || null,
+          gc_orc_situacao: r.gc_orc_situacao || null,
+          gc_orc_situacao_id: r.gc_orc_situacao_id || null,
+          gc_orc_cor_situacao: r.gc_orc_cor_situacao || null,
+          gc_orc_valor_total: r.gc_orc_valor_total ?? null,
+          gc_orc_vendedor: r.gc_orc_vendedor || null,
+          gc_orc_data: r.gc_orc_data || null,
+          gc_orc_link: r.gc_orc_link || null,
+          os_realizada: r.os_realizada ?? null,
+          orcamento_realizado: r.orcamento_realizado ?? null,
+        };
       }
     }
 
-    // Merge: keep existing equipment if new value is empty
     for (const row of rows) {
-      const existing = existingEquipMap[row.auvo_task_id];
-      if (existing) {
-        if (!row.equipamento_nome && existing.equipamento_nome) row.equipamento_nome = existing.equipamento_nome;
-        if (!row.equipamento_id_serie && existing.equipamento_id_serie) row.equipamento_id_serie = existing.equipamento_id_serie;
+      const existing = existingTaskMap[row.auvo_task_id];
+      if (!existing) continue;
+
+      // Equipment
+      if (!row.equipamento_nome && existing.equipamento_nome) row.equipamento_nome = existing.equipamento_nome;
+      if (!row.equipamento_id_serie && existing.equipamento_id_serie) row.equipamento_id_serie = existing.equipamento_id_serie;
+
+      // Preserve GC OS when current sync didn't find a match for the task
+      if (!row.gc_os_id && existing.gc_os_id) {
+        row.gc_os_id = existing.gc_os_id;
+        row.gc_os_codigo = existing.gc_os_codigo;
+        row.gc_os_cliente = existing.gc_os_cliente;
+        row.gc_os_situacao = existing.gc_os_situacao;
+        row.gc_os_situacao_id = existing.gc_os_situacao_id;
+        row.gc_os_cor_situacao = existing.gc_os_cor_situacao;
+        row.gc_os_valor_total = existing.gc_os_valor_total;
+        row.gc_os_vendedor = existing.gc_os_vendedor;
+        row.gc_os_data = existing.gc_os_data;
+        row.gc_os_link = existing.gc_os_link;
+        row.os_realizada = existing.os_realizada ?? true;
+      } else if (row.gc_os_id && (row.gc_os_valor_total === null || row.gc_os_valor_total === undefined) && existing.gc_os_valor_total !== null) {
+        row.gc_os_valor_total = existing.gc_os_valor_total;
+      }
+
+      // Preserve GC orçamento when current sync didn't find a match
+      if (!row.gc_orcamento_id && existing.gc_orcamento_id) {
+        row.gc_orcamento_id = existing.gc_orcamento_id;
+        row.gc_orcamento_codigo = existing.gc_orcamento_codigo;
+        row.gc_orc_cliente = existing.gc_orc_cliente;
+        row.gc_orc_situacao = existing.gc_orc_situacao;
+        row.gc_orc_situacao_id = existing.gc_orc_situacao_id;
+        row.gc_orc_cor_situacao = existing.gc_orc_cor_situacao;
+        row.gc_orc_valor_total = existing.gc_orc_valor_total;
+        row.gc_orc_vendedor = existing.gc_orc_vendedor;
+        row.gc_orc_data = existing.gc_orc_data;
+        row.gc_orc_link = existing.gc_orc_link;
+        row.orcamento_realizado = existing.orcamento_realizado ?? true;
+      } else if (row.gc_orcamento_id && (row.gc_orc_valor_total === null || row.gc_orc_valor_total === undefined) && existing.gc_orc_valor_total !== null) {
+        row.gc_orc_valor_total = existing.gc_orc_valor_total;
       }
     }
 
@@ -712,7 +805,7 @@ Deno.serve(async (req) => {
       const batch = rows.slice(i, i + 100);
       const { error } = await sbClient
         .from("tarefas_central")
-        .upsert(batch, { onConflict: "auvo_task_id", ignoreDuplicates: false });
+        .upsert(batch, { onConflict: "auvo_task_id", ignoreDuplicates: false, defaultToNull: false });
       
       if (error) {
         console.error(`[central-sync] Batch ${i}-${i + batch.length} error:`, error.message);
