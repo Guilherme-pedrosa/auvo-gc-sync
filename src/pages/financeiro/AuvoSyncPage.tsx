@@ -602,6 +602,9 @@ const AuvoSyncPage = () => {
                         </TableHead>
                         <TableHead className="text-center">Check-in</TableHead>
                         <TableHead className="text-center">Check-out</TableHead>
+                        <TableHead className="text-center">
+                          <div className="flex items-center justify-center gap-1"><PackageCheck className="h-3 w-3" /> Peças</div>
+                        </TableHead>
                         <TableHead className="w-[100px]">Ação</TableHead>
                       </TableRow>
                     </TableHeader>
