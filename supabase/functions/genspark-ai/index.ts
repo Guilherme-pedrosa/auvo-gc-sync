@@ -1295,9 +1295,9 @@ TOM: Telegráfico, técnico, zero enrolação. Prefira disciplina e auditabilida
       // Photos (economia de tokens no padrão; high só quando leitura de etiqueta/placa é realmente necessária)
       const hasFotos = context?.fotos?.length > 0;
       const photoNeedleText = `${context?.equipamento || ""} ${context?.descricao || ""} ${context?.orientacao || ""} ${context?.observacoes || ""}`.toLowerCase();
-      const needsHighDetail = /placa|etiqueta|serial|série|serie|modelo|part number|pn\b|c[oó]digo/i.test(photoNeedleText);
-      const maxPhotos = expand ? 4 : 3;
-      const photoDetail = expand && needsHighDetail ? "high" as const : "low" as const;
+      const needsHighDetail = !manufacturerIdentified || /placa|etiqueta|serial|série|serie|modelo|part number|pn\b|c[oó]digo/i.test(photoNeedleText);
+      const maxPhotos = expand ? 6 : (needsHighDetail ? 4 : 3);
+      const photoDetail = needsHighDetail ? "high" as const : "low" as const;
       textPrompt += `\nFOTOS: ${hasFotos ? `${filterImageUrls(context!.fotos!).length} foto(s) anexadas.` : "Não fornecidas"}\n`;
 
       userContentParts.push({ type: "text", text: textPrompt });
