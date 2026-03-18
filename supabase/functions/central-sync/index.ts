@@ -700,6 +700,12 @@ Deno.serve(async (req) => {
         if (fallbackSnapshot) taskSnapshotById.set(taskId, fallbackSnapshot);
       }
 
+      // Skip tasks that don't exist in Auvo (deleted/ghost tasks)
+      if (!fallbackSnapshot) {
+        console.log(`[central-sync] Ignorando taskId ${taskId} (OS ${gcOs?.gc_os_codigo}): tarefa não encontrada no Auvo (possível fantasma)`);
+        continue;
+      }
+
       const fallbackRow: any = {
         auvo_task_id: taskId,
         cliente: gcOs?.gc_os_cliente || gcOrc?.gc_orc_cliente || "Cliente não identificado",
