@@ -1338,11 +1338,13 @@ TOM: Telegráfico, técnico, fundamentado.`;
       if (webResearch) textPrompt += buildWebBlock(webResearch);
 
       const hasFotos = context?.fotos?.length > 0;
+      const deepPhotoNeedleText = `${context?.equipamento || ""} ${context?.descricao || ""} ${context?.orientacao || ""} ${context?.observacoes || ""}`.toLowerCase();
+      const deepNeedsHighDetail = /placa|etiqueta|serial|série|serie|modelo|part number|pn\b|c[oó]digo/i.test(deepPhotoNeedleText);
       textPrompt += `\nFOTOS: ${hasFotos ? `${filterImageUrls(context!.fotos!).length} foto(s)` : "Não fornecidas"}\n`;
 
       userContentParts.push({ type: "text", text: textPrompt });
       if (hasFotos) {
-        await addPhotosToContent(userContentParts, context!.fotos!, 6, "high");
+        await addPhotosToContent(userContentParts, context!.fotos!, 5, deepNeedsHighDetail ? "high" : "low");
       }
 
       const messages = [
