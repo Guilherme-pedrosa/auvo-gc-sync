@@ -1077,12 +1077,25 @@ export default function BudgetKanbanPage() {
           },
         },
       });
-      if (error) throw error;
-      if (result?.error) throw new Error(result.error);
-      setAiAnalysis(result?.result || "Sem resultado");
+
+      if (error || result?.error || result?.errorCode) {
+        if (isQuotaError(result, error)) {
+          toast.warning("⚠️ IA indisponível: quota da OpenAI esgotada. Exibindo checklist operacional.");
+          setAiAnalysis(AI_FALLBACK_ANALYSIS);
+          return;
+        }
+        const msg = result?.message || result?.error || error?.message || "Erro desconhecido";
+        toast.error(`Erro na análise: ${msg}`);
+        setAiAnalysis(AI_FALLBACK_ANALYSIS);
+        return;
+      }
+
+      setAiAnalysis(result?.result || AI_FALLBACK_ANALYSIS);
       toast.success(`Análise aprofundada concluída (${result?.docs || 0} docs, web: ${result?.web ? "sim" : "não"})`);
     } catch (e: any) {
-      toast.error("Erro na análise: " + (e?.message || "Tente novamente"));
+      console.error("[BudgetKanban] Deep analysis error:", e);
+      toast.error("Erro na análise IA. Exibindo checklist operacional.");
+      setAiAnalysis(AI_FALLBACK_ANALYSIS);
     } finally {
       setIsAnalyzing(false);
     }
