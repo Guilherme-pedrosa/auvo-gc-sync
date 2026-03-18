@@ -934,6 +934,36 @@ export default function BudgetKanbanPage() {
     }
   }, [selectedCard]);
 
+  // ── Fallback operacional quando IA indisponível ──
+  const AI_FALLBACK_ANALYSIS = `## 🚦 STATUS PARA ORÇAMENTO
+**Necessária validação técnica adicional antes do orçamento**
+
+**Motivo:** Análise por IA indisponível por limite temporário da OpenAI.
+
+### ✅ CHECKLIST MÍNIMO PARA SEGUIR SEM IA
+- [ ] Conferir observações do técnico
+- [ ] Conferir peças e serviços informados
+- [ ] Conferir fotos do defeito
+- [ ] Verificar coerência entre peças solicitadas e defeito
+- [ ] Confirmar marca, modelo e série do equipamento
+
+### 📋 PENDÊNCIAS MÍNIMAS
+- Modelo e série do equipamento
+- Fotos do defeito principal
+- Coerência entre peças e diagnóstico
+- Descrição técnica do problema
+
+### 📝 OBSERVAÇÃO INTERNA SUGERIDA
+> Orçamento condicionado à validação técnica manual por indisponibilidade temporária da análise por IA. Conferir dados da OS antes de prosseguir.`;
+
+  // Helper: check if AI error is quota/billing related
+  const isQuotaError = (result: any, error: any): boolean => {
+    const errorCode = result?.errorCode || result?.error;
+    const msg = error?.message || result?.message || result?.error || "";
+    return errorCode === "OPENAI_QUOTA_EXCEEDED" ||
+      /quota|insufficient_quota|billing/i.test(msg);
+  };
+
   // AI technical analysis — budget_analysis_agent (standard or auto-expanded)
   const handleAiAnalysis = useCallback(async () => {
     if (!selectedCard) return;
@@ -978,15 +1008,28 @@ export default function BudgetKanbanPage() {
           },
         },
       });
-      if (error) throw error;
-      if (result?.error) throw new Error(result.error);
 
-      setAiAnalysis(result?.result || "Sem resultado");
+      // Handle structured errors from edge function
+      if (error || result?.error || result?.errorCode) {
+        if (isQuotaError(result, error)) {
+          toast.warning("⚠️ IA indisponível: quota da OpenAI esgotada. Exibindo checklist operacional.");
+          setAiAnalysis(AI_FALLBACK_ANALYSIS);
+          return;
+        }
+        const msg = result?.message || result?.error || error?.message || "Erro desconhecido";
+        toast.error(`Erro na análise: ${msg}`);
+        setAiAnalysis(AI_FALLBACK_ANALYSIS);
+        return;
+      }
+
+      setAiAnalysis(result?.result || AI_FALLBACK_ANALYSIS);
       if (result?.mode === "expanded") {
         toast.info(`Análise expandida ativada: ${(result?.reasons || []).join(", ")}`);
       }
     } catch (e: any) {
-      toast.error("Erro na análise: " + (e?.message || "Tente novamente"));
+      console.error("[BudgetKanban] AI analysis error:", e);
+      toast.error("Erro na análise IA. Exibindo checklist operacional.");
+      setAiAnalysis(AI_FALLBACK_ANALYSIS);
     } finally {
       setIsAnalyzing(false);
     }
