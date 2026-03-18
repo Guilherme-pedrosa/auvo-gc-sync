@@ -711,6 +711,41 @@ const AI_ERROR = {
   NO_KEY: "OPENAI_NO_KEY",
 } as const;
 
+type AiCallResult = {
+  result: string;
+  error?: string;
+  errorCode?: string;
+  status?: number;
+};
+
+function buildAiErrorResponse(aiResult: AiCallResult) {
+  const code = aiResult.errorCode || AI_ERROR.REQUEST_FAILED;
+  const message = aiResult.error || "Não foi possível gerar a análise por IA neste momento.";
+
+  const handledStatusCodes = new Set<string>([
+    AI_ERROR.QUOTA_EXCEEDED,
+    AI_ERROR.RATE_LIMITED,
+    AI_ERROR.REQUEST_FAILED,
+  ]);
+
+  const isHandledOperationalError = handledStatusCodes.has(code);
+
+  return new Response(
+    JSON.stringify({
+      ok: false,
+      error: message,
+      errorCode: code,
+      message,
+      status: aiResult.status || (code === AI_ERROR.RATE_LIMITED || code === AI_ERROR.QUOTA_EXCEEDED ? 429 : 500),
+    }),
+    {
+      // Important: return 200 for operational AI errors to avoid raw runtime surfacing in frontend SDK wrappers
+      status: isHandledOperationalError ? 200 : aiResult.status || 500,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    }
+  );
+}
+
 // =========================================================================
 // AI CALL — OpenAI direto com retry inteligente
 // - insufficient_quota → erro imediato, sem retry
