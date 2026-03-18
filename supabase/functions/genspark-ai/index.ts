@@ -162,7 +162,10 @@ iCombi Pro` },
   }
 }
 
-async function fetchInternalTechDocs(query?: string, equipamento?: string): Promise<InternalDocsResult> {
+async function fetchInternalTechDocs(query?: string, equipamento?: string, options?: { skipOcr?: boolean; maxDocs?: number; timeout?: number }): Promise<InternalDocsResult> {
+  const EFFECTIVE_MAX_DOCS = options?.maxDocs ?? MAX_DOCS;
+  const EFFECTIVE_TIMEOUT = options?.timeout ?? INTERNAL_DOCS_TIMEOUT;
+  const SKIP_OCR = options?.skipOcr ?? false;
   const startTime = Date.now();
   const result: InternalDocsResult = {
     text: "",
