@@ -451,10 +451,13 @@ async function validarPecasOsVsExecucao(
     }
   }
 
-  const aprovado = faltando.length === 0;
+  // Aprovado SOMENTE se todas as peças foram 100% cobertas (sem parciais e sem faltando)
+  const aprovado = faltando.length === 0 && parciais.length === 0 && cobertos.length > 0;
   const resumo = aprovado
-    ? `✅ ${cobertos.length} peças cobertas${parciais.length > 0 ? `, ${parciais.length} parciais (aviso)` : ""}`
-    : `❌ BLOQUEADO — ${faltando.length} peças sem cobertura de ${pecasOrcamento.length} no orçamento`;
+    ? `✅ ${cobertos.length}/${pecasOrcamento.length} peças cobertas`
+    : faltando.length > 0
+      ? `❌ BLOQUEADO — ${faltando.length} peças sem cobertura de ${pecasOrcamento.length} no orçamento`
+      : `⚠️ ${cobertos.length} cobertas, ${parciais.length} parciais — necessita revisão`;
 
   return { aprovado, sem_pecas_orcamento: false, pecas_orcamento: pecasOrcamento, materiais_execucao: materiaisExecucao, itens_cobertos: cobertos, itens_faltando: faltando, itens_parciais: parciais, resumo };
 }
