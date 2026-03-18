@@ -69,12 +69,32 @@ type InternalDocsResult = {
 // =========================================================================
 // IDENTIFY MANUFACTURER — quick Perplexity call to find the real manufacturer
 // =========================================================================
-async function identifyManufacturer(equipamento: string): Promise<string[]> {
+// Strip serial numbers, "SERIAL", "MOD", long alphanumeric codes from equipment string
+function cleanEquipmentString(raw: string): string {
+  return raw
+    // Remove "SERIAL <code>" pattern
+    .replace(/\bSERIAL\s+\S+/gi, "")
+    // Remove "MOD " prefix (but keep the model code after it)
+    .replace(/\bMOD\b/gi, "")
+    // Remove long alphanumeric codes (likely serial numbers, 8+ chars with mixed letters+digits)
+    .replace(/\b[A-Za-z0-9]{8,}\b/g, (match) => {
+      // Keep if it looks like a model name (short, mostly letters like "LM100DE", "SCC201")
+      const digitRatio = (match.replace(/[^0-9]/g, "").length) / match.length;
+      if (match.length <= 8 && digitRatio < 0.6) return match;
+      return ""; // strip long serial-like codes
+    })
+    // Clean up extra spaces
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+async function identifyManufacturerAndModel(equipamento: string): Promise<{ manufacturer: string[]; modelFamily: string | null }> {
   const PERPLEXITY_API_KEY = Deno.env.get("PERPLEXITY_API_KEY");
-  if (!PERPLEXITY_API_KEY || !equipamento.trim()) return [];
+  if (!PERPLEXITY_API_KEY || !equipamento.trim()) return { manufacturer: [], modelFamily: null };
 
   try {
-    console.log(`[genspark-ai] [manufacturer] Identificando fabricante de: "${equipamento.substring(0, 80)}"`);
+    const cleaned = cleanEquipmentString(equipamento);
+    console.log(`[genspark-ai] [manufacturer] Identificando fabricante+modelo de: "${cleaned.substring(0, 100)}"`);
     const response = await fetch("https://api.perplexity.ai/chat/completions", {
       method: "POST",
       headers: {
@@ -84,8 +104,14 @@ async function identifyManufacturer(equipamento: string): Promise<string[]> {
       body: JSON.stringify({
         model: "sonar",
         messages: [
-          { role: "system", content: "Responda APENAS com o nome da marca/fabricante. Somente letras, sem números, sem modelo, sem explicação. Exemplo: se o equipamento é 'Ecomax 503', responda 'Hobart'. Se não souber, responda 'desconhecido'." },
-          { role: "user", content: `Qual é a marca/fabricante deste equipamento de cozinha industrial? "${equipamento}". Responda SOMENTE o nome da marca (ex: Hobart, Rational, Vulcan, Prática, Tramontina).` }
+          { role: "system", content: `Responda em EXATAMENTE 2 linhas:
+Linha 1: nome da marca/fabricante (só letras, sem modelo)
+Linha 2: nome da FAMÍLIA/LINHA do modelo (ex: iCombi Pro, Ecomax, SCC, CPC, etc.)
+Se não souber algum, escreva "desconhecido".
+Exemplo para "FORNO RATIONAL 10 GN MOD LM100DE":
+Rational
+iCombi Pro` },
+          { role: "user", content: `Equipamento de cozinha industrial: "${cleaned}". Identifique a marca e a família/linha do modelo.` }
         ],
         temperature: 0.0,
       }),
@@ -94,30 +120,23 @@ async function identifyManufacturer(equipamento: string): Promise<string[]> {
     if (!response.ok) {
       const errText = await response.text();
       console.warn(`[genspark-ai] [manufacturer] Perplexity HTTP ${response.status}: ${errText.substring(0, 100)}`);
-      return [];
+      return { manufacturer: [], modelFamily: null };
     }
 
     const data = await response.json();
     const answer = (data.choices?.[0]?.message?.content || "").trim();
     console.log(`[genspark-ai] [manufacturer] Resultado: "${answer}"`);
 
-    if (!answer || answer.toLowerCase() === "desconhecido") return [];
+    const lines = answer.split("\n").map((l: string) => l.trim()).filter((l: string) => l.length > 0);
+    const brandLine = (lines[0] || "").replace(/[0-9]/g, "").replace(/[^a-zA-ZÀ-ÿ\s\-]/g, "").trim();
+    const modelLine = (lines[1] || "").trim();
 
-    // Extract manufacturer terms — STRIP ALL NUMBERS (avoid "hobart123456" pollution)
-    const cleanAnswer = answer
-      .split("\n")[0]
-      .replace(/[0-9]/g, "")              // remove all digits
-      .replace(/[^a-zA-ZÀ-ÿ\s\-]/g, "")  // keep only letters
-      .trim();
+    if (!brandLine || brandLine.toLowerCase() === "desconhecido") return { manufacturer: [], modelFamily: null };
 
-    const terms = cleanAnswer
-      .toLowerCase()
-      .split(/[\s\-_]+/)
-      .filter((t: string) => t.length > 2);
+    const terms = brandLine.toLowerCase().split(/[\s\-_]+/).filter((t: string) => t.length > 2);
 
-    // Also add common variations (e.g., "hobart" should also match "hobart - vulcan" folder)
+    // Expand with brand aliases
     const expandedTerms = [...terms];
-    // Known brand aliases/groups in our Drive
     const brandAliases: Record<string, string[]> = {
       "hobart": ["hobart", "vulcan"],
       "rational": ["rational"],
@@ -134,11 +153,12 @@ async function identifyManufacturer(equipamento: string): Promise<string[]> {
       }
     }
 
-    console.log(`[genspark-ai] [manufacturer] Termos extraídos: [${expandedTerms.join(",")}]`);
-    return expandedTerms;
+    const modelFamily = (modelLine && modelLine.toLowerCase() !== "desconhecido") ? modelLine : null;
+    console.log(`[genspark-ai] [manufacturer] Marca: [${expandedTerms.join(",")}], Modelo: ${modelFamily || "não identificado"}`);
+    return { manufacturer: expandedTerms, modelFamily };
   } catch (e) {
     console.warn(`[genspark-ai] [manufacturer] Erro: ${e instanceof Error ? e.message : String(e)}`);
-    return [];
+    return { manufacturer: [], modelFamily: null };
   }
 }
 
