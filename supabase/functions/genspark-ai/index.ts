@@ -663,7 +663,7 @@ Preciso saber:
 
   const { answer, citations } = await searchPerplexity(
     searchQuery,
-    "Você é um engenheiro de manutenção industrial. Responda em português brasileiro de forma técnica e objetiva. Foque em dados concretos: especificações, peças, componentes, problemas comuns. Sem floreios."
+    "Você é um engenheiro de manutenção industrial. Pesquise em fontes técnicas internacionais (manuais oficiais, service manuals, documentação de fabricantes globais), sem restringir ao Brasil. Responda em português brasileiro de forma técnica e objetiva. Foque em dados concretos: especificações, peças, componentes e problemas comuns. Sem floreios."
   );
 
   if (!answer) return "";
@@ -692,7 +692,7 @@ Responda com dados técnicos reais: especificações, manuais, experiência docu
 
   const { answer, citations } = await searchPerplexity(
     searchQuery,
-    "Você é um engenheiro de manutenção industrial sênior. Pesquise na web e responda com dados técnicos concretos, citando fontes. Foque em: especificações de fabricante, manuais técnicos, normas, problemas documentados. Responda em português brasileiro. Seja preciso e direto."
+    "Você é um engenheiro de manutenção industrial sênior. Pesquise na web global (incluindo manuais e documentação fora do Brasil) e responda com dados técnicos concretos, citando fontes. Foque em especificações de fabricante, manuais técnicos, normas e problemas documentados. Responda em português brasileiro. Seja preciso e direto."
   );
 
   if (!answer) return "";
@@ -1174,6 +1174,9 @@ Se houver dados de PESQUISA WEB no contexto:
 Se houver dados de MATERIAIS INTERNOS no contexto:
 - Use-os para fundamentar sua resposta
 - Marque informações vindas dos materiais internos com 📂
+- OBRIGATÓRIO: abrir a resposta com "📂 Materiais internos consultados:" e listar os arquivos internos recebidos no contexto
+- OBRIGATÓRIO: incluir pelo menos 1 orientação técnica baseada em material interno 📂 (quando houver conteúdo interno)
+- Se não houver material interno carregado, declarar explicitamente: "Não encontrei material interno útil nesta consulta."
 
 TOM
 Técnico, direto, sem floreio. Potente e fundamentado.`;
@@ -1201,16 +1204,16 @@ Técnico, direto, sem floreio. Potente e fundamentado.`;
       // *** PARALLEL: Internal docs + Perplexity web search ***
       const equipForChat = context?.equipamento || context?.descricao || "";
       const asksForInternalSource = /manual|arquivo|pdf|fonte|material|base|consult(a|ou)|documento/i.test(userMessage || "");
-      const docsOptions = asksForInternalSource
-        ? { skipOcr: false, maxDocs: 2, timeout: 22000 } // quando o usuário cobra fonte/manual, priorizar consulta real
-        : { skipOcr: true, maxDocs: 3, timeout: 12000 }; // modo rápido para chat comum
+      const fastDocsOptions = { skipOcr: true, maxDocs: 3, timeout: 12000 };
+      const deepDocsOptions = { skipOcr: false, maxDocs: 2, timeout: 22000 };
+      const primaryDocsOptions = asksForInternalSource ? deepDocsOptions : fastDocsOptions;
 
       console.log(
         `[genspark-ai] [chat] Buscando docs internos (${asksForInternalSource ? "modo fonte/manual" : "modo leve"}) + web para: "${equipForChat.substring(0, 80)}"`
       );
 
-      const [chatInternalDocs, chatWebResearch] = await Promise.all([
-        fetchInternalTechDocs(equipForChat, equipForChat, docsOptions),
+      const [initialInternalDocs, chatWebResearch] = await Promise.all([
+        fetchInternalTechDocs(equipForChat, equipForChat, primaryDocsOptions),
         searchForChatQuestion(
           userMessage,
           equipForChat,
@@ -1219,8 +1222,26 @@ Técnico, direto, sem floreio. Potente e fundamentado.`;
         ),
       ]);
 
+      let chatInternalDocs = initialInternalDocs;
+
+      // Fallback: se modo leve não trouxe material, força tentativa profunda com OCR
+      if (!asksForInternalSource && chatInternalDocs.docs_count === 0 && equipForChat.trim()) {
+        console.log("[genspark-ai] [chat] Fallback docs internos: modo profundo com OCR");
+        const fallbackInternalDocs = await fetchInternalTechDocs(equipForChat, equipForChat, deepDocsOptions);
+        if (
+          fallbackInternalDocs.docs_count > chatInternalDocs.docs_count ||
+          (!!chatInternalDocs.error && !fallbackInternalDocs.error)
+        ) {
+          chatInternalDocs = fallbackInternalDocs;
+        }
+      }
+
       // Internal docs block (sempre incluir para o modelo saber se consultou ou não)
       contextText += buildInternalDocsBlock(chatInternalDocs);
+      if (chatInternalDocs.docs_count > 0 && chatInternalDocs.docs_titles.length > 0) {
+        contextText += `\nARQUIVOS INTERNOS CONSULTADOS: ${chatInternalDocs.docs_titles.slice(0, 8).join(" | ")}\n`;
+        contextText += "INSTRUÇÃO: ao responder, cite explicitamente os arquivos internos usados.";
+      }
 
       // Web research block
       if (chatWebResearch) {
@@ -1250,7 +1271,7 @@ Técnico, direto, sem floreio. Potente e fundamentado.`;
       }
       messages.push({ role: "user", content: userContentParts });
 
-      console.log(`[genspark-ai] [chat] cliente=${context?.cliente}, hasAnalysis=${!!analysis}, fotos=${context?.fotos?.length || 0}, internalDocs=${chatInternalDocs.docs_count}(${chatInternalDocs.elapsed_ms}ms, error=${chatInternalDocs.error || "none"}), webResearch=${!!chatWebResearch}, msgLength=${userMessage?.length}`);
+      console.log(`[genspark-ai] [chat] cliente=${context?.cliente}, hasAnalysis=${!!analysis}, fotos=${context?.fotos?.length || 0}, asksSource=${asksForInternalSource}, internalDocs=${chatInternalDocs.docs_count}(${chatInternalDocs.elapsed_ms}ms, error=${chatInternalDocs.error || "none"}), webResearch=${!!chatWebResearch}, msgLength=${userMessage?.length}`);
 
     } else {
       throw new Error("Ação inválida. Use 'improve', 'analyze', 'chat' ou 'internal_docs_test'.");
