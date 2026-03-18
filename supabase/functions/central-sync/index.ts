@@ -424,11 +424,16 @@ Deno.serve(async (req) => {
     };
 
     // Fetch all data in parallel
-    const [auvoTasks, gcOrcMap, gcOsMap] = await Promise.all([
+    const [auvoTasks, gcOrcResult, gcOsResult] = await Promise.all([
       fetchAuvoTasks(bearerToken, startDate, endDate),
       fetchGcOrcamentos(gcH),
       fetchGcOs(gcH),
     ]);
+
+    const gcOrcMap = gcOrcResult.byTaskId;
+    const gcOrcByCodigo = gcOrcResult.byCodigo;
+    const gcOsMap = gcOsResult.byTaskId;
+    const gcOsByCodigo = gcOsResult.byCodigo;
 
     console.log(`[central-sync] Auvo: ${auvoTasks.length} tarefas, GC Orç: ${Object.keys(gcOrcMap).length}, GC OS: ${Object.keys(gcOsMap).length}`);
 
