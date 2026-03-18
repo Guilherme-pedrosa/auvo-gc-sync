@@ -921,12 +921,9 @@ export default function BudgetKanbanPage() {
 
       const { data: result, error } = await supabase.functions.invoke("genspark-ai", { body });
       if (error || result?.error || result?.errorCode) {
-        const aiErr = parseAiError(result, error);
-        if (aiErr.isQuota) {
-          toast.warning("⚠️ IA indisponível: quota da OpenAI esgotada.");
-          return;
-        }
-        throw new Error(aiErr.message);
+        const aiErr = await parseAiError(result, error);
+        toast.warning(aiErr.message);
+        return;
       }
       if (result?.result) {
         setEditingSection(keyword);
@@ -962,17 +959,86 @@ export default function BudgetKanbanPage() {
 ### 📝 OBSERVAÇÃO INTERNA SUGERIDA
 > Orçamento condicionado à validação técnica manual por indisponibilidade temporária da análise por IA. Conferir dados da OS antes de prosseguir.`;
 
-  // Helper: extract error info from supabase.functions.invoke response
-  // When edge function returns non-2xx, supabase SDK puts body in `error`, not `data`
-  const parseAiError = (result: any, error: any): { isQuota: boolean; message: string } => {
-    // Check data (2xx with error field)
-    const dataMsg = result?.errorCode || result?.error || result?.message || "";
-    // Check error object (non-2xx response)
-    const errMsg = error?.message || error?.context?.message || "";
-    const allText = `${dataMsg} ${errMsg}`.toLowerCase();
-    const isQuota = allText.includes("quota") || allText.includes("insufficient_quota") || allText.includes("billing") || allText.includes("OPENAI_QUOTA_EXCEEDED".toLowerCase());
-    const message = dataMsg || errMsg || "Erro desconhecido na IA";
-    return { isQuota, message };
+  type ParsedAiError = {
+    isQuota: boolean;
+    isRateLimited: boolean;
+    code: string;
+    message: string;
+  };
+
+  const extractJsonFromText = (text: string) => {
+    const trimmed = (text || "").trim();
+    if (!trimmed) return null;
+    try {
+      return JSON.parse(trimmed);
+    } catch {
+      const match = trimmed.match(/\{[\s\S]*\}$/);
+      if (!match) return null;
+      try {
+        return JSON.parse(match[0]);
+      } catch {
+        return null;
+      }
+    }
+  };
+
+  // Helper: normalize edge-function errors into safe operational messages
+  const parseAiError = async (result: any, error: any): Promise<ParsedAiError> => {
+    const dataCode = String(result?.errorCode || "");
+    const dataMessage = String(result?.message || result?.error || "");
+
+    let contextBody: any = null;
+    const errorContext = error?.context;
+
+    if (errorContext) {
+      try {
+        if (typeof errorContext?.json === "function") {
+          const response = typeof errorContext.clone === "function" ? errorContext.clone() : errorContext;
+          contextBody = await response.json();
+        } else if (typeof errorContext === "string") {
+          contextBody = extractJsonFromText(errorContext);
+        } else if (typeof errorContext === "object") {
+          contextBody = errorContext;
+        }
+      } catch {
+        contextBody = null;
+      }
+    }
+
+    const messageBody = extractJsonFromText(String(error?.message || ""));
+
+    const code = String(
+      dataCode || contextBody?.errorCode || messageBody?.errorCode || ""
+    );
+
+    const rawMessage = String(
+      dataMessage ||
+      contextBody?.message ||
+      contextBody?.error ||
+      messageBody?.message ||
+      messageBody?.error ||
+      error?.message ||
+      "A análise por IA está temporariamente indisponível."
+    );
+
+    const allText = `${code} ${rawMessage}`.toLowerCase();
+    const isQuota =
+      allText.includes("openai_quota_exceeded") ||
+      allText.includes("insufficient_quota") ||
+      allText.includes("quota") ||
+      allText.includes("billing");
+
+    const isRateLimited =
+      allText.includes("openai_rate_limited") ||
+      (allText.includes("rate limit") && !isQuota);
+
+    const message = isQuota
+      ? "OpenAI sem saldo/quota no momento. Use o fallback operacional ou tente novamente após regularizar a conta."
+      : isRateLimited
+        ? "A análise por IA está temporariamente indisponível por limite de requisições. Tente novamente em instantes."
+        : "A análise por IA está temporariamente indisponível. Use o fallback operacional e tente novamente.";
+
+    return { isQuota, isRateLimited, code, message };
   };
 
   // AI technical analysis — budget_analysis_agent (standard or auto-expanded)
@@ -1022,13 +1088,8 @@ export default function BudgetKanbanPage() {
 
       // Handle structured errors from edge function
       if (error || result?.error || result?.errorCode) {
-        const aiErr = parseAiError(result, error);
-        if (aiErr.isQuota) {
-          toast.warning("⚠️ IA indisponível: quota da OpenAI esgotada. Exibindo checklist operacional.");
-          setAiAnalysis(AI_FALLBACK_ANALYSIS);
-          return;
-        }
-        toast.error(`Erro na análise: ${aiErr.message}`);
+        const aiErr = await parseAiError(result, error);
+        toast.warning(aiErr.message);
         setAiAnalysis(AI_FALLBACK_ANALYSIS);
         return;
       }
@@ -1090,13 +1151,8 @@ export default function BudgetKanbanPage() {
       });
 
       if (error || result?.error || result?.errorCode) {
-        const aiErr = parseAiError(result, error);
-        if (aiErr.isQuota) {
-          toast.warning("⚠️ IA indisponível: quota da OpenAI esgotada. Exibindo checklist operacional.");
-          setAiAnalysis(AI_FALLBACK_ANALYSIS);
-          return;
-        }
-        toast.error(`Erro na análise: ${aiErr.message}`);
+        const aiErr = await parseAiError(result, error);
+        toast.warning(aiErr.message);
         setAiAnalysis(AI_FALLBACK_ANALYSIS);
         return;
       }
@@ -1144,14 +1200,9 @@ export default function BudgetKanbanPage() {
       });
 
       if (error || result?.error || result?.errorCode) {
-        const aiErr = parseAiError(result, error);
-        if (aiErr.isQuota) {
-          toast.warning("⚠️ Chat IA indisponível: quota da OpenAI esgotada.");
-          setChatMessages(prev => [...prev, { role: "assistant", content: "⚠️ Chat indisponível no momento — quota da OpenAI esgotada. Verifique o billing da conta OpenAI." }]);
-          return;
-        }
-        toast.error(`Erro no chat: ${aiErr.message}`);
-        setChatMessages(prev => [...prev, { role: "assistant", content: `Erro: ${aiErr.message}` }]);
+        const aiErr = await parseAiError(result, error);
+        toast.warning(aiErr.message);
+        setChatMessages(prev => [...prev, { role: "assistant", content: "⚠️ Chat indisponível no momento. Use o checklist operacional e tente novamente em instantes." }]);
         return;
       }
 
