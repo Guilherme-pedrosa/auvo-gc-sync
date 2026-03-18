@@ -1201,16 +1201,16 @@ Técnico, direto, sem floreio. Potente e fundamentado.`;
       // *** PARALLEL: Internal docs + Perplexity web search ***
       const equipForChat = context?.equipamento || context?.descricao || "";
       const asksForInternalSource = /manual|arquivo|pdf|fonte|material|base|consult(a|ou)|documento/i.test(userMessage || "");
-      const docsOptions = asksForInternalSource
-        ? { skipOcr: false, maxDocs: 2, timeout: 22000 } // quando o usuário cobra fonte/manual, priorizar consulta real
-        : { skipOcr: true, maxDocs: 3, timeout: 12000 }; // modo rápido para chat comum
+      const fastDocsOptions = { skipOcr: true, maxDocs: 3, timeout: 12000 };
+      const deepDocsOptions = { skipOcr: false, maxDocs: 2, timeout: 22000 };
+      const primaryDocsOptions = asksForInternalSource ? deepDocsOptions : fastDocsOptions;
 
       console.log(
         `[genspark-ai] [chat] Buscando docs internos (${asksForInternalSource ? "modo fonte/manual" : "modo leve"}) + web para: "${equipForChat.substring(0, 80)}"`
       );
 
-      const [chatInternalDocs, chatWebResearch] = await Promise.all([
-        fetchInternalTechDocs(equipForChat, equipForChat, docsOptions),
+      const [initialInternalDocs, chatWebResearch] = await Promise.all([
+        fetchInternalTechDocs(equipForChat, equipForChat, primaryDocsOptions),
         searchForChatQuestion(
           userMessage,
           equipForChat,
@@ -1219,8 +1219,26 @@ Técnico, direto, sem floreio. Potente e fundamentado.`;
         ),
       ]);
 
+      let chatInternalDocs = initialInternalDocs;
+
+      // Fallback: se modo leve não trouxe material, força tentativa profunda com OCR
+      if (!asksForInternalSource && chatInternalDocs.docs_count === 0 && equipForChat.trim()) {
+        console.log("[genspark-ai] [chat] Fallback docs internos: modo profundo com OCR");
+        const fallbackInternalDocs = await fetchInternalTechDocs(equipForChat, equipForChat, deepDocsOptions);
+        if (
+          fallbackInternalDocs.docs_count > chatInternalDocs.docs_count ||
+          (!!chatInternalDocs.error && !fallbackInternalDocs.error)
+        ) {
+          chatInternalDocs = fallbackInternalDocs;
+        }
+      }
+
       // Internal docs block (sempre incluir para o modelo saber se consultou ou não)
       contextText += buildInternalDocsBlock(chatInternalDocs);
+      if (chatInternalDocs.docs_count > 0 && chatInternalDocs.docs_titles.length > 0) {
+        contextText += `\nARQUIVOS INTERNOS CONSULTADOS: ${chatInternalDocs.docs_titles.slice(0, 8).join(" | ")}\n`;
+        contextText += "INSTRUÇÃO: ao responder, cite explicitamente os arquivos internos usados.";
+      }
 
       // Web research block
       if (chatWebResearch) {
