@@ -187,11 +187,12 @@ async function fetchInternalTechDocs(query?: string, equipamento?: string): Prom
           const buf = new Uint8Array(await resp.arrayBuffer());
           const pdfText = extractPdfText(buf);
           if (pdfText.length > 50) addResult(fullPath, pdfText, "📕");
-          else results.push(`📕 ${fullPath} — PDF (scan/imagem, sem texto extraível)`);
+          else { result.skipped_files.push(`${fullPath} (PDF scan/imagem)`); results.push(`📕 ${fullPath} — PDF (scan/imagem, sem texto extraível)`); }
         } else await resp.text();
       } catch (e) { console.error(`[genspark-ai] [internal-docs] PDF error ${fullPath}:`, e); }
     }
     else {
+      result.skipped_files.push(`${fullPath} (${mimeType})`);
       results.push(`📎 ${fullPath} (${mimeType})`);
     }
   }
