@@ -521,8 +521,11 @@ Deno.serve(async (req) => {
       // Try "OR N° XXXX" or "Orçamento #XXXX" or "OR: XXXX" → look up by orçamento código
       if (!orc) {
         const orcMatch = orientation.match(/(?:OR|Or[çc]amento)\s*(?:N[°º]|#|:)\s*(\d{3,})/i);
-        if (orcMatch && gcOrcByCodigo[orcMatch[1]]) {
-          orc = gcOrcByCodigo[orcMatch[1]];
+        if (orcMatch) {
+          const orcNum = orcMatch[1];
+          if (gcOrcByCodigo[orcNum]) orc = gcOrcByCodigo[orcNum];
+          // Also link to OS via "NÚMERO ORÇAMENTO" attribute (81831)
+          if (!os && gcOsByOrcNumero[orcNum]) os = gcOsByOrcNumero[orcNum];
         }
       }
 
