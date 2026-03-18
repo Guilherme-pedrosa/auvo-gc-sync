@@ -1134,7 +1134,7 @@ TOM: Telegráfico, técnico, zero enrolação. Prefira disciplina e auditabilida
       }
 
       if (aiResult.error) {
-        return new Response(JSON.stringify({ error: aiResult.error }), {
+        return new Response(JSON.stringify({ error: aiResult.error, errorCode: aiResult.errorCode, message: aiResult.error }), {
           status: aiResult.status || 500,
           headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
