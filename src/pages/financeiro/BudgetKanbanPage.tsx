@@ -920,8 +920,14 @@ export default function BudgetKanbanPage() {
       }
 
       const { data: result, error } = await supabase.functions.invoke("genspark-ai", { body });
-      if (error) throw error;
-      if (result?.error) throw new Error(result.error);
+      if (error || result?.error || result?.errorCode) {
+        const aiErr = parseAiError(result, error);
+        if (aiErr.isQuota) {
+          toast.warning("⚠️ IA indisponível: quota da OpenAI esgotada.");
+          return;
+        }
+        throw new Error(aiErr.message);
+      }
       if (result?.result) {
         setEditingSection(keyword);
         setEditValue(result.result);
@@ -933,6 +939,41 @@ export default function BudgetKanbanPage() {
       setAiLoadingSection(null);
     }
   }, [selectedCard]);
+
+  // ── Fallback operacional quando IA indisponível ──
+  const AI_FALLBACK_ANALYSIS = `## 🚦 STATUS PARA ORÇAMENTO
+**Necessária validação técnica adicional antes do orçamento**
+
+**Motivo:** Análise por IA indisponível por limite temporário da OpenAI.
+
+### ✅ CHECKLIST MÍNIMO PARA SEGUIR SEM IA
+- [ ] Conferir observações do técnico
+- [ ] Conferir peças e serviços informados
+- [ ] Conferir fotos do defeito
+- [ ] Verificar coerência entre peças solicitadas e defeito
+- [ ] Confirmar marca, modelo e série do equipamento
+
+### 📋 PENDÊNCIAS MÍNIMAS
+- Modelo e série do equipamento
+- Fotos do defeito principal
+- Coerência entre peças e diagnóstico
+- Descrição técnica do problema
+
+### 📝 OBSERVAÇÃO INTERNA SUGERIDA
+> Orçamento condicionado à validação técnica manual por indisponibilidade temporária da análise por IA. Conferir dados da OS antes de prosseguir.`;
+
+  // Helper: extract error info from supabase.functions.invoke response
+  // When edge function returns non-2xx, supabase SDK puts body in `error`, not `data`
+  const parseAiError = (result: any, error: any): { isQuota: boolean; message: string } => {
+    // Check data (2xx with error field)
+    const dataMsg = result?.errorCode || result?.error || result?.message || "";
+    // Check error object (non-2xx response)
+    const errMsg = error?.message || error?.context?.message || "";
+    const allText = `${dataMsg} ${errMsg}`.toLowerCase();
+    const isQuota = allText.includes("quota") || allText.includes("insufficient_quota") || allText.includes("billing") || allText.includes("OPENAI_QUOTA_EXCEEDED".toLowerCase());
+    const message = dataMsg || errMsg || "Erro desconhecido na IA";
+    return { isQuota, message };
+  };
 
   // AI technical analysis — budget_analysis_agent (standard or auto-expanded)
   const handleAiAnalysis = useCallback(async () => {
@@ -978,15 +1019,28 @@ export default function BudgetKanbanPage() {
           },
         },
       });
-      if (error) throw error;
-      if (result?.error) throw new Error(result.error);
 
-      setAiAnalysis(result?.result || "Sem resultado");
+      // Handle structured errors from edge function
+      if (error || result?.error || result?.errorCode) {
+        const aiErr = parseAiError(result, error);
+        if (aiErr.isQuota) {
+          toast.warning("⚠️ IA indisponível: quota da OpenAI esgotada. Exibindo checklist operacional.");
+          setAiAnalysis(AI_FALLBACK_ANALYSIS);
+          return;
+        }
+        toast.error(`Erro na análise: ${aiErr.message}`);
+        setAiAnalysis(AI_FALLBACK_ANALYSIS);
+        return;
+      }
+
+      setAiAnalysis(result?.result || AI_FALLBACK_ANALYSIS);
       if (result?.mode === "expanded") {
         toast.info(`Análise expandida ativada: ${(result?.reasons || []).join(", ")}`);
       }
     } catch (e: any) {
-      toast.error("Erro na análise: " + (e?.message || "Tente novamente"));
+      console.error("[BudgetKanban] AI analysis error:", e);
+      toast.error("Erro na análise IA. Exibindo checklist operacional.");
+      setAiAnalysis(AI_FALLBACK_ANALYSIS);
     } finally {
       setIsAnalyzing(false);
     }
@@ -1034,12 +1088,25 @@ export default function BudgetKanbanPage() {
           },
         },
       });
-      if (error) throw error;
-      if (result?.error) throw new Error(result.error);
-      setAiAnalysis(result?.result || "Sem resultado");
+
+      if (error || result?.error || result?.errorCode) {
+        const aiErr = parseAiError(result, error);
+        if (aiErr.isQuota) {
+          toast.warning("⚠️ IA indisponível: quota da OpenAI esgotada. Exibindo checklist operacional.");
+          setAiAnalysis(AI_FALLBACK_ANALYSIS);
+          return;
+        }
+        toast.error(`Erro na análise: ${aiErr.message}`);
+        setAiAnalysis(AI_FALLBACK_ANALYSIS);
+        return;
+      }
+
+      setAiAnalysis(result?.result || AI_FALLBACK_ANALYSIS);
       toast.success(`Análise aprofundada concluída (${result?.docs || 0} docs, web: ${result?.web ? "sim" : "não"})`);
     } catch (e: any) {
-      toast.error("Erro na análise: " + (e?.message || "Tente novamente"));
+      console.error("[BudgetKanban] Deep analysis error:", e);
+      toast.error("Erro na análise IA. Exibindo checklist operacional.");
+      setAiAnalysis(AI_FALLBACK_ANALYSIS);
     } finally {
       setIsAnalyzing(false);
     }
@@ -1075,11 +1142,23 @@ export default function BudgetKanbanPage() {
           chatHistory: chatMessages,
         },
       });
-      if (error) throw error;
-      if (result?.error) throw new Error(result.error);
+
+      if (error || result?.error || result?.errorCode) {
+        const aiErr = parseAiError(result, error);
+        if (aiErr.isQuota) {
+          toast.warning("⚠️ Chat IA indisponível: quota da OpenAI esgotada.");
+          setChatMessages(prev => [...prev, { role: "assistant", content: "⚠️ Chat indisponível no momento — quota da OpenAI esgotada. Verifique o billing da conta OpenAI." }]);
+          return;
+        }
+        toast.error(`Erro no chat: ${aiErr.message}`);
+        setChatMessages(prev => [...prev, { role: "assistant", content: `Erro: ${aiErr.message}` }]);
+        return;
+      }
+
       setChatMessages(prev => [...prev, { role: "assistant", content: result?.result || "Sem resposta" }]);
     } catch (e: any) {
-      toast.error("Erro no chat: " + (e?.message || "Tente novamente"));
+      console.error("[BudgetKanban] Chat error:", e);
+      toast.error("Erro no chat IA.");
       setChatMessages(prev => [...prev, { role: "assistant", content: "Erro ao processar. Tente novamente." }]);
     } finally {
       setIsChatLoading(false);

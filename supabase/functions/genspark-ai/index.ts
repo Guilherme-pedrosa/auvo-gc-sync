@@ -703,31 +703,42 @@ type AiCallOptions = {
   temperature?: number;
 };
 
+// Error codes structured for frontend consumption
+const AI_ERROR = {
+  QUOTA_EXCEEDED: "OPENAI_QUOTA_EXCEEDED",
+  RATE_LIMITED: "OPENAI_RATE_LIMITED",
+  REQUEST_FAILED: "OPENAI_REQUEST_FAILED",
+  NO_KEY: "OPENAI_NO_KEY",
+} as const;
+
 // =========================================================================
-// AI CALL — OpenAI direto com retry/delay (sem Lovable AI Gateway)
+// AI CALL — OpenAI direto com retry inteligente
+// - insufficient_quota → erro imediato, sem retry
+// - rate limit temporário → retry com backoff
 // =========================================================================
 async function callAI(
   messages: any[],
   model: string,
   maxTokens: number,
   options: AiCallOptions = {},
-): Promise<{ result: string; error?: string; status?: number }> {
+): Promise<{ result: string; error?: string; errorCode?: string; status?: number }> {
   const OPENAI_API_KEY = Deno.env.get("OPENAI_API_KEY");
   if (!OPENAI_API_KEY) {
-    return { result: "", error: "OPENAI_API_KEY não configurada no backend", status: 500 };
+    return { result: "", error: "OPENAI_API_KEY não configurada no backend", errorCode: AI_ERROR.NO_KEY, status: 500 };
   }
 
-  const temperature = options.temperature ?? 0.35;
+  const temperature = options.temperature ?? 0.2;
 
   // Normaliza modelo — envia direto para a API OpenAI
   let openaiModel = model;
   if (model === "openai/gpt-5.2" || model === "openai/gpt-5") openaiModel = "gpt-5.4-nano";
   else if (model === "openai/gpt-5-mini") openaiModel = "gpt-4o-mini";
   else if (model.startsWith("openai/")) openaiModel = "gpt-5.4-nano";
-  else if (model.startsWith("google/")) openaiModel = "gpt-4o-mini"; // fallback seguro
+  else if (model.startsWith("google/")) openaiModel = "gpt-4o-mini";
 
   const MAX_RETRIES = 3;
   let response: Response | null = null;
+  let lastErrorBody = "";
 
   for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
     console.log(`[genspark-ai] Calling OpenAI: model=${openaiModel}, attempt=${attempt + 1}/${MAX_RETRIES + 1}`);
@@ -741,30 +752,66 @@ async function callAI(
       body: JSON.stringify({ model: openaiModel, messages, temperature, max_tokens: maxTokens }),
     });
 
-    if (response.status !== 429 || attempt === MAX_RETRIES) break;
+    if (response.ok) break;
+
+    lastErrorBody = await response.text();
+
+    // Parse error to distinguish quota vs rate limit
+    let parsedError: any = null;
+    try { parsedError = JSON.parse(lastErrorBody); } catch { /* ignore */ }
+
+    const errorCode = parsedError?.error?.code || "";
+    const errorType = parsedError?.error?.type || "";
+
+    const isQuotaError =
+      response.status === 429 &&
+      (errorCode === "insufficient_quota" || errorType === "insufficient_quota" ||
+       /insufficient.quota/i.test(lastErrorBody));
+
+    // Quota esgotada → erro imediato, SEM retry
+    if (isQuotaError) {
+      console.error(`[genspark-ai] OpenAI QUOTA INSUFICIENTE (sem retry): ${lastErrorBody.substring(0, 200)}`);
+      return {
+        result: "",
+        error: "Quota da OpenAI esgotada. Verifique saldo, billing ou limites da conta.",
+        errorCode: AI_ERROR.QUOTA_EXCEEDED,
+        status: 429,
+      };
+    }
+
+    // Rate limit temporário → retry com backoff
+    const isRateLimit = response.status === 429;
+    if (!isRateLimit || attempt === MAX_RETRIES) break;
 
     const retryAfter = response.headers.get("retry-after");
     const waitMs = retryAfter
       ? parseInt(retryAfter, 10) * 1000
-      : Math.min(2000 * Math.pow(2, attempt), 15000); // 2s, 4s, 8s
-    console.warn(`[genspark-ai] OpenAI 429 — tentativa ${attempt + 1}, aguardando ${waitMs}ms`);
-    await response.text(); // consume body
+      : Math.min(2000 * Math.pow(2, attempt), 15000);
+    console.warn(`[genspark-ai] OpenAI rate limit 429 — tentativa ${attempt + 1}/${MAX_RETRIES}, aguardando ${waitMs}ms`);
     await new Promise((r) => setTimeout(r, waitMs));
   }
 
   if (!response || !response.ok) {
-    const errText = response ? await response.text() : "no response";
     const status = response?.status || 500;
-    const isInsufficientQuota = /insufficient_quota/i.test(errText);
-    console.error("OpenAI API error:", status, errText.substring(0, 240));
+    if (!lastErrorBody && response) {
+      try { lastErrorBody = await response.text(); } catch { /* */ }
+    }
+    console.error(`[genspark-ai] OpenAI API error final: ${status}`, lastErrorBody.substring(0, 240));
 
-    if (status === 429 && isInsufficientQuota) {
-      return { result: "", error: "Quota da OpenAI esgotada. Verifique seu plano na OpenAI.", status: 429 };
-    }
     if (status === 429) {
-      return { result: "", error: "Rate limit da OpenAI atingido após 4 tentativas. Aguarde ~30s e tente novamente.", status: 429 };
+      return {
+        result: "",
+        error: "Rate limit da OpenAI atingido após múltiplas tentativas. Aguarde ~30s e tente novamente.",
+        errorCode: AI_ERROR.RATE_LIMITED,
+        status: 429,
+      };
     }
-    return { result: "", error: `Erro na API OpenAI: ${status}`, status };
+    return {
+      result: "",
+      error: "Não foi possível gerar a análise por IA neste momento.",
+      errorCode: AI_ERROR.REQUEST_FAILED,
+      status,
+    };
   }
 
   const data = await response.json();
@@ -867,7 +914,7 @@ FORMATO: Retorne apenas o texto melhorado, sem explicação.`;
         temperature: 0.25,
       });
       if (aiResult.error) {
-        return new Response(JSON.stringify({ error: aiResult.error }), {
+        return new Response(JSON.stringify({ error: aiResult.error, errorCode: aiResult.errorCode, message: aiResult.error }), {
           status: aiResult.status || 500,
           headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
@@ -1087,7 +1134,7 @@ TOM: Telegráfico, técnico, zero enrolação. Prefira disciplina e auditabilida
       }
 
       if (aiResult.error) {
-        return new Response(JSON.stringify({ error: aiResult.error }), {
+        return new Response(JSON.stringify({ error: aiResult.error, errorCode: aiResult.errorCode, message: aiResult.error }), {
           status: aiResult.status || 500,
           headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
@@ -1191,7 +1238,7 @@ TOM: Técnico, direto, sem floreio.`;
         temperature: 0.2,
       });
       if (aiResult.error) {
-        return new Response(JSON.stringify({ error: aiResult.error }), {
+        return new Response(JSON.stringify({ error: aiResult.error, errorCode: aiResult.errorCode, message: aiResult.error }), {
           status: aiResult.status || 500,
           headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
@@ -1274,7 +1321,7 @@ TOM: Telegráfico, técnico, fundamentado.`;
         temperature: 0.2,
       });
       if (aiResult.error) {
-        return new Response(JSON.stringify({ error: aiResult.error }), {
+        return new Response(JSON.stringify({ error: aiResult.error, errorCode: aiResult.errorCode, message: aiResult.error }), {
           status: aiResult.status || 500,
           headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
