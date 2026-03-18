@@ -572,6 +572,35 @@ export default function BudgetKanbanPage() {
       .replace(/[\u0300-\u036f]/g, "")
       .toLowerCase();
 
+  const isPlaceholderEquipmentValue = (value: string) => {
+    const normalized = normalizeText(value).replace(/\s+/g, " ").trim();
+    return (
+      !normalized ||
+      [
+        ".",
+        "-",
+        "--",
+        "n/a",
+        "na",
+        "null",
+        "undefined",
+        "sem equipamento",
+        "sem informacao",
+        "sem informação",
+        "nao informado",
+        "não informado",
+        "nao identificado",
+        "não identificado",
+      ].includes(normalized)
+    );
+  };
+
+  const sanitizeEquipmentValue = (value: unknown) => {
+    const raw = String(value ?? "").trim();
+    if (!raw || isPlaceholderEquipmentValue(raw)) return "";
+    return raw;
+  };
+
   const extractEquipmentFromCard = (item: KanbanItem) => {
     const textReplies = item.questionario_respostas.filter((r) => r.reply && !r.reply.startsWith("http"));
 
@@ -581,7 +610,7 @@ export default function BudgetKanbanPage() {
           const q = normalizeText(r.question);
           return keywords.some((k) => q.includes(k));
         })
-        .map((r) => String(r.reply || "").trim())
+        .map((r) => sanitizeEquipmentValue(r.reply))
         .filter(Boolean);
       return [...new Set(values)].join(" | ");
     };
@@ -592,31 +621,34 @@ export default function BudgetKanbanPage() {
     const blob = `${item.orientacao || ""}\n${getAnswer(item, "descri") || ""}`;
     if (!nome) {
       const matchNome = blob.match(/(?:equipamento|modelo)\s*[:\-]\s*([^\n;]+)/i);
-      if (matchNome?.[1]) nome = matchNome[1].trim();
+      if (matchNome?.[1]) nome = sanitizeEquipmentValue(matchNome[1]);
     }
     if (!id) {
       const matchId = blob.match(/(?:patrim[oô]nio|s[eé]rie|serial|tag|placa|id(?: do)? equipamento)\s*[:#\-]\s*([^\n;]+)/i);
-      if (matchId?.[1]) id = matchId[1].trim();
+      if (matchId?.[1]) id = sanitizeEquipmentValue(matchId[1]);
     }
 
     return { nome, id };
   };
 
   const applyResolvedEquipmentToCard = useCallback((taskId: string, nome: string, id: string) => {
+    const normalizedTaskId = String(taskId || "").trim();
     const equipmentPatch = {
-      equipamento_nome: nome || null,
-      equipamento_id_serie: id || null,
+      equipamento_nome: sanitizeEquipmentValue(nome) || null,
+      equipamento_id_serie: sanitizeEquipmentValue(id) || null,
     };
+
+    if (!normalizedTaskId) return;
 
     setColumns((prev) => prev.map((col) => ({
       ...col,
       items: col.items.map((item) =>
-        item.auvo_task_id === taskId ? { ...item, ...equipmentPatch } : item
+        String(item.auvo_task_id || "").trim() === normalizedTaskId ? { ...item, ...equipmentPatch } : item
       ),
     })));
 
     setSelectedCard((prev) => {
-      if (!prev || prev.auvo_task_id !== taskId) return prev;
+      if (!prev || String(prev.auvo_task_id || "").trim() !== normalizedTaskId) return prev;
       const sameNome = ((prev as any).equipamento_nome || null) === equipmentPatch.equipamento_nome;
       const sameId = ((prev as any).equipamento_id_serie || null) === equipmentPatch.equipamento_id_serie;
       if (sameNome && sameId) return prev;
@@ -625,13 +657,19 @@ export default function BudgetKanbanPage() {
   }, []);
 
   const persistResolvedEquipment = useCallback((taskId: string, nome: string, id: string) => {
+    const normalizedTaskId = String(taskId || "").trim();
+    const sanitizedNome = sanitizeEquipmentValue(nome);
+    const sanitizedId = sanitizeEquipmentValue(id);
+
+    if (!normalizedTaskId || (!sanitizedNome && !sanitizedId)) return;
+
     supabase
       .from("tarefas_central")
       .update({
-        equipamento_nome: nome || null,
-        equipamento_id_serie: id || null,
+        equipamento_nome: sanitizedNome || null,
+        equipamento_id_serie: sanitizedId || null,
       } as any)
-      .eq("auvo_task_id", taskId)
+      .eq("auvo_task_id", normalizedTaskId)
       .then(({ error }) => {
         if (error) {
           console.warn("[budget-kanban] Falha ao persistir equipamento:", error);
@@ -649,31 +687,72 @@ export default function BudgetKanbanPage() {
         return;
       }
 
-      const taskId = selectedCard.auvo_task_id;
-
-      // 1. Check if already persisted on card payload
-      const persistedNome = ((selectedCard as any).equipamento_nome || "").trim();
-      const persistedId = ((selectedCard as any).equipamento_id_serie || "").trim();
-      if (persistedNome || persistedId) {
-        setResolvedEquipment({ nome: persistedNome, id: persistedId });
+      const taskId = String(selectedCard.auvo_task_id || "").trim();
+      if (!taskId) {
+        setResolvedEquipment(null);
         setIsEquipmentLoading(false);
         return;
       }
 
-      // 2. Try local extraction from questionnaire/description
-      const local = extractEquipmentFromCard(selectedCard);
-      setResolvedEquipment(local.nome || local.id ? local : null);
+      // 1) Already available on selected card payload
+      const persistedNome = sanitizeEquipmentValue((selectedCard as any).equipamento_nome);
+      const persistedId = sanitizeEquipmentValue((selectedCard as any).equipamento_id_serie);
+      if (persistedNome || persistedId) {
+        const resolved = { nome: persistedNome, id: persistedId };
+        equipmentResolutionCache.set(taskId, resolved);
+        setResolvedEquipment(resolved);
+        setIsEquipmentLoading(false);
+        return;
+      }
+
+      // 2) Reuse session cache to avoid repeated calls when reopening card
+      if (equipmentResolutionCache.has(taskId)) {
+        setResolvedEquipment(equipmentResolutionCache.get(taskId) ?? null);
+        setIsEquipmentLoading(false);
+        return;
+      }
+
+      // 3) Try local extraction from questionnaire/description first
+      const localRaw = extractEquipmentFromCard(selectedCard);
+      const local = {
+        nome: sanitizeEquipmentValue(localRaw.nome),
+        id: sanitizeEquipmentValue(localRaw.id),
+      };
+      const localResolved = local.nome || local.id ? local : null;
+      setResolvedEquipment(localResolved);
 
       if (local.nome && local.id) {
+        equipmentResolutionCache.set(taskId, local);
         applyResolvedEquipmentToCard(taskId, local.nome, local.id);
         persistResolvedEquipment(taskId, local.nome, local.id);
         setIsEquipmentLoading(false);
         return;
       }
 
-      // 3. Only call API as last resort
       setIsEquipmentLoading(true);
       try {
+        // 4) Check persisted value directly in DB before hitting external API
+        const { data: persistedRow, error: persistedErr } = await supabase
+          .from("tarefas_central")
+          .select("equipamento_nome, equipamento_id_serie")
+          .eq("auvo_task_id", taskId)
+          .maybeSingle();
+
+        if (!persistedErr && persistedRow) {
+          const dbNome = sanitizeEquipmentValue((persistedRow as any).equipamento_nome);
+          const dbId = sanitizeEquipmentValue((persistedRow as any).equipamento_id_serie);
+          if (dbNome || dbId) {
+            const resolved = { nome: dbNome, id: dbId };
+            equipmentResolutionCache.set(taskId, resolved);
+            if (!cancelled) {
+              setResolvedEquipment(resolved);
+              applyResolvedEquipmentToCard(taskId, resolved.nome, resolved.id);
+            }
+            return;
+          }
+        }
+
+        // 5) External API as last resort
         const { data: taskResp, error: taskErr } = await supabase.functions.invoke("auvo-task-update", {
           body: { action: "get", taskId: Number(taskId) },
         });
@@ -691,7 +770,7 @@ export default function BudgetKanbanPage() {
         const equipmentIds = [...new Set(idsRaw.map((v: any) => String(v)).filter(Boolean))];
 
         let resolvedNome = local.nome;
-        let resolvedSerial = "";
+        let resolvedSerial = local.id;
 
         for (const eqId of equipmentIds) {
           const { data: eqResp, error: eqErr } = await supabase.functions.invoke("auvo-task-update", {
@@ -700,28 +779,31 @@ export default function BudgetKanbanPage() {
           if (eqErr) continue;
 
           const eq = eqResp?.data?.result || eqResp?.result || eqResp?.data || {};
-          const eqName = String(eq?.description || eq?.name || eq?.model || "").trim();
-          const eqIdentifier = String(eq?.identifier || eq?.serial || eq?.code || "").trim();
+          const eqName = sanitizeEquipmentValue(eq?.name || eq?.model || eq?.description || "");
+          const eqIdentifier = sanitizeEquipmentValue(eq?.identifier || eq?.serial || eq?.code || "");
 
           if (!resolvedNome && eqName) resolvedNome = eqName;
           if (!resolvedSerial && eqIdentifier) resolvedSerial = eqIdentifier;
 
-          if (resolvedNome && (local.id || resolvedSerial)) break;
+          if (resolvedNome && resolvedSerial) break;
         }
 
         const fallbackEquipmentId = equipmentIds.length ? equipmentIds.join(", ") : "";
-        const resolvedId = local.id || resolvedSerial || fallbackEquipmentId;
+        const resolvedId = resolvedSerial || fallbackEquipmentId;
+        const resolved = resolvedNome || resolvedId ? { nome: resolvedNome, id: resolvedId } : localResolved;
+
+        equipmentResolutionCache.set(taskId, resolved ?? null);
 
         if (!cancelled) {
-          const resolved = resolvedNome || resolvedId ? { nome: resolvedNome, id: resolvedId } : null;
-          setResolvedEquipment(resolved);
+          setResolvedEquipment(resolved ?? null);
 
-          if (resolved) {
+          if (resolved && (resolved.nome || resolved.id)) {
             applyResolvedEquipmentToCard(taskId, resolved.nome, resolved.id);
             persistResolvedEquipment(taskId, resolved.nome, resolved.id);
           }
         }
       } catch (error) {
+        equipmentResolutionCache.set(taskId, localResolved ?? null);
         console.warn("[budget-kanban] Falha ao resolver equipamento:", error);
       } finally {
         if (!cancelled) setIsEquipmentLoading(false);
@@ -733,7 +815,7 @@ export default function BudgetKanbanPage() {
     return () => {
       cancelled = true;
     };
-  }, [selectedCard, applyResolvedEquipmentToCard, persistResolvedEquipment]);
+  }, [selectedCard, applyResolvedEquipmentToCard, persistResolvedEquipment, equipmentResolutionCache]);
 
   // Save edited questionnaire field
   const handleSaveFieldEdit = useCallback(async (keyword: string, newValue: string) => {
