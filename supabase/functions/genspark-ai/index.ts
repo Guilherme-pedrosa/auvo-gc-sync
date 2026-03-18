@@ -473,78 +473,77 @@ async function fetchInternalTechDocs(query?: string, equipamento?: string, optio
         })
       );
 
-      // Process files from all folders
+      // Collect ALL files from ALL folders, score them GLOBALLY, then process in score order
+      const modelTerms = filterTerms.filter((t: string) => !manufacturerTerms.includes(t));
+      
+      const allScoredFiles: { file: any; folderName: string; score: number }[] = [];
+      
       for (const { folder, subFiles } of folderListings) {
-        if (limitReached()) break;
         console.log(`[genspark-ai] [internal-docs] Processando: ${folder.name} (${subFiles.length} arquivos)`);
-
-        // Progressive file scoring: model family terms get HIGHEST priority
-        // E.g. for "iCombi Pro LM100DE" → "icombi" file matches beat "scc" files
-        const modelTerms = filterTerms.filter((t: string) => !manufacturerTerms.includes(t));
         
-        const scoredFiles = subFiles
-          .filter((f: any) => f.mimeType !== "application/vnd.google-apps.folder")
-          .map((f: any) => {
-            const nameLower = (f.name || "").toLowerCase();
-            const isZip = f.mimeType === "application/zip" || nameLower.endsWith(".zip");
-            let score = isZip ? -10 : 0;
-            
-            // Model family terms get HIGHEST weight (e.g. "icombi" = 15 points)
-            for (const term of modelFamilyTerms) {
-              if (nameLower.includes(term)) {
-                score += 15;
+        for (const f of subFiles) {
+          if (f.mimeType === "application/vnd.google-apps.folder") continue;
+          const nameLower = (f.name || "").toLowerCase();
+          const isZip = f.mimeType === "application/zip" || nameLower.endsWith(".zip");
+          if (isZip) continue;
+          
+          let score = 0;
+          
+          // Model family terms get HIGHEST weight (e.g. "icombi" = 15 points)
+          for (const term of modelFamilyTerms) {
+            if (nameLower.includes(term)) score += 15;
+          }
+
+          // Check each term individually
+          for (const term of filterTerms) {
+            if (nameLower.includes(term)) {
+              if (modelFamilyTerms.includes(term)) continue;
+              score += manufacturerTerms.includes(term) ? 2 : 5;
+            }
+          }
+          
+          // Bonus: combined model terms
+          if (modelFamilyTerms.length > 1) {
+            const combined = modelFamilyTerms.join(" ");
+            if (nameLower.includes(combined)) score += 20;
+            const noSpace = modelFamilyTerms.join("");
+            if (nameLower.includes(noSpace)) score += 15;
+          }
+          
+          if (modelTerms.length > 1) {
+            const combined = modelTerms.join(" ");
+            if (nameLower.includes(combined)) score += 10;
+            const noSpace = modelTerms.join("");
+            if (nameLower.includes(noSpace)) score += 8;
+          }
+
+          // Preventiva/manutenção docs get bonus
+          if (nameLower.includes("preventiv") || nameLower.includes("manutencao") || nameLower.includes("manutenção")) {
+            score += 8;
+          }
+          
+          // Negative score for files that match a DIFFERENT model family (e.g. "SCC" when looking for "iCombi")
+          if (modelFamily) {
+            const otherModels = ["scc", "icombi", "ivario", "selfcookingcenter", "combimaster"];
+            for (const other of otherModels) {
+              if (!modelFamilyTerms.includes(other) && nameLower.includes(other)) {
+                score -= 10; // penalize wrong model
               }
             }
-
-            // Check each term individually
-            for (const term of filterTerms) {
-              if (nameLower.includes(term)) {
-                // Model family already scored above, skip
-                if (modelFamilyTerms.includes(term)) continue;
-                score += manufacturerTerms.includes(term) ? 2 : 5;
-              }
-            }
-            
-            // Bonus: check combined model terms (e.g. "icombi pro" as substring)
-            if (modelFamilyTerms.length > 1) {
-              const combined = modelFamilyTerms.join(" ");
-              if (nameLower.includes(combined)) score += 20;
-              const noSpace = modelFamilyTerms.join("");
-              if (nameLower.includes(noSpace)) score += 15;
-            }
-            
-            // Also check non-family model terms combined
-            if (modelTerms.length > 1) {
-              const combined = modelTerms.join(" ");
-              if (nameLower.includes(combined)) score += 10;
-              const noSpace = modelTerms.join("");
-              if (nameLower.includes(noSpace)) score += 8;
-            }
-
-            // Also check for "manutenção preventiva" or "preventiv" keyword (high value docs)
-            if (nameLower.includes("preventiv") || nameLower.includes("manutencao") || nameLower.includes("manutenção")) {
-              score += 8;
-            }
-            
-            // Progressive: if nothing matched, try partial
-            if (score <= 0 && modelTerms.length > 0) {
-              for (const term of modelTerms) {
-                if (term.length >= 3 && nameLower.includes(term.substring(0, 3))) {
-                  score += 1;
-                }
-              }
-            }
-            
-            return { ...f, score };
-          })
-          .sort((a: any, b: any) => b.score - a.score);
-
-        for (const file of scoredFiles) {
-          if (limitReached()) break;
-          const name = (file.name || "").toLowerCase();
-          if (file.mimeType === "application/zip" || name.endsWith(".zip")) continue;
-          await processFile(file, folder.name);
+          }
+          
+          allScoredFiles.push({ file: f, folderName: folder.name, score });
         }
+      }
+      
+      // Sort GLOBALLY by score (highest first)
+      allScoredFiles.sort((a, b) => b.score - a.score);
+      
+      console.log(`[genspark-ai] [internal-docs] ${allScoredFiles.length} arquivos scored. Top 5: ${allScoredFiles.slice(0, 5).map(f => `${f.file.name}(${f.score})`).join(", ")}`);
+
+      for (const { file, folderName } of allScoredFiles) {
+        if (limitReached()) break;
+        await processFile(file, folderName);
       }
 
       console.log(`[genspark-ai] [internal-docs] Busca concluída: ${totalFilesRead} docs, ${totalChars} chars`);
