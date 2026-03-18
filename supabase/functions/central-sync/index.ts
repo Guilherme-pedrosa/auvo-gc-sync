@@ -125,6 +125,9 @@ type AuvoTaskSnapshot = {
   displacementStart: string;
   checkInDate: string;
   checkOutDate: string;
+  taskEndDate: string;
+  startTime: string;
+  endTime: string;
 };
 
 async function fetchAuvoTaskSnapshot(bearerToken: string, taskId: string): Promise<AuvoTaskSnapshot | null> {
@@ -148,8 +151,11 @@ async function fetchAuvoTaskSnapshot(bearerToken: string, taskId: string): Promi
   const displacementStart = String(result?.displacementStart || result?.displacement_start || "").trim();
   const checkInDate = String(result?.checkInDate || result?.checkinDate || result?.checkin_date || "").trim();
   const checkOutDate = String(result?.checkOutDate || result?.checkoutDate || result?.checkout_date || "").trim();
+  const taskEndDate = String(result?.taskEndDate || result?.endDate || result?.scheduledEndDate || "").trim();
+  const startTime = String(result?.startTime || result?.startHour || "").trim();
+  const endTime = String(result?.endTime || result?.endHour || "").trim();
 
-  return { address, orientation, displacementStart, checkInDate, checkOutDate };
+  return { address, orientation, displacementStart, checkInDate, checkOutDate, taskEndDate, startTime, endTime };
 }
 
 // Fetch Auvo tasks for a single month window
