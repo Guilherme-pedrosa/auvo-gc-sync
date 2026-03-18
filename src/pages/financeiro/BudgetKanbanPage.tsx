@@ -115,6 +115,7 @@ export default function BudgetKanbanPage() {
   const [isChatLoading, setIsChatLoading] = useState(false);
   const [resolvedEquipment, setResolvedEquipment] = useState<{ nome: string; id: string } | null>(null);
   const [isEquipmentLoading, setIsEquipmentLoading] = useState(false);
+  const equipmentResolutionCache = useMemo(() => new Map<string, { nome: string; id: string } | null>(), []);
 
   const { data, isLoading, refetch, isFetching } = useQuery<ApiResponse>({
     queryKey: ["budget-kanban", format(dateRange.from, "yyyy-MM-dd"), format(dateRange.to, "yyyy-MM-dd")],
