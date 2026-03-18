@@ -535,6 +535,9 @@ Deno.serve(async (req) => {
         orcamento_realizado: !!gcOrc,
         os_realizada: !!gcOs,
         atualizado_em: new Date().toISOString(),
+        // Equipment from snapshot (will be merged with existing DB values below)
+        equipamento_nome: snapshot?.equipmentName || null,
+        equipamento_id_serie: snapshot?.equipmentSerial || null,
       };
 
       // GC Orçamento fields
