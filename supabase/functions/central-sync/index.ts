@@ -47,6 +47,16 @@ function normalizeDate(dateLike: unknown): string | null {
   return d;
 }
 
+function extractTimeFromDateStr(dateStr: string): string {
+  // Extract HH:MM:SS or HH:MM from ISO-like date string e.g. "2025-03-18T10:00:00"
+  const raw = String(dateStr || "").trim();
+  if (raw.length >= 16) {
+    const timePart = raw.substring(11, 19); // HH:MM:SS
+    if (/^\d{2}:\d{2}/.test(timePart)) return timePart;
+  }
+  return "";
+}
+
 function resolveTaskType(task: any): string {
   const candidates = [
     task?.taskTypeDescription,
