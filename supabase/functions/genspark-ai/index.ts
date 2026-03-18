@@ -326,7 +326,7 @@ async function fetchInternalTechDocs(query?: string, equipamento?: string, optio
   const isTextFile = (name: string) =>
     /\.(txt|csv|md|json|xml|html|htm|log|ini|cfg|yaml|yml|tsv)$/i.test(name);
 
-  const limitReached = () => totalFilesRead >= MAX_DOCS || totalChars >= MAX_TOTAL_CHARS;
+  const limitReached = () => totalFilesRead >= EFFECTIVE_MAX_DOCS || totalChars >= MAX_TOTAL_CHARS;
 
   const addResult = (name: string, text: string, icon = "📄") => {
     if (text.length > 8000) text = text.substring(0, 8000) + "\n... [truncado]";
