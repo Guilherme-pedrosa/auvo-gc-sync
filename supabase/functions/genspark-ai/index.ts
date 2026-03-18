@@ -875,7 +875,7 @@ Câmara fria/congelada → gaxetas de vedação, relé falta de fase, contatores
 POLÍTICAS WEDO (aplicar SOMENTE quando o gatilho for relevante para o equipamento em questão — NÃO aplique genericamente):
 P1) Sujeira/insetos VISÍVEIS nas fotos ou relatados → dedetização + higienização
 P2) Placa eletrônica mencionada ou visível → limpeza técnica (álcool isopropílico)
-P3) Equipamento Rational com troca de componente → filtros ar/água
+P3) Equipamento Rational (QUALQUER serviço, não apenas troca de componente) → SEMPRE recomendar: filtro de ar, filtro de água, descalcificante, juntas de porta/câmara, sensor de temperatura. Estes são peças de DESGASTE NATURAL que todo forno Rational precisa em manutenção preventiva. Marcar como ⚡ Recomendar.
 P4) Componente com fixação mecânica sendo trocado → fixadores, travas, porcas, arruelas DAQUELE componente
 P5) Peça de desgaste sendo trocada → verificar APENAS peças de desgaste DO MESMO SUBSISTEMA (ex: se troca rolamento, verificar retentor e eixo — NÃO listar mangueiras/filtros se o equipamento não os possui)
 P6) Calcário/sujidade mineral EVIDENCIADA → filtro de água, descalcificação
