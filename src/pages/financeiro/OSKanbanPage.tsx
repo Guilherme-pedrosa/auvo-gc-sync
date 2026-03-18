@@ -613,8 +613,11 @@ export default function OSKanbanPage() {
       // Character class for city/bairro names (letters, spaces, dots, apostrophes)
       const C = "[A-Za-zÀ-ú\\s.']";
 
+      // CEP pattern: 5 digits optionally followed by hyphen + 3 digits
+      const CEP = "\\d{5}(?:-?\\d{3})?";
+
       // Full pattern: "..., Bairro, Cidade - UF, CEP, ..." 
-      const mFull = text.match(new RegExp(`,\\s*(${C}+?),\\s*(${C}+?)\\s*-\\s*([A-Z]{2})\\s*,?\\s*\\d{5}`, "i"));
+      const mFull = text.match(new RegExp(`,\\s*(${C}+?),\\s*(${C}+?)\\s*-\\s*([A-Z]{2})\\s*,?\\s*${CEP}`, "i"));
       if (mFull) {
         const bairro = mFull[1].trim();
         const cidade = mFull[2].trim();
