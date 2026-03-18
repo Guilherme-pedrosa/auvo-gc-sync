@@ -650,21 +650,21 @@ async function searchEquipmentOnWeb(equipamento: string, descricao: string, orie
     return "";
   }
 
-  const searchQuery = `Commercial/industrial kitchen equipment: "${equipClean || descClean}".
-Reported issue: ${oriClean || "general maintenance"}.
-Parts mentioned: ${pecasClean || "none specified"}.
+  const searchQuery = `Equipamento de cozinha industrial/comercial / Commercial kitchen equipment / Gewerbliche Küchengeräte / Équipement de cuisine professionnelle: "${equipClean || descClean}".
+Problema / Issue / Problem / Problème: ${oriClean || "manutenção geral / general maintenance"}.
+Peças mencionadas / Parts mentioned: ${pecasClean || "não informadas"}.
 
-I need:
-1. Technical specifications of this equipment (main components, subsystems)
-2. Most common problems and typical root causes
-3. Wear parts and consumables list specific to this model
-4. Preventive maintenance critical points
-5. Specific supplies and tools for this equipment type
-6. Forum discussions, field experience, and technician tips about this model`;
+Preciso de / I need / Ich brauche / J'ai besoin de:
+1. Especificações técnicas / Technical specs (componentes, subsistemas)
+2. Problemas mais comuns / Most common problems (causas raiz / root causes)
+3. Lista de peças de desgaste / Wear parts list (consumíveis específicos deste modelo)
+4. Manutenção preventiva / Preventive maintenance (pontos críticos)
+5. Ferramentas e insumos / Tools and supplies
+6. Discussões em fóruns / Forum discussions / Forenbeiträge / Discussions sur les forums`;
 
   const { answer, citations } = await searchPerplexity(
     searchQuery,
-    "You are a senior industrial kitchen maintenance engineer. Search globally across manufacturer documentation, service manuals, technical forums (e.g. appliance repair forums, HVAC-Talk, FixYa, Reddit r/appliancerepair, iFixit), parts catalogs, and OEM websites. Include information from any country/language — do not restrict to Brazil. ALWAYS respond in Brazilian Portuguese (pt-BR). Be technical, precise, and cite sources. Include part numbers when available."
+    "You are a senior industrial kitchen maintenance engineer. Search the ENTIRE web in ALL languages — Portuguese, English, German, French, Spanish, Italian. Include: manufacturer documentation, service manuals, technical forums (appliance repair forums, Reddit, iFixit, HVAC-Talk, FixYa, Reparatur-Foren), parts catalogs (PartsTown, WebstaurantStore, Rational AG, Hobart, Robot Coupe), OEM websites, YouTube repair guides, and Brazilian sources (Mercado Livre, fóruns técnicos BR). Cover BOTH imported AND national equipment. ALWAYS respond in Brazilian Portuguese (pt-BR). Be technical, precise, cite sources. Include part numbers when available."
   );
 
   if (!answer) return "";
