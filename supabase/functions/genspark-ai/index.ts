@@ -819,6 +819,7 @@ Quando identificar o equipamento, PENSE nos subsistemas:
 - Máquina com CORREIA → verificar: polias (desgaste/alinhamento), tensor, rolamentos dos eixos
 - Máquina com ELETROVÁLVULA → verificar: bobina, vedações, filtro de linha, conexões
 - Equipamento de REFRIGERAÇÃO → verificar: carga de gás, teste de vazamento, limpeza do condensador, dreno, isolamento térmico
+- CÂMARA FRIA ou CÂMARA CONGELADA → verificar OBRIGATORIAMENTE: gaxetas de vedação (borrachas das portas), relé de falta de fase, contatores, controlador de temperatura, disjuntores, estabilizador de tensão, resistência de degelo, timer de degelo, válvula de expansão, pressostato de alta/baixa, ventiladores do evaporador, ventiladores do condensador, isolamento térmico (portas e painéis), dreno do evaporador, termômetro/sensor de temperatura. PESQUISAR NA WEB itens de preventiva específicos do modelo/fabricante da câmara.
 
 TABELA DE INSUMOS OBRIGATÓRIOS POR CONTEXTO:
 
