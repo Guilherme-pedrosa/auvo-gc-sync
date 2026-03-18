@@ -103,10 +103,11 @@ async function identifyManufacturer(equipamento: string): Promise<string[]> {
 
     if (!answer || answer.toLowerCase() === "desconhecido") return [];
 
-    // Extract manufacturer terms (first line, clean up)
+    // Extract manufacturer terms — STRIP ALL NUMBERS (avoid "hobart123456" pollution)
     const cleanAnswer = answer
       .split("\n")[0]
-      .replace(/[^a-zA-ZÀ-ÿ0-9\s\-]/g, "")
+      .replace(/[0-9]/g, "")              // remove all digits
+      .replace(/[^a-zA-ZÀ-ÿ\s\-]/g, "")  // keep only letters
       .trim();
 
     const terms = cleanAnswer
@@ -114,8 +115,27 @@ async function identifyManufacturer(equipamento: string): Promise<string[]> {
       .split(/[\s\-_]+/)
       .filter((t: string) => t.length > 2);
 
-    console.log(`[genspark-ai] [manufacturer] Termos extraídos: [${terms.join(",")}]`);
-    return terms;
+    // Also add common variations (e.g., "hobart" should also match "hobart - vulcan" folder)
+    const expandedTerms = [...terms];
+    // Known brand aliases/groups in our Drive
+    const brandAliases: Record<string, string[]> = {
+      "hobart": ["hobart", "vulcan"],
+      "rational": ["rational"],
+      "pratica": ["pratica", "prática"],
+      "tramontina": ["tramontina"],
+      "elgin": ["elgin"],
+    };
+    for (const term of terms) {
+      const aliases = brandAliases[term];
+      if (aliases) {
+        for (const alias of aliases) {
+          if (!expandedTerms.includes(alias)) expandedTerms.push(alias);
+        }
+      }
+    }
+
+    console.log(`[genspark-ai] [manufacturer] Termos extraídos: [${expandedTerms.join(",")}]`);
+    return expandedTerms;
   } catch (e) {
     console.warn(`[genspark-ai] [manufacturer] Erro: ${e instanceof Error ? e.message : String(e)}`);
     return [];
