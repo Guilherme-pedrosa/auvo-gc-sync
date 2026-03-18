@@ -1347,10 +1347,7 @@ TOM: Telegráfico, técnico, fundamentado.`;
         temperature: 0.2,
       });
       if (aiResult.error) {
-        return new Response(JSON.stringify({ error: aiResult.error, errorCode: aiResult.errorCode, message: aiResult.error }), {
-          status: aiResult.status || 500,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
+        return buildAiErrorResponse(aiResult);
       }
 
       return new Response(JSON.stringify({ result: aiResult.result, mode: "deep", docs: internalDocs?.docs_count || 0, web: !!webResearch }), {
