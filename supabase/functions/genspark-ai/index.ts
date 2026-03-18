@@ -545,6 +545,7 @@ serve(async (req) => {
       const docsResult = await fetchInternalTechDocs(searchQuery, equipamento);
       return new Response(JSON.stringify({
         api_source: docsResult.api_source,
+        manufacturer_identified: docsResult.manufacturer_identified,
         query: searchQuery,
         docs_count: docsResult.docs_count,
         docs_titles: docsResult.docs_titles.slice(0, 20),
