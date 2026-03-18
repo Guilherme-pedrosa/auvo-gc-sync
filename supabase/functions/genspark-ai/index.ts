@@ -692,7 +692,7 @@ Responda com dados técnicos reais: especificações, manuais, experiência docu
 
   const { answer, citations } = await searchPerplexity(
     searchQuery,
-    "Você é um engenheiro de manutenção industrial sênior. Pesquise na web e responda com dados técnicos concretos, citando fontes. Foque em: especificações de fabricante, manuais técnicos, normas, problemas documentados. Responda em português brasileiro. Seja preciso e direto."
+    "Você é um engenheiro de manutenção industrial sênior. Pesquise na web global (incluindo manuais e documentação fora do Brasil) e responda com dados técnicos concretos, citando fontes. Foque em especificações de fabricante, manuais técnicos, normas e problemas documentados. Responda em português brasileiro. Seja preciso e direto."
   );
 
   if (!answer) return "";
