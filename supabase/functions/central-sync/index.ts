@@ -305,8 +305,10 @@ async function fetchGcOrcamentos(gcHeaders: Record<string, string>): Promise<Rec
 }
 
 // Fetch ALL GC OS (no date filter)
-async function fetchGcOs(gcHeaders: Record<string, string>): Promise<Record<string, any>> {
+// Returns { byTaskId, byCodigo } — byCodigo is a reverse map for secondary linkage
+async function fetchGcOs(gcHeaders: Record<string, string>): Promise<{ byTaskId: Record<string, any>; byCodigo: Record<string, any> }> {
   const map: Record<string, any> = {};
+  const byCodigo: Record<string, any> = {};
   let page = 1;
   let totalPages = 1;
   const MAX_PAGES = 50;
@@ -339,6 +341,10 @@ async function fetchGcOs(gcHeaders: Record<string, string>): Promise<Record<stri
         gc_os_link: `https://gestaoclick.com/ordens_servicos/editar/${os.id}?retorno=%2Fordens_servicos`,
       };
 
+      // Reverse map by OS código
+      const codigo = String(os.codigo || "").trim();
+      if (codigo) byCodigo[codigo] = osPayload;
+
       // 73343 = tarefa OS, 73344 = tarefa execução
       // Prioridade para 73343 quando ambos existirem
       for (const attrId of [GC_ATRIBUTO_TAREFA_EXEC, GC_ATRIBUTO_TAREFA_OS]) {
@@ -363,7 +369,7 @@ async function fetchGcOs(gcHeaders: Record<string, string>): Promise<Record<stri
     console.log(`[central-sync] GC OS page ${page}/${totalPages}: ${records.length} registros, ${Object.keys(map).length} com tarefa`);
     page++;
   }
-  return map;
+  return { byTaskId: map, byCodigo };
 }
 
 Deno.serve(async (req) => {
