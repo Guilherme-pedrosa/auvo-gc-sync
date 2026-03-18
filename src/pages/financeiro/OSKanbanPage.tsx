@@ -83,6 +83,28 @@ type KanbanColumn = {
   items: OSItem[];
 };
 
+/** Normalize client name for comparison: lowercase, no accents, strip LTDA/ME/SA/EPP suffixes */
+function normalizeClientName(name: string | null | undefined): string {
+  if (!name) return "";
+  return name
+    .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/\s+(ltda|me|sa|epp|eireli|s\.a\.|s\/a)\.?$/i, "")
+    .replace(/[.\-\/]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+/** Check if Auvo and GC client names diverge */
+function hasClientDivergence(item: OSItem): boolean {
+  if (!item.cliente || !item.gc_os_cliente) return false;
+  const a = normalizeClientName(item.cliente);
+  const b = normalizeClientName(item.gc_os_cliente);
+  if (!a || !b) return false;
+  // Check if one contains the other (partial match is OK)
+  return !a.includes(b) && !b.includes(a);
+}
+
 export default function OSKanbanPage() {
   const navigate = useNavigate();
   const today = new Date();
