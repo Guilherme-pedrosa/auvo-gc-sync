@@ -1157,7 +1157,7 @@ TOM: Telegráfico, técnico, zero enrolação.`;
     // =========================================================================
     } else if (action === "chat") {
       const { context, analysis, userMessage, chatHistory } = body;
-      model = "gpt-4o";
+      model = "google/gemini-2.5-pro";
 
       const systemPrompt = `Você é o assistente técnico contextual de um orçamento da WeDo.
 
