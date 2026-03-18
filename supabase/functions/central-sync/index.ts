@@ -805,7 +805,7 @@ Deno.serve(async (req) => {
       const batch = rows.slice(i, i + 100);
       const { error } = await sbClient
         .from("tarefas_central")
-        .upsert(batch, { onConflict: "auvo_task_id", ignoreDuplicates: false });
+        .upsert(batch, { onConflict: "auvo_task_id", ignoreDuplicates: false, defaultToNull: false });
       
       if (error) {
         console.error(`[central-sync] Batch ${i}-${i + batch.length} error:`, error.message);
