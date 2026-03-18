@@ -19,7 +19,7 @@ import {
   ArrowLeft, CalendarIcon, RefreshCw, ExternalLink,
   Filter, GripVertical, Check, X, Edit2, Trash2, Plus,
   Package, FileText, ClipboardList, MapPin, ArrowUpDown, ArrowDown, ArrowUp,
-  UserCog, Save, Loader2, LayoutGrid, Navigation
+  UserCog, Save, Loader2, LayoutGrid, Navigation, AlertTriangle
 } from "lucide-react";
 import { Map as MapIcon } from "lucide-react";
 import OSMapView from "@/components/financeiro/OSMapView";
@@ -82,6 +82,28 @@ type KanbanColumn = {
   color: string;
   items: OSItem[];
 };
+
+/** Normalize client name for comparison: lowercase, no accents, strip LTDA/ME/SA/EPP suffixes */
+function normalizeClientName(name: string | null | undefined): string {
+  if (!name) return "";
+  return name
+    .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/\s+(ltda|me|sa|epp|eireli|s\.a\.|s\/a)\.?$/i, "")
+    .replace(/[.\-\/]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+/** Check if Auvo and GC client names diverge */
+function hasClientDivergence(item: OSItem): boolean {
+  if (!item.cliente || !item.gc_os_cliente) return false;
+  const a = normalizeClientName(item.cliente);
+  const b = normalizeClientName(item.gc_os_cliente);
+  if (!a || !b) return false;
+  // Check if one contains the other (partial match is OK)
+  return !a.includes(b) && !b.includes(a);
+}
 
 export default function OSKanbanPage() {
   const navigate = useNavigate();
@@ -1335,6 +1357,12 @@ export default function OSKanbanPage() {
                                           <p className="text-sm font-semibold text-foreground mt-1 truncate" title={item.cliente || item.gc_os_cliente || ""}>
                                             {abbreviateName(item.cliente || item.gc_os_cliente || "")}
                                           </p>
+                                          {hasClientDivergence(item) && (
+                                            <div className="flex items-center gap-1 mt-0.5 text-[10px] text-amber-600 dark:text-amber-400" title={`Auvo: ${item.cliente}\nGC: ${item.gc_os_cliente}`}>
+                                              <AlertTriangle className="h-3 w-3 flex-shrink-0" />
+                                              <span className="truncate">Cliente GC diferente</span>
+                                            </div>
+                                          )}
                                           <p className="text-xs text-muted-foreground mt-0.5">
                                             {item.tecnico || "—"} • {item.data_tarefa || "—"}
                                           </p>
@@ -1499,8 +1527,19 @@ export default function OSKanbanPage() {
               {/* Info principal */}
               <div className="grid grid-cols-2 gap-x-6 gap-y-3 text-sm">
                 <div>
-                  <span className="text-muted-foreground text-xs">Cliente</span>
-                  <p className="font-medium">{selectedCard.cliente || selectedCard.gc_os_cliente || "—"}</p>
+                  <span className="text-muted-foreground text-xs">Cliente (Auvo)</span>
+                  <p className="font-medium">{selectedCard.cliente || "—"}</p>
+                  {selectedCard.gc_os_cliente && (
+                    <p className="text-xs text-muted-foreground">GC: {selectedCard.gc_os_cliente}</p>
+                  )}
+                  {hasClientDivergence(selectedCard) && (
+                    <div className="flex items-center gap-1 mt-1 rounded-md bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 px-2 py-1">
+                      <AlertTriangle className="h-3.5 w-3.5 text-amber-600 dark:text-amber-400 flex-shrink-0" />
+                      <span className="text-[11px] text-amber-700 dark:text-amber-300">
+                        Divergência: Auvo "{selectedCard.cliente}" ≠ GC "{selectedCard.gc_os_cliente}"
+                      </span>
+                    </div>
+                  )}
                 </div>
                 <div>
                   <span className="text-muted-foreground text-xs">Técnico / Vendedor GC</span>
