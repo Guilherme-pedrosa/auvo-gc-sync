@@ -646,7 +646,7 @@ export default function OSKanbanPage() {
       }
 
       // "Cidade - UF, CEP" (no bairro)
-      const m1 = text.match(new RegExp(`,\\s*(${C}+?)\\s*-\\s*([A-Z]{2})\\s*,?\\s*\\d{5}`, "i"));
+      const m1 = text.match(new RegExp(`,\\s*(${C}+?)\\s*-\\s*([A-Z]{2})\\s*,?\\s*${CEP}`, "i"));
       if (m1 && m1[1].trim().length >= 3) {
         const cidade = m1[1].trim();
         return { region: `${cidade} - ${m1[2]}`, city: cidade };
