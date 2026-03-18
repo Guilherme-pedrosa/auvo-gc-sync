@@ -236,19 +236,20 @@ async function fetchItensPecasOsGC(
     const response = await rateLimitedFetch(url, { headers: gcHeaders }, "gc");
     if (!response.ok) return [];
     const data = await response.json();
-    const osObj = data?.data ?? data;
-    const produtos: any[] = osObj?.produtos || osObj?.itens || osObj?.servicos_produtos || osObj?.pecas || [];
-    return produtos
-      .filter((p: any) => {
-        const desc = String(p.descricao || p.nome || p.produto || "").trim();
-        const qty = parseFloat(String(p.quantidade || p.qtd || "0"));
-        return desc.length > 0 && qty > 0;
+    const osObj = data?.data?.data ?? data?.data ?? data;
+    // GC wraps products as { produto: { nome_produto, quantidade, ... } }
+    const produtosRaw: any[] = osObj?.produtos || [];
+    const result = produtosRaw
+      .map((p: any) => {
+        const inner = p?.produto || p;
+        const desc = String(inner.nome_produto || inner.descricao || inner.nome || inner.produto || "").trim();
+        const qty = parseFloat(String(inner.quantidade || inner.qtd || "0"));
+        const codigo = String(inner.produto_id || inner.codigo || inner.id || "");
+        return { descricao: desc, quantidade: qty, codigo };
       })
-      .map((p: any) => ({
-        descricao: String(p.descricao || p.nome || p.produto || ""),
-        quantidade: parseFloat(String(p.quantidade || p.qtd || "1")),
-        codigo: String(p.codigo || p.id || ""),
-      }));
+      .filter(p => p.descricao.length > 0 && p.quantidade > 0);
+    console.log(`[auvo-gc-sync] OS ${gcOsId}: ${result.length} produtos encontrados no GC: ${result.map(p => `${p.quantidade}x ${p.descricao}`).join(", ")}`);
+    return result;
   } catch (err) {
     console.error(`[auvo-gc-sync] Erro ao buscar itens GC OS ${gcOsId}:`, err);
     return [];
