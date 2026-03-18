@@ -253,8 +253,10 @@ async function fetchAuvoTasks(bearerToken: string, startDate: string, endDate: s
 }
 
 // Fetch ALL GC orçamentos (no date filter)
-async function fetchGcOrcamentos(gcHeaders: Record<string, string>): Promise<Record<string, any>> {
+// Returns { byTaskId, byCodigo } for secondary linkage
+async function fetchGcOrcamentos(gcHeaders: Record<string, string>): Promise<{ byTaskId: Record<string, any>; byCodigo: Record<string, any> }> {
   const map: Record<string, any> = {};
+  const byCodigo: Record<string, any> = {};
   let page = 1;
   let totalPages = 1;
   const MAX_PAGES = 50;
@@ -274,6 +276,23 @@ async function fetchGcOrcamentos(gcHeaders: Record<string, string>): Promise<Rec
 
     for (const orc of records) {
       const atributos: any[] = orc.atributos || [];
+      const orcPayload = {
+        gc_orcamento_id: String(orc.id),
+        gc_orcamento_codigo: String(orc.codigo || ""),
+        gc_orc_cliente: String(orc.nome_cliente || ""),
+        gc_orc_situacao: String(orc.nome_situacao || ""),
+        gc_orc_situacao_id: String(orc.situacao_id || ""),
+        gc_orc_cor_situacao: String(orc.cor_situacao || ""),
+        gc_orc_valor_total: parseFloat(orc.valor_total || "0"),
+        gc_orc_vendedor: String(orc.nome_vendedor || ""),
+        gc_orc_data: String(orc.data || "").split("T")[0] || null,
+        gc_orc_link: `https://gestaoclick.com/orcamentos_servicos/editar/${orc.id}?retorno=%2Forcamentos_servicos`,
+      };
+
+      // Reverse map by orçamento código
+      const codigo = String(orc.codigo || "").trim();
+      if (codigo) byCodigo[codigo] = orcPayload;
+
       const attrTarefa = atributos.find((a: any) => {
         const nested = a?.atributo || a;
         return String(nested.atributo_id || nested.id || "") === GC_ATRIBUTO_TAREFA_ORC;
@@ -282,18 +301,7 @@ async function fetchGcOrcamentos(gcHeaders: Record<string, string>): Promise<Rec
         const nested = attrTarefa?.atributo || attrTarefa;
         const taskId = String(nested?.conteudo || nested?.valor || "").trim();
         if (taskId && /^\d+$/.test(taskId)) {
-          map[taskId] = {
-            gc_orcamento_id: String(orc.id),
-            gc_orcamento_codigo: String(orc.codigo || ""),
-            gc_orc_cliente: String(orc.nome_cliente || ""),
-            gc_orc_situacao: String(orc.nome_situacao || ""),
-            gc_orc_situacao_id: String(orc.situacao_id || ""),
-            gc_orc_cor_situacao: String(orc.cor_situacao || ""),
-            gc_orc_valor_total: parseFloat(orc.valor_total || "0"),
-            gc_orc_vendedor: String(orc.nome_vendedor || ""),
-            gc_orc_data: String(orc.data || "").split("T")[0] || null,
-            gc_orc_link: `https://gestaoclick.com/orcamentos_servicos/editar/${orc.id}?retorno=%2Forcamentos_servicos`,
-          };
+          map[taskId] = orcPayload;
         }
       }
     }
@@ -301,7 +309,7 @@ async function fetchGcOrcamentos(gcHeaders: Record<string, string>): Promise<Rec
     console.log(`[central-sync] GC orçamentos page ${page}/${totalPages}: ${records.length} registros, ${Object.keys(map).length} com tarefa`);
     page++;
   }
-  return map;
+  return { byTaskId: map, byCodigo };
 }
 
 // Fetch ALL GC OS (no date filter)
