@@ -1266,7 +1266,10 @@ TOM: Técnico, direto, sem floreio.`;
 
       console.log(`[genspark-ai] [chat] model=${CHAT_MODEL}, hasAnalysis=${!!analysis}, needsExternalData=${needsExternalData}, msgLen=${userMessage?.length}`);
 
-      const aiResult = await callAI(messages, CHAT_MODEL, 3000);
+      const aiResult = await callAI(messages, CHAT_MODEL, 1800, {
+        fallbackModel: "google/gemini-2.5-flash",
+        temperature: 0.2,
+      });
       if (aiResult.error) {
         return new Response(JSON.stringify({ error: aiResult.error }), {
           status: aiResult.status || 500,
