@@ -738,18 +738,25 @@ async function callAI(
   };
 
   const callLovableGateway = async (gatewayModel: string): Promise<Response> => {
+    const payload: Record<string, unknown> = {
+      model: gatewayModel,
+      messages,
+      temperature,
+    };
+
+    if (gatewayModel.startsWith("openai/gpt-5")) {
+      payload.max_completion_tokens = maxTokens;
+    } else {
+      payload.max_tokens = maxTokens;
+    }
+
     return await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
       headers: {
         Authorization: `Bearer ${LOVABLE_API_KEY}`,
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({
-        model: gatewayModel,
-        messages,
-        temperature,
-        max_tokens: maxTokens,
-      }),
+      body: JSON.stringify(payload),
     });
   };
 
