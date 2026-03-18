@@ -51,7 +51,7 @@ async function addPhotosToContent(contentParts: any[], fotos: string[], maxPhoto
 // INTERNAL TECH DOCS — busca documentos técnicos da pasta pública WeDo
 // =========================================================================
 const DRIVE_FOLDER_ID = "1Sum9oUAzqfDew0FH1UC7_cIQyxEvAdcd";
-const INTERNAL_DOCS_TIMEOUT = 25000; // 25s — balancear cobertura vs CPU limit
+const INTERNAL_DOCS_TIMEOUT = 35000; // 35s — mais tempo para OCR dos docs corretos
 const MAX_DOCS = 6;
 const MAX_TOTAL_CHARS = 30000;
 
@@ -162,7 +162,10 @@ iCombi Pro` },
   }
 }
 
-async function fetchInternalTechDocs(query?: string, equipamento?: string): Promise<InternalDocsResult> {
+async function fetchInternalTechDocs(query?: string, equipamento?: string, options?: { skipOcr?: boolean; maxDocs?: number; timeout?: number }): Promise<InternalDocsResult> {
+  const EFFECTIVE_MAX_DOCS = options?.maxDocs ?? MAX_DOCS;
+  const EFFECTIVE_TIMEOUT = options?.timeout ?? INTERNAL_DOCS_TIMEOUT;
+  const SKIP_OCR = options?.skipOcr ?? false;
   const startTime = Date.now();
   const result: InternalDocsResult = {
     text: "",
@@ -323,7 +326,7 @@ async function fetchInternalTechDocs(query?: string, equipamento?: string): Prom
   const isTextFile = (name: string) =>
     /\.(txt|csv|md|json|xml|html|htm|log|ini|cfg|yaml|yml|tsv)$/i.test(name);
 
-  const limitReached = () => totalFilesRead >= MAX_DOCS || totalChars >= MAX_TOTAL_CHARS;
+  const limitReached = () => totalFilesRead >= EFFECTIVE_MAX_DOCS || totalChars >= MAX_TOTAL_CHARS;
 
   const addResult = (name: string, text: string, icon = "📄") => {
     if (text.length > 8000) text = text.substring(0, 8000) + "\n... [truncado]";
@@ -391,15 +394,20 @@ async function fetchInternalTechDocs(query?: string, equipamento?: string): Prom
           if (pdfText.length > 50) {
             addResult(fullPath, pdfText, "📕");
           } else {
-            // PDF escaneado — tentar OCR via Google Cloud Vision API
-            console.log(`[genspark-ai] [internal-docs] PDF sem texto extraível, tentando OCR: ${fullPath}`);
-            const ocrText = await ocrPdfViaVision(buf, fullPath);
-            if (ocrText.length > 50) {
-              addResult(fullPath, ocrText, "🔍");
-              console.log(`[genspark-ai] [OCR] Sucesso! ${ocrText.length} chars extraídos de ${fullPath}`);
+            // PDF escaneado — tentar OCR via Google Cloud Vision API (se não for modo leve)
+            if (SKIP_OCR) {
+              result.skipped_files.push(`${fullPath} (PDF scan — OCR ignorado no modo chat)`);
+              results.push(`📕 ${fullPath} — PDF escaneado (disponível para consulta, OCR não executado neste modo)`);
             } else {
-              result.skipped_files.push(`${fullPath} (PDF scan — OCR sem resultado útil)`);
-              results.push(`📕 ${fullPath} — PDF escaneado (OCR não extraiu texto suficiente)`);
+              console.log(`[genspark-ai] [internal-docs] PDF sem texto extraível, tentando OCR: ${fullPath}`);
+              const ocrText = await ocrPdfViaVision(buf, fullPath);
+              if (ocrText.length > 50) {
+                addResult(fullPath, ocrText, "🔍");
+                console.log(`[genspark-ai] [OCR] Sucesso! ${ocrText.length} chars extraídos de ${fullPath}`);
+              } else {
+                result.skipped_files.push(`${fullPath} (PDF scan — OCR sem resultado útil)`);
+                results.push(`📕 ${fullPath} — PDF escaneado (OCR não extraiu texto suficiente)`);
+              }
             }
           }
         } else await resp.text();
@@ -465,78 +473,77 @@ async function fetchInternalTechDocs(query?: string, equipamento?: string): Prom
         })
       );
 
-      // Process files from all folders
+      // Collect ALL files from ALL folders, score them GLOBALLY, then process in score order
+      const modelTerms = filterTerms.filter((t: string) => !manufacturerTerms.includes(t));
+      
+      const allScoredFiles: { file: any; folderName: string; score: number }[] = [];
+      
       for (const { folder, subFiles } of folderListings) {
-        if (limitReached()) break;
         console.log(`[genspark-ai] [internal-docs] Processando: ${folder.name} (${subFiles.length} arquivos)`);
-
-        // Progressive file scoring: model family terms get HIGHEST priority
-        // E.g. for "iCombi Pro LM100DE" → "icombi" file matches beat "scc" files
-        const modelTerms = filterTerms.filter((t: string) => !manufacturerTerms.includes(t));
         
-        const scoredFiles = subFiles
-          .filter((f: any) => f.mimeType !== "application/vnd.google-apps.folder")
-          .map((f: any) => {
-            const nameLower = (f.name || "").toLowerCase();
-            const isZip = f.mimeType === "application/zip" || nameLower.endsWith(".zip");
-            let score = isZip ? -10 : 0;
-            
-            // Model family terms get HIGHEST weight (e.g. "icombi" = 15 points)
-            for (const term of modelFamilyTerms) {
-              if (nameLower.includes(term)) {
-                score += 15;
+        for (const f of subFiles) {
+          if (f.mimeType === "application/vnd.google-apps.folder") continue;
+          const nameLower = (f.name || "").toLowerCase();
+          const isZip = f.mimeType === "application/zip" || nameLower.endsWith(".zip");
+          if (isZip) continue;
+          
+          let score = 0;
+          
+          // Model family terms get HIGHEST weight (e.g. "icombi" = 15 points)
+          for (const term of modelFamilyTerms) {
+            if (nameLower.includes(term)) score += 15;
+          }
+
+          // Check each term individually
+          for (const term of filterTerms) {
+            if (nameLower.includes(term)) {
+              if (modelFamilyTerms.includes(term)) continue;
+              score += manufacturerTerms.includes(term) ? 2 : 5;
+            }
+          }
+          
+          // Bonus: combined model terms
+          if (modelFamilyTerms.length > 1) {
+            const combined = modelFamilyTerms.join(" ");
+            if (nameLower.includes(combined)) score += 20;
+            const noSpace = modelFamilyTerms.join("");
+            if (nameLower.includes(noSpace)) score += 15;
+          }
+          
+          if (modelTerms.length > 1) {
+            const combined = modelTerms.join(" ");
+            if (nameLower.includes(combined)) score += 10;
+            const noSpace = modelTerms.join("");
+            if (nameLower.includes(noSpace)) score += 8;
+          }
+
+          // Preventiva/manutenção docs get bonus
+          if (nameLower.includes("preventiv") || nameLower.includes("manutencao") || nameLower.includes("manutenção")) {
+            score += 8;
+          }
+          
+          // Negative score for files that match a DIFFERENT model family (e.g. "SCC" when looking for "iCombi")
+          if (modelFamily) {
+            const otherModels = ["scc", "icombi", "ivario", "selfcookingcenter", "combimaster"];
+            for (const other of otherModels) {
+              if (!modelFamilyTerms.includes(other) && nameLower.includes(other)) {
+                score -= 10; // penalize wrong model
               }
             }
-
-            // Check each term individually
-            for (const term of filterTerms) {
-              if (nameLower.includes(term)) {
-                // Model family already scored above, skip
-                if (modelFamilyTerms.includes(term)) continue;
-                score += manufacturerTerms.includes(term) ? 2 : 5;
-              }
-            }
-            
-            // Bonus: check combined model terms (e.g. "icombi pro" as substring)
-            if (modelFamilyTerms.length > 1) {
-              const combined = modelFamilyTerms.join(" ");
-              if (nameLower.includes(combined)) score += 20;
-              const noSpace = modelFamilyTerms.join("");
-              if (nameLower.includes(noSpace)) score += 15;
-            }
-            
-            // Also check non-family model terms combined
-            if (modelTerms.length > 1) {
-              const combined = modelTerms.join(" ");
-              if (nameLower.includes(combined)) score += 10;
-              const noSpace = modelTerms.join("");
-              if (nameLower.includes(noSpace)) score += 8;
-            }
-
-            // Also check for "manutenção preventiva" or "preventiv" keyword (high value docs)
-            if (nameLower.includes("preventiv") || nameLower.includes("manutencao") || nameLower.includes("manutenção")) {
-              score += 8;
-            }
-            
-            // Progressive: if nothing matched, try partial
-            if (score <= 0 && modelTerms.length > 0) {
-              for (const term of modelTerms) {
-                if (term.length >= 3 && nameLower.includes(term.substring(0, 3))) {
-                  score += 1;
-                }
-              }
-            }
-            
-            return { ...f, score };
-          })
-          .sort((a: any, b: any) => b.score - a.score);
-
-        for (const file of scoredFiles) {
-          if (limitReached()) break;
-          const name = (file.name || "").toLowerCase();
-          if (file.mimeType === "application/zip" || name.endsWith(".zip")) continue;
-          await processFile(file, folder.name);
+          }
+          
+          allScoredFiles.push({ file: f, folderName: folder.name, score });
         }
+      }
+      
+      // Sort GLOBALLY by score (highest first)
+      allScoredFiles.sort((a, b) => b.score - a.score);
+      
+      console.log(`[genspark-ai] [internal-docs] ${allScoredFiles.length} arquivos scored. Top 5: ${allScoredFiles.slice(0, 5).map(f => `${f.file.name}(${f.score})`).join(", ")}`);
+
+      for (const { file, folderName } of allScoredFiles) {
+        if (limitReached()) break;
+        await processFile(file, folderName);
       }
 
       console.log(`[genspark-ai] [internal-docs] Busca concluída: ${totalFilesRead} docs, ${totalChars} chars`);
@@ -544,7 +551,7 @@ async function fetchInternalTechDocs(query?: string, equipamento?: string): Prom
 
     await Promise.race([
       drivePromise,
-      new Promise<void>((_, reject) => setTimeout(() => reject(new Error(`Timeout: busca interna excedeu ${INTERNAL_DOCS_TIMEOUT / 1000}s`)), INTERNAL_DOCS_TIMEOUT)),
+      new Promise<void>((_, reject) => setTimeout(() => reject(new Error(`Timeout: busca interna excedeu ${EFFECTIVE_TIMEOUT / 1000}s`)), EFFECTIVE_TIMEOUT)),
     ]);
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
@@ -1191,22 +1198,34 @@ Técnico, direto, sem floreio. Potente e fundamentado.`;
         contextText += `\nANÁLISE TÉCNICA JÁ GERADA:\n${analysis}\n`;
       }
 
-      // *** PARALLEL: Internal docs + Perplexity web search ***
+      // *** PARALLEL: Internal docs (lightweight for chat) + Perplexity web search ***
       const equipForChat = context?.equipamento || context?.descricao || "";
-      console.log(`[genspark-ai] [chat] Buscando docs internos + web em paralelo para: "${equipForChat.substring(0, 80)}"`);
+      
+      // If analysis already exists, skip heavy doc re-fetch (analysis already incorporated them)
+      // If no analysis, fetch docs in lightweight mode (no OCR, faster)
+      const shouldFetchDocs = !analysis;
+      console.log(`[genspark-ai] [chat] Buscando web${shouldFetchDocs ? " + docs internos (modo leve)" : " (docs já na análise)"} para: "${equipForChat.substring(0, 80)}"`);
 
-      const [chatInternalDocs, chatWebResearch] = await Promise.all([
-        fetchInternalTechDocs(equipForChat, equipForChat),
+      const parallelTasks: [Promise<InternalDocsResult | null>, Promise<string | null>] = [
+        shouldFetchDocs
+          ? fetchInternalTechDocs(equipForChat, equipForChat, { skipOcr: true, maxDocs: 4, timeout: 15000 })
+          : Promise.resolve(null),
         searchForChatQuestion(
           userMessage,
           equipForChat,
           context?.orientacao || "",
           analysis || ""
         ),
-      ]);
+      ];
+
+      const [chatInternalDocs, chatWebResearch] = await Promise.all(parallelTasks);
 
       // Internal docs block
-      contextText += buildInternalDocsBlock(chatInternalDocs);
+      if (chatInternalDocs) {
+        contextText += buildInternalDocsBlock(chatInternalDocs);
+      } else if (analysis) {
+        contextText += `\n\nNOTA: Os materiais técnicos internos já foram consultados e incorporados na ANÁLISE TÉCNICA acima. Use essas informações para responder.`;
+      }
 
       // Web research block
       if (chatWebResearch) {
@@ -1236,7 +1255,7 @@ Técnico, direto, sem floreio. Potente e fundamentado.`;
       }
       messages.push({ role: "user", content: userContentParts });
 
-      console.log(`[genspark-ai] [chat] cliente=${context?.cliente}, hasAnalysis=${!!analysis}, fotos=${context?.fotos?.length || 0}, internalDocs=${chatInternalDocs.docs_count}(${chatInternalDocs.elapsed_ms}ms), webResearch=${!!chatWebResearch}, msgLength=${userMessage?.length}`);
+      console.log(`[genspark-ai] [chat] cliente=${context?.cliente}, hasAnalysis=${!!analysis}, fotos=${context?.fotos?.length || 0}, internalDocs=${chatInternalDocs ? `${chatInternalDocs.docs_count}(${chatInternalDocs.elapsed_ms}ms)` : "skipped(análise já existe)"}, webResearch=${!!chatWebResearch}, msgLength=${userMessage?.length}`);
 
     } else {
       throw new Error("Ação inválida. Use 'improve', 'analyze', 'chat' ou 'internal_docs_test'.");
