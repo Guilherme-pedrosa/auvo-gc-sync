@@ -14,7 +14,7 @@ import { Calendar } from "@/components/ui/calendar";
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
 import { toast } from "sonner";
-import { RefreshCw, Play, Eye, ArrowLeft, AlertTriangle, Plus, Link2, CalendarIcon, ExternalLink, Settings2, CheckCircle2, Clock, Timer, Search, FileCheck, FileX, PackageCheck, Package, Loader2 } from "lucide-react";
+import { RefreshCw, Play, Eye, ArrowLeft, AlertTriangle, Plus, Link2, CalendarIcon, ExternalLink, Settings2, CheckCircle2, Clock, Timer, Search, FileCheck, FileX, PackageCheck } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
