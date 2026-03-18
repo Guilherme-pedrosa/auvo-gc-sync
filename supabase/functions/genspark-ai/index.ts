@@ -51,9 +51,9 @@ async function addPhotosToContent(contentParts: any[], fotos: string[], maxPhoto
 // INTERNAL TECH DOCS — busca documentos técnicos da pasta pública WeDo
 // =========================================================================
 const DRIVE_FOLDER_ID = "1Sum9oUAzqfDew0FH1UC7_cIQyxEvAdcd";
-const INTERNAL_DOCS_TIMEOUT = 35000; // 35s (OCR de PDFs escaneados pode levar mais tempo)
-const MAX_DOCS = 8;
-const MAX_TOTAL_CHARS = 15000;
+const INTERNAL_DOCS_TIMEOUT = 55000; // 55s — manuais grandes (Rational) precisam de mais tempo para OCR
+const MAX_DOCS = 10;
+const MAX_TOTAL_CHARS = 50000;
 
 type InternalDocsResult = {
   text: string;
@@ -240,7 +240,7 @@ async function fetchInternalTechDocs(query?: string, equipamento?: string): Prom
               mimeType: "application/pdf",
             },
             features: [{ type: "DOCUMENT_TEXT_DETECTION" }],
-            pages: [1, 2, 3, 4, 5], // primeiras 5 páginas
+            pages: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20], // primeiras 20 páginas
           }],
         }),
       });
@@ -278,7 +278,7 @@ async function fetchInternalTechDocs(query?: string, equipamento?: string): Prom
   const limitReached = () => totalFilesRead >= MAX_DOCS || totalChars >= MAX_TOTAL_CHARS;
 
   const addResult = (name: string, text: string, icon = "📄") => {
-    if (text.length > 2500) text = text.substring(0, 2500) + "\n... [truncado]";
+    if (text.length > 8000) text = text.substring(0, 8000) + "\n... [truncado]";
     results.push(`${icon} ${name}:\n${text}`);
     totalChars += text.length;
     totalFilesRead++;
