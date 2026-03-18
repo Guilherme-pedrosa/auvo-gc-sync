@@ -672,14 +672,21 @@ function shouldExpandAnalysis(context: AnalyzeContext, manufacturerIdentified: s
 // =========================================================================
 // HELPER: build prompt blocks
 // =========================================================================
+function clampForPrompt(value: string, maxChars: number): string {
+  if (!value) return "";
+  if (value.length <= maxChars) return value;
+  return `${value.slice(0, maxChars)}\n... [conteúdo truncado para reduzir consumo de tokens]`;
+}
+
 function buildInternalDocsBlock(docsResult: InternalDocsResult): string {
   if (docsResult.docs_count > 0 && docsResult.text) {
-    let block = `\n\n========== 📂 ${docsResult.text} ==========\n`;
+    const docsText = clampForPrompt(docsResult.text, 9000);
+    let block = `\n\n========== 📂 ${docsText} ==========`;
     block += `\nINSTRUÇÃO: Use os materiais internos acima para fundamentar o diagnóstico. Marque com 📂 informações vindas dos materiais internos.\n`;
     if (docsResult.error) {
       block += `\n⚠️ Busca interna parcial (${docsResult.error}). ${docsResult.docs_count} doc(s) carregados em ${docsResult.elapsed_ms}ms.\n`;
     }
-    return block;
+    return `${block}\n`;
   }
   let reason = "Nenhum documento retornado";
   if (docsResult.error) reason = `Erro na busca: ${docsResult.error}`;
@@ -688,45 +695,114 @@ function buildInternalDocsBlock(docsResult: InternalDocsResult): string {
 
 function buildWebBlock(webResearch: string): string {
   if (!webResearch) return "";
-  return `\n\n========== 🌐 DADOS DA PESQUISA WEB ==========\n${webResearch}\n==========================================================\n`;
+  const compactWeb = clampForPrompt(webResearch, 6000);
+  return `\n\n========== 🌐 DADOS DA PESQUISA WEB ==========\n${compactWeb}\n==========================================================\n`;
 }
 
-// =========================================================================
-// AI GATEWAY HELPER — calls Lovable AI or OpenAI
-// =========================================================================
-async function callAI(messages: any[], model: string, maxTokens: number): Promise<{ result: string; error?: string; status?: number }> {
-  const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
+type AiCallOptions = {
+  fallbackModel?: string;
+  temperature?: number;
+};
 
-  // Use Lovable AI gateway for gpt-5 models
-  if (LOVABLE_API_KEY && model.startsWith("openai/")) {
-    console.log(`[genspark-ai] Calling Lovable AI gateway: model=${model}, messages=${messages.length}`);
-    const MAX_RETRIES = 2;
+// =========================================================================
+// AI GATEWAY HELPER — prefer Lovable AI gateway; OpenAI direct only legacy fallback
+// =========================================================================
+async function callAI(
+  messages: any[],
+  model: string,
+  maxTokens: number,
+  options: AiCallOptions = {},
+): Promise<{ result: string; error?: string; status?: number }> {
+  const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
+  const OPENAI_API_KEY = Deno.env.get("OPENAI_API_KEY");
+  const temperature = options.temperature ?? 0.35;
+
+  const normalizeGatewayModel = (rawModel: string): string => {
+    if (rawModel.startsWith("openai/") || rawModel.startsWith("google/")) return rawModel;
+    if (rawModel === "gpt-4o" || rawModel === "gpt-5" || rawModel === "gpt-5.2") return "openai/gpt-5.2";
+    if (rawModel === "gpt-4o-mini" || rawModel === "gpt-5-mini") return "openai/gpt-5-mini";
+    return "google/gemini-3-flash-preview";
+  };
+
+  const pickFallbackModel = (gatewayModel: string): string => {
+    if (options.fallbackModel) return options.fallbackModel;
+    const map: Record<string, string> = {
+      "openai/gpt-5.2": "openai/gpt-5-mini",
+      "openai/gpt-5": "openai/gpt-5-mini",
+      "openai/gpt-5-mini": "google/gemini-2.5-flash",
+      "google/gemini-2.5-pro": "google/gemini-2.5-flash",
+      "google/gemini-3.1-pro-preview": "google/gemini-3-flash-preview",
+      "google/gemini-3-flash-preview": "google/gemini-2.5-flash",
+    };
+    return map[gatewayModel] || "google/gemini-2.5-flash";
+  };
+
+  const callLovableGateway = async (gatewayModel: string): Promise<Response> => {
+    const isOpenAIGpt5 = gatewayModel.startsWith("openai/gpt-5");
+    const payload: Record<string, unknown> = {
+      model: gatewayModel,
+      messages,
+    };
+
+    if (!isOpenAIGpt5) {
+      payload.temperature = temperature;
+    }
+
+    if (isOpenAIGpt5) {
+      payload.max_completion_tokens = maxTokens;
+    } else {
+      payload.max_tokens = maxTokens;
+    }
+
+    return await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${LOVABLE_API_KEY}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(payload),
+    });
+  };
+
+  if (LOVABLE_API_KEY) {
+    const gatewayModel = normalizeGatewayModel(model);
+    const gatewayMaxRetries = 2;
     let response: Response | null = null;
 
-    for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
-      response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${LOVABLE_API_KEY}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ model, messages, temperature: 0.5, max_tokens: maxTokens }),
-      });
+    for (let attempt = 0; attempt <= gatewayMaxRetries; attempt++) {
+      console.log(`[genspark-ai] Calling Lovable AI gateway: model=${gatewayModel}, messages=${messages.length}, attempt=${attempt + 1}`);
+      response = await callLovableGateway(gatewayModel);
 
-      if (response.status !== 429 || attempt === MAX_RETRIES) break;
-      const waitMs = Math.min(2000 * Math.pow(2, attempt), 15000);
+      if (response.status !== 429 || attempt === gatewayMaxRetries) break;
+
+      const waitMs = Math.min(1200 * Math.pow(2, attempt), 8000);
       console.warn(`[genspark-ai] Lovable AI 429 — tentativa ${attempt + 1}, aguardando ${waitMs}ms`);
       await response.text();
       await new Promise((r) => setTimeout(r, waitMs));
     }
 
+    if (response && response.status === 429) {
+      const fallbackModel = normalizeGatewayModel(pickFallbackModel(gatewayModel));
+      if (fallbackModel !== gatewayModel) {
+        console.warn(`[genspark-ai] 429 persistente no modelo ${gatewayModel}. Tentando fallback: ${fallbackModel}`);
+        const fallbackResponse = await callLovableGateway(fallbackModel);
+        if (fallbackResponse.ok) {
+          const fallbackData = await fallbackResponse.json();
+          return { result: fallbackData.choices?.[0]?.message?.content || "" };
+        }
+
+        const fallbackErrText = await fallbackResponse.text();
+        console.error(`[genspark-ai] Fallback model error: ${fallbackResponse.status}`, fallbackErrText.substring(0, 240));
+      }
+    }
+
     if (!response || !response.ok) {
       const errText = response ? await response.text() : "no response";
       const status = response?.status || 500;
-      console.error(`[genspark-ai] Lovable AI error: ${status}`, errText.substring(0, 200));
+      console.error(`[genspark-ai] Lovable AI error: ${status}`, errText.substring(0, 240));
 
-      if (status === 429) return { result: "", error: "Rate limit atingido. Tente novamente em alguns segundos.", status: 429 };
-      if (status === 402) return { result: "", error: "Créditos insuficientes no Lovable AI.", status: 402 };
+      if (status === 429) return { result: "", error: "Serviço de IA congestionado. Tente novamente em alguns segundos.", status: 429 };
+      if (status === 402) return { result: "", error: "Créditos de IA insuficientes no workspace.", status: 402 };
       return { result: "", error: `Erro na IA: ${status}`, status };
     }
 
@@ -734,20 +810,19 @@ async function callAI(messages: any[], model: string, maxTokens: number): Promis
     return { result: data.choices?.[0]?.message?.content || "" };
   }
 
-  // Fallback to OpenAI direct
-  const OPENAI_API_KEY = Deno.env.get("OPENAI_API_KEY");
-  if (!OPENAI_API_KEY) return { result: "", error: "Nenhuma API key configurada", status: 500 };
+  // Legacy fallback for older projects sem Lovable AI habilitado
+  if (!OPENAI_API_KEY) {
+    return { result: "", error: "Nenhum provedor de IA configurado no backend", status: 500 };
+  }
 
-  // Map model names for OpenAI direct
   let openaiModel = model;
-  if (model === "openai/gpt-5.2") openaiModel = "gpt-4o";
+  if (model === "openai/gpt-5.2" || model === "openai/gpt-5") openaiModel = "gpt-4o";
   else if (model === "openai/gpt-5-mini") openaiModel = "gpt-4o-mini";
-  else if (model === "openai/gpt-5") openaiModel = "gpt-4o";
   else if (model.startsWith("openai/")) openaiModel = "gpt-4o";
 
-  console.log(`[genspark-ai] Calling OpenAI direct: model=${openaiModel}, messages=${messages.length}`);
+  console.log(`[genspark-ai] Calling OpenAI direct (legacy): model=${openaiModel}, messages=${messages.length}`);
 
-  const MAX_RETRIES = 3;
+  const MAX_RETRIES = 2;
   let response: Response | null = null;
   for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
     response = await fetch("https://api.openai.com/v1/chat/completions", {
@@ -756,12 +831,13 @@ async function callAI(messages: any[], model: string, maxTokens: number): Promis
         Authorization: `Bearer ${OPENAI_API_KEY}`,
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({ model: openaiModel, messages, temperature: 0.5, max_tokens: maxTokens }),
+      body: JSON.stringify({ model: openaiModel, messages, temperature, max_tokens: maxTokens }),
     });
 
     if (response.status !== 429 || attempt === MAX_RETRIES) break;
+
     const retryAfter = response.headers.get("retry-after");
-    const waitMs = retryAfter ? parseInt(retryAfter, 10) * 1000 : Math.min(1000 * Math.pow(2, attempt), 30000);
+    const waitMs = retryAfter ? parseInt(retryAfter, 10) * 1000 : Math.min(1200 * Math.pow(2, attempt), 8000);
     console.warn(`[genspark-ai] OpenAI 429 — tentativa ${attempt + 1}, aguardando ${waitMs}ms`);
     await response.text();
     await new Promise((r) => setTimeout(r, waitMs));
@@ -770,9 +846,22 @@ async function callAI(messages: any[], model: string, maxTokens: number): Promis
   if (!response || !response.ok) {
     const errText = response ? await response.text() : "no response";
     const status = response?.status || 500;
-    console.error("OpenAI API error:", status, errText);
-    const userMsg = status === 429 ? "Rate limit atingido. Tente novamente em alguns segundos." : `Erro na API: ${status}`;
-    return { result: "", error: userMsg, status };
+    const isInsufficientQuota = /insufficient_quota/i.test(errText);
+    console.error("OpenAI API error:", status, errText.substring(0, 240));
+
+    if (status === 429 && isInsufficientQuota) {
+      return {
+        result: "",
+        error: "Quota da OpenAI esgotada no fallback legado. Habilite Lovable AI para continuar.",
+        status: 429,
+      };
+    }
+
+    if (status === 429) {
+      return { result: "", error: "Rate limit da OpenAI atingido. Tente novamente em alguns segundos.", status: 429 };
+    }
+
+    return { result: "", error: `Erro na API de IA: ${status}`, status };
   }
 
   const data = await response.json();
@@ -870,7 +959,11 @@ FORMATO: Retorne apenas o texto melhorado, sem explicação.`;
         { role: "user", content: userContentParts.length === 1 ? userText : userContentParts },
       ];
 
-      const aiResult = await callAI(messages, model, 4000);
+      const improveMaxTokens = model === "openai/gpt-5" ? 3200 : 2200;
+      const aiResult = await callAI(messages, model, improveMaxTokens, {
+        fallbackModel: "openai/gpt-5-mini",
+        temperature: 0.25,
+      });
       if (aiResult.error) {
         return new Response(JSON.stringify({ error: aiResult.error }), {
           status: aiResult.status || 500,
@@ -1062,10 +1155,12 @@ TOM: Telegráfico, técnico, zero enrolação. Prefira disciplina e auditabilida
         textPrompt += `\n[MODO EXPANDIDO] Motivo: ${reasons.join(", ")}. Dados externos incluídos quando disponíveis.\n`;
       }
 
-      // Photos
+      // Photos (economia de tokens no padrão; high só quando leitura de etiqueta/placa é realmente necessária)
       const hasFotos = context?.fotos?.length > 0;
-      const maxPhotos = expand ? 6 : 3;
-      const photoDetail = expand ? "high" as const : "low" as const;
+      const photoNeedleText = `${context?.equipamento || ""} ${context?.descricao || ""} ${context?.orientacao || ""} ${context?.observacoes || ""}`.toLowerCase();
+      const needsHighDetail = /placa|etiqueta|serial|série|serie|modelo|part number|pn\b|c[oó]digo/i.test(photoNeedleText);
+      const maxPhotos = expand ? 4 : 3;
+      const photoDetail = expand && needsHighDetail ? "high" as const : "low" as const;
       textPrompt += `\nFOTOS: ${hasFotos ? `${filterImageUrls(context!.fotos!).length} foto(s) anexadas.` : "Não fornecidas"}\n`;
 
       userContentParts.push({ type: "text", text: textPrompt });
@@ -1080,7 +1175,11 @@ TOM: Telegráfico, técnico, zero enrolação. Prefira disciplina e auditabilida
 
       console.log(`[genspark-ai] [analyze] mode=${expand ? "expanded" : "standard"}, model=${ANALYSIS_MODEL}, fotos=${context?.fotos?.length || 0}→max${maxPhotos}(${photoDetail}), docs=${internalDocs?.docs_count || 0}, web=${webResearch ? "yes" : "no"}, contentParts=${userContentParts.length}`);
 
-      const aiResult = await callAI(messages, ANALYSIS_MODEL, 5000);
+      const analyzeMaxTokens = expand ? 3200 : 2200;
+      const aiResult = await callAI(messages, ANALYSIS_MODEL, analyzeMaxTokens, {
+        fallbackModel: "openai/gpt-5-mini",
+        temperature: 0.2,
+      });
       if (aiResult.error) {
         return new Response(JSON.stringify({ error: aiResult.error }), {
           status: aiResult.status || 500,
@@ -1180,7 +1279,10 @@ TOM: Técnico, direto, sem floreio.`;
 
       console.log(`[genspark-ai] [chat] model=${CHAT_MODEL}, hasAnalysis=${!!analysis}, needsExternalData=${needsExternalData}, msgLen=${userMessage?.length}`);
 
-      const aiResult = await callAI(messages, CHAT_MODEL, 3000);
+      const aiResult = await callAI(messages, CHAT_MODEL, 1800, {
+        fallbackModel: "google/gemini-2.5-flash",
+        temperature: 0.2,
+      });
       if (aiResult.error) {
         return new Response(JSON.stringify({ error: aiResult.error }), {
           status: aiResult.status || 500,
@@ -1247,11 +1349,13 @@ TOM: Telegráfico, técnico, fundamentado.`;
       if (webResearch) textPrompt += buildWebBlock(webResearch);
 
       const hasFotos = context?.fotos?.length > 0;
+      const deepPhotoNeedleText = `${context?.equipamento || ""} ${context?.descricao || ""} ${context?.orientacao || ""} ${context?.observacoes || ""}`.toLowerCase();
+      const deepNeedsHighDetail = /placa|etiqueta|serial|série|serie|modelo|part number|pn\b|c[oó]digo/i.test(deepPhotoNeedleText);
       textPrompt += `\nFOTOS: ${hasFotos ? `${filterImageUrls(context!.fotos!).length} foto(s)` : "Não fornecidas"}\n`;
 
       userContentParts.push({ type: "text", text: textPrompt });
       if (hasFotos) {
-        await addPhotosToContent(userContentParts, context!.fotos!, 6, "high");
+        await addPhotosToContent(userContentParts, context!.fotos!, 5, deepNeedsHighDetail ? "high" : "low");
       }
 
       const messages = [
@@ -1259,7 +1363,10 @@ TOM: Telegráfico, técnico, fundamentado.`;
         { role: "user", content: userContentParts },
       ];
 
-      const aiResult = await callAI(messages, DEEP_MODEL, 6000);
+      const aiResult = await callAI(messages, DEEP_MODEL, 3800, {
+        fallbackModel: "openai/gpt-5-mini",
+        temperature: 0.2,
+      });
       if (aiResult.error) {
         return new Response(JSON.stringify({ error: aiResult.error }), {
           status: aiResult.status || 500,
