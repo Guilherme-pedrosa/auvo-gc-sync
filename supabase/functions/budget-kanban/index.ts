@@ -881,9 +881,18 @@ Deno.serve(async (req) => {
     for (const item of items as any[]) {
       const persisted = persistedEquipmentMap[String(item.auvo_task_id || "")];
       if (!persisted) continue;
-      if (!item.equipamento_nome && persisted.equipamento_nome) item.equipamento_nome = persisted.equipamento_nome;
-      if (!item.equipamento_id_serie && persisted.equipamento_id_serie) item.equipamento_id_serie = persisted.equipamento_id_serie;
+      if (!sanitizeEquipmentValue(item.equipamento_nome) && persisted.equipamento_nome) item.equipamento_nome = persisted.equipamento_nome;
+      if (!sanitizeEquipmentValue(item.equipamento_id_serie) && persisted.equipamento_id_serie) item.equipamento_id_serie = persisted.equipamento_id_serie;
     }
+
+    // During sync, resolve missing equipment directly from Auvo and persist in central table
+    const auvoTaskById: Record<string, any> = {};
+    for (const task of auvoTasks) {
+      const taskId = String(task?.taskID || "").trim();
+      if (taskId) auvoTaskById[taskId] = task;
+    }
+
+    await resolveAndPersistMissingEquipment(sbClient, bearerToken, items as any[], auvoTaskById);
 
     // Sort: pendentes primeiro, depois por data desc
     items.sort((a: any, b: any) => {
