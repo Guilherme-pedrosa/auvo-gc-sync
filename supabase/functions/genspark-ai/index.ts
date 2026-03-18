@@ -278,7 +278,7 @@ async function fetchInternalTechDocs(query?: string, equipamento?: string): Prom
   const limitReached = () => totalFilesRead >= MAX_DOCS || totalChars >= MAX_TOTAL_CHARS;
 
   const addResult = (name: string, text: string, icon = "📄") => {
-    if (text.length > 2500) text = text.substring(0, 2500) + "\n... [truncado]";
+    if (text.length > 8000) text = text.substring(0, 8000) + "\n... [truncado]";
     results.push(`${icon} ${name}:\n${text}`);
     totalChars += text.length;
     totalFilesRead++;
