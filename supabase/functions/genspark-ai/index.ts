@@ -1298,12 +1298,12 @@ TOM: Telegráfico, técnico, zero enrolação. Prefira disciplina e auditabilida
       console.log(`[genspark-ai] [analyze] mode=${expand ? "expanded" : "standard"}, model=${ANALYSIS_MODEL}, fotos=${context?.fotos?.length || 0}→max${maxPhotos}(${photoDetail}), docs=${internalDocs?.docs_count || 0}, web=${webResearch ? "yes" : "no"}, contentParts=${userContentParts.length}`);
 
       const analyzeMaxTokens = expand ? 3200 : 2200;
-      let aiResult = await callAI(messages, ANALYSIS_MODEL, analyzeMaxTokens);
+      let aiResult = await callAI(messages, ANALYSIS_MODEL, analyzeMaxTokens, { action: "analyze" });
 
       // Retry com gpt-4o-mini se resultado veio vazio (timeout interno do modelo)
       if (!aiResult.error && !aiResult.result?.trim()) {
         console.warn(`[genspark-ai] [analyze] Resultado vazio do ${ANALYSIS_MODEL}. Retentando com gpt-4o-mini...`);
-        aiResult = await callAI(messages, "openai/gpt-5-mini", analyzeMaxTokens);
+        aiResult = await callAI(messages, "openai/gpt-5-mini", analyzeMaxTokens, { action: "analyze_retry" });
       }
 
       if (aiResult.error) {
