@@ -850,7 +850,7 @@ FORMATO DE SAÍDA (máximo de objetividade):
 📋 EQUIPAMENTO
 Equipamento: [nome/modelo]
 ID/Série: [valor ou NÃO IDENTIFICADO]
-Marca/Fabricante: [marca identificada pela pesquisa ou NÃO IDENTIFICADA — se foi fornecida no contexto, use-a]
+Marca/Fabricante: [marca — OBRIGATÓRIO. Use o valor fornecido no campo "Marca/Fabricante identificada" dos DADOS DA OS. Se não foi identificada ou se está como "Não identificada", escreva: "⚠️ NÃO IDENTIFICADA — Favor informar a marca/fabricante do equipamento para melhor análise e busca de materiais técnicos."]
 
 📂 MATERIAIS INTERNOS (se fornecidos)
 Se recebeu materiais internos (📂), OBRIGATORIAMENTE inclua esta seção:
