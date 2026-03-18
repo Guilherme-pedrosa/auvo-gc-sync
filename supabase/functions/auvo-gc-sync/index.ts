@@ -487,6 +487,31 @@ async function executarPutOs(
     payload.valor_produtos = formatCurrency(totalProdutos);
     payload.valor_total = formatCurrency(totalCalculado);
     payload.valor = formatCurrency(totalCalculado);
+
+    // Ajustar parcelas para bater com o valor_total (evita erro de R$ 0,01)
+    const parcelas = payload.parcelas;
+    if (Array.isArray(parcelas) && parcelas.length > 0) {
+      const totalParcelasAtual = parcelas.reduce((sum: number, p: any) => {
+        const wrapped = p?.parcela || p;
+        return sum + parseCurrency(wrapped?.valor || wrapped?.valor_parcela || 0);
+      }, 0);
+      const diff = totalCalculado - totalParcelasAtual;
+      // Only fix small rounding diffs (< R$ 1.00)
+      if (Math.abs(diff) > 0.001 && Math.abs(diff) < 1.0) {
+        // Adjust the last parcela
+        const lastParcela = parcelas[parcelas.length - 1];
+        const wrapped = lastParcela?.parcela || lastParcela;
+        const currentVal = parseCurrency(wrapped?.valor || wrapped?.valor_parcela || 0);
+        const newVal = currentVal + diff;
+        if (wrapped?.valor !== undefined) wrapped.valor = formatCurrency(newVal);
+        if (wrapped?.valor_parcela !== undefined) wrapped.valor_parcela = formatCurrency(newVal);
+        // If neither key existed, set valor
+        if (wrapped?.valor === undefined && wrapped?.valor_parcela === undefined) {
+          wrapped.valor = formatCurrency(newVal);
+        }
+        console.log(`[auvo-gc-sync] Ajuste de parcela: diff=${diff.toFixed(4)}, última parcela ${formatCurrency(currentVal)} → ${formatCurrency(newVal)}`);
+      }
+    }
   }
 
   console.log(
