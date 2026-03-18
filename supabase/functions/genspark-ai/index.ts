@@ -1024,6 +1024,7 @@ TOM: Telegráfico, técnico, zero enrolação.`;
         textPrompt += `- Equipamento: ${context.equipamento || context.descricao || "N/A"}\n`;
         textPrompt += `- ID / Patrimônio / Nº de Série do Equipamento: ${context.equipamento_id || "N/A"}\n`;
         textPrompt += `- Marca/Fabricante identificada: ${internalDocs.manufacturer_identified || "Não identificada"}\n`;
+        textPrompt += `- Família/Linha do modelo: ${(internalDocs as any).model_family || "Não identificada"}\n`;
         textPrompt += `- Descrição do equipamento/chamado: ${context.descricao || "N/A"}\n`;
         textPrompt += `- Orientação inicial / descrição do chamado: ${context.orientacao || "N/A"}\n`;
         textPrompt += `- Peças informadas: ${context.pecas || "N/A"}\n`;
