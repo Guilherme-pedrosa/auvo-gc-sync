@@ -898,16 +898,22 @@ Exemplo: se o relatório indica dano em rolamento/mancal/eixo, completar com os 
 Se o relatório NÃO indica intervenção nesse subsistema, NÃO force itens desse subsistema.
 Prioridade máxima: COMPLETAR tecnicamente o relatório, sem inventar.
 
-IMPORTANTE: Liste TUDO que precisa para executar o serviço completo:
+IMPORTANTE: Liste APENAS itens que serão VENDIDOS/COBRADOS no orçamento:
 - Peças solicitadas pelo técnico
 - ⚡ Componentes adjacentes necessários conforme diagnóstico e subsistema
 - 🌐 Peças e componentes identificados pela PESQUISA WEB que o técnico não mencionou
 - 📂 Peças identificadas nos materiais internos (Drive) que o técnico não mencionou
-- Insumos de montagem (veda-rosca, abraçadeiras, conexões...)
+- Insumos de montagem que serão cobrados (veda-rosca, abraçadeiras, conexões...)
 - Produtos químicos para limpeza/higienização
-- Consumíveis (solda, gás, óleo, nitrogênio...)
+- Consumíveis cobráveis (solda, gás refrigerante, óleo...)
 - Peças de desgaste natural do equipamento
-NÃO incluir EPIs básicos (luvas, óculos, capacete, sapato). Só EPIs específicos (PFF2, protetor auricular, avental químico).
+
+⛔ NÃO INCLUIR na lista (são ferramentas/recursos internos da equipe, NÃO são vendidos):
+- Ferramentas: multímetro, chaves Allen/Torx, chave de fenda, alicate, torquímetro, manifold, bomba de vácuo, etc.
+- EPIs: luvas, óculos, capacete, sapato, máscara PFF2, protetor auricular, avental químico, etc.
+- Equipamentos de diagnóstico: termômetro infravermelho, detector de vazamento, manômetro (quando usado só para teste), etc.
+- Lubrificantes genéricos internos (graxa, lubrificante alimentício) — SÓ inclua se for um insumo específico que será cobrado no orçamento.
+A lista é exclusivamente de PEÇAS, COMPONENTES, INSUMOS e QUÍMICOS que entrarão na nota fiscal / orçamento para o cliente.
 
 🏭 POLÍTICAS WEDO
 [Listar só as aplicáveis, 1 linha cada]
