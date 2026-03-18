@@ -492,7 +492,7 @@ async function fetchInternalTechDocs(query?: string, equipamento?: string): Prom
 
     await Promise.race([
       drivePromise,
-      new Promise<void>((_, reject) => setTimeout(() => reject(new Error("Timeout: busca interna excedeu 15s")), INTERNAL_DOCS_TIMEOUT)),
+      new Promise<void>((_, reject) => setTimeout(() => reject(new Error(`Timeout: busca interna excedeu ${INTERNAL_DOCS_TIMEOUT / 1000}s`)), INTERNAL_DOCS_TIMEOUT)),
     ]);
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
