@@ -844,6 +844,9 @@ export default function BudgetKanbanPage() {
       const localEquipment = extractEquipmentFromCard(selectedCard);
       const equipamento = resolvedEquipment?.nome || localEquipment.nome || "";
       const equipamentoId = resolvedEquipment?.id || localEquipment.id || "";
+      const descricao = getAnswer(selectedCard, "descri") || "";
+      // Fallback: never send empty equipamento — use description substring
+      const equipamentoFinal = equipamento || (descricao ? descricao.substring(0, 120) : (selectedCard.orientacao || "").substring(0, 120));
 
       const { data: result, error } = await supabase.functions.invoke("genspark-ai", {
         body: {
@@ -853,9 +856,9 @@ export default function BudgetKanbanPage() {
             tecnico: selectedCard.tecnico,
             data_tarefa: selectedCard.data_tarefa,
             orientacao: selectedCard.orientacao,
-            equipamento: equipamento,
+            equipamento: equipamentoFinal,
             equipamento_id: equipamentoId,
-            descricao: getAnswer(selectedCard, "descri") || "",
+            descricao: descricao,
             pecas: getAnswer(selectedCard, "peças") || getAnswer(selectedCard, "material") || getAnswer(selectedCard, "peca") || "",
             servicos: getAnswer(selectedCard, "serviços") || getAnswer(selectedCard, "servico") || "",
             tempo: getAnswer(selectedCard, "horas") || getAnswer(selectedCard, "tempo") || "",
