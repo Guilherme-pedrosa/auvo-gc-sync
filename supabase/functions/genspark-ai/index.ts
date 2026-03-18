@@ -1250,7 +1250,7 @@ Técnico, direto, sem floreio. Potente e fundamentado.`;
       }
       messages.push({ role: "user", content: userContentParts });
 
-      console.log(`[genspark-ai] [chat] cliente=${context?.cliente}, hasAnalysis=${!!analysis}, fotos=${context?.fotos?.length || 0}, internalDocs=${chatInternalDocs ? `${chatInternalDocs.docs_count}(${chatInternalDocs.elapsed_ms}ms)` : "skipped(análise já existe)"}, webResearch=${!!chatWebResearch}, msgLength=${userMessage?.length}`);
+      console.log(`[genspark-ai] [chat] cliente=${context?.cliente}, hasAnalysis=${!!analysis}, fotos=${context?.fotos?.length || 0}, internalDocs=${chatInternalDocs.docs_count}(${chatInternalDocs.elapsed_ms}ms, error=${chatInternalDocs.error || "none"}), webResearch=${!!chatWebResearch}, msgLength=${userMessage?.length}`);
 
     } else {
       throw new Error("Ação inválida. Use 'improve', 'analyze', 'chat' ou 'internal_docs_test'.");
