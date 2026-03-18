@@ -227,12 +227,20 @@ Deno.serve(async (req) => {
       const statusDesc = String(t.taskStatus?.description || t.status?.description || "").trim();
       const status = statusDesc || (t.finished ? "Finalizada" : (t.checkIn ? "Em andamento" : "Agendada"));
 
-      // Extract time from taskDate and taskEndDate as fallback (format: 2025-03-16T08:00:00)
+      // Extract time from taskDate and taskEndDate (format: 2025-03-16T08:00:00)
       const taskDateTime = rawDate.length >= 16 ? rawDate.substring(11, 16) : "";
       const rawEndDate = String(t.taskEndDate || t.endDate || t.scheduledEndDate || "");
       const taskEndDateTime = rawEndDate.length >= 16 ? rawEndDate.substring(11, 16) : "";
-      const startTime = String(t.startTime || t.startHour || "").trim() || taskDateTime || "";
-      const endTime = String(t.endTime || t.endHour || "").trim() || taskEndDateTime || "";
+      const rawStartTime = String(t.startTime || t.startHour || "").trim();
+      const rawEndTime = String(t.endTime || t.endHour || "").trim();
+      const isFinished = !!t.finished || statusDesc === "Finalizada";
+      
+      // For non-finished tasks, prefer scheduled end time (taskEndDate) over actual endTime
+      // because endTime may contain partial checkout timestamps
+      const startTime = rawStartTime || taskDateTime || "";
+      const endTime = isFinished
+        ? (rawEndTime || taskEndDateTime || "")
+        : (taskEndDateTime || rawEndTime || "");
 
       const address = typeof t.address === "object" ? "" : String(t.address || "").substring(0, 200);
       const description = String(t.orientation || t.description || "").substring(0, 500);
