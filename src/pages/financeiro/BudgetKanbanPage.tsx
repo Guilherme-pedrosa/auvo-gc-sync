@@ -934,18 +934,16 @@ export default function BudgetKanbanPage() {
     }
   }, [selectedCard]);
 
-  // AI technical analysis with GPT-5 vision (photos + text + context)
+  // AI technical analysis — budget_analysis_agent (standard or auto-expanded)
   const handleAiAnalysis = useCallback(async () => {
     if (!selectedCard) return;
     setIsAnalyzing(true);
     setAiAnalysis(null);
     try {
-      // Collect photo URLs from questionnaire responses
       const fotos = selectedCard.questionario_respostas
         .filter((r) => r.reply && r.reply.startsWith("http"))
         .map((r) => r.reply);
 
-      // Collect ALL text answers for full context
       const todasRespostas = selectedCard.questionario_respostas
         .filter((r) => r.reply && !r.reply.startsWith("http"))
         .map((r) => `${r.question}: ${r.reply}`)
@@ -955,7 +953,6 @@ export default function BudgetKanbanPage() {
       const equipamento = resolvedEquipment?.nome || localEquipment.nome || "";
       const equipamentoId = resolvedEquipment?.id || localEquipment.id || "";
       const descricao = getAnswer(selectedCard, "descri") || "";
-      // Fallback: never send empty equipamento — use description substring
       const equipamentoFinal = equipamento || (descricao ? descricao.substring(0, 120) : (selectedCard.orientacao || "").substring(0, 120));
 
       const { data: result, error } = await supabase.functions.invoke("genspark-ai", {
@@ -968,7 +965,7 @@ export default function BudgetKanbanPage() {
             orientacao: selectedCard.orientacao,
             equipamento: equipamentoFinal,
             equipamento_id: equipamentoId,
-            descricao: descricao,
+            descricao,
             pecas: getAnswer(selectedCard, "peças") || getAnswer(selectedCard, "material") || getAnswer(selectedCard, "peca") || "",
             servicos: getAnswer(selectedCard, "serviços") || getAnswer(selectedCard, "servico") || "",
             tempo: getAnswer(selectedCard, "horas") || getAnswer(selectedCard, "tempo") || "",
@@ -982,7 +979,11 @@ export default function BudgetKanbanPage() {
       });
       if (error) throw error;
       if (result?.error) throw new Error(result.error);
+
       setAiAnalysis(result?.result || "Sem resultado");
+      if (result?.mode === "expanded") {
+        toast.info(`Análise expandida ativada: ${(result?.reasons || []).join(", ")}`);
+      }
     } catch (e: any) {
       toast.error("Erro na análise: " + (e?.message || "Tente novamente"));
     } finally {
@@ -990,7 +991,59 @@ export default function BudgetKanbanPage() {
     }
   }, [selectedCard, resolvedEquipment]);
 
-  // AI Chat about this budget
+  // Deep analysis — budget_deep_analysis_agent (always expanded)
+  const handleDeepAnalysis = useCallback(async () => {
+    if (!selectedCard) return;
+    setIsAnalyzing(true);
+    setAiAnalysis(null);
+    try {
+      const fotos = selectedCard.questionario_respostas
+        .filter((r) => r.reply && r.reply.startsWith("http"))
+        .map((r) => r.reply);
+
+      const todasRespostas = selectedCard.questionario_respostas
+        .filter((r) => r.reply && !r.reply.startsWith("http"))
+        .map((r) => `${r.question}: ${r.reply}`)
+        .join("\n");
+
+      const localEquipment = extractEquipmentFromCard(selectedCard);
+      const equipamento = resolvedEquipment?.nome || localEquipment.nome || "";
+      const equipamentoId = resolvedEquipment?.id || localEquipment.id || "";
+      const descricao = getAnswer(selectedCard, "descri") || "";
+      const equipamentoFinal = equipamento || (descricao ? descricao.substring(0, 120) : (selectedCard.orientacao || "").substring(0, 120));
+
+      const { data: result, error } = await supabase.functions.invoke("genspark-ai", {
+        body: {
+          action: "deep_analyze",
+          context: {
+            cliente: selectedCard.cliente,
+            tecnico: selectedCard.tecnico,
+            data_tarefa: selectedCard.data_tarefa,
+            orientacao: selectedCard.orientacao,
+            equipamento: equipamentoFinal,
+            equipamento_id: equipamentoId,
+            descricao,
+            pecas: getAnswer(selectedCard, "peças") || getAnswer(selectedCard, "material") || getAnswer(selectedCard, "peca") || "",
+            servicos: getAnswer(selectedCard, "serviços") || getAnswer(selectedCard, "servico") || "",
+            tempo: getAnswer(selectedCard, "horas") || getAnswer(selectedCard, "tempo") || "",
+            observacoes: getAnswer(selectedCard, "observ") || "",
+            fotos,
+            todas_respostas: todasRespostas,
+          },
+        },
+      });
+      if (error) throw error;
+      if (result?.error) throw new Error(result.error);
+      setAiAnalysis(result?.result || "Sem resultado");
+      toast.success(`Análise aprofundada concluída (${result?.docs || 0} docs, web: ${result?.web ? "sim" : "não"})`);
+    } catch (e: any) {
+      toast.error("Erro na análise: " + (e?.message || "Tente novamente"));
+    } finally {
+      setIsAnalyzing(false);
+    }
+  }, [selectedCard, resolvedEquipment]);
+
+  // AI Chat — budget_chat_agent (lightweight, uses analysis as context)
   const handleChatSend = useCallback(async () => {
     if (!selectedCard || !chatInput.trim()) return;
     const userMsg = chatInput.trim();
@@ -998,21 +1051,9 @@ export default function BudgetKanbanPage() {
     setChatMessages(prev => [...prev, { role: "user", content: userMsg }]);
     setIsChatLoading(true);
     try {
-      const todasRespostas = selectedCard.questionario_respostas
-        .filter((r) => r.reply && !r.reply.startsWith("http"))
-        .map((r) => `${r.question}: ${r.reply}`)
-        .join("\n");
-
-      // Collect photo URLs for vision context
-      const fotos = selectedCard.questionario_respostas
-        .filter((r) => r.reply && r.reply.startsWith("http"))
-        .map((r) => r.reply);
-
       const localEquipment = extractEquipmentFromCard(selectedCard);
       const equipamento = resolvedEquipment?.nome || localEquipment.nome || "";
       const equipamentoId = resolvedEquipment?.id || localEquipment.id || "";
-      const descricaoChat = getAnswer(selectedCard, "descri") || "";
-      const equipamentoFinalChat = equipamento || (descricaoChat ? descricaoChat.substring(0, 120) : (selectedCard.orientacao || "").substring(0, 120));
 
       const { data: result, error } = await supabase.functions.invoke("genspark-ai", {
         body: {
@@ -1020,15 +1061,12 @@ export default function BudgetKanbanPage() {
           context: {
             cliente: selectedCard.cliente,
             tecnico: selectedCard.tecnico,
-            data_tarefa: selectedCard.data_tarefa,
             orientacao: selectedCard.orientacao,
-            equipamento: equipamentoFinalChat,
+            equipamento: equipamento || (selectedCard.orientacao || "").substring(0, 120),
             equipamento_id: equipamentoId,
-            pecas: getAnswer(selectedCard, "peças") || getAnswer(selectedCard, "material") || getAnswer(selectedCard, "peca") || "",
+            pecas: getAnswer(selectedCard, "peças") || getAnswer(selectedCard, "material") || "",
             servicos: getAnswer(selectedCard, "serviços") || getAnswer(selectedCard, "servico") || "",
             observacoes: getAnswer(selectedCard, "observ") || "",
-            todas_respostas: todasRespostas,
-            fotos,
           },
           analysis: aiAnalysis || "",
           userMessage: userMsg,
