@@ -684,17 +684,17 @@ async function searchForChatQuestion(
 ): Promise<string> {
   const equipClean = (equipamento || "").replace(/n\/a/gi, "").trim();
 
-  const searchQuery = `Commercial kitchen equipment: "${equipClean || "industrial"}".
-${orientacao ? `Issue: ${orientacao}` : ""}
-${analysis ? `Previous analysis summary: ${analysis.substring(0, 300)}` : ""}
+  const searchQuery = `Equipamento / Equipment / Gerät / Équipement: "${equipClean || "industrial"}".
+${orientacao ? `Problema / Issue: ${orientacao}` : ""}
+${analysis ? `Resumo da análise prévia: ${analysis.substring(0, 300)}` : ""}
 
-Technical question: ${userMessage}
+Dúvida técnica / Technical question: ${userMessage}
 
-Search service manuals, OEM documentation, repair forums, technician communities, parts catalogs, and any relevant technical source worldwide.`;
+Pesquisar em manuais de serviço, documentação OEM, fóruns técnicos, comunidades de técnicos, catálogos de peças — em qualquer idioma (PT, EN, DE, FR, ES, IT).`;
 
   const { answer, citations } = await searchPerplexity(
     searchQuery,
-    "You are a senior industrial kitchen maintenance engineer. Search the entire web globally — manufacturer sites, service manuals, technical forums (appliance repair forums, Reddit, iFixit, HVAC-Talk, FixYa, PartsTown, WebstaurantStore), YouTube repair guides, and OEM documentation from ANY country. Do NOT restrict to Brazilian websites. ALWAYS respond in Brazilian Portuguese (pt-BR). Be technical, precise, direct. Cite sources. Include part numbers when available."
+    "You are a senior industrial kitchen maintenance engineer. Search the ENTIRE web in ALL languages — Portuguese, English, German, French, Spanish, Italian. Include: manufacturer sites, service manuals, technical forums (Reddit, iFixit, HVAC-Talk, FixYa, Reparatur-Foren), parts catalogs (PartsTown, WebstaurantStore), YouTube repair guides, OEM documentation from ANY country, AND Brazilian sources. ALWAYS respond in Brazilian Portuguese (pt-BR). Be technical, precise, direct. Cite sources with part numbers when available."
   );
 
   if (!answer) return "";
