@@ -677,6 +677,34 @@ Deno.serve(async (req) => {
       }
     }
 
+    // Preserve existing equipment values: load from DB and don't overwrite with null
+    const rowTaskIds = rows.map((r) => String(r.auvo_task_id)).filter(Boolean);
+    const existingEquipMap: Record<string, { equipamento_nome: string | null; equipamento_id_serie: string | null }> = {};
+    for (let i = 0; i < rowTaskIds.length; i += 200) {
+      const batch = rowTaskIds.slice(i, i + 200);
+      const { data: eqRows } = await sbClient
+        .from("tarefas_central")
+        .select("auvo_task_id, equipamento_nome, equipamento_id_serie")
+        .in("auvo_task_id", batch);
+      for (const r of eqRows || []) {
+        if (r.equipamento_nome || r.equipamento_id_serie) {
+          existingEquipMap[r.auvo_task_id] = {
+            equipamento_nome: r.equipamento_nome || null,
+            equipamento_id_serie: r.equipamento_id_serie || null,
+          };
+        }
+      }
+    }
+
+    // Merge: keep existing equipment if new value is empty
+    for (const row of rows) {
+      const existing = existingEquipMap[row.auvo_task_id];
+      if (existing) {
+        if (!row.equipamento_nome && existing.equipamento_nome) row.equipamento_nome = existing.equipamento_nome;
+        if (!row.equipamento_id_serie && existing.equipamento_id_serie) row.equipamento_id_serie = existing.equipamento_id_serie;
+      }
+    }
+
     // Upsert in batches of 100
     let upserted = 0;
     let errors = 0;
