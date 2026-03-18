@@ -827,11 +827,11 @@ serve(async (req) => {
       });
     }
 
-    const OPENAI_API_KEY = Deno.env.get("OPENAI_API_KEY");
-    if (!OPENAI_API_KEY) throw new Error("OPENAI_API_KEY não configurada");
+    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
+    if (!LOVABLE_API_KEY) throw new Error("LOVABLE_API_KEY não configurada");
 
     const messages: any[] = [];
-    let model = "gpt-4o-mini";
+    let model = "google/gemini-2.5-flash";
 
     // =========================================================================
     // 1) MELHORAR PREENCHIMENTO
