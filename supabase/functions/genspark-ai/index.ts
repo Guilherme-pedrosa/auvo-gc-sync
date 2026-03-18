@@ -274,12 +274,15 @@ async function fetchInternalTechDocs(query?: string, equipamento?: string): Prom
 
       console.log(`[genspark-ai] [internal-docs] ${folders.length} pastas, ${topFiles.length} arquivos na raiz`);
 
-      // Score folders by relevance
+      // Score folders by relevance — manufacturer terms get EXTRA weight
       const scoredFolders = folders.map((f: any) => {
         const nameLower = (f.name || "").toLowerCase();
         let score = 0;
         for (const term of filterTerms) {
-          if (nameLower.includes(term)) score += 2;
+          if (nameLower.includes(term)) {
+            // Manufacturer terms get 5 points, equipment terms get 2
+            score += manufacturerTerms.includes(term) ? 5 : 2;
+          }
         }
         return { ...f, score };
       }).sort((a: any, b: any) => b.score - a.score);
