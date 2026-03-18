@@ -118,6 +118,8 @@ const AuvoSyncPage = () => {
   const [filtroSituacaoPos, setFiltroSituacaoPos] = useState("");
   const [filtroTecnicoPos, setFiltroTecnicoPos] = useState("");
   const [filtroStatusAuvo, setFiltroStatusAuvo] = useState("");
+  const [pecasValidation, setPecasValidation] = useState<Record<string, any>>({});
+  const [validatingPecas, setValidatingPecas] = useState<string | null>(null);
   // ─── Mapeamento state ───
   const [dialogOpen, setDialogOpen] = useState(false);
   const [selectedAuvoUser, setSelectedAuvoUser] = useState("");
