@@ -373,9 +373,12 @@ async function fetchInternalTechDocs(query?: string, equipamento?: string): Prom
       }).sort((a: any, b: any) => b.score - a.score);
 
       const matchingFolders = scoredFolders.filter((f: any) => f.score > 0);
-      const foldersToScan = matchingFolders.length > 0
-        ? matchingFolders.slice(0, 3)
-        : scoredFolders.slice(0, 2);
+      // ONLY scan folders that actually matched — don't fallback to random folders (avoids scanning AUVO with 100+ PDFs)
+      const foldersToScan = matchingFolders.slice(0, 3);
+
+      if (foldersToScan.length === 0) {
+        console.warn(`[genspark-ai] [internal-docs] NENHUMA pasta correspondeu aos termos [${filterTerms.join(",")}]. Pastas disponíveis: ${folders.map((f: any) => f.name).join(", ")}`);
+      }
 
       // Process top-level files (skip ZIPs)
       for (const file of topFiles) {
