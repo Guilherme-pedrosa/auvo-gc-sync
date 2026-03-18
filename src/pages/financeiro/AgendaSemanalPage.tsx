@@ -245,7 +245,7 @@ export default function AgendaSemanalPage() {
     return weekDays.map((wd) => {
       return tarefas
         .filter(t => t.data_tarefa && isSameDay(parseISO(t.data_tarefa), wd))
-        .reduce((sum, t) => sum + (t.gc_os_valor_total ?? 0), 0);
+        .reduce((sum, t) => sum + (t.gc_os_valor_total ?? t.gc_orc_valor_total ?? 0), 0);
     });
   }, [tarefas, weekDays]);
 
