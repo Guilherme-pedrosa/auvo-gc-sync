@@ -169,14 +169,28 @@ async function fetchInternalTechDocs(query?: string, equipamento?: string): Prom
   result.manufacturer_identified = manufacturerTerms.length > 0 ? manufacturerTerms.join(" ") : null;
 
   // Build filter terms: manufacturer terms FIRST (higher priority), then equipment terms
+  // Strip common equipment function words that pollute search (lava louças, forno, fogão, etc.)
+  const functionWords = [
+    "lava", "louça", "louças", "lavalouças", "forno", "fogão", "fogao",
+    "geladeira", "freezer", "refrigerador", "máquina", "maquina",
+    "equipamento", "industrial", "comercial", "profissional",
+    "elétrico", "eletrico", "elétrica", "eletrica", "gas", "gás",
+    "mesa", "balcão", "balcao", "bancada", "piso", "parede",
+    "processador", "cortador", "moedor", "misturador", "batedeira",
+    "chapa", "grill", "coifa", "exaustor", "pass", "through",
+  ];
+
   const equipTerms = equipStr
     .toLowerCase()
     .split(/[\s\-_,./]+/)
-    .filter((t: string) => t.length > 2);
+    .filter((t: string) => t.length > 2)
+    .filter((t: string) => !functionWords.includes(t));
 
   // Combine manufacturer + equipment terms, dedup
   const allTermsSet = new Set([...manufacturerTerms, ...equipTerms]);
   const filterTerms = Array.from(allTermsSet);
+
+  console.log(`[genspark-ai] [internal-docs] Termos de busca (sem palavras genéricas): [${filterTerms.join(",")}]`);
 
   console.log(`[genspark-ai] [internal-docs] Iniciando busca. equipamento="${equipStr.substring(0, 80)}", fabricante="${result.manufacturer_identified || "não identificado"}", filtros=[${filterTerms.join(",")}]`);
 
@@ -293,7 +307,7 @@ async function fetchInternalTechDocs(query?: string, equipamento?: string): Prom
 
     console.log(`[genspark-ai] [internal-docs] processFile: ${fullPath} (mime=${mimeType}, size=${fileSize})`);
 
-    if (fileSize > 3 * 1024 * 1024) {
+    if (fileSize > 5 * 1024 * 1024) {
       result.skipped_files.push(`${fullPath} (${Math.round(fileSize / 1024 / 1024)}MB — muito grande)`);
       results.push(`📎 ${fullPath} — arquivo grande (${Math.round(fileSize / 1024 / 1024)}MB), listado como referência`);
       return;
@@ -408,15 +422,43 @@ async function fetchInternalTechDocs(query?: string, equipamento?: string): Prom
         if (limitReached()) break;
         console.log(`[genspark-ai] [internal-docs] Processando: ${folder.name} (${subFiles.length} arquivos)`);
 
+        // Progressive file scoring: try full terms first, then progressively shorter model names
+        // E.g. "ecomax 503" → try "ecomax 503", then "ecomax", then "503"
+        const modelTerms = filterTerms.filter((t: string) => !manufacturerTerms.includes(t));
+        
         const scoredFiles = subFiles
           .filter((f: any) => f.mimeType !== "application/vnd.google-apps.folder")
           .map((f: any) => {
             const nameLower = (f.name || "").toLowerCase();
             const isZip = f.mimeType === "application/zip" || nameLower.endsWith(".zip");
             let score = isZip ? -10 : 0;
+            
+            // Check each term individually
             for (const term of filterTerms) {
-              if (nameLower.includes(term)) score += 3;
+              if (nameLower.includes(term)) {
+                score += manufacturerTerms.includes(term) ? 2 : 5; // model terms worth MORE for file matching
+              }
             }
+            
+            // Bonus: check combined model terms (e.g. "ecomax 503" as substring)
+            if (modelTerms.length > 1) {
+              const combined = modelTerms.join(" ");
+              if (nameLower.includes(combined)) score += 10;
+              // Also try without spaces (e.g. "ecomax503")
+              const noSpace = modelTerms.join("");
+              if (nameLower.includes(noSpace)) score += 8;
+            }
+            
+            // Progressive: if full model didn't match, try partial (e.g. "scc" from "scc 201")
+            if (score <= 0 && modelTerms.length > 0) {
+              for (const term of modelTerms) {
+                // Try first 3+ chars of each term
+                if (term.length >= 3 && nameLower.includes(term.substring(0, 3))) {
+                  score += 1;
+                }
+              }
+            }
+            
             return { ...f, score };
           })
           .sort((a: any, b: any) => b.score - a.score);
@@ -808,6 +850,7 @@ FORMATO DE SAÍDA (máximo de objetividade):
 📋 EQUIPAMENTO
 Equipamento: [nome/modelo]
 ID/Série: [valor ou NÃO IDENTIFICADO]
+Marca/Fabricante: [marca identificada pela pesquisa ou NÃO IDENTIFICADA — se foi fornecida no contexto, use-a]
 
 📂 MATERIAIS INTERNOS (se fornecidos)
 Se recebeu materiais internos (📂), OBRIGATORIAMENTE inclua esta seção:
@@ -904,6 +947,7 @@ TOM: Telegráfico, técnico, zero enrolação.`;
         textPrompt += `- Data: ${context.data_tarefa || "N/A"}\n`;
         textPrompt += `- Equipamento: ${context.equipamento || context.descricao || "N/A"}\n`;
         textPrompt += `- ID / Patrimônio / Nº de Série do Equipamento: ${context.equipamento_id || "N/A"}\n`;
+        textPrompt += `- Marca/Fabricante identificada: ${internalDocs.manufacturer_identified || "Não identificada"}\n`;
         textPrompt += `- Descrição do equipamento/chamado: ${context.descricao || "N/A"}\n`;
         textPrompt += `- Orientação inicial / descrição do chamado: ${context.orientacao || "N/A"}\n`;
         textPrompt += `- Peças informadas: ${context.pecas || "N/A"}\n`;
