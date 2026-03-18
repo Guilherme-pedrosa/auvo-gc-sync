@@ -42,6 +42,14 @@ type ConciliacaoItem = {
   tempo_pausa_seg: number;
   checkin_hora: string | null;
   checkout_hora: string | null;
+  pecas_status?: string;
+  pecas_aprovado?: boolean | null;
+  pecas_resumo?: string | null;
+  pecas_orc_qtd?: number;
+  pecas_cobertas_qtd?: number;
+  pecas_faltando_qtd?: number;
+  pecas_parciais_qtd?: number;
+  pecas_detalhes?: any;
 };
 
 type UsuarioMap = {
