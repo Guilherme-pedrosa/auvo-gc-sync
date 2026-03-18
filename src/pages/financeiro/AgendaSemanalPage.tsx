@@ -1087,9 +1087,15 @@ function TaskCard({
             <span>OS #{tarefa.gc_os_codigo}</span>
           </>
         )}
-        {tarefa.gc_os_valor_total != null && (
+        {tarefa.gc_orcamento_codigo && !tarefa.gc_os_codigo && (
+          <>
+            <span className="mx-0.5">·</span>
+            <span>ORÇ #{tarefa.gc_orcamento_codigo}</span>
+          </>
+        )}
+        {(tarefa.gc_os_valor_total ?? tarefa.gc_orc_valor_total) != null && (
           <span className="ml-1 font-semibold text-emerald-700 dark:text-emerald-400">
-            {formatCurrency(tarefa.gc_os_valor_total)}
+            {formatCurrency(tarefa.gc_os_valor_total ?? tarefa.gc_orc_valor_total)}
           </span>
         )}
       </div>
