@@ -1008,9 +1008,10 @@ function DayView({
                       <div className="text-[10px] text-muted-foreground truncate">
                         T#{tarefa.auvo_task_id}
                         {tarefa.gc_os_codigo && <> · OS #{tarefa.gc_os_codigo}</>}
+                        {tarefa.gc_orcamento_codigo && !tarefa.gc_os_codigo && <> · ORÇ #{tarefa.gc_orcamento_codigo}</>}
                       </div>
-                      {tarefa.gc_os_valor_total != null && (
-                        <div className="text-[10px] font-semibold text-emerald-700 dark:text-emerald-400">{formatCurrency(tarefa.gc_os_valor_total)}</div>
+                      {(tarefa.gc_os_valor_total ?? tarefa.gc_orc_valor_total) != null && (
+                        <div className="text-[10px] font-semibold text-emerald-700 dark:text-emerald-400">{formatCurrency(tarefa.gc_os_valor_total ?? tarefa.gc_orc_valor_total)}</div>
                       )}
                       <div className="flex items-center justify-end mt-0.5">
                         <span className={cn("px-1 py-0.5 rounded text-[9px] font-medium leading-none", statusClass)}>{tarefa.status_auvo || "—"}</span>
