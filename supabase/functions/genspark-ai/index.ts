@@ -1271,7 +1271,7 @@ TOM: Telegráfico, técnico, zero enrolação. Prefira disciplina e auditabilida
       if (manufacturerIdentified) {
         textPrompt += `\n⚠️ Marca identificada: "${manufacturerIdentified.toUpperCase()}". Incluir na seção LEITURA TÉCNICA.\n`;
       } else {
-        textPrompt += `\n⚠️ Marca NÃO identificada. Na seção LEITURA TÉCNICA, escrever "⚠️ NÃO IDENTIFICADA". Na seção PERGUNTAS, incluir: "Qual é a marca/fabricante deste equipamento?"\n`;
+        textPrompt += `\n⚠️ ATENÇÃO: Marca/fabricante NÃO foi identificada automaticamente. PRIORIDADE MÁXIMA: analise TODAS as fotos em busca de logotipos, placas de dados, etiquetas, formato característico do equipamento. Se identificar, declare com base. Se não, descreva características visíveis e pergunte ao usuário. Na seção PERGUNTAS, incluir: "Qual é a marca/fabricante deste equipamento?"\n`;
       }
 
       // Expanded mode: inject docs + web
