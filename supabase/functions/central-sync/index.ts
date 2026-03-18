@@ -404,11 +404,9 @@ Deno.serve(async (req) => {
     for (const task of auvoTasks) {
       const taskId = String(task.taskID || "").trim();
       if (!taskId || seenCandidates.has(taskId)) continue;
-      // Fetch snapshot for: OS-linked tasks (address) OR completed tasks (displacement data)
-      if (gcOsMap[taskId] || task.checkOut || task.finished) {
-        candidateTaskIds.push(taskId);
-        seenCandidates.add(taskId);
-      }
+      // Fetch snapshot for ALL tasks to get accurate hora_fim (taskEndDate), address, displacement
+      candidateTaskIds.push(taskId);
+      seenCandidates.add(taskId);
     }
 
     if (candidateTaskIds.length > 0) {
