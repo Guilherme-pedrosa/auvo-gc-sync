@@ -751,18 +751,70 @@ function buildAiErrorResponse(aiResult: AiCallResult) {
 // - insufficient_quota → erro imediato, sem retry
 // - rate limit temporário → retry com backoff
 // =========================================================================
+
+function classifyOpenAIError(httpStatus: number, rawBody: string): {
+  category: "quota_exceeded" | "rate_limited" | "model_not_found" | "invalid_key" | "context_length" | "other";
+  errorCode: string;
+  rawType: string;
+  rawCode: string;
+  rawMessage: string;
+} {
+  let parsed: any = null;
+  try { parsed = JSON.parse(rawBody); } catch { /* ignore */ }
+
+  const rawType = String(parsed?.error?.type || "");
+  const rawCode = String(parsed?.error?.code || "");
+  const rawMessage = String(parsed?.error?.message || "");
+  const bodyLower = rawBody.toLowerCase();
+
+  // 1. Quota / billing
+  if (
+    rawCode === "insufficient_quota" ||
+    rawType === "insufficient_quota" ||
+    bodyLower.includes("insufficient_quota") ||
+    bodyLower.includes("exceeded your current quota") ||
+    bodyLower.includes("billing")
+  ) {
+    return { category: "quota_exceeded", errorCode: AI_ERROR.QUOTA_EXCEEDED, rawType, rawCode, rawMessage };
+  }
+
+  // 2. Invalid API key
+  if (httpStatus === 401 || rawCode === "invalid_api_key" || rawType === "invalid_request_error" && bodyLower.includes("api key")) {
+    return { category: "invalid_key", errorCode: "OPENAI_INVALID_KEY", rawType, rawCode, rawMessage };
+  }
+
+  // 3. Model not found
+  if (httpStatus === 404 || rawCode === "model_not_found" || bodyLower.includes("does not exist") || bodyLower.includes("model_not_found")) {
+    return { category: "model_not_found", errorCode: "OPENAI_MODEL_NOT_FOUND", rawType, rawCode, rawMessage };
+  }
+
+  // 4. Context length exceeded
+  if (rawCode === "context_length_exceeded" || bodyLower.includes("context_length") || bodyLower.includes("maximum context length")) {
+    return { category: "context_length", errorCode: "OPENAI_CONTEXT_LENGTH", rawType, rawCode, rawMessage };
+  }
+
+  // 5. Rate limit (429 without quota markers)
+  if (httpStatus === 429) {
+    return { category: "rate_limited", errorCode: AI_ERROR.RATE_LIMITED, rawType, rawCode, rawMessage };
+  }
+
+  // 6. Other
+  return { category: "other", errorCode: AI_ERROR.REQUEST_FAILED, rawType, rawCode, rawMessage };
+}
+
 async function callAI(
   messages: any[],
   model: string,
   maxTokens: number,
-  options: AiCallOptions = {},
-): Promise<{ result: string; error?: string; errorCode?: string; status?: number }> {
+  options: AiCallOptions & { action?: string } = {},
+): Promise<AiCallResult> {
   const OPENAI_API_KEY = Deno.env.get("OPENAI_API_KEY");
   if (!OPENAI_API_KEY) {
     return { result: "", error: "OPENAI_API_KEY não configurada no backend", errorCode: AI_ERROR.NO_KEY, status: 500 };
   }
 
   const temperature = options.temperature ?? 0.2;
+  const actionLabel = options.action || "unknown";
 
   // Normaliza modelo — envia direto para a API OpenAI
   let openaiModel = model;
@@ -770,6 +822,10 @@ async function callAI(
   else if (model === "openai/gpt-5-mini") openaiModel = "gpt-4o-mini";
   else if (model.startsWith("openai/")) openaiModel = "gpt-5.4-nano";
   else if (model.startsWith("google/")) openaiModel = "gpt-4o-mini";
+
+  // Log key prefix for diagnostic (safe — only first 8 chars)
+  const keyPrefix = OPENAI_API_KEY.substring(0, 8);
+  console.log(`[genspark-ai] [callAI] action=${actionLabel}, model=${openaiModel}, keyPrefix=${keyPrefix}..., maxTokens=${maxTokens}, temp=${temperature}`);
 
   const MAX_RETRIES = 3;
   let response: Response | null = null;
@@ -791,39 +847,63 @@ async function callAI(
 
     lastErrorBody = await response.text();
 
-    // Parse error to distinguish quota vs rate limit
-    let parsedError: any = null;
-    try { parsedError = JSON.parse(lastErrorBody); } catch { /* ignore */ }
+    // ── RAW ERROR LOG (diagnóstico completo) ──
+    const classified = classifyOpenAIError(response.status, lastErrorBody);
+    console.error(`[genspark-ai] [RAW_OPENAI_ERROR] action=${actionLabel} attempt=${attempt + 1} httpStatus=${response.status} category=${classified.category} errorCode=${classified.errorCode} rawType="${classified.rawType}" rawCode="${classified.rawCode}" rawMessage="${classified.rawMessage.substring(0, 300)}" bodyPreview="${lastErrorBody.substring(0, 400)}"`);
 
-    const errorCode = parsedError?.error?.code || "";
-    const errorType = parsedError?.error?.type || "";
-
-    const isQuotaError =
-      response.status === 429 &&
-      (errorCode === "insufficient_quota" || errorType === "insufficient_quota" ||
-       /insufficient.quota/i.test(lastErrorBody));
-
-    // Quota esgotada → erro imediato, SEM retry
-    if (isQuotaError) {
-      console.error(`[genspark-ai] OpenAI QUOTA INSUFICIENTE (sem retry): ${lastErrorBody.substring(0, 200)}`);
+    // Quota → erro imediato, SEM retry
+    if (classified.category === "quota_exceeded") {
       return {
         result: "",
-        error: "Quota da OpenAI esgotada. Verifique saldo, billing ou limites da conta.",
+        error: `Quota da OpenAI esgotada. rawCode=${classified.rawCode}, rawType=${classified.rawType}. Verifique billing.`,
         errorCode: AI_ERROR.QUOTA_EXCEEDED,
         status: 429,
       };
     }
 
-    // Rate limit temporário → retry com backoff
-    const isRateLimit = response.status === 429;
-    if (!isRateLimit || attempt === MAX_RETRIES) break;
+    // Invalid key → erro imediato
+    if (classified.category === "invalid_key") {
+      return {
+        result: "",
+        error: `Chave da OpenAI inválida ou sem permissão. rawCode=${classified.rawCode}`,
+        errorCode: "OPENAI_INVALID_KEY",
+        status: 401,
+      };
+    }
 
-    const retryAfter = response.headers.get("retry-after");
-    const waitMs = retryAfter
-      ? parseInt(retryAfter, 10) * 1000
-      : Math.min(2000 * Math.pow(2, attempt), 15000);
-    console.warn(`[genspark-ai] OpenAI rate limit 429 — tentativa ${attempt + 1}/${MAX_RETRIES}, aguardando ${waitMs}ms`);
-    await new Promise((r) => setTimeout(r, waitMs));
+    // Model not found → erro imediato
+    if (classified.category === "model_not_found") {
+      return {
+        result: "",
+        error: `Modelo "${openaiModel}" não encontrado na OpenAI. rawCode=${classified.rawCode}`,
+        errorCode: "OPENAI_MODEL_NOT_FOUND",
+        status: 404,
+      };
+    }
+
+    // Context length → erro imediato
+    if (classified.category === "context_length") {
+      return {
+        result: "",
+        error: `Payload excede o contexto máximo do modelo. rawCode=${classified.rawCode}`,
+        errorCode: "OPENAI_CONTEXT_LENGTH",
+        status: 400,
+      };
+    }
+
+    // Rate limit temporário → retry com backoff
+    if (classified.category === "rate_limited" && attempt < MAX_RETRIES) {
+      const retryAfter = response.headers.get("retry-after");
+      const waitMs = retryAfter
+        ? parseInt(retryAfter, 10) * 1000
+        : Math.min(2000 * Math.pow(2, attempt), 15000);
+      console.warn(`[genspark-ai] OpenAI rate limit 429 — tentativa ${attempt + 1}/${MAX_RETRIES}, aguardando ${waitMs}ms`);
+      await new Promise((r) => setTimeout(r, waitMs));
+      continue;
+    }
+
+    // Outros erros → não retry
+    break;
   }
 
   if (!response || !response.ok) {
@@ -831,26 +911,26 @@ async function callAI(
     if (!lastErrorBody && response) {
       try { lastErrorBody = await response.text(); } catch { /* */ }
     }
-    console.error(`[genspark-ai] OpenAI API error final: ${status}`, lastErrorBody.substring(0, 240));
+    const finalClassified = classifyOpenAIError(status, lastErrorBody);
+    console.error(`[genspark-ai] [FINAL_ERROR] action=${actionLabel} httpStatus=${status} category=${finalClassified.category} errorCode=${finalClassified.errorCode}`);
 
-    if (status === 429) {
-      return {
-        result: "",
-        error: "Rate limit da OpenAI atingido após múltiplas tentativas. Aguarde ~30s e tente novamente.",
-        errorCode: AI_ERROR.RATE_LIMITED,
-        status: 429,
-      };
-    }
     return {
       result: "",
-      error: "Não foi possível gerar a análise por IA neste momento.",
-      errorCode: AI_ERROR.REQUEST_FAILED,
+      error: finalClassified.category === "rate_limited"
+        ? "Rate limit da OpenAI atingido após múltiplas tentativas. Aguarde ~30s e tente novamente."
+        : `Erro na API OpenAI (${finalClassified.category}): ${finalClassified.rawMessage.substring(0, 150)}`,
+      errorCode: finalClassified.errorCode,
       status,
     };
   }
 
   const data = await response.json();
-  return { result: data.choices?.[0]?.message?.content || "" };
+  const content = data.choices?.[0]?.message?.content || "";
+  const usage = data.usage;
+  if (usage) {
+    console.log(`[genspark-ai] [callAI] OK action=${actionLabel} model=${openaiModel} tokens_in=${usage.prompt_tokens} tokens_out=${usage.completion_tokens} total=${usage.total_tokens}`);
+  }
+  return { result: content };
 }
 
 // =========================================================================
