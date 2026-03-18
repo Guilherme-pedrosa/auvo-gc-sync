@@ -478,6 +478,7 @@ serve(async (req) => {
         query: searchQuery,
         docs_count: docsResult.docs_count,
         docs_titles: docsResult.docs_titles.slice(0, 20),
+        skipped_files: docsResult.skipped_files.slice(0, 20),
         elapsed_ms: docsResult.elapsed_ms,
         error: docsResult.error,
       }), {
