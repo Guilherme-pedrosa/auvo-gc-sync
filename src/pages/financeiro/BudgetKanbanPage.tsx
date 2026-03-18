@@ -1151,13 +1151,8 @@ export default function BudgetKanbanPage() {
       });
 
       if (error || result?.error || result?.errorCode) {
-        const aiErr = parseAiError(result, error);
-        if (aiErr.isQuota) {
-          toast.warning("⚠️ IA indisponível: quota da OpenAI esgotada. Exibindo checklist operacional.");
-          setAiAnalysis(AI_FALLBACK_ANALYSIS);
-          return;
-        }
-        toast.error(`Erro na análise: ${aiErr.message}`);
+        const aiErr = await parseAiError(result, error);
+        toast.warning(aiErr.message);
         setAiAnalysis(AI_FALLBACK_ANALYSIS);
         return;
       }
