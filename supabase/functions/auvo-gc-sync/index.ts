@@ -355,12 +355,13 @@ function itemOrcamentoCoberto(
   materiaisExecucao: Array<{ descricao: string; quantidade: number }>,
   thresholdCompleto: number,
   thresholdParcial: number
-): { coberto: boolean; matchParcial: boolean; melhorMatch: string | null; score: number } {
+): { coberto: boolean; matchParcial: boolean; melhorMatch: string | null; score: number; qtdOrcamento: number; qtdExecucao: number; qtdOk: boolean } {
   const tokensOrc = tokenizar(itemOrcamento.descricao);
-  if (tokensOrc.length === 0) return { coberto: true, matchParcial: false, melhorMatch: null, score: 1 };
+  if (tokensOrc.length === 0) return { coberto: true, matchParcial: false, melhorMatch: null, score: 1, qtdOrcamento: itemOrcamento.quantidade, qtdExecucao: itemOrcamento.quantidade, qtdOk: true };
 
   let melhorScore = 0;
   let melhorMatch: string | null = null;
+  let melhorQtdExec = 0;
 
   for (const mat of materiaisExecucao) {
     const tokensExec = tokenizar(mat.descricao);
@@ -371,14 +372,19 @@ function itemOrcamentoCoberto(
       return false;
     }).length;
     const score = matchCount / tokensOrc.length;
-    if (score > melhorScore) { melhorScore = score; melhorMatch = mat.descricao; }
+    if (score > melhorScore) { melhorScore = score; melhorMatch = mat.descricao; melhorQtdExec = mat.quantidade; }
   }
 
+  const qtdOk = melhorScore >= thresholdCompleto ? melhorQtdExec >= itemOrcamento.quantidade : false;
+
   return {
-    coberto: melhorScore >= thresholdCompleto,
-    matchParcial: melhorScore >= thresholdParcial && melhorScore < thresholdCompleto,
+    coberto: melhorScore >= thresholdCompleto && qtdOk,
+    matchParcial: (melhorScore >= thresholdParcial && melhorScore < thresholdCompleto) || (melhorScore >= thresholdCompleto && !qtdOk),
     melhorMatch,
     score: Math.round(melhorScore * 100),
+    qtdOrcamento: itemOrcamento.quantidade,
+    qtdExecucao: melhorQtdExec,
+    qtdOk,
   };
 }
 
