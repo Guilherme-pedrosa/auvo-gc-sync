@@ -47,6 +47,16 @@ function normalizeDate(dateLike: unknown): string | null {
   return d;
 }
 
+function extractTimeFromDateStr(dateStr: string): string {
+  // Extract HH:MM:SS or HH:MM from ISO-like date string e.g. "2025-03-18T10:00:00"
+  const raw = String(dateStr || "").trim();
+  if (raw.length >= 16) {
+    const timePart = raw.substring(11, 19); // HH:MM:SS
+    if (/^\d{2}:\d{2}/.test(timePart)) return timePart;
+  }
+  return "";
+}
+
 function resolveTaskType(task: any): string {
   const candidates = [
     task?.taskTypeDescription,
@@ -125,6 +135,9 @@ type AuvoTaskSnapshot = {
   displacementStart: string;
   checkInDate: string;
   checkOutDate: string;
+  taskEndDate: string;
+  startTime: string;
+  endTime: string;
 };
 
 async function fetchAuvoTaskSnapshot(bearerToken: string, taskId: string): Promise<AuvoTaskSnapshot | null> {
@@ -148,8 +161,11 @@ async function fetchAuvoTaskSnapshot(bearerToken: string, taskId: string): Promi
   const displacementStart = String(result?.displacementStart || result?.displacement_start || "").trim();
   const checkInDate = String(result?.checkInDate || result?.checkinDate || result?.checkin_date || "").trim();
   const checkOutDate = String(result?.checkOutDate || result?.checkoutDate || result?.checkout_date || "").trim();
+  const taskEndDate = String(result?.taskEndDate || result?.endDate || result?.scheduledEndDate || "").trim();
+  const startTime = String(result?.startTime || result?.startHour || "").trim();
+  const endTime = String(result?.endTime || result?.endHour || "").trim();
 
-  return { address, orientation, displacementStart, checkInDate, checkOutDate };
+  return { address, orientation, displacementStart, checkInDate, checkOutDate, taskEndDate, startTime, endTime };
 }
 
 // Fetch Auvo tasks for a single month window
@@ -398,11 +414,9 @@ Deno.serve(async (req) => {
     for (const task of auvoTasks) {
       const taskId = String(task.taskID || "").trim();
       if (!taskId || seenCandidates.has(taskId)) continue;
-      // Fetch snapshot for: OS-linked tasks (address) OR completed tasks (displacement data)
-      if (gcOsMap[taskId] || task.checkOut || task.finished) {
-        candidateTaskIds.push(taskId);
-        seenCandidates.add(taskId);
-      }
+      // Fetch snapshot for ALL tasks to get accurate hora_fim (taskEndDate), address, displacement
+      candidateTaskIds.push(taskId);
+      seenCandidates.add(taskId);
     }
 
     if (candidateTaskIds.length > 0) {
@@ -490,8 +504,8 @@ Deno.serve(async (req) => {
         pendencia: String(task.pendency ?? "").trim(),
         descricao: resolveTaskType(task),
         duracao_decimal: parseFloat(task.durationDecimal || "0") || 0,
-        hora_inicio: String(task.startTime || task.startHour || ""),
-        hora_fim: String(task.endTime || task.endHour || ""),
+        hora_inicio: String(task.startTime || task.startHour || snapshot?.startTime || "").trim() || extractTimeFromDateStr(String(task.taskDate || "")),
+        hora_fim: String(task.endTime || task.endHour || snapshot?.endTime || "").trim() || extractTimeFromDateStr(String(task.taskEndDate || snapshot?.taskEndDate || "")),
         check_in: !!task.checkIn,
         check_out: !!task.checkOut,
         endereco: resolvedAddress,
