@@ -963,6 +963,67 @@ serve(async (req) => {
     }
 
     // =====================================================================
+    // 0b) SANITY TEST — chamada mínima para diagnosticar key/quota/modelo
+    // =====================================================================
+    if (action === "sanity_test") {
+      const OPENAI_API_KEY = Deno.env.get("OPENAI_API_KEY");
+      const keyPrefix = OPENAI_API_KEY ? OPENAI_API_KEY.substring(0, 12) : "MISSING";
+      const keyLength = OPENAI_API_KEY ? OPENAI_API_KEY.length : 0;
+      const keyPattern = OPENAI_API_KEY ? (OPENAI_API_KEY.startsWith("sk-proj-") ? "sk-proj-*" : OPENAI_API_KEY.startsWith("sk-") ? "sk-*" : "unknown-prefix") : "MISSING";
+
+      console.log(`[genspark-ai] [sanity_test] keyPrefix=${keyPrefix}, keyLength=${keyLength}, keyPattern=${keyPattern}`);
+
+      const tests: any[] = [];
+
+      // Test 1: gpt-4o-mini (cheapest, most available)
+      const t1 = await callAI(
+        [{ role: "user", content: "Responda apenas: OK" }],
+        "openai/gpt-5-mini", // maps to gpt-4o-mini
+        10,
+        { temperature: 0, action: "sanity_test_mini" },
+      );
+      tests.push({
+        test: "gpt-4o-mini",
+        ok: !t1.error,
+        result: t1.result?.substring(0, 50),
+        error: t1.error || null,
+        errorCode: t1.errorCode || null,
+        status: t1.status || null,
+      });
+
+      // Test 2: gpt-5.4-nano (main model used by analyze)
+      const t2 = await callAI(
+        [{ role: "user", content: "Responda apenas: OK" }],
+        "openai/gpt-5.2", // maps to gpt-5.4-nano
+        10,
+        { temperature: 0, action: "sanity_test_nano" },
+      );
+      tests.push({
+        test: "gpt-5.4-nano",
+        ok: !t2.error,
+        result: t2.result?.substring(0, 50),
+        error: t2.error || null,
+        errorCode: t2.errorCode || null,
+        status: t2.status || null,
+      });
+
+      const allPassed = tests.every((t: any) => t.ok);
+
+      return new Response(JSON.stringify({
+        sanity: allPassed ? "ALL_PASSED" : "SOME_FAILED",
+        keyPattern,
+        keyLength,
+        keyPrefix: keyPrefix.substring(0, 8) + "...",
+        tests,
+        diagnosis: allPassed
+          ? "Key válida, ambos os modelos funcionam. Problema é payload/contexto do analyze."
+          : tests[0]?.ok && !tests[1]?.ok
+            ? `Key funciona com gpt-4o-mini mas NÃO com gpt-5.4-nano. Erro: ${tests[1]?.errorCode}. Pode ser modelo indisponível para esta key/org.`
+            : `Nenhum modelo funcionou. Erro: ${tests[0]?.errorCode}. Provável problema de key/quota/billing.`,
+      }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
+
+    // =====================================================================
     // 1) MELHORAR PREENCHIMENTO — INTOCADO (action = "improve")
     // Agente: gpt-5-mini (texto) ou gpt-5 (com fotos)
     // =====================================================================
