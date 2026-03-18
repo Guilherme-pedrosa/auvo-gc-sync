@@ -926,7 +926,7 @@ function DayView({
         {/* Rows: one per technician */}
         {filteredTecnicos.map(tec => {
           const tasks = tecTasks.get(tec.nome) || [];
-          const totalValor = tasks.reduce((sum, t) => sum + (t.gc_os_valor_total ?? 0), 0);
+          const totalValor = tasks.reduce((sum, t) => sum + (t.gc_os_valor_total ?? t.gc_orc_valor_total ?? 0), 0);
           return (
             <div key={tec.nome} className="flex border-b border-border hover:bg-muted/20 transition-colors" style={{ minHeight: 80 }}>
               <div className="flex-shrink-0 px-3 py-2 border-r border-border bg-card sticky left-0 z-10" style={{ width: TEC_COL_WIDTH }}>
