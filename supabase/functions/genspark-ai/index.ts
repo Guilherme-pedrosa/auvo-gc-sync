@@ -63,7 +63,64 @@ type InternalDocsResult = {
   elapsed_ms: number;
   error: string | null;
   api_source: string;
+  manufacturer_identified: string | null;
 };
+
+// =========================================================================
+// IDENTIFY MANUFACTURER — quick Perplexity call to find the real manufacturer
+// =========================================================================
+async function identifyManufacturer(equipamento: string): Promise<string[]> {
+  const PERPLEXITY_API_KEY = Deno.env.get("PERPLEXITY_API_KEY");
+  if (!PERPLEXITY_API_KEY || !equipamento.trim()) return [];
+
+  try {
+    console.log(`[genspark-ai] [manufacturer] Identificando fabricante de: "${equipamento.substring(0, 80)}"`);
+    const response = await fetch("https://api.perplexity.ai/chat/completions", {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${PERPLEXITY_API_KEY}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model: "sonar",
+        messages: [
+          { role: "system", content: "Responda APENAS com o nome do fabricante/marca do equipamento. Uma palavra ou nome de empresa. Sem explicação. Se não souber, responda 'desconhecido'." },
+          { role: "user", content: `Qual é o fabricante/marca deste equipamento industrial/comercial? "${equipamento}"` }
+        ],
+        temperature: 0.0,
+      }),
+    });
+
+    if (!response.ok) {
+      const errText = await response.text();
+      console.warn(`[genspark-ai] [manufacturer] Perplexity HTTP ${response.status}: ${errText.substring(0, 100)}`);
+      return [];
+    }
+
+    const data = await response.json();
+    const answer = (data.choices?.[0]?.message?.content || "").trim();
+    console.log(`[genspark-ai] [manufacturer] Resultado: "${answer}"`);
+
+    if (!answer || answer.toLowerCase() === "desconhecido") return [];
+
+    // Extract manufacturer terms (first line, clean up)
+    const cleanAnswer = answer
+      .split("\n")[0]
+      .replace(/[^a-zA-ZÀ-ÿ0-9\s\-]/g, "")
+      .trim();
+
+    const terms = cleanAnswer
+      .toLowerCase()
+      .split(/[\s\-_]+/)
+      .filter((t: string) => t.length > 2);
+
+    console.log(`[genspark-ai] [manufacturer] Termos extraídos: [${terms.join(",")}]`);
+    return terms;
+  } catch (e) {
+    console.warn(`[genspark-ai] [manufacturer] Erro: ${e instanceof Error ? e.message : String(e)}`);
+    return [];
+  }
+}
 
 async function fetchInternalTechDocs(query?: string, equipamento?: string): Promise<InternalDocsResult> {
   const startTime = Date.now();
