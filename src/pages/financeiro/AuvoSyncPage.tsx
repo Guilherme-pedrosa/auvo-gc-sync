@@ -309,21 +309,8 @@ const AuvoSyncPage = () => {
     setSelectedOsIds(new Set());
   };
 
-  const validarPecasOS = async (item: ConciliacaoItem) => {
-    const key = item.gc_os_id;
-    setValidatingPecas(key);
-    try {
-      const { data, error } = await supabase.functions.invoke("auvo-gc-sync", {
-        body: { action: "validate_pecas", gc_os_id: item.gc_os_id, auvo_task_id: item.auvo_task_id },
-      });
-      if (error) throw error;
-      setPecasValidation(prev => ({ ...prev, [key]: data }));
-    } catch (err: any) {
-      toast.error(`Erro ao validar peças: ${err.message}`);
-    } finally {
-      setValidatingPecas(null);
-    }
-  };
+
+
   const clientesUnicos = useMemo(() => {
     if (!conciliacaoData) return [];
     return [...new Set(conciliacaoData.map(i => i.gc_cliente).filter(Boolean))].sort((a, b) => a.localeCompare(b, "pt-BR"));
