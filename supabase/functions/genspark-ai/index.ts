@@ -51,9 +51,9 @@ async function addPhotosToContent(contentParts: any[], fotos: string[], maxPhoto
 // INTERNAL TECH DOCS — busca documentos técnicos da pasta pública WeDo
 // =========================================================================
 const DRIVE_FOLDER_ID = "1Sum9oUAzqfDew0FH1UC7_cIQyxEvAdcd";
-const INTERNAL_DOCS_TIMEOUT = 55000; // 55s — manuais grandes (Rational) precisam de mais tempo para OCR
-const MAX_DOCS = 10;
-const MAX_TOTAL_CHARS = 50000;
+const INTERNAL_DOCS_TIMEOUT = 25000; // 25s — balancear cobertura vs CPU limit
+const MAX_DOCS = 6;
+const MAX_TOTAL_CHARS = 30000;
 
 type InternalDocsResult = {
   text: string;
@@ -220,6 +220,7 @@ async function fetchInternalTechDocs(query?: string, equipamento?: string): Prom
   };
 
   // ---- OCR via Google Cloud Vision API (para PDFs escaneados) ----
+  // Vision API limita a 5 páginas por chamada — fazemos batches de 5
   const ocrPdfViaVision = async (pdfBytes: Uint8Array, fileName: string): Promise<string> => {
     try {
       // Convert bytes to base64
@@ -227,43 +228,58 @@ async function fetchInternalTechDocs(query?: string, equipamento?: string): Prom
       for (let i = 0; i < pdfBytes.length; i++) binary += String.fromCharCode(pdfBytes[i]);
       const base64Content = btoa(binary);
 
-      console.log(`[genspark-ai] [OCR] Enviando PDF para Vision API: ${fileName} (${Math.round(pdfBytes.length / 1024)}KB)`);
+      const MAX_PAGES = 15; // processar até 15 páginas no total
+      const BATCH_SIZE = 5; // Vision API aceita no máximo 5 por chamada
+      const allTextParts: string[] = [];
 
-      const visionUrl = `https://vision.googleapis.com/v1/files:annotate?key=${API_KEY}`;
-      const visionResp = await fetch(visionUrl, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          requests: [{
-            inputConfig: {
-              content: base64Content,
-              mimeType: "application/pdf",
-            },
-            features: [{ type: "DOCUMENT_TEXT_DETECTION" }],
-            pages: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20], // primeiras 20 páginas
-          }],
-        }),
-      });
-
-      if (!visionResp.ok) {
-        const errBody = await visionResp.text();
-        console.error(`[genspark-ai] [OCR] Vision API HTTP ${visionResp.status}: ${errBody.substring(0, 300)}`);
-        return "";
-      }
-
-      const visionData = await visionResp.json();
-      const responses = visionData.responses || [];
-      const textParts: string[] = [];
-
-      for (const resp of responses) {
-        const pages = resp.responses || [];
-        for (const page of pages) {
-          const fullText = page.fullTextAnnotation?.text;
-          if (fullText) textParts.push(fullText);
+      for (let startPage = 1; startPage <= MAX_PAGES; startPage += BATCH_SIZE) {
+        if (limitReached()) break;
+        
+        const pages: number[] = [];
+        for (let p = startPage; p < startPage + BATCH_SIZE && p <= MAX_PAGES; p++) {
+          pages.push(p);
         }
+
+        console.log(`[genspark-ai] [OCR] ${fileName} — batch páginas ${pages[0]}-${pages[pages.length - 1]}`);
+
+        const visionUrl = `https://vision.googleapis.com/v1/files:annotate?key=${API_KEY}`;
+        const visionResp = await fetch(visionUrl, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            requests: [{
+              inputConfig: {
+                content: base64Content,
+                mimeType: "application/pdf",
+              },
+              features: [{ type: "DOCUMENT_TEXT_DETECTION" }],
+              pages,
+            }],
+          }),
+        });
+
+        if (!visionResp.ok) {
+          const errBody = await visionResp.text();
+          console.error(`[genspark-ai] [OCR] Vision API HTTP ${visionResp.status}: ${errBody.substring(0, 200)}`);
+          break; // stop batching on error (e.g. PDF has fewer pages)
+        }
+
+        const visionData = await visionResp.json();
+        const responses = visionData.responses || [];
+
+        for (const resp of responses) {
+          const innerPages = resp.responses || [];
+          for (const page of innerPages) {
+            const fullText = page.fullTextAnnotation?.text;
+            if (fullText) allTextParts.push(fullText);
+          }
+        }
+
+        // Se o batch retornou menos texto que o esperado, provavelmente acabaram as páginas
+        if (allTextParts.length > 0 && allTextParts.join("").length > 6000) break; // já temos conteúdo suficiente
       }
 
-      const ocrText = textParts.join("\n\n").trim();
+      const ocrText = allTextParts.join("\n\n").trim();
       console.log(`[genspark-ai] [OCR] Vision API retornou ${ocrText.length} chars para ${fileName}`);
       return ocrText;
     } catch (e) {
@@ -307,7 +323,7 @@ async function fetchInternalTechDocs(query?: string, equipamento?: string): Prom
 
     console.log(`[genspark-ai] [internal-docs] processFile: ${fullPath} (mime=${mimeType}, size=${fileSize})`);
 
-    if (fileSize > 5 * 1024 * 1024) {
+    if (fileSize > 3 * 1024 * 1024) {
       result.skipped_files.push(`${fullPath} (${Math.round(fileSize / 1024 / 1024)}MB — muito grande)`);
       results.push(`📎 ${fullPath} — arquivo grande (${Math.round(fileSize / 1024 / 1024)}MB), listado como referência`);
       return;
@@ -476,7 +492,7 @@ async function fetchInternalTechDocs(query?: string, equipamento?: string): Prom
 
     await Promise.race([
       drivePromise,
-      new Promise<void>((_, reject) => setTimeout(() => reject(new Error("Timeout: busca interna excedeu 15s")), INTERNAL_DOCS_TIMEOUT)),
+      new Promise<void>((_, reject) => setTimeout(() => reject(new Error(`Timeout: busca interna excedeu ${INTERNAL_DOCS_TIMEOUT / 1000}s`)), INTERNAL_DOCS_TIMEOUT)),
     ]);
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
