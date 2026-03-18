@@ -850,7 +850,7 @@ FORMATO DE SAÍDA (máximo de objetividade):
 📋 EQUIPAMENTO
 Equipamento: [nome/modelo]
 ID/Série: [valor ou NÃO IDENTIFICADO]
-Marca/Fabricante: [marca identificada pela pesquisa ou NÃO IDENTIFICADA — se foi fornecida no contexto, use-a]
+Marca/Fabricante: [marca — OBRIGATÓRIO. Use o valor fornecido no campo "Marca/Fabricante identificada" dos DADOS DA OS. Se não foi identificada ou se está como "Não identificada", escreva: "⚠️ NÃO IDENTIFICADA — Favor informar a marca/fabricante do equipamento para melhor análise e busca de materiais técnicos."]
 
 📂 MATERIAIS INTERNOS (se fornecidos)
 Se recebeu materiais internos (📂), OBRIGATORIAMENTE inclua esta seção:
@@ -981,6 +981,14 @@ TOM: Telegráfico, técnico, zero enrolação.`;
 
       const hasFotos = context?.fotos?.length > 0;
       textPrompt += `\nFOTOS\n${hasFotos ? `${filterImageUrls(context.fotos).length} foto(s) anexadas. ANALISE CADA FOTO.` : "Não fornecidas"}\n`;
+
+      // Instrução sobre marca/fabricante
+      const mfr = internalDocs.manufacturer_identified;
+      if (mfr) {
+        textPrompt += `\n⚠️ INSTRUÇÃO MARCA/FABRICANTE: A marca identificada é "${mfr.toUpperCase()}". Você DEVE incluir esta marca na seção EQUIPAMENTO no campo "Marca/Fabricante". NÃO omita este campo.\n`;
+      } else {
+        textPrompt += `\n⚠️ INSTRUÇÃO MARCA/FABRICANTE: A marca NÃO foi identificada automaticamente. Na seção EQUIPAMENTO, escreva "Marca/Fabricante: ⚠️ NÃO IDENTIFICADA". Na seção ❓ PERGUNTAS, inclua OBRIGATORIAMENTE: "Qual é a marca/fabricante deste equipamento? (necessário para busca de materiais técnicos e peças corretas)".\n`;
+      }
 
       textPrompt += `\n⚠️ LEMBRETE FINAL OBRIGATÓRIO: Analise PRIMEIRO o relatório/fotos e classifique o que é confirmado, recomendado e a verificar. Depois complemente tecnicamente com itens necessários do MESMO subsistema. Não force item fora de contexto. Se houver intervenção em suporte do motor/eixo, mancal ou rolamento, detalhe EXPLICITAMENTE em linhas próprias: ROLAMENTO e RETENTOR (além de eixo/mancal quando aplicável), sem esconder em item genérico de conjunto. Mantenha coerência: dano pede troca; lubrificação só para componente funcional.`;
 
