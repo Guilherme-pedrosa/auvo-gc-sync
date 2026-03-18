@@ -1,5 +1,4 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-// fflate removed - ZIPs skipped for performance
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -47,24 +46,54 @@ async function addPhotosToContent(contentParts: any[], fotos: string[], maxPhoto
     }
   }
 }
+
 // =========================================================================
-// GOOGLE DRIVE — busca documentos técnicos da pasta pública da WeDo
+// INTERNAL TECH DOCS — busca documentos técnicos da pasta pública WeDo
 // =========================================================================
 const DRIVE_FOLDER_ID = "1Sum9oUAzqfDew0FH1UC7_cIQyxEvAdcd";
+const INTERNAL_DOCS_TIMEOUT = 10000; // 10s
+const MAX_DOCS = 8;
+const MAX_TOTAL_CHARS = 15000;
 
-async function fetchDriveDocuments(equipamentoFilter?: string): Promise<string> {
+type InternalDocsResult = {
+  text: string;
+  docs_count: number;
+  docs_titles: string[];
+  elapsed_ms: number;
+  error: string | null;
+  api_source: string;
+};
+
+async function fetchInternalTechDocs(query?: string, equipamento?: string): Promise<InternalDocsResult> {
+  const startTime = Date.now();
+  const result: InternalDocsResult = {
+    text: "",
+    docs_count: 0,
+    docs_titles: [],
+    elapsed_ms: 0,
+    error: null,
+    api_source: "google_drive_api",
+  };
+
   const API_KEY = Deno.env.get("GOOGLE_DRIVE_API_KEY");
   if (!API_KEY) {
-    console.log("[genspark-ai] GOOGLE_DRIVE_API_KEY não disponível, pulando Drive");
-    return "";
+    result.error = "GOOGLE_DRIVE_API_KEY não configurada no ambiente";
+    result.elapsed_ms = Date.now() - startTime;
+    console.error(`[genspark-ai] [internal-docs] ${result.error}`);
+    return result;
   }
+
+  const filterStr = (equipamento || query || "").trim();
+  const filterTerms = filterStr
+    .toLowerCase()
+    .split(/[\s\-_,./]+/)
+    .filter((t: string) => t.length > 2);
+
+  console.log(`[genspark-ai] [internal-docs] Iniciando busca. query="${(query || "").substring(0, 80)}", equipamento="${(equipamento || "").substring(0, 80)}", filtros=[${filterTerms.join(",")}]`);
 
   const results: string[] = [];
   let totalFilesRead = 0;
   let totalChars = 0;
-  const MAX_FILES = 8;
-  const MAX_TOTAL_CHARS = 15000;
-  const DRIVE_TIMEOUT = 12000; // 12s max for entire Drive operation
 
   const extractPdfText = (bytes: Uint8Array): string => {
     try {
@@ -90,25 +119,29 @@ async function fetchDriveDocuments(equipamentoFilter?: string): Promise<string> 
   const isTextFile = (name: string) =>
     /\.(txt|csv|md|json|xml|html|htm|log|ini|cfg|yaml|yml|tsv)$/i.test(name);
 
+  const limitReached = () => totalFilesRead >= MAX_DOCS || totalChars >= MAX_TOTAL_CHARS;
+
   const addResult = (name: string, text: string, icon = "📄") => {
     if (text.length > 2500) text = text.substring(0, 2500) + "\n... [truncado]";
     results.push(`${icon} ${name}:\n${text}`);
     totalChars += text.length;
     totalFilesRead++;
-    console.log(`[genspark-ai] Drive loaded: ${name} (${text.length} chars)`);
+    result.docs_titles.push(name);
+    console.log(`[genspark-ai] [internal-docs] Loaded: ${name} (${text.length} chars)`);
   };
-
-  const limitReached = () => totalFilesRead >= MAX_FILES || totalChars >= MAX_TOTAL_CHARS;
 
   async function listFolder(folderId: string): Promise<any[]> {
     const url = `https://www.googleapis.com/drive/v3/files?q='${folderId}'+in+parents+and+trashed=false&key=${API_KEY}&fields=files(id,name,mimeType,size)&pageSize=100`;
     const resp = await fetch(url);
-    if (!resp.ok) return [];
+    if (!resp.ok) {
+      const errBody = await resp.text();
+      console.error(`[genspark-ai] [internal-docs] Drive list FAILED: HTTP ${resp.status} — ${errBody.substring(0, 200)}`);
+      throw new Error(`Drive API HTTP ${resp.status}: ${errBody.substring(0, 100)}`);
+    }
     const data = await resp.json();
     return data.files || [];
   }
 
-  // Process only lightweight files (skip ZIPs entirely — too slow)
   async function processFile(file: any, parentPath: string) {
     if (limitReached()) return;
     const fileName = file.name || "";
@@ -116,7 +149,6 @@ async function fetchDriveDocuments(equipamentoFilter?: string): Promise<string> 
     const fullPath = parentPath ? `${parentPath}/${fileName}` : fileName;
     const fileSize = parseInt(file.size || "0", 10);
 
-    // SKIP large files and ZIPs to keep it fast
     if (fileSize > 3 * 1024 * 1024) {
       results.push(`📎 ${fullPath} — arquivo grande (${Math.round(fileSize / 1024 / 1024)}MB), listado como referência`);
       return;
@@ -126,22 +158,22 @@ async function fetchDriveDocuments(equipamentoFilter?: string): Promise<string> 
       try {
         const resp = await fetch(`https://www.googleapis.com/drive/v3/files/${file.id}/export?mimeType=text/plain&key=${API_KEY}`);
         if (resp.ok) addResult(fullPath, await resp.text());
-        else await resp.text(); // consume
-      } catch (e) { console.error(`[genspark-ai] Doc error ${fullPath}:`, e); }
+        else { const e = await resp.text(); console.warn(`[genspark-ai] [internal-docs] Doc export FAILED ${fullPath}: HTTP ${resp.status} — ${e.substring(0, 200)}`); }
+      } catch (e) { console.error(`[genspark-ai] [internal-docs] Doc error ${fullPath}:`, e); }
     }
     else if (mimeType === "application/vnd.google-apps.spreadsheet") {
       try {
         const resp = await fetch(`https://www.googleapis.com/drive/v3/files/${file.id}/export?mimeType=text/csv&key=${API_KEY}`);
         if (resp.ok) addResult(fullPath, await resp.text(), "📊");
         else await resp.text();
-      } catch (e) { console.error(`[genspark-ai] Sheet error ${fullPath}:`, e); }
+      } catch (e) { console.error(`[genspark-ai] [internal-docs] Sheet error ${fullPath}:`, e); }
     }
     else if (mimeType.startsWith("text/") || isTextFile(fileName)) {
       try {
         const resp = await fetch(`https://www.googleapis.com/drive/v3/files/${file.id}?alt=media&key=${API_KEY}`);
         if (resp.ok) addResult(fullPath, await resp.text());
         else await resp.text();
-      } catch (e) { console.error(`[genspark-ai] Text error ${fullPath}:`, e); }
+      } catch (e) { console.error(`[genspark-ai] [internal-docs] Text error ${fullPath}:`, e); }
     }
     else if (mimeType === "application/pdf" || fileName.toLowerCase().endsWith(".pdf")) {
       try {
@@ -150,9 +182,9 @@ async function fetchDriveDocuments(equipamentoFilter?: string): Promise<string> 
           const buf = new Uint8Array(await resp.arrayBuffer());
           const pdfText = extractPdfText(buf);
           if (pdfText.length > 50) addResult(fullPath, pdfText, "📕");
-          else results.push(`📕 ${fullPath} — PDF (scan/imagem)`);
+          else results.push(`📕 ${fullPath} — PDF (scan/imagem, sem texto extraível)`);
         } else await resp.text();
-      } catch (e) { console.error(`[genspark-ai] PDF error ${fullPath}:`, e); }
+      } catch (e) { console.error(`[genspark-ai] [internal-docs] PDF error ${fullPath}:`, e); }
     }
     else {
       results.push(`📎 ${fullPath} (${mimeType})`);
@@ -160,20 +192,14 @@ async function fetchDriveDocuments(equipamentoFilter?: string): Promise<string> 
   }
 
   try {
-    // Wrap entire Drive operation in a timeout
     const drivePromise = (async () => {
-      console.log(`[genspark-ai] Drive: listando pasta raiz...`);
+      console.log(`[genspark-ai] [internal-docs] Listando pasta raiz ${DRIVE_FOLDER_ID}...`);
       const topItems = await listFolder(DRIVE_FOLDER_ID);
 
       const folders = topItems.filter((f: any) => f.mimeType === "application/vnd.google-apps.folder");
       const topFiles = topItems.filter((f: any) => f.mimeType !== "application/vnd.google-apps.folder");
 
-      const filterTerms = (equipamentoFilter || "")
-        .toLowerCase()
-        .split(/[\s\-_,./]+/)
-        .filter((t: string) => t.length > 2);
-
-      console.log(`[genspark-ai] Drive: ${folders.length} pastas, ${topFiles.length} soltos, filtro=[${filterTerms.join(",")}]`);
+      console.log(`[genspark-ai] [internal-docs] ${folders.length} pastas, ${topFiles.length} arquivos na raiz`);
 
       // Score folders by relevance
       const scoredFolders = folders.map((f: any) => {
@@ -185,21 +211,17 @@ async function fetchDriveDocuments(equipamentoFilter?: string): Promise<string> 
         return { ...f, score };
       }).sort((a: any, b: any) => b.score - a.score);
 
-      // ONLY scan folders that match the equipment (score > 0)
-      // If none match, scan just the top 2 folders (lightweight scan)
       const matchingFolders = scoredFolders.filter((f: any) => f.score > 0);
       const foldersToScan = matchingFolders.length > 0
         ? matchingFolders.slice(0, 3)
         : scoredFolders.slice(0, 2);
 
-      // Process top-level text files only (skip ZIPs at root)
+      // Process top-level files (skip ZIPs)
       for (const file of topFiles) {
         if (limitReached()) break;
         const mime = file.mimeType || "";
         const name = (file.name || "").toLowerCase();
-        // Skip ZIPs at root level — too slow
         if (mime === "application/zip" || name.endsWith(".zip")) {
-          // Only mention if it matches the filter
           if (filterTerms.some((t: string) => name.includes(t))) {
             results.push(`📦 ${file.name} — ZIP disponível (não processado por performance)`);
           }
@@ -211,16 +233,15 @@ async function fetchDriveDocuments(equipamentoFilter?: string): Promise<string> 
       // Scan matched subfolders
       for (const folder of foldersToScan) {
         if (limitReached()) break;
-        console.log(`[genspark-ai] Entrando: ${folder.name} (score=${folder.score})`);
+        console.log(`[genspark-ai] [internal-docs] Entrando: ${folder.name} (score=${folder.score})`);
         const subFiles = await listFolder(folder.id);
 
-        // Prioritize files matching equipment, skip ZIPs
         const scoredFiles = subFiles
           .filter((f: any) => f.mimeType !== "application/vnd.google-apps.folder")
           .map((f: any) => {
             const nameLower = (f.name || "").toLowerCase();
             const isZip = f.mimeType === "application/zip" || nameLower.endsWith(".zip");
-            let score = isZip ? -10 : 0; // Penalize ZIPs heavily
+            let score = isZip ? -10 : 0;
             for (const term of filterTerms) {
               if (nameLower.includes(term)) score += 3;
             }
@@ -230,38 +251,42 @@ async function fetchDriveDocuments(equipamentoFilter?: string): Promise<string> 
 
         for (const file of scoredFiles) {
           if (limitReached()) break;
-          // Skip ZIPs inside subfolders too
           const name = (file.name || "").toLowerCase();
           if (file.mimeType === "application/zip" || name.endsWith(".zip")) continue;
           await processFile(file, folder.name);
         }
       }
 
-      console.log(`[genspark-ai] Drive total: ${totalFilesRead} arquivos, ${totalChars} chars`);
+      console.log(`[genspark-ai] [internal-docs] Busca concluída: ${totalFilesRead} docs, ${totalChars} chars`);
     })();
 
-    // Race with timeout
     await Promise.race([
       drivePromise,
-      new Promise<void>((_, reject) => setTimeout(() => reject(new Error("Drive timeout")), DRIVE_TIMEOUT)),
+      new Promise<void>((_, reject) => setTimeout(() => reject(new Error("Timeout: busca interna excedeu 10s")), INTERNAL_DOCS_TIMEOUT)),
     ]);
-
-    if (results.length === 0) return "";
-    return `MATERIAIS INTERNOS (Google Drive WeDo):\n${results.join("\n\n")}`;
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
-    console.warn(`[genspark-ai] Drive: ${msg} (${totalFilesRead} arquivos lidos até aqui)`);
-    if (results.length > 0) {
-      return `MATERIAIS INTERNOS (Google Drive WeDo) [parcial]:\n${results.join("\n\n")}`;
-    }
-    return "";
+    console.error(`[genspark-ai] [internal-docs] ERRO: ${msg} (${totalFilesRead} docs lidos até aqui)`);
+    result.error = msg;
+    // Keep partial results if any
   }
+
+  result.docs_count = totalFilesRead;
+  result.elapsed_ms = Date.now() - startTime;
+
+  if (results.length > 0) {
+    result.text = `MATERIAIS INTERNOS (API Banco Técnico WeDo):\n${results.join("\n\n")}`;
+    if (totalChars >= MAX_TOTAL_CHARS) {
+      result.text += "\n\n... [truncado — limite de caracteres atingido]";
+    }
+  }
+
+  console.log(`[genspark-ai] [internal-docs] Resultado final: ${result.docs_count} docs, ${result.elapsed_ms}ms, error=${result.error || "nenhum"}`);
+  return result;
 }
 
-
-
 // =========================================================================
-// PERPLEXITY WEB SEARCH — pesquisa técnica na internet sobre o equipamento
+// PERPLEXITY WEB SEARCH
 // =========================================================================
 async function searchPerplexity(
   query: string,
@@ -291,12 +316,9 @@ async function searchPerplexity(
       temperature: 0.1,
     };
 
-    // Filtro de domínios se fornecido
     if (options?.domains && options.domains.length > 0) {
       bodyPayload.search_domain_filter = options.domains;
     }
-
-    // Filtro de recência
     if (options?.recency) {
       bodyPayload.search_recency_filter = options.recency;
     }
@@ -364,7 +386,6 @@ Preciso saber:
   return result;
 }
 
-// Pesquisa contextual para o chat — busca na web baseada na dúvida do usuário
 async function searchForChatQuestion(
   userMessage: string,
   equipamento: string,
@@ -395,26 +416,73 @@ Responda com dados técnicos reais: especificações, manuais, experiência docu
   return result;
 }
 
+// =========================================================================
+// Helper: build internal docs block for prompt
+// =========================================================================
+function buildInternalDocsBlock(docsResult: InternalDocsResult): string {
+  if (docsResult.docs_count > 0 && docsResult.text) {
+    let block = `\n\n========== 📂 ${docsResult.text} ==========\n`;
+    block += `\nINSTRUÇÃO: Use os materiais internos acima para fundamentar o diagnóstico. Marque com 📂 informações vindas dos materiais internos.\n`;
+    if (docsResult.error) {
+      block += `\n⚠️ Busca interna parcial (${docsResult.error}). ${docsResult.docs_count} doc(s) carregados em ${docsResult.elapsed_ms}ms.\n`;
+    }
+    return block;
+  }
+
+  // No docs found — explain why explicitly
+  let reason = "Nenhum documento retornado";
+  if (docsResult.error) {
+    reason = `Erro na busca: ${docsResult.error}`;
+  }
+  return `\n\nMATERIAIS INTERNOS (API Banco Técnico WeDo):\n📂 Sem material interno retornado pela API (${reason}). Tempo: ${docsResult.elapsed_ms}ms.\n`;
+}
+
+function buildWebBlock(webResearch: string): string {
+  if (!webResearch) {
+    return `\n\nPESQUISA WEB:\n🌐 Pesquisa web não disponível.\n`;
+  }
+  return `\n\n========== 🌐 DADOS DA PESQUISA WEB (PERPLEXITY) ==========\n${webResearch}\n==========================================================\n`;
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   try {
-    const OPENAI_API_KEY = Deno.env.get("OPENAI_API_KEY");
-    if (!OPENAI_API_KEY) throw new Error("OPENAI_API_KEY não configurada");
-
     const body = await req.json();
     const { action } = body;
+
+    // =========================================================================
+    // 0) DIAGNOSTIC MODE — test internal docs fetch
+    // =========================================================================
+    if (action === "internal_docs_test") {
+      const { query, equipamento } = body;
+      const searchQuery = query || equipamento || "Rational iCombi";
+      console.log(`[genspark-ai] [internal_docs_test] query="${searchQuery}"`);
+      const docsResult = await fetchInternalTechDocs(searchQuery, equipamento);
+      return new Response(JSON.stringify({
+        api_source: docsResult.api_source,
+        query: searchQuery,
+        docs_count: docsResult.docs_count,
+        docs_titles: docsResult.docs_titles.slice(0, 20),
+        elapsed_ms: docsResult.elapsed_ms,
+        error: docsResult.error,
+      }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    const OPENAI_API_KEY = Deno.env.get("OPENAI_API_KEY");
+    if (!OPENAI_API_KEY) throw new Error("OPENAI_API_KEY não configurada");
 
     const messages: any[] = [];
     let model = "gpt-4o-mini";
 
     // =========================================================================
-    // 1) MELHORAR PREENCHIMENTO — per-field improvement
+    // 1) MELHORAR PREENCHIMENTO
     // =========================================================================
     if (action === "improve") {
       const { text, field, context } = body;
 
-      // Map keyword to tipo_campo
       let tipoCampo = "Campo Livre";
       const fl = (field || "").toLowerCase();
       if (fl.includes("peça") || fl.includes("peca") || fl.includes("material")) tipoCampo = "PEÇAS NECESSÁRIAS";
@@ -479,7 +547,6 @@ Direto, técnico, útil para orçamento.`;
       const userContentParts: any[] = [];
       let userText = `Melhore o preenchimento do campo abaixo para uso em orçamento técnico, sem inventar informação.\n\nTIPO DE CAMPO:\n${tipoCampo}\n\nTEXTO ORIGINAL:\n${text}`;
 
-      // For observações, add context
       if (tipoCampo === "OBSERVAÇÕES" && context) {
         if (context.pecas) userText += `\n\nPeças solicitadas: ${context.pecas}`;
         if (context.orientacao) userText += `\nOrientação do serviço: ${context.orientacao}`;
@@ -487,7 +554,6 @@ Direto, técnico, útil para orçamento.`;
 
       userContentParts.push({ type: "text", text: userText });
 
-      // Add photos for observações context
       if (tipoCampo === "OBSERVAÇÕES" && context?.fotos?.length > 0) {
         await addPhotosToContent(userContentParts, context.fotos, 4, "low");
         model = "gpt-4o";
@@ -497,7 +563,7 @@ Direto, técnico, útil para orçamento.`;
       messages.push({ role: "user", content: userContentParts.length === 1 ? userText : userContentParts });
 
     // =========================================================================
-    // 2) ANALISAR OS PARA ORÇAMENTO — full OS analysis
+    // 2) ANALISAR OS PARA ORÇAMENTO
     // =========================================================================
     } else if (action === "analyze") {
       const { context } = body;
@@ -569,6 +635,13 @@ FORMATO DE SAÍDA (máximo de objetividade):
 Equipamento: [nome/modelo]
 ID/Série: [valor ou NÃO IDENTIFICADO]
 
+📂 MATERIAIS INTERNOS (se fornecidos)
+Se recebeu materiais internos (📂), OBRIGATORIAMENTE inclua esta seção:
+- Documentos encontrados: [nomes dos docs]
+- Informações relevantes extraídas: [dados técnicos, procedimentos, peças recomendadas]
+- Aplicação ao caso: [como os materiais internos se relacionam com esta OS]
+Se NÃO recebeu materiais internos, escreva: "Sem material interno retornado pela API."
+
 🌐 PESQUISA WEB (OBRIGATÓRIO se dados de pesquisa web foram fornecidos)
 Se recebeu dados de PESQUISA WEB, OBRIGATORIAMENTE inclua esta seção:
 - Modelo identificado: [modelo exato encontrado na web]
@@ -628,20 +701,26 @@ NÃO incluir EPIs básicos (luvas, óculos, capacete, sapato). Só EPIs específ
 
 🚦 STATUS: [Pode seguir / Ressalvas / Precisa validar] — [1 frase]
 
+📂🌐 FONTES
+- Materiais internos: [listar documentos utilizados ou "nenhum"]
+- Fontes web: [listar URLs ou "nenhuma"]
+
 TOM: Telegráfico, técnico, zero enrolação.`;
 
       const userContentParts: any[] = [];
 
-      // *** PARALLEL: Perplexity web search + Google Drive docs ***
+      // *** PARALLEL: Internal docs + Perplexity web search ***
       const equipForSearch = context?.equipamento || context?.descricao || "";
-      const [webResearch, driveContext] = await Promise.all([
+      console.log(`[genspark-ai] [analyze] Buscando docs internos + web em paralelo para: "${equipForSearch.substring(0, 80)}"`);
+
+      const [internalDocs, webResearch] = await Promise.all([
+        fetchInternalTechDocs(equipForSearch, equipForSearch),
         searchEquipmentOnWeb(
           equipForSearch,
           context?.descricao || "",
           context?.orientacao || "",
           context?.pecas || ""
         ),
-        fetchDriveDocuments(equipForSearch),
       ]);
 
       let textPrompt = `Analise a OS abaixo para apoio à elaboração de orçamento técnico.\n\nDADOS DA OS\n`;
@@ -661,9 +740,13 @@ TOM: Telegráfico, técnico, zero enrolação.`;
         if (context.todas_respostas) textPrompt += `- Respostas do questionário:\n${context.todas_respostas}\n`;
       }
 
-      // Inject web research if available
+      // Inject internal docs block (ALWAYS present — either with data or explicit "no docs" message)
+      textPrompt += buildInternalDocsBlock(internalDocs);
+
+      // Inject web research block (ALWAYS present)
+      textPrompt += buildWebBlock(webResearch);
+
       if (webResearch) {
-        textPrompt += `\n\n========== 🌐 DADOS DA PESQUISA WEB (PERPLEXITY) ==========\n${webResearch}\n==========================================================\n`;
         textPrompt += `\nINSTRUÇÃO OBRIGATÓRIA: Você RECEBEU dados de pesquisa web acima. Você DEVE:
 1. Preencher a seção "🌐 PESQUISA WEB" com os dados encontrados
 2. Na seção DIAGNÓSTICO, incluir "Dados da web vs técnico" comparando o que a web diz vs o que o técnico informou
@@ -671,16 +754,16 @@ TOM: Telegráfico, técnico, zero enrolação.`;
 4. Se a web revelou componentes específicos deste modelo que o técnico omitiu, LISTE-OS como ⚡🌐 Recomendar\n`;
       }
 
+      if (internalDocs.docs_count > 0) {
+        textPrompt += `\nINSTRUÇÃO OBRIGATÓRIA: Você RECEBEU ${internalDocs.docs_count} documento(s) interno(s). Você DEVE:
+1. Preencher a seção "📂 MATERIAIS INTERNOS" com os documentos encontrados
+2. Na seção PEÇAS, marcar com 📂 itens fundamentados pelos materiais internos
+3. Citar procedimentos ou especificações dos documentos internos quando relevante\n`;
+      }
+
       const hasFotos = context?.fotos?.length > 0;
       textPrompt += `\nFOTOS\n${hasFotos ? `${filterImageUrls(context.fotos).length} foto(s) anexadas. ANALISE CADA FOTO.` : "Não fornecidas"}\n`;
-      
-      // Inject Drive documents if available
-      if (driveContext) {
-        textPrompt += `\n\n========== 📂 ${driveContext} ==========\n`;
-        textPrompt += `\nINSTRUÇÃO: Use os materiais internos acima para fundamentar o diagnóstico. Se houver manuais, tabelas de peças ou procedimentos relevantes, cite-os na análise. Marque com 📂 informações vindas dos materiais internos.\n`;
-      } else {
-        textPrompt += `\nMATERIAIS INTERNOS\nNão fornecidos\n`;
-      }
+
       textPrompt += `\n⚠️ LEMBRETE FINAL OBRIGATÓRIO: Analise PRIMEIRO o relatório/fotos e classifique o que é confirmado, recomendado e a verificar. Depois complemente tecnicamente com itens necessários do MESMO subsistema. Não force item fora de contexto. Se houver intervenção em suporte do motor/eixo, mancal ou rolamento, detalhe EXPLICITAMENTE em linhas próprias: ROLAMENTO e RETENTOR (além de eixo/mancal quando aplicável), sem esconder em item genérico de conjunto. Mantenha coerência: dano pede troca; lubrificação só para componente funcional.`;
 
       userContentParts.push({ type: "text", text: textPrompt });
@@ -692,10 +775,10 @@ TOM: Telegráfico, técnico, zero enrolação.`;
       messages.push({ role: "system", content: systemPrompt });
       messages.push({ role: "user", content: userContentParts });
 
-      console.log(`[genspark-ai] [analyze] cliente=${context?.cliente}, fotos=${context?.fotos?.length || 0}, contentParts=${userContentParts.length}`);
+      console.log(`[genspark-ai] [analyze] cliente=${context?.cliente}, fotos=${context?.fotos?.length || 0}, internalDocs=${internalDocs.docs_count}(${internalDocs.elapsed_ms}ms), webResearch=${webResearch ? "sim" : "não"}, contentParts=${userContentParts.length}`);
 
     // =========================================================================
-    // 3) CONVERSAR SOBRE ESTE ORÇAMENTO — contextual chat
+    // 3) CONVERSAR SOBRE ESTE ORÇAMENTO
     // =========================================================================
     } else if (action === "chat") {
       const { context, analysis, userMessage, chatHistory } = body;
@@ -730,6 +813,7 @@ REGRAS
 - evidência visual
 - evidência textual
 - política WeDo
+- material interno 📂
 - manual/POP fornecido
 
 2. Se o usuário perguntar algo sem base suficiente, responder claramente:
@@ -767,7 +851,7 @@ FORMATO DE RESPOSTA
 Responder de forma direta.
 Quando útil, usar:
 - Resposta objetiva
-- Base (indicar se veio de: evidência visual, evidência textual, política WeDo, pesquisa web 🌐, manual/POP)
+- Base (indicar se veio de: evidência visual, evidência textual, política WeDo, material interno 📂, pesquisa web 🌐, manual/POP)
 - Risco de seguir sem validar
 - Próximo passo
 
@@ -776,6 +860,10 @@ Se houver dados de PESQUISA WEB no contexto:
 - Cite as fontes relevantes com [fonte]
 - Se a web contradizer a análise, explique a divergência
 - Marque informações vindas da web com 🌐
+
+Se houver dados de MATERIAIS INTERNOS no contexto:
+- Use-os para fundamentar sua resposta
+- Marque informações vindas dos materiais internos com 📂
 
 TOM
 Técnico, direto, sem floreio. Potente e fundamentado.`;
@@ -800,31 +888,32 @@ Técnico, direto, sem floreio. Potente e fundamentado.`;
         contextText += `\nANÁLISE TÉCNICA JÁ GERADA:\n${analysis}\n`;
       }
 
-      // *** PARALLEL: Perplexity web search + Google Drive docs ***
-      const [chatWebResearch, chatDriveContext] = await Promise.all([
+      // *** PARALLEL: Internal docs + Perplexity web search ***
+      const equipForChat = context?.equipamento || context?.descricao || "";
+      console.log(`[genspark-ai] [chat] Buscando docs internos + web em paralelo para: "${equipForChat.substring(0, 80)}"`);
+
+      const [chatInternalDocs, chatWebResearch] = await Promise.all([
+        fetchInternalTechDocs(equipForChat, equipForChat),
         searchForChatQuestion(
           userMessage,
-          context?.equipamento || context?.descricao || "",
+          equipForChat,
           context?.orientacao || "",
           analysis || ""
         ),
-        fetchDriveDocuments(context?.equipamento || context?.descricao || ""),
       ]);
 
+      // Internal docs block
+      contextText += buildInternalDocsBlock(chatInternalDocs);
+
+      // Web research block
       if (chatWebResearch) {
         contextText += chatWebResearch;
         contextText += `\n\nINSTRUÇÃO: Você RECEBEU dados de pesquisa web acima. Use-os para fundamentar sua resposta com dados reais. Cite as fontes quando relevante. Se a pesquisa web contradizer algo, explique a divergência.`;
       }
 
-      if (chatDriveContext) {
-        contextText += `\n\n========== 📂 ${chatDriveContext} ==========\n`;
-        contextText += `\nINSTRUÇÃO: Use os materiais internos da WeDo acima para fundamentar sua resposta. Marque com 📂 informações vindas dos materiais internos.`;
-      } else {
-        contextText += `\n\nMATERIAIS INTERNOS:\nNão fornecidos\n`;
-      }
       contextText += `\nPERGUNTA DO USUÁRIO:\n${userMessage}`;
 
-      // Add photos if available (vision support for chat)
+      // Add photos if available
       const hasFotos = context?.fotos?.length > 0;
       if (hasFotos) {
         contextText += `\n\nFOTOS DA OS: ${filterImageUrls(context.fotos).length} foto(s) anexadas. Use-as para responder com mais precisão.`;
@@ -832,24 +921,22 @@ Técnico, direto, sem floreio. Potente e fundamentado.`;
 
       messages.push({ role: "system", content: systemPrompt });
 
-      // Add chat history if present
       if (chatHistory && Array.isArray(chatHistory)) {
         for (const msg of chatHistory) {
           messages.push({ role: msg.role, content: msg.content });
         }
       }
 
-      // Build multimodal user message with photos
       userContentParts.push({ type: "text", text: contextText });
       if (hasFotos) {
         await addPhotosToContent(userContentParts, context.fotos, 6, "low");
       }
       messages.push({ role: "user", content: userContentParts });
 
-      console.log(`[genspark-ai] [chat] cliente=${context?.cliente}, hasAnalysis=${!!analysis}, fotos=${context?.fotos?.length || 0}, webResearch=${!!chatWebResearch}, msgLength=${userMessage?.length}`);
+      console.log(`[genspark-ai] [chat] cliente=${context?.cliente}, hasAnalysis=${!!analysis}, fotos=${context?.fotos?.length || 0}, internalDocs=${chatInternalDocs.docs_count}(${chatInternalDocs.elapsed_ms}ms), webResearch=${!!chatWebResearch}, msgLength=${userMessage?.length}`);
 
     } else {
-      throw new Error("Ação inválida. Use 'improve', 'analyze' ou 'chat'.");
+      throw new Error("Ação inválida. Use 'improve', 'analyze', 'chat' ou 'internal_docs_test'.");
     }
 
     // Check if any message has images
