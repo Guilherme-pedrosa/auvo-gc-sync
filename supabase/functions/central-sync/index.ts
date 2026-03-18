@@ -138,6 +138,8 @@ type AuvoTaskSnapshot = {
   taskEndDate: string;
   startTime: string;
   endTime: string;
+  equipmentName: string;
+  equipmentSerial: string;
 };
 
 async function fetchAuvoTaskSnapshot(bearerToken: string, taskId: string): Promise<AuvoTaskSnapshot | null> {
@@ -165,7 +167,22 @@ async function fetchAuvoTaskSnapshot(bearerToken: string, taskId: string): Promi
   const startTime = String(result?.startTime || result?.startHour || "").trim();
   const endTime = String(result?.endTime || result?.endHour || "").trim();
 
-  return { address, orientation, displacementStart, checkInDate, checkOutDate, taskEndDate, startTime, endTime };
+  // Extract equipment info from snapshot
+  let equipmentName = "";
+  let equipmentSerial = "";
+  const equipIds: string[] = Array.isArray(result?.equipmentsId) ? result.equipmentsId.map(String) :
+    Array.isArray(result?.equipmentsID) ? result.equipmentsID.map(String) :
+    Array.isArray(result?.equipmentIds) ? result.equipmentIds.map(String) : [];
+  
+  // Try equipment fields directly on task
+  if (result?.equipmentName || result?.equipment?.name || result?.equipment?.model) {
+    equipmentName = String(result?.equipmentName || result?.equipment?.name || result?.equipment?.model || "").trim();
+  }
+  if (result?.equipmentIdentifier || result?.equipment?.identifier || result?.equipment?.serial) {
+    equipmentSerial = String(result?.equipmentIdentifier || result?.equipment?.identifier || result?.equipment?.serial || "").trim();
+  }
+
+  return { address, orientation, displacementStart, checkInDate, checkOutDate, taskEndDate, startTime, endTime, equipmentName, equipmentSerial };
 }
 
 // Fetch Auvo tasks for a single month window
