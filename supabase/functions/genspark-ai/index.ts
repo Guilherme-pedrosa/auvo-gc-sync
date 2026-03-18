@@ -470,8 +470,8 @@ async function fetchInternalTechDocs(query?: string, equipamento?: string): Prom
         if (limitReached()) break;
         console.log(`[genspark-ai] [internal-docs] Processando: ${folder.name} (${subFiles.length} arquivos)`);
 
-        // Progressive file scoring: try full terms first, then progressively shorter model names
-        // E.g. "ecomax 503" → try "ecomax 503", then "ecomax", then "503"
+        // Progressive file scoring: model family terms get HIGHEST priority
+        // E.g. for "iCombi Pro LM100DE" → "icombi" file matches beat "scc" files
         const modelTerms = filterTerms.filter((t: string) => !manufacturerTerms.includes(t));
         
         const scoredFiles = subFiles
@@ -481,26 +481,46 @@ async function fetchInternalTechDocs(query?: string, equipamento?: string): Prom
             const isZip = f.mimeType === "application/zip" || nameLower.endsWith(".zip");
             let score = isZip ? -10 : 0;
             
+            // Model family terms get HIGHEST weight (e.g. "icombi" = 15 points)
+            for (const term of modelFamilyTerms) {
+              if (nameLower.includes(term)) {
+                score += 15;
+              }
+            }
+
             // Check each term individually
             for (const term of filterTerms) {
               if (nameLower.includes(term)) {
-                score += manufacturerTerms.includes(term) ? 2 : 5; // model terms worth MORE for file matching
+                // Model family already scored above, skip
+                if (modelFamilyTerms.includes(term)) continue;
+                score += manufacturerTerms.includes(term) ? 2 : 5;
               }
             }
             
-            // Bonus: check combined model terms (e.g. "ecomax 503" as substring)
+            // Bonus: check combined model terms (e.g. "icombi pro" as substring)
+            if (modelFamilyTerms.length > 1) {
+              const combined = modelFamilyTerms.join(" ");
+              if (nameLower.includes(combined)) score += 20;
+              const noSpace = modelFamilyTerms.join("");
+              if (nameLower.includes(noSpace)) score += 15;
+            }
+            
+            // Also check non-family model terms combined
             if (modelTerms.length > 1) {
               const combined = modelTerms.join(" ");
               if (nameLower.includes(combined)) score += 10;
-              // Also try without spaces (e.g. "ecomax503")
               const noSpace = modelTerms.join("");
               if (nameLower.includes(noSpace)) score += 8;
             }
+
+            // Also check for "manutenção preventiva" or "preventiv" keyword (high value docs)
+            if (nameLower.includes("preventiv") || nameLower.includes("manutencao") || nameLower.includes("manutenção")) {
+              score += 8;
+            }
             
-            // Progressive: if full model didn't match, try partial (e.g. "scc" from "scc 201")
+            // Progressive: if nothing matched, try partial
             if (score <= 0 && modelTerms.length > 0) {
               for (const term of modelTerms) {
-                // Try first 3+ chars of each term
                 if (term.length >= 3 && nameLower.includes(term.substring(0, 3))) {
                   score += 1;
                 }
