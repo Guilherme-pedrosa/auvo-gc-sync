@@ -132,6 +132,7 @@ async function fetchInternalTechDocs(query?: string, equipamento?: string): Prom
     elapsed_ms: 0,
     error: null,
     api_source: "google_drive_api",
+    manufacturer_identified: null,
   };
 
   const API_KEY = Deno.env.get("GOOGLE_DRIVE_API_KEY");
@@ -142,13 +143,22 @@ async function fetchInternalTechDocs(query?: string, equipamento?: string): Prom
     return result;
   }
 
-  const filterStr = (equipamento || query || "").trim();
-  const filterTerms = filterStr
+  // Step 1: Identify manufacturer via Perplexity (quick web search)
+  const equipStr = (equipamento || query || "").trim();
+  const manufacturerTerms = await identifyManufacturer(equipStr);
+  result.manufacturer_identified = manufacturerTerms.length > 0 ? manufacturerTerms.join(" ") : null;
+
+  // Build filter terms: manufacturer terms FIRST (higher priority), then equipment terms
+  const equipTerms = equipStr
     .toLowerCase()
     .split(/[\s\-_,./]+/)
     .filter((t: string) => t.length > 2);
 
-  console.log(`[genspark-ai] [internal-docs] Iniciando busca. query="${(query || "").substring(0, 80)}", equipamento="${(equipamento || "").substring(0, 80)}", filtros=[${filterTerms.join(",")}]`);
+  // Combine manufacturer + equipment terms, dedup
+  const allTermsSet = new Set([...manufacturerTerms, ...equipTerms]);
+  const filterTerms = Array.from(allTermsSet);
+
+  console.log(`[genspark-ai] [internal-docs] Iniciando busca. equipamento="${equipStr.substring(0, 80)}", fabricante="${result.manufacturer_identified || "não identificado"}", filtros=[${filterTerms.join(",")}]`);
 
   const results: string[] = [];
   let totalFilesRead = 0;
