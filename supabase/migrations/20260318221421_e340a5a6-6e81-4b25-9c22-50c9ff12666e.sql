@@ -1,0 +1,1 @@
+DELETE FROM public.tarefas_central WHERE auvo_task_id = '70553656';
