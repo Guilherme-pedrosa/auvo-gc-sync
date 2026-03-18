@@ -422,15 +422,43 @@ async function fetchInternalTechDocs(query?: string, equipamento?: string): Prom
         if (limitReached()) break;
         console.log(`[genspark-ai] [internal-docs] Processando: ${folder.name} (${subFiles.length} arquivos)`);
 
+        // Progressive file scoring: try full terms first, then progressively shorter model names
+        // E.g. "ecomax 503" → try "ecomax 503", then "ecomax", then "503"
+        const modelTerms = filterTerms.filter((t: string) => !manufacturerTerms.includes(t));
+        
         const scoredFiles = subFiles
           .filter((f: any) => f.mimeType !== "application/vnd.google-apps.folder")
           .map((f: any) => {
             const nameLower = (f.name || "").toLowerCase();
             const isZip = f.mimeType === "application/zip" || nameLower.endsWith(".zip");
             let score = isZip ? -10 : 0;
+            
+            // Check each term individually
             for (const term of filterTerms) {
-              if (nameLower.includes(term)) score += 3;
+              if (nameLower.includes(term)) {
+                score += manufacturerTerms.includes(term) ? 2 : 5; // model terms worth MORE for file matching
+              }
             }
+            
+            // Bonus: check combined model terms (e.g. "ecomax 503" as substring)
+            if (modelTerms.length > 1) {
+              const combined = modelTerms.join(" ");
+              if (nameLower.includes(combined)) score += 10;
+              // Also try without spaces (e.g. "ecomax503")
+              const noSpace = modelTerms.join("");
+              if (nameLower.includes(noSpace)) score += 8;
+            }
+            
+            // Progressive: if full model didn't match, try partial (e.g. "scc" from "scc 201")
+            if (score <= 0 && modelTerms.length > 0) {
+              for (const term of modelTerms) {
+                // Try first 3+ chars of each term
+                if (term.length >= 3 && nameLower.includes(term.substring(0, 3))) {
+                  score += 1;
+                }
+              }
+            }
+            
             return { ...f, score };
           })
           .sort((a: any, b: any) => b.score - a.score);
