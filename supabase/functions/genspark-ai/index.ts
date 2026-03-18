@@ -923,7 +923,7 @@ Direto, técnico, útil para orçamento.`;
     // =========================================================================
     } else if (action === "analyze") {
       const { context } = body;
-      model = "gpt-4o";
+      model = "google/gemini-2.5-pro";
 
       const systemPrompt = `Você é o engenheiro técnico sênior da WeDo. Analise OS para orçamento.
 
