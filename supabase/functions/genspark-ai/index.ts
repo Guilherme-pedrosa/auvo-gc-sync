@@ -719,11 +719,11 @@ async function callAI(
 
   const temperature = options.temperature ?? 0.35;
 
-  // Normaliza modelo para OpenAI real
+  // Normaliza modelo — envia direto para a API OpenAI
   let openaiModel = model;
-  if (model === "openai/gpt-5.2" || model === "openai/gpt-5") openaiModel = "gpt-4o";
+  if (model === "openai/gpt-5.2" || model === "openai/gpt-5") openaiModel = "gpt-5.4-nano";
   else if (model === "openai/gpt-5-mini") openaiModel = "gpt-4o-mini";
-  else if (model.startsWith("openai/")) openaiModel = "gpt-4o";
+  else if (model.startsWith("openai/")) openaiModel = "gpt-5.4-nano";
   else if (model.startsWith("google/")) openaiModel = "gpt-4o-mini"; // fallback seguro
 
   const MAX_RETRIES = 3;
