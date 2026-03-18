@@ -190,6 +190,9 @@ async function resolveAndPersistMissingEquipment(
 
   const equipmentCache: Record<string, EquipmentPair> = {};
   const taskDetailCache: Record<string, any | null> = {};
+  const unresolvedByTaskId = new Map<string, any>(
+    unresolved.map((item) => [String(item.auvo_task_id || "").trim(), item])
+  );
   const rowsToPersist: {
     auvo_task_id: string;
     equipamento_nome: string | null;
@@ -261,7 +264,7 @@ async function resolveAndPersistMissingEquipment(
     for (const resolved of resolvedBatch) {
       if (!resolved) continue;
 
-      const item = unresolved.find((it) => String(it.auvo_task_id || "").trim() === resolved.taskId);
+      const item = unresolvedByTaskId.get(resolved.taskId);
       if (!item) continue;
 
       const prevNome = sanitizeEquipmentValue(item.equipamento_nome);
