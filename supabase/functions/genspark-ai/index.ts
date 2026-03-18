@@ -1176,10 +1176,19 @@ TOM: Telegráfico, técnico, zero enrolação. Prefira disciplina e auditabilida
       console.log(`[genspark-ai] [analyze] mode=${expand ? "expanded" : "standard"}, model=${ANALYSIS_MODEL}, fotos=${context?.fotos?.length || 0}→max${maxPhotos}(${photoDetail}), docs=${internalDocs?.docs_count || 0}, web=${webResearch ? "yes" : "no"}, contentParts=${userContentParts.length}`);
 
       const analyzeMaxTokens = expand ? 3200 : 2200;
-      const aiResult = await callAI(messages, ANALYSIS_MODEL, analyzeMaxTokens, {
+      let aiResult = await callAI(messages, ANALYSIS_MODEL, analyzeMaxTokens, {
         fallbackModel: "openai/gpt-5-mini",
-        temperature: 0.2,
       });
+
+      // Retry com modelo mais leve se resultado veio vazio (timeout interno do modelo)
+      if (!aiResult.error && !aiResult.result?.trim()) {
+        const FALLBACK_MODEL = "google/gemini-2.5-flash";
+        console.warn(`[genspark-ai] [analyze] Resultado vazio do ${ANALYSIS_MODEL}. Retentando com ${FALLBACK_MODEL}...`);
+
+        // Para Gemini, podemos enviar as mesmas mensagens
+        aiResult = await callAI(messages, FALLBACK_MODEL, analyzeMaxTokens);
+      }
+
       if (aiResult.error) {
         return new Response(JSON.stringify({ error: aiResult.error }), {
           status: aiResult.status || 500,
@@ -1187,7 +1196,9 @@ TOM: Telegráfico, técnico, zero enrolação. Prefira disciplina e auditabilida
         });
       }
 
-      return new Response(JSON.stringify({ result: aiResult.result, mode: expand ? "expanded" : "standard", reasons }), {
+      const finalResult = aiResult.result?.trim() || "A análise não retornou conteúdo. Tente novamente ou clique em 'Aprofundar'.";
+
+      return new Response(JSON.stringify({ result: finalResult, mode: expand ? "expanded" : "standard", reasons }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
