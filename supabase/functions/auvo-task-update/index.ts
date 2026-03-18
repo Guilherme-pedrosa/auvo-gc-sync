@@ -54,6 +54,8 @@ function sanitizeCentralRow(row: any) {
     gc_orc_valor_total: row?.gc_orc_valor_total ?? null,
     gc_orc_link: row?.gc_orc_link ?? null,
     pendencia: row?.pendencia ?? null,
+    equipamento_nome: row?.equipamento_nome ?? null,
+    equipamento_id_serie: row?.equipamento_id_serie ?? null,
     atualizado_em: new Date().toISOString(),
   };
 
