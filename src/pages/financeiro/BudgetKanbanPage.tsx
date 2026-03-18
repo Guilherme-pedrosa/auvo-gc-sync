@@ -663,6 +663,7 @@ export default function BudgetKanbanPage() {
 
     if (!normalizedTaskId || (!sanitizedNome && !sanitizedId)) return;
 
+    // Persist to tarefas_central
     supabase
       .from("tarefas_central")
       .update({
@@ -672,8 +673,26 @@ export default function BudgetKanbanPage() {
       .eq("auvo_task_id", normalizedTaskId)
       .then(({ error }) => {
         if (error) {
-          console.warn("[budget-kanban] Falha ao persistir equipamento:", error);
+          console.warn("[budget-kanban] Falha ao persistir equipamento em tarefas_central:", error);
         }
+      });
+
+    // Also update kanban_orcamentos_cache.dados to avoid re-fetching on next load
+    supabase
+      .from("kanban_orcamentos_cache" as any)
+      .select("dados")
+      .eq("auvo_task_id", normalizedTaskId)
+      .maybeSingle()
+      .then(({ data: cacheRow, error: cacheErr }) => {
+        if (cacheErr || !cacheRow) return;
+        const updatedDados = { ...(cacheRow as any).dados, equipamento_nome: sanitizedNome || null, equipamento_id_serie: sanitizedId || null };
+        supabase
+          .from("kanban_orcamentos_cache" as any)
+          .update({ dados: updatedDados, atualizado_em: new Date().toISOString() } as any)
+          .eq("auvo_task_id", normalizedTaskId)
+          .then(({ error: updateErr }) => {
+            if (updateErr) console.warn("[budget-kanban] Falha ao persistir equipamento no cache:", updateErr);
+          });
       });
   }, []);
 
