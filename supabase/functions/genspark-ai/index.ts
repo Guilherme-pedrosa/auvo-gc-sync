@@ -51,7 +51,7 @@ async function addPhotosToContent(contentParts: any[], fotos: string[], maxPhoto
 // INTERNAL TECH DOCS — busca documentos técnicos da pasta pública WeDo
 // =========================================================================
 const DRIVE_FOLDER_ID = "1Sum9oUAzqfDew0FH1UC7_cIQyxEvAdcd";
-const INTERNAL_DOCS_TIMEOUT = 10000; // 10s
+const INTERNAL_DOCS_TIMEOUT = 15000; // 15s
 const MAX_DOCS = 8;
 const MAX_TOTAL_CHARS = 15000;
 
