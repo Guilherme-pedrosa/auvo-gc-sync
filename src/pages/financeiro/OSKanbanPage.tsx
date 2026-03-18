@@ -168,23 +168,13 @@ export default function OSKanbanPage() {
   const [corridorFilterIds, setCorridorFilterIds] = useState<Set<string> | null>(null);
   const [corridorRoute, setCorridorRoute] = useState<any>(null);
 
-  // GC Situação filter with localStorage persistence
-  const [selectedSituacoes, setSelectedSituacoes] = useState<Set<string>>(() => {
+  // GC Situação filter: stores EXCLUDED situações (inverted logic)
+  const [excludedSituacoes, setExcludedSituacoes] = useState<Set<string>>(() => {
     try {
-      const saved = localStorage.getItem("oskanban_selectedSituacoes");
+      const saved = localStorage.getItem("oskanban_excludedSituacoes");
       if (saved) return new Set(JSON.parse(saved) as string[]);
     } catch { /* ignore */ }
     return new Set();
-  });
-  const [allSituacoesSelected, setAllSituacoesSelected] = useState(() => {
-    try {
-      const saved = localStorage.getItem("oskanban_selectedSituacoes");
-      if (saved) {
-        const arr = JSON.parse(saved) as string[];
-        return arr.length === 0;
-      }
-    } catch { /* ignore */ }
-    return true;
   });
   const [searchSituacao, setSearchSituacao] = useState("");
 
@@ -413,31 +403,20 @@ export default function OSKanbanPage() {
     return allSituacoes.filter((s) => s.toLowerCase().includes(searchSituacao.toLowerCase()));
   }, [allSituacoes, searchSituacao]);
 
-  // Persist situação selection to localStorage
+  // Persist excluded situações to localStorage
   useEffect(() => {
-    if (allSituacoesSelected) {
-      localStorage.setItem("oskanban_selectedSituacoes", JSON.stringify([]));
-    } else {
-      localStorage.setItem("oskanban_selectedSituacoes", JSON.stringify(Array.from(selectedSituacoes)));
-    }
-  }, [selectedSituacoes, allSituacoesSelected]);
+    localStorage.setItem("oskanban_excludedSituacoes", JSON.stringify(Array.from(excludedSituacoes)));
+  }, [excludedSituacoes]);
 
-  // Filter by selected situações
+  // Filter by excluded situações
   const items = useMemo(() => {
     if (!rawItems) return [];
     return rawItems.filter((i) => {
       const sit = i.gc_os_situacao || "";
-      // If user has specific situações selected, only show those
-      if (!allSituacoesSelected && selectedSituacoes.size > 0) {
-        return selectedSituacoes.has(sit);
-      }
-      // Default: filter out "Executad*" and "Imp Cigam Faturado Total"
-      const sitLower = sit.toLowerCase();
-      if (sitLower.startsWith("executad")) return false;
-      if (sitLower.startsWith("imp cigam faturado total")) return false;
+      if (excludedSituacoes.has(sit)) return false;
       return true;
     });
-  }, [rawItems, allSituacoesSelected, selectedSituacoes]);
+  }, [rawItems, excludedSituacoes]);
 
   // Build columns: OS with status "Agendada" go to a special first column
   // Rebuild every time items change (no columnsInitialized gate)
@@ -1083,9 +1062,9 @@ export default function OSKanbanPage() {
             <PopoverTrigger asChild>
               <Button variant="outline" size="sm" className="gap-2">
                 <Filter className="h-3.5 w-3.5" />
-                {allSituacoesSelected
-                  ? "Todas situações"
-                  : `${selectedSituacoes.size} situaç${selectedSituacoes.size !== 1 ? "ões" : "ão"}`}
+                {excludedSituacoes.size === 0
+                  ? `${allSituacoes.length} situações`
+                  : `${allSituacoes.length - excludedSituacoes.size} situaç${(allSituacoes.length - excludedSituacoes.size) !== 1 ? "ões" : "ão"}`}
               </Button>
             </PopoverTrigger>
             <PopoverContent className="w-[320px] p-0" align="start">
@@ -1100,10 +1079,9 @@ export default function OSKanbanPage() {
               <div className="p-2 border-b">
                 <label className="flex items-center gap-2 px-2 py-1 cursor-pointer hover:bg-accent rounded text-sm">
                   <Checkbox
-                    checked={allSituacoesSelected}
+                    checked={excludedSituacoes.size === 0}
                     onCheckedChange={(checked) => {
-                      setAllSituacoesSelected(!!checked);
-                      if (checked) setSelectedSituacoes(new Set());
+                      if (checked) setExcludedSituacoes(new Set());
                     }}
                   />
                   <span className="font-medium">Todas (padrão)</span>
@@ -1114,16 +1092,16 @@ export default function OSKanbanPage() {
                   {filteredSituacaoOptions.map((sit) => {
                     const corItem = rawItems?.find((i) => i.gc_os_situacao === sit);
                     const cor = corItem?.gc_os_cor_situacao || undefined;
+                    const isChecked = !excludedSituacoes.has(sit);
                     return (
                       <label key={sit} className="flex items-center gap-2 px-2 py-1.5 cursor-pointer hover:bg-accent rounded text-sm">
                         <Checkbox
-                          checked={allSituacoesSelected || selectedSituacoes.has(sit)}
+                          checked={isChecked}
                           onCheckedChange={() => {
-                            setAllSituacoesSelected(false);
-                            setSelectedSituacoes((prev) => {
+                            setExcludedSituacoes((prev) => {
                               const next = new Set(prev);
-                              if (next.has(sit)) next.delete(sit);
-                              else next.add(sit);
+                              if (isChecked) next.add(sit);
+                              else next.delete(sit);
                               return next;
                             });
                           }}
