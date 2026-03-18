@@ -394,15 +394,20 @@ async function fetchInternalTechDocs(query?: string, equipamento?: string, optio
           if (pdfText.length > 50) {
             addResult(fullPath, pdfText, "📕");
           } else {
-            // PDF escaneado — tentar OCR via Google Cloud Vision API
-            console.log(`[genspark-ai] [internal-docs] PDF sem texto extraível, tentando OCR: ${fullPath}`);
-            const ocrText = await ocrPdfViaVision(buf, fullPath);
-            if (ocrText.length > 50) {
-              addResult(fullPath, ocrText, "🔍");
-              console.log(`[genspark-ai] [OCR] Sucesso! ${ocrText.length} chars extraídos de ${fullPath}`);
+            // PDF escaneado — tentar OCR via Google Cloud Vision API (se não for modo leve)
+            if (SKIP_OCR) {
+              result.skipped_files.push(`${fullPath} (PDF scan — OCR ignorado no modo chat)`);
+              results.push(`📕 ${fullPath} — PDF escaneado (disponível para consulta, OCR não executado neste modo)`);
             } else {
-              result.skipped_files.push(`${fullPath} (PDF scan — OCR sem resultado útil)`);
-              results.push(`📕 ${fullPath} — PDF escaneado (OCR não extraiu texto suficiente)`);
+              console.log(`[genspark-ai] [internal-docs] PDF sem texto extraível, tentando OCR: ${fullPath}`);
+              const ocrText = await ocrPdfViaVision(buf, fullPath);
+              if (ocrText.length > 50) {
+                addResult(fullPath, ocrText, "🔍");
+                console.log(`[genspark-ai] [OCR] Sucesso! ${ocrText.length} chars extraídos de ${fullPath}`);
+              } else {
+                result.skipped_files.push(`${fullPath} (PDF scan — OCR sem resultado útil)`);
+                results.push(`📕 ${fullPath} — PDF escaneado (OCR não extraiu texto suficiente)`);
+              }
             }
           }
         } else await resp.text();
