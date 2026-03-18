@@ -1160,6 +1160,7 @@ P4) Componente com fixação sendo trocado → fixadores daquele componente
 P5) Peça de desgaste trocada → verificar peças de desgaste do MESMO subsistema
 P6) Calcário/sujidade mineral evidenciada → filtro de água, descalcificação
 P7) Uso inadequado relatado → treinamento operacional
+P8) Motor com troca de rolamento → OBRIGATÓRIO sugerir retentor E verificação de eixo como itens separados. Rolamentos e retentores NUNCA devem ser agrupados em "kit" ou "conjunto genérico" — listar cada um como linha individual com especificação.
 REGRA: Antes de aplicar política, perguntar "Este equipamento TEM esse componente?"
 
 FORMATO DE SAÍDA OBRIGATÓRIO:
