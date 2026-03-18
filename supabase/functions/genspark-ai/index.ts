@@ -1348,7 +1348,10 @@ TOM: Telegráfico, técnico, fundamentado.`;
         { role: "user", content: userContentParts },
       ];
 
-      const aiResult = await callAI(messages, DEEP_MODEL, 6000);
+      const aiResult = await callAI(messages, DEEP_MODEL, 3800, {
+        fallbackModel: "openai/gpt-5-mini",
+        temperature: 0.2,
+      });
       if (aiResult.error) {
         return new Response(JSON.stringify({ error: aiResult.error }), {
           status: aiResult.status || 500,
