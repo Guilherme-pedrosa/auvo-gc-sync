@@ -27,40 +27,57 @@ function getAdminClient() {
   return createClient(supabaseUrl, serviceRoleKey, { auth: { persistSession: false } });
 }
 
+function hasOwn(obj: any, key: string): boolean {
+  return Object.prototype.hasOwnProperty.call(obj, key);
+}
+
+function setIfProvided(result: any, row: any, key: string, targetKey: string = key) {
+  if (!hasOwn(row, key)) return;
+  result[targetKey] = row[key] ?? null;
+}
+
 function sanitizeCentralRow(row: any) {
   const taskId = String(row?.auvo_task_id || "").trim();
   if (!taskId) return null;
 
+  // IMPORTANT: only persist keys that were explicitly provided.
+  // This prevents partial updates (drag/edit) from nulling GC values and other fields.
   const result: any = {
     auvo_task_id: taskId,
-    cliente: row?.cliente ?? null,
-    tecnico: row?.tecnico ?? null,
-    tecnico_id: row?.tecnico_id ?? null,
-    data_tarefa: row?.data_tarefa ?? null,
-    status_auvo: row?.status_auvo ?? null,
-    hora_inicio: row?.hora_inicio ?? null,
-    hora_fim: row?.hora_fim ?? null,
-    check_in: row?.check_in ?? null,
-    check_out: row?.check_out ?? null,
-    endereco: row?.endereco ?? null,
-    auvo_link: row?.auvo_link ?? null,
-    orientacao: row?.orientacao ?? row?.descricao ?? null,
-    gc_os_codigo: row?.gc_os_codigo ?? null,
-    gc_os_situacao: row?.gc_os_situacao ?? null,
-    gc_os_valor_total: row?.gc_os_valor_total ?? null,
-    gc_os_link: row?.gc_os_link ?? null,
-    gc_orcamento_codigo: row?.gc_orcamento_codigo ?? null,
-    gc_orc_situacao: row?.gc_orc_situacao ?? null,
-    gc_orc_valor_total: row?.gc_orc_valor_total ?? null,
-    gc_orc_link: row?.gc_orc_link ?? null,
-    pendencia: row?.pendencia ?? null,
-    equipamento_nome: row?.equipamento_nome ?? null,
-    equipamento_id_serie: row?.equipamento_id_serie ?? null,
     atualizado_em: new Date().toISOString(),
   };
 
-  // Include questionario_respostas if provided
-  if (row?.questionario_respostas !== undefined) {
+  setIfProvided(result, row, "cliente");
+  setIfProvided(result, row, "tecnico");
+  setIfProvided(result, row, "tecnico_id");
+  setIfProvided(result, row, "data_tarefa");
+  setIfProvided(result, row, "status_auvo");
+  setIfProvided(result, row, "hora_inicio");
+  setIfProvided(result, row, "hora_fim");
+  setIfProvided(result, row, "check_in");
+  setIfProvided(result, row, "check_out");
+  setIfProvided(result, row, "endereco");
+  setIfProvided(result, row, "auvo_link");
+  setIfProvided(result, row, "gc_os_codigo");
+  setIfProvided(result, row, "gc_os_situacao");
+  setIfProvided(result, row, "gc_os_valor_total");
+  setIfProvided(result, row, "gc_os_link");
+  setIfProvided(result, row, "gc_orcamento_codigo");
+  setIfProvided(result, row, "gc_orc_situacao");
+  setIfProvided(result, row, "gc_orc_valor_total");
+  setIfProvided(result, row, "gc_orc_link");
+  setIfProvided(result, row, "pendencia");
+  setIfProvided(result, row, "equipamento_nome");
+  setIfProvided(result, row, "equipamento_id_serie");
+
+  // orientacao accepts either "orientacao" or legacy "descricao"
+  if (hasOwn(row, "orientacao")) {
+    result.orientacao = row.orientacao ?? null;
+  } else if (hasOwn(row, "descricao")) {
+    result.orientacao = row.descricao ?? null;
+  }
+
+  if (hasOwn(row, "questionario_respostas")) {
     result.questionario_respostas = row.questionario_respostas;
   }
 
@@ -84,6 +101,7 @@ Deno.serve(async (req) => {
     const { action } = body;
 
     if (action === "persist-central") {
+      const isSingleRowPatch = !!body?.row && !Array.isArray(body?.rows);
       const rowsInput = Array.isArray(body?.rows)
         ? body.rows
         : body?.row
@@ -109,6 +127,36 @@ Deno.serve(async (req) => {
       }
 
       const admin = getAdminClient();
+
+      // Single-row patch requests (drag/edit) should not null unrelated columns.
+      if (isSingleRowPatch && rows.length === 1) {
+        const row = rows[0];
+        const { auvo_task_id, ...patch } = row;
+
+        const { data: updatedRow, error: updateError } = await admin
+          .from("tarefas_central")
+          .update(patch)
+          .eq("auvo_task_id", auvo_task_id)
+          .select("auvo_task_id")
+          .limit(1)
+          .maybeSingle();
+
+        if (updateError) throw updateError;
+
+        if (!updatedRow) {
+          const { error: insertError } = await admin
+            .from("tarefas_central")
+            .insert(row);
+          if (insertError) throw insertError;
+        }
+
+        return new Response(
+          JSON.stringify({ success: true, count: 1, status: 200 }),
+          { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
+      // Bulk sync keeps upsert behavior (full dataset refresh).
       const { error } = await admin
         .from("tarefas_central")
         .upsert(rows, { onConflict: "auvo_task_id" });
