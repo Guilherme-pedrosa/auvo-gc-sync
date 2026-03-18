@@ -818,9 +818,9 @@ async function callAI(
 
   // Normaliza modelo — envia direto para a API OpenAI
   let openaiModel = model;
-  if (model === "openai/gpt-5.2" || model === "openai/gpt-5") openaiModel = "gpt-5.4-nano";
+  if (model === "openai/gpt-5.2" || model === "openai/gpt-5") openaiModel = "gpt-4o";
   else if (model === "openai/gpt-5-mini") openaiModel = "gpt-4o-mini";
-  else if (model.startsWith("openai/")) openaiModel = "gpt-5.4-nano";
+  else if (model.startsWith("openai/")) openaiModel = "gpt-4o";
   else if (model.startsWith("google/")) openaiModel = "gpt-4o-mini";
 
   // Log key prefix for diagnostic (safe — only first 8 chars)
