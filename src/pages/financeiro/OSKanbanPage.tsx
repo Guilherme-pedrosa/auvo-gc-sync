@@ -1357,6 +1357,12 @@ export default function OSKanbanPage() {
                                           <p className="text-sm font-semibold text-foreground mt-1 truncate" title={item.cliente || item.gc_os_cliente || ""}>
                                             {abbreviateName(item.cliente || item.gc_os_cliente || "")}
                                           </p>
+                                          {hasClientDivergence(item) && (
+                                            <div className="flex items-center gap-1 mt-0.5 text-[10px] text-amber-600 dark:text-amber-400" title={`Auvo: ${item.cliente}\nGC: ${item.gc_os_cliente}`}>
+                                              <AlertTriangle className="h-3 w-3 flex-shrink-0" />
+                                              <span className="truncate">Cliente GC diferente</span>
+                                            </div>
+                                          )}
                                           <p className="text-xs text-muted-foreground mt-0.5">
                                             {item.tecnico || "—"} • {item.data_tarefa || "—"}
                                           </p>
