@@ -850,6 +850,7 @@ FORMATO DE SAÍDA (máximo de objetividade):
 📋 EQUIPAMENTO
 Equipamento: [nome/modelo]
 ID/Série: [valor ou NÃO IDENTIFICADO]
+Marca/Fabricante: [marca identificada pela pesquisa ou NÃO IDENTIFICADA — se foi fornecida no contexto, use-a]
 
 📂 MATERIAIS INTERNOS (se fornecidos)
 Se recebeu materiais internos (📂), OBRIGATORIAMENTE inclua esta seção:
