@@ -84,8 +84,8 @@ async function identifyManufacturer(equipamento: string): Promise<string[]> {
       body: JSON.stringify({
         model: "sonar",
         messages: [
-          { role: "system", content: "Responda APENAS com o nome do fabricante/marca do equipamento. Uma palavra ou nome de empresa. Sem explicação. Se não souber, responda 'desconhecido'." },
-          { role: "user", content: `Qual é o fabricante/marca deste equipamento industrial/comercial? "${equipamento}"` }
+          { role: "system", content: "Responda APENAS com o nome da marca/fabricante. Somente letras, sem números, sem modelo, sem explicação. Exemplo: se o equipamento é 'Ecomax 503', responda 'Hobart'. Se não souber, responda 'desconhecido'." },
+          { role: "user", content: `Qual é a marca/fabricante deste equipamento de cozinha industrial? "${equipamento}". Responda SOMENTE o nome da marca (ex: Hobart, Rational, Vulcan, Prática, Tramontina).` }
         ],
         temperature: 0.0,
       }),
@@ -103,10 +103,11 @@ async function identifyManufacturer(equipamento: string): Promise<string[]> {
 
     if (!answer || answer.toLowerCase() === "desconhecido") return [];
 
-    // Extract manufacturer terms (first line, clean up)
+    // Extract manufacturer terms — STRIP ALL NUMBERS (avoid "hobart123456" pollution)
     const cleanAnswer = answer
       .split("\n")[0]
-      .replace(/[^a-zA-ZÀ-ÿ0-9\s\-]/g, "")
+      .replace(/[0-9]/g, "")              // remove all digits
+      .replace(/[^a-zA-ZÀ-ÿ\s\-]/g, "")  // keep only letters
       .trim();
 
     const terms = cleanAnswer
@@ -114,8 +115,27 @@ async function identifyManufacturer(equipamento: string): Promise<string[]> {
       .split(/[\s\-_]+/)
       .filter((t: string) => t.length > 2);
 
-    console.log(`[genspark-ai] [manufacturer] Termos extraídos: [${terms.join(",")}]`);
-    return terms;
+    // Also add common variations (e.g., "hobart" should also match "hobart - vulcan" folder)
+    const expandedTerms = [...terms];
+    // Known brand aliases/groups in our Drive
+    const brandAliases: Record<string, string[]> = {
+      "hobart": ["hobart", "vulcan"],
+      "rational": ["rational"],
+      "pratica": ["pratica", "prática"],
+      "tramontina": ["tramontina"],
+      "elgin": ["elgin"],
+    };
+    for (const term of terms) {
+      const aliases = brandAliases[term];
+      if (aliases) {
+        for (const alias of aliases) {
+          if (!expandedTerms.includes(alias)) expandedTerms.push(alias);
+        }
+      }
+    }
+
+    console.log(`[genspark-ai] [manufacturer] Termos extraídos: [${expandedTerms.join(",")}]`);
+    return expandedTerms;
   } catch (e) {
     console.warn(`[genspark-ai] [manufacturer] Erro: ${e instanceof Error ? e.message : String(e)}`);
     return [];
@@ -353,9 +373,12 @@ async function fetchInternalTechDocs(query?: string, equipamento?: string): Prom
       }).sort((a: any, b: any) => b.score - a.score);
 
       const matchingFolders = scoredFolders.filter((f: any) => f.score > 0);
-      const foldersToScan = matchingFolders.length > 0
-        ? matchingFolders.slice(0, 3)
-        : scoredFolders.slice(0, 2);
+      // ONLY scan folders that actually matched — don't fallback to random folders (avoids scanning AUVO with 100+ PDFs)
+      const foldersToScan = matchingFolders.slice(0, 3);
+
+      if (foldersToScan.length === 0) {
+        console.warn(`[genspark-ai] [internal-docs] NENHUMA pasta correspondeu aos termos [${filterTerms.join(",")}]. Pastas disponíveis: ${folders.map((f: any) => f.name).join(", ")}`);
+      }
 
       // Process top-level files (skip ZIPs)
       for (const file of topFiles) {
