@@ -245,7 +245,7 @@ export default function AgendaSemanalPage() {
     return weekDays.map((wd) => {
       return tarefas
         .filter(t => t.data_tarefa && isSameDay(parseISO(t.data_tarefa), wd))
-        .reduce((sum, t) => sum + (t.gc_os_valor_total ?? 0), 0);
+        .reduce((sum, t) => sum + (t.gc_os_valor_total ?? t.gc_orc_valor_total ?? 0), 0);
     });
   }, [tarefas, weekDays]);
 
@@ -926,7 +926,7 @@ function DayView({
         {/* Rows: one per technician */}
         {filteredTecnicos.map(tec => {
           const tasks = tecTasks.get(tec.nome) || [];
-          const totalValor = tasks.reduce((sum, t) => sum + (t.gc_os_valor_total ?? 0), 0);
+          const totalValor = tasks.reduce((sum, t) => sum + (t.gc_os_valor_total ?? t.gc_orc_valor_total ?? 0), 0);
           return (
             <div key={tec.nome} className="flex border-b border-border hover:bg-muted/20 transition-colors" style={{ minHeight: 80 }}>
               <div className="flex-shrink-0 px-3 py-2 border-r border-border bg-card sticky left-0 z-10" style={{ width: TEC_COL_WIDTH }}>
@@ -1008,9 +1008,10 @@ function DayView({
                       <div className="text-[10px] text-muted-foreground truncate">
                         T#{tarefa.auvo_task_id}
                         {tarefa.gc_os_codigo && <> · OS #{tarefa.gc_os_codigo}</>}
+                        {tarefa.gc_orcamento_codigo && !tarefa.gc_os_codigo && <> · ORÇ #{tarefa.gc_orcamento_codigo}</>}
                       </div>
-                      {tarefa.gc_os_valor_total != null && (
-                        <div className="text-[10px] font-semibold text-emerald-700 dark:text-emerald-400">{formatCurrency(tarefa.gc_os_valor_total)}</div>
+                      {(tarefa.gc_os_valor_total ?? tarefa.gc_orc_valor_total) != null && (
+                        <div className="text-[10px] font-semibold text-emerald-700 dark:text-emerald-400">{formatCurrency(tarefa.gc_os_valor_total ?? tarefa.gc_orc_valor_total)}</div>
                       )}
                       <div className="flex items-center justify-end mt-0.5">
                         <span className={cn("px-1 py-0.5 rounded text-[9px] font-medium leading-none", statusClass)}>{tarefa.status_auvo || "—"}</span>
@@ -1086,9 +1087,15 @@ function TaskCard({
             <span>OS #{tarefa.gc_os_codigo}</span>
           </>
         )}
-        {tarefa.gc_os_valor_total != null && (
+        {tarefa.gc_orcamento_codigo && !tarefa.gc_os_codigo && (
+          <>
+            <span className="mx-0.5">·</span>
+            <span>ORÇ #{tarefa.gc_orcamento_codigo}</span>
+          </>
+        )}
+        {(tarefa.gc_os_valor_total ?? tarefa.gc_orc_valor_total) != null && (
           <span className="ml-1 font-semibold text-emerald-700 dark:text-emerald-400">
-            {formatCurrency(tarefa.gc_os_valor_total)}
+            {formatCurrency(tarefa.gc_os_valor_total ?? tarefa.gc_orc_valor_total)}
           </span>
         )}
       </div>
