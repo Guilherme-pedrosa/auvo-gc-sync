@@ -721,17 +721,18 @@ export default function OSKanbanPage() {
     }
     for (const item of items) {
       if (map.has(item.auvo_task_id)) {
-        // Cache this client's city
-        const clientKey = (item.cliente || "").toUpperCase().trim();
-        if (clientKey && !clientCityCache.has(clientKey)) {
-          clientCityCache.set(clientKey, map.get(item.auvo_task_id)!);
-        }
+        // Cache this client's city using normalized name
+        const clientKey = normalizeClientName(item.cliente);
+        const gcKey = normalizeClientName(item.gc_os_cliente);
+        const loc = map.get(item.auvo_task_id)!;
+        if (clientKey && !clientCityCache.has(clientKey)) clientCityCache.set(clientKey, loc);
+        if (gcKey && !clientCityCache.has(gcKey)) clientCityCache.set(gcKey, loc);
       }
     }
     for (const item of items) {
       if (!map.has(item.auvo_task_id)) {
-        const clientKey = (item.cliente || "").toUpperCase().trim();
-        const gcClientKey = (item.gc_os_cliente || "").toUpperCase().trim();
+        const clientKey = normalizeClientName(item.cliente);
+        const gcClientKey = normalizeClientName(item.gc_os_cliente);
         const inherited = clientCityCache.get(clientKey) || clientCityCache.get(gcClientKey);
         if (inherited) {
           map.set(item.auvo_task_id, inherited);

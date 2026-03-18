@@ -149,65 +149,31 @@ export default function AgendaSemanalPage() {
     staleTime: 1000 * 60 * 5,
   });
 
-  // Refresh from live API (Auvo + GC) and update cache
+  // Refresh via central-sync (single source of truth) and refetch from DB
   const refreshFromApi = useCallback(async () => {
     setIsRefreshingFromApi(true);
     try {
-      const startStr = queryStartDate;
-      const endStr = queryEndDate;
-      const { data, error } = await supabase.functions.invoke("auvo-agenda", {
-        body: { startDate: startStr, endDate: endStr },
+      const { data, error } = await supabase.functions.invoke("central-sync", {
+        body: { start_date: queryStartDate, end_date: queryEndDate },
       });
       if (error) throw error;
-      const apiTarefas = (data?.data || []) as Tarefa[];
-      // Update react-query cache directly with fresh API data
-      queryClient.setQueryData(queryKey, apiTarefas);
-
-      // Persist to tarefas_central so values survive page reload
-      const upsertRows = apiTarefas.map((t) => ({
-        auvo_task_id: t.auvo_task_id,
-        cliente: t.cliente,
-        tecnico: t.tecnico,
-        tecnico_id: t.tecnico_id,
-        data_tarefa: t.data_tarefa,
-        status_auvo: t.status_auvo,
-        hora_inicio: t.hora_inicio,
-        hora_fim: t.hora_fim,
-        duracao_decimal: t.duracao_decimal,
-        check_in: t.check_in,
-        check_out: t.check_out,
-        endereco: t.endereco,
-        auvo_link: t.auvo_link,
-        orientacao: t.descricao,
-        gc_os_codigo: t.gc_os_codigo,
-        gc_os_situacao: t.gc_os_situacao,
-        gc_os_valor_total: t.gc_os_valor_total,
-        gc_os_link: t.gc_os_link,
-        gc_orcamento_codigo: t.gc_orcamento_codigo,
-        gc_orc_situacao: t.gc_orc_situacao,
-        gc_orc_valor_total: t.gc_orc_valor_total,
-        gc_orc_link: t.gc_orc_link,
-        pendencia: t.pendencia,
-        atualizado_em: new Date().toISOString(),
-      }));
-
-      if (upsertRows.length > 0) {
-        const { error: persistError } = await supabase.functions.invoke("auvo-task-update", {
-          body: { action: "persist-central", rows: upsertRows },
-        });
-        if (persistError) throw persistError;
+      if (data?.success === false) {
+        throw new Error(data?.error || "Sincronização retornou falha");
       }
 
-      toast.success(`${apiTarefas.length} tarefas atualizadas da API`);
-      // Refresh the last-sync badge
+      // Refetch from tarefas_central (the single source of truth)
+      await refetch();
+
+      const upserted = data?.stats?.upserted ?? data?.upserted ?? "?";
+      toast.success(`Sincronização concluída — ${upserted} tarefas atualizadas`);
       queryClient.invalidateQueries({ queryKey: ["last-sync-timestamp"] });
     } catch (err: any) {
-      console.error("[agenda] Erro ao atualizar da API:", err);
-      toast.error(`Erro ao atualizar: ${err.message}`);
+      console.error("[agenda] Erro ao sincronizar:", err);
+      toast.error(`Erro ao sincronizar: ${err.message}`);
     } finally {
       setIsRefreshingFromApi(false);
     }
-  }, [queryStartDate, queryEndDate, queryClient, queryKey]);
+  }, [queryStartDate, queryEndDate, queryClient, refetch]);
 
   const tecnicos = useMemo(() => {
     const map = new Map<string, { nome: string; id: string | null }>();
