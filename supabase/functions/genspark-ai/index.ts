@@ -84,8 +84,8 @@ async function identifyManufacturer(equipamento: string): Promise<string[]> {
       body: JSON.stringify({
         model: "sonar",
         messages: [
-          { role: "system", content: "Responda APENAS com o nome do fabricante/marca do equipamento. Uma palavra ou nome de empresa. Sem explicação. Se não souber, responda 'desconhecido'." },
-          { role: "user", content: `Qual é o fabricante/marca deste equipamento industrial/comercial? "${equipamento}"` }
+          { role: "system", content: "Responda APENAS com o nome da marca/fabricante. Somente letras, sem números, sem modelo, sem explicação. Exemplo: se o equipamento é 'Ecomax 503', responda 'Hobart'. Se não souber, responda 'desconhecido'." },
+          { role: "user", content: `Qual é a marca/fabricante deste equipamento de cozinha industrial? "${equipamento}". Responda SOMENTE o nome da marca (ex: Hobart, Rational, Vulcan, Prática, Tramontina).` }
         ],
         temperature: 0.0,
       }),
