@@ -1062,9 +1062,9 @@ export default function OSKanbanPage() {
             <PopoverTrigger asChild>
               <Button variant="outline" size="sm" className="gap-2">
                 <Filter className="h-3.5 w-3.5" />
-                {allSituacoesSelected
-                  ? "Todas situações"
-                  : `${selectedSituacoes.size} situaç${selectedSituacoes.size !== 1 ? "ões" : "ão"}`}
+                {excludedSituacoes.size === 0
+                  ? `${allSituacoes.length} situações`
+                  : `${allSituacoes.length - excludedSituacoes.size} situaç${(allSituacoes.length - excludedSituacoes.size) !== 1 ? "ões" : "ão"}`}
               </Button>
             </PopoverTrigger>
             <PopoverContent className="w-[320px] p-0" align="start">
@@ -1079,10 +1079,9 @@ export default function OSKanbanPage() {
               <div className="p-2 border-b">
                 <label className="flex items-center gap-2 px-2 py-1 cursor-pointer hover:bg-accent rounded text-sm">
                   <Checkbox
-                    checked={allSituacoesSelected}
+                    checked={excludedSituacoes.size === 0}
                     onCheckedChange={(checked) => {
-                      setAllSituacoesSelected(!!checked);
-                      if (checked) setSelectedSituacoes(new Set());
+                      if (checked) setExcludedSituacoes(new Set());
                     }}
                   />
                   <span className="font-medium">Todas (padrão)</span>
@@ -1093,16 +1092,16 @@ export default function OSKanbanPage() {
                   {filteredSituacaoOptions.map((sit) => {
                     const corItem = rawItems?.find((i) => i.gc_os_situacao === sit);
                     const cor = corItem?.gc_os_cor_situacao || undefined;
+                    const isChecked = !excludedSituacoes.has(sit);
                     return (
                       <label key={sit} className="flex items-center gap-2 px-2 py-1.5 cursor-pointer hover:bg-accent rounded text-sm">
                         <Checkbox
-                          checked={allSituacoesSelected || selectedSituacoes.has(sit)}
+                          checked={isChecked}
                           onCheckedChange={() => {
-                            setAllSituacoesSelected(false);
-                            setSelectedSituacoes((prev) => {
+                            setExcludedSituacoes((prev) => {
                               const next = new Set(prev);
-                              if (next.has(sit)) next.delete(sit);
-                              else next.add(sit);
+                              if (isChecked) next.add(sit);
+                              else next.delete(sit);
                               return next;
                             });
                           }}
