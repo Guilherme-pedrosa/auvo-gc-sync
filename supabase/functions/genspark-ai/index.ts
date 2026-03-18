@@ -840,7 +840,13 @@ async function callAI(
         Authorization: `Bearer ${OPENAI_API_KEY}`,
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({ model: openaiModel, messages, temperature, max_tokens: maxTokens }),
+      body: JSON.stringify({
+        model: openaiModel,
+        messages,
+        temperature,
+        // Newer models (gpt-5*) require max_completion_tokens; older ones use max_tokens
+        ...(openaiModel.startsWith("gpt-5") ? { max_completion_tokens: maxTokens } : { max_tokens: maxTokens }),
+      }),
     });
 
     if (response.ok) break;
