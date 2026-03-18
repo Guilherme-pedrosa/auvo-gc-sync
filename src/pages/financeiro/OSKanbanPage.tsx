@@ -89,20 +89,35 @@ function normalizeClientName(name: string | null | undefined): string {
   return name
     .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
     .toLowerCase()
-    .replace(/\s+(ltda|me|sa|epp|eireli|s\.a\.|s\/a)\.?$/i, "")
+    .replace(/\b(ltda|me|sa|epp|eireli|s\.a\.|s\/a)\.?\b/gi, "")
     .replace(/[.\-\/]/g, " ")
     .replace(/\s+/g, " ")
     .trim();
 }
 
-/** Check if Auvo and GC client names diverge */
+/** Extract meaningful tokens from a normalized name */
+function getTokens(name: string): Set<string> {
+  return new Set(name.split(" ").filter(t => t.length > 1));
+}
+
+/** Check if Auvo and GC client names diverge using token overlap */
 function hasClientDivergence(item: OSItem): boolean {
   if (!item.cliente || !item.gc_os_cliente) return false;
   const a = normalizeClientName(item.cliente);
   const b = normalizeClientName(item.gc_os_cliente);
   if (!a || !b) return false;
-  // Check if one contains the other (partial match is OK)
-  return !a.includes(b) && !b.includes(a);
+  // Fast path: substring match
+  if (a.includes(b) || b.includes(a)) return false;
+  // Token-based: if ≥70% of the smaller set's tokens appear in the larger set, consider them the same
+  const tokA = getTokens(a);
+  const tokB = getTokens(b);
+  const [smaller, larger] = tokA.size <= tokB.size ? [tokA, tokB] : [tokB, tokA];
+  if (smaller.size === 0) return false;
+  let overlap = 0;
+  for (const t of smaller) {
+    if (larger.has(t)) overlap++;
+  }
+  return (overlap / smaller.size) < 0.7;
 }
 
 export default function OSKanbanPage() {
