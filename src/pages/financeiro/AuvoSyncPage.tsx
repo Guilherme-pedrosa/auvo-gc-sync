@@ -721,6 +721,105 @@ const AuvoSyncPage = () => {
                             <TableCell className="text-center font-mono text-xs text-muted-foreground">
                               {formatHora(item.checkout_hora)}
                             </TableCell>
+                            <TableCell className="text-center">
+                              {(() => {
+                                const v = pecasValidation[item.gc_os_id];
+                                const isValidating = validatingPecas === item.gc_os_id;
+                                if (isValidating) return <Loader2 className="h-4 w-4 animate-spin mx-auto text-muted-foreground" />;
+                                if (!v) {
+                                  return (
+                                    <TooltipProvider>
+                                      <Tooltip>
+                                        <TooltipTrigger asChild>
+                                          <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={() => validarPecasOS(item)}>
+                                            <Package className="h-4 w-4 text-muted-foreground" />
+                                          </Button>
+                                        </TooltipTrigger>
+                                        <TooltipContent><p className="text-xs">Validar peças</p></TooltipContent>
+                                      </Tooltip>
+                                    </TooltipProvider>
+                                  );
+                                }
+                                if (v.sem_pecas_orcamento) {
+                                  return (
+                                    <TooltipProvider>
+                                      <Tooltip>
+                                        <TooltipTrigger><span className="text-muted-foreground text-xs">—</span></TooltipTrigger>
+                                        <TooltipContent><p className="text-xs">OS sem peças no orçamento</p></TooltipContent>
+                                      </Tooltip>
+                                    </TooltipProvider>
+                                  );
+                                }
+                                const totalOrc = v.pecas_orcamento?.length || 0;
+                                const totalCob = v.itens_cobertos?.length || 0;
+                                const totalFalt = v.itens_faltando?.length || 0;
+                                const totalParc = v.itens_parciais?.length || 0;
+                                return (
+                                  <Popover>
+                                    <PopoverTrigger asChild>
+                                      <Button variant="ghost" size="sm" className="h-7 px-1.5 gap-1">
+                                        {v.aprovado ? (
+                                          <CheckCircle2 className="h-4 w-4 text-green-600" />
+                                        ) : (
+                                          <AlertTriangle className="h-4 w-4 text-destructive" />
+                                        )}
+                                        <span className={`text-[10px] font-medium ${v.aprovado ? "text-green-600" : "text-destructive"}`}>
+                                          {totalCob}/{totalOrc}
+                                        </span>
+                                      </Button>
+                                    </PopoverTrigger>
+                                    <PopoverContent className="w-[380px] p-3" align="end">
+                                      <div className="space-y-3">
+                                        <p className="text-sm font-semibold flex items-center gap-1.5">
+                                          {v.aprovado ? <CheckCircle2 className="h-4 w-4 text-green-600" /> : <AlertTriangle className="h-4 w-4 text-destructive" />}
+                                          {v.resumo}
+                                        </p>
+                                        {totalCob > 0 && (
+                                          <div>
+                                            <p className="text-xs font-medium text-green-600 mb-1">✅ Cobertas ({totalCob})</p>
+                                            {v.itens_cobertos.map((ic: any, idx: number) => (
+                                              <div key={idx} className="text-[11px] text-muted-foreground ml-2">
+                                                • {ic.descricao} → {ic.match} ({ic.score}%){ic.qtd_orc != null && ` | Qtd: ${ic.qtd_exec}/${ic.qtd_orc}`}
+                                              </div>
+                                            ))}
+                                          </div>
+                                        )}
+                                        {totalParc > 0 && (
+                                          <div>
+                                            <p className="text-xs font-medium text-amber-600 mb-1">⚠️ Parciais ({totalParc})</p>
+                                            {v.itens_parciais.map((ip: any, idx: number) => (
+                                              <div key={idx} className="text-[11px] text-muted-foreground ml-2">
+                                                • {ip.descricao} → {ip.melhor_match} ({ip.score}%){ip.motivo && ` — ${ip.motivo}`}
+                                              </div>
+                                            ))}
+                                          </div>
+                                        )}
+                                        {totalFalt > 0 && (
+                                          <div>
+                                            <p className="text-xs font-medium text-destructive mb-1">❌ Faltando ({totalFalt})</p>
+                                            {v.itens_faltando.map((f: any, idx: number) => (
+                                              <div key={idx} className="text-[11px] text-muted-foreground ml-2">
+                                                • {f.descricao} — {f.motivo}
+                                              </div>
+                                            ))}
+                                          </div>
+                                        )}
+                                        {v.materiais_execucao?.length > 0 && (
+                                          <div className="border-t pt-2">
+                                            <p className="text-xs font-medium text-muted-foreground mb-1">📋 Materiais da execução ({v.materiais_execucao.length})</p>
+                                            {v.materiais_execucao.map((m: any, idx: number) => (
+                                              <div key={idx} className="text-[11px] text-muted-foreground ml-2">
+                                                • {m.quantidade}x {m.descricao}
+                                              </div>
+                                            ))}
+                                          </div>
+                                        )}
+                                      </div>
+                                    </PopoverContent>
+                                  </Popover>
+                                );
+                              })()}
+                            </TableCell>
                             <TableCell>
                               {!moved && (
                                 <Popover>
