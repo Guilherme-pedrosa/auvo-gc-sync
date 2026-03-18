@@ -63,7 +63,64 @@ type InternalDocsResult = {
   elapsed_ms: number;
   error: string | null;
   api_source: string;
+  manufacturer_identified: string | null;
 };
+
+// =========================================================================
+// IDENTIFY MANUFACTURER — quick Perplexity call to find the real manufacturer
+// =========================================================================
+async function identifyManufacturer(equipamento: string): Promise<string[]> {
+  const PERPLEXITY_API_KEY = Deno.env.get("PERPLEXITY_API_KEY");
+  if (!PERPLEXITY_API_KEY || !equipamento.trim()) return [];
+
+  try {
+    console.log(`[genspark-ai] [manufacturer] Identificando fabricante de: "${equipamento.substring(0, 80)}"`);
+    const response = await fetch("https://api.perplexity.ai/chat/completions", {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${PERPLEXITY_API_KEY}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model: "sonar",
+        messages: [
+          { role: "system", content: "Responda APENAS com o nome do fabricante/marca do equipamento. Uma palavra ou nome de empresa. Sem explicação. Se não souber, responda 'desconhecido'." },
+          { role: "user", content: `Qual é o fabricante/marca deste equipamento industrial/comercial? "${equipamento}"` }
+        ],
+        temperature: 0.0,
+      }),
+    });
+
+    if (!response.ok) {
+      const errText = await response.text();
+      console.warn(`[genspark-ai] [manufacturer] Perplexity HTTP ${response.status}: ${errText.substring(0, 100)}`);
+      return [];
+    }
+
+    const data = await response.json();
+    const answer = (data.choices?.[0]?.message?.content || "").trim();
+    console.log(`[genspark-ai] [manufacturer] Resultado: "${answer}"`);
+
+    if (!answer || answer.toLowerCase() === "desconhecido") return [];
+
+    // Extract manufacturer terms (first line, clean up)
+    const cleanAnswer = answer
+      .split("\n")[0]
+      .replace(/[^a-zA-ZÀ-ÿ0-9\s\-]/g, "")
+      .trim();
+
+    const terms = cleanAnswer
+      .toLowerCase()
+      .split(/[\s\-_]+/)
+      .filter((t: string) => t.length > 2);
+
+    console.log(`[genspark-ai] [manufacturer] Termos extraídos: [${terms.join(",")}]`);
+    return terms;
+  } catch (e) {
+    console.warn(`[genspark-ai] [manufacturer] Erro: ${e instanceof Error ? e.message : String(e)}`);
+    return [];
+  }
+}
 
 async function fetchInternalTechDocs(query?: string, equipamento?: string): Promise<InternalDocsResult> {
   const startTime = Date.now();
@@ -75,6 +132,7 @@ async function fetchInternalTechDocs(query?: string, equipamento?: string): Prom
     elapsed_ms: 0,
     error: null,
     api_source: "google_drive_api",
+    manufacturer_identified: null,
   };
 
   const API_KEY = Deno.env.get("GOOGLE_DRIVE_API_KEY");
@@ -85,13 +143,22 @@ async function fetchInternalTechDocs(query?: string, equipamento?: string): Prom
     return result;
   }
 
-  const filterStr = (equipamento || query || "").trim();
-  const filterTerms = filterStr
+  // Step 1: Identify manufacturer via Perplexity (quick web search)
+  const equipStr = (equipamento || query || "").trim();
+  const manufacturerTerms = await identifyManufacturer(equipStr);
+  result.manufacturer_identified = manufacturerTerms.length > 0 ? manufacturerTerms.join(" ") : null;
+
+  // Build filter terms: manufacturer terms FIRST (higher priority), then equipment terms
+  const equipTerms = equipStr
     .toLowerCase()
     .split(/[\s\-_,./]+/)
     .filter((t: string) => t.length > 2);
 
-  console.log(`[genspark-ai] [internal-docs] Iniciando busca. query="${(query || "").substring(0, 80)}", equipamento="${(equipamento || "").substring(0, 80)}", filtros=[${filterTerms.join(",")}]`);
+  // Combine manufacturer + equipment terms, dedup
+  const allTermsSet = new Set([...manufacturerTerms, ...equipTerms]);
+  const filterTerms = Array.from(allTermsSet);
+
+  console.log(`[genspark-ai] [internal-docs] Iniciando busca. equipamento="${equipStr.substring(0, 80)}", fabricante="${result.manufacturer_identified || "não identificado"}", filtros=[${filterTerms.join(",")}]`);
 
   const results: string[] = [];
   let totalFilesRead = 0;
@@ -207,12 +274,15 @@ async function fetchInternalTechDocs(query?: string, equipamento?: string): Prom
 
       console.log(`[genspark-ai] [internal-docs] ${folders.length} pastas, ${topFiles.length} arquivos na raiz`);
 
-      // Score folders by relevance
+      // Score folders by relevance — manufacturer terms get EXTRA weight
       const scoredFolders = folders.map((f: any) => {
         const nameLower = (f.name || "").toLowerCase();
         let score = 0;
         for (const term of filterTerms) {
-          if (nameLower.includes(term)) score += 2;
+          if (nameLower.includes(term)) {
+            // Manufacturer terms get 5 points, equipment terms get 2
+            score += manufacturerTerms.includes(term) ? 5 : 2;
+          }
         }
         return { ...f, score };
       }).sort((a: any, b: any) => b.score - a.score);
@@ -475,6 +545,7 @@ serve(async (req) => {
       const docsResult = await fetchInternalTechDocs(searchQuery, equipamento);
       return new Response(JSON.stringify({
         api_source: docsResult.api_source,
+        manufacturer_identified: docsResult.manufacturer_identified,
         query: searchQuery,
         docs_count: docsResult.docs_count,
         docs_titles: docsResult.docs_titles.slice(0, 20),
