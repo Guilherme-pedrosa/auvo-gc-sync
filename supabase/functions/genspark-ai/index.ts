@@ -997,15 +997,15 @@ serve(async (req) => {
         status: t1.status || null,
       });
 
-      // Test 2: gpt-5.4-nano (main model used by analyze)
+      // Test 2: gpt-4o (main model used by analyze)
       const t2 = await callAI(
         [{ role: "user", content: "Responda apenas: OK" }],
-        "openai/gpt-5.2", // maps to gpt-5.4-nano
+        "openai/gpt-5.2", // maps to gpt-4o
         10,
-        { temperature: 0, action: "sanity_test_nano" },
+        { temperature: 0, action: "sanity_test_4o" },
       );
       tests.push({
-        test: "gpt-5.4-nano",
+        test: "gpt-4o",
         ok: !t2.error,
         result: t2.result?.substring(0, 50),
         error: t2.error || null,
@@ -1022,9 +1022,9 @@ serve(async (req) => {
         keyPrefix: keyPrefix.substring(0, 8) + "...",
         tests,
         diagnosis: allPassed
-          ? "Key válida, ambos os modelos funcionam. Problema é payload/contexto do analyze."
+          ? "Key válida, ambos os modelos funcionam (gpt-4o-mini + gpt-4o)."
           : tests[0]?.ok && !tests[1]?.ok
-            ? `Key funciona com gpt-4o-mini mas NÃO com gpt-5.4-nano. Erro: ${tests[1]?.errorCode}. Pode ser modelo indisponível para esta key/org.`
+            ? `Key funciona com gpt-4o-mini mas NÃO com gpt-4o. Erro: ${tests[1]?.errorCode}.`
             : `Nenhum modelo funcionou. Erro: ${tests[0]?.errorCode}. Provável problema de key/quota/billing.`,
       }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
