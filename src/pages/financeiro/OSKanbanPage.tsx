@@ -403,31 +403,20 @@ export default function OSKanbanPage() {
     return allSituacoes.filter((s) => s.toLowerCase().includes(searchSituacao.toLowerCase()));
   }, [allSituacoes, searchSituacao]);
 
-  // Persist situação selection to localStorage
+  // Persist excluded situações to localStorage
   useEffect(() => {
-    if (allSituacoesSelected) {
-      localStorage.setItem("oskanban_selectedSituacoes", JSON.stringify([]));
-    } else {
-      localStorage.setItem("oskanban_selectedSituacoes", JSON.stringify(Array.from(selectedSituacoes)));
-    }
-  }, [selectedSituacoes, allSituacoesSelected]);
+    localStorage.setItem("oskanban_excludedSituacoes", JSON.stringify(Array.from(excludedSituacoes)));
+  }, [excludedSituacoes]);
 
-  // Filter by selected situações
+  // Filter by excluded situações
   const items = useMemo(() => {
     if (!rawItems) return [];
     return rawItems.filter((i) => {
       const sit = i.gc_os_situacao || "";
-      // If user has specific situações selected, only show those
-      if (!allSituacoesSelected && selectedSituacoes.size > 0) {
-        return selectedSituacoes.has(sit);
-      }
-      // Default: filter out "Executad*" and "Imp Cigam Faturado Total"
-      const sitLower = sit.toLowerCase();
-      if (sitLower.startsWith("executad")) return false;
-      if (sitLower.startsWith("imp cigam faturado total")) return false;
+      if (excludedSituacoes.has(sit)) return false;
       return true;
     });
-  }, [rawItems, allSituacoesSelected, selectedSituacoes]);
+  }, [rawItems, excludedSituacoes]);
 
   // Build columns: OS with status "Agendada" go to a special first column
   // Rebuild every time items change (no columnsInitialized gate)
