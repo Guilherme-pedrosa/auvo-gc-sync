@@ -447,6 +447,7 @@ Deno.serve(async (req) => {
     const gcOrcByCodigo = gcOrcResult.byCodigo;
     const gcOsMap = gcOsResult.byTaskId;
     const gcOsByCodigo = gcOsResult.byCodigo;
+    const gcOsByOrcNumero = gcOsResult.byOrcNumero;
 
     console.log(`[central-sync] Auvo: ${auvoTasks.length} tarefas, GC Orç: ${Object.keys(gcOrcMap).length}, GC OS: ${Object.keys(gcOsMap).length}`);
 
