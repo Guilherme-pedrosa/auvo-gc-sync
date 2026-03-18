@@ -1346,10 +1346,10 @@ Técnico, direto, sem floreio. Potente e fundamentado.`;
     const hasImages = messages.some((m: any) => Array.isArray(m.content) && m.content.some((p: any) => p.type === "image_url"));
     if (hasImages && !model.includes("pro")) model = "google/gemini-2.5-pro";
 
-    const response = await fetch("https://api.openai.com/v1/chat/completions", {
+    const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${OPENAI_API_KEY}`,
+        Authorization: `Bearer ${LOVABLE_API_KEY}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
@@ -1362,8 +1362,20 @@ Técnico, direto, sem floreio. Potente e fundamentado.`;
 
     if (!response.ok) {
       const errText = await response.text();
-      console.error("OpenAI API error:", response.status, errText);
-      return new Response(JSON.stringify({ error: `Erro na API OpenAI: ${response.status}` }), {
+      console.error("Lovable AI Gateway error:", response.status, errText);
+      if (response.status === 429) {
+        return new Response(JSON.stringify({ error: "Rate limit excedido, tente novamente em instantes." }), {
+          status: 429,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+      if (response.status === 402) {
+        return new Response(JSON.stringify({ error: "Créditos insuficientes. Adicione créditos em Settings → Workspace → Usage." }), {
+          status: 402,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+      return new Response(JSON.stringify({ error: `Erro na API de IA: ${response.status}` }), {
         status: 500,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
