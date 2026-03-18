@@ -253,8 +253,10 @@ async function fetchAuvoTasks(bearerToken: string, startDate: string, endDate: s
 }
 
 // Fetch ALL GC orçamentos (no date filter)
-async function fetchGcOrcamentos(gcHeaders: Record<string, string>): Promise<Record<string, any>> {
+// Returns { byTaskId, byCodigo } for secondary linkage
+async function fetchGcOrcamentos(gcHeaders: Record<string, string>): Promise<{ byTaskId: Record<string, any>; byCodigo: Record<string, any> }> {
   const map: Record<string, any> = {};
+  const byCodigo: Record<string, any> = {};
   let page = 1;
   let totalPages = 1;
   const MAX_PAGES = 50;
@@ -274,6 +276,23 @@ async function fetchGcOrcamentos(gcHeaders: Record<string, string>): Promise<Rec
 
     for (const orc of records) {
       const atributos: any[] = orc.atributos || [];
+      const orcPayload = {
+        gc_orcamento_id: String(orc.id),
+        gc_orcamento_codigo: String(orc.codigo || ""),
+        gc_orc_cliente: String(orc.nome_cliente || ""),
+        gc_orc_situacao: String(orc.nome_situacao || ""),
+        gc_orc_situacao_id: String(orc.situacao_id || ""),
+        gc_orc_cor_situacao: String(orc.cor_situacao || ""),
+        gc_orc_valor_total: parseFloat(orc.valor_total || "0"),
+        gc_orc_vendedor: String(orc.nome_vendedor || ""),
+        gc_orc_data: String(orc.data || "").split("T")[0] || null,
+        gc_orc_link: `https://gestaoclick.com/orcamentos_servicos/editar/${orc.id}?retorno=%2Forcamentos_servicos`,
+      };
+
+      // Reverse map by orçamento código
+      const codigo = String(orc.codigo || "").trim();
+      if (codigo) byCodigo[codigo] = orcPayload;
+
       const attrTarefa = atributos.find((a: any) => {
         const nested = a?.atributo || a;
         return String(nested.atributo_id || nested.id || "") === GC_ATRIBUTO_TAREFA_ORC;
@@ -282,18 +301,7 @@ async function fetchGcOrcamentos(gcHeaders: Record<string, string>): Promise<Rec
         const nested = attrTarefa?.atributo || attrTarefa;
         const taskId = String(nested?.conteudo || nested?.valor || "").trim();
         if (taskId && /^\d+$/.test(taskId)) {
-          map[taskId] = {
-            gc_orcamento_id: String(orc.id),
-            gc_orcamento_codigo: String(orc.codigo || ""),
-            gc_orc_cliente: String(orc.nome_cliente || ""),
-            gc_orc_situacao: String(orc.nome_situacao || ""),
-            gc_orc_situacao_id: String(orc.situacao_id || ""),
-            gc_orc_cor_situacao: String(orc.cor_situacao || ""),
-            gc_orc_valor_total: parseFloat(orc.valor_total || "0"),
-            gc_orc_vendedor: String(orc.nome_vendedor || ""),
-            gc_orc_data: String(orc.data || "").split("T")[0] || null,
-            gc_orc_link: `https://gestaoclick.com/orcamentos_servicos/editar/${orc.id}?retorno=%2Forcamentos_servicos`,
-          };
+          map[taskId] = orcPayload;
         }
       }
     }
@@ -301,12 +309,15 @@ async function fetchGcOrcamentos(gcHeaders: Record<string, string>): Promise<Rec
     console.log(`[central-sync] GC orçamentos page ${page}/${totalPages}: ${records.length} registros, ${Object.keys(map).length} com tarefa`);
     page++;
   }
-  return map;
+  return { byTaskId: map, byCodigo };
 }
 
 // Fetch ALL GC OS (no date filter)
-async function fetchGcOs(gcHeaders: Record<string, string>): Promise<Record<string, any>> {
+// Returns { byTaskId, byCodigo } — byCodigo is a reverse map for secondary linkage
+async function fetchGcOs(gcHeaders: Record<string, string>): Promise<{ byTaskId: Record<string, any>; byCodigo: Record<string, any>; byOrcNumero: Record<string, any> }> {
   const map: Record<string, any> = {};
+  const byCodigo: Record<string, any> = {};
+  const byOrcNumero: Record<string, any> = {}; // attribute 81831 "NÚMERO ORÇAMENTO" → OS
   let page = 1;
   let totalPages = 1;
   const MAX_PAGES = 50;
@@ -339,8 +350,24 @@ async function fetchGcOs(gcHeaders: Record<string, string>): Promise<Record<stri
         gc_os_link: `https://gestaoclick.com/ordens_servicos/editar/${os.id}?retorno=%2Fordens_servicos`,
       };
 
+      // Reverse map by OS código
+      const codigo = String(os.codigo || "").trim();
+      if (codigo) byCodigo[codigo] = osPayload;
+
+      // Reverse map by NÚMERO ORÇAMENTO (attribute 81831) → OS
+      const attrOrcNum = atributos.find((a: any) => {
+        const nested = a?.atributo || a;
+        return String(nested.atributo_id || nested.id || "") === "81831";
+      });
+      if (attrOrcNum) {
+        const nested = attrOrcNum?.atributo || attrOrcNum;
+        const orcNum = String(nested?.conteudo || nested?.valor || "").trim();
+        if (orcNum && /^\d+$/.test(orcNum)) {
+          byOrcNumero[orcNum] = osPayload;
+        }
+      }
+
       // 73343 = tarefa OS, 73344 = tarefa execução
-      // Prioridade para 73343 quando ambos existirem
       for (const attrId of [GC_ATRIBUTO_TAREFA_EXEC, GC_ATRIBUTO_TAREFA_OS]) {
         const attrTarefa = atributos.find((a: any) => {
           const nested = a?.atributo || a;
@@ -363,7 +390,7 @@ async function fetchGcOs(gcHeaders: Record<string, string>): Promise<Record<stri
     console.log(`[central-sync] GC OS page ${page}/${totalPages}: ${records.length} registros, ${Object.keys(map).length} com tarefa`);
     page++;
   }
-  return map;
+  return { byTaskId: map, byCodigo, byOrcNumero };
 }
 
 Deno.serve(async (req) => {
@@ -410,11 +437,17 @@ Deno.serve(async (req) => {
     };
 
     // Fetch all data in parallel
-    const [auvoTasks, gcOrcMap, gcOsMap] = await Promise.all([
+    const [auvoTasks, gcOrcResult, gcOsResult] = await Promise.all([
       fetchAuvoTasks(bearerToken, startDate, endDate),
       fetchGcOrcamentos(gcH),
       fetchGcOs(gcH),
     ]);
+
+    const gcOrcMap = gcOrcResult.byTaskId;
+    const gcOrcByCodigo = gcOrcResult.byCodigo;
+    const gcOsMap = gcOsResult.byTaskId;
+    const gcOsByCodigo = gcOsResult.byCodigo;
+    const gcOsByOrcNumero = gcOsResult.byOrcNumero;
 
     console.log(`[central-sync] Auvo: ${auvoTasks.length} tarefas, GC Orç: ${Object.keys(gcOrcMap).length}, GC OS: ${Object.keys(gcOsMap).length}`);
 
@@ -462,14 +495,80 @@ Deno.serve(async (req) => {
       console.log(`[central-sync] Snapshots obtidos: ${taskSnapshotById.size}/${candidateTaskIds.length}`);
     }
 
+    // Secondary linkage: parse orientacao for OS/Orçamento/Tarefa references
+    function secondaryLinkage(orientation: string, taskId: string): { os: any | null; orc: any | null } {
+      let os: any = null;
+      let orc: any = null;
+      if (!orientation) return { os, orc };
+
+      // Try "TAREFA OS: XXXXX" or "TAREFA OS XXXXX" → look up in gcOsMap by referenced taskId
+      const tarefaOsMatch = orientation.match(/TAREFA\s+OS[:\s]+(\d{5,})/i);
+      if (tarefaOsMatch) {
+        const refTaskId = tarefaOsMatch[1];
+        if (refTaskId !== taskId && gcOsMap[refTaskId]) {
+          os = gcOsMap[refTaskId];
+        }
+      }
+
+      // Try "OS N° XXXX" or "OS: XXXX" or "OS Nº XXXX" → look up by OS código
+      if (!os) {
+        const osNumMatch = orientation.match(/OS\s*(?:N[°º]|:)\s*(\d{3,})/i);
+        if (osNumMatch && gcOsByCodigo[osNumMatch[1]]) {
+          os = gcOsByCodigo[osNumMatch[1]];
+        }
+      }
+
+      // Try "OR N° XXXX" or "Orçamento #XXXX" or "OR: XXXX" → look up by orçamento código
+      if (!orc) {
+        const orcMatch = orientation.match(/(?:OR|Or[çc]amento)\s*(?:N[°º]|#|:)\s*(\d{3,})/i);
+        if (orcMatch) {
+          const orcNum = orcMatch[1];
+          if (gcOrcByCodigo[orcNum]) orc = gcOrcByCodigo[orcNum];
+          // Also link to OS via "NÚMERO ORÇAMENTO" attribute (81831)
+          if (!os && gcOsByOrcNumero[orcNum]) os = gcOsByOrcNumero[orcNum];
+        }
+      }
+
+      // Also try "OS ref. Orçamento #XXXX" pattern
+      if (!orc) {
+        const orcRefMatch = orientation.match(/ref\.\s*Or[çc]amento\s*#?\s*(\d{3,})/i);
+        if (orcRefMatch && gcOrcByCodigo[orcRefMatch[1]]) {
+          orc = gcOrcByCodigo[orcRefMatch[1]];
+        }
+      }
+
+      return { os, orc };
+    }
+
     // Build rows for upsert
+    let secondaryMatches = 0;
     const rows: any[] = [];
     for (const task of auvoTasks) {
       const taskId = String(task.taskID || "");
       if (!taskId) continue;
 
-      const gcOrc = gcOrcMap[taskId] || null;
-      const gcOs = gcOsMap[taskId] || null;
+      let gcOrc = gcOrcMap[taskId] || null;
+      let gcOs = gcOsMap[taskId] || null;
+
+      // Secondary linkage: if no direct match, parse orientacao for references
+      if (!gcOs || !gcOrc) {
+        const orientation = String(task.orientation || "");
+        const snapshot = taskSnapshotById.get(taskId);
+        const snapshotOrientation = String(snapshot?.orientation || "");
+        const fullOrientation = snapshotOrientation || orientation;
+
+        if (fullOrientation) {
+          const secondary = secondaryLinkage(fullOrientation, taskId);
+          if (!gcOs && secondary.os) {
+            gcOs = secondary.os;
+            secondaryMatches++;
+          }
+          if (!gcOrc && secondary.orc) {
+            gcOrc = secondary.orc;
+            if (!secondary.os) secondaryMatches++;
+          }
+        }
+      }
 
       // Customer resolution chain
       const desc = String(task.customerDescription || "").trim();
@@ -580,6 +679,10 @@ Deno.serve(async (req) => {
       }
 
       rows.push(row);
+    }
+
+    if (secondaryMatches > 0) {
+      console.log(`[central-sync] Vínculo secundário (orientação): ${secondaryMatches} tarefas vinculadas a OS/Orçamento`);
     }
 
     // Fallback: include only NEW GC OS tasks not returned by current Auvo window
