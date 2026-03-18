@@ -671,7 +671,7 @@ I need:
 
   let result = `PESQUISA WEB (fontes reais da internet):\n${answer}`;
   if (citations.length > 0) {
-    result += `\n\nFONTES: ${citations.slice(0, 5).join(", ")}`;
+    result += `\n\nFONTES: ${citations.slice(0, 10).join(", ")}`;
   }
   return result;
 }
