@@ -101,6 +101,7 @@ Deno.serve(async (req) => {
     const { action } = body;
 
     if (action === "persist-central") {
+      const isSingleRowPatch = !!body?.row && !Array.isArray(body?.rows);
       const rowsInput = Array.isArray(body?.rows)
         ? body.rows
         : body?.row
@@ -126,6 +127,36 @@ Deno.serve(async (req) => {
       }
 
       const admin = getAdminClient();
+
+      // Single-row patch requests (drag/edit) should not null unrelated columns.
+      if (isSingleRowPatch && rows.length === 1) {
+        const row = rows[0];
+        const { auvo_task_id, ...patch } = row;
+
+        const { data: updatedRow, error: updateError } = await admin
+          .from("tarefas_central")
+          .update(patch)
+          .eq("auvo_task_id", auvo_task_id)
+          .select("auvo_task_id")
+          .limit(1)
+          .maybeSingle();
+
+        if (updateError) throw updateError;
+
+        if (!updatedRow) {
+          const { error: insertError } = await admin
+            .from("tarefas_central")
+            .insert(row);
+          if (insertError) throw insertError;
+        }
+
+        return new Response(
+          JSON.stringify({ success: true, count: 1, status: 200 }),
+          { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
+      // Bulk sync keeps upsert behavior (full dataset refresh).
       const { error } = await admin
         .from("tarefas_central")
         .upsert(rows, { onConflict: "auvo_task_id" });
