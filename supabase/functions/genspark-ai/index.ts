@@ -650,27 +650,28 @@ async function searchEquipmentOnWeb(equipamento: string, descricao: string, orie
     return "";
   }
 
-  const searchQuery = `Equipamento industrial/comercial: "${equipClean || descClean}".
-Problema reportado: ${oriClean || "manutenção geral"}.
-Peças mencionadas: ${pecasClean || "não informadas"}.
+  const searchQuery = `Commercial/industrial kitchen equipment: "${equipClean || descClean}".
+Reported issue: ${oriClean || "general maintenance"}.
+Parts mentioned: ${pecasClean || "none specified"}.
 
-Preciso saber:
-1. Especificações técnicas deste equipamento (componentes principais, subsistemas)
-2. Problemas mais comuns e causas raiz típicas
-3. Lista de peças de desgaste e consumíveis específicos deste modelo
-4. Pontos críticos de manutenção preventiva
-5. Insumos e ferramentas específicas para este tipo de equipamento`;
+I need:
+1. Technical specifications of this equipment (main components, subsystems)
+2. Most common problems and typical root causes
+3. Wear parts and consumables list specific to this model
+4. Preventive maintenance critical points
+5. Specific supplies and tools for this equipment type
+6. Forum discussions, field experience, and technician tips about this model`;
 
   const { answer, citations } = await searchPerplexity(
     searchQuery,
-    "Você é um engenheiro de manutenção industrial. Pesquise em fontes técnicas internacionais (manuais oficiais, service manuals, documentação de fabricantes globais), sem restringir ao Brasil. Responda em português brasileiro de forma técnica e objetiva. Foque em dados concretos: especificações, peças, componentes e problemas comuns. Sem floreios."
+    "You are a senior industrial kitchen maintenance engineer. Search globally across manufacturer documentation, service manuals, technical forums (e.g. appliance repair forums, HVAC-Talk, FixYa, Reddit r/appliancerepair, iFixit), parts catalogs, and OEM websites. Include information from any country/language — do not restrict to Brazil. ALWAYS respond in Brazilian Portuguese (pt-BR). Be technical, precise, and cite sources. Include part numbers when available."
   );
 
   if (!answer) return "";
 
   let result = `PESQUISA WEB (fontes reais da internet):\n${answer}`;
   if (citations.length > 0) {
-    result += `\n\nFONTES: ${citations.slice(0, 5).join(", ")}`;
+    result += `\n\nFONTES: ${citations.slice(0, 10).join(", ")}`;
   }
   return result;
 }
@@ -683,16 +684,17 @@ async function searchForChatQuestion(
 ): Promise<string> {
   const equipClean = (equipamento || "").replace(/n\/a/gi, "").trim();
 
-  const searchQuery = `Contexto: equipamento "${equipClean || "industrial"}".
-${orientacao ? `Problema: ${orientacao}` : ""}
+  const searchQuery = `Commercial kitchen equipment: "${equipClean || "industrial"}".
+${orientacao ? `Issue: ${orientacao}` : ""}
+${analysis ? `Previous analysis summary: ${analysis.substring(0, 300)}` : ""}
 
-Dúvida técnica: ${userMessage}
+Technical question: ${userMessage}
 
-Responda com dados técnicos reais: especificações, manuais, experiência documentada, normas técnicas.`;
+Search service manuals, OEM documentation, repair forums, technician communities, parts catalogs, and any relevant technical source worldwide.`;
 
   const { answer, citations } = await searchPerplexity(
     searchQuery,
-    "Você é um engenheiro de manutenção industrial sênior. Pesquise na web global (incluindo manuais e documentação fora do Brasil) e responda com dados técnicos concretos, citando fontes. Foque em especificações de fabricante, manuais técnicos, normas e problemas documentados. Responda em português brasileiro. Seja preciso e direto."
+    "You are a senior industrial kitchen maintenance engineer. Search the entire web globally — manufacturer sites, service manuals, technical forums (appliance repair forums, Reddit, iFixit, HVAC-Talk, FixYa, PartsTown, WebstaurantStore), YouTube repair guides, and OEM documentation from ANY country. Do NOT restrict to Brazilian websites. ALWAYS respond in Brazilian Portuguese (pt-BR). Be technical, precise, direct. Cite sources. Include part numbers when available."
   );
 
   if (!answer) return "";
