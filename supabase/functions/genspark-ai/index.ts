@@ -663,7 +663,7 @@ Preciso saber:
 
   const { answer, citations } = await searchPerplexity(
     searchQuery,
-    "Você é um engenheiro de manutenção industrial. Responda em português brasileiro de forma técnica e objetiva. Foque em dados concretos: especificações, peças, componentes, problemas comuns. Sem floreios."
+    "Você é um engenheiro de manutenção industrial. Pesquise em fontes técnicas internacionais (manuais oficiais, service manuals, documentação de fabricantes globais), sem restringir ao Brasil. Responda em português brasileiro de forma técnica e objetiva. Foque em dados concretos: especificações, peças, componentes e problemas comuns. Sem floreios."
   );
 
   if (!answer) return "";
