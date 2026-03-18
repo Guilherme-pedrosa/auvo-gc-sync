@@ -59,6 +59,7 @@ type InternalDocsResult = {
   text: string;
   docs_count: number;
   docs_titles: string[];
+  skipped_files: string[];
   elapsed_ms: number;
   error: string | null;
   api_source: string;
