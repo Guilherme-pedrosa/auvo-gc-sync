@@ -355,12 +355,13 @@ function itemOrcamentoCoberto(
   materiaisExecucao: Array<{ descricao: string; quantidade: number }>,
   thresholdCompleto: number,
   thresholdParcial: number
-): { coberto: boolean; matchParcial: boolean; melhorMatch: string | null; score: number } {
+): { coberto: boolean; matchParcial: boolean; melhorMatch: string | null; score: number; qtdOrcamento: number; qtdExecucao: number; qtdOk: boolean } {
   const tokensOrc = tokenizar(itemOrcamento.descricao);
-  if (tokensOrc.length === 0) return { coberto: true, matchParcial: false, melhorMatch: null, score: 1 };
+  if (tokensOrc.length === 0) return { coberto: true, matchParcial: false, melhorMatch: null, score: 1, qtdOrcamento: itemOrcamento.quantidade, qtdExecucao: itemOrcamento.quantidade, qtdOk: true };
 
   let melhorScore = 0;
   let melhorMatch: string | null = null;
+  let melhorQtdExec = 0;
 
   for (const mat of materiaisExecucao) {
     const tokensExec = tokenizar(mat.descricao);
@@ -371,14 +372,19 @@ function itemOrcamentoCoberto(
       return false;
     }).length;
     const score = matchCount / tokensOrc.length;
-    if (score > melhorScore) { melhorScore = score; melhorMatch = mat.descricao; }
+    if (score > melhorScore) { melhorScore = score; melhorMatch = mat.descricao; melhorQtdExec = mat.quantidade; }
   }
 
+  const qtdOk = melhorScore >= thresholdCompleto ? melhorQtdExec >= itemOrcamento.quantidade : false;
+
   return {
-    coberto: melhorScore >= thresholdCompleto,
-    matchParcial: melhorScore >= thresholdParcial && melhorScore < thresholdCompleto,
+    coberto: melhorScore >= thresholdCompleto && qtdOk,
+    matchParcial: (melhorScore >= thresholdParcial && melhorScore < thresholdCompleto) || (melhorScore >= thresholdCompleto && !qtdOk),
     melhorMatch,
     score: Math.round(melhorScore * 100),
+    qtdOrcamento: itemOrcamento.quantidade,
+    qtdExecucao: melhorQtdExec,
+    qtdOk,
   };
 }
 
@@ -430,9 +436,12 @@ async function validarPecasOsVsExecucao(
   for (const peca of pecasOrcamento) {
     const resultado = itemOrcamentoCoberto(peca, materiaisExecucao, THRESHOLD_COMPLETO, THRESHOLD_PARCIAL);
     if (resultado.coberto) {
-      cobertos.push({ descricao: peca.descricao, match: resultado.melhorMatch || "", score: resultado.score });
+      cobertos.push({ descricao: peca.descricao, match: resultado.melhorMatch || "", score: resultado.score, qtd_orc: resultado.qtdOrcamento, qtd_exec: resultado.qtdExecucao });
     } else if (resultado.matchParcial) {
-      parciais.push({ descricao: peca.descricao, melhor_match: resultado.melhorMatch || "", score: resultado.score });
+      const motivo = resultado.score >= (THRESHOLD_COMPLETO * 100) && !resultado.qtdOk
+        ? `Quantidade divergente: orçamento=${resultado.qtdOrcamento}, execução=${resultado.qtdExecucao}`
+        : `Match parcial (${resultado.score}%)`;
+      parciais.push({ descricao: peca.descricao, melhor_match: resultado.melhorMatch || "", score: resultado.score, qtd_orc: resultado.qtdOrcamento, qtd_exec: resultado.qtdExecucao, motivo });
     } else {
       faltando.push({
         descricao: peca.descricao,
