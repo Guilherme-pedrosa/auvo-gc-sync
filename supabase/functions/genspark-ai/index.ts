@@ -69,12 +69,32 @@ type InternalDocsResult = {
 // =========================================================================
 // IDENTIFY MANUFACTURER — quick Perplexity call to find the real manufacturer
 // =========================================================================
-async function identifyManufacturer(equipamento: string): Promise<string[]> {
+// Strip serial numbers, "SERIAL", "MOD", long alphanumeric codes from equipment string
+function cleanEquipmentString(raw: string): string {
+  return raw
+    // Remove "SERIAL <code>" pattern
+    .replace(/\bSERIAL\s+\S+/gi, "")
+    // Remove "MOD " prefix (but keep the model code after it)
+    .replace(/\bMOD\b/gi, "")
+    // Remove long alphanumeric codes (likely serial numbers, 8+ chars with mixed letters+digits)
+    .replace(/\b[A-Za-z0-9]{8,}\b/g, (match) => {
+      // Keep if it looks like a model name (short, mostly letters like "LM100DE", "SCC201")
+      const digitRatio = (match.replace(/[^0-9]/g, "").length) / match.length;
+      if (match.length <= 8 && digitRatio < 0.6) return match;
+      return ""; // strip long serial-like codes
+    })
+    // Clean up extra spaces
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+async function identifyManufacturerAndModel(equipamento: string): Promise<{ manufacturer: string[]; modelFamily: string | null }> {
   const PERPLEXITY_API_KEY = Deno.env.get("PERPLEXITY_API_KEY");
-  if (!PERPLEXITY_API_KEY || !equipamento.trim()) return [];
+  if (!PERPLEXITY_API_KEY || !equipamento.trim()) return { manufacturer: [], modelFamily: null };
 
   try {
-    console.log(`[genspark-ai] [manufacturer] Identificando fabricante de: "${equipamento.substring(0, 80)}"`);
+    const cleaned = cleanEquipmentString(equipamento);
+    console.log(`[genspark-ai] [manufacturer] Identificando fabricante+modelo de: "${cleaned.substring(0, 100)}"`);
     const response = await fetch("https://api.perplexity.ai/chat/completions", {
       method: "POST",
       headers: {
@@ -84,8 +104,14 @@ async function identifyManufacturer(equipamento: string): Promise<string[]> {
       body: JSON.stringify({
         model: "sonar",
         messages: [
-          { role: "system", content: "Responda APENAS com o nome da marca/fabricante. Somente letras, sem números, sem modelo, sem explicação. Exemplo: se o equipamento é 'Ecomax 503', responda 'Hobart'. Se não souber, responda 'desconhecido'." },
-          { role: "user", content: `Qual é a marca/fabricante deste equipamento de cozinha industrial? "${equipamento}". Responda SOMENTE o nome da marca (ex: Hobart, Rational, Vulcan, Prática, Tramontina).` }
+          { role: "system", content: `Responda em EXATAMENTE 2 linhas:
+Linha 1: nome da marca/fabricante (só letras, sem modelo)
+Linha 2: nome da FAMÍLIA/LINHA do modelo (ex: iCombi Pro, Ecomax, SCC, CPC, etc.)
+Se não souber algum, escreva "desconhecido".
+Exemplo para "FORNO RATIONAL 10 GN MOD LM100DE":
+Rational
+iCombi Pro` },
+          { role: "user", content: `Equipamento de cozinha industrial: "${cleaned}". Identifique a marca e a família/linha do modelo.` }
         ],
         temperature: 0.0,
       }),
@@ -94,30 +120,23 @@ async function identifyManufacturer(equipamento: string): Promise<string[]> {
     if (!response.ok) {
       const errText = await response.text();
       console.warn(`[genspark-ai] [manufacturer] Perplexity HTTP ${response.status}: ${errText.substring(0, 100)}`);
-      return [];
+      return { manufacturer: [], modelFamily: null };
     }
 
     const data = await response.json();
     const answer = (data.choices?.[0]?.message?.content || "").trim();
     console.log(`[genspark-ai] [manufacturer] Resultado: "${answer}"`);
 
-    if (!answer || answer.toLowerCase() === "desconhecido") return [];
+    const lines = answer.split("\n").map((l: string) => l.trim()).filter((l: string) => l.length > 0);
+    const brandLine = (lines[0] || "").replace(/[0-9]/g, "").replace(/[^a-zA-ZÀ-ÿ\s\-]/g, "").trim();
+    const modelLine = (lines[1] || "").trim();
 
-    // Extract manufacturer terms — STRIP ALL NUMBERS (avoid "hobart123456" pollution)
-    const cleanAnswer = answer
-      .split("\n")[0]
-      .replace(/[0-9]/g, "")              // remove all digits
-      .replace(/[^a-zA-ZÀ-ÿ\s\-]/g, "")  // keep only letters
-      .trim();
+    if (!brandLine || brandLine.toLowerCase() === "desconhecido") return { manufacturer: [], modelFamily: null };
 
-    const terms = cleanAnswer
-      .toLowerCase()
-      .split(/[\s\-_]+/)
-      .filter((t: string) => t.length > 2);
+    const terms = brandLine.toLowerCase().split(/[\s\-_]+/).filter((t: string) => t.length > 2);
 
-    // Also add common variations (e.g., "hobart" should also match "hobart - vulcan" folder)
+    // Expand with brand aliases
     const expandedTerms = [...terms];
-    // Known brand aliases/groups in our Drive
     const brandAliases: Record<string, string[]> = {
       "hobart": ["hobart", "vulcan"],
       "rational": ["rational"],
@@ -134,11 +153,12 @@ async function identifyManufacturer(equipamento: string): Promise<string[]> {
       }
     }
 
-    console.log(`[genspark-ai] [manufacturer] Termos extraídos: [${expandedTerms.join(",")}]`);
-    return expandedTerms;
+    const modelFamily = (modelLine && modelLine.toLowerCase() !== "desconhecido") ? modelLine : null;
+    console.log(`[genspark-ai] [manufacturer] Marca: [${expandedTerms.join(",")}], Modelo: ${modelFamily || "não identificado"}`);
+    return { manufacturer: expandedTerms, modelFamily };
   } catch (e) {
     console.warn(`[genspark-ai] [manufacturer] Erro: ${e instanceof Error ? e.message : String(e)}`);
-    return [];
+    return { manufacturer: [], modelFamily: null };
   }
 }
 
@@ -163,13 +183,15 @@ async function fetchInternalTechDocs(query?: string, equipamento?: string): Prom
     return result;
   }
 
-  // Step 1: Identify manufacturer via Perplexity (quick web search)
-  const equipStr = (equipamento || query || "").trim();
-  const manufacturerTerms = await identifyManufacturer(equipStr);
+  // Step 1: Identify manufacturer AND model family via Perplexity
+  const equipStr = cleanEquipmentString(equipamento || query || "");
+  const { manufacturer: manufacturerTerms, modelFamily } = await identifyManufacturerAndModel(equipStr);
   result.manufacturer_identified = manufacturerTerms.length > 0 ? manufacturerTerms.join(" ") : null;
+  if (modelFamily) {
+    (result as any).model_family = modelFamily;
+  }
 
-  // Build filter terms: manufacturer terms FIRST (higher priority), then equipment terms
-  // Strip common equipment function words that pollute search (lava louças, forno, fogão, etc.)
+  // Build filter terms: manufacturer terms FIRST, then model family, then equipment terms
   const functionWords = [
     "lava", "louça", "louças", "lavalouças", "forno", "fogão", "fogao",
     "geladeira", "freezer", "refrigerador", "máquina", "maquina",
@@ -178,19 +200,29 @@ async function fetchInternalTechDocs(query?: string, equipamento?: string): Prom
     "mesa", "balcão", "balcao", "bancada", "piso", "parede",
     "processador", "cortador", "moedor", "misturador", "batedeira",
     "chapa", "grill", "coifa", "exaustor", "pass", "through",
+    "serial", "mod", "modelo",
   ];
 
   const equipTerms = equipStr
     .toLowerCase()
     .split(/[\s\-_,./]+/)
     .filter((t: string) => t.length > 2)
-    .filter((t: string) => !functionWords.includes(t));
+    .filter((t: string) => !functionWords.includes(t))
+    // Also strip terms that look like serial numbers (8+ chars with digits)
+    .filter((t: string) => !(t.length >= 8 && /\d/.test(t) && /[a-z]/i.test(t)));
 
-  // Combine manufacturer + equipment terms, dedup
-  const allTermsSet = new Set([...manufacturerTerms, ...equipTerms]);
+  // Add model family terms (e.g. "iCombi Pro" → ["icombi", "pro"])
+  const modelFamilyTerms: string[] = [];
+  if (modelFamily) {
+    const mfTerms = modelFamily.toLowerCase().split(/[\s\-_]+/).filter((t: string) => t.length > 1);
+    modelFamilyTerms.push(...mfTerms);
+  }
+
+  // Combine: manufacturer + model family + equipment terms, dedup
+  const allTermsSet = new Set([...manufacturerTerms, ...modelFamilyTerms, ...equipTerms]);
   const filterTerms = Array.from(allTermsSet);
 
-  console.log(`[genspark-ai] [internal-docs] Termos de busca (sem palavras genéricas): [${filterTerms.join(",")}]`);
+  console.log(`[genspark-ai] [internal-docs] Termos: [${filterTerms.join(",")}], modelFamily="${modelFamily || "?"}"`);
 
   console.log(`[genspark-ai] [internal-docs] Iniciando busca. equipamento="${equipStr.substring(0, 80)}", fabricante="${result.manufacturer_identified || "não identificado"}", filtros=[${filterTerms.join(",")}]`);
 
@@ -438,8 +470,8 @@ async function fetchInternalTechDocs(query?: string, equipamento?: string): Prom
         if (limitReached()) break;
         console.log(`[genspark-ai] [internal-docs] Processando: ${folder.name} (${subFiles.length} arquivos)`);
 
-        // Progressive file scoring: try full terms first, then progressively shorter model names
-        // E.g. "ecomax 503" → try "ecomax 503", then "ecomax", then "503"
+        // Progressive file scoring: model family terms get HIGHEST priority
+        // E.g. for "iCombi Pro LM100DE" → "icombi" file matches beat "scc" files
         const modelTerms = filterTerms.filter((t: string) => !manufacturerTerms.includes(t));
         
         const scoredFiles = subFiles
@@ -449,26 +481,46 @@ async function fetchInternalTechDocs(query?: string, equipamento?: string): Prom
             const isZip = f.mimeType === "application/zip" || nameLower.endsWith(".zip");
             let score = isZip ? -10 : 0;
             
+            // Model family terms get HIGHEST weight (e.g. "icombi" = 15 points)
+            for (const term of modelFamilyTerms) {
+              if (nameLower.includes(term)) {
+                score += 15;
+              }
+            }
+
             // Check each term individually
             for (const term of filterTerms) {
               if (nameLower.includes(term)) {
-                score += manufacturerTerms.includes(term) ? 2 : 5; // model terms worth MORE for file matching
+                // Model family already scored above, skip
+                if (modelFamilyTerms.includes(term)) continue;
+                score += manufacturerTerms.includes(term) ? 2 : 5;
               }
             }
             
-            // Bonus: check combined model terms (e.g. "ecomax 503" as substring)
+            // Bonus: check combined model terms (e.g. "icombi pro" as substring)
+            if (modelFamilyTerms.length > 1) {
+              const combined = modelFamilyTerms.join(" ");
+              if (nameLower.includes(combined)) score += 20;
+              const noSpace = modelFamilyTerms.join("");
+              if (nameLower.includes(noSpace)) score += 15;
+            }
+            
+            // Also check non-family model terms combined
             if (modelTerms.length > 1) {
               const combined = modelTerms.join(" ");
               if (nameLower.includes(combined)) score += 10;
-              // Also try without spaces (e.g. "ecomax503")
               const noSpace = modelTerms.join("");
               if (nameLower.includes(noSpace)) score += 8;
             }
+
+            // Also check for "manutenção preventiva" or "preventiv" keyword (high value docs)
+            if (nameLower.includes("preventiv") || nameLower.includes("manutencao") || nameLower.includes("manutenção")) {
+              score += 8;
+            }
             
-            // Progressive: if full model didn't match, try partial (e.g. "scc" from "scc 201")
+            // Progressive: if nothing matched, try partial
             if (score <= 0 && modelTerms.length > 0) {
               for (const term of modelTerms) {
-                // Try first 3+ chars of each term
                 if (term.length >= 3 && nameLower.includes(term.substring(0, 3))) {
                   score += 1;
                 }
@@ -855,7 +907,7 @@ Câmara fria/congelada → gaxetas de vedação, relé falta de fase, contatores
 POLÍTICAS WEDO (aplicar SOMENTE quando o gatilho for relevante para o equipamento em questão — NÃO aplique genericamente):
 P1) Sujeira/insetos VISÍVEIS nas fotos ou relatados → dedetização + higienização
 P2) Placa eletrônica mencionada ou visível → limpeza técnica (álcool isopropílico)
-P3) Equipamento Rational com troca de componente → filtros ar/água
+P3) Equipamento Rational (QUALQUER serviço, não apenas troca de componente) → SEMPRE recomendar: filtro de ar, filtro de água, descalcificante, juntas de porta/câmara, sensor de temperatura. Estes são peças de DESGASTE NATURAL que todo forno Rational precisa em manutenção preventiva. Marcar como ⚡ Recomendar.
 P4) Componente com fixação mecânica sendo trocado → fixadores, travas, porcas, arruelas DAQUELE componente
 P5) Peça de desgaste sendo trocada → verificar APENAS peças de desgaste DO MESMO SUBSISTEMA (ex: se troca rolamento, verificar retentor e eixo — NÃO listar mangueiras/filtros se o equipamento não os possui)
 P6) Calcário/sujidade mineral EVIDENCIADA → filtro de água, descalcificação
@@ -972,6 +1024,7 @@ TOM: Telegráfico, técnico, zero enrolação.`;
         textPrompt += `- Equipamento: ${context.equipamento || context.descricao || "N/A"}\n`;
         textPrompt += `- ID / Patrimônio / Nº de Série do Equipamento: ${context.equipamento_id || "N/A"}\n`;
         textPrompt += `- Marca/Fabricante identificada: ${internalDocs.manufacturer_identified || "Não identificada"}\n`;
+        textPrompt += `- Família/Linha do modelo: ${(internalDocs as any).model_family || "Não identificada"}\n`;
         textPrompt += `- Descrição do equipamento/chamado: ${context.descricao || "N/A"}\n`;
         textPrompt += `- Orientação inicial / descrição do chamado: ${context.orientacao || "N/A"}\n`;
         textPrompt += `- Peças informadas: ${context.pecas || "N/A"}\n`;
