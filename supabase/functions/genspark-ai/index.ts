@@ -183,13 +183,15 @@ async function fetchInternalTechDocs(query?: string, equipamento?: string): Prom
     return result;
   }
 
-  // Step 1: Identify manufacturer via Perplexity (quick web search)
-  const equipStr = (equipamento || query || "").trim();
-  const manufacturerTerms = await identifyManufacturer(equipStr);
+  // Step 1: Identify manufacturer AND model family via Perplexity
+  const equipStr = cleanEquipmentString(equipamento || query || "");
+  const { manufacturer: manufacturerTerms, modelFamily } = await identifyManufacturerAndModel(equipStr);
   result.manufacturer_identified = manufacturerTerms.length > 0 ? manufacturerTerms.join(" ") : null;
+  if (modelFamily) {
+    (result as any).model_family = modelFamily;
+  }
 
-  // Build filter terms: manufacturer terms FIRST (higher priority), then equipment terms
-  // Strip common equipment function words that pollute search (lava louças, forno, fogão, etc.)
+  // Build filter terms: manufacturer terms FIRST, then model family, then equipment terms
   const functionWords = [
     "lava", "louça", "louças", "lavalouças", "forno", "fogão", "fogao",
     "geladeira", "freezer", "refrigerador", "máquina", "maquina",
@@ -198,19 +200,29 @@ async function fetchInternalTechDocs(query?: string, equipamento?: string): Prom
     "mesa", "balcão", "balcao", "bancada", "piso", "parede",
     "processador", "cortador", "moedor", "misturador", "batedeira",
     "chapa", "grill", "coifa", "exaustor", "pass", "through",
+    "serial", "mod", "modelo",
   ];
 
   const equipTerms = equipStr
     .toLowerCase()
     .split(/[\s\-_,./]+/)
     .filter((t: string) => t.length > 2)
-    .filter((t: string) => !functionWords.includes(t));
+    .filter((t: string) => !functionWords.includes(t))
+    // Also strip terms that look like serial numbers (8+ chars with digits)
+    .filter((t: string) => !(t.length >= 8 && /\d/.test(t) && /[a-z]/i.test(t)));
 
-  // Combine manufacturer + equipment terms, dedup
-  const allTermsSet = new Set([...manufacturerTerms, ...equipTerms]);
+  // Add model family terms (e.g. "iCombi Pro" → ["icombi", "pro"])
+  const modelFamilyTerms: string[] = [];
+  if (modelFamily) {
+    const mfTerms = modelFamily.toLowerCase().split(/[\s\-_]+/).filter((t: string) => t.length > 1);
+    modelFamilyTerms.push(...mfTerms);
+  }
+
+  // Combine: manufacturer + model family + equipment terms, dedup
+  const allTermsSet = new Set([...manufacturerTerms, ...modelFamilyTerms, ...equipTerms]);
   const filterTerms = Array.from(allTermsSet);
 
-  console.log(`[genspark-ai] [internal-docs] Termos de busca (sem palavras genéricas): [${filterTerms.join(",")}]`);
+  console.log(`[genspark-ai] [internal-docs] Termos: [${filterTerms.join(",")}], modelFamily="${modelFamily || "?"}"`);
 
   console.log(`[genspark-ai] [internal-docs] Iniciando busca. equipamento="${equipStr.substring(0, 80)}", fabricante="${result.manufacturer_identified || "não identificado"}", filtros=[${filterTerms.join(",")}]`);
 
