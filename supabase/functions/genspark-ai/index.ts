@@ -819,6 +819,7 @@ Quando identificar o equipamento, PENSE nos subsistemas:
 - Máquina com CORREIA → verificar: polias (desgaste/alinhamento), tensor, rolamentos dos eixos
 - Máquina com ELETROVÁLVULA → verificar: bobina, vedações, filtro de linha, conexões
 - Equipamento de REFRIGERAÇÃO → verificar: carga de gás, teste de vazamento, limpeza do condensador, dreno, isolamento térmico
+- CÂMARA FRIA ou CÂMARA CONGELADA → verificar OBRIGATORIAMENTE: gaxetas de vedação (borrachas das portas), relé de falta de fase, contatores, controlador de temperatura, disjuntores, estabilizador de tensão, resistência de degelo, timer de degelo, válvula de expansão, pressostato de alta/baixa, ventiladores do evaporador, ventiladores do condensador, isolamento térmico (portas e painéis), dreno do evaporador, termômetro/sensor de temperatura. PESQUISAR NA WEB itens de preventiva específicos do modelo/fabricante da câmara.
 
 TABELA DE INSUMOS OBRIGATÓRIOS POR CONTEXTO:
 
@@ -833,6 +834,7 @@ Pressostato → niples, mangueira de conexão, veda-rosca
 Placa eletrônica → conectores, fusíveis, limpeza técnica (álcool isopropílico)
 Componente roscado → veda-rosca, fita veda-rosca, niples, adaptadores
 Qualquer serviço em equipamento de refrigeração → verificar carga de gás, teste de vazamento, manifold
+Câmara fria/congelada → gaxetas de vedação, relé falta de fase, contatores, controlador temperatura, disjuntores, estabilizador tensão, resistência degelo, timer degelo, válvula expansão, pressostato alta/baixa, ventiladores evaporador/condensador, sensor temperatura, isolamento térmico portas/painéis
 
 POLÍTICAS WEDO (aplicar SOMENTE quando o gatilho for relevante para o equipamento em questão — NÃO aplique genericamente):
 P1) Sujeira/insetos VISÍVEIS nas fotos ou relatados → dedetização + higienização
