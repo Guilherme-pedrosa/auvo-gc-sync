@@ -1344,7 +1344,7 @@ Técnico, direto, sem floreio. Potente e fundamentado.`;
 
     // Check if any message has images
     const hasImages = messages.some((m: any) => Array.isArray(m.content) && m.content.some((p: any) => p.type === "image_url"));
-    if (hasImages) model = "gpt-4o";
+    if (hasImages && !model.includes("pro")) model = "google/gemini-2.5-pro";
 
     const response = await fetch("https://api.openai.com/v1/chat/completions", {
       method: "POST",
