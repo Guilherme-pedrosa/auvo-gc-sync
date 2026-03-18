@@ -720,26 +720,52 @@ async function searchForChatQuestion(
   analysis: string
 ): Promise<string> {
   const equipClean = (equipamento || "").replace(/n\/a/gi, "").trim();
+  const target = equipClean || "industrial kitchen equipment";
 
-  const searchQuery = `Equipamento / Equipment / Gerät / Équipement: "${equipClean || "industrial"}".
-${orientacao ? `Problema / Issue: ${orientacao}` : ""}
-${analysis ? `Resumo da análise prévia: ${analysis.substring(0, 300)}` : ""}
+  // ── International search (EN) ──
+  const intlQuery = `Equipment: "${target}".
+${orientacao ? `Issue: ${orientacao}` : ""}
+${analysis ? `Prior analysis summary: ${analysis.substring(0, 300)}` : ""}
 
-Dúvida técnica / Technical question: ${userMessage}
+Technical question: ${userMessage}
 
-Pesquisar em manuais de serviço, documentação OEM, fóruns técnicos, comunidades de técnicos, catálogos de peças — em qualquer idioma (PT, EN, DE, FR, ES, IT).`;
+Search service manuals, OEM documentation, repair forums (Reddit, iFixit, HVAC-Talk, FixYa, ApplianceBlog), parts catalogs (PartsTown, WebstaurantStore, KaTom), manufacturer websites, YouTube repair guides.`;
 
-  const { answer, citations } = await searchPerplexity(
-    searchQuery,
-    "You are a senior industrial kitchen maintenance engineer. Search the ENTIRE web in ALL languages — Portuguese, English, German, French, Spanish, Italian. Include: manufacturer sites, service manuals, technical forums (Reddit, iFixit, HVAC-Talk, FixYa, Reparatur-Foren), parts catalogs (PartsTown, WebstaurantStore), YouTube repair guides, OEM documentation from ANY country, AND Brazilian sources. ALWAYS respond in Brazilian Portuguese (pt-BR). Be technical, precise, direct. Cite sources with part numbers when available."
-  );
+  // ── Brazilian search (PT) ──
+  const brQuery = `Equipamento: "${target}".
+${orientacao ? `Problema: ${orientacao}` : ""}
+${analysis ? `Resumo da análise: ${analysis.substring(0, 300)}` : ""}
 
-  if (!answer) return "";
+Dúvida técnica: ${userMessage}
 
-  let result = `\n\n========== 🌐 PESQUISA WEB (PERPLEXITY) ==========\n${answer}`;
-  if (citations.length > 0) {
-    result += `\n\nFontes consultadas:\n${citations.slice(0, 8).map((c: string, i: number) => `[${i + 1}] ${c}`).join("\n")}`;
+Pesquisar em fóruns técnicos BR, Mercado Livre, fabricantes nacionais, YouTube BR, revendedores de peças.`;
+
+  const intlSystem = "You are a senior industrial kitchen maintenance engineer. Search ONLY international sources — manufacturer websites (.com, .fr, .de, .co.uk), global parts catalogs, repair forums (Reddit, iFixit, HVAC-Talk), YouTube, OEM docs. DO NOT prioritize Brazilian sources. Respond in Brazilian Portuguese (pt-BR). Be technical, cite sources with part numbers.";
+  const brSystem = "You are a senior industrial kitchen maintenance engineer. Search ONLY Brazilian sources: fóruns BR, Mercado Livre, fabricantes nacionais, YouTube BR. Respond in Brazilian Portuguese (pt-BR). Be technical.";
+
+  const [intlResult, brResult] = await Promise.all([
+    searchPerplexity(intlQuery, intlSystem),
+    searchPerplexity(brQuery, brSystem),
+  ]);
+
+  if (!intlResult.answer && !brResult.answer) return "";
+
+  let result = `\n\n========== 🌐 PESQUISA WEB ==========`;
+
+  if (intlResult.answer) {
+    result += `\n\n🌍 FONTES INTERNACIONAIS:\n${intlResult.answer}`;
+    if (intlResult.citations.length > 0) {
+      result += `\n\nFontes internacionais:\n${intlResult.citations.slice(0, 5).map((c: string, i: number) => `[${i + 1}] ${c}`).join("\n")}`;
+    }
   }
+
+  if (brResult.answer) {
+    result += `\n\n🇧🇷 FONTES NACIONAIS:\n${brResult.answer}`;
+    if (brResult.citations.length > 0) {
+      result += `\n\nFontes nacionais:\n${brResult.citations.slice(0, 5).map((c: string, i: number) => `[${i + 1}] ${c}`).join("\n")}`;
+    }
+  }
+
   result += `\n==========================================================`;
   return result;
 }
