@@ -888,6 +888,38 @@ Deno.serve(async (req) => {
       }
     }
 
+    // ─── Action: validate_pecas — validar peças de uma OS individual ───
+    if (body?.action === "validate_pecas") {
+      const gcOsId = String(body.gc_os_id || "");
+      const auvoTaskId = String(body.auvo_task_id || "");
+      if (!gcOsId || !auvoTaskId) {
+        return new Response(JSON.stringify({ error: "gc_os_id e auvo_task_id são obrigatórios" }), {
+          status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+      try {
+        // Buscar tarefa Auvo para ter o raw com questionários
+        const tarefaUrl = `${AUVO_BASE_URL}/tasks/${auvoTaskId}`;
+        const tarefaResp = await rateLimitedFetch(tarefaUrl, { headers: auvoHeaders(auvoBearerToken) }, "auvo");
+        let tarefaRaw: any = null;
+        if (tarefaResp.ok) {
+          const tarefaData = await tarefaResp.json();
+          tarefaRaw = tarefaData?.result ?? tarefaData;
+        } else {
+          await tarefaResp.text(); // consume body
+        }
+
+        const resultado = await validarPecasOsVsExecucao(gcOsId, auvoTaskId, tarefaRaw, gcHeaders, auvoBearerToken);
+        return new Response(JSON.stringify(resultado), {
+          status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      } catch (err) {
+        return new Response(JSON.stringify({ error: (err as Error).message }), {
+          status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+    }
+
     if (body?.action === "debug_task") {
       const taskId = String(body.task_id || "");
       if (!taskId) {
