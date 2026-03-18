@@ -1162,7 +1162,11 @@ TOM: Telegráfico, técnico, zero enrolação. Prefira disciplina e auditabilida
 
       console.log(`[genspark-ai] [analyze] mode=${expand ? "expanded" : "standard"}, model=${ANALYSIS_MODEL}, fotos=${context?.fotos?.length || 0}→max${maxPhotos}(${photoDetail}), docs=${internalDocs?.docs_count || 0}, web=${webResearch ? "yes" : "no"}, contentParts=${userContentParts.length}`);
 
-      const aiResult = await callAI(messages, ANALYSIS_MODEL, 5000);
+      const analyzeMaxTokens = expand ? 3200 : 2200;
+      const aiResult = await callAI(messages, ANALYSIS_MODEL, analyzeMaxTokens, {
+        fallbackModel: "openai/gpt-5-mini",
+        temperature: 0.2,
+      });
       if (aiResult.error) {
         return new Response(JSON.stringify({ error: aiResult.error }), {
           status: aiResult.status || 500,
