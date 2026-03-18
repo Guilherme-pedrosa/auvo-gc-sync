@@ -1200,14 +1200,9 @@ export default function BudgetKanbanPage() {
       });
 
       if (error || result?.error || result?.errorCode) {
-        const aiErr = parseAiError(result, error);
-        if (aiErr.isQuota) {
-          toast.warning("⚠️ Chat IA indisponível: quota da OpenAI esgotada.");
-          setChatMessages(prev => [...prev, { role: "assistant", content: "⚠️ Chat indisponível no momento — quota da OpenAI esgotada. Verifique o billing da conta OpenAI." }]);
-          return;
-        }
-        toast.error(`Erro no chat: ${aiErr.message}`);
-        setChatMessages(prev => [...prev, { role: "assistant", content: `Erro: ${aiErr.message}` }]);
+        const aiErr = await parseAiError(result, error);
+        toast.warning(aiErr.message);
+        setChatMessages(prev => [...prev, { role: "assistant", content: "⚠️ Chat indisponível no momento. Use o checklist operacional e tente novamente em instantes." }]);
         return;
       }
 
