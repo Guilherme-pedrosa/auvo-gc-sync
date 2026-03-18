@@ -961,12 +961,17 @@ export default function BudgetKanbanPage() {
 ### 📝 OBSERVAÇÃO INTERNA SUGERIDA
 > Orçamento condicionado à validação técnica manual por indisponibilidade temporária da análise por IA. Conferir dados da OS antes de prosseguir.`;
 
-  // Helper: check if AI error is quota/billing related
-  const isQuotaError = (result: any, error: any): boolean => {
-    const errorCode = result?.errorCode || result?.error;
-    const msg = error?.message || result?.message || result?.error || "";
-    return errorCode === "OPENAI_QUOTA_EXCEEDED" ||
-      /quota|insufficient_quota|billing/i.test(msg);
+  // Helper: extract error info from supabase.functions.invoke response
+  // When edge function returns non-2xx, supabase SDK puts body in `error`, not `data`
+  const parseAiError = (result: any, error: any): { isQuota: boolean; message: string } => {
+    // Check data (2xx with error field)
+    const dataMsg = result?.errorCode || result?.error || result?.message || "";
+    // Check error object (non-2xx response)
+    const errMsg = error?.message || error?.context?.message || "";
+    const allText = `${dataMsg} ${errMsg}`.toLowerCase();
+    const isQuota = allText.includes("quota") || allText.includes("insufficient_quota") || allText.includes("billing") || allText.includes("OPENAI_QUOTA_EXCEEDED".toLowerCase());
+    const message = dataMsg || errMsg || "Erro desconhecido na IA";
+    return { isQuota, message };
   };
 
   // AI technical analysis — budget_analysis_agent (standard or auto-expanded)
