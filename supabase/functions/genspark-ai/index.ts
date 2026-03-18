@@ -1198,34 +1198,29 @@ Técnico, direto, sem floreio. Potente e fundamentado.`;
         contextText += `\nANÁLISE TÉCNICA JÁ GERADA:\n${analysis}\n`;
       }
 
-      // *** PARALLEL: Internal docs (lightweight for chat) + Perplexity web search ***
+      // *** PARALLEL: Internal docs + Perplexity web search ***
       const equipForChat = context?.equipamento || context?.descricao || "";
-      
-      // If analysis already exists, skip heavy doc re-fetch (analysis already incorporated them)
-      // If no analysis, fetch docs in lightweight mode (no OCR, faster)
-      const shouldFetchDocs = !analysis;
-      console.log(`[genspark-ai] [chat] Buscando web${shouldFetchDocs ? " + docs internos (modo leve)" : " (docs já na análise)"} para: "${equipForChat.substring(0, 80)}"`);
+      const asksForInternalSource = /manual|arquivo|pdf|fonte|material|base|consult(a|ou)|documento/i.test(userMessage || "");
+      const docsOptions = asksForInternalSource
+        ? { skipOcr: false, maxDocs: 2, timeout: 22000 } // quando o usuário cobra fonte/manual, priorizar consulta real
+        : { skipOcr: true, maxDocs: 3, timeout: 12000 }; // modo rápido para chat comum
 
-      const parallelTasks: [Promise<InternalDocsResult | null>, Promise<string | null>] = [
-        shouldFetchDocs
-          ? fetchInternalTechDocs(equipForChat, equipForChat, { skipOcr: true, maxDocs: 4, timeout: 15000 })
-          : Promise.resolve(null),
+      console.log(
+        `[genspark-ai] [chat] Buscando docs internos (${asksForInternalSource ? "modo fonte/manual" : "modo leve"}) + web para: "${equipForChat.substring(0, 80)}"`
+      );
+
+      const [chatInternalDocs, chatWebResearch] = await Promise.all([
+        fetchInternalTechDocs(equipForChat, equipForChat, docsOptions),
         searchForChatQuestion(
           userMessage,
           equipForChat,
           context?.orientacao || "",
           analysis || ""
         ),
-      ];
+      ]);
 
-      const [chatInternalDocs, chatWebResearch] = await Promise.all(parallelTasks);
-
-      // Internal docs block
-      if (chatInternalDocs) {
-        contextText += buildInternalDocsBlock(chatInternalDocs);
-      } else if (analysis) {
-        contextText += `\n\nNOTA: Os materiais técnicos internos já foram consultados e incorporados na ANÁLISE TÉCNICA acima. Use essas informações para responder.`;
-      }
+      // Internal docs block (sempre incluir para o modelo saber se consultou ou não)
+      contextText += buildInternalDocsBlock(chatInternalDocs);
 
       // Web research block
       if (chatWebResearch) {
@@ -1255,7 +1250,7 @@ Técnico, direto, sem floreio. Potente e fundamentado.`;
       }
       messages.push({ role: "user", content: userContentParts });
 
-      console.log(`[genspark-ai] [chat] cliente=${context?.cliente}, hasAnalysis=${!!analysis}, fotos=${context?.fotos?.length || 0}, internalDocs=${chatInternalDocs ? `${chatInternalDocs.docs_count}(${chatInternalDocs.elapsed_ms}ms)` : "skipped(análise já existe)"}, webResearch=${!!chatWebResearch}, msgLength=${userMessage?.length}`);
+      console.log(`[genspark-ai] [chat] cliente=${context?.cliente}, hasAnalysis=${!!analysis}, fotos=${context?.fotos?.length || 0}, internalDocs=${chatInternalDocs.docs_count}(${chatInternalDocs.elapsed_ms}ms, error=${chatInternalDocs.error || "none"}), webResearch=${!!chatWebResearch}, msgLength=${userMessage?.length}`);
 
     } else {
       throw new Error("Ação inválida. Use 'improve', 'analyze', 'chat' ou 'internal_docs_test'.");
