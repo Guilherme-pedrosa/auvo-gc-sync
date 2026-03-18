@@ -14,7 +14,7 @@ import { Calendar } from "@/components/ui/calendar";
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
 import { toast } from "sonner";
-import { RefreshCw, Play, Eye, ArrowLeft, AlertTriangle, Plus, Link2, CalendarIcon, ExternalLink, Settings2, CheckCircle2, Clock, Timer, Search, FileCheck, FileX, PackageCheck, Package, Loader2 } from "lucide-react";
+import { RefreshCw, Play, Eye, ArrowLeft, AlertTriangle, Plus, Link2, CalendarIcon, ExternalLink, Settings2, CheckCircle2, Clock, Timer, Search, FileCheck, FileX, PackageCheck } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -42,6 +42,14 @@ type ConciliacaoItem = {
   tempo_pausa_seg: number;
   checkin_hora: string | null;
   checkout_hora: string | null;
+  pecas_status?: string;
+  pecas_aprovado?: boolean | null;
+  pecas_resumo?: string | null;
+  pecas_orc_qtd?: number;
+  pecas_cobertas_qtd?: number;
+  pecas_faltando_qtd?: number;
+  pecas_parciais_qtd?: number;
+  pecas_detalhes?: any;
 };
 
 type UsuarioMap = {
@@ -118,8 +126,6 @@ const AuvoSyncPage = () => {
   const [filtroSituacaoPos, setFiltroSituacaoPos] = useState("");
   const [filtroTecnicoPos, setFiltroTecnicoPos] = useState("");
   const [filtroStatusAuvo, setFiltroStatusAuvo] = useState("");
-  const [pecasValidation, setPecasValidation] = useState<Record<string, any>>({});
-  const [validatingPecas, setValidatingPecas] = useState<string | null>(null);
   // ─── Mapeamento state ───
   const [dialogOpen, setDialogOpen] = useState(false);
   const [selectedAuvoUser, setSelectedAuvoUser] = useState("");
@@ -303,21 +309,8 @@ const AuvoSyncPage = () => {
     setSelectedOsIds(new Set());
   };
 
-  const validarPecasOS = async (item: ConciliacaoItem) => {
-    const key = item.gc_os_id;
-    setValidatingPecas(key);
-    try {
-      const { data, error } = await supabase.functions.invoke("auvo-gc-sync", {
-        body: { action: "validate_pecas", gc_os_id: item.gc_os_id, auvo_task_id: item.auvo_task_id },
-      });
-      if (error) throw error;
-      setPecasValidation(prev => ({ ...prev, [key]: data }));
-    } catch (err: any) {
-      toast.error(`Erro ao validar peças: ${err.message}`);
-    } finally {
-      setValidatingPecas(null);
-    }
-  };
+
+
   const clientesUnicos = useMemo(() => {
     if (!conciliacaoData) return [];
     return [...new Set(conciliacaoData.map(i => i.gc_cliente).filter(Boolean))].sort((a, b) => a.localeCompare(b, "pt-BR"));
@@ -723,91 +716,78 @@ const AuvoSyncPage = () => {
                             </TableCell>
                             <TableCell className="text-center">
                               {(() => {
-                                const v = pecasValidation[item.gc_os_id];
-                                const isValidating = validatingPecas === item.gc_os_id;
-                                if (isValidating) return <Loader2 className="h-4 w-4 animate-spin mx-auto text-muted-foreground" />;
-                                if (!v) {
-                                  return (
-                                    <TooltipProvider>
-                                      <Tooltip>
-                                        <TooltipTrigger asChild>
-                                          <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={() => validarPecasOS(item)}>
-                                            <Package className="h-4 w-4 text-muted-foreground" />
-                                          </Button>
-                                        </TooltipTrigger>
-                                        <TooltipContent><p className="text-xs">Validar peças</p></TooltipContent>
-                                      </Tooltip>
-                                    </TooltipProvider>
-                                  );
+                                const status = item.pecas_status;
+                                if (!status || status === "nao_validado") {
+                                  return <span className="text-muted-foreground text-xs">—</span>;
                                 }
-                                if (v.sem_pecas_orcamento) {
+                                if (status === "sem_pecas") {
                                   return (
                                     <TooltipProvider>
                                       <Tooltip>
-                                        <TooltipTrigger><span className="text-muted-foreground text-xs">—</span></TooltipTrigger>
+                                        <TooltipTrigger><span className="text-muted-foreground text-xs">N/A</span></TooltipTrigger>
                                         <TooltipContent><p className="text-xs">OS sem peças no orçamento</p></TooltipContent>
                                       </Tooltip>
                                     </TooltipProvider>
                                   );
                                 }
-                                const totalOrc = v.pecas_orcamento?.length || 0;
-                                const totalCob = v.itens_cobertos?.length || 0;
-                                const totalFalt = v.itens_faltando?.length || 0;
-                                const totalParc = v.itens_parciais?.length || 0;
+                                if (status === "erro") {
+                                  return <span className="text-destructive text-xs">Erro</span>;
+                                }
+                                const d = item.pecas_detalhes;
                                 return (
                                   <Popover>
                                     <PopoverTrigger asChild>
                                       <Button variant="ghost" size="sm" className="h-7 px-1.5 gap-1">
-                                        {v.aprovado ? (
+                                        {item.pecas_aprovado ? (
                                           <CheckCircle2 className="h-4 w-4 text-green-600" />
                                         ) : (
                                           <AlertTriangle className="h-4 w-4 text-destructive" />
                                         )}
-                                        <span className={`text-[10px] font-medium ${v.aprovado ? "text-green-600" : "text-destructive"}`}>
-                                          {totalCob}/{totalOrc}
+                                        <span className={`text-[10px] font-medium ${item.pecas_aprovado ? "text-green-600" : "text-destructive"}`}>
+                                          {item.pecas_cobertas_qtd}/{item.pecas_orc_qtd}
                                         </span>
                                       </Button>
                                     </PopoverTrigger>
                                     <PopoverContent className="w-[380px] p-3" align="end">
                                       <div className="space-y-3">
                                         <p className="text-sm font-semibold flex items-center gap-1.5">
-                                          {v.aprovado ? <CheckCircle2 className="h-4 w-4 text-green-600" /> : <AlertTriangle className="h-4 w-4 text-destructive" />}
-                                          {v.resumo}
+                                          {item.pecas_aprovado ? <CheckCircle2 className="h-4 w-4 text-green-600" /> : <AlertTriangle className="h-4 w-4 text-destructive" />}
+                                          {item.pecas_resumo}
                                         </p>
-                                        {totalCob > 0 && (
+                                        {d?.itens_cobertos?.length > 0 && (
                                           <div>
-                                            <p className="text-xs font-medium text-green-600 mb-1">✅ Cobertas ({totalCob})</p>
-                                            {v.itens_cobertos.map((ic: any, idx: number) => (
+                                            <p className="text-xs font-medium text-green-600 mb-1">✅ Cobertas ({d.itens_cobertos.length})</p>
+                                            {d.itens_cobertos.map((ic: any, idx: number) => (
                                               <div key={idx} className="text-[11px] text-muted-foreground ml-2">
                                                 • {ic.descricao} → {ic.match} ({ic.score}%){ic.qtd_orc != null && ` | Qtd: ${ic.qtd_exec}/${ic.qtd_orc}`}
                                               </div>
                                             ))}
                                           </div>
                                         )}
-                                        {totalParc > 0 && (
+                                        {d?.itens_parciais?.length > 0 && (
                                           <div>
-                                            <p className="text-xs font-medium text-amber-600 mb-1">⚠️ Parciais ({totalParc})</p>
-                                            {v.itens_parciais.map((ip: any, idx: number) => (
+                                            <p className="text-xs font-medium text-amber-600 mb-1">⚠️ Parciais ({d.itens_parciais.length})</p>
+                                            {d.itens_parciais.map((ip: any, idx: number) => (
                                               <div key={idx} className="text-[11px] text-muted-foreground ml-2">
                                                 • {ip.descricao} → {ip.melhor_match} ({ip.score}%){ip.motivo && ` — ${ip.motivo}`}
                                               </div>
                                             ))}
                                           </div>
                                         )}
-                                        {totalFalt > 0 && (
+                                        {d?.itens_faltando?.length > 0 && (
                                           <div>
-                                            <p className="text-xs font-medium text-destructive mb-1">❌ Faltando ({totalFalt})</p>
-                                            {v.itens_faltando.map((f: any, idx: number) => (
+                                            <p className="text-xs font-medium text-destructive mb-1">❌ Faltando ({d.itens_faltando.length})</p>
+                                            {d.itens_faltando.map((f: any, idx: number) => (
                                               <div key={idx} className="text-[11px] text-muted-foreground ml-2">
                                                 • {f.descricao} — {f.motivo}
                                               </div>
                                             ))}
                                           </div>
                                         )}
-                                        {v.materiais_execucao?.length > 0 && (
+                                        {d?.materiais_execucao?.length > 0 && (
                                           <div className="border-t pt-2">
-                                            <p className="text-xs font-medium text-muted-foreground mb-1">📋 Materiais da execução ({v.materiais_execucao.length})</p>
-                                            {v.materiais_execucao.map((m: any, idx: number) => (
+                                            <p className="text-xs font-medium text-muted-foreground mb-1">📋 Materiais da execução ({d.materiais_execucao.length})</p>
+                                            {d.materiais_execucao.map((m: any, idx: number) => (
                                               <div key={idx} className="text-[11px] text-muted-foreground ml-2">
                                                 • {m.quantidade}x {m.descricao}
                                               </div>

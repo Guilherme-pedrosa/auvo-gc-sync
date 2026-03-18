@@ -1230,6 +1230,39 @@ Deno.serve(async (req) => {
           }
         }
 
+        // ─── Validação de peças (automática na conciliação) ───
+        let pecasStatus: string = "nao_validado";
+        let pecasResumo: string | null = null;
+        let pecasAprovado: boolean | null = null;
+        let pecasOrcQtd = 0;
+        let pecasCobertasQtd = 0;
+        let pecasFaltandoQtd = 0;
+        let pecasParciaisQtd = 0;
+        let pecasDetalhes: any = null;
+
+        if (tarefa.finished) {
+          try {
+            const validacao = await validarPecasOsVsExecucao(os.gc_os_id, os.auvo_task_id, raw, gcHeaders, auvoBearerToken);
+            pecasAprovado = validacao.aprovado;
+            pecasResumo = validacao.resumo;
+            pecasOrcQtd = validacao.pecas_orcamento.length;
+            pecasCobertasQtd = validacao.itens_cobertos.length;
+            pecasFaltandoQtd = validacao.itens_faltando.length;
+            pecasParciaisQtd = validacao.itens_parciais.length;
+            pecasStatus = validacao.sem_pecas_orcamento ? "sem_pecas" : (validacao.aprovado ? "ok" : "divergente");
+            pecasDetalhes = {
+              itens_cobertos: validacao.itens_cobertos,
+              itens_faltando: validacao.itens_faltando,
+              itens_parciais: validacao.itens_parciais,
+              materiais_execucao: validacao.materiais_execucao,
+              pecas_orcamento: validacao.pecas_orcamento,
+            };
+          } catch (err) {
+            console.warn(`[conciliacao] Erro ao validar peças OS ${os.gc_os_codigo}:`, err);
+            pecasStatus = "erro";
+          }
+        }
+
         itens.push({
           gc_os_id: os.gc_os_id, gc_os_codigo: os.gc_os_codigo, gc_cliente: os.gc_cliente,
           gc_situacao: os.nome_situacao, gc_situacao_id: os.situacao_id, data_os: os.data_os,
@@ -1240,6 +1273,10 @@ Deno.serve(async (req) => {
           gc_vendedor_id: gcVendedorId, gc_vendedor_nome: gcVendedorNome, vendedor_status: vendedorStatus,
           tempo_trabalho_seg: tempoTrabalhoSeg, tempo_pausa_seg: tempoPausaSeg,
           checkin_hora: checkinHora, checkout_hora: checkoutHora,
+          pecas_status: pecasStatus, pecas_aprovado: pecasAprovado, pecas_resumo: pecasResumo,
+          pecas_orc_qtd: pecasOrcQtd, pecas_cobertas_qtd: pecasCobertasQtd,
+          pecas_faltando_qtd: pecasFaltandoQtd, pecas_parciais_qtd: pecasParciaisQtd,
+          pecas_detalhes: pecasDetalhes,
         });
       }
 
