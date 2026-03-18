@@ -22,10 +22,107 @@ type AuvoFetchResult = {
   errorMessage: string | null;
 };
 
+type EquipmentPair = { nome: string | null; id: string | null };
+
+const INVALID_EQUIPMENT_VALUES = new Set([
+  "",
+  ".",
+  "-",
+  "n/a",
+  "na",
+  "none",
+  "null",
+  "undefined",
+  "sem equipamento",
+  "sem identificacao",
+  "sem identificação",
+  "nao informado",
+  "não informado",
+]);
+
+function sanitizeEquipmentValue(value: unknown): string | null {
+  const normalized = String(value ?? "").trim().replace(/\s+/g, " ");
+  if (!normalized) return null;
+
+  const comparable = normalized
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase();
+
+  if (INVALID_EQUIPMENT_VALUES.has(comparable)) return null;
+  return normalized;
+}
+
 function inDateRange(dateValue: string | undefined, startDate: string, endDate: string): boolean {
   const dateOnly = String(dateValue || "").split("T")[0];
   if (!dateOnly || !/^\d{4}-\d{2}-\d{2}$/.test(dateOnly)) return true;
   return dateOnly >= startDate && dateOnly <= endDate;
+}
+
+function extractEquipmentIds(entity: any): string[] {
+  const rawSources = [
+    entity?.equipmentsId,
+    entity?.equipmentsID,
+    entity?.equipmentIds,
+    entity?.equipmentId,
+    entity?.equipmentID,
+  ];
+
+  const ids: string[] = [];
+
+  for (const source of rawSources) {
+    if (Array.isArray(source)) {
+      for (const value of source) {
+        if (value === null || value === undefined) continue;
+        if (typeof value === "object") {
+          const nested = String((value as any).id || (value as any).equipmentId || "").trim();
+          if (nested) ids.push(nested);
+        } else {
+          const scalar = String(value).trim();
+          if (scalar) ids.push(scalar);
+        }
+      }
+    } else if (source !== null && source !== undefined) {
+      const scalar = String(source).trim();
+      if (scalar) ids.push(scalar);
+    }
+  }
+
+  return [...new Set(ids)];
+}
+
+function extractEquipmentFromEntity(entity: any): EquipmentPair & { equipmentIds: string[] } {
+  if (!entity || typeof entity !== "object") {
+    return { nome: null, id: null, equipmentIds: [] };
+  }
+
+  let nome = sanitizeEquipmentValue(
+    entity?.equipmentName ||
+    entity?.equipment?.name ||
+    entity?.equipment?.model ||
+    entity?.name ||
+    null
+  );
+
+  let id = sanitizeEquipmentValue(
+    entity?.equipmentIdentifier ||
+    entity?.equipment?.identifier ||
+    entity?.equipment?.serial ||
+    entity?.identifier ||
+    null
+  );
+
+  if ((!nome || !id) && Array.isArray(entity?.equipments) && entity.equipments.length > 0) {
+    const first = entity.equipments[0];
+    if (!nome) nome = sanitizeEquipmentValue(first?.name || first?.model || null);
+    if (!id) id = sanitizeEquipmentValue(first?.identifier || first?.serial || null);
+  }
+
+  return {
+    nome,
+    id,
+    equipmentIds: extractEquipmentIds(entity),
+  };
 }
 
 async function loadPersistedEquipmentMap(sbClient: any, taskIds: string[]) {
@@ -55,6 +152,157 @@ async function loadPersistedEquipmentMap(sbClient: any, taskIds: string[]) {
   }
 
   return map;
+}
+
+async function fetchAuvoTaskForEquipment(bearerToken: string, taskId: string): Promise<any | null> {
+  const url = `${AUVO_BASE_URL}/tasks/${encodeURIComponent(taskId)}`;
+  const response = await rateLimitedFetch(url, { headers: auvoHeaders(bearerToken) }, "auvo");
+  if (!response.ok) return null;
+  const json = await response.json().catch(() => ({}));
+  return json?.result || json || null;
+}
+
+async function fetchAuvoEquipmentById(bearerToken: string, equipmentId: string): Promise<any | null> {
+  const normalizedId = String(equipmentId || "").trim();
+  if (!normalizedId) return null;
+
+  const url = `${AUVO_BASE_URL}/equipments/${encodeURIComponent(normalizedId)}`;
+  const response = await rateLimitedFetch(url, { headers: auvoHeaders(bearerToken) }, "auvo");
+  if (!response.ok) return null;
+
+  const json = await response.json().catch(() => ({}));
+  return json?.result || json || null;
+}
+
+async function resolveAndPersistMissingEquipment(
+  sbClient: any,
+  bearerToken: string,
+  items: any[],
+  taskById: Record<string, any>,
+) {
+  const unresolved = items.filter((item) =>
+    !sanitizeEquipmentValue(item.equipamento_nome) || !sanitizeEquipmentValue(item.equipamento_id_serie)
+  );
+
+  if (unresolved.length === 0) return;
+
+  console.log(`[budget-kanban] Resolvendo equipamento para ${unresolved.length} cards durante sync...`);
+
+  const equipmentCache: Record<string, EquipmentPair> = {};
+  const taskDetailCache: Record<string, any | null> = {};
+  const unresolvedByTaskId = new Map<string, any>(
+    unresolved.map((item) => [String(item.auvo_task_id || "").trim(), item])
+  );
+  const rowsToPersist: {
+    auvo_task_id: string;
+    equipamento_nome: string | null;
+    equipamento_id_serie: string | null;
+    atualizado_em: string;
+  }[] = [];
+
+  const PARALLEL = 8;
+  for (let i = 0; i < unresolved.length; i += PARALLEL) {
+    const batch = unresolved.slice(i, i + PARALLEL);
+
+    const resolvedBatch = await Promise.all(
+      batch.map(async (item) => {
+        const taskId = String(item.auvo_task_id || "").trim();
+        if (!taskId) return null;
+
+        let nome = sanitizeEquipmentValue(item.equipamento_nome);
+        let id = sanitizeEquipmentValue(item.equipamento_id_serie);
+        let equipmentIds: string[] = [];
+
+        const sourceTask = taskById[taskId];
+        if (sourceTask) {
+          const extracted = extractEquipmentFromEntity(sourceTask);
+          if (!nome) nome = extracted.nome;
+          if (!id) id = extracted.id;
+          equipmentIds = extracted.equipmentIds;
+        }
+
+        if ((!nome || !id) && (!sourceTask || equipmentIds.length === 0)) {
+          if (!(taskId in taskDetailCache)) {
+            taskDetailCache[taskId] = await fetchAuvoTaskForEquipment(bearerToken, taskId);
+          }
+
+          const taskDetail = taskDetailCache[taskId];
+          if (taskDetail) {
+            const extracted = extractEquipmentFromEntity(taskDetail);
+            if (!nome) nome = extracted.nome;
+            if (!id) id = extracted.id;
+            if (equipmentIds.length === 0) equipmentIds = extracted.equipmentIds;
+          }
+        }
+
+        if ((!nome || !id) && equipmentIds.length > 0) {
+          for (const equipmentId of equipmentIds) {
+            if (!equipmentCache[equipmentId]) {
+              const equipmentData = await fetchAuvoEquipmentById(bearerToken, equipmentId);
+              const extractedEquipment = extractEquipmentFromEntity(equipmentData || {});
+              equipmentCache[equipmentId] = {
+                nome: extractedEquipment.nome,
+                id: extractedEquipment.id,
+              };
+            }
+
+            const cachedEquipment = equipmentCache[equipmentId];
+            if (!nome) nome = sanitizeEquipmentValue(cachedEquipment?.nome);
+            if (!id) id = sanitizeEquipmentValue(cachedEquipment?.id);
+            if (nome && id) break;
+          }
+        }
+
+        nome = sanitizeEquipmentValue(nome);
+        id = sanitizeEquipmentValue(id);
+        if (!nome && !id) return null;
+
+        return { taskId, nome, id };
+      })
+    );
+
+    for (const resolved of resolvedBatch) {
+      if (!resolved) continue;
+
+      const item = unresolvedByTaskId.get(resolved.taskId);
+      if (!item) continue;
+
+      const prevNome = sanitizeEquipmentValue(item.equipamento_nome);
+      const prevId = sanitizeEquipmentValue(item.equipamento_id_serie);
+
+      if (!prevNome && resolved.nome) item.equipamento_nome = resolved.nome;
+      if (!prevId && resolved.id) item.equipamento_id_serie = resolved.id;
+
+      const changedNome = !!resolved.nome && resolved.nome !== prevNome;
+      const changedId = !!resolved.id && resolved.id !== prevId;
+      if (changedNome || changedId) {
+        rowsToPersist.push({
+          auvo_task_id: resolved.taskId,
+          equipamento_nome: resolved.nome || prevNome || null,
+          equipamento_id_serie: resolved.id || prevId || null,
+          atualizado_em: new Date().toISOString(),
+        });
+      }
+    }
+  }
+
+  if (rowsToPersist.length === 0) {
+    console.log("[budget-kanban] Nenhum novo equipamento resolvido no sync.");
+    return;
+  }
+
+  for (let i = 0; i < rowsToPersist.length; i += 100) {
+    const batch = rowsToPersist.slice(i, i + 100);
+    const { error } = await sbClient
+      .from("tarefas_central")
+      .upsert(batch, { onConflict: "auvo_task_id" });
+
+    if (error) {
+      console.warn("[budget-kanban] Falha ao persistir equipamentos na central:", error.message);
+    }
+  }
+
+  console.log(`[budget-kanban] Equipamentos resolvidos e persistidos no sync: ${rowsToPersist.length}`);
 }
 
 async function rateLimitedFetch(url: string, options: RequestInit, type: "gc" | "auvo"): Promise<Response> {
@@ -636,9 +884,18 @@ Deno.serve(async (req) => {
     for (const item of items as any[]) {
       const persisted = persistedEquipmentMap[String(item.auvo_task_id || "")];
       if (!persisted) continue;
-      if (!item.equipamento_nome && persisted.equipamento_nome) item.equipamento_nome = persisted.equipamento_nome;
-      if (!item.equipamento_id_serie && persisted.equipamento_id_serie) item.equipamento_id_serie = persisted.equipamento_id_serie;
+      if (!sanitizeEquipmentValue(item.equipamento_nome) && persisted.equipamento_nome) item.equipamento_nome = persisted.equipamento_nome;
+      if (!sanitizeEquipmentValue(item.equipamento_id_serie) && persisted.equipamento_id_serie) item.equipamento_id_serie = persisted.equipamento_id_serie;
     }
+
+    // During sync, resolve missing equipment directly from Auvo and persist in central table
+    const auvoTaskById: Record<string, any> = {};
+    for (const task of auvoTasks) {
+      const taskId = String(task?.taskID || "").trim();
+      if (taskId) auvoTaskById[taskId] = task;
+    }
+
+    await resolveAndPersistMissingEquipment(sbClient, bearerToken, items as any[], auvoTaskById);
 
     // Sort: pendentes primeiro, depois por data desc
     items.sort((a: any, b: any) => {
