@@ -684,16 +684,17 @@ async function searchForChatQuestion(
 ): Promise<string> {
   const equipClean = (equipamento || "").replace(/n\/a/gi, "").trim();
 
-  const searchQuery = `Contexto: equipamento "${equipClean || "industrial"}".
-${orientacao ? `Problema: ${orientacao}` : ""}
+  const searchQuery = `Commercial kitchen equipment: "${equipClean || "industrial"}".
+${orientacao ? `Issue: ${orientacao}` : ""}
+${analysis ? `Previous analysis summary: ${analysis.substring(0, 300)}` : ""}
 
-Dúvida técnica: ${userMessage}
+Technical question: ${userMessage}
 
-Responda com dados técnicos reais: especificações, manuais, experiência documentada, normas técnicas.`;
+Search service manuals, OEM documentation, repair forums, technician communities, parts catalogs, and any relevant technical source worldwide.`;
 
   const { answer, citations } = await searchPerplexity(
     searchQuery,
-    "Você é um engenheiro de manutenção industrial sênior. Pesquise na web global (incluindo manuais e documentação fora do Brasil) e responda com dados técnicos concretos, citando fontes. Foque em especificações de fabricante, manuais técnicos, normas e problemas documentados. Responda em português brasileiro. Seja preciso e direto."
+    "You are a senior industrial kitchen maintenance engineer. Search the entire web globally — manufacturer sites, service manuals, technical forums (appliance repair forums, Reddit, iFixit, HVAC-Talk, FixYa, PartsTown, WebstaurantStore), YouTube repair guides, and OEM documentation from ANY country. Do NOT restrict to Brazilian websites. ALWAYS respond in Brazilian Portuguese (pt-BR). Be technical, precise, direct. Cite sources. Include part numbers when available."
   );
 
   if (!answer) return "";
