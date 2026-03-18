@@ -1527,8 +1527,19 @@ export default function OSKanbanPage() {
               {/* Info principal */}
               <div className="grid grid-cols-2 gap-x-6 gap-y-3 text-sm">
                 <div>
-                  <span className="text-muted-foreground text-xs">Cliente</span>
-                  <p className="font-medium">{selectedCard.cliente || selectedCard.gc_os_cliente || "—"}</p>
+                  <span className="text-muted-foreground text-xs">Cliente (Auvo)</span>
+                  <p className="font-medium">{selectedCard.cliente || "—"}</p>
+                  {selectedCard.gc_os_cliente && (
+                    <p className="text-xs text-muted-foreground">GC: {selectedCard.gc_os_cliente}</p>
+                  )}
+                  {hasClientDivergence(selectedCard) && (
+                    <div className="flex items-center gap-1 mt-1 rounded-md bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 px-2 py-1">
+                      <AlertTriangle className="h-3.5 w-3.5 text-amber-600 dark:text-amber-400 flex-shrink-0" />
+                      <span className="text-[11px] text-amber-700 dark:text-amber-300">
+                        Divergência: Auvo "{selectedCard.cliente}" ≠ GC "{selectedCard.gc_os_cliente}"
+                      </span>
+                    </div>
+                  )}
                 </div>
                 <div>
                   <span className="text-muted-foreground text-xs">Técnico / Vendedor GC</span>
