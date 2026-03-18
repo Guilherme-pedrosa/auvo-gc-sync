@@ -613,8 +613,11 @@ export default function OSKanbanPage() {
       // Character class for city/bairro names (letters, spaces, dots, apostrophes)
       const C = "[A-Za-zÀ-ú\\s.']";
 
+      // CEP pattern: 5 digits optionally followed by hyphen + 3 digits
+      const CEP = "\\d{5}(?:-?\\d{3})?";
+
       // Full pattern: "..., Bairro, Cidade - UF, CEP, ..." 
-      const mFull = text.match(new RegExp(`,\\s*(${C}+?),\\s*(${C}+?)\\s*-\\s*([A-Z]{2})\\s*,?\\s*\\d{5}`, "i"));
+      const mFull = text.match(new RegExp(`,\\s*(${C}+?),\\s*(${C}+?)\\s*-\\s*([A-Z]{2})\\s*,?\\s*${CEP}`, "i"));
       if (mFull) {
         const bairro = mFull[1].trim();
         const cidade = mFull[2].trim();
@@ -643,7 +646,7 @@ export default function OSKanbanPage() {
       }
 
       // "Cidade - UF, CEP" (no bairro)
-      const m1 = text.match(new RegExp(`,\\s*(${C}+?)\\s*-\\s*([A-Z]{2})\\s*,?\\s*\\d{5}`, "i"));
+      const m1 = text.match(new RegExp(`,\\s*(${C}+?)\\s*-\\s*([A-Z]{2})\\s*,?\\s*${CEP}`, "i"));
       if (m1 && m1[1].trim().length >= 3) {
         const cidade = m1[1].trim();
         return { region: `${cidade} - ${m1[2]}`, city: cidade };
@@ -721,17 +724,18 @@ export default function OSKanbanPage() {
     }
     for (const item of items) {
       if (map.has(item.auvo_task_id)) {
-        // Cache this client's city
-        const clientKey = (item.cliente || "").toUpperCase().trim();
-        if (clientKey && !clientCityCache.has(clientKey)) {
-          clientCityCache.set(clientKey, map.get(item.auvo_task_id)!);
-        }
+        // Cache this client's city using normalized name
+        const clientKey = normalizeClientName(item.cliente);
+        const gcKey = normalizeClientName(item.gc_os_cliente);
+        const loc = map.get(item.auvo_task_id)!;
+        if (clientKey && !clientCityCache.has(clientKey)) clientCityCache.set(clientKey, loc);
+        if (gcKey && !clientCityCache.has(gcKey)) clientCityCache.set(gcKey, loc);
       }
     }
     for (const item of items) {
       if (!map.has(item.auvo_task_id)) {
-        const clientKey = (item.cliente || "").toUpperCase().trim();
-        const gcClientKey = (item.gc_os_cliente || "").toUpperCase().trim();
+        const clientKey = normalizeClientName(item.cliente);
+        const gcClientKey = normalizeClientName(item.gc_os_cliente);
         const inherited = clientCityCache.get(clientKey) || clientCityCache.get(gcClientKey);
         if (inherited) {
           map.set(item.auvo_task_id, inherited);
