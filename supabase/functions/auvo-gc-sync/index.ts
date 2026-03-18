@@ -436,9 +436,12 @@ async function validarPecasOsVsExecucao(
   for (const peca of pecasOrcamento) {
     const resultado = itemOrcamentoCoberto(peca, materiaisExecucao, THRESHOLD_COMPLETO, THRESHOLD_PARCIAL);
     if (resultado.coberto) {
-      cobertos.push({ descricao: peca.descricao, match: resultado.melhorMatch || "", score: resultado.score });
+      cobertos.push({ descricao: peca.descricao, match: resultado.melhorMatch || "", score: resultado.score, qtd_orc: resultado.qtdOrcamento, qtd_exec: resultado.qtdExecucao });
     } else if (resultado.matchParcial) {
-      parciais.push({ descricao: peca.descricao, melhor_match: resultado.melhorMatch || "", score: resultado.score });
+      const motivo = resultado.score >= (THRESHOLD_COMPLETO * 100) && !resultado.qtdOk
+        ? `Quantidade divergente: orçamento=${resultado.qtdOrcamento}, execução=${resultado.qtdExecucao}`
+        : `Match parcial (${resultado.score}%)`;
+      parciais.push({ descricao: peca.descricao, melhor_match: resultado.melhorMatch || "", score: resultado.score, qtd_orc: resultado.qtdOrcamento, qtd_exec: resultado.qtdExecucao, motivo });
     } else {
       faltando.push({
         descricao: peca.descricao,
