@@ -738,13 +738,17 @@ async function callAI(
   };
 
   const callLovableGateway = async (gatewayModel: string): Promise<Response> => {
+    const isOpenAIGpt5 = gatewayModel.startsWith("openai/gpt-5");
     const payload: Record<string, unknown> = {
       model: gatewayModel,
       messages,
-      temperature,
     };
 
-    if (gatewayModel.startsWith("openai/gpt-5")) {
+    if (!isOpenAIGpt5) {
+      payload.temperature = temperature;
+    }
+
+    if (isOpenAIGpt5) {
       payload.max_completion_tokens = maxTokens;
     } else {
       payload.max_tokens = maxTokens;
