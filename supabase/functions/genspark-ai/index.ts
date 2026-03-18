@@ -151,7 +151,10 @@ async function fetchInternalTechDocs(query?: string, equipamento?: string): Prom
     const fullPath = parentPath ? `${parentPath}/${fileName}` : fileName;
     const fileSize = parseInt(file.size || "0", 10);
 
+    console.log(`[genspark-ai] [internal-docs] processFile: ${fullPath} (mime=${mimeType}, size=${fileSize})`);
+
     if (fileSize > 3 * 1024 * 1024) {
+      result.skipped_files.push(`${fullPath} (${Math.round(fileSize / 1024 / 1024)}MB — muito grande)`);
       results.push(`📎 ${fullPath} — arquivo grande (${Math.round(fileSize / 1024 / 1024)}MB), listado como referência`);
       return;
     }
