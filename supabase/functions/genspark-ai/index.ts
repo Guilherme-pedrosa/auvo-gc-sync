@@ -185,6 +185,59 @@ async function fetchInternalTechDocs(query?: string, equipamento?: string): Prom
     }
   };
 
+  // ---- OCR via Google Cloud Vision API (para PDFs escaneados) ----
+  const ocrPdfViaVision = async (pdfBytes: Uint8Array, fileName: string): Promise<string> => {
+    try {
+      // Convert bytes to base64
+      let binary = "";
+      for (let i = 0; i < pdfBytes.length; i++) binary += String.fromCharCode(pdfBytes[i]);
+      const base64Content = btoa(binary);
+
+      console.log(`[genspark-ai] [OCR] Enviando PDF para Vision API: ${fileName} (${Math.round(pdfBytes.length / 1024)}KB)`);
+
+      const visionUrl = `https://vision.googleapis.com/v1/files:annotate?key=${API_KEY}`;
+      const visionResp = await fetch(visionUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          requests: [{
+            inputConfig: {
+              content: base64Content,
+              mimeType: "application/pdf",
+            },
+            features: [{ type: "DOCUMENT_TEXT_DETECTION" }],
+            pages: [1, 2, 3, 4, 5], // primeiras 5 páginas
+          }],
+        }),
+      });
+
+      if (!visionResp.ok) {
+        const errBody = await visionResp.text();
+        console.error(`[genspark-ai] [OCR] Vision API HTTP ${visionResp.status}: ${errBody.substring(0, 300)}`);
+        return "";
+      }
+
+      const visionData = await visionResp.json();
+      const responses = visionData.responses || [];
+      const textParts: string[] = [];
+
+      for (const resp of responses) {
+        const pages = resp.responses || [];
+        for (const page of pages) {
+          const fullText = page.fullTextAnnotation?.text;
+          if (fullText) textParts.push(fullText);
+        }
+      }
+
+      const ocrText = textParts.join("\n\n").trim();
+      console.log(`[genspark-ai] [OCR] Vision API retornou ${ocrText.length} chars para ${fileName}`);
+      return ocrText;
+    } catch (e) {
+      console.error(`[genspark-ai] [OCR] Erro Vision API para ${fileName}:`, e instanceof Error ? e.message : String(e));
+      return "";
+    }
+  };
+
   const isTextFile = (name: string) =>
     /\.(txt|csv|md|json|xml|html|htm|log|ini|cfg|yaml|yml|tsv)$/i.test(name);
 
