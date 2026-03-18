@@ -920,8 +920,13 @@ export default function BudgetKanbanPage() {
       }
 
       const { data: result, error } = await supabase.functions.invoke("genspark-ai", { body });
-      if (error) throw error;
-      if (result?.error) throw new Error(result.error);
+      if (error || result?.error || result?.errorCode) {
+        if (isQuotaError(result, error)) {
+          toast.warning("⚠️ IA indisponível: quota da OpenAI esgotada.");
+          return;
+        }
+        throw new Error(result?.message || result?.error || error?.message || "Erro desconhecido");
+      }
       if (result?.result) {
         setEditingSection(keyword);
         setEditValue(result.result);
