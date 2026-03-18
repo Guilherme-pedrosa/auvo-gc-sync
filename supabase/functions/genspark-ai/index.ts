@@ -306,8 +306,20 @@ async function fetchInternalTechDocs(query?: string, equipamento?: string): Prom
         if (resp.ok) {
           const buf = new Uint8Array(await resp.arrayBuffer());
           const pdfText = extractPdfText(buf);
-          if (pdfText.length > 50) addResult(fullPath, pdfText, "📕");
-          else { result.skipped_files.push(`${fullPath} (PDF scan/imagem)`); results.push(`📕 ${fullPath} — PDF (scan/imagem, sem texto extraível)`); }
+          if (pdfText.length > 50) {
+            addResult(fullPath, pdfText, "📕");
+          } else {
+            // PDF escaneado — tentar OCR via Google Cloud Vision API
+            console.log(`[genspark-ai] [internal-docs] PDF sem texto extraível, tentando OCR: ${fullPath}`);
+            const ocrText = await ocrPdfViaVision(buf, fullPath);
+            if (ocrText.length > 50) {
+              addResult(fullPath, ocrText, "🔍");
+              console.log(`[genspark-ai] [OCR] Sucesso! ${ocrText.length} chars extraídos de ${fullPath}`);
+            } else {
+              result.skipped_files.push(`${fullPath} (PDF scan — OCR sem resultado útil)`);
+              results.push(`📕 ${fullPath} — PDF escaneado (OCR não extraiu texto suficiente)`);
+            }
+          }
         } else await resp.text();
       } catch (e) { console.error(`[genspark-ai] [internal-docs] PDF error ${fullPath}:`, e); }
     }
