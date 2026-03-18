@@ -1346,25 +1346,43 @@ Técnico, direto, sem floreio. Potente e fundamentado.`;
     const hasImages = messages.some((m: any) => Array.isArray(m.content) && m.content.some((p: any) => p.type === "image_url"));
     if (hasImages) model = "gpt-4o";
 
-    const response = await fetch("https://api.openai.com/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${OPENAI_API_KEY}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model,
-        messages,
-        temperature: 0.7,
-        max_tokens: action === "analyze" ? 6000 : 4000,
-      }),
-    });
+    // Retry with exponential backoff for rate limits (429)
+    const MAX_RETRIES = 3;
+    let response: Response | null = null;
+    for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+      response = await fetch("https://api.openai.com/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${OPENAI_API_KEY}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          model,
+          messages,
+          temperature: 0.7,
+          max_tokens: action === "analyze" ? 6000 : 4000,
+        }),
+      });
 
-    if (!response.ok) {
-      const errText = await response.text();
-      console.error("OpenAI API error:", response.status, errText);
-      return new Response(JSON.stringify({ error: `Erro na API OpenAI: ${response.status}` }), {
-        status: 500,
+      if (response.status !== 429 || attempt === MAX_RETRIES) break;
+
+      // Parse retry-after header or use exponential backoff
+      const retryAfter = response.headers.get("retry-after");
+      const waitMs = retryAfter ? parseInt(retryAfter, 10) * 1000 : Math.min(1000 * Math.pow(2, attempt), 30000);
+      console.warn(`[genspark-ai] OpenAI 429 — tentativa ${attempt + 1}/${MAX_RETRIES}, aguardando ${waitMs}ms...`);
+      await response.text(); // consume body
+      await new Promise((r) => setTimeout(r, waitMs));
+    }
+
+    if (!response || !response.ok) {
+      const errText = response ? await response.text() : "no response";
+      const status = response?.status || 500;
+      console.error("OpenAI API error:", status, errText);
+      const userMsg = status === 429
+        ? "Rate limit da OpenAI atingido. Tente novamente em alguns segundos."
+        : `Erro na API OpenAI: ${status}`;
+      return new Response(JSON.stringify({ error: userMsg }), {
+        status: status === 429 ? 429 : 500,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
