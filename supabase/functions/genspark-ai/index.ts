@@ -834,6 +834,7 @@ Pressostato → niples, mangueira de conexão, veda-rosca
 Placa eletrônica → conectores, fusíveis, limpeza técnica (álcool isopropílico)
 Componente roscado → veda-rosca, fita veda-rosca, niples, adaptadores
 Qualquer serviço em equipamento de refrigeração → verificar carga de gás, teste de vazamento, manifold
+Câmara fria/congelada → gaxetas de vedação, relé falta de fase, contatores, controlador temperatura, disjuntores, estabilizador tensão, resistência degelo, timer degelo, válvula expansão, pressostato alta/baixa, ventiladores evaporador/condensador, sensor temperatura, isolamento térmico portas/painéis
 
 POLÍTICAS WEDO (aplicar SOMENTE quando o gatilho for relevante para o equipamento em questão — NÃO aplique genericamente):
 P1) Sujeira/insetos VISÍVEIS nas fotos ou relatados → dedetização + higienização
