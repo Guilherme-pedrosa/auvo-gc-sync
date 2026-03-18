@@ -71,6 +71,7 @@ async function fetchInternalTechDocs(query?: string, equipamento?: string): Prom
     text: "",
     docs_count: 0,
     docs_titles: [],
+    skipped_files: [],
     elapsed_ms: 0,
     error: null,
     api_source: "google_drive_api",
