@@ -664,6 +664,10 @@ Deno.serve(async (req) => {
       rows.push(row);
     }
 
+    if (secondaryMatches > 0) {
+      console.log(`[central-sync] Vínculo secundário (orientação): ${secondaryMatches} tarefas vinculadas a OS/Orçamento`);
+    }
+
     // Fallback: include only NEW GC OS tasks not returned by current Auvo window
     // (prevents overwriting existing rows when sync window is narrow)
     const existingTaskIds = new Set(rows.map((r) => String(r.auvo_task_id)));
