@@ -521,7 +521,7 @@ export default function Index() {
   const execLabels = { match: "Com OS", sem: "Sem OS" };
 
   return (
-    <div className="min-h-screen">
+    <div>
       {/* Header */}
       <div className="border-b bg-card px-6 py-4">
         <div className="flex items-center justify-between">
