@@ -579,6 +579,11 @@ async function atualizarSituacaoOsGC(
       situacao_id: SITUACAO_TRANSITORIA,
     };
 
+    // Atribuir ação ao usuário GC correto (para histórico de situações)
+    if (options.gcUsuarioId) {
+      payloadTransitorio.usuario_id = options.gcUsuarioId;
+    }
+
     // Aplicar vendedor mapeado já na etapa transitória
     if (options.vendedorId) {
       payloadTransitorio.vendedor_id = options.vendedorId;
