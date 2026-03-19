@@ -1496,10 +1496,12 @@ Deno.serve(async (req) => {
         continue;
       }
 
+      const gcUsuarioIdSync = body?.gc_usuario_id ? String(body.gc_usuario_id) : null;
       const gcResult = await atualizarSituacaoOsGC(os.gc_os_id, "7116099", gcHeaders, {
         vendedorId: gcVendedorId,
         vendedorNome: gcVendedorNome,
         dataSaida: auvoTaskDate,
+        gcUsuarioId: gcUsuarioIdSync,
       });
 
       if (gcResult.success) {
