@@ -226,7 +226,7 @@ async function fetchAuvoTaskSnapshot(bearerToken: string, taskId: string): Promi
     equipmentSerial = String(result?.equipmentIdentifier || result?.equipment?.identifier || result?.equipment?.serial || "").trim();
   }
 
-  return { address, orientation, displacementStart, checkInDate, checkOutDate, taskEndDate, startTime, endTime, equipmentName, equipmentSerial };
+  return { address, orientation, displacementStart, checkInDate, checkOutDate, taskEndDate, startTime, endTime, estimatedDuration, equipmentName, equipmentSerial };
 }
 
 // Fetch Auvo tasks for a single month window
