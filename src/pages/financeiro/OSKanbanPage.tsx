@@ -422,7 +422,7 @@ export default function OSKanbanPage() {
 
   // Persist excluded situações to localStorage
   useEffect(() => {
-    localStorage.setItem("oskanban_excludedSituacoes", JSON.stringify(Array.from(excludedSituacoes)));
+    localStorage.setItem(FILTER_KEY, JSON.stringify(Array.from(excludedSituacoes)));
   }, [excludedSituacoes]);
 
   // Filter by excluded situações
