@@ -259,7 +259,6 @@ const AuvoSyncPage = () => {
         body: {
           action: "revert_os", gc_os_id: item.gc_os_id, gc_os_codigo: item.gc_os_codigo,
           situacao_id_antes: situacaoId,
-          auvo_task_id: item.auvo_task_id,
           gc_vendedor_id: item.gc_vendedor_id || null, gc_vendedor_nome: item.gc_vendedor_nome || null,
           data_saida: dataSaida,
         },
@@ -293,7 +292,6 @@ const AuvoSyncPage = () => {
           body: {
             action: "revert_os", gc_os_id: item.gc_os_id, gc_os_codigo: item.gc_os_codigo,
             situacao_id_antes: situacaoDestino,
-            auvo_task_id: item.auvo_task_id,
             gc_vendedor_id: item.gc_vendedor_id || null, gc_vendedor_nome: item.gc_vendedor_nome || null,
             data_saida: dataSaida,
           },

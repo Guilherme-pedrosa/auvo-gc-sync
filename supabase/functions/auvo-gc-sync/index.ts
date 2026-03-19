@@ -779,9 +779,8 @@ Deno.serve(async (req) => {
       const gcOsId = String(body.gc_os_id || "");
       const situacaoAnteriorId = String(body.situacao_id_antes || "");
       const gcOsCodigo = String(body.gc_os_codigo || "");
-      const auvoTaskId = String(body.auvo_task_id || "");
-      let vendedorId = body.gc_vendedor_id ? String(body.gc_vendedor_id) : null;
-      let vendedorNome = body.gc_vendedor_nome ? String(body.gc_vendedor_nome) : null;
+      const vendedorId = body.gc_vendedor_id ? String(body.gc_vendedor_id) : null;
+      const vendedorNome = body.gc_vendedor_nome ? String(body.gc_vendedor_nome) : null;
       const dataSaida = body.data_saida ? String(body.data_saida) : null;
       if (!gcOsId || !situacaoAnteriorId) {
         return new Response(JSON.stringify({ error: "gc_os_id e situacao_id_antes são obrigatórios" }), {
@@ -793,35 +792,7 @@ Deno.serve(async (req) => {
           status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
-
-      // ─── Se vendedor não veio do frontend, resolver via Auvo task + mapeamento ───
-      if (!vendedorId && auvoTaskId) {
-        console.log(`[auvo-gc-sync] REVERT: vendedor não informado, resolvendo via Auvo task ${auvoTaskId}...`);
-        const tarefa = await getAuvoTask(auvoTaskId, auvoBearerToken);
-        if (tarefa) {
-          const auvoTecId = String(tarefa._raw?.idUserTo || tarefa._raw?.idUserFrom || "").trim();
-          const auvoTecNome = String(tarefa._raw?.userToName || tarefa._raw?.userFromName || "").trim();
-          console.log(`[auvo-gc-sync] REVERT: Auvo técnico=${auvoTecNome} (ID=${auvoTecId})`);
-          if (auvoTecId && auvoTecId !== "0") {
-            // Carregar mapeamento
-            const { data: mapRows } = await supabase
-              .from("auvo_gc_usuario_map")
-              .select("gc_vendedor_id, gc_vendedor_nome")
-              .eq("auvo_user_id", auvoTecId)
-              .eq("ativo", true)
-              .limit(1);
-            if (mapRows && mapRows.length > 0) {
-              vendedorId = String(mapRows[0].gc_vendedor_id);
-              vendedorNome = mapRows[0].gc_vendedor_nome;
-              console.log(`[auvo-gc-sync] REVERT: vendedor resolvido → ${vendedorNome} (${vendedorId})`);
-            } else {
-              console.warn(`[auvo-gc-sync] REVERT: Técnico Auvo ${auvoTecNome} (${auvoTecId}) sem mapeamento GC`);
-            }
-          }
-        }
-      }
-
-      console.log(`[auvo-gc-sync] REVERT: OS ${gcOsCodigo} (${gcOsId}) → situação ${situacaoAnteriorId} | vendedor: ${vendedorNome || "N/A"} (${vendedorId || "N/A"}) | data_saida: ${dataSaida || "N/A"} | auvo_task: ${auvoTaskId || "N/A"}`);
+      console.log(`[auvo-gc-sync] REVERT: OS ${gcOsCodigo} (${gcOsId}) → situação ${situacaoAnteriorId} | vendedor: ${vendedorNome || "N/A"} (${vendedorId || "N/A"}) | data_saida: ${dataSaida || "N/A"}`);
       const revertResult = await atualizarSituacaoOsGC(gcOsId, situacaoAnteriorId, gcHeaders, { vendedorId, vendedorNome, dataSaida });
       
       await supabase.from("auvo_gc_sync_log").insert({
@@ -833,24 +804,21 @@ Deno.serve(async (req) => {
         duracao_ms: Date.now() - startTime,
         observacao: `REVERSÃO manual: OS ${gcOsCodigo}`,
         detalhes: [{
-          gc_os_id: gcOsId, gc_os_codigo: gcOsCodigo, auvo_task_id: auvoTaskId,
+          gc_os_id: gcOsId, gc_os_codigo: gcOsCodigo, auvo_task_id: "",
           resultado: revertResult.success ? "revertida" : "erro_gc",
           detalhe: revertResult.success 
-            ? `Revertida para situação ${situacaoAnteriorId} | HTTP ${revertResult.status} | vendedor: ${vendedorNome || "N/A"}`
+            ? `Revertida para situação ${situacaoAnteriorId} | HTTP ${revertResult.status}`
             : `Erro ao reverter: HTTP ${revertResult.status} — ${JSON.stringify(revertResult.body)}`,
           situacao_antes: "EXECUTADO – AGUARDANDO NEGOCIAÇÃO FINANCEIRA",
           situacao_depois: revertResult.success ? `Revertida (${situacaoAnteriorId})` : null,
           situacao_id_antes: "7116099",
           situacao_id_depois: revertResult.success ? situacaoAnteriorId : null,
-          gc_vendedor_id: vendedorId,
-          gc_vendedor_nome: vendedorNome,
         }],
       });
 
       return new Response(JSON.stringify({ 
         success: revertResult.success, gc_os_id: gcOsId, gc_os_codigo: gcOsCodigo,
         status: revertResult.status, body: revertResult.body,
-        vendedor_resolvido: vendedorNome || null,
       }), {
         status: 200, 
         headers: { ...corsHeaders, "Content-Type": "application/json" },
