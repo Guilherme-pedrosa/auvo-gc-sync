@@ -106,6 +106,7 @@ const auvoTaskUrl = (taskId: string) => `https://app.auvo.com.br/relatorioTarefa
 
 const AuvoSyncPage = () => {
   const navigate = useNavigate();
+  const { profile } = useAuth();
   const queryClient = useQueryClient();
 
   // ─── Conciliação state ───
