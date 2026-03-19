@@ -136,6 +136,7 @@ export default function AgendaSemanalPage() {
         )
         .gte("data_tarefa", queryStartDate)
         .lte("data_tarefa", queryEndDate)
+        .neq("status_auvo", "Sem tarefa Auvo")
         .order("data_tarefa", { ascending: true });
 
       if (error) throw error;
