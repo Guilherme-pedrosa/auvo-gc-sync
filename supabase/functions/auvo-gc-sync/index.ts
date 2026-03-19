@@ -496,11 +496,19 @@ async function executarPutOs(
   const frete = parseCurrency(payload.valor_frete);
   const totalCalculado = totalServicos + totalProdutos + frete - desconto;
 
-  if (totalServicos > 0 || totalProdutos > 0 || totalCalculado > 0) {
-    payload.valor_servicos = formatCurrency(totalServicos);
-    payload.valor_produtos = formatCurrency(totalProdutos);
-    payload.valor_total = formatCurrency(totalCalculado);
-    payload.valor = formatCurrency(totalCalculado);
+  // Preservar o valor_total original da OS quando disponível (evita divergência de centavos)
+  const valorTotalOriginal = parseCurrency(payload.valor_total);
+  const valorTotalFinal = valorTotalOriginal > 0 ? valorTotalOriginal : totalCalculado;
+
+  if (totalServicos > 0 || totalProdutos > 0 || valorTotalFinal > 0) {
+    // Só sobrescreve sub-totais se recalculou valores positivos
+    if (totalServicos > 0 || totalProdutos > 0) {
+      payload.valor_servicos = formatCurrency(totalServicos);
+      payload.valor_produtos = formatCurrency(totalProdutos);
+    }
+    // Usar o valor final (original ou recalculado)
+    payload.valor_total = formatCurrency(valorTotalFinal);
+    payload.valor = formatCurrency(valorTotalFinal);
 
     // Ajustar parcelas para bater com o valor_total (evita erro de R$ 0,01)
     const parcelas = payload.parcelas;
@@ -509,17 +517,15 @@ async function executarPutOs(
         const wrapped = p?.parcela || p;
         return sum + parseCurrency(wrapped?.valor || wrapped?.valor_parcela || 0);
       }, 0);
-      const diff = totalCalculado - totalParcelasAtual;
-      // Only fix small rounding diffs (< R$ 1.00)
+      const diff = valorTotalFinal - totalParcelasAtual;
+      // Fix rounding diffs up to R$ 1.00
       if (Math.abs(diff) > 0.001 && Math.abs(diff) < 1.0) {
-        // Adjust the last parcela
         const lastParcela = parcelas[parcelas.length - 1];
         const wrapped = lastParcela?.parcela || lastParcela;
         const currentVal = parseCurrency(wrapped?.valor || wrapped?.valor_parcela || 0);
         const newVal = currentVal + diff;
         if (wrapped?.valor !== undefined) wrapped.valor = formatCurrency(newVal);
         if (wrapped?.valor_parcela !== undefined) wrapped.valor_parcela = formatCurrency(newVal);
-        // If neither key existed, set valor
         if (wrapped?.valor === undefined && wrapped?.valor_parcela === undefined) {
           wrapped.valor = formatCurrency(newVal);
         }
