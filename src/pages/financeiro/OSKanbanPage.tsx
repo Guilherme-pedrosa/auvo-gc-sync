@@ -168,13 +168,27 @@ export default function OSKanbanPage() {
   const [corridorFilterIds, setCorridorFilterIds] = useState<Set<string> | null>(null);
   const [corridorRoute, setCorridorRoute] = useState<any>(null);
 
+  // Default excluded situações — statuses considered "concluded" flows
+  const DEFAULT_EXCLUDED_SITUACOES = [
+    "EXECUTADO",
+    "EXECUTADO - AGUARDANDO NEGOCIAÇÃO",
+    "EXECUTADO - AGUARDANDO PAGAMENTO",
+    "EXECUTADO - FECHADO CHAMADO",
+    "EXECUTADO - FINANCEIRO SEPARADO",
+    "EXECUTADO COM NOTA EMITIDA",
+    "EXECUTADO EM GARANTIA",
+    "EXECUTADO POR CONTRATO",
+    "FINANCEIRO SEPARADO / BAIXA CIGAM",
+    "IMP CIGAM FATURADO TOTAL",
+  ];
+
   // GC Situação filter: stores EXCLUDED situações (inverted logic)
   const [excludedSituacoes, setExcludedSituacoes] = useState<Set<string>>(() => {
     try {
       const saved = localStorage.getItem("oskanban_excludedSituacoes");
       if (saved) return new Set(JSON.parse(saved) as string[]);
     } catch { /* ignore */ }
-    return new Set();
+    return new Set(DEFAULT_EXCLUDED_SITUACOES);
   });
   const [searchSituacao, setSearchSituacao] = useState("");
 
