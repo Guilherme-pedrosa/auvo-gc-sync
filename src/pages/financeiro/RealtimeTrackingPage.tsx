@@ -698,8 +698,8 @@ export default function RealtimeTrackingPage() {
           </div>
 
           {/* Agenda grid — horizontal scroll of technician columns */}
-          <ScrollArea className="h-[calc(100vh-10rem)]">
-            <div className="p-4 grid gap-4" style={{ gridTemplateColumns: `repeat(${Math.min(data.tecnicos.length, 5)}, minmax(280px, 1fr))` }}>
+          <div className="flex-1 overflow-auto">
+            <div className="p-4 flex gap-4" style={{ minWidth: `${data.tecnicos.length * 300}px` }}>
               {data.tecnicos.map((tech) => {
                 const hasActive = tech.resumo.emAndamento > 0;
                 const progress = tech.resumo.total > 0
@@ -707,7 +707,7 @@ export default function RealtimeTrackingPage() {
                   : 0;
 
                 return (
-                  <div key={tech.id} className="flex flex-col">
+                  <div key={tech.id} className="flex flex-col w-[280px] flex-shrink-0">
                     {/* Technician header */}
                     <div className={`rounded-t-lg border border-b-0 px-4 py-3 ${
                       hasActive ? "bg-blue-50 border-blue-200" : "bg-card"
@@ -830,14 +830,7 @@ export default function RealtimeTrackingPage() {
                 );
               })}
             </div>
-
-            {/* If more than 5, second row */}
-            {data.tecnicos.length > 5 && (
-              <div className="px-4 pb-4 grid gap-4" style={{ gridTemplateColumns: `repeat(${Math.min(data.tecnicos.length - 5, 5)}, minmax(280px, 1fr))` }}>
-                {/* Already rendered above via single grid, but we need to handle overflow */}
-              </div>
-            )}
-          </ScrollArea>
+          </div>
         </div>
       )}
     </div>
