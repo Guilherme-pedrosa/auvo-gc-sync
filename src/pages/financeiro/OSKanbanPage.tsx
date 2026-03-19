@@ -183,9 +183,12 @@ export default function OSKanbanPage() {
   ];
 
   // GC Situação filter: stores EXCLUDED situações (inverted logic)
+  // Version key forces all users to get new defaults when predefined exclusions change
+  const FILTER_VERSION = "v2";
+  const FILTER_KEY = `oskanban_excludedSituacoes_${FILTER_VERSION}`;
   const [excludedSituacoes, setExcludedSituacoes] = useState<Set<string>>(() => {
     try {
-      const saved = localStorage.getItem("oskanban_excludedSituacoes");
+      const saved = localStorage.getItem(FILTER_KEY);
       if (saved) return new Set(JSON.parse(saved) as string[]);
     } catch { /* ignore */ }
     return new Set(DEFAULT_EXCLUDED_SITUACOES);
@@ -419,7 +422,7 @@ export default function OSKanbanPage() {
 
   // Persist excluded situações to localStorage
   useEffect(() => {
-    localStorage.setItem("oskanban_excludedSituacoes", JSON.stringify(Array.from(excludedSituacoes)));
+    localStorage.setItem(FILTER_KEY, JSON.stringify(Array.from(excludedSituacoes)));
   }, [excludedSituacoes]);
 
   // Filter by excluded situações
