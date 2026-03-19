@@ -161,7 +161,17 @@ export default function RelatoriosPage() {
 
   const osAbertas = useMemo(() => {
     if (!tarefasOS) return [];
-    return tarefasOS.filter((t) => {
+    // Deduplicate by gc_os_id — keep the most recently updated row per OS
+    const byOsId = new Map<string, any>();
+    for (const t of tarefasOS) {
+      const osId = t.gc_os_id;
+      if (!osId) continue;
+      const existing = byOsId.get(osId);
+      if (!existing || (t.atualizado_em || "") > (existing.atualizado_em || "")) {
+        byOsId.set(osId, t);
+      }
+    }
+    return Array.from(byOsId.values()).filter((t) => {
       const sit = (t.gc_os_situacao || "").toLowerCase();
       return !sit.startsWith("executad") && !sit.startsWith("imp cigam faturado total") && !sit.startsWith("financeiro separado / baixa cigam");
     });
