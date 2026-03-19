@@ -614,6 +614,11 @@ async function atualizarSituacaoOsGC(
       situacao_id: situacaoId,
     };
 
+    // Atribuir ação ao usuário GC correto
+    if (options.gcUsuarioId) {
+      payloadFinal.usuario_id = options.gcUsuarioId;
+    }
+
     // Garantir vendedor no payload final também
     if (options.vendedorId) {
       payloadFinal.vendedor_id = options.vendedorId;
