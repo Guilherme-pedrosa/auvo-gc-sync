@@ -58,6 +58,39 @@ function extractTimeFromDateStr(dateStr: string): string {
   return "";
 }
 
+function parseClockToMinutes(timeLike: string): number {
+  const raw = String(timeLike || "").trim();
+  if (!raw) return -1;
+  const hh = parseInt(raw.substring(0, 2), 10);
+  const mm = parseInt(raw.substring(3, 5), 10);
+  if (Number.isNaN(hh) || Number.isNaN(mm)) return -1;
+  return hh * 60 + mm;
+}
+
+function minutesToClock(minutes: number): string {
+  const safe = ((minutes % 1440) + 1440) % 1440;
+  const hh = Math.floor(safe / 60);
+  const mm = safe % 60;
+  return `${String(hh).padStart(2, "0")}:${String(mm).padStart(2, "0")}:00`;
+}
+
+function parseDurationToHours(durationLike: unknown): number {
+  const raw = String(durationLike || "").trim();
+  if (!raw) return 0;
+
+  // Supports HH:MM:SS, HH:MM and decimal strings
+  if (/^\d{1,2}:\d{2}(:\d{2})?$/.test(raw)) {
+    const parts = raw.split(":");
+    const hours = parseInt(parts[0] || "0", 10);
+    const minutes = parseInt(parts[1] || "0", 10);
+    const seconds = parseInt(parts[2] || "0", 10);
+    return hours + minutes / 60 + seconds / 3600;
+  }
+
+  const numeric = parseFloat(raw.replace(",", "."));
+  return Number.isFinite(numeric) && numeric > 0 ? numeric : 0;
+}
+
 function resolveTaskType(task: any): string {
   const candidates = [
     task?.taskTypeDescription,
