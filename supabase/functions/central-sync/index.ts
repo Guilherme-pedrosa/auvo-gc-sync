@@ -924,6 +924,74 @@ Deno.serve(async (req) => {
       }
     }
 
+    // Propagate latest GC OS/ORC data to ALL sibling tasks sharing the same gc_os_id/gc_orcamento_id
+    // This ensures tasks outside the sync date range also get updated statuses
+    const osIdToLatest: Record<string, any> = {};
+    const orcIdToLatest: Record<string, any> = {};
+    for (const row of rows) {
+      if (row.gc_os_id && row.gc_os_situacao) {
+        osIdToLatest[row.gc_os_id] = {
+          gc_os_situacao: row.gc_os_situacao,
+          gc_os_situacao_id: row.gc_os_situacao_id,
+          gc_os_cor_situacao: row.gc_os_cor_situacao,
+          gc_os_valor_total: row.gc_os_valor_total,
+          gc_os_vendedor: row.gc_os_vendedor,
+          gc_os_cliente: row.gc_os_cliente,
+        };
+      }
+      if (row.gc_orcamento_id && row.gc_orc_situacao) {
+        orcIdToLatest[row.gc_orcamento_id] = {
+          gc_orc_situacao: row.gc_orc_situacao,
+          gc_orc_situacao_id: row.gc_orc_situacao_id,
+          gc_orc_cor_situacao: row.gc_orc_cor_situacao,
+          gc_orc_valor_total: row.gc_orc_valor_total,
+          gc_orc_vendedor: row.gc_orc_vendedor,
+          gc_orc_cliente: row.gc_orc_cliente,
+        };
+      }
+    }
+
+    // Update sibling tasks that weren't in the current sync window
+    const osIds = Object.keys(osIdToLatest);
+    let siblingUpdated = 0;
+    for (const osId of osIds) {
+      const latest = osIdToLatest[osId];
+      const { count } = await sbClient
+        .from("tarefas_central")
+        .update({
+          gc_os_situacao: latest.gc_os_situacao,
+          gc_os_situacao_id: latest.gc_os_situacao_id,
+          gc_os_cor_situacao: latest.gc_os_cor_situacao,
+          gc_os_valor_total: latest.gc_os_valor_total,
+          gc_os_vendedor: latest.gc_os_vendedor,
+          gc_os_cliente: latest.gc_os_cliente,
+          atualizado_em: new Date().toISOString(),
+        }, { count: "exact" })
+        .eq("gc_os_id", osId)
+        .neq("gc_os_situacao", latest.gc_os_situacao);
+      siblingUpdated += count || 0;
+    }
+
+    const orcIds = Object.keys(orcIdToLatest);
+    for (const orcId of orcIds) {
+      const latest = orcIdToLatest[orcId];
+      await sbClient
+        .from("tarefas_central")
+        .update({
+          gc_orc_situacao: latest.gc_orc_situacao,
+          gc_orc_situacao_id: latest.gc_orc_situacao_id,
+          gc_orc_cor_situacao: latest.gc_orc_cor_situacao,
+          gc_orc_valor_total: latest.gc_orc_valor_total,
+          gc_orc_vendedor: latest.gc_orc_vendedor,
+          gc_orc_cliente: latest.gc_orc_cliente,
+          atualizado_em: new Date().toISOString(),
+        })
+        .eq("gc_orcamento_id", orcId)
+        .neq("gc_orc_situacao", latest.gc_orc_situacao);
+    }
+
+    console.log(`[central-sync] Propagação: ${siblingUpdated} tarefas irmãs atualizadas (${osIds.length} OS, ${orcIds.length} orçamentos)`);
+
     // Clean up tasks older than 6 months
     const { count: deleted } = await sbClient
       .from("tarefas_central")
