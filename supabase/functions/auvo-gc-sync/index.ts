@@ -489,47 +489,84 @@ async function executarPutOs(
   // data_saida: se fornecida via options, usar; caso contrário manter vazio
   // NÃO sobrescrever aqui — será definida em atualizarSituacaoOsGC
 
-  // Recalcula totais a partir dos itens para evitar valor_total zerado
+  // Recalcula totais apenas como fallback (sem sobrescrever financeiro original da OS)
   const totalServicos = sumWrappedItems(payload.servicos, "servico");
   const totalProdutos = sumWrappedItems(payload.produtos, "produto");
   const desconto = parseCurrency(payload.desconto_valor);
   const frete = parseCurrency(payload.valor_frete);
   const totalCalculado = totalServicos + totalProdutos + frete - desconto;
 
-  // Preservar o valor_total original da OS quando disponível (evita divergência de centavos)
-  const valorTotalOriginal = parseCurrency(payload.valor_total);
+  // Preserva valor total original quando existir; só define fallback quando vier zerado/ausente
+  const valorTotalOriginal = parseCurrency(payload.valor_total ?? payload.valor);
   const valorTotalFinal = valorTotalOriginal > 0 ? valorTotalOriginal : totalCalculado;
 
-  if (totalServicos > 0 || totalProdutos > 0 || valorTotalFinal > 0) {
-    // Só sobrescreve sub-totais se recalculou valores positivos
-    if (totalServicos > 0 || totalProdutos > 0) {
-      payload.valor_servicos = formatCurrency(totalServicos);
-      payload.valor_produtos = formatCurrency(totalProdutos);
-    }
-    // Usar o valor final (original ou recalculado)
+  if (valorTotalOriginal <= 0 && valorTotalFinal > 0) {
     payload.valor_total = formatCurrency(valorTotalFinal);
-    payload.valor = formatCurrency(valorTotalFinal);
+    if (payload.valor !== undefined) payload.valor = formatCurrency(valorTotalFinal);
+  }
 
-    // Ajustar parcelas para bater com o valor_total (evita erro de R$ 0,01)
-    const parcelas = payload.parcelas;
-    if (Array.isArray(parcelas) && parcelas.length > 0) {
-      const totalParcelasAtual = parcelas.reduce((sum: number, p: any) => {
-        const wrapped = p?.parcela || p;
-        return sum + parseCurrency(wrapped?.valor || wrapped?.valor_parcela || 0);
-      }, 0);
-      const diff = valorTotalFinal - totalParcelasAtual;
-      // Fix rounding diffs up to R$ 1.00
-      if (Math.abs(diff) > 0.001 && Math.abs(diff) < 1.0) {
-        const lastParcela = parcelas[parcelas.length - 1];
-        const wrapped = lastParcela?.parcela || lastParcela;
-        const currentVal = parseCurrency(wrapped?.valor || wrapped?.valor_parcela || 0);
-        const newVal = currentVal + diff;
-        if (wrapped?.valor !== undefined) wrapped.valor = formatCurrency(newVal);
-        if (wrapped?.valor_parcela !== undefined) wrapped.valor_parcela = formatCurrency(newVal);
-        if (wrapped?.valor === undefined && wrapped?.valor_parcela === undefined) {
-          wrapped.valor = formatCurrency(newVal);
+  // Ajuste resiliente: percorre qualquer coleção de parcelas no payload e corrige diff de centavos no total agregado
+  const coletarParcelas = (root: unknown): Array<Record<string, unknown>> => {
+    const refs: Array<Record<string, unknown>> = [];
+    const visitados = new Set<object>();
+
+    const visitar = (node: unknown, depth: number) => {
+      if (!node || depth > 6) return;
+      if (Array.isArray(node)) {
+        for (const item of node) visitar(item, depth + 1);
+        return;
+      }
+      if (typeof node !== "object") return;
+      if (visitados.has(node as object)) return;
+      visitados.add(node as object);
+
+      const obj = node as Record<string, unknown>;
+      for (const [key, value] of Object.entries(obj)) {
+        if ((key === "parcelas" || key === "pagamentos") && Array.isArray(value)) {
+          for (const item of value) {
+            if (!item || typeof item !== "object") continue;
+            const itemObj = item as Record<string, unknown>;
+            const inner = itemObj.parcela ?? itemObj.pagamento;
+            if (inner && typeof inner === "object") refs.push(inner as Record<string, unknown>);
+            else refs.push(itemObj);
+          }
+          continue;
         }
-        console.log(`[auvo-gc-sync] Ajuste de parcela: diff=${diff.toFixed(4)}, última parcela ${formatCurrency(currentVal)} → ${formatCurrency(newVal)}`);
+        visitar(value, depth + 1);
+      }
+    };
+
+    visitar(root, 0);
+    return refs;
+  };
+
+  const parcelasRefs = coletarParcelas(payload);
+  if (parcelasRefs.length > 0 && valorTotalFinal > 0) {
+    const totalParcelasCents = parcelasRefs.reduce((sum, parcela) => {
+      return sum + Math.round(parseCurrency(parcela.valor ?? parcela.valor_parcela ?? 0) * 100);
+    }, 0);
+
+    const targetCents = Math.round(valorTotalFinal * 100);
+    const diffCents = targetCents - totalParcelasCents;
+
+    // Ajusta apenas divergências pequenas (até R$ 1,00)
+    if (diffCents !== 0 && Math.abs(diffCents) <= 100) {
+      const ultimaParcela = parcelasRefs[parcelasRefs.length - 1];
+      const atualCents = Math.round(parseCurrency(ultimaParcela.valor ?? ultimaParcela.valor_parcela ?? 0) * 100);
+      const novoCents = atualCents + diffCents;
+
+      if (novoCents >= 0) {
+        const novoValor = formatCurrency(novoCents / 100);
+        if ("valor" in ultimaParcela || !("valor_parcela" in ultimaParcela)) {
+          ultimaParcela.valor = novoValor;
+        }
+        if ("valor_parcela" in ultimaParcela) {
+          ultimaParcela.valor_parcela = novoValor;
+        }
+
+        console.log(
+          `[auvo-gc-sync] Ajuste financeiro aplicado: target=${targetCents / 100}, parcelas=${totalParcelasCents / 100}, diff=${(diffCents / 100).toFixed(2)}, nova_ultima=${novoValor}`,
+        );
       }
     }
   }
@@ -538,13 +575,66 @@ async function executarPutOs(
     `[auvo-gc-sync] ${label} OS ${gcOsId}: situacao_id=${String(payload.situacao_id)}, vendedor_id=${String(payload.vendedor_id || "N/A")}, nome_vendedor=${String(payload.nome_vendedor || "N/A")}, valor_total=${String(payload.valor_total || "N/A")}`,
   );
 
-  const response = await rateLimitedFetch(url, {
+  let response = await rateLimitedFetch(url, {
     method: "PUT",
     headers: gcHeaders,
     body: JSON.stringify(payload),
   }, "gc");
 
-  const body = await response.json().catch(() => ({}));
+  let body = await response.json().catch(() => ({}));
+
+  // Retry automático para erro clássico de centavos do GC ("faltando/sobrando 0.01")
+  if (!response.ok) {
+    const mensagemErro = String((body as any)?.data?.mensagem || (body as any)?.mensagem || "");
+    const ehErroParcelas = mensagemErro.toLowerCase().includes("valor do pedido")
+      && mensagemErro.toLowerCase().includes("valor das parcelas");
+
+    if (ehErroParcelas) {
+      const faltandoMatch = mensagemErro.match(/faltando\s+([\d.,]+)/i);
+      const sobrandoMatch = mensagemErro.match(/sobrando\s+([\d.,]+)/i);
+      const diffForcado = faltandoMatch
+        ? parseCurrency(faltandoMatch[1])
+        : (sobrandoMatch ? -parseCurrency(sobrandoMatch[1]) : 0);
+
+      if (Math.abs(diffForcado) > 0 && Math.abs(diffForcado) <= 1) {
+        const refsRetry = coletarParcelas(payload);
+        if (refsRetry.length > 0) {
+          const ultimaParcela = refsRetry[refsRetry.length - 1];
+          const atual = parseCurrency(ultimaParcela.valor ?? ultimaParcela.valor_parcela ?? 0);
+          const novo = atual + diffForcado;
+
+          if (novo >= 0) {
+            const novoValor = formatCurrency(novo);
+            if ("valor" in ultimaParcela || !("valor_parcela" in ultimaParcela)) {
+              ultimaParcela.valor = novoValor;
+            }
+            if ("valor_parcela" in ultimaParcela) {
+              ultimaParcela.valor_parcela = novoValor;
+            }
+
+            const valorAtual = parseCurrency(payload.valor_total ?? payload.valor);
+            if (valorAtual > 0) {
+              const novoTotal = formatCurrency(valorAtual + diffForcado);
+              payload.valor_total = novoTotal;
+              if (payload.valor !== undefined) payload.valor = novoTotal;
+            }
+
+            console.warn(
+              `[auvo-gc-sync] Retry financeiro ${label} OS ${gcOsId}: ajuste forçado de ${diffForcado.toFixed(2)} aplicado na última parcela`,
+            );
+
+            response = await rateLimitedFetch(url, {
+              method: "PUT",
+              headers: gcHeaders,
+              body: JSON.stringify(payload),
+            }, "gc");
+            body = await response.json().catch(() => ({}));
+          }
+        }
+      }
+    }
+  }
+
   return { success: response.ok, status: response.status, body };
 }
 
