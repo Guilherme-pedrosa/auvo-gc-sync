@@ -575,13 +575,66 @@ async function executarPutOs(
     `[auvo-gc-sync] ${label} OS ${gcOsId}: situacao_id=${String(payload.situacao_id)}, vendedor_id=${String(payload.vendedor_id || "N/A")}, nome_vendedor=${String(payload.nome_vendedor || "N/A")}, valor_total=${String(payload.valor_total || "N/A")}`,
   );
 
-  const response = await rateLimitedFetch(url, {
+  let response = await rateLimitedFetch(url, {
     method: "PUT",
     headers: gcHeaders,
     body: JSON.stringify(payload),
   }, "gc");
 
-  const body = await response.json().catch(() => ({}));
+  let body = await response.json().catch(() => ({}));
+
+  // Retry automático para erro clássico de centavos do GC ("faltando/sobrando 0.01")
+  if (!response.ok) {
+    const mensagemErro = String((body as any)?.data?.mensagem || (body as any)?.mensagem || "");
+    const ehErroParcelas = mensagemErro.toLowerCase().includes("valor do pedido")
+      && mensagemErro.toLowerCase().includes("valor das parcelas");
+
+    if (ehErroParcelas) {
+      const faltandoMatch = mensagemErro.match(/faltando\s+([\d.,]+)/i);
+      const sobrandoMatch = mensagemErro.match(/sobrando\s+([\d.,]+)/i);
+      const diffForcado = faltandoMatch
+        ? parseCurrency(faltandoMatch[1])
+        : (sobrandoMatch ? -parseCurrency(sobrandoMatch[1]) : 0);
+
+      if (Math.abs(diffForcado) > 0 && Math.abs(diffForcado) <= 1) {
+        const refsRetry = coletarParcelas(payload);
+        if (refsRetry.length > 0) {
+          const ultimaParcela = refsRetry[refsRetry.length - 1];
+          const atual = parseCurrency(ultimaParcela.valor ?? ultimaParcela.valor_parcela ?? 0);
+          const novo = atual + diffForcado;
+
+          if (novo >= 0) {
+            const novoValor = formatCurrency(novo);
+            if ("valor" in ultimaParcela || !("valor_parcela" in ultimaParcela)) {
+              ultimaParcela.valor = novoValor;
+            }
+            if ("valor_parcela" in ultimaParcela) {
+              ultimaParcela.valor_parcela = novoValor;
+            }
+
+            const valorAtual = parseCurrency(payload.valor_total ?? payload.valor);
+            if (valorAtual > 0) {
+              const novoTotal = formatCurrency(valorAtual + diffForcado);
+              payload.valor_total = novoTotal;
+              if (payload.valor !== undefined) payload.valor = novoTotal;
+            }
+
+            console.warn(
+              `[auvo-gc-sync] Retry financeiro ${label} OS ${gcOsId}: ajuste forçado de ${diffForcado.toFixed(2)} aplicado na última parcela`,
+            );
+
+            response = await rateLimitedFetch(url, {
+              method: "PUT",
+              headers: gcHeaders,
+              body: JSON.stringify(payload),
+            }, "gc");
+            body = await response.json().catch(() => ({}));
+          }
+        }
+      }
+    }
+  }
+
   return { success: response.ok, status: response.status, body };
 }
 
