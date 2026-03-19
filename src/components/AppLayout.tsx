@@ -78,7 +78,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   };
 
   return (
-    <div className="flex min-h-screen">
+    <div className="flex h-screen overflow-hidden">
       <aside className="w-16 lg:w-56 flex-shrink-0 bg-sidebar border-r border-sidebar-border flex flex-col">
         <div className="h-14 flex items-center px-4 border-b border-sidebar-border">
           <div className="flex items-center gap-2.5">
