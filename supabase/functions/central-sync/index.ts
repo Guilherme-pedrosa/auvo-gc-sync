@@ -172,6 +172,7 @@ type AuvoTaskSnapshot = {
   taskEndDate: string;
   startTime: string;
   endTime: string;
+  estimatedDuration: string;
   equipmentName: string;
   equipmentSerial: string;
 };
