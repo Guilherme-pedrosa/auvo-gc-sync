@@ -471,6 +471,7 @@ type AtualizarSituacaoOptions = {
   vendedorId?: string | null;
   vendedorNome?: string | null;
   dataSaida?: string | null; // Data de saída da OS (formato yyyy-MM-dd), preenchida com data de execução da tarefa Auvo
+  gcUsuarioId?: string | null; // ID do usuário GC que está executando a ação (para atribuição correta no histórico)
 };
 
 async function executarPutOs(
