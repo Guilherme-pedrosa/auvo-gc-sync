@@ -660,6 +660,26 @@ Deno.serve(async (req) => {
         }
       }
 
+      const startTimeResolved =
+        String(task.startTime || task.startHour || snapshot?.startTime || "").trim() ||
+        extractTimeFromDateStr(String(task.taskDate || ""));
+
+      let endTimeResolved =
+        String(task.endTime || task.endHour || snapshot?.endTime || "").trim() ||
+        extractTimeFromDateStr(String(task.taskEndDate || task.taskEndDateTime || snapshot?.taskEndDate || ""));
+
+      const durationDecimalRaw = parseFloat(task.durationDecimal || "0") || 0;
+      const estimatedDurationHours = parseDurationToHours(task.estimatedDuration || snapshot?.estimatedDuration || "");
+      const durationDecimalResolved = durationDecimalRaw > 0 ? durationDecimalRaw : estimatedDurationHours;
+
+      if (!endTimeResolved && startTimeResolved && durationDecimalResolved > 0) {
+        const startMinutes = parseClockToMinutes(startTimeResolved);
+        if (startMinutes >= 0) {
+          const endMinutes = startMinutes + Math.round(durationDecimalResolved * 60);
+          endTimeResolved = minutesToClock(endMinutes);
+        }
+      }
+
       const row: any = {
         auvo_task_id: taskId,
         cliente,
