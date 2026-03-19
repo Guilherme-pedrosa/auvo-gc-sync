@@ -793,6 +793,7 @@ Deno.serve(async (req) => {
       const vendedorId = body.gc_vendedor_id ? String(body.gc_vendedor_id) : null;
       const vendedorNome = body.gc_vendedor_nome ? String(body.gc_vendedor_nome) : null;
       const dataSaida = body.data_saida ? String(body.data_saida) : null;
+      const gcUsuarioId = body.gc_usuario_id ? String(body.gc_usuario_id) : null;
       if (!gcOsId || !situacaoAnteriorId) {
         return new Response(JSON.stringify({ error: "gc_os_id e situacao_id_antes são obrigatórios" }), {
           status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -803,8 +804,8 @@ Deno.serve(async (req) => {
           status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
-      console.log(`[auvo-gc-sync] REVERT: OS ${gcOsCodigo} (${gcOsId}) → situação ${situacaoAnteriorId} | vendedor: ${vendedorNome || "N/A"} (${vendedorId || "N/A"}) | data_saida: ${dataSaida || "N/A"}`);
-      const revertResult = await atualizarSituacaoOsGC(gcOsId, situacaoAnteriorId, gcHeaders, { vendedorId, vendedorNome, dataSaida });
+      console.log(`[auvo-gc-sync] REVERT: OS ${gcOsCodigo} (${gcOsId}) → situação ${situacaoAnteriorId} | vendedor: ${vendedorNome || "N/A"} (${vendedorId || "N/A"}) | data_saida: ${dataSaida || "N/A"} | gc_usuario_id: ${gcUsuarioId || "N/A"}`);
+      const revertResult = await atualizarSituacaoOsGC(gcOsId, situacaoAnteriorId, gcHeaders, { vendedorId, vendedorNome, dataSaida, gcUsuarioId });
       
       await supabase.from("auvo_gc_sync_log").insert({
         executado_em: new Date().toISOString(),
