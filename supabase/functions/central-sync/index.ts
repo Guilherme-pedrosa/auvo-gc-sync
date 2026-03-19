@@ -58,6 +58,39 @@ function extractTimeFromDateStr(dateStr: string): string {
   return "";
 }
 
+function parseClockToMinutes(timeLike: string): number {
+  const raw = String(timeLike || "").trim();
+  if (!raw) return -1;
+  const hh = parseInt(raw.substring(0, 2), 10);
+  const mm = parseInt(raw.substring(3, 5), 10);
+  if (Number.isNaN(hh) || Number.isNaN(mm)) return -1;
+  return hh * 60 + mm;
+}
+
+function minutesToClock(minutes: number): string {
+  const safe = ((minutes % 1440) + 1440) % 1440;
+  const hh = Math.floor(safe / 60);
+  const mm = safe % 60;
+  return `${String(hh).padStart(2, "0")}:${String(mm).padStart(2, "0")}:00`;
+}
+
+function parseDurationToHours(durationLike: unknown): number {
+  const raw = String(durationLike || "").trim();
+  if (!raw) return 0;
+
+  // Supports HH:MM:SS, HH:MM and decimal strings
+  if (/^\d{1,2}:\d{2}(:\d{2})?$/.test(raw)) {
+    const parts = raw.split(":");
+    const hours = parseInt(parts[0] || "0", 10);
+    const minutes = parseInt(parts[1] || "0", 10);
+    const seconds = parseInt(parts[2] || "0", 10);
+    return hours + minutes / 60 + seconds / 3600;
+  }
+
+  const numeric = parseFloat(raw.replace(",", "."));
+  return Number.isFinite(numeric) && numeric > 0 ? numeric : 0;
+}
+
 function resolveTaskType(task: any): string {
   const candidates = [
     task?.taskTypeDescription,
@@ -139,6 +172,7 @@ type AuvoTaskSnapshot = {
   taskEndDate: string;
   startTime: string;
   endTime: string;
+  estimatedDuration: string;
   equipmentName: string;
   equipmentSerial: string;
 };
@@ -164,9 +198,18 @@ async function fetchAuvoTaskSnapshot(bearerToken: string, taskId: string): Promi
   const displacementStart = String(result?.displacementStart || result?.displacement_start || "").trim();
   const checkInDate = String(result?.checkInDate || result?.checkinDate || result?.checkin_date || "").trim();
   const checkOutDate = String(result?.checkOutDate || result?.checkoutDate || result?.checkout_date || "").trim();
-  const taskEndDate = String(result?.taskEndDate || result?.endDate || result?.scheduledEndDate || "").trim();
-  const startTime = String(result?.startTime || result?.startHour || "").trim();
-  const endTime = String(result?.endTime || result?.endHour || "").trim();
+  const taskEndDate = String(
+    result?.taskEndDate ||
+    result?.taskEndDateTime ||
+    result?.endDate ||
+    result?.endDateTime ||
+    result?.scheduledEndDate ||
+    result?.scheduledEndDateTime ||
+    ""
+  ).trim();
+  const startTime = String(result?.startTime || result?.startHour || result?.scheduledStartTime || "").trim();
+  const endTime = String(result?.endTime || result?.endHour || result?.scheduledEndTime || "").trim();
+  const estimatedDuration = String(result?.estimatedDuration || result?.estimatedTime || "").trim();
 
   // Extract equipment info from snapshot
   let equipmentName = "";
@@ -183,7 +226,7 @@ async function fetchAuvoTaskSnapshot(bearerToken: string, taskId: string): Promi
     equipmentSerial = String(result?.equipmentIdentifier || result?.equipment?.identifier || result?.equipment?.serial || "").trim();
   }
 
-  return { address, orientation, displacementStart, checkInDate, checkOutDate, taskEndDate, startTime, endTime, equipmentName, equipmentSerial };
+  return { address, orientation, displacementStart, checkInDate, checkOutDate, taskEndDate, startTime, endTime, estimatedDuration, equipmentName, equipmentSerial };
 }
 
 // Fetch Auvo tasks for a single month window
@@ -617,6 +660,26 @@ Deno.serve(async (req) => {
         }
       }
 
+      const startTimeResolved =
+        String(task.startTime || task.startHour || snapshot?.startTime || "").trim() ||
+        extractTimeFromDateStr(String(task.taskDate || ""));
+
+      let endTimeResolved =
+        String(task.endTime || task.endHour || snapshot?.endTime || "").trim() ||
+        extractTimeFromDateStr(String(task.taskEndDate || task.taskEndDateTime || snapshot?.taskEndDate || ""));
+
+      const durationDecimalRaw = parseFloat(task.durationDecimal || "0") || 0;
+      const estimatedDurationHours = parseDurationToHours(task.estimatedDuration || snapshot?.estimatedDuration || "");
+      const durationDecimalResolved = durationDecimalRaw > 0 ? durationDecimalRaw : estimatedDurationHours;
+
+      if (!endTimeResolved && startTimeResolved && durationDecimalResolved > 0) {
+        const startMinutes = parseClockToMinutes(startTimeResolved);
+        if (startMinutes >= 0) {
+          const endMinutes = startMinutes + Math.round(durationDecimalResolved * 60);
+          endTimeResolved = minutesToClock(endMinutes);
+        }
+      }
+
       const row: any = {
         auvo_task_id: taskId,
         cliente,
@@ -630,9 +693,9 @@ Deno.serve(async (req) => {
         orientacao: resolvedOrientation,
         pendencia: String(task.pendency ?? "").trim(),
         descricao: resolveTaskType(task),
-        duracao_decimal: parseFloat(task.durationDecimal || "0") || 0,
-        hora_inicio: String(task.startTime || task.startHour || snapshot?.startTime || "").trim() || extractTimeFromDateStr(String(task.taskDate || "")),
-        hora_fim: String(task.endTime || task.endHour || snapshot?.endTime || "").trim() || extractTimeFromDateStr(String(task.taskEndDate || snapshot?.taskEndDate || "")),
+        duracao_decimal: durationDecimalResolved,
+        hora_inicio: startTimeResolved,
+        hora_fim: endTimeResolved,
         check_in: !!task.checkIn,
         check_out: !!task.checkOut,
         endereco: resolvedAddress,
