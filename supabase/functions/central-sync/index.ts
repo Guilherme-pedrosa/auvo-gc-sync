@@ -198,9 +198,18 @@ async function fetchAuvoTaskSnapshot(bearerToken: string, taskId: string): Promi
   const displacementStart = String(result?.displacementStart || result?.displacement_start || "").trim();
   const checkInDate = String(result?.checkInDate || result?.checkinDate || result?.checkin_date || "").trim();
   const checkOutDate = String(result?.checkOutDate || result?.checkoutDate || result?.checkout_date || "").trim();
-  const taskEndDate = String(result?.taskEndDate || result?.endDate || result?.scheduledEndDate || "").trim();
-  const startTime = String(result?.startTime || result?.startHour || "").trim();
-  const endTime = String(result?.endTime || result?.endHour || "").trim();
+  const taskEndDate = String(
+    result?.taskEndDate ||
+    result?.taskEndDateTime ||
+    result?.endDate ||
+    result?.endDateTime ||
+    result?.scheduledEndDate ||
+    result?.scheduledEndDateTime ||
+    ""
+  ).trim();
+  const startTime = String(result?.startTime || result?.startHour || result?.scheduledStartTime || "").trim();
+  const endTime = String(result?.endTime || result?.endHour || result?.scheduledEndTime || "").trim();
+  const estimatedDuration = String(result?.estimatedDuration || result?.estimatedTime || "").trim();
 
   // Extract equipment info from snapshot
   let equipmentName = "";
