@@ -263,6 +263,7 @@ const AuvoSyncPage = () => {
           situacao_id_antes: situacaoId,
           gc_vendedor_id: item.gc_vendedor_id || null, gc_vendedor_nome: item.gc_vendedor_nome || null,
           data_saida: dataSaida,
+          gc_usuario_id: profile?.gc_user_id || null,
         },
       });
       if (error) throw error;
