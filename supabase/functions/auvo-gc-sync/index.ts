@@ -522,11 +522,11 @@ async function executarPutOs(
 
       const obj = node as Record<string, unknown>;
       for (const [key, value] of Object.entries(obj)) {
-        if (key === "parcelas" && Array.isArray(value)) {
+        if ((key === "parcelas" || key === "pagamentos") && Array.isArray(value)) {
           for (const item of value) {
             if (!item || typeof item !== "object") continue;
             const itemObj = item as Record<string, unknown>;
-            const inner = itemObj.parcela;
+            const inner = itemObj.parcela ?? itemObj.pagamento;
             if (inner && typeof inner === "object") refs.push(inner as Record<string, unknown>);
             else refs.push(itemObj);
           }
