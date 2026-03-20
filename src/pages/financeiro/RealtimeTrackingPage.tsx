@@ -743,8 +743,8 @@ export default function RealtimeTrackingPage() {
                   };
 
                   // Show up to 3 tasks collapsed, all when expanded
-                  const visibleTasks = isExpanded ? tech.tarefas : tech.tarefas.slice(0, 3);
-                  const hasMore = tech.tarefas.length > 3;
+                  const visibleTasks = isExpanded ? sortedTarefas : sortedTarefas.slice(0, 3);
+                  const hasMore = sortedTarefas.length > 3;
 
                   return (
                     <Card key={tech.id} className={`overflow-hidden transition-shadow hover:shadow-md ${hasActive ? "ring-1 ring-blue-300" : ""}`}>
