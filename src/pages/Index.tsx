@@ -230,7 +230,8 @@ export default function Index() {
               gc_cor_situacao: String(row.gc_os_cor_situacao || ""),
               gc_valor_total: String(row.gc_os_valor_total ?? "0"),
               gc_vendedor: String(row.gc_os_vendedor || ""),
-              gc_data: String(row.gc_os_data || ""),
+              gc_data: String(row.gc_os_data_saida || row.gc_os_data || ""),
+              gc_data_saida: String(row.gc_os_data_saida || ""),
               gc_link: String(row.gc_os_link || ""),
             }
           : null,
