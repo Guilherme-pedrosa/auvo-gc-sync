@@ -13,7 +13,7 @@ import {
   RefreshCw, CalendarIcon, MapPin, Clock, User,
   CheckCircle2, PlayCircle, CalendarClock, AlertTriangle,
   ChevronLeft, ChevronRight, FileWarning, ChevronDown, Download,
-  LayoutGrid, List
+  LayoutGrid, List, ChevronsUpDown
 } from "lucide-react";
 import { format, addDays, subDays, isToday, startOfMonth, endOfMonth } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -81,6 +81,7 @@ export default function RealtimeTrackingPage() {
   const [sheetOpen, setSheetOpen] = useState(false);
   const [viewMode, setViewMode] = useState<"grid" | "table">("grid");
   const [expandedTechs, setExpandedTechs] = useState<Set<string>>(new Set());
+  const [headerMinimized, setHeaderMinimized] = useState(false);
   const dateStr = format(selectedDate, "yyyy-MM-dd");
 
   const [lastFetchTime, setLastFetchTime] = useState<string | null>(null);
@@ -365,274 +366,324 @@ export default function RealtimeTrackingPage() {
   return (
     <div className="h-full flex flex-col overflow-hidden">
       {/* Header */}
-      <div className="border-b bg-card px-6 py-3 flex-shrink-0">
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-lg font-semibold text-foreground">Agenda de Técnicos</h1>
-            <p className="text-xs text-muted-foreground">
-              Acompanhamento em tempo real — Auvo
-            </p>
-            <LastSyncBadge className="mt-0.5" overrideTimestamp={lastFetchTime} />
-          </div>
+      <div className="border-b bg-card flex-shrink-0 transition-all duration-200">
+        {headerMinimized ? (
+          /* ── Minimized header: single compact row ── */
+          <div className="px-4 py-1.5 flex items-center gap-3">
+            <button onClick={() => setHeaderMinimized(false)} className="text-muted-foreground hover:text-foreground transition-colors" title="Expandir cabeçalho">
+              <ChevronsUpDown className="h-4 w-4" />
+            </button>
+            <span className="text-sm font-semibold text-foreground">Agenda de Técnicos</span>
+            <LastSyncBadge className="hidden sm:flex" overrideTimestamp={lastFetchTime} />
 
-          <div className="flex items-center gap-2">
-            {/* Date nav */}
-            <div className="flex items-center border rounded-lg overflow-hidden h-8">
-              <button onClick={() => goDay(-1)} className="px-2 h-full hover:bg-muted transition-colors">
-                <ChevronLeft className="h-3.5 w-3.5" />
-              </button>
-              <Popover>
-                <PopoverTrigger asChild>
-                  <button className="px-3 h-full text-xs font-medium hover:bg-muted transition-colors flex items-center gap-1.5 border-x">
-                    <CalendarIcon className="h-3 w-3" />
-                    {isToday(selectedDate) ? "Hoje" : format(selectedDate, "dd MMM", { locale: ptBR })}
-                  </button>
-                </PopoverTrigger>
-                <PopoverContent className="w-auto p-0" align="end">
-                  <Calendar mode="single" selected={selectedDate} onSelect={(d) => d && setSelectedDate(d)} locale={ptBR} />
-                </PopoverContent>
-              </Popover>
-              <button onClick={() => goDay(1)} className="px-2 h-full hover:bg-muted transition-colors">
-                <ChevronRight className="h-3.5 w-3.5" />
-              </button>
+            <div className="ml-auto flex items-center gap-2">
+              <div className="flex items-center border rounded-lg overflow-hidden h-7">
+                <button onClick={() => goDay(-1)} className="px-1.5 h-full hover:bg-muted transition-colors">
+                  <ChevronLeft className="h-3 w-3" />
+                </button>
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <button className="px-2 h-full text-[11px] font-medium hover:bg-muted transition-colors flex items-center gap-1 border-x">
+                      <CalendarIcon className="h-2.5 w-2.5" />
+                      {isToday(selectedDate) ? "Hoje" : format(selectedDate, "dd MMM", { locale: ptBR })}
+                    </button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-auto p-0" align="end">
+                    <Calendar mode="single" selected={selectedDate} onSelect={(d) => d && setSelectedDate(d)} locale={ptBR} />
+                  </PopoverContent>
+                </Popover>
+                <button onClick={() => goDay(1)} className="px-1.5 h-full hover:bg-muted transition-colors">
+                  <ChevronRight className="h-3 w-3" />
+                </button>
+              </div>
+
+              <Button variant="outline" size="sm" className="h-7 text-[11px] px-2" onClick={() => { refetch(); toast.info("Atualizando..."); }} disabled={isFetching}>
+                <RefreshCw className={`h-3 w-3 ${isFetching ? "animate-spin" : ""}`} />
+              </Button>
+
+              {isToday(selectedDate) && (
+                <Badge variant="outline" className="text-[9px] h-5 bg-blue-50 text-blue-700 border-blue-200">
+                  🔴 VIVO
+                </Badge>
+              )}
             </div>
-
-            <Button
-              variant="outline"
-              size="sm"
-              className="h-8 text-xs"
-              onClick={() => {
-                refetch();
-                toast.info("Atualizando dados...");
-              }}
-              disabled={isFetching}
-            >
-              <RefreshCw className={`h-3.5 w-3.5 mr-1.5 ${isFetching ? "animate-spin" : ""}`} />
-              Sincronizar
-            </Button>
-
-            {isToday(selectedDate) && (
-              <Badge variant="outline" className="text-[10px] h-6 bg-blue-50 text-blue-700 border-blue-200">
-                🔴 AO VIVO
-              </Badge>
-            )}
-
-            <Sheet open={sheetOpen} onOpenChange={setSheetOpen}>
-              <SheetTrigger asChild>
-                <Button variant="outline" size="sm" className="h-8 text-xs border-red-200 text-red-700 hover:bg-red-50">
-                  <FileWarning className="h-3.5 w-3.5 mr-1.5" />
-                  Divergências do Mês
-                </Button>
-              </SheetTrigger>
-              <SheetContent className="w-[600px] sm:max-w-[600px]">
-                <SheetHeader>
-                  <SheetTitle className="flex items-center gap-2">
-                    <AlertTriangle className="h-5 w-5 text-red-500" />
-                    Divergências — {format(selectedDate, "MMMM yyyy", { locale: ptBR })}
-                  </SheetTitle>
-                </SheetHeader>
-                <div className="mt-4">
-                  {loadingAtrasadas ? (
-                    <div className="flex items-center justify-center py-8">
-                      <RefreshCw className="h-5 w-5 animate-spin text-muted-foreground" />
-                    </div>
-                  ) : (
-                    <>
-                      <div className="flex items-center justify-between mb-3">
-                        <div className="flex items-center gap-2">
-                          {atrasadasMes && atrasadasMes.length > 0 && (
-                            <Badge variant="destructive" className="text-xs">
-                              {atrasadasMes.length} atraso(s)
-                            </Badge>
-                          )}
-                          {pendenciasMes.length > 0 && (
-                            <Badge className="text-xs bg-amber-100 text-amber-800 border border-amber-300">
-                              {pendenciasMes.length} pendência(s)
-                            </Badge>
-                          )}
-                          {(!atrasadasMes || atrasadasMes.length === 0) && pendenciasMes.length === 0 && (
-                            <div className="flex items-center gap-2 text-muted-foreground">
-                              <CheckCircle2 className="h-5 w-5 text-emerald-500" />
-                              <span className="text-sm">Nenhuma divergência neste mês!</span>
-                            </div>
-                          )}
-                        </div>
-                        <div className="flex items-center gap-1">
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="h-7 text-xs"
-                            onClick={exportPDF}
-                            disabled={(!atrasadasMes || atrasadasMes.length === 0) && pendenciasMes.length === 0}
-                          >
-                            <Download className="h-3 w-3 mr-1" /> PDF
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="h-7 text-xs"
-                            onClick={() => {
-                              void Promise.all([refetchAtrasadas(), refetchPendencias()]);
-                            }}
-                          >
-                            <RefreshCw className="h-3 w-3 mr-1" /> Atualizar
-                          </Button>
-                        </div>
-                      </div>
-                      <ScrollArea className="h-[calc(100vh-12rem)]">
-                        <div className="space-y-4">
-                          {/* SEÇÃO: Atrasadas */}
-                          {atrasadasMes && atrasadasMes.length > 0 && (
-                            <div>
-                              <h3 className="text-xs font-semibold text-red-700 uppercase tracking-wide mb-2 flex items-center gap-1.5">
-                                <AlertTriangle className="h-3.5 w-3.5" />
-                                Não Atendidas no Dia Planejado
-                              </h3>
-                              <div className="space-y-2">
-                                {(() => {
-                                  const byTech: Record<string, { nome: string; items: typeof atrasadasMes }> = {};
-                                  for (const item of atrasadasMes) {
-                                    const key = item.tecnico_id;
-                                    if (!byTech[key]) byTech[key] = { nome: item.tecnico_nome, items: [] };
-                                    byTech[key].items.push(item);
-                                  }
-                                  const sorted = Object.entries(byTech).sort((a, b) => b[1].items.length - a[1].items.length);
-
-                                  return sorted.map(([techId, group]) => (
-                                    <Collapsible key={techId}>
-                                      <CollapsibleTrigger className="w-full flex items-center justify-between px-3 py-2.5 rounded-lg border bg-card hover:bg-muted/50 transition-colors">
-                                        <div className="flex items-center gap-3">
-                                          <div className="h-8 w-8 rounded-full bg-red-100 text-red-700 flex items-center justify-center text-xs font-bold flex-shrink-0">
-                                            {group.nome.split(" ").map(n => n[0]).slice(0, 2).join("")}
-                                          </div>
-                                          <div className="text-left">
-                                            <p className="text-sm font-semibold">{group.nome}</p>
-                                            <p className="text-[10px] text-muted-foreground">
-                                              {group.items.length} atraso(s) no mês
-                                            </p>
-                                          </div>
-                                        </div>
-                                        <div className="flex items-center gap-2">
-                                          <Badge variant="destructive" className="text-[10px] h-5 px-2">
-                                            {group.items.length}
-                                          </Badge>
-                                          <ChevronDown className="h-4 w-4 text-muted-foreground transition-transform data-[state=open]:rotate-180" />
-                                        </div>
-                                      </CollapsibleTrigger>
-                                      <CollapsibleContent>
-                                        <div className="mt-1 ml-4 border-l-2 border-red-200 pl-3 space-y-1.5 py-1.5">
-                                          {group.items.map((item) => (
-                                            <div key={item.id} className="flex items-start gap-2 text-xs py-1">
-                                              <span className="font-mono text-muted-foreground whitespace-nowrap min-w-[40px]">
-                                                {item.data_planejada ? format(new Date(item.data_planejada + "T12:00:00"), "dd/MM") : "—"}
-                                              </span>
-                                              <div className="flex-1 min-w-0">
-                                                <p className="font-medium truncate">{item.cliente || "Sem cliente"}</p>
-                                                {item.descricao && (
-                                                  <p className="text-[10px] text-muted-foreground truncate">{item.descricao}</p>
-                                                )}
-                                              </div>
-                                              <span className="text-[10px] text-muted-foreground font-mono">#{item.auvo_task_id}</span>
-                                            </div>
-                                          ))}
-                                        </div>
-                                      </CollapsibleContent>
-                                    </Collapsible>
-                                  ));
-                                })()}
-                              </div>
-                            </div>
-                          )}
-
-                          {/* SEÇÃO: Pendências */}
-                          {pendenciasMes.length > 0 && (
-                            <div>
-                              <h3 className="text-xs font-semibold text-amber-700 uppercase tracking-wide mb-2 flex items-center gap-1.5">
-                                <FileWarning className="h-3.5 w-3.5" />
-                                OS com Pendência
-                              </h3>
-                              <div className="space-y-2">
-                                {(() => {
-                                  const byTech: Record<string, { nome: string; items: typeof pendenciasMes }> = {};
-                                  for (const item of pendenciasMes) {
-                                    const key = item.tecnico;
-                                    if (!byTech[key]) byTech[key] = { nome: item.tecnico, items: [] };
-                                    byTech[key].items.push(item);
-                                  }
-                                  const sorted = Object.entries(byTech).sort((a, b) => b[1].items.length - a[1].items.length);
-
-                                  return sorted.map(([techName, group]) => (
-                                    <Collapsible key={techName}>
-                                      <CollapsibleTrigger className="w-full flex items-center justify-between px-3 py-2.5 rounded-lg border bg-card hover:bg-muted/50 transition-colors">
-                                        <div className="flex items-center gap-3">
-                                          <div className="h-8 w-8 rounded-full bg-amber-100 text-amber-700 flex items-center justify-center text-xs font-bold flex-shrink-0">
-                                            {group.nome.split(" ").map(n => n[0]).slice(0, 2).join("")}
-                                          </div>
-                                          <div className="text-left">
-                                            <p className="text-sm font-semibold">{group.nome}</p>
-                                            <p className="text-[10px] text-muted-foreground">
-                                              {group.items.length} pendência(s)
-                                            </p>
-                                          </div>
-                                        </div>
-                                        <div className="flex items-center gap-2">
-                                          <Badge className="text-[10px] h-5 px-2 bg-amber-100 text-amber-800 border border-amber-300">
-                                            {group.items.length}
-                                          </Badge>
-                                          <ChevronDown className="h-4 w-4 text-muted-foreground transition-transform data-[state=open]:rotate-180" />
-                                        </div>
-                                      </CollapsibleTrigger>
-                                      <CollapsibleContent>
-                                        <div className="mt-1 ml-4 border-l-2 border-amber-300 pl-3 space-y-1.5 py-1.5">
-                                          {group.items.map((item) => (
-                                             <div key={item.taskId} className="flex items-start gap-2 text-xs py-1.5">
-                                              <span className="font-mono text-muted-foreground whitespace-nowrap min-w-[40px]">
-                                                {item.data ? format(new Date(item.data + "T12:00:00"), "dd/MM") : "—"}
-                                              </span>
-                                              <div className="flex-1 min-w-0">
-                                                <p className="font-medium truncate">{item.cliente || "Sem cliente"}</p>
-                                                <p className="text-[10px] text-amber-700 font-medium">
-                                                  📋 {item.formName}
-                                                </p>
-                                                {item.motivosPendencia.length > 0 ? (
-                                                  item.motivosPendencia.map((motivo: string, idx: number) => (
-                                                    <p key={`${item.taskId}-motivo-${idx}`} className="text-[10px] text-destructive mt-0.5">
-                                                      ❌ {motivo}
-                                                    </p>
-                                                  ))
-                                                ) : (
-                                                  <p className="text-[10px] text-muted-foreground mt-0.5">
-                                                    ⚠️ Motivo da pendência não detalhado pelo formulário
-                                                  </p>
-                                                )}
-                                              </div>
-                                              {item.gcOsCodigo && (
-                                                <span className="text-[10px] text-muted-foreground font-mono">OS #{item.gcOsCodigo}</span>
-                                              )}
-                                            </div>
-                                          ))}
-                                        </div>
-                                      </CollapsibleContent>
-                                    </Collapsible>
-                                  ));
-                                })()}
-                              </div>
-                            </div>
-                          )}
-                        </div>
-                      </ScrollArea>
-                    </>
-                  )}
-                </div>
-              </SheetContent>
-            </Sheet>
-
-            <Button variant="outline" size="sm" onClick={() => { refetch(); toast.info("Atualizando..."); }} disabled={isFetching} className="h-8 text-xs">
-              <RefreshCw className={`h-3.5 w-3.5 mr-1.5 ${isFetching ? "animate-spin" : ""}`} />
-              Atualizar
-            </Button>
           </div>
-        </div>
+        ) : (
+          /* ── Full header ── */
+          <>
+            <div className="px-6 py-3">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h1 className="text-lg font-semibold text-foreground">Agenda de Técnicos</h1>
+                  <p className="text-xs text-muted-foreground">
+                    Acompanhamento em tempo real — Auvo
+                  </p>
+                  <LastSyncBadge className="mt-0.5" overrideTimestamp={lastFetchTime} />
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <div className="flex items-center border rounded-lg overflow-hidden h-8">
+                    <button onClick={() => goDay(-1)} className="px-2 h-full hover:bg-muted transition-colors">
+                      <ChevronLeft className="h-3.5 w-3.5" />
+                    </button>
+                    <Popover>
+                      <PopoverTrigger asChild>
+                        <button className="px-3 h-full text-xs font-medium hover:bg-muted transition-colors flex items-center gap-1.5 border-x">
+                          <CalendarIcon className="h-3 w-3" />
+                          {isToday(selectedDate) ? "Hoje" : format(selectedDate, "dd MMM", { locale: ptBR })}
+                        </button>
+                      </PopoverTrigger>
+                      <PopoverContent className="w-auto p-0" align="end">
+                        <Calendar mode="single" selected={selectedDate} onSelect={(d) => d && setSelectedDate(d)} locale={ptBR} />
+                      </PopoverContent>
+                    </Popover>
+                    <button onClick={() => goDay(1)} className="px-2 h-full hover:bg-muted transition-colors">
+                      <ChevronRight className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-8 text-xs"
+                    onClick={() => {
+                      refetch();
+                      toast.info("Atualizando dados...");
+                    }}
+                    disabled={isFetching}
+                  >
+                    <RefreshCw className={`h-3.5 w-3.5 mr-1.5 ${isFetching ? "animate-spin" : ""}`} />
+                    Sincronizar
+                  </Button>
+
+                  {isToday(selectedDate) && (
+                    <Badge variant="outline" className="text-[10px] h-6 bg-blue-50 text-blue-700 border-blue-200">
+                      🔴 AO VIVO
+                    </Badge>
+                  )}
+
+                  <Sheet open={sheetOpen} onOpenChange={setSheetOpen}>
+                    <SheetTrigger asChild>
+                      <Button variant="outline" size="sm" className="h-8 text-xs border-red-200 text-red-700 hover:bg-red-50">
+                        <FileWarning className="h-3.5 w-3.5 mr-1.5" />
+                        Divergências do Mês
+                      </Button>
+                    </SheetTrigger>
+                    <SheetContent className="w-[600px] sm:max-w-[600px]">
+                      <SheetHeader>
+                        <SheetTitle className="flex items-center gap-2">
+                          <AlertTriangle className="h-5 w-5 text-red-500" />
+                          Divergências — {format(selectedDate, "MMMM yyyy", { locale: ptBR })}
+                        </SheetTitle>
+                      </SheetHeader>
+                      <div className="mt-4">
+                        {loadingAtrasadas ? (
+                          <div className="flex items-center justify-center py-8">
+                            <RefreshCw className="h-5 w-5 animate-spin text-muted-foreground" />
+                          </div>
+                        ) : (
+                          <>
+                            <div className="flex items-center justify-between mb-3">
+                              <div className="flex items-center gap-2">
+                                {atrasadasMes && atrasadasMes.length > 0 && (
+                                  <Badge variant="destructive" className="text-xs">
+                                    {atrasadasMes.length} atraso(s)
+                                  </Badge>
+                                )}
+                                {pendenciasMes.length > 0 && (
+                                  <Badge className="text-xs bg-amber-100 text-amber-800 border border-amber-300">
+                                    {pendenciasMes.length} pendência(s)
+                                  </Badge>
+                                )}
+                                {(!atrasadasMes || atrasadasMes.length === 0) && pendenciasMes.length === 0 && (
+                                  <div className="flex items-center gap-2 text-muted-foreground">
+                                    <CheckCircle2 className="h-5 w-5 text-emerald-500" />
+                                    <span className="text-sm">Nenhuma divergência neste mês!</span>
+                                  </div>
+                                )}
+                              </div>
+                              <div className="flex items-center gap-1">
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="h-7 text-xs"
+                                  onClick={exportPDF}
+                                  disabled={(!atrasadasMes || atrasadasMes.length === 0) && pendenciasMes.length === 0}
+                                >
+                                  <Download className="h-3 w-3 mr-1" /> PDF
+                                </Button>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="h-7 text-xs"
+                                  onClick={() => {
+                                    void Promise.all([refetchAtrasadas(), refetchPendencias()]);
+                                  }}
+                                >
+                                  <RefreshCw className="h-3 w-3 mr-1" /> Atualizar
+                                </Button>
+                              </div>
+                            </div>
+                            <ScrollArea className="h-[calc(100vh-12rem)]">
+                              <div className="space-y-4">
+                                {atrasadasMes && atrasadasMes.length > 0 && (
+                                  <div>
+                                    <h3 className="text-xs font-semibold text-red-700 uppercase tracking-wide mb-2 flex items-center gap-1.5">
+                                      <AlertTriangle className="h-3.5 w-3.5" />
+                                      Não Atendidas no Dia Planejado
+                                    </h3>
+                                    <div className="space-y-2">
+                                      {(() => {
+                                        const byTech: Record<string, { nome: string; items: typeof atrasadasMes }> = {};
+                                        for (const item of atrasadasMes) {
+                                          const key = item.tecnico_id;
+                                          if (!byTech[key]) byTech[key] = { nome: item.tecnico_nome, items: [] };
+                                          byTech[key].items.push(item);
+                                        }
+                                        const sorted = Object.entries(byTech).sort((a, b) => b[1].items.length - a[1].items.length);
+
+                                        return sorted.map(([techId, group]) => (
+                                          <Collapsible key={techId}>
+                                            <CollapsibleTrigger className="w-full flex items-center justify-between px-3 py-2.5 rounded-lg border bg-card hover:bg-muted/50 transition-colors">
+                                              <div className="flex items-center gap-3">
+                                                <div className="h-8 w-8 rounded-full bg-red-100 text-red-700 flex items-center justify-center text-xs font-bold flex-shrink-0">
+                                                  {group.nome.split(" ").map(n => n[0]).slice(0, 2).join("")}
+                                                </div>
+                                                <div className="text-left">
+                                                  <p className="text-sm font-semibold">{group.nome}</p>
+                                                  <p className="text-[10px] text-muted-foreground">
+                                                    {group.items.length} atraso(s) no mês
+                                                  </p>
+                                                </div>
+                                              </div>
+                                              <div className="flex items-center gap-2">
+                                                <Badge variant="destructive" className="text-[10px] h-5 px-2">
+                                                  {group.items.length}
+                                                </Badge>
+                                                <ChevronDown className="h-4 w-4 text-muted-foreground transition-transform data-[state=open]:rotate-180" />
+                                              </div>
+                                            </CollapsibleTrigger>
+                                            <CollapsibleContent>
+                                              <div className="mt-1 ml-4 border-l-2 border-red-200 pl-3 space-y-1.5 py-1.5">
+                                                {group.items.map((item) => (
+                                                  <div key={item.id} className="flex items-start gap-2 text-xs py-1">
+                                                    <span className="font-mono text-muted-foreground whitespace-nowrap min-w-[40px]">
+                                                      {item.data_planejada ? format(new Date(item.data_planejada + "T12:00:00"), "dd/MM") : "—"}
+                                                    </span>
+                                                    <div className="flex-1 min-w-0">
+                                                      <p className="font-medium truncate">{item.cliente || "Sem cliente"}</p>
+                                                      {item.descricao && (
+                                                        <p className="text-[10px] text-muted-foreground truncate">{item.descricao}</p>
+                                                      )}
+                                                    </div>
+                                                    <span className="text-[10px] text-muted-foreground font-mono">#{item.auvo_task_id}</span>
+                                                  </div>
+                                                ))}
+                                              </div>
+                                            </CollapsibleContent>
+                                          </Collapsible>
+                                        ));
+                                      })()}
+                                    </div>
+                                  </div>
+                                )}
+
+                                {pendenciasMes.length > 0 && (
+                                  <div>
+                                    <h3 className="text-xs font-semibold text-amber-700 uppercase tracking-wide mb-2 flex items-center gap-1.5">
+                                      <FileWarning className="h-3.5 w-3.5" />
+                                      OS com Pendência
+                                    </h3>
+                                    <div className="space-y-2">
+                                      {(() => {
+                                        const byTech: Record<string, { nome: string; items: typeof pendenciasMes }> = {};
+                                        for (const item of pendenciasMes) {
+                                          const key = item.tecnico;
+                                          if (!byTech[key]) byTech[key] = { nome: item.tecnico, items: [] };
+                                          byTech[key].items.push(item);
+                                        }
+                                        const sorted = Object.entries(byTech).sort((a, b) => b[1].items.length - a[1].items.length);
+
+                                        return sorted.map(([techName, group]) => (
+                                          <Collapsible key={techName}>
+                                            <CollapsibleTrigger className="w-full flex items-center justify-between px-3 py-2.5 rounded-lg border bg-card hover:bg-muted/50 transition-colors">
+                                              <div className="flex items-center gap-3">
+                                                <div className="h-8 w-8 rounded-full bg-amber-100 text-amber-700 flex items-center justify-center text-xs font-bold flex-shrink-0">
+                                                  {group.nome.split(" ").map(n => n[0]).slice(0, 2).join("")}
+                                                </div>
+                                                <div className="text-left">
+                                                  <p className="text-sm font-semibold">{group.nome}</p>
+                                                  <p className="text-[10px] text-muted-foreground">
+                                                    {group.items.length} pendência(s)
+                                                  </p>
+                                                </div>
+                                              </div>
+                                              <div className="flex items-center gap-2">
+                                                <Badge className="text-[10px] h-5 px-2 bg-amber-100 text-amber-800 border border-amber-300">
+                                                  {group.items.length}
+                                                </Badge>
+                                                <ChevronDown className="h-4 w-4 text-muted-foreground transition-transform data-[state=open]:rotate-180" />
+                                              </div>
+                                            </CollapsibleTrigger>
+                                            <CollapsibleContent>
+                                              <div className="mt-1 ml-4 border-l-2 border-amber-300 pl-3 space-y-1.5 py-1.5">
+                                                {group.items.map((item) => (
+                                                  <div key={item.taskId} className="flex items-start gap-2 text-xs py-1.5">
+                                                    <span className="font-mono text-muted-foreground whitespace-nowrap min-w-[40px]">
+                                                      {item.data ? format(new Date(item.data + "T12:00:00"), "dd/MM") : "—"}
+                                                    </span>
+                                                    <div className="flex-1 min-w-0">
+                                                      <p className="font-medium truncate">{item.cliente || "Sem cliente"}</p>
+                                                      <p className="text-[10px] text-amber-700 font-medium">
+                                                        📋 {item.formName}
+                                                      </p>
+                                                      {item.motivosPendencia.length > 0 ? (
+                                                        item.motivosPendencia.map((motivo: string, idx: number) => (
+                                                          <p key={`${item.taskId}-motivo-${idx}`} className="text-[10px] text-destructive mt-0.5">
+                                                            ❌ {motivo}
+                                                          </p>
+                                                        ))
+                                                      ) : (
+                                                        <p className="text-[10px] text-muted-foreground mt-0.5">
+                                                          ⚠️ Motivo da pendência não detalhado pelo formulário
+                                                        </p>
+                                                      )}
+                                                    </div>
+                                                    {item.gcOsCodigo && (
+                                                      <span className="text-[10px] text-muted-foreground font-mono">OS #{item.gcOsCodigo}</span>
+                                                    )}
+                                                  </div>
+                                                ))}
+                                              </div>
+                                            </CollapsibleContent>
+                                          </Collapsible>
+                                        ));
+                                      })()}
+                                    </div>
+                                  </div>
+                                )}
+                              </div>
+                            </ScrollArea>
+                          </>
+                        )}
+                      </div>
+                    </SheetContent>
+                  </Sheet>
+
+                  <Button variant="outline" size="sm" onClick={() => { refetch(); toast.info("Atualizando..."); }} disabled={isFetching} className="h-8 text-xs">
+                    <RefreshCw className={`h-3.5 w-3.5 mr-1.5 ${isFetching ? "animate-spin" : ""}`} />
+                    Atualizar
+                  </Button>
+
+                  {/* Minimize button */}
+                  <button onClick={() => setHeaderMinimized(true)} className="text-muted-foreground hover:text-foreground transition-colors ml-1" title="Minimizar cabeçalho">
+                    <ChevronsUpDown className="h-4 w-4" />
+                  </button>
+                </div>
+              </div>
+            </div>
+          </>
+        )}
       </div>
 
       {isLoading ? (
