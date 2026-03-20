@@ -79,6 +79,8 @@ const statusBarColor: Record<string, string> = {
 export default function RealtimeTrackingPage() {
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
   const [sheetOpen, setSheetOpen] = useState(false);
+  const [viewMode, setViewMode] = useState<"grid" | "table">("grid");
+  const [expandedTechs, setExpandedTechs] = useState<Set<string>>(new Set());
   const dateStr = format(selectedDate, "yyyy-MM-dd");
 
   const [lastFetchTime, setLastFetchTime] = useState<string | null>(null);
