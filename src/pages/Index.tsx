@@ -92,11 +92,15 @@ function computeMetrics(items: KanbanItem[], monthItems: KanbanItem[], source: "
     return acc + parseFloat(i.gc_os?.gc_valor_total || "0");
   }, 0);
 
-  // By situation — only items that have the actual GC document
+  // By situation — deduplicate by GC document ID to avoid counting the same OS/Orç multiple times
   const situacaoMap: Record<string, { count: number; valor: number; cor: string }> = {};
+  const seenDocIds = new Set<string>();
   for (const item of comMatch) {
     const doc = source === "orc" ? item.gc_orcamento : item.gc_os;
-    if (!doc) continue; // Skip items without GC document
+    if (!doc) continue;
+    const docId = source === "orc" ? (doc.gc_orcamento_id || "") : (doc.gc_os_id || "");
+    if (!docId || seenDocIds.has(docId)) continue;
+    seenDocIds.add(docId);
     const sit = doc.gc_situacao || "Sem situação";
     const cor = doc.gc_cor_situacao || "#888";
     if (!situacaoMap[sit]) situacaoMap[sit] = { count: 0, valor: 0, cor };
