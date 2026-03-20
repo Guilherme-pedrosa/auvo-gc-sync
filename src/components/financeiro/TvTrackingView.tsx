@@ -70,6 +70,9 @@ interface TvTrackingViewProps {
 export default function TvTrackingView({ data, selectedDate, onExit }: TvTrackingViewProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const animationFrameRef = useRef<number | null>(null);
+  const directionRef = useRef<1 | -1>(1);
+  const positionRef = useRef(0);
   const [autoScroll, setAutoScroll] = useState(true);
 
   // Sort technicians by total value desc
@@ -113,32 +116,53 @@ export default function TvTrackingView({ data, selectedDate, onExit }: TvTrackin
     return () => window.removeEventListener("keydown", handler);
   }, [onExit]);
 
-  // Auto-scroll: slowly scroll the grid area up/down
+  // Auto-scroll with continuous position (avoids float rounding lock at bottom/top)
   useEffect(() => {
-    if (!autoScroll) return;
     const el = scrollRef.current;
     if (!el) return;
 
-    let direction = 1;
-    const speed = 0.5;
+    if (animationFrameRef.current) {
+      cancelAnimationFrame(animationFrameRef.current);
+      animationFrameRef.current = null;
+    }
 
-    const tick = () => {
-      if (!el) return;
-      const maxScroll = el.scrollHeight - el.clientHeight;
-      if (maxScroll <= 0) return;
+    if (!autoScroll) return;
 
-      el.scrollTop += direction * speed;
+    positionRef.current = el.scrollTop;
+    let lastTime = performance.now();
+    const speedPxPerSecond = 35;
 
-      if (direction === 1 && el.scrollTop >= maxScroll - 1) {
-        direction = -1;
-      } else if (direction === -1 && el.scrollTop <= 1) {
-        direction = 1;
+    const tick = (time: number) => {
+      const deltaMs = Math.min(64, time - lastTime);
+      lastTime = time;
+
+      const maxScroll = Math.max(0, el.scrollHeight - el.clientHeight);
+      if (maxScroll > 0) {
+        positionRef.current += directionRef.current * (speedPxPerSecond * deltaMs) / 1000;
+
+        if (positionRef.current >= maxScroll) {
+          positionRef.current = maxScroll;
+          directionRef.current = -1;
+        } else if (positionRef.current <= 0) {
+          positionRef.current = 0;
+          directionRef.current = 1;
+        }
+
+        el.scrollTop = Math.round(positionRef.current);
       }
+
+      animationFrameRef.current = requestAnimationFrame(tick);
     };
 
-    const id = setInterval(tick, 16);
-    return () => clearInterval(id);
-  }, [autoScroll]);
+    animationFrameRef.current = requestAnimationFrame(tick);
+
+    return () => {
+      if (animationFrameRef.current) {
+        cancelAnimationFrame(animationFrameRef.current);
+        animationFrameRef.current = null;
+      }
+    };
+  }, [autoScroll, data.tecnicos.length]);
 
   const now = new Date();
 
