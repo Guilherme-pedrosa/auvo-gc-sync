@@ -390,6 +390,7 @@ async function fetchGcOs(gcHeaders: Record<string, string>): Promise<{ byTaskId:
         gc_os_valor_total: parseFloat(os.valor_total || "0"),
         gc_os_vendedor: String(os.nome_vendedor || ""),
         gc_os_data: String(os.data_entrada || os.data || "").split("T")[0] || null,
+        gc_os_data_saida: String(os.data_saida || "").split("T")[0] || null,
         gc_os_link: `https://gestaoclick.com/ordens_servicos/editar/${os.id}?retorno=%2Fordens_servicos`,
       };
 
@@ -738,6 +739,7 @@ Deno.serve(async (req) => {
         row.gc_os_valor_total = gcOs.gc_os_valor_total;
         row.gc_os_vendedor = gcOs.gc_os_vendedor;
         row.gc_os_data = gcOs.gc_os_data;
+        row.gc_os_data_saida = gcOs.gc_os_data_saida;
         row.gc_os_link = gcOs.gc_os_link;
       }
 
@@ -803,6 +805,7 @@ Deno.serve(async (req) => {
         gc_os_valor_total: gcOs.gc_os_valor_total,
         gc_os_vendedor: gcOs.gc_os_vendedor,
         gc_os_data: gcOs.gc_os_data,
+        gc_os_data_saida: gcOs.gc_os_data_saida,
         gc_os_link: gcOs.gc_os_link,
       };
 
@@ -874,6 +877,7 @@ Deno.serve(async (req) => {
       gc_os_valor_total: number | null;
       gc_os_vendedor: string | null;
       gc_os_data: string | null;
+      gc_os_data_saida: string | null;
       gc_os_link: string | null;
       gc_orcamento_id: string | null;
       gc_orcamento_codigo: string | null;
@@ -894,7 +898,7 @@ Deno.serve(async (req) => {
       const batch = rowTaskIds.slice(i, i + 200);
       const { data: dbRows } = await sbClient
         .from("tarefas_central")
-        .select("auvo_task_id, equipamento_nome, equipamento_id_serie, gc_os_id, gc_os_codigo, gc_os_cliente, gc_os_situacao, gc_os_situacao_id, gc_os_cor_situacao, gc_os_valor_total, gc_os_vendedor, gc_os_data, gc_os_link, gc_orcamento_id, gc_orcamento_codigo, gc_orc_cliente, gc_orc_situacao, gc_orc_situacao_id, gc_orc_cor_situacao, gc_orc_valor_total, gc_orc_vendedor, gc_orc_data, gc_orc_link, os_realizada, orcamento_realizado")
+        .select("auvo_task_id, equipamento_nome, equipamento_id_serie, gc_os_id, gc_os_codigo, gc_os_cliente, gc_os_situacao, gc_os_situacao_id, gc_os_cor_situacao, gc_os_valor_total, gc_os_vendedor, gc_os_data, gc_os_data_saida, gc_os_link, gc_orcamento_id, gc_orcamento_codigo, gc_orc_cliente, gc_orc_situacao, gc_orc_situacao_id, gc_orc_cor_situacao, gc_orc_valor_total, gc_orc_vendedor, gc_orc_data, gc_orc_link, os_realizada, orcamento_realizado")
         .in("auvo_task_id", batch);
 
       for (const r of dbRows || []) {
@@ -910,6 +914,7 @@ Deno.serve(async (req) => {
           gc_os_valor_total: r.gc_os_valor_total ?? null,
           gc_os_vendedor: r.gc_os_vendedor || null,
           gc_os_data: r.gc_os_data || null,
+          gc_os_data_saida: r.gc_os_data_saida || null,
           gc_os_link: r.gc_os_link || null,
           gc_orcamento_id: r.gc_orcamento_id || null,
           gc_orcamento_codigo: r.gc_orcamento_codigo || null,
@@ -946,6 +951,7 @@ Deno.serve(async (req) => {
         row.gc_os_valor_total = existing.gc_os_valor_total;
         row.gc_os_vendedor = existing.gc_os_vendedor;
         row.gc_os_data = existing.gc_os_data;
+        row.gc_os_data_saida = existing.gc_os_data_saida;
         row.gc_os_link = existing.gc_os_link;
         row.os_realizada = existing.os_realizada ?? true;
       } else if (row.gc_os_id && (row.gc_os_valor_total === null || row.gc_os_valor_total === undefined) && existing.gc_os_valor_total !== null) {

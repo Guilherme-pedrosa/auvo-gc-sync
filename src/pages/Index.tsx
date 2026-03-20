@@ -33,6 +33,7 @@ type GcDocData = {
   gc_valor_total: string;
   gc_vendedor: string;
   gc_data: string;
+  gc_data_saida?: string;
   gc_link: string;
 };
 
@@ -174,7 +175,7 @@ export default function Index() {
       while (true) {
         const { data, error } = await supabase
           .from("tarefas_central")
-          .select("auvo_task_id,auvo_link,cliente,tecnico,data_tarefa,orientacao,status_auvo,questionario_respostas,orcamento_realizado,os_realizada,gc_orcamento_id,gc_orcamento_codigo,gc_orc_cliente,gc_orc_situacao,gc_orc_situacao_id,gc_orc_cor_situacao,gc_orc_valor_total,gc_orc_vendedor,gc_orc_data,gc_orc_link,gc_os_id,gc_os_codigo,gc_os_cliente,gc_os_situacao,gc_os_situacao_id,gc_os_cor_situacao,gc_os_valor_total,gc_os_vendedor,gc_os_data,gc_os_link,atualizado_em")
+          .select("auvo_task_id,auvo_link,cliente,tecnico,data_tarefa,orientacao,status_auvo,questionario_respostas,orcamento_realizado,os_realizada,gc_orcamento_id,gc_orcamento_codigo,gc_orc_cliente,gc_orc_situacao,gc_orc_situacao_id,gc_orc_cor_situacao,gc_orc_valor_total,gc_orc_vendedor,gc_orc_data,gc_orc_link,gc_os_id,gc_os_codigo,gc_os_cliente,gc_os_situacao,gc_os_situacao_id,gc_os_cor_situacao,gc_os_valor_total,gc_os_vendedor,gc_os_data,gc_os_data_saida,gc_os_link,atualizado_em")
           .gte("data_tarefa", startDate)
           .lte("data_tarefa", endDate)
           .order("data_tarefa", { ascending: false })
@@ -229,7 +230,8 @@ export default function Index() {
               gc_cor_situacao: String(row.gc_os_cor_situacao || ""),
               gc_valor_total: String(row.gc_os_valor_total ?? "0"),
               gc_vendedor: String(row.gc_os_vendedor || ""),
-              gc_data: String(row.gc_os_data || ""),
+              gc_data: String(row.gc_os_data_saida || row.gc_os_data || ""),
+              gc_data_saida: String(row.gc_os_data_saida || ""),
               gc_link: String(row.gc_os_link || ""),
             }
           : null,
