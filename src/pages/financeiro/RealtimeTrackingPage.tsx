@@ -720,12 +720,17 @@ export default function RealtimeTrackingPage() {
             {viewMode === "grid" ? (
               /* ═══ GRID VIEW — responsive cards ═══ */
               <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-4">
-                {data.tecnicos.map((tech) => {
+                {[...data.tecnicos].sort((a, b) => {
+                  const valA = a.tarefas.reduce((s, t) => s + (parseFloat(t.gcOsValor) || 0), 0);
+                  const valB = b.tarefas.reduce((s, t) => s + (parseFloat(t.gcOsValor) || 0), 0);
+                  return valB - valA;
+                }).map((tech) => {
+                  const sortedTarefas = [...tech.tarefas].sort((a, b) => (parseFloat(b.gcOsValor) || 0) - (parseFloat(a.gcOsValor) || 0));
                   const hasActive = tech.resumo.emAndamento > 0;
                   const progress = tech.resumo.total > 0
                     ? Math.round((tech.resumo.finalizadas / tech.resumo.total) * 100)
                     : 0;
-                  const totalValor = tech.tarefas.reduce((sum, t) => sum + (parseFloat(t.gcOsValor) || 0), 0);
+                  const totalValor = sortedTarefas.reduce((sum, t) => sum + (parseFloat(t.gcOsValor) || 0), 0);
                   const isExpanded = expandedTechs.has(tech.id);
 
                   const toggleExpand = () => {
@@ -738,8 +743,8 @@ export default function RealtimeTrackingPage() {
                   };
 
                   // Show up to 3 tasks collapsed, all when expanded
-                  const visibleTasks = isExpanded ? tech.tarefas : tech.tarefas.slice(0, 3);
-                  const hasMore = tech.tarefas.length > 3;
+                  const visibleTasks = isExpanded ? sortedTarefas : sortedTarefas.slice(0, 3);
+                  const hasMore = sortedTarefas.length > 3;
 
                   return (
                     <Card key={tech.id} className={`overflow-hidden transition-shadow hover:shadow-md ${hasActive ? "ring-1 ring-blue-300" : ""}`}>
@@ -839,7 +844,7 @@ export default function RealtimeTrackingPage() {
                             className="w-full py-2 text-[11px] text-primary font-medium hover:bg-muted/50 rounded transition-colors flex items-center justify-center gap-1"
                           >
                             <ChevronDown className={`h-3 w-3 transition-transform ${isExpanded ? "rotate-180" : ""}`} />
-                            {isExpanded ? "Recolher" : `Ver mais ${tech.tarefas.length - 3} tarefa(s)`}
+                            {isExpanded ? "Recolher" : `Ver mais ${sortedTarefas.length - 3} tarefa(s)`}
                           </button>
                         )}
                       </CardContent>
@@ -862,8 +867,12 @@ export default function RealtimeTrackingPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {data.tecnicos.flatMap((tech) =>
-                      tech.tarefas.map((task, idx) => {
+                    {[...data.tecnicos].sort((a, b) => {
+                      const valA = a.tarefas.reduce((s, t) => s + (parseFloat(t.gcOsValor) || 0), 0);
+                      const valB = b.tarefas.reduce((s, t) => s + (parseFloat(t.gcOsValor) || 0), 0);
+                      return valB - valA;
+                    }).flatMap((tech) =>
+                      [...tech.tarefas].sort((a, b) => (parseFloat(b.gcOsValor) || 0) - (parseFloat(a.gcOsValor) || 0)).map((task, idx) => {
                         const isLate = task.atrasada;
                         const cfg = isLate
                           ? { icon: AlertTriangle, class: "text-red-600" }
