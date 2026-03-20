@@ -263,7 +263,7 @@ export default function TvTrackingView({ data, selectedDate, onExit }: TvTrackin
                     {tech.nome.split(" ").map(n => n[0]).slice(0, 2).join("")}
                   </div>
                   <div className="flex-1 min-w-0">
-                    <p className="font-semibold text-sm truncate text-zinc-100">{tech.nome}</p>
+                    <p className="font-semibold text-sm text-zinc-100 truncate">{tech.nome.split(" ")[0]}</p>
                     <div className="flex items-center gap-2 mt-0.5">
                       <span className="text-[11px] text-zinc-500">
                         {tech.resumo.finalizadas}/{tech.resumo.total}
