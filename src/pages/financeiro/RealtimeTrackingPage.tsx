@@ -407,6 +407,10 @@ export default function RealtimeTrackingPage() {
                 <RefreshCw className={`h-3 w-3 ${isFetching ? "animate-spin" : ""}`} />
               </Button>
 
+              <Button variant="outline" size="sm" className="h-7 text-[11px] px-2" onClick={() => setTvMode(true)} disabled={!data} title="Modo TV">
+                <Monitor className="h-3 w-3" />
+              </Button>
+
               {isToday(selectedDate) && (
                 <Badge variant="outline" className="text-[9px] h-5 bg-blue-50 text-blue-700 border-blue-200">
                   🔴 VIVO
