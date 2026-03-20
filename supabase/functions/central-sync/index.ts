@@ -951,6 +951,7 @@ Deno.serve(async (req) => {
         row.gc_os_valor_total = existing.gc_os_valor_total;
         row.gc_os_vendedor = existing.gc_os_vendedor;
         row.gc_os_data = existing.gc_os_data;
+        row.gc_os_data_saida = existing.gc_os_data_saida;
         row.gc_os_link = existing.gc_os_link;
         row.os_realizada = existing.os_realizada ?? true;
       } else if (row.gc_os_id && (row.gc_os_valor_total === null || row.gc_os_valor_total === undefined) && existing.gc_os_valor_total !== null) {
