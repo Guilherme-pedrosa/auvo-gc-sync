@@ -730,7 +730,7 @@ export default function RealtimeTrackingPage() {
                   const progress = tech.resumo.total > 0
                     ? Math.round((tech.resumo.finalizadas / tech.resumo.total) * 100)
                     : 0;
-                  const totalValor = tech.tarefas.reduce((sum, t) => sum + (parseFloat(t.gcOsValor) || 0), 0);
+                  const totalValor = sortedTarefas.reduce((sum, t) => sum + (parseFloat(t.gcOsValor) || 0), 0);
                   const isExpanded = expandedTechs.has(tech.id);
 
                   const toggleExpand = () => {
