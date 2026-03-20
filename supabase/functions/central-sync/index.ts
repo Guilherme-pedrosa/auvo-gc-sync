@@ -914,6 +914,7 @@ Deno.serve(async (req) => {
           gc_os_valor_total: r.gc_os_valor_total ?? null,
           gc_os_vendedor: r.gc_os_vendedor || null,
           gc_os_data: r.gc_os_data || null,
+          gc_os_data_saida: r.gc_os_data_saida || null,
           gc_os_link: r.gc_os_link || null,
           gc_orcamento_id: r.gc_orcamento_id || null,
           gc_orcamento_codigo: r.gc_orcamento_codigo || null,
