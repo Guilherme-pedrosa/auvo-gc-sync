@@ -13,8 +13,9 @@ import {
   RefreshCw, CalendarIcon, MapPin, Clock, User,
   CheckCircle2, PlayCircle, CalendarClock, AlertTriangle,
   ChevronLeft, ChevronRight, FileWarning, ChevronDown, Download,
-  LayoutGrid, List, ChevronsUpDown
+  LayoutGrid, List, ChevronsUpDown, Monitor
 } from "lucide-react";
+import TvTrackingView from "@/components/financeiro/TvTrackingView";
 import { format, addDays, subDays, isToday, startOfMonth, endOfMonth } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { toast } from "sonner";
