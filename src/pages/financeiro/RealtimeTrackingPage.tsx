@@ -675,7 +675,6 @@ export default function RealtimeTrackingPage() {
               </span>
             )}
 
-            {/* Totais financeiros */}
             {(() => {
               let totalAgendado = 0;
               let totalExecutado = 0;
@@ -698,70 +697,173 @@ export default function RealtimeTrackingPage() {
                 </>
               );
             })()}
+
+            {/* View mode toggle */}
+            <div className="ml-auto flex items-center border rounded-lg overflow-hidden">
+              <button
+                onClick={() => setViewMode("grid")}
+                className={`px-2.5 py-1.5 text-xs flex items-center gap-1 transition-colors ${viewMode === "grid" ? "bg-primary text-primary-foreground" : "hover:bg-muted"}`}
+              >
+                <LayoutGrid className="h-3 w-3" /> Grid
+              </button>
+              <button
+                onClick={() => setViewMode("table")}
+                className={`px-2.5 py-1.5 text-xs flex items-center gap-1 transition-colors ${viewMode === "table" ? "bg-primary text-primary-foreground" : "hover:bg-muted"}`}
+              >
+                <List className="h-3 w-3" /> Tabela
+              </button>
+            </div>
           </div>
 
-          {/* Agenda grid — horizontal scroll of technician columns */}
-          <div className="flex-1 overflow-auto">
-            <div className="p-4 flex gap-4" style={{ minWidth: `${data.tecnicos.length * 300}px` }}>
-              {data.tecnicos.map((tech) => {
-                const hasActive = tech.resumo.emAndamento > 0;
-                const progress = tech.resumo.total > 0
-                  ? Math.round(((tech.resumo.finalizadas) / tech.resumo.total) * 100)
-                  : 0;
+          {/* Content area */}
+          <div className="flex-1 overflow-auto p-4">
+            {viewMode === "grid" ? (
+              /* ═══ GRID VIEW — responsive cards ═══ */
+              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-4">
+                {data.tecnicos.map((tech) => {
+                  const hasActive = tech.resumo.emAndamento > 0;
+                  const progress = tech.resumo.total > 0
+                    ? Math.round((tech.resumo.finalizadas / tech.resumo.total) * 100)
+                    : 0;
+                  const totalValor = tech.tarefas.reduce((sum, t) => sum + (parseFloat(t.gcOsValor) || 0), 0);
+                  const isExpanded = expandedTechs.has(tech.id);
 
-                return (
-                  <div key={tech.id} className="flex flex-col w-[280px] flex-shrink-0">
-                    {/* Technician header */}
-                    <div className={`rounded-t-lg border border-b-0 px-4 py-3 ${
-                      hasActive ? "bg-blue-50 border-blue-200" : "bg-card"
-                    }`}>
-                      <div className="flex items-center gap-3">
-                        <div className={`h-9 w-9 rounded-full flex items-center justify-center text-sm font-bold flex-shrink-0 ${
-                          hasActive
-                            ? "bg-blue-500 text-white"
-                            : "bg-muted text-muted-foreground"
-                        }`}>
-                          {tech.nome.split(" ").map(n => n[0]).slice(0, 2).join("")}
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center justify-between">
+                  const toggleExpand = () => {
+                    setExpandedTechs((prev) => {
+                      const next = new Set(prev);
+                      if (next.has(tech.id)) next.delete(tech.id);
+                      else next.add(tech.id);
+                      return next;
+                    });
+                  };
+
+                  // Show up to 3 tasks collapsed, all when expanded
+                  const visibleTasks = isExpanded ? tech.tarefas : tech.tarefas.slice(0, 3);
+                  const hasMore = tech.tarefas.length > 3;
+
+                  return (
+                    <Card key={tech.id} className={`overflow-hidden transition-shadow hover:shadow-md ${hasActive ? "ring-1 ring-blue-300" : ""}`}>
+                      {/* Tech header */}
+                      <div className={`px-4 py-3 ${hasActive ? "bg-blue-50 dark:bg-blue-950/30" : "bg-muted/30"}`}>
+                        <div className="flex items-center gap-3">
+                          <div className={`h-10 w-10 rounded-full flex items-center justify-center text-sm font-bold flex-shrink-0 ${
+                            hasActive ? "bg-blue-500 text-white" : "bg-muted text-muted-foreground"
+                          }`}>
+                            {tech.nome.split(" ").map(n => n[0]).slice(0, 2).join("")}
+                          </div>
+                          <div className="flex-1 min-w-0">
                             <p className="font-semibold text-sm truncate">{tech.nome}</p>
-                            {(() => {
-                              const totalValor = tech.tarefas.reduce((sum, t) => sum + (parseFloat(t.gcOsValor) || 0), 0);
-                              return totalValor > 0 ? (
-                                <span className="text-xs font-bold text-emerald-700 whitespace-nowrap ml-2">
-                                  R$ {totalValor.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
-                                </span>
-                              ) : null;
-                            })()}
-                          </div>
-                          <div className="flex items-center gap-2 mt-0.5">
-                            <span className="text-[10px] text-muted-foreground">{tech.resumo.total} tarefa(s)</span>
-                            {hasActive && (
-                              <span className="text-[10px] text-blue-600 font-medium animate-pulse">● Ativo</span>
-                            )}
-                            {tech.resumo.atrasadas > 0 && (
-                              <Badge variant="destructive" className="text-[9px] h-4 px-1.5">
-                                {tech.resumo.atrasadas} atrasada(s)
+                            <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+                              <Badge variant="secondary" className="text-[10px] h-5 px-1.5">
+                                {tech.resumo.finalizadas}/{tech.resumo.total}
                               </Badge>
-                            )}
+                              {hasActive && (
+                                <span className="text-[10px] text-blue-600 font-medium animate-pulse">● Ativo</span>
+                              )}
+                              {tech.resumo.atrasadas > 0 && (
+                                <Badge variant="destructive" className="text-[9px] h-4 px-1.5">
+                                  {tech.resumo.atrasadas} atrasada(s)
+                                </Badge>
+                              )}
+                            </div>
                           </div>
+                          {totalValor > 0 && (
+                            <span className="text-xs font-bold text-emerald-700 whitespace-nowrap">
+                              R$ {totalValor.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+                            </span>
+                          )}
+                        </div>
+                        {/* Progress bar */}
+                        <div className="mt-2.5 flex items-center gap-2">
+                          <div className="flex-1 h-1.5 bg-background rounded-full overflow-hidden">
+                            <div className="h-full bg-emerald-500 rounded-full transition-all duration-500" style={{ width: `${progress}%` }} />
+                          </div>
+                          <span className="text-[10px] text-muted-foreground font-medium">{progress}%</span>
                         </div>
                       </div>
-                      {/* Mini progress */}
-                      <div className="mt-2 flex items-center gap-2">
-                        <div className="flex-1 h-1.5 bg-muted rounded-full overflow-hidden">
-                          <div className="h-full bg-emerald-500 rounded-full transition-all" style={{ width: `${progress}%` }} />
-                        </div>
-                        <span className="text-[10px] text-muted-foreground">{progress}%</span>
-                      </div>
-                    </div>
 
-                    {/* Task timeline */}
-                    <div className={`rounded-b-lg border px-3 py-2 flex-1 space-y-1.5 ${
-                      hasActive ? "border-blue-200" : ""
-                    }`}>
-                      {tech.tarefas.map((task, idx) => {
+                      {/* Tasks list */}
+                      <CardContent className="px-3 py-2 space-y-0">
+                        {visibleTasks.map((task, idx) => {
+                          const isLate = task.atrasada;
+                          const cfg = isLate
+                            ? { icon: AlertTriangle, class: "text-red-600" }
+                            : (statusIcon[task.status] || statusIcon["Agendada"]);
+                          const Icon = cfg.icon;
+                          const barColor = isLate ? "bg-red-500" : (statusBarColor[task.status] || "bg-muted");
+
+                          return (
+                            <div key={task.taskId || idx} className={`flex gap-2 py-2 ${idx > 0 ? "border-t border-border/50" : ""} ${isLate ? "bg-red-50/50 dark:bg-red-950/20 -mx-1 px-1 rounded" : ""}`}>
+                              <div className={`h-2 w-2 rounded-full ${barColor} mt-1.5 flex-shrink-0`} />
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-1.5">
+                                  <Icon className={`h-3 w-3 flex-shrink-0 ${cfg.class}`} />
+                                  <span className={`text-[10px] font-medium ${cfg.class}`}>
+                                    {isLate ? "Atrasada" : task.status}
+                                  </span>
+                                  {task.horaInicio && (
+                                    <span className="text-[10px] text-muted-foreground ml-auto flex items-center gap-0.5">
+                                      <Clock className="h-2.5 w-2.5" />
+                                      {task.horaInicio}{task.horaFim ? ` – ${task.horaFim}` : ""}
+                                    </span>
+                                  )}
+                                </div>
+                                <p className="font-medium text-xs text-foreground truncate mt-0.5">
+                                  {task.cliente || "Sem cliente"}
+                                </p>
+                                {task.gcOsCodigo && (
+                                  <div className="flex items-center gap-1.5 mt-0.5">
+                                    <Badge variant="outline" className="text-[9px] h-4 px-1.5 font-mono">
+                                      {task.gcOsTipo || "OS"} {task.gcOsCodigo}
+                                    </Badge>
+                                    {task.gcOsValor && task.gcOsValor !== "0" && (
+                                      <span className="text-[10px] font-semibold text-emerald-600">
+                                        R$ {parseFloat(task.gcOsValor).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+                                      </span>
+                                    )}
+                                  </div>
+                                )}
+                                {task.pendencia && task.pendencia.toLowerCase() !== "nenhuma" && task.pendencia !== "0" && (
+                                  <Badge variant="destructive" className="text-[9px] h-4 mt-1">
+                                    ⚠ Pendência
+                                  </Badge>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        })}
+
+                        {hasMore && (
+                          <button
+                            onClick={toggleExpand}
+                            className="w-full py-2 text-[11px] text-primary font-medium hover:bg-muted/50 rounded transition-colors flex items-center justify-center gap-1"
+                          >
+                            <ChevronDown className={`h-3 w-3 transition-transform ${isExpanded ? "rotate-180" : ""}`} />
+                            {isExpanded ? "Recolher" : `Ver mais ${tech.tarefas.length - 3} tarefa(s)`}
+                          </button>
+                        )}
+                      </CardContent>
+                    </Card>
+                  );
+                })}
+              </div>
+            ) : (
+              /* ═══ TABLE VIEW — compact rows ═══ */
+              <div className="rounded-lg border overflow-hidden bg-card">
+                <table className="w-full text-xs">
+                  <thead>
+                    <tr className="bg-muted/50 border-b">
+                      <th className="text-left px-3 py-2.5 font-semibold text-muted-foreground">Técnico</th>
+                      <th className="text-left px-3 py-2.5 font-semibold text-muted-foreground">Cliente</th>
+                      <th className="text-left px-3 py-2.5 font-semibold text-muted-foreground">OS / Orç</th>
+                      <th className="text-left px-3 py-2.5 font-semibold text-muted-foreground">Status</th>
+                      <th className="text-left px-3 py-2.5 font-semibold text-muted-foreground">Horário</th>
+                      <th className="text-right px-3 py-2.5 font-semibold text-muted-foreground">Valor</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {data.tecnicos.flatMap((tech) =>
+                      tech.tarefas.map((task, idx) => {
                         const isLate = task.atrasada;
                         const cfg = isLate
                           ? { icon: AlertTriangle, class: "text-red-600" }
@@ -770,69 +872,54 @@ export default function RealtimeTrackingPage() {
                         const barColor = isLate ? "bg-red-500" : (statusBarColor[task.status] || "bg-muted");
 
                         return (
-                          <div key={task.taskId || idx} className={`relative flex gap-2.5 group ${isLate ? "bg-red-50/50 -mx-1 px-1 rounded" : ""}`}>
-                            {/* Timeline line */}
-                            <div className="flex flex-col items-center pt-1">
-                              <div className={`h-2.5 w-2.5 rounded-full ${barColor} ring-2 ring-background flex-shrink-0`} />
-                              {idx < tech.tarefas.length - 1 && (
-                                <div className="w-px flex-1 bg-border mt-1" />
-                              )}
-                            </div>
-
-                            {/* Task card */}
-                            <div className={`flex-1 pb-3 min-w-0`}>
-                              <div className="flex items-center gap-1.5 mb-0.5">
-                                <Icon className={`h-3 w-3 flex-shrink-0 ${cfg.class}`} />
-                                <span className={`text-[10px] font-medium ${cfg.class}`}>
-                                  {isLate ? "⚠ Atrasada" : task.status}
-                                </span>
-                                {task.horaInicio && (
-                                  <span className="text-[10px] text-muted-foreground ml-auto flex items-center gap-0.5">
-                                    <Clock className="h-2.5 w-2.5" />
-                                    {task.horaInicio}{task.horaFim ? ` - ${task.horaFim}` : ""}
-                                  </span>
-                                )}
-                              </div>
-                              <p className="font-medium text-xs text-foreground truncate">
-                                {task.cliente || "Sem cliente identificado"}
-                              </p>
-                              {task.gcOsCodigo && (
-                                <div className="flex items-center gap-1.5 mt-0.5">
-                                    <Badge variant="outline" className="text-[9px] h-4 px-1.5 font-mono">
-                                      {task.gcOsTipo || "OS"} {task.gcOsCodigo}
-                                  </Badge>
-                                  {task.gcOsValor && task.gcOsValor !== "0" && (
-                                    <span className="text-[10px] font-semibold text-emerald-600">
-                                      R$ {parseFloat(task.gcOsValor).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
-                                    </span>
-                                  )}
+                          <tr key={`${tech.id}-${task.taskId || idx}`} className={`border-b last:border-b-0 hover:bg-muted/30 transition-colors ${isLate ? "bg-red-50/50 dark:bg-red-950/10" : ""}`}>
+                            <td className="px-3 py-2">
+                              <div className="flex items-center gap-2">
+                                <div className={`h-6 w-6 rounded-full flex items-center justify-center text-[9px] font-bold flex-shrink-0 ${
+                                  tech.resumo.emAndamento > 0 ? "bg-blue-500 text-white" : "bg-muted text-muted-foreground"
+                                }`}>
+                                  {tech.nome.split(" ").map(n => n[0]).slice(0, 2).join("")}
                                 </div>
-                              )}
-                              {task.descricao && (
-                                <p className="text-[11px] text-muted-foreground line-clamp-2 mt-0.5 leading-tight">
-                                  {task.descricao}
-                                </p>
-                              )}
-                              {task.endereco && (
-                                <p className="text-[10px] text-muted-foreground mt-1 flex items-start gap-1">
-                                  <MapPin className="h-2.5 w-2.5 mt-0.5 flex-shrink-0" />
-                                  <span className="truncate">{task.endereco}</span>
-                                </p>
-                              )}
-                              {task.pendencia && task.pendencia.toLowerCase() !== "nenhuma" && task.pendencia !== "0" && (
-                                <Badge variant="destructive" className="text-[9px] h-4 mt-1">
-                                  ⚠ Pendência
+                                <span className="font-medium truncate max-w-[120px]">{tech.nome}</span>
+                              </div>
+                            </td>
+                            <td className="px-3 py-2">
+                              <span className="truncate max-w-[180px] block">{task.cliente || "—"}</span>
+                            </td>
+                            <td className="px-3 py-2">
+                              {task.gcOsCodigo ? (
+                                <Badge variant="outline" className="text-[9px] h-4 px-1.5 font-mono">
+                                  {task.gcOsTipo || "OS"} {task.gcOsCodigo}
                                 </Badge>
+                              ) : (
+                                <span className="text-muted-foreground">—</span>
                               )}
-                            </div>
-                          </div>
+                            </td>
+                            <td className="px-3 py-2">
+                              <div className="flex items-center gap-1.5">
+                                <div className={`h-2 w-2 rounded-full ${barColor} flex-shrink-0`} />
+                                <Icon className={`h-3 w-3 ${cfg.class}`} />
+                                <span className={`text-[10px] font-medium ${cfg.class}`}>
+                                  {isLate ? "Atrasada" : task.status}
+                                </span>
+                              </div>
+                            </td>
+                            <td className="px-3 py-2 text-muted-foreground">
+                              {task.horaInicio ? `${task.horaInicio}${task.horaFim ? ` – ${task.horaFim}` : ""}` : "—"}
+                            </td>
+                            <td className="px-3 py-2 text-right font-semibold text-emerald-600">
+                              {task.gcOsValor && task.gcOsValor !== "0"
+                                ? `R$ ${parseFloat(task.gcOsValor).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`
+                                : "—"}
+                            </td>
+                          </tr>
                         );
-                      })}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
+                      })
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </div>
         </div>
       )}
