@@ -805,6 +805,7 @@ Deno.serve(async (req) => {
         gc_os_valor_total: gcOs.gc_os_valor_total,
         gc_os_vendedor: gcOs.gc_os_vendedor,
         gc_os_data: gcOs.gc_os_data,
+        gc_os_data_saida: gcOs.gc_os_data_saida,
         gc_os_link: gcOs.gc_os_link,
       };
 
