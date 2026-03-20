@@ -390,6 +390,7 @@ async function fetchGcOs(gcHeaders: Record<string, string>): Promise<{ byTaskId:
         gc_os_valor_total: parseFloat(os.valor_total || "0"),
         gc_os_vendedor: String(os.nome_vendedor || ""),
         gc_os_data: String(os.data_entrada || os.data || "").split("T")[0] || null,
+        gc_os_data_saida: String(os.data_saida || "").split("T")[0] || null,
         gc_os_link: `https://gestaoclick.com/ordens_servicos/editar/${os.id}?retorno=%2Fordens_servicos`,
       };
 
