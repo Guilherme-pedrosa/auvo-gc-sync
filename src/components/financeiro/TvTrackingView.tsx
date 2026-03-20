@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { Badge } from "@/components/ui/badge";
 import {
   CheckCircle2, PlayCircle, CalendarClock, AlertTriangle,
-  Clock, User, Minimize2, ChevronLeft, ChevronRight, Pause, Play
+  Clock, User, Minimize2
 } from "lucide-react";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -61,9 +61,6 @@ const statusDot: Record<string, string> = {
   "Cancelada": "bg-red-400",
 };
 
-const TECHS_PER_PAGE = 6;
-const AUTO_CYCLE_MS = 12_000;
-
 interface TvTrackingViewProps {
   data: TrackingData;
   selectedDate: Date;
@@ -71,9 +68,9 @@ interface TvTrackingViewProps {
 }
 
 export default function TvTrackingView({ data, selectedDate, onExit }: TvTrackingViewProps) {
-  const [page, setPage] = useState(0);
-  const [autoCycle, setAutoCycle] = useState(true);
   const containerRef = useRef<HTMLDivElement>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const [autoScroll, setAutoScroll] = useState(true);
 
   // Sort technicians by total value desc
   const sortedTechs = [...data.tecnicos].sort((a, b) => {
@@ -81,9 +78,6 @@ export default function TvTrackingView({ data, selectedDate, onExit }: TvTrackin
     const valB = b.tarefas.reduce((s, t) => s + (parseFloat(t.gcOsValor) || 0), 0);
     return valB - valA;
   });
-
-  const totalPages = Math.ceil(sortedTechs.length / TECHS_PER_PAGE);
-  const pageTechs = sortedTechs.slice(page * TECHS_PER_PAGE, (page + 1) * TECHS_PER_PAGE);
 
   // Totals
   let totalAgendado = 0;
@@ -96,15 +90,6 @@ export default function TvTrackingView({ data, selectedDate, onExit }: TvTrackin
       if (task.status === "Finalizada") totalExecutado += val;
     }
   }
-
-  // Auto-cycle pages
-  useEffect(() => {
-    if (!autoCycle || totalPages <= 1) return;
-    const interval = setInterval(() => {
-      setPage((p) => (p + 1) % totalPages);
-    }, AUTO_CYCLE_MS);
-    return () => clearInterval(interval);
-  }, [autoCycle, totalPages]);
 
   // Fullscreen
   useEffect(() => {
@@ -119,19 +104,53 @@ export default function TvTrackingView({ data, selectedDate, onExit }: TvTrackin
     return () => document.removeEventListener("fullscreenchange", onFsChange);
   }, [onExit]);
 
-  // Keyboard nav
+  // Keyboard
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      if (e.key === "Escape") { onExit(); return; }
-      if (e.key === "ArrowRight") setPage((p) => Math.min(p + 1, totalPages - 1));
-      if (e.key === "ArrowLeft") setPage((p) => Math.max(p - 1, 0));
-      if (e.key === " ") { e.preventDefault(); setAutoCycle((v) => !v); }
+      if (e.key === "Escape") onExit();
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [totalPages, onExit]);
+  }, [onExit]);
+
+  // Auto-scroll: slowly scroll the grid area up/down
+  useEffect(() => {
+    if (!autoScroll) return;
+    const el = scrollRef.current;
+    if (!el) return;
+
+    let direction = 1;
+    const speed = 0.5; // px per frame
+
+    const tick = () => {
+      if (!el) return;
+      const maxScroll = el.scrollHeight - el.clientHeight;
+      if (maxScroll <= 0) return; // fits on screen, no scroll needed
+
+      el.scrollTop += direction * speed;
+
+      if (el.scrollTop >= maxScroll) {
+        direction = -1;
+      } else if (el.scrollTop <= 0) {
+        direction = 1;
+      }
+    };
+
+    const id = setInterval(tick, 16);
+    return () => clearInterval(id);
+  }, [autoScroll]);
 
   const now = new Date();
+
+  // Dynamic grid columns based on tech count
+  const techCount = sortedTechs.length;
+  const gridCols =
+    techCount <= 3 ? "grid-cols-3" :
+    techCount <= 4 ? "grid-cols-4" :
+    techCount <= 6 ? "grid-cols-3" :
+    techCount <= 8 ? "grid-cols-4" :
+    techCount <= 12 ? "grid-cols-4" :
+    "grid-cols-5";
 
   return (
     <div
@@ -140,115 +159,86 @@ export default function TvTrackingView({ data, selectedDate, onExit }: TvTrackin
       style={{ fontFamily: "'Inter', system-ui, sans-serif" }}
     >
       {/* ── TV Header ── */}
-      <div className="flex-shrink-0 px-8 py-4 flex items-center justify-between border-b border-zinc-800/60">
-        <div className="flex items-center gap-6">
-          <h1 className="text-2xl font-bold tracking-tight text-zinc-50">
+      <div className="flex-shrink-0 px-6 py-2.5 flex items-center justify-between border-b border-zinc-800/60">
+        <div className="flex items-center gap-5">
+          <h1 className="text-xl font-bold tracking-tight text-zinc-50">
             Agenda de Técnicos
           </h1>
-          <span className="text-lg text-zinc-400">
+          <span className="text-base text-zinc-400">
             {format(selectedDate, "EEEE, dd 'de' MMMM", { locale: ptBR })}
           </span>
-          <Badge className="bg-red-600/20 text-red-400 border-red-600/40 text-sm px-3 py-0.5 animate-pulse">
+          <Badge className="bg-red-600/20 text-red-400 border-red-600/40 text-xs px-2.5 py-0.5 animate-pulse">
             🔴 AO VIVO
           </Badge>
         </div>
 
-        <div className="flex items-center gap-6 text-base">
-          <span className="flex items-center gap-2">
-            <User className="h-5 w-5 text-zinc-500" />
+        <div className="flex items-center gap-5 text-sm">
+          <span className="flex items-center gap-1.5">
+            <User className="h-4 w-4 text-zinc-500" />
             <strong className="text-zinc-200">{data.total_tecnicos}</strong>
             <span className="text-zinc-500">técnicos</span>
           </span>
-          <span className="flex items-center gap-2">
-            <Clock className="h-5 w-5 text-zinc-500" />
+          <span className="flex items-center gap-1.5">
+            <Clock className="h-4 w-4 text-zinc-500" />
             <strong className="text-zinc-200">{data.total_tarefas}</strong>
             <span className="text-zinc-500">tarefas</span>
           </span>
-          <span className="border-l border-zinc-700 pl-5 flex items-center gap-2">
+
+          <span className="border-l border-zinc-700 pl-4 flex items-center gap-1.5">
             📋 <span className="text-zinc-400">Agendado:</span>
             <strong className="text-zinc-100">R$ {totalAgendado.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}</strong>
           </span>
-          <span className="flex items-center gap-2">
+          <span className="flex items-center gap-1.5">
             ✅ <span className="text-zinc-400">Executado:</span>
             <strong className="text-emerald-400">R$ {totalExecutado.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}</strong>
+          </span>
+
+          {/* Status counts inline */}
+          <span className="border-l border-zinc-700 pl-4 flex items-center gap-3">
+            <span className="flex items-center gap-1">
+              <span className="h-2 w-2 rounded-full bg-emerald-400" />
+              <strong className="text-emerald-400">{data.tecnicos.reduce((s, t) => s + t.resumo.finalizadas, 0)}</strong>
+            </span>
+            <span className="flex items-center gap-1">
+              <span className="h-2 w-2 rounded-full bg-sky-400 animate-pulse" />
+              <strong className="text-sky-400">{data.tecnicos.reduce((s, t) => s + t.resumo.emAndamento, 0)}</strong>
+            </span>
+            <span className="flex items-center gap-1">
+              <span className="h-2 w-2 rounded-full bg-amber-400" />
+              <strong className="text-amber-400">{data.tecnicos.reduce((s, t) => s + t.resumo.agendadas, 0)}</strong>
+            </span>
+            {data.total_atrasadas > 0 && (
+              <span className="flex items-center gap-1">
+                <span className="h-2 w-2 rounded-full bg-red-500" />
+                <strong className="text-red-400">{data.total_atrasadas}</strong>
+              </span>
+            )}
           </span>
         </div>
 
         <div className="flex items-center gap-3">
-          <span className="text-sm text-zinc-600">
+          <span className="text-xs text-zinc-600 tabular-nums">
             {format(now, "HH:mm")}
           </span>
           <button
             onClick={() => { document.exitFullscreen?.(); onExit(); }}
-            className="text-zinc-500 hover:text-zinc-300 transition-colors p-1.5"
+            className="text-zinc-500 hover:text-zinc-300 transition-colors p-1"
             title="Sair do modo TV (Esc)"
           >
-            <Minimize2 className="h-5 w-5" />
+            <Minimize2 className="h-4 w-4" />
           </button>
         </div>
       </div>
 
-      {/* ── Status summary bar ── */}
-      <div className="flex-shrink-0 px-8 py-2.5 flex items-center gap-8 border-b border-zinc-800/40 bg-zinc-900/50 text-sm">
-        <span className="flex items-center gap-2">
-          <span className="h-3 w-3 rounded-full bg-emerald-400" />
-          <strong className="text-emerald-400">{data.tecnicos.reduce((s, t) => s + t.resumo.finalizadas, 0)}</strong>
-          <span className="text-zinc-500">Finalizadas</span>
-        </span>
-        <span className="flex items-center gap-2">
-          <span className="h-3 w-3 rounded-full bg-sky-400 animate-pulse" />
-          <strong className="text-sky-400">{data.tecnicos.reduce((s, t) => s + t.resumo.emAndamento, 0)}</strong>
-          <span className="text-zinc-500">Em andamento</span>
-        </span>
-        <span className="flex items-center gap-2">
-          <span className="h-3 w-3 rounded-full bg-amber-400" />
-          <strong className="text-amber-400">{data.tecnicos.reduce((s, t) => s + t.resumo.agendadas, 0)}</strong>
-          <span className="text-zinc-500">Agendadas</span>
-        </span>
-        {data.total_atrasadas > 0 && (
-          <span className="flex items-center gap-2">
-            <span className="h-3 w-3 rounded-full bg-red-500" />
-            <strong className="text-red-400">{data.total_atrasadas}</strong>
-            <span className="text-zinc-500">Atrasadas</span>
-          </span>
-        )}
-
-        <div className="ml-auto flex items-center gap-4">
-          {totalPages > 1 && (
-            <>
-              <button
-                onClick={() => setAutoCycle((v) => !v)}
-                className="text-zinc-500 hover:text-zinc-300 transition-colors flex items-center gap-1.5 text-xs"
-                title={autoCycle ? "Pausar rotação (Espaço)" : "Retomar rotação (Espaço)"}
-              >
-                {autoCycle ? <Pause className="h-3.5 w-3.5" /> : <Play className="h-3.5 w-3.5" />}
-                {autoCycle ? "Auto" : "Pausado"}
-              </button>
-              <div className="flex items-center gap-2">
-                <button onClick={() => setPage((p) => Math.max(p - 1, 0))} className="text-zinc-500 hover:text-zinc-300 transition-colors disabled:opacity-30" disabled={page === 0}>
-                  <ChevronLeft className="h-5 w-5" />
-                </button>
-                <span className="text-zinc-500 text-xs tabular-nums">
-                  {page + 1} / {totalPages}
-                </span>
-                <button onClick={() => setPage((p) => Math.min(p + 1, totalPages - 1))} className="text-zinc-500 hover:text-zinc-300 transition-colors disabled:opacity-30" disabled={page === totalPages - 1}>
-                  <ChevronRight className="h-5 w-5" />
-                </button>
-              </div>
-            </>
-          )}
-        </div>
-      </div>
-
-      {/* ── Technician cards grid ── */}
-      <div className="flex-1 overflow-hidden p-6">
-        <div className={`grid gap-5 h-full ${
-          pageTechs.length <= 2 ? "grid-cols-2" :
-          pageTechs.length <= 3 ? "grid-cols-3" :
-          pageTechs.length <= 4 ? "grid-cols-2 grid-rows-2" :
-          "grid-cols-3 grid-rows-2"
-        }`}>
-          {pageTechs.map((tech) => {
+      {/* ── All technician cards ── */}
+      <div
+        ref={scrollRef}
+        className="flex-1 overflow-auto p-4"
+        onMouseEnter={() => setAutoScroll(false)}
+        onMouseLeave={() => setAutoScroll(true)}
+      >
+        <div className={`grid ${gridCols} gap-3 auto-rows-min`}>
+          {sortedTechs.map((tech) => {
             const sortedTasks = [...tech.tarefas].sort((a, b) => (parseFloat(b.gcOsValor) || 0) - (parseFloat(a.gcOsValor) || 0));
             const hasActive = tech.resumo.emAndamento > 0;
             const progress = tech.resumo.total > 0 ? Math.round((tech.resumo.finalizadas / tech.resumo.total) * 100) : 0;
@@ -257,32 +247,32 @@ export default function TvTrackingView({ data, selectedDate, onExit }: TvTrackin
             return (
               <div
                 key={tech.id}
-                className={`rounded-xl border overflow-hidden flex flex-col transition-all ${
+                className={`rounded-lg border overflow-hidden flex flex-col ${
                   hasActive
                     ? "border-sky-600/40 bg-zinc-900/80"
                     : "border-zinc-800/60 bg-zinc-900/40"
                 }`}
               >
-                {/* Tech header */}
-                <div className={`px-5 py-3.5 flex items-center gap-4 flex-shrink-0 ${
+                {/* Tech header — compact */}
+                <div className={`px-3 py-2 flex items-center gap-2.5 flex-shrink-0 ${
                   hasActive ? "bg-sky-950/30" : "bg-zinc-800/30"
                 }`}>
-                  <div className={`h-12 w-12 rounded-full flex items-center justify-center text-base font-bold flex-shrink-0 ${
+                  <div className={`h-8 w-8 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0 ${
                     hasActive ? "bg-sky-500 text-white" : "bg-zinc-700 text-zinc-300"
                   }`}>
                     {tech.nome.split(" ").map(n => n[0]).slice(0, 2).join("")}
                   </div>
                   <div className="flex-1 min-w-0">
-                    <p className="font-semibold text-base truncate text-zinc-100">{tech.nome}</p>
-                    <div className="flex items-center gap-3 mt-0.5">
-                      <span className="text-sm text-zinc-400">
-                        {tech.resumo.finalizadas}/{tech.resumo.total} tarefas
+                    <p className="font-semibold text-sm truncate text-zinc-100">{tech.nome}</p>
+                    <div className="flex items-center gap-2 mt-0.5">
+                      <span className="text-[11px] text-zinc-500">
+                        {tech.resumo.finalizadas}/{tech.resumo.total}
                       </span>
                       {hasActive && (
-                        <span className="text-sm text-sky-400 font-medium animate-pulse">● Ativo</span>
+                        <span className="text-[10px] text-sky-400 font-medium animate-pulse">● Ativo</span>
                       )}
                       {tech.resumo.atrasadas > 0 && (
-                        <span className="text-sm text-red-400 font-medium">
+                        <span className="text-[10px] text-red-400 font-medium">
                           {tech.resumo.atrasadas} atrasada(s)
                         </span>
                       )}
@@ -290,21 +280,21 @@ export default function TvTrackingView({ data, selectedDate, onExit }: TvTrackin
                   </div>
                   <div className="text-right flex-shrink-0">
                     {totalValor > 0 && (
-                      <p className="text-base font-bold text-emerald-400">
+                      <p className="text-sm font-bold text-emerald-400 tabular-nums">
                         R$ {totalValor.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
                       </p>
                     )}
-                    <div className="flex items-center gap-2 mt-1 justify-end">
-                      <div className="w-24 h-2 bg-zinc-800 rounded-full overflow-hidden">
+                    <div className="flex items-center gap-1.5 mt-0.5 justify-end">
+                      <div className="w-16 h-1.5 bg-zinc-800 rounded-full overflow-hidden">
                         <div className="h-full bg-emerald-500 rounded-full transition-all duration-700" style={{ width: `${progress}%` }} />
                       </div>
-                      <span className="text-xs text-zinc-500 tabular-nums">{progress}%</span>
+                      <span className="text-[10px] text-zinc-600 tabular-nums">{progress}%</span>
                     </div>
                   </div>
                 </div>
 
-                {/* Tasks list — scrollable */}
-                <div className="flex-1 overflow-auto px-4 py-2 space-y-0">
+                {/* Tasks — compact list */}
+                <div className="px-2.5 py-1.5">
                   {sortedTasks.map((task, idx) => {
                     const isLate = task.atrasada;
                     const label = isLate ? "Atrasada" : task.status;
@@ -314,34 +304,34 @@ export default function TvTrackingView({ data, selectedDate, onExit }: TvTrackin
                     return (
                       <div
                         key={task.taskId || idx}
-                        className={`flex items-center gap-3 py-2.5 ${idx > 0 ? "border-t border-zinc-800/50" : ""} ${isLate ? "bg-red-950/20 -mx-2 px-2 rounded-lg" : ""}`}
+                        className={`flex items-center gap-2 py-1.5 ${idx > 0 ? "border-t border-zinc-800/40" : ""} ${isLate ? "bg-red-950/20 -mx-1 px-1 rounded" : ""}`}
                       >
-                        <div className={`h-2.5 w-2.5 rounded-full flex-shrink-0 ${dotClass}`} />
+                        <div className={`h-2 w-2 rounded-full flex-shrink-0 ${dotClass}`} />
                         <div className="flex-1 min-w-0">
-                          <p className="text-sm font-medium text-zinc-200 truncate">
+                          <p className="text-xs font-medium text-zinc-200 truncate">
                             {task.cliente || "Sem cliente"}
                           </p>
-                          <div className="flex items-center gap-3 mt-0.5">
-                            <span className={`text-xs font-medium ${textClass}`}>{label}</span>
-                            {task.horaInicio && (
-                              <span className="text-xs text-zinc-600">
-                                {task.horaInicio}{task.horaFim ? ` – ${task.horaFim}` : ""}
+                          <div className="flex items-center gap-2">
+                            <span className={`text-[10px] font-medium ${textClass}`}>{label}</span>
+                            {task.gcOsCodigo && (
+                              <span className="text-[10px] text-zinc-600 font-mono">
+                                {task.gcOsTipo || "OS"} {task.gcOsCodigo}
                               </span>
                             )}
-                            {task.gcOsCodigo && (
-                              <span className="text-xs text-zinc-600 font-mono">
-                                {task.gcOsTipo || "OS"} {task.gcOsCodigo}
+                            {task.horaInicio && (
+                              <span className="text-[10px] text-zinc-600">
+                                {task.horaInicio}{task.horaFim ? `–${task.horaFim}` : ""}
                               </span>
                             )}
                           </div>
                         </div>
                         {task.gcOsValor && task.gcOsValor !== "0" && (
-                          <span className="text-sm font-semibold text-emerald-400 flex-shrink-0 tabular-nums">
+                          <span className="text-[11px] font-semibold text-emerald-400 flex-shrink-0 tabular-nums">
                             R$ {parseFloat(task.gcOsValor).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
                           </span>
                         )}
                         {task.pendencia && task.pendencia.toLowerCase() !== "nenhuma" && task.pendencia !== "0" && (
-                          <span className="text-xs text-red-400 flex-shrink-0">⚠</span>
+                          <span className="text-[10px] text-red-400 flex-shrink-0">⚠</span>
                         )}
                       </div>
                     );
@@ -352,21 +342,6 @@ export default function TvTrackingView({ data, selectedDate, onExit }: TvTrackin
           })}
         </div>
       </div>
-
-      {/* ── Page indicator dots ── */}
-      {totalPages > 1 && (
-        <div className="flex-shrink-0 flex items-center justify-center gap-2 pb-4">
-          {Array.from({ length: totalPages }).map((_, i) => (
-            <button
-              key={i}
-              onClick={() => setPage(i)}
-              className={`h-2 rounded-full transition-all duration-300 ${
-                i === page ? "w-8 bg-zinc-400" : "w-2 bg-zinc-700 hover:bg-zinc-600"
-              }`}
-            />
-          ))}
-        </div>
-      )}
     </div>
   );
 }
