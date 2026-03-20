@@ -360,7 +360,7 @@ export default function RealtimeTrackingPage() {
   }, [atrasadasMes, pendenciasMes, selectedDate]);
 
   return (
-    <div className="min-h-screen flex flex-col">
+    <div className="h-full flex flex-col overflow-hidden">
       {/* Header */}
       <div className="border-b bg-card px-6 py-3 flex-shrink-0">
         <div className="flex items-center justify-between">
