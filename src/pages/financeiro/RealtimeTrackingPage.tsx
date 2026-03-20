@@ -681,6 +681,19 @@ export default function RealtimeTrackingPage() {
                     Atualizar
                   </Button>
 
+                  {/* TV mode button */}
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-8 text-xs gap-1.5"
+                    onClick={() => setTvMode(true)}
+                    disabled={!data}
+                    title="Modo TV — tela cheia otimizada para televisão"
+                  >
+                    <Monitor className="h-3.5 w-3.5" />
+                    TV
+                  </Button>
+
                   {/* Minimize button */}
                   <button onClick={() => setHeaderMinimized(true)} className="text-muted-foreground hover:text-foreground transition-colors ml-1" title="Minimizar cabeçalho">
                     <ChevronsUpDown className="h-4 w-4" />
