@@ -739,6 +739,7 @@ Deno.serve(async (req) => {
         row.gc_os_valor_total = gcOs.gc_os_valor_total;
         row.gc_os_vendedor = gcOs.gc_os_vendedor;
         row.gc_os_data = gcOs.gc_os_data;
+        row.gc_os_data_saida = gcOs.gc_os_data_saida;
         row.gc_os_link = gcOs.gc_os_link;
       }
 
