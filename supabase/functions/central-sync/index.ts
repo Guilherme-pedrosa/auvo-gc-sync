@@ -877,6 +877,7 @@ Deno.serve(async (req) => {
       gc_os_valor_total: number | null;
       gc_os_vendedor: string | null;
       gc_os_data: string | null;
+      gc_os_data_saida: string | null;
       gc_os_link: string | null;
       gc_orcamento_id: string | null;
       gc_orcamento_codigo: string | null;
