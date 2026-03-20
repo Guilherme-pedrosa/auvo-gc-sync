@@ -81,6 +81,7 @@ export default function RealtimeTrackingPage() {
   const [sheetOpen, setSheetOpen] = useState(false);
   const [viewMode, setViewMode] = useState<"grid" | "table">("grid");
   const [expandedTechs, setExpandedTechs] = useState<Set<string>>(new Set());
+  const [headerMinimized, setHeaderMinimized] = useState(false);
   const dateStr = format(selectedDate, "yyyy-MM-dd");
 
   const [lastFetchTime, setLastFetchTime] = useState<string | null>(null);
