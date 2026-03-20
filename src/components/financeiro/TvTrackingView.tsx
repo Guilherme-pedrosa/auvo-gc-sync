@@ -170,11 +170,9 @@ export default function TvTrackingView({ data, selectedDate, onExit }: TvTrackin
   const techCount = sortedTechs.length;
   const gridCols =
     techCount <= 3 ? "grid-cols-3" :
-    techCount <= 4 ? "grid-cols-4" :
     techCount <= 6 ? "grid-cols-3" :
-    techCount <= 8 ? "grid-cols-4" :
-    techCount <= 12 ? "grid-cols-4" :
-    "grid-cols-5";
+    techCount <= 9 ? "grid-cols-3" :
+    "grid-cols-4";
 
   return (
     <div
