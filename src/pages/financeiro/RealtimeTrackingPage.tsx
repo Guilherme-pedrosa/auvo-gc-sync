@@ -365,6 +365,10 @@ export default function RealtimeTrackingPage() {
     toast.success("PDF gerado com sucesso!");
   }, [atrasadasMes, pendenciasMes, selectedDate]);
 
+  if (tvMode && data) {
+    return <TvTrackingView data={data} selectedDate={selectedDate} onExit={() => setTvMode(false)} />;
+  }
+
   return (
     <div className="h-full flex flex-col overflow-hidden">
       {/* Header */}
