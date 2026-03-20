@@ -844,7 +844,7 @@ export default function RealtimeTrackingPage() {
                             className="w-full py-2 text-[11px] text-primary font-medium hover:bg-muted/50 rounded transition-colors flex items-center justify-center gap-1"
                           >
                             <ChevronDown className={`h-3 w-3 transition-transform ${isExpanded ? "rotate-180" : ""}`} />
-                            {isExpanded ? "Recolher" : `Ver mais ${tech.tarefas.length - 3} tarefa(s)`}
+                            {isExpanded ? "Recolher" : `Ver mais ${sortedTarefas.length - 3} tarefa(s)`}
                           </button>
                         )}
                       </CardContent>
