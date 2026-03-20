@@ -13,7 +13,7 @@ import {
   RefreshCw, CalendarIcon, MapPin, Clock, User,
   CheckCircle2, PlayCircle, CalendarClock, AlertTriangle,
   ChevronLeft, ChevronRight, FileWarning, ChevronDown, Download,
-  LayoutGrid, List
+  LayoutGrid, List, ChevronsUpDown
 } from "lucide-react";
 import { format, addDays, subDays, isToday, startOfMonth, endOfMonth } from "date-fns";
 import { ptBR } from "date-fns/locale";
