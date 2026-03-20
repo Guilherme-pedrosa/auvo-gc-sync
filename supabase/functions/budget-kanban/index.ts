@@ -499,6 +499,7 @@ async function fetchGcOsMap(
             gc_valor_total: String(os.valor_total || "0"),
             gc_vendedor: String(os.nome_vendedor || ""),
             gc_data: String(os.data || ""),
+            gc_data_saida: String(os.data_saida || ""),
             gc_link: `https://gestaoclick.com/ordens_servicos/editar/${os.id}?retorno=%2Fordens_servicos`,
           };
         }
