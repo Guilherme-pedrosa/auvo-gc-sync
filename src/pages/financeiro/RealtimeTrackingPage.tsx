@@ -867,8 +867,12 @@ export default function RealtimeTrackingPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {data.tecnicos.flatMap((tech) =>
-                      tech.tarefas.map((task, idx) => {
+                    {[...data.tecnicos].sort((a, b) => {
+                      const valA = a.tarefas.reduce((s, t) => s + (parseFloat(t.gcOsValor) || 0), 0);
+                      const valB = b.tarefas.reduce((s, t) => s + (parseFloat(t.gcOsValor) || 0), 0);
+                      return valB - valA;
+                    }).flatMap((tech) =>
+                      [...tech.tarefas].sort((a, b) => (parseFloat(b.gcOsValor) || 0) - (parseFloat(a.gcOsValor) || 0)).map((task, idx) => {
                         const isLate = task.atrasada;
                         const cfg = isLate
                           ? { icon: AlertTriangle, class: "text-red-600" }
