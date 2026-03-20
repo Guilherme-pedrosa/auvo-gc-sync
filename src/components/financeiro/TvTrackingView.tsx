@@ -120,18 +120,18 @@ export default function TvTrackingView({ data, selectedDate, onExit }: TvTrackin
     if (!el) return;
 
     let direction = 1;
-    const speed = 0.5; // px per frame
+    const speed = 0.5;
 
     const tick = () => {
       if (!el) return;
       const maxScroll = el.scrollHeight - el.clientHeight;
-      if (maxScroll <= 0) return; // fits on screen, no scroll needed
+      if (maxScroll <= 0) return;
 
       el.scrollTop += direction * speed;
 
-      if (el.scrollTop >= maxScroll) {
+      if (direction === 1 && el.scrollTop >= maxScroll - 1) {
         direction = -1;
-      } else if (el.scrollTop <= 0) {
+      } else if (direction === -1 && el.scrollTop <= 1) {
         direction = 1;
       }
     };
