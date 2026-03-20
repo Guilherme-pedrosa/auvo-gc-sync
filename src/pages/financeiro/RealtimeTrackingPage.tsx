@@ -13,8 +13,9 @@ import {
   RefreshCw, CalendarIcon, MapPin, Clock, User,
   CheckCircle2, PlayCircle, CalendarClock, AlertTriangle,
   ChevronLeft, ChevronRight, FileWarning, ChevronDown, Download,
-  LayoutGrid, List, ChevronsUpDown
+  LayoutGrid, List, ChevronsUpDown, Monitor
 } from "lucide-react";
+import TvTrackingView from "@/components/financeiro/TvTrackingView";
 import { format, addDays, subDays, isToday, startOfMonth, endOfMonth } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { toast } from "sonner";
@@ -82,6 +83,7 @@ export default function RealtimeTrackingPage() {
   const [viewMode, setViewMode] = useState<"grid" | "table">("grid");
   const [expandedTechs, setExpandedTechs] = useState<Set<string>>(new Set());
   const [headerMinimized, setHeaderMinimized] = useState(false);
+  const [tvMode, setTvMode] = useState(false);
   const dateStr = format(selectedDate, "yyyy-MM-dd");
 
   const [lastFetchTime, setLastFetchTime] = useState<string | null>(null);
@@ -363,6 +365,10 @@ export default function RealtimeTrackingPage() {
     toast.success("PDF gerado com sucesso!");
   }, [atrasadasMes, pendenciasMes, selectedDate]);
 
+  if (tvMode && data) {
+    return <TvTrackingView data={data} selectedDate={selectedDate} onExit={() => setTvMode(false)} />;
+  }
+
   return (
     <div className="h-full flex flex-col overflow-hidden">
       {/* Header */}
@@ -399,6 +405,10 @@ export default function RealtimeTrackingPage() {
 
               <Button variant="outline" size="sm" className="h-7 text-[11px] px-2" onClick={() => { refetch(); toast.info("Atualizando..."); }} disabled={isFetching}>
                 <RefreshCw className={`h-3 w-3 ${isFetching ? "animate-spin" : ""}`} />
+              </Button>
+
+              <Button variant="outline" size="sm" className="h-7 text-[11px] px-2" onClick={() => setTvMode(true)} disabled={!data} title="Modo TV">
+                <Monitor className="h-3 w-3" />
               </Button>
 
               {isToday(selectedDate) && (
@@ -673,6 +683,19 @@ export default function RealtimeTrackingPage() {
                   <Button variant="outline" size="sm" onClick={() => { refetch(); toast.info("Atualizando..."); }} disabled={isFetching} className="h-8 text-xs">
                     <RefreshCw className={`h-3.5 w-3.5 mr-1.5 ${isFetching ? "animate-spin" : ""}`} />
                     Atualizar
+                  </Button>
+
+                  {/* TV mode button */}
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-8 text-xs gap-1.5"
+                    onClick={() => setTvMode(true)}
+                    disabled={!data}
+                    title="Modo TV — tela cheia otimizada para televisão"
+                  >
+                    <Monitor className="h-3.5 w-3.5" />
+                    TV
                   </Button>
 
                   {/* Minimize button */}
