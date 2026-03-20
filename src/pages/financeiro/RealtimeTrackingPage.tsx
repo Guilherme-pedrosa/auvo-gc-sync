@@ -720,7 +720,12 @@ export default function RealtimeTrackingPage() {
             {viewMode === "grid" ? (
               /* ═══ GRID VIEW — responsive cards ═══ */
               <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-4">
-                {data.tecnicos.map((tech) => {
+                {[...data.tecnicos].sort((a, b) => {
+                  const valA = a.tarefas.reduce((s, t) => s + (parseFloat(t.gcOsValor) || 0), 0);
+                  const valB = b.tarefas.reduce((s, t) => s + (parseFloat(t.gcOsValor) || 0), 0);
+                  return valB - valA;
+                }).map((tech) => {
+                  const sortedTarefas = [...tech.tarefas].sort((a, b) => (parseFloat(b.gcOsValor) || 0) - (parseFloat(a.gcOsValor) || 0));
                   const hasActive = tech.resumo.emAndamento > 0;
                   const progress = tech.resumo.total > 0
                     ? Math.round((tech.resumo.finalizadas / tech.resumo.total) * 100)
