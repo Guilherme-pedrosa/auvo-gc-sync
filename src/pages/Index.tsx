@@ -33,6 +33,7 @@ type GcDocData = {
   gc_valor_total: string;
   gc_vendedor: string;
   gc_data: string;
+  gc_data_saida?: string;
   gc_link: string;
 };
 
