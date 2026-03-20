@@ -642,7 +642,7 @@ export default function RealtimeTrackingPage() {
           <p className="text-sm">Nenhuma tarefa para {format(selectedDate, "dd/MM/yyyy")}</p>
         </div>
       ) : (
-        <div className="flex-1 overflow-hidden">
+        <div className="flex-1 overflow-hidden flex flex-col">
           {/* Summary strip */}
           <div className="px-6 py-3 border-b bg-muted/30 flex items-center gap-6 text-xs flex-wrap">
             <span className="flex items-center gap-1.5">
