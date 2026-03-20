@@ -278,16 +278,18 @@ export default function TvTrackingView({ data, selectedDate, onExit }: TvTrackin
                 }`}
               >
                 {/* Tech header — compact */}
-                <div className={`px-3 py-2 flex items-center gap-2.5 flex-shrink-0 ${
+                <div className={`px-3 py-2 flex items-center gap-2 flex-shrink-0 ${
                   hasActive ? "bg-sky-950/30" : "bg-zinc-800/30"
                 }`}>
-                  <div className={`h-8 w-8 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0 ${
+                  <div className={`h-7 w-7 rounded-full flex items-center justify-center text-[10px] font-bold flex-shrink-0 ${
                     hasActive ? "bg-sky-500 text-white" : "bg-zinc-700 text-zinc-300"
                   }`}>
                     {tech.nome.split(" ").map(n => n[0]).slice(0, 2).join("")}
                   </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="font-semibold text-sm text-zinc-100 truncate" title={tech.nome}>{tech.nome.split(" ")[0]}</p>
+                  <div className="flex-1 min-w-0 overflow-hidden">
+                    <p className="font-semibold text-sm text-zinc-100 whitespace-nowrap overflow-hidden text-ellipsis" title={tech.nome}>
+                      {tech.nome.split(" ")[0]}
+                    </p>
                     <div className="flex items-center gap-2 mt-0.5">
                       <span className="text-[11px] text-zinc-500">
                         {tech.resumo.finalizadas}/{tech.resumo.total}
@@ -297,7 +299,7 @@ export default function TvTrackingView({ data, selectedDate, onExit }: TvTrackin
                       )}
                       {tech.resumo.atrasadas > 0 && (
                         <span className="text-[10px] text-red-400 font-medium">
-                          {tech.resumo.atrasadas} atrasada(s)
+                          {tech.resumo.atrasadas} atr
                         </span>
                       )}
                     </div>
