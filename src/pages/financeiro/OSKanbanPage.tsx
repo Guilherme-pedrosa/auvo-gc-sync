@@ -898,6 +898,19 @@ export default function OSKanbanPage() {
         if (corridorFilterIds !== null) {
           if (!corridorFilterIds.has(item.auvo_task_id)) return false;
         }
+        // Text search filter
+        if (searchQuery.trim()) {
+          const q = searchQuery.trim().toLowerCase();
+          const fields = [
+            item.auvo_task_id,
+            item.gc_os_codigo,
+            item.gc_orcamento_codigo,
+            item.descricao,
+            item.cliente,
+            item.gc_os_cliente,
+          ];
+          if (!fields.some((f) => f && f.toLowerCase().includes(q))) return false;
+        }
         return true;
       });
       const sortKey = columnSorts[col.id] || globalSort;
