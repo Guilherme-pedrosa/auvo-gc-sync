@@ -194,29 +194,28 @@ export default function TvTrackingView({ data, selectedDate, onExit }: TvTrackin
           </Badge>
         </div>
 
-        <div className="flex items-center gap-5 text-sm">
-          <span className="flex items-center gap-1.5">
+        <div className="flex items-center gap-4 text-sm flex-shrink-0">
+          <span className="flex items-center gap-1.5 whitespace-nowrap">
             <User className="h-4 w-4 text-zinc-500" />
             <strong className="text-zinc-200">{data.total_tecnicos}</strong>
-            <span className="text-zinc-500">técnicos</span>
+            <span className="text-zinc-500">téc.</span>
           </span>
-          <span className="flex items-center gap-1.5">
+          <span className="flex items-center gap-1.5 whitespace-nowrap">
             <Clock className="h-4 w-4 text-zinc-500" />
             <strong className="text-zinc-200">{data.total_tarefas}</strong>
             <span className="text-zinc-500">tarefas</span>
           </span>
 
-          <span className="border-l border-zinc-700 pl-4 flex items-center gap-1.5">
-            📋 <span className="text-zinc-400">Agendado:</span>
+          <span className="border-l border-zinc-700 pl-3 flex items-center gap-1.5 whitespace-nowrap">
+            📋 <span className="text-zinc-400">Agend:</span>
             <strong className="text-zinc-100">R$ {totalAgendado.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}</strong>
           </span>
-          <span className="flex items-center gap-1.5">
-            ✅ <span className="text-zinc-400">Executado:</span>
+          <span className="flex items-center gap-1.5 whitespace-nowrap">
+            ✅ <span className="text-zinc-400">Exec:</span>
             <strong className="text-emerald-400">R$ {totalExecutado.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}</strong>
           </span>
 
-          {/* Status counts inline */}
-          <span className="border-l border-zinc-700 pl-4 flex items-center gap-3">
+          <span className="border-l border-zinc-700 pl-3 flex items-center gap-3">
             <span className="flex items-center gap-1">
               <span className="h-2 w-2 rounded-full bg-emerald-400" />
               <strong className="text-emerald-400">{data.tecnicos.reduce((s, t) => s + t.resumo.finalizadas, 0)}</strong>
