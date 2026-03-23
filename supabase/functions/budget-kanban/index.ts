@@ -949,8 +949,11 @@ Deno.serve(async (req) => {
           // OS situation changed
           (oldData.gc_os?.gc_situacao !== item.gc_os?.gc_situacao && item.os_realizada);
 
-        if (hadUpdate) {
-          // Data changed → move to correct column
+        // Also force-move if card has orçamento/OS but is stuck in "a_fazer"
+        const stuckInAFazer = existing.coluna === "a_fazer" && autoColuna !== "a_fazer";
+
+        if (hadUpdate || stuckInAFazer) {
+          // Data changed or card misplaced → move to correct column
           finalColuna = autoColuna;
           finalPosicao = 0; // top of column
           movedCount++;
