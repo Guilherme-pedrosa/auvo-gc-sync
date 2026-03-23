@@ -167,6 +167,7 @@ export default function OSKanbanPage() {
   const [viewMode, setViewMode] = useState<"kanban" | "map">("kanban");
   const [corridorFilterIds, setCorridorFilterIds] = useState<Set<string> | null>(null);
   const [corridorRoute, setCorridorRoute] = useState<any>(null);
+  const [searchQuery, setSearchQuery] = useState("");
 
   // Default excluded situações — statuses considered "concluded" flows
   const DEFAULT_EXCLUDED_SITUACOES = [
