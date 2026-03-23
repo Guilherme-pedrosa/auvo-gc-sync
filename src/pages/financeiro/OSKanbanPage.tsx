@@ -13,13 +13,14 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
-  Table, TableBody, TableCell, TableHead, TableHeader, TableRow
+  Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
 import {
   ArrowLeft, CalendarIcon, RefreshCw, ExternalLink,
   Filter, GripVertical, Check, X, Edit2, Trash2, Plus,
   Package, FileText, ClipboardList, MapPin, ArrowUpDown, ArrowDown, ArrowUp,
-  UserCog, Save, Loader2, LayoutGrid, Navigation, AlertTriangle
+  UserCog, Save, Loader2, LayoutGrid, Navigation, AlertTriangle,
+  Search,
 } from "lucide-react";
 import { Map as MapIcon } from "lucide-react";
 import OSMapView from "@/components/financeiro/OSMapView";
@@ -167,6 +168,7 @@ export default function OSKanbanPage() {
   const [viewMode, setViewMode] = useState<"kanban" | "map">("kanban");
   const [corridorFilterIds, setCorridorFilterIds] = useState<Set<string> | null>(null);
   const [corridorRoute, setCorridorRoute] = useState<any>(null);
+  const [searchQuery, setSearchQuery] = useState("");
 
   // Default excluded situações — statuses considered "concluded" flows
   const DEFAULT_EXCLUDED_SITUACOES = [
@@ -897,13 +899,26 @@ export default function OSKanbanPage() {
         if (corridorFilterIds !== null) {
           if (!corridorFilterIds.has(item.auvo_task_id)) return false;
         }
+        // Text search filter
+        if (searchQuery.trim()) {
+          const q = searchQuery.trim().toLowerCase();
+          const fields = [
+            item.auvo_task_id,
+            item.gc_os_codigo,
+            item.gc_orcamento_codigo,
+            item.descricao,
+            item.cliente,
+            item.gc_os_cliente,
+          ];
+          if (!fields.some((f) => f && f.toLowerCase().includes(q))) return false;
+        }
         return true;
       });
       const sortKey = columnSorts[col.id] || globalSort;
       filtered = sortItems(filtered, sortKey);
       return { ...col, items: filtered };
     });
-  }, [columns, filterTecnico, allClientesSelected, selectedClientes, valorMin, valorMax, globalSort, columnSorts, sortItems, allFlagsSelected, selectedFlags, cityMap, filterOnlyRoutes, routeGroups, corridorFilterIds]);
+  }, [columns, filterTecnico, allClientesSelected, selectedClientes, valorMin, valorMax, globalSort, columnSorts, sortItems, allFlagsSelected, selectedFlags, cityMap, filterOnlyRoutes, routeGroups, corridorFilterIds, searchQuery]);
 
   // Drag & drop
   const onDragEnd = useCallback((result: DropResult) => {
@@ -1028,7 +1043,16 @@ export default function OSKanbanPage() {
         </div>
 
         {/* Filters + Summary */}
-        <div className="flex items-center gap-4 mt-4">
+        <div className="flex items-center gap-4 mt-4 flex-wrap">
+          <div className="relative">
+            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+            <Input
+              placeholder="Buscar tarefa, OS, orçamento..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="h-9 w-[260px] pl-8 text-xs"
+            />
+          </div>
           <Select value={filterTecnico} onValueChange={setFilterTecnico}>
             <SelectTrigger className="w-[200px]">
               <SelectValue placeholder="Técnico" />
