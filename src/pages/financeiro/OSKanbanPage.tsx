@@ -19,7 +19,8 @@ import {
   ArrowLeft, CalendarIcon, RefreshCw, ExternalLink,
   Filter, GripVertical, Check, X, Edit2, Trash2, Plus,
   Package, FileText, ClipboardList, MapPin, ArrowUpDown, ArrowDown, ArrowUp,
-  UserCog, Save, Loader2, LayoutGrid, Navigation, AlertTriangle
+  UserCog, Save, Loader2, LayoutGrid, Navigation, AlertTriangle,
+  Search,
 } from "lucide-react";
 import { Map as MapIcon } from "lucide-react";
 import OSMapView from "@/components/financeiro/OSMapView";
