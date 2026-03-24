@@ -752,6 +752,7 @@ Deno.serve(async (req) => {
         row.gc_os_data = gcOs.gc_os_data;
         row.gc_os_data_saida = gcOs.gc_os_data_saida;
         row.gc_os_link = gcOs.gc_os_link;
+        row.gc_os_tarefa_exec = gcOs.gc_os_tarefa_exec || null;
       }
 
       rows.push(row);
