@@ -1242,6 +1242,21 @@ export default function OSKanbanPage() {
             </PopoverContent>
           </Popover>
 
+          {/* Shared execution filter */}
+          {execTaskDuplicates.size > 0 && (
+            <Button
+              variant={filterSharedExec ? "default" : "outline"}
+              size="sm"
+              className="gap-2"
+              onClick={() => setFilterSharedExec((v) => !v)}
+            >
+              🔗 Exec. compartilhada
+              <Badge variant="secondary" className="text-[10px] h-4 px-1 ml-1">
+                {execTaskDuplicates.size}
+              </Badge>
+            </Button>
+          )}
+
           {/* Route corridor filter */}
           <RouteCorridorFilter
             allCities={allCities}
