@@ -918,6 +918,11 @@ export default function OSKanbanPage() {
         if (corridorFilterIds !== null) {
           if (!corridorFilterIds.has(item.auvo_task_id)) return false;
         }
+        // Shared execution filter
+        if (filterSharedExec) {
+          const exec = (item as any).gc_os_tarefa_exec;
+          if (!exec || !execTaskDuplicates.has(exec)) return false;
+        }
         // Text search filter
         if (searchQuery.trim()) {
           const q = searchQuery.trim().toLowerCase();
