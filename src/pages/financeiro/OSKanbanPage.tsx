@@ -170,6 +170,7 @@ export default function OSKanbanPage() {
   const [corridorFilterIds, setCorridorFilterIds] = useState<Set<string> | null>(null);
   const [corridorRoute, setCorridorRoute] = useState<any>(null);
   const [searchQuery, setSearchQuery] = useState("");
+  const [filterSharedExec, setFilterSharedExec] = useState(false);
 
   // Default excluded situações — statuses considered "concluded" flows
   const DEFAULT_EXCLUDED_SITUACOES = [
@@ -917,6 +918,11 @@ export default function OSKanbanPage() {
         if (corridorFilterIds !== null) {
           if (!corridorFilterIds.has(item.auvo_task_id)) return false;
         }
+        // Shared execution filter
+        if (filterSharedExec) {
+          const exec = (item as any).gc_os_tarefa_exec;
+          if (!exec || !execTaskDuplicates.has(exec)) return false;
+        }
         // Text search filter
         if (searchQuery.trim()) {
           const q = searchQuery.trim().toLowerCase();
@@ -936,7 +942,7 @@ export default function OSKanbanPage() {
       filtered = sortItems(filtered, sortKey);
       return { ...col, items: filtered };
     });
-  }, [columns, filterTecnico, allClientesSelected, selectedClientes, valorMin, valorMax, globalSort, columnSorts, sortItems, allFlagsSelected, selectedFlags, cityMap, filterOnlyRoutes, routeGroups, corridorFilterIds, searchQuery]);
+  }, [columns, filterTecnico, allClientesSelected, selectedClientes, valorMin, valorMax, globalSort, columnSorts, sortItems, allFlagsSelected, selectedFlags, cityMap, filterOnlyRoutes, routeGroups, corridorFilterIds, searchQuery, filterSharedExec, execTaskDuplicates]);
 
   // Drag & drop
   const onDragEnd = useCallback((result: DropResult) => {
@@ -1235,6 +1241,21 @@ export default function OSKanbanPage() {
               )}
             </PopoverContent>
           </Popover>
+
+          {/* Shared execution filter */}
+          {execTaskDuplicates.size > 0 && (
+            <Button
+              variant={filterSharedExec ? "default" : "outline"}
+              size="sm"
+              className="gap-2"
+              onClick={() => setFilterSharedExec((v) => !v)}
+            >
+              🔗 Exec. compartilhada
+              <Badge variant="secondary" className="text-[10px] h-4 px-1 ml-1">
+                {execTaskDuplicates.size}
+              </Badge>
+            </Button>
+          )}
 
           {/* Route corridor filter */}
           <RouteCorridorFilter
