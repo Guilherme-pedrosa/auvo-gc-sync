@@ -380,6 +380,16 @@ async function fetchGcOs(gcHeaders: Record<string, string>): Promise<{ byTaskId:
 
     for (const os of records) {
       const atributos: any[] = os.atributos || [];
+      // Extract 73344 (tarefa execução) value for this OS
+      const attrExec = atributos.find((a: any) => {
+        const nested = a?.atributo || a;
+        return String(nested.atributo_id || nested.id || "") === GC_ATRIBUTO_TAREFA_EXEC;
+      });
+      const execTaskVal = attrExec
+        ? String((attrExec?.atributo || attrExec)?.conteudo || (attrExec?.atributo || attrExec)?.valor || "").trim()
+        : "";
+      const gc_os_tarefa_exec = execTaskVal && /^\d+$/.test(execTaskVal) ? execTaskVal : null;
+
       const osPayload = {
         gc_os_id: String(os.id),
         gc_os_codigo: String(os.codigo || ""),
@@ -392,6 +402,7 @@ async function fetchGcOs(gcHeaders: Record<string, string>): Promise<{ byTaskId:
         gc_os_data: String(os.data_entrada || os.data || "").split("T")[0] || null,
         gc_os_data_saida: String(os.data_saida || "").split("T")[0] || null,
         gc_os_link: `https://gestaoclick.com/ordens_servicos/editar/${os.id}?retorno=%2Fordens_servicos`,
+        gc_os_tarefa_exec,
       };
 
       // Reverse map by OS código
