@@ -58,6 +58,7 @@ type OSItem = {
   gc_os_vendedor: string | null;
   gc_os_data: string | null;
   gc_os_link: string | null;
+  gc_os_tarefa_exec: string | null;
   gc_orcamento_id: string | null;
   gc_orcamento_codigo: string | null;
   gc_orc_situacao: string | null;
