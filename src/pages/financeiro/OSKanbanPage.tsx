@@ -867,6 +867,23 @@ export default function OSKanbanPage() {
     return map;
   }, [allCities]);
 
+  // Detect duplicate execution tasks (gc_os_tarefa_exec shared by 2+ OS)
+  const execTaskDuplicates = useMemo(() => {
+    const countByExec = new Map<string, string[]>(); // exec_task_id → [gc_os_codigo, ...]
+    for (const item of items) {
+      const exec = (item as any).gc_os_tarefa_exec;
+      if (!exec) continue;
+      if (!countByExec.has(exec)) countByExec.set(exec, []);
+      countByExec.get(exec)!.push(item.gc_os_codigo || item.auvo_task_id);
+    }
+    // Only keep entries with 2+ OS
+    const result = new Map<string, string[]>();
+    for (const [exec, codes] of countByExec) {
+      if (codes.length >= 2) result.set(exec, codes);
+    }
+    return result;
+  }, [items]);
+
   // Count items per city
   const cityCounts = useMemo(() => {
     const counts = new Map<string, number>();
