@@ -170,6 +170,7 @@ export default function OSKanbanPage() {
   const [corridorFilterIds, setCorridorFilterIds] = useState<Set<string> | null>(null);
   const [corridorRoute, setCorridorRoute] = useState<any>(null);
   const [searchQuery, setSearchQuery] = useState("");
+  const [filterSharedExec, setFilterSharedExec] = useState(false);
 
   // Default excluded situações — statuses considered "concluded" flows
   const DEFAULT_EXCLUDED_SITUACOES = [
