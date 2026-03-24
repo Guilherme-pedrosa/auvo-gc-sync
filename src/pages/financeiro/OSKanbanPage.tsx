@@ -58,6 +58,7 @@ type OSItem = {
   gc_os_vendedor: string | null;
   gc_os_data: string | null;
   gc_os_link: string | null;
+  gc_os_tarefa_exec: string | null;
   gc_orcamento_id: string | null;
   gc_orcamento_codigo: string | null;
   gc_orc_situacao: string | null;
@@ -866,6 +867,23 @@ export default function OSKanbanPage() {
     return map;
   }, [allCities]);
 
+  // Detect duplicate execution tasks (gc_os_tarefa_exec shared by 2+ OS)
+  const execTaskDuplicates = useMemo(() => {
+    const countByExec = new Map<string, string[]>(); // exec_task_id → [gc_os_codigo, ...]
+    for (const item of items) {
+      const exec = (item as any).gc_os_tarefa_exec;
+      if (!exec) continue;
+      if (!countByExec.has(exec)) countByExec.set(exec, []);
+      countByExec.get(exec)!.push(item.gc_os_codigo || item.auvo_task_id);
+    }
+    // Only keep entries with 2+ OS
+    const result = new Map<string, string[]>();
+    for (const [exec, codes] of countByExec) {
+      if (codes.length >= 2) result.set(exec, codes);
+    }
+    return result;
+  }, [items]);
+
   // Count items per city
   const cityCounts = useMemo(() => {
     const counts = new Map<string, number>();
@@ -1401,6 +1419,20 @@ export default function OSKanbanPage() {
                                               <span className="truncate">Cliente GC diferente</span>
                                             </div>
                                           )}
+                                          {/* Duplicate execution task flag */}
+                                          {(() => {
+                                            const execTask = (item as any).gc_os_tarefa_exec;
+                                            const siblings = execTask ? execTaskDuplicates.get(execTask) : null;
+                                            if (!siblings) return null;
+                                            const otherCodes = siblings.filter(c => c !== (item.gc_os_codigo || item.auvo_task_id));
+                                            return (
+                                              <div className="flex items-center gap-1 mt-0.5 text-[10px] text-blue-600 dark:text-blue-400" title={`Tarefa de execução #${execTask} compartilhada com: ${otherCodes.join(", ")}`}>
+                                                <span className="inline-flex items-center gap-0.5 rounded-full px-1.5 py-px font-semibold border bg-blue-100 dark:bg-blue-900/40 border-blue-300 dark:border-blue-700 text-blue-700 dark:text-blue-300">
+                                                  🔗 Exec #{execTask} ({siblings.length} OS)
+                                                </span>
+                                              </div>
+                                            );
+                                          })()}
                                           <p className="text-xs text-muted-foreground mt-0.5">
                                             {item.tecnico || "—"} • {item.data_tarefa || "—"}
                                           </p>

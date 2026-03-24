@@ -1,0 +1,1 @@
+ALTER TABLE public.tarefas_central ADD COLUMN IF NOT EXISTS gc_os_tarefa_exec text DEFAULT NULL;

@@ -376,6 +376,7 @@ export type Database = {
           gc_os_link: string | null
           gc_os_situacao: string | null
           gc_os_situacao_id: string | null
+          gc_os_tarefa_exec: string | null
           gc_os_valor_total: number | null
           gc_os_vendedor: string | null
           hora_fim: string | null
@@ -429,6 +430,7 @@ export type Database = {
           gc_os_link?: string | null
           gc_os_situacao?: string | null
           gc_os_situacao_id?: string | null
+          gc_os_tarefa_exec?: string | null
           gc_os_valor_total?: number | null
           gc_os_vendedor?: string | null
           hora_fim?: string | null
@@ -482,6 +484,7 @@ export type Database = {
           gc_os_link?: string | null
           gc_os_situacao?: string | null
           gc_os_situacao_id?: string | null
+          gc_os_tarefa_exec?: string | null
           gc_os_valor_total?: number | null
           gc_os_vendedor?: string | null
           hora_fim?: string | null
