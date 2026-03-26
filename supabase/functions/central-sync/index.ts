@@ -1074,35 +1074,68 @@ Deno.serve(async (req) => {
 
     console.log(`[central-sync] Propagação: ${siblingUpdated} tarefas irmãs atualizadas (${osIds.length} OS, ${orcIds.length} orçamentos)`);
 
-    // ── Post-sync: detect past-due non-completed tasks and persist as atividades_nao_executadas ──
-    // This catches tasks that were never detected as late during realtime-tracking
+    // ── Post-sync: persist atrasos AND pendências permanently ──
+    // 1) Tasks past due and NOT finalized (still open)
+    // 2) Tasks finalized AFTER scheduled date (were late but got done)
+    // 3) Tasks with pendência (regardless of status)
+    // All are persisted permanently via ON CONFLICT DO NOTHING so records are never lost
     const today = new Date().toISOString().split("T")[0];
     const monthStart = today.substring(0, 8) + "01";
     try {
-      const { data: pastDueTasks } = await sbClient
+      // Fetch ALL tasks from this month that are past due (any status) or have pendência
+      const { data: monthTasks } = await sbClient
         .from("tarefas_central")
-        .select("auvo_task_id, tecnico_id, tecnico, cliente, orientacao, data_tarefa, status_auvo")
+        .select("auvo_task_id, tecnico_id, tecnico, cliente, orientacao, data_tarefa, data_conclusao, status_auvo, pendencia")
         .gte("data_tarefa", monthStart)
-        .lt("data_tarefa", today)
-        .not("status_auvo", "in", '("Finalizada","Cancelada")');
+        .lte("data_tarefa", today);
 
-      if (pastDueTasks && pastDueTasks.length > 0) {
-        const naoExec = pastDueTasks.map((t: any) => ({
-          auvo_task_id: t.auvo_task_id,
-          tecnico_id: t.tecnico_id || "",
-          tecnico_nome: t.tecnico || "",
-          cliente: t.cliente || null,
-          descricao: t.orientacao || null,
-          data_planejada: t.data_tarefa,
-          status_original: t.status_auvo || "Não finalizada",
-        }));
+      if (monthTasks && monthTasks.length > 0) {
+        const naoExec: any[] = [];
 
-        const { error: naoExecErr } = await sbClient
-          .from("atividades_nao_executadas")
-          .upsert(naoExec, { onConflict: "auvo_task_id,data_planejada" });
+        for (const t of monthTasks) {
+          const isPastDue = t.data_tarefa < today;
+          const isNotFinalized = !["Finalizada", "Cancelada"].includes(t.status_auvo || "");
+          const isLateFinish = t.status_auvo === "Finalizada" && t.data_conclusao && t.data_conclusao > t.data_tarefa;
+          const hasPendencia = !!(t.pendencia && String(t.pendencia).trim().length > 0);
 
-        if (naoExecErr) console.error("[central-sync] Erro ao salvar não executadas:", naoExecErr);
-        else console.log(`[central-sync] ${naoExec.length} atividades não executadas detectadas e salvas`);
+          // Determine status_original label
+          let statusOriginal = "";
+          if (isPastDue && isNotFinalized) {
+            statusOriginal = t.status_auvo || "Não finalizada";
+          } else if (isLateFinish) {
+            statusOriginal = "Finalizada com atraso";
+          } else if (hasPendencia && isPastDue) {
+            statusOriginal = "Com pendência";
+          }
+
+          // Build motivo
+          let motivo = "";
+          if (hasPendencia) {
+            motivo = `Pendência: ${String(t.pendencia).trim().substring(0, 200)}`;
+          }
+
+          if (statusOriginal) {
+            naoExec.push({
+              auvo_task_id: t.auvo_task_id,
+              tecnico_id: t.tecnico_id || "",
+              tecnico_nome: t.tecnico || "",
+              cliente: t.cliente || null,
+              descricao: t.orientacao || null,
+              data_planejada: t.data_tarefa,
+              status_original: statusOriginal,
+              motivo: motivo || null,
+            });
+          }
+        }
+
+        if (naoExec.length > 0) {
+          const { error: naoExecErr } = await sbClient
+            .from("atividades_nao_executadas")
+            .upsert(naoExec, { onConflict: "auvo_task_id,data_planejada" });
+
+          if (naoExecErr) console.error("[central-sync] Erro ao salvar não executadas:", naoExecErr);
+          else console.log(`[central-sync] ${naoExec.length} atividades (atrasos/pendências) salvas permanentemente`);
+        }
       }
     } catch (naoExecError) {
       console.warn("[central-sync] Erro ao detectar atividades não executadas:", naoExecError);
