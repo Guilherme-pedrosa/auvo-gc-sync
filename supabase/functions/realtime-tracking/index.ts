@@ -301,9 +301,12 @@ Deno.serve(async (req) => {
 
       // DB fallback: if live API didn't find a value, check tarefas_central
       const dbFallback = dbValorMap[auvoTaskId] || null;
-      const finalCodigo = gcDoc?.codigo || dbFallback?.codigo || "";
-      const finalValor = gcDoc?.valor || dbFallback?.valor || "";
-      const finalTipo = gcDocTipo || dbFallback?.tipo || "";
+      // Use GC live value only if it has a real amount (> 0), otherwise fall back to DB
+      const gcValorNum = parseFloat(gcDoc?.valor || "0");
+      const dbValorNum = parseFloat(dbFallback?.valor || "0");
+      const finalCodigo = (gcValorNum > 0 ? gcDoc?.codigo : null) || dbFallback?.codigo || gcDoc?.codigo || "";
+      const finalValor = gcValorNum > 0 ? gcDoc!.valor : (dbValorNum > 0 ? dbFallback!.valor : (gcDoc?.valor || ""));
+      const finalTipo = (gcValorNum > 0 ? gcDocTipo : null) || dbFallback?.tipo || gcDocTipo || "";
 
       techMap[techId].tarefas.push({
         taskId: auvoTaskId,
