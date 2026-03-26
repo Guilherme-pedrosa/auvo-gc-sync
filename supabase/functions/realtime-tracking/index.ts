@@ -151,12 +151,37 @@ Deno.serve(async (req) => {
 
     const bearerToken = await auvoLogin(auvoApiKey, auvoApiToken);
 
-    // Fetch Auvo tasks + GC OS + GC Orçamentos in parallel
-    const [tasks, gcOsMap, gcOrcMap] = await Promise.all([
+    // Supabase client for DB fallback
+    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+    const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+    const sb = createClient(supabaseUrl, supabaseKey);
+
+    // Fetch Auvo tasks + GC OS + GC Orçamentos + DB values in parallel
+    const [tasks, gcOsMap, gcOrcMap, dbTasks] = await Promise.all([
       fetchAllTasks(bearerToken, targetDate, targetDate),
       gcHeaders ? fetchGcOsMap(gcHeaders) : Promise.resolve({} as Record<string, { codigo: string; valor: string }>),
       gcHeaders ? fetchGcOrcMap(gcHeaders) : Promise.resolve({} as Record<string, { codigo: string; valor: string }>),
+      (async () => {
+        const { data } = await sb
+          .from("tarefas_central")
+          .select("auvo_task_id, gc_os_codigo, gc_os_valor_total, gc_orc_valor_total, gc_orcamento_codigo, gc_os_id, gc_orcamento_id")
+          .eq("data_tarefa", targetDate);
+        return data || [];
+      })(),
     ]);
+
+    // Build DB fallback map: auvo_task_id → { codigo, valor, tipo }
+    const dbValorMap: Record<string, { codigo: string; valor: string; tipo: string }> = {};
+    for (const t of dbTasks) {
+      const osVal = Number(t.gc_os_valor_total) || 0;
+      const orcVal = Number(t.gc_orc_valor_total) || 0;
+      if (osVal > 0) {
+        dbValorMap[t.auvo_task_id] = { codigo: t.gc_os_codigo || "", valor: String(osVal), tipo: "OS" };
+      } else if (orcVal > 0) {
+        dbValorMap[t.auvo_task_id] = { codigo: t.gc_orcamento_codigo || "", valor: String(orcVal), tipo: "ORÇ" };
+      }
+    }
+    console.log(`[realtime-tracking] DB fallback: ${Object.keys(dbValorMap).length} tarefas com valor`);
 
     console.log(`[realtime-tracking] Total: ${tasks.length} tarefas`);
     if (tasks.length > 0) {
