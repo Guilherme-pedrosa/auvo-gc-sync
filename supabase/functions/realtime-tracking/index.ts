@@ -346,7 +346,7 @@ Deno.serve(async (req) => {
         }
 
         if (naoExecutadas.length > 0) {
-          const { error: upsertErr } = await supabase
+          const { error: upsertErr } = await sb
             .from("atividades_nao_executadas")
             .upsert(naoExecutadas, { onConflict: "auvo_task_id,data_planejada" });
           if (upsertErr) console.error("[realtime-tracking] Erro ao salvar não executadas:", upsertErr);
