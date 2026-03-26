@@ -324,9 +324,6 @@ Deno.serve(async (req) => {
 
     if (shouldPersistAll || hasLateTasks) {
       try {
-        const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
-        const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-        const supabase = createClient(supabaseUrl, supabaseKey);
 
         const naoExecutadas: any[] = [];
         for (const tech of tecnicos) {
