@@ -52,10 +52,42 @@ async function fetchGcDocMap(
 }
 
 async function fetchGcOsMap(gcHeaders: Record<string, string>): Promise<Record<string, { codigo: string; valor: string }>> {
-  const atributoId = Deno.env.get("GC_ATRIBUTO_TAREFA_ID") || "73344";
-  const label = (Deno.env.get("AUVO_ATRIBUTO_LABEL") || "Tarefa Execução").toLowerCase();
-  const map = await fetchGcDocMap(gcHeaders, "ordens_servicos", atributoId, [label, "tarefa execu"]);
-  console.log(`[realtime-tracking] GC map: ${Object.keys(map).length} OS mapeadas`);
+  // Fetch ALL OS pages once, then scan for BOTH attributes (73343=Tarefa OS, 73344=Tarefa Execução)
+  const map: Record<string, { codigo: string; valor: string }> = {};
+  let page = 1;
+  let totalPages = 1;
+
+  while (page <= totalPages && page <= 30) {
+    const url = `${GC_BASE_URL}/api/ordens_servicos?limite=100&pagina=${page}`;
+    const response = await fetch(url, { headers: gcHeaders });
+    if (!response.ok) break;
+    const data = await response.json();
+    const records: any[] = Array.isArray(data?.data) ? data.data : [];
+    totalPages = data?.meta?.total_paginas || 1;
+
+    for (const doc of records) {
+      const atributos: any[] = doc.atributos || [];
+      // Check both attributes: 73343 (Tarefa OS) and 73344 (Tarefa Execução)
+      for (const a of atributos) {
+        const nested = a?.atributo || a;
+        const id = String(nested.atributo_id || nested.id || "");
+        const label = String(nested.descricao || nested.label || nested.nome || "").toLowerCase();
+        const isRelevant = id === "73343" || id === "73344" ||
+          label.includes("tarefa os") || label.includes("tarefa execu");
+        if (!isRelevant) continue;
+        const taskIdValue = String(nested?.conteudo || nested?.valor || "").trim();
+        if (!taskIdValue || !/^\d+$/.test(taskIdValue)) continue;
+        const valor = String(doc.valor_total || "0");
+        // Only set if this entry has a real value, or if no entry exists yet
+        if (!map[taskIdValue] || (parseFloat(valor) > 0 && parseFloat(map[taskIdValue].valor) <= 0)) {
+          map[taskIdValue] = { codigo: String(doc.codigo || doc.id), valor };
+        }
+      }
+    }
+    page++;
+  }
+
+  console.log(`[realtime-tracking] GC map: ${Object.keys(map).length} OS mapeadas (ambos atributos)`);
   return map;
 }
 
