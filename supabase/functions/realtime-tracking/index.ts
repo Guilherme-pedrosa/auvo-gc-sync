@@ -267,6 +267,12 @@ Deno.serve(async (req) => {
       const gcDoc = gcOs || gcOrc;
       const gcDocTipo = gcOs ? "OS" : (gcOrc ? "ORÇ" : "");
 
+      // DB fallback: if live API didn't find a value, check tarefas_central
+      const dbFallback = dbValorMap[auvoTaskId] || null;
+      const finalCodigo = gcDoc?.codigo || dbFallback?.codigo || "";
+      const finalValor = gcDoc?.valor || dbFallback?.valor || "";
+      const finalTipo = gcDocTipo || dbFallback?.tipo || "";
+
       techMap[techId].tarefas.push({
         taskId: auvoTaskId,
         cliente: customerName,
@@ -281,9 +287,9 @@ Deno.serve(async (req) => {
         pendencia: String(task.pendency ?? task.pendencia ?? "").trim(),
         descricao: String(task.description || task.orientation || "").substring(0, 150),
         duration: String(task.duration || ""),
-        gcOsCodigo: gcDoc?.codigo || "",
-        gcOsValor: gcDoc?.valor || "",
-        gcOsTipo: gcDocTipo,
+        gcOsCodigo: finalCodigo,
+        gcOsValor: finalValor,
+        gcOsTipo: finalTipo,
       });
     }
 
