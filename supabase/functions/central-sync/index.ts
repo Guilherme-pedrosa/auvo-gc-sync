@@ -830,11 +830,20 @@ Deno.serve(async (req) => {
         deslocamento_inicio: displacementStartRaw || null,
         duracao_deslocamento: duracaoDeslocamento,
         status_auvo: (() => {
-          // Pause check FIRST — overrides any description the API may return
-          if (task.reasonForPause || (task.timeControl || []).some((tc: any) => tc.pauseStart && !tc.pauseEnd)) return "Pausada";
+          const timeControls = task.timeControl || [];
+          const hasPauseStart = !!task.reasonForPause || timeControls.some((tc: any) => tc.pauseStart);
+          const allPausesEnded = timeControls.length > 0 && timeControls.every((tc: any) => !tc.pauseStart || tc.pauseEnd);
+          const hasCheckOut = !!task.checkOut;
+
+          // Rule 1: pause started but not ended and no checkout → Pausada
+          if (hasPauseStart && !allPausesEnded && !hasCheckOut) return "Pausada";
+          // Rule 2: pause started and ended but no checkout → Em andamento
+          if (hasPauseStart && allPausesEnded && !hasCheckOut) return "Em andamento";
+          // Rule 3: has checkout → Finalizada
+          if (hasCheckOut) return "Finalizada";
+
           const desc = String(task.taskStatus?.description || "").trim();
-          if (desc) return desc;
-          if (task.finished) return "Finalizada";
+          if (desc && desc !== "Finalizada") return desc;
           if (task.checkIn) return "Em andamento";
           return "Aberta";
         })(),
