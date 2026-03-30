@@ -93,7 +93,39 @@ export default function OSAbertasTab({ data, isLoading, allClientes, onRefresh, 
     staleTime: 1000 * 60 * 30,
   });
 
-  // All unique situações
+  // Conciliação handler
+  const alterarSituacaoOS = useCallback(async (item: any, situacaoId: string) => {
+    setChangingId(item.gc_os_id);
+    try {
+      const { data: resp, error } = await supabase.functions.invoke("auvo-gc-sync", {
+        body: {
+          action: "revert_os",
+          gc_os_id: item.gc_os_id,
+          gc_os_codigo: item.gc_os_codigo,
+          situacao_id_antes: situacaoId,
+          gc_vendedor_id: item.gc_os_vendedor || null,
+          gc_vendedor_nome: null,
+          data_saida: item.data_tarefa || null,
+          gc_usuario_id: profile?.gc_user_id || null,
+        },
+      });
+      if (error) throw error;
+      if (resp?.success) {
+        const label = SITUACOES_OPTIONS.find(s => s.id === situacaoId)?.label || situacaoId;
+        setMovedOsIds(prev => new Set(prev).add(item.gc_os_id));
+        toast.success(`OS ${item.gc_os_codigo} → ${label}`);
+        onRefresh?.();
+      } else {
+        toast.error(`Erro: ${JSON.stringify(resp?.body || resp?.error || resp)}`);
+      }
+    } catch (err: any) {
+      toast.error(`Erro: ${err.message}`);
+    } finally {
+      setChangingId(null);
+    }
+  }, [profile?.gc_user_id, onRefresh]);
+
+
   const allSituacoes = useMemo(() => {
     const set = new Set(data.map((t) => t.gc_os_situacao || "").filter(Boolean));
     return Array.from(set).sort();
