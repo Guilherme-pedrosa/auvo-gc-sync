@@ -231,27 +231,60 @@ export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, o
   useEffect(() => {
     if (!selectedCard?.gc_os_id) {
       setOsDetail(null);
+      setExecTaskFallback(null);
       return;
     }
     let cancelled = false;
     setOsDetailLoading(true);
     setOsDetail(null);
+    setExecTaskFallback(null);
 
     supabase.functions
       .invoke("gc-proxy", {
         body: { endpoint: `/api/ordens_servicos/${selectedCard.gc_os_id}`, method: "GET" },
       })
-      .then(({ data, error }) => {
+      .then(async ({ data, error }) => {
         if (cancelled) return;
-        if (error) { setOsDetailLoading(false); return; }
+        if (error) {
+          setOsDetailLoading(false);
+          return;
+        }
         const osObj = data?.data?.data ?? data?.data ?? null;
         setOsDetail(osObj);
-        setOsDetailLoading(false);
-      })
-      .catch(() => { if (!cancelled) setOsDetailLoading(false); });
 
-    return () => { cancelled = true; };
-  }, [selectedCard?.gc_os_id]);
+        const atributos: any[] = osObj?.atributos || [];
+        const execAttr = atributos.find((a: any) => {
+          const nested = a?.atributo || a;
+          return String(nested?.atributo_id || nested?.id || "") === "73344";
+        });
+        const nested = execAttr?.atributo || execAttr;
+        const execTaskId = String(nested?.conteudo || nested?.valor || "").trim();
+
+        const existsInMirror = execTaskId
+          ? allTasks.some((t: any) => String(t.auvo_task_id) === execTaskId)
+          : false;
+
+        if (execTaskId && !existsInMirror) {
+          const { data: taskData, error: taskError } = await supabase.functions.invoke("auvo-task-update", {
+            body: { action: "get", taskId: Number(execTaskId) },
+          });
+
+          if (!cancelled && !taskError) {
+            const taskObj = taskData?.data?.result ?? taskData?.data ?? null;
+            setExecTaskFallback(taskObj);
+          }
+        }
+
+        if (!cancelled) setOsDetailLoading(false);
+      })
+      .catch(() => {
+        if (!cancelled) setOsDetailLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedCard?.gc_os_id, allTasks]);
 
   // Fetch exec task ID from GC OS attributes
   const fetchExecTaskId = useCallback(async (gcOsId: string): Promise<{ execTaskId: string | null; osTaskId: string | null }> => {
