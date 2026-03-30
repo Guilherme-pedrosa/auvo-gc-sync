@@ -1,4 +1,5 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useCallback, useEffect } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -6,11 +7,24 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Label } from "@/components/ui/label";
+import { Calendar } from "@/components/ui/calendar";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Search, ArrowDownWideNarrow, ExternalLink, Filter } from "lucide-react";
+import {
+  Search, ArrowDownWideNarrow, ExternalLink, Filter, CalendarIcon,
+  Edit2, Save, Loader2, UserCog, MapPin, Navigation, Package,
+  ClipboardList, FileText, AlertTriangle,
+} from "lucide-react";
+import { supabase } from "@/integrations/supabase/client";
+import { format } from "date-fns";
+import { ptBR } from "date-fns/locale";
+import { cn } from "@/lib/utils";
+import { toast } from "sonner";
 
 interface Props {
   data: any[];
@@ -18,11 +32,44 @@ interface Props {
   allClientes: string[];
 }
 
+const formatCurrency = (val: number) =>
+  val.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+
 export default function OSAbertasTab({ data, isLoading, allClientes }: Props) {
   const [search, setSearch] = useState("");
   const [selectedSituacoes, setSelectedSituacoes] = useState<Set<string>>(new Set());
   const [allSituacoesSelected, setAllSituacoesSelected] = useState(true);
   const [searchSituacao, setSearchSituacao] = useState("");
+  const [expanded, setExpanded] = useState<string | null>(null);
+
+  // Detail dialog
+  const [selectedCard, setSelectedCard] = useState<any | null>(null);
+  const [osDetail, setOsDetail] = useState<any>(null);
+  const [osDetailLoading, setOsDetailLoading] = useState(false);
+
+  // Edit modal
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [editingCard, setEditingCard] = useState<any | null>(null);
+  const [editDate, setEditDate] = useState<Date | undefined>(undefined);
+  const [editHour, setEditHour] = useState("08");
+  const [editMinute, setEditMinute] = useState("00");
+  const [editTecnicoId, setEditTecnicoId] = useState("");
+  const [editSaving, setEditSaving] = useState(false);
+  const [execTaskId, setExecTaskId] = useState<string | null>(null);
+  const [execTaskLoading, setExecTaskLoading] = useState(false);
+
+  // Fetch Auvo users
+  const { data: auvoUsers } = useQuery({
+    queryKey: ["auvo-users"],
+    queryFn: async () => {
+      const { data, error } = await supabase.functions.invoke("auvo-task-update", {
+        body: { action: "list-users" },
+      });
+      if (error) throw error;
+      return (data?.data || []) as { userID: number; login: string; name: string }[];
+    },
+    staleTime: 1000 * 60 * 30,
+  });
 
   // All unique situações
   const allSituacoes = useMemo(() => {
@@ -56,13 +103,152 @@ export default function OSAbertasTab({ data, isLoading, allClientes }: Props) {
   const filtered = useMemo(() => {
     if (!search) return clienteSummary;
     const s = search.toLowerCase();
-    return clienteSummary.filter((c) => c.cliente.toLowerCase().includes(s));
+    return clienteSummary.filter((c) => {
+      // Search in client name
+      if (c.cliente.toLowerCase().includes(s)) return true;
+      // Search in OS codes, auvo task IDs
+      return c.items.some((item: any) =>
+        (item.gc_os_codigo || "").toLowerCase().includes(s) ||
+        (item.auvo_task_id || "").toLowerCase().includes(s) ||
+        (item.gc_orcamento_codigo || "").toLowerCase().includes(s)
+      );
+    });
   }, [clienteSummary, search]);
 
   const grandTotal = useMemo(() => filtered.reduce((sum, c) => sum + c.total, 0), [filtered]);
   const grandCount = useMemo(() => filtered.reduce((sum, c) => sum + c.count, 0), [filtered]);
 
-  const [expanded, setExpanded] = useState<string | null>(null);
+  // Fetch OS detail when card is selected
+  useEffect(() => {
+    if (!selectedCard?.gc_os_id) {
+      setOsDetail(null);
+      return;
+    }
+    let cancelled = false;
+    setOsDetailLoading(true);
+    setOsDetail(null);
+
+    supabase.functions
+      .invoke("gc-proxy", {
+        body: { endpoint: `/api/ordens_servicos/${selectedCard.gc_os_id}`, method: "GET" },
+      })
+      .then(({ data, error }) => {
+        if (cancelled) return;
+        if (error) { setOsDetailLoading(false); return; }
+        const osObj = data?.data?.data ?? data?.data ?? null;
+        setOsDetail(osObj);
+        setOsDetailLoading(false);
+      })
+      .catch(() => { if (!cancelled) setOsDetailLoading(false); });
+
+    return () => { cancelled = true; };
+  }, [selectedCard?.gc_os_id]);
+
+  // Fetch exec task ID from GC OS attributes
+  const fetchExecTaskId = useCallback(async (gcOsId: string): Promise<{ execTaskId: string | null; osTaskId: string | null }> => {
+    try {
+      const { data, error } = await supabase.functions.invoke("gc-proxy", {
+        body: { endpoint: `/api/ordens_servicos/${gcOsId}`, method: "GET" },
+      });
+      if (error) return { execTaskId: null, osTaskId: null };
+      const osObj = data?.data?.data ?? data?.data ?? null;
+      if (!osObj) return { execTaskId: null, osTaskId: null };
+      const atributos: any[] = osObj.atributos || [];
+      const findAttrValue = (attrId: string) => {
+        const attr = atributos.find((a: any) => {
+          const nested = a?.atributo || a;
+          return String(nested.atributo_id || nested.id || "") === attrId;
+        });
+        if (!attr) return null;
+        const nested = attr?.atributo || attr;
+        const valor = String(nested?.conteudo || nested?.valor || "").trim();
+        return valor && /^\d+$/.test(valor) ? valor : null;
+      };
+      return { osTaskId: findAttrValue("73343"), execTaskId: findAttrValue("73344") };
+    } catch { return { execTaskId: null, osTaskId: null }; }
+  }, []);
+
+  const openEditModal = useCallback(async (card: any) => {
+    setEditingCard(card);
+    setExecTaskId(null);
+    setExecTaskLoading(true);
+    setEditDate(undefined);
+    setEditHour("08");
+    setEditMinute("00");
+    const currentTecnico = auvoUsers?.find((u) => u.name === card.tecnico || u.login === card.tecnico);
+    setEditTecnicoId(currentTecnico ? String(currentTecnico.userID) : card.tecnico_id || "");
+    setShowEditModal(true);
+
+    if (card.gc_os_id) {
+      const { execTaskId: fetchedExecTaskId, osTaskId } = await fetchExecTaskId(card.gc_os_id);
+      if (!fetchedExecTaskId) {
+        toast.warning("Tarefa de execução (73344) não encontrada nesta OS");
+        setExecTaskLoading(false);
+        return;
+      }
+      if (osTaskId && fetchedExecTaskId === osTaskId) {
+        toast.error("A tarefa de execução (73344) está igual à tarefa OS (73343). Verifique os campos no GC.");
+      }
+      setExecTaskId(fetchedExecTaskId);
+
+      const { data: taskData, error: taskError } = await supabase.functions.invoke("auvo-task-update", {
+        body: { action: "get", taskId: Number(fetchedExecTaskId) },
+      });
+      if (!taskError) {
+        const taskObj = taskData?.data?.result ?? taskData?.data ?? null;
+        const rawTaskDate = taskObj?.taskDate || taskObj?.task_date || taskObj?.date || null;
+        if (rawTaskDate) {
+          const parsedDate = new Date(rawTaskDate);
+          if (!isNaN(parsedDate.getTime())) {
+            setEditDate(parsedDate);
+            setEditHour(String(parsedDate.getHours()).padStart(2, "0"));
+            setEditMinute(String(parsedDate.getMinutes()).padStart(2, "0"));
+          }
+        }
+        const rawUserTo = taskObj?.idUserTo ?? taskObj?.id_user_to ?? null;
+        if (rawUserTo) setEditTecnicoId(String(rawUserTo));
+      }
+    }
+    setExecTaskLoading(false);
+  }, [auvoUsers, fetchExecTaskId]);
+
+  const handleEditSave = useCallback(async () => {
+    if (!editingCard || !execTaskId) {
+      toast.error("ID da tarefa de execução não disponível");
+      return;
+    }
+    setEditSaving(true);
+    try {
+      const patches: { op: string; path: string; value: any }[] = [];
+      if (editDate) {
+        const h = editHour.padStart(2, "0");
+        const m = editMinute.padStart(2, "0");
+        patches.push({ op: "replace", path: "taskDate", value: format(editDate, `yyyy-MM-dd'T'${h}:${m}:00`) });
+      }
+      if (editTecnicoId) {
+        patches.push({ op: "replace", path: "idUserTo", value: Number(editTecnicoId) });
+      }
+      if (patches.length === 0) {
+        toast.warning("Nenhuma alteração para salvar");
+        setEditSaving(false);
+        return;
+      }
+      const { data, error } = await supabase.functions.invoke("auvo-task-update", {
+        body: { action: "edit", taskId: Number(execTaskId), patches },
+      });
+      if (error) throw error;
+      if (data?.status && data.status >= 400) {
+        throw new Error(JSON.stringify(data?.data || "Erro ao atualizar tarefa"));
+      }
+      toast.success(`Tarefa de execução #${execTaskId} atualizada no Auvo!`);
+      setShowEditModal(false);
+      setEditingCard(null);
+    } catch (err: any) {
+      toast.error(`Erro: ${err.message || "Falha ao atualizar"}`);
+    } finally {
+      setEditSaving(false);
+    }
+  }, [editingCard, editDate, editTecnicoId, execTaskId, editHour, editMinute]);
 
   if (isLoading) {
     return (
@@ -89,9 +275,7 @@ export default function OSAbertasTab({ data, isLoading, allClientes }: Props) {
             <CardTitle className="text-sm font-medium text-muted-foreground">Valor Total</CardTitle>
           </CardHeader>
           <CardContent className="px-4 pb-3">
-            <p className="text-2xl font-bold text-foreground">
-              {grandTotal.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
-            </p>
+            <p className="text-2xl font-bold text-foreground">{formatCurrency(grandTotal)}</p>
           </CardContent>
         </Card>
         <Card>
@@ -109,7 +293,7 @@ export default function OSAbertasTab({ data, isLoading, allClientes }: Props) {
         <div className="relative max-w-sm">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input
-            placeholder="Buscar cliente..."
+            placeholder="Buscar cliente, OS, tarefa..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             className="pl-9"
@@ -205,7 +389,7 @@ export default function OSAbertasTab({ data, isLoading, allClientes }: Props) {
                         <Badge variant="secondary">{row.count}</Badge>
                       </TableCell>
                       <TableCell className="text-right font-semibold">
-                        {row.total.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
+                        {formatCurrency(row.total)}
                       </TableCell>
                     </TableRow>
                     {expanded === row.cliente && (
@@ -220,7 +404,7 @@ export default function OSAbertasTab({ data, isLoading, allClientes }: Props) {
                                   <TableHead className="text-xs">Técnico</TableHead>
                                   <TableHead className="text-xs">Data</TableHead>
                                   <TableHead className="text-xs text-right">Valor</TableHead>
-                                  <TableHead className="text-xs w-8"></TableHead>
+                                  <TableHead className="text-xs w-24">Ações</TableHead>
                                 </TableRow>
                               </TableHeader>
                               <TableBody>
@@ -228,7 +412,14 @@ export default function OSAbertasTab({ data, isLoading, allClientes }: Props) {
                                   .sort((a: any, b: any) => (Number(b.gc_os_valor_total) || 0) - (Number(a.gc_os_valor_total) || 0))
                                   .map((item: any) => (
                                     <TableRow key={item.auvo_task_id} className="text-xs">
-                                      <TableCell>{item.gc_os_codigo || "—"}</TableCell>
+                                      <TableCell>
+                                        <button
+                                          className="text-primary hover:underline font-medium"
+                                          onClick={() => setSelectedCard(item)}
+                                        >
+                                          {item.gc_os_codigo || `T#${item.auvo_task_id}`}
+                                        </button>
+                                      </TableCell>
                                       <TableCell>
                                         <Badge
                                           variant="outline"
@@ -244,17 +435,34 @@ export default function OSAbertasTab({ data, isLoading, allClientes }: Props) {
                                       <TableCell>{item.tecnico || "—"}</TableCell>
                                       <TableCell>{item.data_tarefa || "—"}</TableCell>
                                       <TableCell className="text-right font-medium">
-                                        {(Number(item.gc_os_valor_total) || 0).toLocaleString("pt-BR", {
-                                          style: "currency",
-                                          currency: "BRL",
-                                        })}
+                                        {formatCurrency(Number(item.gc_os_valor_total) || 0)}
                                       </TableCell>
                                       <TableCell>
-                                        {item.gc_os_link && (
-                                          <a href={item.gc_os_link} target="_blank" rel="noopener noreferrer">
-                                            <ExternalLink className="h-3.5 w-3.5 text-muted-foreground hover:text-primary" />
-                                          </a>
-                                        )}
+                                        <div className="flex items-center gap-1">
+                                          <Button
+                                            size="icon"
+                                            variant="ghost"
+                                            className="h-6 w-6"
+                                            title="Editar agendamento"
+                                            onClick={(e) => { e.stopPropagation(); openEditModal(item); }}
+                                          >
+                                            <Edit2 className="h-3 w-3" />
+                                          </Button>
+                                          {item.gc_os_link && (
+                                            <a href={item.gc_os_link} target="_blank" rel="noopener noreferrer" title="OS no GestãoClick">
+                                              <Button size="icon" variant="ghost" className="h-6 w-6">
+                                                <FileText className="h-3 w-3" />
+                                              </Button>
+                                            </a>
+                                          )}
+                                          {(item.auvo_task_url || item.auvo_link) && (
+                                            <a href={item.auvo_task_url || item.auvo_link} target="_blank" rel="noopener noreferrer" title="Tarefa no Auvo">
+                                              <Button size="icon" variant="ghost" className="h-6 w-6">
+                                                <ExternalLink className="h-3 w-3" />
+                                              </Button>
+                                            </a>
+                                          )}
+                                        </div>
                                       </TableCell>
                                     </TableRow>
                                   ))}
@@ -271,6 +479,444 @@ export default function OSAbertasTab({ data, isLoading, allClientes }: Props) {
           </Table>
         </CardContent>
       </Card>
+
+      {/* Detail Dialog */}
+      <Dialog open={!!selectedCard} onOpenChange={(open) => !open && setSelectedCard(null)}>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <span>OS {selectedCard?.gc_os_codigo}</span>
+              <Badge
+                className="text-xs"
+                style={{ backgroundColor: selectedCard?.gc_os_cor_situacao || undefined }}
+              >
+                {selectedCard?.gc_os_situacao}
+              </Badge>
+            </DialogTitle>
+            <p className="text-sm text-muted-foreground">
+              Tarefa Auvo #{selectedCard?.auvo_task_id}
+            </p>
+          </DialogHeader>
+          {selectedCard && (
+            <div className="space-y-4">
+              <div className="grid grid-cols-2 gap-x-6 gap-y-3 text-sm">
+                <div>
+                  <span className="text-muted-foreground text-xs">Cliente (Auvo)</span>
+                  <p className="font-medium">{selectedCard.cliente || "—"}</p>
+                  {selectedCard.gc_os_cliente && (
+                    <p className="text-xs text-muted-foreground">GC: {selectedCard.gc_os_cliente}</p>
+                  )}
+                </div>
+                <div>
+                  <span className="text-muted-foreground text-xs">Técnico / Vendedor GC</span>
+                  <p className="font-medium">{selectedCard.tecnico || "—"}</p>
+                  {selectedCard.gc_os_vendedor && (
+                    <p className="text-xs text-muted-foreground">GC: {selectedCard.gc_os_vendedor}</p>
+                  )}
+                </div>
+                <div>
+                  <span className="text-muted-foreground text-xs">Data Tarefa</span>
+                  <p className="font-medium">{selectedCard.data_tarefa || "—"}</p>
+                </div>
+                <div>
+                  <span className="text-muted-foreground text-xs">Valor Total OS</span>
+                  <p className="font-semibold text-foreground">{formatCurrency(Number(selectedCard.gc_os_valor_total) || 0)}</p>
+                </div>
+                <div>
+                  <span className="text-muted-foreground text-xs">Status Auvo</span>
+                  <p className="font-medium">{selectedCard.status_auvo || "—"}</p>
+                </div>
+                <div>
+                  <span className="text-muted-foreground text-xs">Horário (Check-in / Check-out)</span>
+                  <p className="font-medium">
+                    {selectedCard.check_in ? "✅" : "❌"} In
+                    {selectedCard.hora_inicio ? ` ${selectedCard.hora_inicio}` : ""}
+                    {" → "}
+                    {selectedCard.check_out ? "✅" : "❌"} Out
+                    {selectedCard.hora_fim ? ` ${selectedCard.hora_fim}` : ""}
+                  </p>
+                  {selectedCard.duracao_decimal != null && selectedCard.duracao_decimal > 0 && (
+                    <p className="text-xs text-muted-foreground">
+                      Duração: {Number(selectedCard.duracao_decimal).toFixed(1)}h
+                    </p>
+                  )}
+                </div>
+              </div>
+
+              {/* Endereço */}
+              {selectedCard.endereco && (
+                <div className="flex items-start gap-2 bg-muted/50 rounded-md p-3">
+                  <MapPin className="h-4 w-4 text-muted-foreground mt-0.5 flex-shrink-0" />
+                  <p className="text-sm flex-1">{selectedCard.endereco}</p>
+                  <Button size="sm" variant="outline" className="flex-shrink-0 gap-1 h-7 text-xs" asChild>
+                    <a
+                      href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(selectedCard.endereco)}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                    >
+                      <Navigation className="h-3 w-3" /> Maps
+                    </a>
+                  </Button>
+                </div>
+              )}
+
+              {/* Orientação */}
+              {selectedCard.orientacao && (
+                <div className="border rounded-md">
+                  <div className="flex items-center gap-2 px-3 py-2 bg-muted/50 border-b">
+                    <Package className="h-4 w-4 text-muted-foreground" />
+                    <span className="text-sm font-semibold">Orientação / Peças da OS</span>
+                  </div>
+                  <div className="p-3">
+                    <pre className="text-sm whitespace-pre-wrap font-sans leading-relaxed text-foreground">
+                      {selectedCard.orientacao}
+                    </pre>
+                  </div>
+                </div>
+              )}
+
+              {/* GC OS Detail: produtos/serviços */}
+              {osDetailLoading && (
+                <div className="border rounded-md p-4 space-y-2">
+                  <Skeleton className="h-4 w-40" />
+                  <Skeleton className="h-8 w-full" />
+                  <Skeleton className="h-8 w-full" />
+                </div>
+              )}
+              {!osDetailLoading && osDetail && (() => {
+                const produtos: any[] = (osDetail?.produtos || []).map((p: any) => p?.produto || p);
+                const servicos: any[] = (osDetail?.servicos || []).map((s: any) => s?.servico || s);
+                const hasItems = produtos.length > 0 || servicos.length > 0;
+                const valorProdutos = Number(osDetail?.valor_produtos || osDetail?.total_produtos || 0);
+                const valorServicos = Number(osDetail?.valor_servicos || osDetail?.total_servicos || 0);
+                const valorDesconto = Number(osDetail?.desconto || osDetail?.valor_desconto || 0);
+                const valorTotal = Number(osDetail?.valor_total || selectedCard.gc_os_valor_total || 0);
+
+                return (
+                  <>
+                    <div className="border rounded-md">
+                      <div className="flex items-center gap-2 px-3 py-2 bg-muted/50 border-b">
+                        <span className="text-sm font-semibold">💰 Resumo Financeiro</span>
+                      </div>
+                      <div className="grid grid-cols-4 gap-2 p-3 text-sm">
+                        <div className="text-center">
+                          <span className="text-muted-foreground text-xs block">Produtos</span>
+                          <p className="font-semibold">{formatCurrency(valorProdutos)}</p>
+                        </div>
+                        <div className="text-center">
+                          <span className="text-muted-foreground text-xs block">Serviços</span>
+                          <p className="font-semibold">{formatCurrency(valorServicos)}</p>
+                        </div>
+                        <div className="text-center">
+                          <span className="text-muted-foreground text-xs block">Desconto</span>
+                          <p className="font-semibold text-destructive">
+                            {valorDesconto > 0 ? `-${formatCurrency(valorDesconto)}` : "—"}
+                          </p>
+                        </div>
+                        <div className="text-center">
+                          <span className="text-muted-foreground text-xs block">Total</span>
+                          <p className="font-bold text-foreground">{formatCurrency(valorTotal)}</p>
+                        </div>
+                      </div>
+                    </div>
+
+                    {produtos.length > 0 && (
+                      <div className="border rounded-md">
+                        <div className="flex items-center gap-2 px-3 py-2 bg-muted/50 border-b">
+                          <Package className="h-4 w-4 text-muted-foreground" />
+                          <span className="text-sm font-semibold">Produtos ({produtos.length})</span>
+                        </div>
+                        <Table>
+                          <TableHeader>
+                            <TableRow>
+                              <TableHead className="text-xs">Código</TableHead>
+                              <TableHead className="text-xs">Descrição</TableHead>
+                              <TableHead className="text-xs text-right">Qtd</TableHead>
+                              <TableHead className="text-xs text-right">Unit.</TableHead>
+                              <TableHead className="text-xs text-right">Total</TableHead>
+                            </TableRow>
+                          </TableHeader>
+                          <TableBody>
+                            {produtos.map((p: any, i: number) => {
+                              const qtd = Number(p.quantidade || p.qtd || 1);
+                              const unitario = Number(p.valor_venda || p.valor_unitario || p.preco || p.valor || 0);
+                              const total = Number(p.valor_total || p.subtotal || qtd * unitario);
+                              return (
+                                <TableRow key={i}>
+                                  <TableCell className="text-xs font-mono py-1.5">{String(p.produto_id || p.codigo || "—")}</TableCell>
+                                  <TableCell className="text-xs py-1.5 max-w-[200px] truncate">{String(p.nome_produto || p.descricao || p.nome || "—")}</TableCell>
+                                  <TableCell className="text-xs py-1.5 text-right">{qtd}</TableCell>
+                                  <TableCell className="text-xs py-1.5 text-right">{formatCurrency(unitario)}</TableCell>
+                                  <TableCell className="text-xs py-1.5 text-right font-medium">{formatCurrency(total)}</TableCell>
+                                </TableRow>
+                              );
+                            })}
+                          </TableBody>
+                        </Table>
+                      </div>
+                    )}
+
+                    {servicos.length > 0 && (
+                      <div className="border rounded-md">
+                        <div className="flex items-center gap-2 px-3 py-2 bg-muted/50 border-b">
+                          <ClipboardList className="h-4 w-4 text-muted-foreground" />
+                          <span className="text-sm font-semibold">Serviços ({servicos.length})</span>
+                        </div>
+                        <Table>
+                          <TableHeader>
+                            <TableRow>
+                              <TableHead className="text-xs">Código</TableHead>
+                              <TableHead className="text-xs">Descrição</TableHead>
+                              <TableHead className="text-xs text-right">Qtd</TableHead>
+                              <TableHead className="text-xs text-right">Unit.</TableHead>
+                              <TableHead className="text-xs text-right">Total</TableHead>
+                            </TableRow>
+                          </TableHeader>
+                          <TableBody>
+                            {servicos.map((s: any, i: number) => {
+                              const qtd = Number(s.quantidade || s.qtd || 1);
+                              const unitario = Number(s.valor_venda || s.valor_unitario || s.preco || s.valor || 0);
+                              const total = Number(s.valor_total || s.subtotal || qtd * unitario);
+                              return (
+                                <TableRow key={i}>
+                                  <TableCell className="text-xs font-mono py-1.5">{String(s.servico_id || s.codigo || "—")}</TableCell>
+                                  <TableCell className="text-xs py-1.5 max-w-[200px] truncate">{String(s.nome_servico || s.descricao || s.nome || "—")}</TableCell>
+                                  <TableCell className="text-xs py-1.5 text-right">{qtd}</TableCell>
+                                  <TableCell className="text-xs py-1.5 text-right">{formatCurrency(unitario)}</TableCell>
+                                  <TableCell className="text-xs py-1.5 text-right font-medium">{formatCurrency(total)}</TableCell>
+                                </TableRow>
+                              );
+                            })}
+                          </TableBody>
+                        </Table>
+                      </div>
+                    )}
+
+                    {!hasItems && (
+                      <div className="border rounded-md p-3 text-sm text-muted-foreground text-center">
+                        Nenhum produto ou serviço cadastrado nesta OS
+                      </div>
+                    )}
+                  </>
+                );
+              })()}
+
+              {/* Orçamento vinculado */}
+              {selectedCard.orcamento_realizado && selectedCard.gc_orcamento_codigo && (
+                <div className="border rounded-md border-emerald-300 bg-emerald-50 dark:bg-emerald-950/20">
+                  <div className="flex items-center gap-2 px-3 py-2 border-b border-emerald-300">
+                    <FileText className="h-4 w-4 text-emerald-600" />
+                    <span className="text-sm font-semibold text-emerald-700 dark:text-emerald-400">
+                      Orçamento #{selectedCard.gc_orcamento_codigo}
+                    </span>
+                    <Badge className="ml-auto text-[10px]" style={{ backgroundColor: selectedCard.gc_orc_cor_situacao || undefined }}>
+                      {selectedCard.gc_orc_situacao || "—"}
+                    </Badge>
+                  </div>
+                  <div className="p-3 grid grid-cols-2 gap-3 text-sm">
+                    <div>
+                      <span className="text-muted-foreground text-xs">Valor</span>
+                      <p className="font-medium">{formatCurrency(Number(selectedCard.gc_orc_valor_total) || 0)}</p>
+                    </div>
+                    <div>
+                      <span className="text-muted-foreground text-xs">Vendedor</span>
+                      <p className="font-medium">{selectedCard.gc_orc_vendedor || "—"}</p>
+                    </div>
+                  </div>
+                  {selectedCard.gc_orc_link && (
+                    <div className="px-3 pb-3">
+                      <Button size="sm" variant="outline" asChild>
+                        <a href={selectedCard.gc_orc_link} target="_blank" rel="noopener noreferrer" className="gap-1">
+                          <ExternalLink className="h-3.5 w-3.5" /> Ver Orçamento no GC
+                        </a>
+                      </Button>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Questionário */}
+              {selectedCard.questionario_preenchido && selectedCard.questionario_respostas && (
+                <div className="border rounded-md">
+                  <div className="flex items-center gap-2 px-3 py-2 bg-muted/50 border-b">
+                    <ClipboardList className="h-4 w-4 text-muted-foreground" />
+                    <span className="text-sm font-semibold">Questionário Preenchido</span>
+                  </div>
+                  <div className="p-3 space-y-2">
+                    {(Array.isArray(selectedCard.questionario_respostas) ? selectedCard.questionario_respostas : [])
+                      .filter((r: any) => r.reply && !r.reply.startsWith("http"))
+                      .map((r: any, i: number) => (
+                        <div key={i} className="text-sm">
+                          <span className="text-muted-foreground text-xs">{r.question}</span>
+                          <p className="font-medium">{r.reply}</p>
+                        </div>
+                      ))}
+                    {(() => {
+                      const photos = (Array.isArray(selectedCard.questionario_respostas) ? selectedCard.questionario_respostas : [])
+                        .filter((r: any) => r.reply && r.reply.startsWith("http"));
+                      if (photos.length === 0) return null;
+                      return (
+                        <div className="mt-2">
+                          <span className="text-xs text-muted-foreground">Fotos</span>
+                          <div className="flex gap-2 mt-1 flex-wrap">
+                            {photos.map((r: any, i: number) => (
+                              <a key={i} href={r.reply} target="_blank" rel="noopener noreferrer">
+                                <img src={r.reply} alt={r.question} className="h-16 w-16 object-cover rounded border hover:ring-2 ring-primary" />
+                              </a>
+                            ))}
+                          </div>
+                        </div>
+                      );
+                    })()}
+                  </div>
+                </div>
+              )}
+
+              {/* Pendência */}
+              {selectedCard.pendencia && (
+                <div className="bg-destructive/10 border border-destructive/30 rounded-md p-3">
+                  <span className="text-sm font-medium text-destructive">⚠️ Pendência:</span>
+                  <p className="text-sm mt-1">{selectedCard.pendencia}</p>
+                </div>
+              )}
+
+              {/* Links + Edit */}
+              <div className="flex flex-wrap gap-2 pt-2 border-t">
+                <Button size="sm" variant="default" className="gap-1" onClick={() => { setSelectedCard(null); openEditModal(selectedCard); }}>
+                  <Edit2 className="h-3.5 w-3.5" /> Editar Agendamento
+                </Button>
+                {selectedCard.gc_os_link && (
+                  <Button size="sm" variant="outline" asChild>
+                    <a href={selectedCard.gc_os_link} target="_blank" rel="noopener noreferrer" className="gap-1">
+                      <ExternalLink className="h-3.5 w-3.5" /> OS no GestãoClick
+                    </a>
+                  </Button>
+                )}
+                {(selectedCard.auvo_task_url || selectedCard.auvo_link) && (
+                  <Button size="sm" variant="outline" asChild>
+                    <a href={selectedCard.auvo_task_url || selectedCard.auvo_link || "#"} target="_blank" rel="noopener noreferrer" className="gap-1">
+                      <ExternalLink className="h-3.5 w-3.5" /> Tarefa Auvo
+                    </a>
+                  </Button>
+                )}
+                {selectedCard.auvo_survey_url && (
+                  <Button size="sm" variant="outline" asChild>
+                    <a href={selectedCard.auvo_survey_url} target="_blank" rel="noopener noreferrer" className="gap-1">
+                      <ExternalLink className="h-3.5 w-3.5" /> Formulário
+                    </a>
+                  </Button>
+                )}
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit Task Modal */}
+      <Dialog open={showEditModal} onOpenChange={setShowEditModal}>
+        <DialogContent className="sm:max-w-[420px]">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <UserCog className="h-5 w-5" />
+              Editar Tarefa Auvo
+            </DialogTitle>
+          </DialogHeader>
+          {editingCard && (
+            <div className="space-y-4">
+              <div className="bg-muted/50 rounded-md p-3 text-sm">
+                <p className="font-medium">{editingCard.cliente || editingCard.gc_os_cliente || "—"}</p>
+                <p className="text-muted-foreground text-xs mt-0.5">OS {editingCard.gc_os_codigo}</p>
+                <p className="text-xs mt-1">
+                  {execTaskLoading ? (
+                    <span className="text-muted-foreground flex items-center gap-1"><Loader2 className="h-3 w-3 animate-spin" /> Buscando tarefa de execução...</span>
+                  ) : execTaskId ? (
+                    <a href={`https://app2.auvo.com.br/relatorioTarefas/DetalheTarefa/${execTaskId}`} target="_blank" rel="noopener noreferrer" className="text-primary font-medium hover:underline inline-flex items-center gap-1">
+                      ✓ Tarefa Execução #{execTaskId} <ExternalLink className="h-3 w-3" />
+                    </a>
+                  ) : (
+                    <span className="text-destructive">⚠ Tarefa de execução não encontrada</span>
+                  )}
+                </p>
+              </div>
+
+              <div className="space-y-2">
+                <Label>Data da Tarefa de Execução</Label>
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button
+                      variant="outline"
+                      className={cn("w-full justify-start text-left font-normal", !editDate && "text-muted-foreground")}
+                    >
+                      <CalendarIcon className="mr-2 h-4 w-4" />
+                      {editDate ? format(editDate, "dd/MM/yyyy") : "Selecionar data"}
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-auto p-0" align="start">
+                    <Calendar
+                      mode="single"
+                      selected={editDate}
+                      onSelect={setEditDate}
+                      locale={ptBR}
+                      className={cn("p-3 pointer-events-auto")}
+                    />
+                  </PopoverContent>
+                </Popover>
+              </div>
+
+              <div className="space-y-2">
+                <Label>Horário</Label>
+                <div className="flex items-center gap-2">
+                  <Select value={editHour} onValueChange={setEditHour}>
+                    <SelectTrigger className="w-[80px]">
+                      <SelectValue placeholder="HH" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {Array.from({ length: 24 }, (_, i) => String(i).padStart(2, "0")).map((h) => (
+                        <SelectItem key={h} value={h}>{h}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <span className="text-lg font-bold text-muted-foreground">:</span>
+                  <Select value={editMinute} onValueChange={setEditMinute}>
+                    <SelectTrigger className="w-[80px]">
+                      <SelectValue placeholder="MM" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {["00", "15", "30", "45"].map((m) => (
+                        <SelectItem key={m} value={m}>{m}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label>Técnico</Label>
+                <Select value={editTecnicoId} onValueChange={setEditTecnicoId}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Selecionar técnico" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {auvoUsers?.map((user) => (
+                      <SelectItem key={user.userID} value={String(user.userID)}>
+                        {user.name || user.login}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="flex justify-end gap-2 pt-2">
+                <Button variant="outline" onClick={() => setShowEditModal(false)}>Cancelar</Button>
+                <Button onClick={handleEditSave} disabled={editSaving || execTaskLoading || !execTaskId}>
+                  {editSaving ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Save className="h-4 w-4 mr-2" />}
+                  Salvar
+                </Button>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
