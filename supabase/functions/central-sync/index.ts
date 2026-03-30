@@ -910,13 +910,11 @@ Deno.serve(async (req) => {
       console.log(`[central-sync] Vínculo secundário (orientação): ${secondaryMatches} tarefas vinculadas a OS/Orçamento`);
     }
 
-    // Fallback: include only NEW GC OS tasks not returned by current Auvo window
-    // (prevents overwriting existing rows when sync window is narrow)
+    // Fallback: include ALL GC OS tasks not returned by current Auvo window
+    // This ensures all OS from GC are represented in the database regardless of Auvo date range
     const existingTaskIds = new Set(rows.map((r) => String(r.auvo_task_id)));
     for (const [taskId, gcOs] of Object.entries(gcOsMap)) {
       if (existingTaskIds.has(taskId) || existingTaskIdsInDb.has(taskId)) continue;
-      const osDate = normalizeDate(gcOs?.gc_os_data);
-      if (!osDate || osDate < startDate || osDate > endDate) continue;
 
       const gcOrc = gcOrcMap[taskId] || null;
       let fallbackSnapshot = taskSnapshotById.get(taskId) || null;
