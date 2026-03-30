@@ -469,8 +469,8 @@ export default function OSAbertasTab({ data, isLoading, allClientes, onRefresh }
                                           >
                                             <Edit2 className="h-3 w-3" />
                                           </Button>
-                                          {item.gc_os_link && (
-                                            <a href={item.gc_os_link} target="_blank" rel="noopener noreferrer" title="OS no GestãoClick">
+                                          {item.gc_os_id && (
+                                            <a href={`https://gestaoclick.com/ordens_servicos/visualizar/${item.gc_os_id}`} target="_blank" rel="noopener noreferrer" title="OS no GestãoClick">
                                               <Button size="icon" variant="ghost" className="h-6 w-6">
                                                 <FileText className="h-3 w-3" />
                                               </Button>
@@ -806,9 +806,9 @@ export default function OSAbertasTab({ data, isLoading, allClientes, onRefresh }
                 <Button size="sm" variant="default" className="gap-1" onClick={() => { setSelectedCard(null); openEditModal(selectedCard); }}>
                   <Edit2 className="h-3.5 w-3.5" /> Editar Agendamento
                 </Button>
-                {selectedCard.gc_os_link && (
+                {selectedCard.gc_os_id && (
                   <Button size="sm" variant="outline" asChild>
-                    <a href={selectedCard.gc_os_link} target="_blank" rel="noopener noreferrer" className="gap-1">
+                    <a href={`https://gestaoclick.com/ordens_servicos/visualizar/${selectedCard.gc_os_id}`} target="_blank" rel="noopener noreferrer" className="gap-1">
                       <ExternalLink className="h-3.5 w-3.5" /> OS no GestãoClick
                     </a>
                   </Button>
