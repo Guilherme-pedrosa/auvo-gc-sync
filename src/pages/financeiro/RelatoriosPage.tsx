@@ -337,6 +337,7 @@ export default function RelatoriosPage() {
             isLoading={isLoadingOS}
             allClientes={allClientes}
             onRefresh={refreshRelatoriosData}
+            execTaskStatusMap={execTaskStatusMap}
           />
         </TabsContent>
 

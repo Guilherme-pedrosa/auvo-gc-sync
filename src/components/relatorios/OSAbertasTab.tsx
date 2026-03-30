@@ -37,7 +37,7 @@ interface Props {
 const formatCurrency = (val: number) =>
   val.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 
-export default function OSAbertasTab({ data, isLoading, allClientes, onRefresh }: Props) {
+export default function OSAbertasTab({ data, isLoading, allClientes, onRefresh, execTaskStatusMap }: Props) {
   const [search, setSearch] = useState("");
   const [selectedSituacoes, setSelectedSituacoes] = useState<Set<string>>(new Set());
   const [allSituacoesSelected, setAllSituacoesSelected] = useState(true);
