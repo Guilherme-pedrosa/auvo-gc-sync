@@ -808,9 +808,14 @@ export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, o
                 <div className="border rounded-md">
                   <div className="flex items-center gap-2 px-3 py-2 bg-blue-50 dark:bg-blue-950/30 border-b">
                     <FileText className="h-4 w-4 text-blue-600 dark:text-blue-400" />
-                    <span className="text-sm font-semibold text-blue-700 dark:text-blue-300">
+                    <a
+                      href={`https://app.auvo.com.br/relatorioTarefas/DetalheTarefa/${osRow.auvo_task_id}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-sm font-semibold text-blue-700 dark:text-blue-300 underline hover:text-blue-900 dark:hover:text-blue-100"
+                    >
                       Tarefa OS #{osRow.auvo_task_id}
-                    </span>
+                    </a>
                   </div>
                   <div className="grid grid-cols-2 gap-x-6 gap-y-2 p-3 text-sm">
                     <div>
