@@ -478,7 +478,7 @@ export default function OSAbertasTab({ data, isLoading, allClientes, onRefresh, 
                                   <TableHead className="text-xs">Técnico</TableHead>
                                   <TableHead className="text-xs">Data</TableHead>
                                   <TableHead className="text-xs text-right">Valor</TableHead>
-                                  <TableHead className="text-xs w-24">Ações</TableHead>
+                                  <TableHead className="text-xs w-56">Ações</TableHead>
                                 </TableRow>
                               </TableHeader>
                               <TableBody>
