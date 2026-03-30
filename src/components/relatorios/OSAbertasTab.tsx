@@ -863,6 +863,7 @@ export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, o
             <p className="text-sm text-muted-foreground">
               {(() => {
                 const atributos: any[] = osDetail?.atributos || [];
+                const liveResolvedExec = liveExecMap.get(String(selectedCard?.gc_os_id));
                 const findAttrValue = (attrId: string) => {
                   const attr = atributos.find((a: any) => {
                     const nested = a?.atributo || a;
@@ -875,7 +876,7 @@ export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, o
                 };
 
                 const osTaskId = findAttrValue("73343");
-                const execTaskId = findAttrValue("73344") || selectedCard?.gc_os_tarefa_exec || null;
+                const execTaskId = findAttrValue("73344") || selectedCard?.gc_os_tarefa_exec || liveResolvedExec?.execTaskId || null;
 
                 if (osTaskId || execTaskId) {
                   return `Tarefa OS #${osTaskId || "—"} • Execução #${execTaskId || "—"}`;
@@ -887,6 +888,7 @@ export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, o
           </DialogHeader>
           {selectedCard && (() => {
             const atributos: any[] = osDetail?.atributos || [];
+            const liveResolvedExec = liveExecMap.get(String(selectedCard.gc_os_id));
             const findAttrValue = (attrId: string) => {
               const attr = atributos.find((a: any) => {
                 const nested = a?.atributo || a;
@@ -899,7 +901,7 @@ export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, o
             };
 
             const osTaskId = findAttrValue("73343");
-            const execTaskId = findAttrValue("73344") || selectedCard.gc_os_tarefa_exec || null;
+            const execTaskId = findAttrValue("73344") || selectedCard.gc_os_tarefa_exec || liveResolvedExec?.execTaskId || null;
 
             const osRow = (() => {
               if (osTaskId) {
@@ -914,7 +916,13 @@ export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, o
               if (!execTaskId) return null;
 
               const mirrorExecRow = allTasks.find((t: any) => String(t.auvo_task_id) === String(execTaskId))
-                || (String(selectedCard.auvo_task_id) === String(execTaskId) ? selectedCard : null);
+                || (String(selectedCard.auvo_task_id) === String(execTaskId) ? selectedCard : null)
+                || (liveResolvedExec ? {
+                  auvo_task_id: String(execTaskId),
+                  tecnico: liveResolvedExec.tecnico || null,
+                  data_tarefa: liveResolvedExec.dataTarefa || null,
+                  status_auvo: liveResolvedExec.status || null,
+                } : null);
 
               if (execTaskFallback) {
                 return {
