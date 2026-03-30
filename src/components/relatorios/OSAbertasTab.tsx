@@ -16,9 +16,9 @@ import {
 } from "@/components/ui/table";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
-  Search, ArrowDownWideNarrow, ExternalLink, Filter, CalendarIcon,
-  Edit2, Save, Loader2, UserCog, MapPin, Navigation, Package,
-  ClipboardList, FileText, AlertTriangle, Settings2, CheckCircle2,
+   Search, ArrowDownWideNarrow, ExternalLink, Filter, CalendarIcon,
+   Edit2, Save, Loader2, UserCog, MapPin, Navigation, Package,
+   ClipboardList, FileText, AlertTriangle, RefreshCw, CheckCircle2,
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { format } from "date-fns";
