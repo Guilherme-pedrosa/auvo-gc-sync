@@ -86,8 +86,6 @@ export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, o
 
   // Detail dialog
   const [selectedCard, setSelectedCard] = useState<any | null>(null);
-  const [osDetail, setOsDetail] = useState<any>(null);
-  const [osDetailLoading, setOsDetailLoading] = useState(false);
   const [execTaskFallback, setExecTaskFallback] = useState<any | null>(null);
 
   // Edit modal
