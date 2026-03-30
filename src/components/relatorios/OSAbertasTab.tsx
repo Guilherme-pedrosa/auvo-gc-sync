@@ -16,9 +16,9 @@ import {
 } from "@/components/ui/table";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
-  Search, ArrowDownWideNarrow, ExternalLink, Filter, CalendarIcon,
-  Edit2, Save, Loader2, UserCog, MapPin, Navigation, Package,
-  ClipboardList, FileText, AlertTriangle, Settings2, CheckCircle2,
+   Search, ArrowDownWideNarrow, ExternalLink, Filter, CalendarIcon,
+   Edit2, Save, Loader2, UserCog, MapPin, Navigation, Package,
+   ClipboardList, FileText, AlertTriangle, RefreshCw, CheckCircle2,
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { format } from "date-fns";
@@ -584,7 +584,7 @@ export default function OSAbertasTab({ data, isLoading, allClientes, onRefresh, 
                                               {changingId === item.gc_os_id ? (
                                                 <Loader2 className="h-3 w-3 animate-spin" />
                                               ) : (
-                                                <Settings2 className="h-3 w-3" />
+                                                <RefreshCw className="h-3 w-3" />
                                               )}
                                             </Button>
                                           )}
@@ -1054,7 +1054,7 @@ export default function OSAbertasTab({ data, isLoading, allClientes, onRefresh, 
         <DialogContent className="max-w-md">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <Settings2 className="h-5 w-5" />
+              <RefreshCw className="h-5 w-5" />
               Conciliar OS {conciliacaoCard?.gc_os_codigo}
             </DialogTitle>
           </DialogHeader>
