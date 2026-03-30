@@ -43,6 +43,7 @@ const SITUACOES_OPTIONS = [
 
 interface Props {
   data: any[];
+  allTasks: any[];
   isLoading: boolean;
   allClientes: string[];
   onRefresh?: () => void;
@@ -52,7 +53,7 @@ interface Props {
 const formatCurrency = (val: number) =>
   val.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 
-export default function OSAbertasTab({ data, isLoading, allClientes, onRefresh, execTaskStatusMap }: Props) {
+export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, onRefresh, execTaskStatusMap }: Props) {
   const { profile } = useAuth();
   const [search, setSearch] = useState("");
   const [selectedSituacoes, setSelectedSituacoes] = useState<Set<string>>(new Set());
