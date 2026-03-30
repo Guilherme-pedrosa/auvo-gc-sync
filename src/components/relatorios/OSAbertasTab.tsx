@@ -53,6 +53,7 @@ const formatCurrency = (val: number) =>
   val.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 
 export default function OSAbertasTab({ data, isLoading, allClientes, onRefresh, execTaskStatusMap }: Props) {
+  const { profile } = useAuth();
   const [search, setSearch] = useState("");
   const [selectedSituacoes, setSelectedSituacoes] = useState<Set<string>>(new Set());
   const [allSituacoesSelected, setAllSituacoesSelected] = useState(true);
@@ -74,6 +75,10 @@ export default function OSAbertasTab({ data, isLoading, allClientes, onRefresh, 
   const [editSaving, setEditSaving] = useState(false);
   const [execTaskId, setExecTaskId] = useState<string | null>(null);
   const [execTaskLoading, setExecTaskLoading] = useState(false);
+
+  // Conciliação
+  const [changingId, setChangingId] = useState<string | null>(null);
+  const [movedOsIds, setMovedOsIds] = useState<Set<string>>(new Set());
 
   // Fetch Auvo users
   const { data: auvoUsers } = useQuery({
