@@ -56,8 +56,7 @@ const formatCurrency = (val: number) =>
 export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, onRefresh, execTaskStatusMap }: Props) {
   const { profile } = useAuth();
   const [search, setSearch] = useState("");
-  const [selectedSituacoes, setSelectedSituacoes] = useState<Set<string>>(new Set());
-  const [allSituacoesSelected, setAllSituacoesSelected] = useState(true);
+  const [excludedSituacoes, setExcludedSituacoes] = useState<Set<string>>(new Set());
   const [searchSituacao, setSearchSituacao] = useState("");
   const [expanded, setExpanded] = useState<string | null>(null);
 
@@ -161,8 +160,8 @@ export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, o
 
   // Group by client, sum values
   const clienteSummary = useMemo(() => {
-    const filtered = !allSituacoesSelected && selectedSituacoes.size > 0
-      ? data.filter((t) => selectedSituacoes.has(t.gc_os_situacao || ""))
+    const filtered = excludedSituacoes.size > 0
+      ? data.filter((t) => !excludedSituacoes.has(t.gc_os_situacao || ""))
       : data;
 
     const map = new Map<string, { cliente: string; count: number; total: number; items: any[] }>();
@@ -175,7 +174,7 @@ export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, o
       map.set(cliente, entry);
     }
     return Array.from(map.values()).sort((a, b) => b.total - a.total);
-  }, [data, allSituacoesSelected, selectedSituacoes]);
+  }, [data, excludedSituacoes]);
 
   const filtered = useMemo(() => {
     if (!search) return clienteSummary;
@@ -402,8 +401,8 @@ export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, o
             <Button variant="outline" size="sm" className="gap-1.5">
               <Filter className="h-3.5 w-3.5" />
               Situação
-              {!allSituacoesSelected && selectedSituacoes.size > 0 && (
-                <Badge variant="secondary" className="ml-1 text-[10px]">{selectedSituacoes.size}</Badge>
+              {excludedSituacoes.size > 0 && (
+                <Badge variant="secondary" className="ml-1 text-[10px]">{excludedSituacoes.size} ocultas</Badge>
               )}
             </Button>
           </PopoverTrigger>
@@ -417,10 +416,10 @@ export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, o
               />
               <div className="flex items-center gap-2 pb-1">
                 <Checkbox
-                  checked={allSituacoesSelected}
+                  checked={excludedSituacoes.size === 0}
                   onCheckedChange={(checked) => {
-                    setAllSituacoesSelected(!!checked);
-                    if (checked) setSelectedSituacoes(new Set());
+                    if (checked) setExcludedSituacoes(new Set());
+                    else setExcludedSituacoes(new Set(allSituacoes));
                   }}
                 />
                 <span className="text-xs font-medium">Todas</span>
@@ -430,10 +429,9 @@ export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, o
                   {filteredSituacoes.map((sit) => (
                     <div key={sit} className="flex items-center gap-2">
                       <Checkbox
-                        checked={allSituacoesSelected || selectedSituacoes.has(sit)}
+                        checked={!excludedSituacoes.has(sit)}
                         onCheckedChange={() => {
-                          setAllSituacoesSelected(false);
-                          setSelectedSituacoes((prev) => {
+                          setExcludedSituacoes((prev) => {
                             const next = new Set(prev);
                             if (next.has(sit)) next.delete(sit);
                             else next.add(sit);
