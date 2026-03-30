@@ -255,8 +255,18 @@ export default function RelatoriosPage() {
 
   const allClientes = useMemo(() => {
     if (!todasTarefas) return [] as string[];
-    const set = new Set(todasTarefas.map((t) => t.cliente || t.gc_os_cliente || "").filter(Boolean));
-    return Array.from(set).sort() as string[];
+    const normalize = (s: string) =>
+      s.trim().toUpperCase()
+        .replace(/\s+(LTDA|ME|SA|S\.A\.|S\/A|EIRELI|EPP|SOCIEDADE SIMPLES|SS)\s*\.?$/i, "")
+        .trim();
+    const map = new Map<string, string>();
+    for (const t of todasTarefas) {
+      const raw = (t.cliente || t.gc_os_cliente || "").trim();
+      if (!raw) continue;
+      const key = normalize(raw);
+      if (!map.has(key)) map.set(key, raw);
+    }
+    return Array.from(map.values()).sort() as string[];
   }, [todasTarefas]);
 
   const allTecnicos = useMemo(() => {
