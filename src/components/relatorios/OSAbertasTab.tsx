@@ -53,6 +53,27 @@ interface Props {
 const formatCurrency = (val: number) =>
   val.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 
+const getAuvoStatusFromTask = (task: any) => {
+  const ts = task?.taskStatus;
+  const statusCode = typeof ts === "number"
+    ? ts
+    : typeof ts?.id === "number"
+      ? ts.id
+      : Number(ts?.id || ts?.status || 0);
+
+  if (statusCode === 6) return "Pausada";
+  if (statusCode === 4 || statusCode === 5) return "Finalizada";
+  if (statusCode === 3) return "Em andamento";
+  if (statusCode === 2) return "Em deslocamento";
+  if (statusCode === 1) return "Aberta";
+
+  if (task?.checkOut) return "Finalizada";
+  const tcs = task?.timeControl || [];
+  if (tcs.some((tc: any) => tc.pauseStart && !tc.pauseEnd) || task?.reasonForPause) return "Pausada";
+  if (task?.checkIn) return "Em andamento";
+  return "Agendada";
+};
+
 export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, onRefresh, execTaskStatusMap }: Props) {
   const { profile } = useAuth();
   const [search, setSearch] = useState("");
