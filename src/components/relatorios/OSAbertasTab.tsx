@@ -648,7 +648,20 @@ export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, o
               Tarefa Auvo #{selectedCard?.auvo_task_id}
             </p>
           </DialogHeader>
-          {selectedCard && (
+          {selectedCard && (() => {
+            // Find OS task and Execution task from allTasks
+            const execId = selectedCard.gc_os_tarefa_exec;
+            const execRow = execId ? allTasks.find((t: any) => t.auvo_task_id === execId) : null;
+
+            // Find the OS task: look for sibling tasks with same gc_os_id that are NOT the exec task
+            const osRow = (() => {
+              if (!execId || selectedCard.auvo_task_id !== execId) return selectedCard; // selectedCard IS the OS task
+              // selectedCard is the exec task — find the real OS task
+              const siblings = allTasks.filter((t: any) => t.gc_os_id === selectedCard.gc_os_id && t.auvo_task_id !== execId);
+              return siblings.length > 0 ? siblings[0] : selectedCard;
+            })();
+
+            return (
             <div className="space-y-4">
               <div className="grid grid-cols-2 gap-x-6 gap-y-3 text-sm">
                 <div>
@@ -659,40 +672,103 @@ export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, o
                   )}
                 </div>
                 <div>
-                  <span className="text-muted-foreground text-xs">Técnico / Vendedor GC</span>
-                  <p className="font-medium">{selectedCard.tecnico || "—"}</p>
-                  {selectedCard.gc_os_vendedor && (
-                    <p className="text-xs text-muted-foreground">GC: {selectedCard.gc_os_vendedor}</p>
-                  )}
-                </div>
-                <div>
-                  <span className="text-muted-foreground text-xs">Data Tarefa</span>
-                  <p className="font-medium">{selectedCard.data_tarefa || "—"}</p>
+                  <span className="text-muted-foreground text-xs">Vendedor GC</span>
+                  <p className="font-medium">{selectedCard.gc_os_vendedor || "—"}</p>
                 </div>
                 <div>
                   <span className="text-muted-foreground text-xs">Valor Total OS</span>
                   <p className="font-semibold text-foreground">{formatCurrency(Number(selectedCard.gc_os_valor_total) || 0)}</p>
                 </div>
                 <div>
-                  <span className="text-muted-foreground text-xs">Status Auvo</span>
-                  <p className="font-medium">{selectedCard.status_auvo || "—"}</p>
-                </div>
-                <div>
-                  <span className="text-muted-foreground text-xs">Horário (Check-in / Check-out)</span>
-                  <p className="font-medium">
-                    {selectedCard.check_in ? "✅" : "❌"} In
-                    {selectedCard.hora_inicio ? ` ${selectedCard.hora_inicio}` : ""}
-                    {" → "}
-                    {selectedCard.check_out ? "✅" : "❌"} Out
-                    {selectedCard.hora_fim ? ` ${selectedCard.hora_fim}` : ""}
-                  </p>
-                  {selectedCard.duracao_decimal != null && selectedCard.duracao_decimal > 0 && (
-                    <p className="text-xs text-muted-foreground">
-                      Duração: {Number(selectedCard.duracao_decimal).toFixed(1)}h
-                    </p>
-                  )}
+                  <span className="text-muted-foreground text-xs">Data Abertura OS</span>
+                  <p className="font-medium">{selectedCard.gc_os_data || "—"}</p>
                 </div>
               </div>
+
+              {/* Tarefa OS (73343) */}
+              <div className="border rounded-md">
+                <div className="flex items-center gap-2 px-3 py-2 bg-blue-50 dark:bg-blue-950/30 border-b">
+                  <FileText className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+                  <span className="text-sm font-semibold text-blue-700 dark:text-blue-300">
+                    Tarefa OS #{osRow.auvo_task_id}
+                  </span>
+                </div>
+                <div className="grid grid-cols-2 gap-x-6 gap-y-2 p-3 text-sm">
+                  <div>
+                    <span className="text-muted-foreground text-xs">Técnico</span>
+                    <p className="font-medium">{osRow.tecnico || "—"}</p>
+                  </div>
+                  <div>
+                    <span className="text-muted-foreground text-xs">Data Agendamento</span>
+                    <p className="font-medium">{osRow.data_tarefa || "—"}</p>
+                  </div>
+                  <div>
+                    <span className="text-muted-foreground text-xs">Status Auvo</span>
+                    <p className="font-medium">{osRow.status_auvo || "—"}</p>
+                  </div>
+                  <div>
+                    <span className="text-muted-foreground text-xs">Horário (Check-in / Check-out)</span>
+                    <p className="font-medium">
+                      {osRow.check_in ? "✅" : "❌"} In{osRow.hora_inicio ? ` ${osRow.hora_inicio}` : ""}
+                      {" → "}
+                      {osRow.check_out ? "✅" : "❌"} Out{osRow.hora_fim ? ` ${osRow.hora_fim}` : ""}
+                    </p>
+                    {osRow.duracao_decimal != null && Number(osRow.duracao_decimal) > 0 && (
+                      <p className="text-xs text-muted-foreground">
+                        Duração: {Number(osRow.duracao_decimal).toFixed(1)}h
+                      </p>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* Tarefa Execução (73344) */}
+              {execRow ? (
+                <div className="border rounded-md">
+                  <div className="flex items-center gap-2 px-3 py-2 bg-emerald-50 dark:bg-emerald-950/30 border-b">
+                    <CheckCircle2 className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
+                    <span className="text-sm font-semibold text-emerald-700 dark:text-emerald-300">
+                      Tarefa Execução #{execRow.auvo_task_id}
+                    </span>
+                    {execRow.status_auvo === "Finalizada" && (
+                      <Badge className="ml-auto text-[10px] bg-green-100 text-green-700 border-green-300 dark:bg-green-900/50 dark:text-green-300">
+                        ✅ Finalizada
+                      </Badge>
+                    )}
+                  </div>
+                  <div className="grid grid-cols-2 gap-x-6 gap-y-2 p-3 text-sm">
+                    <div>
+                      <span className="text-muted-foreground text-xs">Técnico</span>
+                      <p className="font-medium">{execRow.tecnico || "—"}</p>
+                    </div>
+                    <div>
+                      <span className="text-muted-foreground text-xs">Data Agendamento</span>
+                      <p className="font-medium">{execRow.data_tarefa || "—"}</p>
+                    </div>
+                    <div>
+                      <span className="text-muted-foreground text-xs">Status Auvo</span>
+                      <p className="font-medium">{execRow.status_auvo || "—"}</p>
+                    </div>
+                    <div>
+                      <span className="text-muted-foreground text-xs">Horário (Check-in / Check-out)</span>
+                      <p className="font-medium">
+                        {execRow.check_in ? "✅" : "❌"} In{execRow.hora_inicio ? ` ${execRow.hora_inicio}` : ""}
+                        {" → "}
+                        {execRow.check_out ? "✅" : "❌"} Out{execRow.hora_fim ? ` ${execRow.hora_fim}` : ""}
+                      </p>
+                      {execRow.duracao_decimal != null && Number(execRow.duracao_decimal) > 0 && (
+                        <p className="text-xs text-muted-foreground">
+                          Duração: {Number(execRow.duracao_decimal).toFixed(1)}h
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <div className="border rounded-md p-3 text-sm text-muted-foreground text-center border-dashed">
+                  Nenhuma tarefa de execução vinculada
+                </div>
+              )}
 
               {/* Endereço */}
               {selectedCard.endereco && (
@@ -959,7 +1035,8 @@ export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, o
                 )}
               </div>
             </div>
-          )}
+            );
+          })()}
         </DialogContent>
       </Dialog>
 
