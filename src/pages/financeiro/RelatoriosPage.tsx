@@ -337,7 +337,7 @@ export default function RelatoriosPage() {
               variant="outline"
               size="sm"
               className="gap-1.5"
-              onClick={handleSync}
+              onClick={() => handleSync()}
               disabled={syncing}
             >
               <RefreshCw className={`h-4 w-4 ${syncing ? "animate-spin" : ""}`} />
