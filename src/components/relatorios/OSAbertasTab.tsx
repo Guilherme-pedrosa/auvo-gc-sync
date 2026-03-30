@@ -808,9 +808,14 @@ export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, o
                 <div className="border rounded-md">
                   <div className="flex items-center gap-2 px-3 py-2 bg-blue-50 dark:bg-blue-950/30 border-b">
                     <FileText className="h-4 w-4 text-blue-600 dark:text-blue-400" />
-                    <span className="text-sm font-semibold text-blue-700 dark:text-blue-300">
+                    <a
+                      href={`https://app.auvo.com.br/relatorioTarefas/DetalheTarefa/${osRow.auvo_task_id}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-sm font-semibold text-blue-700 dark:text-blue-300 underline hover:text-blue-900 dark:hover:text-blue-100"
+                    >
                       Tarefa OS #{osRow.auvo_task_id}
-                    </span>
+                    </a>
                   </div>
                   <div className="grid grid-cols-2 gap-x-6 gap-y-2 p-3 text-sm">
                     <div>
@@ -851,9 +856,14 @@ export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, o
                 <div className="border rounded-md">
                   <div className="flex items-center gap-2 px-3 py-2 bg-emerald-50 dark:bg-emerald-950/30 border-b">
                     <CheckCircle2 className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
-                    <span className="text-sm font-semibold text-emerald-700 dark:text-emerald-300">
+                    <a
+                      href={`https://app.auvo.com.br/relatorioTarefas/DetalheTarefa/${execRow.auvo_task_id}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-sm font-semibold text-emerald-700 dark:text-emerald-300 underline hover:text-emerald-900 dark:hover:text-emerald-100"
+                    >
                       Tarefa Execução #{execRow.auvo_task_id}
-                    </span>
+                    </a>
                     {execRow.status_auvo === "Finalizada" && (
                       <Badge className="ml-auto text-[10px] bg-green-100 text-green-700 border-green-300 dark:bg-green-900/50 dark:text-green-300">
                         ✅ Finalizada
