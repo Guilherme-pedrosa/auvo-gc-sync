@@ -539,6 +539,38 @@ Deno.serve(async (req) => {
         if (chunk.length < 1000) break;
       }
 
+      // For OS in DB but NOT in GC listing (e.g. cancelled OS filtered by API), fetch individually
+      const missingOsIds = Array.from(dbOsIds).filter(id => !allGcOsById[id]);
+      if (missingOsIds.length > 0) {
+        console.log(`[central-sync] ${missingOsIds.length} OS no banco não encontradas na listagem GC — buscando individualmente...`);
+        const PARALLEL = 5;
+        for (let i = 0; i < missingOsIds.length; i += PARALLEL) {
+          const batch = missingOsIds.slice(i, i + PARALLEL);
+          const results = await Promise.all(batch.map(async (osId) => {
+            const url = `${GC_BASE_URL}/api/ordens_servicos/${osId}`;
+            const resp = await rateLimitedFetch(url, { headers: gcH }, "gc");
+            if (!resp.ok) return null;
+            const data = await resp.json().catch(() => null);
+            const os = data?.data || data;
+            if (!os || !os.id) return null;
+            return {
+              gc_os_id: String(os.id),
+              gc_os_situacao: String(os.nome_situacao || ""),
+              gc_os_situacao_id: String(os.situacao_id || ""),
+              gc_os_cor_situacao: String(os.cor_situacao || ""),
+              gc_os_valor_total: parseFloat(os.valor_total || "0"),
+              gc_os_vendedor: String(os.nome_vendedor || ""),
+              gc_os_cliente: String(os.nome_cliente || ""),
+              gc_os_data_saida: String(os.data_saida || "").split("T")[0] || null,
+            };
+          }));
+          for (const fresh of results) {
+            if (fresh) allGcOsById[fresh.gc_os_id] = fresh;
+          }
+        }
+        console.log(`[central-sync] OS individuais recuperadas: ${missingOsIds.length - Array.from(dbOsIds).filter(id => !allGcOsById[id]).length}`);
+      }
+
       let globalOsUpdated = 0;
       for (const osId of dbOsIds) {
         const fresh = allGcOsById[osId];
