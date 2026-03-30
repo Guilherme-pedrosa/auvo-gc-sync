@@ -677,6 +677,27 @@ export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, o
             </div>
           </PopoverContent>
         </Popover>
+
+        {/* Exec status filter */}
+        <div className="flex items-center gap-1.5">
+          {[
+            { value: "all", label: "Todas", icon: null },
+            { value: "em_andamento", label: "🔄 Em andamento", icon: null },
+            { value: "pausada", label: "⏸ Pausada", icon: null },
+            { value: "finalizada", label: "✅ Finalizada", icon: null },
+            { value: "sem_exec", label: "Sem execução", icon: null },
+          ].map((opt) => (
+            <Button
+              key={opt.value}
+              variant={execStatusFilter === opt.value ? "default" : "outline"}
+              size="sm"
+              className="text-xs h-7 px-2.5"
+              onClick={() => setExecStatusFilter(opt.value)}
+            >
+              {opt.label}
+            </Button>
+          ))}
+        </div>
       </div>
 
       {/* Table */}
