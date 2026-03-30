@@ -35,9 +35,31 @@ export default function RelatoriosPage() {
   const [syncStep, setSyncStep] = useState(0);
   const [syncProgress, setSyncProgress] = useState(0);
   const stepTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const refreshTimeoutsRef = useRef<ReturnType<typeof setTimeout>[]>([]);
   const today = new Date();
   const [dateFrom, setDateFrom] = useState<Date>(startOfMonth(today));
   const [dateTo, setDateTo] = useState<Date>(endOfMonth(today));
+
+  const refreshRelatoriosData = useCallback(() => {
+    queryClient.invalidateQueries({ queryKey: ["relatorios-tarefas-os"] });
+    queryClient.invalidateQueries({ queryKey: ["relatorios-todas-tarefas"] });
+    queryClient.invalidateQueries({ queryKey: ["last-sync-timestamp"] });
+  }, [queryClient]);
+
+  const clearScheduledRefreshes = useCallback(() => {
+    refreshTimeoutsRef.current.forEach(clearTimeout);
+    refreshTimeoutsRef.current = [];
+  }, []);
+
+  const scheduleBackgroundRefresh = useCallback(() => {
+    clearScheduledRefreshes();
+    const delays = [15000, 30000, 60000];
+    refreshTimeoutsRef.current = delays.map((delay) =>
+      setTimeout(() => {
+        refreshRelatoriosData();
+      }, delay)
+    );
+  }, [clearScheduledRefreshes, refreshRelatoriosData]);
 
   const startProgressSimulation = () => {
     setSyncStep(0);
@@ -50,10 +72,9 @@ export default function RelatoriosPage() {
         setSyncStep(currentStep);
         setSyncProgress(SYNC_STEPS[currentStep].progress);
       } else {
-        // Hold at last step
         if (stepTimerRef.current) clearInterval(stepTimerRef.current);
       }
-    }, 8000); // ~8s per step for a ~1min sync
+    }, 8000);
   };
 
   const stopProgressSimulation = (success: boolean) => {
@@ -77,9 +98,11 @@ export default function RelatoriosPage() {
 
   const handleSync = async () => {
     setSyncing(true);
+    clearScheduledRefreshes();
     startProgressSimulation();
     const syncFrom = format(dateFrom, "yyyy-MM-dd");
     const syncTo = format(dateTo, "yyyy-MM-dd");
+
     try {
       const { data, error } = await supabase.functions.invoke("central-sync", {
         body: { start_date: syncFrom, end_date: syncTo },
@@ -91,16 +114,22 @@ export default function RelatoriosPage() {
         `Sync ${syncFrom} → ${syncTo}: ${data.auvo_tarefas || 0} tarefas, ${data.upserted || 0} atualizadas`
       );
       stopProgressSimulation(true);
-
-      queryClient.invalidateQueries({ queryKey: ["relatorios-tarefas-os"] });
-      queryClient.invalidateQueries({ queryKey: ["relatorios-todas-tarefas"] });
-      queryClient.invalidateQueries({ queryKey: ["last-sync-timestamp"] });
+      refreshRelatoriosData();
     } catch (err: any) {
-      if (err?.message?.includes("context canceled") || err?.message?.includes("FunctionsHttpError")) {
-        toast.info("Sync iniciado em background — aguarde ~1 min e recarregue a página");
+      const message = String(err?.message || "");
+      const isBackgroundSync =
+        message.includes("context canceled") ||
+        message.includes("FunctionsHttpError") ||
+        message.includes("FunctionsFetchError") ||
+        message.includes("Failed to send a request to the Edge Function") ||
+        message.toLowerCase().includes("fetch");
+
+      if (isBackgroundSync) {
+        toast.info("Sync iniciado em background — atualizando a tela automaticamente");
         stopProgressSimulation(true);
+        scheduleBackgroundRefresh();
       } else {
-        toast.error(`Erro: ${err.message}`);
+        toast.error(`Erro: ${message}`);
         stopProgressSimulation(false);
       }
     }
@@ -109,8 +138,9 @@ export default function RelatoriosPage() {
   useEffect(() => {
     return () => {
       if (stepTimerRef.current) clearInterval(stepTimerRef.current);
+      clearScheduledRefreshes();
     };
-  }, []);
+  }, [clearScheduledRefreshes]);
 
   // Fetch OS-linked tasks (for OS em Aberto tab)
   const { data: tarefasOS, isLoading: isLoadingOS } = useQuery({

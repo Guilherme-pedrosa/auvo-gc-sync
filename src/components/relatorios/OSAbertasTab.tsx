@@ -30,6 +30,7 @@ interface Props {
   data: any[];
   isLoading: boolean;
   allClientes: string[];
+  onRefresh?: () => void;
 }
 
 const formatCurrency = (val: number) =>
