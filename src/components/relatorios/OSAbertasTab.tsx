@@ -651,14 +651,22 @@ export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, o
           {selectedCard && (() => {
             // Find OS task and Execution task from allTasks
             const execId = selectedCard.gc_os_tarefa_exec;
+            const gcOsId = selectedCard.gc_os_id;
+            
+            // Find execution task row
             const execRow = execId ? allTasks.find((t: any) => t.auvo_task_id === execId) : null;
 
-            // Find the OS task: look for sibling tasks with same gc_os_id that are NOT the exec task
+            // Find the real OS task: a sibling with same gc_os_id whose auvo_task_id != execId
             const osRow = (() => {
-              if (!execId || selectedCard.auvo_task_id !== execId) return selectedCard; // selectedCard IS the OS task
-              // selectedCard is the exec task — find the real OS task
-              const siblings = allTasks.filter((t: any) => t.gc_os_id === selectedCard.gc_os_id && t.auvo_task_id !== execId);
-              return siblings.length > 0 ? siblings[0] : selectedCard;
+              if (!gcOsId) return selectedCard;
+              // Look in allTasks for a task with same gc_os_id that is NOT the execution task
+              const candidates = allTasks.filter((t: any) => 
+                t.gc_os_id === gcOsId && t.auvo_task_id !== execId
+              );
+              if (candidates.length > 0) return candidates[0];
+              // If selectedCard itself is not the exec task, it's the OS task
+              if (!execId || selectedCard.auvo_task_id !== execId) return selectedCard;
+              return null; // OS task not found in allTasks
             })();
 
             return (
