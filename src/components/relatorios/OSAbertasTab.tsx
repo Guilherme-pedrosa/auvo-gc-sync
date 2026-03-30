@@ -1080,7 +1080,7 @@ export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, o
                               const total = Number(s.valor_total || s.subtotal || qtd * unitario);
                               return (
                                 <TableRow key={i}>
-                                  <TableCell className="text-xs font-mono py-1.5">{String(s.codigo || s.servico_id || "—")}</TableCell>
+                                  <TableCell className="text-xs font-mono py-1.5">{String(s.codigo_interno || s.codigo || s.servico_id || "—")}</TableCell>
                                   <TableCell className="text-xs py-1.5 max-w-[200px] truncate">{String(s.nome_servico || s.descricao || s.nome || "—")}</TableCell>
                                   <TableCell className="text-xs py-1.5 text-right">{qtd}</TableCell>
                                   <TableCell className="text-xs py-1.5 text-right">{formatCurrency(unitario)}</TableCell>
