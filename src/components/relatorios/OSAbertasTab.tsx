@@ -53,6 +53,27 @@ interface Props {
 const formatCurrency = (val: number) =>
   val.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 
+const getAuvoStatusFromTask = (task: any) => {
+  const ts = task?.taskStatus;
+  const statusCode = typeof ts === "number"
+    ? ts
+    : typeof ts?.id === "number"
+      ? ts.id
+      : Number(ts?.id || ts?.status || 0);
+
+  if (statusCode === 6) return "Pausada";
+  if (statusCode === 4 || statusCode === 5) return "Finalizada";
+  if (statusCode === 3) return "Em andamento";
+  if (statusCode === 2) return "Em deslocamento";
+  if (statusCode === 1) return "Aberta";
+
+  if (task?.checkOut) return "Finalizada";
+  const tcs = task?.timeControl || [];
+  if (tcs.some((tc: any) => tc.pauseStart && !tc.pauseEnd) || task?.reasonForPause) return "Pausada";
+  if (task?.checkIn) return "Em andamento";
+  return "Agendada";
+};
+
 export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, onRefresh, execTaskStatusMap }: Props) {
   const { profile } = useAuth();
   const [search, setSearch] = useState("");
@@ -305,11 +326,7 @@ export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, o
         const nested = execAttr?.atributo || execAttr;
         const execTaskId = String(nested?.conteudo || nested?.valor || "").trim();
 
-        const existsInMirror = execTaskId
-          ? allTasks.some((t: any) => String(t.auvo_task_id) === execTaskId)
-          : false;
-
-        if (execTaskId && !existsInMirror) {
+        if (execTaskId) {
           const { data: taskData, error: taskError } = await supabase.functions.invoke("auvo-task-update", {
             body: { action: "get", taskId: Number(execTaskId) },
           });
@@ -817,42 +834,28 @@ export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, o
 
             const execRow = (() => {
               if (!execTaskId) return null;
-              return allTasks.find((t: any) => String(t.auvo_task_id) === String(execTaskId))
-                || (String(selectedCard.auvo_task_id) === String(execTaskId) ? selectedCard : null)
-                || (execTaskFallback
-                  ? {
-                      auvo_task_id: String(execTaskId),
-                      tecnico: execTaskFallback?.idUserTo && auvoUsers?.find((u) => String(u.userID) === String(execTaskFallback.idUserTo))?.name,
-                      data_tarefa: String(execTaskFallback?.taskDate || "").slice(0, 10) || null,
-                      status_auvo: (() => {
-                        // Auvo taskStatus codes: 1=Opened, 2=InDisplacement, 3=CheckedIn, 4=CheckedOut, 5=Finished, 6=Paused
-                        const ts = execTaskFallback?.taskStatus;
-                        const statusCode = typeof ts === "number" ? ts
-                          : typeof ts?.id === "number" ? ts.id
-                          : Number(ts?.id || ts?.status || 0);
 
-                        if (statusCode === 6) return "Pausada";
-                        if (statusCode === 4 || statusCode === 5) return "Finalizada";
-                        if (statusCode === 3) return "Em andamento";
-                        if (statusCode === 2) return "Em deslocamento";
-                        if (statusCode === 1) return "Aberta";
+              const mirrorExecRow = allTasks.find((t: any) => String(t.auvo_task_id) === String(execTaskId))
+                || (String(selectedCard.auvo_task_id) === String(execTaskId) ? selectedCard : null);
 
-                        // Fallback
-                        if (execTaskFallback?.checkOut) return "Finalizada";
-                        const tcs = execTaskFallback?.timeControl || [];
-                        if (tcs.some((tc: any) => tc.pauseStart && !tc.pauseEnd) || execTaskFallback?.reasonForPause) return "Pausada";
-                        if (execTaskFallback?.checkIn) return "Em andamento";
-                        return "Agendada";
-                      })(),
-                      hora_inicio: execTaskFallback?.checkInDate ? String(execTaskFallback.checkInDate).slice(11, 19) : (String(execTaskFallback?.taskDate || "").slice(11, 19) || null),
-                      hora_fim: execTaskFallback?.checkOutDate ? String(execTaskFallback.checkOutDate).slice(11, 19) : null,
-                      check_in: !!execTaskFallback?.checkIn,
-                      check_out: !!execTaskFallback?.checkOut,
-                      duracao_decimal: execTaskFallback?.durationDecimal ? Number(execTaskFallback.durationDecimal) : null,
-                      report: execTaskFallback?.report || null,
-                      reasonForPause: execTaskFallback?.reasonForPause || null,
-                    }
-                  : null);
+              if (execTaskFallback) {
+                return {
+                  ...mirrorExecRow,
+                  auvo_task_id: String(execTaskId),
+                  tecnico: execTaskFallback?.idUserTo && auvoUsers?.find((u) => String(u.userID) === String(execTaskFallback.idUserTo))?.name,
+                  data_tarefa: String(execTaskFallback?.taskDate || "").slice(0, 10) || mirrorExecRow?.data_tarefa || null,
+                  status_auvo: getAuvoStatusFromTask(execTaskFallback),
+                  hora_inicio: execTaskFallback?.checkInDate ? String(execTaskFallback.checkInDate).slice(11, 19) : (mirrorExecRow?.hora_inicio || String(execTaskFallback?.taskDate || "").slice(11, 19) || null),
+                  hora_fim: execTaskFallback?.checkOutDate ? String(execTaskFallback.checkOutDate).slice(11, 19) : (mirrorExecRow?.hora_fim || null),
+                  check_in: !!execTaskFallback?.checkIn,
+                  check_out: !!execTaskFallback?.checkOut,
+                  duracao_decimal: execTaskFallback?.durationDecimal ? Number(execTaskFallback.durationDecimal) : (mirrorExecRow?.duracao_decimal ?? null),
+                  report: execTaskFallback?.report || null,
+                  reasonForPause: execTaskFallback?.reasonForPause || null,
+                };
+              }
+
+              return mirrorExecRow;
             })();
 
             return (
