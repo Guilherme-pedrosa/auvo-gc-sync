@@ -113,7 +113,7 @@ export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, o
     try {
       // Use the EXECUTION task's technician (gc_os_tarefa_exec) as the vendor, not the OS task's
       const execTaskId = item.gc_os_tarefa_exec;
-      const execTask = execTaskId ? data.find((t: any) => t.auvo_task_id === execTaskId) : null;
+      const execTask = execTaskId ? allTasks.find((t: any) => t.auvo_task_id === execTaskId) : null;
       const execTecnicoId = execTask?.tecnico_id || item.tecnico_id; // fallback to OS task tech
       const mapping = vendedorMap?.find(m => m.auvo_user_id === execTecnicoId);
       const gcVendedorId = mapping?.gc_vendedor_id || null;
