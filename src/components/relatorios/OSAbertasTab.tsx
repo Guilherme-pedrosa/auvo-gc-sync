@@ -31,6 +31,7 @@ interface Props {
   isLoading: boolean;
   allClientes: string[];
   onRefresh?: () => void;
+  execTaskStatusMap?: Map<string, string>;
 }
 
 const formatCurrency = (val: number) =>
