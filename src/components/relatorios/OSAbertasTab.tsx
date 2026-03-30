@@ -56,8 +56,7 @@ const formatCurrency = (val: number) =>
 export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, onRefresh, execTaskStatusMap }: Props) {
   const { profile } = useAuth();
   const [search, setSearch] = useState("");
-  const [selectedSituacoes, setSelectedSituacoes] = useState<Set<string>>(new Set());
-  const [allSituacoesSelected, setAllSituacoesSelected] = useState(true);
+  const [excludedSituacoes, setExcludedSituacoes] = useState<Set<string>>(new Set());
   const [searchSituacao, setSearchSituacao] = useState("");
   const [expanded, setExpanded] = useState<string | null>(null);
 
