@@ -79,6 +79,7 @@ export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, o
   const [search, setSearch] = useState("");
   const [excludedSituacoes, setExcludedSituacoes] = useState<Set<string>>(new Set());
   const [searchSituacao, setSearchSituacao] = useState("");
+  const [execStatusFilter, setExecStatusFilter] = useState<string>("all"); // all | em_andamento | pausada | finalizada | sem_exec
   const [expanded, setExpanded] = useState<string | null>(null);
 
   // Detail dialog
