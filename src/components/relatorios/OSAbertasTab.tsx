@@ -497,7 +497,8 @@ export default function OSAbertasTab({ data, isLoading, allClientes, onRefresh, 
                                 <TableRow>
                                   <TableHead className="text-xs">OS Código</TableHead>
                                   <TableHead className="text-xs">Situação</TableHead>
-                                  <TableHead className="text-xs">Técnico</TableHead>
+                                  <TableHead className="text-xs">Téc. OS</TableHead>
+                                  <TableHead className="text-xs">Téc. Execução</TableHead>
                                   <TableHead className="text-xs">Data</TableHead>
                                   <TableHead className="text-xs text-right">Valor</TableHead>
                                   <TableHead className="text-xs w-56">Ações</TableHead>
