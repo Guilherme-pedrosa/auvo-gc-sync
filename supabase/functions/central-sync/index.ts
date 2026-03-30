@@ -491,9 +491,8 @@ Deno.serve(async (req) => {
       "Content-Type": "application/json",
     };
 
-    // Fetch all data in parallel
-    const [auvoTasks, gcOrcResult, gcOsResult] = await Promise.all([
-      fetchAuvoTasks(bearerToken, startDate, endDate),
+    // Step 1: Fetch GC data first (faster, ~20s) — Auvo will come after status refresh
+    const [gcOrcResult, gcOsResult] = await Promise.all([
       fetchGcOrcamentos(gcH),
       fetchGcOs(gcH),
     ]);
@@ -504,7 +503,7 @@ Deno.serve(async (req) => {
     const gcOsByCodigo = gcOsResult.byCodigo;
     const gcOsByOrcNumero = gcOsResult.byOrcNumero;
 
-    console.log(`[central-sync] Auvo: ${auvoTasks.length} tarefas, GC Orç: ${Object.keys(gcOrcMap).length}, GC OS: ${Object.keys(gcOsMap).length}`);
+    console.log(`[central-sync] GC carregado: Orç: ${Object.keys(gcOrcMap).length}, OS: ${Object.keys(gcOsMap).length}`);
 
     // ── PRIORITY: Global OS/ORC status refresh (runs FIRST, before heavy Auvo processing) ──
     // This ensures OS statuses are always updated even if the function times out later
