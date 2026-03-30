@@ -215,16 +215,55 @@ export default function RelatoriosPage() {
           <LastSyncBadge className="mt-0.5" />
         </div>
         <div className="flex flex-col items-end gap-2">
-          <Button
-            variant="outline"
-            size="sm"
-            className="gap-1.5"
-            onClick={handleSync}
-            disabled={syncing}
-          >
-            <RefreshCw className={`h-4 w-4 ${syncing ? "animate-spin" : ""}`} />
-            {syncing ? "Sincronizando..." : `Atualizar do Auvo (${format(dateFrom, "dd/MM")} – ${format(dateTo, "dd/MM")})`}
-          </Button>
+          <div className="flex items-center gap-2">
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button variant="outline" size="sm" className={cn("gap-1.5 w-[130px] justify-start text-left font-normal")}>
+                  <CalendarIcon className="h-3.5 w-3.5" />
+                  {format(dateFrom, "dd/MM/yyyy")}
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-auto p-0" align="end">
+                <Calendar
+                  mode="single"
+                  selected={dateFrom}
+                  onSelect={(d) => d && setDateFrom(d)}
+                  initialFocus
+                  locale={ptBR}
+                  className={cn("p-3 pointer-events-auto")}
+                />
+              </PopoverContent>
+            </Popover>
+            <span className="text-sm text-muted-foreground">até</span>
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button variant="outline" size="sm" className={cn("gap-1.5 w-[130px] justify-start text-left font-normal")}>
+                  <CalendarIcon className="h-3.5 w-3.5" />
+                  {format(dateTo, "dd/MM/yyyy")}
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-auto p-0" align="end">
+                <Calendar
+                  mode="single"
+                  selected={dateTo}
+                  onSelect={(d) => d && setDateTo(d)}
+                  initialFocus
+                  locale={ptBR}
+                  className={cn("p-3 pointer-events-auto")}
+                />
+              </PopoverContent>
+            </Popover>
+            <Button
+              variant="outline"
+              size="sm"
+              className="gap-1.5"
+              onClick={handleSync}
+              disabled={syncing}
+            >
+              <RefreshCw className={`h-4 w-4 ${syncing ? "animate-spin" : ""}`} />
+              {syncing ? "Sincronizando..." : "Sincronizar"}
+            </Button>
+          </div>
           {syncing && (
             <div className="w-64 space-y-1.5">
               <Progress value={syncProgress} className="h-2" />
