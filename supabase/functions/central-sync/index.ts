@@ -355,18 +355,32 @@ async function fetchGcOrcamentos(gcHeaders: Record<string, string>): Promise<{ b
   return { byTaskId: map, byCodigo };
 }
 
-// Fetch ALL GC OS (no date filter)
-// Returns { byTaskId, byCodigo } — byCodigo is a reverse map for secondary linkage
-async function fetchGcOs(gcHeaders: Record<string, string>): Promise<{ byTaskId: Record<string, any>; byCodigo: Record<string, any>; byOrcNumero: Record<string, any> }> {
+// Fetch GC OS with optional filters (situacao_ids, date range)
+async function fetchGcOs(gcHeaders: Record<string, string>, options?: { situacaoIds?: string[]; dataInicio?: string; dataFim?: string }): Promise<{ byTaskId: Record<string, any>; byCodigo: Record<string, any>; byOrcNumero: Record<string, any> }> {
   const map: Record<string, any> = {};
   const byCodigo: Record<string, any> = {};
-  const byOrcNumero: Record<string, any> = {}; // attribute 81831 "NÚMERO ORÇAMENTO" → OS
-  let page = 1;
-  let totalPages = 1;
-  const MAX_PAGES = 50;
+  const byOrcNumero: Record<string, any> = {};
 
-  while (page <= totalPages && page <= MAX_PAGES) {
-    const url = `${GC_BASE_URL}/api/ordens_servicos?limite=100&pagina=${page}`;
+  // If situacaoIds provided, fetch per situação; otherwise fetch all
+  const situacaoIds = options?.situacaoIds?.length ? options.situacaoIds : [null];
+
+  for (const sitId of situacaoIds) {
+    let page = 1;
+    let totalPages = 1;
+    const MAX_PAGES = 50;
+
+    while (page <= totalPages && page <= MAX_PAGES) {
+      let url = `${GC_BASE_URL}/api/ordens_servicos?limite=100&pagina=${page}`;
+      if (sitId) url += `&situacao_id=${sitId}`;
+      if (options?.dataInicio) url += `&data_inicio=${options.dataInicio}`;
+      if (options?.dataFim) url += `&data_fim=${options.dataFim}`;
+
+      const response = await rateLimitedFetch(url, { headers: gcHeaders }, "gc");
+      if (response.status === 429) {
+        await new Promise(r => setTimeout(r, 3000));
+        continue;
+      }
+      if (!response.ok) break;
     const response = await rateLimitedFetch(url, { headers: gcHeaders }, "gc");
     if (response.status === 429) {
       await new Promise(r => setTimeout(r, 3000));

@@ -378,6 +378,8 @@ export default function RelatoriosPage() {
             isLoading={isLoadingOS}
             allClientes={allClientes}
             onRefresh={refreshRelatoriosData}
+            onSync={(situacaoIds) => handleSync(situacaoIds)}
+            syncing={syncing}
             execTaskStatusMap={execTaskStatusMap}
           />
         </TabsContent>
