@@ -498,7 +498,8 @@ export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, o
                                   <TableHead className="text-xs">Situação</TableHead>
                                   <TableHead className="text-xs">Téc. OS</TableHead>
                                   <TableHead className="text-xs">Téc. Execução</TableHead>
-                                  <TableHead className="text-xs">Data</TableHead>
+                                  <TableHead className="text-xs">Data OS</TableHead>
+                                  <TableHead className="text-xs">Data Execução</TableHead>
                                   <TableHead className="text-xs text-right">Valor</TableHead>
                                   <TableHead className="text-xs w-56">Ações</TableHead>
                                 </TableRow>
@@ -537,16 +538,25 @@ export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, o
                                         })()}
                                       </TableCell>
                                       <TableCell>
+                                        <span>{item.gc_os_data || item.data_tarefa || "—"}</span>
+                                      </TableCell>
+                                      <TableCell>
                                         <div className="flex items-center gap-1.5">
-                                          <span>{item.data_tarefa || "—"}</span>
                                           {(() => {
                                             const execId = item.gc_os_tarefa_exec;
+                                            const execRow = execId ? allTasks.find((t: any) => t.auvo_task_id === execId) : null;
+                                            const execDate = execRow?.data_tarefa;
                                             const execStatus = execId && execTaskStatusMap?.get(execId);
-                                            return execStatus === "Finalizada" ? (
-                                              <Badge variant="outline" className="text-[9px] px-1 py-0 bg-green-100 text-green-700 border-green-300 dark:bg-green-900/50 dark:text-green-300 dark:border-green-700 whitespace-nowrap">
-                                                ✅ Exec. Finalizada
-                                              </Badge>
-                                            ) : null;
+                                            return (
+                                              <>
+                                                <span>{execDate || "—"}</span>
+                                                {execStatus === "Finalizada" && (
+                                                  <Badge variant="outline" className="text-[9px] px-1 py-0 bg-green-100 text-green-700 border-green-300 dark:bg-green-900/50 dark:text-green-300 dark:border-green-700 whitespace-nowrap">
+                                                    ✅ Exec. Finalizada
+                                                  </Badge>
+                                                )}
+                                              </>
+                                            );
                                           })()}
                                         </div>
                                       </TableCell>
