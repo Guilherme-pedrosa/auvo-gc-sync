@@ -64,6 +64,7 @@ export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, o
   const [selectedCard, setSelectedCard] = useState<any | null>(null);
   const [osDetail, setOsDetail] = useState<any>(null);
   const [osDetailLoading, setOsDetailLoading] = useState(false);
+  const [execTaskFallback, setExecTaskFallback] = useState<any | null>(null);
 
   // Edit modal
   const [showEditModal, setShowEditModal] = useState(false);
@@ -230,27 +231,60 @@ export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, o
   useEffect(() => {
     if (!selectedCard?.gc_os_id) {
       setOsDetail(null);
+      setExecTaskFallback(null);
       return;
     }
     let cancelled = false;
     setOsDetailLoading(true);
     setOsDetail(null);
+    setExecTaskFallback(null);
 
     supabase.functions
       .invoke("gc-proxy", {
         body: { endpoint: `/api/ordens_servicos/${selectedCard.gc_os_id}`, method: "GET" },
       })
-      .then(({ data, error }) => {
+      .then(async ({ data, error }) => {
         if (cancelled) return;
-        if (error) { setOsDetailLoading(false); return; }
+        if (error) {
+          setOsDetailLoading(false);
+          return;
+        }
         const osObj = data?.data?.data ?? data?.data ?? null;
         setOsDetail(osObj);
-        setOsDetailLoading(false);
-      })
-      .catch(() => { if (!cancelled) setOsDetailLoading(false); });
 
-    return () => { cancelled = true; };
-  }, [selectedCard?.gc_os_id]);
+        const atributos: any[] = osObj?.atributos || [];
+        const execAttr = atributos.find((a: any) => {
+          const nested = a?.atributo || a;
+          return String(nested?.atributo_id || nested?.id || "") === "73344";
+        });
+        const nested = execAttr?.atributo || execAttr;
+        const execTaskId = String(nested?.conteudo || nested?.valor || "").trim();
+
+        const existsInMirror = execTaskId
+          ? allTasks.some((t: any) => String(t.auvo_task_id) === execTaskId)
+          : false;
+
+        if (execTaskId && !existsInMirror) {
+          const { data: taskData, error: taskError } = await supabase.functions.invoke("auvo-task-update", {
+            body: { action: "get", taskId: Number(execTaskId) },
+          });
+
+          if (!cancelled && !taskError) {
+            const taskObj = taskData?.data?.result ?? taskData?.data ?? null;
+            setExecTaskFallback(taskObj);
+          }
+        }
+
+        if (!cancelled) setOsDetailLoading(false);
+      })
+      .catch(() => {
+        if (!cancelled) setOsDetailLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedCard?.gc_os_id, allTasks]);
 
   // Fetch exec task ID from GC OS attributes
   const fetchExecTaskId = useCallback(async (gcOsId: string): Promise<{ execTaskId: string | null; osTaskId: string | null }> => {
@@ -729,7 +763,20 @@ export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, o
             const execRow = (() => {
               if (!execTaskId) return null;
               return allTasks.find((t: any) => String(t.auvo_task_id) === String(execTaskId))
-                || (String(selectedCard.auvo_task_id) === String(execTaskId) ? selectedCard : null);
+                || (String(selectedCard.auvo_task_id) === String(execTaskId) ? selectedCard : null)
+                || (execTaskFallback
+                  ? {
+                      auvo_task_id: String(execTaskId),
+                      tecnico: execTaskFallback?.idUserTo && auvoUsers?.find((u) => String(u.userID) === String(execTaskFallback.idUserTo))?.name,
+                      data_tarefa: String(execTaskFallback?.taskDate || "").slice(0, 10) || null,
+                      status_auvo: execTaskFallback?.finished ? "Finalizada" : "Agendada",
+                      hora_inicio: String(execTaskFallback?.taskDate || "").slice(11, 19) || null,
+                      hora_fim: execTaskFallback?.checkOutDate ? String(execTaskFallback.checkOutDate).slice(11, 19) : null,
+                      check_in: !!execTaskFallback?.checkIn,
+                      check_out: !!execTaskFallback?.checkOut,
+                      duracao_decimal: execTaskFallback?.durationDecimal ? Number(execTaskFallback.durationDecimal) : null,
+                    }
+                  : null);
             })();
 
             return (
