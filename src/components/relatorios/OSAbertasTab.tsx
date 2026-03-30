@@ -666,6 +666,16 @@ export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, o
                                                     ✅ Exec. Finalizada
                                                   </Badge>
                                                 )}
+                                                {execStatus === "Pausada" && (
+                                                  <Badge variant="outline" className="text-[9px] px-1 py-0 bg-yellow-100 text-yellow-700 border-yellow-300 dark:bg-yellow-900/50 dark:text-yellow-300 dark:border-yellow-700 whitespace-nowrap">
+                                                    ⏸ Pausada
+                                                  </Badge>
+                                                )}
+                                                {execStatus === "Em andamento" && (
+                                                  <Badge variant="outline" className="text-[9px] px-1 py-0 bg-blue-100 text-blue-700 border-blue-300 dark:bg-blue-900/50 dark:text-blue-300 dark:border-blue-700 whitespace-nowrap">
+                                                    🔄 Em andamento
+                                                  </Badge>
+                                                )}
                                               </>
                                             );
                                           })()}
