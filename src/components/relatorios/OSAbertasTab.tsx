@@ -645,28 +645,59 @@ export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, o
               </Badge>
             </DialogTitle>
             <p className="text-sm text-muted-foreground">
-              Tarefa Auvo #{selectedCard?.auvo_task_id}
+              {(() => {
+                const atributos: any[] = osDetail?.atributos || [];
+                const findAttrValue = (attrId: string) => {
+                  const attr = atributos.find((a: any) => {
+                    const nested = a?.atributo || a;
+                    return String(nested?.atributo_id || nested?.id || "") === attrId;
+                  });
+                  if (!attr) return null;
+                  const nested = attr?.atributo || attr;
+                  const valor = String(nested?.conteudo || nested?.valor || "").trim();
+                  return valor && /^\d+$/.test(valor) ? valor : null;
+                };
+
+                const osTaskId = findAttrValue("73343");
+                const execTaskId = findAttrValue("73344") || selectedCard?.gc_os_tarefa_exec || null;
+
+                if (osTaskId || execTaskId) {
+                  return `Tarefa OS #${osTaskId || "—"} • Execução #${execTaskId || "—"}`;
+                }
+
+                return `Tarefa Auvo #${selectedCard?.auvo_task_id}`;
+              })()}
             </p>
           </DialogHeader>
           {selectedCard && (() => {
-            // Find OS task and Execution task from allTasks
-            const execId = selectedCard.gc_os_tarefa_exec;
-            const gcOsId = selectedCard.gc_os_id;
-            
-            // Find execution task row
-            const execRow = execId ? allTasks.find((t: any) => t.auvo_task_id === execId) : null;
+            const atributos: any[] = osDetail?.atributos || [];
+            const findAttrValue = (attrId: string) => {
+              const attr = atributos.find((a: any) => {
+                const nested = a?.atributo || a;
+                return String(nested?.atributo_id || nested?.id || "") === attrId;
+              });
+              if (!attr) return null;
+              const nested = attr?.atributo || attr;
+              const valor = String(nested?.conteudo || nested?.valor || "").trim();
+              return valor && /^\d+$/.test(valor) ? valor : null;
+            };
 
-            // Find the real OS task: a sibling with same gc_os_id whose auvo_task_id != execId
+            const osTaskId = findAttrValue("73343");
+            const execTaskId = findAttrValue("73344") || selectedCard.gc_os_tarefa_exec || null;
+
             const osRow = (() => {
-              if (!gcOsId) return selectedCard;
-              // Look in allTasks for a task with same gc_os_id that is NOT the execution task
-              const candidates = allTasks.filter((t: any) => 
-                t.gc_os_id === gcOsId && t.auvo_task_id !== execId
-              );
-              if (candidates.length > 0) return candidates[0];
-              // If selectedCard itself is not the exec task, it's the OS task
-              if (!execId || selectedCard.auvo_task_id !== execId) return selectedCard;
-              return null; // OS task not found in allTasks
+              if (osTaskId) {
+                return allTasks.find((t: any) => String(t.auvo_task_id) === String(osTaskId))
+                  || (String(selectedCard.auvo_task_id) === String(osTaskId) ? selectedCard : null);
+              }
+              if (!execTaskId || String(selectedCard.auvo_task_id) !== String(execTaskId)) return selectedCard;
+              return null;
+            })();
+
+            const execRow = (() => {
+              if (!execTaskId) return null;
+              return allTasks.find((t: any) => String(t.auvo_task_id) === String(execTaskId))
+                || (String(selectedCard.auvo_task_id) === String(execTaskId) ? selectedCard : null);
             })();
 
             return (
