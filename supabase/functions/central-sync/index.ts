@@ -491,9 +491,8 @@ Deno.serve(async (req) => {
       "Content-Type": "application/json",
     };
 
-    // Fetch all data in parallel
-    const [auvoTasks, gcOrcResult, gcOsResult] = await Promise.all([
-      fetchAuvoTasks(bearerToken, startDate, endDate),
+    // Step 1: Fetch GC data first (faster, ~20s) — Auvo will come after status refresh
+    const [gcOrcResult, gcOsResult] = await Promise.all([
       fetchGcOrcamentos(gcH),
       fetchGcOs(gcH),
     ]);
@@ -504,7 +503,136 @@ Deno.serve(async (req) => {
     const gcOsByCodigo = gcOsResult.byCodigo;
     const gcOsByOrcNumero = gcOsResult.byOrcNumero;
 
-    console.log(`[central-sync] Auvo: ${auvoTasks.length} tarefas, GC Orç: ${Object.keys(gcOrcMap).length}, GC OS: ${Object.keys(gcOsMap).length}`);
+    console.log(`[central-sync] GC carregado: Orç: ${Object.keys(gcOrcMap).length}, OS: ${Object.keys(gcOsMap).length}`);
+
+    // ── PRIORITY: Global OS/ORC status refresh (runs FIRST, before heavy Auvo processing) ──
+    // This ensures OS statuses are always updated even if the function times out later
+    {
+      const allGcOsById: Record<string, any> = {};
+      for (const osPayload of Object.values(gcOsResult.byCodigo)) {
+        if (osPayload.gc_os_id) allGcOsById[osPayload.gc_os_id] = osPayload;
+      }
+      for (const osPayload of Object.values(gcOsResult.byTaskId)) {
+        if (osPayload.gc_os_id) allGcOsById[osPayload.gc_os_id] = osPayload;
+      }
+
+      const allGcOrcById: Record<string, any> = {};
+      for (const orcPayload of Object.values(gcOrcResult.byCodigo)) {
+        if (orcPayload.gc_orcamento_id) allGcOrcById[orcPayload.gc_orcamento_id] = orcPayload;
+      }
+      for (const orcPayload of Object.values(gcOrcResult.byTaskId)) {
+        if (orcPayload.gc_orcamento_id) allGcOrcById[orcPayload.gc_orcamento_id] = orcPayload;
+      }
+
+      // Fetch ALL distinct gc_os_id values from the DB
+      const dbOsIds = new Set<string>();
+      for (let from = 0; ; from += 1000) {
+        const { data: chunk } = await sbClient
+          .from("tarefas_central")
+          .select("gc_os_id")
+          .not("gc_os_id", "is", null)
+          .range(from, from + 999);
+        if (!chunk || chunk.length === 0) break;
+        for (const r of chunk) {
+          if (r.gc_os_id) dbOsIds.add(r.gc_os_id);
+        }
+        if (chunk.length < 1000) break;
+      }
+
+      // For OS in DB but NOT in GC listing (e.g. cancelled OS filtered by API), fetch individually
+      const missingOsIds = Array.from(dbOsIds).filter(id => !allGcOsById[id]);
+      if (missingOsIds.length > 0) {
+        console.log(`[central-sync] ${missingOsIds.length} OS no banco não encontradas na listagem GC — buscando individualmente...`);
+        const PARALLEL = 5;
+        for (let i = 0; i < missingOsIds.length; i += PARALLEL) {
+          const batch = missingOsIds.slice(i, i + PARALLEL);
+          const results = await Promise.all(batch.map(async (osId) => {
+            const url = `${GC_BASE_URL}/api/ordens_servicos/${osId}`;
+            const resp = await rateLimitedFetch(url, { headers: gcH }, "gc");
+            if (!resp.ok) return null;
+            const data = await resp.json().catch(() => null);
+            const os = data?.data || data;
+            if (!os || !os.id) return null;
+            return {
+              gc_os_id: String(os.id),
+              gc_os_situacao: String(os.nome_situacao || ""),
+              gc_os_situacao_id: String(os.situacao_id || ""),
+              gc_os_cor_situacao: String(os.cor_situacao || ""),
+              gc_os_valor_total: parseFloat(os.valor_total || "0"),
+              gc_os_vendedor: String(os.nome_vendedor || ""),
+              gc_os_cliente: String(os.nome_cliente || ""),
+              gc_os_data_saida: String(os.data_saida || "").split("T")[0] || null,
+            };
+          }));
+          for (const fresh of results) {
+            if (fresh) allGcOsById[fresh.gc_os_id] = fresh;
+          }
+        }
+        console.log(`[central-sync] OS individuais recuperadas: ${missingOsIds.length - Array.from(dbOsIds).filter(id => !allGcOsById[id]).length}`);
+      }
+
+      let globalOsUpdated = 0;
+      for (const osId of dbOsIds) {
+        const fresh = allGcOsById[osId];
+        if (!fresh) continue;
+        const { count } = await sbClient
+          .from("tarefas_central")
+          .update({
+            gc_os_situacao: fresh.gc_os_situacao,
+            gc_os_situacao_id: fresh.gc_os_situacao_id,
+            gc_os_cor_situacao: fresh.gc_os_cor_situacao,
+            gc_os_valor_total: fresh.gc_os_valor_total,
+            gc_os_vendedor: fresh.gc_os_vendedor,
+            gc_os_cliente: fresh.gc_os_cliente,
+            gc_os_data_saida: fresh.gc_os_data_saida,
+            atualizado_em: new Date().toISOString(),
+          }, { count: "exact" })
+          .eq("gc_os_id", osId)
+          .neq("gc_os_situacao", fresh.gc_os_situacao);
+        globalOsUpdated += count || 0;
+      }
+
+      const dbOrcIds = new Set<string>();
+      for (let from = 0; ; from += 1000) {
+        const { data: chunk } = await sbClient
+          .from("tarefas_central")
+          .select("gc_orcamento_id")
+          .not("gc_orcamento_id", "is", null)
+          .range(from, from + 999);
+        if (!chunk || chunk.length === 0) break;
+        for (const r of chunk) {
+          if (r.gc_orcamento_id) dbOrcIds.add(r.gc_orcamento_id);
+        }
+        if (chunk.length < 1000) break;
+      }
+
+      let globalOrcUpdated = 0;
+      for (const orcId of dbOrcIds) {
+        const fresh = allGcOrcById[orcId];
+        if (!fresh) continue;
+        const { count } = await sbClient
+          .from("tarefas_central")
+          .update({
+            gc_orc_situacao: fresh.gc_orc_situacao,
+            gc_orc_situacao_id: fresh.gc_orc_situacao_id,
+            gc_orc_cor_situacao: fresh.gc_orc_cor_situacao,
+            gc_orc_valor_total: fresh.gc_orc_valor_total,
+            gc_orc_vendedor: fresh.gc_orc_vendedor,
+            gc_orc_cliente: fresh.gc_orc_cliente,
+            atualizado_em: new Date().toISOString(),
+          }, { count: "exact" })
+          .eq("gc_orcamento_id", orcId)
+          .neq("gc_orc_situacao", fresh.gc_orc_situacao);
+        globalOrcUpdated += count || 0;
+      }
+
+      console.log(`[central-sync] Atualização global de status: ${globalOsUpdated} OS e ${globalOrcUpdated} orçamentos atualizados no banco`);
+    }
+
+    // Step 3: NOW fetch Auvo tasks (heavy, can take minutes)
+    console.log(`[central-sync] Iniciando busca Auvo: ${startDate} → ${endDate}`);
+    const auvoTasks = await fetchAuvoTasks(bearerToken, startDate, endDate);
+    console.log(`[central-sync] Auvo: ${auvoTasks.length} tarefas`);
 
     if (auvoTasks.length === 0) {
       console.warn("[central-sync] Nenhuma tarefa retornada do Auvo; aplicando fallback apenas com dados do GC");
@@ -1006,97 +1134,8 @@ Deno.serve(async (req) => {
       }
     }
 
-    // ── Global OS/ORC status refresh ──
-    // Build a map of ALL OS from the GC API (keyed by gc_os_id) regardless of Auvo linkage
-    const allGcOsById: Record<string, any> = {};
-    for (const osPayload of Object.values(gcOsResult.byCodigo)) {
-      if (osPayload.gc_os_id) allGcOsById[osPayload.gc_os_id] = osPayload;
-    }
-    for (const osPayload of Object.values(gcOsResult.byTaskId)) {
-      if (osPayload.gc_os_id) allGcOsById[osPayload.gc_os_id] = osPayload;
-    }
 
-    const allGcOrcById: Record<string, any> = {};
-    for (const orcPayload of Object.values(gcOrcResult.byCodigo)) {
-      if (orcPayload.gc_orcamento_id) allGcOrcById[orcPayload.gc_orcamento_id] = orcPayload;
-    }
-    for (const orcPayload of Object.values(gcOrcResult.byTaskId)) {
-      if (orcPayload.gc_orcamento_id) allGcOrcById[orcPayload.gc_orcamento_id] = orcPayload;
-    }
 
-    // Fetch ALL distinct gc_os_id values from the DB
-    const dbOsIds = new Set<string>();
-    for (let from = 0; ; from += 1000) {
-      const { data: chunk } = await sbClient
-        .from("tarefas_central")
-        .select("gc_os_id")
-        .not("gc_os_id", "is", null)
-        .range(from, from + 999);
-      if (!chunk || chunk.length === 0) break;
-      for (const r of chunk) {
-        if (r.gc_os_id) dbOsIds.add(r.gc_os_id);
-      }
-      if (chunk.length < 1000) break;
-    }
-
-    // Update OS status for ALL rows where the GC API has fresher data
-    let globalOsUpdated = 0;
-    for (const osId of dbOsIds) {
-      const fresh = allGcOsById[osId];
-      if (!fresh) continue;
-      const { count } = await sbClient
-        .from("tarefas_central")
-        .update({
-          gc_os_situacao: fresh.gc_os_situacao,
-          gc_os_situacao_id: fresh.gc_os_situacao_id,
-          gc_os_cor_situacao: fresh.gc_os_cor_situacao,
-          gc_os_valor_total: fresh.gc_os_valor_total,
-          gc_os_vendedor: fresh.gc_os_vendedor,
-          gc_os_cliente: fresh.gc_os_cliente,
-          gc_os_data_saida: fresh.gc_os_data_saida,
-          atualizado_em: new Date().toISOString(),
-        }, { count: "exact" })
-        .eq("gc_os_id", osId)
-        .neq("gc_os_situacao", fresh.gc_os_situacao);
-      globalOsUpdated += count || 0;
-    }
-
-    // Same for orçamentos
-    const dbOrcIds = new Set<string>();
-    for (let from = 0; ; from += 1000) {
-      const { data: chunk } = await sbClient
-        .from("tarefas_central")
-        .select("gc_orcamento_id")
-        .not("gc_orcamento_id", "is", null)
-        .range(from, from + 999);
-      if (!chunk || chunk.length === 0) break;
-      for (const r of chunk) {
-        if (r.gc_orcamento_id) dbOrcIds.add(r.gc_orcamento_id);
-      }
-      if (chunk.length < 1000) break;
-    }
-
-    let globalOrcUpdated = 0;
-    for (const orcId of dbOrcIds) {
-      const fresh = allGcOrcById[orcId];
-      if (!fresh) continue;
-      const { count } = await sbClient
-        .from("tarefas_central")
-        .update({
-          gc_orc_situacao: fresh.gc_orc_situacao,
-          gc_orc_situacao_id: fresh.gc_orc_situacao_id,
-          gc_orc_cor_situacao: fresh.gc_orc_cor_situacao,
-          gc_orc_valor_total: fresh.gc_orc_valor_total,
-          gc_orc_vendedor: fresh.gc_orc_vendedor,
-          gc_orc_cliente: fresh.gc_orc_cliente,
-          atualizado_em: new Date().toISOString(),
-        }, { count: "exact" })
-        .eq("gc_orcamento_id", orcId)
-        .neq("gc_orc_situacao", fresh.gc_orc_situacao);
-      globalOrcUpdated += count || 0;
-    }
-
-    console.log(`[central-sync] Atualização global de status: ${globalOsUpdated} OS e ${globalOrcUpdated} orçamentos atualizados no banco`);
 
     // ── Post-sync: persist atrasos AND pendências permanently ──
     // 1) Tasks past due and NOT finalized (still open)
