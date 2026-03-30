@@ -174,7 +174,7 @@ export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, o
       map.set(cliente, entry);
     }
     return Array.from(map.values()).sort((a, b) => b.total - a.total);
-  }, [data, allSituacoesSelected, selectedSituacoes]);
+  }, [data, excludedSituacoes]);
 
   const filtered = useMemo(() => {
     if (!search) return clienteSummary;
