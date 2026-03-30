@@ -825,11 +825,22 @@ export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, o
                       tecnico: execTaskFallback?.idUserTo && auvoUsers?.find((u) => String(u.userID) === String(execTaskFallback.idUserTo))?.name,
                       data_tarefa: String(execTaskFallback?.taskDate || "").slice(0, 10) || null,
                       status_auvo: (() => {
-                        // Pause check FIRST — overrides any description
-                        if (execTaskFallback?.reasonForPause || (execTaskFallback?.timeControl || []).some((tc: any) => tc.pauseStart && !tc.pauseEnd)) return "Pausada";
-                        const desc = String(execTaskFallback?.taskStatus?.description || execTaskFallback?.taskStatus || "").trim();
-                        if (desc) return desc;
-                        if (execTaskFallback?.finished) return "Finalizada";
+                        // Auvo taskStatus codes: 1=Opened, 2=InDisplacement, 3=CheckedIn, 4=CheckedOut, 5=Finished, 6=Paused
+                        const ts = execTaskFallback?.taskStatus;
+                        const statusCode = typeof ts === "number" ? ts
+                          : typeof ts?.id === "number" ? ts.id
+                          : Number(ts?.id || ts?.status || 0);
+
+                        if (statusCode === 6) return "Pausada";
+                        if (statusCode === 4 || statusCode === 5) return "Finalizada";
+                        if (statusCode === 3) return "Em andamento";
+                        if (statusCode === 2) return "Em deslocamento";
+                        if (statusCode === 1) return "Aberta";
+
+                        // Fallback
+                        if (execTaskFallback?.checkOut) return "Finalizada";
+                        const tcs = execTaskFallback?.timeControl || [];
+                        if (tcs.some((tc: any) => tc.pauseStart && !tc.pauseEnd) || execTaskFallback?.reasonForPause) return "Pausada";
                         if (execTaskFallback?.checkIn) return "Em andamento";
                         return "Agendada";
                       })(),
