@@ -531,6 +531,13 @@ export default function OSAbertasTab({ data, isLoading, allClientes, onRefresh, 
                                       </TableCell>
                                       <TableCell>{item.tecnico || "—"}</TableCell>
                                       <TableCell>
+                                        {(() => {
+                                          const execId = item.gc_os_tarefa_exec;
+                                          const execRow = execId ? data.find((t: any) => t.auvo_task_id === execId) : null;
+                                          return execRow?.tecnico || "—";
+                                        })()}
+                                      </TableCell>
+                                      <TableCell>
                                         <div className="flex items-center gap-1.5">
                                           <span>{item.data_tarefa || "—"}</span>
                                           {(() => {
