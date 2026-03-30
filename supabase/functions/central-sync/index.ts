@@ -381,15 +381,9 @@ async function fetchGcOs(gcHeaders: Record<string, string>, options?: { situacao
         continue;
       }
       if (!response.ok) break;
-    const response = await rateLimitedFetch(url, { headers: gcHeaders }, "gc");
-    if (response.status === 429) {
-      await new Promise(r => setTimeout(r, 3000));
-      continue;
-    }
-    if (!response.ok) break;
 
-    const data = await response.json();
-    const records: any[] = Array.isArray(data?.data) ? data.data : [];
+      const data = await response.json();
+      const records: any[] = Array.isArray(data?.data) ? data.data : [];
     totalPages = data?.meta?.total_paginas || 1;
 
     for (const os of records) {
