@@ -980,6 +980,29 @@ export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, o
                 </p>
               </div>
 
+              {/* Warning: exec task already scheduled */}
+              {(() => {
+                const execId = editingCard.gc_os_tarefa_exec;
+                const execRow = execId ? allTasks.find((t: any) => t.auvo_task_id === execId) : null;
+                const execDate = execRow?.data_tarefa;
+                const execTecnico = execRow?.tecnico;
+                const osDate = editingCard.gc_os_data || editingCard.data_tarefa;
+                return (
+                  <div className="bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 rounded-md p-3 text-sm space-y-1">
+                    <div className="flex items-center gap-1.5 text-amber-700 dark:text-amber-400 font-medium">
+                      <AlertTriangle className="h-4 w-4" />
+                      Informações da OS
+                    </div>
+                    <p className="text-xs text-amber-800 dark:text-amber-300">
+                      <span className="font-medium">Abertura da OS:</span> {osDate || "—"}
+                    </p>
+                    <p className="text-xs text-amber-800 dark:text-amber-300">
+                      <span className="font-medium">Agendamento Execução:</span> {execDate && execTecnico ? `${execDate} — ${execTecnico}` : execDate ? execDate : ""}
+                    </p>
+                  </div>
+                );
+              })()}
+
               <div className="space-y-2">
                 <Label>Data da Tarefa de Execução</Label>
                 <Popover>
