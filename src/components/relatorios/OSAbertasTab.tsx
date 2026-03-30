@@ -160,8 +160,8 @@ export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, o
 
   // Group by client, sum values
   const clienteSummary = useMemo(() => {
-    const filtered = !allSituacoesSelected && selectedSituacoes.size > 0
-      ? data.filter((t) => selectedSituacoes.has(t.gc_os_situacao || ""))
+    const filtered = excludedSituacoes.size > 0
+      ? data.filter((t) => !excludedSituacoes.has(t.gc_os_situacao || ""))
       : data;
 
     const map = new Map<string, { cliente: string; count: number; total: number; items: any[] }>();
