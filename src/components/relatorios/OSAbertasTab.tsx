@@ -76,7 +76,7 @@ const getAuvoStatusFromTask = (task: any) => {
   return "Agendada";
 };
 
-export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, onRefresh, execTaskStatusMap }: Props) {
+export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, onRefresh, onSync, syncing, execTaskStatusMap }: Props) {
   const { profile } = useAuth();
   const [search, setSearch] = useState("");
   const [excludedSituacoes, setExcludedSituacoes] = useState<Set<string>>(new Set());
