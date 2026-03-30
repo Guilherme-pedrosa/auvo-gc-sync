@@ -144,6 +144,9 @@ export default function OSAbertasTab({ data, isLoading, allClientes, onRefresh, 
       setConciliacaoSituacao("");
     }
   }, [profile?.gc_user_id, onRefresh, vendedorMap]);
+
+  const allSituacoes = useMemo(() => {
+    const set = new Set(data.map((t) => t.gc_os_situacao || "").filter(Boolean));
     return Array.from(set).sort();
   }, [data]);
 
