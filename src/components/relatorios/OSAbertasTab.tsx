@@ -96,18 +96,33 @@ export default function OSAbertasTab({ data, isLoading, allClientes, onRefresh, 
     staleTime: 1000 * 60 * 30,
   });
 
+  // Fetch vendedor mapping
+  const { data: vendedorMap } = useQuery({
+    queryKey: ["auvo-gc-usuario-map"],
+    queryFn: async () => {
+      const { data } = await supabase.from("auvo_gc_usuario_map").select("*").eq("ativo", true);
+      return (data || []) as { auvo_user_id: string; gc_vendedor_id: string; gc_vendedor_nome: string }[];
+    },
+    staleTime: 1000 * 60 * 30,
+  });
+
   // Conciliação handler
   const alterarSituacaoOS = useCallback(async (item: any, situacaoId: string) => {
     setChangingId(item.gc_os_id);
     try {
+      // Look up the vendor ID from the mapping using technician_id
+      const mapping = vendedorMap?.find(m => m.auvo_user_id === item.tecnico_id);
+      const gcVendedorId = mapping?.gc_vendedor_id || null;
+      const gcVendedorNome = mapping?.gc_vendedor_nome || null;
+
       const { data: resp, error } = await supabase.functions.invoke("auvo-gc-sync", {
         body: {
           action: "revert_os",
           gc_os_id: item.gc_os_id,
           gc_os_codigo: item.gc_os_codigo,
           situacao_id_antes: situacaoId,
-          gc_vendedor_id: item.gc_os_vendedor || null,
-          gc_vendedor_nome: null,
+          gc_vendedor_id: gcVendedorId,
+          gc_vendedor_nome: gcVendedorNome,
           data_saida: item.data_tarefa || null,
           gc_usuario_id: profile?.gc_user_id || null,
         },
@@ -125,12 +140,10 @@ export default function OSAbertasTab({ data, isLoading, allClientes, onRefresh, 
       toast.error(`Erro: ${err.message}`);
     } finally {
       setChangingId(null);
+      setConciliacaoCard(null);
+      setConciliacaoSituacao("");
     }
-  }, [profile?.gc_user_id, onRefresh]);
-
-
-  const allSituacoes = useMemo(() => {
-    const set = new Set(data.map((t) => t.gc_os_situacao || "").filter(Boolean));
+  }, [profile?.gc_user_id, onRefresh, vendedorMap]);
     return Array.from(set).sort();
   }, [data]);
 
