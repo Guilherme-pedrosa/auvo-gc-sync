@@ -322,7 +322,12 @@ export default function RelatoriosPage() {
         </TabsList>
 
         <TabsContent value="os-abertas">
-          <OSAbertasTab data={osAbertas} isLoading={isLoadingOS} allClientes={allClientes} />
+          <OSAbertasTab
+            data={osAbertas}
+            isLoading={isLoadingOS}
+            allClientes={allClientes}
+            onRefresh={refreshRelatoriosData}
+          />
         </TabsContent>
 
         <TabsContent value="horas">
