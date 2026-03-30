@@ -1774,7 +1774,7 @@ export default function OSKanbanPage() {
                               const unitario = Number(p.valor_venda || p.valor_unitario || p.preco || p.valor || 0);
                               const total = Number(p.valor_total || p.subtotal || qtd * unitario);
                               const nome = String(p.nome_produto || p.descricao || p.nome || p.detalhes || "—");
-                              const codigo = String(p.produto_id || p.codigo || p.referencia || "—");
+                              const codigo = String(p.codigo || p.referencia || p.produto_id || "—");
                               return (
                                 <TableRow key={i}>
                                   <TableCell className="text-xs font-mono py-1.5">
