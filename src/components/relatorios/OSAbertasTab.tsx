@@ -79,6 +79,9 @@ export default function OSAbertasTab({ data, isLoading, allClientes, onRefresh, 
   // Conciliação
   const [changingId, setChangingId] = useState<string | null>(null);
   const [movedOsIds, setMovedOsIds] = useState<Set<string>>(new Set());
+  // Conciliação dialog
+  const [conciliacaoCard, setConciliacaoCard] = useState<any | null>(null);
+  const [conciliacaoSituacao, setConciliacaoSituacao] = useState("");
 
   // Fetch Auvo users
   const { data: auvoUsers } = useQuery({
