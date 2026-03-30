@@ -456,9 +456,10 @@ async function fetchGcOs(gcHeaders: Record<string, string>, options?: { situacao
       }
     }
 
-    console.log(`[central-sync] GC OS page ${page}/${totalPages}: ${records.length} registros, ${Object.keys(map).length} com tarefa`);
+    console.log(`[central-sync] GC OS${sitId ? ` sit=${sitId}` : ''} page ${page}/${totalPages}: ${records.length} registros, ${Object.keys(map).length} com tarefa`);
     page++;
   }
+  } // end situacaoIds loop
   return { byTaskId: map, byCodigo, byOrcNumero };
 }
 
