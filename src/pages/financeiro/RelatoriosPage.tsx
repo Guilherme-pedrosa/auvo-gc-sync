@@ -29,6 +29,43 @@ const SYNC_STEPS = [
   { label: "Finalizando...", progress: 95 },
 ];
 
+const TAREFAS_CENTRAL_PAGE_SIZE = 1000;
+
+const fetchAllTarefasCentral = async ({
+  onlyWithOs = false,
+}: {
+  onlyWithOs?: boolean;
+} = {}) => {
+  const rows: any[] = [];
+  let from = 0;
+
+  while (true) {
+    let query = supabase
+      .from("tarefas_central")
+      .select("*")
+      .order("data_tarefa", { ascending: false })
+      .range(from, from + TAREFAS_CENTRAL_PAGE_SIZE - 1);
+
+    if (onlyWithOs) {
+      query = query.not("gc_os_id", "is", null);
+    }
+
+    const { data, error } = await query;
+    if (error) throw error;
+
+    const batch = data || [];
+    rows.push(...batch);
+
+    if (batch.length < TAREFAS_CENTRAL_PAGE_SIZE) {
+      break;
+    }
+
+    from += TAREFAS_CENTRAL_PAGE_SIZE;
+  }
+
+  return rows;
+};
+
 export default function RelatoriosPage() {
   const queryClient = useQueryClient();
   const [syncing, setSyncing] = useState(false);
@@ -145,29 +182,14 @@ export default function RelatoriosPage() {
   // Fetch OS-linked tasks (for OS em Aberto tab)
   const { data: tarefasOS, isLoading: isLoadingOS } = useQuery({
     queryKey: ["relatorios-tarefas-os"],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from("tarefas_central")
-        .select("*")
-        .not("gc_os_id", "is", null)
-        .order("data_tarefa", { ascending: false });
-      if (error) throw error;
-      return data || [];
-    },
+    queryFn: async () => fetchAllTarefasCentral({ onlyWithOs: true }),
     staleTime: 60_000,
   });
 
   // Fetch ALL tasks (for Horas Trabalhadas tab - includes tasks without OS)
   const { data: todasTarefas, isLoading: isLoadingAll } = useQuery({
     queryKey: ["relatorios-todas-tarefas"],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from("tarefas_central")
-        .select("*")
-        .order("data_tarefa", { ascending: false });
-      if (error) throw error;
-      return data || [];
-    },
+    queryFn: async () => fetchAllTarefasCentral(),
     staleTime: 60_000,
   });
 
