@@ -763,7 +763,20 @@ export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, o
             const execRow = (() => {
               if (!execTaskId) return null;
               return allTasks.find((t: any) => String(t.auvo_task_id) === String(execTaskId))
-                || (String(selectedCard.auvo_task_id) === String(execTaskId) ? selectedCard : null);
+                || (String(selectedCard.auvo_task_id) === String(execTaskId) ? selectedCard : null)
+                || (execTaskFallback
+                  ? {
+                      auvo_task_id: String(execTaskId),
+                      tecnico: execTaskFallback?.idUserTo && auvoUsers?.find((u) => String(u.userID) === String(execTaskFallback.idUserTo))?.name,
+                      data_tarefa: String(execTaskFallback?.taskDate || "").slice(0, 10) || null,
+                      status_auvo: execTaskFallback?.finished ? "Finalizada" : "Agendada",
+                      hora_inicio: String(execTaskFallback?.taskDate || "").slice(11, 19) || null,
+                      hora_fim: execTaskFallback?.checkOutDate ? String(execTaskFallback.checkOutDate).slice(11, 19) : null,
+                      check_in: !!execTaskFallback?.checkIn,
+                      check_out: !!execTaskFallback?.checkOut,
+                      duracao_decimal: execTaskFallback?.durationDecimal ? Number(execTaskFallback.durationDecimal) : null,
+                    }
+                  : null);
             })();
 
             return (
