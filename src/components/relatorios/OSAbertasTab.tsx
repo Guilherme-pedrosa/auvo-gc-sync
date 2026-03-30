@@ -1044,7 +1044,7 @@ export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, o
                               const total = Number(p.valor_total || p.subtotal || qtd * unitario);
                               return (
                                 <TableRow key={i}>
-                                  <TableCell className="text-xs font-mono py-1.5">{String(p.codigo || p.produto_id || "—")}</TableCell>
+                                  <TableCell className="text-xs font-mono py-1.5">{String(p.codigo_interno || p.codigo || p.produto_id || "—")}</TableCell>
                                   <TableCell className="text-xs py-1.5 max-w-[200px] truncate">{String(p.nome_produto || p.descricao || p.nome || "—")}</TableCell>
                                   <TableCell className="text-xs py-1.5 text-right">{qtd}</TableCell>
                                   <TableCell className="text-xs py-1.5 text-right">{formatCurrency(unitario)}</TableCell>
