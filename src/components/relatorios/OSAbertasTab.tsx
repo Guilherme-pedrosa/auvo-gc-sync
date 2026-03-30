@@ -750,9 +750,9 @@ export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, o
                                           {(() => {
                                             const execId = item.gc_os_tarefa_exec;
                                             const execRow = execId ? allTasks.find((t: any) => t.auvo_task_id === execId) : null;
-                                            const live = !execId ? liveExecMap.get(String(item.gc_os_id)) : null;
-                                            const execDate = execRow?.data_tarefa || live?.dataTarefa;
-                                            const execStatus = (execId && execTaskStatusMap?.get(execId)) || live?.status;
+                                            const live = liveExecMap.get(String(item.gc_os_id));
+                                            const execDate = live?.dataTarefa || execRow?.data_tarefa;
+                                            const execStatus = live?.status || (execId && execTaskStatusMap?.get(execId));
                                             return (
                                               <>
                                                 <span>{execDate || "—"}</span>
