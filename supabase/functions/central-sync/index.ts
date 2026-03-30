@@ -830,20 +830,23 @@ Deno.serve(async (req) => {
         deslocamento_inicio: displacementStartRaw || null,
         duracao_deslocamento: duracaoDeslocamento,
         status_auvo: (() => {
-          const timeControls = task.timeControl || [];
-          const hasPauseStart = !!task.reasonForPause || timeControls.some((tc: any) => tc.pauseStart);
-          const allPausesEnded = timeControls.length > 0 && timeControls.every((tc: any) => !tc.pauseStart || tc.pauseEnd);
+          // Auvo taskStatus codes: 1=Opened, 2=InDisplacement, 3=CheckedIn, 4=CheckedOut, 5=Finished, 6=Paused
+          const statusCode = typeof task.taskStatus === "number" ? task.taskStatus
+            : typeof task.taskStatus?.id === "number" ? task.taskStatus.id
+            : typeof task.taskStatus === "object" ? Number(task.taskStatus?.id || task.taskStatus?.status || 0) : 0;
+
+          if (statusCode === 6) return "Pausada";
+          if (statusCode === 4 || statusCode === 5) return "Finalizada";
+          if (statusCode === 3) return "Em andamento";
+          if (statusCode === 2) return "Em deslocamento";
+          if (statusCode === 1) return "Aberta";
+
+          // Fallback: derive from event fields if statusCode is missing/0
           const hasCheckOut = !!task.checkOut;
-
-          // Rule 1: pause started but not ended and no checkout → Pausada
-          if (hasPauseStart && !allPausesEnded && !hasCheckOut) return "Pausada";
-          // Rule 2: pause started and ended but no checkout → Em andamento
-          if (hasPauseStart && allPausesEnded && !hasCheckOut) return "Em andamento";
-          // Rule 3: has checkout → Finalizada
           if (hasCheckOut) return "Finalizada";
-
-          const desc = String(task.taskStatus?.description || "").trim();
-          if (desc && desc !== "Finalizada") return desc;
+          const timeControls = task.timeControl || [];
+          const hasPauseOpen = timeControls.some((tc: any) => tc.pauseStart && !tc.pauseEnd);
+          if (hasPauseOpen || task.reasonForPause) return "Pausada";
           if (task.checkIn) return "Em andamento";
           return "Aberta";
         })(),
