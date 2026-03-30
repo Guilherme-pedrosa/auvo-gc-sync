@@ -815,10 +815,11 @@ export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, o
                       tecnico: execTaskFallback?.idUserTo && auvoUsers?.find((u) => String(u.userID) === String(execTaskFallback.idUserTo))?.name,
                       data_tarefa: String(execTaskFallback?.taskDate || "").slice(0, 10) || null,
                       status_auvo: (() => {
+                        // Pause check FIRST — overrides any description
+                        if (execTaskFallback?.reasonForPause || (execTaskFallback?.timeControl || []).some((tc: any) => tc.pauseStart && !tc.pauseEnd)) return "Pausada";
                         const desc = String(execTaskFallback?.taskStatus?.description || execTaskFallback?.taskStatus || "").trim();
                         if (desc) return desc;
                         if (execTaskFallback?.finished) return "Finalizada";
-                        if (execTaskFallback?.reasonForPause || (execTaskFallback?.timeControl || []).some((tc: any) => tc.pauseStart && !tc.pauseEnd)) return "Pausada";
                         if (execTaskFallback?.checkIn) return "Em andamento";
                         return "Agendada";
                       })(),
