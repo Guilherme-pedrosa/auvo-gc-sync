@@ -250,6 +250,46 @@ export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, o
           return;
         }
         const osObj = data?.data?.data ?? data?.data ?? null;
+
+        // Enrich products/services with codigo_interno from GC product detail
+        if (osObj) {
+          const produtosRaw: any[] = osObj?.produtos || [];
+          const servicosRaw: any[] = osObj?.servicos || [];
+          const allItems = [
+            ...produtosRaw.map((p: any) => ({ item: p?.produto || p, type: "produto" })),
+            ...servicosRaw.map((s: any) => ({ item: s?.servico || s, type: "servico" })),
+          ];
+          const uniqueIds = [...new Set(allItems.map(i => String(i.item?.produto_id || i.item?.servico_id || "")).filter(Boolean))];
+          
+          if (uniqueIds.length > 0) {
+            const codeMap = new Map<string, string>();
+            await Promise.all(
+              uniqueIds.map(async (pid) => {
+                try {
+                  const { data: prodData } = await supabase.functions.invoke("gc-proxy", {
+                    body: { endpoint: `/api/produtos/${pid}`, method: "GET" },
+                  });
+                  const prodObj = prodData?.data?.data ?? prodData?.data ?? null;
+                  const code = prodObj?.codigo_interno || prodObj?.codigo_barra || prodObj?.codigo || "";
+                  if (code) codeMap.set(pid, code);
+                } catch {}
+              })
+            );
+
+            // Inject codigo_interno into products
+            for (const p of produtosRaw) {
+              const inner = p?.produto || p;
+              const pid = String(inner?.produto_id || "");
+              if (pid && codeMap.has(pid)) inner.codigo_interno = codeMap.get(pid);
+            }
+            for (const s of servicosRaw) {
+              const inner = s?.servico || s;
+              const sid = String(inner?.servico_id || inner?.produto_id || "");
+              if (sid && codeMap.has(sid)) inner.codigo_interno = codeMap.get(sid);
+            }
+          }
+        }
+
         setOsDetail(osObj);
 
         const atributos: any[] = osObj?.atributos || [];
@@ -1004,7 +1044,7 @@ export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, o
                               const total = Number(p.valor_total || p.subtotal || qtd * unitario);
                               return (
                                 <TableRow key={i}>
-                                  <TableCell className="text-xs font-mono py-1.5">{String(p.codigo || p.produto_id || "—")}</TableCell>
+                                  <TableCell className="text-xs font-mono py-1.5">{String(p.codigo_interno || p.codigo || p.produto_id || "—")}</TableCell>
                                   <TableCell className="text-xs py-1.5 max-w-[200px] truncate">{String(p.nome_produto || p.descricao || p.nome || "—")}</TableCell>
                                   <TableCell className="text-xs py-1.5 text-right">{qtd}</TableCell>
                                   <TableCell className="text-xs py-1.5 text-right">{formatCurrency(unitario)}</TableCell>
@@ -1040,7 +1080,7 @@ export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, o
                               const total = Number(s.valor_total || s.subtotal || qtd * unitario);
                               return (
                                 <TableRow key={i}>
-                                  <TableCell className="text-xs font-mono py-1.5">{String(s.codigo || s.servico_id || "—")}</TableCell>
+                                  <TableCell className="text-xs font-mono py-1.5">{String(s.codigo_interno || s.codigo || s.servico_id || "—")}</TableCell>
                                   <TableCell className="text-xs py-1.5 max-w-[200px] truncate">{String(s.nome_servico || s.descricao || s.nome || "—")}</TableCell>
                                   <TableCell className="text-xs py-1.5 text-right">{qtd}</TableCell>
                                   <TableCell className="text-xs py-1.5 text-right">{formatCurrency(unitario)}</TableCell>
