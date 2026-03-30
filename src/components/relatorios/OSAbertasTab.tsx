@@ -534,7 +534,7 @@ export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, o
                                       <TableCell>
                                         {(() => {
                                           const execId = item.gc_os_tarefa_exec;
-                                          const execRow = execId ? data.find((t: any) => t.auvo_task_id === execId) : null;
+                                          const execRow = execId ? allTasks.find((t: any) => t.auvo_task_id === execId) : null;
                                           return execRow?.tecnico || "—";
                                         })()}
                                       </TableCell>
