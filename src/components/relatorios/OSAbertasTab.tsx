@@ -47,6 +47,8 @@ interface Props {
   isLoading: boolean;
   allClientes: string[];
   onRefresh?: () => void;
+  onSync?: (situacaoIds: string[]) => void;
+  syncing?: boolean;
   execTaskStatusMap?: Map<string, string>;
 }
 
