@@ -561,7 +561,7 @@ export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, o
                                           {item.gc_os_situacao || "—"}
                                         </Badge>
                                       </TableCell>
-                                      <TableCell>{item.tecnico || "—"}</TableCell>
+                                      <TableCell>{osTaskByGcOsId.get(String(item.gc_os_id))?.tecnico || item.tecnico || "—"}</TableCell>
                                       <TableCell>
                                         {(() => {
                                           const execId = item.gc_os_tarefa_exec;
