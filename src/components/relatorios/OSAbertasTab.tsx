@@ -1035,7 +1035,8 @@ export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, o
                 )}
               </div>
             </div>
-          )}
+            );
+          })()}
         </DialogContent>
       </Dialog>
 
