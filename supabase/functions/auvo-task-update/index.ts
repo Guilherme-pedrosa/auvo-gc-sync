@@ -243,9 +243,10 @@ Deno.serve(async (req) => {
       const response = await fetch(url, { headers });
       const data = await response.json().catch(() => ({}));
 
+      // Always return 200 to prevent supabase.functions.invoke() from treating 404 as fatal
       return new Response(
         JSON.stringify({ data, status: response.status }),
-        { status: response.ok ? 200 : response.status, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
