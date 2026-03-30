@@ -1048,6 +1048,51 @@ export default function OSAbertasTab({ data, isLoading, allClientes, onRefresh, 
           )}
         </DialogContent>
       </Dialog>
+
+      {/* Conciliação Dialog */}
+      <Dialog open={!!conciliacaoCard} onOpenChange={(open) => { if (!open) { setConciliacaoCard(null); setConciliacaoSituacao(""); } }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Settings2 className="h-5 w-5" />
+              Conciliar OS {conciliacaoCard?.gc_os_codigo}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="text-sm text-muted-foreground">
+              Cliente: <span className="font-medium text-foreground">{conciliacaoCard?.cliente || conciliacaoCard?.gc_os_cliente || "—"}</span>
+            </div>
+            <div className="text-sm text-muted-foreground">
+              Situação atual: <Badge variant="outline" className="text-xs ml-1" style={{ borderColor: conciliacaoCard?.gc_os_cor_situacao || undefined, color: conciliacaoCard?.gc_os_cor_situacao || undefined }}>{conciliacaoCard?.gc_os_situacao || "—"}</Badge>
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-sm font-medium">Nova situação</Label>
+              <Select value={conciliacaoSituacao} onValueChange={setConciliacaoSituacao}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Selecione a situação destino..." />
+                </SelectTrigger>
+                <SelectContent>
+                  {SITUACOES_OPTIONS.map((s) => (
+                    <SelectItem key={s.id} value={s.id}>{s.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => { setConciliacaoCard(null); setConciliacaoSituacao(""); }}>
+              Cancelar
+            </Button>
+            <Button
+              disabled={!conciliacaoSituacao || !!changingId}
+              onClick={() => conciliacaoCard && alterarSituacaoOS(conciliacaoCard, conciliacaoSituacao)}
+            >
+              {changingId ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <CheckCircle2 className="h-4 w-4 mr-2" />}
+              Confirmar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
