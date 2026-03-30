@@ -86,8 +86,6 @@ export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, o
 
   // Detail dialog
   const [selectedCard, setSelectedCard] = useState<any | null>(null);
-  const [osDetail, setOsDetail] = useState<any>(null);
-  const [osDetailLoading, setOsDetailLoading] = useState(false);
   const [execTaskFallback, setExecTaskFallback] = useState<any | null>(null);
 
   // Edit modal
@@ -376,105 +374,92 @@ export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, o
     };
   }, [expanded, filtered, liveExecMap]);
 
-  // Fetch OS detail when card is selected
-  useEffect(() => {
-    if (!selectedCard?.gc_os_id) {
-      setOsDetail(null);
-      setExecTaskFallback(null);
-      return;
-    }
-    let cancelled = false;
-    setOsDetailLoading(true);
-    setOsDetail(null);
-    setExecTaskFallback(null);
+  // Fetch OS detail with cache — data stays loaded until refetch
+  const selectedGcOsId = selectedCard?.gc_os_id || null;
+  const { data: osDetailResult, isLoading: osDetailLoading } = useQuery({
+    queryKey: ["os-detail", selectedGcOsId],
+    queryFn: async () => {
+      const { data, error } = await supabase.functions.invoke("gc-proxy", {
+        body: { endpoint: `/api/ordens_servicos/${selectedGcOsId}`, method: "GET" },
+      });
+      if (error) return { osDetail: null, execTask: null };
+      const osObj = data?.data?.data ?? data?.data ?? null;
 
-    supabase.functions
-      .invoke("gc-proxy", {
-        body: { endpoint: `/api/ordens_servicos/${selectedCard.gc_os_id}`, method: "GET" },
-      })
-      .then(async ({ data, error }) => {
-        if (cancelled) return;
-        if (error) {
-          setOsDetailLoading(false);
-          return;
-        }
-        const osObj = data?.data?.data ?? data?.data ?? null;
+      // Enrich products/services with codigo_interno
+      if (osObj) {
+        const produtosRaw: any[] = osObj?.produtos || [];
+        const servicosRaw: any[] = osObj?.servicos || [];
+        const allItems = [
+          ...produtosRaw.map((p: any) => ({ item: p?.produto || p, type: "produto" })),
+          ...servicosRaw.map((s: any) => ({ item: s?.servico || s, type: "servico" })),
+        ];
+        const uniqueIds = [...new Set(allItems.map(i => String(i.item?.produto_id || i.item?.servico_id || "")).filter(Boolean))];
 
-        // Enrich products/services with codigo_interno from GC product detail
-        if (osObj) {
-          const produtosRaw: any[] = osObj?.produtos || [];
-          const servicosRaw: any[] = osObj?.servicos || [];
-          const allItems = [
-            ...produtosRaw.map((p: any) => ({ item: p?.produto || p, type: "produto" })),
-            ...servicosRaw.map((s: any) => ({ item: s?.servico || s, type: "servico" })),
-          ];
-          const uniqueIds = [...new Set(allItems.map(i => String(i.item?.produto_id || i.item?.servico_id || "")).filter(Boolean))];
-          
-          if (uniqueIds.length > 0) {
-            const codeMap = new Map<string, string>();
-            await Promise.all(
-              uniqueIds.map(async (pid) => {
-                // Try /api/produtos first, then /api/servicos as fallback
-                for (const endpoint of [`/api/produtos/${pid}`, `/api/servicos/${pid}`]) {
-                  try {
-                    const { data: prodData, error: prodError } = await supabase.functions.invoke("gc-proxy", {
-                      body: { endpoint, method: "GET" },
-                    });
-                    if (prodError) continue;
-                    const prodObj = prodData?.data?.data ?? prodData?.data ?? null;
-                    if (!prodObj || prodData?.status === 404 || prodData?.code === 404) continue;
-                    const code = prodObj?.codigo_interno || prodObj?.codigo_barra || prodObj?.codigo || "";
-                    if (code) { codeMap.set(pid, code); break; }
-                  } catch { /* ignore 404s and network errors */ }
-                }
-              })
-            );
-
-            // Inject codigo_interno into products
-            for (const p of produtosRaw) {
-              const inner = p?.produto || p;
-              const pid = String(inner?.produto_id || "");
-              if (pid && codeMap.has(pid)) inner.codigo_interno = codeMap.get(pid);
-            }
-            for (const s of servicosRaw) {
-              const inner = s?.servico || s;
-              const sid = String(inner?.servico_id || inner?.produto_id || "");
-              if (sid && codeMap.has(sid)) inner.codigo_interno = codeMap.get(sid);
-            }
+        if (uniqueIds.length > 0) {
+          const codeMap = new Map<string, string>();
+          await Promise.all(
+            uniqueIds.map(async (pid) => {
+              for (const endpoint of [`/api/produtos/${pid}`, `/api/servicos/${pid}`]) {
+                try {
+                  const { data: prodData, error: prodError } = await supabase.functions.invoke("gc-proxy", {
+                    body: { endpoint, method: "GET" },
+                  });
+                  if (prodError) continue;
+                  const prodObj = prodData?.data?.data ?? prodData?.data ?? null;
+                  if (!prodObj || prodData?.status === 404 || prodData?.code === 404) continue;
+                  const code = prodObj?.codigo_interno || prodObj?.codigo_barra || prodObj?.codigo || "";
+                  if (code) { codeMap.set(pid, code); break; }
+                } catch { /* ignore */ }
+              }
+            })
+          );
+          for (const p of produtosRaw) {
+            const inner = p?.produto || p;
+            const pid = String(inner?.produto_id || "");
+            if (pid && codeMap.has(pid)) inner.codigo_interno = codeMap.get(pid);
+          }
+          for (const s of servicosRaw) {
+            const inner = s?.servico || s;
+            const sid = String(inner?.servico_id || inner?.produto_id || "");
+            if (sid && codeMap.has(sid)) inner.codigo_interno = codeMap.get(sid);
           }
         }
+      }
 
-        setOsDetail(osObj);
-
+      // Fetch exec task
+      let execTask = null;
+      if (osObj) {
         const atributos: any[] = osObj?.atributos || [];
         const execAttr = atributos.find((a: any) => {
           const nested = a?.atributo || a;
           return String(nested?.atributo_id || nested?.id || "") === "73344";
         });
         const nested = execAttr?.atributo || execAttr;
-        const execTaskId = String(nested?.conteudo || nested?.valor || "").trim();
+        const execId = String(nested?.conteudo || nested?.valor || "").trim();
 
-        if (execTaskId) {
+        if (execId) {
           const { data: taskData, error: taskError } = await supabase.functions.invoke("auvo-task-update", {
-            body: { action: "get", taskId: Number(execTaskId) },
+            body: { action: "get", taskId: Number(execId) },
           });
-
-          if (!cancelled && !taskError) {
-            const taskObj = taskData?.data?.result ?? taskData?.data ?? null;
-            setExecTaskFallback(taskObj);
+          if (!taskError) {
+            execTask = taskData?.data?.result ?? taskData?.data ?? null;
           }
         }
+      }
 
-        if (!cancelled) setOsDetailLoading(false);
-      })
-      .catch(() => {
-        if (!cancelled) setOsDetailLoading(false);
-      });
+      return { osDetail: osObj, execTask };
+    },
+    enabled: !!selectedGcOsId,
+    staleTime: 1000 * 60 * 5, // cache for 5 minutes
+    gcTime: 1000 * 60 * 10,
+  });
 
-    return () => {
-      cancelled = true;
-    };
-  }, [selectedCard?.gc_os_id, allTasks]);
+  const osDetail = osDetailResult?.osDetail ?? null;
+
+  // Keep execTaskFallback in sync with query result
+  useEffect(() => {
+    setExecTaskFallback(osDetailResult?.execTask ?? null);
+  }, [osDetailResult?.execTask]);
 
   // Fetch exec task ID from GC OS attributes
   const fetchExecTaskId = useCallback(async (gcOsId: string): Promise<{ execTaskId: string | null; osTaskId: string | null }> => {
