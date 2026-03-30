@@ -454,7 +454,16 @@ export default function OSAbertasTab({ data, isLoading, allClientes, onRefresh }
                                         </Badge>
                                       </TableCell>
                                       <TableCell>{item.tecnico || "—"}</TableCell>
-                                      <TableCell>{item.data_tarefa || "—"}</TableCell>
+                                      <TableCell>
+                                        <div className="flex items-center gap-1.5">
+                                          <span>{item.data_tarefa || "—"}</span>
+                                          {item.status_auvo === "Finalizada" && (
+                                            <Badge variant="outline" className="text-[9px] px-1 py-0 bg-green-100 text-green-700 border-green-300 dark:bg-green-900/50 dark:text-green-300 dark:border-green-700 whitespace-nowrap">
+                                              ✅ Finalizada Auvo
+                                            </Badge>
+                                          )}
+                                        </div>
+                                      </TableCell>
                                       <TableCell className="text-right font-medium">
                                         {formatCurrency(Number(item.gc_os_valor_total) || 0)}
                                       </TableCell>
