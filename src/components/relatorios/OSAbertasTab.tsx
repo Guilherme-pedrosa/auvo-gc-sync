@@ -401,8 +401,8 @@ export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, o
             <Button variant="outline" size="sm" className="gap-1.5">
               <Filter className="h-3.5 w-3.5" />
               Situação
-              {!allSituacoesSelected && selectedSituacoes.size > 0 && (
-                <Badge variant="secondary" className="ml-1 text-[10px]">{selectedSituacoes.size}</Badge>
+              {excludedSituacoes.size > 0 && (
+                <Badge variant="secondary" className="ml-1 text-[10px]">{excludedSituacoes.size} ocultas</Badge>
               )}
             </Button>
           </PopoverTrigger>
