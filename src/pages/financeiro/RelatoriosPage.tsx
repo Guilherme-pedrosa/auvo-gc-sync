@@ -133,7 +133,7 @@ export default function RelatoriosPage() {
     }
   };
 
-  const handleSync = async () => {
+  const handleSync = async (situacaoIds?: string[]) => {
     setSyncing(true);
     clearScheduledRefreshes();
     startProgressSimulation();
@@ -142,7 +142,7 @@ export default function RelatoriosPage() {
 
     try {
       const { data, error } = await supabase.functions.invoke("central-sync", {
-        body: { start_date: syncFrom, end_date: syncTo },
+        body: { start_date: syncFrom, end_date: syncTo, situacao_ids: situacaoIds || [] },
       });
       if (error) throw error;
       if (data?.success === false) throw new Error(data.error || "Erro na sincronização");
@@ -337,7 +337,7 @@ export default function RelatoriosPage() {
               variant="outline"
               size="sm"
               className="gap-1.5"
-              onClick={handleSync}
+              onClick={() => handleSync()}
               disabled={syncing}
             >
               <RefreshCw className={`h-4 w-4 ${syncing ? "animate-spin" : ""}`} />
@@ -378,6 +378,8 @@ export default function RelatoriosPage() {
             isLoading={isLoadingOS}
             allClientes={allClientes}
             onRefresh={refreshRelatoriosData}
+            onSync={(situacaoIds) => handleSync(situacaoIds)}
+            syncing={syncing}
             execTaskStatusMap={execTaskStatusMap}
           />
         </TabsContent>

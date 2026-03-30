@@ -47,6 +47,8 @@ interface Props {
   isLoading: boolean;
   allClientes: string[];
   onRefresh?: () => void;
+  onSync?: (situacaoIds: string[]) => void;
+  syncing?: boolean;
   execTaskStatusMap?: Map<string, string>;
 }
 
@@ -74,7 +76,7 @@ const getAuvoStatusFromTask = (task: any) => {
   return "Agendada";
 };
 
-export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, onRefresh, execTaskStatusMap }: Props) {
+export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, onRefresh, onSync, syncing, execTaskStatusMap }: Props) {
   const { profile } = useAuth();
   const [search, setSearch] = useState("");
   const [excludedSituacoes, setExcludedSituacoes] = useState<Set<string>>(new Set());
@@ -722,6 +724,26 @@ export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, o
             </Button>
           ))}
         </div>
+
+        {/* Sync with selected situações */}
+        {onSync && (
+          <Button
+            variant="outline"
+            size="sm"
+            className="gap-1.5"
+            onClick={() => {
+              // Get the visible (non-excluded) situação IDs from SITUACOES_OPTIONS
+              const visibleIds = SITUACOES_OPTIONS
+                .filter((s) => !excludedSituacoes.has(s.label))
+                .map((s) => s.id);
+              onSync(visibleIds);
+            }}
+            disabled={syncing}
+          >
+            <RefreshCw className={`h-3.5 w-3.5 ${syncing ? "animate-spin" : ""}`} />
+            {syncing ? "Sincronizando..." : "Sincronizar OS"}
+          </Button>
+        )}
       </div>
 
       {/* Table */}

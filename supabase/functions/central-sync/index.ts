@@ -355,18 +355,32 @@ async function fetchGcOrcamentos(gcHeaders: Record<string, string>): Promise<{ b
   return { byTaskId: map, byCodigo };
 }
 
-// Fetch ALL GC OS (no date filter)
-// Returns { byTaskId, byCodigo } — byCodigo is a reverse map for secondary linkage
-async function fetchGcOs(gcHeaders: Record<string, string>): Promise<{ byTaskId: Record<string, any>; byCodigo: Record<string, any>; byOrcNumero: Record<string, any> }> {
+// Fetch GC OS with optional filters (situacao_ids, date range)
+async function fetchGcOs(gcHeaders: Record<string, string>, options?: { situacaoIds?: string[]; dataInicio?: string; dataFim?: string }): Promise<{ byTaskId: Record<string, any>; byCodigo: Record<string, any>; byOrcNumero: Record<string, any> }> {
   const map: Record<string, any> = {};
   const byCodigo: Record<string, any> = {};
-  const byOrcNumero: Record<string, any> = {}; // attribute 81831 "NÚMERO ORÇAMENTO" → OS
-  let page = 1;
-  let totalPages = 1;
-  const MAX_PAGES = 50;
+  const byOrcNumero: Record<string, any> = {};
 
-  while (page <= totalPages && page <= MAX_PAGES) {
-    const url = `${GC_BASE_URL}/api/ordens_servicos?limite=100&pagina=${page}`;
+  // If situacaoIds provided, fetch per situação; otherwise fetch all
+  const situacaoIds = options?.situacaoIds?.length ? options.situacaoIds : [null];
+
+  for (const sitId of situacaoIds) {
+    let page = 1;
+    let totalPages = 1;
+    const MAX_PAGES = 50;
+
+    while (page <= totalPages && page <= MAX_PAGES) {
+      let url = `${GC_BASE_URL}/api/ordens_servicos?limite=100&pagina=${page}`;
+      if (sitId) url += `&situacao_id=${sitId}`;
+      if (options?.dataInicio) url += `&data_inicio=${options.dataInicio}`;
+      if (options?.dataFim) url += `&data_fim=${options.dataFim}`;
+
+      const response = await rateLimitedFetch(url, { headers: gcHeaders }, "gc");
+      if (response.status === 429) {
+        await new Promise(r => setTimeout(r, 3000));
+        continue;
+      }
+      if (!response.ok) break;
     const response = await rateLimitedFetch(url, { headers: gcHeaders }, "gc");
     if (response.status === 429) {
       await new Promise(r => setTimeout(r, 3000));
@@ -442,9 +456,10 @@ async function fetchGcOs(gcHeaders: Record<string, string>): Promise<{ byTaskId:
       }
     }
 
-    console.log(`[central-sync] GC OS page ${page}/${totalPages}: ${records.length} registros, ${Object.keys(map).length} com tarefa`);
+    console.log(`[central-sync] GC OS${sitId ? ` sit=${sitId}` : ''} page ${page}/${totalPages}: ${records.length} registros, ${Object.keys(map).length} com tarefa`);
     page++;
   }
+  } // end situacaoIds loop
   return { byTaskId: map, byCodigo, byOrcNumero };
 }
 
@@ -477,12 +492,13 @@ Deno.serve(async (req) => {
     const body = await req.json().catch(() => ({}));
     const bodyStart = normalizeDate(body?.start_date);
     const bodyEnd = normalizeDate(body?.end_date);
+    const situacaoIds: string[] = Array.isArray(body?.situacao_ids) ? body.situacao_ids.filter((s: any) => s) : [];
 
     const startDate = bodyStart || sixMonthsAgo.toISOString().split("T")[0];
     const endDate = bodyEnd || futureDate.toISOString().split("T")[0];
     const cleanupCutoff = sixMonthsAgo.toISOString().split("T")[0];
 
-    console.log(`[central-sync] Período: ${startDate} a ${endDate} (limpeza < ${cleanupCutoff})`);
+    console.log(`[central-sync] Período: ${startDate} a ${endDate} (limpeza < ${cleanupCutoff}), situações: ${situacaoIds.length || 'todas'}`);
 
     const bearerToken = await auvoLogin(auvoApiKey, auvoApiToken);
     const gcH: Record<string, string> = {
@@ -492,9 +508,14 @@ Deno.serve(async (req) => {
     };
 
     // Step 1: Fetch GC data first (faster, ~20s) — Auvo will come after status refresh
+    const gcOsOptions = {
+      situacaoIds: situacaoIds.length > 0 ? situacaoIds : undefined,
+      dataInicio: bodyStart || undefined,
+      dataFim: bodyEnd || undefined,
+    };
     const [gcOrcResult, gcOsResult] = await Promise.all([
       fetchGcOrcamentos(gcH),
-      fetchGcOs(gcH),
+      fetchGcOs(gcH, gcOsOptions),
     ]);
 
     const gcOrcMap = gcOrcResult.byTaskId;
