@@ -18,13 +18,28 @@ import { Skeleton } from "@/components/ui/skeleton";
 import {
   Search, ArrowDownWideNarrow, ExternalLink, Filter, CalendarIcon,
   Edit2, Save, Loader2, UserCog, MapPin, Navigation, Package,
-  ClipboardList, FileText, AlertTriangle,
+  ClipboardList, FileText, AlertTriangle, Settings2, CheckCircle2,
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
+import { useAuth } from "@/hooks/useAuth";
+
+const SITUACOES_OPTIONS = [
+  { id: "7063579", label: "AGUARDANDO COMPRA DE PEÇAS" },
+  { id: "7063580", label: "AGUARDANDO CHEGADA DE PEÇAS" },
+  { id: "7659440", label: "AGUARDANDO FABRICAÇÃO" },
+  { id: "7063581", label: "PEDIDO EM CONFERENCIA" },
+  { id: "7063705", label: "PEDIDO CONFERIDO AGUARDANDO EXECUÇÃO" },
+  { id: "7213493", label: "SERVICO AGUARDANDO EXECUCAO" },
+  { id: "7684665", label: "RETIRADA PELO TECNICO" },
+  { id: "7748831", label: "AGUARDANDO RETIRADA" },
+  { id: "8219136", label: "EM ROTA" },
+  { id: "7116099", label: "EXECUTADO – AG. NEGOCIAÇÃO" },
+  { id: "8889036", label: "FECHADO CHAMADO" },
+];
 
 interface Props {
   data: any[];
