@@ -381,85 +381,79 @@ async function fetchGcOs(gcHeaders: Record<string, string>, options?: { situacao
         continue;
       }
       if (!response.ok) break;
-    const response = await rateLimitedFetch(url, { headers: gcHeaders }, "gc");
-    if (response.status === 429) {
-      await new Promise(r => setTimeout(r, 3000));
-      continue;
-    }
-    if (!response.ok) break;
 
-    const data = await response.json();
-    const records: any[] = Array.isArray(data?.data) ? data.data : [];
-    totalPages = data?.meta?.total_paginas || 1;
+      const data = await response.json();
+      const records: any[] = Array.isArray(data?.data) ? data.data : [];
+      totalPages = data?.meta?.total_paginas || 1;
 
-    for (const os of records) {
-      const atributos: any[] = os.atributos || [];
-      // Extract 73344 (tarefa execução) value for this OS
-      const attrExec = atributos.find((a: any) => {
-        const nested = a?.atributo || a;
-        return String(nested.atributo_id || nested.id || "") === GC_ATRIBUTO_TAREFA_EXEC;
-      });
-      const execTaskVal = attrExec
-        ? String((attrExec?.atributo || attrExec)?.conteudo || (attrExec?.atributo || attrExec)?.valor || "").trim()
-        : "";
-      const gc_os_tarefa_exec = execTaskVal && /^\d+$/.test(execTaskVal) ? execTaskVal : null;
-
-      const osPayload = {
-        gc_os_id: String(os.id),
-        gc_os_codigo: String(os.codigo || ""),
-        gc_os_cliente: String(os.nome_cliente || ""),
-        gc_os_situacao: String(os.nome_situacao || ""),
-        gc_os_situacao_id: String(os.situacao_id || ""),
-        gc_os_cor_situacao: String(os.cor_situacao || ""),
-        gc_os_valor_total: parseFloat(os.valor_total || "0"),
-        gc_os_vendedor: String(os.nome_vendedor || ""),
-        gc_os_data: String(os.data_entrada || os.data || "").split("T")[0] || null,
-        gc_os_data_saida: String(os.data_saida || "").split("T")[0] || null,
-        gc_os_link: `https://gestaoclick.com/ordens_servicos/editar/${os.id}?retorno=%2Fordens_servicos`,
-        gc_os_tarefa_exec,
-      };
-
-      // Reverse map by OS código
-      const codigo = String(os.codigo || "").trim();
-      if (codigo) byCodigo[codigo] = osPayload;
-
-      // Reverse map by NÚMERO ORÇAMENTO (attribute 81831) → OS
-      const attrOrcNum = atributos.find((a: any) => {
-        const nested = a?.atributo || a;
-        return String(nested.atributo_id || nested.id || "") === "81831";
-      });
-      if (attrOrcNum) {
-        const nested = attrOrcNum?.atributo || attrOrcNum;
-        const orcNum = String(nested?.conteudo || nested?.valor || "").trim();
-        if (orcNum && /^\d+$/.test(orcNum)) {
-          byOrcNumero[orcNum] = osPayload;
-        }
-      }
-
-      // 73343 = tarefa OS, 73344 = tarefa execução
-      for (const attrId of [GC_ATRIBUTO_TAREFA_EXEC, GC_ATRIBUTO_TAREFA_OS]) {
-        const attrTarefa = atributos.find((a: any) => {
+      for (const os of records) {
+        const atributos: any[] = os.atributos || [];
+        // Extract 73344 (tarefa execução) value for this OS
+        const attrExec = atributos.find((a: any) => {
           const nested = a?.atributo || a;
-          return String(nested.atributo_id || nested.id || "") === attrId;
+          return String(nested.atributo_id || nested.id || "") === GC_ATRIBUTO_TAREFA_EXEC;
         });
+        const execTaskVal = attrExec
+          ? String((attrExec?.atributo || attrExec)?.conteudo || (attrExec?.atributo || attrExec)?.valor || "").trim()
+          : "";
+        const gc_os_tarefa_exec = execTaskVal && /^\d+$/.test(execTaskVal) ? execTaskVal : null;
 
-        if (!attrTarefa) continue;
+        const osPayload = {
+          gc_os_id: String(os.id),
+          gc_os_codigo: String(os.codigo || ""),
+          gc_os_cliente: String(os.nome_cliente || ""),
+          gc_os_situacao: String(os.nome_situacao || ""),
+          gc_os_situacao_id: String(os.situacao_id || ""),
+          gc_os_cor_situacao: String(os.cor_situacao || ""),
+          gc_os_valor_total: parseFloat(os.valor_total || "0"),
+          gc_os_vendedor: String(os.nome_vendedor || ""),
+          gc_os_data: String(os.data_entrada || os.data || "").split("T")[0] || null,
+          gc_os_data_saida: String(os.data_saida || "").split("T")[0] || null,
+          gc_os_link: `https://gestaoclick.com/ordens_servicos/editar/${os.id}?retorno=%2Fordens_servicos`,
+          gc_os_tarefa_exec,
+        };
 
-        const nested = attrTarefa?.atributo || attrTarefa;
-        const taskId = String(nested?.conteudo || nested?.valor || "").trim();
-        if (!taskId || !/^\d+$/.test(taskId)) continue;
+        // Reverse map by OS código
+        const codigo = String(os.codigo || "").trim();
+        if (codigo) byCodigo[codigo] = osPayload;
 
-        const shouldOverride = attrId === GC_ATRIBUTO_TAREFA_OS;
-        if (!map[taskId] || shouldOverride) {
-          map[taskId] = osPayload;
+        // Reverse map by NÚMERO ORÇAMENTO (attribute 81831) → OS
+        const attrOrcNum = atributos.find((a: any) => {
+          const nested = a?.atributo || a;
+          return String(nested.atributo_id || nested.id || "") === "81831";
+        });
+        if (attrOrcNum) {
+          const nested = attrOrcNum?.atributo || attrOrcNum;
+          const orcNum = String(nested?.conteudo || nested?.valor || "").trim();
+          if (orcNum && /^\d+$/.test(orcNum)) {
+            byOrcNumero[orcNum] = osPayload;
+          }
+        }
+
+        // 73343 = tarefa OS, 73344 = tarefa execução
+        for (const attrId of [GC_ATRIBUTO_TAREFA_EXEC, GC_ATRIBUTO_TAREFA_OS]) {
+          const attrTarefa = atributos.find((a: any) => {
+            const nested = a?.atributo || a;
+            return String(nested.atributo_id || nested.id || "") === attrId;
+          });
+
+          if (!attrTarefa) continue;
+
+          const nested = attrTarefa?.atributo || attrTarefa;
+          const taskId = String(nested?.conteudo || nested?.valor || "").trim();
+          if (!taskId || !/^\d+$/.test(taskId)) continue;
+
+          const shouldOverride = attrId === GC_ATRIBUTO_TAREFA_OS;
+          if (!map[taskId] || shouldOverride) {
+            map[taskId] = osPayload;
+          }
         }
       }
-    }
 
-    console.log(`[central-sync] GC OS${sitId ? ` sit=${sitId}` : ''} page ${page}/${totalPages}: ${records.length} registros, ${Object.keys(map).length} com tarefa`);
-    page++;
+      console.log(`[central-sync] GC OS${sitId ? ` sit=${sitId}` : ''} page ${page}/${totalPages}: ${records.length} registros, ${Object.keys(map).length} com tarefa`);
+      page++;
+    }
   }
-  } // end situacaoIds loop
   return { byTaskId: map, byCodigo, byOrcNumero };
 }
 
