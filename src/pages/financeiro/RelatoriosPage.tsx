@@ -133,7 +133,7 @@ export default function RelatoriosPage() {
     }
   };
 
-  const handleSync = async () => {
+  const handleSync = async (situacaoIds?: string[]) => {
     setSyncing(true);
     clearScheduledRefreshes();
     startProgressSimulation();
@@ -142,7 +142,7 @@ export default function RelatoriosPage() {
 
     try {
       const { data, error } = await supabase.functions.invoke("central-sync", {
-        body: { start_date: syncFrom, end_date: syncTo },
+        body: { start_date: syncFrom, end_date: syncTo, situacao_ids: situacaoIds || [] },
       });
       if (error) throw error;
       if (data?.success === false) throw new Error(data.error || "Erro na sincronização");
