@@ -810,7 +810,7 @@ export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, o
                                           const execId = item.gc_os_tarefa_exec;
                                           const execRow = execId ? allTasks.find((t: any) => t.auvo_task_id === execId) : null;
                                           const live = liveExecMap.get(String(item.gc_os_id));
-                                          return execRow?.tecnico || live?.tecnico || "—";
+                                          return execRow?.tecnico || live?.tecnico || item.gc_os_vendedor || "—";
                                         })()}
                                       </TableCell>
                                       <TableCell>
