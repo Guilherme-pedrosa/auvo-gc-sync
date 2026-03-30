@@ -651,14 +651,22 @@ export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, o
           {selectedCard && (() => {
             // Find OS task and Execution task from allTasks
             const execId = selectedCard.gc_os_tarefa_exec;
+            const gcOsId = selectedCard.gc_os_id;
+            
+            // Find execution task row
             const execRow = execId ? allTasks.find((t: any) => t.auvo_task_id === execId) : null;
 
-            // Find the OS task: look for sibling tasks with same gc_os_id that are NOT the exec task
+            // Find the real OS task: a sibling with same gc_os_id whose auvo_task_id != execId
             const osRow = (() => {
-              if (!execId || selectedCard.auvo_task_id !== execId) return selectedCard; // selectedCard IS the OS task
-              // selectedCard is the exec task — find the real OS task
-              const siblings = allTasks.filter((t: any) => t.gc_os_id === selectedCard.gc_os_id && t.auvo_task_id !== execId);
-              return siblings.length > 0 ? siblings[0] : selectedCard;
+              if (!gcOsId) return selectedCard;
+              // Look in allTasks for a task with same gc_os_id that is NOT the execution task
+              const candidates = allTasks.filter((t: any) => 
+                t.gc_os_id === gcOsId && t.auvo_task_id !== execId
+              );
+              if (candidates.length > 0) return candidates[0];
+              // If selectedCard itself is not the exec task, it's the OS task
+              if (!execId || selectedCard.auvo_task_id !== execId) return selectedCard;
+              return null; // OS task not found in allTasks
             })();
 
             return (
@@ -686,41 +694,47 @@ export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, o
               </div>
 
               {/* Tarefa OS (73343) */}
-              <div className="border rounded-md">
-                <div className="flex items-center gap-2 px-3 py-2 bg-blue-50 dark:bg-blue-950/30 border-b">
-                  <FileText className="h-4 w-4 text-blue-600 dark:text-blue-400" />
-                  <span className="text-sm font-semibold text-blue-700 dark:text-blue-300">
-                    Tarefa OS #{osRow.auvo_task_id}
-                  </span>
-                </div>
-                <div className="grid grid-cols-2 gap-x-6 gap-y-2 p-3 text-sm">
-                  <div>
-                    <span className="text-muted-foreground text-xs">Técnico</span>
-                    <p className="font-medium">{osRow.tecnico || "—"}</p>
+              {osRow ? (
+                <div className="border rounded-md">
+                  <div className="flex items-center gap-2 px-3 py-2 bg-blue-50 dark:bg-blue-950/30 border-b">
+                    <FileText className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+                    <span className="text-sm font-semibold text-blue-700 dark:text-blue-300">
+                      Tarefa OS #{osRow.auvo_task_id}
+                    </span>
                   </div>
-                  <div>
-                    <span className="text-muted-foreground text-xs">Data Agendamento</span>
-                    <p className="font-medium">{osRow.data_tarefa || "—"}</p>
-                  </div>
-                  <div>
-                    <span className="text-muted-foreground text-xs">Status Auvo</span>
-                    <p className="font-medium">{osRow.status_auvo || "—"}</p>
-                  </div>
-                  <div>
-                    <span className="text-muted-foreground text-xs">Horário (Check-in / Check-out)</span>
-                    <p className="font-medium">
-                      {osRow.check_in ? "✅" : "❌"} In{osRow.hora_inicio ? ` ${osRow.hora_inicio}` : ""}
-                      {" → "}
-                      {osRow.check_out ? "✅" : "❌"} Out{osRow.hora_fim ? ` ${osRow.hora_fim}` : ""}
-                    </p>
-                    {osRow.duracao_decimal != null && Number(osRow.duracao_decimal) > 0 && (
-                      <p className="text-xs text-muted-foreground">
-                        Duração: {Number(osRow.duracao_decimal).toFixed(1)}h
+                  <div className="grid grid-cols-2 gap-x-6 gap-y-2 p-3 text-sm">
+                    <div>
+                      <span className="text-muted-foreground text-xs">Técnico</span>
+                      <p className="font-medium">{osRow.tecnico || "—"}</p>
+                    </div>
+                    <div>
+                      <span className="text-muted-foreground text-xs">Data Agendamento</span>
+                      <p className="font-medium">{osRow.data_tarefa || "—"}</p>
+                    </div>
+                    <div>
+                      <span className="text-muted-foreground text-xs">Status Auvo</span>
+                      <p className="font-medium">{osRow.status_auvo || "—"}</p>
+                    </div>
+                    <div>
+                      <span className="text-muted-foreground text-xs">Horário (Check-in / Check-out)</span>
+                      <p className="font-medium">
+                        {osRow.check_in ? "✅" : "❌"} In{osRow.hora_inicio ? ` ${osRow.hora_inicio}` : ""}
+                        {" → "}
+                        {osRow.check_out ? "✅" : "❌"} Out{osRow.hora_fim ? ` ${osRow.hora_fim}` : ""}
                       </p>
-                    )}
+                      {osRow.duracao_decimal != null && Number(osRow.duracao_decimal) > 0 && (
+                        <p className="text-xs text-muted-foreground">
+                          Duração: {Number(osRow.duracao_decimal).toFixed(1)}h
+                        </p>
+                      )}
+                    </div>
                   </div>
                 </div>
-              </div>
+              ) : (
+                <div className="border rounded-md p-3 text-sm text-muted-foreground text-center border-dashed">
+                  Tarefa OS não encontrada no banco
+                </div>
+              )}
 
               {/* Tarefa Execução (73344) */}
               {execRow ? (
