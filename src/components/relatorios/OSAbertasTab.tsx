@@ -79,6 +79,7 @@ export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, o
   const [search, setSearch] = useState("");
   const [excludedSituacoes, setExcludedSituacoes] = useState<Set<string>>(new Set());
   const [searchSituacao, setSearchSituacao] = useState("");
+  const [execStatusFilter, setExecStatusFilter] = useState<string>("all"); // all | em_andamento | pausada | finalizada | sem_exec
   const [expanded, setExpanded] = useState<string | null>(null);
 
   // Detail dialog
@@ -215,14 +216,39 @@ export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, o
     return resolved;
   }, [allTasks]);
 
+  // Helper to resolve exec status for an item
+  const getItemExecStatus = useCallback((item: any): string => {
+    const execId = item.gc_os_tarefa_exec;
+    const live = liveExecMap.get(String(item.gc_os_id));
+    if (live?.status) return live.status;
+    if (execId && execTaskStatusMap?.get(execId)) return execTaskStatusMap.get(execId)!;
+    if (execId) {
+      const execRow = allTasks.find((t: any) => t.auvo_task_id === execId);
+      return execRow?.status_auvo || "";
+    }
+    return "";
+  }, [liveExecMap, execTaskStatusMap, allTasks]);
+
   // Group by client, sum values
   const clienteSummary = useMemo(() => {
-    const filtered = excludedSituacoes.size > 0
+    let items = excludedSituacoes.size > 0
       ? data.filter((t) => !excludedSituacoes.has(t.gc_os_situacao || ""))
       : data;
 
+    // Apply exec status filter
+    if (execStatusFilter !== "all") {
+      items = items.filter((item) => {
+        const status = getItemExecStatus(item).toLowerCase();
+        if (execStatusFilter === "em_andamento") return status.includes("andamento") || status.includes("deslocamento");
+        if (execStatusFilter === "pausada") return status.includes("pausa");
+        if (execStatusFilter === "finalizada") return status.includes("finalizada");
+        if (execStatusFilter === "sem_exec") return !status || status === "agendada" || status === "aberta";
+        return true;
+      });
+    }
+
     const map = new Map<string, { cliente: string; count: number; total: number; items: any[] }>();
-    for (const item of filtered) {
+    for (const item of items) {
       const cliente = item.cliente || item.gc_os_cliente || "Sem cliente";
       const entry = map.get(cliente) || { cliente, count: 0, total: 0, items: [] };
       entry.count++;
@@ -231,7 +257,7 @@ export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, o
       map.set(cliente, entry);
     }
     return Array.from(map.values()).sort((a, b) => b.total - a.total);
-  }, [data, excludedSituacoes]);
+  }, [data, excludedSituacoes, execStatusFilter, getItemExecStatus]);
 
   const filtered = useMemo(() => {
     if (!search) return clienteSummary;
@@ -651,6 +677,27 @@ export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, o
             </div>
           </PopoverContent>
         </Popover>
+
+        {/* Exec status filter */}
+        <div className="flex items-center gap-1.5">
+          {[
+            { value: "all", label: "Todas", icon: null },
+            { value: "em_andamento", label: "🔄 Em andamento", icon: null },
+            { value: "pausada", label: "⏸ Pausada", icon: null },
+            { value: "finalizada", label: "✅ Finalizada", icon: null },
+            { value: "sem_exec", label: "Sem execução", icon: null },
+          ].map((opt) => (
+            <Button
+              key={opt.value}
+              variant={execStatusFilter === opt.value ? "default" : "outline"}
+              size="sm"
+              className="text-xs h-7 px-2.5"
+              onClick={() => setExecStatusFilter(opt.value)}
+            >
+              {opt.label}
+            </Button>
+          ))}
+        </div>
       </div>
 
       {/* Table */}
