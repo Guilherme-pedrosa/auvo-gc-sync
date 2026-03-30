@@ -569,31 +569,29 @@ export default function OSAbertasTab({ data, isLoading, allClientes, onRefresh, 
                                             </a>
                                           )}
                                           {item.gc_os_id && !movedOsIds.has(item.gc_os_id) && (
-                                            <Select
-                                              onValueChange={(situacaoId) => {
-                                                alterarSituacaoOS(item, situacaoId);
+                                            <Button
+                                              size="icon"
+                                              variant="ghost"
+                                              className="h-6 w-6"
+                                              title="Conciliar OS"
+                                              disabled={changingId === item.gc_os_id}
+                                              onClick={(e) => {
+                                                e.stopPropagation();
+                                                setConciliacaoCard(item);
+                                                setConciliacaoSituacao("");
                                               }}
                                             >
-                                              <SelectTrigger className="h-6 w-[130px] text-[10px] gap-0.5" onClick={(e) => e.stopPropagation()}>
-                                                <Settings2 className="h-3 w-3 shrink-0" />
-                                                <span className="truncate">Situação</span>
-                                              </SelectTrigger>
-                                              <SelectContent>
-                                                {SITUACOES_OPTIONS.map((s) => (
-                                                  <SelectItem key={s.id} value={s.id} className="text-xs">
-                                                    {s.label}
-                                                  </SelectItem>
-                                                ))}
-                                              </SelectContent>
-                                            </Select>
+                                              {changingId === item.gc_os_id ? (
+                                                <Loader2 className="h-3 w-3 animate-spin" />
+                                              ) : (
+                                                <Settings2 className="h-3 w-3" />
+                                              )}
+                                            </Button>
                                           )}
                                           {movedOsIds.has(item.gc_os_id) && (
                                             <Badge variant="outline" className="text-[9px] bg-green-100 text-green-700 border-green-300 dark:bg-green-900/50 dark:text-green-300 dark:border-green-700">
                                               <CheckCircle2 className="h-3 w-3 mr-0.5" /> Alterada
                                             </Badge>
-                                          )}
-                                          {changingId === item.gc_os_id && (
-                                            <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />
                                           )}
                                         </div>
                                       </TableCell>
