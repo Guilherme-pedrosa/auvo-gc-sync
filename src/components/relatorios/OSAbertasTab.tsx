@@ -416,10 +416,10 @@ export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, o
               />
               <div className="flex items-center gap-2 pb-1">
                 <Checkbox
-                  checked={allSituacoesSelected}
+                  checked={excludedSituacoes.size === 0}
                   onCheckedChange={(checked) => {
-                    setAllSituacoesSelected(!!checked);
-                    if (checked) setSelectedSituacoes(new Set());
+                    if (checked) setExcludedSituacoes(new Set());
+                    else setExcludedSituacoes(new Set(allSituacoes));
                   }}
                 />
                 <span className="text-xs font-medium">Todas</span>
@@ -429,10 +429,9 @@ export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, o
                   {filteredSituacoes.map((sit) => (
                     <div key={sit} className="flex items-center gap-2">
                       <Checkbox
-                        checked={allSituacoesSelected || selectedSituacoes.has(sit)}
+                        checked={!excludedSituacoes.has(sit)}
                         onCheckedChange={() => {
-                          setAllSituacoesSelected(false);
-                          setSelectedSituacoes((prev) => {
+                          setExcludedSituacoes((prev) => {
                             const next = new Set(prev);
                             if (next.has(sit)) next.delete(sit);
                             else next.add(sit);
