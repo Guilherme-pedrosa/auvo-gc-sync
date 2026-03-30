@@ -59,9 +59,11 @@ Deno.serve(async (req) => {
     const response = await fetch(url.toString(), fetchOptions);
     const data = await response.json().catch(() => ({}));
 
+    // Always return 200 to avoid FunctionsHttpError on the client side
+    // The actual GC status is inside the JSON payload
     return new Response(
       JSON.stringify({ data, status: response.status }),
-      { status: response.ok ? 200 : response.status, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   } catch (error) {
     console.error("[gc-proxy] Erro:", error);
