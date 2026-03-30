@@ -251,78 +251,78 @@ export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, o
   const grandTotal = useMemo(() => filtered.reduce((sum, c) => sum + c.total, 0), [filtered]);
   const grandCount = useMemo(() => filtered.reduce((sum, c) => sum + c.count, 0), [filtered]);
 
-  // Fetch missing exec task info when client row is expanded
+  // Fetch live exec task info when client row is expanded
   useEffect(() => {
     if (!expanded) return;
     const row = filtered.find((r) => r.cliente === expanded);
     if (!row) return;
 
-    const itemsMissingExec = row.items.filter(
-      (item: any) => item.gc_os_id && !item.gc_os_tarefa_exec && !liveExecMap.has(String(item.gc_os_id))
+    const itemsToResolve = row.items.filter(
+      (item: any) => item.gc_os_id && !liveExecMap.has(String(item.gc_os_id))
     );
-    if (itemsMissingExec.length === 0) return;
+    if (itemsToResolve.length === 0) return;
 
     let cancelled = false;
 
     (async () => {
       const updates = new Map(liveExecMap);
-      for (const item of itemsMissingExec) {
+
+      for (const item of itemsToResolve) {
         if (cancelled) break;
+
         try {
-          const { data: gcData, error } = await supabase.functions.invoke("gc-proxy", {
-            body: { endpoint: `/api/ordens_servicos/${item.gc_os_id}`, method: "GET" },
-          });
-          if (error || cancelled) continue;
-          const osObj = gcData?.data?.data ?? gcData?.data ?? null;
-          const atributos: any[] = osObj?.atributos || [];
-          const execAttr = atributos.find((a: any) => {
-            const nested = a?.atributo || a;
-            return String(nested?.atributo_id || nested?.id || "") === "73344";
-          });
-          const nested = execAttr?.atributo || execAttr;
-          const execId = String(nested?.conteudo || nested?.valor || "").trim();
+          let execId = String(item.gc_os_tarefa_exec || "").trim();
+
+          if (!execId && item.gc_os_id) {
+            const { data: gcData, error } = await supabase.functions.invoke("gc-proxy", {
+              body: { endpoint: `/api/ordens_servicos/${item.gc_os_id}`, method: "GET" },
+            });
+            if (error || cancelled) continue;
+
+            const osObj = gcData?.data?.data ?? gcData?.data ?? null;
+            const atributos: any[] = osObj?.atributos || [];
+            const execAttr = atributos.find((a: any) => {
+              const nested = a?.atributo || a;
+              return String(nested?.atributo_id || nested?.id || "") === "73344";
+            });
+            const nested = execAttr?.atributo || execAttr;
+            execId = String(nested?.conteudo || nested?.valor || "").trim();
+          }
+
           if (!execId || !/^\d+$/.test(execId)) {
             updates.set(String(item.gc_os_id), { execTaskId: "", tecnico: "", dataTarefa: "", status: "" });
             continue;
           }
 
-          // Check if we already have this exec task in allTasks
-          const existing = allTasks.find((t: any) => String(t.auvo_task_id) === execId);
-          if (existing) {
-            updates.set(String(item.gc_os_id), {
-              execTaskId: execId,
-              tecnico: existing.tecnico || "",
-              dataTarefa: existing.data_tarefa || "",
-              status: execTaskStatusMap?.get(execId) || existing.status_auvo || "",
-            });
-            continue;
-          }
-
-          // Fetch from Auvo API
           const { data: taskData, error: taskError } = await supabase.functions.invoke("auvo-task-update", {
             body: { action: "get", taskId: Number(execId) },
           });
           if (taskError || cancelled) continue;
+
           const taskObj = taskData?.data?.result ?? taskData?.data ?? null;
-          if (taskObj) {
-            const userTo = taskObj.userTo || taskObj.user_to || {};
-            const tecName = userTo.name || userTo.login || "";
-            const taskDate = taskObj.taskDate || taskObj.task_date || "";
-            const dateOnly = taskDate ? taskDate.substring(0, 10) : "";
-            updates.set(String(item.gc_os_id), {
-              execTaskId: execId,
-              tecnico: tecName,
-              dataTarefa: dateOnly,
-              status: getAuvoStatusFromTask(taskObj),
-            });
-          }
-        } catch { /* ignore individual failures */ }
+          const userTo = taskObj?.userTo || taskObj?.user_to || {};
+          const tecName = userTo?.name || userTo?.login || taskObj?.technician || "";
+          const taskDate = taskObj?.taskDate || taskObj?.task_date || taskObj?.date || "";
+          const dateOnly = taskDate ? String(taskDate).substring(0, 10) : "";
+
+          updates.set(String(item.gc_os_id), {
+            execTaskId: execId,
+            tecnico: tecName,
+            dataTarefa: dateOnly,
+            status: taskObj ? getAuvoStatusFromTask(taskObj) : "",
+          });
+        } catch {
+          // ignore individual failures
+        }
       }
+
       if (!cancelled) setLiveExecMap(updates);
     })();
 
-    return () => { cancelled = true; };
-  }, [expanded, filtered, allTasks, execTaskStatusMap]);
+    return () => {
+      cancelled = true;
+    };
+  }, [expanded, filtered, liveExecMap]);
 
   // Fetch OS detail when card is selected
   useEffect(() => {
