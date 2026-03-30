@@ -30,12 +30,13 @@ interface Props {
   data: any[];
   isLoading: boolean;
   allClientes: string[];
+  onRefresh?: () => void;
 }
 
 const formatCurrency = (val: number) =>
   val.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 
-export default function OSAbertasTab({ data, isLoading, allClientes }: Props) {
+export default function OSAbertasTab({ data, isLoading, allClientes, onRefresh }: Props) {
   const [search, setSearch] = useState("");
   const [selectedSituacoes, setSelectedSituacoes] = useState<Set<string>>(new Set());
   const [allSituacoesSelected, setAllSituacoesSelected] = useState(true);
@@ -233,6 +234,7 @@ export default function OSAbertasTab({ data, isLoading, allClientes }: Props) {
         setEditSaving(false);
         return;
       }
+
       const { data, error } = await supabase.functions.invoke("auvo-task-update", {
         body: { action: "edit", taskId: Number(execTaskId), patches },
       });
@@ -240,7 +242,26 @@ export default function OSAbertasTab({ data, isLoading, allClientes }: Props) {
       if (data?.status && data.status >= 400) {
         throw new Error(JSON.stringify(data?.data || "Erro ao atualizar tarefa"));
       }
+
+      const tecnicoSelecionado = auvoUsers?.find((user) => String(user.userID) === editTecnicoId);
+      const { error: persistError } = await supabase.functions.invoke("auvo-task-update", {
+        body: {
+          action: "persist-central",
+          row: {
+            auvo_task_id: editingCard.auvo_task_id,
+            data_tarefa: editDate ? format(editDate, "yyyy-MM-dd") : editingCard.data_tarefa,
+            tecnico_id: editTecnicoId || editingCard.tecnico_id,
+            tecnico: tecnicoSelecionado?.name || tecnicoSelecionado?.login || editingCard.tecnico,
+          },
+        },
+      });
+
+      if (persistError) {
+        console.warn("Falha ao persistir espelho local após edição:", persistError);
+      }
+
       toast.success(`Tarefa de execução #${execTaskId} atualizada no Auvo!`);
+      onRefresh?.();
       setShowEditModal(false);
       setEditingCard(null);
     } catch (err: any) {
@@ -248,7 +269,7 @@ export default function OSAbertasTab({ data, isLoading, allClientes }: Props) {
     } finally {
       setEditSaving(false);
     }
-  }, [editingCard, editDate, editTecnicoId, execTaskId, editHour, editMinute]);
+  }, [auvoUsers, editDate, editHour, editMinute, editTecnicoId, editingCard, execTaskId, onRefresh]);
 
   if (isLoading) {
     return (
