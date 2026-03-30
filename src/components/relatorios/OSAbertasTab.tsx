@@ -43,6 +43,7 @@ const SITUACOES_OPTIONS = [
 
 interface Props {
   data: any[];
+  allTasks: any[];
   isLoading: boolean;
   allClientes: string[];
   onRefresh?: () => void;
@@ -52,7 +53,7 @@ interface Props {
 const formatCurrency = (val: number) =>
   val.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 
-export default function OSAbertasTab({ data, isLoading, allClientes, onRefresh, execTaskStatusMap }: Props) {
+export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, onRefresh, execTaskStatusMap }: Props) {
   const { profile } = useAuth();
   const [search, setSearch] = useState("");
   const [selectedSituacoes, setSelectedSituacoes] = useState<Set<string>>(new Set());
@@ -112,7 +113,7 @@ export default function OSAbertasTab({ data, isLoading, allClientes, onRefresh, 
     try {
       // Use the EXECUTION task's technician (gc_os_tarefa_exec) as the vendor, not the OS task's
       const execTaskId = item.gc_os_tarefa_exec;
-      const execTask = execTaskId ? data.find((t: any) => t.auvo_task_id === execTaskId) : null;
+      const execTask = execTaskId ? allTasks.find((t: any) => t.auvo_task_id === execTaskId) : null;
       const execTecnicoId = execTask?.tecnico_id || item.tecnico_id; // fallback to OS task tech
       const mapping = vendedorMap?.find(m => m.auvo_user_id === execTecnicoId);
       const gcVendedorId = mapping?.gc_vendedor_id || null;
@@ -146,7 +147,7 @@ export default function OSAbertasTab({ data, isLoading, allClientes, onRefresh, 
       setConciliacaoCard(null);
       setConciliacaoSituacao("");
     }
-  }, [profile?.gc_user_id, onRefresh, vendedorMap, data]);
+  }, [profile?.gc_user_id, onRefresh, vendedorMap, allTasks]);
 
   const allSituacoes = useMemo(() => {
     const set = new Set(data.map((t) => t.gc_os_situacao || "").filter(Boolean));
@@ -533,7 +534,7 @@ export default function OSAbertasTab({ data, isLoading, allClientes, onRefresh, 
                                       <TableCell>
                                         {(() => {
                                           const execId = item.gc_os_tarefa_exec;
-                                          const execRow = execId ? data.find((t: any) => t.auvo_task_id === execId) : null;
+                                          const execRow = execId ? allTasks.find((t: any) => t.auvo_task_id === execId) : null;
                                           return execRow?.tecnico || "—";
                                         })()}
                                       </TableCell>
