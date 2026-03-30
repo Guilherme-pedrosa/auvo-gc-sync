@@ -265,14 +265,19 @@ export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, o
             const codeMap = new Map<string, string>();
             await Promise.all(
               uniqueIds.map(async (pid) => {
-                try {
-                  const { data: prodData } = await supabase.functions.invoke("gc-proxy", {
-                    body: { endpoint: `/api/produtos/${pid}`, method: "GET" },
-                  });
-                  const prodObj = prodData?.data?.data ?? prodData?.data ?? null;
-                  const code = prodObj?.codigo_interno || prodObj?.codigo_barra || prodObj?.codigo || "";
-                  if (code) codeMap.set(pid, code);
-                } catch {}
+                // Try /api/produtos first, then /api/servicos as fallback
+                for (const endpoint of [`/api/produtos/${pid}`, `/api/servicos/${pid}`]) {
+                  try {
+                    const { data: prodData, error: prodError } = await supabase.functions.invoke("gc-proxy", {
+                      body: { endpoint, method: "GET" },
+                    });
+                    if (prodError) continue;
+                    const prodObj = prodData?.data?.data ?? prodData?.data ?? null;
+                    if (!prodObj || prodData?.status === 404 || prodData?.code === 404) continue;
+                    const code = prodObj?.codigo_interno || prodObj?.codigo_barra || prodObj?.codigo || "";
+                    if (code) { codeMap.set(pid, code); break; }
+                  } catch { /* ignore 404s and network errors */ }
+                }
               })
             );
 
