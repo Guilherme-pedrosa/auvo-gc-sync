@@ -1006,73 +1006,97 @@ Deno.serve(async (req) => {
       }
     }
 
-    // Propagate latest GC OS/ORC data to ALL sibling tasks sharing the same gc_os_id/gc_orcamento_id
-    // This ensures tasks outside the sync date range also get updated statuses
-    const osIdToLatest: Record<string, any> = {};
-    const orcIdToLatest: Record<string, any> = {};
-    for (const row of rows) {
-      if (row.gc_os_id && row.gc_os_situacao) {
-        osIdToLatest[row.gc_os_id] = {
-          gc_os_situacao: row.gc_os_situacao,
-          gc_os_situacao_id: row.gc_os_situacao_id,
-          gc_os_cor_situacao: row.gc_os_cor_situacao,
-          gc_os_valor_total: row.gc_os_valor_total,
-          gc_os_vendedor: row.gc_os_vendedor,
-          gc_os_cliente: row.gc_os_cliente,
-        };
-      }
-      if (row.gc_orcamento_id && row.gc_orc_situacao) {
-        orcIdToLatest[row.gc_orcamento_id] = {
-          gc_orc_situacao: row.gc_orc_situacao,
-          gc_orc_situacao_id: row.gc_orc_situacao_id,
-          gc_orc_cor_situacao: row.gc_orc_cor_situacao,
-          gc_orc_valor_total: row.gc_orc_valor_total,
-          gc_orc_vendedor: row.gc_orc_vendedor,
-          gc_orc_cliente: row.gc_orc_cliente,
-        };
-      }
+    // ── Global OS/ORC status refresh ──
+    // Build a map of ALL OS from the GC API (keyed by gc_os_id) regardless of Auvo linkage
+    const allGcOsById: Record<string, any> = {};
+    for (const osPayload of Object.values(gcOsResult.byCodigo)) {
+      if (osPayload.gc_os_id) allGcOsById[osPayload.gc_os_id] = osPayload;
+    }
+    for (const osPayload of Object.values(gcOsResult.byTaskId)) {
+      if (osPayload.gc_os_id) allGcOsById[osPayload.gc_os_id] = osPayload;
     }
 
-    // Update sibling tasks that weren't in the current sync window
-    const osIds = Object.keys(osIdToLatest);
-    let siblingUpdated = 0;
-    for (const osId of osIds) {
-      const latest = osIdToLatest[osId];
+    const allGcOrcById: Record<string, any> = {};
+    for (const orcPayload of Object.values(gcOrcResult.byCodigo)) {
+      if (orcPayload.gc_orcamento_id) allGcOrcById[orcPayload.gc_orcamento_id] = orcPayload;
+    }
+    for (const orcPayload of Object.values(gcOrcResult.byTaskId)) {
+      if (orcPayload.gc_orcamento_id) allGcOrcById[orcPayload.gc_orcamento_id] = orcPayload;
+    }
+
+    // Fetch ALL distinct gc_os_id values from the DB
+    const dbOsIds = new Set<string>();
+    for (let from = 0; ; from += 1000) {
+      const { data: chunk } = await sbClient
+        .from("tarefas_central")
+        .select("gc_os_id")
+        .not("gc_os_id", "is", null)
+        .range(from, from + 999);
+      if (!chunk || chunk.length === 0) break;
+      for (const r of chunk) {
+        if (r.gc_os_id) dbOsIds.add(r.gc_os_id);
+      }
+      if (chunk.length < 1000) break;
+    }
+
+    // Update OS status for ALL rows where the GC API has fresher data
+    let globalOsUpdated = 0;
+    for (const osId of dbOsIds) {
+      const fresh = allGcOsById[osId];
+      if (!fresh) continue;
       const { count } = await sbClient
         .from("tarefas_central")
         .update({
-          gc_os_situacao: latest.gc_os_situacao,
-          gc_os_situacao_id: latest.gc_os_situacao_id,
-          gc_os_cor_situacao: latest.gc_os_cor_situacao,
-          gc_os_valor_total: latest.gc_os_valor_total,
-          gc_os_vendedor: latest.gc_os_vendedor,
-          gc_os_cliente: latest.gc_os_cliente,
+          gc_os_situacao: fresh.gc_os_situacao,
+          gc_os_situacao_id: fresh.gc_os_situacao_id,
+          gc_os_cor_situacao: fresh.gc_os_cor_situacao,
+          gc_os_valor_total: fresh.gc_os_valor_total,
+          gc_os_vendedor: fresh.gc_os_vendedor,
+          gc_os_cliente: fresh.gc_os_cliente,
+          gc_os_data_saida: fresh.gc_os_data_saida,
           atualizado_em: new Date().toISOString(),
         }, { count: "exact" })
         .eq("gc_os_id", osId)
-        .neq("gc_os_situacao", latest.gc_os_situacao);
-      siblingUpdated += count || 0;
+        .neq("gc_os_situacao", fresh.gc_os_situacao);
+      globalOsUpdated += count || 0;
     }
 
-    const orcIds = Object.keys(orcIdToLatest);
-    for (const orcId of orcIds) {
-      const latest = orcIdToLatest[orcId];
-      await sbClient
+    // Same for orçamentos
+    const dbOrcIds = new Set<string>();
+    for (let from = 0; ; from += 1000) {
+      const { data: chunk } = await sbClient
+        .from("tarefas_central")
+        .select("gc_orcamento_id")
+        .not("gc_orcamento_id", "is", null)
+        .range(from, from + 999);
+      if (!chunk || chunk.length === 0) break;
+      for (const r of chunk) {
+        if (r.gc_orcamento_id) dbOrcIds.add(r.gc_orcamento_id);
+      }
+      if (chunk.length < 1000) break;
+    }
+
+    let globalOrcUpdated = 0;
+    for (const orcId of dbOrcIds) {
+      const fresh = allGcOrcById[orcId];
+      if (!fresh) continue;
+      const { count } = await sbClient
         .from("tarefas_central")
         .update({
-          gc_orc_situacao: latest.gc_orc_situacao,
-          gc_orc_situacao_id: latest.gc_orc_situacao_id,
-          gc_orc_cor_situacao: latest.gc_orc_cor_situacao,
-          gc_orc_valor_total: latest.gc_orc_valor_total,
-          gc_orc_vendedor: latest.gc_orc_vendedor,
-          gc_orc_cliente: latest.gc_orc_cliente,
+          gc_orc_situacao: fresh.gc_orc_situacao,
+          gc_orc_situacao_id: fresh.gc_orc_situacao_id,
+          gc_orc_cor_situacao: fresh.gc_orc_cor_situacao,
+          gc_orc_valor_total: fresh.gc_orc_valor_total,
+          gc_orc_vendedor: fresh.gc_orc_vendedor,
+          gc_orc_cliente: fresh.gc_orc_cliente,
           atualizado_em: new Date().toISOString(),
-        })
+        }, { count: "exact" })
         .eq("gc_orcamento_id", orcId)
-        .neq("gc_orc_situacao", latest.gc_orc_situacao);
+        .neq("gc_orc_situacao", fresh.gc_orc_situacao);
+      globalOrcUpdated += count || 0;
     }
 
-    console.log(`[central-sync] Propagação: ${siblingUpdated} tarefas irmãs atualizadas (${osIds.length} OS, ${orcIds.length} orçamentos)`);
+    console.log(`[central-sync] Atualização global de status: ${globalOsUpdated} OS e ${globalOrcUpdated} orçamentos atualizados no banco`);
 
     // ── Post-sync: persist atrasos AND pendências permanently ──
     // 1) Tasks past due and NOT finalized (still open)
