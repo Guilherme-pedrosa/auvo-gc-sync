@@ -694,41 +694,47 @@ export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, o
               </div>
 
               {/* Tarefa OS (73343) */}
-              <div className="border rounded-md">
-                <div className="flex items-center gap-2 px-3 py-2 bg-blue-50 dark:bg-blue-950/30 border-b">
-                  <FileText className="h-4 w-4 text-blue-600 dark:text-blue-400" />
-                  <span className="text-sm font-semibold text-blue-700 dark:text-blue-300">
-                    Tarefa OS #{osRow.auvo_task_id}
-                  </span>
-                </div>
-                <div className="grid grid-cols-2 gap-x-6 gap-y-2 p-3 text-sm">
-                  <div>
-                    <span className="text-muted-foreground text-xs">Técnico</span>
-                    <p className="font-medium">{osRow.tecnico || "—"}</p>
+              {osRow ? (
+                <div className="border rounded-md">
+                  <div className="flex items-center gap-2 px-3 py-2 bg-blue-50 dark:bg-blue-950/30 border-b">
+                    <FileText className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+                    <span className="text-sm font-semibold text-blue-700 dark:text-blue-300">
+                      Tarefa OS #{osRow.auvo_task_id}
+                    </span>
                   </div>
-                  <div>
-                    <span className="text-muted-foreground text-xs">Data Agendamento</span>
-                    <p className="font-medium">{osRow.data_tarefa || "—"}</p>
-                  </div>
-                  <div>
-                    <span className="text-muted-foreground text-xs">Status Auvo</span>
-                    <p className="font-medium">{osRow.status_auvo || "—"}</p>
-                  </div>
-                  <div>
-                    <span className="text-muted-foreground text-xs">Horário (Check-in / Check-out)</span>
-                    <p className="font-medium">
-                      {osRow.check_in ? "✅" : "❌"} In{osRow.hora_inicio ? ` ${osRow.hora_inicio}` : ""}
-                      {" → "}
-                      {osRow.check_out ? "✅" : "❌"} Out{osRow.hora_fim ? ` ${osRow.hora_fim}` : ""}
-                    </p>
-                    {osRow.duracao_decimal != null && Number(osRow.duracao_decimal) > 0 && (
-                      <p className="text-xs text-muted-foreground">
-                        Duração: {Number(osRow.duracao_decimal).toFixed(1)}h
+                  <div className="grid grid-cols-2 gap-x-6 gap-y-2 p-3 text-sm">
+                    <div>
+                      <span className="text-muted-foreground text-xs">Técnico</span>
+                      <p className="font-medium">{osRow.tecnico || "—"}</p>
+                    </div>
+                    <div>
+                      <span className="text-muted-foreground text-xs">Data Agendamento</span>
+                      <p className="font-medium">{osRow.data_tarefa || "—"}</p>
+                    </div>
+                    <div>
+                      <span className="text-muted-foreground text-xs">Status Auvo</span>
+                      <p className="font-medium">{osRow.status_auvo || "—"}</p>
+                    </div>
+                    <div>
+                      <span className="text-muted-foreground text-xs">Horário (Check-in / Check-out)</span>
+                      <p className="font-medium">
+                        {osRow.check_in ? "✅" : "❌"} In{osRow.hora_inicio ? ` ${osRow.hora_inicio}` : ""}
+                        {" → "}
+                        {osRow.check_out ? "✅" : "❌"} Out{osRow.hora_fim ? ` ${osRow.hora_fim}` : ""}
                       </p>
-                    )}
+                      {osRow.duracao_decimal != null && Number(osRow.duracao_decimal) > 0 && (
+                        <p className="text-xs text-muted-foreground">
+                          Duração: {Number(osRow.duracao_decimal).toFixed(1)}h
+                        </p>
+                      )}
+                    </div>
                   </div>
                 </div>
-              </div>
+              ) : (
+                <div className="border rounded-md p-3 text-sm text-muted-foreground text-center border-dashed">
+                  Tarefa OS não encontrada no banco
+                </div>
+              )}
 
               {/* Tarefa Execução (73344) */}
               {execRow ? (
