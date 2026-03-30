@@ -724,6 +724,26 @@ export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, o
             </Button>
           ))}
         </div>
+
+        {/* Sync with selected situações */}
+        {onSync && (
+          <Button
+            variant="outline"
+            size="sm"
+            className="gap-1.5"
+            onClick={() => {
+              // Get the visible (non-excluded) situação IDs from SITUACOES_OPTIONS
+              const visibleIds = SITUACOES_OPTIONS
+                .filter((s) => !excludedSituacoes.has(s.label))
+                .map((s) => s.id);
+              onSync(visibleIds);
+            }}
+            disabled={syncing}
+          >
+            <RefreshCw className={`h-3.5 w-3.5 ${syncing ? "animate-spin" : ""}`} />
+            {syncing ? "Sincronizando..." : "Sincronizar OS"}
+          </Button>
+        )}
       </div>
 
       {/* Table */}
