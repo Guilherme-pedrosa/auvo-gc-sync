@@ -334,7 +334,7 @@ export default function RelatoriosPage() {
         <TabsContent value="os-abertas">
           <OSAbertasTab
             data={osAbertas}
-            allTasks={tarefasOS || []}
+            allTasks={todasTarefas || []}
             isLoading={isLoadingOS}
             allClientes={allClientes}
             onRefresh={refreshRelatoriosData}
