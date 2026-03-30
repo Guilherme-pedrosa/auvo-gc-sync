@@ -213,6 +213,16 @@ export default function RelatoriosPage() {
     });
   }, [tarefasOS]);
 
+  // Map: auvo_task_id → status_auvo (to look up execution task status)
+  const execTaskStatusMap = useMemo(() => {
+    if (!tarefasOS) return new Map<string, string>();
+    const map = new Map<string, string>();
+    for (const t of tarefasOS) {
+      map.set(t.auvo_task_id, t.status_auvo || "");
+    }
+    return map;
+  }, [tarefasOS]);
+
   const allClientes = useMemo(() => {
     if (!todasTarefas) return [] as string[];
     const set = new Set(todasTarefas.map((t) => t.cliente || t.gc_os_cliente || "").filter(Boolean));
