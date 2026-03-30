@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Label } from "@/components/ui/label";
 import { Calendar } from "@/components/ui/calendar";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
@@ -79,6 +79,9 @@ export default function OSAbertasTab({ data, isLoading, allClientes, onRefresh, 
   // Conciliação
   const [changingId, setChangingId] = useState<string | null>(null);
   const [movedOsIds, setMovedOsIds] = useState<Set<string>>(new Set());
+  // Conciliação dialog
+  const [conciliacaoCard, setConciliacaoCard] = useState<any | null>(null);
+  const [conciliacaoSituacao, setConciliacaoSituacao] = useState("");
 
   // Fetch Auvo users
   const { data: auvoUsers } = useQuery({
@@ -93,18 +96,33 @@ export default function OSAbertasTab({ data, isLoading, allClientes, onRefresh, 
     staleTime: 1000 * 60 * 30,
   });
 
+  // Fetch vendedor mapping
+  const { data: vendedorMap } = useQuery({
+    queryKey: ["auvo-gc-usuario-map"],
+    queryFn: async () => {
+      const { data } = await supabase.from("auvo_gc_usuario_map").select("*").eq("ativo", true);
+      return (data || []) as { auvo_user_id: string; gc_vendedor_id: string; gc_vendedor_nome: string }[];
+    },
+    staleTime: 1000 * 60 * 30,
+  });
+
   // Conciliação handler
   const alterarSituacaoOS = useCallback(async (item: any, situacaoId: string) => {
     setChangingId(item.gc_os_id);
     try {
+      // Look up the vendor ID from the mapping using technician_id
+      const mapping = vendedorMap?.find(m => m.auvo_user_id === item.tecnico_id);
+      const gcVendedorId = mapping?.gc_vendedor_id || null;
+      const gcVendedorNome = mapping?.gc_vendedor_nome || null;
+
       const { data: resp, error } = await supabase.functions.invoke("auvo-gc-sync", {
         body: {
           action: "revert_os",
           gc_os_id: item.gc_os_id,
           gc_os_codigo: item.gc_os_codigo,
           situacao_id_antes: situacaoId,
-          gc_vendedor_id: item.gc_os_vendedor || null,
-          gc_vendedor_nome: null,
+          gc_vendedor_id: gcVendedorId,
+          gc_vendedor_nome: gcVendedorNome,
           data_saida: item.data_tarefa || null,
           gc_usuario_id: profile?.gc_user_id || null,
         },
@@ -122,9 +140,10 @@ export default function OSAbertasTab({ data, isLoading, allClientes, onRefresh, 
       toast.error(`Erro: ${err.message}`);
     } finally {
       setChangingId(null);
+      setConciliacaoCard(null);
+      setConciliacaoSituacao("");
     }
-  }, [profile?.gc_user_id, onRefresh]);
-
+  }, [profile?.gc_user_id, onRefresh, vendedorMap]);
 
   const allSituacoes = useMemo(() => {
     const set = new Set(data.map((t) => t.gc_os_situacao || "").filter(Boolean));
@@ -550,31 +569,29 @@ export default function OSAbertasTab({ data, isLoading, allClientes, onRefresh, 
                                             </a>
                                           )}
                                           {item.gc_os_id && !movedOsIds.has(item.gc_os_id) && (
-                                            <Select
-                                              onValueChange={(situacaoId) => {
-                                                alterarSituacaoOS(item, situacaoId);
+                                            <Button
+                                              size="icon"
+                                              variant="ghost"
+                                              className="h-6 w-6"
+                                              title="Conciliar OS"
+                                              disabled={changingId === item.gc_os_id}
+                                              onClick={(e) => {
+                                                e.stopPropagation();
+                                                setConciliacaoCard(item);
+                                                setConciliacaoSituacao("");
                                               }}
                                             >
-                                              <SelectTrigger className="h-6 w-[130px] text-[10px] gap-0.5" onClick={(e) => e.stopPropagation()}>
-                                                <Settings2 className="h-3 w-3 shrink-0" />
-                                                <span className="truncate">Situação</span>
-                                              </SelectTrigger>
-                                              <SelectContent>
-                                                {SITUACOES_OPTIONS.map((s) => (
-                                                  <SelectItem key={s.id} value={s.id} className="text-xs">
-                                                    {s.label}
-                                                  </SelectItem>
-                                                ))}
-                                              </SelectContent>
-                                            </Select>
+                                              {changingId === item.gc_os_id ? (
+                                                <Loader2 className="h-3 w-3 animate-spin" />
+                                              ) : (
+                                                <Settings2 className="h-3 w-3" />
+                                              )}
+                                            </Button>
                                           )}
                                           {movedOsIds.has(item.gc_os_id) && (
                                             <Badge variant="outline" className="text-[9px] bg-green-100 text-green-700 border-green-300 dark:bg-green-900/50 dark:text-green-300 dark:border-green-700">
                                               <CheckCircle2 className="h-3 w-3 mr-0.5" /> Alterada
                                             </Badge>
-                                          )}
-                                          {changingId === item.gc_os_id && (
-                                            <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />
                                           )}
                                         </div>
                                       </TableCell>
@@ -1029,6 +1046,51 @@ export default function OSAbertasTab({ data, isLoading, allClientes, onRefresh, 
               </div>
             </div>
           )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Conciliação Dialog */}
+      <Dialog open={!!conciliacaoCard} onOpenChange={(open) => { if (!open) { setConciliacaoCard(null); setConciliacaoSituacao(""); } }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Settings2 className="h-5 w-5" />
+              Conciliar OS {conciliacaoCard?.gc_os_codigo}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="text-sm text-muted-foreground">
+              Cliente: <span className="font-medium text-foreground">{conciliacaoCard?.cliente || conciliacaoCard?.gc_os_cliente || "—"}</span>
+            </div>
+            <div className="text-sm text-muted-foreground">
+              Situação atual: <Badge variant="outline" className="text-xs ml-1" style={{ borderColor: conciliacaoCard?.gc_os_cor_situacao || undefined, color: conciliacaoCard?.gc_os_cor_situacao || undefined }}>{conciliacaoCard?.gc_os_situacao || "—"}</Badge>
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-sm font-medium">Nova situação</Label>
+              <Select value={conciliacaoSituacao} onValueChange={setConciliacaoSituacao}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Selecione a situação destino..." />
+                </SelectTrigger>
+                <SelectContent>
+                  {SITUACOES_OPTIONS.map((s) => (
+                    <SelectItem key={s.id} value={s.id}>{s.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => { setConciliacaoCard(null); setConciliacaoSituacao(""); }}>
+              Cancelar
+            </Button>
+            <Button
+              disabled={!conciliacaoSituacao || !!changingId}
+              onClick={() => conciliacaoCard && alterarSituacaoOS(conciliacaoCard, conciliacaoSituacao)}
+            >
+              {changingId ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <CheckCircle2 className="h-4 w-4 mr-2" />}
+              Confirmar
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>
