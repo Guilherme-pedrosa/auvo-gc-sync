@@ -15,11 +15,8 @@ import LastSyncBadge from "@/components/LastSyncBadge";
 import OSAbertasTab from "@/components/relatorios/OSAbertasTab";
 import HorasTrabalhadasTab from "@/components/relatorios/HorasTrabalhadasTab";
 import ConfiguracoesTab from "@/components/relatorios/ConfiguracoesTab";
-import { toast } from "sonner";
-import LastSyncBadge from "@/components/LastSyncBadge";
-import OSAbertasTab from "@/components/relatorios/OSAbertasTab";
-import HorasTrabalhadasTab from "@/components/relatorios/HorasTrabalhadasTab";
-import ConfiguracoesTab from "@/components/relatorios/ConfiguracoesTab";
+
+
 
 const SYNC_STEPS = [
   { label: "Autenticando no Auvo...", progress: 5 },
