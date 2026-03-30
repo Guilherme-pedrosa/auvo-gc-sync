@@ -158,6 +158,38 @@ export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, o
     return allSituacoes.filter((s) => s.toLowerCase().includes(searchSituacao.toLowerCase()));
   }, [allSituacoes, searchSituacao]);
 
+  const osTaskByGcOsId = useMemo(() => {
+    const grouped = new Map<string, any[]>();
+
+    for (const task of allTasks) {
+      if (!task?.gc_os_id) continue;
+      const gcOsId = String(task.gc_os_id);
+      const bucket = grouped.get(gcOsId) || [];
+      bucket.push(task);
+      grouped.set(gcOsId, bucket);
+    }
+
+    const resolved = new Map<string, any>();
+
+    for (const [gcOsId, tasks] of grouped.entries()) {
+      const execIds = new Set(
+        tasks
+          .map((task) => task?.gc_os_tarefa_exec)
+          .filter(Boolean)
+          .map((id) => String(id))
+      );
+
+      const osTask =
+        tasks.find((task) => !execIds.has(String(task.auvo_task_id))) ||
+        tasks.find((task) => String(task.auvo_task_id) !== String(task.gc_os_tarefa_exec || "")) ||
+        tasks[0];
+
+      resolved.set(gcOsId, osTask);
+    }
+
+    return resolved;
+  }, [allTasks]);
+
   // Group by client, sum values
   const clienteSummary = useMemo(() => {
     const filtered = excludedSituacoes.size > 0
