@@ -1054,7 +1054,7 @@ export default function OSAbertasTab({ data, isLoading, allClientes, onRefresh, 
         <DialogContent className="max-w-md">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <Settings2 className="h-5 w-5" />
+              <RefreshCw className="h-5 w-5" />
               Conciliar OS {conciliacaoCard?.gc_os_codigo}
             </DialogTitle>
           </DialogHeader>
