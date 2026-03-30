@@ -236,14 +236,22 @@ export default function RelatoriosPage() {
   }, [tarefasOS]);
 
   // Map: auvo_task_id → status_auvo (to look up execution task status)
+  // Uses ALL tasks so execution tasks not directly linked to an OS are still found
   const execTaskStatusMap = useMemo(() => {
-    if (!tarefasOS) return new Map<string, string>();
+    const source = todasTarefas || tarefasOS;
+    if (!source) return new Map<string, string>();
     const map = new Map<string, string>();
-    for (const t of tarefasOS) {
-      map.set(t.auvo_task_id, t.status_auvo || "");
+    for (const t of source) {
+      // Derive a reliable status: only mark as "Finalizada" if check_out is true
+      let status = t.status_auvo || "";
+      if (status === "Finalizada" && !t.check_out) {
+        // Task was incorrectly marked — treat as in-progress or paused
+        status = t.check_in ? "Em andamento" : "Agendada";
+      }
+      map.set(t.auvo_task_id, status);
     }
     return map;
-  }, [tarefasOS]);
+  }, [todasTarefas, tarefasOS]);
 
   const allClientes = useMemo(() => {
     if (!todasTarefas) return [] as string[];
