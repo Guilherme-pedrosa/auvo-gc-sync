@@ -326,11 +326,7 @@ export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, o
         const nested = execAttr?.atributo || execAttr;
         const execTaskId = String(nested?.conteudo || nested?.valor || "").trim();
 
-        const existsInMirror = execTaskId
-          ? allTasks.some((t: any) => String(t.auvo_task_id) === execTaskId)
-          : false;
-
-        if (execTaskId && !existsInMirror) {
+        if (execTaskId) {
           const { data: taskData, error: taskError } = await supabase.functions.invoke("auvo-task-update", {
             body: { action: "get", taskId: Number(execTaskId) },
           });
