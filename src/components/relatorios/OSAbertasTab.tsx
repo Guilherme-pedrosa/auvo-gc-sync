@@ -326,6 +326,30 @@ export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, o
           if (taskError || cancelled) continue;
 
           const taskObj = taskData?.data?.result ?? taskData?.data ?? null;
+
+          // If Auvo returns empty/404 (task expired), fallback to GC OS vendedor
+          if (!taskObj || (taskData?.status === 404)) {
+            // Try to get vendedor info from GC OS detail
+            if (item.gc_os_id) {
+              try {
+                const { data: gcFallback } = await supabase.functions.invoke("gc-proxy", {
+                  body: { endpoint: `/api/ordens_servicos/${item.gc_os_id}`, method: "GET" },
+                });
+                const osObj = gcFallback?.data?.data ?? gcFallback?.data ?? null;
+                const vendedor = osObj?.vendedor?.nome || osObj?.vendedor_nome || item.gc_os_vendedor || "";
+                updates.set(String(item.gc_os_id), {
+                  execTaskId: execId,
+                  tecnico: vendedor,
+                  dataTarefa: item.gc_os_data_saida || item.gc_os_data || "",
+                  status: "",
+                });
+                continue;
+              } catch { /* ignore */ }
+            }
+            updates.set(String(item.gc_os_id), { execTaskId: execId, tecnico: item.gc_os_vendedor || "", dataTarefa: "", status: "" });
+            continue;
+          }
+
           const userTo = taskObj?.userTo || taskObj?.user_to || {};
           const tecName = userTo?.name || userTo?.login || taskObj?.technician || "";
           const taskDate = taskObj?.taskDate || taskObj?.task_date || taskObj?.date || "";
@@ -786,7 +810,7 @@ export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, o
                                           const execId = item.gc_os_tarefa_exec;
                                           const execRow = execId ? allTasks.find((t: any) => t.auvo_task_id === execId) : null;
                                           const live = liveExecMap.get(String(item.gc_os_id));
-                                          return execRow?.tecnico || live?.tecnico || "—";
+                                          return execRow?.tecnico || live?.tecnico || item.gc_os_vendedor || "—";
                                         })()}
                                       </TableCell>
                                       <TableCell>
