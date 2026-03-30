@@ -98,6 +98,9 @@ export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, o
   const [execTaskId, setExecTaskId] = useState<string | null>(null);
   const [execTaskLoading, setExecTaskLoading] = useState(false);
 
+  // Live exec task resolution for OS items missing gc_os_tarefa_exec
+  const [liveExecMap, setLiveExecMap] = useState<Map<string, { execTaskId: string; tecnico: string; dataTarefa: string; status: string }>>(new Map());
+
   // Conciliação
   const [changingId, setChangingId] = useState<string | null>(null);
   const [movedOsIds, setMovedOsIds] = useState<Set<string>>(new Set());
