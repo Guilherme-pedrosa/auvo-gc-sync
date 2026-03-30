@@ -814,12 +814,21 @@ export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, o
                       auvo_task_id: String(execTaskId),
                       tecnico: execTaskFallback?.idUserTo && auvoUsers?.find((u) => String(u.userID) === String(execTaskFallback.idUserTo))?.name,
                       data_tarefa: String(execTaskFallback?.taskDate || "").slice(0, 10) || null,
-                      status_auvo: execTaskFallback?.finished ? "Finalizada" : "Agendada",
-                      hora_inicio: String(execTaskFallback?.taskDate || "").slice(11, 19) || null,
+                      status_auvo: (() => {
+                        const desc = String(execTaskFallback?.taskStatus?.description || execTaskFallback?.taskStatus || "").trim();
+                        if (desc) return desc;
+                        if (execTaskFallback?.finished) return "Finalizada";
+                        if (execTaskFallback?.reasonForPause || (execTaskFallback?.timeControl || []).some((tc: any) => tc.pauseStart && !tc.pauseEnd)) return "Pausada";
+                        if (execTaskFallback?.checkIn) return "Em andamento";
+                        return "Agendada";
+                      })(),
+                      hora_inicio: execTaskFallback?.checkInDate ? String(execTaskFallback.checkInDate).slice(11, 19) : (String(execTaskFallback?.taskDate || "").slice(11, 19) || null),
                       hora_fim: execTaskFallback?.checkOutDate ? String(execTaskFallback.checkOutDate).slice(11, 19) : null,
                       check_in: !!execTaskFallback?.checkIn,
                       check_out: !!execTaskFallback?.checkOut,
                       duracao_decimal: execTaskFallback?.durationDecimal ? Number(execTaskFallback.durationDecimal) : null,
+                      report: execTaskFallback?.report || null,
+                      reasonForPause: execTaskFallback?.reasonForPause || null,
                     }
                   : null);
             })();
@@ -914,6 +923,16 @@ export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, o
                         ✅ Finalizada
                       </Badge>
                     )}
+                    {(execRow.status_auvo || "").toLowerCase().includes("pausa") && (
+                      <Badge className="ml-auto text-[10px] bg-yellow-100 text-yellow-700 border-yellow-300 dark:bg-yellow-900/50 dark:text-yellow-300">
+                        ⏸ Pausada
+                      </Badge>
+                    )}
+                    {(execRow.status_auvo || "").toLowerCase().includes("andamento") && (
+                      <Badge className="ml-auto text-[10px] bg-blue-100 text-blue-700 border-blue-300 dark:bg-blue-900/50 dark:text-blue-300">
+                        🔄 Em andamento
+                      </Badge>
+                    )}
                   </div>
                   <div className="grid grid-cols-2 gap-x-6 gap-y-2 p-3 text-sm">
                     <div>
@@ -942,6 +961,20 @@ export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, o
                       )}
                     </div>
                   </div>
+                  {/* Motivo da pausa */}
+                  {execRow.reasonForPause && (
+                    <div className="mx-3 mb-3 bg-yellow-50 dark:bg-yellow-950/20 border border-yellow-200 dark:border-yellow-800 rounded-md p-2">
+                      <span className="text-xs font-medium text-yellow-700 dark:text-yellow-400">⏸ Motivo da pausa:</span>
+                      <p className="text-sm mt-0.5">{execRow.reasonForPause}</p>
+                    </div>
+                  )}
+                  {/* Relato da tarefa */}
+                  {execRow.report && (
+                    <div className="mx-3 mb-3 bg-muted/50 border rounded-md p-2">
+                      <span className="text-xs font-medium text-muted-foreground">📝 Relato do técnico:</span>
+                      <p className="text-sm mt-0.5 whitespace-pre-wrap">{execRow.report}</p>
+                    </div>
+                  )}
                 </div>
               ) : (
                 <div className="border rounded-md p-3 text-sm text-muted-foreground text-center border-dashed">

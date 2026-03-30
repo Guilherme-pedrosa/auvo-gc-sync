@@ -829,7 +829,14 @@ Deno.serve(async (req) => {
         data_conclusao: checkOutDateRaw || null,
         deslocamento_inicio: displacementStartRaw || null,
         duracao_deslocamento: duracaoDeslocamento,
-        status_auvo: task.finished ? "Finalizada" : (task.checkIn ? "Em andamento" : "Aberta"),
+        status_auvo: (() => {
+          const desc = String(task.taskStatus?.description || "").trim();
+          if (desc) return desc;
+          if (task.finished) return "Finalizada";
+          if (task.reasonForPause || (task.timeControl || []).some((tc: any) => tc.pauseStart && !tc.pauseEnd)) return "Pausada";
+          if (task.checkIn) return "Em andamento";
+          return "Aberta";
+        })(),
         orientacao: resolvedOrientation,
         pendencia: String(task.pendency ?? "").trim(),
         descricao: resolveTaskType(task),
