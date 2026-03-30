@@ -18,13 +18,28 @@ import { Skeleton } from "@/components/ui/skeleton";
 import {
   Search, ArrowDownWideNarrow, ExternalLink, Filter, CalendarIcon,
   Edit2, Save, Loader2, UserCog, MapPin, Navigation, Package,
-  ClipboardList, FileText, AlertTriangle,
+  ClipboardList, FileText, AlertTriangle, Settings2, CheckCircle2,
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
+import { useAuth } from "@/hooks/useAuth";
+
+const SITUACOES_OPTIONS = [
+  { id: "7063579", label: "AGUARDANDO COMPRA DE PEÇAS" },
+  { id: "7063580", label: "AGUARDANDO CHEGADA DE PEÇAS" },
+  { id: "7659440", label: "AGUARDANDO FABRICAÇÃO" },
+  { id: "7063581", label: "PEDIDO EM CONFERENCIA" },
+  { id: "7063705", label: "PEDIDO CONFERIDO AGUARDANDO EXECUÇÃO" },
+  { id: "7213493", label: "SERVICO AGUARDANDO EXECUCAO" },
+  { id: "7684665", label: "RETIRADA PELO TECNICO" },
+  { id: "7748831", label: "AGUARDANDO RETIRADA" },
+  { id: "8219136", label: "EM ROTA" },
+  { id: "7116099", label: "EXECUTADO – AG. NEGOCIAÇÃO" },
+  { id: "8889036", label: "FECHADO CHAMADO" },
+];
 
 interface Props {
   data: any[];
@@ -38,6 +53,7 @@ const formatCurrency = (val: number) =>
   val.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 
 export default function OSAbertasTab({ data, isLoading, allClientes, onRefresh, execTaskStatusMap }: Props) {
+  const { profile } = useAuth();
   const [search, setSearch] = useState("");
   const [selectedSituacoes, setSelectedSituacoes] = useState<Set<string>>(new Set());
   const [allSituacoesSelected, setAllSituacoesSelected] = useState(true);
@@ -60,6 +76,10 @@ export default function OSAbertasTab({ data, isLoading, allClientes, onRefresh, 
   const [execTaskId, setExecTaskId] = useState<string | null>(null);
   const [execTaskLoading, setExecTaskLoading] = useState(false);
 
+  // Conciliação
+  const [changingId, setChangingId] = useState<string | null>(null);
+  const [movedOsIds, setMovedOsIds] = useState<Set<string>>(new Set());
+
   // Fetch Auvo users
   const { data: auvoUsers } = useQuery({
     queryKey: ["auvo-users"],
@@ -73,7 +93,39 @@ export default function OSAbertasTab({ data, isLoading, allClientes, onRefresh, 
     staleTime: 1000 * 60 * 30,
   });
 
-  // All unique situações
+  // Conciliação handler
+  const alterarSituacaoOS = useCallback(async (item: any, situacaoId: string) => {
+    setChangingId(item.gc_os_id);
+    try {
+      const { data: resp, error } = await supabase.functions.invoke("auvo-gc-sync", {
+        body: {
+          action: "revert_os",
+          gc_os_id: item.gc_os_id,
+          gc_os_codigo: item.gc_os_codigo,
+          situacao_id_antes: situacaoId,
+          gc_vendedor_id: item.gc_os_vendedor || null,
+          gc_vendedor_nome: null,
+          data_saida: item.data_tarefa || null,
+          gc_usuario_id: profile?.gc_user_id || null,
+        },
+      });
+      if (error) throw error;
+      if (resp?.success) {
+        const label = SITUACOES_OPTIONS.find(s => s.id === situacaoId)?.label || situacaoId;
+        setMovedOsIds(prev => new Set(prev).add(item.gc_os_id));
+        toast.success(`OS ${item.gc_os_codigo} → ${label}`);
+        onRefresh?.();
+      } else {
+        toast.error(`Erro: ${JSON.stringify(resp?.body || resp?.error || resp)}`);
+      }
+    } catch (err: any) {
+      toast.error(`Erro: ${err.message}`);
+    } finally {
+      setChangingId(null);
+    }
+  }, [profile?.gc_user_id, onRefresh]);
+
+
   const allSituacoes = useMemo(() => {
     const set = new Set(data.map((t) => t.gc_os_situacao || "").filter(Boolean));
     return Array.from(set).sort();
@@ -426,7 +478,7 @@ export default function OSAbertasTab({ data, isLoading, allClientes, onRefresh, 
                                   <TableHead className="text-xs">Técnico</TableHead>
                                   <TableHead className="text-xs">Data</TableHead>
                                   <TableHead className="text-xs text-right">Valor</TableHead>
-                                  <TableHead className="text-xs w-24">Ações</TableHead>
+                                  <TableHead className="text-xs w-56">Ações</TableHead>
                                 </TableRow>
                               </TableHeader>
                               <TableBody>
@@ -496,6 +548,33 @@ export default function OSAbertasTab({ data, isLoading, allClientes, onRefresh, 
                                                 <ExternalLink className="h-3 w-3" />
                                               </Button>
                                             </a>
+                                          )}
+                                          {item.gc_os_id && !movedOsIds.has(item.gc_os_id) && (
+                                            <Select
+                                              onValueChange={(situacaoId) => {
+                                                alterarSituacaoOS(item, situacaoId);
+                                              }}
+                                            >
+                                              <SelectTrigger className="h-6 w-[130px] text-[10px] gap-0.5" onClick={(e) => e.stopPropagation()}>
+                                                <Settings2 className="h-3 w-3 shrink-0" />
+                                                <span className="truncate">Situação</span>
+                                              </SelectTrigger>
+                                              <SelectContent>
+                                                {SITUACOES_OPTIONS.map((s) => (
+                                                  <SelectItem key={s.id} value={s.id} className="text-xs">
+                                                    {s.label}
+                                                  </SelectItem>
+                                                ))}
+                                              </SelectContent>
+                                            </Select>
+                                          )}
+                                          {movedOsIds.has(item.gc_os_id) && (
+                                            <Badge variant="outline" className="text-[9px] bg-green-100 text-green-700 border-green-300 dark:bg-green-900/50 dark:text-green-300 dark:border-green-700">
+                                              <CheckCircle2 className="h-3 w-3 mr-0.5" /> Alterada
+                                            </Badge>
+                                          )}
+                                          {changingId === item.gc_os_id && (
+                                            <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />
                                           )}
                                         </div>
                                       </TableCell>
