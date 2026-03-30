@@ -584,7 +584,7 @@ export default function OSAbertasTab({ data, isLoading, allClientes, onRefresh, 
                                               {changingId === item.gc_os_id ? (
                                                 <Loader2 className="h-3 w-3 animate-spin" />
                                               ) : (
-                                                <Settings2 className="h-3 w-3" />
+                                                <RefreshCw className="h-3 w-3" />
                                               )}
                                             </Button>
                                           )}
