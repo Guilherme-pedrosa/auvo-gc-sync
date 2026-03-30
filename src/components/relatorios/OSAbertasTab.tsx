@@ -497,7 +497,8 @@ export default function OSAbertasTab({ data, isLoading, allClientes, onRefresh, 
                                 <TableRow>
                                   <TableHead className="text-xs">OS Código</TableHead>
                                   <TableHead className="text-xs">Situação</TableHead>
-                                  <TableHead className="text-xs">Técnico</TableHead>
+                                  <TableHead className="text-xs">Téc. OS</TableHead>
+                                  <TableHead className="text-xs">Téc. Execução</TableHead>
                                   <TableHead className="text-xs">Data</TableHead>
                                   <TableHead className="text-xs text-right">Valor</TableHead>
                                   <TableHead className="text-xs w-56">Ações</TableHead>
@@ -529,6 +530,13 @@ export default function OSAbertasTab({ data, isLoading, allClientes, onRefresh, 
                                         </Badge>
                                       </TableCell>
                                       <TableCell>{item.tecnico || "—"}</TableCell>
+                                      <TableCell>
+                                        {(() => {
+                                          const execId = item.gc_os_tarefa_exec;
+                                          const execRow = execId ? data.find((t: any) => t.auvo_task_id === execId) : null;
+                                          return execRow?.tecnico || "—";
+                                        })()}
+                                      </TableCell>
                                       <TableCell>
                                         <div className="flex items-center gap-1.5">
                                           <span>{item.data_tarefa || "—"}</span>
