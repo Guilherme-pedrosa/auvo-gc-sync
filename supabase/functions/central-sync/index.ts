@@ -597,6 +597,11 @@ Deno.serve(async (req) => {
       console.log(`[central-sync] Atualização global de status: ${globalOsUpdated} OS e ${globalOrcUpdated} orçamentos atualizados no banco`);
     }
 
+    // Step 3: NOW fetch Auvo tasks (heavy, can take minutes)
+    console.log(`[central-sync] Iniciando busca Auvo: ${startDate} → ${endDate}`);
+    const auvoTasks = await fetchAuvoTasks(bearerToken, startDate, endDate);
+    console.log(`[central-sync] Auvo: ${auvoTasks.length} tarefas`);
+
     if (auvoTasks.length === 0) {
       console.warn("[central-sync] Nenhuma tarefa retornada do Auvo; aplicando fallback apenas com dados do GC");
     }
