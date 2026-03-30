@@ -492,12 +492,13 @@ Deno.serve(async (req) => {
     const body = await req.json().catch(() => ({}));
     const bodyStart = normalizeDate(body?.start_date);
     const bodyEnd = normalizeDate(body?.end_date);
+    const situacaoIds: string[] = Array.isArray(body?.situacao_ids) ? body.situacao_ids.filter((s: any) => s) : [];
 
     const startDate = bodyStart || sixMonthsAgo.toISOString().split("T")[0];
     const endDate = bodyEnd || futureDate.toISOString().split("T")[0];
     const cleanupCutoff = sixMonthsAgo.toISOString().split("T")[0];
 
-    console.log(`[central-sync] Período: ${startDate} a ${endDate} (limpeza < ${cleanupCutoff})`);
+    console.log(`[central-sync] Período: ${startDate} a ${endDate} (limpeza < ${cleanupCutoff}), situações: ${situacaoIds.length || 'todas'}`);
 
     const bearerToken = await auvoLogin(auvoApiKey, auvoApiToken);
     const gcH: Record<string, string> = {
@@ -507,9 +508,14 @@ Deno.serve(async (req) => {
     };
 
     // Step 1: Fetch GC data first (faster, ~20s) — Auvo will come after status refresh
+    const gcOsOptions = {
+      situacaoIds: situacaoIds.length > 0 ? situacaoIds : undefined,
+      dataInicio: bodyStart || undefined,
+      dataFim: bodyEnd || undefined,
+    };
     const [gcOrcResult, gcOsResult] = await Promise.all([
       fetchGcOrcamentos(gcH),
-      fetchGcOs(gcH),
+      fetchGcOs(gcH, gcOsOptions),
     ]);
 
     const gcOrcMap = gcOrcResult.byTaskId;
