@@ -822,7 +822,7 @@ export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, o
                                         })()}
                                       </TableCell>
                                       <TableCell className="text-xs font-mono">
-                                        {item.gc_os_tarefa_exec || "—"}
+                                        {liveExecMap.get(String(item.gc_os_id))?.execTaskId || item.gc_os_tarefa_exec || "—"}
                                       </TableCell>
                                       <TableCell>
                                         <span>{item.gc_os_data || item.data_tarefa || "—"}</span>
