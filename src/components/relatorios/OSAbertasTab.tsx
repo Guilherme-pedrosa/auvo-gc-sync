@@ -961,22 +961,21 @@ export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, o
               {(() => {
                 const atributos: any[] = osDetail?.atributos || [];
                 const liveResolvedExec = liveExecMap.get(String(selectedCard?.gc_os_id));
-                const findAttrValue = (attrId: string) => {
+                const findAttrRaw = (attrId: string) => {
                   const attr = atributos.find((a: any) => {
                     const nested = a?.atributo || a;
                     return String(nested?.atributo_id || nested?.id || "") === attrId;
                   });
                   if (!attr) return null;
                   const nested = attr?.atributo || attr;
-                  const valor = String(nested?.conteudo || nested?.valor || "").trim();
-                  return valor && /^\d+$/.test(valor) ? valor : null;
+                  return String(nested?.conteudo || nested?.valor || "").trim() || null;
                 };
 
-                const osTaskId = findAttrValue("73343");
-                const execTaskId = findAttrValue("73344") || selectedCard?.gc_os_tarefa_exec || liveResolvedExec?.execTaskId || null;
+                const osTaskId = parseExecIds(findAttrRaw("73343"))[0] || null;
+                const execRaw = findAttrRaw("73344") || selectedCard?.gc_os_tarefa_exec || liveResolvedExec?.execTaskId || null;
 
-                if (osTaskId || execTaskId) {
-                  return `Tarefa OS #${osTaskId || "—"} • Execução #${execTaskId || "—"}`;
+                if (osTaskId || execRaw) {
+                  return `Tarefa OS #${osTaskId || "—"} • Execução #${execRaw || "—"}`;
                 }
 
                 return `Tarefa Auvo #${selectedCard?.auvo_task_id}`;
@@ -986,36 +985,38 @@ export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, o
           {selectedCard && (() => {
             const atributos: any[] = osDetail?.atributos || [];
             const liveResolvedExec = liveExecMap.get(String(selectedCard.gc_os_id));
-            const findAttrValue = (attrId: string) => {
+            const findAttrRaw = (attrId: string) => {
               const attr = atributos.find((a: any) => {
                 const nested = a?.atributo || a;
                 return String(nested?.atributo_id || nested?.id || "") === attrId;
               });
               if (!attr) return null;
               const nested = attr?.atributo || attr;
-              const valor = String(nested?.conteudo || nested?.valor || "").trim();
-              return valor && /^\d+$/.test(valor) ? valor : null;
+              return String(nested?.conteudo || nested?.valor || "").trim() || null;
             };
 
-            const osTaskId = findAttrValue("73343");
-            const execTaskId = findAttrValue("73344") || selectedCard.gc_os_tarefa_exec || liveResolvedExec?.execTaskId || null;
+            const osTaskId = parseExecIds(findAttrRaw("73343"))[0] || null;
+            const execRaw = findAttrRaw("73344") || selectedCard.gc_os_tarefa_exec || liveResolvedExec?.execTaskId || null;
+            const execTaskId = execRaw;
+            // For lookups, use first valid numeric ID
+            const firstExecId = parseExecIds(execRaw)[0] || null;
 
             const osRow = (() => {
               if (osTaskId) {
                 return allTasks.find((t: any) => String(t.auvo_task_id) === String(osTaskId))
                   || (String(selectedCard.auvo_task_id) === String(osTaskId) ? selectedCard : null);
               }
-              if (!execTaskId || String(selectedCard.auvo_task_id) !== String(execTaskId)) return selectedCard;
+              if (!firstExecId || String(selectedCard.auvo_task_id) !== String(firstExecId)) return selectedCard;
               return null;
             })();
 
             const execRow = (() => {
-              if (!execTaskId) return null;
+              if (!firstExecId) return null;
 
-              const mirrorExecRow = allTasks.find((t: any) => String(t.auvo_task_id) === String(execTaskId))
-                || (String(selectedCard.auvo_task_id) === String(execTaskId) ? selectedCard : null)
+              const mirrorExecRow = allTasks.find((t: any) => String(t.auvo_task_id) === String(firstExecId))
+                || (String(selectedCard.auvo_task_id) === String(firstExecId) ? selectedCard : null)
                 || (liveResolvedExec ? {
-                  auvo_task_id: String(execTaskId),
+                  auvo_task_id: String(firstExecId),
                   tecnico: liveResolvedExec.tecnico || null,
                   data_tarefa: liveResolvedExec.dataTarefa || null,
                   status_auvo: liveResolvedExec.status || null,
@@ -1032,7 +1033,7 @@ export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, o
 
                 return {
                   ...mirrorExecRow,
-                  auvo_task_id: String(execTaskId),
+                  auvo_task_id: String(firstExecId),
                   tecnico: fbTecnico || mirrorExecRow?.tecnico || liveResolvedExec?.tecnico || selectedCard.gc_os_vendedor || null,
                   data_tarefa: (fbDateValid ? fbTaskDate.slice(0, 10) : null) || mirrorExecRow?.data_tarefa || liveResolvedExec?.dataTarefa || null,
                   status_auvo: getAuvoStatusFromTask(execTaskFallback),
