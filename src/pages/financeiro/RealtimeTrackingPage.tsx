@@ -16,7 +16,8 @@ import {
   LayoutGrid, List, ChevronsUpDown, Monitor
 } from "lucide-react";
 import TvTrackingView from "@/components/financeiro/TvTrackingView";
-import { format, addDays, subDays, isToday, startOfMonth, endOfMonth } from "date-fns";
+import { format, addDays, subDays, isToday, startOfMonth, endOfMonth, startOfWeek, startOfYear } from "date-fns";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ptBR } from "date-fns/locale";
 import { toast } from "sonner";
 import LastSyncBadge from "@/components/LastSyncBadge";
