@@ -594,6 +594,16 @@ Deno.serve(async (req) => {
             const data = await resp.json().catch(() => null);
             const os = data?.data || data;
             if (!os || !os.id) return null;
+            // Extract tarefa execução (73344) from atributos
+            const atributos: any[] = os.atributos || [];
+            const attrExec = atributos.find((a: any) => {
+              const nested = a?.atributo || a;
+              return String(nested.atributo_id || nested.id || "") === GC_ATRIBUTO_TAREFA_EXEC;
+            });
+            const execTaskVal = attrExec
+              ? String((attrExec?.atributo || attrExec)?.conteudo || (attrExec?.atributo || attrExec)?.valor || "").trim()
+              : "";
+            const gc_os_tarefa_exec = execTaskVal && /^\d+$/.test(execTaskVal) ? execTaskVal : null;
             return {
               gc_os_id: String(os.id),
               gc_os_situacao: String(os.nome_situacao || ""),
@@ -603,6 +613,7 @@ Deno.serve(async (req) => {
               gc_os_vendedor: String(os.nome_vendedor || ""),
               gc_os_cliente: String(os.nome_cliente || ""),
               gc_os_data_saida: String(os.data_saida || "").split("T")[0] || null,
+              gc_os_tarefa_exec,
             };
           }));
           for (const fresh of results) {
@@ -616,9 +627,7 @@ Deno.serve(async (req) => {
       for (const osId of dbOsIds) {
         const fresh = allGcOsById[osId];
         if (!fresh) continue;
-        const { count } = await sbClient
-          .from("tarefas_central")
-          .update({
+        const updatePayload: any = {
             gc_os_situacao: fresh.gc_os_situacao,
             gc_os_situacao_id: fresh.gc_os_situacao_id,
             gc_os_cor_situacao: fresh.gc_os_cor_situacao,
@@ -627,10 +636,35 @@ Deno.serve(async (req) => {
             gc_os_cliente: fresh.gc_os_cliente,
             gc_os_data_saida: fresh.gc_os_data_saida,
             atualizado_em: new Date().toISOString(),
-          }, { count: "exact" })
+          };
+        if (fresh.gc_os_tarefa_exec) {
+          updatePayload.gc_os_tarefa_exec = fresh.gc_os_tarefa_exec;
+        }
+        const { count } = await sbClient
+          .from("tarefas_central")
+          .update(updatePayload, { count: "exact" })
           .eq("gc_os_id", osId)
           .neq("gc_os_situacao", fresh.gc_os_situacao);
         globalOsUpdated += count || 0;
+      }
+
+      // Second pass: fill gc_os_tarefa_exec for OS that have it null but GC has it
+      let execFilled = 0;
+      for (const osId of dbOsIds) {
+        const fresh = allGcOsById[osId];
+        if (!fresh?.gc_os_tarefa_exec) continue;
+        const { count } = await sbClient
+          .from("tarefas_central")
+          .update({
+            gc_os_tarefa_exec: fresh.gc_os_tarefa_exec,
+            atualizado_em: new Date().toISOString(),
+          }, { count: "exact" })
+          .eq("gc_os_id", osId)
+          .is("gc_os_tarefa_exec", null);
+        execFilled += count || 0;
+      }
+      if (execFilled > 0) {
+        console.log(`[central-sync] gc_os_tarefa_exec preenchido para ${execFilled} registros`);
       }
 
       const dbOrcIds = new Set<string>();
