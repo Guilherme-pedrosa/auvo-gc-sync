@@ -216,12 +216,11 @@ export default function RealtimeTrackingPage() {
 
   const exportPDF = useCallback(() => {
     const doc = new jsPDF({ orientation: "landscape", unit: "mm", format: "a4" });
-    const mesLabel = format(selectedDate, "MMMM yyyy", { locale: ptBR });
     const now = format(new Date(), "dd/MM/yyyy HH:mm");
     const pageW = doc.internal.pageSize.getWidth();
 
     doc.setFontSize(14);
-    doc.text(`Divergências — ${mesLabel}`, 14, 15);
+    doc.text(`Divergências — ${divLabel}`, 14, 15);
     doc.setFontSize(8);
     doc.text(`Gerado em ${now}`, 14, 21);
 
