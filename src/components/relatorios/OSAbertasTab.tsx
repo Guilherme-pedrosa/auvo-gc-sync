@@ -1022,13 +1022,21 @@ export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, o
                 } : null);
 
               if (execTaskFallback) {
+                const fbTaskDate = String(execTaskFallback?.taskDate || "");
+                const fbDateValid = fbTaskDate && !fbTaskDate.startsWith("0001-01-01");
+                const fbUserToId = execTaskFallback?.idUserTo ?? execTaskFallback?.id_user_to ?? 0;
+                const fbHasUser = fbUserToId && Number(fbUserToId) > 0;
+                const fbTecnico = fbHasUser
+                  ? auvoUsers?.find((u) => String(u.userID) === String(fbUserToId))?.name || execTaskFallback?.userToName || null
+                  : null;
+
                 return {
                   ...mirrorExecRow,
                   auvo_task_id: String(execTaskId),
-                  tecnico: execTaskFallback?.idUserTo && auvoUsers?.find((u) => String(u.userID) === String(execTaskFallback.idUserTo))?.name,
-                  data_tarefa: String(execTaskFallback?.taskDate || "").slice(0, 10) || mirrorExecRow?.data_tarefa || null,
+                  tecnico: fbTecnico || mirrorExecRow?.tecnico || liveResolvedExec?.tecnico || selectedCard.gc_os_vendedor || null,
+                  data_tarefa: (fbDateValid ? fbTaskDate.slice(0, 10) : null) || mirrorExecRow?.data_tarefa || liveResolvedExec?.dataTarefa || null,
                   status_auvo: getAuvoStatusFromTask(execTaskFallback),
-                  hora_inicio: execTaskFallback?.checkInDate ? String(execTaskFallback.checkInDate).slice(11, 19) : (mirrorExecRow?.hora_inicio || String(execTaskFallback?.taskDate || "").slice(11, 19) || null),
+                  hora_inicio: execTaskFallback?.checkInDate ? String(execTaskFallback.checkInDate).slice(11, 19) : (mirrorExecRow?.hora_inicio || (fbDateValid ? fbTaskDate.slice(11, 19) : null) || null),
                   hora_fim: execTaskFallback?.checkOutDate ? String(execTaskFallback.checkOutDate).slice(11, 19) : (mirrorExecRow?.hora_fim || null),
                   check_in: !!execTaskFallback?.checkIn,
                   check_out: !!execTaskFallback?.checkOut,
