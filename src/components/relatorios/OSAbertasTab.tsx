@@ -830,8 +830,8 @@ export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, o
                                       <TableCell>{osTaskByGcOsId.get(String(item.gc_os_id))?.tecnico || item.tecnico || "—"}</TableCell>
                                       <TableCell>
                                         {(() => {
-                                          const execId = item.gc_os_tarefa_exec;
-                                          const execRow = execId ? allTasks.find((t: any) => t.auvo_task_id === execId) : null;
+                                          const execId = parseExecIds(item.gc_os_tarefa_exec)[0] || null;
+                                          const execRow = execId ? allTasks.find((t: any) => String(t.auvo_task_id) === execId) : null;
                                           const live = liveExecMap.get(String(item.gc_os_id));
                                           return execRow?.tecnico || live?.tecnico || item.gc_os_vendedor || "—";
                                         })()}
@@ -845,8 +845,8 @@ export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, o
                                       <TableCell>
                                         <div className="flex items-center gap-1.5">
                                           {(() => {
-                                            const execId = item.gc_os_tarefa_exec;
-                                            const execRow = execId ? allTasks.find((t: any) => t.auvo_task_id === execId) : null;
+                                            const execId = parseExecIds(item.gc_os_tarefa_exec)[0] || null;
+                                            const execRow = execId ? allTasks.find((t: any) => String(t.auvo_task_id) === execId) : null;
                                             const live = liveExecMap.get(String(item.gc_os_id));
                                             const execDate = live?.dataTarefa || execRow?.data_tarefa;
                                             const execStatus = live?.status || (execId && execTaskStatusMap?.get(execId));
