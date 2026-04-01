@@ -315,13 +315,17 @@ export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, o
             execId = String(nested?.conteudo || nested?.valor || "").trim();
           }
 
-          if (!execId || !/^\d+$/.test(execId)) {
+          // Handle multiple exec task IDs separated by "/" — use the first valid one
+          const execIds = execId.split("/").map(s => s.trim()).filter(s => /^\d+$/.test(s));
+          const firstExecId = execIds[0] || "";
+
+          if (!firstExecId) {
             updates.set(String(item.gc_os_id), { execTaskId: "", tecnico: "", dataTarefa: "", status: "" });
             continue;
           }
 
           const { data: taskData, error: taskError } = await supabase.functions.invoke("auvo-task-update", {
-            body: { action: "get", taskId: Number(execId) },
+            body: { action: "get", taskId: Number(firstExecId) },
           });
           if (taskError || cancelled) continue;
 
