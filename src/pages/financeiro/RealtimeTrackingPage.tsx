@@ -16,7 +16,8 @@ import {
   LayoutGrid, List, ChevronsUpDown, Monitor
 } from "lucide-react";
 import TvTrackingView from "@/components/financeiro/TvTrackingView";
-import { format, addDays, subDays, isToday, startOfMonth, endOfMonth } from "date-fns";
+import { format, addDays, subDays, isToday, startOfMonth, endOfMonth, startOfWeek, startOfYear } from "date-fns";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ptBR } from "date-fns/locale";
 import { toast } from "sonner";
 import LastSyncBadge from "@/components/LastSyncBadge";
@@ -84,6 +85,9 @@ export default function RealtimeTrackingPage() {
   const [expandedTechs, setExpandedTechs] = useState<Set<string>>(new Set());
   const [headerMinimized, setHeaderMinimized] = useState(false);
   const [tvMode, setTvMode] = useState(false);
+  const [divPeriodo, setDivPeriodo] = useState<"mes" | "semana" | "ano" | "custom">("mes");
+  const [divCustomStart, setDivCustomStart] = useState<Date | undefined>(undefined);
+  const [divCustomEnd, setDivCustomEnd] = useState<Date | undefined>(undefined);
   const dateStr = format(selectedDate, "yyyy-MM-dd");
 
   const [lastFetchTime, setLastFetchTime] = useState<string | null>(null);
@@ -104,17 +108,43 @@ export default function RealtimeTrackingPage() {
   });
 
   // Monthly late tasks query
-  const monthStart = format(startOfMonth(selectedDate), "yyyy-MM-dd");
-  const monthEnd = format(endOfMonth(selectedDate), "yyyy-MM-dd");
+  const getDivDates = () => {
+    const ref = selectedDate;
+    switch (divPeriodo) {
+      case "semana":
+        return { start: format(startOfWeek(ref, { weekStartsOn: 1 }), "yyyy-MM-dd"), end: format(ref, "yyyy-MM-dd") };
+      case "ano":
+        return { start: format(startOfYear(ref), "yyyy-MM-dd"), end: format(endOfMonth(ref), "yyyy-MM-dd") };
+      case "custom":
+        return {
+          start: divCustomStart ? format(divCustomStart, "yyyy-MM-dd") : format(startOfMonth(ref), "yyyy-MM-dd"),
+          end: divCustomEnd ? format(divCustomEnd, "yyyy-MM-dd") : format(endOfMonth(ref), "yyyy-MM-dd"),
+        };
+      default: // mes
+        return { start: format(startOfMonth(ref), "yyyy-MM-dd"), end: format(endOfMonth(ref), "yyyy-MM-dd") };
+    }
+  };
+  const divDates = getDivDates();
+  const divStart = divDates.start;
+  const divEnd = divDates.end;
+
+  const divLabel = (() => {
+    switch (divPeriodo) {
+      case "semana": return `semana de ${format(new Date(divStart + "T12:00:00"), "dd/MM")} a ${format(new Date(divEnd + "T12:00:00"), "dd/MM/yyyy")}`;
+      case "ano": return format(selectedDate, "yyyy");
+      case "custom": return `${format(new Date(divStart + "T12:00:00"), "dd/MM/yy")} → ${format(new Date(divEnd + "T12:00:00"), "dd/MM/yy")}`;
+      default: return format(selectedDate, "MMMM yyyy", { locale: ptBR });
+    }
+  })();
 
   const { data: atrasadasMes, isLoading: loadingAtrasadas, refetch: refetchAtrasadas } = useQuery({
-    queryKey: ["atrasadas-mes", monthStart, monthEnd],
+    queryKey: ["atrasadas-mes", divStart, divEnd],
     queryFn: async () => {
       const { data, error } = await supabase
         .from("atividades_nao_executadas")
         .select("*")
-        .gte("data_planejada", monthStart)
-        .lte("data_planejada", monthEnd)
+        .gte("data_planejada", divStart)
+        .lte("data_planejada", divEnd)
         .order("data_planejada", { ascending: false });
       if (error) throw error;
       return data || [];
@@ -124,13 +154,13 @@ export default function RealtimeTrackingPage() {
 
   // Monthly pendências from tarefas_central
   const { data: pendenciasMesRaw, refetch: refetchPendencias } = useQuery({
-    queryKey: ["pendencias-mes", monthStart, monthEnd],
+    queryKey: ["pendencias-mes", divStart, divEnd],
     queryFn: async () => {
       const { data, error } = await supabase
         .from("tarefas_central")
         .select("auvo_task_id, cliente, tecnico, data_tarefa, pendencia, descricao, gc_os_codigo, status_auvo, questionario_respostas")
-        .gte("data_tarefa", monthStart)
-        .lte("data_tarefa", monthEnd)
+        .gte("data_tarefa", divStart)
+        .lte("data_tarefa", divEnd)
         .neq("pendencia", "")
         .not("pendencia", "is", null)
         .order("data_tarefa", { ascending: false });
@@ -186,12 +216,11 @@ export default function RealtimeTrackingPage() {
 
   const exportPDF = useCallback(() => {
     const doc = new jsPDF({ orientation: "landscape", unit: "mm", format: "a4" });
-    const mesLabel = format(selectedDate, "MMMM yyyy", { locale: ptBR });
     const now = format(new Date(), "dd/MM/yyyy HH:mm");
     const pageW = doc.internal.pageSize.getWidth();
 
     doc.setFontSize(14);
-    doc.text(`Divergências — ${mesLabel}`, 14, 15);
+    doc.text(`Divergências — ${divLabel}`, 14, 15);
     doc.setFontSize(8);
     doc.text(`Gerado em ${now}`, 14, 21);
 
@@ -326,7 +355,7 @@ export default function RealtimeTrackingPage() {
     // ── Summary page ──
     doc.addPage();
     doc.setFontSize(14);
-    doc.text(`Resumo por Técnico — ${mesLabel}`, 14, 15);
+    doc.text(`Resumo por Técnico — ${divLabel}`, 14, 15);
 
     const summaryRows: string[][] = [];
     const allTechNames = [...new Set([...techNamesAtrasos, ...techNamesPend])].sort();
@@ -476,16 +505,55 @@ export default function RealtimeTrackingPage() {
                     <SheetTrigger asChild>
                       <Button variant="outline" size="sm" className="h-8 text-xs border-red-200 text-red-700 hover:bg-red-50">
                         <FileWarning className="h-3.5 w-3.5 mr-1.5" />
-                        Divergências do Mês
+                        Divergências
                       </Button>
                     </SheetTrigger>
                     <SheetContent className="w-[600px] sm:max-w-[600px]">
                       <SheetHeader>
                         <SheetTitle className="flex items-center gap-2">
                           <AlertTriangle className="h-5 w-5 text-red-500" />
-                          Divergências — {format(selectedDate, "MMMM yyyy", { locale: ptBR })}
+                          Divergências — {divLabel}
                         </SheetTitle>
                       </SheetHeader>
+                      <div className="mt-3 flex flex-wrap gap-2 items-end">
+                        <Select value={divPeriodo} onValueChange={(v) => setDivPeriodo(v as any)}>
+                          <SelectTrigger className="w-36 h-8 text-xs">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="semana">Esta Semana</SelectItem>
+                            <SelectItem value="mes">Este Mês</SelectItem>
+                            <SelectItem value="ano">Este Ano</SelectItem>
+                            <SelectItem value="custom">Personalizado</SelectItem>
+                          </SelectContent>
+                        </Select>
+                        {divPeriodo === "custom" && (
+                          <>
+                            <Popover>
+                              <PopoverTrigger asChild>
+                                <Button variant="outline" size="sm" className="h-8 text-xs w-28 justify-start">
+                                  <CalendarIcon className="mr-1 h-3 w-3" />
+                                  {divCustomStart ? format(divCustomStart, "dd/MM/yy") : "Início"}
+                                </Button>
+                              </PopoverTrigger>
+                              <PopoverContent className="w-auto p-0" align="start">
+                                <Calendar mode="single" selected={divCustomStart} onSelect={setDivCustomStart} locale={ptBR} className="pointer-events-auto" />
+                              </PopoverContent>
+                            </Popover>
+                            <Popover>
+                              <PopoverTrigger asChild>
+                                <Button variant="outline" size="sm" className="h-8 text-xs w-28 justify-start">
+                                  <CalendarIcon className="mr-1 h-3 w-3" />
+                                  {divCustomEnd ? format(divCustomEnd, "dd/MM/yy") : "Fim"}
+                                </Button>
+                              </PopoverTrigger>
+                              <PopoverContent className="w-auto p-0" align="start">
+                                <Calendar mode="single" selected={divCustomEnd} onSelect={setDivCustomEnd} locale={ptBR} className="pointer-events-auto" />
+                              </PopoverContent>
+                            </Popover>
+                          </>
+                        )}
+                      </div>
                       <div className="mt-4">
                         {loadingAtrasadas ? (
                           <div className="flex items-center justify-center py-8">
