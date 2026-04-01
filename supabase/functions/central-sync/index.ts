@@ -648,6 +648,25 @@ Deno.serve(async (req) => {
         globalOsUpdated += count || 0;
       }
 
+      // Second pass: fill gc_os_tarefa_exec for OS that have it null but GC has it
+      let execFilled = 0;
+      for (const osId of dbOsIds) {
+        const fresh = allGcOsById[osId];
+        if (!fresh?.gc_os_tarefa_exec) continue;
+        const { count } = await sbClient
+          .from("tarefas_central")
+          .update({
+            gc_os_tarefa_exec: fresh.gc_os_tarefa_exec,
+            atualizado_em: new Date().toISOString(),
+          }, { count: "exact" })
+          .eq("gc_os_id", osId)
+          .is("gc_os_tarefa_exec", null);
+        execFilled += count || 0;
+      }
+      if (execFilled > 0) {
+        console.log(`[central-sync] gc_os_tarefa_exec preenchido para ${execFilled} registros`);
+      }
+
       const dbOrcIds = new Set<string>();
       for (let from = 0; ; from += 1000) {
         let query = sbClient
