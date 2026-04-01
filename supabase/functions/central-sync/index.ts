@@ -539,20 +539,25 @@ Deno.serve(async (req) => {
         if (orcPayload.gc_orcamento_id) allGcOrcById[orcPayload.gc_orcamento_id] = orcPayload;
       }
 
-      // Fetch ALL distinct gc_os_id values from the DB
+      // Fetch distinct gc_os_id values from the DB — scoped to period when dates are provided
+      const isScoped = !!bodyStart && !!bodyEnd;
       const dbOsIds = new Set<string>();
       for (let from = 0; ; from += 1000) {
-        const { data: chunk } = await sbClient
+        let query = sbClient
           .from("tarefas_central")
           .select("gc_os_id")
-          .not("gc_os_id", "is", null)
-          .range(from, from + 999);
+          .not("gc_os_id", "is", null);
+        if (isScoped) {
+          query = query.gte("data_tarefa", startDate).lte("data_tarefa", endDate);
+        }
+        const { data: chunk } = await query.range(from, from + 999);
         if (!chunk || chunk.length === 0) break;
         for (const r of chunk) {
           if (r.gc_os_id) dbOsIds.add(r.gc_os_id);
         }
         if (chunk.length < 1000) break;
       }
+      console.log(`[central-sync] OS no banco${isScoped ? ` (${startDate}→${endDate})` : ' (global)'}: ${dbOsIds.size}`);
 
       // For OS in DB but NOT in GC listing (e.g. cancelled OS filtered by API), fetch individually
       const missingOsIds = Array.from(dbOsIds).filter(id => !allGcOsById[id]);
@@ -609,11 +614,14 @@ Deno.serve(async (req) => {
 
       const dbOrcIds = new Set<string>();
       for (let from = 0; ; from += 1000) {
-        const { data: chunk } = await sbClient
+        let query = sbClient
           .from("tarefas_central")
           .select("gc_orcamento_id")
-          .not("gc_orcamento_id", "is", null)
-          .range(from, from + 999);
+          .not("gc_orcamento_id", "is", null);
+        if (isScoped) {
+          query = query.gte("data_tarefa", startDate).lte("data_tarefa", endDate);
+        }
+        const { data: chunk } = await query.range(from, from + 999);
         if (!chunk || chunk.length === 0) break;
         for (const r of chunk) {
           if (r.gc_orcamento_id) dbOrcIds.add(r.gc_orcamento_id);
