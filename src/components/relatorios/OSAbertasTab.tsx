@@ -439,7 +439,8 @@ export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, o
           return String(nested?.atributo_id || nested?.id || "") === "73344";
         });
         const nested = execAttr?.atributo || execAttr;
-        const execId = String(nested?.conteudo || nested?.valor || "").trim();
+        const rawExecId = String(nested?.conteudo || nested?.valor || "").trim();
+        const execId = rawExecId.split("/").map(s => s.trim()).find(s => /^\d+$/.test(s)) || "";
 
         if (execId) {
           const { data: taskData, error: taskError } = await supabase.functions.invoke("auvo-task-update", {
