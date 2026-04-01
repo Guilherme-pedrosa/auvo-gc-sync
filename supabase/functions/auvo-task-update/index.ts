@@ -234,8 +234,8 @@ Deno.serve(async (req) => {
       const { taskId } = body;
       if (!taskId) {
         return new Response(
-          JSON.stringify({ error: "taskId é obrigatório" }),
-          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          JSON.stringify({ data: null, status: 400, error: "taskId é obrigatório" }),
+          { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
       }
 
