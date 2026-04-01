@@ -55,6 +55,13 @@ interface Props {
 const formatCurrency = (val: number) =>
   val.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 
+/** Parse slash-separated exec IDs into an array of valid numeric strings */
+const parseExecIds = (raw: unknown): string[] => {
+  const str = String(raw ?? "").trim();
+  if (!str) return [];
+  return str.split("/").map(s => s.trim()).filter(s => /^\d+$/.test(s));
+};
+
 const getAuvoStatusFromTask = (task: any) => {
   const ts = task?.taskStatus;
   const statusCode = typeof ts === "number"
@@ -297,9 +304,9 @@ export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, o
         if (cancelled) break;
 
         try {
-          let execId = String(item.gc_os_tarefa_exec || "").trim();
+          let rawExecValue = String(item.gc_os_tarefa_exec || "").trim();
 
-          if (!execId && item.gc_os_id) {
+          if (!rawExecValue && item.gc_os_id) {
             const { data: gcData, error } = await supabase.functions.invoke("gc-proxy", {
               body: { endpoint: `/api/ordens_servicos/${item.gc_os_id}`, method: "GET" },
             });
@@ -312,58 +319,60 @@ export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, o
               return String(nested?.atributo_id || nested?.id || "") === "73344";
             });
             const nested = execAttr?.atributo || execAttr;
-            execId = String(nested?.conteudo || nested?.valor || "").trim();
+            rawExecValue = String(nested?.conteudo || nested?.valor || "").trim();
           }
 
-          // Handle multiple exec task IDs separated by "/" — use the first valid one
-          const execIds = execId.split("/").map(s => s.trim()).filter(s => /^\d+$/.test(s));
-          const firstExecId = execIds[0] || "";
+          // Parse ALL exec task IDs (slash means multiple execution tasks)
+          const allExecIds = parseExecIds(rawExecValue);
 
-          if (!firstExecId) {
+          if (allExecIds.length === 0) {
             updates.set(String(item.gc_os_id), { execTaskId: "", tecnico: "", dataTarefa: "", status: "" });
             continue;
           }
 
-          const { data: taskData, error: taskError } = await supabase.functions.invoke("auvo-task-update", {
-            body: { action: "get", taskId: Number(firstExecId) },
-          });
-          if (taskError || cancelled) continue;
+          // Resolve each exec task and pick best data
+          let bestTecnico = "";
+          let bestDate = "";
+          let bestStatus = "";
 
-          const taskObj = taskData?.data?.result ?? taskData?.data ?? null;
+          for (const eid of allExecIds) {
+            if (cancelled) break;
+            const { data: taskData, error: taskError } = await supabase.functions.invoke("auvo-task-update", {
+              body: { action: "get", taskId: Number(eid) },
+            });
+            if (taskError || cancelled) continue;
 
-          // If Auvo returns empty/404 (task expired), fallback to GC OS vendedor
-          if (!taskObj || (taskData?.status === 404)) {
-            // Try to get vendedor info from GC OS detail
-            if (item.gc_os_id) {
-              try {
-                const { data: gcFallback } = await supabase.functions.invoke("gc-proxy", {
-                  body: { endpoint: `/api/ordens_servicos/${item.gc_os_id}`, method: "GET" },
-                });
-                const osObj = gcFallback?.data?.data ?? gcFallback?.data ?? null;
-                const vendedor = osObj?.vendedor?.nome || osObj?.vendedor_nome || item.gc_os_vendedor || "";
-                updates.set(String(item.gc_os_id), {
-                  execTaskId: execId,
-                  tecnico: vendedor,
-                  dataTarefa: item.gc_os_data_saida || item.gc_os_data || "",
-                  status: "",
-                });
-                continue;
-              } catch { /* ignore */ }
+            const taskObj = taskData?.data?.result ?? taskData?.data ?? null;
+            if (!taskObj) continue;
+
+            const userTo = taskObj?.userTo || taskObj?.user_to || {};
+            const tecName = String(taskObj?.userToName || userTo?.name || userTo?.login || taskObj?.technician || "").trim();
+            const taskDate = taskObj?.taskDate || taskObj?.task_date || taskObj?.date || "";
+            const dateStr = taskDate ? String(taskDate).substring(0, 10) : "";
+            const invalidDate = dateStr.startsWith("0001-01-01");
+            const status = getAuvoStatusFromTask(taskObj);
+
+            // Prefer task with a valid date & assigned technician
+            if (!bestTecnico && tecName) bestTecnico = tecName;
+            if (!bestDate && dateStr && !invalidDate) bestDate = dateStr;
+            if (!bestStatus && status && status !== "Agendada") bestStatus = status;
+            // Override with more meaningful data
+            if (tecName && dateStr && !invalidDate) {
+              bestTecnico = tecName;
+              bestDate = dateStr;
+              bestStatus = status;
             }
-            updates.set(String(item.gc_os_id), { execTaskId: execId, tecnico: item.gc_os_vendedor || "", dataTarefa: "", status: "" });
-            continue;
           }
 
-          const userTo = taskObj?.userTo || taskObj?.user_to || {};
-          const tecName = userTo?.name || userTo?.login || taskObj?.technician || "";
-          const taskDate = taskObj?.taskDate || taskObj?.task_date || taskObj?.date || "";
-          const dateOnly = taskDate ? String(taskDate).substring(0, 10) : "";
+          // Fallback to GC vendedor if no technician resolved
+          if (!bestTecnico) bestTecnico = item.gc_os_vendedor || "";
+          if (!bestDate) bestDate = item.gc_os_data_saida || item.gc_os_data || "";
 
           updates.set(String(item.gc_os_id), {
-            execTaskId: execId,
-            tecnico: tecName,
-            dataTarefa: dateOnly,
-            status: taskObj ? getAuvoStatusFromTask(taskObj) : "",
+            execTaskId: rawExecValue,
+            tecnico: bestTecnico,
+            dataTarefa: bestDate,
+            status: bestStatus,
           });
         } catch {
           // ignore individual failures
