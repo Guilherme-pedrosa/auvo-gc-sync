@@ -439,7 +439,8 @@ export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, o
           return String(nested?.atributo_id || nested?.id || "") === "73344";
         });
         const nested = execAttr?.atributo || execAttr;
-        const execId = String(nested?.conteudo || nested?.valor || "").trim();
+        const rawExecId = String(nested?.conteudo || nested?.valor || "").trim();
+        const execId = rawExecId.split("/").map(s => s.trim()).find(s => /^\d+$/.test(s)) || "";
 
         if (execId) {
           const { data: taskData, error: taskError } = await supabase.functions.invoke("auvo-task-update", {
@@ -482,8 +483,9 @@ export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, o
         });
         if (!attr) return null;
         const nested = attr?.atributo || attr;
-        const valor = String(nested?.conteudo || nested?.valor || "").trim();
-        return valor && /^\d+$/.test(valor) ? valor : null;
+        const raw = String(nested?.conteudo || nested?.valor || "").trim();
+        const firstId = raw.split("/").map(s => s.trim()).find(s => /^\d+$/.test(s));
+        return firstId || null;
       };
       return { osTaskId: findAttrValue("73343"), execTaskId: findAttrValue("73344") };
     } catch { return { execTaskId: null, osTaskId: null }; }
