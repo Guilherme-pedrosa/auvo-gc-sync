@@ -512,9 +512,48 @@ export default function RealtimeTrackingPage() {
                       <SheetHeader>
                         <SheetTitle className="flex items-center gap-2">
                           <AlertTriangle className="h-5 w-5 text-red-500" />
-                          Divergências — {format(selectedDate, "MMMM yyyy", { locale: ptBR })}
+                          Divergências — {divLabel}
                         </SheetTitle>
                       </SheetHeader>
+                      <div className="mt-3 flex flex-wrap gap-2 items-end">
+                        <Select value={divPeriodo} onValueChange={(v) => setDivPeriodo(v as any)}>
+                          <SelectTrigger className="w-36 h-8 text-xs">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="semana">Esta Semana</SelectItem>
+                            <SelectItem value="mes">Este Mês</SelectItem>
+                            <SelectItem value="ano">Este Ano</SelectItem>
+                            <SelectItem value="custom">Personalizado</SelectItem>
+                          </SelectContent>
+                        </Select>
+                        {divPeriodo === "custom" && (
+                          <>
+                            <Popover>
+                              <PopoverTrigger asChild>
+                                <Button variant="outline" size="sm" className="h-8 text-xs w-28 justify-start">
+                                  <CalendarIcon className="mr-1 h-3 w-3" />
+                                  {divCustomStart ? format(divCustomStart, "dd/MM/yy") : "Início"}
+                                </Button>
+                              </PopoverTrigger>
+                              <PopoverContent className="w-auto p-0" align="start">
+                                <Calendar mode="single" selected={divCustomStart} onSelect={setDivCustomStart} locale={ptBR} className="pointer-events-auto" />
+                              </PopoverContent>
+                            </Popover>
+                            <Popover>
+                              <PopoverTrigger asChild>
+                                <Button variant="outline" size="sm" className="h-8 text-xs w-28 justify-start">
+                                  <CalendarIcon className="mr-1 h-3 w-3" />
+                                  {divCustomEnd ? format(divCustomEnd, "dd/MM/yy") : "Fim"}
+                                </Button>
+                              </PopoverTrigger>
+                              <PopoverContent className="w-auto p-0" align="start">
+                                <Calendar mode="single" selected={divCustomEnd} onSelect={setDivCustomEnd} locale={ptBR} className="pointer-events-auto" />
+                              </PopoverContent>
+                            </Popover>
+                          </>
+                        )}
+                      </div>
                       <div className="mt-4">
                         {loadingAtrasadas ? (
                           <div className="flex items-center justify-center py-8">
