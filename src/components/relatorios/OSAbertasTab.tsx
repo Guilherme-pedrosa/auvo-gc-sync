@@ -780,6 +780,7 @@ export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, o
                                   <TableHead className="text-xs">Situação</TableHead>
                                   <TableHead className="text-xs">Téc. OS</TableHead>
                                   <TableHead className="text-xs">Téc. Execução</TableHead>
+                                  <TableHead className="text-xs">Tarefa Exec.</TableHead>
                                   <TableHead className="text-xs">Data OS</TableHead>
                                   <TableHead className="text-xs">Data Execução</TableHead>
                                   <TableHead className="text-xs text-right">Valor</TableHead>
@@ -819,6 +820,9 @@ export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, o
                                           const live = liveExecMap.get(String(item.gc_os_id));
                                           return execRow?.tecnico || live?.tecnico || item.gc_os_vendedor || "—";
                                         })()}
+                                      </TableCell>
+                                      <TableCell className="text-xs font-mono">
+                                        {item.gc_os_tarefa_exec || "—"}
                                       </TableCell>
                                       <TableCell>
                                         <span>{item.gc_os_data || item.data_tarefa || "—"}</span>
