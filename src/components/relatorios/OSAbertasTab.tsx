@@ -144,8 +144,8 @@ export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, o
     setChangingId(item.gc_os_id);
     try {
       // Use the EXECUTION task's technician (gc_os_tarefa_exec) as the vendor, not the OS task's
-      const execTaskId = item.gc_os_tarefa_exec;
-      const execTask = execTaskId ? allTasks.find((t: any) => t.auvo_task_id === execTaskId) : null;
+      const firstExecId = parseExecIds(item.gc_os_tarefa_exec)[0] || null;
+      const execTask = firstExecId ? allTasks.find((t: any) => String(t.auvo_task_id) === firstExecId) : null;
       const execTecnicoId = execTask?.tecnico_id || item.tecnico_id; // fallback to OS task tech
       const mapping = vendedorMap?.find(m => m.auvo_user_id === execTecnicoId);
       const gcVendedorId = mapping?.gc_vendedor_id || null;
@@ -225,13 +225,14 @@ export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, o
 
   // Helper to resolve exec status for an item
   const getItemExecStatus = useCallback((item: any): string => {
-    const execId = item.gc_os_tarefa_exec;
+    const allIds = parseExecIds(item.gc_os_tarefa_exec);
     const live = liveExecMap.get(String(item.gc_os_id));
     if (live?.status) return live.status;
-    if (execId && execTaskStatusMap?.get(execId)) return execTaskStatusMap.get(execId)!;
-    if (execId) {
-      const execRow = allTasks.find((t: any) => t.auvo_task_id === execId);
-      return execRow?.status_auvo || "";
+    for (const eid of allIds) {
+      const mapped = execTaskStatusMap?.get(eid);
+      if (mapped) return mapped;
+      const execRow = allTasks.find((t: any) => String(t.auvo_task_id) === eid);
+      if (execRow?.status_auvo) return execRow.status_auvo;
     }
     return "";
   }, [liveExecMap, execTaskStatusMap, allTasks]);
@@ -1498,8 +1499,8 @@ export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, o
 
               {/* Warning: exec task already scheduled */}
               {(() => {
-                const execId = editingCard.gc_os_tarefa_exec;
-                const execRow = execId ? allTasks.find((t: any) => t.auvo_task_id === execId) : null;
+                const firstEid = parseExecIds(editingCard.gc_os_tarefa_exec)[0] || null;
+                const execRow = firstEid ? allTasks.find((t: any) => String(t.auvo_task_id) === firstEid) : null;
                 const execDate = execRow?.data_tarefa;
                 const execTecnico = execRow?.tecnico;
                 const osDate = editingCard.gc_os_data || editingCard.data_tarefa;
