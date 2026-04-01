@@ -231,8 +231,9 @@ export default function OSKanbanPage() {
         });
         if (!attr) return null;
         const nested = attr?.atributo || attr;
-        const valor = String(nested?.conteudo || nested?.valor || "").trim();
-        return valor && /^\d+$/.test(valor) ? valor : null;
+        const raw = String(nested?.conteudo || nested?.valor || "").trim();
+        const firstId = raw.split("/").map(s => s.trim()).find(s => /^\d+$/.test(s));
+        return firstId || null;
       };
 
       return {
