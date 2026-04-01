@@ -505,7 +505,7 @@ export default function RealtimeTrackingPage() {
                     <SheetTrigger asChild>
                       <Button variant="outline" size="sm" className="h-8 text-xs border-red-200 text-red-700 hover:bg-red-50">
                         <FileWarning className="h-3.5 w-3.5 mr-1.5" />
-                        Divergências do Mês
+                        Divergências
                       </Button>
                     </SheetTrigger>
                     <SheetContent className="w-[600px] sm:max-w-[600px]">
