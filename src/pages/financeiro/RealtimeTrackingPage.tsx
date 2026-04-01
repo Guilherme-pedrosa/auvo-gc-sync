@@ -85,6 +85,9 @@ export default function RealtimeTrackingPage() {
   const [expandedTechs, setExpandedTechs] = useState<Set<string>>(new Set());
   const [headerMinimized, setHeaderMinimized] = useState(false);
   const [tvMode, setTvMode] = useState(false);
+  const [divPeriodo, setDivPeriodo] = useState<"mes" | "semana" | "ano" | "custom">("mes");
+  const [divCustomStart, setDivCustomStart] = useState<Date | undefined>(undefined);
+  const [divCustomEnd, setDivCustomEnd] = useState<Date | undefined>(undefined);
   const dateStr = format(selectedDate, "yyyy-MM-dd");
 
   const [lastFetchTime, setLastFetchTime] = useState<string | null>(null);
