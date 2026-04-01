@@ -1266,8 +1266,10 @@ Deno.serve(async (req) => {
 
     console.log(`[central-sync] Concluído: ${upserted} upserted, ${errors} erros, ${deleted || 0} removidos (> 6 meses)`);
 
+    const auvoFailed = auvoTasks.length === 0;
     return new Response(JSON.stringify({
       success: true,
+      auvo_error: auvoFailed ? "API do Auvo retornou erro (502/503). Tarefas não foram atualizadas. Tente novamente em alguns minutos." : null,
       periodo: { inicio: startDate, fim: endDate },
       auvo_tarefas: auvoTasks.length,
       gc_orcamentos: Object.keys(gcOrcMap).length,
