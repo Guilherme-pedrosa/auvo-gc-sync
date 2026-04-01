@@ -355,7 +355,7 @@ export default function RealtimeTrackingPage() {
     // ── Summary page ──
     doc.addPage();
     doc.setFontSize(14);
-    doc.text(`Resumo por Técnico — ${mesLabel}`, 14, 15);
+    doc.text(`Resumo por Técnico — ${divLabel}`, 14, 15);
 
     const summaryRows: string[][] = [];
     const allTechNames = [...new Set([...techNamesAtrasos, ...techNamesPend])].sort();
