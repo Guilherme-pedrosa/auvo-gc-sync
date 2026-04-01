@@ -154,13 +154,13 @@ export default function RealtimeTrackingPage() {
 
   // Monthly pendências from tarefas_central
   const { data: pendenciasMesRaw, refetch: refetchPendencias } = useQuery({
-    queryKey: ["pendencias-mes", monthStart, monthEnd],
+    queryKey: ["pendencias-mes", divStart, divEnd],
     queryFn: async () => {
       const { data, error } = await supabase
         .from("tarefas_central")
         .select("auvo_task_id, cliente, tecnico, data_tarefa, pendencia, descricao, gc_os_codigo, status_auvo, questionario_respostas")
-        .gte("data_tarefa", monthStart)
-        .lte("data_tarefa", monthEnd)
+        .gte("data_tarefa", divStart)
+        .lte("data_tarefa", divEnd)
         .neq("pendencia", "")
         .not("pendencia", "is", null)
         .order("data_tarefa", { ascending: false });
