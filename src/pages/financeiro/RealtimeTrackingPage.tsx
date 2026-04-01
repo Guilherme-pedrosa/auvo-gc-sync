@@ -143,8 +143,8 @@ export default function RealtimeTrackingPage() {
       const { data, error } = await supabase
         .from("atividades_nao_executadas")
         .select("*")
-        .gte("data_planejada", monthStart)
-        .lte("data_planejada", monthEnd)
+        .gte("data_planejada", divStart)
+        .lte("data_planejada", divEnd)
         .order("data_planejada", { ascending: false });
       if (error) throw error;
       return data || [];
