@@ -108,11 +108,37 @@ export default function RealtimeTrackingPage() {
   });
 
   // Monthly late tasks query
-  const monthStart = format(startOfMonth(selectedDate), "yyyy-MM-dd");
-  const monthEnd = format(endOfMonth(selectedDate), "yyyy-MM-dd");
+  const getDivDates = () => {
+    const ref = selectedDate;
+    switch (divPeriodo) {
+      case "semana":
+        return { start: format(startOfWeek(ref, { weekStartsOn: 1 }), "yyyy-MM-dd"), end: format(ref, "yyyy-MM-dd") };
+      case "ano":
+        return { start: format(startOfYear(ref), "yyyy-MM-dd"), end: format(endOfMonth(ref), "yyyy-MM-dd") };
+      case "custom":
+        return {
+          start: divCustomStart ? format(divCustomStart, "yyyy-MM-dd") : format(startOfMonth(ref), "yyyy-MM-dd"),
+          end: divCustomEnd ? format(divCustomEnd, "yyyy-MM-dd") : format(endOfMonth(ref), "yyyy-MM-dd"),
+        };
+      default: // mes
+        return { start: format(startOfMonth(ref), "yyyy-MM-dd"), end: format(endOfMonth(ref), "yyyy-MM-dd") };
+    }
+  };
+  const divDates = getDivDates();
+  const divStart = divDates.start;
+  const divEnd = divDates.end;
+
+  const divLabel = (() => {
+    switch (divPeriodo) {
+      case "semana": return `semana de ${format(new Date(divStart + "T12:00:00"), "dd/MM")} a ${format(new Date(divEnd + "T12:00:00"), "dd/MM/yyyy")}`;
+      case "ano": return format(selectedDate, "yyyy");
+      case "custom": return `${format(new Date(divStart + "T12:00:00"), "dd/MM/yy")} → ${format(new Date(divEnd + "T12:00:00"), "dd/MM/yy")}`;
+      default: return format(selectedDate, "MMMM yyyy", { locale: ptBR });
+    }
+  })();
 
   const { data: atrasadasMes, isLoading: loadingAtrasadas, refetch: refetchAtrasadas } = useQuery({
-    queryKey: ["atrasadas-mes", monthStart, monthEnd],
+    queryKey: ["atrasadas-mes", divStart, divEnd],
     queryFn: async () => {
       const { data, error } = await supabase
         .from("atividades_nao_executadas")
