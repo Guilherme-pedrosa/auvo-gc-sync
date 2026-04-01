@@ -594,6 +594,16 @@ Deno.serve(async (req) => {
             const data = await resp.json().catch(() => null);
             const os = data?.data || data;
             if (!os || !os.id) return null;
+            // Extract tarefa execução (73344) from atributos
+            const atributos: any[] = os.atributos || [];
+            const attrExec = atributos.find((a: any) => {
+              const nested = a?.atributo || a;
+              return String(nested.atributo_id || nested.id || "") === GC_ATRIBUTO_TAREFA_EXEC;
+            });
+            const execTaskVal = attrExec
+              ? String((attrExec?.atributo || attrExec)?.conteudo || (attrExec?.atributo || attrExec)?.valor || "").trim()
+              : "";
+            const gc_os_tarefa_exec = execTaskVal && /^\d+$/.test(execTaskVal) ? execTaskVal : null;
             return {
               gc_os_id: String(os.id),
               gc_os_situacao: String(os.nome_situacao || ""),
@@ -603,6 +613,7 @@ Deno.serve(async (req) => {
               gc_os_vendedor: String(os.nome_vendedor || ""),
               gc_os_cliente: String(os.nome_cliente || ""),
               gc_os_data_saida: String(os.data_saida || "").split("T")[0] || null,
+              gc_os_tarefa_exec,
             };
           }));
           for (const fresh of results) {
