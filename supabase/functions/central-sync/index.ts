@@ -627,9 +627,7 @@ Deno.serve(async (req) => {
       for (const osId of dbOsIds) {
         const fresh = allGcOsById[osId];
         if (!fresh) continue;
-        const { count } = await sbClient
-          .from("tarefas_central")
-          .update({
+        const updatePayload: any = {
             gc_os_situacao: fresh.gc_os_situacao,
             gc_os_situacao_id: fresh.gc_os_situacao_id,
             gc_os_cor_situacao: fresh.gc_os_cor_situacao,
@@ -638,7 +636,13 @@ Deno.serve(async (req) => {
             gc_os_cliente: fresh.gc_os_cliente,
             gc_os_data_saida: fresh.gc_os_data_saida,
             atualizado_em: new Date().toISOString(),
-          }, { count: "exact" })
+          };
+        if (fresh.gc_os_tarefa_exec) {
+          updatePayload.gc_os_tarefa_exec = fresh.gc_os_tarefa_exec;
+        }
+        const { count } = await sbClient
+          .from("tarefas_central")
+          .update(updatePayload, { count: "exact" })
           .eq("gc_os_id", osId)
           .neq("gc_os_situacao", fresh.gc_os_situacao);
         globalOsUpdated += count || 0;
