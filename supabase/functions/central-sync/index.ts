@@ -179,8 +179,16 @@ type AuvoTaskSnapshot = {
 
 async function fetchAuvoTaskSnapshot(bearerToken: string, taskId: string): Promise<AuvoTaskSnapshot | null> {
   const url = `${AUVO_BASE_URL}/tasks/${encodeURIComponent(taskId)}`;
-  const response = await rateLimitedFetch(url, { headers: auvoHeaders(bearerToken) }, "auvo");
-  if (!response.ok) return null;
+  let response: Response | null = null;
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    response = await rateLimitedFetch(url, { headers: auvoHeaders(bearerToken) }, "auvo");
+    if (response.status === 502 || response.status === 503) {
+      await new Promise(r => setTimeout(r, attempt * 2000));
+      continue;
+    }
+    break;
+  }
+  if (!response || !response.ok) return null;
 
   const json = await response.json().catch(() => ({}));
   const result = json?.result || json || {};
