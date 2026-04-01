@@ -179,8 +179,16 @@ type AuvoTaskSnapshot = {
 
 async function fetchAuvoTaskSnapshot(bearerToken: string, taskId: string): Promise<AuvoTaskSnapshot | null> {
   const url = `${AUVO_BASE_URL}/tasks/${encodeURIComponent(taskId)}`;
-  const response = await rateLimitedFetch(url, { headers: auvoHeaders(bearerToken) }, "auvo");
-  if (!response.ok) return null;
+  let response: Response | null = null;
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    response = await rateLimitedFetch(url, { headers: auvoHeaders(bearerToken) }, "auvo");
+    if (response.status === 502 || response.status === 503) {
+      await new Promise(r => setTimeout(r, attempt * 2000));
+      continue;
+    }
+    break;
+  }
+  if (!response || !response.ok) return null;
 
   const json = await response.json().catch(() => ({}));
   const result = json?.result || json || {};
@@ -241,15 +249,28 @@ async function fetchAuvoTasksForPeriod(bearerToken: string, startDate: string, e
     const paramFilter = encodeURIComponent(JSON.stringify(filterObj));
     const url = `${AUVO_BASE_URL}/tasks/?page=${page}&pageSize=${pageSize}&order=desc&paramFilter=${paramFilter}`;
 
-    const response = await rateLimitedFetch(url, { headers: auvoHeaders(bearerToken) }, "auvo");
+    let response: Response | null = null;
+    const MAX_RETRIES = 3;
+    for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+      response = await rateLimitedFetch(url, { headers: auvoHeaders(bearerToken) }, "auvo");
+      if (response.status === 502 || response.status === 503) {
+        const waitMs = attempt * 3000; // 3s, 6s, 9s
+        console.warn(`[central-sync] Auvo ${startDate}→${endDate} page ${page}: ${response.status} — retry ${attempt}/${MAX_RETRIES} em ${waitMs}ms`);
+        await new Promise(r => setTimeout(r, waitMs));
+        continue;
+      }
+      break;
+    }
     
+    if (!response) break;
+
     if (response.status === 404) {
       console.log(`[central-sync] Auvo ${startDate}→${endDate} page ${page}: 404 (fim)`);
       break;
     }
     if (!response.ok) {
       const text = await response.text();
-      console.error(`[central-sync] Auvo ${startDate}→${endDate} page ${page} error ${response.status}: ${text.substring(0, 200)}`);
+      console.error(`[central-sync] Auvo ${startDate}→${endDate} page ${page} error ${response.status} (após ${MAX_RETRIES} tentativas): ${text.substring(0, 200)}`);
       break;
     }
 
@@ -1253,8 +1274,10 @@ Deno.serve(async (req) => {
 
     console.log(`[central-sync] Concluído: ${upserted} upserted, ${errors} erros, ${deleted || 0} removidos (> 6 meses)`);
 
+    const auvoFailed = auvoTasks.length === 0;
     return new Response(JSON.stringify({
       success: true,
+      auvo_error: auvoFailed ? "API do Auvo retornou erro (502/503). Tarefas não foram atualizadas. Tente novamente em alguns minutos." : null,
       periodo: { inicio: startDate, fim: endDate },
       auvo_tarefas: auvoTasks.length,
       gc_orcamentos: Object.keys(gcOrcMap).length,

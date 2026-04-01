@@ -156,11 +156,16 @@ export default function AgendaSemanalPage() {
     const syncStartedAt = new Date().toISOString();
 
     // Fire-and-forget: don't await the edge function (it may timeout on the client)
+    let syncResponse: any = null;
     supabase.functions.invoke("central-sync", {
       body: { start_date: queryStartDate, end_date: queryEndDate },
     }).then((res) => {
+      syncResponse = res.data;
       if (res.data?.success !== false) {
         console.log("[agenda] Sync retornou com sucesso direto");
+      }
+      if (res.data?.auvo_error) {
+        toast.error(res.data.auvo_error);
       }
     }).catch(() => {
       console.log("[agenda] Sync em background (timeout do cliente, mas continua no servidor)");
