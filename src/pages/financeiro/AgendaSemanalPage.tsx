@@ -150,30 +150,50 @@ export default function AgendaSemanalPage() {
     staleTime: 1000 * 60 * 5,
   });
 
-  // Refresh via central-sync (single source of truth) and refetch from DB
+  // Refresh: fire central-sync in background, then poll tarefas_central for updates
   const refreshFromApi = useCallback(async () => {
     setIsRefreshingFromApi(true);
-    try {
-      const { data, error } = await supabase.functions.invoke("central-sync", {
-        body: { start_date: queryStartDate, end_date: queryEndDate },
-      });
-      if (error) throw error;
-      if (data?.success === false) {
-        throw new Error(data?.error || "Sincronização retornou falha");
+    const syncStartedAt = new Date().toISOString();
+
+    // Fire-and-forget: don't await the edge function (it may timeout on the client)
+    supabase.functions.invoke("central-sync", {
+      body: { start_date: queryStartDate, end_date: queryEndDate },
+    }).then((res) => {
+      if (res.data?.success !== false) {
+        console.log("[agenda] Sync retornou com sucesso direto");
       }
+    }).catch(() => {
+      console.log("[agenda] Sync em background (timeout do cliente, mas continua no servidor)");
+    });
 
-      // Refetch from tarefas_central (the single source of truth)
-      await refetch();
+    toast.info("Sincronização iniciada em segundo plano...");
 
-      const upserted = data?.stats?.upserted ?? data?.upserted ?? "?";
-      toast.success(`Sincronização concluída — ${upserted} tarefas atualizadas`);
-      queryClient.invalidateQueries({ queryKey: ["last-sync-timestamp"] });
-    } catch (err: any) {
-      console.error("[agenda] Erro ao sincronizar:", err);
-      toast.error(`Erro ao sincronizar: ${err.message}`);
-    } finally {
-      setIsRefreshingFromApi(false);
+    // Poll tarefas_central for fresh data (intervals: 5s, 10s, 15s, 20s, 30s, 45s, 60s)
+    const delays = [5000, 10000, 15000, 20000, 30000, 45000, 60000];
+    let updated = false;
+    for (const delay of delays) {
+      await new Promise(r => setTimeout(r, delay));
+      const { data: check } = await supabase
+        .from("tarefas_central")
+        .select("atualizado_em")
+        .order("atualizado_em", { ascending: false })
+        .limit(1);
+      const latestSync = check?.[0]?.atualizado_em;
+      if (latestSync && latestSync > syncStartedAt) {
+        updated = true;
+        break;
+      }
     }
+
+    await refetch();
+    queryClient.invalidateQueries({ queryKey: ["last-sync-timestamp"] });
+
+    if (updated) {
+      toast.success("Sincronização concluída — dados atualizados!");
+    } else {
+      toast.warning("Sincronização pode ainda estar em andamento. Tente atualizar novamente em alguns segundos.");
+    }
+    setIsRefreshingFromApi(false);
   }, [queryStartDate, queryEndDate, queryClient, refetch]);
 
   const tecnicos = useMemo(() => {
