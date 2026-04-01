@@ -614,11 +614,14 @@ Deno.serve(async (req) => {
 
       const dbOrcIds = new Set<string>();
       for (let from = 0; ; from += 1000) {
-        const { data: chunk } = await sbClient
+        let query = sbClient
           .from("tarefas_central")
           .select("gc_orcamento_id")
-          .not("gc_orcamento_id", "is", null)
-          .range(from, from + 999);
+          .not("gc_orcamento_id", "is", null);
+        if (isScoped) {
+          query = query.gte("data_tarefa", startDate).lte("data_tarefa", endDate);
+        }
+        const { data: chunk } = await query.range(from, from + 999);
         if (!chunk || chunk.length === 0) break;
         for (const r of chunk) {
           if (r.gc_orcamento_id) dbOrcIds.add(r.gc_orcamento_id);
