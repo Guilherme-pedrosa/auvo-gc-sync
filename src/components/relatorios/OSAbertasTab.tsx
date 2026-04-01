@@ -821,6 +821,9 @@ export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, o
                                           return execRow?.tecnico || live?.tecnico || item.gc_os_vendedor || "—";
                                         })()}
                                       </TableCell>
+                                      <TableCell className="text-xs font-mono">
+                                        {item.gc_os_tarefa_exec || "—"}
+                                      </TableCell>
                                       <TableCell>
                                         <span>{item.gc_os_data || item.data_tarefa || "—"}</span>
                                       </TableCell>
