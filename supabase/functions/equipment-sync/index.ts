@@ -46,6 +46,7 @@ async function fetchAllEquipments(token: string): Promise<any[]> {
 
     if (allEquipments.length >= totalItems) break;
     page++;
+    await new Promise(r => setTimeout(r, 1000)); // throttle to avoid 429
   }
 
   return allEquipments;
