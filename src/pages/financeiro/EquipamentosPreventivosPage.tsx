@@ -70,21 +70,21 @@ function getStatusInfo(dias: number | null) {
 }
 
 async function fetchEquipmentData(): Promise<EquipmentRow[]> {
-  // 1. Fetch all registered equipment
+  // 1. Fetch all registered equipment from DB (synced from Auvo API)
   const { data: equipamentos, error: eqErr } = await supabase
     .from("equipamentos_auvo")
-    .select("id, nome, identificador, cliente, status")
+    .select("id, nome, identificador, cliente, status, categoria, descricao")
     .order("nome");
   if (eqErr) throw eqErr;
 
-  // 2. Fetch all tasks with equipment info (paginated)
+  // 2. Fetch all tasks with equipment info (for last intervention date)
   let allTasks: any[] = [];
   let from = 0;
   const PAGE = 1000;
   while (true) {
     const { data, error } = await supabase
       .from("tarefas_central")
-      .select("equipamento_nome, equipamento_id_serie, cliente, data_tarefa, tecnico, auvo_link")
+      .select("equipamento_nome, equipamento_id_serie, data_tarefa, tecnico, auvo_link")
       .not("equipamento_nome", "is", null)
       .neq("equipamento_nome", "")
       .order("data_tarefa", { ascending: false })
@@ -96,7 +96,7 @@ async function fetchEquipmentData(): Promise<EquipmentRow[]> {
     from += PAGE;
   }
 
-  // 3. Build task map keyed by equipment name (lowercase)
+  // 3. Build task map keyed by equipment name (lowercase) — only for last intervention
   const taskMap = new Map<string, { data_tarefa: string; tecnico: string | null; auvo_link: string | null }>();
   for (const t of allTasks) {
     const nameKey = (t.equipamento_nome || "").toLowerCase().trim();
@@ -109,36 +109,7 @@ async function fetchEquipmentData(): Promise<EquipmentRow[]> {
     }
   }
 
-  // 4. Also collect unique equipment from tasks that are NOT in the registry
-  const registrySet = new Set<string>();
-  for (const eq of equipamentos || []) {
-    registrySet.add(eq.nome.toLowerCase().trim());
-  }
-
-  const extraFromTasks: EquipmentRow[] = [];
-  const seenExtra = new Set<string>();
-  for (const t of allTasks) {
-    if (!matchesKeywords(t.equipamento_nome)) continue;
-    const nameKey = (t.equipamento_nome || "").toLowerCase().trim();
-    if (registrySet.has(nameKey) || seenExtra.has(nameKey)) continue;
-    seenExtra.add(nameKey);
-    const match = taskMap.get(nameKey);
-    const dias = match?.data_tarefa ? differenceInDays(new Date(), parseISO(match.data_tarefa)) : null;
-    extraFromTasks.push({
-      id: `task-${nameKey}`,
-      nome: t.equipamento_nome,
-      identificador: t.equipamento_id_serie,
-      cliente: t.cliente,
-      equipStatus: "Ativo",
-      ultima_data: match?.data_tarefa || null,
-      ultimo_tecnico: match?.tecnico || null,
-      ultimo_link: match?.auvo_link || null,
-      dias_desde: dias,
-      tipo: detectTipo(t.equipamento_nome),
-    });
-  }
-
-  // 5. Map registered equipment to tasks
+  // 4. Map registered equipment to task history
   const result: EquipmentRow[] = (equipamentos || []).map((eq) => {
     const nameKey = eq.nome.toLowerCase().trim();
     let match = taskMap.get(nameKey);
@@ -156,7 +127,7 @@ async function fetchEquipmentData(): Promise<EquipmentRow[]> {
       id: eq.id,
       nome: eq.nome,
       identificador: eq.identificador,
-      cliente: eq.cliente, // Always from registry
+      cliente: eq.cliente, // From Auvo equipment registry (via API)
       equipStatus: eq.status,
       ultima_data: match?.data_tarefa || null,
       ultimo_tecnico: match?.tecnico || null,
@@ -166,9 +137,7 @@ async function fetchEquipmentData(): Promise<EquipmentRow[]> {
     };
   });
 
-  const combined = [...result, ...extraFromTasks];
-
-  return combined.sort((a, b) => {
+  return result.sort((a, b) => {
     if (a.dias_desde === null && b.dias_desde === null) return 0;
     if (a.dias_desde === null) return -1;
     if (b.dias_desde === null) return 1;
