@@ -7,7 +7,9 @@ const corsHeaders = {
 
 const AUVO_BASE_URL = "https://api.auvo.com.br/v2";
 const TASK_PAGE_SIZE = 100;
+const TASK_COUNT_PAGE_SIZE = 10;
 const UPSERT_BATCH_SIZE = 500;
+const RATE_LIMIT_DELAY_MS = 50;
 
 // ══════════════════════════════════════════════════════════
 // Brand extraction: pure dictionary + regex, no AI
@@ -266,7 +268,7 @@ function auvoHeaders(token: string): Record<string, string> {
 }
 
 async function rateLimitedFetch(url: string, options: RequestInit): Promise<Response> {
-  await new Promise((resolve) => setTimeout(resolve, 100));
+  await new Promise((resolve) => setTimeout(resolve, RATE_LIMIT_DELAY_MS));
   const res = await fetch(url, options);
   if (res.status === 403 || res.status === 429) {
     console.log(`[equipment-sync] Rate limit hit (${res.status}), waiting 10s...`);
@@ -369,6 +371,38 @@ async function fetchCustomerName(customerId: number, token: string, cache: Map<n
   }
 }
 
+function buildTasksListUrl(windowStart: string, windowEnd: string, page: number, pageSize: number): string {
+  const filterObj = {
+    startDate: `${windowStart}T00:00:00`,
+    endDate: `${windowEnd}T23:59:59`,
+  };
+  const paramFilter = encodeURIComponent(JSON.stringify(filterObj));
+  return `${AUVO_BASE_URL}/tasks/?page=${page}&pageSize=${pageSize}&order=desc&paramFilter=${paramFilter}`;
+}
+
+async function fetchTaskCountForWindow(token: string, windowStart: string, windowEnd: string): Promise<number> {
+  const headers = auvoHeaders(token);
+  const url = buildTasksListUrl(windowStart, windowEnd, 1, TASK_COUNT_PAGE_SIZE);
+  const res = await rateLimitedFetch(url, { method: "GET", headers });
+
+  if (!res.ok) {
+    if (res.status === 404) return 0;
+    const errBody = await res.text().catch(() => "");
+    throw new Error(`Auvo tasks count failed (${res.status}): ${errBody.substring(0, 300)}`);
+  }
+
+  const json = await res.json();
+  const totalItems = Number(
+    json?.result?.pagedSearchReturnData?.totalItems
+      ?? json?.result?.entityList?.length
+      ?? json?.result?.Entities?.length
+      ?? 0,
+  );
+
+  console.log(`[equipment-sync] ${windowStart}: ${totalItems} tasks total`);
+  return totalItems;
+}
+
 async function fetchTasksWithEquipmentsForWindow(
   token: string,
   windowStart: string,
@@ -385,12 +419,7 @@ async function fetchTasksWithEquipmentsForWindow(
   const maxPages = 100;
 
   while (page <= maxPages) {
-    const filterObj = {
-      startDate: `${windowStart}T00:00:00`,
-      endDate: `${windowEnd}T23:59:59`,
-    };
-    const paramFilter = encodeURIComponent(JSON.stringify(filterObj));
-    const url = `${AUVO_BASE_URL}/tasks/?page=${page}&pageSize=${TASK_PAGE_SIZE}&order=desc&paramFilter=${paramFilter}`;
+    const url = buildTasksListUrl(windowStart, windowEnd, page, TASK_PAGE_SIZE);
 
     const res = await rateLimitedFetch(url, { method: "GET", headers });
     if (!res.ok) {
@@ -454,6 +483,29 @@ async function fetchTasksWithEquipmentsForWindow(
   return { results, totalTasks, tasksWithEquipments };
 }
 
+async function loadValidEquipmentIdsFromDb(sb: any): Promise<Set<string>> {
+  const validEquipmentIds = new Set<string>();
+  let eqFrom = 0;
+
+  while (true) {
+    const { data: eqData } = await sb
+      .from("equipamentos_auvo")
+      .select("auvo_equipment_id")
+      .range(eqFrom, eqFrom + 999);
+
+    if (!eqData || eqData.length === 0) break;
+
+    for (const row of eqData) {
+      if (row.auvo_equipment_id) validEquipmentIds.add(row.auvo_equipment_id);
+    }
+
+    if (eqData.length < 1000) break;
+    eqFrom += 1000;
+  }
+
+  return validEquipmentIds;
+}
+
 // ══════════════════════════════════════════════════════════
 // Main handler
 // ══════════════════════════════════════════════════════════
@@ -483,6 +535,11 @@ Deno.serve(async (req) => {
     const phase = String(body?.phase || url.searchParams.get("phase") || "all");
     const startDateParam = String(body?.startDate || url.searchParams.get("startDate") || "");
     const endDateParam = String(body?.endDate || url.searchParams.get("endDate") || "");
+    const providedValidEquipmentIds = Array.isArray(body?.validEquipmentIds)
+      ? Array.from(new Set(body.validEquipmentIds.map((id: unknown) => String(id || "").trim()).filter(Boolean)))
+      : [];
+    const skipEquipmentValidation = body?.skipEquipmentValidation === true || url.searchParams.get("skipEquipmentValidation") === "true";
+    const isCountOnly = phase === "2-count" || body?.countOnly === true || url.searchParams.get("countOnly") === "true";
 
     const sb = createClient(supabaseUrl, serviceKey);
     const accessToken = await auvoLogin(auvoApiKey, auvoApiToken);
@@ -606,6 +663,7 @@ Deno.serve(async (req) => {
       phase1Result = {
         total_auvo: auvoEquipments.length,
         upserted: totalEquipUpserted,
+        valid_equipment_ids: Array.from(validEquipmentIds),
         categories_found: categories.size,
         new_customers_resolved: customerCache.size,
         brands_detected: withBrand,
@@ -616,7 +674,7 @@ Deno.serve(async (req) => {
     }
 
     // ── Phase 2: Equipment-task relationships ──
-    if (phase === "2" || phase === "all") {
+    if (phase === "2" || phase === "2-count" || phase === "all") {
       if (!startDateParam || !endDateParam) {
         return new Response(JSON.stringify({
           error: "Phase 2 requires startDate and endDate parameters (YYYY-MM-DD)",
@@ -626,82 +684,89 @@ Deno.serve(async (req) => {
         });
       }
 
-      console.log(`[equipment-sync] Phase 2: window ${startDateParam} → ${endDateParam}`);
+      console.log(`[equipment-sync] Phase 2${isCountOnly ? " count" : ""}: window ${startDateParam} → ${endDateParam}`);
 
-      if (!validEquipmentIds) {
-        validEquipmentIds = new Set<string>();
-        let eqFrom = 0;
-        while (true) {
-          const { data: eqData } = await sb
-            .from("equipamentos_auvo")
-            .select("auvo_equipment_id")
-            .range(eqFrom, eqFrom + 999);
-          if (!eqData || eqData.length === 0) break;
-          for (const row of eqData) {
-            if (row.auvo_equipment_id) validEquipmentIds.add(row.auvo_equipment_id);
+      if (isCountOnly) {
+        phase2Result = {
+          window: `${startDateParam} → ${endDateParam}`,
+          total_tasks_in_window: await fetchTaskCountForWindow(accessToken, startDateParam, endDateParam),
+        };
+      } else {
+        if (!validEquipmentIds && providedValidEquipmentIds.length > 0) {
+          validEquipmentIds = new Set(providedValidEquipmentIds);
+          console.log(`[equipment-sync] Valid equipment IDs received from client: ${validEquipmentIds.size}`);
+        }
+
+        if (!validEquipmentIds && !skipEquipmentValidation) {
+          validEquipmentIds = await loadValidEquipmentIdsFromDb(sb);
+          console.log(`[equipment-sync] Valid equipment IDs loaded: ${validEquipmentIds.size}`);
+        }
+
+        if (!validEquipmentIds && skipEquipmentValidation) {
+          console.log("[equipment-sync] Skipping equipment ID validation for this request");
+        }
+
+        const { results: tasksWithEquipments, totalTasks, tasksWithEquipments: withEquipCount } =
+          await fetchTasksWithEquipmentsForWindow(accessToken, startDateParam, endDateParam);
+
+        const relRows: any[] = [];
+        let discardedLinks = 0;
+        const equipmentsWithTasks = new Set<string>();
+
+        for (const task of tasksWithEquipments) {
+          if (!task.taskId) continue;
+          for (const eqId of task.equipmentIds) {
+            if (validEquipmentIds && !validEquipmentIds.has(eqId)) {
+              discardedLinks++;
+              continue;
+            }
+
+            equipmentsWithTasks.add(eqId);
+            relRows.push({
+              auvo_equipment_id: eqId,
+              auvo_task_id: task.taskId,
+              auvo_task_type_id: task.taskType || null,
+              auvo_task_type_description: task.taskTypeDescription || null,
+              status_auvo: resolveStatus(task.statusCode, !!task.checkOutDate),
+              data_tarefa: task.taskDate || null,
+              data_conclusao: task.checkOutDate || null,
+              cliente: task.customerDescription || null,
+              tecnico: task.userToName || null,
+              auvo_link: `https://app2.auvo.com.br/relatorioTarefas/DetalheTarefa/${task.taskId}`,
+              source: "native_equipment_relation",
+              synced_at: new Date().toISOString(),
+            });
           }
-          if (eqData.length < 1000) break;
-          eqFrom += 1000;
         }
-        console.log(`[equipment-sync] Valid equipment IDs loaded: ${validEquipmentIds.size}`);
-      }
 
-      const { results: tasksWithEquipments, totalTasks, tasksWithEquipments: withEquipCount } =
-        await fetchTasksWithEquipmentsForWindow(accessToken, startDateParam, endDateParam);
+        let totalRelUpserted = 0;
+        const relErrors: string[] = [];
 
-      const relRows: any[] = [];
-      let discardedLinks = 0;
-      const equipmentsWithTasks = new Set<string>();
-
-      for (const task of tasksWithEquipments) {
-        if (!task.taskId) continue;
-        for (const eqId of task.equipmentIds) {
-          if (!validEquipmentIds.has(eqId)) { discardedLinks++; continue; }
-          equipmentsWithTasks.add(eqId);
-          relRows.push({
-            auvo_equipment_id: eqId,
-            auvo_task_id: task.taskId,
-            auvo_task_type_id: task.taskType || null,
-            auvo_task_type_description: task.taskTypeDescription || null,
-            status_auvo: resolveStatus(task.statusCode, !!task.checkOutDate),
-            data_tarefa: task.taskDate || null,
-            data_conclusao: task.checkOutDate || null,
-            cliente: task.customerDescription || null,
-            tecnico: task.userToName || null,
-            auvo_link: `https://app2.auvo.com.br/relatorioTarefas/DetalheTarefa/${task.taskId}`,
-            source: "native_equipment_relation",
-            synced_at: new Date().toISOString(),
-          });
+        for (let i = 0; i < relRows.length; i += UPSERT_BATCH_SIZE) {
+          const batch = relRows.slice(i, i + UPSERT_BATCH_SIZE);
+          const { error } = await sb
+            .from("equipamento_tarefas_auvo")
+            .upsert(batch, { onConflict: "auvo_equipment_id,auvo_task_id" });
+          if (error) {
+            relErrors.push(error.message);
+            console.error(`[equipment-sync] Rel upsert error: ${error.message}`);
+          } else {
+            totalRelUpserted += batch.length;
+          }
         }
+
+        console.log(`[equipment-sync] Equipment-task relationships upserted: ${totalRelUpserted}`);
+
+        phase2Result = {
+          window: `${startDateParam} → ${endDateParam}`,
+          total_tasks_in_window: totalTasks,
+          tasks_with_equipment_links: withEquipCount,
+          relationship_rows_upserted: totalRelUpserted,
+          equipments_with_tasks: equipmentsWithTasks.size,
+          discarded_invalid_links: discardedLinks,
+          errors: relErrors.length > 0 ? relErrors : undefined,
+        };
       }
-
-      let totalRelUpserted = 0;
-      const relErrors: string[] = [];
-
-      for (let i = 0; i < relRows.length; i += UPSERT_BATCH_SIZE) {
-        const batch = relRows.slice(i, i + UPSERT_BATCH_SIZE);
-        const { error } = await sb
-          .from("equipamento_tarefas_auvo")
-          .upsert(batch, { onConflict: "auvo_equipment_id,auvo_task_id" });
-        if (error) {
-          relErrors.push(error.message);
-          console.error(`[equipment-sync] Rel upsert error: ${error.message}`);
-        } else {
-          totalRelUpserted += batch.length;
-        }
-      }
-
-      console.log(`[equipment-sync] Equipment-task relationships upserted: ${totalRelUpserted}`);
-
-      phase2Result = {
-        window: `${startDateParam} → ${endDateParam}`,
-        total_tasks_in_window: totalTasks,
-        tasks_with_equipment_links: withEquipCount,
-        relationship_rows_upserted: totalRelUpserted,
-        equipments_with_tasks: equipmentsWithTasks.size,
-        discarded_invalid_links: discardedLinks,
-        errors: relErrors.length > 0 ? relErrors : undefined,
-      };
     }
 
     return new Response(JSON.stringify({
