@@ -137,6 +137,7 @@ export type Database = {
       equipamentos_auvo: {
         Row: {
           atualizado_em: string | null
+          auvo_equipment_id: string | null
           categoria: string | null
           cliente: string | null
           criado_em: string | null
@@ -148,6 +149,7 @@ export type Database = {
         }
         Insert: {
           atualizado_em?: string | null
+          auvo_equipment_id?: string | null
           categoria?: string | null
           cliente?: string | null
           criado_em?: string | null
@@ -159,6 +161,7 @@ export type Database = {
         }
         Update: {
           atualizado_em?: string | null
+          auvo_equipment_id?: string | null
           categoria?: string | null
           cliente?: string | null
           criado_em?: string | null

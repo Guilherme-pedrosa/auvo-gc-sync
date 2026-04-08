@@ -1,0 +1,2 @@
+ALTER TABLE public.equipamentos_auvo ADD COLUMN IF NOT EXISTS auvo_equipment_id text;
+CREATE UNIQUE INDEX IF NOT EXISTS equipamentos_auvo_auvo_id_unique ON public.equipamentos_auvo (auvo_equipment_id) WHERE auvo_equipment_id IS NOT NULL;
