@@ -234,7 +234,7 @@ export default function EquipamentosPreventivosPage() {
   const queryClient = useQueryClient();
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<string[]>([]);
-  const [marcaFilter, setMarcaFilter] = useState<string>("todos");
+  const [marcaFilter, setMarcaFilter] = useState<string[]>([]);
   const [clienteFilter, setClienteFilter] = useState<string[]>([]);
   const [tipoTarefaFilter, setTipoTarefaFilter] = useState<string[]>([]);
   const [sortField, setSortField] = useState<SortField>("dias");
@@ -419,12 +419,11 @@ export default function EquipamentosPreventivosPage() {
       });
     }
 
-    if (marcaFilter !== "todos") {
-      if (marcaFilter === "__sem_marca__") {
-        result = result.filter((e) => !e.marca);
-      } else {
-        result = result.filter((e) => e.marca === marcaFilter);
-      }
+    if (marcaFilter.length > 0) {
+      result = result.filter((e) => {
+        if (marcaFilter.includes("__sem_marca__") && !e.marca) return true;
+        return e.marca ? marcaFilter.includes(e.marca) : false;
+      });
     }
 
     if (clienteFilter.length > 0) {
@@ -458,7 +457,7 @@ export default function EquipamentosPreventivosPage() {
   const paginatedItems = filtered.slice((safeCurrentPage - 1) * PAGE_SIZE, safeCurrentPage * PAGE_SIZE);
 
   // Reset to page 1 when filters change
-  const filterKey = `${search}|${statusFilter.join(",")}|${marcaFilter}|${clienteFilter.join(",")}|${tipoTarefaFilter.join(",")}|${sortField}|${sortDir}`;
+  const filterKey = `${search}|${statusFilter.join(",")}|${marcaFilter.join(",")}|${clienteFilter.join(",")}|${tipoTarefaFilter.join(",")}|${sortField}|${sortDir}`;
   const [prevFilterKey, setPrevFilterKey] = useState(filterKey);
   if (filterKey !== prevFilterKey) {
     setPrevFilterKey(filterKey);
@@ -513,7 +512,7 @@ export default function EquipamentosPreventivosPage() {
   };
 
   const activeFilters = [
-    marcaFilter !== "todos" && `Marca: ${marcaFilter === "__sem_marca__" ? "Não identificada" : marcaFilter}`,
+    marcaFilter.length > 0 && `Marcas: ${marcaFilter.length}`,
     clienteFilter.length > 0 && `Clientes: ${clienteFilter.length}`,
     tipoTarefaFilter.length > 0 && `Tipos tarefa: ${tipoTarefaFilter.length}`,
   ].filter(Boolean);
@@ -630,10 +629,10 @@ export default function EquipamentosPreventivosPage() {
         />
 
         <SearchableSelect
+          multiple
           value={marcaFilter}
           onValueChange={setMarcaFilter}
           options={[
-            { value: "todos", label: "Todas as marcas" },
             { value: "__sem_marca__", label: "⚠️ Não identificada" },
             ...marcasUnicas.map((m) => ({ value: m, label: m })),
           ]}
@@ -672,7 +671,7 @@ export default function EquipamentosPreventivosPage() {
             Filtros ativos: <strong>{activeFilters.join(" · ")}</strong>
             — mostrando {filtered.length} de {equipments.length}
           </span>
-          <Button variant="ghost" size="sm" onClick={() => { setMarcaFilter("todos"); setClienteFilter([]); setTipoTarefaFilter([]); }} className="ml-auto text-xs">
+          <Button variant="ghost" size="sm" onClick={() => { setMarcaFilter([]); setClienteFilter([]); setTipoTarefaFilter([]); setStatusFilter([]); }} className="ml-auto text-xs">
             Limpar filtros
           </Button>
         </div>
