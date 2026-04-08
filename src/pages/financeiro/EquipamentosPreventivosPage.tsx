@@ -137,6 +137,7 @@ async function fetchRawData(): Promise<{ equipamentos: EquipmentRaw[]; relations
     const { data, error } = await supabase
       .from("equipamentos_auvo")
       .select("id, auvo_equipment_id, nome, identificador, cliente, status, categoria, descricao, marca, marca_source, marca_manual_override")
+      .eq("status", "Ativo")
       .order("nome")
       .range(eqFrom, eqFrom + EQ_PAGE - 1);
     if (error) throw error;
