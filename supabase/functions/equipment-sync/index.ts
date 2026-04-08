@@ -244,9 +244,8 @@ Deno.serve(async (req) => {
     for (const cid of customerIds) {
       await fetchCustomerName(cid, accessToken, customerCache);
       resolved++;
-      if (resolved % 50 === 0) {
+      if (resolved % 100 === 0) {
         console.log(`[equipment-sync] Resolved ${resolved}/${customerIds.size} customers`);
-        await new Promise(r => setTimeout(r, 2000));
       }
     }
 
