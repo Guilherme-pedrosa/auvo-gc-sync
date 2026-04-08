@@ -139,7 +139,7 @@ async function fetchAllTasksWithEquipments(
     const clampedEnd = monthEnd > now ? now.toISOString().split("T")[0] : monthEnd.toISOString().split("T")[0];
     
     let page = 1;
-    const pageSize = 200;
+    const pageSize = 100;
     
     while (page <= 50) {
       const filterObj = { startDate: `${monthStart}T00:00:00`, endDate: `${clampedEnd}T23:59:59` };
