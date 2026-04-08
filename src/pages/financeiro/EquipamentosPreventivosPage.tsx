@@ -436,10 +436,28 @@ export default function EquipamentosPreventivosPage() {
             </p>
           </div>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           <Button variant="outline" size="sm" onClick={handleExportCsv} disabled={filtered.length === 0}>
             <Download className="h-4 w-4 mr-1" /> CSV
           </Button>
+          <div className="flex items-center gap-2 bg-muted/50 border rounded-lg px-3 py-1.5">
+            <CalendarDays className="h-4 w-4 text-muted-foreground" />
+            <Input
+              type="date"
+              value={syncStartDate}
+              onChange={(e) => setSyncStartDate(e.target.value)}
+              className="h-7 w-[130px] text-xs"
+              disabled={syncing}
+            />
+            <span className="text-xs text-muted-foreground">→</span>
+            <Input
+              type="date"
+              value={syncEndDate}
+              onChange={(e) => setSyncEndDate(e.target.value)}
+              className="h-7 w-[130px] text-xs"
+              disabled={syncing}
+            />
+          </div>
           <Button onClick={handleSync} disabled={syncing || isFetching} size="sm">
             {syncing ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <RefreshCw className="h-4 w-4 mr-1" />}
             Sincronizar
