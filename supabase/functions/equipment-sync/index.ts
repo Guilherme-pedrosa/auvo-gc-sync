@@ -98,16 +98,23 @@ async function fetchCustomerName(customerId: number, token: string, cache: Map<n
   }
 }
 
-// ── Fetch ALL tasks that reference a given equipment ID ──
-// The Auvo tasks API returns `equipmentsId: [id1, id2, ...]` in each task.
-// There's no direct "get tasks by equipment" endpoint, so we use the tasks
-// listing with a broad date range and filter by equipmentsId client-side.
-// However, this is expensive. Instead, we fetch tasks from central-sync's
-// already-synced data in tarefas_central via the snapshot.
-// 
-// BETTER APPROACH: We fetch ALL tasks from Auvo (paginated, recent 12 months)
-// and extract equipmentsId from each one. This builds the relational table.
-async function fetchAllTasksWithEquipments(token: string, monthsBack: number = 6): Promise<Array<{
+// ── Fetch individual task detail to get equipmentsId ──
+// CRITICAL: The listing endpoint GET /tasks/ returns equipmentsId as EMPTY [].
+// Only the detail endpoint GET /tasks/{id} returns the real equipmentsId.
+async function fetchTaskDetail(taskId: string, token: string): Promise<any | null> {
+  const url = `${AUVO_BASE_URL}/tasks/${encodeURIComponent(taskId)}`;
+  const res = await rateLimitedFetch(url, { method: "GET", headers: auvoHeaders(token) });
+  if (!res.ok) return null;
+  const json = await res.json().catch(() => null);
+  return json?.result || null;
+}
+
+// ── Collect task IDs from listing, then fetch details for equipmentsId ──
+async function fetchAllTasksWithEquipments(
+  token: string,
+  monthsBack: number,
+  existingTaskIds: Set<string>
+): Promise<Array<{
   taskId: string;
   equipmentIds: string[];
   taskType: string;
@@ -119,68 +126,65 @@ async function fetchAllTasksWithEquipments(token: string, monthsBack: number = 6
   userToName: string;
 }>> {
   const headers = auvoHeaders(token);
-  const results: Array<any> = [];
+  const allTaskIds: Array<{ id: string; taskType: string; taskTypeDescription: string; taskDate: string | null; checkOutDate: string | null; customerDescription: string; userToName: string; statusCode: number }> = [];
   
   const now = new Date();
   const startDate = new Date(now.getFullYear(), now.getMonth() - monthsBack, 1);
   
-  // Process month by month
+  // STEP 1: Collect all task IDs from listing (fast, no equipmentsId needed)
   const current = new Date(startDate);
   while (current <= now) {
     const monthStart = current.toISOString().split("T")[0];
     const monthEnd = new Date(current.getFullYear(), current.getMonth() + 1, 0);
     const clampedEnd = monthEnd > now ? now.toISOString().split("T")[0] : monthEnd.toISOString().split("T")[0];
     
-    console.log(`[equipment-sync] Fetching tasks ${monthStart} → ${clampedEnd}...`);
-    
     let page = 1;
-    const pageSize = 200;
-    const MAX_PAGES = 50;
+    const pageSize = 100;
     
-    while (page <= MAX_PAGES) {
+    while (page <= 50) {
       const filterObj = { startDate: `${monthStart}T00:00:00`, endDate: `${clampedEnd}T23:59:59` };
       const paramFilter = encodeURIComponent(JSON.stringify(filterObj));
       const url = `${AUVO_BASE_URL}/tasks/?page=${page}&pageSize=${pageSize}&order=desc&paramFilter=${paramFilter}`;
       
       const res = await rateLimitedFetch(url, { method: "GET", headers });
-      
       if (!res.ok) {
-        if (res.status === 404) break;
-        console.error(`[equipment-sync] Tasks fetch error ${res.status}`);
+        console.error(`[equipment-sync] Tasks listing HTTP ${res.status} for ${monthStart} page ${page}`);
+        const errBody = await res.text().catch(() => "");
+        console.error(`[equipment-sync] Response body: ${errBody.substring(0, 300)}`);
         break;
       }
       
       const json = await res.json();
-      const tasks = json?.result?.entityList || json?.result?.Entities || [];
-      if (page === 1) {
-        const totalItems = json?.result?.pagedSearchReturnData?.totalItems || 0;
-        const resultKeys = json?.result ? Object.keys(json.result).join(",") : "no-result";
-        const sampleKeys = tasks.length > 0 ? Object.keys(tasks[0]).join(",").substring(0, 200) : "no-tasks";
-        const sampleEquipIds = tasks.length > 0 ? JSON.stringify(tasks[0].equipmentsId || tasks[0].equipmentsID || "none").substring(0, 100) : "empty";
-        console.log(`[equipment-sync] ${monthStart}: total=${totalItems}, page1=${tasks.length}, keys=${resultKeys}, taskKeys=${sampleKeys}, equip=${sampleEquipIds}`);
+      const tasks = json?.result?.entityList || [];
+      if (page === 1 && tasks.length === 0) {
+        // Log raw response for debugging
+        const rawKeys = json?.result ? Object.keys(json.result).join(",") : JSON.stringify(json).substring(0, 300);
+        console.log(`[equipment-sync] ${monthStart}: EMPTY. Raw keys: ${rawKeys}`);
       }
       if (!Array.isArray(tasks) || tasks.length === 0) break;
       
+      if (page === 1) {
+        const totalItems = json?.result?.pagedSearchReturnData?.totalItems || 0;
+        console.log(`[equipment-sync] ${monthStart}: ${totalItems} tasks total`);
+      }
+      
       for (const task of tasks) {
-        const equipIds: number[] = Array.isArray(task.equipmentsId) ? task.equipmentsId :
-          Array.isArray(task.equipmentsID) ? task.equipmentsID : [];
+        const taskId = String(task.taskID || task.id || "");
+        if (!taskId) continue;
         
-        if (equipIds.length > 0) {
-          const statusCode = typeof task.taskStatus === "number" ? task.taskStatus
-            : typeof task.taskStatus?.id === "number" ? task.taskStatus.id : 0;
-          
-          results.push({
-            taskId: String(task.taskID || task.id || ""),
-            equipmentIds: equipIds.map(String),
-            taskType: String(task.taskType || ""),
-            taskTypeDescription: String(task.taskTypeDescription || ""),
-            statusCode,
-            taskDate: normalizeDate(task.taskDate),
-            checkOutDate: normalizeDate(task.checkOutDate || task.checkoutDate),
-            customerDescription: String(task.customerDescription || task.customerName || ""),
-            userToName: String(task.userToName || ""),
-          });
-        }
+        const statusCode = typeof task.taskStatus === "number" ? task.taskStatus
+          : typeof task.taskStatus?.id === "number" ? task.taskStatus.id : 0;
+        
+        allTaskIds.push({
+          id: taskId,
+          taskType: String(task.taskType || ""),
+          taskTypeDescription: String(task.taskTypeDescription || ""),
+          taskDate: normalizeDate(task.taskDate),
+          checkOutDate: normalizeDate(task.checkOutDate || task.checkoutDate),
+          customerDescription: String(task.customerDescription || task.customerName || ""),
+          userToName: String(task.userToName || ""),
+          statusCode,
+        });
       }
       
       if (tasks.length < pageSize) break;
@@ -191,6 +195,64 @@ async function fetchAllTasksWithEquipments(token: string, monthsBack: number = 6
     current.setDate(1);
   }
   
+  console.log(`[equipment-sync] Total tasks from listing: ${allTaskIds.length}`);
+  
+  // Filter out tasks already in DB
+  const newTasks = allTaskIds.filter(t => !existingTaskIds.has(t.id));
+  console.log(`[equipment-sync] New tasks to fetch detail: ${newTasks.length} (${existingTaskIds.size} already in DB)`);
+  
+  // STEP 2: Fetch individual task details in batches to get equipmentsId
+  const results: Array<any> = [];
+  const BATCH_SIZE = 5;
+  let fetched = 0;
+  let withEquipment = 0;
+  
+  for (let i = 0; i < newTasks.length; i += BATCH_SIZE) {
+    const batch = newTasks.slice(i, i + BATCH_SIZE);
+    const detailPromises = batch.map(t => fetchTaskDetail(t.id, token));
+    const details = await Promise.all(detailPromises);
+    
+    for (let j = 0; j < batch.length; j++) {
+      fetched++;
+      const detail = details[j];
+      const taskMeta = batch[j];
+      if (!detail) continue;
+      
+      const equipIds: string[] = Array.isArray(detail.equipmentsId) ? detail.equipmentsId.map(String) :
+        Array.isArray(detail.equipmentsID) ? detail.equipmentsID.map(String) : [];
+      
+      if (equipIds.length > 0) {
+        withEquipment++;
+        results.push({
+          taskId: taskMeta.id,
+          equipmentIds: equipIds,
+          taskType: taskMeta.taskType,
+          taskTypeDescription: taskMeta.taskTypeDescription,
+          statusCode: taskMeta.statusCode,
+          taskDate: taskMeta.taskDate,
+          checkOutDate: normalizeDate(detail.checkOutDate || detail.checkoutDate) || taskMeta.checkOutDate,
+          customerDescription: taskMeta.customerDescription,
+          userToName: taskMeta.userToName,
+        });
+      }
+      
+      // Log first detail for debugging
+      if (fetched === 1) {
+        const sampleEquip = JSON.stringify(detail.equipmentsId || detail.equipmentsID || "none").substring(0, 200);
+        console.log(`[equipment-sync] Sample task detail ${taskMeta.id}: equipmentsId=${sampleEquip}`);
+      }
+    }
+    
+    // Progress log every 50 tasks
+    if (fetched % 50 === 0) {
+      console.log(`[equipment-sync] Detail progress: ${fetched}/${newTasks.length}, with equipment: ${withEquipment}`);
+    }
+    
+    // Small delay between batches
+    await new Promise(r => setTimeout(r, 150));
+  }
+  
+  console.log(`[equipment-sync] Detail fetch complete: ${fetched} fetched, ${withEquipment} with equipment links`);
   return results;
 }
 
@@ -323,7 +385,23 @@ Deno.serve(async (req) => {
     // ═══════════════════════════════════════════════════════════════
     if (phase === "2" || phase === "all") {
       console.log(`[equipment-sync] Phase 2: Fetching tasks with equipment links (${monthsBack} months)...`);
-      const tasksWithEquipments = await fetchAllTasksWithEquipments(accessToken, monthsBack);
+      
+      // Load existing task IDs from DB to skip re-fetching
+      const existingTaskIds = new Set<string>();
+      let etFrom = 0;
+      while (true) {
+        const { data: etData } = await sb
+          .from("equipamento_tarefas_auvo")
+          .select("auvo_task_id")
+          .range(etFrom, etFrom + 999);
+        if (!etData || etData.length === 0) break;
+        for (const r of etData) existingTaskIds.add(r.auvo_task_id);
+        if (etData.length < 1000) break;
+        etFrom += 1000;
+      }
+      console.log(`[equipment-sync] Existing task-equipment relations in DB: ${existingTaskIds.size}`);
+      
+      const tasksWithEquipments = await fetchAllTasksWithEquipments(accessToken, monthsBack, existingTaskIds);
       console.log(`[equipment-sync] Tasks with equipment links found: ${tasksWithEquipments.length}`);
 
       // Load valid equipment IDs if not already loaded from Phase 1
