@@ -136,8 +136,12 @@ function getStatusInfo(dias: number | null) {
   return { label: "Vencido", color: "text-red-700 dark:text-red-400", bg: "bg-red-50 dark:bg-red-950/30", icon: Flame };
 }
 
-function hasSameClient(taskClientKey: string, equipmentClientKey: string) {
-  return !equipmentClientKey || !taskClientKey || taskClientKey === equipmentClientKey;
+function clientsMatch(taskClientKey: string, equipmentClientKey: string): boolean {
+  // Both must be present and equal for a valid match
+  // If equipment has a client, the task MUST be from the same client
+  if (!equipmentClientKey) return true; // no client on equipment = can't filter
+  if (!taskClientKey) return false; // equipment has client but task doesn't = reject
+  return taskClientKey === equipmentClientKey;
 }
 
 async function fetchRawData(): Promise<{ equipamentos: EquipmentRaw[]; tasks: TaskRaw[] }> {
@@ -219,19 +223,24 @@ function buildEquipmentRows(equipamentos: EquipmentRaw[], tasks: TaskRaw[], tipo
     let match = serialKey ? taskBySerial.get(serialKey) : undefined;
 
     if (!match && serialKey) {
-      match = candidates.find((task) => hasSameClient(task.clientKey, clientKey) && task.searchKey.includes(serialKey));
+      match = candidates.find((task) => clientsMatch(task.clientKey, clientKey) && task.searchKey.includes(serialKey));
     }
 
     if (!match && nameKey) {
-      match = candidates.find((task) => hasSameClient(task.clientKey, clientKey) && task.nameKey === nameKey);
+      match = candidates.find((task) => clientsMatch(task.clientKey, clientKey) && task.nameKey === nameKey);
     }
 
-    if (!match && nameKey) {
+    if (!match && nameKey && nameKey.length >= 12) {
       match = candidates.find(
-        (task) =>
-          hasSameClient(task.clientKey, clientKey) &&
-          task.nameKey &&
-          (task.searchKey.includes(nameKey) || nameKey.includes(task.nameKey))
+        (task) => {
+          if (!clientsMatch(task.clientKey, clientKey)) return false;
+          if (!task.nameKey || task.nameKey.length < 12) return false;
+          const shorter = nameKey.length <= task.nameKey.length ? nameKey : task.nameKey;
+          const longer = nameKey.length <= task.nameKey.length ? task.nameKey : nameKey;
+          // Shorter must cover at least 80% of longer to avoid false positives like "fornorational" matching "fornorationalicombipro..."
+          if (shorter.length / longer.length < 0.8) return false;
+          return longer.includes(shorter);
+        }
       );
     }
 
@@ -240,7 +249,7 @@ function buildEquipmentRows(equipamentos: EquipmentRaw[], tasks: TaskRaw[], tipo
       const hitsNeeded = tokens.length >= 2 ? 2 : tokens.length;
       if (hitsNeeded > 0) {
         match = candidates.find((task) => {
-          if (!hasSameClient(task.clientKey, clientKey)) return false;
+          if (!clientsMatch(task.clientKey, clientKey)) return false;
           let hits = 0;
           for (const token of tokens) {
             if (task.searchKey.includes(token)) hits += 1;
