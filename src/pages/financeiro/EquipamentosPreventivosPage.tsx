@@ -70,12 +70,22 @@ function getStatusInfo(dias: number | null) {
 }
 
 async function fetchEquipmentData(): Promise<EquipmentRow[]> {
-  // 1. Fetch all registered equipment from DB (synced from Auvo API)
-  const { data: equipamentos, error: eqErr } = await supabase
-    .from("equipamentos_auvo")
-    .select("id, nome, identificador, cliente, status, categoria, descricao")
-    .order("nome");
-  if (eqErr) throw eqErr;
+  // 1. Fetch all registered equipment from DB (synced from Auvo API) - paginated
+  let equipamentos: any[] = [];
+  let eqFrom = 0;
+  const EQ_PAGE = 1000;
+  while (true) {
+    const { data, error } = await supabase
+      .from("equipamentos_auvo")
+      .select("id, nome, identificador, cliente, status, categoria, descricao")
+      .order("nome")
+      .range(eqFrom, eqFrom + EQ_PAGE - 1);
+    if (error) throw error;
+    if (!data || data.length === 0) break;
+    equipamentos.push(...data);
+    if (data.length < EQ_PAGE) break;
+    eqFrom += EQ_PAGE;
+  }
 
   // 2. Fetch all tasks with equipment info (for last intervention date)
   let allTasks: any[] = [];
