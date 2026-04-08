@@ -291,8 +291,8 @@ export default function EquipamentosPreventivosPage() {
 
   const handleSync = useCallback(async () => {
     setSyncing(true);
+    setSyncProgress({ current: 0, total: 1, label: "Fase 1: Catálogo + marcas..." });
     try {
-      toast.info("Fase 1: Sincronizando catálogo + marcas...");
       const { data: d1, error: e1 } = await supabase.functions.invoke("equipment-sync", {
         body: { phase: "1" },
       });
@@ -308,12 +308,17 @@ export default function EquipamentosPreventivosPage() {
               .filter((id): id is string => Boolean(id))
       ));
 
+      const monthlyWindows = buildMonthlySyncWindows(syncStartDate, syncEndDate);
+      const totalMonths = monthlyWindows.length;
       let totalRelUpserted = 0;
       let totalWithEquipLinks = 0;
       let windowsCovered = 0;
+      let monthIndex = 0;
 
-      for (const monthWindow of buildMonthlySyncWindows(syncStartDate, syncEndDate)) {
-        toast.info(`Fase 2: Analisando ${monthWindow.windowStart.substring(0, 7)}...`);
+      for (const monthWindow of monthlyWindows) {
+        monthIndex++;
+        const monthLabel = monthWindow.windowStart.substring(0, 7);
+        setSyncProgress({ current: monthIndex, total: totalMonths, label: `Fase 2: ${monthLabel} (${monthIndex}/${totalMonths})` });
 
         const { data: previewData, error: previewError } = await supabase.functions.invoke("equipment-sync", {
           body: { phase: "2-count", startDate: monthWindow.windowStart, endDate: monthWindow.windowEnd },
@@ -329,12 +334,10 @@ export default function EquipamentosPreventivosPage() {
           : [monthWindow];
 
         if (!previewError && monthTaskCount > 300 && windowsToProcess.length > 1) {
-          toast.info(`${monthWindow.windowStart.substring(0, 7)} excedeu 300 tarefas; dividindo em quinzenas.`);
+          setSyncProgress({ current: monthIndex, total: totalMonths, label: `Fase 2: ${monthLabel} — dividindo (${monthTaskCount} tarefas)` });
         }
 
         for (const syncWindow of windowsToProcess) {
-          toast.info(`Fase 2: Vínculos ${syncWindow.windowStart} → ${syncWindow.windowEnd}...`);
-
           const { data: d2, error: e2 } = await supabase.functions.invoke("equipment-sync", {
             body: {
               phase: "2",
@@ -362,6 +365,7 @@ export default function EquipamentosPreventivosPage() {
       toast.error("Erro na sincronização: " + (err.message || "desconhecido"));
     } finally {
       setSyncing(false);
+      setSyncProgress(null);
     }
   }, [rawData?.equipamentos, refetch, syncStartDate, syncEndDate]);
 
