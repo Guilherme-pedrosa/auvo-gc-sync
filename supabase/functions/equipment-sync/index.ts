@@ -681,7 +681,7 @@ Deno.serve(async (req) => {
 
       console.log(`[equipment-sync] Phase 1 done: ${totalEquipUpserted} equipment rows upserted`);
 
-      validEquipmentIds = new Set(auvoEquipments.map((eq) => String(eq.id)));
+      validEquipmentIds = new Set(activeEquipments.map((eq) => String(eq.id)));
       phase1Result = {
         total_auvo: auvoEquipments.length,
         upserted: totalEquipUpserted,
