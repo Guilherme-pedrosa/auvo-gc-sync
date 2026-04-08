@@ -457,7 +457,7 @@ export default function EquipamentosPreventivosPage() {
   const paginatedItems = filtered.slice((safeCurrentPage - 1) * PAGE_SIZE, safeCurrentPage * PAGE_SIZE);
 
   // Reset to page 1 when filters change
-  const filterKey = `${search}|${statusFilter}|${marcaFilter}|${clienteFilter}|${tipoTarefaFilter}|${sortField}|${sortDir}`;
+  const filterKey = `${search}|${statusFilter}|${marcaFilter}|${clienteFilter.join(",")}|${tipoTarefaFilter.join(",")}|${sortField}|${sortDir}`;
   const [prevFilterKey, setPrevFilterKey] = useState(filterKey);
   if (filterKey !== prevFilterKey) {
     setPrevFilterKey(filterKey);
