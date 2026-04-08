@@ -9,6 +9,236 @@ const AUVO_BASE_URL = "https://api.auvo.com.br/v2";
 const TASK_PAGE_SIZE = 100;
 const UPSERT_BATCH_SIZE = 500;
 
+// ══════════════════════════════════════════════════════════
+// Brand extraction: pure dictionary + regex, no AI
+// ══════════════════════════════════════════════════════════
+
+const GENERIC_TYPE_PREFIXES: [string, string][] = [
+  ["COIFA", "COIFA"],
+];
+
+const MODEL_REGEX_BRANDS: [RegExp, string][] = [
+  [/\bNT\s*\d{2,4}\b/i, "NETTER"],
+  [/\bXEVC[-\s]?\d/i, "UNOX"],
+  [/\bXEBC[-\s]?\d/i, "UNOX"],
+  [/\bXEFT[-\s]?\d/i, "UNOX"],
+];
+
+const BRAND_FAMILIES: [string, string][] = [
+  // RATIONAL
+  ["SELFCOOKINGCENTER", "RATIONAL"],
+  ["SELF COOKING CENTER", "RATIONAL"],
+  ["ICOMBI CLASSIC", "RATIONAL"],
+  ["ICOMBI PRO", "RATIONAL"],
+  ["ICOMBI", "RATIONAL"],
+  ["IVARIO", "RATIONAL"],
+  ["SCC WE", "RATIONAL"],
+  ["SCC 61", "RATIONAL"],
+  ["SCC 101", "RATIONAL"],
+  ["SCC 201", "RATIONAL"],
+  ["SCC 62", "RATIONAL"],
+  ["SCC 102", "RATIONAL"],
+  ["SCC 202", "RATIONAL"],
+  ["RATIONAL", "RATIONAL"],
+  // HOBART
+  ["ECOMAX 400", "HOBART"],
+  ["ECOMAX 503", "HOBART"],
+  ["ECOMAX 603", "HOBART"],
+  ["ECOMAX", "HOBART"],
+  ["CENTERLINE", "HOBART"],
+  ["BAXTER", "HOBART"],
+  ["TRAULSEN", "HOBART"],
+  ["BERKEL", "HOBART"],
+  ["HCM30", "HOBART"],
+  ["HCA30", "HOBART"],
+  ["HMD30", "HOBART"],
+  ["HL400", "HOBART"],
+  ["HL600", "HOBART"],
+  ["HOBART", "HOBART"],
+  // VULCAN
+  ["VCRG24", "VULCAN"],
+  ["VCRG48", "VULCAN"],
+  ["VCRH12", "VULCAN"],
+  ["LG300", "VULCAN"],
+  ["VULCAN", "VULCAN"],
+  // WINTERHALTER
+  ["WINTERHALTER", "WINTERHALTER"],
+  ["CLASSEQ", "WINTERHALTER"],
+  ["D9000", "WINTERHALTER"],
+  ["D3000", "WINTERHALTER"],
+  ["D6000", "WINTERHALTER"],
+  ["D600", "WINTERHALTER"],
+  ["UC-S", "WINTERHALTER"],
+  ["UC-M", "WINTERHALTER"],
+  ["UC-L", "WINTERHALTER"],
+  ["UC-XL", "WINTERHALTER"],
+  ["U50", "WINTERHALTER"],
+  ["PT-M", "WINTERHALTER"],
+  ["PT-L", "WINTERHALTER"],
+  ["PT-XL", "WINTERHALTER"],
+  ["P50", "WINTERHALTER"],
+  ["UF-M", "WINTERHALTER"],
+  ["UF-L", "WINTERHALTER"],
+  ["UF-XL", "WINTERHALTER"],
+  // NETTER
+  ["NETTER", "NETTER"],
+  ["TWISTER", "NETTER"],
+  // ROBOT COUPE
+  ["ROBOT COUPE", "ROBOT COUPE"],
+  ["ROBOT-COUPE", "ROBOT COUPE"],
+  // PRÁTICA
+  ["PRÁTICA KLIMAQUIP", "PRÁTICA"],
+  ["PRATICA KLIMAQUIP", "PRÁTICA"],
+  ["KLIMAQUIP", "PRÁTICA"],
+  ["TECHNICOOK", "PRÁTICA"],
+  ["C-MAX EVO", "PRÁTICA"],
+  ["CG-MAX EVO", "PRÁTICA"],
+  ["CG-MAX", "PRÁTICA"],
+  ["C-MAX", "PRÁTICA"],
+  ["MINICONV", "PRÁTICA"],
+  ["FORZA STI", "PRÁTICA"],
+  ["FIT EXPRESS", "PRÁTICA"],
+  ["KLIMAPRO", "PRÁTICA"],
+  ["PRCOP", "PRÁTICA"],
+  ["PRÁTICA", "PRÁTICA"],
+  ["PRATICA", "PRÁTICA"],
+  // UNOX
+  ["CHEFTOP MIND", "UNOX"],
+  ["BAKERTOP MIND", "UNOX"],
+  ["CHEFTOP-X", "UNOX"],
+  ["BAKERTOP-X", "UNOX"],
+  ["CHEFTOP", "UNOX"],
+  ["BAKERTOP", "UNOX"],
+  ["BAKERLUX", "UNOX"],
+  ["SPEED-X", "UNOX"],
+  ["SPEED.PRO", "UNOX"],
+  ["SPEED.COMPACT", "UNOX"],
+  ["LINEMICRO", "UNOX"],
+  ["EVEREO", "UNOX"],
+  ["UNOX", "UNOX"],
+  // MIDDLEBY
+  ["TURBOCHEF", "MIDDLEBY"],
+  ["MERRYCHEF", "MIDDLEBY"],
+  ["PITCO", "MIDDLEBY"],
+  ["JOSPER", "MIDDLEBY"],
+  ["MIDDLEBY", "MIDDLEBY"],
+  // HOSHIZAKI MACOM
+  ["HOSHIZAKI MACOM", "HOSHIZAKI MACOM"],
+  ["HOSHIZAKI", "HOSHIZAKI MACOM"],
+  ["MACOM", "HOSHIZAKI MACOM"],
+  // COZIL
+  ["AUTOCOOK PRO", "COZIL"],
+  ["CBEM-200", "COZIL"],
+  ["CBEM-300", "COZIL"],
+  ["CBEM-500", "COZIL"],
+  ["COZIL", "COZIL"],
+  // TRAMONTINA
+  ["T.CHEF", "TRAMONTINA"],
+  ["TRAMONTINA", "TRAMONTINA"],
+  // DEMAIS
+  ["GELOPAR", "GELOPAR"],
+  ["METALFRIO", "METALFRIO"],
+  ["SKYMSEN", "SKYMSEN"],
+  ["SIEMSEN", "SKYMSEN"],
+  ["RODRIAÇO", "RODRIAÇO"],
+  ["RODRIACO", "RODRIAÇO"],
+  ["FRICON", "FRICON"],
+  ["ELGIN", "ELGIN"],
+  ["VENÂNCIO", "VENÂNCIO"],
+  ["VENANCIO", "VENÂNCIO"],
+  ["BRAESI", "BRAESI"],
+  ["EVEREST", "EVEREST"],
+  ["GPANIZ", "GPANIZ"],
+  ["G.PANIZ", "GPANIZ"],
+  ["G PANIZ", "GPANIZ"],
+  ["PROGÁS", "PROGÁS"],
+  ["PROGAS", "PROGÁS"],
+  ["ELECTROLUX", "ELECTROLUX"],
+  ["ELETROLUX", "ELECTROLUX"],
+  ["CONSUL", "CONSUL"],
+  ["FRILUX", "FRILUX"],
+  ["CONVOTHERM", "CONVOTHERM"],
+  ["HUSSMANN", "HUSSMANN"],
+  ["VENAX", "VENAX"],
+  ["CITROLIFE", "CITROLIFE"],
+  ["CROYDON", "CROYDON"],
+  ["METVISA", "METVISA"],
+  ["MARCHESONI", "MARCHESONI"],
+  ["TOPEMA", "TOPEMA"],
+  ["METALCUBAS", "METALCUBAS"],
+  ["LINCAT", "LINCAT"],
+  ["SOVRANO", "SOVRANO"],
+  ["MORETTI FORNI", "MORETTI FORNI"],
+  ["MORETTI", "MORETTI FORNI"],
+  ["GASTROMAQ", "GASTROMAQ"],
+  ["BERMAR", "BERMAR"],
+  ["WARING", "WARING"],
+  ["IMBERA", "IMBERA"],
+  ["REFRIMATE", "REFRIMATE"],
+  ["FIAMMA", "FIAMMA"],
+  ["BRAVILOR", "BRAVILOR"],
+  ["BUNN", "BUNN"],
+  ["IRINOX", "IRINOX"],
+  ["FISCHER", "FISCHER"],
+  ["IBBL", "IBBL"],
+  ["KOFISA", "KOFISA"],
+  ["METALMAQ", "METALMAQ"],
+  ["RAMUZA", "RAMUZA"],
+  ["SPOLU", "SPOLU"],
+  ["TOLEDO", "TOLEDO"],
+  ["PRIX", "TOLEDO"],
+  ["MENUMASTER", "MENUMASTER"],
+  ["PANASONIC", "PANASONIC"],
+  ["SAMSUNG", "SAMSUNG"],
+  ["MIDEA", "MIDEA"],
+  ["PHILCO", "PHILCO"],
+  ["BRITÂNIA", "BRITÂNIA"],
+  ["BRITANIA", "BRITÂNIA"],
+  ["COLOMBO", "COLOMBO"],
+  ["FOGATTI", "FOGATTI"],
+  ["ELETROFER", "ELETROFER"],
+  ["KARCHER", "KÄRCHER"],
+  ["KÄRCHER", "KÄRCHER"],
+  ["HITACHI", "HITACHI"],
+  ["GREE", "GREE"],
+  ["SPRINGER", "SPRINGER"],
+  ["CARRIER", "CARRIER"],
+  ["DAIKIN", "DAIKIN"],
+  ["KOMECO", "KOMECO"],
+  ["MICHELETTI", "MICHELETTI"],
+  ["WELMY", "WELMY"],
+  ["URANO", "URANO"],
+  ["CATAVENTO", "CATAVENTO"],
+  ["AGRATTO", "AGRATTO"],
+  ["TECHNOSTEEL", "TECHNOSTEEL"],
+];
+
+function extractBrand(nome: string): string | null {
+  const upper = (nome || "").toUpperCase().trim();
+  if (!upper) return null;
+
+  // 1. Generic type prefixes (highest priority)
+  for (const [prefix, brand] of GENERIC_TYPE_PREFIXES) {
+    if (upper.startsWith(prefix)) return brand;
+  }
+
+  // 2. Model regex patterns
+  for (const [regex, brand] of MODEL_REGEX_BRANDS) {
+    if (regex.test(upper)) return brand;
+  }
+
+  // 3. Brand family dictionary (longer terms first)
+  for (const [term, brand] of BRAND_FAMILIES) {
+    if (upper.includes(term)) return brand;
+  }
+
+  return null;
+}
+
+// ══════════════════════════════════════════════════════════
+// Auvo API helpers
+// ══════════════════════════════════════════════════════════
+
 type EquipmentTaskLink = {
   taskId: string;
   equipmentIds: string[];
@@ -23,15 +253,8 @@ type EquipmentTaskLink = {
 
 async function auvoLogin(apiKey: string, apiToken: string): Promise<string> {
   const url = `${AUVO_BASE_URL}/login/?apiKey=${encodeURIComponent(apiKey)}&apiToken=${encodeURIComponent(apiToken)}`;
-  const res = await fetch(url, {
-    method: "GET",
-    headers: { "Content-Type": "application/json" },
-  });
-
-  if (!res.ok) {
-    throw new Error(`Auvo login failed (${res.status})`);
-  }
-
+  const res = await fetch(url, { method: "GET", headers: { "Content-Type": "application/json" } });
+  if (!res.ok) throw new Error(`Auvo login failed (${res.status})`);
   const data = await res.json();
   const token = data?.result?.accessToken;
   if (!token) throw new Error("Auvo login: no accessToken");
@@ -39,22 +262,17 @@ async function auvoLogin(apiKey: string, apiToken: string): Promise<string> {
 }
 
 function auvoHeaders(token: string): Record<string, string> {
-  return {
-    Authorization: `Bearer ${token}`,
-    "Content-Type": "application/json",
-  };
+  return { Authorization: `Bearer ${token}`, "Content-Type": "application/json" };
 }
 
 async function rateLimitedFetch(url: string, options: RequestInit): Promise<Response> {
   await new Promise((resolve) => setTimeout(resolve, 100));
   const res = await fetch(url, options);
-
   if (res.status === 403 || res.status === 429) {
     console.log(`[equipment-sync] Rate limit hit (${res.status}), waiting 10s...`);
     await new Promise((resolve) => setTimeout(resolve, 10000));
     return fetch(url, options);
   }
-
   return res;
 }
 
@@ -151,8 +369,6 @@ async function fetchCustomerName(customerId: number, token: string, cache: Map<n
   }
 }
 
-// Fetch tasks with native equipment links for a SINGLE date window.
-// Called once per month from the frontend to avoid timeout.
 async function fetchTasksWithEquipmentsForWindow(
   token: string,
   windowStart: string,
@@ -238,6 +454,10 @@ async function fetchTasksWithEquipmentsForWindow(
   return { results, totalTasks, tasksWithEquipments };
 }
 
+// ══════════════════════════════════════════════════════════
+// Main handler
+// ══════════════════════════════════════════════════════════
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
@@ -257,15 +477,10 @@ Deno.serve(async (req) => {
     }
 
     let body: any = {};
-    try {
-      body = await req.json();
-    } catch {
-      body = {};
-    }
+    try { body = await req.json(); } catch { body = {}; }
 
     const url = new URL(req.url);
     const phase = String(body?.phase || url.searchParams.get("phase") || "all");
-    // For Phase 2: accept startDate/endDate for single-window calls
     const startDateParam = String(body?.startDate || url.searchParams.get("startDate") || "");
     const endDateParam = String(body?.endDate || url.searchParams.get("endDate") || "");
 
@@ -276,6 +491,7 @@ Deno.serve(async (req) => {
     let phase2Result: any = null;
     let validEquipmentIds: Set<string> | null = null;
 
+    // ── Phase 1: Equipment catalog + brand extraction ──
     if (phase === "1" || phase === "all") {
       console.log("[equipment-sync] Phase 1: Fetching equipment catalog...");
       const auvoEquipments = await fetchAllEquipments(accessToken);
@@ -283,6 +499,7 @@ Deno.serve(async (req) => {
 
       const categories = await fetchAllCategories(accessToken);
 
+      // Load existing cliente values to preserve them
       const { data: existingEquip } = await sb
         .from("equipamentos_auvo")
         .select("auvo_equipment_id, cliente");
@@ -294,6 +511,7 @@ Deno.serve(async (req) => {
         }
       }
 
+      // Resolve new customer names
       const customerIds = new Set<number>();
       for (const eq of auvoEquipments) {
         if (eq.associatedCustomerId > 0 && !existingClienteMap.has(String(eq.id))) {
@@ -312,18 +530,62 @@ Deno.serve(async (req) => {
         }
       }
 
-      const equipRows = auvoEquipments.map((eq) => ({
-        auvo_equipment_id: String(eq.id),
-        nome: eq.name?.trim() || "",
-        identificador: eq.identifier?.trim() || null,
-        descricao: eq.description?.trim() || null,
-        cliente: eq.associatedCustomerId > 0
-          ? customerCache.get(eq.associatedCustomerId) || existingClienteMap.get(String(eq.id)) || null
-          : null,
-        categoria: eq.categoryId > 0 ? categories.get(eq.categoryId) || null : null,
-        status: eq.active ? "Ativo" : "Inativo",
-        atualizado_em: new Date().toISOString(),
-      }));
+      // Load manual override protection
+      const { data: protectedRows } = await sb
+        .from("equipamentos_auvo")
+        .select("auvo_equipment_id")
+        .eq("marca_manual_override", true);
+
+      const protectedIds = new Set(protectedRows?.map(r => r.auvo_equipment_id) || []);
+
+      // Build rows with brand extraction
+      let withBrand = 0;
+      let withoutBrand = 0;
+      const brandCounts = new Map<string, number>();
+
+      const equipRows = auvoEquipments.map((eq) => {
+        const nome = eq.name?.trim() || "";
+        const eqId = String(eq.id);
+        const parsedBrand = extractBrand(nome);
+
+        if (parsedBrand) {
+          withBrand++;
+          brandCounts.set(parsedBrand, (brandCounts.get(parsedBrand) || 0) + 1);
+        } else {
+          withoutBrand++;
+        }
+
+        const row: any = {
+          auvo_equipment_id: eqId,
+          nome,
+          identificador: eq.identifier?.trim() || null,
+          descricao: eq.description?.trim() || null,
+          cliente: eq.associatedCustomerId > 0
+            ? customerCache.get(eq.associatedCustomerId) || existingClienteMap.get(eqId) || null
+            : null,
+          categoria: eq.categoryId > 0 ? categories.get(eq.categoryId) || null : null,
+          status: eq.active ? "Ativo" : "Inativo",
+          atualizado_em: new Date().toISOString(),
+        };
+
+        // Only set marca fields if NOT manually overridden
+        if (!protectedIds.has(eqId)) {
+          row.marca = parsedBrand;
+          row.marca_source = parsedBrand ? "auto_parsed" : null;
+        }
+
+        return row;
+      });
+
+      console.log(`[equipment-sync] Brand extraction: ${withBrand} with brand, ${withoutBrand} without brand, ${protectedIds.size} protected (manual override)`);
+
+      // Log top brands
+      const topBrands = Array.from(brandCounts.entries())
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 15)
+        .map(([b, c]) => `${b}=${c}`)
+        .join(", ");
+      console.log(`[equipment-sync] Top brands: ${topBrands}`);
 
       let totalEquipUpserted = 0;
       const equipErrors: string[] = [];
@@ -346,10 +608,14 @@ Deno.serve(async (req) => {
         upserted: totalEquipUpserted,
         categories_found: categories.size,
         new_customers_resolved: customerCache.size,
+        brands_detected: withBrand,
+        brands_missing: withoutBrand,
+        brands_protected: protectedIds.size,
         errors: equipErrors.length > 0 ? equipErrors : undefined,
       };
     }
 
+    // ── Phase 2: Equipment-task relationships ──
     if (phase === "2" || phase === "all") {
       if (!startDateParam || !endDateParam) {
         return new Response(JSON.stringify({

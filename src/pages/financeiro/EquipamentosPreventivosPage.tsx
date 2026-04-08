@@ -1,5 +1,5 @@
 import { useState, useMemo, useCallback } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useNavigate } from "react-router-dom";
 import { format, differenceInDays, parseISO } from "date-fns";
@@ -9,7 +9,7 @@ import { toast } from "sonner";
 import {
   ArrowLeft, ExternalLink, RefreshCw, Search, AlertTriangle,
   CheckCircle2, Clock, Flame, Loader2, SlidersHorizontal,
-  ArrowUpDown, Download, ListFilter,
+  ArrowUpDown, Download, ListFilter, Pencil, Check, X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -22,15 +22,6 @@ import {
 } from "@/components/ui/select";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 
-// ── Constants ──
-const EQUIPMENT_KEYWORDS = [
-  "rational", "pratica", "prática", "klimaquip", "klimakiip",
-  "genesis", "gênesis", "unox", "câmara fria", "camara fria",
-  "câmara refrigerada", "camara refrigerada", "câmara resfriada", "camara resfriada",
-  "área climatizada", "area climatizada", "adega",
-  "ivario", "ivariopro", "forno combinado", "miniconv",
-];
-
 // ── Types ──
 type EquipmentRaw = {
   id: string;
@@ -41,6 +32,9 @@ type EquipmentRaw = {
   status: string | null;
   categoria: string | null;
   descricao: string | null;
+  marca: string | null;
+  marca_source: string | null;
+  marca_manual_override: boolean | null;
 };
 
 type EquipTaskRel = {
@@ -64,30 +58,17 @@ type EquipmentRow = {
   identificador: string | null;
   cliente: string | null;
   equipStatus: string | null;
+  marca: string | null;
+  marca_source: string | null;
   ultima_data: string | null;
   ultimo_tecnico: string | null;
   ultimo_link: string | null;
   dias_desde: number | null;
-  tipo: string;
   tipo_tarefa: string | null;
   total_tarefas: number;
 };
 
 // ── Helpers ──
-function detectTipo(nome: string): string {
-  const lower = nome.toLowerCase();
-  if (lower.includes("rational")) return "Rational";
-  if (lower.includes("pratica") || lower.includes("prática")) return "Prática";
-  if (lower.includes("unox")) return "Unox";
-  if (lower.includes("klimaquip") || lower.includes("klimakiip")) return "Klimaquip";
-  if (lower.includes("genesis") || lower.includes("gênesis")) return "Genesis";
-  if (lower.includes("ivario") || lower.includes("ivariopro")) return "Ivario";
-  if (lower.includes("câmara") || lower.includes("camara")) return "Câmara Fria";
-  if (lower.includes("climatizada") || lower.includes("adega")) return "Climatização";
-  if (lower.includes("forno combinado") || lower.includes("miniconv")) return "Forno Combinado";
-  return "Outro";
-}
-
 function getStatusInfo(dias: number | null) {
   if (dias === null) return { label: "Sem registro", color: "text-muted-foreground", bg: "bg-muted", icon: Clock };
   if (dias <= 90) return { label: "Em dia", color: "text-emerald-700 dark:text-emerald-400", bg: "bg-emerald-50 dark:bg-emerald-950/30", icon: CheckCircle2 };
@@ -97,24 +78,22 @@ function getStatusInfo(dias: number | null) {
 
 // ── Data fetching ──
 async function fetchRawData(): Promise<{ equipamentos: EquipmentRaw[]; relations: EquipTaskRel[] }> {
-  // Fetch equipment catalog
   let equipamentos: EquipmentRaw[] = [];
   let eqFrom = 0;
   const EQ_PAGE = 1000;
   while (true) {
     const { data, error } = await supabase
       .from("equipamentos_auvo")
-      .select("id, auvo_equipment_id, nome, identificador, cliente, status, categoria, descricao")
+      .select("id, auvo_equipment_id, nome, identificador, cliente, status, categoria, descricao, marca, marca_source, marca_manual_override")
       .order("nome")
       .range(eqFrom, eqFrom + EQ_PAGE - 1);
     if (error) throw error;
     if (!data || data.length === 0) break;
-    equipamentos.push(...data);
+    equipamentos.push(...(data as EquipmentRaw[]));
     if (data.length < EQ_PAGE) break;
     eqFrom += EQ_PAGE;
   }
 
-  // Fetch native equipment-task relationships
   let relations: EquipTaskRel[] = [];
   let relFrom = 0;
   const REL_PAGE = 1000;
@@ -134,13 +113,11 @@ async function fetchRawData(): Promise<{ equipamentos: EquipmentRaw[]; relations
   return { equipamentos, relations };
 }
 
-// ── Build equipment rows using ONLY native relationships ──
 function buildEquipmentRows(
   equipamentos: EquipmentRaw[],
   relations: EquipTaskRel[],
   tipoTarefaFilter: string
 ): EquipmentRow[] {
-  // Group relations by equipment ID
   const relByEquipment = new Map<string, EquipTaskRel[]>();
   for (const rel of relations) {
     if (!relByEquipment.has(rel.auvo_equipment_id)) {
@@ -153,17 +130,14 @@ function buildEquipmentRows(
     const eqId = eq.auvo_equipment_id || "";
     let eqTasks = relByEquipment.get(eqId) || [];
 
-    // Filter by task type if active
     if (tipoTarefaFilter !== "todos") {
       eqTasks = eqTasks.filter(t => t.auvo_task_type_id === tipoTarefaFilter);
     }
 
-    // Only consider completed tasks for "last intervention"
     const completedTasks = eqTasks.filter(t =>
       t.status_auvo === "Finalizada" && (t.data_conclusao || t.data_tarefa)
     );
 
-    // Sort by conclusion date descending
     completedTasks.sort((a, b) => {
       const dateA = a.data_conclusao || a.data_tarefa || "";
       const dateB = b.data_conclusao || b.data_tarefa || "";
@@ -181,11 +155,12 @@ function buildEquipmentRows(
       identificador: eq.identificador,
       cliente: eq.cliente,
       equipStatus: eq.status,
+      marca: eq.marca,
+      marca_source: eq.marca_source,
       ultima_data: ultimaData,
       ultimo_tecnico: lastTask?.tecnico || null,
       ultimo_link: lastTask?.auvo_link || null,
       dias_desde: dias,
-      tipo: detectTipo(eq.nome),
       tipo_tarefa: lastTask?.auvo_task_type_description || null,
       total_tarefas: completedTasks.length,
     };
@@ -198,19 +173,22 @@ function buildEquipmentRows(
 }
 
 // ── Component ──
-type SortField = "nome" | "cliente" | "dias" | "tipo";
+type SortField = "nome" | "cliente" | "dias" | "marca";
 type SortDir = "asc" | "desc";
 
 export default function EquipamentosPreventivosPage() {
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("todos");
-  const [tipoFilter, setTipoFilter] = useState<string>("todos");
+  const [marcaFilter, setMarcaFilter] = useState<string>("todos");
   const [clienteFilter, setClienteFilter] = useState<string>("todos");
   const [tipoTarefaFilter, setTipoTarefaFilter] = useState<string>("todos");
   const [sortField, setSortField] = useState<SortField>("dias");
   const [sortDir, setSortDir] = useState<SortDir>("desc");
   const [syncing, setSyncing] = useState(false);
+  const [editingMarcaId, setEditingMarcaId] = useState<string | null>(null);
+  const [editingMarcaValue, setEditingMarcaValue] = useState("");
 
   const { data: rawData, isLoading, refetch, isFetching } = useQuery({
     queryKey: ["equipamentos-preventivos-raw"],
@@ -218,7 +196,6 @@ export default function EquipamentosPreventivosPage() {
     staleTime: 5 * 60 * 1000,
   });
 
-  // Extract unique task types from native relationships (using auvo_task_type_id + description)
   const tiposTarefa = useMemo(() => {
     const rels = rawData?.relations ?? [];
     if (rels.length === 0) return [];
@@ -233,15 +210,15 @@ export default function EquipamentosPreventivosPage() {
       .sort((a, b) => a.desc.localeCompare(b.desc));
   }, [rawData?.relations]);
 
-  // Recompute equipment rows when filter changes
   const equipments = useMemo(() => {
     if (!rawData) return [];
     return buildEquipmentRows(rawData.equipamentos, rawData.relations ?? [], tipoTarefaFilter);
   }, [rawData, tipoTarefaFilter]);
 
-  const tipos = useMemo(() => {
-    const s = new Set(equipments.map((e) => e.tipo));
-    return Array.from(s).sort();
+  const marcasUnicas = useMemo(() => {
+    const set = new Set<string>();
+    equipments.forEach(eq => { if (eq.marca) set.add(eq.marca); });
+    return Array.from(set).sort();
   }, [equipments]);
 
   const clientes = useMemo(() => {
@@ -252,16 +229,14 @@ export default function EquipamentosPreventivosPage() {
   const handleSync = useCallback(async () => {
     setSyncing(true);
     try {
-      // Phase 1: catalog
-      toast.info("Fase 1: Sincronizando catálogo de equipamentos...");
+      toast.info("Fase 1: Sincronizando catálogo + marcas...");
       const { data: d1, error: e1 } = await supabase.functions.invoke("equipment-sync", {
         body: { phase: "1" },
       });
       if (e1) throw e1;
       const p1 = d1?.phase1_equipment_catalog;
-      toast.success(`Catálogo: ${p1?.upserted || 0} equipamentos sincronizados`);
+      toast.success(`Catálogo: ${p1?.upserted || 0} equip. | Marcas: ${p1?.brands_detected || 0} detectadas`);
 
-      // Phase 2: relationships — month by month (12 months back)
       const now = new Date();
       const monthsBack = 12;
       let totalRelUpserted = 0;
@@ -273,23 +248,18 @@ export default function EquipamentosPreventivosPage() {
         const endD = new Date(d.getFullYear(), d.getMonth() + 1, 0);
         const endDate = endD > now ? now.toISOString().split("T")[0] : endD.toISOString().split("T")[0];
 
-        toast.info(`Fase 2: Sincronizando vínculos ${startDate.substring(0, 7)}...`);
+        toast.info(`Fase 2: Vínculos ${startDate.substring(0, 7)}...`);
 
         const { data: d2, error: e2 } = await supabase.functions.invoke("equipment-sync", {
           body: { phase: "2", startDate, endDate },
         });
-        if (e2) {
-          console.error(`Phase 2 error for ${startDate}:`, e2);
-          continue;
-        }
+        if (e2) { console.error(`Phase 2 error for ${startDate}:`, e2); continue; }
         const p2 = d2?.phase2_equipment_tasks;
         totalRelUpserted += p2?.relationship_rows_upserted || 0;
         totalWithEquipLinks += p2?.tasks_with_equipment_links || 0;
       }
 
-      toast.success(
-        `Vínculos: ${totalRelUpserted} relações sincronizadas (${totalWithEquipLinks} tarefas com equipamento)`
-      );
+      toast.success(`Vínculos: ${totalRelUpserted} relações (${totalWithEquipLinks} tarefas com equipamento)`);
       refetch();
     } catch (err: any) {
       toast.error("Erro na sincronização: " + (err.message || "desconhecido"));
@@ -297,6 +267,26 @@ export default function EquipamentosPreventivosPage() {
       setSyncing(false);
     }
   }, [refetch]);
+
+  const handleSaveMarca = useCallback(async (eqId: string, newMarca: string) => {
+    const trimmed = newMarca.trim() || null;
+    const { error } = await supabase
+      .from("equipamentos_auvo")
+      .update({
+        marca: trimmed,
+        marca_source: trimmed ? "manual" : null,
+        marca_manual_override: !!trimmed,
+      })
+      .eq("id", eqId);
+
+    if (error) {
+      toast.error("Erro ao salvar marca: " + error.message);
+    } else {
+      toast.success("Marca atualizada");
+      queryClient.invalidateQueries({ queryKey: ["equipamentos-preventivos-raw"] });
+    }
+    setEditingMarcaId(null);
+  }, [queryClient]);
 
   const toggleSort = (field: SortField) => {
     if (sortField === field) {
@@ -317,7 +307,8 @@ export default function EquipamentosPreventivosPage() {
           e.nome.toLowerCase().includes(q) ||
           (e.cliente || "").toLowerCase().includes(q) ||
           (e.identificador || "").toLowerCase().includes(q) ||
-          (e.ultimo_tecnico || "").toLowerCase().includes(q)
+          (e.ultimo_tecnico || "").toLowerCase().includes(q) ||
+          (e.marca || "").toLowerCase().includes(q)
       );
     }
 
@@ -328,15 +319,18 @@ export default function EquipamentosPreventivosPage() {
       });
     }
 
-    if (tipoFilter !== "todos") {
-      result = result.filter((e) => e.tipo === tipoFilter);
+    if (marcaFilter !== "todos") {
+      if (marcaFilter === "__sem_marca__") {
+        result = result.filter((e) => !e.marca);
+      } else {
+        result = result.filter((e) => e.marca === marcaFilter);
+      }
     }
 
     if (clienteFilter !== "todos") {
       result = result.filter((e) => e.cliente === clienteFilter);
     }
 
-    // Sort
     result = [...result].sort((a, b) => {
       const dir = sortDir === "asc" ? 1 : -1;
       switch (sortField) {
@@ -344,8 +338,8 @@ export default function EquipamentosPreventivosPage() {
           return dir * a.nome.localeCompare(b.nome);
         case "cliente":
           return dir * (a.cliente || "").localeCompare(b.cliente || "");
-        case "tipo":
-          return dir * a.tipo.localeCompare(b.tipo);
+        case "marca":
+          return dir * (a.marca || "zzz").localeCompare(b.marca || "zzz");
         case "dias":
         default:
           if (a.dias_desde === null && b.dias_desde === null) return 0;
@@ -356,7 +350,7 @@ export default function EquipamentosPreventivosPage() {
     });
 
     return result;
-  }, [equipments, search, statusFilter, tipoFilter, clienteFilter, sortField, sortDir]);
+  }, [equipments, search, statusFilter, marcaFilter, clienteFilter, sortField, sortDir]);
 
   const stats = useMemo(() => {
     const emDia = equipments.filter((e) => e.dias_desde !== null && e.dias_desde <= 90).length;
@@ -379,12 +373,12 @@ export default function EquipamentosPreventivosPage() {
   );
 
   const handleExportCsv = () => {
-    const header = "Status,Tipo,Equipamento,Identificador,Cliente,Última Intervenção,Técnico,Dias,Tipo Tarefa,Total Tarefas\n";
+    const header = "Status,Marca,Equipamento,Identificador,Cliente,Última Intervenção,Técnico,Dias,Tipo Tarefa,Total Tarefas\n";
     const rows = filtered.map((eq) => {
       const info = getStatusInfo(eq.dias_desde);
       return [
         info.label,
-        eq.tipo,
+        `"${eq.marca || "Não identificada"}"`,
         `"${eq.nome}"`,
         eq.identificador || "",
         `"${eq.cliente || ""}"`,
@@ -404,6 +398,11 @@ export default function EquipamentosPreventivosPage() {
     a.click();
     URL.revokeObjectURL(url);
   };
+
+  const activeFilters = [
+    marcaFilter !== "todos" && `Marca: ${marcaFilter === "__sem_marca__" ? "Não identificada" : marcaFilter}`,
+    tipoTarefaFilter !== "todos" && `Tipo tarefa: ${tiposTarefa.find(t => t.id === tipoTarefaFilter)?.desc || tipoTarefaFilter}`,
+  ].filter(Boolean);
 
   return (
     <div className="space-y-6">
@@ -453,7 +452,7 @@ export default function EquipamentosPreventivosPage() {
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <Input
-              placeholder="Buscar equipamento, cliente, identificador..."
+              placeholder="Buscar equipamento, cliente, marca..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               className="pl-10"
@@ -475,14 +474,15 @@ export default function EquipamentosPreventivosPage() {
           </SelectContent>
         </Select>
 
-        <Select value={tipoFilter} onValueChange={setTipoFilter}>
-          <SelectTrigger className="w-[150px]">
-            <SelectValue placeholder="Tipo" />
+        <Select value={marcaFilter} onValueChange={setMarcaFilter}>
+          <SelectTrigger className="w-[180px]">
+            <SelectValue placeholder="Marca" />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="todos">Todos os tipos</SelectItem>
-            {tipos.map((t) => (
-              <SelectItem key={t} value={t}>{t}</SelectItem>
+            <SelectItem value="todos">Todas as marcas</SelectItem>
+            <SelectItem value="__sem_marca__">⚠️ Não identificada</SelectItem>
+            {marcasUnicas.map((m) => (
+              <SelectItem key={m} value={m}>{m}</SelectItem>
             ))}
           </SelectContent>
         </Select>
@@ -513,16 +513,16 @@ export default function EquipamentosPreventivosPage() {
         </Select>
       </div>
 
-      {/* Filter active banner */}
-      {tipoTarefaFilter !== "todos" && (
+      {/* Active filters banner */}
+      {activeFilters.length > 0 && (
         <div className="bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800 rounded-lg p-3 flex items-center gap-2">
           <ListFilter className="h-4 w-4 text-blue-600" />
           <span className="text-sm text-blue-800 dark:text-blue-300">
-            Filtro ativo: <strong>{tiposTarefa.find(t => t.id === tipoTarefaFilter)?.desc || tipoTarefaFilter}</strong>
-            — contadores e datas refletem apenas tarefas desse tipo
+            Filtros ativos: <strong>{activeFilters.join(" · ")}</strong>
+            — mostrando {filtered.length} de {equipments.length}
           </span>
-          <Button variant="ghost" size="sm" onClick={() => setTipoTarefaFilter("todos")} className="ml-auto text-xs">
-            Limpar
+          <Button variant="ghost" size="sm" onClick={() => { setMarcaFilter("todos"); setTipoTarefaFilter("todos"); }} className="ml-auto text-xs">
+            Limpar filtros
           </Button>
         </div>
       )}
@@ -539,7 +539,7 @@ export default function EquipamentosPreventivosPage() {
             <TableHeader>
               <TableRow>
                 <TableHead className="w-10">Status</TableHead>
-                <TableHead><SortButton field="tipo">Tipo</SortButton></TableHead>
+                <TableHead><SortButton field="marca">Marca</SortButton></TableHead>
                 <TableHead><SortButton field="nome">Equipamento</SortButton></TableHead>
                 <TableHead>Identificador</TableHead>
                 <TableHead><SortButton field="cliente">Cliente</SortButton></TableHead>
@@ -561,6 +561,8 @@ export default function EquipamentosPreventivosPage() {
                 filtered.map((eq) => {
                   const info = getStatusInfo(eq.dias_desde);
                   const Icon = info.icon;
+                  const isEditing = editingMarcaId === eq.id;
+
                   return (
                     <TableRow key={eq.id} className={cn(info.bg)}>
                       <TableCell>
@@ -571,8 +573,48 @@ export default function EquipamentosPreventivosPage() {
                           <TooltipContent>{info.label}</TooltipContent>
                         </Tooltip>
                       </TableCell>
-                      <TableCell>
-                        <Badge variant="secondary" className="text-xs whitespace-nowrap">{eq.tipo}</Badge>
+                      <TableCell className="min-w-[120px]">
+                        {isEditing ? (
+                          <div className="flex items-center gap-1">
+                            <Input
+                              value={editingMarcaValue}
+                              onChange={(e) => setEditingMarcaValue(e.target.value)}
+                              className="h-7 text-xs w-[100px]"
+                              autoFocus
+                              onKeyDown={(e) => {
+                                if (e.key === "Enter") handleSaveMarca(eq.id, editingMarcaValue);
+                                if (e.key === "Escape") setEditingMarcaId(null);
+                              }}
+                            />
+                            <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => handleSaveMarca(eq.id, editingMarcaValue)}>
+                              <Check className="h-3 w-3" />
+                            </Button>
+                            <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => setEditingMarcaId(null)}>
+                              <X className="h-3 w-3" />
+                            </Button>
+                          </div>
+                        ) : (
+                          <div className="flex items-center gap-1 group">
+                            {eq.marca ? (
+                              <Badge variant="secondary" className="text-xs whitespace-nowrap">
+                                {eq.marca}
+                              </Badge>
+                            ) : (
+                              <span className="text-xs text-muted-foreground italic">Não identificada</span>
+                            )}
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-5 w-5 opacity-0 group-hover:opacity-100 transition-opacity"
+                              onClick={() => {
+                                setEditingMarcaId(eq.id);
+                                setEditingMarcaValue(eq.marca || "");
+                              }}
+                            >
+                              <Pencil className="h-3 w-3" />
+                            </Button>
+                          </div>
+                        )}
                       </TableCell>
                       <TableCell className="font-medium max-w-[280px] truncate" title={eq.nome}>
                         {eq.auvo_equipment_id ? (
@@ -598,7 +640,7 @@ export default function EquipamentosPreventivosPage() {
                             {format(parseISO(eq.ultima_data), "dd/MM/yyyy", { locale: ptBR })}
                           </span>
                         ) : (
-                          <span className="text-xs text-muted-foreground">Sem histórico vinculado</span>
+                          <span className="text-xs text-muted-foreground">Sem histórico</span>
                         )}
                       </TableCell>
                       <TableCell className="text-sm">{eq.ultimo_tecnico || "—"}</TableCell>
@@ -630,7 +672,7 @@ export default function EquipamentosPreventivosPage() {
 
       <div className="text-xs text-muted-foreground text-right">
         {filtered.length} de {equipments.length} equipamentos
-        {tipoTarefaFilter !== "todos" && " (filtrado por tipo de tarefa)"}
+        {activeFilters.length > 0 && " (filtrado)"}
         {" · "}Fonte: vínculo nativo Auvo (equipmentsId)
       </div>
     </div>
