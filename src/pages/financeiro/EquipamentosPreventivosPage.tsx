@@ -261,15 +261,34 @@ export default function EquipamentosPreventivosPage() {
       const p1 = d1?.phase1_equipment_catalog;
       toast.success(`Catálogo: ${p1?.upserted || 0} equipamentos sincronizados`);
 
-      // Phase 2: relationships
-      toast.info("Fase 2: Sincronizando vínculos tarefa-equipamento...");
-      const { data: d2, error: e2 } = await supabase.functions.invoke("equipment-sync", {
-        body: { phase: "2", months: 12 },
-      });
-      if (e2) throw e2;
-      const p2 = d2?.phase2_equipment_tasks;
+      // Phase 2: relationships — month by month (12 months back)
+      const now = new Date();
+      const monthsBack = 12;
+      let totalRelUpserted = 0;
+      let totalWithEquipLinks = 0;
+
+      for (let m = monthsBack; m >= 0; m--) {
+        const d = new Date(now.getFullYear(), now.getMonth() - m, 1);
+        const startDate = d.toISOString().split("T")[0];
+        const endD = new Date(d.getFullYear(), d.getMonth() + 1, 0);
+        const endDate = endD > now ? now.toISOString().split("T")[0] : endD.toISOString().split("T")[0];
+
+        toast.info(`Fase 2: Sincronizando vínculos ${startDate.substring(0, 7)}...`);
+
+        const { data: d2, error: e2 } = await supabase.functions.invoke("equipment-sync", {
+          body: { phase: "2", startDate, endDate },
+        });
+        if (e2) {
+          console.error(`Phase 2 error for ${startDate}:`, e2);
+          continue;
+        }
+        const p2 = d2?.phase2_equipment_tasks;
+        totalRelUpserted += p2?.relationship_rows_upserted || 0;
+        totalWithEquipLinks += p2?.tasks_with_equipment_links || 0;
+      }
+
       toast.success(
-        `Vínculos: ${p2?.relationship_rows_upserted || 0} relações sincronizadas (${p2?.equipments_with_tasks || 0} equipamentos com tarefas)`
+        `Vínculos: ${totalRelUpserted} relações sincronizadas (${totalWithEquipLinks} tarefas com equipamento)`
       );
       refetch();
     } catch (err: any) {

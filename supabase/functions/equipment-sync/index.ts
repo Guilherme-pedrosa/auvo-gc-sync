@@ -151,101 +151,91 @@ async function fetchCustomerName(customerId: number, token: string, cache: Map<n
   }
 }
 
-// IMPORTANT:
-// Use ONLY GET /tasks/ listing here.
-// If equipmentsId is empty, the task has no native equipment linkage and must be ignored.
-async function fetchAllTasksWithEquipments(token: string, monthsBack: number = 12): Promise<EquipmentTaskLink[]> {
+// Fetch tasks with native equipment links for a SINGLE date window.
+// Called once per month from the frontend to avoid timeout.
+async function fetchTasksWithEquipmentsForWindow(
+  token: string,
+  windowStart: string,
+  windowEnd: string,
+): Promise<{ results: EquipmentTaskLink[]; totalTasks: number; tasksWithEquipments: number }> {
   const headers = auvoHeaders(token);
   const results: EquipmentTaskLink[] = [];
-  let totalTasksFromListing = 0;
+  let totalTasks = 0;
   let tasksWithEquipments = 0;
 
-  const now = new Date();
-  const startDate = new Date(now.getFullYear(), now.getMonth() - monthsBack, 1);
-  const current = new Date(startDate);
+  console.log(`[equipment-sync] Fetching tasks ${windowStart} → ${windowEnd}...`);
 
-  while (current <= now) {
-    const monthStart = current.toISOString().split("T")[0];
-    const monthEnd = new Date(current.getFullYear(), current.getMonth() + 1, 0);
-    const clampedEnd = monthEnd > now ? now.toISOString().split("T")[0] : monthEnd.toISOString().split("T")[0];
+  let page = 1;
+  const maxPages = 100;
 
-    console.log(`[equipment-sync] Fetching tasks ${monthStart} → ${clampedEnd}...`);
+  while (page <= maxPages) {
+    const filterObj = {
+      startDate: `${windowStart}T00:00:00`,
+      endDate: `${windowEnd}T23:59:59`,
+    };
+    const paramFilter = encodeURIComponent(JSON.stringify(filterObj));
+    const url = `${AUVO_BASE_URL}/tasks/?page=${page}&pageSize=${TASK_PAGE_SIZE}&order=desc&paramFilter=${paramFilter}`;
 
-    let page = 1;
-    const maxPages = 100;
-
-    while (page <= maxPages) {
-      const filterObj = {
-        startDate: `${monthStart}T00:00:00`,
-        endDate: `${clampedEnd}T23:59:59`,
-      };
-      const paramFilter = encodeURIComponent(JSON.stringify(filterObj));
-      const url = `${AUVO_BASE_URL}/tasks/?page=${page}&pageSize=${TASK_PAGE_SIZE}&order=desc&paramFilter=${paramFilter}`;
-
-      const res = await rateLimitedFetch(url, { method: "GET", headers });
-      if (!res.ok) {
-        if (res.status === 404) break;
-        const errBody = await res.text().catch(() => "");
-        console.error(`[equipment-sync] Tasks listing HTTP ${res.status} for ${monthStart} page ${page}: ${errBody.substring(0, 300)}`);
-        break;
-      }
-
-      const json = await res.json();
-      const tasks = json?.result?.entityList || json?.result?.Entities || [];
-      if (!Array.isArray(tasks) || tasks.length === 0) break;
-
-      totalTasksFromListing += tasks.length;
-
-      if (page === 1) {
-        const totalItems = json?.result?.pagedSearchReturnData?.totalItems || 0;
-        console.log(`[equipment-sync] ${monthStart}: ${totalItems} tasks total`);
-      }
-
-      for (const task of tasks) {
-        const taskId = String(task.taskID || task.id || "");
-        if (!taskId) continue;
-
-        const equipIds: number[] = Array.isArray(task.equipmentsId)
-          ? task.equipmentsId
-          : Array.isArray(task.equipmentsID)
-            ? task.equipmentsID
-            : Array.isArray(task.equipmentIds)
-              ? task.equipmentIds
-              : [];
-
-        if (equipIds.length === 0) continue;
-        tasksWithEquipments++;
-
-        const statusCode = typeof task.taskStatus === "number"
-          ? task.taskStatus
-          : typeof task.taskStatus?.id === "number"
-            ? task.taskStatus.id
-            : 0;
-
-        results.push({
-          taskId,
-          equipmentIds: equipIds.map(String),
-          taskType: String(task.taskType || ""),
-          taskTypeDescription: String(task.taskTypeDescription || ""),
-          statusCode,
-          taskDate: normalizeDate(task.taskDate),
-          checkOutDate: normalizeDate(task.checkOutDate || task.checkoutDate),
-          customerDescription: String(task.customerDescription || task.customerName || ""),
-          userToName: String(task.userToName || ""),
-        });
-      }
-
-      if (tasks.length < TASK_PAGE_SIZE) break;
-      page++;
+    const res = await rateLimitedFetch(url, { method: "GET", headers });
+    if (!res.ok) {
+      if (res.status === 404) break;
+      const errBody = await res.text().catch(() => "");
+      console.error(`[equipment-sync] Tasks listing HTTP ${res.status} page ${page}: ${errBody.substring(0, 300)}`);
+      break;
     }
 
-    current.setMonth(current.getMonth() + 1);
-    current.setDate(1);
+    const json = await res.json();
+    const tasks = json?.result?.entityList || json?.result?.Entities || [];
+    if (!Array.isArray(tasks) || tasks.length === 0) break;
+
+    totalTasks += tasks.length;
+
+    if (page === 1) {
+      const totalItems = json?.result?.pagedSearchReturnData?.totalItems || 0;
+      console.log(`[equipment-sync] ${windowStart}: ${totalItems} tasks total`);
+    }
+
+    for (const task of tasks) {
+      const taskId = String(task.taskID || task.id || "");
+      if (!taskId) continue;
+
+      const equipIds: number[] = Array.isArray(task.equipmentsId)
+        ? task.equipmentsId
+        : Array.isArray(task.equipmentsID)
+          ? task.equipmentsID
+          : Array.isArray(task.equipmentIds)
+            ? task.equipmentIds
+            : [];
+
+      if (equipIds.length === 0) continue;
+      tasksWithEquipments++;
+
+      const statusCode = typeof task.taskStatus === "number"
+        ? task.taskStatus
+        : typeof task.taskStatus?.id === "number"
+          ? task.taskStatus.id
+          : 0;
+
+      results.push({
+        taskId,
+        equipmentIds: equipIds.map(String),
+        taskType: String(task.taskType || ""),
+        taskTypeDescription: String(task.taskTypeDescription || ""),
+        statusCode,
+        taskDate: normalizeDate(task.taskDate),
+        checkOutDate: normalizeDate(task.checkOutDate || task.checkoutDate),
+        customerDescription: String(task.customerDescription || task.customerName || ""),
+        userToName: String(task.userToName || ""),
+      });
+    }
+
+    if (tasks.length < TASK_PAGE_SIZE) break;
+    page++;
   }
 
-  console.log(`[equipment-sync] Total tasks from listing: ${totalTasksFromListing}`);
+  console.log(`[equipment-sync] Total tasks from listing: ${totalTasks}`);
   console.log(`[equipment-sync] Tasks WITH equipmentsId: ${tasksWithEquipments}`);
-  return results;
+  return { results, totalTasks, tasksWithEquipments };
 }
 
 Deno.serve(async (req) => {
@@ -275,7 +265,9 @@ Deno.serve(async (req) => {
 
     const url = new URL(req.url);
     const phase = String(body?.phase || url.searchParams.get("phase") || "all");
-    const monthsBack = Math.max(1, Math.min(24, Number(body?.months || url.searchParams.get("months") || 12) || 12));
+    // For Phase 2: accept startDate/endDate for single-window calls
+    const startDateParam = String(body?.startDate || url.searchParams.get("startDate") || "");
+    const endDateParam = String(body?.endDate || url.searchParams.get("endDate") || "");
 
     const sb = createClient(supabaseUrl, serviceKey);
     const accessToken = await auvoLogin(auvoApiKey, auvoApiToken);
@@ -359,16 +351,37 @@ Deno.serve(async (req) => {
     }
 
     if (phase === "2" || phase === "all") {
-      console.log(`[equipment-sync] Phase 2: Fetching tasks with equipment links (${monthsBack} months)...`);
-      const tasksWithEquipments = await fetchAllTasksWithEquipments(accessToken, monthsBack);
-      console.log(`[equipment-sync] Tasks with equipment links found: ${tasksWithEquipments.length}`);
+      if (!startDateParam || !endDateParam) {
+        return new Response(JSON.stringify({
+          error: "Phase 2 requires startDate and endDate parameters (YYYY-MM-DD)",
+        }), {
+          status: 400,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      console.log(`[equipment-sync] Phase 2: window ${startDateParam} → ${endDateParam}`);
 
       if (!validEquipmentIds) {
-        const { data: eqData } = await sb
-          .from("equipamentos_auvo")
-          .select("auvo_equipment_id");
-        validEquipmentIds = new Set((eqData || []).map((row) => row.auvo_equipment_id).filter(Boolean));
+        validEquipmentIds = new Set<string>();
+        let eqFrom = 0;
+        while (true) {
+          const { data: eqData } = await sb
+            .from("equipamentos_auvo")
+            .select("auvo_equipment_id")
+            .range(eqFrom, eqFrom + 999);
+          if (!eqData || eqData.length === 0) break;
+          for (const row of eqData) {
+            if (row.auvo_equipment_id) validEquipmentIds.add(row.auvo_equipment_id);
+          }
+          if (eqData.length < 1000) break;
+          eqFrom += 1000;
+        }
+        console.log(`[equipment-sync] Valid equipment IDs loaded: ${validEquipmentIds.size}`);
       }
+
+      const { results: tasksWithEquipments, totalTasks, tasksWithEquipments: withEquipCount } =
+        await fetchTasksWithEquipmentsForWindow(accessToken, startDateParam, endDateParam);
 
       const relRows: any[] = [];
       let discardedLinks = 0;
@@ -376,13 +389,8 @@ Deno.serve(async (req) => {
 
       for (const task of tasksWithEquipments) {
         if (!task.taskId) continue;
-
         for (const eqId of task.equipmentIds) {
-          if (!validEquipmentIds.has(eqId)) {
-            discardedLinks++;
-            continue;
-          }
-
+          if (!validEquipmentIds.has(eqId)) { discardedLinks++; continue; }
           equipmentsWithTasks.add(eqId);
           relRows.push({
             auvo_equipment_id: eqId,
@@ -401,10 +409,6 @@ Deno.serve(async (req) => {
         }
       }
 
-      console.log(`[equipment-sync] Relational rows to upsert: ${relRows.length}`);
-      console.log(`[equipment-sync] Equipments with tasks: ${equipmentsWithTasks.size}`);
-      console.log(`[equipment-sync] Discarded links (invalid equipment ID): ${discardedLinks}`);
-
       let totalRelUpserted = 0;
       const relErrors: string[] = [];
 
@@ -413,10 +417,9 @@ Deno.serve(async (req) => {
         const { error } = await sb
           .from("equipamento_tarefas_auvo")
           .upsert(batch, { onConflict: "auvo_equipment_id,auvo_task_id" });
-
         if (error) {
           relErrors.push(error.message);
-          console.error(`[equipment-sync] Rel batch ${Math.floor(i / UPSERT_BATCH_SIZE) + 1} error: ${error.message}`);
+          console.error(`[equipment-sync] Rel upsert error: ${error.message}`);
         } else {
           totalRelUpserted += batch.length;
         }
@@ -425,7 +428,9 @@ Deno.serve(async (req) => {
       console.log(`[equipment-sync] Equipment-task relationships upserted: ${totalRelUpserted}`);
 
       phase2Result = {
-        tasks_with_equipment_links: tasksWithEquipments.length,
+        window: `${startDateParam} → ${endDateParam}`,
+        total_tasks_in_window: totalTasks,
+        tasks_with_equipment_links: withEquipCount,
         relationship_rows_upserted: totalRelUpserted,
         equipments_with_tasks: equipmentsWithTasks.size,
         discarded_invalid_links: discardedLinks,
