@@ -45,6 +45,7 @@ type TaskRaw = {
 
 type EquipmentRaw = {
   id: string;
+  auvo_equipment_id: string | null;
   nome: string;
   identificador: string | null;
   cliente: string | null;
@@ -55,6 +56,7 @@ type EquipmentRaw = {
 
 type EquipmentRow = {
   id: string;
+  auvo_equipment_id: string | null;
   nome: string;
   identificador: string | null;
   cliente: string | null;
@@ -151,7 +153,7 @@ async function fetchRawData(): Promise<{ equipamentos: EquipmentRaw[]; tasks: Ta
   while (true) {
     const { data, error } = await supabase
       .from("equipamentos_auvo")
-      .select("id, nome, identificador, cliente, status, categoria, descricao")
+      .select("id, auvo_equipment_id, nome, identificador, cliente, status, categoria, descricao")
       .order("nome")
       .range(eqFrom, eqFrom + EQ_PAGE - 1);
     if (error) throw error;
@@ -265,6 +267,7 @@ function buildEquipmentRows(equipamentos: EquipmentRaw[], tasks: TaskRaw[], tipo
 
     return {
       id: eq.id,
+      auvo_equipment_id: eq.auvo_equipment_id,
       nome: eq.nome,
       identificador: eq.identificador,
       cliente: eq.cliente,
@@ -574,7 +577,16 @@ export default function EquipamentosPreventivosPage() {
                         <Badge variant="secondary" className="text-xs whitespace-nowrap">{eq.tipo}</Badge>
                       </TableCell>
                       <TableCell className="font-medium max-w-[280px] truncate" title={eq.nome}>
-                        {eq.nome}
+                        {eq.auvo_equipment_id ? (
+                          <a
+                            href={`https://app2.auvo.com.br/gerenciarEquipamentos/equipamento/${eq.auvo_equipment_id}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-primary hover:underline"
+                          >
+                            {eq.nome}
+                          </a>
+                        ) : eq.nome}
                       </TableCell>
                       <TableCell className="text-xs text-muted-foreground font-mono">
                         {eq.identificador || "—"}
