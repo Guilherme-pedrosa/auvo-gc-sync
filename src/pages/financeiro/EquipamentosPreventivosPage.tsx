@@ -22,6 +22,7 @@ import {
 } from "@/components/ui/select";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 
+// ── Constants ──
 const EQUIPMENT_KEYWORDS = [
   "rational", "pratica", "prática", "klimaquip", "klimakiip",
   "genesis", "gênesis", "unox", "câmara fria", "camara fria",
@@ -30,19 +31,7 @@ const EQUIPMENT_KEYWORDS = [
   "ivario", "ivariopro", "forno combinado", "miniconv",
 ];
 
-type TaskRaw = {
-  equipamento_nome: string | null;
-  equipamento_id_serie: string | null;
-  cliente: string | null;
-  data_tarefa: string | null;
-  data_conclusao: string | null;
-  status_auvo: string | null;
-  tecnico: string | null;
-  auvo_link: string | null;
-  descricao: string | null;
-  orientacao: string | null;
-};
-
+// ── Types ──
 type EquipmentRaw = {
   id: string;
   auvo_equipment_id: string | null;
@@ -52,6 +41,20 @@ type EquipmentRaw = {
   status: string | null;
   categoria: string | null;
   descricao: string | null;
+};
+
+type EquipTaskRel = {
+  auvo_equipment_id: string;
+  auvo_task_id: string;
+  auvo_task_type_id: string | null;
+  auvo_task_type_description: string | null;
+  status_auvo: string | null;
+  data_tarefa: string | null;
+  data_conclusao: string | null;
+  cliente: string | null;
+  tecnico: string | null;
+  auvo_link: string | null;
+  source: string | null;
 };
 
 type EquipmentRow = {
@@ -67,56 +70,10 @@ type EquipmentRow = {
   dias_desde: number | null;
   tipo: string;
   tipo_tarefa: string | null;
+  total_tarefas: number;
 };
 
-type TaskCandidate = {
-  data_referencia: string;
-  tecnico: string | null;
-  auvo_link: string | null;
-  descricao: string | null;
-  nameKey: string;
-  serialKey: string;
-  clientKey: string;
-  searchKey: string;
-};
-
-const IGNORED_NAME_TOKENS = new Set([
-  "equipamento",
-  "serial",
-  "serie",
-  "patrimonio",
-  "patrimonioo",
-  "modelo",
-  "ref",
-  "refrigerado",
-  "refrigerada",
-  "frontal",
-  "inox",
-  "aco",
-  "cozinha",
-]);
-
-function normalizeComparable(text: unknown): string {
-  return String(text || "")
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .toLowerCase()
-    .replace(/[^a-z0-9]/g, "")
-    .trim();
-}
-
-function getSearchTokens(text: string): string[] {
-  return String(text || "")
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .toLowerCase()
-    .split(/[^a-z0-9]+/)
-    .map((token) => token.trim())
-    .filter((token) => token.length >= 4 && !IGNORED_NAME_TOKENS.has(token))
-    .sort((a, b) => b.length - a.length)
-    .slice(0, 4);
-}
-
+// ── Helpers ──
 function detectTipo(nome: string): string {
   const lower = nome.toLowerCase();
   if (lower.includes("rational")) return "Rational";
@@ -138,15 +95,9 @@ function getStatusInfo(dias: number | null) {
   return { label: "Vencido", color: "text-red-700 dark:text-red-400", bg: "bg-red-50 dark:bg-red-950/30", icon: Flame };
 }
 
-function clientsMatch(taskClientKey: string, equipmentClientKey: string): boolean {
-  // Both must be present and equal for a valid match
-  // If equipment has a client, the task MUST be from the same client
-  if (!equipmentClientKey) return true; // no client on equipment = can't filter
-  if (!taskClientKey) return false; // equipment has client but task doesn't = reject
-  return taskClientKey === equipmentClientKey;
-}
-
-async function fetchRawData(): Promise<{ equipamentos: EquipmentRaw[]; tasks: TaskRaw[] }> {
+// ── Data fetching ──
+async function fetchRawData(): Promise<{ equipamentos: EquipmentRaw[]; relations: EquipTaskRel[] }> {
+  // Fetch equipment catalog
   let equipamentos: EquipmentRaw[] = [];
   let eqFrom = 0;
   const EQ_PAGE = 1000;
@@ -163,106 +114,64 @@ async function fetchRawData(): Promise<{ equipamentos: EquipmentRaw[]; tasks: Ta
     eqFrom += EQ_PAGE;
   }
 
-  let allTasks: TaskRaw[] = [];
-  let from = 0;
-  const PAGE = 1000;
+  // Fetch native equipment-task relationships
+  let relations: EquipTaskRel[] = [];
+  let relFrom = 0;
+  const REL_PAGE = 1000;
   while (true) {
     const { data, error } = await supabase
-      .from("tarefas_central")
-      .select("equipamento_nome, equipamento_id_serie, cliente, data_tarefa, data_conclusao, status_auvo, tecnico, auvo_link, descricao, orientacao")
-      .order("data_tarefa", { ascending: false })
-      .range(from, from + PAGE - 1);
+      .from("equipamento_tarefas_auvo")
+      .select("auvo_equipment_id, auvo_task_id, auvo_task_type_id, auvo_task_type_description, status_auvo, data_tarefa, data_conclusao, cliente, tecnico, auvo_link, source")
+      .order("data_conclusao", { ascending: false, nullsFirst: false })
+      .range(relFrom, relFrom + REL_PAGE - 1);
     if (error) throw error;
     if (!data || data.length === 0) break;
-    allTasks.push(...data);
-    if (data.length < PAGE) break;
-    from += PAGE;
+    relations.push(...(data as EquipTaskRel[]));
+    if (data.length < REL_PAGE) break;
+    relFrom += REL_PAGE;
   }
 
-  return { equipamentos, tasks: allTasks };
+  return { equipamentos, relations };
 }
 
-function buildEquipmentRows(equipamentos: EquipmentRaw[], tasks: TaskRaw[], tipoTarefaFilter: string): EquipmentRow[] {
-  const candidates: TaskCandidate[] = tasks
-    .filter((task) => {
-      const taskType = String(task.descricao || "").trim();
-      if (tipoTarefaFilter !== "todos" && taskType !== tipoTarefaFilter) return false;
-
-      const dataReferencia = task.data_conclusao || task.data_tarefa;
-      const isCompleted = task.status_auvo === "Finalizada" || !!task.data_conclusao;
-      const hasEquipmentSignal = Boolean(
-        normalizeComparable(task.equipamento_id_serie) ||
-        normalizeComparable(task.equipamento_nome) ||
-        normalizeComparable(task.orientacao)
-      );
-
-      return Boolean(dataReferencia && isCompleted && hasEquipmentSignal);
-    })
-    .map((task) => ({
-      data_referencia: (task.data_conclusao || task.data_tarefa) as string,
-      tecnico: task.tecnico,
-      auvo_link: task.auvo_link,
-      descricao: task.descricao,
-      nameKey: normalizeComparable(task.equipamento_nome),
-      serialKey: normalizeComparable(task.equipamento_id_serie),
-      clientKey: normalizeComparable(task.cliente),
-      searchKey: normalizeComparable(`${task.equipamento_nome || ""} ${task.equipamento_id_serie || ""} ${task.orientacao || ""}`),
-    }))
-    .sort((a, b) => b.data_referencia.localeCompare(a.data_referencia));
-
-  const taskBySerial = new Map<string, TaskCandidate>();
-  for (const task of candidates) {
-    if (task.serialKey && !taskBySerial.has(task.serialKey)) {
-      taskBySerial.set(task.serialKey, task);
+// ── Build equipment rows using ONLY native relationships ──
+function buildEquipmentRows(
+  equipamentos: EquipmentRaw[],
+  relations: EquipTaskRel[],
+  tipoTarefaFilter: string
+): EquipmentRow[] {
+  // Group relations by equipment ID
+  const relByEquipment = new Map<string, EquipTaskRel[]>();
+  for (const rel of relations) {
+    if (!relByEquipment.has(rel.auvo_equipment_id)) {
+      relByEquipment.set(rel.auvo_equipment_id, []);
     }
+    relByEquipment.get(rel.auvo_equipment_id)!.push(rel);
   }
 
-  const result: EquipmentRow[] = equipamentos.map((eq) => {
-    const serialKey = normalizeComparable(eq.identificador);
-    const nameKey = normalizeComparable(eq.nome);
-    const clientKey = normalizeComparable(eq.cliente);
+  return equipamentos.map((eq) => {
+    const eqId = eq.auvo_equipment_id || "";
+    let eqTasks = relByEquipment.get(eqId) || [];
 
-    let match = serialKey ? taskBySerial.get(serialKey) : undefined;
-
-    if (!match && serialKey) {
-      match = candidates.find((task) => clientsMatch(task.clientKey, clientKey) && task.searchKey.includes(serialKey));
+    // Filter by task type if active
+    if (tipoTarefaFilter !== "todos") {
+      eqTasks = eqTasks.filter(t => t.auvo_task_type_id === tipoTarefaFilter);
     }
 
-    if (!match && nameKey) {
-      match = candidates.find((task) => clientsMatch(task.clientKey, clientKey) && task.nameKey === nameKey);
-    }
+    // Only consider completed tasks for "last intervention"
+    const completedTasks = eqTasks.filter(t =>
+      t.status_auvo === "Finalizada" && (t.data_conclusao || t.data_tarefa)
+    );
 
-    if (!match && nameKey && nameKey.length >= 12) {
-      match = candidates.find(
-        (task) => {
-          if (!clientsMatch(task.clientKey, clientKey)) return false;
-          if (!task.nameKey || task.nameKey.length < 12) return false;
-          const shorter = nameKey.length <= task.nameKey.length ? nameKey : task.nameKey;
-          const longer = nameKey.length <= task.nameKey.length ? task.nameKey : nameKey;
-          // Shorter must cover at least 80% of longer to avoid false positives like "fornorational" matching "fornorationalicombipro..."
-          if (shorter.length / longer.length < 0.8) return false;
-          return longer.includes(shorter);
-        }
-      );
-    }
+    // Sort by conclusion date descending
+    completedTasks.sort((a, b) => {
+      const dateA = a.data_conclusao || a.data_tarefa || "";
+      const dateB = b.data_conclusao || b.data_tarefa || "";
+      return dateB.localeCompare(dateA);
+    });
 
-    if (!match) {
-      const tokens = getSearchTokens(eq.nome);
-      const hitsNeeded = tokens.length >= 2 ? 2 : tokens.length;
-      if (hitsNeeded > 0) {
-        match = candidates.find((task) => {
-          if (!clientsMatch(task.clientKey, clientKey)) return false;
-          let hits = 0;
-          for (const token of tokens) {
-            if (task.searchKey.includes(token)) hits += 1;
-            if (hits >= hitsNeeded) return true;
-          }
-          return false;
-        });
-      }
-    }
-
-    const ultimaData = match?.data_referencia || null;
+    const lastTask = completedTasks[0] || null;
+    const ultimaData = lastTask ? (lastTask.data_conclusao || lastTask.data_tarefa) : null;
     const dias = ultimaData ? differenceInDays(new Date(), parseISO(ultimaData)) : null;
 
     return {
@@ -273,15 +182,14 @@ function buildEquipmentRows(equipamentos: EquipmentRaw[], tasks: TaskRaw[], tipo
       cliente: eq.cliente,
       equipStatus: eq.status,
       ultima_data: ultimaData,
-      ultimo_tecnico: match?.tecnico || null,
-      ultimo_link: match?.auvo_link || null,
+      ultimo_tecnico: lastTask?.tecnico || null,
+      ultimo_link: lastTask?.auvo_link || null,
       dias_desde: dias,
       tipo: detectTipo(eq.nome),
-      tipo_tarefa: match?.descricao || null,
+      tipo_tarefa: lastTask?.auvo_task_type_description || null,
+      total_tarefas: completedTasks.length,
     };
-  });
-
-  return result.sort((a, b) => {
+  }).sort((a, b) => {
     if (a.dias_desde === null && b.dias_desde === null) return 0;
     if (a.dias_desde === null) return -1;
     if (b.dias_desde === null) return 1;
@@ -289,6 +197,7 @@ function buildEquipmentRows(equipamentos: EquipmentRaw[], tasks: TaskRaw[], tipo
   });
 }
 
+// ── Component ──
 type SortField = "nome" | "cliente" | "dias" | "tipo";
 type SortDir = "asc" | "desc";
 
@@ -309,20 +218,24 @@ export default function EquipamentosPreventivosPage() {
     staleTime: 5 * 60 * 1000,
   });
 
-  // Extract unique task types from raw tasks
+  // Extract unique task types from native relationships (using auvo_task_type_id + description)
   const tiposTarefa = useMemo(() => {
-    if (!rawData?.tasks) return [];
-    const s = new Set<string>();
-    for (const t of rawData.tasks) {
-      if (t.descricao && t.descricao.trim()) s.add(t.descricao.trim());
+    if (!rawData?.relations) return [];
+    const map = new Map<string, string>();
+    for (const r of rawData.relations) {
+      if (r.auvo_task_type_id && r.auvo_task_type_description) {
+        map.set(r.auvo_task_type_id, r.auvo_task_type_description);
+      }
     }
-    return Array.from(s).sort();
-  }, [rawData?.tasks]);
+    return Array.from(map.entries())
+      .map(([id, desc]) => ({ id, desc }))
+      .sort((a, b) => a.desc.localeCompare(b.desc));
+  }, [rawData?.relations]);
 
-  // Recompute equipment rows when tipoTarefaFilter changes
+  // Recompute equipment rows when filter changes
   const equipments = useMemo(() => {
     if (!rawData) return [];
-    return buildEquipmentRows(rawData.equipamentos, rawData.tasks, tipoTarefaFilter);
+    return buildEquipmentRows(rawData.equipamentos, rawData.relations, tipoTarefaFilter);
   }, [rawData, tipoTarefaFilter]);
 
   const tipos = useMemo(() => {
@@ -340,7 +253,11 @@ export default function EquipamentosPreventivosPage() {
     try {
       const { data, error } = await supabase.functions.invoke("equipment-sync");
       if (error) throw error;
-      toast.success(`Sincronização concluída! ${data.total_auvo || 0} equipamentos no Auvo, ${data.inserted || 0} novos, ${data.updated || 0} atualizados`);
+      const p1 = data?.phase1_equipment_catalog;
+      const p2 = data?.phase2_equipment_tasks;
+      toast.success(
+        `Sincronização concluída! ${p1?.total_auvo || 0} equipamentos, ${p2?.relationship_rows_upserted || 0} vínculos tarefa-equipamento`
+      );
       refetch();
     } catch (err: any) {
       toast.error("Erro na sincronização: " + (err.message || "desconhecido"));
@@ -418,71 +335,116 @@ export default function EquipamentosPreventivosPage() {
   }, [equipments]);
 
   const SortButton = ({ field, children }: { field: SortField; children: React.ReactNode }) => (
-    <button onClick={() => toggleSort(field)} className="inline-flex items-center gap-1 hover:text-foreground transition-colors">
+    <Button
+      variant="ghost"
+      size="sm"
+      onClick={() => toggleSort(field)}
+      className="h-auto p-0 hover:bg-transparent font-semibold"
+    >
       {children}
-      <ArrowUpDown className={cn("h-3 w-3", sortField === field ? "text-primary" : "text-muted-foreground/50")} />
-    </button>
+      <ArrowUpDown className="ml-1 h-3 w-3" />
+    </Button>
   );
 
-  const hasFilters = statusFilter !== "todos" || tipoFilter !== "todos" || clienteFilter !== "todos" || tipoTarefaFilter !== "todos" || search;
+  const handleExportCsv = () => {
+    const header = "Status,Tipo,Equipamento,Identificador,Cliente,Última Intervenção,Técnico,Dias,Tipo Tarefa,Total Tarefas\n";
+    const rows = filtered.map((eq) => {
+      const info = getStatusInfo(eq.dias_desde);
+      return [
+        info.label,
+        eq.tipo,
+        `"${eq.nome}"`,
+        eq.identificador || "",
+        `"${eq.cliente || ""}"`,
+        eq.ultima_data ? format(parseISO(eq.ultima_data), "dd/MM/yyyy") : "",
+        `"${eq.ultimo_tecnico || ""}"`,
+        eq.dias_desde ?? "",
+        `"${eq.tipo_tarefa || ""}"`,
+        eq.total_tarefas,
+      ].join(",");
+    }).join("\n");
+
+    const blob = new Blob([header + rows], { type: "text/csv" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `equipamentos-preventivos-${format(new Date(), "yyyy-MM-dd")}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center gap-3">
-        <Button variant="ghost" size="icon" onClick={() => navigate("/")}>
-          <ArrowLeft className="h-5 w-5" />
-        </Button>
-        <div className="flex-1">
-          <h1 className="text-2xl font-bold tracking-tight">Preventiva de Equipamentos</h1>
-          <p className="text-sm text-muted-foreground">
-            Controle de manutenção preventiva — ideal a cada 3 meses
-          </p>
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <Button variant="outline" size="icon" onClick={() => navigate(-1)}>
+            <ArrowLeft className="h-4 w-4" />
+          </Button>
+          <div>
+            <h1 className="text-2xl font-bold">Preventiva de Equipamentos</h1>
+            <p className="text-sm text-muted-foreground">
+              Monitoramento do ciclo de manutenção — vínculos nativos Auvo
+            </p>
+          </div>
         </div>
-        <Button variant="outline" size="sm" onClick={handleSync} disabled={syncing}>
-          <Download className={cn("h-4 w-4 mr-2", syncing && "animate-spin")} />
-          {syncing ? "Sincronizando..." : "Sync Auvo"}
-        </Button>
-        <Button variant="outline" size="sm" onClick={() => refetch()} disabled={isFetching}>
-          <RefreshCw className={cn("h-4 w-4 mr-2", isFetching && "animate-spin")} />
-          Atualizar
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button variant="outline" size="sm" onClick={handleExportCsv} disabled={filtered.length === 0}>
+            <Download className="h-4 w-4 mr-1" /> CSV
+          </Button>
+          <Button onClick={handleSync} disabled={syncing || isFetching} size="sm">
+            {syncing ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <RefreshCw className="h-4 w-4 mr-1" />}
+            Sincronizar
+          </Button>
+        </div>
       </div>
 
-      {/* Stats cards */}
+      {/* Stats */}
       <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
-        <StatCard label="Total" value={stats.total} className="bg-card" />
-        <StatCard label="Em dia" value={stats.emDia} className="bg-emerald-50 dark:bg-emerald-950/30 text-emerald-700 dark:text-emerald-400" onClick={() => setStatusFilter(statusFilter === "em dia" ? "todos" : "em dia")} active={statusFilter === "em dia"} />
-        <StatCard label="Atenção" value={stats.atencao} className="bg-amber-50 dark:bg-amber-950/30 text-amber-700 dark:text-amber-400" onClick={() => setStatusFilter(statusFilter === "atenção" ? "todos" : "atenção")} active={statusFilter === "atenção"} />
-        <StatCard label="Vencido" value={stats.vencido} className="bg-red-50 dark:bg-red-950/30 text-red-700 dark:text-red-400" onClick={() => setStatusFilter(statusFilter === "vencido" ? "todos" : "vencido")} active={statusFilter === "vencido"} />
-        <StatCard label="Sem registro" value={stats.semRegistro} className="bg-muted text-muted-foreground" onClick={() => setStatusFilter(statusFilter === "sem registro" ? "todos" : "sem registro")} active={statusFilter === "sem registro"} />
+        {[
+          { label: "Total", value: stats.total, color: "text-foreground" },
+          { label: "Em dia", value: stats.emDia, color: "text-emerald-700 dark:text-emerald-400" },
+          { label: "Atenção", value: stats.atencao, color: "text-amber-700 dark:text-amber-400" },
+          { label: "Vencido", value: stats.vencido, color: "text-red-700 dark:text-red-400" },
+          { label: "Sem histórico", value: stats.semRegistro, color: "text-muted-foreground" },
+        ].map((s) => (
+          <div key={s.label} className="bg-card border rounded-lg p-3 text-center">
+            <div className={cn("text-2xl font-bold", s.color)}>{s.value}</div>
+            <div className="text-xs text-muted-foreground">{s.label}</div>
+          </div>
+        ))}
       </div>
 
       {/* Filters */}
-      <div className="flex flex-col sm:flex-row gap-2 flex-wrap">
-        <div className="relative flex-1 min-w-[200px] max-w-md">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input
-            placeholder="Buscar equipamento, cliente, série, técnico..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="pl-9"
-          />
+      <div className="flex flex-wrap gap-3 items-end">
+        <div className="flex-1 min-w-[200px]">
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Input
+              placeholder="Buscar equipamento, cliente, identificador..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="pl-10"
+            />
+          </div>
         </div>
+
         <Select value={statusFilter} onValueChange={setStatusFilter}>
-          <SelectTrigger className="w-[160px]">
+          <SelectTrigger className="w-[150px]">
+            <SlidersHorizontal className="h-4 w-4 mr-1" />
             <SelectValue placeholder="Status" />
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="todos">Todos os status</SelectItem>
-            <SelectItem value="em dia">✅ Em dia</SelectItem>
-            <SelectItem value="atenção">⚠️ Atenção</SelectItem>
+            <SelectItem value="em dia">🟢 Em dia</SelectItem>
+            <SelectItem value="atenção">🟡 Atenção</SelectItem>
             <SelectItem value="vencido">🔴 Vencido</SelectItem>
-            <SelectItem value="sem registro">⏳ Sem registro</SelectItem>
+            <SelectItem value="sem registro">⏳ Sem histórico</SelectItem>
           </SelectContent>
         </Select>
+
         <Select value={tipoFilter} onValueChange={setTipoFilter}>
-          <SelectTrigger className="w-[160px]">
+          <SelectTrigger className="w-[150px]">
             <SelectValue placeholder="Tipo" />
           </SelectTrigger>
           <SelectContent>
@@ -492,20 +454,9 @@ export default function EquipamentosPreventivosPage() {
             ))}
           </SelectContent>
         </Select>
-        <Select value={tipoTarefaFilter} onValueChange={setTipoTarefaFilter}>
-          <SelectTrigger className={cn("w-[240px]", tipoTarefaFilter !== "todos" && "border-primary ring-1 ring-primary")}>
-            <ListFilter className="h-4 w-4 mr-1 shrink-0" />
-            <SelectValue placeholder="Tipo de tarefa" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="todos">Todos os tipos de tarefa</SelectItem>
-            {tiposTarefa.map((t) => (
-              <SelectItem key={t} value={t}>{t}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+
         <Select value={clienteFilter} onValueChange={setClienteFilter}>
-          <SelectTrigger className="w-[220px]">
+          <SelectTrigger className="w-[200px]">
             <SelectValue placeholder="Cliente" />
           </SelectTrigger>
           <SelectContent>
@@ -515,19 +466,32 @@ export default function EquipamentosPreventivosPage() {
             ))}
           </SelectContent>
         </Select>
-        {hasFilters && (
-          <Button variant="ghost" size="sm" onClick={() => { setSearch(""); setStatusFilter("todos"); setTipoFilter("todos"); setClienteFilter("todos"); setTipoTarefaFilter("todos"); }}>
-            Limpar filtros
-          </Button>
-        )}
+
+        <Select value={tipoTarefaFilter} onValueChange={setTipoTarefaFilter}>
+          <SelectTrigger className="w-[220px]">
+            <ListFilter className="h-4 w-4 mr-1" />
+            <SelectValue placeholder="Tipo de Tarefa" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="todos">Todos os tipos de tarefa</SelectItem>
+            {tiposTarefa.map((tt) => (
+              <SelectItem key={tt.id} value={tt.id}>{tt.desc}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
       </div>
 
+      {/* Filter active banner */}
       {tipoTarefaFilter !== "todos" && (
-        <div className="flex items-center gap-2 text-sm text-muted-foreground bg-muted/50 rounded-md px-3 py-2 border">
-          <ListFilter className="h-4 w-4 text-primary" />
-          <span>
-            Contadores e datas calculados apenas para tarefas do tipo: <strong className="text-foreground">{tipoTarefaFilter}</strong>
+        <div className="bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800 rounded-lg p-3 flex items-center gap-2">
+          <ListFilter className="h-4 w-4 text-blue-600" />
+          <span className="text-sm text-blue-800 dark:text-blue-300">
+            Filtro ativo: <strong>{tiposTarefa.find(t => t.id === tipoTarefaFilter)?.desc || tipoTarefaFilter}</strong>
+            — contadores e datas refletem apenas tarefas desse tipo
           </span>
+          <Button variant="ghost" size="sm" onClick={() => setTipoTarefaFilter("todos")} className="ml-auto text-xs">
+            Limpar
+          </Button>
         </div>
       )}
 
@@ -535,6 +499,7 @@ export default function EquipamentosPreventivosPage() {
       {isLoading ? (
         <div className="flex items-center justify-center py-20">
           <Loader2 className="h-8 w-8 animate-spin text-primary" />
+          <span className="ml-3 text-muted-foreground">Carregando equipamentos...</span>
         </div>
       ) : (
         <div className="border rounded-lg overflow-auto">
@@ -549,13 +514,14 @@ export default function EquipamentosPreventivosPage() {
                 <TableHead>Última Intervenção</TableHead>
                 <TableHead>Técnico</TableHead>
                 <TableHead className="text-right"><SortButton field="dias">Dias</SortButton></TableHead>
+                <TableHead className="text-center">Tarefas</TableHead>
                 <TableHead className="w-10"></TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {filtered.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={9} className="text-center py-10 text-muted-foreground">
+                  <TableCell colSpan={10} className="text-center py-10 text-muted-foreground">
                     Nenhum equipamento encontrado
                   </TableCell>
                 </TableRow>
@@ -600,25 +566,24 @@ export default function EquipamentosPreventivosPage() {
                             {format(parseISO(eq.ultima_data), "dd/MM/yyyy", { locale: ptBR })}
                           </span>
                         ) : (
-                          <span className="text-muted-foreground text-sm">—</span>
+                          <span className="text-xs text-muted-foreground">Sem histórico vinculado</span>
                         )}
                       </TableCell>
                       <TableCell className="text-sm">{eq.ultimo_tecnico || "—"}</TableCell>
                       <TableCell className="text-right">
                         {eq.dias_desde !== null ? (
-                          <Badge variant="outline" className={cn("font-mono", info.color)}>
-                            {eq.dias_desde}d
-                          </Badge>
+                          <span className={cn("font-semibold", info.color)}>{eq.dias_desde}d</span>
                         ) : (
-                          "—"
+                          <span className="text-muted-foreground">—</span>
                         )}
+                      </TableCell>
+                      <TableCell className="text-center">
+                        <Badge variant="outline" className="text-xs">{eq.total_tarefas}</Badge>
                       </TableCell>
                       <TableCell>
                         {eq.ultimo_link && (
                           <a href={eq.ultimo_link} target="_blank" rel="noopener noreferrer">
-                            <Button variant="ghost" size="icon" className="h-8 w-8">
-                              <ExternalLink className="h-4 w-4" />
-                            </Button>
+                            <ExternalLink className="h-4 w-4 text-muted-foreground hover:text-primary" />
                           </a>
                         )}
                       </TableCell>
@@ -631,29 +596,11 @@ export default function EquipamentosPreventivosPage() {
         </div>
       )}
 
-      <p className="text-xs text-muted-foreground text-right">
-        {filtered.length} equipamento{filtered.length !== 1 ? "s" : ""} exibido{filtered.length !== 1 ? "s" : ""}
-        {filtered.length !== equipments.length && ` de ${equipments.length} total`}
-      </p>
+      <div className="text-xs text-muted-foreground text-right">
+        {filtered.length} de {equipments.length} equipamentos
+        {tipoTarefaFilter !== "todos" && " (filtrado por tipo de tarefa)"}
+        {" · "}Fonte: vínculo nativo Auvo (equipmentsId)
+      </div>
     </div>
-  );
-}
-
-function StatCard({ label, value, className, onClick, active }: {
-  label: string; value: number; className?: string; onClick?: () => void; active?: boolean;
-}) {
-  return (
-    <button
-      onClick={onClick}
-      className={cn(
-        "rounded-lg border p-3 text-left transition-all",
-        active && "ring-2 ring-primary",
-        onClick && "cursor-pointer hover:shadow-md",
-        className,
-      )}
-    >
-      <p className="text-xs font-medium opacity-70">{label}</p>
-      <p className="text-2xl font-bold">{value}</p>
-    </button>
   );
 }

@@ -134,6 +134,54 @@ export type Database = {
         }
         Relationships: []
       }
+      equipamento_tarefas_auvo: {
+        Row: {
+          auvo_equipment_id: string
+          auvo_link: string | null
+          auvo_task_id: string
+          auvo_task_type_description: string | null
+          auvo_task_type_id: string | null
+          cliente: string | null
+          data_conclusao: string | null
+          data_tarefa: string | null
+          id: string
+          source: string
+          status_auvo: string | null
+          synced_at: string
+          tecnico: string | null
+        }
+        Insert: {
+          auvo_equipment_id: string
+          auvo_link?: string | null
+          auvo_task_id: string
+          auvo_task_type_description?: string | null
+          auvo_task_type_id?: string | null
+          cliente?: string | null
+          data_conclusao?: string | null
+          data_tarefa?: string | null
+          id?: string
+          source?: string
+          status_auvo?: string | null
+          synced_at?: string
+          tecnico?: string | null
+        }
+        Update: {
+          auvo_equipment_id?: string
+          auvo_link?: string | null
+          auvo_task_id?: string
+          auvo_task_type_description?: string | null
+          auvo_task_type_id?: string | null
+          cliente?: string | null
+          data_conclusao?: string | null
+          data_tarefa?: string | null
+          id?: string
+          source?: string
+          status_auvo?: string | null
+          synced_at?: string
+          tecnico?: string | null
+        }
+        Relationships: []
+      }
       equipamentos_auvo: {
         Row: {
           atualizado_em: string | null

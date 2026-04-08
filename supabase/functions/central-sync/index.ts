@@ -175,6 +175,7 @@ type AuvoTaskSnapshot = {
   estimatedDuration: string;
   equipmentName: string;
   equipmentSerial: string;
+  equipmentIds: string[];
 };
 
 async function fetchAuvoTaskSnapshot(bearerToken: string, taskId: string): Promise<AuvoTaskSnapshot | null> {
@@ -234,7 +235,7 @@ async function fetchAuvoTaskSnapshot(bearerToken: string, taskId: string): Promi
     equipmentSerial = String(result?.equipmentIdentifier || result?.equipment?.identifier || result?.equipment?.serial || "").trim();
   }
 
-  return { address, orientation, displacementStart, checkInDate, checkOutDate, taskEndDate, startTime, endTime, estimatedDuration, equipmentName, equipmentSerial };
+  return { address, orientation, displacementStart, checkInDate, checkOutDate, taskEndDate, startTime, endTime, estimatedDuration, equipmentName, equipmentSerial, equipmentIds: equipIds };
 }
 
 // Fetch Auvo tasks for a single month window
@@ -1230,7 +1231,74 @@ Deno.serve(async (req) => {
       }
     }
 
+    // ── Persist native equipment-task relationships ──
+    const equipTaskRelRows: any[] = [];
+    for (const task of auvoTasks) {
+      const taskId = String(task.taskID || "");
+      if (!taskId) continue;
 
+      // Get equipmentsId from list endpoint and/or snapshot
+      const listEquipIds: number[] = Array.isArray(task.equipmentsId) ? task.equipmentsId :
+        Array.isArray(task.equipmentsID) ? task.equipmentsID : [];
+      const snapshot = taskSnapshotById.get(taskId);
+      const snapshotEquipIds = snapshot?.equipmentIds || [];
+
+      // Merge both sources, deduplicate
+      const allEquipIds = new Set<string>();
+      for (const id of listEquipIds) allEquipIds.add(String(id));
+      for (const id of snapshotEquipIds) allEquipIds.add(id);
+
+      if (allEquipIds.size === 0) continue;
+
+      const checkOutDateRaw = normalizeDate(task.checkOutDate || task.checkoutDate || snapshot?.checkOutDate);
+      const statusCode = typeof task.taskStatus === "number" ? task.taskStatus
+        : typeof task.taskStatus?.id === "number" ? task.taskStatus.id : 0;
+      let statusAuvo = "Aberta";
+      if (statusCode === 6) statusAuvo = "Pausada";
+      else if (statusCode === 4 || statusCode === 5 || !!task.checkOut) statusAuvo = "Finalizada";
+      else if (statusCode === 3) statusAuvo = "Em andamento";
+      else if (statusCode === 2) statusAuvo = "Em deslocamento";
+      else if (statusCode === 1) statusAuvo = "Aberta";
+
+      const cliente = String(task.customerDescription || task.customerName || task.customer?.tradeName || "").trim();
+      const tecnico = String(task.userToName || "").trim();
+      const taskTypeId = String(task.taskType || "");
+      const taskTypeDesc = String(task.taskTypeDescription || "");
+
+      for (const eqId of allEquipIds) {
+        equipTaskRelRows.push({
+          auvo_equipment_id: eqId,
+          auvo_task_id: taskId,
+          auvo_task_type_id: taskTypeId || null,
+          auvo_task_type_description: taskTypeDesc || null,
+          status_auvo: statusAuvo,
+          data_tarefa: normalizeDate(task.taskDate) || null,
+          data_conclusao: checkOutDateRaw || null,
+          cliente: cliente || null,
+          tecnico: tecnico || null,
+          auvo_link: `https://app2.auvo.com.br/relatorioTarefas/DetalheTarefa/${taskId}`,
+          source: "native_equipment_relation",
+          synced_at: new Date().toISOString(),
+        });
+      }
+    }
+
+    if (equipTaskRelRows.length > 0) {
+      console.log(`[central-sync] Upserting ${equipTaskRelRows.length} equipment-task relationships...`);
+      let relUpserted = 0;
+      for (let i = 0; i < equipTaskRelRows.length; i += 200) {
+        const batch = equipTaskRelRows.slice(i, i + 200);
+        const { error } = await sbClient
+          .from("equipamento_tarefas_auvo")
+          .upsert(batch, { onConflict: "auvo_equipment_id,auvo_task_id" });
+        if (error) {
+          console.error(`[central-sync] Equip-task rel batch error:`, error.message);
+        } else {
+          relUpserted += batch.length;
+        }
+      }
+      console.log(`[central-sync] Equipment-task relationships upserted: ${relUpserted}`);
+    }
 
 
     // ── Post-sync: persist atrasos AND pendências permanently ──
