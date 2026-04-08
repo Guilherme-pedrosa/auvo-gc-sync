@@ -264,7 +264,7 @@ export default function EquipamentosPreventivosPage() {
       // Phase 2: relationships
       toast.info("Fase 2: Sincronizando vínculos tarefa-equipamento...");
       const { data: d2, error: e2 } = await supabase.functions.invoke("equipment-sync", {
-        body: { phase: "2", months: 6 },
+        body: { phase: "2", months: 12 },
       });
       if (e2) throw e2;
       const p2 = d2?.phase2_equipment_tasks;
