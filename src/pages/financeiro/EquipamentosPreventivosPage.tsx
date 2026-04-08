@@ -241,6 +241,7 @@ export default function EquipamentosPreventivosPage() {
   const [sortField, setSortField] = useState<SortField>("dias");
   const [sortDir, setSortDir] = useState<SortDir>("desc");
   const [syncing, setSyncing] = useState(false);
+  const [syncProgress, setSyncProgress] = useState<{ current: number; total: number; label: string } | null>(null);
   const [editingMarcaId, setEditingMarcaId] = useState<string | null>(null);
   const [editingMarcaValue, setEditingMarcaValue] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
