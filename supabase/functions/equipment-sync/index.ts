@@ -22,11 +22,11 @@ function auvoHeaders(token: string): Record<string, string> {
 }
 
 async function rateLimitedFetch(url: string, options: RequestInit): Promise<Response> {
-  await new Promise(r => setTimeout(r, 250));
+  await new Promise(r => setTimeout(r, 100));
   const res = await fetch(url, options);
   if (res.status === 403 || res.status === 429) {
-    console.log(`Rate limit hit (${res.status}), waiting 20s...`);
-    await new Promise(r => setTimeout(r, 20000));
+    console.log(`Rate limit hit (${res.status}), waiting 10s...`);
+    await new Promise(r => setTimeout(r, 10000));
     return fetch(url, options);
   }
   return res;
@@ -107,7 +107,7 @@ async function fetchCustomerName(customerId: number, token: string, cache: Map<n
 // 
 // BETTER APPROACH: We fetch ALL tasks from Auvo (paginated, recent 12 months)
 // and extract equipmentsId from each one. This builds the relational table.
-async function fetchAllTasksWithEquipments(token: string, monthsBack: number = 12): Promise<Array<{
+async function fetchAllTasksWithEquipments(token: string, monthsBack: number = 6): Promise<Array<{
   taskId: string;
   equipmentIds: string[];
   taskType: string;
@@ -134,8 +134,8 @@ async function fetchAllTasksWithEquipments(token: string, monthsBack: number = 1
     console.log(`[equipment-sync] Fetching tasks ${monthStart} → ${clampedEnd}...`);
     
     let page = 1;
-    const pageSize = 100;
-    const MAX_PAGES = 30;
+    const pageSize = 200;
+    const MAX_PAGES = 50;
     
     while (page <= MAX_PAGES) {
       const filterObj = { startDate: `${monthStart}T00:00:00`, endDate: `${clampedEnd}T23:59:59` };
@@ -152,6 +152,13 @@ async function fetchAllTasksWithEquipments(token: string, monthsBack: number = 1
       
       const json = await res.json();
       const tasks = json?.result?.entityList || json?.result?.Entities || [];
+      if (page === 1) {
+        const totalItems = json?.result?.pagedSearchReturnData?.totalItems || 0;
+        const resultKeys = json?.result ? Object.keys(json.result).join(",") : "no-result";
+        const sampleKeys = tasks.length > 0 ? Object.keys(tasks[0]).join(",").substring(0, 200) : "no-tasks";
+        const sampleEquipIds = tasks.length > 0 ? JSON.stringify(tasks[0].equipmentsId || tasks[0].equipmentsID || "none").substring(0, 100) : "empty";
+        console.log(`[equipment-sync] ${monthStart}: total=${totalItems}, page1=${tasks.length}, keys=${resultKeys}, taskKeys=${sampleKeys}, equip=${sampleEquipIds}`);
+      }
       if (!Array.isArray(tasks) || tasks.length === 0) break;
       
       for (const task of tasks) {
@@ -222,144 +229,164 @@ Deno.serve(async (req) => {
       });
     }
 
+    // Parse phase parameter: "1" = catalog only, "2" = relationships only, "all" = both (default)
+    let body: any = {};
+    try { body = await req.json(); } catch { /* no body */ }
+    const url = new URL(req.url);
+    const phase = body?.phase || url.searchParams.get("phase") || "all";
+    const monthsBack = Number(body?.months || url.searchParams.get("months") || "6");
+
     const sb = createClient(supabaseUrl, serviceKey);
     const accessToken = await auvoLogin(auvoApiKey, auvoApiToken);
 
+    let phase1Result: any = null;
+    let phase2Result: any = null;
+    let validEquipmentIds: Set<string> | null = null;
+
     // ═══════════════════════════════════════════════════════════════
-    // PHASE 1: Sync equipment catalog (existing logic)
+    // PHASE 1: Sync equipment catalog
     // ═══════════════════════════════════════════════════════════════
-    console.log("[equipment-sync] Phase 1: Fetching equipment catalog...");
-    const auvoEquipments = await fetchAllEquipments(accessToken);
-    console.log(`[equipment-sync] Total equipments from Auvo: ${auvoEquipments.length}`);
+    if (phase === "1" || phase === "all") {
+      console.log("[equipment-sync] Phase 1: Fetching equipment catalog...");
+      const auvoEquipments = await fetchAllEquipments(accessToken);
+      console.log(`[equipment-sync] Total equipments from Auvo: ${auvoEquipments.length}`);
 
-    const categories = await fetchAllCategories(accessToken);
+      const categories = await fetchAllCategories(accessToken);
 
-    // Resolve customer names
-    const customerIds = new Set<number>();
-    for (const eq of auvoEquipments) {
-      if (eq.associatedCustomerId > 0) customerIds.add(eq.associatedCustomerId);
-    }
-    const customerCache = new Map<number, string>();
-    let resolved = 0;
-    for (const cid of customerIds) {
-      await fetchCustomerName(cid, accessToken, customerCache);
-      resolved++;
-      if (resolved % 50 === 0) {
-        console.log(`[equipment-sync] Resolved ${resolved}/${customerIds.size} customers`);
-        await new Promise(r => setTimeout(r, 2000));
+      // Load existing customer names from DB to avoid re-resolving
+      const { data: existingEquip } = await sb
+        .from("equipamentos_auvo")
+        .select("auvo_equipment_id, cliente");
+      const existingClienteMap = new Map<string, string>();
+      if (existingEquip) {
+        for (const e of existingEquip) {
+          if (e.auvo_equipment_id && e.cliente) existingClienteMap.set(e.auvo_equipment_id, e.cliente);
+        }
       }
-    }
 
-    // Upsert equipment catalog
-    const equipRows = auvoEquipments.map(eq => ({
-      auvo_equipment_id: String(eq.id),
-      nome: eq.name?.trim() || "",
-      identificador: eq.identifier?.trim() || null,
-      descricao: eq.description?.trim() || null,
-      cliente: eq.associatedCustomerId > 0 ? customerCache.get(eq.associatedCustomerId) || null : null,
-      categoria: eq.categoryId > 0 ? categories.get(eq.categoryId) || null : null,
-      status: eq.active ? "Ativo" : "Inativo",
-      atualizado_em: new Date().toISOString(),
-    }));
-
-    const BATCH_SIZE = 500;
-    let totalEquipUpserted = 0;
-    const equipErrors: string[] = [];
-
-    for (let i = 0; i < equipRows.length; i += BATCH_SIZE) {
-      const batch = equipRows.slice(i, i + BATCH_SIZE);
-      const { error } = await sb.from("equipamentos_auvo").upsert(batch, { onConflict: "auvo_equipment_id" });
-      if (error) {
-        equipErrors.push(error.message);
-      } else {
-        totalEquipUpserted += batch.length;
+      // Only resolve NEW customer IDs not already in DB
+      const customerIds = new Set<number>();
+      for (const eq of auvoEquipments) {
+        if (eq.associatedCustomerId > 0 && !existingClienteMap.has(String(eq.id))) {
+          customerIds.add(eq.associatedCustomerId);
+        }
       }
+      const customerCache = new Map<number, string>();
+      let resolved = 0;
+      console.log(`[equipment-sync] New customers to resolve: ${customerIds.size}`);
+      for (const cid of customerIds) {
+        await fetchCustomerName(cid, accessToken, customerCache);
+        resolved++;
+        if (resolved % 100 === 0) {
+          console.log(`[equipment-sync] Resolved ${resolved}/${customerIds.size} customers`);
+        }
+      }
+
+      // Upsert equipment catalog
+      const equipRows = auvoEquipments.map(eq => ({
+        auvo_equipment_id: String(eq.id),
+        nome: eq.name?.trim() || "",
+        identificador: eq.identifier?.trim() || null,
+        descricao: eq.description?.trim() || null,
+        cliente: eq.associatedCustomerId > 0
+          ? (customerCache.get(eq.associatedCustomerId) || existingClienteMap.get(String(eq.id)) || null)
+          : null,
+        categoria: eq.categoryId > 0 ? categories.get(eq.categoryId) || null : null,
+        status: eq.active ? "Ativo" : "Inativo",
+        atualizado_em: new Date().toISOString(),
+      }));
+
+      const BATCH_SIZE = 500;
+      let totalEquipUpserted = 0;
+      const equipErrors: string[] = [];
+
+      for (let i = 0; i < equipRows.length; i += BATCH_SIZE) {
+        const batch = equipRows.slice(i, i + BATCH_SIZE);
+        const { error } = await sb.from("equipamentos_auvo").upsert(batch, { onConflict: "auvo_equipment_id" });
+        if (error) equipErrors.push(error.message);
+        else totalEquipUpserted += batch.length;
+      }
+      console.log(`[equipment-sync] Phase 1 done: ${totalEquipUpserted} equipment rows upserted`);
+
+      validEquipmentIds = new Set(auvoEquipments.map(eq => String(eq.id)));
+      phase1Result = {
+        total_auvo: auvoEquipments.length,
+        upserted: totalEquipUpserted,
+        categories_found: categories.size,
+        new_customers_resolved: customerCache.size,
+        errors: equipErrors.length > 0 ? equipErrors : undefined,
+      };
     }
-    console.log(`[equipment-sync] Phase 1 done: ${totalEquipUpserted} equipment rows upserted`);
 
     // ═══════════════════════════════════════════════════════════════
     // PHASE 2: Sync native equipment-task relationships
     // ═══════════════════════════════════════════════════════════════
-    console.log("[equipment-sync] Phase 2: Fetching tasks with equipment links (12 months)...");
-    const tasksWithEquipments = await fetchAllTasksWithEquipments(accessToken, 12);
-    console.log(`[equipment-sync] Tasks with equipment links found: ${tasksWithEquipments.length}`);
+    if (phase === "2" || phase === "all") {
+      console.log(`[equipment-sync] Phase 2: Fetching tasks with equipment links (${monthsBack} months)...`);
+      const tasksWithEquipments = await fetchAllTasksWithEquipments(accessToken, monthsBack);
+      console.log(`[equipment-sync] Tasks with equipment links found: ${tasksWithEquipments.length}`);
 
-    // Build equipment ID set for validation
-    const validEquipmentIds = new Set(auvoEquipments.map(eq => String(eq.id)));
+      // Load valid equipment IDs if not already loaded from Phase 1
+      if (!validEquipmentIds) {
+        const { data: eqData } = await sb.from("equipamentos_auvo").select("auvo_equipment_id");
+        validEquipmentIds = new Set((eqData || []).map(e => e.auvo_equipment_id).filter(Boolean));
+      }
 
-    // Build relational rows
-    const relRows: any[] = [];
-    let discardedLinks = 0;
-    const equipmentsWithTasks = new Set<string>();
+      const relRows: any[] = [];
+      let discardedLinks = 0;
+      const equipmentsWithTasks = new Set<string>();
 
-    for (const task of tasksWithEquipments) {
-      if (!task.taskId) continue;
-
-      for (const eqId of task.equipmentIds) {
-        if (!validEquipmentIds.has(eqId)) {
-          discardedLinks++;
-          continue;
+      for (const task of tasksWithEquipments) {
+        if (!task.taskId) continue;
+        for (const eqId of task.equipmentIds) {
+          if (!validEquipmentIds.has(eqId)) { discardedLinks++; continue; }
+          equipmentsWithTasks.add(eqId);
+          relRows.push({
+            auvo_equipment_id: eqId,
+            auvo_task_id: task.taskId,
+            auvo_task_type_id: task.taskType || null,
+            auvo_task_type_description: task.taskTypeDescription || null,
+            status_auvo: resolveStatus(task.statusCode, !!task.checkOutDate),
+            data_tarefa: task.taskDate || null,
+            data_conclusao: task.checkOutDate || null,
+            cliente: task.customerDescription || null,
+            tecnico: task.userToName || null,
+            auvo_link: `https://app2.auvo.com.br/relatorioTarefas/DetalheTarefa/${task.taskId}`,
+            source: "native_equipment_relation",
+            synced_at: new Date().toISOString(),
+          });
         }
-
-        equipmentsWithTasks.add(eqId);
-        const statusAuvo = resolveStatus(task.statusCode, !!task.checkOutDate);
-
-        relRows.push({
-          auvo_equipment_id: eqId,
-          auvo_task_id: task.taskId,
-          auvo_task_type_id: task.taskType || null,
-          auvo_task_type_description: task.taskTypeDescription || null,
-          status_auvo: statusAuvo,
-          data_tarefa: task.taskDate || null,
-          data_conclusao: task.checkOutDate || null,
-          cliente: task.customerDescription || null,
-          tecnico: task.userToName || null,
-          auvo_link: `https://app2.auvo.com.br/relatorioTarefas/DetalheTarefa/${task.taskId}`,
-          source: "native_equipment_relation",
-          synced_at: new Date().toISOString(),
-        });
       }
-    }
 
-    console.log(`[equipment-sync] Relational rows to upsert: ${relRows.length}`);
-    console.log(`[equipment-sync] Equipments with tasks: ${equipmentsWithTasks.size}`);
-    console.log(`[equipment-sync] Discarded links (invalid equipment ID): ${discardedLinks}`);
+      console.log(`[equipment-sync] Relational rows to upsert: ${relRows.length}`);
+      console.log(`[equipment-sync] Equipments with tasks: ${equipmentsWithTasks.size}`);
 
-    // Upsert relational rows in batches
-    let totalRelUpserted = 0;
-    const relErrors: string[] = [];
-
-    for (let i = 0; i < relRows.length; i += BATCH_SIZE) {
-      const batch = relRows.slice(i, i + BATCH_SIZE);
-      const { error } = await sb
-        .from("equipamento_tarefas_auvo")
-        .upsert(batch, { onConflict: "auvo_equipment_id,auvo_task_id" });
-      if (error) {
-        console.error(`[equipment-sync] Rel batch ${Math.floor(i / BATCH_SIZE) + 1} error:`, error.message);
-        relErrors.push(error.message);
-      } else {
-        totalRelUpserted += batch.length;
+      let totalRelUpserted = 0;
+      const relErrors: string[] = [];
+      for (let i = 0; i < relRows.length; i += 500) {
+        const batch = relRows.slice(i, i + 500);
+        const { error } = await sb
+          .from("equipamento_tarefas_auvo")
+          .upsert(batch, { onConflict: "auvo_equipment_id,auvo_task_id" });
+        if (error) { relErrors.push(error.message); console.error(`[equipment-sync] Rel error:`, error.message); }
+        else totalRelUpserted += batch.length;
       }
-    }
+      console.log(`[equipment-sync] Phase 2 done: ${totalRelUpserted} relationship rows upserted`);
 
-    console.log(`[equipment-sync] Phase 2 done: ${totalRelUpserted} relationship rows upserted`);
-
-    return new Response(JSON.stringify({
-      success: true,
-      phase1_equipment_catalog: {
-        total_auvo: auvoEquipments.length,
-        upserted: totalEquipUpserted,
-        categories_found: categories.size,
-        customers_resolved: customerCache.size,
-        errors: equipErrors.length > 0 ? equipErrors : undefined,
-      },
-      phase2_equipment_tasks: {
+      phase2Result = {
         tasks_with_equipment_links: tasksWithEquipments.length,
         relationship_rows_upserted: totalRelUpserted,
         equipments_with_tasks: equipmentsWithTasks.size,
         discarded_invalid_links: discardedLinks,
         errors: relErrors.length > 0 ? relErrors : undefined,
-      },
+      };
+    }
+
+    return new Response(JSON.stringify({
+      success: true,
+      phase_executed: phase,
+      phase1_equipment_catalog: phase1Result,
+      phase2_equipment_tasks: phase2Result,
     }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
