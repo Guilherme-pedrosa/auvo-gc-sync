@@ -618,7 +618,11 @@ Deno.serve(async (req) => {
       let withoutBrand = 0;
       const brandCounts = new Map<string, number>();
 
-      const equipRows = auvoEquipments.map((eq) => {
+      // Filter out inactive equipment
+      const activeEquipments = auvoEquipments.filter((eq) => eq.active);
+      console.log(`[equipment-sync] Filtering: ${auvoEquipments.length} total, ${activeEquipments.length} active, ${auvoEquipments.length - activeEquipments.length} inactive (skipped)`);
+
+      const equipRows = activeEquipments.map((eq) => {
         const nome = eq.name?.trim() || "";
         const eqId = String(eq.id);
         const parsedBrand = extractBrand(nome);
@@ -639,7 +643,7 @@ Deno.serve(async (req) => {
             ? customerCache.get(eq.associatedCustomerId) || existingClienteMap.get(eqId) || null
             : null,
           categoria: eq.categoryId > 0 ? categories.get(eq.categoryId) || null : null,
-          status: eq.active ? "Ativo" : "Inativo",
+          status: "Ativo",
           atualizado_em: new Date().toISOString(),
         };
 
@@ -677,7 +681,7 @@ Deno.serve(async (req) => {
 
       console.log(`[equipment-sync] Phase 1 done: ${totalEquipUpserted} equipment rows upserted`);
 
-      validEquipmentIds = new Set(auvoEquipments.map((eq) => String(eq.id)));
+      validEquipmentIds = new Set(activeEquipments.map((eq) => String(eq.id)));
       phase1Result = {
         total_auvo: auvoEquipments.length,
         upserted: totalEquipUpserted,
