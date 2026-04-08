@@ -106,26 +106,28 @@ async function fetchEquipmentData(): Promise<EquipmentRow[]> {
     from += PAGE;
   }
 
-  // 3. Build task map keyed by equipment name (lowercase) — only for last intervention
-  const taskMap = new Map<string, { data_tarefa: string; tecnico: string | null; auvo_link: string | null }>();
+  // 3. Build task maps — PRIMARY by identificador (serial), SECONDARY by name
+  type TaskMatch = { data_tarefa: string; tecnico: string | null; auvo_link: string | null };
+  const taskBySerial = new Map<string, TaskMatch>();
+  const taskByName = new Map<string, TaskMatch>();
   for (const t of allTasks) {
+    const serial = (t.equipamento_id_serie || "").trim();
     const nameKey = (t.equipamento_nome || "").toLowerCase().trim();
-    if (!taskMap.has(nameKey)) {
-      taskMap.set(nameKey, {
-        data_tarefa: t.data_tarefa,
-        tecnico: t.tecnico,
-        auvo_link: t.auvo_link,
-      });
-    }
+    const entry: TaskMatch = { data_tarefa: t.data_tarefa, tecnico: t.tecnico, auvo_link: t.auvo_link };
+    // Only keep the first (most recent) match per key
+    if (serial && !taskBySerial.has(serial)) taskBySerial.set(serial, entry);
+    if (nameKey && !taskByName.has(nameKey)) taskByName.set(nameKey, entry);
   }
 
-  // 4. Map registered equipment to task history
+  // 4. Map registered equipment to task history — match by serial first, then by name
   const result: EquipmentRow[] = (equipamentos || []).map((eq) => {
+    const serial = (eq.identificador || "").trim();
     const nameKey = eq.nome.toLowerCase().trim();
-    let match = taskMap.get(nameKey);
-    // Try partial match
+    // Priority: exact serial match > exact name match > partial name match
+    let match = serial ? taskBySerial.get(serial) : undefined;
+    if (!match) match = taskByName.get(nameKey);
     if (!match) {
-      for (const [taskName, taskData] of taskMap) {
+      for (const [taskName, taskData] of taskByName) {
         if (nameKey.includes(taskName) || taskName.includes(nameKey)) {
           match = taskData;
           break;
