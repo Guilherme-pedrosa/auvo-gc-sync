@@ -134,6 +134,42 @@ export type Database = {
         }
         Relationships: []
       }
+      equipamentos_auvo: {
+        Row: {
+          atualizado_em: string | null
+          categoria: string | null
+          cliente: string | null
+          criado_em: string | null
+          descricao: string | null
+          id: string
+          identificador: string | null
+          nome: string
+          status: string | null
+        }
+        Insert: {
+          atualizado_em?: string | null
+          categoria?: string | null
+          cliente?: string | null
+          criado_em?: string | null
+          descricao?: string | null
+          id?: string
+          identificador?: string | null
+          nome: string
+          status?: string | null
+        }
+        Update: {
+          atualizado_em?: string | null
+          categoria?: string | null
+          cliente?: string | null
+          criado_em?: string | null
+          descricao?: string | null
+          id?: string
+          identificador?: string | null
+          nome?: string
+          status?: string | null
+        }
+        Relationships: []
+      }
       grupo_cliente_membros: {
         Row: {
           cliente_nome: string
