@@ -244,13 +244,15 @@ export default function EquipamentosPreventivosPage() {
       const p1 = d1?.phase1_equipment_catalog;
       toast.success(`Catálogo: ${p1?.upserted || 0} equip. | Marcas: ${p1?.brands_detected || 0} detectadas`);
 
-      // Phase 2: iterate month by month within user-selected range
+      // Phase 2: iterate month by month, MOST RECENT FIRST
       const start = new Date(syncStartDate + "T00:00:00");
       const end = new Date(syncEndDate + "T00:00:00");
       let totalRelUpserted = 0;
       let totalWithEquipLinks = 0;
       let monthsCovered = 0;
 
+      // Build list of month windows, then reverse to process newest first
+      const months: { windowStart: string; windowEnd: string }[] = [];
       const cursor = new Date(start.getFullYear(), start.getMonth(), 1);
       while (cursor <= end) {
         const windowStart = cursor < start
@@ -260,7 +262,12 @@ export default function EquipamentosPreventivosPage() {
         const windowEnd = windowEndDate > end
           ? syncEndDate
           : format(windowEndDate, "yyyy-MM-dd");
+        months.push({ windowStart, windowEnd });
+        cursor.setMonth(cursor.getMonth() + 1);
+      }
+      months.reverse(); // newest first
 
+      for (const { windowStart, windowEnd } of months) {
         toast.info(`Fase 2: Vínculos ${windowStart.substring(0, 7)}...`);
 
         const { data: d2, error: e2 } = await supabase.functions.invoke("equipment-sync", {
@@ -273,7 +280,6 @@ export default function EquipamentosPreventivosPage() {
           totalWithEquipLinks += p2?.tasks_with_equipment_links || 0;
         }
         monthsCovered++;
-        cursor.setMonth(cursor.getMonth() + 1);
       }
 
       toast.success(`Vínculos: ${totalRelUpserted} relações em ${monthsCovered} meses (${totalWithEquipLinks} tarefas com equipamento)`);
