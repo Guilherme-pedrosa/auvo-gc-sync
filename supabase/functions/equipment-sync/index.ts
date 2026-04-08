@@ -265,7 +265,9 @@ Deno.serve(async (req) => {
 
     const url = new URL(req.url);
     const phase = String(body?.phase || url.searchParams.get("phase") || "all");
-    const monthsBack = Math.max(1, Math.min(24, Number(body?.months || url.searchParams.get("months") || 12) || 12));
+    // For Phase 2: accept startDate/endDate for single-window calls
+    const startDateParam = String(body?.startDate || url.searchParams.get("startDate") || "");
+    const endDateParam = String(body?.endDate || url.searchParams.get("endDate") || "");
 
     const sb = createClient(supabaseUrl, serviceKey);
     const accessToken = await auvoLogin(auvoApiKey, auvoApiToken);
@@ -349,16 +351,27 @@ Deno.serve(async (req) => {
     }
 
     if (phase === "2" || phase === "all") {
-      console.log(`[equipment-sync] Phase 2: Fetching tasks with equipment links (${monthsBack} months)...`);
-      const tasksWithEquipments = await fetchAllTasksWithEquipments(accessToken, monthsBack);
-      console.log(`[equipment-sync] Tasks with equipment links found: ${tasksWithEquipments.length}`);
+      if (!startDateParam || !endDateParam) {
+        return new Response(JSON.stringify({
+          error: "Phase 2 requires startDate and endDate parameters (YYYY-MM-DD)",
+        }), {
+          status: 400,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      console.log(`[equipment-sync] Phase 2: window ${startDateParam} → ${endDateParam}`);
 
       if (!validEquipmentIds) {
         const { data: eqData } = await sb
           .from("equipamentos_auvo")
           .select("auvo_equipment_id");
         validEquipmentIds = new Set((eqData || []).map((row) => row.auvo_equipment_id).filter(Boolean));
+        console.log(`[equipment-sync] Valid equipment IDs loaded: ${validEquipmentIds.size}`);
       }
+
+      const { results: tasksWithEquipments, totalTasks, tasksWithEquipments: withEquipCount } =
+        await fetchTasksWithEquipmentsForWindow(accessToken, startDateParam, endDateParam);
 
       const relRows: any[] = [];
       let discardedLinks = 0;
@@ -366,13 +379,8 @@ Deno.serve(async (req) => {
 
       for (const task of tasksWithEquipments) {
         if (!task.taskId) continue;
-
         for (const eqId of task.equipmentIds) {
-          if (!validEquipmentIds.has(eqId)) {
-            discardedLinks++;
-            continue;
-          }
-
+          if (!validEquipmentIds.has(eqId)) { discardedLinks++; continue; }
           equipmentsWithTasks.add(eqId);
           relRows.push({
             auvo_equipment_id: eqId,
@@ -391,10 +399,6 @@ Deno.serve(async (req) => {
         }
       }
 
-      console.log(`[equipment-sync] Relational rows to upsert: ${relRows.length}`);
-      console.log(`[equipment-sync] Equipments with tasks: ${equipmentsWithTasks.size}`);
-      console.log(`[equipment-sync] Discarded links (invalid equipment ID): ${discardedLinks}`);
-
       let totalRelUpserted = 0;
       const relErrors: string[] = [];
 
@@ -403,10 +407,9 @@ Deno.serve(async (req) => {
         const { error } = await sb
           .from("equipamento_tarefas_auvo")
           .upsert(batch, { onConflict: "auvo_equipment_id,auvo_task_id" });
-
         if (error) {
           relErrors.push(error.message);
-          console.error(`[equipment-sync] Rel batch ${Math.floor(i / UPSERT_BATCH_SIZE) + 1} error: ${error.message}`);
+          console.error(`[equipment-sync] Rel upsert error: ${error.message}`);
         } else {
           totalRelUpserted += batch.length;
         }
@@ -415,7 +418,9 @@ Deno.serve(async (req) => {
       console.log(`[equipment-sync] Equipment-task relationships upserted: ${totalRelUpserted}`);
 
       phase2Result = {
-        tasks_with_equipment_links: tasksWithEquipments.length,
+        window: `${startDateParam} → ${endDateParam}`,
+        total_tasks_in_window: totalTasks,
+        tasks_with_equipment_links: withEquipCount,
         relationship_rows_upserted: totalRelUpserted,
         equipments_with_tasks: equipmentsWithTasks.size,
         discarded_invalid_links: discardedLinks,
