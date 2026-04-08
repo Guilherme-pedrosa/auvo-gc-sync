@@ -9,7 +9,7 @@ import { toast } from "sonner";
 import {
   ArrowLeft, ExternalLink, RefreshCw, Search, AlertTriangle,
   CheckCircle2, Clock, Flame, Loader2, SlidersHorizontal,
-  ArrowUpDown, Download, ListFilter, Pencil, Check, X,
+  ArrowUpDown, Download, ListFilter, Pencil, Check, X, CalendarDays,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -20,6 +20,7 @@ import {
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
+import { Label } from "@/components/ui/label";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 
 // ── Types ──
@@ -190,6 +191,12 @@ export default function EquipamentosPreventivosPage() {
   const [editingMarcaId, setEditingMarcaId] = useState<string | null>(null);
   const [editingMarcaValue, setEditingMarcaValue] = useState("");
 
+  // Sync date range — defaults to last 1 month
+  const defaultSyncStart = format(new Date(new Date().getFullYear(), new Date().getMonth() - 1, 1), "yyyy-MM-dd");
+  const defaultSyncEnd = format(new Date(), "yyyy-MM-dd");
+  const [syncStartDate, setSyncStartDate] = useState(defaultSyncStart);
+  const [syncEndDate, setSyncEndDate] = useState(defaultSyncEnd);
+
   const { data: rawData, isLoading, refetch, isFetching } = useQuery({
     queryKey: ["equipamentos-preventivos-raw"],
     queryFn: fetchRawData,
@@ -237,36 +244,46 @@ export default function EquipamentosPreventivosPage() {
       const p1 = d1?.phase1_equipment_catalog;
       toast.success(`Catálogo: ${p1?.upserted || 0} equip. | Marcas: ${p1?.brands_detected || 0} detectadas`);
 
-      const now = new Date();
-      const monthsBack = 12;
+      // Phase 2: iterate month by month within user-selected range
+      const start = new Date(syncStartDate + "T00:00:00");
+      const end = new Date(syncEndDate + "T00:00:00");
       let totalRelUpserted = 0;
       let totalWithEquipLinks = 0;
+      let monthsCovered = 0;
 
-      for (let m = monthsBack; m >= 0; m--) {
-        const d = new Date(now.getFullYear(), now.getMonth() - m, 1);
-        const startDate = d.toISOString().split("T")[0];
-        const endD = new Date(d.getFullYear(), d.getMonth() + 1, 0);
-        const endDate = endD > now ? now.toISOString().split("T")[0] : endD.toISOString().split("T")[0];
+      const cursor = new Date(start.getFullYear(), start.getMonth(), 1);
+      while (cursor <= end) {
+        const windowStart = cursor < start
+          ? syncStartDate
+          : format(cursor, "yyyy-MM-dd");
+        const windowEndDate = new Date(cursor.getFullYear(), cursor.getMonth() + 1, 0);
+        const windowEnd = windowEndDate > end
+          ? syncEndDate
+          : format(windowEndDate, "yyyy-MM-dd");
 
-        toast.info(`Fase 2: Vínculos ${startDate.substring(0, 7)}...`);
+        toast.info(`Fase 2: Vínculos ${windowStart.substring(0, 7)}...`);
 
         const { data: d2, error: e2 } = await supabase.functions.invoke("equipment-sync", {
-          body: { phase: "2", startDate, endDate },
+          body: { phase: "2", startDate: windowStart, endDate: windowEnd },
         });
-        if (e2) { console.error(`Phase 2 error for ${startDate}:`, e2); continue; }
-        const p2 = d2?.phase2_equipment_tasks;
-        totalRelUpserted += p2?.relationship_rows_upserted || 0;
-        totalWithEquipLinks += p2?.tasks_with_equipment_links || 0;
+        if (e2) { console.error(`Phase 2 error for ${windowStart}:`, e2); }
+        else {
+          const p2 = d2?.phase2_equipment_tasks;
+          totalRelUpserted += p2?.relationship_rows_upserted || 0;
+          totalWithEquipLinks += p2?.tasks_with_equipment_links || 0;
+        }
+        monthsCovered++;
+        cursor.setMonth(cursor.getMonth() + 1);
       }
 
-      toast.success(`Vínculos: ${totalRelUpserted} relações (${totalWithEquipLinks} tarefas com equipamento)`);
+      toast.success(`Vínculos: ${totalRelUpserted} relações em ${monthsCovered} meses (${totalWithEquipLinks} tarefas com equipamento)`);
       refetch();
     } catch (err: any) {
       toast.error("Erro na sincronização: " + (err.message || "desconhecido"));
     } finally {
       setSyncing(false);
     }
-  }, [refetch]);
+  }, [refetch, syncStartDate, syncEndDate]);
 
   const handleSaveMarca = useCallback(async (eqId: string, newMarca: string) => {
     const trimmed = newMarca.trim() || null;
@@ -419,10 +436,28 @@ export default function EquipamentosPreventivosPage() {
             </p>
           </div>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           <Button variant="outline" size="sm" onClick={handleExportCsv} disabled={filtered.length === 0}>
             <Download className="h-4 w-4 mr-1" /> CSV
           </Button>
+          <div className="flex items-center gap-2 bg-muted/50 border rounded-lg px-3 py-1.5">
+            <CalendarDays className="h-4 w-4 text-muted-foreground" />
+            <Input
+              type="date"
+              value={syncStartDate}
+              onChange={(e) => setSyncStartDate(e.target.value)}
+              className="h-7 w-[130px] text-xs"
+              disabled={syncing}
+            />
+            <span className="text-xs text-muted-foreground">→</span>
+            <Input
+              type="date"
+              value={syncEndDate}
+              onChange={(e) => setSyncEndDate(e.target.value)}
+              className="h-7 w-[130px] text-xs"
+              disabled={syncing}
+            />
+          </div>
           <Button onClick={handleSync} disabled={syncing || isFetching} size="sm">
             {syncing ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <RefreshCw className="h-4 w-4 mr-1" />}
             Sincronizar
