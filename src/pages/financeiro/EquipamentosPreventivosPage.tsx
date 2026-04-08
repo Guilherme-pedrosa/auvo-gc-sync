@@ -562,6 +562,27 @@ export default function EquipamentosPreventivosPage() {
         </div>
       </div>
 
+      {/* Sync progress bar */}
+      {syncProgress && (
+        <div className="rounded-lg border bg-card p-4 space-y-2">
+          <div className="flex items-center justify-between text-sm">
+            <span className="font-medium flex items-center gap-2">
+              <Loader2 className="h-4 w-4 animate-spin" />
+              {syncProgress.label}
+            </span>
+            <span className="text-muted-foreground">
+              {Math.round((syncProgress.current / syncProgress.total) * 100)}%
+            </span>
+          </div>
+          <div className="h-2 w-full rounded-full bg-muted overflow-hidden">
+            <div
+              className="h-full rounded-full bg-primary transition-all duration-500"
+              style={{ width: `${Math.max(5, (syncProgress.current / syncProgress.total) * 100)}%` }}
+            />
+          </div>
+        </div>
+      )}
+
       {/* Stats */}
       <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
         {[
