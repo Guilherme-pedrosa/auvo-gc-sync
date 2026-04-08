@@ -9,7 +9,7 @@ import { toast } from "sonner";
 import {
   ArrowLeft, ExternalLink, RefreshCw, Search, AlertTriangle,
   CheckCircle2, Clock, Flame, Loader2, SlidersHorizontal,
-  ArrowUpDown, Download,
+  ArrowUpDown, Download, ListFilter,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -30,6 +30,25 @@ const EQUIPMENT_KEYWORDS = [
   "ivario", "ivariopro", "forno combinado", "miniconv",
 ];
 
+type TaskRaw = {
+  equipamento_nome: string | null;
+  equipamento_id_serie: string | null;
+  data_tarefa: string | null;
+  tecnico: string | null;
+  auvo_link: string | null;
+  descricao: string | null;
+};
+
+type EquipmentRaw = {
+  id: string;
+  nome: string;
+  identificador: string | null;
+  cliente: string | null;
+  status: string | null;
+  categoria: string | null;
+  descricao: string | null;
+};
+
 type EquipmentRow = {
   id: string;
   nome: string;
@@ -41,6 +60,7 @@ type EquipmentRow = {
   ultimo_link: string | null;
   dias_desde: number | null;
   tipo: string;
+  tipo_tarefa: string | null;
 };
 
 function detectTipo(nome: string): string {
@@ -57,11 +77,6 @@ function detectTipo(nome: string): string {
   return "Outro";
 }
 
-function matchesKeywords(name: string): boolean {
-  const lower = name.toLowerCase();
-  return EQUIPMENT_KEYWORDS.some((kw) => lower.includes(kw));
-}
-
 function getStatusInfo(dias: number | null) {
   if (dias === null) return { label: "Sem registro", color: "text-muted-foreground", bg: "bg-muted", icon: Clock };
   if (dias <= 90) return { label: "Em dia", color: "text-emerald-700 dark:text-emerald-400", bg: "bg-emerald-50 dark:bg-emerald-950/30", icon: CheckCircle2 };
@@ -69,9 +84,9 @@ function getStatusInfo(dias: number | null) {
   return { label: "Vencido", color: "text-red-700 dark:text-red-400", bg: "bg-red-50 dark:bg-red-950/30", icon: Flame };
 }
 
-async function fetchEquipmentData(): Promise<EquipmentRow[]> {
-  // 1. Fetch all registered equipment from DB (synced from Auvo API) - paginated
-  let equipamentos: any[] = [];
+async function fetchRawData(): Promise<{ equipamentos: EquipmentRaw[]; tasks: TaskRaw[] }> {
+  // 1. Fetch all registered equipment (paginated)
+  let equipamentos: EquipmentRaw[] = [];
   let eqFrom = 0;
   const EQ_PAGE = 1000;
   while (true) {
@@ -87,14 +102,14 @@ async function fetchEquipmentData(): Promise<EquipmentRow[]> {
     eqFrom += EQ_PAGE;
   }
 
-  // 2. Fetch all tasks with equipment info (for last intervention date)
-  let allTasks: any[] = [];
+  // 2. Fetch all tasks with equipment info + descricao (task type)
+  let allTasks: TaskRaw[] = [];
   let from = 0;
   const PAGE = 1000;
   while (true) {
     const { data, error } = await supabase
       .from("tarefas_central")
-      .select("equipamento_nome, equipamento_id_serie, data_tarefa, tecnico, auvo_link")
+      .select("equipamento_nome, equipamento_id_serie, data_tarefa, tecnico, auvo_link, descricao")
       .not("equipamento_nome", "is", null)
       .neq("equipamento_nome", "")
       .order("data_tarefa", { ascending: false })
@@ -106,24 +121,39 @@ async function fetchEquipmentData(): Promise<EquipmentRow[]> {
     from += PAGE;
   }
 
-  // 3. Build task maps — PRIMARY by identificador (serial), SECONDARY by name
-  type TaskMatch = { data_tarefa: string; tecnico: string | null; auvo_link: string | null };
+  return { equipamentos, tasks: allTasks };
+}
+
+function buildEquipmentRows(equipamentos: EquipmentRaw[], tasks: TaskRaw[], tipoTarefaFilter: string): EquipmentRow[] {
+  // Filter tasks by tipo de tarefa if active
+  const filteredTasks = tipoTarefaFilter === "todos"
+    ? tasks
+    : tasks.filter(t => (t.descricao || "") === tipoTarefaFilter);
+
+  // Build task maps
+  type TaskMatch = { data_tarefa: string; tecnico: string | null; auvo_link: string | null; descricao: string | null };
   const taskBySerial = new Map<string, TaskMatch>();
   const taskByName = new Map<string, TaskMatch>();
-  for (const t of allTasks) {
+
+  for (const t of filteredTasks) {
     const serial = (t.equipamento_id_serie || "").trim();
     const nameKey = (t.equipamento_nome || "").toLowerCase().trim();
-    const entry: TaskMatch = { data_tarefa: t.data_tarefa, tecnico: t.tecnico, auvo_link: t.auvo_link };
-    // Only keep the first (most recent) match per key
+    const entry: TaskMatch = {
+      data_tarefa: t.data_tarefa!,
+      tecnico: t.tecnico,
+      auvo_link: t.auvo_link,
+      descricao: t.descricao,
+    };
+    if (!t.data_tarefa) continue;
     if (serial && !taskBySerial.has(serial)) taskBySerial.set(serial, entry);
     if (nameKey && !taskByName.has(nameKey)) taskByName.set(nameKey, entry);
   }
 
-  // 4. Map registered equipment to task history — match by serial first, then by name
-  const result: EquipmentRow[] = (equipamentos || []).map((eq) => {
+  // Map equipment to task history
+  const result: EquipmentRow[] = equipamentos.map((eq) => {
     const serial = (eq.identificador || "").trim();
     const nameKey = eq.nome.toLowerCase().trim();
-    // Priority: exact serial match > exact name match > partial name match
+
     let match = serial ? taskBySerial.get(serial) : undefined;
     if (!match) match = taskByName.get(nameKey);
     if (!match) {
@@ -134,18 +164,20 @@ async function fetchEquipmentData(): Promise<EquipmentRow[]> {
         }
       }
     }
+
     const dias = match?.data_tarefa ? differenceInDays(new Date(), parseISO(match.data_tarefa)) : null;
     return {
       id: eq.id,
       nome: eq.nome,
       identificador: eq.identificador,
-      cliente: eq.cliente, // From Auvo equipment registry (via API)
+      cliente: eq.cliente,
       equipStatus: eq.status,
       ultima_data: match?.data_tarefa || null,
       ultimo_tecnico: match?.tecnico || null,
       ultimo_link: match?.auvo_link || null,
       dias_desde: dias,
       tipo: detectTipo(eq.nome),
+      tipo_tarefa: match?.descricao || null,
     };
   });
 
@@ -166,15 +198,32 @@ export default function EquipamentosPreventivosPage() {
   const [statusFilter, setStatusFilter] = useState<string>("todos");
   const [tipoFilter, setTipoFilter] = useState<string>("todos");
   const [clienteFilter, setClienteFilter] = useState<string>("todos");
+  const [tipoTarefaFilter, setTipoTarefaFilter] = useState<string>("todos");
   const [sortField, setSortField] = useState<SortField>("dias");
   const [sortDir, setSortDir] = useState<SortDir>("desc");
   const [syncing, setSyncing] = useState(false);
 
-  const { data: equipments = [], isLoading, refetch, isFetching } = useQuery({
-    queryKey: ["equipamentos-preventivos"],
-    queryFn: fetchEquipmentData,
+  const { data: rawData, isLoading, refetch, isFetching } = useQuery({
+    queryKey: ["equipamentos-preventivos-raw"],
+    queryFn: fetchRawData,
     staleTime: 5 * 60 * 1000,
   });
+
+  // Extract unique task types from raw tasks
+  const tiposTarefa = useMemo(() => {
+    if (!rawData?.tasks) return [];
+    const s = new Set<string>();
+    for (const t of rawData.tasks) {
+      if (t.descricao && t.descricao.trim()) s.add(t.descricao.trim());
+    }
+    return Array.from(s).sort();
+  }, [rawData?.tasks]);
+
+  // Recompute equipment rows when tipoTarefaFilter changes
+  const equipments = useMemo(() => {
+    if (!rawData) return [];
+    return buildEquipmentRows(rawData.equipamentos, rawData.tasks, tipoTarefaFilter);
+  }, [rawData, tipoTarefaFilter]);
 
   const tipos = useMemo(() => {
     const s = new Set(equipments.map((e) => e.tipo));
@@ -275,6 +324,8 @@ export default function EquipamentosPreventivosPage() {
     </button>
   );
 
+  const hasFilters = statusFilter !== "todos" || tipoFilter !== "todos" || clienteFilter !== "todos" || tipoTarefaFilter !== "todos" || search;
+
   return (
     <div className="space-y-4">
       {/* Header */}
@@ -341,6 +392,18 @@ export default function EquipamentosPreventivosPage() {
             ))}
           </SelectContent>
         </Select>
+        <Select value={tipoTarefaFilter} onValueChange={setTipoTarefaFilter}>
+          <SelectTrigger className={cn("w-[240px]", tipoTarefaFilter !== "todos" && "border-primary ring-1 ring-primary")}>
+            <ListFilter className="h-4 w-4 mr-1 shrink-0" />
+            <SelectValue placeholder="Tipo de tarefa" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="todos">Todos os tipos de tarefa</SelectItem>
+            {tiposTarefa.map((t) => (
+              <SelectItem key={t} value={t}>{t}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
         <Select value={clienteFilter} onValueChange={setClienteFilter}>
           <SelectTrigger className="w-[220px]">
             <SelectValue placeholder="Cliente" />
@@ -352,12 +415,21 @@ export default function EquipamentosPreventivosPage() {
             ))}
           </SelectContent>
         </Select>
-        {(statusFilter !== "todos" || tipoFilter !== "todos" || clienteFilter !== "todos" || search) && (
-          <Button variant="ghost" size="sm" onClick={() => { setSearch(""); setStatusFilter("todos"); setTipoFilter("todos"); setClienteFilter("todos"); }}>
+        {hasFilters && (
+          <Button variant="ghost" size="sm" onClick={() => { setSearch(""); setStatusFilter("todos"); setTipoFilter("todos"); setClienteFilter("todos"); setTipoTarefaFilter("todos"); }}>
             Limpar filtros
           </Button>
         )}
       </div>
+
+      {tipoTarefaFilter !== "todos" && (
+        <div className="flex items-center gap-2 text-sm text-muted-foreground bg-muted/50 rounded-md px-3 py-2 border">
+          <ListFilter className="h-4 w-4 text-primary" />
+          <span>
+            Contadores e datas calculados apenas para tarefas do tipo: <strong className="text-foreground">{tipoTarefaFilter}</strong>
+          </span>
+        </div>
+      )}
 
       {/* Table */}
       {isLoading ? (
