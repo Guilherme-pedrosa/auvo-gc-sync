@@ -24,6 +24,15 @@ const MODEL_REGEX_BRANDS: [RegExp, string][] = [
   [/\bXEVC[-\s]?\d/i, "UNOX"],
   [/\bXEBC[-\s]?\d/i, "UNOX"],
   [/\bXEFT[-\s]?\d/i, "UNOX"],
+  // SKYMSEN models
+  [/\bLS\s*\d{1,3}\b/i, "SKYMSEN"],
+  [/\bLB\s*\d{1,3}\b/i, "SKYMSEN"],
+  [/\bTA\s*\d{1,3}\b/i, "SKYMSEN"],
+  [/\bPA\s*\d{1,3}\b/i, "SKYMSEN"],
+  [/\bFC\s*\d{1,3}\b/i, "SKYMSEN"],
+  [/\bPSE\s*\d{1,3}\b/i, "SKYMSEN"],
+  // RAYMAN BRASIL models
+  [/\bRB\s*\d{2,4}\b/i, "RAYMAN BRASIL"],
 ];
 
 const BRAND_FAMILIES: [string, string][] = [
@@ -213,6 +222,15 @@ const BRAND_FAMILIES: [string, string][] = [
   ["CATAVENTO", "CATAVENTO"],
   ["AGRATTO", "AGRATTO"],
   ["TECHNOSTEEL", "TECHNOSTEEL"],
+  // EOS
+  ["EOS", "EOS"],
+  // VSINOX
+  ["VSINOX", "VSINOX"],
+  // RAYMAN BRASIL
+  ["RAYMAN BRASIL", "RAYMAN BRASIL"],
+  ["RAYMAN", "RAYMAN BRASIL"],
+  ["LAVA LOUÇAS RB", "RAYMAN BRASIL"],
+  ["LAVA LOUCAS RB", "RAYMAN BRASIL"],
 ];
 
 function extractBrand(nome: string): string | null {
