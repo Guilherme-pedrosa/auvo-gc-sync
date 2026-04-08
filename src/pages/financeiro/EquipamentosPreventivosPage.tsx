@@ -136,8 +136,12 @@ function getStatusInfo(dias: number | null) {
   return { label: "Vencido", color: "text-red-700 dark:text-red-400", bg: "bg-red-50 dark:bg-red-950/30", icon: Flame };
 }
 
-function hasSameClient(taskClientKey: string, equipmentClientKey: string) {
-  return !equipmentClientKey || !taskClientKey || taskClientKey === equipmentClientKey;
+function clientsMatch(taskClientKey: string, equipmentClientKey: string): boolean {
+  // Both must be present and equal for a valid match
+  // If equipment has a client, the task MUST be from the same client
+  if (!equipmentClientKey) return true; // no client on equipment = can't filter
+  if (!taskClientKey) return false; // equipment has client but task doesn't = reject
+  return taskClientKey === equipmentClientKey;
 }
 
 async function fetchRawData(): Promise<{ equipamentos: EquipmentRaw[]; tasks: TaskRaw[] }> {
