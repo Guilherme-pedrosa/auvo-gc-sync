@@ -485,24 +485,36 @@ export default function EquipamentosPreventivosPage() {
   );
 
   const handleExportCsv = () => {
-    const header = "Status,Marca,Equipamento,Identificador,Cliente,Última Intervenção,Técnico,Dias,Tipo Tarefa,Total Tarefas\n";
-    const rows = filtered.map((eq) => {
-      const info = getStatusInfo(eq.dias_desde);
-      return [
-        info.label,
-        `"${eq.marca || "Não identificada"}"`,
-        `"${eq.nome}"`,
-        eq.identificador || "",
-        `"${eq.cliente || ""}"`,
-        eq.ultima_data ? format(parseISO(eq.ultima_data), "dd/MM/yyyy") : "",
-        `"${eq.ultimo_tecnico || ""}"`,
-        eq.dias_desde ?? "",
-        `"${eq.tipo_tarefa || ""}"`,
-        eq.total_tarefas,
-      ].join(",");
-    }).join("\n");
+    const escCsv = (v: string | number | null | undefined): string => {
+      const s = String(v ?? "");
+      if (s.includes('"') || s.includes(";") || s.includes("\n")) {
+        return `"${s.replace(/"/g, '""')}"`;
+      }
+      return s;
+    };
 
-    const blob = new Blob([header + rows], { type: "text/csv" });
+    const sep = ";";
+    const headers = ["Status", "Marca", "Equipamento", "Identificador", "Cliente", "Última Intervenção", "Técnico", "Dias desde última", "Tipo Tarefa", "Total Tarefas"];
+    const lines: string[] = [headers.join(sep)];
+
+    for (const eq of filtered) {
+      const info = getStatusInfo(eq.dias_desde);
+      lines.push([
+        escCsv(info.label),
+        escCsv(eq.marca || "Não identificada"),
+        escCsv(eq.nome),
+        escCsv(eq.identificador),
+        escCsv(eq.cliente),
+        eq.ultima_data ? format(parseISO(eq.ultima_data), "dd/MM/yyyy") : "",
+        escCsv(eq.ultimo_tecnico),
+        eq.dias_desde != null ? String(eq.dias_desde) : "",
+        escCsv(eq.tipo_tarefa),
+        String(eq.total_tarefas ?? 0),
+      ].join(sep));
+    }
+
+    const BOM = "\uFEFF";
+    const blob = new Blob([BOM + lines.join("\r\n")], { type: "text/csv;charset=utf-8" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
