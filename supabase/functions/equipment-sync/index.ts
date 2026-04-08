@@ -154,8 +154,10 @@ async function fetchAllTasksWithEquipments(token: string, monthsBack: number = 6
       const tasks = json?.result?.entityList || json?.result?.Entities || [];
       if (page === 1) {
         const totalItems = json?.result?.pagedSearchReturnData?.totalItems || 0;
-        const sampleEquipIds = tasks.length > 0 ? (tasks[0].equipmentsId || tasks[0].equipmentsID || "none") : "no tasks";
-        console.log(`[equipment-sync] ${monthStart}: totalItems=${totalItems}, page1=${tasks.length}, sampleEquipIds=${JSON.stringify(sampleEquipIds)}`);
+        const resultKeys = json?.result ? Object.keys(json.result).join(",") : "no-result";
+        const sampleKeys = tasks.length > 0 ? Object.keys(tasks[0]).join(",").substring(0, 200) : "no-tasks";
+        const sampleEquipIds = tasks.length > 0 ? JSON.stringify(tasks[0].equipmentsId || tasks[0].equipmentsID || "none").substring(0, 100) : "empty";
+        console.log(`[equipment-sync] ${monthStart}: total=${totalItems}, page1=${tasks.length}, keys=${resultKeys}, taskKeys=${sampleKeys}, equip=${sampleEquipIds}`);
       }
       if (!Array.isArray(tasks) || tasks.length === 0) break;
       
