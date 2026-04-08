@@ -147,10 +147,20 @@ async function fetchAllTasksWithEquipments(
       const url = `${AUVO_BASE_URL}/tasks/?page=${page}&pageSize=${pageSize}&order=desc&paramFilter=${paramFilter}`;
       
       const res = await rateLimitedFetch(url, { method: "GET", headers });
-      if (!res.ok) break;
+      if (!res.ok) {
+        console.error(`[equipment-sync] Tasks listing HTTP ${res.status} for ${monthStart} page ${page}`);
+        const errBody = await res.text().catch(() => "");
+        console.error(`[equipment-sync] Response body: ${errBody.substring(0, 300)}`);
+        break;
+      }
       
       const json = await res.json();
       const tasks = json?.result?.entityList || [];
+      if (page === 1 && tasks.length === 0) {
+        // Log raw response for debugging
+        const rawKeys = json?.result ? Object.keys(json.result).join(",") : JSON.stringify(json).substring(0, 300);
+        console.log(`[equipment-sync] ${monthStart}: EMPTY. Raw keys: ${rawKeys}`);
+      }
       if (!Array.isArray(tasks) || tasks.length === 0) break;
       
       if (page === 1) {
