@@ -58,8 +58,8 @@ async function fetchCustomerName(customerId: number, token: string, cache: Map<n
   const headers = { Authorization: `Bearer ${token}`, "Content-Type": "application/json" };
   try {
     let res = await fetch(`${AUVO_BASE_URL}/customers/${customerId}`, { method: "GET", headers });
-    if (res.status === 403) {
-      await new Promise(r => setTimeout(r, 15000));
+    if (res.status === 403 || res.status === 429) {
+      await new Promise(r => setTimeout(r, 20000));
       res = await fetch(`${AUVO_BASE_URL}/customers/${customerId}`, { method: "GET", headers });
     }
     if (!res.ok) return null;
