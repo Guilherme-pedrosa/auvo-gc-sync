@@ -252,12 +252,24 @@ export default function EquipamentosPreventivosPage() {
   const handleSync = useCallback(async () => {
     setSyncing(true);
     try {
-      const { data, error } = await supabase.functions.invoke("equipment-sync");
-      if (error) throw error;
-      const p1 = data?.phase1_equipment_catalog;
-      const p2 = data?.phase2_equipment_tasks;
+      // Phase 1: catalog
+      toast.info("Fase 1: Sincronizando catálogo de equipamentos...");
+      const { data: d1, error: e1 } = await supabase.functions.invoke("equipment-sync", {
+        body: { phase: "1" },
+      });
+      if (e1) throw e1;
+      const p1 = d1?.phase1_equipment_catalog;
+      toast.success(`Catálogo: ${p1?.upserted || 0} equipamentos sincronizados`);
+
+      // Phase 2: relationships
+      toast.info("Fase 2: Sincronizando vínculos tarefa-equipamento...");
+      const { data: d2, error: e2 } = await supabase.functions.invoke("equipment-sync", {
+        body: { phase: "2", months: 6 },
+      });
+      if (e2) throw e2;
+      const p2 = d2?.phase2_equipment_tasks;
       toast.success(
-        `Sincronização concluída! ${p1?.total_auvo || 0} equipamentos, ${p2?.relationship_rows_upserted || 0} vínculos tarefa-equipamento`
+        `Vínculos: ${p2?.relationship_rows_upserted || 0} relações sincronizadas (${p2?.equipments_with_tasks || 0} equipamentos com tarefas)`
       );
       refetch();
     } catch (err: any) {
