@@ -230,12 +230,17 @@ function buildEquipmentRows(equipamentos: EquipmentRaw[], tasks: TaskRaw[], tipo
       match = candidates.find((task) => clientsMatch(task.clientKey, clientKey) && task.nameKey === nameKey);
     }
 
-    if (!match && nameKey) {
+    if (!match && nameKey && nameKey.length >= 12) {
       match = candidates.find(
-        (task) =>
-          clientsMatch(task.clientKey, clientKey) &&
-          task.nameKey &&
-          (task.searchKey.includes(nameKey) || nameKey.includes(task.nameKey))
+        (task) => {
+          if (!clientsMatch(task.clientKey, clientKey)) return false;
+          if (!task.nameKey || task.nameKey.length < 12) return false;
+          const shorter = nameKey.length <= task.nameKey.length ? nameKey : task.nameKey;
+          const longer = nameKey.length <= task.nameKey.length ? task.nameKey : nameKey;
+          // Shorter must cover at least 80% of longer to avoid false positives like "fornorational" matching "fornorationalicombipro..."
+          if (shorter.length / longer.length < 0.8) return false;
+          return longer.includes(shorter);
+        }
       );
     }
 
