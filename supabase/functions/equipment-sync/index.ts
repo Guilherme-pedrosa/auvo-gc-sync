@@ -363,10 +363,20 @@ Deno.serve(async (req) => {
       console.log(`[equipment-sync] Phase 2: window ${startDateParam} → ${endDateParam}`);
 
       if (!validEquipmentIds) {
-        const { data: eqData } = await sb
-          .from("equipamentos_auvo")
-          .select("auvo_equipment_id");
-        validEquipmentIds = new Set((eqData || []).map((row) => row.auvo_equipment_id).filter(Boolean));
+        validEquipmentIds = new Set<string>();
+        let eqFrom = 0;
+        while (true) {
+          const { data: eqData } = await sb
+            .from("equipamentos_auvo")
+            .select("auvo_equipment_id")
+            .range(eqFrom, eqFrom + 999);
+          if (!eqData || eqData.length === 0) break;
+          for (const row of eqData) {
+            if (row.auvo_equipment_id) validEquipmentIds.add(row.auvo_equipment_id);
+          }
+          if (eqData.length < 1000) break;
+          eqFrom += 1000;
+        }
         console.log(`[equipment-sync] Valid equipment IDs loaded: ${validEquipmentIds.size}`);
       }
 
