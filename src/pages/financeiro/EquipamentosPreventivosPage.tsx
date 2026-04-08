@@ -20,30 +20,17 @@ import {
 } from "@/components/ui/select";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 
-const EQUIPMENT_KEYWORDS = [
-  "rational", "pratica", "prática", "klimaquip", "klimakiip",
-  "genesis", "gênesis", "unox", "câmara fria", "camara fria",
-  "câmara refrigerada", "camara refrigerada", "câmara resfriada", "camara resfriada",
-  "área climatizada", "area climatizada", "adega",
-  "ivario", "ivariopro", "forno combinado", "miniconv",
-];
-
 type EquipmentRow = {
-  equipamento_nome: string;
-  equipamento_id_serie: string | null;
+  id: string;
+  nome: string;
+  identificador: string | null;
   cliente: string | null;
+  status: string | null;
   ultima_data: string | null;
   ultimo_tecnico: string | null;
-  ultimo_status: string | null;
   ultimo_link: string | null;
-  ultimo_task_id: string | null;
   dias_desde: number | null;
 };
-
-function matchesKeywords(name: string): boolean {
-  const lower = name.toLowerCase();
-  return EQUIPMENT_KEYWORDS.some((kw) => lower.includes(kw));
-}
 
 function getStatusInfo(dias: number | null) {
   if (dias === null) return { label: "Sem registro", color: "text-muted-foreground", bg: "bg-muted", icon: Clock };
@@ -53,56 +40,78 @@ function getStatusInfo(dias: number | null) {
 }
 
 async function fetchEquipmentData(): Promise<EquipmentRow[]> {
-  // Fetch all tasks that have equipment info
-  let all: any[] = [];
+  // 1. Fetch all registered equipment
+  const { data: equipamentos, error: eqErr } = await supabase
+    .from("equipamentos_auvo")
+    .select("id, nome, identificador, cliente, status")
+    .order("nome");
+  if (eqErr) throw eqErr;
+
+  // 2. Fetch all tasks with equipment info (paginated)
+  let allTasks: any[] = [];
   let from = 0;
   const PAGE = 1000;
   while (true) {
     const { data, error } = await supabase
       .from("tarefas_central")
-      .select("equipamento_nome, equipamento_id_serie, cliente, data_tarefa, tecnico, status_auvo, auvo_link, auvo_task_id")
+      .select("equipamento_nome, equipamento_id_serie, data_tarefa, tecnico, auvo_link")
       .not("equipamento_nome", "is", null)
       .neq("equipamento_nome", "")
       .order("data_tarefa", { ascending: false })
       .range(from, from + PAGE - 1);
     if (error) throw error;
     if (!data || data.length === 0) break;
-    all.push(...data);
+    allTasks.push(...data);
     if (data.length < PAGE) break;
     from += PAGE;
   }
 
-  // Filter by keywords
-  const filtered = all.filter((r) => matchesKeywords(r.equipamento_nome));
-
-  // Group by equipment (nome + serie) and pick latest task
-  const map = new Map<string, EquipmentRow>();
-  for (const row of filtered) {
-    const key = `${row.equipamento_nome}|||${row.equipamento_id_serie || ""}`;
-    const existing = map.get(key);
-    if (!existing) {
-      const dias = row.data_tarefa
-        ? differenceInDays(new Date(), parseISO(row.data_tarefa))
-        : null;
-      map.set(key, {
-        equipamento_nome: row.equipamento_nome,
-        equipamento_id_serie: row.equipamento_id_serie,
-        cliente: row.cliente,
-        ultima_data: row.data_tarefa,
-        ultimo_tecnico: row.tecnico,
-        ultimo_status: row.status_auvo,
-        ultimo_link: row.auvo_link,
-        ultimo_task_id: row.auvo_task_id,
-        dias_desde: dias,
+  // 3. Build a map of equipment name (lowercase) → latest task
+  const taskMap = new Map<string, { data_tarefa: string; tecnico: string | null; auvo_link: string | null }>();
+  for (const t of allTasks) {
+    const nameKey = (t.equipamento_nome || "").toLowerCase().trim();
+    if (!taskMap.has(nameKey)) {
+      taskMap.set(nameKey, {
+        data_tarefa: t.data_tarefa,
+        tecnico: t.tecnico,
+        auvo_link: t.auvo_link,
       });
-    } else if (!existing.cliente && row.cliente) {
-      // Fill client from an older task if the latest one had no client
-      existing.cliente = row.cliente;
     }
   }
 
-  return Array.from(map.values()).sort((a, b) => {
-    // Nulls (no date) first, then by days descending (most overdue first)
+  // 4. Match each registered equipment to its latest task
+  const result: EquipmentRow[] = (equipamentos || []).map((eq) => {
+    const nameKey = eq.nome.toLowerCase().trim();
+    // Try exact match first, then partial match
+    let match = taskMap.get(nameKey);
+    if (!match) {
+      for (const [taskName, taskData] of taskMap) {
+        if (nameKey.includes(taskName) || taskName.includes(nameKey)) {
+          match = taskData;
+          break;
+        }
+      }
+    }
+
+    const dias = match?.data_tarefa
+      ? differenceInDays(new Date(), parseISO(match.data_tarefa))
+      : null;
+
+    return {
+      id: eq.id,
+      nome: eq.nome,
+      identificador: eq.identificador,
+      cliente: eq.cliente,
+      status: eq.status,
+      ultima_data: match?.data_tarefa || null,
+      ultimo_tecnico: match?.tecnico || null,
+      ultimo_link: match?.auvo_link || null,
+      dias_desde: dias,
+    };
+  });
+
+  // Sort: nulls first, then by days descending
+  return result.sort((a, b) => {
     if (a.dias_desde === null && b.dias_desde === null) return 0;
     if (a.dias_desde === null) return -1;
     if (b.dias_desde === null) return 1;
@@ -128,9 +137,9 @@ export default function EquipamentosPreventivosPage() {
       const q = search.toLowerCase();
       result = result.filter(
         (e) =>
-          e.equipamento_nome.toLowerCase().includes(q) ||
+          e.nome.toLowerCase().includes(q) ||
           (e.cliente || "").toLowerCase().includes(q) ||
-          (e.equipamento_id_serie || "").toLowerCase().includes(q)
+          (e.identificador || "").toLowerCase().includes(q)
       );
     }
 
@@ -217,7 +226,7 @@ export default function EquipamentosPreventivosPage() {
               <TableRow>
                 <TableHead className="w-10">Status</TableHead>
                 <TableHead>Equipamento</TableHead>
-                <TableHead>Nº Série</TableHead>
+                <TableHead>Identificador</TableHead>
                 <TableHead>Cliente</TableHead>
                 <TableHead>Última Intervenção</TableHead>
                 <TableHead>Técnico</TableHead>
@@ -233,11 +242,11 @@ export default function EquipamentosPreventivosPage() {
                   </TableCell>
                 </TableRow>
               ) : (
-                filtered.map((eq, idx) => {
+                filtered.map((eq) => {
                   const info = getStatusInfo(eq.dias_desde);
                   const Icon = info.icon;
                   return (
-                    <TableRow key={`${eq.equipamento_nome}-${eq.equipamento_id_serie}-${idx}`} className={cn(info.bg)}>
+                    <TableRow key={eq.id} className={cn(info.bg)}>
                       <TableCell>
                         <Tooltip>
                           <TooltipTrigger>
@@ -246,11 +255,11 @@ export default function EquipamentosPreventivosPage() {
                           <TooltipContent>{info.label}</TooltipContent>
                         </Tooltip>
                       </TableCell>
-                      <TableCell className="font-medium max-w-[300px] truncate" title={eq.equipamento_nome}>
-                        {eq.equipamento_nome}
+                      <TableCell className="font-medium max-w-[300px] truncate" title={eq.nome}>
+                        {eq.nome}
                       </TableCell>
                       <TableCell className="text-xs text-muted-foreground font-mono">
-                        {eq.equipamento_id_serie || "—"}
+                        {eq.identificador || "—"}
                       </TableCell>
                       <TableCell className="max-w-[200px] truncate" title={eq.cliente || ""}>
                         {eq.cliente || "—"}
