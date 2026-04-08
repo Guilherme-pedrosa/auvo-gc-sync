@@ -192,6 +192,9 @@ export type Database = {
           descricao: string | null
           id: string
           identificador: string | null
+          marca: string | null
+          marca_manual_override: boolean | null
+          marca_source: string | null
           nome: string
           status: string | null
         }
@@ -204,6 +207,9 @@ export type Database = {
           descricao?: string | null
           id?: string
           identificador?: string | null
+          marca?: string | null
+          marca_manual_override?: boolean | null
+          marca_source?: string | null
           nome: string
           status?: string | null
         }
@@ -216,6 +222,9 @@ export type Database = {
           descricao?: string | null
           id?: string
           identificador?: string | null
+          marca?: string | null
+          marca_manual_override?: boolean | null
+          marca_source?: string | null
           nome?: string
           status?: string | null
         }
