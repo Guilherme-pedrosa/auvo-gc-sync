@@ -244,36 +244,46 @@ export default function EquipamentosPreventivosPage() {
       const p1 = d1?.phase1_equipment_catalog;
       toast.success(`Catálogo: ${p1?.upserted || 0} equip. | Marcas: ${p1?.brands_detected || 0} detectadas`);
 
-      const now = new Date();
-      const monthsBack = 12;
+      // Phase 2: iterate month by month within user-selected range
+      const start = new Date(syncStartDate + "T00:00:00");
+      const end = new Date(syncEndDate + "T00:00:00");
       let totalRelUpserted = 0;
       let totalWithEquipLinks = 0;
+      let monthsCovered = 0;
 
-      for (let m = monthsBack; m >= 0; m--) {
-        const d = new Date(now.getFullYear(), now.getMonth() - m, 1);
-        const startDate = d.toISOString().split("T")[0];
-        const endD = new Date(d.getFullYear(), d.getMonth() + 1, 0);
-        const endDate = endD > now ? now.toISOString().split("T")[0] : endD.toISOString().split("T")[0];
+      const cursor = new Date(start.getFullYear(), start.getMonth(), 1);
+      while (cursor <= end) {
+        const windowStart = cursor < start
+          ? syncStartDate
+          : format(cursor, "yyyy-MM-dd");
+        const windowEndDate = new Date(cursor.getFullYear(), cursor.getMonth() + 1, 0);
+        const windowEnd = windowEndDate > end
+          ? syncEndDate
+          : format(windowEndDate, "yyyy-MM-dd");
 
-        toast.info(`Fase 2: Vínculos ${startDate.substring(0, 7)}...`);
+        toast.info(`Fase 2: Vínculos ${windowStart.substring(0, 7)}...`);
 
         const { data: d2, error: e2 } = await supabase.functions.invoke("equipment-sync", {
-          body: { phase: "2", startDate, endDate },
+          body: { phase: "2", startDate: windowStart, endDate: windowEnd },
         });
-        if (e2) { console.error(`Phase 2 error for ${startDate}:`, e2); continue; }
-        const p2 = d2?.phase2_equipment_tasks;
-        totalRelUpserted += p2?.relationship_rows_upserted || 0;
-        totalWithEquipLinks += p2?.tasks_with_equipment_links || 0;
+        if (e2) { console.error(`Phase 2 error for ${windowStart}:`, e2); }
+        else {
+          const p2 = d2?.phase2_equipment_tasks;
+          totalRelUpserted += p2?.relationship_rows_upserted || 0;
+          totalWithEquipLinks += p2?.tasks_with_equipment_links || 0;
+        }
+        monthsCovered++;
+        cursor.setMonth(cursor.getMonth() + 1);
       }
 
-      toast.success(`Vínculos: ${totalRelUpserted} relações (${totalWithEquipLinks} tarefas com equipamento)`);
+      toast.success(`Vínculos: ${totalRelUpserted} relações em ${monthsCovered} meses (${totalWithEquipLinks} tarefas com equipamento)`);
       refetch();
     } catch (err: any) {
       toast.error("Erro na sincronização: " + (err.message || "desconhecido"));
     } finally {
       setSyncing(false);
     }
-  }, [refetch]);
+  }, [refetch, syncStartDate, syncEndDate]);
 
   const handleSaveMarca = useCallback(async (eqId: string, newMarca: string) => {
     const trimmed = newMarca.trim() || null;
