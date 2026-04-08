@@ -191,6 +191,12 @@ export default function EquipamentosPreventivosPage() {
   const [editingMarcaId, setEditingMarcaId] = useState<string | null>(null);
   const [editingMarcaValue, setEditingMarcaValue] = useState("");
 
+  // Sync date range — defaults to last 1 month
+  const defaultSyncStart = format(new Date(new Date().getFullYear(), new Date().getMonth() - 1, 1), "yyyy-MM-dd");
+  const defaultSyncEnd = format(new Date(), "yyyy-MM-dd");
+  const [syncStartDate, setSyncStartDate] = useState(defaultSyncStart);
+  const [syncEndDate, setSyncEndDate] = useState(defaultSyncEnd);
+
   const { data: rawData, isLoading, refetch, isFetching } = useQuery({
     queryKey: ["equipamentos-preventivos-raw"],
     queryFn: fetchRawData,
