@@ -1,0 +1,1 @@
+DELETE FROM public.equipamentos_auvo WHERE auvo_equipment_id IS NULL;
