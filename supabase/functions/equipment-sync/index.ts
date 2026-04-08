@@ -22,11 +22,11 @@ function auvoHeaders(token: string): Record<string, string> {
 }
 
 async function rateLimitedFetch(url: string, options: RequestInit): Promise<Response> {
-  await new Promise(r => setTimeout(r, 250));
+  await new Promise(r => setTimeout(r, 100));
   const res = await fetch(url, options);
   if (res.status === 403 || res.status === 429) {
-    console.log(`Rate limit hit (${res.status}), waiting 20s...`);
-    await new Promise(r => setTimeout(r, 20000));
+    console.log(`Rate limit hit (${res.status}), waiting 10s...`);
+    await new Promise(r => setTimeout(r, 10000));
     return fetch(url, options);
   }
   return res;
@@ -134,8 +134,8 @@ async function fetchAllTasksWithEquipments(token: string, monthsBack: number = 6
     console.log(`[equipment-sync] Fetching tasks ${monthStart} → ${clampedEnd}...`);
     
     let page = 1;
-    const pageSize = 100;
-    const MAX_PAGES = 30;
+    const pageSize = 200;
+    const MAX_PAGES = 50;
     
     while (page <= MAX_PAGES) {
       const filterObj = { startDate: `${monthStart}T00:00:00`, endDate: `${clampedEnd}T23:59:59` };
@@ -280,8 +280,8 @@ Deno.serve(async (req) => {
     // ═══════════════════════════════════════════════════════════════
     // PHASE 2: Sync native equipment-task relationships
     // ═══════════════════════════════════════════════════════════════
-    console.log("[equipment-sync] Phase 2: Fetching tasks with equipment links (12 months)...");
-    const tasksWithEquipments = await fetchAllTasksWithEquipments(accessToken, 12);
+    console.log("[equipment-sync] Phase 2: Fetching tasks with equipment links (6 months)...");
+    const tasksWithEquipments = await fetchAllTasksWithEquipments(accessToken, 6);
     console.log(`[equipment-sync] Tasks with equipment links found: ${tasksWithEquipments.length}`);
 
     // Build equipment ID set for validation
