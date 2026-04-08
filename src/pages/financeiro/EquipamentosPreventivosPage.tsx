@@ -223,17 +223,17 @@ function buildEquipmentRows(equipamentos: EquipmentRaw[], tasks: TaskRaw[], tipo
     let match = serialKey ? taskBySerial.get(serialKey) : undefined;
 
     if (!match && serialKey) {
-      match = candidates.find((task) => hasSameClient(task.clientKey, clientKey) && task.searchKey.includes(serialKey));
+      match = candidates.find((task) => clientsMatch(task.clientKey, clientKey) && task.searchKey.includes(serialKey));
     }
 
     if (!match && nameKey) {
-      match = candidates.find((task) => hasSameClient(task.clientKey, clientKey) && task.nameKey === nameKey);
+      match = candidates.find((task) => clientsMatch(task.clientKey, clientKey) && task.nameKey === nameKey);
     }
 
     if (!match && nameKey) {
       match = candidates.find(
         (task) =>
-          hasSameClient(task.clientKey, clientKey) &&
+          clientsMatch(task.clientKey, clientKey) &&
           task.nameKey &&
           (task.searchKey.includes(nameKey) || nameKey.includes(task.nameKey))
       );
@@ -244,7 +244,7 @@ function buildEquipmentRows(equipamentos: EquipmentRaw[], tasks: TaskRaw[], tipo
       const hitsNeeded = tokens.length >= 2 ? 2 : tokens.length;
       if (hitsNeeded > 0) {
         match = candidates.find((task) => {
-          if (!hasSameClient(task.clientKey, clientKey)) return false;
+          if (!clientsMatch(task.clientKey, clientKey)) return false;
           let hits = 0;
           for (const token of tokens) {
             if (task.searchKey.includes(token)) hits += 1;
