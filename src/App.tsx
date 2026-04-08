@@ -18,6 +18,7 @@ import AgendaSemanalPage from "./pages/financeiro/AgendaSemanalPage.tsx";
 import UsersPage from "./pages/admin/UsersPage.tsx";
 import RelatoriosPage from "./pages/financeiro/RelatoriosPage.tsx";
 import OficinaKanbanPage from "./pages/financeiro/OficinaKanbanPage.tsx";
+import EquipamentosPreventivosPage from "./pages/financeiro/EquipamentosPreventivosPage.tsx";
 import { Loader2 } from "lucide-react";
 
 const queryClient = new QueryClient();
@@ -62,6 +63,7 @@ const AppRoutes = () => {
                 <Route path="/financeiro/agenda-semanal" element={<AgendaSemanalPage />} />
                 <Route path="/financeiro/relatorios" element={<RelatoriosPage />} />
                 <Route path="/financeiro/kanban-oficina" element={<OficinaKanbanPage />} />
+                <Route path="/financeiro/equipamentos-preventivos" element={<EquipamentosPreventivosPage />} />
                 <Route path="/admin/usuarios" element={<UsersPage />} />
                 <Route path="*" element={<NotFound />} />
               </Routes>
