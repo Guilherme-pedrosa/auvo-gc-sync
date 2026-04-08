@@ -33,10 +33,14 @@ const EQUIPMENT_KEYWORDS = [
 type TaskRaw = {
   equipamento_nome: string | null;
   equipamento_id_serie: string | null;
+  cliente: string | null;
   data_tarefa: string | null;
+  data_conclusao: string | null;
+  status_auvo: string | null;
   tecnico: string | null;
   auvo_link: string | null;
   descricao: string | null;
+  orientacao: string | null;
 };
 
 type EquipmentRaw = {
@@ -63,6 +67,54 @@ type EquipmentRow = {
   tipo_tarefa: string | null;
 };
 
+type TaskCandidate = {
+  data_referencia: string;
+  tecnico: string | null;
+  auvo_link: string | null;
+  descricao: string | null;
+  nameKey: string;
+  serialKey: string;
+  clientKey: string;
+  searchKey: string;
+};
+
+const IGNORED_NAME_TOKENS = new Set([
+  "equipamento",
+  "serial",
+  "serie",
+  "patrimonio",
+  "patrimonioo",
+  "modelo",
+  "ref",
+  "refrigerado",
+  "refrigerada",
+  "frontal",
+  "inox",
+  "aco",
+  "cozinha",
+]);
+
+function normalizeComparable(text: unknown): string {
+  return String(text || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, "")
+    .trim();
+}
+
+function getSearchTokens(text: string): string[] {
+  return String(text || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .split(/[^a-z0-9]+/)
+    .map((token) => token.trim())
+    .filter((token) => token.length >= 4 && !IGNORED_NAME_TOKENS.has(token))
+    .sort((a, b) => b.length - a.length)
+    .slice(0, 4);
+}
+
 function detectTipo(nome: string): string {
   const lower = nome.toLowerCase();
   if (lower.includes("rational")) return "Rational";
@@ -84,8 +136,11 @@ function getStatusInfo(dias: number | null) {
   return { label: "Vencido", color: "text-red-700 dark:text-red-400", bg: "bg-red-50 dark:bg-red-950/30", icon: Flame };
 }
 
+function hasSameClient(taskClientKey: string, equipmentClientKey: string) {
+  return !equipmentClientKey || !taskClientKey || taskClientKey === equipmentClientKey;
+}
+
 async function fetchRawData(): Promise<{ equipamentos: EquipmentRaw[]; tasks: TaskRaw[] }> {
-  // 1. Fetch all registered equipment (paginated)
   let equipamentos: EquipmentRaw[] = [];
   let eqFrom = 0;
   const EQ_PAGE = 1000;
@@ -102,16 +157,13 @@ async function fetchRawData(): Promise<{ equipamentos: EquipmentRaw[]; tasks: Ta
     eqFrom += EQ_PAGE;
   }
 
-  // 2. Fetch all tasks with equipment info + descricao (task type)
   let allTasks: TaskRaw[] = [];
   let from = 0;
   const PAGE = 1000;
   while (true) {
     const { data, error } = await supabase
       .from("tarefas_central")
-      .select("equipamento_nome, equipamento_id_serie, data_tarefa, tecnico, auvo_link, descricao")
-      .not("equipamento_nome", "is", null)
-      .neq("equipamento_nome", "")
+      .select("equipamento_nome, equipamento_id_serie, cliente, data_tarefa, data_conclusao, status_auvo, tecnico, auvo_link, descricao, orientacao")
       .order("data_tarefa", { ascending: false })
       .range(from, from + PAGE - 1);
     if (error) throw error;
@@ -125,54 +177,90 @@ async function fetchRawData(): Promise<{ equipamentos: EquipmentRaw[]; tasks: Ta
 }
 
 function buildEquipmentRows(equipamentos: EquipmentRaw[], tasks: TaskRaw[], tipoTarefaFilter: string): EquipmentRow[] {
-  // Filter tasks by tipo de tarefa if active
-  const filteredTasks = tipoTarefaFilter === "todos"
-    ? tasks
-    : tasks.filter(t => (t.descricao || "") === tipoTarefaFilter);
+  const candidates: TaskCandidate[] = tasks
+    .filter((task) => {
+      const taskType = String(task.descricao || "").trim();
+      if (tipoTarefaFilter !== "todos" && taskType !== tipoTarefaFilter) return false;
 
-  // Build task maps
-  type TaskMatch = { data_tarefa: string; tecnico: string | null; auvo_link: string | null; descricao: string | null };
-  const taskBySerial = new Map<string, TaskMatch>();
-  const taskByName = new Map<string, TaskMatch>();
+      const dataReferencia = task.data_conclusao || task.data_tarefa;
+      const isCompleted = task.status_auvo === "Finalizada" || !!task.data_conclusao;
+      const hasEquipmentSignal = Boolean(
+        normalizeComparable(task.equipamento_id_serie) ||
+        normalizeComparable(task.equipamento_nome) ||
+        normalizeComparable(task.orientacao)
+      );
 
-  for (const t of filteredTasks) {
-    const serial = (t.equipamento_id_serie || "").trim();
-    const nameKey = (t.equipamento_nome || "").toLowerCase().trim();
-    const entry: TaskMatch = {
-      data_tarefa: t.data_tarefa!,
-      tecnico: t.tecnico,
-      auvo_link: t.auvo_link,
-      descricao: t.descricao,
-    };
-    if (!t.data_tarefa) continue;
-    if (serial && !taskBySerial.has(serial)) taskBySerial.set(serial, entry);
-    if (nameKey && !taskByName.has(nameKey)) taskByName.set(nameKey, entry);
+      return Boolean(dataReferencia && isCompleted && hasEquipmentSignal);
+    })
+    .map((task) => ({
+      data_referencia: (task.data_conclusao || task.data_tarefa) as string,
+      tecnico: task.tecnico,
+      auvo_link: task.auvo_link,
+      descricao: task.descricao,
+      nameKey: normalizeComparable(task.equipamento_nome),
+      serialKey: normalizeComparable(task.equipamento_id_serie),
+      clientKey: normalizeComparable(task.cliente),
+      searchKey: normalizeComparable(`${task.equipamento_nome || ""} ${task.equipamento_id_serie || ""} ${task.orientacao || ""}`),
+    }))
+    .sort((a, b) => b.data_referencia.localeCompare(a.data_referencia));
+
+  const taskBySerial = new Map<string, TaskCandidate>();
+  for (const task of candidates) {
+    if (task.serialKey && !taskBySerial.has(task.serialKey)) {
+      taskBySerial.set(task.serialKey, task);
+    }
   }
 
-  // Map equipment to task history
   const result: EquipmentRow[] = equipamentos.map((eq) => {
-    const serial = (eq.identificador || "").trim();
-    const nameKey = eq.nome.toLowerCase().trim();
+    const serialKey = normalizeComparable(eq.identificador);
+    const nameKey = normalizeComparable(eq.nome);
+    const clientKey = normalizeComparable(eq.cliente);
 
-    let match = serial ? taskBySerial.get(serial) : undefined;
-    if (!match) match = taskByName.get(nameKey);
+    let match = serialKey ? taskBySerial.get(serialKey) : undefined;
+
+    if (!match && serialKey) {
+      match = candidates.find((task) => hasSameClient(task.clientKey, clientKey) && task.searchKey.includes(serialKey));
+    }
+
+    if (!match && nameKey) {
+      match = candidates.find((task) => hasSameClient(task.clientKey, clientKey) && task.nameKey === nameKey);
+    }
+
+    if (!match && nameKey) {
+      match = candidates.find(
+        (task) =>
+          hasSameClient(task.clientKey, clientKey) &&
+          task.nameKey &&
+          (task.searchKey.includes(nameKey) || nameKey.includes(task.nameKey))
+      );
+    }
+
     if (!match) {
-      for (const [taskName, taskData] of taskByName) {
-        if (nameKey.includes(taskName) || taskName.includes(nameKey)) {
-          match = taskData;
-          break;
-        }
+      const tokens = getSearchTokens(eq.nome);
+      const hitsNeeded = tokens.length >= 2 ? 2 : tokens.length;
+      if (hitsNeeded > 0) {
+        match = candidates.find((task) => {
+          if (!hasSameClient(task.clientKey, clientKey)) return false;
+          let hits = 0;
+          for (const token of tokens) {
+            if (task.searchKey.includes(token)) hits += 1;
+            if (hits >= hitsNeeded) return true;
+          }
+          return false;
+        });
       }
     }
 
-    const dias = match?.data_tarefa ? differenceInDays(new Date(), parseISO(match.data_tarefa)) : null;
+    const ultimaData = match?.data_referencia || null;
+    const dias = ultimaData ? differenceInDays(new Date(), parseISO(ultimaData)) : null;
+
     return {
       id: eq.id,
       nome: eq.nome,
       identificador: eq.identificador,
       cliente: eq.cliente,
       equipStatus: eq.status,
-      ultima_data: match?.data_tarefa || null,
+      ultima_data: ultimaData,
       ultimo_tecnico: match?.tecnico || null,
       ultimo_link: match?.auvo_link || null,
       dias_desde: dias,
