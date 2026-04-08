@@ -79,7 +79,8 @@ async function fetchEquipmentData(): Promise<EquipmentRow[]> {
   const map = new Map<string, EquipmentRow>();
   for (const row of filtered) {
     const key = `${row.equipamento_nome}|||${row.equipamento_id_serie || ""}`;
-    if (!map.has(key)) {
+    const existing = map.get(key);
+    if (!existing) {
       const dias = row.data_tarefa
         ? differenceInDays(new Date(), parseISO(row.data_tarefa))
         : null;
@@ -94,6 +95,9 @@ async function fetchEquipmentData(): Promise<EquipmentRow[]> {
         ultimo_task_id: row.auvo_task_id,
         dias_desde: dias,
       });
+    } else if (!existing.cliente && row.cliente) {
+      // Fill client from an older task if the latest one had no client
+      existing.cliente = row.cliente;
     }
   }
 
