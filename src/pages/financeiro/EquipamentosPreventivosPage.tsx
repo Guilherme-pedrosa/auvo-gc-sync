@@ -18,11 +18,9 @@ import { Badge } from "@/components/ui/badge";
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
-import {
-  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
-} from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { SearchableSelect } from "@/components/ui/searchable-select";
 
 // ── Types ──
 type EquipmentRaw = {
@@ -613,57 +611,59 @@ export default function EquipamentosPreventivosPage() {
           </div>
         </div>
 
-        <Select value={statusFilter} onValueChange={setStatusFilter}>
-          <SelectTrigger className="w-[150px]">
-            <SlidersHorizontal className="h-4 w-4 mr-1" />
-            <SelectValue placeholder="Status" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="todos">Todos os status</SelectItem>
-            <SelectItem value="em dia">🟢 Em dia</SelectItem>
-            <SelectItem value="atenção">🟡 Atenção</SelectItem>
-            <SelectItem value="vencido">🔴 Vencido</SelectItem>
-            <SelectItem value="sem registro">⏳ Sem histórico</SelectItem>
-          </SelectContent>
-        </Select>
+        <SearchableSelect
+          value={statusFilter}
+          onValueChange={setStatusFilter}
+          options={[
+            { value: "todos", label: "Todos os status" },
+            { value: "em dia", label: "🟢 Em dia" },
+            { value: "atenção", label: "🟡 Atenção" },
+            { value: "vencido", label: "🔴 Vencido" },
+            { value: "sem registro", label: "⏳ Sem histórico" },
+          ]}
+          placeholder="Status"
+          searchPlaceholder="Buscar status..."
+          className="w-[150px]"
+          icon={<SlidersHorizontal className="h-4 w-4" />}
+        />
 
-        <Select value={marcaFilter} onValueChange={setMarcaFilter}>
-          <SelectTrigger className="w-[180px]">
-            <SelectValue placeholder="Marca" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="todos">Todas as marcas</SelectItem>
-            <SelectItem value="__sem_marca__">⚠️ Não identificada</SelectItem>
-            {marcasUnicas.map((m) => (
-              <SelectItem key={m} value={m}>{m}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        <SearchableSelect
+          value={marcaFilter}
+          onValueChange={setMarcaFilter}
+          options={[
+            { value: "todos", label: "Todas as marcas" },
+            { value: "__sem_marca__", label: "⚠️ Não identificada" },
+            ...marcasUnicas.map((m) => ({ value: m, label: m })),
+          ]}
+          placeholder="Marca"
+          searchPlaceholder="Buscar marca..."
+          className="w-[180px]"
+        />
 
-        <Select value={clienteFilter} onValueChange={setClienteFilter}>
-          <SelectTrigger className="w-[200px]">
-            <SelectValue placeholder="Cliente" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="todos">Todos os clientes</SelectItem>
-            {clientes.map((c) => (
-              <SelectItem key={c} value={c}>{c}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        <SearchableSelect
+          value={clienteFilter}
+          onValueChange={setClienteFilter}
+          options={[
+            { value: "todos", label: "Todos os clientes" },
+            ...clientes.map((c) => ({ value: c, label: c })),
+          ]}
+          placeholder="Cliente"
+          searchPlaceholder="Buscar cliente..."
+          className="w-[200px]"
+        />
 
-        <Select value={tipoTarefaFilter} onValueChange={setTipoTarefaFilter}>
-          <SelectTrigger className="w-[220px]">
-            <ListFilter className="h-4 w-4 mr-1" />
-            <SelectValue placeholder="Tipo de Tarefa" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="todos">Todos os tipos de tarefa</SelectItem>
-            {tiposTarefa.map((tt) => (
-              <SelectItem key={tt.id} value={tt.id}>{tt.desc}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        <SearchableSelect
+          value={tipoTarefaFilter}
+          onValueChange={setTipoTarefaFilter}
+          options={[
+            { value: "todos", label: "Todos os tipos de tarefa" },
+            ...tiposTarefa.map((tt) => ({ value: tt.id, label: tt.desc })),
+          ]}
+          placeholder="Tipo de Tarefa"
+          searchPlaceholder="Buscar tipo..."
+          className="w-[220px]"
+          icon={<ListFilter className="h-4 w-4" />}
+        />
       </div>
 
       {/* Active filters banner */}
