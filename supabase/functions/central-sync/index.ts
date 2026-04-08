@@ -175,6 +175,7 @@ type AuvoTaskSnapshot = {
   estimatedDuration: string;
   equipmentName: string;
   equipmentSerial: string;
+  equipmentIds: string[];
 };
 
 async function fetchAuvoTaskSnapshot(bearerToken: string, taskId: string): Promise<AuvoTaskSnapshot | null> {
@@ -234,7 +235,7 @@ async function fetchAuvoTaskSnapshot(bearerToken: string, taskId: string): Promi
     equipmentSerial = String(result?.equipmentIdentifier || result?.equipment?.identifier || result?.equipment?.serial || "").trim();
   }
 
-  return { address, orientation, displacementStart, checkInDate, checkOutDate, taskEndDate, startTime, endTime, estimatedDuration, equipmentName, equipmentSerial };
+  return { address, orientation, displacementStart, checkInDate, checkOutDate, taskEndDate, startTime, endTime, estimatedDuration, equipmentName, equipmentSerial, equipmentIds: equipIds };
 }
 
 // Fetch Auvo tasks for a single month window
