@@ -179,7 +179,7 @@ export default function EquipamentosPreventivosPage() {
     try {
       const { data, error } = await supabase.functions.invoke("equipment-sync");
       if (error) throw error;
-      toast.success(`Sincronização concluída! ${data.inserted || 0} novos, ${data.clients_updated || 0} clientes atualizados`);
+      toast.success(`Sincronização concluída! ${data.total_auvo || 0} equipamentos no Auvo, ${data.inserted || 0} novos, ${data.updated || 0} atualizados`);
       refetch();
     } catch (err: any) {
       toast.error("Erro na sincronização: " + (err.message || "desconhecido"));
