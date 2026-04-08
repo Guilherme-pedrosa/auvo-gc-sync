@@ -151,101 +151,91 @@ async function fetchCustomerName(customerId: number, token: string, cache: Map<n
   }
 }
 
-// IMPORTANT:
-// Use ONLY GET /tasks/ listing here.
-// If equipmentsId is empty, the task has no native equipment linkage and must be ignored.
-async function fetchAllTasksWithEquipments(token: string, monthsBack: number = 12): Promise<EquipmentTaskLink[]> {
+// Fetch tasks with native equipment links for a SINGLE date window.
+// Called once per month from the frontend to avoid timeout.
+async function fetchTasksWithEquipmentsForWindow(
+  token: string,
+  windowStart: string,
+  windowEnd: string,
+): Promise<{ results: EquipmentTaskLink[]; totalTasks: number; tasksWithEquipments: number }> {
   const headers = auvoHeaders(token);
   const results: EquipmentTaskLink[] = [];
-  let totalTasksFromListing = 0;
+  let totalTasks = 0;
   let tasksWithEquipments = 0;
 
-  const now = new Date();
-  const startDate = new Date(now.getFullYear(), now.getMonth() - monthsBack, 1);
-  const current = new Date(startDate);
+  console.log(`[equipment-sync] Fetching tasks ${windowStart} → ${windowEnd}...`);
 
-  while (current <= now) {
-    const monthStart = current.toISOString().split("T")[0];
-    const monthEnd = new Date(current.getFullYear(), current.getMonth() + 1, 0);
-    const clampedEnd = monthEnd > now ? now.toISOString().split("T")[0] : monthEnd.toISOString().split("T")[0];
+  let page = 1;
+  const maxPages = 100;
 
-    console.log(`[equipment-sync] Fetching tasks ${monthStart} → ${clampedEnd}...`);
+  while (page <= maxPages) {
+    const filterObj = {
+      startDate: `${windowStart}T00:00:00`,
+      endDate: `${windowEnd}T23:59:59`,
+    };
+    const paramFilter = encodeURIComponent(JSON.stringify(filterObj));
+    const url = `${AUVO_BASE_URL}/tasks/?page=${page}&pageSize=${TASK_PAGE_SIZE}&order=desc&paramFilter=${paramFilter}`;
 
-    let page = 1;
-    const maxPages = 100;
-
-    while (page <= maxPages) {
-      const filterObj = {
-        startDate: `${monthStart}T00:00:00`,
-        endDate: `${clampedEnd}T23:59:59`,
-      };
-      const paramFilter = encodeURIComponent(JSON.stringify(filterObj));
-      const url = `${AUVO_BASE_URL}/tasks/?page=${page}&pageSize=${TASK_PAGE_SIZE}&order=desc&paramFilter=${paramFilter}`;
-
-      const res = await rateLimitedFetch(url, { method: "GET", headers });
-      if (!res.ok) {
-        if (res.status === 404) break;
-        const errBody = await res.text().catch(() => "");
-        console.error(`[equipment-sync] Tasks listing HTTP ${res.status} for ${monthStart} page ${page}: ${errBody.substring(0, 300)}`);
-        break;
-      }
-
-      const json = await res.json();
-      const tasks = json?.result?.entityList || json?.result?.Entities || [];
-      if (!Array.isArray(tasks) || tasks.length === 0) break;
-
-      totalTasksFromListing += tasks.length;
-
-      if (page === 1) {
-        const totalItems = json?.result?.pagedSearchReturnData?.totalItems || 0;
-        console.log(`[equipment-sync] ${monthStart}: ${totalItems} tasks total`);
-      }
-
-      for (const task of tasks) {
-        const taskId = String(task.taskID || task.id || "");
-        if (!taskId) continue;
-
-        const equipIds: number[] = Array.isArray(task.equipmentsId)
-          ? task.equipmentsId
-          : Array.isArray(task.equipmentsID)
-            ? task.equipmentsID
-            : Array.isArray(task.equipmentIds)
-              ? task.equipmentIds
-              : [];
-
-        if (equipIds.length === 0) continue;
-        tasksWithEquipments++;
-
-        const statusCode = typeof task.taskStatus === "number"
-          ? task.taskStatus
-          : typeof task.taskStatus?.id === "number"
-            ? task.taskStatus.id
-            : 0;
-
-        results.push({
-          taskId,
-          equipmentIds: equipIds.map(String),
-          taskType: String(task.taskType || ""),
-          taskTypeDescription: String(task.taskTypeDescription || ""),
-          statusCode,
-          taskDate: normalizeDate(task.taskDate),
-          checkOutDate: normalizeDate(task.checkOutDate || task.checkoutDate),
-          customerDescription: String(task.customerDescription || task.customerName || ""),
-          userToName: String(task.userToName || ""),
-        });
-      }
-
-      if (tasks.length < TASK_PAGE_SIZE) break;
-      page++;
+    const res = await rateLimitedFetch(url, { method: "GET", headers });
+    if (!res.ok) {
+      if (res.status === 404) break;
+      const errBody = await res.text().catch(() => "");
+      console.error(`[equipment-sync] Tasks listing HTTP ${res.status} page ${page}: ${errBody.substring(0, 300)}`);
+      break;
     }
 
-    current.setMonth(current.getMonth() + 1);
-    current.setDate(1);
+    const json = await res.json();
+    const tasks = json?.result?.entityList || json?.result?.Entities || [];
+    if (!Array.isArray(tasks) || tasks.length === 0) break;
+
+    totalTasks += tasks.length;
+
+    if (page === 1) {
+      const totalItems = json?.result?.pagedSearchReturnData?.totalItems || 0;
+      console.log(`[equipment-sync] ${windowStart}: ${totalItems} tasks total`);
+    }
+
+    for (const task of tasks) {
+      const taskId = String(task.taskID || task.id || "");
+      if (!taskId) continue;
+
+      const equipIds: number[] = Array.isArray(task.equipmentsId)
+        ? task.equipmentsId
+        : Array.isArray(task.equipmentsID)
+          ? task.equipmentsID
+          : Array.isArray(task.equipmentIds)
+            ? task.equipmentIds
+            : [];
+
+      if (equipIds.length === 0) continue;
+      tasksWithEquipments++;
+
+      const statusCode = typeof task.taskStatus === "number"
+        ? task.taskStatus
+        : typeof task.taskStatus?.id === "number"
+          ? task.taskStatus.id
+          : 0;
+
+      results.push({
+        taskId,
+        equipmentIds: equipIds.map(String),
+        taskType: String(task.taskType || ""),
+        taskTypeDescription: String(task.taskTypeDescription || ""),
+        statusCode,
+        taskDate: normalizeDate(task.taskDate),
+        checkOutDate: normalizeDate(task.checkOutDate || task.checkoutDate),
+        customerDescription: String(task.customerDescription || task.customerName || ""),
+        userToName: String(task.userToName || ""),
+      });
+    }
+
+    if (tasks.length < TASK_PAGE_SIZE) break;
+    page++;
   }
 
-  console.log(`[equipment-sync] Total tasks from listing: ${totalTasksFromListing}`);
+  console.log(`[equipment-sync] Total tasks from listing: ${totalTasks}`);
   console.log(`[equipment-sync] Tasks WITH equipmentsId: ${tasksWithEquipments}`);
-  return results;
+  return { results, totalTasks, tasksWithEquipments };
 }
 
 Deno.serve(async (req) => {
