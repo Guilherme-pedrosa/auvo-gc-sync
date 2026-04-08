@@ -232,7 +232,7 @@ export default function EquipamentosPreventivosPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [search, setSearch] = useState("");
-  const [statusFilter, setStatusFilter] = useState<string>("todos");
+  const [statusFilter, setStatusFilter] = useState<string[]>([]);
   const [marcaFilter, setMarcaFilter] = useState<string>("todos");
   const [clienteFilter, setClienteFilter] = useState<string[]>([]);
   const [tipoTarefaFilter, setTipoTarefaFilter] = useState<string[]>([]);
@@ -411,10 +411,10 @@ export default function EquipamentosPreventivosPage() {
       );
     }
 
-    if (statusFilter !== "todos") {
+    if (statusFilter.length > 0) {
       result = result.filter((e) => {
         const info = getStatusInfo(e.dias_desde);
-        return info.label.toLowerCase() === statusFilter;
+        return statusFilter.includes(info.label.toLowerCase());
       });
     }
 
@@ -457,7 +457,7 @@ export default function EquipamentosPreventivosPage() {
   const paginatedItems = filtered.slice((safeCurrentPage - 1) * PAGE_SIZE, safeCurrentPage * PAGE_SIZE);
 
   // Reset to page 1 when filters change
-  const filterKey = `${search}|${statusFilter}|${marcaFilter}|${clienteFilter.join(",")}|${tipoTarefaFilter.join(",")}|${sortField}|${sortDir}`;
+  const filterKey = `${search}|${statusFilter.join(",")}|${marcaFilter}|${clienteFilter.join(",")}|${tipoTarefaFilter.join(",")}|${sortField}|${sortDir}`;
   const [prevFilterKey, setPrevFilterKey] = useState(filterKey);
   if (filterKey !== prevFilterKey) {
     setPrevFilterKey(filterKey);
@@ -613,10 +613,10 @@ export default function EquipamentosPreventivosPage() {
         </div>
 
         <SearchableSelect
+          multiple
           value={statusFilter}
           onValueChange={setStatusFilter}
           options={[
-            { value: "todos", label: "Todos os status" },
             { value: "em dia", label: "🟢 Em dia" },
             { value: "atenção", label: "🟡 Atenção" },
             { value: "vencido", label: "🔴 Vencido" },
