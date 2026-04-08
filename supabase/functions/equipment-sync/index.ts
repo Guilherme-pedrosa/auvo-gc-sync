@@ -375,7 +375,23 @@ Deno.serve(async (req) => {
     // ═══════════════════════════════════════════════════════════════
     if (phase === "2" || phase === "all") {
       console.log(`[equipment-sync] Phase 2: Fetching tasks with equipment links (${monthsBack} months)...`);
-      const tasksWithEquipments = await fetchAllTasksWithEquipments(accessToken, monthsBack);
+      
+      // Load existing task IDs from DB to skip re-fetching
+      const existingTaskIds = new Set<string>();
+      let etFrom = 0;
+      while (true) {
+        const { data: etData } = await sb
+          .from("equipamento_tarefas_auvo")
+          .select("auvo_task_id")
+          .range(etFrom, etFrom + 999);
+        if (!etData || etData.length === 0) break;
+        for (const r of etData) existingTaskIds.add(r.auvo_task_id);
+        if (etData.length < 1000) break;
+        etFrom += 1000;
+      }
+      console.log(`[equipment-sync] Existing task-equipment relations in DB: ${existingTaskIds.size}`);
+      
+      const tasksWithEquipments = await fetchAllTasksWithEquipments(accessToken, monthsBack, existingTaskIds);
       console.log(`[equipment-sync] Tasks with equipment links found: ${tasksWithEquipments.length}`);
 
       // Load valid equipment IDs if not already loaded from Phase 1
