@@ -10,6 +10,7 @@ import {
   ArrowLeft, ExternalLink, RefreshCw, Search, AlertTriangle,
   CheckCircle2, Clock, Flame, Loader2, SlidersHorizontal,
   ArrowUpDown, Download, ListFilter, Pencil, Check, X, CalendarDays,
+  ChevronLeft, ChevronRight,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -242,6 +243,8 @@ export default function EquipamentosPreventivosPage() {
   const [syncing, setSyncing] = useState(false);
   const [editingMarcaId, setEditingMarcaId] = useState<string | null>(null);
   const [editingMarcaValue, setEditingMarcaValue] = useState("");
+  const [currentPage, setCurrentPage] = useState(1);
+  const PAGE_SIZE = 100;
 
   // Sync date range — defaults to last 1 month
   const defaultSyncStart = format(new Date(new Date().getFullYear(), new Date().getMonth() - 1, 1), "yyyy-MM-dd");
@@ -444,6 +447,19 @@ export default function EquipamentosPreventivosPage() {
 
     return result;
   }, [equipments, search, statusFilter, marcaFilter, clienteFilter, sortField, sortDir]);
+
+  // Pagination
+  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  const safeCurrentPage = Math.min(currentPage, totalPages);
+  const paginatedItems = filtered.slice((safeCurrentPage - 1) * PAGE_SIZE, safeCurrentPage * PAGE_SIZE);
+
+  // Reset to page 1 when filters change
+  const filterKey = `${search}|${statusFilter}|${marcaFilter}|${clienteFilter}|${tipoTarefaFilter}|${sortField}|${sortDir}`;
+  const [prevFilterKey, setPrevFilterKey] = useState(filterKey);
+  if (filterKey !== prevFilterKey) {
+    setPrevFilterKey(filterKey);
+    if (currentPage !== 1) setCurrentPage(1);
+  }
 
   const stats = useMemo(() => {
     const emDia = equipments.filter((e) => e.dias_desde !== null && e.dias_desde <= 90).length;
@@ -669,7 +685,7 @@ export default function EquipamentosPreventivosPage() {
                   </TableCell>
                 </TableRow>
               ) : (
-                filtered.map((eq) => {
+              paginatedItems.map((eq) => {
                   const info = getStatusInfo(eq.dias_desde);
                   const Icon = info.icon;
                   const isEditing = editingMarcaId === eq.id;
@@ -782,10 +798,44 @@ export default function EquipamentosPreventivosPage() {
       )}
 
       <div className="text-xs text-muted-foreground text-right">
-        {filtered.length} de {equipments.length} equipamentos
-        {activeFilters.length > 0 && " (filtrado)"}
-        {" · "}Fonte: vínculo nativo Auvo (equipmentsId)
+        Mostrando {((safeCurrentPage - 1) * PAGE_SIZE) + 1}–{Math.min(safeCurrentPage * PAGE_SIZE, filtered.length)} de {filtered.length} equipamentos
+        {filtered.length < equipments.length && ` (${equipments.length} total)`}
+        {" · "}Fonte: vínculo nativo Auvo
       </div>
+
+      {/* Pagination */}
+      {totalPages > 1 && (
+        <div className="flex items-center justify-center gap-1">
+          <Button variant="outline" size="sm" disabled={safeCurrentPage <= 1} onClick={() => setCurrentPage(safeCurrentPage - 1)}>
+            <ChevronLeft className="h-4 w-4" />
+          </Button>
+          {Array.from({ length: totalPages }, (_, i) => i + 1)
+            .filter(p => p === 1 || p === totalPages || Math.abs(p - safeCurrentPage) <= 2)
+            .reduce<(number | string)[]>((acc, p, idx, arr) => {
+              if (idx > 0 && p - (arr[idx - 1]) > 1) acc.push(`…${idx}`);
+              acc.push(p);
+              return acc;
+            }, [])
+            .map((p) =>
+              typeof p === "string" ? (
+                <span key={p} className="px-1 text-xs text-muted-foreground">…</span>
+              ) : (
+                <Button
+                  key={p}
+                  variant={p === safeCurrentPage ? "default" : "outline"}
+                  size="sm"
+                  className="h-8 w-8 p-0 text-xs"
+                  onClick={() => setCurrentPage(p)}
+                >
+                  {p}
+                </Button>
+              )
+            )}
+          <Button variant="outline" size="sm" disabled={safeCurrentPage >= totalPages} onClick={() => setCurrentPage(safeCurrentPage + 1)}>
+            <ChevronRight className="h-4 w-4" />
+          </Button>
+        </div>
+      )}
     </div>
   );
 }
