@@ -28,9 +28,9 @@ async function fetchAllEquipments(token: string): Promise<any[]> {
     const res = await fetch(url, { method: "GET", headers });
 
     if (!res.ok) {
-      if (res.status === 403) {
-        console.log("Rate limit hit, waiting 15s...");
-        await new Promise(r => setTimeout(r, 15000));
+      if (res.status === 403 || res.status === 429) {
+        console.log(`Rate limit hit (${res.status}), waiting 20s...`);
+        await new Promise(r => setTimeout(r, 20000));
         continue;
       }
       throw new Error(`Auvo equipments fetch failed (${res.status})`);
@@ -46,6 +46,7 @@ async function fetchAllEquipments(token: string): Promise<any[]> {
 
     if (allEquipments.length >= totalItems) break;
     page++;
+    await new Promise(r => setTimeout(r, 1000)); // throttle to avoid 429
   }
 
   return allEquipments;
@@ -58,8 +59,8 @@ async function fetchCustomerName(customerId: number, token: string, cache: Map<n
   const headers = { Authorization: `Bearer ${token}`, "Content-Type": "application/json" };
   try {
     let res = await fetch(`${AUVO_BASE_URL}/customers/${customerId}`, { method: "GET", headers });
-    if (res.status === 403) {
-      await new Promise(r => setTimeout(r, 15000));
+    if (res.status === 403 || res.status === 429) {
+      await new Promise(r => setTimeout(r, 20000));
       res = await fetch(`${AUVO_BASE_URL}/customers/${customerId}`, { method: "GET", headers });
     }
     if (!res.ok) return null;
