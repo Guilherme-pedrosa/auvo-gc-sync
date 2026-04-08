@@ -168,7 +168,7 @@ async function fetchRawData(): Promise<{ equipamentos: EquipmentRaw[]; relations
 function buildEquipmentRows(
   equipamentos: EquipmentRaw[],
   relations: EquipTaskRel[],
-  tipoTarefaFilter: string
+  tipoTarefaFilter: string[]
 ): EquipmentRow[] {
   const relByEquipment = new Map<string, EquipTaskRel[]>();
   for (const rel of relations) {
@@ -182,8 +182,8 @@ function buildEquipmentRows(
     const eqId = eq.auvo_equipment_id || "";
     let eqTasks = relByEquipment.get(eqId) || [];
 
-    if (tipoTarefaFilter !== "todos") {
-      eqTasks = eqTasks.filter(t => t.auvo_task_type_id === tipoTarefaFilter);
+    if (tipoTarefaFilter.length > 0) {
+      eqTasks = eqTasks.filter(t => t.auvo_task_type_id && tipoTarefaFilter.includes(t.auvo_task_type_id));
     }
 
     const completedTasks = eqTasks.filter(t =>
@@ -426,8 +426,8 @@ export default function EquipamentosPreventivosPage() {
       }
     }
 
-    if (clienteFilter !== "todos") {
-      result = result.filter((e) => e.cliente === clienteFilter);
+    if (clienteFilter.length > 0) {
+      result = result.filter((e) => e.cliente && clienteFilter.includes(e.cliente));
     }
 
     result = [...result].sort((a, b) => {
@@ -513,7 +513,8 @@ export default function EquipamentosPreventivosPage() {
 
   const activeFilters = [
     marcaFilter !== "todos" && `Marca: ${marcaFilter === "__sem_marca__" ? "Não identificada" : marcaFilter}`,
-    tipoTarefaFilter !== "todos" && `Tipo tarefa: ${tiposTarefa.find(t => t.id === tipoTarefaFilter)?.desc || tipoTarefaFilter}`,
+    clienteFilter.length > 0 && `Clientes: ${clienteFilter.length}`,
+    tipoTarefaFilter.length > 0 && `Tipos tarefa: ${tipoTarefaFilter.length}`,
   ].filter(Boolean);
 
   return (
@@ -641,24 +642,20 @@ export default function EquipamentosPreventivosPage() {
         />
 
         <SearchableSelect
+          multiple
           value={clienteFilter}
           onValueChange={setClienteFilter}
-          options={[
-            { value: "todos", label: "Todos os clientes" },
-            ...clientes.map((c) => ({ value: c, label: c })),
-          ]}
+          options={clientes.map((c) => ({ value: c, label: c }))}
           placeholder="Cliente"
           searchPlaceholder="Buscar cliente..."
           className="w-[200px]"
         />
 
         <SearchableSelect
+          multiple
           value={tipoTarefaFilter}
           onValueChange={setTipoTarefaFilter}
-          options={[
-            { value: "todos", label: "Todos os tipos de tarefa" },
-            ...tiposTarefa.map((tt) => ({ value: tt.id, label: tt.desc })),
-          ]}
+          options={tiposTarefa.map((tt) => ({ value: tt.id, label: tt.desc }))}
           placeholder="Tipo de Tarefa"
           searchPlaceholder="Buscar tipo..."
           className="w-[220px]"
@@ -674,7 +671,7 @@ export default function EquipamentosPreventivosPage() {
             Filtros ativos: <strong>{activeFilters.join(" · ")}</strong>
             — mostrando {filtered.length} de {equipments.length}
           </span>
-          <Button variant="ghost" size="sm" onClick={() => { setMarcaFilter("todos"); setTipoTarefaFilter("todos"); }} className="ml-auto text-xs">
+          <Button variant="ghost" size="sm" onClick={() => { setMarcaFilter("todos"); setClienteFilter([]); setTipoTarefaFilter([]); }} className="ml-auto text-xs">
             Limpar filtros
           </Button>
         </div>
