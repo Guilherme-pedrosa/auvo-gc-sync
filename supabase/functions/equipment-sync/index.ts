@@ -107,7 +107,7 @@ async function fetchCustomerName(customerId: number, token: string, cache: Map<n
 // 
 // BETTER APPROACH: We fetch ALL tasks from Auvo (paginated, recent 12 months)
 // and extract equipmentsId from each one. This builds the relational table.
-async function fetchAllTasksWithEquipments(token: string, monthsBack: number = 12): Promise<Array<{
+async function fetchAllTasksWithEquipments(token: string, monthsBack: number = 6): Promise<Array<{
   taskId: string;
   equipmentIds: string[];
   taskType: string;

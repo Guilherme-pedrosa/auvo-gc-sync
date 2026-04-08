@@ -220,9 +220,10 @@ export default function EquipamentosPreventivosPage() {
 
   // Extract unique task types from native relationships (using auvo_task_type_id + description)
   const tiposTarefa = useMemo(() => {
-    if (!rawData?.relations) return [];
+    const rels = rawData?.relations ?? [];
+    if (rels.length === 0) return [];
     const map = new Map<string, string>();
-    for (const r of rawData.relations) {
+    for (const r of rels) {
       if (r.auvo_task_type_id && r.auvo_task_type_description) {
         map.set(r.auvo_task_type_id, r.auvo_task_type_description);
       }
@@ -235,7 +236,7 @@ export default function EquipamentosPreventivosPage() {
   // Recompute equipment rows when filter changes
   const equipments = useMemo(() => {
     if (!rawData) return [];
-    return buildEquipmentRows(rawData.equipamentos, rawData.relations, tipoTarefaFilter);
+    return buildEquipmentRows(rawData.equipamentos, rawData.relations ?? [], tipoTarefaFilter);
   }, [rawData, tipoTarefaFilter]);
 
   const tipos = useMemo(() => {
