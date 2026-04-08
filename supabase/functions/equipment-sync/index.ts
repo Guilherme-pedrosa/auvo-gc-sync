@@ -28,9 +28,9 @@ async function fetchAllEquipments(token: string): Promise<any[]> {
     const res = await fetch(url, { method: "GET", headers });
 
     if (!res.ok) {
-      if (res.status === 403) {
-        console.log("Rate limit hit, waiting 15s...");
-        await new Promise(r => setTimeout(r, 15000));
+      if (res.status === 403 || res.status === 429) {
+        console.log(`Rate limit hit (${res.status}), waiting 20s...`);
+        await new Promise(r => setTimeout(r, 20000));
         continue;
       }
       throw new Error(`Auvo equipments fetch failed (${res.status})`);
