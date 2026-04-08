@@ -69,12 +69,64 @@ type EquipmentRow = {
   total_tarefas: number;
 };
 
+type SyncWindow = {
+  windowStart: string;
+  windowEnd: string;
+};
+
 // ── Helpers ──
 function getStatusInfo(dias: number | null) {
   if (dias === null) return { label: "Sem registro", color: "text-muted-foreground", bg: "bg-muted", icon: Clock };
   if (dias <= 90) return { label: "Em dia", color: "text-emerald-700 dark:text-emerald-400", bg: "bg-emerald-50 dark:bg-emerald-950/30", icon: CheckCircle2 };
   if (dias <= 120) return { label: "Atenção", color: "text-amber-700 dark:text-amber-400", bg: "bg-amber-50 dark:bg-amber-950/30", icon: AlertTriangle };
   return { label: "Vencido", color: "text-red-700 dark:text-red-400", bg: "bg-red-50 dark:bg-red-950/30", icon: Flame };
+}
+
+function buildMonthlySyncWindows(startDate: string, endDate: string): SyncWindow[] {
+  const start = new Date(`${startDate}T00:00:00`);
+  const end = new Date(`${endDate}T00:00:00`);
+  const months: SyncWindow[] = [];
+  const cursor = new Date(start.getFullYear(), start.getMonth(), 1);
+
+  while (cursor.getTime() <= end.getTime()) {
+    const monthStart = new Date(cursor.getFullYear(), cursor.getMonth(), 1);
+    const monthEnd = new Date(cursor.getFullYear(), cursor.getMonth() + 1, 0);
+
+    months.push({
+      windowStart: format(monthStart.getTime() < start.getTime() ? start : monthStart, "yyyy-MM-dd"),
+      windowEnd: format(monthEnd.getTime() > end.getTime() ? end : monthEnd, "yyyy-MM-dd"),
+    });
+
+    cursor.setMonth(cursor.getMonth() + 1);
+  }
+
+  return months.reverse();
+}
+
+function splitSyncWindowByFortnight(window: SyncWindow): SyncWindow[] {
+  const start = new Date(`${window.windowStart}T00:00:00`);
+  const end = new Date(`${window.windowEnd}T00:00:00`);
+  const firstHalfEndBase = new Date(start.getFullYear(), start.getMonth(), 15);
+  const secondHalfStartBase = new Date(start.getFullYear(), start.getMonth(), 16);
+  const windows: SyncWindow[] = [];
+
+  const recentStart = new Date(Math.max(start.getTime(), secondHalfStartBase.getTime()));
+  if (recentStart.getTime() <= end.getTime()) {
+    windows.push({
+      windowStart: format(recentStart, "yyyy-MM-dd"),
+      windowEnd: format(end, "yyyy-MM-dd"),
+    });
+  }
+
+  const olderEnd = new Date(Math.min(end.getTime(), firstHalfEndBase.getTime()));
+  if (start.getTime() <= olderEnd.getTime()) {
+    windows.push({
+      windowStart: format(start, "yyyy-MM-dd"),
+      windowEnd: format(olderEnd, "yyyy-MM-dd"),
+    });
+  }
+
+  return windows;
 }
 
 // ── Data fetching ──
@@ -244,52 +296,70 @@ export default function EquipamentosPreventivosPage() {
       const p1 = d1?.phase1_equipment_catalog;
       toast.success(`Catálogo: ${p1?.upserted || 0} equip. | Marcas: ${p1?.brands_detected || 0} detectadas`);
 
-      // Phase 2: iterate month by month, MOST RECENT FIRST
-      const start = new Date(syncStartDate + "T00:00:00");
-      const end = new Date(syncEndDate + "T00:00:00");
+      const validEquipmentIds = Array.from(new Set(
+        Array.isArray(p1?.valid_equipment_ids)
+          ? p1.valid_equipment_ids.filter((id: unknown): id is string => typeof id === "string" && id.length > 0)
+          : (rawData?.equipamentos ?? [])
+              .map((equipment) => equipment.auvo_equipment_id)
+              .filter((id): id is string => Boolean(id))
+      ));
+
       let totalRelUpserted = 0;
       let totalWithEquipLinks = 0;
-      let monthsCovered = 0;
+      let windowsCovered = 0;
 
-      // Build list of month windows, then reverse to process newest first
-      const months: { windowStart: string; windowEnd: string }[] = [];
-      const cursor = new Date(start.getFullYear(), start.getMonth(), 1);
-      while (cursor <= end) {
-        const windowStart = cursor < start
-          ? syncStartDate
-          : format(cursor, "yyyy-MM-dd");
-        const windowEndDate = new Date(cursor.getFullYear(), cursor.getMonth() + 1, 0);
-        const windowEnd = windowEndDate > end
-          ? syncEndDate
-          : format(windowEndDate, "yyyy-MM-dd");
-        months.push({ windowStart, windowEnd });
-        cursor.setMonth(cursor.getMonth() + 1);
-      }
-      months.reverse(); // newest first
+      for (const monthWindow of buildMonthlySyncWindows(syncStartDate, syncEndDate)) {
+        toast.info(`Fase 2: Analisando ${monthWindow.windowStart.substring(0, 7)}...`);
 
-      for (const { windowStart, windowEnd } of months) {
-        toast.info(`Fase 2: Vínculos ${windowStart.substring(0, 7)}...`);
-
-        const { data: d2, error: e2 } = await supabase.functions.invoke("equipment-sync", {
-          body: { phase: "2", startDate: windowStart, endDate: windowEnd },
+        const { data: previewData, error: previewError } = await supabase.functions.invoke("equipment-sync", {
+          body: { phase: "2-count", startDate: monthWindow.windowStart, endDate: monthWindow.windowEnd },
         });
-        if (e2) { console.error(`Phase 2 error for ${windowStart}:`, e2); }
-        else {
-          const p2 = d2?.phase2_equipment_tasks;
-          totalRelUpserted += p2?.relationship_rows_upserted || 0;
-          totalWithEquipLinks += p2?.tasks_with_equipment_links || 0;
+
+        if (previewError) {
+          console.error(`Phase 2 count error for ${monthWindow.windowStart}:`, previewError);
         }
-        monthsCovered++;
+
+        const monthTaskCount = previewData?.phase2_equipment_tasks?.total_tasks_in_window || 0;
+        const windowsToProcess = !previewError && monthTaskCount > 300
+          ? splitSyncWindowByFortnight(monthWindow)
+          : [monthWindow];
+
+        if (!previewError && monthTaskCount > 300 && windowsToProcess.length > 1) {
+          toast.info(`${monthWindow.windowStart.substring(0, 7)} excedeu 300 tarefas; dividindo em quinzenas.`);
+        }
+
+        for (const syncWindow of windowsToProcess) {
+          toast.info(`Fase 2: Vínculos ${syncWindow.windowStart} → ${syncWindow.windowEnd}...`);
+
+          const { data: d2, error: e2 } = await supabase.functions.invoke("equipment-sync", {
+            body: {
+              phase: "2",
+              startDate: syncWindow.windowStart,
+              endDate: syncWindow.windowEnd,
+              validEquipmentIds,
+            },
+          });
+
+          if (e2) {
+            console.error(`Phase 2 error for ${syncWindow.windowStart}:`, e2);
+          } else {
+            const p2 = d2?.phase2_equipment_tasks;
+            totalRelUpserted += p2?.relationship_rows_upserted || 0;
+            totalWithEquipLinks += p2?.tasks_with_equipment_links || 0;
+          }
+
+          windowsCovered++;
+        }
       }
 
-      toast.success(`Vínculos: ${totalRelUpserted} relações em ${monthsCovered} meses (${totalWithEquipLinks} tarefas com equipamento)`);
+      toast.success(`Vínculos: ${totalRelUpserted} relações em ${windowsCovered} janelas (${totalWithEquipLinks} tarefas com equipamento)`);
       refetch();
     } catch (err: any) {
       toast.error("Erro na sincronização: " + (err.message || "desconhecido"));
     } finally {
       setSyncing(false);
     }
-  }, [refetch, syncStartDate, syncEndDate]);
+  }, [rawData?.equipamentos, refetch, syncStartDate, syncEndDate]);
 
   const handleSaveMarca = useCallback(async (eqId: string, newMarca: string) => {
     const trimmed = newMarca.trim() || null;
