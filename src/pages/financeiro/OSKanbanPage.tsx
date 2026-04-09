@@ -123,6 +123,7 @@ function hasClientDivergence(item: OSItem): boolean {
 }
 
 export default function OSKanbanPage() {
+  const queryClient = useQueryClient();
   const navigate = useNavigate();
   const today = new Date();
   // Add 1 day buffer to ensure today is always included regardless of timezone
