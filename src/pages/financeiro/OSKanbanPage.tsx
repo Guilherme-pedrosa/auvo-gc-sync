@@ -489,55 +489,66 @@ export default function OSKanbanPage() {
     setColumns([agendadoCol, ...osCols]);
   }, [items]);
 
-  // Sync via central-sync with progress
+  // Async sync: fire-and-forget + poll for completion (same pattern as Agenda Semanal)
   const handleSync = useCallback(async () => {
     setIsSyncing(true);
-    setSyncStatus("Iniciando...");
-    try {
-      // Step 1: Start sync
-      setSyncStatus("Buscando GC orçamentos e OS...");
-      await new Promise((r) => setTimeout(r, 500));
+    setSyncStatus("Iniciando sincronização...");
+    const syncStartedAt = new Date().toISOString();
 
-      const syncPromise = supabase.functions.invoke("central-sync", {
-        body: { start_date: startStr, end_date: endStr },
-      });
-
-      // Simulate progress stages while waiting
-      const stages = [
-        { label: "Buscando orçamentos GC...", delay: 3000 },
-        { label: "Buscando OS GC...", delay: 5000 },
-        { label: "Buscando tarefas Auvo...", delay: 8000 },
-        { label: "Cruzando dados Auvo ↔ GC...", delay: 15000 },
-        { label: "Salvando no banco...", delay: 25000 },
-        { label: "Quase lá...", delay: 40000 },
-      ];
-
-      let cancelled = false;
-      const progressTimers = stages.map((stage) =>
-        setTimeout(() => {
-          if (!cancelled) setSyncStatus(stage.label);
-        }, stage.delay)
-      );
-
-      const { data, error } = await syncPromise;
-      cancelled = true;
-      progressTimers.forEach(clearTimeout);
-
-      if (error) throw error;
-      if (data?.success === false) {
-        throw new Error(data?.error || "Sincronização retornou falha");
+    // Fire-and-forget: don't await (edge function may timeout on client but continues on server)
+    supabase.functions.invoke("central-sync", {
+      body: { start_date: startStr, end_date: endStr },
+    }).then((res) => {
+      if (res.data?.success !== false) {
+        console.log("[os-kanban] Sync retornou com sucesso direto");
       }
-      setSyncStatus("Atualizando dados...");
-      toast.success("Sincronização concluída!");
-      // columns rebuild automatically via useEffect on items change
-      await refetch();
-    } catch (e: any) {
-      toast.error(`Erro: ${e?.message || "Falha na sincronização"}`);
-    } finally {
-      setIsSyncing(false);
-      setSyncStatus("");
+      if (res.data?.auvo_error) {
+        toast.error(res.data.auvo_error);
+      }
+    }).catch(() => {
+      console.log("[os-kanban] Sync em background (timeout do cliente, mas continua no servidor)");
+    });
+
+    toast.info("Sincronização iniciada em segundo plano...");
+
+    // Poll tarefas_central for fresh data
+    const stages = [
+      { delay: 5000, label: "Buscando dados do Auvo e GC..." },
+      { delay: 10000, label: "Processando orçamentos..." },
+      { delay: 15000, label: "Cruzando OS com tarefas..." },
+      { delay: 20000, label: "Salvando no banco..." },
+      { delay: 30000, label: "Quase lá..." },
+      { delay: 45000, label: "Aguardando finalização..." },
+      { delay: 60000, label: "Verificando conclusão..." },
+    ];
+
+    let updated = false;
+    for (const stage of stages) {
+      setSyncStatus(stage.label);
+      await new Promise(r => setTimeout(r, stage.delay - (stages.indexOf(stage) > 0 ? stages[stages.indexOf(stage) - 1].delay : 0)));
+      const { data: check } = await supabase
+        .from("tarefas_central")
+        .select("atualizado_em")
+        .order("atualizado_em", { ascending: false })
+        .limit(1);
+      const latestSync = check?.[0]?.atualizado_em;
+      if (latestSync && latestSync > syncStartedAt) {
+        updated = true;
+        break;
+      }
     }
-  }, [startStr, endStr, refetch]);
+
+    await refetch();
+    queryClient.invalidateQueries({ queryKey: ["last-sync-timestamp"] });
+
+    if (updated) {
+      toast.success("Sincronização concluída — dados atualizados!");
+    } else {
+      toast.warning("Sincronização pode ainda estar em andamento. Os dados serão atualizados automaticamente.");
+    }
+    setIsSyncing(false);
+    setSyncStatus("");
+  }, [startStr, endStr, refetch, queryClient]);
 
   // Filters
   const allClientes = useMemo(() => {
