@@ -511,21 +511,22 @@ export default function OSKanbanPage() {
 
     toast.info("Sincronização iniciada em segundo plano...");
 
-    // Poll tarefas_central for fresh data
-    const stages = [
-      { delay: 5000, label: "Buscando dados do Auvo e GC..." },
-      { delay: 10000, label: "Processando orçamentos..." },
-      { delay: 15000, label: "Cruzando OS com tarefas..." },
-      { delay: 20000, label: "Salvando no banco..." },
-      { delay: 30000, label: "Quase lá..." },
-      { delay: 45000, label: "Aguardando finalização..." },
-      { delay: 60000, label: "Verificando conclusão..." },
+    // Poll with incremental waits: 5s, 5s, 5s, 5s, 10s, 15s, 15s
+    const pollDelays = [5000, 5000, 5000, 5000, 10000, 15000, 15000];
+    const pollLabels = [
+      "Buscando dados do Auvo e GC...",
+      "Processando orçamentos...",
+      "Cruzando OS com tarefas...",
+      "Salvando no banco...",
+      "Quase lá...",
+      "Aguardando finalização...",
+      "Verificando conclusão...",
     ];
 
     let updated = false;
-    for (const stage of stages) {
-      setSyncStatus(stage.label);
-      await new Promise(r => setTimeout(r, stage.delay - (stages.indexOf(stage) > 0 ? stages[stages.indexOf(stage) - 1].delay : 0)));
+    for (let i = 0; i < pollDelays.length; i++) {
+      setSyncStatus(pollLabels[i] || "Verificando...");
+      await new Promise(r => setTimeout(r, pollDelays[i]));
       const { data: check } = await supabase
         .from("tarefas_central")
         .select("atualizado_em")
