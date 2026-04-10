@@ -277,16 +277,29 @@ export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, o
   const filtered = useMemo(() => {
     if (!search) return clienteSummary;
     const s = search.toLowerCase();
-    return clienteSummary.filter((c) => {
-      // Search in client name
-      if (c.cliente.toLowerCase().includes(s)) return true;
-      // Search in OS codes, auvo task IDs
-      return c.items.some((item: any) =>
-        (item.gc_os_codigo || "").toLowerCase().includes(s) ||
-        (item.auvo_task_id || "").toLowerCase().includes(s) ||
-        (item.gc_orcamento_codigo || "").toLowerCase().includes(s)
-      );
-    });
+
+    // Filter at item level, then rebuild client groups
+    const result: typeof clienteSummary = [];
+    for (const c of clienteSummary) {
+      if (c.cliente.toLowerCase().includes(s)) {
+        result.push(c);
+      } else {
+        const matchingItems = c.items.filter((item: any) =>
+          (item.gc_os_codigo || "").toLowerCase().includes(s) ||
+          (item.auvo_task_id || "").toLowerCase().includes(s) ||
+          (item.gc_orcamento_codigo || "").toLowerCase().includes(s)
+        );
+        if (matchingItems.length > 0) {
+          result.push({
+            ...c,
+            count: matchingItems.length,
+            total: matchingItems.reduce((sum: number, item: any) => sum + (Number(item.gc_os_valor_total) || 0), 0),
+            items: matchingItems,
+          });
+        }
+      }
+    }
+    return result;
   }, [clienteSummary, search]);
 
   const grandTotal = useMemo(() => filtered.reduce((sum, c) => sum + c.total, 0), [filtered]);
