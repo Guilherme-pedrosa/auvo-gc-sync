@@ -237,11 +237,13 @@ export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, o
     return "";
   }, [liveExecMap, execTaskStatusMap, allTasks]);
 
-  // Group by client, sum values
-  const clienteSummary = useMemo(() => {
-    let items = excludedSituacoes.size > 0
-      ? data.filter((t) => !excludedSituacoes.has(t.gc_os_situacao || ""))
-      : data;
+  // Filter items by situação, exec status, and moved OS
+  const filteredItems = useMemo(() => {
+    let items = data.filter((t) => !movedOsIds.has(t.gc_os_id));
+
+    if (excludedSituacoes.size > 0) {
+      items = items.filter((t) => !excludedSituacoes.has(t.gc_os_situacao || ""));
+    }
 
     // Apply exec status filter
     if (execStatusFilter !== "all") {
@@ -255,8 +257,13 @@ export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, o
       });
     }
 
+    return items;
+  }, [data, excludedSituacoes, execStatusFilter, getItemExecStatus, movedOsIds]);
+
+  // Group by client, sum values
+  const clienteSummary = useMemo(() => {
     const map = new Map<string, { cliente: string; count: number; total: number; items: any[] }>();
-    for (const item of items) {
+    for (const item of filteredItems) {
       const cliente = item.cliente || item.gc_os_cliente || "Sem cliente";
       const entry = map.get(cliente) || { cliente, count: 0, total: 0, items: [] };
       entry.count++;
@@ -265,21 +272,34 @@ export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, o
       map.set(cliente, entry);
     }
     return Array.from(map.values()).sort((a, b) => b.total - a.total);
-  }, [data, excludedSituacoes, execStatusFilter, getItemExecStatus]);
+  }, [filteredItems]);
 
   const filtered = useMemo(() => {
     if (!search) return clienteSummary;
     const s = search.toLowerCase();
-    return clienteSummary.filter((c) => {
-      // Search in client name
-      if (c.cliente.toLowerCase().includes(s)) return true;
-      // Search in OS codes, auvo task IDs
-      return c.items.some((item: any) =>
-        (item.gc_os_codigo || "").toLowerCase().includes(s) ||
-        (item.auvo_task_id || "").toLowerCase().includes(s) ||
-        (item.gc_orcamento_codigo || "").toLowerCase().includes(s)
-      );
-    });
+
+    // Filter at item level, then rebuild client groups
+    const result: typeof clienteSummary = [];
+    for (const c of clienteSummary) {
+      if (c.cliente.toLowerCase().includes(s)) {
+        result.push(c);
+      } else {
+        const matchingItems = c.items.filter((item: any) =>
+          (item.gc_os_codigo || "").toLowerCase().includes(s) ||
+          (item.auvo_task_id || "").toLowerCase().includes(s) ||
+          (item.gc_orcamento_codigo || "").toLowerCase().includes(s)
+        );
+        if (matchingItems.length > 0) {
+          result.push({
+            ...c,
+            count: matchingItems.length,
+            total: matchingItems.reduce((sum: number, item: any) => sum + (Number(item.gc_os_valor_total) || 0), 0),
+            items: matchingItems,
+          });
+        }
+      }
+    }
+    return result;
   }, [clienteSummary, search]);
 
   const grandTotal = useMemo(() => filtered.reduce((sum, c) => sum + c.total, 0), [filtered]);
