@@ -848,13 +848,25 @@ export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, o
                                           {item.gc_os_situacao || "—"}
                                         </Badge>
                                       </TableCell>
-                                      <TableCell>{osTaskByGcOsId.get(String(item.gc_os_id))?.tecnico || item.tecnico || "—"}</TableCell>
                                       <TableCell>
                                         {(() => {
-                                          const execId = parseExecIds(item.gc_os_tarefa_exec)[0] || null;
-                                          const execRow = execId ? allTasks.find((t: any) => String(t.auvo_task_id) === execId) : null;
+                                          const osTask = osTaskByGcOsId.get(String(item.gc_os_id));
+                                          return osTask?.tecnico || item.tecnico || item.gc_os_vendedor || "—";
+                                        })()}
+                                      </TableCell>
+                                      <TableCell>
+                                        {(() => {
+                                          const allExecIds = parseExecIds(item.gc_os_tarefa_exec);
                                           const live = liveExecMap.get(String(item.gc_os_id));
-                                          return execRow?.tecnico || live?.tecnico || item.gc_os_vendedor || "—";
+                                          // Try live resolution first (API-fetched)
+                                          if (live?.tecnico) return live.tecnico;
+                                          // Try local DB match for any exec task ID
+                                          for (const eid of allExecIds) {
+                                            const execRow = allTasks.find((t: any) => String(t.auvo_task_id) === eid);
+                                            if (execRow?.tecnico) return execRow.tecnico;
+                                          }
+                                          // Fallback to GC vendedor
+                                          return item.gc_os_vendedor || "—";
                                         })()}
                                       </TableCell>
                                       <TableCell className="text-xs font-mono">
