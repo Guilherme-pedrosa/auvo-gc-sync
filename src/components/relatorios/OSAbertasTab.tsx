@@ -237,11 +237,13 @@ export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, o
     return "";
   }, [liveExecMap, execTaskStatusMap, allTasks]);
 
-  // Group by client, sum values
-  const clienteSummary = useMemo(() => {
-    let items = excludedSituacoes.size > 0
-      ? data.filter((t) => !excludedSituacoes.has(t.gc_os_situacao || ""))
-      : data;
+  // Filter items by situação, exec status, and moved OS
+  const filteredItems = useMemo(() => {
+    let items = data.filter((t) => !movedOsIds.has(t.gc_os_id));
+
+    if (excludedSituacoes.size > 0) {
+      items = items.filter((t) => !excludedSituacoes.has(t.gc_os_situacao || ""));
+    }
 
     // Apply exec status filter
     if (execStatusFilter !== "all") {
@@ -255,8 +257,13 @@ export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, o
       });
     }
 
+    return items;
+  }, [data, excludedSituacoes, execStatusFilter, getItemExecStatus, movedOsIds]);
+
+  // Group by client, sum values
+  const clienteSummary = useMemo(() => {
     const map = new Map<string, { cliente: string; count: number; total: number; items: any[] }>();
-    for (const item of items) {
+    for (const item of filteredItems) {
       const cliente = item.cliente || item.gc_os_cliente || "Sem cliente";
       const entry = map.get(cliente) || { cliente, count: 0, total: 0, items: [] };
       entry.count++;
@@ -265,7 +272,7 @@ export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, o
       map.set(cliente, entry);
     }
     return Array.from(map.values()).sort((a, b) => b.total - a.total);
-  }, [data, excludedSituacoes, execStatusFilter, getItemExecStatus]);
+  }, [filteredItems]);
 
   const filtered = useMemo(() => {
     if (!search) return clienteSummary;
