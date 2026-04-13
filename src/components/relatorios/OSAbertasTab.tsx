@@ -927,13 +927,29 @@ export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, o
                                               </Button>
                                             </a>
                                           )}
-                                          {(item.auvo_task_url || item.auvo_link) && (
-                                            <a href={item.auvo_task_url || item.auvo_link} target="_blank" rel="noopener noreferrer" title="Tarefa no Auvo">
-                                              <Button size="icon" variant="ghost" className="h-6 w-6">
-                                                <ExternalLink className="h-3 w-3" />
-                                              </Button>
-                                            </a>
-                                          )}
+                                          {(() => {
+                                            const execId = liveExecMap.get(String(item.gc_os_id))?.execTaskId || parseExecIds(item.gc_os_tarefa_exec)[0] || null;
+                                            const execUrl = execId ? `https://app.auvo.com.br/relatorioTarefas/DetalheTarefa/${execId}` : null;
+                                            const osUrl = item.auvo_task_url || item.auvo_link || (item.auvo_task_id ? `https://app.auvo.com.br/relatorioTarefas/DetalheTarefa/${item.auvo_task_id}` : null);
+                                            return (
+                                              <>
+                                                {execUrl && (
+                                                  <a href={execUrl} target="_blank" rel="noopener noreferrer" title={`Tarefa Execução #${execId}`}>
+                                                    <Button size="icon" variant="ghost" className="h-6 w-6 text-emerald-600">
+                                                      <ExternalLink className="h-3 w-3" />
+                                                    </Button>
+                                                  </a>
+                                                )}
+                                                {osUrl && (
+                                                  <a href={osUrl} target="_blank" rel="noopener noreferrer" title={`Tarefa OS #${item.auvo_task_id}`}>
+                                                    <Button size="icon" variant="ghost" className="h-6 w-6">
+                                                      <ExternalLink className="h-3 w-3" />
+                                                    </Button>
+                                                  </a>
+                                                )}
+                                              </>
+                                            );
+                                          })()}
                                           {item.gc_os_id && !movedOsIds.has(item.gc_os_id) && (
                                             <Button
                                               size="icon"
