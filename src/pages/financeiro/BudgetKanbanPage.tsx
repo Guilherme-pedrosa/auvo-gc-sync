@@ -592,6 +592,83 @@ export default function BudgetKanbanPage() {
     toast.success(successMsg);
   }, [savePositions]);
 
+  // Load resolution details for tasks currently in "resolvido_sem_orcamento"
+  useEffect(() => {
+    const taskIds = columns
+      .find((c) => c.id === "resolvido_sem_orcamento")?.items.map((i) => i.auvo_task_id) || [];
+    if (taskIds.length === 0) return;
+    const missing = taskIds.filter((id) => !(id in resolutionDetails));
+    if (missing.length === 0) return;
+    (async () => {
+      const { data, error } = await supabase
+        .from("kanban_resolution_details" as any)
+        .select("auvo_task_id, motivo, resolvido_por_nome, resolvido_em")
+        .in("auvo_task_id", missing);
+      if (error || !data) return;
+      setResolutionDetails((prev) => {
+        const next = { ...prev };
+        for (const row of data as any[]) {
+          next[row.auvo_task_id] = {
+            motivo: row.motivo,
+            resolvido_por_nome: row.resolvido_por_nome,
+            resolvido_em: row.resolvido_em,
+          };
+        }
+        return next;
+      });
+    })();
+  }, [columns, resolutionDetails]);
+
+  // Open dialog to capture resolution reason
+  const openResolveDialog = useCallback((taskId: string) => {
+    setResolveTaskId(taskId);
+    setResolveMotivo(resolutionDetails[taskId]?.motivo || "");
+    setResolveDialogOpen(true);
+  }, [resolutionDetails]);
+
+  // Confirm resolution: save details and move card
+  const confirmResolveWithoutBudget = useCallback(async () => {
+    if (!resolveTaskId) return;
+    const motivo = resolveMotivo.trim();
+    if (motivo.length < 3) {
+      toast.error("Descreva o motivo (mínimo 3 caracteres)");
+      return;
+    }
+    setIsSavingResolve(true);
+    try {
+      const payload = {
+        auvo_task_id: resolveTaskId,
+        motivo,
+        resolvido_por_id: user?.id || null,
+        resolvido_por_nome: profile?.nome || user?.email || null,
+        resolvido_em: new Date().toISOString(),
+        atualizado_em: new Date().toISOString(),
+      };
+      const { error } = await supabase
+        .from("kanban_resolution_details" as any)
+        .upsert(payload, { onConflict: "auvo_task_id" } as any);
+      if (error) throw error;
+      setResolutionDetails((prev) => ({
+        ...prev,
+        [resolveTaskId]: {
+          motivo,
+          resolvido_por_nome: payload.resolvido_por_nome,
+          resolvido_em: payload.resolvido_em,
+        },
+      }));
+      moveCardToColumn(resolveTaskId, "resolvido_sem_orcamento", "Marcado como resolvido sem orçamento");
+      setResolveDialogOpen(false);
+      setResolveTaskId(null);
+      setResolveMotivo("");
+    } catch (e: any) {
+      console.error("Erro ao salvar detalhes:", e);
+      toast.error("Erro ao salvar os detalhes");
+    } finally {
+      setIsSavingResolve(false);
+    }
+  }, [resolveTaskId, resolveMotivo, user, profile, moveCardToColumn]);
+
+
   // Abbreviate long client names: keep first + last word with "..." in between
   const abbreviateName = (name: string, maxLen = 30) => {
     if (name.length <= maxLen) return name;
