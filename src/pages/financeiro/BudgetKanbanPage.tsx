@@ -235,6 +235,11 @@ export default function BudgetKanbanPage() {
         }),
       }));
 
+      // Ensure "resolvido_sem_orcamento" column exists (fixed system column)
+      if (!mergedCols.find((c) => c.id === "resolvido_sem_orcamento")) {
+        mergedCols.push({ id: "resolvido_sem_orcamento", title: "✅ Já Resolvido", items: [] });
+      }
+
       // Add new cards (from API but not in any column yet) to appropriate column
       const newCards: KanbanItem[] = [];
       for (const [taskId, item] of freshDataMap) {
@@ -311,18 +316,24 @@ export default function BudgetKanbanPage() {
         if (!orderedIds.includes(colId)) orderedIds.push(colId);
       }
 
-      // Ensure falta_preenchimento and a_fazer exist
+      // Ensure falta_preenchimento, a_fazer and resolvido_sem_orcamento exist
       if (!orderedIds.includes("falta_preenchimento")) orderedIds.unshift("falta_preenchimento");
       if (!orderedIds.includes("a_fazer")) {
         const fpIdx = orderedIds.indexOf("falta_preenchimento");
         orderedIds.splice(fpIdx + 1, 0, "a_fazer");
       }
+      if (!orderedIds.includes("resolvido_sem_orcamento")) orderedIds.push("resolvido_sem_orcamento");
+
+      const defaultTitlesExtra: Record<string, string> = {
+        ...defaultTitles,
+        resolvido_sem_orcamento: "✅ Já Resolvido",
+      };
 
       const cols: KanbanColumn[] = orderedIds
-        .filter((colId) => (colMap[colId] && colMap[colId].length > 0) || savedOrderMap.has(colId) || colId === "falta_preenchimento" || colId === "a_fazer")
+        .filter((colId) => (colMap[colId] && colMap[colId].length > 0) || savedOrderMap.has(colId) || colId === "falta_preenchimento" || colId === "a_fazer" || colId === "resolvido_sem_orcamento")
         .map((colId) => ({
           id: colId,
-          title: savedOrderMap.get(colId)?.title || defaultTitles[colId] || (colId.startsWith("orc_") ? `💰 ${colId.replace("orc_", "").replace(/_/g, " ")}` : colId),
+          title: savedOrderMap.get(colId)?.title || defaultTitlesExtra[colId] || (colId.startsWith("orc_") ? `💰 ${colId.replace("orc_", "").replace(/_/g, " ")}` : colId),
           items: colMap[colId] || [],
         }));
 
@@ -358,6 +369,7 @@ export default function BudgetKanbanPage() {
         { id: "a_fazer", title: "📋 A Fazer", items: aFazer },
         { id: "os_realizada", title: "🔧 OS Realizada", items: osRealizada },
         ...orcColumns,
+        { id: "resolvido_sem_orcamento", title: "✅ Já Resolvido", items: [] },
       ]);
     }
 
@@ -545,6 +557,31 @@ export default function BudgetKanbanPage() {
     });
     setEditingColumnId(null);
   }, [editingColumnId, editingColumnTitle]);
+
+  // Move card to "Já Resolvido" (or back to "A Fazer")
+  const moveCardToColumn = useCallback((taskId: string, targetColumnId: string, successMsg: string) => {
+    setColumns((prev) => {
+      const newCols = prev.map((c) => ({ ...c, items: [...c.items] }));
+      let movedCard: KanbanItem | null = null;
+      for (const col of newCols) {
+        const idx = col.items.findIndex((i) => i.auvo_task_id === taskId);
+        if (idx !== -1) {
+          movedCard = col.items.splice(idx, 1)[0];
+          break;
+        }
+      }
+      if (!movedCard) return prev;
+      let target = newCols.find((c) => c.id === targetColumnId);
+      if (!target) {
+        target = { id: "resolvido_sem_orcamento", title: "✅ Já Resolvido", items: [] };
+        newCols.push(target);
+      }
+      target.items.unshift(movedCard);
+      savePositions(newCols);
+      return newCols;
+    });
+    toast.success(successMsg);
+  }, [savePositions]);
 
   // Abbreviate long client names: keep first + last word with "..." in between
   const abbreviateName = (name: string, maxLen = 30) => {
@@ -1524,7 +1561,7 @@ export default function BudgetKanbanPage() {
                                   >
                                     <Edit2 className="h-3 w-3" />
                                   </Button>
-                                  {column.id !== "a_fazer" && column.id !== "os_realizada" && !column.id.startsWith("orc_") && (
+                                  {column.id !== "a_fazer" && column.id !== "os_realizada" && column.id !== "resolvido_sem_orcamento" && column.id !== "falta_preenchimento" && !column.id.startsWith("orc_") && (
                                     <Button
                                       size="icon" variant="ghost" className="h-6 w-6 text-destructive"
                                       onClick={(e) => { e.stopPropagation(); deleteColumn(column.id); }}
@@ -1689,6 +1726,31 @@ export default function BudgetKanbanPage() {
                                                   <ExternalLink className="h-3 w-3" />
                                                   OS GC
                                                 </a>
+                                              )}
+                                            </div>
+
+                                            {/* Botão: Resolvido sem orçamento / Reabrir */}
+                                            <div className="mt-2 pt-2 border-t" onClick={(e) => e.stopPropagation()}>
+                                              {column.id === "resolvido_sem_orcamento" ? (
+                                                <Button
+                                                  size="sm"
+                                                  variant="ghost"
+                                                  className="h-7 w-full text-[11px] text-muted-foreground hover:text-foreground"
+                                                  onClick={() => moveCardToColumn(item.auvo_task_id, "a_fazer", "Card movido de volta para 'A Fazer'")}
+                                                >
+                                                  <RefreshCw className="h-3 w-3 mr-1" />
+                                                  Reabrir card
+                                                </Button>
+                                              ) : (
+                                                <Button
+                                                  size="sm"
+                                                  variant="outline"
+                                                  className="h-7 w-full text-[11px] border-emerald-300 text-emerald-700 hover:bg-emerald-50 hover:text-emerald-800"
+                                                  onClick={() => moveCardToColumn(item.auvo_task_id, "resolvido_sem_orcamento", "Marcado como resolvido sem orçamento")}
+                                                >
+                                                  <Check className="h-3 w-3 mr-1" />
+                                                  Resolvido sem orçamento
+                                                </Button>
                                               )}
                                             </div>
                                           </div>
