@@ -2259,6 +2259,48 @@ export default function BudgetKanbanPage() {
         </DialogContent>
       </Dialog>
 
+      {/* Diálogo: Resolvido sem orçamento — capturar motivo */}
+      <Dialog open={resolveDialogOpen} onOpenChange={(open) => {
+        if (!isSavingResolve) {
+          setResolveDialogOpen(open);
+          if (!open) { setResolveTaskId(null); setResolveMotivo(""); }
+        }
+      }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Resolvido sem orçamento</DialogTitle>
+            <DialogDescription>
+              Descreva o motivo pelo qual essa atividade não gerará orçamento. Esses detalhes ficarão visíveis no card e para todos os usuários.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2">
+            <label className="text-sm font-medium">Motivo / detalhes</label>
+            <Textarea
+              autoFocus
+              rows={5}
+              maxLength={1000}
+              placeholder="Ex.: cliente já resolveu por conta própria, equipamento substituído, sem peça de reposição disponível..."
+              value={resolveMotivo}
+              onChange={(e) => setResolveMotivo(e.target.value)}
+            />
+            <div className="text-[11px] text-muted-foreground text-right">{resolveMotivo.length}/1000</div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" disabled={isSavingResolve} onClick={() => setResolveDialogOpen(false)}>
+              Cancelar
+            </Button>
+            <Button
+              disabled={isSavingResolve || resolveMotivo.trim().length < 3}
+              onClick={confirmResolveWithoutBudget}
+              className="bg-emerald-600 hover:bg-emerald-700 text-white"
+            >
+              {isSavingResolve ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Check className="h-4 w-4 mr-1" />}
+              Confirmar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
     </div>
   );
 }
