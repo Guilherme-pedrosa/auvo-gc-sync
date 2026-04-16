@@ -235,6 +235,11 @@ export default function BudgetKanbanPage() {
         }),
       }));
 
+      // Ensure "resolvido_sem_orcamento" column exists (fixed system column)
+      if (!mergedCols.find((c) => c.id === "resolvido_sem_orcamento")) {
+        mergedCols.push({ id: "resolvido_sem_orcamento", title: "✅ Já Resolvido", items: [] });
+      }
+
       // Add new cards (from API but not in any column yet) to appropriate column
       const newCards: KanbanItem[] = [];
       for (const [taskId, item] of freshDataMap) {
@@ -311,18 +316,24 @@ export default function BudgetKanbanPage() {
         if (!orderedIds.includes(colId)) orderedIds.push(colId);
       }
 
-      // Ensure falta_preenchimento and a_fazer exist
+      // Ensure falta_preenchimento, a_fazer and resolvido_sem_orcamento exist
       if (!orderedIds.includes("falta_preenchimento")) orderedIds.unshift("falta_preenchimento");
       if (!orderedIds.includes("a_fazer")) {
         const fpIdx = orderedIds.indexOf("falta_preenchimento");
         orderedIds.splice(fpIdx + 1, 0, "a_fazer");
       }
+      if (!orderedIds.includes("resolvido_sem_orcamento")) orderedIds.push("resolvido_sem_orcamento");
+
+      const defaultTitlesExtra: Record<string, string> = {
+        ...defaultTitles,
+        resolvido_sem_orcamento: "✅ Já Resolvido",
+      };
 
       const cols: KanbanColumn[] = orderedIds
-        .filter((colId) => (colMap[colId] && colMap[colId].length > 0) || savedOrderMap.has(colId) || colId === "falta_preenchimento" || colId === "a_fazer")
+        .filter((colId) => (colMap[colId] && colMap[colId].length > 0) || savedOrderMap.has(colId) || colId === "falta_preenchimento" || colId === "a_fazer" || colId === "resolvido_sem_orcamento")
         .map((colId) => ({
           id: colId,
-          title: savedOrderMap.get(colId)?.title || defaultTitles[colId] || (colId.startsWith("orc_") ? `💰 ${colId.replace("orc_", "").replace(/_/g, " ")}` : colId),
+          title: savedOrderMap.get(colId)?.title || defaultTitlesExtra[colId] || (colId.startsWith("orc_") ? `💰 ${colId.replace("orc_", "").replace(/_/g, " ")}` : colId),
           items: colMap[colId] || [],
         }));
 
@@ -358,6 +369,7 @@ export default function BudgetKanbanPage() {
         { id: "a_fazer", title: "📋 A Fazer", items: aFazer },
         { id: "os_realizada", title: "🔧 OS Realizada", items: osRealizada },
         ...orcColumns,
+        { id: "resolvido_sem_orcamento", title: "✅ Já Resolvido", items: [] },
       ]);
     }
 
