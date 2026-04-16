@@ -1815,24 +1815,50 @@ export default function BudgetKanbanPage() {
                                               )}
                                             </div>
 
-                                            {/* Botão: Resolvido sem orçamento / Reabrir */}
-                                            <div className="mt-2 pt-2 border-t" onClick={(e) => e.stopPropagation()}>
+                                            {/* Detalhes da resolução (quando na coluna Já Resolvido) */}
+                                            {column.id === "resolvido_sem_orcamento" && resolutionDetails[item.auvo_task_id] && (
+                                              <div className="mt-2 pt-2 border-t text-[11px] bg-emerald-50/50 -mx-2 px-2 py-2 rounded">
+                                                <div className="font-semibold text-emerald-800 mb-0.5">📝 Motivo:</div>
+                                                <div className="text-emerald-900 whitespace-pre-wrap break-words">
+                                                  {resolutionDetails[item.auvo_task_id].motivo}
+                                                </div>
+                                                <div className="text-emerald-700/70 mt-1 text-[10px]">
+                                                  {resolutionDetails[item.auvo_task_id].resolvido_por_nome || "—"}
+                                                  {" • "}
+                                                  {format(new Date(resolutionDetails[item.auvo_task_id].resolvido_em), "dd/MM/yyyy HH:mm", { locale: ptBR })}
+                                                </div>
+                                              </div>
+                                            )}
+
+                                            {/* Botão: Resolvido sem orçamento / Reabrir / Editar motivo */}
+                                            <div className="mt-2 pt-2 border-t flex gap-1" onClick={(e) => e.stopPropagation()}>
                                               {column.id === "resolvido_sem_orcamento" ? (
-                                                <Button
-                                                  size="sm"
-                                                  variant="ghost"
-                                                  className="h-7 w-full text-[11px] text-muted-foreground hover:text-foreground"
-                                                  onClick={() => moveCardToColumn(item.auvo_task_id, "a_fazer", "Card movido de volta para 'A Fazer'")}
-                                                >
-                                                  <RefreshCw className="h-3 w-3 mr-1" />
-                                                  Reabrir card
-                                                </Button>
+                                                <>
+                                                  <Button
+                                                    size="sm"
+                                                    variant="ghost"
+                                                    className="h-7 flex-1 text-[11px] text-muted-foreground hover:text-foreground"
+                                                    onClick={() => openResolveDialog(item.auvo_task_id)}
+                                                  >
+                                                    <Edit2 className="h-3 w-3 mr-1" />
+                                                    Editar motivo
+                                                  </Button>
+                                                  <Button
+                                                    size="sm"
+                                                    variant="ghost"
+                                                    className="h-7 flex-1 text-[11px] text-muted-foreground hover:text-foreground"
+                                                    onClick={() => moveCardToColumn(item.auvo_task_id, "a_fazer", "Card movido de volta para 'A Fazer'")}
+                                                  >
+                                                    <RefreshCw className="h-3 w-3 mr-1" />
+                                                    Reabrir
+                                                  </Button>
+                                                </>
                                               ) : (
                                                 <Button
                                                   size="sm"
                                                   variant="outline"
                                                   className="h-7 w-full text-[11px] border-emerald-300 text-emerald-700 hover:bg-emerald-50 hover:text-emerald-800"
-                                                  onClick={() => moveCardToColumn(item.auvo_task_id, "resolvido_sem_orcamento", "Marcado como resolvido sem orçamento")}
+                                                  onClick={() => openResolveDialog(item.auvo_task_id)}
                                                 >
                                                   <Check className="h-3 w-3 mr-1" />
                                                   Resolvido sem orçamento
