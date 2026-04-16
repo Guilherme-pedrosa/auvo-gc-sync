@@ -361,6 +361,33 @@ export type Database = {
         }
         Relationships: []
       }
+      kanban_resolution_details: {
+        Row: {
+          atualizado_em: string
+          auvo_task_id: string
+          motivo: string
+          resolvido_em: string
+          resolvido_por_id: string | null
+          resolvido_por_nome: string | null
+        }
+        Insert: {
+          atualizado_em?: string
+          auvo_task_id: string
+          motivo: string
+          resolvido_em?: string
+          resolvido_por_id?: string | null
+          resolvido_por_nome?: string | null
+        }
+        Update: {
+          atualizado_em?: string
+          auvo_task_id?: string
+          motivo?: string
+          resolvido_em?: string
+          resolvido_por_id?: string | null
+          resolvido_por_nome?: string | null
+        }
+        Relationships: []
+      }
       kanban_sync_meta: {
         Row: {
           id: string
