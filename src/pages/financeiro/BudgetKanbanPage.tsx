@@ -558,6 +558,31 @@ export default function BudgetKanbanPage() {
     setEditingColumnId(null);
   }, [editingColumnId, editingColumnTitle]);
 
+  // Move card to "Já Resolvido" (or back to "A Fazer")
+  const moveCardToColumn = useCallback((taskId: string, targetColumnId: string, successMsg: string) => {
+    setColumns((prev) => {
+      const newCols = prev.map((c) => ({ ...c, items: [...c.items] }));
+      let movedCard: KanbanItem | null = null;
+      for (const col of newCols) {
+        const idx = col.items.findIndex((i) => i.auvo_task_id === taskId);
+        if (idx !== -1) {
+          movedCard = col.items.splice(idx, 1)[0];
+          break;
+        }
+      }
+      if (!movedCard) return prev;
+      let target = newCols.find((c) => c.id === targetColumnId);
+      if (!target) {
+        target = { id: "resolvido_sem_orcamento", title: "✅ Já Resolvido", items: [] };
+        newCols.push(target);
+      }
+      target.items.unshift(movedCard);
+      savePositions(newCols);
+      return newCols;
+    });
+    toast.success(successMsg);
+  }, [savePositions]);
+
   // Abbreviate long client names: keep first + last word with "..." in between
   const abbreviateName = (name: string, maxLen = 30) => {
     if (name.length <= maxLen) return name;
