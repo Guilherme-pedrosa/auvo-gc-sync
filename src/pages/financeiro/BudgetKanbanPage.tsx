@@ -10,7 +10,8 @@ import { Input } from "@/components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
+import { useAuth } from "@/hooks/useAuth";
 import { Checkbox } from "@/components/ui/checkbox";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import {
@@ -116,6 +117,14 @@ export default function BudgetKanbanPage() {
   const [resolvedEquipment, setResolvedEquipment] = useState<{ nome: string; id: string } | null>(null);
   const [isEquipmentLoading, setIsEquipmentLoading] = useState(false);
   const equipmentResolutionCache = useMemo(() => new Map<string, { nome: string; id: string } | null>(), []);
+
+  // Resolution details (Resolvido sem orçamento)
+  const { user, profile } = useAuth();
+  const [resolveDialogOpen, setResolveDialogOpen] = useState(false);
+  const [resolveTaskId, setResolveTaskId] = useState<string | null>(null);
+  const [resolveMotivo, setResolveMotivo] = useState("");
+  const [isSavingResolve, setIsSavingResolve] = useState(false);
+  const [resolutionDetails, setResolutionDetails] = useState<Record<string, { motivo: string; resolvido_por_nome: string | null; resolvido_em: string }>>({});
 
   const { data, isLoading, refetch, isFetching } = useQuery<ApiResponse>({
     queryKey: ["budget-kanban", format(dateRange.from, "yyyy-MM-dd"), format(dateRange.to, "yyyy-MM-dd")],
@@ -582,6 +591,83 @@ export default function BudgetKanbanPage() {
     });
     toast.success(successMsg);
   }, [savePositions]);
+
+  // Load resolution details for tasks currently in "resolvido_sem_orcamento"
+  useEffect(() => {
+    const taskIds = columns
+      .find((c) => c.id === "resolvido_sem_orcamento")?.items.map((i) => i.auvo_task_id) || [];
+    if (taskIds.length === 0) return;
+    const missing = taskIds.filter((id) => !(id in resolutionDetails));
+    if (missing.length === 0) return;
+    (async () => {
+      const { data, error } = await supabase
+        .from("kanban_resolution_details" as any)
+        .select("auvo_task_id, motivo, resolvido_por_nome, resolvido_em")
+        .in("auvo_task_id", missing);
+      if (error || !data) return;
+      setResolutionDetails((prev) => {
+        const next = { ...prev };
+        for (const row of data as any[]) {
+          next[row.auvo_task_id] = {
+            motivo: row.motivo,
+            resolvido_por_nome: row.resolvido_por_nome,
+            resolvido_em: row.resolvido_em,
+          };
+        }
+        return next;
+      });
+    })();
+  }, [columns, resolutionDetails]);
+
+  // Open dialog to capture resolution reason
+  const openResolveDialog = useCallback((taskId: string) => {
+    setResolveTaskId(taskId);
+    setResolveMotivo(resolutionDetails[taskId]?.motivo || "");
+    setResolveDialogOpen(true);
+  }, [resolutionDetails]);
+
+  // Confirm resolution: save details and move card
+  const confirmResolveWithoutBudget = useCallback(async () => {
+    if (!resolveTaskId) return;
+    const motivo = resolveMotivo.trim();
+    if (motivo.length < 3) {
+      toast.error("Descreva o motivo (mínimo 3 caracteres)");
+      return;
+    }
+    setIsSavingResolve(true);
+    try {
+      const payload = {
+        auvo_task_id: resolveTaskId,
+        motivo,
+        resolvido_por_id: user?.id || null,
+        resolvido_por_nome: profile?.nome || user?.email || null,
+        resolvido_em: new Date().toISOString(),
+        atualizado_em: new Date().toISOString(),
+      };
+      const { error } = await supabase
+        .from("kanban_resolution_details" as any)
+        .upsert(payload, { onConflict: "auvo_task_id" } as any);
+      if (error) throw error;
+      setResolutionDetails((prev) => ({
+        ...prev,
+        [resolveTaskId]: {
+          motivo,
+          resolvido_por_nome: payload.resolvido_por_nome,
+          resolvido_em: payload.resolvido_em,
+        },
+      }));
+      moveCardToColumn(resolveTaskId, "resolvido_sem_orcamento", "Marcado como resolvido sem orçamento");
+      setResolveDialogOpen(false);
+      setResolveTaskId(null);
+      setResolveMotivo("");
+    } catch (e: any) {
+      console.error("Erro ao salvar detalhes:", e);
+      toast.error("Erro ao salvar os detalhes");
+    } finally {
+      setIsSavingResolve(false);
+    }
+  }, [resolveTaskId, resolveMotivo, user, profile, moveCardToColumn]);
+
 
   // Abbreviate long client names: keep first + last word with "..." in between
   const abbreviateName = (name: string, maxLen = 30) => {
@@ -1729,24 +1815,50 @@ export default function BudgetKanbanPage() {
                                               )}
                                             </div>
 
-                                            {/* Botão: Resolvido sem orçamento / Reabrir */}
-                                            <div className="mt-2 pt-2 border-t" onClick={(e) => e.stopPropagation()}>
+                                            {/* Detalhes da resolução (quando na coluna Já Resolvido) */}
+                                            {column.id === "resolvido_sem_orcamento" && resolutionDetails[item.auvo_task_id] && (
+                                              <div className="mt-2 pt-2 border-t text-[11px] bg-emerald-50/50 -mx-2 px-2 py-2 rounded">
+                                                <div className="font-semibold text-emerald-800 mb-0.5">📝 Motivo:</div>
+                                                <div className="text-emerald-900 whitespace-pre-wrap break-words">
+                                                  {resolutionDetails[item.auvo_task_id].motivo}
+                                                </div>
+                                                <div className="text-emerald-700/70 mt-1 text-[10px]">
+                                                  {resolutionDetails[item.auvo_task_id].resolvido_por_nome || "—"}
+                                                  {" • "}
+                                                  {format(new Date(resolutionDetails[item.auvo_task_id].resolvido_em), "dd/MM/yyyy HH:mm", { locale: ptBR })}
+                                                </div>
+                                              </div>
+                                            )}
+
+                                            {/* Botão: Resolvido sem orçamento / Reabrir / Editar motivo */}
+                                            <div className="mt-2 pt-2 border-t flex gap-1" onClick={(e) => e.stopPropagation()}>
                                               {column.id === "resolvido_sem_orcamento" ? (
-                                                <Button
-                                                  size="sm"
-                                                  variant="ghost"
-                                                  className="h-7 w-full text-[11px] text-muted-foreground hover:text-foreground"
-                                                  onClick={() => moveCardToColumn(item.auvo_task_id, "a_fazer", "Card movido de volta para 'A Fazer'")}
-                                                >
-                                                  <RefreshCw className="h-3 w-3 mr-1" />
-                                                  Reabrir card
-                                                </Button>
+                                                <>
+                                                  <Button
+                                                    size="sm"
+                                                    variant="ghost"
+                                                    className="h-7 flex-1 text-[11px] text-muted-foreground hover:text-foreground"
+                                                    onClick={() => openResolveDialog(item.auvo_task_id)}
+                                                  >
+                                                    <Edit2 className="h-3 w-3 mr-1" />
+                                                    Editar motivo
+                                                  </Button>
+                                                  <Button
+                                                    size="sm"
+                                                    variant="ghost"
+                                                    className="h-7 flex-1 text-[11px] text-muted-foreground hover:text-foreground"
+                                                    onClick={() => moveCardToColumn(item.auvo_task_id, "a_fazer", "Card movido de volta para 'A Fazer'")}
+                                                  >
+                                                    <RefreshCw className="h-3 w-3 mr-1" />
+                                                    Reabrir
+                                                  </Button>
+                                                </>
                                               ) : (
                                                 <Button
                                                   size="sm"
                                                   variant="outline"
                                                   className="h-7 w-full text-[11px] border-emerald-300 text-emerald-700 hover:bg-emerald-50 hover:text-emerald-800"
-                                                  onClick={() => moveCardToColumn(item.auvo_task_id, "resolvido_sem_orcamento", "Marcado como resolvido sem orçamento")}
+                                                  onClick={() => openResolveDialog(item.auvo_task_id)}
                                                 >
                                                   <Check className="h-3 w-3 mr-1" />
                                                   Resolvido sem orçamento
@@ -2144,6 +2256,48 @@ export default function BudgetKanbanPage() {
               </div>
             </>
           )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Diálogo: Resolvido sem orçamento — capturar motivo */}
+      <Dialog open={resolveDialogOpen} onOpenChange={(open) => {
+        if (!isSavingResolve) {
+          setResolveDialogOpen(open);
+          if (!open) { setResolveTaskId(null); setResolveMotivo(""); }
+        }
+      }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Resolvido sem orçamento</DialogTitle>
+            <DialogDescription>
+              Descreva o motivo pelo qual essa atividade não gerará orçamento. Esses detalhes ficarão visíveis no card e para todos os usuários.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2">
+            <label className="text-sm font-medium">Motivo / detalhes</label>
+            <Textarea
+              autoFocus
+              rows={5}
+              maxLength={1000}
+              placeholder="Ex.: cliente já resolveu por conta própria, equipamento substituído, sem peça de reposição disponível..."
+              value={resolveMotivo}
+              onChange={(e) => setResolveMotivo(e.target.value)}
+            />
+            <div className="text-[11px] text-muted-foreground text-right">{resolveMotivo.length}/1000</div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" disabled={isSavingResolve} onClick={() => setResolveDialogOpen(false)}>
+              Cancelar
+            </Button>
+            <Button
+              disabled={isSavingResolve || resolveMotivo.trim().length < 3}
+              onClick={confirmResolveWithoutBudget}
+              className="bg-emerald-600 hover:bg-emerald-700 text-white"
+            >
+              {isSavingResolve ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Check className="h-4 w-4 mr-1" />}
+              Confirmar
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
 
