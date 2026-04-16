@@ -1728,6 +1728,31 @@ export default function BudgetKanbanPage() {
                                                 </a>
                                               )}
                                             </div>
+
+                                            {/* Botão: Resolvido sem orçamento / Reabrir */}
+                                            <div className="mt-2 pt-2 border-t" onClick={(e) => e.stopPropagation()}>
+                                              {column.id === "resolvido_sem_orcamento" ? (
+                                                <Button
+                                                  size="sm"
+                                                  variant="ghost"
+                                                  className="h-7 w-full text-[11px] text-muted-foreground hover:text-foreground"
+                                                  onClick={() => moveCardToColumn(item.auvo_task_id, "a_fazer", "Card movido de volta para 'A Fazer'")}
+                                                >
+                                                  <RefreshCw className="h-3 w-3 mr-1" />
+                                                  Reabrir card
+                                                </Button>
+                                              ) : (
+                                                <Button
+                                                  size="sm"
+                                                  variant="outline"
+                                                  className="h-7 w-full text-[11px] border-emerald-300 text-emerald-700 hover:bg-emerald-50 hover:text-emerald-800"
+                                                  onClick={() => moveCardToColumn(item.auvo_task_id, "resolvido_sem_orcamento", "Marcado como resolvido sem orçamento")}
+                                                >
+                                                  <Check className="h-3 w-3 mr-1" />
+                                                  Resolvido sem orçamento
+                                                </Button>
+                                              )}
+                                            </div>
                                           </div>
                                         </div>
                                       </div>
