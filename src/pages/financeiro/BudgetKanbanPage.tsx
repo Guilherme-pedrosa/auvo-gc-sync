@@ -10,7 +10,8 @@ import { Input } from "@/components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
+import { useAuth } from "@/hooks/useAuth";
 import { Checkbox } from "@/components/ui/checkbox";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import {
@@ -116,6 +117,14 @@ export default function BudgetKanbanPage() {
   const [resolvedEquipment, setResolvedEquipment] = useState<{ nome: string; id: string } | null>(null);
   const [isEquipmentLoading, setIsEquipmentLoading] = useState(false);
   const equipmentResolutionCache = useMemo(() => new Map<string, { nome: string; id: string } | null>(), []);
+
+  // Resolution details (Resolvido sem orçamento)
+  const { user, profile } = useAuth();
+  const [resolveDialogOpen, setResolveDialogOpen] = useState(false);
+  const [resolveTaskId, setResolveTaskId] = useState<string | null>(null);
+  const [resolveMotivo, setResolveMotivo] = useState("");
+  const [isSavingResolve, setIsSavingResolve] = useState(false);
+  const [resolutionDetails, setResolutionDetails] = useState<Record<string, { motivo: string; resolvido_por_nome: string | null; resolvido_em: string }>>({});
 
   const { data, isLoading, refetch, isFetching } = useQuery<ApiResponse>({
     queryKey: ["budget-kanban", format(dateRange.from, "yyyy-MM-dd"), format(dateRange.to, "yyyy-MM-dd")],
