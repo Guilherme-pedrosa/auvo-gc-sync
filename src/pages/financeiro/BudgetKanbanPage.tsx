@@ -1561,7 +1561,7 @@ export default function BudgetKanbanPage() {
                                   >
                                     <Edit2 className="h-3 w-3" />
                                   </Button>
-                                  {column.id !== "a_fazer" && column.id !== "os_realizada" && !column.id.startsWith("orc_") && (
+                                  {column.id !== "a_fazer" && column.id !== "os_realizada" && column.id !== "resolvido_sem_orcamento" && column.id !== "falta_preenchimento" && !column.id.startsWith("orc_") && (
                                     <Button
                                       size="icon" variant="ghost" className="h-6 w-6 text-destructive"
                                       onClick={(e) => { e.stopPropagation(); deleteColumn(column.id); }}
