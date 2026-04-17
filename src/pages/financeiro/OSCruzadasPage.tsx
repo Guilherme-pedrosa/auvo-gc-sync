@@ -221,6 +221,11 @@ export default function OSCruzadasPage() {
     const result: CrossedOS[] = [];
 
     for (const [gcOsId, tasks] of byOsId.entries()) {
+      // Skip OS sem vendedor no GC: significa execução em fim de semana
+      // (venda interna sem responsável atribuído) — não conta como cruzada.
+      const hasVendedor = tasks.some((t) => String(t.gc_os_vendedor || "").trim() !== "");
+      if (!hasVendedor) continue;
+
       // Build set of all exec IDs referenced by any task in this group
       const allExecIds = new Set<string>();
       for (const t of tasks) {
