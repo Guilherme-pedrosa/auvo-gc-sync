@@ -10,7 +10,7 @@ import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Skeleton } from "@/components/ui/skeleton";
-import { CalendarIcon, ArrowLeftRight, ExternalLink, Search, Users, ArrowRightLeft } from "lucide-react";
+import { CalendarIcon, ArrowLeftRight, ExternalLink, Search, Users, ArrowRightLeft, Scale, TrendingUp, TrendingDown } from "lucide-react";
 import { format, startOfMonth, endOfMonth } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { cn } from "@/lib/utils";
@@ -49,7 +49,7 @@ export default function OSCruzadasPage() {
   const [dateTo, setDateTo] = useState<Date>(endOfMonth(today));
   const [search, setSearch] = useState("");
   const [selectedTecnico, setSelectedTecnico] = useState<string | null>(null);
-  const [viewMode, setViewMode] = useState<"executor" | "abridor">("executor");
+  const [viewMode, setViewMode] = useState<"executor" | "abridor" | "saldo">("saldo");
 
   // Fetch all tarefas with OS in date range
   const { data: tarefas = [], isLoading } = useQuery({
@@ -173,14 +173,38 @@ export default function OSCruzadasPage() {
     return Array.from(map.values()).sort((a, b) => b.total - a.total);
   }, [crossedList]);
 
-  const totais = viewMode === "executor" ? totaisPorExecutor : totaisPorAbridor;
+  // Saldo (lucro/prejuízo) per technician = executou para outros - abriu pra outros executarem
+  const saldoPorTecnico = useMemo(() => {
+    const map = new Map<string, { id: string; nome: string; credito: number; debito: number; qtd_executou: number; qtd_abriu: number }>();
+    for (const t of totaisPorExecutor) {
+      const e = map.get(t.id) || { id: t.id, nome: t.nome, credito: 0, debito: 0, qtd_executou: 0, qtd_abriu: 0 };
+      e.credito = t.total;
+      e.qtd_executou = t.count;
+      map.set(t.id, e);
+    }
+    for (const t of totaisPorAbridor) {
+      const e = map.get(t.id) || { id: t.id, nome: t.nome, credito: 0, debito: 0, qtd_executou: 0, qtd_abriu: 0 };
+      e.debito = t.total;
+      e.qtd_abriu = t.count;
+      map.set(t.id, e);
+    }
+    return Array.from(map.values())
+      .map((e) => ({ ...e, saldo: e.credito - e.debito }))
+      .sort((a, b) => b.saldo - a.saldo);
+  }, [totaisPorExecutor, totaisPorAbridor]);
+
+  const totais = viewMode === "executor" ? totaisPorExecutor : viewMode === "abridor" ? totaisPorAbridor : [];
 
   // Filtered detail: by selected tech and search
   const detalhe = useMemo(() => {
     let items = crossedList;
     if (selectedTecnico) {
       items = items.filter((c) =>
-        viewMode === "executor" ? c.executor_id === selectedTecnico : c.abridor_id === selectedTecnico
+        viewMode === "executor"
+          ? c.executor_id === selectedTecnico
+          : viewMode === "abridor"
+            ? c.abridor_id === selectedTecnico
+            : c.executor_id === selectedTecnico || c.abridor_id === selectedTecnico
       );
     }
     if (search.trim()) {
@@ -280,8 +304,12 @@ export default function OSCruzadasPage() {
       </div>
 
       {/* Mode tabs */}
-      <Tabs value={viewMode} onValueChange={(v) => { setViewMode(v as "executor" | "abridor"); setSelectedTecnico(null); }}>
+      <Tabs value={viewMode} onValueChange={(v) => { setViewMode(v as "executor" | "abridor" | "saldo"); setSelectedTecnico(null); }}>
         <TabsList>
+          <TabsTrigger value="saldo" className="gap-2">
+            <Scale className="h-4 w-4" />
+            Saldo (Lucro/Prejuízo)
+          </TabsTrigger>
           <TabsTrigger value="executor" className="gap-2">
             <Users className="h-4 w-4" />
             Por Executor (executou OS de outros)
@@ -291,6 +319,151 @@ export default function OSCruzadasPage() {
             Por Abridor (abriu OS executada por outros)
           </TabsTrigger>
         </TabsList>
+
+        {/* SALDO TAB */}
+        <TabsContent value="saldo" className="space-y-4 mt-4">
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">Saldo por técnico no período</CardTitle>
+              <p className="text-xs text-muted-foreground mt-1">
+                <span className="text-emerald-600 font-medium">Crédito</span> = valor de OS executadas para outros técnicos.{" "}
+                <span className="text-rose-600 font-medium">Débito</span> = valor de OS que ele abriu mas foi outro quem executou.{" "}
+                <span className="font-medium">Saldo</span> = crédito − débito.
+              </p>
+            </CardHeader>
+            <CardContent>
+              {isLoading ? (
+                <div className="space-y-2">{[...Array(4)].map((_, i) => <Skeleton key={i} className="h-10 w-full" />)}</div>
+              ) : saldoPorTecnico.length === 0 ? (
+                <div className="text-center py-8 text-muted-foreground text-sm">Nenhuma OS cruzada encontrada no período.</div>
+              ) : (
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Técnico</TableHead>
+                      <TableHead className="text-right">Qtd. Executou</TableHead>
+                      <TableHead className="text-right text-emerald-700">Crédito</TableHead>
+                      <TableHead className="text-right">Qtd. Abriu</TableHead>
+                      <TableHead className="text-right text-rose-700">Débito</TableHead>
+                      <TableHead className="text-right">Saldo</TableHead>
+                      <TableHead></TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {saldoPorTecnico.map((t) => {
+                      const isSelected = selectedTecnico === t.id;
+                      const positivo = t.saldo >= 0;
+                      return (
+                        <TableRow
+                          key={t.id}
+                          className={cn("cursor-pointer hover:bg-muted/50", isSelected && "bg-primary/5")}
+                          onClick={() => setSelectedTecnico(isSelected ? null : t.id)}
+                        >
+                          <TableCell className="font-medium">{t.nome}</TableCell>
+                          <TableCell className="text-right text-muted-foreground">{t.qtd_executou}</TableCell>
+                          <TableCell className="text-right font-mono text-emerald-700">{formatCurrency(t.credito)}</TableCell>
+                          <TableCell className="text-right text-muted-foreground">{t.qtd_abriu}</TableCell>
+                          <TableCell className="text-right font-mono text-rose-700">{formatCurrency(t.debito)}</TableCell>
+                          <TableCell className="text-right">
+                            <div className={cn("inline-flex items-center gap-1.5 font-mono font-bold", positivo ? "text-emerald-600" : "text-rose-600")}>
+                              {positivo ? <TrendingUp className="h-3.5 w-3.5" /> : <TrendingDown className="h-3.5 w-3.5" />}
+                              {formatCurrency(t.saldo)}
+                            </div>
+                          </TableCell>
+                          <TableCell className="text-right">
+                            <Badge variant={isSelected ? "default" : "outline"} className="text-xs">
+                              {isSelected ? "Ocultar" : "Ver detalhes"}
+                            </Badge>
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
+                  </TableBody>
+                </Table>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Detail for saldo: show both directions */}
+          {selectedTecnico && (() => {
+            const tech = saldoPorTecnico.find((t) => t.id === selectedTecnico);
+            const executou = detalhe.filter((c) => c.executor_id === selectedTecnico);
+            const abriu = detalhe.filter((c) => c.abridor_id === selectedTecnico);
+            return (
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-sm flex items-center gap-2 text-emerald-700">
+                      <TrendingUp className="h-4 w-4" />
+                      Executou para outros — {executou.length} OS · {formatCurrency(tech?.credito || 0)}
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    {executou.length === 0 ? (
+                      <div className="text-center py-6 text-muted-foreground text-xs">Nenhuma OS.</div>
+                    ) : (
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead className="text-xs">OS</TableHead>
+                            <TableHead className="text-xs">Cliente</TableHead>
+                            <TableHead className="text-xs">Aberta por</TableHead>
+                            <TableHead className="text-xs text-right">Valor</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {executou.map((c) => (
+                            <TableRow key={c.gc_os_id}>
+                              <TableCell className="font-mono text-xs">{c.gc_os_codigo || c.gc_os_id}</TableCell>
+                              <TableCell className="text-xs max-w-[160px] truncate" title={c.cliente}>{c.cliente}</TableCell>
+                              <TableCell className="text-xs">{c.abridor_nome}</TableCell>
+                              <TableCell className="text-right text-xs font-mono font-semibold text-emerald-700">{formatCurrency(c.gc_os_valor_total)}</TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    )}
+                  </CardContent>
+                </Card>
+
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-sm flex items-center gap-2 text-rose-700">
+                      <TrendingDown className="h-4 w-4" />
+                      Abriu e outro executou — {abriu.length} OS · {formatCurrency(tech?.debito || 0)}
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    {abriu.length === 0 ? (
+                      <div className="text-center py-6 text-muted-foreground text-xs">Nenhuma OS.</div>
+                    ) : (
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead className="text-xs">OS</TableHead>
+                            <TableHead className="text-xs">Cliente</TableHead>
+                            <TableHead className="text-xs">Executada por</TableHead>
+                            <TableHead className="text-xs text-right">Valor</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {abriu.map((c) => (
+                            <TableRow key={c.gc_os_id}>
+                              <TableCell className="font-mono text-xs">{c.gc_os_codigo || c.gc_os_id}</TableCell>
+                              <TableCell className="text-xs max-w-[160px] truncate" title={c.cliente}>{c.cliente}</TableCell>
+                              <TableCell className="text-xs">{c.executor_nome}</TableCell>
+                              <TableCell className="text-right text-xs font-mono font-semibold text-rose-700">{formatCurrency(c.gc_os_valor_total)}</TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    )}
+                  </CardContent>
+                </Card>
+              </div>
+            );
+          })()}
+        </TabsContent>
 
         <TabsContent value={viewMode} className="space-y-4 mt-4">
           {/* Technician summary table */}
