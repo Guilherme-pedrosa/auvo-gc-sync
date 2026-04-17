@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback } from "react";
+import { useState, useMemo, useCallback, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -10,10 +10,16 @@ import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Skeleton } from "@/components/ui/skeleton";
-import { CalendarIcon, ArrowLeftRight, ExternalLink, Search, Users, ArrowRightLeft, Scale, TrendingUp, TrendingDown } from "lucide-react";
+import { CalendarIcon, ArrowLeftRight, ExternalLink, Search, Users, ArrowRightLeft, Scale, TrendingUp, TrendingDown, Loader2 } from "lucide-react";
 import { format, startOfMonth, endOfMonth } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { cn } from "@/lib/utils";
+
+interface ResolvedExecTask {
+  tecnico_id: string;
+  tecnico: string;
+  data_conclusao: string | null;
+}
 
 const PAGE_SIZE = 1000;
 
