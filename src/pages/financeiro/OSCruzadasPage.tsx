@@ -324,6 +324,12 @@ export default function OSCruzadasPage() {
           <p className="text-sm text-muted-foreground mt-1">
             Mapeamento de OS abertas por um técnico e executadas por outro. OS em que o mesmo técnico abriu e fechou são excluídas.
           </p>
+          {resolvingCount > 0 && (
+            <p className="text-xs text-muted-foreground mt-2 inline-flex items-center gap-2">
+              <Loader2 className="h-3 w-3 animate-spin" />
+              Resolvendo {resolvingCount} tarefa(s) de execução via Auvo (fora da janela local)…
+            </p>
+          )}
         </div>
 
         <div className="flex items-center gap-2 flex-wrap">
