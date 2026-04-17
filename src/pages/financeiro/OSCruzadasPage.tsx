@@ -59,87 +59,60 @@ export default function OSCruzadasPage() {
   const [selectedTecnico, setSelectedTecnico] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<"executor" | "abridor" | "saldo">("saldo");
 
-  // Step 1: identify EXECUTION tasks in the period (data_tarefa = data execução).
-  // Step 2: fetch every OS row whose execution task ID is in that set,
-  // regardless of when the OPENING task happened.
+  // Foco: GC manda. Pega TODAS as linhas de OS do GC cuja data de saída
+  // (gc_os_data_saida) cai no período. Auvo só preenche nomes de técnicos.
   const { data: tarefas = [], isLoading } = useQuery({
-    queryKey: ["os-cruzadas-tarefas-by-exec", format(dateFrom, "yyyy-MM-dd"), format(dateTo, "yyyy-MM-dd")],
+    queryKey: ["os-cruzadas-by-gc-saida", format(dateFrom, "yyyy-MM-dd"), format(dateTo, "yyyy-MM-dd")],
     queryFn: async () => {
       const from = format(dateFrom, "yyyy-MM-dd");
       const to = format(dateTo, "yyyy-MM-dd");
 
-      // 1) Pull all tasks executed in the period (any task, not just OS rows).
-      const execTasks: any[] = [];
+      // 1) Pull all OS rows whose gc_os_data_saida falls in the period.
+      const osRows: any[] = [];
       let offset = 0;
       while (true) {
         const { data, error } = await supabase
           .from("tarefas_central")
-          .select("auvo_task_id, tecnico, tecnico_id, data_tarefa, data_conclusao")
-          .gte("data_tarefa", from)
-          .lte("data_tarefa", to)
+          .select("auvo_task_id, tecnico, tecnico_id, cliente, data_tarefa, data_conclusao, gc_os_id, gc_os_codigo, gc_os_cliente, gc_os_situacao, gc_os_valor_total, gc_os_vendedor, gc_os_tarefa_exec, gc_os_data_saida, gc_os_link, auvo_link")
+          .not("gc_os_id", "is", null)
+          .gte("gc_os_data_saida", from)
+          .lte("gc_os_data_saida", to)
           .range(offset, offset + PAGE_SIZE - 1);
         if (error) throw error;
         const batch = data || [];
-        execTasks.push(...batch);
+        osRows.push(...batch);
         if (batch.length < PAGE_SIZE) break;
         offset += PAGE_SIZE;
       }
-      const execIds = new Set(execTasks.map((t) => String(t.auvo_task_id)));
 
-      // 2) Pull OS rows whose gc_os_tarefa_exec matches any of those exec IDs.
-      // We fetch in chunks because PostgREST `in.()` filter has URL length limits.
-      const allOsRows: any[] = [];
-      const seen = new Set<string>();
-      const idArr = Array.from(execIds);
+      // 2) Collect all exec IDs referenced by those OS rows.
+      const referencedExecIds = new Set<string>();
+      const seenAuvoIds = new Set<string>();
+      for (const r of osRows) seenAuvoIds.add(String(r.auvo_task_id));
+      for (const r of osRows) {
+        for (const eid of parseExecIds(r.gc_os_tarefa_exec)) referencedExecIds.add(eid);
+      }
+
+      // 3) Fetch missing exec tasks (pra resolver técnico do executor) em chunks.
+      const missing = Array.from(referencedExecIds).filter((id) => !seenAuvoIds.has(id));
       const CHUNK = 200;
-      for (let i = 0; i < idArr.length; i += CHUNK) {
-        const slice = idArr.slice(i, i + CHUNK);
+      for (let i = 0; i < missing.length; i += CHUNK) {
+        const slice = missing.slice(i, i + CHUNK);
         const { data, error } = await supabase
           .from("tarefas_central")
-          .select("auvo_task_id, tecnico, tecnico_id, cliente, data_tarefa, data_conclusao, gc_os_id, gc_os_codigo, gc_os_cliente, gc_os_situacao, gc_os_valor_total, gc_os_vendedor, gc_os_tarefa_exec, gc_os_link, auvo_link")
-          .not("gc_os_id", "is", null)
-          .in("gc_os_tarefa_exec", slice);
+          .select("auvo_task_id, tecnico, tecnico_id, cliente, data_tarefa, data_conclusao, gc_os_id, gc_os_codigo, gc_os_cliente, gc_os_situacao, gc_os_valor_total, gc_os_vendedor, gc_os_tarefa_exec, gc_os_data_saida, gc_os_link, auvo_link")
+          .in("auvo_task_id", slice);
         if (error) throw error;
         for (const r of data || []) {
           const k = String(r.auvo_task_id);
-          if (!seen.has(k)) {
-            seen.add(k);
-            allOsRows.push(r);
+          if (!seenAuvoIds.has(k)) {
+            seenAuvoIds.add(k);
+            osRows.push(r);
           }
         }
       }
 
-      // 3) Also include the exec task rows themselves so the in-memory join
-      //    (taskById in crossedList) can resolve executor name/id locally.
-      const referencedExecIds = new Set<string>();
-      for (const r of allOsRows) {
-        for (const eid of String(r.gc_os_tarefa_exec || "").split("/").map((s) => s.trim()).filter((s) => /^\d+$/.test(s))) {
-          referencedExecIds.add(eid);
-        }
-      }
-      for (const t of execTasks) {
-        if (referencedExecIds.has(String(t.auvo_task_id)) && !seen.has(String(t.auvo_task_id))) {
-          seen.add(String(t.auvo_task_id));
-          allOsRows.push({
-            auvo_task_id: t.auvo_task_id,
-            tecnico: t.tecnico,
-            tecnico_id: t.tecnico_id,
-            cliente: null,
-            data_tarefa: t.data_tarefa,
-            data_conclusao: t.data_conclusao,
-            gc_os_id: null,
-            gc_os_codigo: null,
-            gc_os_cliente: null,
-            gc_os_situacao: null,
-            gc_os_valor_total: 0,
-            gc_os_tarefa_exec: null,
-            gc_os_link: null,
-            auvo_link: null,
-          });
-        }
-      }
-
-      return allOsRows;
+      return osRows;
     },
     staleTime: 30_000,
   });
