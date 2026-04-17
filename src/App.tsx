@@ -17,6 +17,7 @@ import OSKanbanPage from "./pages/financeiro/OSKanbanPage.tsx";
 import AgendaSemanalPage from "./pages/financeiro/AgendaSemanalPage.tsx";
 import UsersPage from "./pages/admin/UsersPage.tsx";
 import RelatoriosPage from "./pages/financeiro/RelatoriosPage.tsx";
+import OSCruzadasPage from "./pages/financeiro/OSCruzadasPage.tsx";
 import OficinaKanbanPage from "./pages/financeiro/OficinaKanbanPage.tsx";
 import EquipamentosPreventivosPage from "./pages/financeiro/EquipamentosPreventivosPage.tsx";
 import { Loader2 } from "lucide-react";
@@ -62,6 +63,7 @@ const AppRoutes = () => {
                 <Route path="/financeiro/kanban-os" element={<OSKanbanPage />} />
                 <Route path="/financeiro/agenda-semanal" element={<AgendaSemanalPage />} />
                 <Route path="/financeiro/relatorios" element={<RelatoriosPage />} />
+                <Route path="/financeiro/os-cruzadas" element={<OSCruzadasPage />} />
                 <Route path="/financeiro/kanban-oficina" element={<OficinaKanbanPage />} />
                 <Route path="/financeiro/equipamentos-preventivos" element={<EquipamentosPreventivosPage />} />
                 <Route path="/admin/usuarios" element={<UsersPage />} />

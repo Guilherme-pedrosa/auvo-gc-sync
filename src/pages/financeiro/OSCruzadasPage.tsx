@@ -1,0 +1,428 @@
+import { useState, useMemo, useCallback } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { supabase } from "@/integrations/supabase/client";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Calendar } from "@/components/ui/calendar";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Badge } from "@/components/ui/badge";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Skeleton } from "@/components/ui/skeleton";
+import { CalendarIcon, ArrowLeftRight, ExternalLink, Search, Users, ArrowRightLeft } from "lucide-react";
+import { format, startOfMonth, endOfMonth } from "date-fns";
+import { ptBR } from "date-fns/locale";
+import { cn } from "@/lib/utils";
+
+const PAGE_SIZE = 1000;
+
+const formatCurrency = (val: number) =>
+  val.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+
+const parseExecIds = (raw: unknown): string[] => {
+  const str = String(raw ?? "").trim();
+  if (!str) return [];
+  return str.split("/").map((s) => s.trim()).filter((s) => /^\d+$/.test(s));
+};
+
+interface CrossedOS {
+  gc_os_id: string;
+  gc_os_codigo: string | null;
+  gc_os_situacao: string | null;
+  gc_os_valor_total: number;
+  cliente: string;
+  data_tarefa: string | null;
+  data_conclusao: string | null;
+  abridor_id: string;
+  abridor_nome: string;
+  executor_id: string;
+  executor_nome: string;
+  os_task_id: string | null;
+  exec_task_id: string | null;
+  auvo_link: string | null;
+}
+
+export default function OSCruzadasPage() {
+  const today = new Date();
+  const [dateFrom, setDateFrom] = useState<Date>(startOfMonth(today));
+  const [dateTo, setDateTo] = useState<Date>(endOfMonth(today));
+  const [search, setSearch] = useState("");
+  const [selectedTecnico, setSelectedTecnico] = useState<string | null>(null);
+  const [viewMode, setViewMode] = useState<"executor" | "abridor">("executor");
+
+  // Fetch all tarefas with OS in date range
+  const { data: tarefas = [], isLoading } = useQuery({
+    queryKey: ["os-cruzadas-tarefas", format(dateFrom, "yyyy-MM-dd"), format(dateTo, "yyyy-MM-dd")],
+    queryFn: async () => {
+      const from = format(dateFrom, "yyyy-MM-dd");
+      const to = format(dateTo, "yyyy-MM-dd");
+      const all: any[] = [];
+      let offset = 0;
+      while (true) {
+        const { data, error } = await supabase
+          .from("tarefas_central")
+          .select("auvo_task_id, tecnico, tecnico_id, cliente, data_tarefa, data_conclusao, gc_os_id, gc_os_codigo, gc_os_cliente, gc_os_situacao, gc_os_valor_total, gc_os_tarefa_exec, gc_os_link, auvo_link")
+          .not("gc_os_id", "is", null)
+          .gte("data_tarefa", from)
+          .lte("data_tarefa", to)
+          .range(offset, offset + PAGE_SIZE - 1);
+        if (error) throw error;
+        const batch = data || [];
+        all.push(...batch);
+        if (batch.length < PAGE_SIZE) break;
+        offset += PAGE_SIZE;
+      }
+      return all;
+    },
+    staleTime: 30_000,
+  });
+
+  // Compute crossed OS
+  const crossedList = useMemo<CrossedOS[]>(() => {
+    // Group tasks by gc_os_id
+    const byOsId = new Map<string, any[]>();
+    for (const t of tarefas) {
+      if (!t.gc_os_id) continue;
+      const key = String(t.gc_os_id);
+      const bucket = byOsId.get(key) || [];
+      bucket.push(t);
+      byOsId.set(key, bucket);
+    }
+
+    const taskById = new Map<string, any>();
+    for (const t of tarefas) taskById.set(String(t.auvo_task_id), t);
+
+    const result: CrossedOS[] = [];
+
+    for (const [gcOsId, tasks] of byOsId.entries()) {
+      // Determine OS task (the one whose auvo_task_id is NOT in any exec list)
+      const allExecIds = new Set<string>();
+      for (const t of tasks) {
+        for (const eid of parseExecIds(t.gc_os_tarefa_exec)) allExecIds.add(eid);
+      }
+      const osTask =
+        tasks.find((t) => !allExecIds.has(String(t.auvo_task_id))) ||
+        tasks.find((t) => String(t.auvo_task_id) !== String(t.gc_os_tarefa_exec || "")) ||
+        tasks[0];
+
+      const execIds = parseExecIds(osTask?.gc_os_tarefa_exec);
+      if (execIds.length === 0) continue; // no exec task → can't determine cross
+
+      // Resolve exec task: first try local, then any exec id
+      let execTask: any = null;
+      for (const eid of execIds) {
+        const found = taskById.get(eid);
+        if (found?.tecnico_id && found?.tecnico) {
+          execTask = found;
+          break;
+        }
+      }
+      if (!execTask) continue; // exec task not in DB
+
+      const abridorId = String(osTask?.tecnico_id || "").trim();
+      const abridorNome = String(osTask?.tecnico || "").trim();
+      const executorId = String(execTask?.tecnico_id || "").trim();
+      const executorNome = String(execTask?.tecnico || "").trim();
+
+      if (!abridorId || !executorId || !abridorNome || !executorNome) continue;
+      if (abridorId === executorId) continue; // same tech opened and executed → skip
+
+      result.push({
+        gc_os_id: gcOsId,
+        gc_os_codigo: osTask.gc_os_codigo,
+        gc_os_situacao: osTask.gc_os_situacao,
+        gc_os_valor_total: Number(osTask.gc_os_valor_total) || 0,
+        cliente: osTask.cliente || osTask.gc_os_cliente || "—",
+        data_tarefa: osTask.data_tarefa,
+        data_conclusao: execTask.data_conclusao || osTask.data_conclusao,
+        abridor_id: abridorId,
+        abridor_nome: abridorNome,
+        executor_id: executorId,
+        executor_nome: executorNome,
+        os_task_id: osTask.auvo_task_id,
+        exec_task_id: execTask.auvo_task_id,
+        auvo_link: osTask.gc_os_link || osTask.auvo_link,
+      });
+    }
+
+    return result;
+  }, [tarefas]);
+
+  // Aggregate per technician (executor view: what each tech executed for others)
+  const totaisPorExecutor = useMemo(() => {
+    const map = new Map<string, { id: string; nome: string; count: number; total: number }>();
+    for (const c of crossedList) {
+      const e = map.get(c.executor_id) || { id: c.executor_id, nome: c.executor_nome, count: 0, total: 0 };
+      e.count++;
+      e.total += c.gc_os_valor_total;
+      map.set(c.executor_id, e);
+    }
+    return Array.from(map.values()).sort((a, b) => b.total - a.total);
+  }, [crossedList]);
+
+  // Aggregate per technician (abridor view: what each tech opened that someone else executed)
+  const totaisPorAbridor = useMemo(() => {
+    const map = new Map<string, { id: string; nome: string; count: number; total: number }>();
+    for (const c of crossedList) {
+      const e = map.get(c.abridor_id) || { id: c.abridor_id, nome: c.abridor_nome, count: 0, total: 0 };
+      e.count++;
+      e.total += c.gc_os_valor_total;
+      map.set(c.abridor_id, e);
+    }
+    return Array.from(map.values()).sort((a, b) => b.total - a.total);
+  }, [crossedList]);
+
+  const totais = viewMode === "executor" ? totaisPorExecutor : totaisPorAbridor;
+
+  // Filtered detail: by selected tech and search
+  const detalhe = useMemo(() => {
+    let items = crossedList;
+    if (selectedTecnico) {
+      items = items.filter((c) =>
+        viewMode === "executor" ? c.executor_id === selectedTecnico : c.abridor_id === selectedTecnico
+      );
+    }
+    if (search.trim()) {
+      const s = search.toLowerCase();
+      items = items.filter(
+        (c) =>
+          (c.gc_os_codigo || "").toLowerCase().includes(s) ||
+          c.cliente.toLowerCase().includes(s) ||
+          c.abridor_nome.toLowerCase().includes(s) ||
+          c.executor_nome.toLowerCase().includes(s)
+      );
+    }
+    return items.sort((a, b) => b.gc_os_valor_total - a.gc_os_valor_total);
+  }, [crossedList, selectedTecnico, search, viewMode]);
+
+  const totalGeral = useMemo(() => crossedList.reduce((s, c) => s + c.gc_os_valor_total, 0), [crossedList]);
+
+  const setMonth = useCallback((monthsBack: number) => {
+    const d = new Date();
+    d.setMonth(d.getMonth() - monthsBack);
+    setDateFrom(startOfMonth(d));
+    setDateTo(endOfMonth(d));
+    setSelectedTecnico(null);
+  }, []);
+
+  return (
+    <div className="p-6 space-y-6 max-w-[1600px] mx-auto">
+      <div className="flex items-start justify-between gap-4 flex-wrap">
+        <div>
+          <h1 className="text-2xl font-bold flex items-center gap-2">
+            <ArrowLeftRight className="h-6 w-6 text-primary" />
+            OS Cruzadas — Abridor ≠ Executor
+          </h1>
+          <p className="text-sm text-muted-foreground mt-1">
+            Mapeamento de OS abertas por um técnico e executadas por outro. OS em que o mesmo técnico abriu e fechou são excluídas.
+          </p>
+        </div>
+
+        <div className="flex items-center gap-2 flex-wrap">
+          <Button variant="outline" size="sm" onClick={() => setMonth(0)}>Mês atual</Button>
+          <Button variant="outline" size="sm" onClick={() => setMonth(1)}>Mês anterior</Button>
+
+          <Popover>
+            <PopoverTrigger asChild>
+              <Button variant="outline" size="sm" className="gap-2">
+                <CalendarIcon className="h-4 w-4" />
+                {format(dateFrom, "dd/MM/yyyy", { locale: ptBR })}
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent className="w-auto p-0" align="end">
+              <Calendar mode="single" selected={dateFrom} onSelect={(d) => d && setDateFrom(d)} initialFocus className="pointer-events-auto" />
+            </PopoverContent>
+          </Popover>
+
+          <span className="text-muted-foreground text-sm">até</span>
+
+          <Popover>
+            <PopoverTrigger asChild>
+              <Button variant="outline" size="sm" className="gap-2">
+                <CalendarIcon className="h-4 w-4" />
+                {format(dateTo, "dd/MM/yyyy", { locale: ptBR })}
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent className="w-auto p-0" align="end">
+              <Calendar mode="single" selected={dateTo} onSelect={(d) => d && setDateTo(d)} initialFocus className="pointer-events-auto" />
+            </PopoverContent>
+          </Popover>
+        </div>
+      </div>
+
+      {/* Summary cards */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Total OS Cruzadas</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="text-3xl font-bold">{crossedList.length}</div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Valor Total</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="text-3xl font-bold text-primary">{formatCurrency(totalGeral)}</div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Técnicos Envolvidos</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="text-3xl font-bold">{new Set([...totaisPorExecutor.map((t) => t.id), ...totaisPorAbridor.map((t) => t.id)]).size}</div>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Mode tabs */}
+      <Tabs value={viewMode} onValueChange={(v) => { setViewMode(v as "executor" | "abridor"); setSelectedTecnico(null); }}>
+        <TabsList>
+          <TabsTrigger value="executor" className="gap-2">
+            <Users className="h-4 w-4" />
+            Por Executor (executou OS de outros)
+          </TabsTrigger>
+          <TabsTrigger value="abridor" className="gap-2">
+            <ArrowRightLeft className="h-4 w-4" />
+            Por Abridor (abriu OS executada por outros)
+          </TabsTrigger>
+        </TabsList>
+
+        <TabsContent value={viewMode} className="space-y-4 mt-4">
+          {/* Technician summary table */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">
+                {viewMode === "executor"
+                  ? "Total executado para OS abertas por outros técnicos"
+                  : "Total aberto por técnico, executado por outros"}
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              {isLoading ? (
+                <div className="space-y-2">{[...Array(4)].map((_, i) => <Skeleton key={i} className="h-10 w-full" />)}</div>
+              ) : totais.length === 0 ? (
+                <div className="text-center py-8 text-muted-foreground text-sm">Nenhuma OS cruzada encontrada no período.</div>
+              ) : (
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Técnico</TableHead>
+                      <TableHead className="text-right">Qtd. OS</TableHead>
+                      <TableHead className="text-right">Valor Total</TableHead>
+                      <TableHead className="text-right">% do Total</TableHead>
+                      <TableHead></TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {totais.map((t) => {
+                      const pct = totalGeral > 0 ? (t.total / totalGeral) * 100 : 0;
+                      const isSelected = selectedTecnico === t.id;
+                      return (
+                        <TableRow
+                          key={t.id}
+                          className={cn("cursor-pointer hover:bg-muted/50", isSelected && "bg-primary/5")}
+                          onClick={() => setSelectedTecnico(isSelected ? null : t.id)}
+                        >
+                          <TableCell className="font-medium">{t.nome}</TableCell>
+                          <TableCell className="text-right">{t.count}</TableCell>
+                          <TableCell className="text-right font-mono font-semibold">{formatCurrency(t.total)}</TableCell>
+                          <TableCell className="text-right text-muted-foreground">{pct.toFixed(1)}%</TableCell>
+                          <TableCell className="text-right">
+                            <Badge variant={isSelected ? "default" : "outline"} className="text-xs">
+                              {isSelected ? "Ocultar" : "Ver detalhes"}
+                            </Badge>
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
+                  </TableBody>
+                </Table>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Detail table */}
+          {(selectedTecnico || search) && (
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between gap-4">
+                <CardTitle className="text-base">
+                  {selectedTecnico
+                    ? `Detalhe — ${totais.find((t) => t.id === selectedTecnico)?.nome || "Técnico"}`
+                    : "Detalhe (busca)"}
+                </CardTitle>
+                <div className="relative w-72">
+                  <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    placeholder="Buscar OS, cliente, técnico..."
+                    value={search}
+                    onChange={(e) => setSearch(e.target.value)}
+                    className="pl-8 h-9"
+                  />
+                </div>
+              </CardHeader>
+              <CardContent>
+                {detalhe.length === 0 ? (
+                  <div className="text-center py-8 text-muted-foreground text-sm">Nenhuma OS encontrada.</div>
+                ) : (
+                  <div className="overflow-auto">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>OS</TableHead>
+                          <TableHead>Cliente</TableHead>
+                          <TableHead>Situação</TableHead>
+                          <TableHead>Abridor</TableHead>
+                          <TableHead>Executor</TableHead>
+                          <TableHead>Data</TableHead>
+                          <TableHead className="text-right">Valor</TableHead>
+                          <TableHead></TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {detalhe.map((c) => (
+                          <TableRow key={c.gc_os_id}>
+                            <TableCell className="font-mono text-sm">{c.gc_os_codigo || c.gc_os_id}</TableCell>
+                            <TableCell className="max-w-[220px] truncate" title={c.cliente}>{c.cliente}</TableCell>
+                            <TableCell>
+                              <Badge variant="outline" className="text-xs">{c.gc_os_situacao || "—"}</Badge>
+                            </TableCell>
+                            <TableCell>
+                              <span className={cn(viewMode === "abridor" && c.abridor_id === selectedTecnico && "font-semibold")}>
+                                {c.abridor_nome}
+                              </span>
+                            </TableCell>
+                            <TableCell>
+                              <span className={cn(viewMode === "executor" && c.executor_id === selectedTecnico && "font-semibold")}>
+                                {c.executor_nome}
+                              </span>
+                            </TableCell>
+                            <TableCell className="text-xs text-muted-foreground">
+                              {c.data_tarefa ? format(new Date(c.data_tarefa + "T00:00:00"), "dd/MM/yyyy") : "—"}
+                            </TableCell>
+                            <TableCell className="text-right font-mono font-semibold">{formatCurrency(c.gc_os_valor_total)}</TableCell>
+                            <TableCell>
+                              {c.auvo_link && (
+                                <a href={c.auvo_link} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">
+                                  <ExternalLink className="h-3.5 w-3.5" />
+                                </a>
+                              )}
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          )}
+        </TabsContent>
+      </Tabs>
+    </div>
+  );
+}
