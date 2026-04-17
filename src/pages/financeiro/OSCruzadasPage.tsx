@@ -94,7 +94,7 @@ export default function OSCruzadasPage() {
         const slice = idArr.slice(i, i + CHUNK);
         const { data, error } = await supabase
           .from("tarefas_central")
-          .select("auvo_task_id, tecnico, tecnico_id, cliente, data_tarefa, data_conclusao, gc_os_id, gc_os_codigo, gc_os_cliente, gc_os_situacao, gc_os_valor_total, gc_os_tarefa_exec, gc_os_link, auvo_link")
+          .select("auvo_task_id, tecnico, tecnico_id, cliente, data_tarefa, data_conclusao, gc_os_id, gc_os_codigo, gc_os_cliente, gc_os_situacao, gc_os_valor_total, gc_os_vendedor, gc_os_tarefa_exec, gc_os_link, auvo_link")
           .not("gc_os_id", "is", null)
           .in("gc_os_tarefa_exec", slice);
         if (error) throw error;
@@ -221,6 +221,11 @@ export default function OSCruzadasPage() {
     const result: CrossedOS[] = [];
 
     for (const [gcOsId, tasks] of byOsId.entries()) {
+      // Skip OS sem vendedor no GC: significa execução em fim de semana
+      // (venda interna sem responsável atribuído) — não conta como cruzada.
+      const hasVendedor = tasks.some((t) => String(t.gc_os_vendedor || "").trim() !== "");
+      if (!hasVendedor) continue;
+
       // Build set of all exec IDs referenced by any task in this group
       const allExecIds = new Set<string>();
       for (const t of tasks) {
