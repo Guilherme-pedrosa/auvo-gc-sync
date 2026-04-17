@@ -233,14 +233,15 @@ export default function OSCruzadasPage() {
       }
       if (allExecIds.size === 0) continue;
 
-      // Strict identification: opener = task whose own auvo_task_id is NOT in
-      // any exec list (i.e. it's not pointed to as the executor of anything).
-      const openers = tasks.filter((t) => !allExecIds.has(String(t.auvo_task_id)));
+      // Openers = tasks NOT pointed to as executors. Multiple openers = OS com
+      // várias tarefas abridoras (ex: tentativas múltiplas, reagendamento) —
+      // todas válidas. Escolhe a mais antiga como representante da OS para
+      // garantir uma única linha por gc_os_id.
+      const openers = tasks
+        .filter((t) => !allExecIds.has(String(t.auvo_task_id)) && t.tecnico_id)
+        .sort((a, b) => String(a.data_tarefa || "").localeCompare(String(b.data_tarefa || "")));
 
-      // Ambiguity guard: if zero or multiple distinct openers, skip — we cannot
-      // safely decide who opened vs executed. Avoids picking a noise/ghost task
-      // whose Auvo `cliente` or technician would mislead the report (e.g. OS 9316).
-      if (openers.length !== 1) continue;
+      if (openers.length === 0) continue;
       const osTask = openers[0];
 
       const execIds = parseExecIds(osTask?.gc_os_tarefa_exec);
