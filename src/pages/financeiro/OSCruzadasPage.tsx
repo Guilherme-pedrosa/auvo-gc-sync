@@ -221,18 +221,25 @@ export default function OSCruzadasPage() {
     const result: CrossedOS[] = [];
 
     for (const [gcOsId, tasks] of byOsId.entries()) {
-      // Determine OS task (the one whose auvo_task_id is NOT in any exec list)
+      // Build set of all exec IDs referenced by any task in this group
       const allExecIds = new Set<string>();
       for (const t of tasks) {
         for (const eid of parseExecIds(t.gc_os_tarefa_exec)) allExecIds.add(eid);
       }
-      const osTask =
-        tasks.find((t) => !allExecIds.has(String(t.auvo_task_id))) ||
-        tasks.find((t) => String(t.auvo_task_id) !== String(t.gc_os_tarefa_exec || "")) ||
-        tasks[0];
+      if (allExecIds.size === 0) continue;
+
+      // Strict identification: opener = task whose own auvo_task_id is NOT in
+      // any exec list (i.e. it's not pointed to as the executor of anything).
+      const openers = tasks.filter((t) => !allExecIds.has(String(t.auvo_task_id)));
+
+      // Ambiguity guard: if zero or multiple distinct openers, skip — we cannot
+      // safely decide who opened vs executed. Avoids picking a noise/ghost task
+      // whose Auvo `cliente` or technician would mislead the report (e.g. OS 9316).
+      if (openers.length !== 1) continue;
+      const osTask = openers[0];
 
       const execIds = parseExecIds(osTask?.gc_os_tarefa_exec);
-      if (execIds.length === 0) continue; // no exec task → can't determine cross
+      if (execIds.length === 0) continue;
 
       // Resolve exec task: first try local DB, then resolved Auvo cache
       let execTask: { tecnico_id: string; tecnico: string; data_conclusao: string | null; auvo_task_id: string } | null = null;
@@ -258,7 +265,7 @@ export default function OSCruzadasPage() {
           break;
         }
       }
-      if (!execTask) continue; // exec task still not resolvable
+      if (!execTask) continue;
 
       const abridorId = String(osTask?.tecnico_id || "").trim();
       const abridorNome = String(osTask?.tecnico || "").trim();
@@ -266,14 +273,16 @@ export default function OSCruzadasPage() {
       const executorNome = execTask.tecnico;
 
       if (!abridorId || !executorId || !abridorNome || !executorNome) continue;
-      if (abridorId === executorId) continue; // same tech opened and executed → skip
+      if (abridorId === executorId) continue;
 
       result.push({
         gc_os_id: gcOsId,
         gc_os_codigo: osTask.gc_os_codigo,
         gc_os_situacao: osTask.gc_os_situacao,
         gc_os_valor_total: Number(osTask.gc_os_valor_total) || 0,
-        cliente: osTask.cliente || osTask.gc_os_cliente || "—",
+        // Sempre usar o cliente real da OS no GC; o `cliente` da tarefa Auvo
+        // pode estar errado se a tarefa foi vinculada por engano à OS.
+        cliente: osTask.gc_os_cliente || osTask.cliente || "—",
         data_tarefa: osTask.data_tarefa,
         data_conclusao: execTask.data_conclusao || osTask.data_conclusao,
         abridor_id: abridorId,
