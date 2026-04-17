@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback } from "react";
+import { useState, useMemo, useCallback, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -10,10 +10,16 @@ import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Skeleton } from "@/components/ui/skeleton";
-import { CalendarIcon, ArrowLeftRight, ExternalLink, Search, Users, ArrowRightLeft, Scale, TrendingUp, TrendingDown } from "lucide-react";
+import { CalendarIcon, ArrowLeftRight, ExternalLink, Search, Users, ArrowRightLeft, Scale, TrendingUp, TrendingDown, Loader2 } from "lucide-react";
 import { format, startOfMonth, endOfMonth } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { cn } from "@/lib/utils";
+
+interface ResolvedExecTask {
+  tecnico_id: string;
+  tecnico: string;
+  data_conclusao: string | null;
+}
 
 const PAGE_SIZE = 1000;
 
@@ -78,6 +84,67 @@ export default function OSCruzadasPage() {
     staleTime: 30_000,
   });
 
+  // Cache of exec tasks resolved via Auvo API (for tasks not in tarefas_central)
+  const [resolvedExec, setResolvedExec] = useState<Record<string, ResolvedExecTask | null>>({});
+  const [resolvingCount, setResolvingCount] = useState(0);
+
+  // Identify exec task IDs referenced but missing from local data
+  const missingExecIds = useMemo(() => {
+    const local = new Set<string>();
+    for (const t of tarefas) local.add(String(t.auvo_task_id));
+    const missing = new Set<string>();
+    for (const t of tarefas) {
+      const ids = String(t.gc_os_tarefa_exec || "").split("/").map((s) => s.trim()).filter((s) => /^\d+$/.test(s));
+      for (const eid of ids) {
+        if (!local.has(eid) && !(eid in resolvedExec)) missing.add(eid);
+      }
+    }
+    return Array.from(missing);
+  }, [tarefas, resolvedExec]);
+
+  // Resolve missing exec tasks via Auvo API in batches
+  useEffect(() => {
+    if (missingExecIds.length === 0) return;
+    let cancelled = false;
+    (async () => {
+      setResolvingCount(missingExecIds.length);
+      const BATCH = 5;
+      for (let i = 0; i < missingExecIds.length; i += BATCH) {
+        if (cancelled) return;
+        const slice = missingExecIds.slice(i, i + BATCH);
+        const results = await Promise.all(
+          slice.map(async (taskId) => {
+            try {
+              const { data, error } = await supabase.functions.invoke("auvo-task-update", {
+                body: { action: "get", taskId: Number(taskId) },
+              });
+              if (error || !data?.ok) return [taskId, null] as const;
+              const task = data?.task ?? data?.data ?? data;
+              const userId = String(task?.userId ?? task?.idUser ?? task?.user?.userId ?? "").trim();
+              const userName = String(task?.userName ?? task?.user?.name ?? task?.userToTask?.name ?? "").trim();
+              const dataConclusao = task?.checkOutDate || task?.taskFinishDate || null;
+              if (!userId && !userName) return [taskId, null] as const;
+              return [taskId, { tecnico_id: userId, tecnico: userName, data_conclusao: dataConclusao }] as const;
+            } catch {
+              return [taskId, null] as const;
+            }
+          })
+        );
+        if (cancelled) return;
+        setResolvedExec((prev) => {
+          const next = { ...prev };
+          for (const [id, val] of results) next[id] = val;
+          return next;
+        });
+      }
+      if (!cancelled) setResolvingCount(0);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [missingExecIds]);
+
+
   // Compute crossed OS
   const crossedList = useMemo<CrossedOS[]>(() => {
     // Group tasks by gc_os_id
@@ -109,21 +176,36 @@ export default function OSCruzadasPage() {
       const execIds = parseExecIds(osTask?.gc_os_tarefa_exec);
       if (execIds.length === 0) continue; // no exec task → can't determine cross
 
-      // Resolve exec task: first try local, then any exec id
-      let execTask: any = null;
+      // Resolve exec task: first try local DB, then resolved Auvo cache
+      let execTask: { tecnico_id: string; tecnico: string; data_conclusao: string | null; auvo_task_id: string } | null = null;
       for (const eid of execIds) {
         const found = taskById.get(eid);
         if (found?.tecnico_id && found?.tecnico) {
-          execTask = found;
+          execTask = {
+            tecnico_id: String(found.tecnico_id),
+            tecnico: String(found.tecnico),
+            data_conclusao: found.data_conclusao,
+            auvo_task_id: String(found.auvo_task_id),
+          };
+          break;
+        }
+        const resolved = resolvedExec[eid];
+        if (resolved?.tecnico_id && resolved?.tecnico) {
+          execTask = {
+            tecnico_id: resolved.tecnico_id,
+            tecnico: resolved.tecnico,
+            data_conclusao: resolved.data_conclusao,
+            auvo_task_id: eid,
+          };
           break;
         }
       }
-      if (!execTask) continue; // exec task not in DB
+      if (!execTask) continue; // exec task still not resolvable
 
       const abridorId = String(osTask?.tecnico_id || "").trim();
       const abridorNome = String(osTask?.tecnico || "").trim();
-      const executorId = String(execTask?.tecnico_id || "").trim();
-      const executorNome = String(execTask?.tecnico || "").trim();
+      const executorId = execTask.tecnico_id;
+      const executorNome = execTask.tecnico;
 
       if (!abridorId || !executorId || !abridorNome || !executorNome) continue;
       if (abridorId === executorId) continue; // same tech opened and executed → skip
@@ -147,7 +229,8 @@ export default function OSCruzadasPage() {
     }
 
     return result;
-  }, [tarefas]);
+  }, [tarefas, resolvedExec]);
+
 
   // Aggregate per technician (executor view: what each tech executed for others)
   const totaisPorExecutor = useMemo(() => {
@@ -241,6 +324,12 @@ export default function OSCruzadasPage() {
           <p className="text-sm text-muted-foreground mt-1">
             Mapeamento de OS abertas por um técnico e executadas por outro. OS em que o mesmo técnico abriu e fechou são excluídas.
           </p>
+          {resolvingCount > 0 && (
+            <p className="text-xs text-muted-foreground mt-2 inline-flex items-center gap-2">
+              <Loader2 className="h-3 w-3 animate-spin" />
+              Resolvendo {resolvingCount} tarefa(s) de execução via Auvo (fora da janela local)…
+            </p>
+          )}
         </div>
 
         <div className="flex items-center gap-2 flex-wrap">
