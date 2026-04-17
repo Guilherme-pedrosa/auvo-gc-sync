@@ -40,6 +40,7 @@ interface CrossedOS {
   cliente: string;
   data_tarefa: string | null;
   data_conclusao: string | null;
+  data_saida: string | null;
   abridor_id: string;
   abridor_nome: string;
   executor_id: string;
@@ -47,6 +48,7 @@ interface CrossedOS {
   os_task_id: string | null;
   exec_task_id: string | null;
   auvo_link: string | null;
+  is_cruzada: boolean;
 }
 
 export default function OSCruzadasPage() {
@@ -57,87 +59,60 @@ export default function OSCruzadasPage() {
   const [selectedTecnico, setSelectedTecnico] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<"executor" | "abridor" | "saldo">("saldo");
 
-  // Step 1: identify EXECUTION tasks in the period (data_tarefa = data execução).
-  // Step 2: fetch every OS row whose execution task ID is in that set,
-  // regardless of when the OPENING task happened.
+  // Foco: GC manda. Pega TODAS as linhas de OS do GC cuja data de saída
+  // (gc_os_data_saida) cai no período. Auvo só preenche nomes de técnicos.
   const { data: tarefas = [], isLoading } = useQuery({
-    queryKey: ["os-cruzadas-tarefas-by-exec", format(dateFrom, "yyyy-MM-dd"), format(dateTo, "yyyy-MM-dd")],
+    queryKey: ["os-cruzadas-by-gc-saida", format(dateFrom, "yyyy-MM-dd"), format(dateTo, "yyyy-MM-dd")],
     queryFn: async () => {
       const from = format(dateFrom, "yyyy-MM-dd");
       const to = format(dateTo, "yyyy-MM-dd");
 
-      // 1) Pull all tasks executed in the period (any task, not just OS rows).
-      const execTasks: any[] = [];
+      // 1) Pull all OS rows whose gc_os_data_saida falls in the period.
+      const osRows: any[] = [];
       let offset = 0;
       while (true) {
         const { data, error } = await supabase
           .from("tarefas_central")
-          .select("auvo_task_id, tecnico, tecnico_id, data_tarefa, data_conclusao")
-          .gte("data_tarefa", from)
-          .lte("data_tarefa", to)
+          .select("auvo_task_id, tecnico, tecnico_id, cliente, data_tarefa, data_conclusao, gc_os_id, gc_os_codigo, gc_os_cliente, gc_os_situacao, gc_os_valor_total, gc_os_vendedor, gc_os_tarefa_exec, gc_os_data_saida, gc_os_link, auvo_link")
+          .not("gc_os_id", "is", null)
+          .gte("gc_os_data_saida", from)
+          .lte("gc_os_data_saida", to)
           .range(offset, offset + PAGE_SIZE - 1);
         if (error) throw error;
         const batch = data || [];
-        execTasks.push(...batch);
+        osRows.push(...batch);
         if (batch.length < PAGE_SIZE) break;
         offset += PAGE_SIZE;
       }
-      const execIds = new Set(execTasks.map((t) => String(t.auvo_task_id)));
 
-      // 2) Pull OS rows whose gc_os_tarefa_exec matches any of those exec IDs.
-      // We fetch in chunks because PostgREST `in.()` filter has URL length limits.
-      const allOsRows: any[] = [];
-      const seen = new Set<string>();
-      const idArr = Array.from(execIds);
+      // 2) Collect all exec IDs referenced by those OS rows.
+      const referencedExecIds = new Set<string>();
+      const seenAuvoIds = new Set<string>();
+      for (const r of osRows) seenAuvoIds.add(String(r.auvo_task_id));
+      for (const r of osRows) {
+        for (const eid of parseExecIds(r.gc_os_tarefa_exec)) referencedExecIds.add(eid);
+      }
+
+      // 3) Fetch missing exec tasks (pra resolver técnico do executor) em chunks.
+      const missing = Array.from(referencedExecIds).filter((id) => !seenAuvoIds.has(id));
       const CHUNK = 200;
-      for (let i = 0; i < idArr.length; i += CHUNK) {
-        const slice = idArr.slice(i, i + CHUNK);
+      for (let i = 0; i < missing.length; i += CHUNK) {
+        const slice = missing.slice(i, i + CHUNK);
         const { data, error } = await supabase
           .from("tarefas_central")
-          .select("auvo_task_id, tecnico, tecnico_id, cliente, data_tarefa, data_conclusao, gc_os_id, gc_os_codigo, gc_os_cliente, gc_os_situacao, gc_os_valor_total, gc_os_vendedor, gc_os_tarefa_exec, gc_os_link, auvo_link")
-          .not("gc_os_id", "is", null)
-          .in("gc_os_tarefa_exec", slice);
+          .select("auvo_task_id, tecnico, tecnico_id, cliente, data_tarefa, data_conclusao, gc_os_id, gc_os_codigo, gc_os_cliente, gc_os_situacao, gc_os_valor_total, gc_os_vendedor, gc_os_tarefa_exec, gc_os_data_saida, gc_os_link, auvo_link")
+          .in("auvo_task_id", slice);
         if (error) throw error;
         for (const r of data || []) {
           const k = String(r.auvo_task_id);
-          if (!seen.has(k)) {
-            seen.add(k);
-            allOsRows.push(r);
+          if (!seenAuvoIds.has(k)) {
+            seenAuvoIds.add(k);
+            osRows.push(r);
           }
         }
       }
 
-      // 3) Also include the exec task rows themselves so the in-memory join
-      //    (taskById in crossedList) can resolve executor name/id locally.
-      const referencedExecIds = new Set<string>();
-      for (const r of allOsRows) {
-        for (const eid of String(r.gc_os_tarefa_exec || "").split("/").map((s) => s.trim()).filter((s) => /^\d+$/.test(s))) {
-          referencedExecIds.add(eid);
-        }
-      }
-      for (const t of execTasks) {
-        if (referencedExecIds.has(String(t.auvo_task_id)) && !seen.has(String(t.auvo_task_id))) {
-          seen.add(String(t.auvo_task_id));
-          allOsRows.push({
-            auvo_task_id: t.auvo_task_id,
-            tecnico: t.tecnico,
-            tecnico_id: t.tecnico_id,
-            cliente: null,
-            data_tarefa: t.data_tarefa,
-            data_conclusao: t.data_conclusao,
-            gc_os_id: null,
-            gc_os_codigo: null,
-            gc_os_cliente: null,
-            gc_os_situacao: null,
-            gc_os_valor_total: 0,
-            gc_os_tarefa_exec: null,
-            gc_os_link: null,
-            auvo_link: null,
-          });
-        }
-      }
-
-      return allOsRows;
+      return osRows;
     },
     staleTime: 30_000,
   });
@@ -203,12 +178,19 @@ export default function OSCruzadasPage() {
   }, [missingExecIds]);
 
 
-  // Compute crossed OS
+  // Compute OS list: 1 row per gc_os_id (GC manda). Resolve abridor/executor
+  // via Auvo when possible. Marca is_cruzada quando abridor ≠ executor.
   const crossedList = useMemo<CrossedOS[]>(() => {
-    // Group tasks by gc_os_id
+    // Group by gc_os_id, but only for rows whose gc_os_data_saida is in the period
+    // (the rows fetched via referencedExecIds may have different/older data_saida).
+    const fromStr = format(dateFrom, "yyyy-MM-dd");
+    const toStr = format(dateTo, "yyyy-MM-dd");
+
     const byOsId = new Map<string, any[]>();
     for (const t of tarefas) {
       if (!t.gc_os_id) continue;
+      const saida = String(t.gc_os_data_saida || "");
+      if (!saida || saida < fromStr || saida > toStr) continue;
       const key = String(t.gc_os_id);
       const bucket = byOsId.get(key) || [];
       bucket.push(t);
@@ -226,30 +208,25 @@ export default function OSCruzadasPage() {
       const hasVendedor = tasks.some((t) => String(t.gc_os_vendedor || "").trim() !== "");
       if (!hasVendedor) continue;
 
+      // Pick a representative row (any with gc_os_codigo). All rows in the group
+      // share the same gc_os_id, so OS-level fields are identical.
+      const rep = tasks.find((t) => t.gc_os_codigo) || tasks[0];
+
       // Build set of all exec IDs referenced by any task in this group
       const allExecIds = new Set<string>();
       for (const t of tasks) {
         for (const eid of parseExecIds(t.gc_os_tarefa_exec)) allExecIds.add(eid);
       }
-      if (allExecIds.size === 0) continue;
 
-      // Openers = tasks NOT pointed to as executors. Multiple openers = OS com
-      // várias tarefas abridoras (ex: tentativas múltiplas, reagendamento) —
-      // todas válidas. Escolhe a mais antiga como representante da OS para
-      // garantir uma única linha por gc_os_id.
+      // Openers = tasks NOT pointed to as executors. Pick oldest as representative.
       const openers = tasks
-        .filter((t) => !allExecIds.has(String(t.auvo_task_id)) && t.tecnico_id)
+        .filter((t) => !allExecIds.has(String(t.auvo_task_id)))
         .sort((a, b) => String(a.data_tarefa || "").localeCompare(String(b.data_tarefa || "")));
+      const opener = openers[0] || rep;
 
-      if (openers.length === 0) continue;
-      const osTask = openers[0];
-
-      const execIds = parseExecIds(osTask?.gc_os_tarefa_exec);
-      if (execIds.length === 0) continue;
-
-      // Resolve exec task: first try local DB, then resolved Auvo cache
+      // Resolve executor from any exec ID
       let execTask: { tecnico_id: string; tecnico: string; data_conclusao: string | null; auvo_task_id: string } | null = null;
-      for (const eid of execIds) {
+      for (const eid of Array.from(allExecIds)) {
         const found = taskById.get(eid);
         if (found?.tecnico_id && found?.tecnico) {
           execTask = {
@@ -271,63 +248,65 @@ export default function OSCruzadasPage() {
           break;
         }
       }
-      if (!execTask) continue;
 
-      const abridorId = String(osTask?.tecnico_id || "").trim();
-      const abridorNome = String(osTask?.tecnico || "").trim();
-      const executorId = execTask.tecnico_id;
-      const executorNome = execTask.tecnico;
+      const abridorId = String(opener?.tecnico_id || "").trim();
+      const abridorNome = String(opener?.tecnico || "").trim() || "—";
+      const executorId = execTask?.tecnico_id || "";
+      const executorNome = execTask?.tecnico || "—";
 
-      if (!abridorId || !executorId || !abridorNome || !executorNome) continue;
-      if (abridorId === executorId) continue;
+      const isCruzada =
+        !!abridorId && !!executorId && abridorId !== executorId;
 
       result.push({
         gc_os_id: gcOsId,
-        gc_os_codigo: osTask.gc_os_codigo,
-        gc_os_situacao: osTask.gc_os_situacao,
-        gc_os_valor_total: Number(osTask.gc_os_valor_total) || 0,
-        // Sempre usar o cliente real da OS no GC; o `cliente` da tarefa Auvo
-        // pode estar errado se a tarefa foi vinculada por engano à OS.
-        cliente: osTask.gc_os_cliente || osTask.cliente || "—",
-        data_tarefa: osTask.data_tarefa,
-        data_conclusao: execTask.data_conclusao || osTask.data_conclusao,
+        gc_os_codigo: rep.gc_os_codigo,
+        gc_os_situacao: rep.gc_os_situacao,
+        gc_os_valor_total: Number(rep.gc_os_valor_total) || 0,
+        cliente: rep.gc_os_cliente || rep.cliente || "—",
+        data_tarefa: opener?.data_tarefa || null,
+        data_conclusao: execTask?.data_conclusao || rep.data_conclusao || null,
+        data_saida: rep.gc_os_data_saida || null,
         abridor_id: abridorId,
         abridor_nome: abridorNome,
         executor_id: executorId,
         executor_nome: executorNome,
-        os_task_id: osTask.auvo_task_id,
-        exec_task_id: execTask.auvo_task_id,
-        auvo_link: osTask.gc_os_link || osTask.auvo_link,
+        os_task_id: opener?.auvo_task_id || null,
+        exec_task_id: execTask?.auvo_task_id || null,
+        auvo_link: rep.gc_os_link || rep.auvo_link || null,
+        is_cruzada: isCruzada,
       });
     }
 
-    return result;
-  }, [tarefas, resolvedExec]);
+    return result.sort((a, b) => (b.data_saida || "").localeCompare(a.data_saida || ""));
+  }, [tarefas, resolvedExec, dateFrom, dateTo]);
 
+
+  // Lista filtrada apenas para os agregados de cruzamento
+  const cruzadasOnly = useMemo(() => crossedList.filter((c) => c.is_cruzada), [crossedList]);
 
   // Aggregate per technician (executor view: what each tech executed for others)
   const totaisPorExecutor = useMemo(() => {
     const map = new Map<string, { id: string; nome: string; count: number; total: number }>();
-    for (const c of crossedList) {
+    for (const c of cruzadasOnly) {
       const e = map.get(c.executor_id) || { id: c.executor_id, nome: c.executor_nome, count: 0, total: 0 };
       e.count++;
       e.total += c.gc_os_valor_total;
       map.set(c.executor_id, e);
     }
     return Array.from(map.values()).sort((a, b) => b.total - a.total);
-  }, [crossedList]);
+  }, [cruzadasOnly]);
 
   // Aggregate per technician (abridor view: what each tech opened that someone else executed)
   const totaisPorAbridor = useMemo(() => {
     const map = new Map<string, { id: string; nome: string; count: number; total: number }>();
-    for (const c of crossedList) {
+    for (const c of cruzadasOnly) {
       const e = map.get(c.abridor_id) || { id: c.abridor_id, nome: c.abridor_nome, count: 0, total: 0 };
       e.count++;
       e.total += c.gc_os_valor_total;
       map.set(c.abridor_id, e);
     }
     return Array.from(map.values()).sort((a, b) => b.total - a.total);
-  }, [crossedList]);
+  }, [cruzadasOnly]);
 
   // Saldo (lucro/prejuízo) per technician = executou para outros - abriu pra outros executarem
   const saldoPorTecnico = useMemo(() => {
@@ -351,9 +330,9 @@ export default function OSCruzadasPage() {
 
   const totais = viewMode === "executor" ? totaisPorExecutor : viewMode === "abridor" ? totaisPorAbridor : [];
 
-  // Filtered detail: by selected tech and search
+  // Filtered detail (only crossed OS in the per-tech detail tables)
   const detalhe = useMemo(() => {
-    let items = crossedList;
+    let items = cruzadasOnly;
     if (selectedTecnico) {
       items = items.filter((c) =>
         viewMode === "executor"
@@ -374,8 +353,10 @@ export default function OSCruzadasPage() {
       );
     }
     return items.sort((a, b) => b.gc_os_valor_total - a.gc_os_valor_total);
-  }, [crossedList, selectedTecnico, search, viewMode]);
+  }, [cruzadasOnly, selectedTecnico, search, viewMode]);
 
+  // Totais: cruzadas (pra indicador) e geral (todas as OS do GC do período)
+  const totalCruzadas = useMemo(() => cruzadasOnly.reduce((s, c) => s + c.gc_os_valor_total, 0), [cruzadasOnly]);
   const totalGeral = useMemo(() => crossedList.reduce((s, c) => s + c.gc_os_valor_total, 0), [crossedList]);
 
   const setMonth = useCallback((monthsBack: number) => {
@@ -438,21 +419,33 @@ export default function OSCruzadasPage() {
       </div>
 
       {/* Summary cards */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Total OS Cruzadas</CardTitle>
+            <CardTitle className="text-xs font-medium text-muted-foreground uppercase tracking-wide">OS GC no Período</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="text-3xl font-bold">{crossedList.length}</div>
+            <div className="text-xs text-muted-foreground mt-1">{formatCurrency(totalGeral)}</div>
           </CardContent>
         </Card>
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Valor Total</CardTitle>
+            <CardTitle className="text-xs font-medium text-muted-foreground uppercase tracking-wide">OS Cruzadas (abridor ≠ executor)</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-3xl font-bold text-primary">{formatCurrency(totalGeral)}</div>
+            <div className="text-3xl font-bold text-primary">{cruzadasOnly.length}</div>
+            <div className="text-xs text-muted-foreground mt-1">
+              {crossedList.length > 0 ? `${((cruzadasOnly.length / crossedList.length) * 100).toFixed(1)}% das OS` : "—"}
+            </div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Valor Cruzado</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="text-3xl font-bold text-primary">{formatCurrency(totalCruzadas)}</div>
           </CardContent>
         </Card>
         <Card>
