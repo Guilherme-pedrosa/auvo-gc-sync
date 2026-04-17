@@ -281,29 +281,32 @@ export default function OSCruzadasPage() {
   }, [tarefas, resolvedExec, dateFrom, dateTo]);
 
 
+  // Lista filtrada apenas para os agregados de cruzamento
+  const cruzadasOnly = useMemo(() => crossedList.filter((c) => c.is_cruzada), [crossedList]);
+
   // Aggregate per technician (executor view: what each tech executed for others)
   const totaisPorExecutor = useMemo(() => {
     const map = new Map<string, { id: string; nome: string; count: number; total: number }>();
-    for (const c of crossedList) {
+    for (const c of cruzadasOnly) {
       const e = map.get(c.executor_id) || { id: c.executor_id, nome: c.executor_nome, count: 0, total: 0 };
       e.count++;
       e.total += c.gc_os_valor_total;
       map.set(c.executor_id, e);
     }
     return Array.from(map.values()).sort((a, b) => b.total - a.total);
-  }, [crossedList]);
+  }, [cruzadasOnly]);
 
   // Aggregate per technician (abridor view: what each tech opened that someone else executed)
   const totaisPorAbridor = useMemo(() => {
     const map = new Map<string, { id: string; nome: string; count: number; total: number }>();
-    for (const c of crossedList) {
+    for (const c of cruzadasOnly) {
       const e = map.get(c.abridor_id) || { id: c.abridor_id, nome: c.abridor_nome, count: 0, total: 0 };
       e.count++;
       e.total += c.gc_os_valor_total;
       map.set(c.abridor_id, e);
     }
     return Array.from(map.values()).sort((a, b) => b.total - a.total);
-  }, [crossedList]);
+  }, [cruzadasOnly]);
 
   // Saldo (lucro/prejuízo) per technician = executou para outros - abriu pra outros executarem
   const saldoPorTecnico = useMemo(() => {
@@ -327,9 +330,9 @@ export default function OSCruzadasPage() {
 
   const totais = viewMode === "executor" ? totaisPorExecutor : viewMode === "abridor" ? totaisPorAbridor : [];
 
-  // Filtered detail: by selected tech and search
+  // Filtered detail (only crossed OS in the per-tech detail tables)
   const detalhe = useMemo(() => {
-    let items = crossedList;
+    let items = cruzadasOnly;
     if (selectedTecnico) {
       items = items.filter((c) =>
         viewMode === "executor"
@@ -350,8 +353,10 @@ export default function OSCruzadasPage() {
       );
     }
     return items.sort((a, b) => b.gc_os_valor_total - a.gc_os_valor_total);
-  }, [crossedList, selectedTecnico, search, viewMode]);
+  }, [cruzadasOnly, selectedTecnico, search, viewMode]);
 
+  // Totais: cruzadas (pra indicador) e geral (todas as OS do GC do período)
+  const totalCruzadas = useMemo(() => cruzadasOnly.reduce((s, c) => s + c.gc_os_valor_total, 0), [cruzadasOnly]);
   const totalGeral = useMemo(() => crossedList.reduce((s, c) => s + c.gc_os_valor_total, 0), [crossedList]);
 
   const setMonth = useCallback((monthsBack: number) => {
