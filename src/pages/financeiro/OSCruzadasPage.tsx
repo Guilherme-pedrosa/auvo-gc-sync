@@ -173,14 +173,38 @@ export default function OSCruzadasPage() {
     return Array.from(map.values()).sort((a, b) => b.total - a.total);
   }, [crossedList]);
 
-  const totais = viewMode === "executor" ? totaisPorExecutor : totaisPorAbridor;
+  // Saldo (lucro/prejuízo) per technician = executou para outros - abriu pra outros executarem
+  const saldoPorTecnico = useMemo(() => {
+    const map = new Map<string, { id: string; nome: string; credito: number; debito: number; qtd_executou: number; qtd_abriu: number }>();
+    for (const t of totaisPorExecutor) {
+      const e = map.get(t.id) || { id: t.id, nome: t.nome, credito: 0, debito: 0, qtd_executou: 0, qtd_abriu: 0 };
+      e.credito = t.total;
+      e.qtd_executou = t.count;
+      map.set(t.id, e);
+    }
+    for (const t of totaisPorAbridor) {
+      const e = map.get(t.id) || { id: t.id, nome: t.nome, credito: 0, debito: 0, qtd_executou: 0, qtd_abriu: 0 };
+      e.debito = t.total;
+      e.qtd_abriu = t.count;
+      map.set(t.id, e);
+    }
+    return Array.from(map.values())
+      .map((e) => ({ ...e, saldo: e.credito - e.debito }))
+      .sort((a, b) => b.saldo - a.saldo);
+  }, [totaisPorExecutor, totaisPorAbridor]);
+
+  const totais = viewMode === "executor" ? totaisPorExecutor : viewMode === "abridor" ? totaisPorAbridor : [];
 
   // Filtered detail: by selected tech and search
   const detalhe = useMemo(() => {
     let items = crossedList;
     if (selectedTecnico) {
       items = items.filter((c) =>
-        viewMode === "executor" ? c.executor_id === selectedTecnico : c.abridor_id === selectedTecnico
+        viewMode === "executor"
+          ? c.executor_id === selectedTecnico
+          : viewMode === "abridor"
+            ? c.abridor_id === selectedTecnico
+            : c.executor_id === selectedTecnico || c.abridor_id === selectedTecnico
       );
     }
     if (search.trim()) {
