@@ -176,21 +176,36 @@ export default function OSCruzadasPage() {
       const execIds = parseExecIds(osTask?.gc_os_tarefa_exec);
       if (execIds.length === 0) continue; // no exec task → can't determine cross
 
-      // Resolve exec task: first try local, then any exec id
-      let execTask: any = null;
+      // Resolve exec task: first try local DB, then resolved Auvo cache
+      let execTask: { tecnico_id: string; tecnico: string; data_conclusao: string | null; auvo_task_id: string } | null = null;
       for (const eid of execIds) {
         const found = taskById.get(eid);
         if (found?.tecnico_id && found?.tecnico) {
-          execTask = found;
+          execTask = {
+            tecnico_id: String(found.tecnico_id),
+            tecnico: String(found.tecnico),
+            data_conclusao: found.data_conclusao,
+            auvo_task_id: String(found.auvo_task_id),
+          };
+          break;
+        }
+        const resolved = resolvedExec[eid];
+        if (resolved?.tecnico_id && resolved?.tecnico) {
+          execTask = {
+            tecnico_id: resolved.tecnico_id,
+            tecnico: resolved.tecnico,
+            data_conclusao: resolved.data_conclusao,
+            auvo_task_id: eid,
+          };
           break;
         }
       }
-      if (!execTask) continue; // exec task not in DB
+      if (!execTask) continue; // exec task still not resolvable
 
       const abridorId = String(osTask?.tecnico_id || "").trim();
       const abridorNome = String(osTask?.tecnico || "").trim();
-      const executorId = String(execTask?.tecnico_id || "").trim();
-      const executorNome = String(execTask?.tecnico || "").trim();
+      const executorId = execTask.tecnico_id;
+      const executorNome = execTask.tecnico;
 
       if (!abridorId || !executorId || !abridorNome || !executorNome) continue;
       if (abridorId === executorId) continue; // same tech opened and executed → skip
@@ -214,7 +229,8 @@ export default function OSCruzadasPage() {
     }
 
     return result;
-  }, [tarefas]);
+  }, [tarefas, resolvedExec]);
+
 
   // Aggregate per technician (executor view: what each tech executed for others)
   const totaisPorExecutor = useMemo(() => {
