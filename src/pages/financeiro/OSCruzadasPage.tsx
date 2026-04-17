@@ -40,6 +40,7 @@ interface CrossedOS {
   cliente: string;
   data_tarefa: string | null;
   data_conclusao: string | null;
+  data_saida: string | null;
   abridor_id: string;
   abridor_nome: string;
   executor_id: string;
@@ -47,6 +48,7 @@ interface CrossedOS {
   os_task_id: string | null;
   exec_task_id: string | null;
   auvo_link: string | null;
+  is_cruzada: boolean;
 }
 
 export default function OSCruzadasPage() {
