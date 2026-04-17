@@ -419,21 +419,33 @@ export default function OSCruzadasPage() {
       </div>
 
       {/* Summary cards */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Total OS Cruzadas</CardTitle>
+            <CardTitle className="text-xs font-medium text-muted-foreground uppercase tracking-wide">OS GC no Período</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="text-3xl font-bold">{crossedList.length}</div>
+            <div className="text-xs text-muted-foreground mt-1">{formatCurrency(totalGeral)}</div>
           </CardContent>
         </Card>
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Valor Total</CardTitle>
+            <CardTitle className="text-xs font-medium text-muted-foreground uppercase tracking-wide">OS Cruzadas (abridor ≠ executor)</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-3xl font-bold text-primary">{formatCurrency(totalGeral)}</div>
+            <div className="text-3xl font-bold text-primary">{cruzadasOnly.length}</div>
+            <div className="text-xs text-muted-foreground mt-1">
+              {crossedList.length > 0 ? `${((cruzadasOnly.length / crossedList.length) * 100).toFixed(1)}% das OS` : "—"}
+            </div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Valor Cruzado</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="text-3xl font-bold text-primary">{formatCurrency(totalCruzadas)}</div>
           </CardContent>
         </Card>
         <Card>
