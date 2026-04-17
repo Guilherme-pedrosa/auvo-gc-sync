@@ -84,6 +84,67 @@ export default function OSCruzadasPage() {
     staleTime: 30_000,
   });
 
+  // Cache of exec tasks resolved via Auvo API (for tasks not in tarefas_central)
+  const [resolvedExec, setResolvedExec] = useState<Record<string, ResolvedExecTask | null>>({});
+  const [resolvingCount, setResolvingCount] = useState(0);
+
+  // Identify exec task IDs referenced but missing from local data
+  const missingExecIds = useMemo(() => {
+    const local = new Set<string>();
+    for (const t of tarefas) local.add(String(t.auvo_task_id));
+    const missing = new Set<string>();
+    for (const t of tarefas) {
+      const ids = String(t.gc_os_tarefa_exec || "").split("/").map((s) => s.trim()).filter((s) => /^\d+$/.test(s));
+      for (const eid of ids) {
+        if (!local.has(eid) && !(eid in resolvedExec)) missing.add(eid);
+      }
+    }
+    return Array.from(missing);
+  }, [tarefas, resolvedExec]);
+
+  // Resolve missing exec tasks via Auvo API in batches
+  useEffect(() => {
+    if (missingExecIds.length === 0) return;
+    let cancelled = false;
+    (async () => {
+      setResolvingCount(missingExecIds.length);
+      const BATCH = 5;
+      for (let i = 0; i < missingExecIds.length; i += BATCH) {
+        if (cancelled) return;
+        const slice = missingExecIds.slice(i, i + BATCH);
+        const results = await Promise.all(
+          slice.map(async (taskId) => {
+            try {
+              const { data, error } = await supabase.functions.invoke("auvo-task-update", {
+                body: { action: "get", taskId: Number(taskId) },
+              });
+              if (error || !data?.ok) return [taskId, null] as const;
+              const task = data?.task ?? data?.data ?? data;
+              const userId = String(task?.userId ?? task?.idUser ?? task?.user?.userId ?? "").trim();
+              const userName = String(task?.userName ?? task?.user?.name ?? task?.userToTask?.name ?? "").trim();
+              const dataConclusao = task?.checkOutDate || task?.taskFinishDate || null;
+              if (!userId && !userName) return [taskId, null] as const;
+              return [taskId, { tecnico_id: userId, tecnico: userName, data_conclusao: dataConclusao }] as const;
+            } catch {
+              return [taskId, null] as const;
+            }
+          })
+        );
+        if (cancelled) return;
+        setResolvedExec((prev) => {
+          const next = { ...prev };
+          for (const [id, val] of results) next[id] = val;
+          return next;
+        });
+      }
+      if (!cancelled) setResolvingCount(0);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [missingExecIds]);
+
+
   // Compute crossed OS
   const crossedList = useMemo<CrossedOS[]>(() => {
     // Group tasks by gc_os_id
