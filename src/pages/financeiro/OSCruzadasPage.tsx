@@ -178,12 +178,19 @@ export default function OSCruzadasPage() {
   }, [missingExecIds]);
 
 
-  // Compute crossed OS
+  // Compute OS list: 1 row per gc_os_id (GC manda). Resolve abridor/executor
+  // via Auvo when possible. Marca is_cruzada quando abridor ≠ executor.
   const crossedList = useMemo<CrossedOS[]>(() => {
-    // Group tasks by gc_os_id
+    // Group by gc_os_id, but only for rows whose gc_os_data_saida is in the period
+    // (the rows fetched via referencedExecIds may have different/older data_saida).
+    const fromStr = format(dateFrom, "yyyy-MM-dd");
+    const toStr = format(dateTo, "yyyy-MM-dd");
+
     const byOsId = new Map<string, any[]>();
     for (const t of tarefas) {
       if (!t.gc_os_id) continue;
+      const saida = String(t.gc_os_data_saida || "");
+      if (!saida || saida < fromStr || saida > toStr) continue;
       const key = String(t.gc_os_id);
       const bucket = byOsId.get(key) || [];
       bucket.push(t);
@@ -201,30 +208,25 @@ export default function OSCruzadasPage() {
       const hasVendedor = tasks.some((t) => String(t.gc_os_vendedor || "").trim() !== "");
       if (!hasVendedor) continue;
 
+      // Pick a representative row (any with gc_os_codigo). All rows in the group
+      // share the same gc_os_id, so OS-level fields are identical.
+      const rep = tasks.find((t) => t.gc_os_codigo) || tasks[0];
+
       // Build set of all exec IDs referenced by any task in this group
       const allExecIds = new Set<string>();
       for (const t of tasks) {
         for (const eid of parseExecIds(t.gc_os_tarefa_exec)) allExecIds.add(eid);
       }
-      if (allExecIds.size === 0) continue;
 
-      // Openers = tasks NOT pointed to as executors. Multiple openers = OS com
-      // várias tarefas abridoras (ex: tentativas múltiplas, reagendamento) —
-      // todas válidas. Escolhe a mais antiga como representante da OS para
-      // garantir uma única linha por gc_os_id.
+      // Openers = tasks NOT pointed to as executors. Pick oldest as representative.
       const openers = tasks
-        .filter((t) => !allExecIds.has(String(t.auvo_task_id)) && t.tecnico_id)
+        .filter((t) => !allExecIds.has(String(t.auvo_task_id)))
         .sort((a, b) => String(a.data_tarefa || "").localeCompare(String(b.data_tarefa || "")));
+      const opener = openers[0] || rep;
 
-      if (openers.length === 0) continue;
-      const osTask = openers[0];
-
-      const execIds = parseExecIds(osTask?.gc_os_tarefa_exec);
-      if (execIds.length === 0) continue;
-
-      // Resolve exec task: first try local DB, then resolved Auvo cache
+      // Resolve executor from any exec ID
       let execTask: { tecnico_id: string; tecnico: string; data_conclusao: string | null; auvo_task_id: string } | null = null;
-      for (const eid of execIds) {
+      for (const eid of Array.from(allExecIds)) {
         const found = taskById.get(eid);
         if (found?.tecnico_id && found?.tecnico) {
           execTask = {
@@ -246,38 +248,37 @@ export default function OSCruzadasPage() {
           break;
         }
       }
-      if (!execTask) continue;
 
-      const abridorId = String(osTask?.tecnico_id || "").trim();
-      const abridorNome = String(osTask?.tecnico || "").trim();
-      const executorId = execTask.tecnico_id;
-      const executorNome = execTask.tecnico;
+      const abridorId = String(opener?.tecnico_id || "").trim();
+      const abridorNome = String(opener?.tecnico || "").trim() || "—";
+      const executorId = execTask?.tecnico_id || "";
+      const executorNome = execTask?.tecnico || "—";
 
-      if (!abridorId || !executorId || !abridorNome || !executorNome) continue;
-      if (abridorId === executorId) continue;
+      const isCruzada =
+        !!abridorId && !!executorId && abridorId !== executorId;
 
       result.push({
         gc_os_id: gcOsId,
-        gc_os_codigo: osTask.gc_os_codigo,
-        gc_os_situacao: osTask.gc_os_situacao,
-        gc_os_valor_total: Number(osTask.gc_os_valor_total) || 0,
-        // Sempre usar o cliente real da OS no GC; o `cliente` da tarefa Auvo
-        // pode estar errado se a tarefa foi vinculada por engano à OS.
-        cliente: osTask.gc_os_cliente || osTask.cliente || "—",
-        data_tarefa: osTask.data_tarefa,
-        data_conclusao: execTask.data_conclusao || osTask.data_conclusao,
+        gc_os_codigo: rep.gc_os_codigo,
+        gc_os_situacao: rep.gc_os_situacao,
+        gc_os_valor_total: Number(rep.gc_os_valor_total) || 0,
+        cliente: rep.gc_os_cliente || rep.cliente || "—",
+        data_tarefa: opener?.data_tarefa || null,
+        data_conclusao: execTask?.data_conclusao || rep.data_conclusao || null,
+        data_saida: rep.gc_os_data_saida || null,
         abridor_id: abridorId,
         abridor_nome: abridorNome,
         executor_id: executorId,
         executor_nome: executorNome,
-        os_task_id: osTask.auvo_task_id,
-        exec_task_id: execTask.auvo_task_id,
-        auvo_link: osTask.gc_os_link || osTask.auvo_link,
+        os_task_id: opener?.auvo_task_id || null,
+        exec_task_id: execTask?.auvo_task_id || null,
+        auvo_link: rep.gc_os_link || rep.auvo_link || null,
+        is_cruzada: isCruzada,
       });
     }
 
-    return result;
-  }, [tarefas, resolvedExec]);
+    return result.sort((a, b) => (b.data_saida || "").localeCompare(a.data_saida || ""));
+  }, [tarefas, resolvedExec, dateFrom, dateTo]);
 
 
   // Aggregate per technician (executor view: what each tech executed for others)
