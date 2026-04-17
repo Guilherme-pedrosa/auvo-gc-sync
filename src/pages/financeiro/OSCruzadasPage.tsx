@@ -49,7 +49,7 @@ export default function OSCruzadasPage() {
   const [dateTo, setDateTo] = useState<Date>(endOfMonth(today));
   const [search, setSearch] = useState("");
   const [selectedTecnico, setSelectedTecnico] = useState<string | null>(null);
-  const [viewMode, setViewMode] = useState<"executor" | "abridor">("executor");
+  const [viewMode, setViewMode] = useState<"executor" | "abridor" | "saldo">("saldo");
 
   // Fetch all tarefas with OS in date range
   const { data: tarefas = [], isLoading } = useQuery({
