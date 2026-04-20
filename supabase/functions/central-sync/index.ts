@@ -652,7 +652,7 @@ Deno.serve(async (req) => {
         }
         const PARALLEL = 15;
         for (let i = 0; i < toFetch.length; i += PARALLEL) {
-          const batch = missingOsIds.slice(i, i + PARALLEL);
+          const batch = toFetch.slice(i, i + PARALLEL);
           const results = await Promise.all(batch.map(async (osId) => {
             const url = `${GC_BASE_URL}/api/ordens_servicos/${osId}`;
             const resp = await rateLimitedFetch(url, { headers: gcH }, "gc");
