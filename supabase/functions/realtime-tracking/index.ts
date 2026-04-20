@@ -9,18 +9,23 @@ const AUVO_BASE_URL = "https://api.auvo.com.br/v2";
 const GC_BASE_URL = "https://api.gestaoclick.com";
 
 // Fetch GC docs and build a map of auvo_task_id → { codigo, valor_total }
+// Window: filter by GC document date to capture recent records (avoid pagination cap missing today's docs)
 async function fetchGcDocMap(
   gcHeaders: Record<string, string>,
   endpoint: "ordens_servicos" | "orcamentos",
   atributoId: string,
-  labelHints: string[]
+  labelHints: string[],
+  dataInicio?: string,
+  dataFim?: string
 ): Promise<Record<string, { codigo: string; valor: string }>> {
   const map: Record<string, { codigo: string; valor: string }> = {};
   let page = 1;
   let totalPages = 1;
 
   while (page <= totalPages && page <= 30) {
-    const url = `${GC_BASE_URL}/api/${endpoint}?limite=100&pagina=${page}`;
+    let url = `${GC_BASE_URL}/api/${endpoint}?limite=100&pagina=${page}`;
+    if (dataInicio) url += `&data_inicio=${dataInicio}`;
+    if (dataFim) url += `&data_fim=${dataFim}`;
     const response = await fetch(url, { headers: gcHeaders });
     if (!response.ok) break;
     const data = await response.json();
@@ -51,14 +56,20 @@ async function fetchGcDocMap(
   return map;
 }
 
-async function fetchGcOsMap(gcHeaders: Record<string, string>): Promise<Record<string, { codigo: string; valor: string }>> {
-  // Fetch ALL OS pages once, then scan for BOTH attributes (73343=Tarefa OS, 73344=Tarefa Execução)
+async function fetchGcOsMap(
+  gcHeaders: Record<string, string>,
+  dataInicio?: string,
+  dataFim?: string
+): Promise<Record<string, { codigo: string; valor: string }>> {
+  // Fetch GC OS pages filtered by date window, then scan for BOTH attributes (73343=Tarefa OS, 73344=Tarefa Execução)
   const map: Record<string, { codigo: string; valor: string }> = {};
   let page = 1;
   let totalPages = 1;
 
   while (page <= totalPages && page <= 30) {
-    const url = `${GC_BASE_URL}/api/ordens_servicos?limite=100&pagina=${page}`;
+    let url = `${GC_BASE_URL}/api/ordens_servicos?limite=100&pagina=${page}`;
+    if (dataInicio) url += `&data_inicio=${dataInicio}`;
+    if (dataFim) url += `&data_fim=${dataFim}`;
     const response = await fetch(url, { headers: gcHeaders });
     if (!response.ok) break;
     const data = await response.json();
@@ -87,15 +98,19 @@ async function fetchGcOsMap(gcHeaders: Record<string, string>): Promise<Record<s
     page++;
   }
 
-  console.log(`[realtime-tracking] GC map: ${Object.keys(map).length} OS mapeadas (ambos atributos)`);
+  console.log(`[realtime-tracking] GC map: ${Object.keys(map).length} OS mapeadas (janela ${dataInicio || "all"} → ${dataFim || "all"})`);
   return map;
 }
 
-async function fetchGcOrcMap(gcHeaders: Record<string, string>): Promise<Record<string, { codigo: string; valor: string }>> {
+async function fetchGcOrcMap(
+  gcHeaders: Record<string, string>,
+  dataInicio?: string,
+  dataFim?: string
+): Promise<Record<string, { codigo: string; valor: string }>> {
   const atributoId = Deno.env.get("GC_ATRIBUTO_ORCAMENTO_ID") || "73341";
   const label = (Deno.env.get("AUVO_ATRIBUTO_ORCAMENTO_LABEL") || "Tarefa Orçamento").toLowerCase();
-  const map = await fetchGcDocMap(gcHeaders, "orcamentos", atributoId, [label, "tarefa orç", "tarefa orc", "orcamento"]);
-  console.log(`[realtime-tracking] GC map: ${Object.keys(map).length} Orçamentos mapeados`);
+  const map = await fetchGcDocMap(gcHeaders, "orcamentos", atributoId, [label, "tarefa orç", "tarefa orc", "orcamento"], dataInicio, dataFim);
+  console.log(`[realtime-tracking] GC map: ${Object.keys(map).length} Orçamentos mapeados (janela ${dataInicio || "all"} → ${dataFim || "all"})`);
   return map;
 }
 
@@ -188,11 +203,17 @@ Deno.serve(async (req) => {
     const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const sb = createClient(supabaseUrl, supabaseKey);
 
+    // GC date window: ±60 days around target date to capture both today's freshly-created OS
+    // and OS with future planned exit dates linked to this task
+    const targetDateObj = new Date(targetDate + "T00:00:00");
+    const gcWindowStart = new Date(targetDateObj.getTime() - 60 * 24 * 60 * 60 * 1000).toISOString().split("T")[0];
+    const gcWindowEnd = new Date(targetDateObj.getTime() + 60 * 24 * 60 * 60 * 1000).toISOString().split("T")[0];
+
     // Fetch Auvo tasks + GC OS + GC Orçamentos + DB values in parallel
     const [tasks, gcOsMap, gcOrcMap, dbTasks] = await Promise.all([
       fetchAllTasks(bearerToken, targetDate, targetDate),
-      gcHeaders ? fetchGcOsMap(gcHeaders) : Promise.resolve({} as Record<string, { codigo: string; valor: string }>),
-      gcHeaders ? fetchGcOrcMap(gcHeaders) : Promise.resolve({} as Record<string, { codigo: string; valor: string }>),
+      gcHeaders ? fetchGcOsMap(gcHeaders, gcWindowStart, gcWindowEnd) : Promise.resolve({} as Record<string, { codigo: string; valor: string }>),
+      gcHeaders ? fetchGcOrcMap(gcHeaders, gcWindowStart, gcWindowEnd) : Promise.resolve({} as Record<string, { codigo: string; valor: string }>),
       (async () => {
         const { data } = await sb
           .from("tarefas_central")
