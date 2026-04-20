@@ -642,9 +642,16 @@ Deno.serve(async (req) => {
       // For OS in DB but NOT in GC listing (e.g. cancelled OS filtered by API), fetch individually
       const missingOsIds = Array.from(dbOsIds).filter(id => !allGcOsById[id]);
       if (missingOsIds.length > 0) {
-        console.log(`[central-sync] ${missingOsIds.length} OS no banco não encontradas na listagem GC — buscando individualmente...`);
-        const PARALLEL = 5;
-        for (let i = 0; i < missingOsIds.length; i += PARALLEL) {
+        // Cap individual lookups to avoid IDLE_TIMEOUT (150s). Remaining IDs will be picked up next sync.
+        const MAX_INDIVIDUAL = 80;
+        const toFetch = missingOsIds.slice(0, MAX_INDIVIDUAL);
+        if (missingOsIds.length > MAX_INDIVIDUAL) {
+          console.log(`[central-sync] ${missingOsIds.length} OS faltantes — limitando a ${MAX_INDIVIDUAL} nesta execução`);
+        } else {
+          console.log(`[central-sync] ${missingOsIds.length} OS no banco não encontradas na listagem GC — buscando individualmente...`);
+        }
+        const PARALLEL = 15;
+        for (let i = 0; i < toFetch.length; i += PARALLEL) {
           const batch = missingOsIds.slice(i, i + PARALLEL);
           const results = await Promise.all(batch.map(async (osId) => {
             const url = `${GC_BASE_URL}/api/ordens_servicos/${osId}`;
