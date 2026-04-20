@@ -203,11 +203,17 @@ Deno.serve(async (req) => {
     const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const sb = createClient(supabaseUrl, supabaseKey);
 
+    // GC date window: ±60 days around target date to capture both today's freshly-created OS
+    // and OS with future planned exit dates linked to this task
+    const targetDateObj = new Date(targetDate + "T00:00:00");
+    const gcWindowStart = new Date(targetDateObj.getTime() - 60 * 24 * 60 * 60 * 1000).toISOString().split("T")[0];
+    const gcWindowEnd = new Date(targetDateObj.getTime() + 60 * 24 * 60 * 60 * 1000).toISOString().split("T")[0];
+
     // Fetch Auvo tasks + GC OS + GC Orçamentos + DB values in parallel
     const [tasks, gcOsMap, gcOrcMap, dbTasks] = await Promise.all([
       fetchAllTasks(bearerToken, targetDate, targetDate),
-      gcHeaders ? fetchGcOsMap(gcHeaders) : Promise.resolve({} as Record<string, { codigo: string; valor: string }>),
-      gcHeaders ? fetchGcOrcMap(gcHeaders) : Promise.resolve({} as Record<string, { codigo: string; valor: string }>),
+      gcHeaders ? fetchGcOsMap(gcHeaders, gcWindowStart, gcWindowEnd) : Promise.resolve({} as Record<string, { codigo: string; valor: string }>),
+      gcHeaders ? fetchGcOrcMap(gcHeaders, gcWindowStart, gcWindowEnd) : Promise.resolve({} as Record<string, { codigo: string; valor: string }>),
       (async () => {
         const { data } = await sb
           .from("tarefas_central")
