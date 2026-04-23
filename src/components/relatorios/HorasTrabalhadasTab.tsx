@@ -685,8 +685,16 @@ export default function HorasTrabalhadasTab({
                     {format(dateFrom, "dd/MM/yyyy")}
                   </Button>
                 </PopoverTrigger>
-                <PopoverContent className="w-auto p-0" align="start">
-                  <Calendar mode="single" selected={dateFrom} onSelect={(d) => d && onDateFromChange(d)} locale={ptBR} />
+                <PopoverContent className="w-auto p-0 z-50 bg-popover pointer-events-auto" align="start">
+                  <Calendar
+                    mode="single"
+                    selected={dateFrom}
+                    onSelect={(d) => d && onDateFromChange(d)}
+                    locale={ptBR}
+                    initialFocus
+                    defaultMonth={dateFrom}
+                    className="p-3 pointer-events-auto"
+                  />
                 </PopoverContent>
               </Popover>
             </div>
@@ -699,8 +707,16 @@ export default function HorasTrabalhadasTab({
                     {format(dateTo, "dd/MM/yyyy")}
                   </Button>
                 </PopoverTrigger>
-                <PopoverContent className="w-auto p-0" align="start">
-                  <Calendar mode="single" selected={dateTo} onSelect={(d) => d && onDateToChange(d)} locale={ptBR} />
+                <PopoverContent className="w-auto p-0 z-50 bg-popover pointer-events-auto" align="start">
+                  <Calendar
+                    mode="single"
+                    selected={dateTo}
+                    onSelect={(d) => d && onDateToChange(d)}
+                    locale={ptBR}
+                    initialFocus
+                    defaultMonth={dateTo}
+                    className="p-3 pointer-events-auto"
+                  />
                 </PopoverContent>
               </Popover>
             </div>
