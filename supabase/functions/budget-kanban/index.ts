@@ -708,9 +708,34 @@ Deno.serve(async (req) => {
     }
 
     // Fallback (local dev sem EdgeRuntime): roda inline
-    const bearerToken = await auvoLogin(auvoApiKey, auvoApiToken);
+    await runSync();
+    return new Response(JSON.stringify({ ok: true, async: false, periodo: { inicio: startDate, fim: endDate } }), {
+      status: 200,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  } catch (err) {
+    console.error("[budget-kanban] Error:", err);
+    return new Response(JSON.stringify({ error: (err as Error).message }), {
+      status: 500,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
+});
 
-    const gcH: Record<string, string> = {
+// ============================================================================
+// Heavy sync routine — extracted so it can run as a background task
+// ============================================================================
+async function runBudgetKanbanSync(opts: {
+  sbClient: any;
+  bearerToken: string;
+  gcAccessToken: string;
+  gcSecretToken: string;
+  startDate: string;
+  endDate: string;
+}): Promise<void> {
+  const { sbClient, bearerToken, gcAccessToken, gcSecretToken, startDate, endDate } = opts;
+
+  const gcH: Record<string, string> = {
       "access-token": gcAccessToken,
       "secret-access-token": gcSecretToken,
       "Content-Type": "application/json",
