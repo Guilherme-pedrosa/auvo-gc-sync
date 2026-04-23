@@ -72,6 +72,8 @@ export default function HorasTrabalhadasTab({
     return Number(t.duracao_decimal) || 0;
   };
 
+  const isExcessiveTask = (horas: number) => horas > 12;
+
   // Normalize client name for matching (strip LTDA, ME, SA, EPP, EIRELI, etc.)
   const normalizeName = (name: string) =>
     name
@@ -305,6 +307,7 @@ export default function HorasTrabalhadasTab({
     // sort each client's tasks by date asc
     for (const e of map.values()) {
       e.tasks.sort((a, b) =>
+        Number(isExcessiveTask(b.horas)) - Number(isExcessiveTask(a.horas)) ||
         (a.data_conclusao || a.data_tarefa).localeCompare(b.data_conclusao || b.data_tarefa) ||
         (a.hora_inicio || "").localeCompare(b.hora_inicio || "")
       );
@@ -1142,6 +1145,16 @@ export default function HorasTrabalhadasTab({
                 · {format(dateFrom, "dd/MM/yyyy")} a {format(dateTo, "dd/MM/yyyy")}
               </span>
             </DialogDescription>
+            {(clienteSelecionado?.tasks.some((t) => isExcessiveTask(t.horas))) && (
+              <div className="flex flex-wrap gap-2 pt-1">
+                <Badge variant="destructive" className="text-[10px]">
+                  Horas excessivas no topo
+                </Badge>
+                <span className="text-[11px] text-muted-foreground">
+                  Tarefas com mais de 12h foram destacadas para facilitar a conferência.
+                </span>
+              </div>
+            )}
           </DialogHeader>
           <ScrollArea className="flex-1 -mx-6 px-6">
             <Table>
@@ -1160,7 +1173,7 @@ export default function HorasTrabalhadasTab({
               </TableHeader>
               <TableBody>
                 {clienteSelecionado?.tasks.map((t, idx) => (
-                  <TableRow key={`${t.auvo_task_id}-${idx}`} className="text-xs">
+                  <TableRow key={`${t.auvo_task_id}-${idx}`} className={cn("text-xs", isExcessiveTask(t.horas) && "bg-destructive/5") }>
                     <TableCell className="font-mono whitespace-nowrap">
                       {(t.data_conclusao || t.data_tarefa)
                         ? format(new Date((t.data_conclusao || t.data_tarefa) + "T12:00:00"), "dd/MM/yy")
@@ -1185,8 +1198,15 @@ export default function HorasTrabalhadasTab({
                     <TableCell className="font-mono whitespace-nowrap">
                       {t.hora_inicio && t.hora_fim ? `${t.hora_inicio}–${t.hora_fim}` : (t.hora_inicio || "—")}
                     </TableCell>
-                    <TableCell className={cn("text-right font-medium", t.horas < 0 && "text-destructive")}>
-                      {t.horas.toFixed(2)}h
+                    <TableCell className={cn("text-right font-medium", (t.horas < 0 || isExcessiveTask(t.horas)) && "text-destructive")}>
+                      <div className="flex items-center justify-end gap-2">
+                        {isExcessiveTask(t.horas) && (
+                          <Badge variant="destructive" className="px-1.5 py-0 text-[10px]">
+                            +12h
+                          </Badge>
+                        )}
+                        <span>{t.horas.toFixed(2)}h</span>
+                      </div>
                     </TableCell>
                     <TableCell className="text-right font-medium">
                       {t.valor > 0 ? t.valor.toLocaleString("pt-BR", { style: "currency", currency: "BRL" }) : "—"}
