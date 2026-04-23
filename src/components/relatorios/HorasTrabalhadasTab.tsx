@@ -43,6 +43,7 @@ interface Props {
   dateTo: Date;
   onDateFromChange: (d: Date) => void;
   onDateToChange: (d: Date) => void;
+  equipamentoTaskMap?: Record<string, { nome: string; id_serie: string }>;
 }
 
 const CHART_COLORS = [
@@ -55,6 +56,7 @@ export default function HorasTrabalhadasTab({
   data, isLoading, allClientes, allTecnicos, allTiposTarefa,
   grupos, membros, valorHoraConfigs,
   dateFrom, dateTo, onDateFromChange, onDateToChange,
+  equipamentoTaskMap = {},
 }: Props) {
   const [filterTecnico, setFilterTecnico] = useState("todos");
   const [filterCliente, setFilterCliente] = useState("todos");
@@ -267,8 +269,9 @@ export default function HorasTrabalhadasTab({
         data_conclusao: t.data_conclusao || "",
         valor,
         tecnico: tec,
-        equipamento: t.equipamento_nome || "",
-        equipamento_id_serie: t.equipamento_id_serie || "",
+        equipamento: t.equipamento_nome || equipamentoTaskMap[t.auvo_task_id]?.nome || "",
+        equipamento_id_serie:
+          t.equipamento_id_serie || equipamentoTaskMap[t.auvo_task_id]?.id_serie || "",
         auvo_link: t.auvo_link || "",
         auvo_task_url: t.auvo_task_url || "",
         auvo_survey_url: t.auvo_survey_url || "",
@@ -279,7 +282,7 @@ export default function HorasTrabalhadasTab({
       });
     }
     return Array.from(map.values()).sort((a, b) => b.valor - a.valor);
-  }, [filtered, valorHoraConfigs, grupos, grupoClienteMap, filterGrupo]);
+  }, [filtered, valorHoraConfigs, grupos, grupoClienteMap, filterGrupo, equipamentoTaskMap]);
 
   // Summary by client (across all technicians)
   const clienteSummary = useMemo(() => {

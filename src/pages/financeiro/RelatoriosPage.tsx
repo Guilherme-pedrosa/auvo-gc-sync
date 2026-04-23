@@ -217,6 +217,61 @@ export default function RelatoriosPage() {
     },
   });
 
+  // Equipment links: auvo_task_id → { nome, id_serie } (fallback for tasks where
+  // tarefas_central.equipamento_nome was not populated by the sync)
+  const { data: equipamentoTaskMap } = useQuery({
+    queryKey: ["equipamento-task-map"],
+    queryFn: async () => {
+      const map: Record<string, { nome: string; id_serie: string }> = {};
+      // Page through equipamento_tarefas_auvo + equipamentos_auvo
+      let from = 0;
+      const PAGE = 1000;
+      while (true) {
+        const { data, error } = await supabase
+          .from("equipamento_tarefas_auvo")
+          .select("auvo_task_id, auvo_equipment_id")
+          .range(from, from + PAGE - 1);
+        if (error) break;
+        const batch = data || [];
+        if (batch.length === 0) break;
+
+        const eqIds = Array.from(new Set(batch.map((r: any) => r.auvo_equipment_id).filter(Boolean)));
+        if (eqIds.length) {
+          const { data: eqs } = await supabase
+            .from("equipamentos_auvo")
+            .select("auvo_equipment_id, nome, identificador")
+            .in("auvo_equipment_id", eqIds);
+          const eqById = new Map<string, { nome: string; id_serie: string }>();
+          for (const e of eqs || []) {
+            eqById.set(e.auvo_equipment_id as string, {
+              nome: (e.nome as string) || "",
+              id_serie: (e.identificador as string) || "",
+            });
+          }
+          for (const r of batch) {
+            const eq = eqById.get(r.auvo_equipment_id as string);
+            if (!eq) continue;
+            // First link wins per task; concatenate further equipment names if multiple
+            const existing = map[r.auvo_task_id as string];
+            if (!existing) {
+              map[r.auvo_task_id as string] = eq;
+            } else if (existing.nome && eq.nome && !existing.nome.includes(eq.nome)) {
+              map[r.auvo_task_id as string] = {
+                nome: `${existing.nome} | ${eq.nome}`,
+                id_serie: existing.id_serie || eq.id_serie,
+              };
+            }
+          }
+        }
+
+        if (batch.length < PAGE) break;
+        from += PAGE;
+      }
+      return map;
+    },
+    staleTime: 5 * 60_000,
+  });
+
   const osAbertas = useMemo(() => {
     if (!tarefasOS) return [];
     // Deduplicate by gc_os_id — keep the most recently updated row per OS
@@ -398,6 +453,7 @@ export default function RelatoriosPage() {
             dateTo={dateTo}
             onDateFromChange={setDateFrom}
             onDateToChange={setDateTo}
+            equipamentoTaskMap={equipamentoTaskMap || {}}
           />
         </TabsContent>
 
