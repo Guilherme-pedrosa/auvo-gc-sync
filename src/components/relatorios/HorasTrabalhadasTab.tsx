@@ -312,6 +312,7 @@ export default function HorasTrabalhadasTab({
   [tecnicoSummary]);
 
   const [expanded, setExpanded] = useState<string | null>(null);
+  const [clienteModal, setClienteModal] = useState<string | null>(null);
 
   // Detect negative-duration tasks
   const negativeTasks = useMemo(() => {
