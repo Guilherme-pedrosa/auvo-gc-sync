@@ -282,7 +282,7 @@ export default function HorasTrabalhadasTab({
       });
     }
     return Array.from(map.values()).sort((a, b) => b.valor - a.valor);
-  }, [filtered, valorHoraConfigs, grupos, grupoClienteMap, filterGrupo]);
+  }, [filtered, valorHoraConfigs, grupos, grupoClienteMap, filterGrupo, equipamentoTaskMap]);
 
   // Summary by client (across all technicians)
   const clienteSummary = useMemo(() => {
