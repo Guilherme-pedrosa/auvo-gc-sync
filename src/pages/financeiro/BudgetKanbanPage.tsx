@@ -377,6 +377,32 @@ export default function BudgetKanbanPage() {
           items: colMap[colId] || [],
         }));
 
+      // Auto-route: cards with gc_orc_data === today must live in the "Feito hoje" column
+      const todayStr = format(new Date(), "yyyy-MM-dd");
+      const normalizeTitle = (t: string) =>
+        (t || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
+      const feitoHojeCol = cols.find((c) => normalizeTitle(c.title).includes("feito hoje"));
+      if (feitoHojeCol) {
+        const targetId = feitoHojeCol.id;
+        const movers: KanbanItem[] = [];
+        for (const col of cols) {
+          if (col.id === targetId) continue;
+          const keep: KanbanItem[] = [];
+          for (const card of col.items) {
+            const isToday =
+              !!card.gc_orcamento?.gc_data && card.gc_orcamento.gc_data.slice(0, 10) === todayStr;
+            if (isToday) movers.push(card);
+            else keep.push(card);
+          }
+          col.items = keep;
+        }
+        const target = cols.find((c) => c.id === targetId);
+        if (target && movers.length > 0) {
+          const present = new Set(target.items.map((i) => i.auvo_task_id));
+          for (const m of movers) if (!present.has(m.auvo_task_id)) target.items.unshift(m);
+        }
+      }
+
       setColumns(cols);
     } else {
       // Fresh data (from sync) — auto-assign columns
