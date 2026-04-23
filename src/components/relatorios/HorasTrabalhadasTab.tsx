@@ -63,6 +63,7 @@ export default function HorasTrabalhadasTab({
   const [selectedTipos, setSelectedTipos] = useState<Set<string>>(new Set());
   const [allTiposSelected, setAllTiposSelected] = useState(true);
   const [searchTipo, setSearchTipo] = useState("");
+  const [clienteModal, setClienteModal] = useState<string | null>(null);
 
   // Get task hours: use Auvo's durationDecimal (already deducts pauses)
   const getTaskHoras = (t: any): number => {
@@ -325,7 +326,6 @@ export default function HorasTrabalhadasTab({
   [tecnicoSummary]);
 
   const [expanded, setExpanded] = useState<string | null>(null);
-  const [clienteModal, setClienteModal] = useState<string | null>(null);
 
   // Detect negative-duration tasks
   const negativeTasks = useMemo(() => {
