@@ -1093,6 +1093,98 @@ export default function HorasTrabalhadasTab({
           </Table>
         </CardContent>
       </Card>
+
+      {/* Modal: Detalhe de OS por Cliente */}
+      <Dialog open={!!clienteModal} onOpenChange={(open) => !open && setClienteModal(null)}>
+        <DialogContent className="max-w-6xl max-h-[85vh] overflow-hidden flex flex-col">
+          <DialogHeader>
+            <DialogTitle className="text-base">{clienteSelecionado?.cliente}</DialogTitle>
+            <DialogDescription className="flex flex-wrap gap-3 text-xs">
+              <span><strong>{clienteSelecionado?.tarefas}</strong> OS</span>
+              <span><strong>{clienteSelecionado?.horas.toFixed(1)}h</strong> trabalhadas</span>
+              <span><strong>{clienteSelecionado?.deslocamento.toFixed(1)}h</strong> deslocamento</span>
+              <span><strong>{clienteSelecionado?.tecnicos.size}</strong> técnico(s)</span>
+              <span className="text-foreground">
+                <strong>
+                  {(clienteSelecionado?.valor || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
+                </strong>
+              </span>
+              <span className="text-muted-foreground">
+                · {format(dateFrom, "dd/MM/yyyy")} a {format(dateTo, "dd/MM/yyyy")}
+              </span>
+            </DialogDescription>
+          </DialogHeader>
+          <ScrollArea className="flex-1 -mx-6 px-6">
+            <Table>
+              <TableHeader className="sticky top-0 bg-background z-10">
+                <TableRow>
+                  <TableHead className="text-xs">Data</TableHead>
+                  <TableHead className="text-xs">ID</TableHead>
+                  <TableHead className="text-xs">Técnico</TableHead>
+                  <TableHead className="text-xs">Tipo de Tarefa</TableHead>
+                  <TableHead className="text-xs">Equipamento</TableHead>
+                  <TableHead className="text-xs">Horário</TableHead>
+                  <TableHead className="text-xs text-right">Horas</TableHead>
+                  <TableHead className="text-xs text-right">Valor</TableHead>
+                  <TableHead className="text-xs text-center">Auvo</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {clienteSelecionado?.tasks.map((t, idx) => (
+                  <TableRow key={`${t.auvo_task_id}-${idx}`} className="text-xs">
+                    <TableCell className="font-mono whitespace-nowrap">
+                      {(t.data_conclusao || t.data_tarefa)
+                        ? format(new Date((t.data_conclusao || t.data_tarefa) + "T12:00:00"), "dd/MM/yy")
+                        : "—"}
+                    </TableCell>
+                    <TableCell className="font-mono">#{t.auvo_task_id}</TableCell>
+                    <TableCell>{t.tecnico}</TableCell>
+                    <TableCell className="max-w-[220px]">
+                      <div className="font-medium truncate" title={t.descricao}>{t.descricao}</div>
+                      {t.orientacao && (
+                        <div className="text-[10px] text-muted-foreground truncate" title={t.orientacao}>
+                          {t.orientacao}
+                        </div>
+                      )}
+                    </TableCell>
+                    <TableCell className="max-w-[200px]">
+                      <div className="truncate" title={t.equipamento}>{t.equipamento || "—"}</div>
+                      {t.equipamento_id_serie && (
+                        <div className="text-[10px] text-muted-foreground font-mono">{t.equipamento_id_serie}</div>
+                      )}
+                    </TableCell>
+                    <TableCell className="font-mono whitespace-nowrap">
+                      {t.hora_inicio && t.hora_fim ? `${t.hora_inicio}–${t.hora_fim}` : (t.hora_inicio || "—")}
+                    </TableCell>
+                    <TableCell className={cn("text-right font-medium", t.horas < 0 && "text-destructive")}>
+                      {t.horas.toFixed(2)}h
+                    </TableCell>
+                    <TableCell className="text-right font-medium">
+                      {t.valor > 0 ? t.valor.toLocaleString("pt-BR", { style: "currency", currency: "BRL" }) : "—"}
+                    </TableCell>
+                    <TableCell className="text-center">
+                      <div className="flex items-center justify-center gap-1">
+                        {t.auvo_link && (
+                          <a href={t.auvo_link} target="_blank" rel="noreferrer" title="Abrir tarefa Auvo"
+                             className="text-primary hover:underline">
+                            <ExternalLink className="h-3 w-3" />
+                          </a>
+                        )}
+                        {t.auvo_survey_url && (
+                          <a href={t.auvo_survey_url} target="_blank" rel="noreferrer" title="Relatório Auvo"
+                             className="text-primary hover:underline ml-1 text-[10px] font-medium">
+                            Rel
+                          </a>
+                        )}
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </ScrollArea>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
