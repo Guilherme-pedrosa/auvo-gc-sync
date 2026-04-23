@@ -1091,28 +1091,5 @@ async function runBudgetKanbanSync(opts: {
 
     console.log(`[budget-kanban] Cache atualizado: ${upsertRows.length} itens`);
 
-    const resumo = {
-      periodo: { inicio: startDate, fim: endDate },
-      total_tarefas_com_questionario: items.length,
-      orcamentos_realizados: items.filter((i: any) => i.orcamento_realizado).length,
-      os_realizadas: items.filter((i: any) => i.os_realizada).length,
-      pendentes: items.filter((i: any) => !i.orcamento_realizado && !i.os_realizada).length,
-    };
-
-    return new Response(JSON.stringify({
-      resumo,
-      updated: upsertRows.length,
-      ultimo_sync: now,
-      from_cache: false,
-    }), {
-      status: 200,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
-  } catch (err) {
-    console.error("[budget-kanban] Error:", err);
-    return new Response(JSON.stringify({ error: (err as Error).message }), {
-      status: 500,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
-  }
-});
+    console.log(`[budget-kanban] Sync concluído. Pendentes: ${items.filter((i: any) => !i.orcamento_realizado && !i.os_realizada).length}`);
+}
