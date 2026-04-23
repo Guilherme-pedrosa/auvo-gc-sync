@@ -72,6 +72,8 @@ export default function HorasTrabalhadasTab({
     return Number(t.duracao_decimal) || 0;
   };
 
+  const isExcessiveTask = (horas: number) => horas > 12;
+
   // Normalize client name for matching (strip LTDA, ME, SA, EPP, EIRELI, etc.)
   const normalizeName = (name: string) =>
     name
@@ -305,6 +307,7 @@ export default function HorasTrabalhadasTab({
     // sort each client's tasks by date asc
     for (const e of map.values()) {
       e.tasks.sort((a, b) =>
+        Number(isExcessiveTask(b.horas)) - Number(isExcessiveTask(a.horas)) ||
         (a.data_conclusao || a.data_tarefa).localeCompare(b.data_conclusao || b.data_tarefa) ||
         (a.hora_inicio || "").localeCompare(b.hora_inicio || "")
       );
