@@ -453,6 +453,7 @@ export default function RelatoriosPage() {
             dateTo={dateTo}
             onDateFromChange={setDateFrom}
             onDateToChange={setDateTo}
+            equipamentoTaskMap={equipamentoTaskMap || {}}
           />
         </TabsContent>
 
