@@ -147,6 +147,7 @@ export default function BudgetKanbanPage() {
 
   const handleSync = useCallback(async () => {
     setIsSyncing(true);
+    const previousSync = data?.ultimo_sync || null;
     try {
       const { data: syncData, error } = await supabase.functions.invoke("budget-kanban", {
         body: {
@@ -161,21 +162,35 @@ export default function BudgetKanbanPage() {
       if (syncData?.success === false || syncData?.error) {
         toast.error(syncData?.error || "Erro na sincronização. Mantendo último estado.");
       } else {
-        toast.success(`Sincronizado! ${syncData?.resumo?.total_tarefas_com_questionario ?? 0} tarefas atualizadas`);
+        const pollStartedAt = Date.now();
+        let refreshed: ApiResponse | null = null;
+
+        while (Date.now() - pollStartedAt < 120_000) {
+          const result = await refetch();
+          const latest = result.data as ApiResponse | undefined;
+          if (latest?.ultimo_sync && latest.ultimo_sync !== previousSync) {
+            refreshed = latest;
+            break;
+          }
+          await new Promise((resolve) => setTimeout(resolve, 4000));
+        }
+
+        if (refreshed?.ultimo_sync && refreshed.ultimo_sync !== previousSync) {
+          setColumnsInitialized(false);
+          toast.success(`Sincronizado! ${refreshed.resumo?.total_tarefas_com_questionario ?? 0} tarefas atualizadas`);
+        } else {
+          toast.error("A sincronização não terminou no backend. Tente novamente.");
+        }
       }
     } catch (e: any) {
-      toast.warning(`Sincronização em processamento. Atualizando cache...`);
-      console.warn("Erro/timeout no retorno do sync, tentando recarregar cache:", e?.message || e);
+      toast.error(`Erro na sincronização: ${e?.message || "falha desconhecida"}`);
+      console.warn("Erro no retorno do sync:", e?.message || e);
     } finally {
       setColumnsInitialized(false);
       await refetch();
-      setTimeout(() => {
-        setColumnsInitialized(false);
-        refetch();
-      }, 5000);
       setIsSyncing(false);
     }
-  }, [dateRange, refetch]);
+  }, [data?.ultimo_sync, dateRange, refetch]);
 
   // All unique clients
   const allClientes = useMemo(() => {
