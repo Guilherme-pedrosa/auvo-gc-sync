@@ -214,8 +214,9 @@ export default function HorasTrabalhadasTab({
     tecnico: string;
     equipamento: string;
     equipamento_id_serie: string;
-    auvo_link: string;
-    auvo_survey_url: string;
+    auvo_link: string;        // app2.auvo.com.br/relatorioTarefas/DetalheTarefa/{id} — RELATÓRIO da tarefa
+    auvo_task_url: string;    // app.auvo.com.br/informacoes/tarefa/{uuid} — tela da tarefa no app
+    auvo_survey_url: string;  // pesquisa de satisfação (uso secundário)
     status_auvo: string;
     cliente_gc: string;
     gc_os_codigo: string;
@@ -268,7 +269,8 @@ export default function HorasTrabalhadasTab({
         tecnico: tec,
         equipamento: t.equipamento_nome || "",
         equipamento_id_serie: t.equipamento_id_serie || "",
-        auvo_link: t.auvo_link || t.auvo_task_url || "",
+        auvo_link: t.auvo_link || "",
+        auvo_task_url: t.auvo_task_url || "",
         auvo_survey_url: t.auvo_survey_url || "",
         status_auvo: t.status_auvo || "",
         cliente_gc: t.gc_os_cliente || "",
@@ -599,7 +601,7 @@ export default function HorasTrabalhadasTab({
       "Cliente", "Cliente GC", "Data Conclusão", "Data Tarefa", "ID Tarefa", "Cód. OS GC",
       "Técnico", "Tipo de Tarefa", "Equipamento", "ID/Série",
       "Status Auvo", "Início", "Fim", "Horas", "Deslocamento (h)", "Valor (R$)",
-      "Orientação", "Pendência", "Link Auvo", "Link Relatório", "Link OS GC",
+      "Orientação", "Pendência", "Relatório Auvo", "Tarefa Auvo", "Pesquisa Satisfação", "Link OS GC",
     ];
     const detalheRows: any[] = [
       ["Detalhe Completo por OS"],
@@ -629,6 +631,7 @@ export default function HorasTrabalhadasTab({
           t.orientacao,
           t.pendencia,
           t.auvo_link,
+          t.auvo_task_url,
           t.auvo_survey_url,
           t.gc_os_link,
         ]);
@@ -639,7 +642,7 @@ export default function HorasTrabalhadasTab({
       { wch: 30 }, { wch: 30 }, { wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 12 },
       { wch: 22 }, { wch: 28 }, { wch: 30 }, { wch: 16 },
       { wch: 14 }, { wch: 8 }, { wch: 8 }, { wch: 8 }, { wch: 14 }, { wch: 12 },
-      { wch: 40 }, { wch: 40 }, { wch: 40 }, { wch: 40 }, { wch: 40 },
+      { wch: 40 }, { wch: 40 }, { wch: 40 }, { wch: 40 }, { wch: 40 }, { wch: 40 },
     ];
     XLSX.utils.book_append_sheet(wb, wsDet, "Detalhe OS");
 
@@ -1181,15 +1184,26 @@ export default function HorasTrabalhadasTab({
                     <TableCell className="text-center">
                       <div className="flex items-center justify-center gap-1">
                         {t.auvo_link && (
-                          <a href={t.auvo_link} target="_blank" rel="noreferrer" title="Abrir tarefa Auvo"
-                             className="text-primary hover:underline">
+                          <a
+                            href={t.auvo_link}
+                            target="_blank"
+                            rel="noreferrer"
+                            title="Abrir relatório da tarefa no Auvo"
+                            className="text-primary hover:underline inline-flex items-center gap-1 text-[11px] font-medium"
+                          >
                             <ExternalLink className="h-3 w-3" />
+                            Relatório
                           </a>
                         )}
-                        {t.auvo_survey_url && (
-                          <a href={t.auvo_survey_url} target="_blank" rel="noreferrer" title="Relatório Auvo"
-                             className="text-primary hover:underline ml-1 text-[10px] font-medium">
-                            Rel
+                        {t.auvo_task_url && (
+                          <a
+                            href={t.auvo_task_url}
+                            target="_blank"
+                            rel="noreferrer"
+                            title="Abrir tarefa no Auvo"
+                            className="text-muted-foreground hover:text-primary hover:underline ml-1 text-[10px]"
+                          >
+                            Tarefa
                           </a>
                         )}
                       </div>
