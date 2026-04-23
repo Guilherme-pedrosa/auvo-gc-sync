@@ -832,8 +832,12 @@ export default function HorasTrabalhadasTab({
             </Popover>
 
             <Button variant="outline" size="sm" className="gap-1.5" onClick={handleExportPDF}>
-              <Download className="h-3.5 w-3.5" />
+              <FileText className="h-3.5 w-3.5" />
               Exportar PDF
+            </Button>
+            <Button variant="outline" size="sm" className="gap-1.5" onClick={handleExportExcel}>
+              <FileSpreadsheet className="h-3.5 w-3.5" />
+              Exportar Excel
             </Button>
           </div>
         </CardContent>
