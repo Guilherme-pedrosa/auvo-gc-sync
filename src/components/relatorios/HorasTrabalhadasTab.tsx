@@ -1183,15 +1183,26 @@ export default function HorasTrabalhadasTab({
                     <TableCell className="text-center">
                       <div className="flex items-center justify-center gap-1">
                         {t.auvo_link && (
-                          <a href={t.auvo_link} target="_blank" rel="noreferrer" title="Abrir tarefa Auvo"
-                             className="text-primary hover:underline">
+                          <a
+                            href={t.auvo_link}
+                            target="_blank"
+                            rel="noreferrer"
+                            title="Abrir relatório da tarefa no Auvo"
+                            className="text-primary hover:underline inline-flex items-center gap-1 text-[11px] font-medium"
+                          >
                             <ExternalLink className="h-3 w-3" />
+                            Relatório
                           </a>
                         )}
-                        {t.auvo_survey_url && (
-                          <a href={t.auvo_survey_url} target="_blank" rel="noreferrer" title="Relatório Auvo"
-                             className="text-primary hover:underline ml-1 text-[10px] font-medium">
-                            Rel
+                        {t.auvo_task_url && (
+                          <a
+                            href={t.auvo_task_url}
+                            target="_blank"
+                            rel="noreferrer"
+                            title="Abrir tarefa no Auvo"
+                            className="text-muted-foreground hover:text-primary hover:underline ml-1 text-[10px]"
+                          >
+                            Tarefa
                           </a>
                         )}
                       </div>
