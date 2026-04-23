@@ -138,6 +138,24 @@ export default function HorasTrabalhadasTab({
     });
   }, [data, dateFrom, dateTo, filterTecnico, filterCliente, filterGrupo, selectedTipos, allTiposSelected, grupoClienteMap]);
 
+  // When filtering by group, resolve which side (Auvo or GC) matched the group
+  // so the display name comes from the group member, not the unrelated other side.
+  const resolveDisplayCliente = (t: any): string => {
+    if (filterGrupo !== "todos") {
+      const grupoClientes = grupoClienteMap.get(filterGrupo) || [];
+      const clienteAuvo = t.cliente || "";
+      const clienteGc = t.gc_os_cliente || "";
+      const nAuvo = normalizeName(clienteAuvo);
+      const nGc = normalizeName(clienteGc);
+      // Prefer the side that strictly matches a group member
+      const auvoIsMember = grupoClientes.some((gc: string) => normalizeName(gc) === nAuvo);
+      const gcIsMember = grupoClientes.some((gc: string) => normalizeName(gc) === nGc);
+      if (auvoIsMember) return clienteAuvo;
+      if (gcIsMember) return clienteGc;
+    }
+    return t.cliente || t.gc_os_cliente || "Sem cliente";
+  };
+
   // Build hourly rate lookup - checks both auvo and gc client names against group members
   const getHourlyRate = (tecnico: string, clienteAuvo: string, clienteGc?: string): number => {
     // First check direct client config (try both names)
