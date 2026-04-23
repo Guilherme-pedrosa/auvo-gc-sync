@@ -280,12 +280,12 @@ export default function HorasTrabalhadasTab({
 
   // Summary by client (across all technicians)
   const clienteSummary = useMemo(() => {
-    const map = new Map<string, { cliente: string; horas: number; deslocamento: number; tarefas: number; valor: number; tecnicos: Set<string> }>();
+    const map = new Map<string, { cliente: string; horas: number; deslocamento: number; tarefas: number; valor: number; tecnicos: Set<string>; tasks: TaskDetail[] }>();
     for (const tec of tecnicoSummary) {
       for (const [cliente, cd] of tec.byCliente) {
         let entry = map.get(cliente);
         if (!entry) {
-          entry = { cliente, horas: 0, deslocamento: 0, tarefas: 0, valor: 0, tecnicos: new Set() };
+          entry = { cliente, horas: 0, deslocamento: 0, tarefas: 0, valor: 0, tecnicos: new Set(), tasks: [] };
           map.set(cliente, entry);
         }
         entry.horas += cd.horas;
@@ -293,10 +293,23 @@ export default function HorasTrabalhadasTab({
         entry.tarefas += cd.tarefas;
         entry.valor += cd.valor;
         entry.tecnicos.add(tec.tecnico);
+        entry.tasks.push(...cd.tasks);
       }
+    }
+    // sort each client's tasks by date asc
+    for (const e of map.values()) {
+      e.tasks.sort((a, b) =>
+        (a.data_conclusao || a.data_tarefa).localeCompare(b.data_conclusao || b.data_tarefa) ||
+        (a.hora_inicio || "").localeCompare(b.hora_inicio || "")
+      );
     }
     return Array.from(map.values()).sort((a, b) => b.valor - a.valor);
   }, [tecnicoSummary]);
+
+  const clienteSelecionado = useMemo(
+    () => (clienteModal ? clienteSummary.find((c) => c.cliente === clienteModal) : null),
+    [clienteModal, clienteSummary]
+  );
 
   const totalHoras = useMemo(() => tecnicoSummary.reduce((s, t) => s + t.horas, 0), [tecnicoSummary]);
   const totalDeslocamento = useMemo(() => tecnicoSummary.reduce((s, t) => s + t.deslocamento, 0), [tecnicoSummary]);
