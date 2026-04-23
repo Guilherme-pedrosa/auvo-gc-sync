@@ -1,0 +1,1 @@
+- [WD não é Grupo IZ](mem://business-rules/wd-not-grupo-iz) — WD COMÉRCIO não pertence ao Grupo IZ; exibir cliente que casou com o grupo
