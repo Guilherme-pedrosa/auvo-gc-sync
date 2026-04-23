@@ -26,6 +26,9 @@ import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, Command
 import { ptBR } from "date-fns/locale";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
+import * as XLSX from "xlsx";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
+import { ExternalLink, FileSpreadsheet, FileText } from "lucide-react";
 
 interface Props {
   data: any[];
@@ -60,6 +63,7 @@ export default function HorasTrabalhadasTab({
   const [selectedTipos, setSelectedTipos] = useState<Set<string>>(new Set());
   const [allTiposSelected, setAllTiposSelected] = useState(true);
   const [searchTipo, setSearchTipo] = useState("");
+  const [clienteModal, setClienteModal] = useState<string | null>(null);
 
   // Get task hours: use Auvo's durationDecimal (already deducts pauses)
   const getTaskHoras = (t: any): number => {
@@ -195,7 +199,28 @@ export default function HorasTrabalhadasTab({
   };
 
   // Summary by technician
-  type TaskDetail = { auvo_task_id: string; descricao: string; hora_inicio: string; hora_fim: string; horas: number; deslocamento: number; data_tarefa: string; valor: number };
+  type TaskDetail = {
+    auvo_task_id: string;
+    descricao: string;
+    orientacao: string;
+    pendencia: string;
+    hora_inicio: string;
+    hora_fim: string;
+    horas: number;
+    deslocamento: number;
+    data_tarefa: string;
+    data_conclusao: string;
+    valor: number;
+    tecnico: string;
+    equipamento: string;
+    equipamento_id_serie: string;
+    auvo_link: string;
+    auvo_survey_url: string;
+    status_auvo: string;
+    cliente_gc: string;
+    gc_os_codigo: string;
+    gc_os_link: string;
+  };
   type ClienteData = { horas: number; deslocamento: number; tarefas: number; valor: number; tipos: Map<string, number>; tasks: TaskDetail[] };
   const tecnicoSummary = useMemo(() => {
     const map = new Map<string, { tecnico: string; horas: number; deslocamento: number; tarefas: number; valor: number; byCliente: Map<string, ClienteData> }>();
@@ -231,12 +256,24 @@ export default function HorasTrabalhadasTab({
       clienteEntry.tasks.push({
         auvo_task_id: t.auvo_task_id || "",
         descricao: getTipoLabel(t.descricao),
+        orientacao: t.orientacao || "",
+        pendencia: t.pendencia || "",
         hora_inicio: t.hora_inicio || "",
         hora_fim: t.hora_fim || "",
         horas,
         deslocamento,
         data_tarefa: t.data_tarefa || "",
+        data_conclusao: t.data_conclusao || "",
         valor,
+        tecnico: tec,
+        equipamento: t.equipamento_nome || "",
+        equipamento_id_serie: t.equipamento_id_serie || "",
+        auvo_link: t.auvo_link || t.auvo_task_url || "",
+        auvo_survey_url: t.auvo_survey_url || "",
+        status_auvo: t.status_auvo || "",
+        cliente_gc: t.gc_os_cliente || "",
+        gc_os_codigo: t.gc_os_codigo || "",
+        gc_os_link: t.gc_os_link || "",
       });
     }
     return Array.from(map.values()).sort((a, b) => b.valor - a.valor);
@@ -244,12 +281,12 @@ export default function HorasTrabalhadasTab({
 
   // Summary by client (across all technicians)
   const clienteSummary = useMemo(() => {
-    const map = new Map<string, { cliente: string; horas: number; deslocamento: number; tarefas: number; valor: number; tecnicos: Set<string> }>();
+    const map = new Map<string, { cliente: string; horas: number; deslocamento: number; tarefas: number; valor: number; tecnicos: Set<string>; tasks: TaskDetail[] }>();
     for (const tec of tecnicoSummary) {
       for (const [cliente, cd] of tec.byCliente) {
         let entry = map.get(cliente);
         if (!entry) {
-          entry = { cliente, horas: 0, deslocamento: 0, tarefas: 0, valor: 0, tecnicos: new Set() };
+          entry = { cliente, horas: 0, deslocamento: 0, tarefas: 0, valor: 0, tecnicos: new Set(), tasks: [] };
           map.set(cliente, entry);
         }
         entry.horas += cd.horas;
@@ -257,10 +294,23 @@ export default function HorasTrabalhadasTab({
         entry.tarefas += cd.tarefas;
         entry.valor += cd.valor;
         entry.tecnicos.add(tec.tecnico);
+        entry.tasks.push(...cd.tasks);
       }
+    }
+    // sort each client's tasks by date asc
+    for (const e of map.values()) {
+      e.tasks.sort((a, b) =>
+        (a.data_conclusao || a.data_tarefa).localeCompare(b.data_conclusao || b.data_tarefa) ||
+        (a.hora_inicio || "").localeCompare(b.hora_inicio || "")
+      );
     }
     return Array.from(map.values()).sort((a, b) => b.valor - a.valor);
   }, [tecnicoSummary]);
+
+  const clienteSelecionado = useMemo(
+    () => (clienteModal ? clienteSummary.find((c) => c.cliente === clienteModal) : null),
+    [clienteModal, clienteSummary]
+  );
 
   const totalHoras = useMemo(() => tecnicoSummary.reduce((s, t) => s + t.horas, 0), [tecnicoSummary]);
   const totalDeslocamento = useMemo(() => tecnicoSummary.reduce((s, t) => s + t.deslocamento, 0), [tecnicoSummary]);
@@ -452,6 +502,58 @@ export default function HorasTrabalhadasTab({
       columnStyles: { 0: { cellWidth: 35 }, 1: { cellWidth: 50 }, 5: { halign: "right" } },
     });
 
+    // ── Detalhe por OS (todas as ordens, agrupadas por cliente) ──
+    doc.addPage("a4", "landscape");
+    const pageWLand = doc.internal.pageSize.getWidth();
+    curY = 18;
+    doc.setFontSize(13);
+    doc.setFont("helvetica", "bold");
+    doc.text("Detalhe Completo por Ordem de Serviço", 14, curY);
+    doc.setFontSize(9);
+    doc.setFont("helvetica", "normal");
+    doc.text(`Período: ${periodoStr}`, 14, curY + 6);
+    curY += 14;
+
+    for (const c of clienteSummary) {
+      // Header do cliente
+      if (curY > 180) { doc.addPage("a4", "landscape"); curY = 18; }
+      doc.setFontSize(11);
+      doc.setFont("helvetica", "bold");
+      doc.setFillColor(230, 237, 250);
+      doc.rect(14, curY - 4, pageWLand - 28, 7, "F");
+      doc.text(`${c.cliente}  ·  ${c.tarefas} OS  ·  ${c.horas.toFixed(1)}h  ·  ${fmtBRL(c.valor)}`, 16, curY + 1);
+      curY += 6;
+
+      const osRows = c.tasks.map((t) => [
+        t.data_conclusao || t.data_tarefa,
+        `#${t.auvo_task_id}`,
+        t.tecnico,
+        t.descricao,
+        t.equipamento || "—",
+        t.hora_inicio && t.hora_fim ? `${t.hora_inicio}–${t.hora_fim}` : (t.hora_inicio || "—"),
+        `${t.horas.toFixed(2)}h`,
+        t.deslocamento > 0 ? `${t.deslocamento.toFixed(2)}h` : "—",
+        fmtBRL(t.valor),
+      ]);
+
+      autoTable(doc, {
+        startY: curY,
+        head: [["Data", "ID", "Técnico", "Tipo de Tarefa", "Equipamento", "Horário", "Horas", "Desloc.", "Valor"]],
+        body: osRows,
+        styles: { fontSize: 7, cellPadding: 1.5 },
+        headStyles: { fillColor: [37, 99, 235], fontSize: 7 },
+        columnStyles: {
+          0: { cellWidth: 22 }, 1: { cellWidth: 18 }, 2: { cellWidth: 35 },
+          3: { cellWidth: 55 }, 4: { cellWidth: 55 },
+          5: { cellWidth: 24 }, 6: { cellWidth: 18, halign: "right" },
+          7: { cellWidth: 18, halign: "right" }, 8: { halign: "right" },
+        },
+        margin: { left: 14, right: 14 },
+      });
+
+      curY = (doc as any).lastAutoTable.finalY + 8;
+    }
+
     // ── Footer ──
     const pages = doc.getNumberOfPages();
     for (let i = 1; i <= pages; i++) {
@@ -459,11 +561,108 @@ export default function HorasTrabalhadasTab({
       doc.setFontSize(7);
       doc.setFont("helvetica", "normal");
       doc.setTextColor(130);
-      doc.text(`Gerado em ${format(new Date(), "dd/MM/yyyy HH:mm")} · Página ${i}/${pages}`, pageW / 2, doc.internal.pageSize.getHeight() - 8, { align: "center" });
+      const w = doc.internal.pageSize.getWidth();
+      doc.text(`Gerado em ${format(new Date(), "dd/MM/yyyy HH:mm")} · Página ${i}/${pages}`, w / 2, doc.internal.pageSize.getHeight() - 8, { align: "center" });
       doc.setTextColor(0);
     }
 
     doc.save(`horas-trabalhadas-${format(dateFrom, "yyyyMMdd")}-${format(dateTo, "yyyyMMdd")}.pdf`);
+  };
+
+  // ── Excel export: Resumo Cliente | Detalhe OS | Resumo Técnico ──
+  const handleExportExcel = () => {
+    const periodoStr = `${format(dateFrom, "dd/MM/yyyy")} a ${format(dateTo, "dd/MM/yyyy")}`;
+    const wb = XLSX.utils.book_new();
+
+    // Sheet 1: Resumo por Cliente
+    const resumoClienteRows: any[] = [
+      ["Relatório de Horas Trabalhadas — Resumo por Cliente"],
+      [`Período: ${periodoStr}`],
+      [],
+      ["Cliente", "Tarefas", "Horas", "Deslocamento (h)", "Técnicos", "Valor (R$)"],
+      ...clienteSummary.map((c) => [
+        c.cliente,
+        c.tarefas,
+        Number(c.horas.toFixed(2)),
+        Number(c.deslocamento.toFixed(2)),
+        c.tecnicos.size,
+        Number(c.valor.toFixed(2)),
+      ]),
+      ["TOTAL", totalTarefas, Number(totalHoras.toFixed(2)), Number(totalDeslocamento.toFixed(2)), tecnicoSummary.length, Number(totalValor.toFixed(2))],
+    ];
+    const wsCli = XLSX.utils.aoa_to_sheet(resumoClienteRows);
+    wsCli["!cols"] = [{ wch: 38 }, { wch: 10 }, { wch: 10 }, { wch: 16 }, { wch: 10 }, { wch: 14 }];
+    XLSX.utils.book_append_sheet(wb, wsCli, "Resumo Cliente");
+
+    // Sheet 2: Detalhe por OS (todas as ordens)
+    const detalheHeader = [
+      "Cliente", "Cliente GC", "Data Conclusão", "Data Tarefa", "ID Tarefa", "Cód. OS GC",
+      "Técnico", "Tipo de Tarefa", "Equipamento", "ID/Série",
+      "Status Auvo", "Início", "Fim", "Horas", "Deslocamento (h)", "Valor (R$)",
+      "Orientação", "Pendência", "Link Auvo", "Link Relatório", "Link OS GC",
+    ];
+    const detalheRows: any[] = [
+      ["Detalhe Completo por OS"],
+      [`Período: ${periodoStr}`],
+      [],
+      detalheHeader,
+    ];
+    for (const c of clienteSummary) {
+      for (const t of c.tasks) {
+        detalheRows.push([
+          c.cliente,
+          t.cliente_gc,
+          t.data_conclusao,
+          t.data_tarefa,
+          t.auvo_task_id,
+          t.gc_os_codigo,
+          t.tecnico,
+          t.descricao,
+          t.equipamento,
+          t.equipamento_id_serie,
+          t.status_auvo,
+          t.hora_inicio,
+          t.hora_fim,
+          Number(t.horas.toFixed(2)),
+          Number(t.deslocamento.toFixed(2)),
+          Number(t.valor.toFixed(2)),
+          t.orientacao,
+          t.pendencia,
+          t.auvo_link,
+          t.auvo_survey_url,
+          t.gc_os_link,
+        ]);
+      }
+    }
+    const wsDet = XLSX.utils.aoa_to_sheet(detalheRows);
+    wsDet["!cols"] = [
+      { wch: 30 }, { wch: 30 }, { wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 12 },
+      { wch: 22 }, { wch: 28 }, { wch: 30 }, { wch: 16 },
+      { wch: 14 }, { wch: 8 }, { wch: 8 }, { wch: 8 }, { wch: 14 }, { wch: 12 },
+      { wch: 40 }, { wch: 40 }, { wch: 40 }, { wch: 40 }, { wch: 40 },
+    ];
+    XLSX.utils.book_append_sheet(wb, wsDet, "Detalhe OS");
+
+    // Sheet 3: Resumo por Técnico
+    const tecRows: any[] = [
+      ["Resumo por Técnico"],
+      [`Período: ${periodoStr}`],
+      [],
+      ["Técnico", "Tarefas", "Horas", "Deslocamento (h)", "Valor (R$)"],
+      ...tecnicoSummary.map((t) => [
+        t.tecnico,
+        t.tarefas,
+        Number(t.horas.toFixed(2)),
+        Number(t.deslocamento.toFixed(2)),
+        Number(t.valor.toFixed(2)),
+      ]),
+      ["TOTAL", totalTarefas, Number(totalHoras.toFixed(2)), Number(totalDeslocamento.toFixed(2)), Number(totalValor.toFixed(2))],
+    ];
+    const wsTec = XLSX.utils.aoa_to_sheet(tecRows);
+    wsTec["!cols"] = [{ wch: 28 }, { wch: 10 }, { wch: 10 }, { wch: 16 }, { wch: 14 }];
+    XLSX.utils.book_append_sheet(wb, wsTec, "Resumo Técnico");
+
+    XLSX.writeFile(wb, `horas-trabalhadas-${format(dateFrom, "yyyyMMdd")}-${format(dateTo, "yyyyMMdd")}.xlsx`);
   };
 
   if (isLoading) {
@@ -633,8 +832,12 @@ export default function HorasTrabalhadasTab({
             </Popover>
 
             <Button variant="outline" size="sm" className="gap-1.5" onClick={handleExportPDF}>
-              <Download className="h-3.5 w-3.5" />
+              <FileText className="h-3.5 w-3.5" />
               Exportar PDF
+            </Button>
+            <Button variant="outline" size="sm" className="gap-1.5" onClick={handleExportExcel}>
+              <FileSpreadsheet className="h-3.5 w-3.5" />
+              Exportar Excel
             </Button>
           </div>
         </CardContent>
@@ -753,8 +956,14 @@ export default function HorasTrabalhadasTab({
               </TableHeader>
               <TableBody>
                 {clienteSummary.map((c) => (
-                  <TableRow key={c.cliente}>
-                    <TableCell className="font-medium text-sm">{c.cliente}</TableCell>
+                  <TableRow
+                    key={c.cliente}
+                    className="cursor-pointer hover:bg-muted/50"
+                    onClick={() => setClienteModal(c.cliente)}
+                  >
+                    <TableCell className="font-medium text-sm text-primary hover:underline">
+                      {c.cliente}
+                    </TableCell>
                     <TableCell className="text-center"><Badge variant="secondary">{c.tarefas}</Badge></TableCell>
                     <TableCell className="text-right font-mono text-sm">{c.horas.toFixed(1)}h</TableCell>
                     <TableCell className="text-right font-mono text-sm text-muted-foreground">{c.deslocamento > 0 ? `${c.deslocamento.toFixed(1)}h` : "—"}</TableCell>
@@ -884,6 +1093,98 @@ export default function HorasTrabalhadasTab({
           </Table>
         </CardContent>
       </Card>
+
+      {/* Modal: Detalhe de OS por Cliente */}
+      <Dialog open={!!clienteModal} onOpenChange={(open) => !open && setClienteModal(null)}>
+        <DialogContent className="max-w-6xl max-h-[85vh] overflow-hidden flex flex-col">
+          <DialogHeader>
+            <DialogTitle className="text-base">{clienteSelecionado?.cliente}</DialogTitle>
+            <DialogDescription className="flex flex-wrap gap-3 text-xs">
+              <span><strong>{clienteSelecionado?.tarefas}</strong> OS</span>
+              <span><strong>{clienteSelecionado?.horas.toFixed(1)}h</strong> trabalhadas</span>
+              <span><strong>{clienteSelecionado?.deslocamento.toFixed(1)}h</strong> deslocamento</span>
+              <span><strong>{clienteSelecionado?.tecnicos.size}</strong> técnico(s)</span>
+              <span className="text-foreground">
+                <strong>
+                  {(clienteSelecionado?.valor || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
+                </strong>
+              </span>
+              <span className="text-muted-foreground">
+                · {format(dateFrom, "dd/MM/yyyy")} a {format(dateTo, "dd/MM/yyyy")}
+              </span>
+            </DialogDescription>
+          </DialogHeader>
+          <ScrollArea className="flex-1 -mx-6 px-6">
+            <Table>
+              <TableHeader className="sticky top-0 bg-background z-10">
+                <TableRow>
+                  <TableHead className="text-xs">Data</TableHead>
+                  <TableHead className="text-xs">ID</TableHead>
+                  <TableHead className="text-xs">Técnico</TableHead>
+                  <TableHead className="text-xs">Tipo de Tarefa</TableHead>
+                  <TableHead className="text-xs">Equipamento</TableHead>
+                  <TableHead className="text-xs">Horário</TableHead>
+                  <TableHead className="text-xs text-right">Horas</TableHead>
+                  <TableHead className="text-xs text-right">Valor</TableHead>
+                  <TableHead className="text-xs text-center">Auvo</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {clienteSelecionado?.tasks.map((t, idx) => (
+                  <TableRow key={`${t.auvo_task_id}-${idx}`} className="text-xs">
+                    <TableCell className="font-mono whitespace-nowrap">
+                      {(t.data_conclusao || t.data_tarefa)
+                        ? format(new Date((t.data_conclusao || t.data_tarefa) + "T12:00:00"), "dd/MM/yy")
+                        : "—"}
+                    </TableCell>
+                    <TableCell className="font-mono">#{t.auvo_task_id}</TableCell>
+                    <TableCell>{t.tecnico}</TableCell>
+                    <TableCell className="max-w-[220px]">
+                      <div className="font-medium truncate" title={t.descricao}>{t.descricao}</div>
+                      {t.orientacao && (
+                        <div className="text-[10px] text-muted-foreground truncate" title={t.orientacao}>
+                          {t.orientacao}
+                        </div>
+                      )}
+                    </TableCell>
+                    <TableCell className="max-w-[200px]">
+                      <div className="truncate" title={t.equipamento}>{t.equipamento || "—"}</div>
+                      {t.equipamento_id_serie && (
+                        <div className="text-[10px] text-muted-foreground font-mono">{t.equipamento_id_serie}</div>
+                      )}
+                    </TableCell>
+                    <TableCell className="font-mono whitespace-nowrap">
+                      {t.hora_inicio && t.hora_fim ? `${t.hora_inicio}–${t.hora_fim}` : (t.hora_inicio || "—")}
+                    </TableCell>
+                    <TableCell className={cn("text-right font-medium", t.horas < 0 && "text-destructive")}>
+                      {t.horas.toFixed(2)}h
+                    </TableCell>
+                    <TableCell className="text-right font-medium">
+                      {t.valor > 0 ? t.valor.toLocaleString("pt-BR", { style: "currency", currency: "BRL" }) : "—"}
+                    </TableCell>
+                    <TableCell className="text-center">
+                      <div className="flex items-center justify-center gap-1">
+                        {t.auvo_link && (
+                          <a href={t.auvo_link} target="_blank" rel="noreferrer" title="Abrir tarefa Auvo"
+                             className="text-primary hover:underline">
+                            <ExternalLink className="h-3 w-3" />
+                          </a>
+                        )}
+                        {t.auvo_survey_url && (
+                          <a href={t.auvo_survey_url} target="_blank" rel="noreferrer" title="Relatório Auvo"
+                             className="text-primary hover:underline ml-1 text-[10px] font-medium">
+                            Rel
+                          </a>
+                        )}
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </ScrollArea>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
