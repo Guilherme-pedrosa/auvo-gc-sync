@@ -26,6 +26,9 @@ import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, Command
 import { ptBR } from "date-fns/locale";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
+import * as XLSX from "xlsx";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
+import { ExternalLink, FileSpreadsheet, FileText } from "lucide-react";
 
 interface Props {
   data: any[];
