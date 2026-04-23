@@ -392,30 +392,33 @@ async function fetchGcOrcamentosMap(
   endDate?: string
 ): Promise<Record<string, any>> {
   const map: Record<string, any> = {};
-  let page = 1;
-  let totalPages = 1;
   const MAX_PAGES = 30;
+  const CONCURRENCY = 5;
 
-  while (page <= totalPages && page <= MAX_PAGES) {
+  const fetchPage = async (page: number): Promise<{ records: any[]; totalPages: number } | null> => {
     let url = `${GC_BASE_URL}/api/orcamentos?limite=100&pagina=${page}`;
     if (startDate) url += `&data_inicio=${startDate}`;
     if (endDate) url += `&data_fim=${endDate}`;
-
-    const response = await rateLimitedFetch(url, { headers: gcHeaders }, "gc");
-    if (response.status === 429) {
-      console.warn("[budget-kanban] GC rate limit — aguardando 3s...");
-      await new Promise(r => setTimeout(r, 3000));
-      continue;
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const response = await rateLimitedFetch(url, { headers: gcHeaders }, "gc");
+      if (response.status === 429) {
+        await new Promise(r => setTimeout(r, 3000));
+        continue;
+      }
+      if (!response.ok) {
+        console.error(`[budget-kanban] GC orcamentos page ${page} error: ${response.status}`);
+        return null;
+      }
+      const data = await response.json();
+      return {
+        records: Array.isArray(data?.data) ? data.data : [],
+        totalPages: data?.meta?.total_paginas || 1,
+      };
     }
-    if (!response.ok) {
-      console.error(`[budget-kanban] GC orcamentos error: ${response.status}`);
-      break;
-    }
+    return null;
+  };
 
-    const data = await response.json();
-    const records: any[] = Array.isArray(data?.data) ? data.data : [];
-    totalPages = data?.meta?.total_paginas || 1;
-
+  const ingest = (records: any[]) => {
     for (const orc of records) {
       const atributos: any[] = orc.atributos || [];
       const attrTarefa = atributos.find((a: any) => {
@@ -441,10 +444,23 @@ async function fetchGcOrcamentosMap(
         }
       }
     }
+  };
 
-    console.log(`[budget-kanban] GC orçamentos page ${page}/${totalPages}: ${records.length} registros, ${Object.keys(map).length} com tarefa`);
-    page++;
+  // Fetch page 1 to discover totalPages
+  const first = await fetchPage(1);
+  if (!first) return map;
+  ingest(first.records);
+  const totalPages = Math.min(first.totalPages, MAX_PAGES);
+  console.log(`[budget-kanban] GC orçamentos: ${totalPages} páginas (paralelo x${CONCURRENCY})`);
+
+  // Fetch remaining pages in parallel batches
+  for (let start = 2; start <= totalPages; start += CONCURRENCY) {
+    const batch: number[] = [];
+    for (let p = start; p < start + CONCURRENCY && p <= totalPages; p++) batch.push(p);
+    const results = await Promise.all(batch.map(fetchPage));
+    for (const r of results) if (r) ingest(r.records);
   }
+  console.log(`[budget-kanban] GC orçamentos done: ${Object.keys(map).length} com tarefa`);
   return map;
 }
 
@@ -455,30 +471,33 @@ async function fetchGcOsMap(
   endDate?: string
 ): Promise<Record<string, any>> {
   const map: Record<string, any> = {};
-  let page = 1;
-  let totalPages = 1;
   const MAX_PAGES = 30;
+  const CONCURRENCY = 5;
 
-  while (page <= totalPages && page <= MAX_PAGES) {
+  const fetchPage = async (page: number): Promise<{ records: any[]; totalPages: number } | null> => {
     let url = `${GC_BASE_URL}/api/ordens_servicos?limite=100&pagina=${page}`;
     if (startDate) url += `&data_inicio=${startDate}`;
     if (endDate) url += `&data_fim=${endDate}`;
-
-    const response = await rateLimitedFetch(url, { headers: gcHeaders }, "gc");
-    if (response.status === 429) {
-      console.warn("[budget-kanban] GC OS rate limit — aguardando 3s...");
-      await new Promise(r => setTimeout(r, 3000));
-      continue;
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const response = await rateLimitedFetch(url, { headers: gcHeaders }, "gc");
+      if (response.status === 429) {
+        await new Promise(r => setTimeout(r, 3000));
+        continue;
+      }
+      if (!response.ok) {
+        console.error(`[budget-kanban] GC OS page ${page} error: ${response.status}`);
+        return null;
+      }
+      const data = await response.json();
+      return {
+        records: Array.isArray(data?.data) ? data.data : [],
+        totalPages: data?.meta?.total_paginas || 1,
+      };
     }
-    if (!response.ok) {
-      console.error(`[budget-kanban] GC OS error: ${response.status}`);
-      break;
-    }
+    return null;
+  };
 
-    const data = await response.json();
-    const records: any[] = Array.isArray(data?.data) ? data.data : [];
-    totalPages = data?.meta?.total_paginas || 1;
-
+  const ingest = (records: any[]) => {
     for (const os of records) {
       const atributos: any[] = os.atributos || [];
       const attrTarefa = atributos.find((a: any) => {
@@ -505,10 +524,21 @@ async function fetchGcOsMap(
         }
       }
     }
+  };
 
-    console.log(`[budget-kanban] GC OS page ${page}/${totalPages}: ${records.length} registros, ${Object.keys(map).length} com tarefa`);
-    page++;
+  const first = await fetchPage(1);
+  if (!first) return map;
+  ingest(first.records);
+  const totalPages = Math.min(first.totalPages, MAX_PAGES);
+  console.log(`[budget-kanban] GC OS: ${totalPages} páginas (paralelo x${CONCURRENCY})`);
+
+  for (let start = 2; start <= totalPages; start += CONCURRENCY) {
+    const batch: number[] = [];
+    for (let p = start; p < start + CONCURRENCY && p <= totalPages; p++) batch.push(p);
+    const results = await Promise.all(batch.map(fetchPage));
+    for (const r of results) if (r) ingest(r.records);
   }
+  console.log(`[budget-kanban] GC OS done: ${Object.keys(map).length} com tarefa`);
   return map;
 }
 
