@@ -956,8 +956,14 @@ export default function HorasTrabalhadasTab({
               </TableHeader>
               <TableBody>
                 {clienteSummary.map((c) => (
-                  <TableRow key={c.cliente}>
-                    <TableCell className="font-medium text-sm">{c.cliente}</TableCell>
+                  <TableRow
+                    key={c.cliente}
+                    className="cursor-pointer hover:bg-muted/50"
+                    onClick={() => setClienteModal(c.cliente)}
+                  >
+                    <TableCell className="font-medium text-sm text-primary hover:underline">
+                      {c.cliente}
+                    </TableCell>
                     <TableCell className="text-center"><Badge variant="secondary">{c.tarefas}</Badge></TableCell>
                     <TableCell className="text-right font-mono text-sm">{c.horas.toFixed(1)}h</TableCell>
                     <TableCell className="text-right font-mono text-sm text-muted-foreground">{c.deslocamento > 0 ? `${c.deslocamento.toFixed(1)}h` : "—"}</TableCell>
