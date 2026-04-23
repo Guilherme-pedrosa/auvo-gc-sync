@@ -5,11 +5,6 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
-// Background task API exposed by Supabase Edge Runtime
-declare const EdgeRuntime: {
-  waitUntil: (promise: Promise<unknown>) => void;
-};
-
 const AUVO_BASE_URL = "https://api.auvo.com.br/v2";
 const GC_BASE_URL = "https://api.gestaoclick.com";
 const QUESTIONNAIRE_ID = "216040";
@@ -676,39 +671,16 @@ Deno.serve(async (req) => {
 
     console.log(`[budget-kanban] Período: ${startDate} a ${endDate}`);
 
-    // Run the heavy sync as a background task so the request returns immediately
-    // (avoids the 150s gateway IDLE_TIMEOUT). The frontend polls cache afterwards.
-    const runSync = async () => {
-      try {
-        const bearerToken = await auvoLogin(auvoApiKey, auvoApiToken);
-        await runBudgetKanbanSync({
-          sbClient,
-          bearerToken,
-          gcAccessToken,
-          gcSecretToken,
-          startDate,
-          endDate,
-        });
-      } catch (err) {
-        console.error("[budget-kanban] Background sync error:", err);
-      }
-    };
+    const bearerToken = await auvoLogin(auvoApiKey, auvoApiToken);
+    await runBudgetKanbanSync({
+      sbClient,
+      bearerToken,
+      gcAccessToken,
+      gcSecretToken,
+      startDate,
+      endDate,
+    });
 
-    if (typeof EdgeRuntime !== "undefined" && typeof EdgeRuntime.waitUntil === "function") {
-      EdgeRuntime.waitUntil(runSync());
-      return new Response(JSON.stringify({
-        ok: true,
-        async: true,
-        message: "Sincronização iniciada em segundo plano. Atualize o cache em ~30-60s.",
-        periodo: { inicio: startDate, fim: endDate },
-      }), {
-        status: 202,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
-
-    // Fallback (local dev sem EdgeRuntime): roda inline
-    await runSync();
     return new Response(JSON.stringify({ ok: true, async: false, periodo: { inicio: startDate, fim: endDate } }), {
       status: 200,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
