@@ -1157,7 +1157,8 @@ export default function HorasTrabalhadasTab({
             )}
           </DialogHeader>
           <ScrollArea className="flex-1 -mx-6 px-6">
-            <Table>
+            <div className="overflow-x-auto">
+            <Table className="min-w-[1100px]">
               <TableHeader className="sticky top-0 bg-background z-10">
                 <TableRow>
                   <TableHead className="text-xs">Data</TableHead>
@@ -1225,23 +1226,13 @@ export default function HorasTrabalhadasTab({
                             Relatório
                           </a>
                         )}
-                        {t.auvo_task_url && (
-                          <a
-                            href={t.auvo_task_url}
-                            target="_blank"
-                            rel="noreferrer"
-                            title="Abrir tarefa no Auvo"
-                            className="text-muted-foreground hover:text-primary hover:underline ml-1 text-[10px]"
-                          >
-                            Tarefa
-                          </a>
-                        )}
                       </div>
                     </TableCell>
                   </TableRow>
                 ))}
               </TableBody>
             </Table>
+            </div>
           </ScrollArea>
         </DialogContent>
       </Dialog>
