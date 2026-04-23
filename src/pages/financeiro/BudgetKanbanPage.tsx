@@ -234,6 +234,14 @@ export default function BudgetKanbanPage() {
     if (columns.length > 0 && columns.some((c) => c.items.length > 0)) {
       const existingTaskIds = new Set<string>();
 
+      // Detect "Feito hoje" column by title (case-insensitive, accent-insensitive)
+      const todayStr = format(new Date(), "yyyy-MM-dd");
+      const normalizeTitle = (t: string) =>
+        (t || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
+      const feitoHojeCol = columns.find((c) => normalizeTitle(c.title).includes("feito hoje"));
+      const isOrcDataToday = (card: KanbanItem) =>
+        !!card.gc_orcamento?.gc_data && card.gc_orcamento.gc_data.slice(0, 10) === todayStr;
+
       const mergedCols = columns.map((col) => ({
         ...col,
         items: col.items.map((card) => {
@@ -243,6 +251,27 @@ export default function BudgetKanbanPage() {
           return fresh ? { ...fresh } : card;
         }),
       }));
+
+      // Auto-route: cards with gc_orc_data === today must live in the "Feito hoje" column
+      if (feitoHojeCol) {
+        const targetId = feitoHojeCol.id;
+        const movers: KanbanItem[] = [];
+        for (const col of mergedCols) {
+          if (col.id === targetId) continue;
+          const keep: KanbanItem[] = [];
+          for (const card of col.items) {
+            if (isOrcDataToday(card)) movers.push(card);
+            else keep.push(card);
+          }
+          col.items = keep;
+        }
+        const target = mergedCols.find((c) => c.id === targetId);
+        if (target && movers.length > 0) {
+          // Avoid duplicates already present
+          const present = new Set(target.items.map((i) => i.auvo_task_id));
+          for (const m of movers) if (!present.has(m.auvo_task_id)) target.items.unshift(m);
+        }
+      }
 
       // Ensure "resolvido_sem_orcamento" column exists (fixed system column)
       if (!mergedCols.find((c) => c.id === "resolvido_sem_orcamento")) {
@@ -258,7 +287,9 @@ export default function BudgetKanbanPage() {
       if (newCards.length > 0) {
         for (const card of newCards) {
           let targetCol = "a_fazer";
-          if (!card.orcamento_realizado && !card.os_realizada && !hasFilledQuestionnaire(card)) {
+          if (feitoHojeCol && isOrcDataToday(card)) {
+            targetCol = feitoHojeCol.id;
+          } else if (!card.orcamento_realizado && !card.os_realizada && !hasFilledQuestionnaire(card)) {
             targetCol = "falta_preenchimento";
           } else if (card.os_realizada) {
             targetCol = "os_realizada";
@@ -345,6 +376,32 @@ export default function BudgetKanbanPage() {
           title: savedOrderMap.get(colId)?.title || defaultTitlesExtra[colId] || (colId.startsWith("orc_") ? `💰 ${colId.replace("orc_", "").replace(/_/g, " ")}` : colId),
           items: colMap[colId] || [],
         }));
+
+      // Auto-route: cards with gc_orc_data === today must live in the "Feito hoje" column
+      const todayStr = format(new Date(), "yyyy-MM-dd");
+      const normalizeTitle = (t: string) =>
+        (t || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
+      const feitoHojeCol = cols.find((c) => normalizeTitle(c.title).includes("feito hoje"));
+      if (feitoHojeCol) {
+        const targetId = feitoHojeCol.id;
+        const movers: KanbanItem[] = [];
+        for (const col of cols) {
+          if (col.id === targetId) continue;
+          const keep: KanbanItem[] = [];
+          for (const card of col.items) {
+            const isToday =
+              !!card.gc_orcamento?.gc_data && card.gc_orcamento.gc_data.slice(0, 10) === todayStr;
+            if (isToday) movers.push(card);
+            else keep.push(card);
+          }
+          col.items = keep;
+        }
+        const target = cols.find((c) => c.id === targetId);
+        if (target && movers.length > 0) {
+          const present = new Set(target.items.map((i) => i.auvo_task_id));
+          for (const m of movers) if (!present.has(m.auvo_task_id)) target.items.unshift(m);
+        }
+      }
 
       setColumns(cols);
     } else {
