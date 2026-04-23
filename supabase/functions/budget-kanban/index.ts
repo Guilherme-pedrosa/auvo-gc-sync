@@ -5,6 +5,11 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
+// Background task API exposed by Supabase Edge Runtime
+declare const EdgeRuntime: {
+  waitUntil: (promise: Promise<unknown>) => void;
+};
+
 const AUVO_BASE_URL = "https://api.auvo.com.br/v2";
 const GC_BASE_URL = "https://api.gestaoclick.com";
 const QUESTIONNAIRE_ID = "216040";
@@ -671,9 +676,66 @@ Deno.serve(async (req) => {
 
     console.log(`[budget-kanban] Período: ${startDate} a ${endDate}`);
 
-    const bearerToken = await auvoLogin(auvoApiKey, auvoApiToken);
+    // Run the heavy sync as a background task so the request returns immediately
+    // (avoids the 150s gateway IDLE_TIMEOUT). The frontend polls cache afterwards.
+    const runSync = async () => {
+      try {
+        const bearerToken = await auvoLogin(auvoApiKey, auvoApiToken);
+        await runBudgetKanbanSync({
+          sbClient,
+          bearerToken,
+          gcAccessToken,
+          gcSecretToken,
+          startDate,
+          endDate,
+        });
+      } catch (err) {
+        console.error("[budget-kanban] Background sync error:", err);
+      }
+    };
 
-    const gcH: Record<string, string> = {
+    if (typeof EdgeRuntime !== "undefined" && typeof EdgeRuntime.waitUntil === "function") {
+      EdgeRuntime.waitUntil(runSync());
+      return new Response(JSON.stringify({
+        ok: true,
+        async: true,
+        message: "Sincronização iniciada em segundo plano. Atualize o cache em ~30-60s.",
+        periodo: { inicio: startDate, fim: endDate },
+      }), {
+        status: 202,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    // Fallback (local dev sem EdgeRuntime): roda inline
+    await runSync();
+    return new Response(JSON.stringify({ ok: true, async: false, periodo: { inicio: startDate, fim: endDate } }), {
+      status: 200,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  } catch (err) {
+    console.error("[budget-kanban] Error:", err);
+    return new Response(JSON.stringify({ error: (err as Error).message }), {
+      status: 500,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
+});
+
+// ============================================================================
+// Heavy sync routine — extracted so it can run as a background task
+// ============================================================================
+async function runBudgetKanbanSync(opts: {
+  sbClient: any;
+  bearerToken: string;
+  gcAccessToken: string;
+  gcSecretToken: string;
+  startDate: string;
+  endDate: string;
+}): Promise<void> {
+  const { sbClient, bearerToken, gcAccessToken, gcSecretToken, startDate, endDate } = opts;
+
+  const gcH: Record<string, string> = {
       "access-token": gcAccessToken,
       "secret-access-token": gcSecretToken,
       "Content-Type": "application/json",
@@ -1029,28 +1091,5 @@ Deno.serve(async (req) => {
 
     console.log(`[budget-kanban] Cache atualizado: ${upsertRows.length} itens`);
 
-    const resumo = {
-      periodo: { inicio: startDate, fim: endDate },
-      total_tarefas_com_questionario: items.length,
-      orcamentos_realizados: items.filter((i: any) => i.orcamento_realizado).length,
-      os_realizadas: items.filter((i: any) => i.os_realizada).length,
-      pendentes: items.filter((i: any) => !i.orcamento_realizado && !i.os_realizada).length,
-    };
-
-    return new Response(JSON.stringify({
-      resumo,
-      updated: upsertRows.length,
-      ultimo_sync: now,
-      from_cache: false,
-    }), {
-      status: 200,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
-  } catch (err) {
-    console.error("[budget-kanban] Error:", err);
-    return new Response(JSON.stringify({ error: (err as Error).message }), {
-      status: 500,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
-  }
-});
+    console.log(`[budget-kanban] Sync concluído. Pendentes: ${items.filter((i: any) => !i.orcamento_realizado && !i.os_realizada).length}`);
+}
