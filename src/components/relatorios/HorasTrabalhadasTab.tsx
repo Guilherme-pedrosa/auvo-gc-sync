@@ -201,7 +201,7 @@ export default function HorasTrabalhadasTab({
     const map = new Map<string, { tecnico: string; horas: number; deslocamento: number; tarefas: number; valor: number; byCliente: Map<string, ClienteData> }>();
     for (const t of filtered) {
       const tec = t.tecnico || "Desconhecido";
-      const cliente = t.cliente || t.gc_os_cliente || "Sem cliente";
+      const cliente = resolveDisplayCliente(t);
       const horas = getTaskHoras(t);
       const deslocamento = Number(t.duracao_deslocamento) || 0;
       const valor = getTaskValor(t, tec);
