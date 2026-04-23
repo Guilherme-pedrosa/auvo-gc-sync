@@ -269,8 +269,9 @@ export default function HorasTrabalhadasTab({
         data_conclusao: t.data_conclusao || "",
         valor,
         tecnico: tec,
-        equipamento: t.equipamento_nome || "",
-        equipamento_id_serie: t.equipamento_id_serie || "",
+        equipamento: t.equipamento_nome || equipamentoTaskMap[t.auvo_task_id]?.nome || "",
+        equipamento_id_serie:
+          t.equipamento_id_serie || equipamentoTaskMap[t.auvo_task_id]?.id_serie || "",
         auvo_link: t.auvo_link || "",
         auvo_task_url: t.auvo_task_url || "",
         auvo_survey_url: t.auvo_survey_url || "",
