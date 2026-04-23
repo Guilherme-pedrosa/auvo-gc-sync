@@ -198,7 +198,28 @@ export default function HorasTrabalhadasTab({
   };
 
   // Summary by technician
-  type TaskDetail = { auvo_task_id: string; descricao: string; hora_inicio: string; hora_fim: string; horas: number; deslocamento: number; data_tarefa: string; valor: number };
+  type TaskDetail = {
+    auvo_task_id: string;
+    descricao: string;
+    orientacao: string;
+    pendencia: string;
+    hora_inicio: string;
+    hora_fim: string;
+    horas: number;
+    deslocamento: number;
+    data_tarefa: string;
+    data_conclusao: string;
+    valor: number;
+    tecnico: string;
+    equipamento: string;
+    equipamento_id_serie: string;
+    auvo_link: string;
+    auvo_survey_url: string;
+    status_auvo: string;
+    cliente_gc: string;
+    gc_os_codigo: string;
+    gc_os_link: string;
+  };
   type ClienteData = { horas: number; deslocamento: number; tarefas: number; valor: number; tipos: Map<string, number>; tasks: TaskDetail[] };
   const tecnicoSummary = useMemo(() => {
     const map = new Map<string, { tecnico: string; horas: number; deslocamento: number; tarefas: number; valor: number; byCliente: Map<string, ClienteData> }>();
@@ -234,12 +255,24 @@ export default function HorasTrabalhadasTab({
       clienteEntry.tasks.push({
         auvo_task_id: t.auvo_task_id || "",
         descricao: getTipoLabel(t.descricao),
+        orientacao: t.orientacao || "",
+        pendencia: t.pendencia || "",
         hora_inicio: t.hora_inicio || "",
         hora_fim: t.hora_fim || "",
         horas,
         deslocamento,
         data_tarefa: t.data_tarefa || "",
+        data_conclusao: t.data_conclusao || "",
         valor,
+        tecnico: tec,
+        equipamento: t.equipamento_nome || "",
+        equipamento_id_serie: t.equipamento_id_serie || "",
+        auvo_link: t.auvo_link || t.auvo_task_url || "",
+        auvo_survey_url: t.auvo_survey_url || "",
+        status_auvo: t.status_auvo || "",
+        cliente_gc: t.gc_os_cliente || "",
+        gc_os_codigo: t.gc_os_codigo || "",
+        gc_os_link: t.gc_os_link || "",
       });
     }
     return Array.from(map.values()).sort((a, b) => b.valor - a.valor);
