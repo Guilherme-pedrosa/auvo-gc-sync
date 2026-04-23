@@ -835,13 +835,20 @@ export default function HorasTrabalhadasTab({
                           <Checkbox
                             checked={allTiposSelected || selectedTipos.has(tipo.key)}
                             onCheckedChange={() => {
-                              setAllTiposSelected(false);
-                              setSelectedTipos((prev) => {
-                                const next = new Set(prev);
-                                if (next.has(tipo.key)) next.delete(tipo.key);
-                                else next.add(tipo.key);
-                                return next;
-                              });
+                              if (allTiposSelected) {
+                                // Sai do modo "Todos": seleciona todos exceto o clicado
+                                const next = new Set(tipoOptions.map((t) => t.key));
+                                next.delete(tipo.key);
+                                setAllTiposSelected(false);
+                                setSelectedTipos(next);
+                              } else {
+                                setSelectedTipos((prev) => {
+                                  const next = new Set(prev);
+                                  if (next.has(tipo.key)) next.delete(tipo.key);
+                                  else next.add(tipo.key);
+                                  return next;
+                                });
+                              }
                             }}
                           />
                           <span className="text-xs truncate">{tipo.label}</span>
