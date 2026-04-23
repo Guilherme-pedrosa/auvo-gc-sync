@@ -43,6 +43,7 @@ interface Props {
   dateTo: Date;
   onDateFromChange: (d: Date) => void;
   onDateToChange: (d: Date) => void;
+  equipamentoTaskMap?: Record<string, { nome: string; id_serie: string }>;
 }
 
 const CHART_COLORS = [
@@ -55,6 +56,7 @@ export default function HorasTrabalhadasTab({
   data, isLoading, allClientes, allTecnicos, allTiposTarefa,
   grupos, membros, valorHoraConfigs,
   dateFrom, dateTo, onDateFromChange, onDateToChange,
+  equipamentoTaskMap = {},
 }: Props) {
   const [filterTecnico, setFilterTecnico] = useState("todos");
   const [filterCliente, setFilterCliente] = useState("todos");
