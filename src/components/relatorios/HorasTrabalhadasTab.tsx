@@ -601,7 +601,7 @@ export default function HorasTrabalhadasTab({
       "Cliente", "Cliente GC", "Data Conclusão", "Data Tarefa", "ID Tarefa", "Cód. OS GC",
       "Técnico", "Tipo de Tarefa", "Equipamento", "ID/Série",
       "Status Auvo", "Início", "Fim", "Horas", "Deslocamento (h)", "Valor (R$)",
-      "Orientação", "Pendência", "Link Auvo", "Link Relatório", "Link OS GC",
+      "Orientação", "Pendência", "Relatório Auvo", "Tarefa Auvo", "Pesquisa Satisfação", "Link OS GC",
     ];
     const detalheRows: any[] = [
       ["Detalhe Completo por OS"],
@@ -631,6 +631,7 @@ export default function HorasTrabalhadasTab({
           t.orientacao,
           t.pendencia,
           t.auvo_link,
+          t.auvo_task_url,
           t.auvo_survey_url,
           t.gc_os_link,
         ]);
@@ -641,7 +642,7 @@ export default function HorasTrabalhadasTab({
       { wch: 30 }, { wch: 30 }, { wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 12 },
       { wch: 22 }, { wch: 28 }, { wch: 30 }, { wch: 16 },
       { wch: 14 }, { wch: 8 }, { wch: 8 }, { wch: 8 }, { wch: 14 }, { wch: 12 },
-      { wch: 40 }, { wch: 40 }, { wch: 40 }, { wch: 40 }, { wch: 40 },
+      { wch: 40 }, { wch: 40 }, { wch: 40 }, { wch: 40 }, { wch: 40 }, { wch: 40 },
     ];
     XLSX.utils.book_append_sheet(wb, wsDet, "Detalhe OS");
 
