@@ -502,6 +502,58 @@ export default function HorasTrabalhadasTab({
       columnStyles: { 0: { cellWidth: 35 }, 1: { cellWidth: 50 }, 5: { halign: "right" } },
     });
 
+    // ── Detalhe por OS (todas as ordens, agrupadas por cliente) ──
+    doc.addPage("a4", "landscape");
+    const pageWLand = doc.internal.pageSize.getWidth();
+    curY = 18;
+    doc.setFontSize(13);
+    doc.setFont("helvetica", "bold");
+    doc.text("Detalhe Completo por Ordem de Serviço", 14, curY);
+    doc.setFontSize(9);
+    doc.setFont("helvetica", "normal");
+    doc.text(`Período: ${periodoStr}`, 14, curY + 6);
+    curY += 14;
+
+    for (const c of clienteSummary) {
+      // Header do cliente
+      if (curY > 180) { doc.addPage("a4", "landscape"); curY = 18; }
+      doc.setFontSize(11);
+      doc.setFont("helvetica", "bold");
+      doc.setFillColor(230, 237, 250);
+      doc.rect(14, curY - 4, pageWLand - 28, 7, "F");
+      doc.text(`${c.cliente}  ·  ${c.tarefas} OS  ·  ${c.horas.toFixed(1)}h  ·  ${fmtBRL(c.valor)}`, 16, curY + 1);
+      curY += 6;
+
+      const osRows = c.tasks.map((t) => [
+        t.data_conclusao || t.data_tarefa,
+        `#${t.auvo_task_id}`,
+        t.tecnico,
+        t.descricao,
+        t.equipamento || "—",
+        t.hora_inicio && t.hora_fim ? `${t.hora_inicio}–${t.hora_fim}` : (t.hora_inicio || "—"),
+        `${t.horas.toFixed(2)}h`,
+        t.deslocamento > 0 ? `${t.deslocamento.toFixed(2)}h` : "—",
+        fmtBRL(t.valor),
+      ]);
+
+      autoTable(doc, {
+        startY: curY,
+        head: [["Data", "ID", "Técnico", "Tipo de Tarefa", "Equipamento", "Horário", "Horas", "Desloc.", "Valor"]],
+        body: osRows,
+        styles: { fontSize: 7, cellPadding: 1.5 },
+        headStyles: { fillColor: [37, 99, 235], fontSize: 7 },
+        columnStyles: {
+          0: { cellWidth: 22 }, 1: { cellWidth: 18 }, 2: { cellWidth: 35 },
+          3: { cellWidth: 55 }, 4: { cellWidth: 55 },
+          5: { cellWidth: 24 }, 6: { cellWidth: 18, halign: "right" },
+          7: { cellWidth: 18, halign: "right" }, 8: { halign: "right" },
+        },
+        margin: { left: 14, right: 14 },
+      });
+
+      curY = (doc as any).lastAutoTable.finalY + 8;
+    }
+
     // ── Footer ──
     const pages = doc.getNumberOfPages();
     for (let i = 1; i <= pages; i++) {
@@ -509,11 +561,108 @@ export default function HorasTrabalhadasTab({
       doc.setFontSize(7);
       doc.setFont("helvetica", "normal");
       doc.setTextColor(130);
-      doc.text(`Gerado em ${format(new Date(), "dd/MM/yyyy HH:mm")} · Página ${i}/${pages}`, pageW / 2, doc.internal.pageSize.getHeight() - 8, { align: "center" });
+      const w = doc.internal.pageSize.getWidth();
+      doc.text(`Gerado em ${format(new Date(), "dd/MM/yyyy HH:mm")} · Página ${i}/${pages}`, w / 2, doc.internal.pageSize.getHeight() - 8, { align: "center" });
       doc.setTextColor(0);
     }
 
     doc.save(`horas-trabalhadas-${format(dateFrom, "yyyyMMdd")}-${format(dateTo, "yyyyMMdd")}.pdf`);
+  };
+
+  // ── Excel export: Resumo Cliente | Detalhe OS | Resumo Técnico ──
+  const handleExportExcel = () => {
+    const periodoStr = `${format(dateFrom, "dd/MM/yyyy")} a ${format(dateTo, "dd/MM/yyyy")}`;
+    const wb = XLSX.utils.book_new();
+
+    // Sheet 1: Resumo por Cliente
+    const resumoClienteRows: any[] = [
+      ["Relatório de Horas Trabalhadas — Resumo por Cliente"],
+      [`Período: ${periodoStr}`],
+      [],
+      ["Cliente", "Tarefas", "Horas", "Deslocamento (h)", "Técnicos", "Valor (R$)"],
+      ...clienteSummary.map((c) => [
+        c.cliente,
+        c.tarefas,
+        Number(c.horas.toFixed(2)),
+        Number(c.deslocamento.toFixed(2)),
+        c.tecnicos.size,
+        Number(c.valor.toFixed(2)),
+      ]),
+      ["TOTAL", totalTarefas, Number(totalHoras.toFixed(2)), Number(totalDeslocamento.toFixed(2)), tecnicoSummary.length, Number(totalValor.toFixed(2))],
+    ];
+    const wsCli = XLSX.utils.aoa_to_sheet(resumoClienteRows);
+    wsCli["!cols"] = [{ wch: 38 }, { wch: 10 }, { wch: 10 }, { wch: 16 }, { wch: 10 }, { wch: 14 }];
+    XLSX.utils.book_append_sheet(wb, wsCli, "Resumo Cliente");
+
+    // Sheet 2: Detalhe por OS (todas as ordens)
+    const detalheHeader = [
+      "Cliente", "Cliente GC", "Data Conclusão", "Data Tarefa", "ID Tarefa", "Cód. OS GC",
+      "Técnico", "Tipo de Tarefa", "Equipamento", "ID/Série",
+      "Status Auvo", "Início", "Fim", "Horas", "Deslocamento (h)", "Valor (R$)",
+      "Orientação", "Pendência", "Link Auvo", "Link Relatório", "Link OS GC",
+    ];
+    const detalheRows: any[] = [
+      ["Detalhe Completo por OS"],
+      [`Período: ${periodoStr}`],
+      [],
+      detalheHeader,
+    ];
+    for (const c of clienteSummary) {
+      for (const t of c.tasks) {
+        detalheRows.push([
+          c.cliente,
+          t.cliente_gc,
+          t.data_conclusao,
+          t.data_tarefa,
+          t.auvo_task_id,
+          t.gc_os_codigo,
+          t.tecnico,
+          t.descricao,
+          t.equipamento,
+          t.equipamento_id_serie,
+          t.status_auvo,
+          t.hora_inicio,
+          t.hora_fim,
+          Number(t.horas.toFixed(2)),
+          Number(t.deslocamento.toFixed(2)),
+          Number(t.valor.toFixed(2)),
+          t.orientacao,
+          t.pendencia,
+          t.auvo_link,
+          t.auvo_survey_url,
+          t.gc_os_link,
+        ]);
+      }
+    }
+    const wsDet = XLSX.utils.aoa_to_sheet(detalheRows);
+    wsDet["!cols"] = [
+      { wch: 30 }, { wch: 30 }, { wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 12 },
+      { wch: 22 }, { wch: 28 }, { wch: 30 }, { wch: 16 },
+      { wch: 14 }, { wch: 8 }, { wch: 8 }, { wch: 8 }, { wch: 14 }, { wch: 12 },
+      { wch: 40 }, { wch: 40 }, { wch: 40 }, { wch: 40 }, { wch: 40 },
+    ];
+    XLSX.utils.book_append_sheet(wb, wsDet, "Detalhe OS");
+
+    // Sheet 3: Resumo por Técnico
+    const tecRows: any[] = [
+      ["Resumo por Técnico"],
+      [`Período: ${periodoStr}`],
+      [],
+      ["Técnico", "Tarefas", "Horas", "Deslocamento (h)", "Valor (R$)"],
+      ...tecnicoSummary.map((t) => [
+        t.tecnico,
+        t.tarefas,
+        Number(t.horas.toFixed(2)),
+        Number(t.deslocamento.toFixed(2)),
+        Number(t.valor.toFixed(2)),
+      ]),
+      ["TOTAL", totalTarefas, Number(totalHoras.toFixed(2)), Number(totalDeslocamento.toFixed(2)), Number(totalValor.toFixed(2))],
+    ];
+    const wsTec = XLSX.utils.aoa_to_sheet(tecRows);
+    wsTec["!cols"] = [{ wch: 28 }, { wch: 10 }, { wch: 10 }, { wch: 16 }, { wch: 14 }];
+    XLSX.utils.book_append_sheet(wb, wsTec, "Resumo Técnico");
+
+    XLSX.writeFile(wb, `horas-trabalhadas-${format(dateFrom, "yyyyMMdd")}-${format(dateTo, "yyyyMMdd")}.xlsx`);
   };
 
   if (isLoading) {
