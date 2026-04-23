@@ -214,8 +214,9 @@ export default function HorasTrabalhadasTab({
     tecnico: string;
     equipamento: string;
     equipamento_id_serie: string;
-    auvo_link: string;
-    auvo_survey_url: string;
+    auvo_link: string;        // app2.auvo.com.br/relatorioTarefas/DetalheTarefa/{id} — RELATÓRIO da tarefa
+    auvo_task_url: string;    // app.auvo.com.br/informacoes/tarefa/{uuid} — tela da tarefa no app
+    auvo_survey_url: string;  // pesquisa de satisfação (uso secundário)
     status_auvo: string;
     cliente_gc: string;
     gc_os_codigo: string;
