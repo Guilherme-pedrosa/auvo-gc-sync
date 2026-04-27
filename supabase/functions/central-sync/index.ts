@@ -1456,7 +1456,7 @@ async function runCentralSync(body: CentralSyncBody = {}) {
       upserted,
       errors,
       deleted: deleted || 0,
-    };;
+    };
 
 }
 
