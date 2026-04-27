@@ -500,9 +500,7 @@ async function runCentralSync(body: CentralSyncBody = {}) {
     const gcSecretToken = Deno.env.get("GC_SECRET_TOKEN");
 
     if (!auvoApiKey || !auvoApiToken || !gcAccessToken || !gcSecretToken) {
-      return new Response(JSON.stringify({ error: "Credenciais não configuradas" }), {
-        status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+      throw new Error("Credenciais não configuradas");
     }
 
     // Calculate period (request body overrides default 6-month + future window)
@@ -512,7 +510,6 @@ async function runCentralSync(body: CentralSyncBody = {}) {
     const futureDate = new Date(now);
     futureDate.setDate(futureDate.getDate() + FUTURE_DAYS_WINDOW);
 
-    const body = await req.json().catch(() => ({}));
     const bodyStart = normalizeDate(body?.start_date);
     const bodyEnd = normalizeDate(body?.end_date);
     const situacaoIds: string[] = Array.isArray(body?.situacao_ids) ? body.situacao_ids.filter((s: any) => s) : [];
