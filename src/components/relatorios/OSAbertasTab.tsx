@@ -480,6 +480,75 @@ export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, o
     };
   }, [expanded, filtered, liveExecMap]);
 
+  useEffect(() => {
+    if (!expanded) return;
+    const row = filtered.find((r) => r.cliente === expanded);
+    if (!row) return;
+
+    const itemsToResolve = row.items.filter((item: any) => {
+      if (!item?.gc_os_id || liveEquipmentMap.has(String(item.gc_os_id))) return false;
+      const current = getItemEquipamento(item);
+      return !current.nome && !current.serie;
+    });
+    if (itemsToResolve.length === 0) return;
+
+    let cancelled = false;
+
+    (async () => {
+      const updates = new Map(liveEquipmentMap);
+
+      for (const item of itemsToResolve) {
+        if (cancelled) break;
+        const taskIds = Array.from(new Set([
+          String(item?.auvo_task_id || "").trim(),
+          ...parseExecIds(item?.gc_os_tarefa_exec),
+        ].filter(Boolean)));
+
+        for (const taskId of taskIds) {
+          if (cancelled) break;
+          const { data: taskData, error: taskError } = await supabase.functions.invoke("auvo-task-update", {
+            body: { action: "get", taskId: Number(taskId) },
+          });
+          if (taskError) continue;
+
+          const taskObj = taskData?.data?.result ?? taskData?.data ?? null;
+          let equipment = extractEquipmentInfo(taskObj);
+
+          if (!equipment.nome && !equipment.serie) {
+            const equipmentId = extractEquipmentIdsFromTask(taskObj)[0];
+            if (equipmentId) {
+              const { data: equipmentData } = await supabase.functions.invoke("auvo-task-update", {
+                body: { action: "get-equipment", equipmentId },
+              });
+              equipment = extractEquipmentInfo(equipmentData?.data);
+            }
+          }
+
+          if (equipment.nome || equipment.serie) {
+            updates.set(String(item.gc_os_id), equipment);
+            await supabase.functions.invoke("auvo-task-update", {
+              body: {
+                action: "persist-central",
+                row: {
+                  auvo_task_id: item.auvo_task_id,
+                  equipamento_nome: equipment.nome || null,
+                  equipamento_id_serie: equipment.serie || null,
+                },
+              },
+            }).catch(() => null);
+            break;
+          }
+        }
+      }
+
+      if (!cancelled) setLiveEquipmentMap(updates);
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [expanded, filtered, getItemEquipamento, liveEquipmentMap]);
+
   // Fetch OS detail with cache — data stays loaded until refetch
   const selectedGcOsId = selectedCard?.gc_os_id || null;
   const { data: osDetailResult, isLoading: osDetailLoading } = useQuery({
