@@ -50,6 +50,7 @@ interface Props {
   onSync?: (situacaoIds: string[]) => void;
   syncing?: boolean;
   execTaskStatusMap?: Map<string, string>;
+  equipamentoTaskMap?: Record<string, { nome: string; id_serie: string }>;
 }
 
 const formatCurrency = (val: number) =>
@@ -83,7 +84,7 @@ const getAuvoStatusFromTask = (task: any) => {
   return "Agendada";
 };
 
-export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, onRefresh, onSync, syncing, execTaskStatusMap }: Props) {
+export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, onRefresh, onSync, syncing, execTaskStatusMap, equipamentoTaskMap = {} }: Props) {
   const { profile } = useAuth();
   const [search, setSearch] = useState("");
   const [excludedSituacoes, setExcludedSituacoes] = useState<Set<string>>(new Set());
@@ -236,6 +237,23 @@ export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, o
     }
     return "";
   }, [liveExecMap, execTaskStatusMap, allTasks]);
+
+  const getItemEquipamento = useCallback((item: any) => {
+    const candidates = [
+      item,
+      osTaskByGcOsId.get(String(item.gc_os_id)),
+      ...parseExecIds(item.gc_os_tarefa_exec).map((eid) => allTasks.find((t: any) => String(t.auvo_task_id) === eid)),
+    ].filter(Boolean);
+
+    for (const task of candidates) {
+      const taskId = String(task?.auvo_task_id || "");
+      const nome = task?.equipamento_nome || equipamentoTaskMap[taskId]?.nome || "";
+      const serie = task?.equipamento_id_serie || equipamentoTaskMap[taskId]?.id_serie || "";
+      if (nome || serie) return { nome, serie };
+    }
+
+    return { nome: "", serie: "" };
+  }, [allTasks, equipamentoTaskMap, osTaskByGcOsId]);
 
   // Filter items by situação, exec status, and moved OS
   const filteredItems = useMemo(() => {
