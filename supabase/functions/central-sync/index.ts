@@ -378,8 +378,9 @@ async function fetchGcOrcamentos(gcHeaders: Record<string, string>): Promise<{ b
 }
 
 // Fetch GC OS with optional filters (situacao_ids, date range)
-async function fetchGcOs(gcHeaders: Record<string, string>, options?: { situacaoIds?: string[]; dataInicio?: string; dataFim?: string }): Promise<{ byTaskId: Record<string, any>; byCodigo: Record<string, any>; byOrcNumero: Record<string, any> }> {
+async function fetchGcOs(gcHeaders: Record<string, string>, options?: { situacaoIds?: string[]; dataInicio?: string; dataFim?: string }): Promise<{ byTaskId: Record<string, any>; byTaskIdAll: Record<string, any[]>; byCodigo: Record<string, any>; byOrcNumero: Record<string, any> }> {
   const map: Record<string, any> = {};
+  const byTaskIdAll: Record<string, any[]> = {};
   const byCodigo: Record<string, any> = {};
   const byOrcNumero: Record<string, any> = {};
 
@@ -469,6 +470,11 @@ async function fetchGcOs(gcHeaders: Record<string, string>, options?: { situacao
           if (!map[taskId] || shouldOverride) {
             map[taskId] = osPayload;
           }
+          const bucket = byTaskIdAll[taskId] || [];
+          if (!bucket.some((existing) => existing?.gc_os_id === osPayload.gc_os_id)) {
+            bucket.push(osPayload);
+            byTaskIdAll[taskId] = bucket;
+          }
         }
       }
 
@@ -476,7 +482,7 @@ async function fetchGcOs(gcHeaders: Record<string, string>, options?: { situacao
       page++;
     }
   }
-  return { byTaskId: map, byCodigo, byOrcNumero };
+  return { byTaskId: map, byTaskIdAll, byCodigo, byOrcNumero };
 }
 
 
