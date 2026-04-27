@@ -155,6 +155,7 @@ export default function RelatoriosPage() {
 
       if (data?.background) {
         toast.info("Sync iniciado em background — atualizando a tela automaticamente");
+        stopProgressSimulation(true);
         scheduleBackgroundRefresh();
         return;
       }
