@@ -132,13 +132,14 @@ Deno.serve(async (req) => {
       // Single-row patch requests (drag/edit) should not null unrelated columns.
       if (isSingleRowPatch && rows.length === 1) {
         const row = rows[0];
-        const { auvo_task_id, ...patch } = row;
+        const { auvo_task_id, mirror_key, ...patch } = row;
+        const targetMirrorKey = mirror_key || `${auvo_task_id}::os:${String(row?.gc_os_id || "")}::orc:${String(row?.gc_orcamento_id || "")}`;
 
         const { data: updatedRow, error: updateError } = await admin
           .from("tarefas_central")
           .update(patch)
-          .eq("auvo_task_id", auvo_task_id)
-          .select("auvo_task_id")
+          .eq("mirror_key", targetMirrorKey)
+          .select("mirror_key")
           .limit(1)
           .maybeSingle();
 
@@ -147,7 +148,7 @@ Deno.serve(async (req) => {
         if (!updatedRow) {
           const { error: insertError } = await admin
             .from("tarefas_central")
-            .insert(row);
+            .insert({ ...row, mirror_key: targetMirrorKey });
           if (insertError) throw insertError;
         }
 
