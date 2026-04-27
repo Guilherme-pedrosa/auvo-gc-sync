@@ -153,6 +153,12 @@ export default function RelatoriosPage() {
       if (error) throw error;
       if (data?.success === false) throw new Error(data.error || "Erro na sincronização");
 
+      if (data?.background) {
+        toast.info("Sync iniciado em background — atualizando a tela automaticamente");
+        scheduleBackgroundRefresh();
+        return;
+      }
+
       toast.success(
         `Sync ${syncFrom} → ${syncTo}: ${data.auvo_tarefas || 0} tarefas, ${data.upserted || 0} atualizadas`
       );
