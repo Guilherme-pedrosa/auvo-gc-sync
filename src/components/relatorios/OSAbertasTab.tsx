@@ -97,6 +97,24 @@ const getAuvoStatusFromTask = (task: any) => {
   return "Agendada";
 };
 
+const extractEquipmentIdsFromTask = (task: any): string[] => {
+  const sources = [task?.equipmentsId, task?.equipmentsID, task?.equipmentIds, task?.equipmentID, task?.equipmentId];
+  return Array.from(new Set(
+    sources
+      .flatMap((value) => Array.isArray(value) ? value : value ? [value] : [])
+      .map((value) => String(value || "").trim())
+      .filter(Boolean)
+  ));
+};
+
+const extractEquipmentInfo = (raw: any): { nome: string; serie: string } => {
+  const obj = raw?.result ?? raw?.data ?? raw ?? {};
+  const nested = obj?.equipment ?? obj?.equipamento ?? obj;
+  const nome = String(obj?.equipmentName || obj?.nome || obj?.name || nested?.name || nested?.nome || nested?.model || "").trim();
+  const serie = String(obj?.equipmentIdentifier || obj?.identifier || obj?.identificador || obj?.serial || nested?.identifier || nested?.identificador || nested?.serial || "").trim();
+  return { nome, serie };
+};
+
 export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, onRefresh, onSync, syncing, execTaskStatusMap, equipamentoTaskMap = {} }: Props) {
   const { profile } = useAuth();
   const [search, setSearch] = useState("");
@@ -122,6 +140,7 @@ export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, o
 
   // Live exec task resolution for OS items missing gc_os_tarefa_exec
   const [liveExecMap, setLiveExecMap] = useState<Map<string, { execTaskId: string; tecnico: string; dataTarefa: string; status: string }>>(new Map());
+  const [liveEquipmentMap, setLiveEquipmentMap] = useState<Map<string, { nome: string; serie: string }>>(new Map());
 
   // Conciliação
   const [changingId, setChangingId] = useState<string | null>(null);
@@ -252,6 +271,9 @@ export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, o
   }, [liveExecMap, execTaskStatusMap, allTasks]);
 
   const getItemEquipamento = useCallback((item: any) => {
+    const live = liveEquipmentMap.get(String(item?.gc_os_id));
+    if (live?.nome || live?.serie) return live;
+
     const directNome = String(item?.equipamento_nome || "").trim();
     const directSerie = String(item?.equipamento_id_serie || "").trim();
     if (directNome || directSerie) return { nome: directNome, serie: directSerie };
@@ -285,7 +307,7 @@ export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, o
     }
 
     return { nome: "", serie: "" };
-  }, [allTasks, equipamentoTaskMap, osTaskByGcOsId]);
+  }, [allTasks, equipamentoTaskMap, liveEquipmentMap, osTaskByGcOsId]);
 
   // Filter items by situação, exec status, and moved OS
   const filteredItems = useMemo(() => {
