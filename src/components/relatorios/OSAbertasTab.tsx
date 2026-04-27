@@ -827,11 +827,13 @@ export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, o
                       <TableRow key={`${row.cliente}-detail`}>
                         <TableCell colSpan={3} className="p-0">
                           <div className="bg-muted/30 px-6 py-3">
-                            <Table>
+                            <div className="overflow-x-auto">
+                            <Table className="min-w-[1320px]">
                               <TableHeader>
                                 <TableRow>
                                   <TableHead className="text-xs">OS Código</TableHead>
                                   <TableHead className="text-xs">Situação</TableHead>
+                                  <TableHead className="text-xs min-w-[220px]">Equipamento</TableHead>
                                   <TableHead className="text-xs">Téc. OS</TableHead>
                                   <TableHead className="text-xs">Téc. Execução</TableHead>
                                   <TableHead className="text-xs">Tarefa Exec.</TableHead>
@@ -865,6 +867,19 @@ export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, o
                                         >
                                           {item.gc_os_situacao || "—"}
                                         </Badge>
+                                      </TableCell>
+                                      <TableCell className="max-w-[260px]">
+                                        {(() => {
+                                          const equipamento = getItemEquipamento(item);
+                                          return (
+                                            <div>
+                                              <div className="truncate" title={equipamento.nome}>{equipamento.nome || "—"}</div>
+                                              {equipamento.serie && (
+                                                <div className="text-[10px] text-muted-foreground font-mono truncate">{equipamento.serie}</div>
+                                              )}
+                                            </div>
+                                          );
+                                        })()}
                                       </TableCell>
                                       <TableCell>
                                         {(() => {
@@ -999,6 +1014,7 @@ export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, o
                                   ))}
                               </TableBody>
                             </Table>
+                            </div>
                           </div>
                         </TableCell>
                       </TableRow>
