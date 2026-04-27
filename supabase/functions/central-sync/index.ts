@@ -479,10 +479,17 @@ async function fetchGcOs(gcHeaders: Record<string, string>, options?: { situacao
   return { byTaskId: map, byCodigo, byOrcNumero };
 }
 
-Deno.serve(async (req) => {
-  if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
-  try {
+declare const EdgeRuntime: { waitUntil?: (promise: Promise<unknown>) => void } | undefined;
+
+type CentralSyncBody = {
+  start_date?: unknown;
+  end_date?: unknown;
+  situacao_ids?: unknown;
+  wait?: unknown;
+};
+
+async function runCentralSync(body: CentralSyncBody = {}) {
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const sbClient = createClient(supabaseUrl, supabaseKey);
@@ -1442,7 +1449,7 @@ Deno.serve(async (req) => {
     console.log(`[central-sync] Concluído: ${upserted} upserted, ${errors} erros, ${deleted || 0} removidos (> 6 meses)`);
 
     const auvoFailed = auvoTasks.length === 0;
-    return new Response(JSON.stringify({
+    return {
       success: true,
       auvo_error: auvoFailed ? "API do Auvo retornou erro (502/503). Tarefas não foram atualizadas. Tente novamente em alguns minutos." : null,
       periodo: { inicio: startDate, fim: endDate },
@@ -1452,11 +1459,40 @@ Deno.serve(async (req) => {
       upserted,
       errors,
       deleted: deleted || 0,
+    };;
+
+}
+
+Deno.serve(async (req) => {
+  if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
+
+  try {
+    const body = await req.json().catch(() => ({}));
+
+    if (body?.wait === true) {
+      const result = await runCentralSync(body);
+      return new Response(JSON.stringify(result), {
+        status: 200,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    const job = runCentralSync(body).catch((err) => {
+      console.error("[central-sync] Background error:", err);
+    });
+
+    if (typeof EdgeRuntime !== "undefined" && EdgeRuntime?.waitUntil) {
+      EdgeRuntime.waitUntil(job);
+    }
+
+    return new Response(JSON.stringify({
+      success: true,
+      background: true,
+      message: "Sincronização iniciada em background",
     }), {
       status: 200,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
-
   } catch (err: any) {
     console.error("[central-sync] Error:", err);
     return new Response(JSON.stringify({ success: false, error: err.message }), {
