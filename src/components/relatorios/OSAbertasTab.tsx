@@ -63,6 +63,19 @@ const parseExecIds = (raw: unknown): string[] => {
   return str.split("/").map(s => s.trim()).filter(s => /^\d+$/.test(s));
 };
 
+const extractEquipmentFromOrientation = (raw: unknown): string => {
+  const lines = String(raw || "")
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+
+  return lines.find((line) => {
+    if (/^(OS|OR|ORÇAMENTO|TAREFA)\s*(N[°º]|#|:)?\s*\d+/i.test(line)) return false;
+    if (/^(PEÇA|PEÇAS|SERVIÇO|SERVIÇOS|PERFIL|BORRACHA|KIT)\b/i.test(line)) return false;
+    return /[a-zÀ-ÿ]{3,}/i.test(line);
+  }) || "";
+};
+
 const getAuvoStatusFromTask = (task: any) => {
   const ts = task?.taskStatus;
   const statusCode = typeof ts === "number"
@@ -263,6 +276,12 @@ export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, o
       const nome = String(task?.equipamento_nome || "").trim();
       const serie = String(task?.equipamento_id_serie || "").trim();
       if (nome || serie) return { nome, serie };
+    }
+
+    const orientationCandidates = [item, osTask, ...candidates];
+    for (const task of orientationCandidates) {
+      const nome = extractEquipmentFromOrientation(task?.orientacao);
+      if (nome) return { nome, serie: "" };
     }
 
     return { nome: "", serie: "" };
