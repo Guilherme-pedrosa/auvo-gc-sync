@@ -239,16 +239,29 @@ export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, o
   }, [liveExecMap, execTaskStatusMap, allTasks]);
 
   const getItemEquipamento = useCallback((item: any) => {
+    const directNome = String(item?.equipamento_nome || "").trim();
+    const directSerie = String(item?.equipamento_id_serie || "").trim();
+    if (directNome || directSerie) return { nome: directNome, serie: directSerie };
+
+    const candidateIds = new Set<string>();
+    if (item?.auvo_task_id) candidateIds.add(String(item.auvo_task_id));
+    parseExecIds(item.gc_os_tarefa_exec).forEach((id) => candidateIds.add(id));
+    const osTask = osTaskByGcOsId.get(String(item.gc_os_id));
+    if (osTask?.auvo_task_id) candidateIds.add(String(osTask.auvo_task_id));
+
+    for (const taskId of candidateIds) {
+      const mapped = equipamentoTaskMap[taskId];
+      if (mapped?.nome || mapped?.id_serie) return { nome: mapped.nome || "", serie: mapped.id_serie || "" };
+    }
+
     const candidates = [
-      item,
-      osTaskByGcOsId.get(String(item.gc_os_id)),
+      osTask,
       ...parseExecIds(item.gc_os_tarefa_exec).map((eid) => allTasks.find((t: any) => String(t.auvo_task_id) === eid)),
     ].filter(Boolean);
 
     for (const task of candidates) {
-      const taskId = String(task?.auvo_task_id || "");
-      const nome = task?.equipamento_nome || equipamentoTaskMap[taskId]?.nome || "";
-      const serie = task?.equipamento_id_serie || equipamentoTaskMap[taskId]?.id_serie || "";
+      const nome = String(task?.equipamento_nome || "").trim();
+      const serie = String(task?.equipamento_id_serie || "").trim();
       if (nome || serie) return { nome, serie };
     }
 
