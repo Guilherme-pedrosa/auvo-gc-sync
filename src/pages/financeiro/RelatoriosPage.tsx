@@ -436,6 +436,7 @@ export default function RelatoriosPage() {
             onSync={(situacaoIds) => handleSync(situacaoIds)}
             syncing={syncing}
             execTaskStatusMap={execTaskStatusMap}
+            equipamentoTaskMap={equipamentoTaskMap || {}}
           />
         </TabsContent>
 

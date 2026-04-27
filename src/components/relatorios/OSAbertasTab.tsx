@@ -50,6 +50,7 @@ interface Props {
   onSync?: (situacaoIds: string[]) => void;
   syncing?: boolean;
   execTaskStatusMap?: Map<string, string>;
+  equipamentoTaskMap?: Record<string, { nome: string; id_serie: string }>;
 }
 
 const formatCurrency = (val: number) =>
@@ -83,7 +84,7 @@ const getAuvoStatusFromTask = (task: any) => {
   return "Agendada";
 };
 
-export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, onRefresh, onSync, syncing, execTaskStatusMap }: Props) {
+export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, onRefresh, onSync, syncing, execTaskStatusMap, equipamentoTaskMap = {} }: Props) {
   const { profile } = useAuth();
   const [search, setSearch] = useState("");
   const [excludedSituacoes, setExcludedSituacoes] = useState<Set<string>>(new Set());
@@ -236,6 +237,23 @@ export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, o
     }
     return "";
   }, [liveExecMap, execTaskStatusMap, allTasks]);
+
+  const getItemEquipamento = useCallback((item: any) => {
+    const candidates = [
+      item,
+      osTaskByGcOsId.get(String(item.gc_os_id)),
+      ...parseExecIds(item.gc_os_tarefa_exec).map((eid) => allTasks.find((t: any) => String(t.auvo_task_id) === eid)),
+    ].filter(Boolean);
+
+    for (const task of candidates) {
+      const taskId = String(task?.auvo_task_id || "");
+      const nome = task?.equipamento_nome || equipamentoTaskMap[taskId]?.nome || "";
+      const serie = task?.equipamento_id_serie || equipamentoTaskMap[taskId]?.id_serie || "";
+      if (nome || serie) return { nome, serie };
+    }
+
+    return { nome: "", serie: "" };
+  }, [allTasks, equipamentoTaskMap, osTaskByGcOsId]);
 
   // Filter items by situação, exec status, and moved OS
   const filteredItems = useMemo(() => {
@@ -809,11 +827,13 @@ export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, o
                       <TableRow key={`${row.cliente}-detail`}>
                         <TableCell colSpan={3} className="p-0">
                           <div className="bg-muted/30 px-6 py-3">
-                            <Table>
+                            <div className="overflow-x-auto">
+                            <Table className="min-w-[1320px]">
                               <TableHeader>
                                 <TableRow>
                                   <TableHead className="text-xs">OS Código</TableHead>
                                   <TableHead className="text-xs">Situação</TableHead>
+                                  <TableHead className="text-xs min-w-[220px]">Equipamento</TableHead>
                                   <TableHead className="text-xs">Téc. OS</TableHead>
                                   <TableHead className="text-xs">Téc. Execução</TableHead>
                                   <TableHead className="text-xs">Tarefa Exec.</TableHead>
@@ -847,6 +867,19 @@ export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, o
                                         >
                                           {item.gc_os_situacao || "—"}
                                         </Badge>
+                                      </TableCell>
+                                      <TableCell className="max-w-[260px]">
+                                        {(() => {
+                                          const equipamento = getItemEquipamento(item);
+                                          return (
+                                            <div>
+                                              <div className="truncate" title={equipamento.nome}>{equipamento.nome || "—"}</div>
+                                              {equipamento.serie && (
+                                                <div className="text-[10px] text-muted-foreground font-mono truncate">{equipamento.serie}</div>
+                                              )}
+                                            </div>
+                                          );
+                                        })()}
                                       </TableCell>
                                       <TableCell>
                                         {(() => {
@@ -981,6 +1014,7 @@ export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, o
                                   ))}
                               </TableBody>
                             </Table>
+                            </div>
                           </div>
                         </TableCell>
                       </TableRow>
