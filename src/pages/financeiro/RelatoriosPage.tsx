@@ -31,6 +31,12 @@ const SYNC_STEPS = [
 
 const TAREFAS_CENTRAL_PAGE_SIZE = 1000;
 
+const parseAuvoTaskIds = (value: unknown): string[] => {
+  const raw = String(value ?? "").trim();
+  if (!raw) return [];
+  return raw.split("/").map((id) => id.trim()).filter((id) => /^\d+$/.test(id));
+};
+
 const fetchAllTarefasCentral = async ({
   onlyWithOs = false,
 }: {
@@ -217,25 +223,35 @@ export default function RelatoriosPage() {
     },
   });
 
+  const equipamentoLookupTaskIds = useMemo(() => {
+    const ids = new Set<string>();
+    for (const task of tarefasOS || []) {
+      if (task?.auvo_task_id) ids.add(String(task.auvo_task_id));
+      parseAuvoTaskIds(task?.gc_os_tarefa_exec).forEach((id) => ids.add(id));
+    }
+    return Array.from(ids).sort();
+  }, [tarefasOS]);
+
   // Equipment links: auvo_task_id → { nome, id_serie } (fallback for tasks where
   // tarefas_central.equipamento_nome was not populated by the sync)
   const { data: equipamentoTaskMap } = useQuery({
-    queryKey: ["equipamento-task-map"],
+    queryKey: ["equipamento-task-map", equipamentoLookupTaskIds.join(",")],
     queryFn: async () => {
       const map: Record<string, { nome: string; id_serie: string }> = {};
-      // Page through equipamento_tarefas_auvo + equipamentos_auvo
-      let from = 0;
-      const PAGE = 1000;
-      while (true) {
+      const PAGE = 500;
+      for (let from = 0; from < equipamentoLookupTaskIds.length; from += PAGE) {
+        const taskIds = equipamentoLookupTaskIds.slice(from, from + PAGE);
+        if (!taskIds.length) continue;
+
         const { data, error } = await supabase
           .from("equipamento_tarefas_auvo")
           .select("auvo_task_id, auvo_equipment_id")
-          .range(from, from + PAGE - 1);
+          .in("auvo_task_id", taskIds);
         if (error) break;
         const batch = data || [];
-        if (batch.length === 0) break;
+        if (batch.length === 0) continue;
 
-        const eqIds = Array.from(new Set(batch.map((r: any) => r.auvo_equipment_id).filter(Boolean)));
+        const eqIds = Array.from(new Set(batch.map((r: any) => String(r.auvo_equipment_id || "")).filter(Boolean)));
         if (eqIds.length) {
           const { data: eqs } = await supabase
             .from("equipamentos_auvo")
@@ -243,32 +259,31 @@ export default function RelatoriosPage() {
             .in("auvo_equipment_id", eqIds);
           const eqById = new Map<string, { nome: string; id_serie: string }>();
           for (const e of eqs || []) {
-            eqById.set(e.auvo_equipment_id as string, {
+            eqById.set(String(e.auvo_equipment_id), {
               nome: (e.nome as string) || "",
               id_serie: (e.identificador as string) || "",
             });
           }
           for (const r of batch) {
-            const eq = eqById.get(r.auvo_equipment_id as string);
+            const eq = eqById.get(String(r.auvo_equipment_id));
             if (!eq) continue;
             // First link wins per task; concatenate further equipment names if multiple
-            const existing = map[r.auvo_task_id as string];
+            const taskId = String(r.auvo_task_id);
+            const existing = map[taskId];
             if (!existing) {
-              map[r.auvo_task_id as string] = eq;
+              map[taskId] = eq;
             } else if (existing.nome && eq.nome && !existing.nome.includes(eq.nome)) {
-              map[r.auvo_task_id as string] = {
+              map[taskId] = {
                 nome: `${existing.nome} | ${eq.nome}`,
                 id_serie: existing.id_serie || eq.id_serie,
               };
             }
           }
         }
-
-        if (batch.length < PAGE) break;
-        from += PAGE;
       }
       return map;
     },
+    enabled: equipamentoLookupTaskIds.length > 0,
     staleTime: 5 * 60_000,
   });
 
