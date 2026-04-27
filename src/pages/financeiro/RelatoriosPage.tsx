@@ -168,6 +168,8 @@ export default function RelatoriosPage() {
     } catch (err: any) {
       const message = String(err?.message || "");
       const isBackgroundSync =
+        message.includes("504") ||
+        message.includes("IDLE_TIMEOUT") ||
         message.includes("context canceled") ||
         message.includes("FunctionsHttpError") ||
         message.includes("FunctionsFetchError") ||

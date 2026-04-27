@@ -480,8 +480,6 @@ async function fetchGcOs(gcHeaders: Record<string, string>, options?: { situacao
 }
 
 
-declare const EdgeRuntime: { waitUntil?: (promise: Promise<unknown>) => void } | undefined;
-
 type CentralSyncBody = {
   start_date?: unknown;
   end_date?: unknown;
@@ -1474,13 +1472,11 @@ Deno.serve(async (req) => {
       });
     }
 
-    const job = runCentralSync(body).catch((err) => {
-      console.error("[central-sync] Background error:", err);
-    });
-
-    if (typeof EdgeRuntime !== "undefined" && EdgeRuntime?.waitUntil) {
-      EdgeRuntime.waitUntil(job);
-    }
+    setTimeout(() => {
+      runCentralSync(body).catch((err) => {
+        console.error("[central-sync] Background error:", err);
+      });
+    }, 0);
 
     return new Response(JSON.stringify({
       success: true,
