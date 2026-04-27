@@ -545,6 +545,7 @@ async function runCentralSync(body: CentralSyncBody = {}) {
     const gcOrcMap = gcOrcResult.byTaskId;
     const gcOrcByCodigo = gcOrcResult.byCodigo;
     const gcOsMap = gcOsResult.byTaskId;
+    const gcOsByTaskIdAll = gcOsResult.byTaskIdAll || {};
     const gcOsByCodigo = gcOsResult.byCodigo;
     const gcOsByOrcNumero = gcOsResult.byOrcNumero;
 
@@ -1064,9 +1065,10 @@ async function runCentralSync(body: CentralSyncBody = {}) {
 
     // Fallback: include ALL GC OS tasks not returned by current Auvo window
     // This ensures all OS from GC are represented in the database regardless of Auvo date range
-    const existingTaskIds = new Set(rows.map((r) => String(r.auvo_task_id)));
-    for (const [taskId, gcOs] of Object.entries(gcOsMap)) {
-      if (existingTaskIds.has(taskId) || existingTaskIdsInDb.has(taskId)) continue;
+    const existingTaskOsKeys = new Set(rows.map((r) => `${String(r.auvo_task_id)}::${String(r.gc_os_id || "")}`));
+    for (const [taskId, osList] of Object.entries(gcOsByTaskIdAll)) {
+      for (const gcOs of osList as any[]) {
+      if (existingTaskOsKeys.has(`${taskId}::${String(gcOs?.gc_os_id || "")}`)) continue;
 
       const gcOrc = gcOrcMap[taskId] || null;
       let fallbackSnapshot = taskSnapshotById.get(taskId) || null;
@@ -1134,6 +1136,8 @@ async function runCentralSync(body: CentralSyncBody = {}) {
       }
 
       rows.push(fallbackRow);
+      existingTaskOsKeys.add(`${taskId}::${String(gcOs?.gc_os_id || "")}`);
+      }
     }
 
     // Patch existing OS rows in period that still have empty address/orientation
