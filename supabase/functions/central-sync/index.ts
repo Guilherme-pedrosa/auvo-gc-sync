@@ -453,8 +453,9 @@ async function fetchGcOs(gcHeaders: Record<string, string>, options?: { situacao
           }
         }
 
-        // 73343 = tarefa OS, 73344 = tarefa execução
-        for (const attrId of [GC_ATRIBUTO_TAREFA_EXEC, GC_ATRIBUTO_TAREFA_OS]) {
+        // 73343 = tarefa OS. Do NOT map 73344 here: it is execution-only and
+        // must not make the OS appear under the execution task.
+        for (const attrId of [GC_ATRIBUTO_TAREFA_OS]) {
           const attrTarefa = atributos.find((a: any) => {
             const nested = a?.atributo || a;
             return String(nested.atributo_id || nested.id || "") === attrId;
@@ -466,8 +467,7 @@ async function fetchGcOs(gcHeaders: Record<string, string>, options?: { situacao
           const taskId = String(nested?.conteudo || nested?.valor || "").trim();
           if (!taskId || !/^\d+$/.test(taskId)) continue;
 
-          const shouldOverride = attrId === GC_ATRIBUTO_TAREFA_OS;
-          if (!map[taskId] || shouldOverride) {
+          if (!map[taskId]) {
             map[taskId] = osPayload;
           }
           const bucket = byTaskIdAll[taskId] || [];
