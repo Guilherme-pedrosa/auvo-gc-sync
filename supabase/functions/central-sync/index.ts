@@ -378,8 +378,9 @@ async function fetchGcOrcamentos(gcHeaders: Record<string, string>): Promise<{ b
 }
 
 // Fetch GC OS with optional filters (situacao_ids, date range)
-async function fetchGcOs(gcHeaders: Record<string, string>, options?: { situacaoIds?: string[]; dataInicio?: string; dataFim?: string }): Promise<{ byTaskId: Record<string, any>; byCodigo: Record<string, any>; byOrcNumero: Record<string, any> }> {
+async function fetchGcOs(gcHeaders: Record<string, string>, options?: { situacaoIds?: string[]; dataInicio?: string; dataFim?: string }): Promise<{ byTaskId: Record<string, any>; byTaskIdAll: Record<string, any[]>; byCodigo: Record<string, any>; byOrcNumero: Record<string, any> }> {
   const map: Record<string, any> = {};
+  const byTaskIdAll: Record<string, any[]> = {};
   const byCodigo: Record<string, any> = {};
   const byOrcNumero: Record<string, any> = {};
 
@@ -469,6 +470,11 @@ async function fetchGcOs(gcHeaders: Record<string, string>, options?: { situacao
           if (!map[taskId] || shouldOverride) {
             map[taskId] = osPayload;
           }
+          const bucket = byTaskIdAll[taskId] || [];
+          if (!bucket.some((existing) => existing?.gc_os_id === osPayload.gc_os_id)) {
+            bucket.push(osPayload);
+            byTaskIdAll[taskId] = bucket;
+          }
         }
       }
 
@@ -476,7 +482,7 @@ async function fetchGcOs(gcHeaders: Record<string, string>, options?: { situacao
       page++;
     }
   }
-  return { byTaskId: map, byCodigo, byOrcNumero };
+  return { byTaskId: map, byTaskIdAll, byCodigo, byOrcNumero };
 }
 
 
@@ -539,6 +545,7 @@ async function runCentralSync(body: CentralSyncBody = {}) {
     const gcOrcMap = gcOrcResult.byTaskId;
     const gcOrcByCodigo = gcOrcResult.byCodigo;
     const gcOsMap = gcOsResult.byTaskId;
+    const gcOsByTaskIdAll = gcOsResult.byTaskIdAll || {};
     const gcOsByCodigo = gcOsResult.byCodigo;
     const gcOsByOrcNumero = gcOsResult.byOrcNumero;
 
@@ -1058,9 +1065,10 @@ async function runCentralSync(body: CentralSyncBody = {}) {
 
     // Fallback: include ALL GC OS tasks not returned by current Auvo window
     // This ensures all OS from GC are represented in the database regardless of Auvo date range
-    const existingTaskIds = new Set(rows.map((r) => String(r.auvo_task_id)));
-    for (const [taskId, gcOs] of Object.entries(gcOsMap)) {
-      if (existingTaskIds.has(taskId) || existingTaskIdsInDb.has(taskId)) continue;
+    const existingTaskOsKeys = new Set(rows.map((r) => `${String(r.auvo_task_id)}::${String(r.gc_os_id || "")}`));
+    for (const [taskId, osList] of Object.entries(gcOsByTaskIdAll)) {
+      for (const gcOs of osList as any[]) {
+      if (existingTaskOsKeys.has(`${taskId}::${String(gcOs?.gc_os_id || "")}`)) continue;
 
       const gcOrc = gcOrcMap[taskId] || null;
       let fallbackSnapshot = taskSnapshotById.get(taskId) || null;
@@ -1128,6 +1136,8 @@ async function runCentralSync(body: CentralSyncBody = {}) {
       }
 
       rows.push(fallbackRow);
+      existingTaskOsKeys.add(`${taskId}::${String(gcOs?.gc_os_id || "")}`);
+      }
     }
 
     // Patch existing OS rows in period that still have empty address/orientation
@@ -1282,13 +1292,17 @@ async function runCentralSync(body: CentralSyncBody = {}) {
     }
 
     // Upsert in batches of 100
+    for (const row of rows) {
+      row.mirror_key = `${String(row.auvo_task_id)}::os:${String(row.gc_os_id || "")}::orc:${String(row.gc_orcamento_id || "")}`;
+    }
+
     let upserted = 0;
     let errors = 0;
     for (let i = 0; i < rows.length; i += 100) {
       const batch = rows.slice(i, i + 100);
       const { error } = await sbClient
         .from("tarefas_central")
-        .upsert(batch, { onConflict: "auvo_task_id", ignoreDuplicates: false, defaultToNull: false });
+        .upsert(batch, { onConflict: "mirror_key", ignoreDuplicates: false, defaultToNull: false });
       
       if (error) {
         console.error(`[central-sync] Batch ${i}-${i + batch.length} error:`, error.message);

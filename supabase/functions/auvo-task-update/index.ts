@@ -44,6 +44,7 @@ function sanitizeCentralRow(row: any) {
   // This prevents partial updates (drag/edit) from nulling GC values and other fields.
   const result: any = {
     auvo_task_id: taskId,
+    mirror_key: `${taskId}::os:${String(row?.gc_os_id || "")}::orc:${String(row?.gc_orcamento_id || "")}`,
     atualizado_em: new Date().toISOString(),
   };
 
@@ -159,7 +160,7 @@ Deno.serve(async (req) => {
       // Bulk sync keeps upsert behavior (full dataset refresh).
       const { error } = await admin
         .from("tarefas_central")
-        .upsert(rows, { onConflict: "auvo_task_id" });
+        .upsert(rows, { onConflict: "mirror_key" });
 
       if (error) throw error;
 

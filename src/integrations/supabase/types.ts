@@ -504,6 +504,7 @@ export type Database = {
           gc_os_vendedor: string | null
           hora_fim: string | null
           hora_inicio: string | null
+          mirror_key: string
           orcamento_realizado: boolean | null
           orientacao: string | null
           os_realizada: boolean | null
@@ -558,6 +559,7 @@ export type Database = {
           gc_os_vendedor?: string | null
           hora_fim?: string | null
           hora_inicio?: string | null
+          mirror_key: string
           orcamento_realizado?: boolean | null
           orientacao?: string | null
           os_realizada?: boolean | null
@@ -612,6 +614,7 @@ export type Database = {
           gc_os_vendedor?: string | null
           hora_fim?: string | null
           hora_inicio?: string | null
+          mirror_key?: string
           orcamento_realizado?: boolean | null
           orientacao?: string | null
           os_realizada?: boolean | null
