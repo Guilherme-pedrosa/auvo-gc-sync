@@ -1292,13 +1292,17 @@ async function runCentralSync(body: CentralSyncBody = {}) {
     }
 
     // Upsert in batches of 100
+    for (const row of rows) {
+      row.mirror_key = `${String(row.auvo_task_id)}::os:${String(row.gc_os_id || "")}::orc:${String(row.gc_orcamento_id || "")}`;
+    }
+
     let upserted = 0;
     let errors = 0;
     for (let i = 0; i < rows.length; i += 100) {
       const batch = rows.slice(i, i + 100);
       const { error } = await sbClient
         .from("tarefas_central")
-        .upsert(batch, { onConflict: "auvo_task_id", ignoreDuplicates: false, defaultToNull: false });
+        .upsert(batch, { onConflict: "mirror_key", ignoreDuplicates: false, defaultToNull: false });
       
       if (error) {
         console.error(`[central-sync] Batch ${i}-${i + batch.length} error:`, error.message);
