@@ -16,6 +16,8 @@ const FUTURE_DAYS_WINDOW = 30;
 let lastAuvoCall = 0;
 let lastGcCall = 0;
 
+declare const EdgeRuntime: { waitUntil?: (promise: Promise<unknown>) => void } | undefined;
+
 async function rateLimitedFetch(url: string, options: RequestInit, type: "gc" | "auvo"): Promise<Response> {
   const now = Date.now();
   const last = type === "gc" ? lastGcCall : lastAuvoCall;
@@ -1486,11 +1488,15 @@ Deno.serve(async (req) => {
       });
     }
 
-    setTimeout(() => {
-      runCentralSync(body).catch((err) => {
-        console.error("[central-sync] Background error:", err);
-      });
-    }, 0);
+    const backgroundSync = runCentralSync(body).catch((err) => {
+      console.error("[central-sync] Background error:", err);
+    });
+
+    if (typeof EdgeRuntime !== "undefined" && EdgeRuntime?.waitUntil) {
+      EdgeRuntime.waitUntil(backgroundSync);
+    } else {
+      setTimeout(() => backgroundSync, 0);
+    }
 
     return new Response(JSON.stringify({
       success: true,
