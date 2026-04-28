@@ -441,9 +441,14 @@ export default function RelatoriosPage() {
             <div className="w-64 space-y-1.5">
               <Progress value={syncProgress} className="h-2" />
               <p className="text-[11px] text-muted-foreground text-right">
-                {SYNC_STEPS[syncStep]?.label}
+                {syncStatusMessage || SYNC_STEPS[syncStep]?.label}
               </p>
             </div>
+          )}
+          {!syncing && syncStatusMessage && (
+            <p className="max-w-80 text-[11px] text-muted-foreground text-right">
+              {syncStatusMessage}
+            </p>
           )}
         </div>
       </div>
