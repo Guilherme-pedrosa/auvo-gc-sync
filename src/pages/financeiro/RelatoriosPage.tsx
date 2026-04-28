@@ -77,6 +77,7 @@ export default function RelatoriosPage() {
   const [syncing, setSyncing] = useState(false);
   const [syncStep, setSyncStep] = useState(0);
   const [syncProgress, setSyncProgress] = useState(0);
+  const [syncStatusMessage, setSyncStatusMessage] = useState<string | null>(null);
   const stepTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const refreshTimeoutsRef = useRef<ReturnType<typeof setTimeout>[]>([]);
   const today = new Date();
@@ -96,13 +97,19 @@ export default function RelatoriosPage() {
 
   const scheduleBackgroundRefresh = useCallback(() => {
     clearScheduledRefreshes();
-    const delays = [15000, 30000, 60000];
+    const delays = [15000, 30000, 60000, 120000];
     refreshTimeoutsRef.current = delays.map((delay) =>
       setTimeout(() => {
         refreshRelatoriosData();
+        if (delay >= 60000) {
+          queryClient.invalidateQueries({ queryKey: ["last-sync-timestamp"] });
+        }
+        if (delay === 120000) {
+          setSyncStatusMessage("Se ainda não atualizou, rode novamente em um período menor.");
+        }
       }, delay)
     );
-  }, [clearScheduledRefreshes, refreshRelatoriosData]);
+  }, [clearScheduledRefreshes, refreshRelatoriosData, queryClient]);
 
   const startProgressSimulation = () => {
     setSyncStep(0);
@@ -141,6 +148,7 @@ export default function RelatoriosPage() {
 
   const handleSync = async (situacaoIds?: string[]) => {
     setSyncing(true);
+    setSyncStatusMessage("Iniciando sincronização...");
     clearScheduledRefreshes();
     startProgressSimulation();
     const syncFrom = format(dateFrom, "yyyy-MM-dd");
@@ -154,8 +162,10 @@ export default function RelatoriosPage() {
       if (data?.success === false) throw new Error(data.error || "Erro na sincronização");
 
       if (data?.background) {
-        toast.info("Sync iniciado em background — atualizando a tela automaticamente");
-        stopProgressSimulation(true);
+        toast.info("Sync iniciado em background — a tela será atualizada automaticamente");
+        setSyncProgress(35);
+        setSyncStatusMessage("Sincronização rodando no servidor. Pode levar alguns minutos.");
+        setTimeout(() => setSyncing(false), 2500);
         scheduleBackgroundRefresh();
         return;
       }
@@ -164,6 +174,7 @@ export default function RelatoriosPage() {
         `Sync ${syncFrom} → ${syncTo}: ${data.auvo_tarefas || 0} tarefas, ${data.upserted || 0} atualizadas`
       );
       stopProgressSimulation(true);
+      setSyncStatusMessage(null);
       refreshRelatoriosData();
     } catch (err: any) {
       const message = String(err?.message || "");
@@ -177,11 +188,14 @@ export default function RelatoriosPage() {
         message.toLowerCase().includes("fetch");
 
       if (isBackgroundSync) {
-        toast.info("Sync iniciado em background — atualizando a tela automaticamente");
-        stopProgressSimulation(true);
+        toast.info("Sync pode estar rodando em background — atualizando a tela automaticamente");
+        setSyncProgress(35);
+        setSyncStatusMessage("A chamada demorou, mas vou atualizar os dados automaticamente.");
+        setTimeout(() => setSyncing(false), 2500);
         scheduleBackgroundRefresh();
       } else {
         toast.error(`Erro: ${message}`);
+        setSyncStatusMessage(null);
         stopProgressSimulation(false);
       }
     }
