@@ -1184,9 +1184,7 @@ async function runBudgetKanbanSync(opts: {
       const existing = existingMap[item.auvo_task_id];
 
       // Determine the "correct" column based on current data
-      let autoColuna = "a_fazer";
-      if (item.os_realizada) autoColuna = "os_realizada";
-      else if (item.orcamento_realizado) autoColuna = `orc_${(item.gc_orcamento?.gc_situacao || "sem_situacao").replace(/\s+/g, "_").toLowerCase()}`;
+      const autoColuna = budgetColumnForItem(item);
 
       let finalColuna: string;
       let finalPosicao: number;
@@ -1208,10 +1206,10 @@ async function runBudgetKanbanSync(opts: {
           // OS situation changed
           (oldData.gc_os?.gc_situacao !== item.gc_os?.gc_situacao && item.os_realizada);
 
-        // Also force-move if card has orçamento/OS but is stuck in "a_fazer"
-        const stuckInAFazer = existing.coluna === "a_fazer" && autoColuna !== "a_fazer";
+        // Also force-move if card is stuck in an initial column after its status changed
+        const stuckInInitial = ["a_fazer", "falta_preenchimento"].includes(existing.coluna) && autoColuna !== existing.coluna;
 
-        if (hadUpdate || stuckInAFazer) {
+        if (hadUpdate || stuckInInitial) {
           // Data changed or card misplaced → move to correct column
           finalColuna = autoColuna;
           finalPosicao = 0; // top of column
