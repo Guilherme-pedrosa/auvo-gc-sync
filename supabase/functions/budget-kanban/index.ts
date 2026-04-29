@@ -838,8 +838,100 @@ async function runBudgetKanbanSync(opts: {
       console.warn(`[budget-kanban] Erro ao carregar snapshot:`, err);
     }
 
-    // Fetch in parallel: Auvo tasks + GC orçamentos (ALL) + GC OS (ALL)
-    // No date filter on GC — we fetch everything and filter by task date in cache/frontend
+    // Primeiro usa a tabela central já sincronizada: ela é mais rápida e já contém os vínculos GC.
+    const { data: centralRows, error: centralError } = await sbClient
+      .from("tarefas_central")
+      .select("*")
+      .gte("data_tarefa", startDate)
+      .lte("data_tarefa", endDate)
+      .eq("questionario_id", QUESTIONNAIRE_ID);
+
+    if (centralError) {
+      console.warn("[budget-kanban] Erro ao ler tarefas_central, usando APIs externas:", centralError.message);
+    } else if ((centralRows || []).length > 0) {
+      console.log(`[budget-kanban] Central encontrada: ${(centralRows || []).length} tarefas com questionário ${QUESTIONNAIRE_ID}`);
+
+      const { data: existingCache } = await sbClient
+        .from("kanban_orcamentos_cache")
+        .select("auvo_task_id, coluna, posicao, dados");
+
+      const existingMap: Record<string, { coluna: string; posicao: number; dados: any }> = {};
+      for (const row of existingCache || []) {
+        existingMap[row.auvo_task_id] = { coluna: row.coluna, posicao: row.posicao, dados: row.dados };
+      }
+
+      const now = new Date().toISOString();
+      let movedCount = 0;
+      let keptCount = 0;
+
+      const items = (centralRows || [])
+        .map(buildBudgetItemFromCentral)
+        .filter((item: any) => item.auvo_task_id);
+
+      items.sort((a: any, b: any) => {
+        const aHasGc = a.orcamento_realizado || a.os_realizada;
+        const bHasGc = b.orcamento_realizado || b.os_realizada;
+        if (aHasGc !== bHasGc) return aHasGc ? 1 : -1;
+        return String(b.data_tarefa || "").localeCompare(String(a.data_tarefa || ""));
+      });
+
+      const upsertRows = items.map((item: any, idx: number) => {
+        const existing = existingMap[item.auvo_task_id];
+        const autoColuna = budgetColumnForItem(item);
+
+        let finalColuna = autoColuna;
+        let finalPosicao = idx;
+
+        if (existing) {
+          const oldData = existing.dados || {};
+          const hadUpdate =
+            (!oldData.orcamento_realizado && item.orcamento_realizado) ||
+            (!oldData.os_realizada && item.os_realizada) ||
+            (oldData.gc_orcamento?.gc_situacao !== item.gc_orcamento?.gc_situacao && item.orcamento_realizado) ||
+            (oldData.gc_os?.gc_situacao !== item.gc_os?.gc_situacao && item.os_realizada);
+          const stuckInInitial = ["a_fazer", "falta_preenchimento"].includes(existing.coluna) && autoColuna !== existing.coluna;
+
+          if (hadUpdate || stuckInInitial) {
+            finalColuna = autoColuna;
+            finalPosicao = 0;
+            movedCount++;
+          } else {
+            finalColuna = existing.coluna;
+            finalPosicao = existing.posicao;
+            keptCount++;
+          }
+        }
+
+        return {
+          auvo_task_id: item.auvo_task_id,
+          dados: item,
+          coluna: finalColuna,
+          posicao: finalPosicao,
+          atualizado_em: now,
+        };
+      });
+
+      for (let i = 0; i < upsertRows.length; i += 50) {
+        const batch = upsertRows.slice(i, i + 50);
+        await sbClient
+          .from("kanban_orcamentos_cache")
+          .upsert(batch, { onConflict: "auvo_task_id" });
+      }
+
+      await sbClient
+        .from("kanban_sync_meta")
+        .upsert({
+          id: "default",
+          ultimo_sync: now,
+          periodo_inicio: startDate,
+          periodo_fim: endDate,
+        });
+
+      console.log(`[budget-kanban] Cache atualizado via central: ${upsertRows.length} itens (${movedCount} movidos, ${keptCount} mantidos)`);
+      return;
+    }
+
+    // Fallback: busca APIs externas quando a central ainda não tem o período.
     const [auvoPrimary, gcOrcMap, gcOsMap] = await Promise.all([
       fetchAuvoTasksWithQuestionnaire(bearerToken, startDate, endDate),
       fetchGcOrcamentosMap(gcH),
