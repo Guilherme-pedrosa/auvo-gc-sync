@@ -16,6 +16,8 @@ const MIN_DELAY_MS = 200;
 let lastAuvoCall = 0;
 let lastGcCall = 0;
 
+declare const EdgeRuntime: { waitUntil?: (promise: Promise<unknown>) => void } | undefined;
+
 type AuvoFetchResult = {
   tasks: any[];
   hadError: boolean;
@@ -672,24 +674,34 @@ Deno.serve(async (req) => {
 
     console.log(`[budget-kanban] Período: ${startDate} a ${endDate}`);
 
-    const bearerToken = await auvoLogin(auvoApiKey, auvoApiToken);
-    await runBudgetKanbanSync({
-      sbClient,
-      bearerToken,
-      gcAccessToken,
-      gcSecretToken,
-      startDate,
-      endDate,
+    const backgroundSync = (async () => {
+      const bearerToken = await auvoLogin(auvoApiKey, auvoApiToken);
+      await runBudgetKanbanSync({
+        sbClient,
+        bearerToken,
+        gcAccessToken,
+        gcSecretToken,
+        startDate,
+        endDate,
+      });
+    })().catch((err) => {
+      console.error("[budget-kanban] Background error:", err);
     });
 
-    return new Response(JSON.stringify({ ok: true, async: false, periodo: { inicio: startDate, fim: endDate } }), {
+    if (typeof EdgeRuntime !== "undefined" && EdgeRuntime?.waitUntil) {
+      EdgeRuntime.waitUntil(backgroundSync);
+    } else {
+      setTimeout(() => backgroundSync, 0);
+    }
+
+    return new Response(JSON.stringify({ ok: true, background: true, periodo: { inicio: startDate, fim: endDate } }), {
       status: 200,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (err) {
     console.error("[budget-kanban] Error:", err);
     return new Response(JSON.stringify({ error: (err as Error).message }), {
-      status: 500,
+      status: 200,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   }
