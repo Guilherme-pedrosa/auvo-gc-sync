@@ -333,7 +333,7 @@ export default function EquipamentosPreventivosPage() {
 
         const monthTaskCount = previewData?.phase2_equipment_tasks?.total_tasks_in_window || 0;
         const windowsToProcess = !previewError && monthTaskCount > 150
-          ? splitSyncWindowByFortnight(monthWindow)
+          ? splitSyncWindowByDay(monthWindow)
           : [monthWindow];
 
         if (!previewError && monthTaskCount > 150 && windowsToProcess.length > 1) {
