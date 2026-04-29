@@ -148,6 +148,7 @@ export default function BudgetKanbanPage() {
   const handleSync = useCallback(async () => {
     setIsSyncing(true);
     const previousSync = data?.ultimo_sync || null;
+    let syncFinished = false;
     try {
       const { data: syncData, error } = await supabase.functions.invoke("budget-kanban", {
         body: {
@@ -172,15 +173,18 @@ export default function BudgetKanbanPage() {
         while (Date.now() - pollStartedAt < 180_000) {
           const result = await refetch();
           const latest = result.data as ApiResponse | undefined;
-          if (latest?.ultimo_sync && latest.ultimo_sync !== previousSync) {
+          const latestTime = latest?.ultimo_sync ? new Date(latest.ultimo_sync).getTime() : 0;
+          const previousTime = previousSync ? new Date(previousSync).getTime() : 0;
+          if (latestTime > previousTime) {
             refreshed = latest;
             break;
           }
-          await new Promise((resolve) => setTimeout(resolve, 4000));
+          await new Promise((resolve) => setTimeout(resolve, 2500));
         }
 
-        if (refreshed?.ultimo_sync && refreshed.ultimo_sync !== previousSync) {
+        if (refreshed) {
           setColumnsInitialized(false);
+          syncFinished = true;
           toast.success(`Sincronizado! ${refreshed.resumo?.total_tarefas_com_questionario ?? 0} tarefas atualizadas`);
         } else {
           toast.error("A sincronização não terminou no backend. Tente novamente.");
@@ -191,7 +195,7 @@ export default function BudgetKanbanPage() {
       console.warn("Erro no retorno do sync:", e?.message || e);
     } finally {
       setColumnsInitialized(false);
-      await refetch();
+      if (!syncFinished) await refetch();
       setIsSyncing(false);
     }
   }, [data?.ultimo_sync, dateRange, refetch]);
