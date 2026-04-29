@@ -365,7 +365,19 @@ async function fetchAuvoTasksWithQuestionnaire(
     const url = `${AUVO_BASE_URL}/tasks/?page=${page}&pageSize=${pageSize}&order=desc&paramFilter=${paramFilter}`;
 
     console.log(`[budget-kanban] Auvo page ${page}`);
-    const response = await rateLimitedFetch(url, { headers: auvoHeaders(bearerToken) }, "auvo");
+    let response: Response;
+    try {
+      const now = Date.now();
+      const elapsed = now - lastAuvoCall;
+      if (elapsed < MIN_DELAY_MS) await new Promise(r => setTimeout(r, MIN_DELAY_MS - elapsed));
+      lastAuvoCall = Date.now();
+      response = await fetchWithTimeout(url, { headers: auvoHeaders(bearerToken) }, AUVO_TASKS_TIMEOUT_MS);
+    } catch (err) {
+      hadError = true;
+      errorMessage = `Auvo /tasks timeout ou conexão cancelada na página ${page}`;
+      console.error(`[budget-kanban] ${errorMessage}:`, err);
+      break;
+    }
 
     if (response.status === 404) break;
     if (!response.ok) {
