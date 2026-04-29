@@ -120,6 +120,18 @@ function splitSyncWindowByFortnight(window: SyncWindow): SyncWindow[] {
   return windows.reverse();
 }
 
+function splitSyncWindowByDay(window: SyncWindow): SyncWindow[] {
+  const start = new Date(`${window.windowStart}T00:00:00`);
+  const end = new Date(`${window.windowEnd}T00:00:00`);
+  const windows: SyncWindow[] = [];
+
+  for (let cursor = new Date(start); cursor.getTime() <= end.getTime(); cursor.setDate(cursor.getDate() + 1)) {
+    windows.push({ windowStart: format(cursor, "yyyy-MM-dd"), windowEnd: format(cursor, "yyyy-MM-dd") });
+  }
+
+  return windows.reverse();
+}
+
 // ── Data fetching ──
 async function fetchRawData(): Promise<{ equipamentos: EquipmentRaw[]; relations: EquipTaskRel[] }> {
   let equipamentos: EquipmentRaw[] = [];
@@ -344,7 +356,7 @@ export default function EquipamentosPreventivosPage() {
             const p2 = d2?.phase2_equipment_tasks;
             if (d2?.should_split) {
               toast.warning(`Janela ${syncWindow.windowStart} → ${syncWindow.windowEnd} ainda está grande; será refeita em partes menores.`);
-              for (const tinyWindow of splitSyncWindowByFortnight(syncWindow)) {
+              for (const tinyWindow of splitSyncWindowByDay(syncWindow)) {
                 const { data: tinyData, error: tinyError } = await supabase.functions.invoke("equipment-sync", {
                   body: { phase: "2", startDate: tinyWindow.windowStart, endDate: tinyWindow.windowEnd, validEquipmentIds },
                 });
