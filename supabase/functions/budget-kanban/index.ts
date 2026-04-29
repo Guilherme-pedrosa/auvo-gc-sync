@@ -340,7 +340,7 @@ async function fetchAuvoTasksWithQuestionnaire(
   const allTasks: any[] = [];
   let page = 1;
   const pageSize = 100;
-  const MAX_PAGES = 20;
+  const MAX_PAGES = 50;
   const filterObj = { startDate: `${startDate}T00:00:00`, endDate: `${endDate}T23:59:59` };
   let hadError = false;
   let errorMessage: string | null = null;
@@ -372,8 +372,9 @@ async function fetchAuvoTasksWithQuestionnaire(
       if (hasTarget) allTasks.push(task);
     }
 
+    const totalItems = Number(data?.result?.pagedSearchReturnData?.totalItems || 0);
     console.log(`[budget-kanban] Page ${page}: ${entities.length} tasks, ${allTasks.length} com questionário ${QUESTIONNAIRE_ID}`);
-    if (entities.length < pageSize) break;
+    if (entities.length < pageSize || (totalItems > 0 && page * pageSize >= totalItems)) break;
     page++;
   }
 

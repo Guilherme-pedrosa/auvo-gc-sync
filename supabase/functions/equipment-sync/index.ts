@@ -6,10 +6,11 @@ const corsHeaders = {
 };
 
 const AUVO_BASE_URL = "https://api.auvo.com.br/v2";
-const TASK_PAGE_SIZE = 100;
+const TASK_PAGE_SIZE = 50;
 const TASK_COUNT_PAGE_SIZE = 10;
 const UPSERT_BATCH_SIZE = 500;
 const RATE_LIMIT_DELAY_MS = 50;
+const MAX_PHASE2_TASKS_PER_REQUEST = 180;
 
 // ══════════════════════════════════════════════════════════
 // Brand extraction: pure dictionary + regex, no AI
@@ -726,6 +727,23 @@ Deno.serve(async (req) => {
 
         if (!validEquipmentIds && skipEquipmentValidation) {
           console.log("[equipment-sync] Skipping equipment ID validation for this request");
+        }
+
+        const totalTasksInWindow = await fetchTaskCountForWindow(accessToken, startDateParam, endDateParam);
+        if (totalTasksInWindow > MAX_PHASE2_TASKS_PER_REQUEST) {
+          return new Response(JSON.stringify({
+            success: false,
+            error: `Janela grande demais (${totalTasksInWindow} tarefas). Divida em períodos menores.`,
+            should_split: true,
+            phase2_equipment_tasks: {
+              window: `${startDateParam} → ${endDateParam}`,
+              total_tasks_in_window: totalTasksInWindow,
+              max_tasks_per_request: MAX_PHASE2_TASKS_PER_REQUEST,
+            },
+          }), {
+            status: 200,
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
+          });
         }
 
         const { results: tasksWithEquipments, totalTasks, tasksWithEquipments: withEquipCount } =
