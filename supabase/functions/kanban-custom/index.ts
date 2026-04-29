@@ -58,7 +58,7 @@ async function fetchAuvoTasksAll(
   const questionnaireMap = new Map<string, string>();
   let page = 1;
   const pageSize = 100;
-  const MAX_PAGES = 20;
+  const MAX_PAGES = 50;
   const filterObj = { startDate: `${startDate}T00:00:00`, endDate: `${endDate}T23:59:59` };
   let hadError = false;
   let errorMessage: string | null = null;
@@ -95,8 +95,9 @@ async function fetchAuvoTasksAll(
       allTasks.push(task);
     }
 
+    const totalItems = Number(data?.result?.pagedSearchReturnData?.totalItems || 0);
     console.log(`[kanban-custom] Page ${page}: ${entities.length} tasks, ${allTasks.length} total`);
-    if (entities.length < pageSize) break;
+    if (entities.length < pageSize || (totalItems > 0 && allTasks.length >= totalItems)) break;
     page++;
   }
 
