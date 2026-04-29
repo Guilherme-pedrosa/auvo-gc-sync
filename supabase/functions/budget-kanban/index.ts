@@ -13,8 +13,11 @@ const GC_ATRIBUTO_TAREFA_OS = "73343";
 const AUVO_SAFE_START = "2020-01-01";
 const AUVO_SAFE_END = "2030-12-31";
 const MIN_DELAY_MS = 200;
+const AUVO_TASKS_TIMEOUT_MS = 30_000;
 let lastAuvoCall = 0;
 let lastGcCall = 0;
+
+declare const EdgeRuntime: { waitUntil?: (promise: Promise<unknown>) => void } | undefined;
 
 type AuvoFetchResult = {
   tasks: any[];
@@ -315,6 +318,16 @@ async function rateLimitedFetch(url: string, options: RequestInit, type: "gc" | 
   return fetch(url, options);
 }
 
+async function fetchWithTimeout(url: string, options: RequestInit, timeoutMs: number): Promise<Response> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(url, { ...options, signal: controller.signal });
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
 async function auvoLogin(apiKey: string, apiToken: string): Promise<string> {
   const url = `${AUVO_BASE_URL}/login/?apiKey=${encodeURIComponent(apiKey)}&apiToken=${encodeURIComponent(apiToken)}`;
   const response = await fetch(url, { method: "GET", headers: { "Content-Type": "application/json" } });
@@ -352,7 +365,19 @@ async function fetchAuvoTasksWithQuestionnaire(
     const url = `${AUVO_BASE_URL}/tasks/?page=${page}&pageSize=${pageSize}&order=desc&paramFilter=${paramFilter}`;
 
     console.log(`[budget-kanban] Auvo page ${page}`);
-    const response = await rateLimitedFetch(url, { headers: auvoHeaders(bearerToken) }, "auvo");
+    let response: Response;
+    try {
+      const now = Date.now();
+      const elapsed = now - lastAuvoCall;
+      if (elapsed < MIN_DELAY_MS) await new Promise(r => setTimeout(r, MIN_DELAY_MS - elapsed));
+      lastAuvoCall = Date.now();
+      response = await fetchWithTimeout(url, { headers: auvoHeaders(bearerToken) }, AUVO_TASKS_TIMEOUT_MS);
+    } catch (err) {
+      hadError = true;
+      errorMessage = `Auvo /tasks timeout ou conexão cancelada na página ${page}`;
+      console.error(`[budget-kanban] ${errorMessage}:`, err);
+      break;
+    }
 
     if (response.status === 404) break;
     if (!response.ok) {
@@ -672,24 +697,34 @@ Deno.serve(async (req) => {
 
     console.log(`[budget-kanban] Período: ${startDate} a ${endDate}`);
 
-    const bearerToken = await auvoLogin(auvoApiKey, auvoApiToken);
-    await runBudgetKanbanSync({
-      sbClient,
-      bearerToken,
-      gcAccessToken,
-      gcSecretToken,
-      startDate,
-      endDate,
+    const backgroundSync = (async () => {
+      const bearerToken = await auvoLogin(auvoApiKey, auvoApiToken);
+      await runBudgetKanbanSync({
+        sbClient,
+        bearerToken,
+        gcAccessToken,
+        gcSecretToken,
+        startDate,
+        endDate,
+      });
+    })().catch((err) => {
+      console.error("[budget-kanban] Background error:", err);
     });
 
-    return new Response(JSON.stringify({ ok: true, async: false, periodo: { inicio: startDate, fim: endDate } }), {
+    if (typeof EdgeRuntime !== "undefined" && EdgeRuntime?.waitUntil) {
+      EdgeRuntime.waitUntil(backgroundSync);
+    } else {
+      setTimeout(() => backgroundSync, 0);
+    }
+
+    return new Response(JSON.stringify({ ok: true, background: true, periodo: { inicio: startDate, fim: endDate } }), {
       status: 200,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (err) {
     console.error("[budget-kanban] Error:", err);
     return new Response(JSON.stringify({ error: (err as Error).message }), {
-      status: 500,
+      status: 200,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   }
@@ -748,8 +783,9 @@ async function runBudgetKanbanSync(opts: {
     let auvoTasks = auvoPrimary.tasks;
     let auvoError = auvoPrimary.errorMessage;
 
-    // Fallback robusto: se vier vazio/erro no range escolhido, tenta range amplo no Auvo e filtra localmente
-    if ((auvoPrimary.hadError || auvoTasks.length === 0) && (startDate !== AUVO_SAFE_START || endDate !== AUVO_SAFE_END)) {
+    // Fallback robusto: se vier vazio sem erro no range escolhido, tenta range amplo e filtra localmente.
+    // Se o Auvo retornou erro (ex.: 502), NÃO dispara busca 2020-2030 — isso piora timeout e cancela a sync.
+    if (!auvoPrimary.hadError && auvoTasks.length === 0 && (startDate !== AUVO_SAFE_START || endDate !== AUVO_SAFE_END)) {
       console.warn("[budget-kanban] Tentando fallback Auvo com range amplo (2020-2030)");
       const auvoFallback = await fetchAuvoTasksWithQuestionnaire(bearerToken, AUVO_SAFE_START, AUVO_SAFE_END);
       if (!auvoError && auvoFallback.errorMessage) auvoError = auvoFallback.errorMessage;
