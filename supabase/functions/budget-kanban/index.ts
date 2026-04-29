@@ -13,6 +13,7 @@ const GC_ATRIBUTO_TAREFA_OS = "73343";
 const AUVO_SAFE_START = "2020-01-01";
 const AUVO_SAFE_END = "2030-12-31";
 const MIN_DELAY_MS = 200;
+const AUVO_TASKS_TIMEOUT_MS = 30_000;
 let lastAuvoCall = 0;
 let lastGcCall = 0;
 
@@ -315,6 +316,16 @@ async function rateLimitedFetch(url: string, options: RequestInit, type: "gc" | 
   if (type === "gc") lastGcCall = Date.now();
   else lastAuvoCall = Date.now();
   return fetch(url, options);
+}
+
+async function fetchWithTimeout(url: string, options: RequestInit, timeoutMs: number): Promise<Response> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(url, { ...options, signal: controller.signal });
+  } finally {
+    clearTimeout(timeout);
+  }
 }
 
 async function auvoLogin(apiKey: string, apiToken: string): Promise<string> {
