@@ -105,27 +105,19 @@ function buildMonthlySyncWindows(startDate: string, endDate: string): SyncWindow
 function splitSyncWindowByFortnight(window: SyncWindow): SyncWindow[] {
   const start = new Date(`${window.windowStart}T00:00:00`);
   const end = new Date(`${window.windowEnd}T00:00:00`);
-  const firstHalfEndBase = new Date(start.getFullYear(), start.getMonth(), 15);
-  const secondHalfStartBase = new Date(start.getFullYear(), start.getMonth(), 16);
   const windows: SyncWindow[] = [];
 
-  const recentStart = new Date(Math.max(start.getTime(), secondHalfStartBase.getTime()));
-  if (recentStart.getTime() <= end.getTime()) {
+  for (let cursor = new Date(start); cursor.getTime() <= end.getTime(); cursor.setDate(cursor.getDate() + 7)) {
+    const chunkStart = new Date(cursor);
+    const chunkEnd = new Date(cursor);
+    chunkEnd.setDate(chunkEnd.getDate() + 6);
     windows.push({
-      windowStart: format(recentStart, "yyyy-MM-dd"),
-      windowEnd: format(end, "yyyy-MM-dd"),
+      windowStart: format(chunkStart, "yyyy-MM-dd"),
+      windowEnd: format(chunkEnd.getTime() > end.getTime() ? end : chunkEnd, "yyyy-MM-dd"),
     });
   }
 
-  const olderEnd = new Date(Math.min(end.getTime(), firstHalfEndBase.getTime()));
-  if (start.getTime() <= olderEnd.getTime()) {
-    windows.push({
-      windowStart: format(start, "yyyy-MM-dd"),
-      windowEnd: format(olderEnd, "yyyy-MM-dd"),
-    });
-  }
-
-  return windows;
+  return windows.reverse();
 }
 
 // ── Data fetching ──
@@ -328,11 +320,11 @@ export default function EquipamentosPreventivosPage() {
         }
 
         const monthTaskCount = previewData?.phase2_equipment_tasks?.total_tasks_in_window || 0;
-        const windowsToProcess = !previewError && monthTaskCount > 300
+        const windowsToProcess = !previewError && monthTaskCount > 150
           ? splitSyncWindowByFortnight(monthWindow)
           : [monthWindow];
 
-        if (!previewError && monthTaskCount > 300 && windowsToProcess.length > 1) {
+        if (!previewError && monthTaskCount > 150 && windowsToProcess.length > 1) {
           setSyncProgress({ current: monthIndex, total: totalMonths, label: `Fase 2: ${monthLabel} — dividindo (${monthTaskCount} tarefas)` });
         }
 
@@ -350,8 +342,21 @@ export default function EquipamentosPreventivosPage() {
             console.error(`Phase 2 error for ${syncWindow.windowStart}:`, e2);
           } else {
             const p2 = d2?.phase2_equipment_tasks;
-            totalRelUpserted += p2?.relationship_rows_upserted || 0;
-            totalWithEquipLinks += p2?.tasks_with_equipment_links || 0;
+            if (d2?.should_split) {
+              toast.warning(`Janela ${syncWindow.windowStart} → ${syncWindow.windowEnd} ainda está grande; será refeita em partes menores.`);
+              for (const tinyWindow of splitSyncWindowByFortnight(syncWindow)) {
+                const { data: tinyData, error: tinyError } = await supabase.functions.invoke("equipment-sync", {
+                  body: { phase: "2", startDate: tinyWindow.windowStart, endDate: tinyWindow.windowEnd, validEquipmentIds },
+                });
+                if (tinyError) console.error(`Phase 2 tiny error for ${tinyWindow.windowStart}:`, tinyError);
+                const tinyP2 = tinyData?.phase2_equipment_tasks;
+                totalRelUpserted += tinyP2?.relationship_rows_upserted || 0;
+                totalWithEquipLinks += tinyP2?.tasks_with_equipment_links || 0;
+              }
+            } else {
+              totalRelUpserted += p2?.relationship_rows_upserted || 0;
+              totalWithEquipLinks += p2?.tasks_with_equipment_links || 0;
+            }
           }
 
           windowsCovered++;
