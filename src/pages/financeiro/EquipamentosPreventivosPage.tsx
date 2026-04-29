@@ -107,10 +107,10 @@ function splitSyncWindowByFortnight(window: SyncWindow): SyncWindow[] {
   const end = new Date(`${window.windowEnd}T00:00:00`);
   const windows: SyncWindow[] = [];
 
-  for (let cursor = new Date(start); cursor.getTime() <= end.getTime(); cursor.setDate(cursor.getDate() + 7)) {
+  for (let cursor = new Date(start); cursor.getTime() <= end.getTime(); cursor.setDate(cursor.getDate() + 5)) {
     const chunkStart = new Date(cursor);
     const chunkEnd = new Date(cursor);
-    chunkEnd.setDate(chunkEnd.getDate() + 6);
+    chunkEnd.setDate(chunkEnd.getDate() + 4);
     windows.push({
       windowStart: format(chunkStart, "yyyy-MM-dd"),
       windowEnd: format(chunkEnd.getTime() > end.getTime() ? end : chunkEnd, "yyyy-MM-dd"),
