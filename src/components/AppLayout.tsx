@@ -6,6 +6,7 @@ import {
 } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useState } from "react";
+import { TaskFlowChat } from "./TaskFlowChat";
 
 interface NavGroup {
   label: string;
@@ -211,6 +212,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
       </aside>
 
       <main className="flex-1 min-w-0 h-full overflow-auto">{children}</main>
+      <TaskFlowChat />
     </div>
   );
 }
