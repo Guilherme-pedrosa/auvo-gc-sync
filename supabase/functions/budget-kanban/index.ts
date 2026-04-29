@@ -568,6 +568,72 @@ async function fetchGcOsMap(
   return map;
 }
 
+function hasFilledQuestionnaireAnswers(item: any): boolean {
+  const answers = Array.isArray(item?.questionario_respostas) ? item.questionario_respostas : [];
+  return answers.some((answer: any) => {
+    const reply = String(answer?.reply ?? answer?.resposta ?? answer?.answer ?? "").trim();
+    return reply !== "" && !reply.startsWith("http");
+  });
+}
+
+function budgetColumnForItem(item: any): string {
+  if (item.os_realizada) return "os_realizada";
+  if (item.orcamento_realizado) {
+    const situacao = String(item.gc_orcamento?.gc_situacao || "sem_situacao").trim() || "sem_situacao";
+    return `orc_${situacao.replace(/\s+/g, "_").toLowerCase()}`;
+  }
+  if (!hasFilledQuestionnaireAnswers(item)) return "falta_preenchimento";
+  return "a_fazer";
+}
+
+function buildBudgetItemFromCentral(row: any) {
+  const taskId = String(row.auvo_task_id || "").trim();
+  const questionarioRespostas = Array.isArray(row.questionario_respostas) ? row.questionario_respostas : [];
+  const hasOrcamento = Boolean(row.orcamento_realizado || row.gc_orcamento_id || row.gc_orcamento_codigo);
+  const hasOs = Boolean(row.os_realizada || row.gc_os_id || row.gc_os_codigo);
+
+  return {
+    auvo_task_id: taskId,
+    auvo_link: String(row.auvo_link || `https://app2.auvo.com.br/relatorioTarefas/DetalheTarefa/${taskId}`),
+    auvo_task_url: String(row.auvo_task_url || row.auvo_link || ""),
+    auvo_survey_url: String(row.auvo_survey_url || ""),
+    cliente: String(row.cliente || row.gc_orc_cliente || row.gc_os_cliente || ""),
+    tecnico: String(row.tecnico || ""),
+    data_tarefa: String(row.data_tarefa || "").split("T")[0],
+    orientacao: String(row.orientacao || row.descricao || ""),
+    status_auvo: String(row.status_auvo || ""),
+    questionario_respostas: questionarioRespostas,
+    orcamento_realizado: hasOrcamento,
+    os_realizada: hasOs,
+    gc_orcamento: hasOrcamento ? {
+      gc_orcamento_id: String(row.gc_orcamento_id || ""),
+      gc_orcamento_codigo: String(row.gc_orcamento_codigo || ""),
+      gc_cliente: String(row.gc_orc_cliente || row.cliente || ""),
+      gc_situacao: String(row.gc_orc_situacao || ""),
+      gc_situacao_id: String(row.gc_orc_situacao_id || ""),
+      gc_cor_situacao: String(row.gc_orc_cor_situacao || ""),
+      gc_valor_total: String(row.gc_orc_valor_total || "0"),
+      gc_vendedor: String(row.gc_orc_vendedor || ""),
+      gc_data: String(row.gc_orc_data || ""),
+      gc_link: String(row.gc_orc_link || (row.gc_orcamento_id ? `https://gestaoclick.com/orcamentos_servicos/editar/${row.gc_orcamento_id}?retorno=%2Forcamentos_servicos` : "")),
+    } : null,
+    gc_os: hasOs ? {
+      gc_os_id: String(row.gc_os_id || ""),
+      gc_os_codigo: String(row.gc_os_codigo || ""),
+      gc_cliente: String(row.gc_os_cliente || row.cliente || ""),
+      gc_situacao: String(row.gc_os_situacao || ""),
+      gc_situacao_id: String(row.gc_os_situacao_id || ""),
+      gc_cor_situacao: String(row.gc_os_cor_situacao || ""),
+      gc_valor_total: String(row.gc_os_valor_total || "0"),
+      gc_vendedor: String(row.gc_os_vendedor || ""),
+      gc_data: String(row.gc_os_data || ""),
+      gc_link: String(row.gc_os_link || (row.gc_os_id ? `https://gestaoclick.com/ordens_servicos/editar/${row.gc_os_id}?retorno=%2Fordens_servicos` : "")),
+    } : null,
+    equipamento_nome: row.equipamento_nome || null,
+    equipamento_id_serie: row.equipamento_id_serie || null,
+  };
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
@@ -772,8 +838,100 @@ async function runBudgetKanbanSync(opts: {
       console.warn(`[budget-kanban] Erro ao carregar snapshot:`, err);
     }
 
-    // Fetch in parallel: Auvo tasks + GC orçamentos (ALL) + GC OS (ALL)
-    // No date filter on GC — we fetch everything and filter by task date in cache/frontend
+    // Primeiro usa a tabela central já sincronizada: ela é mais rápida e já contém os vínculos GC.
+    const { data: centralRows, error: centralError } = await sbClient
+      .from("tarefas_central")
+      .select("*")
+      .gte("data_tarefa", startDate)
+      .lte("data_tarefa", endDate)
+      .eq("questionario_id", QUESTIONNAIRE_ID);
+
+    if (centralError) {
+      console.warn("[budget-kanban] Erro ao ler tarefas_central, usando APIs externas:", centralError.message);
+    } else if ((centralRows || []).length > 0) {
+      console.log(`[budget-kanban] Central encontrada: ${(centralRows || []).length} tarefas com questionário ${QUESTIONNAIRE_ID}`);
+
+      const { data: existingCache } = await sbClient
+        .from("kanban_orcamentos_cache")
+        .select("auvo_task_id, coluna, posicao, dados");
+
+      const existingMap: Record<string, { coluna: string; posicao: number; dados: any }> = {};
+      for (const row of existingCache || []) {
+        existingMap[row.auvo_task_id] = { coluna: row.coluna, posicao: row.posicao, dados: row.dados };
+      }
+
+      const now = new Date().toISOString();
+      let movedCount = 0;
+      let keptCount = 0;
+
+      const items = (centralRows || [])
+        .map(buildBudgetItemFromCentral)
+        .filter((item: any) => item.auvo_task_id);
+
+      items.sort((a: any, b: any) => {
+        const aHasGc = a.orcamento_realizado || a.os_realizada;
+        const bHasGc = b.orcamento_realizado || b.os_realizada;
+        if (aHasGc !== bHasGc) return aHasGc ? 1 : -1;
+        return String(b.data_tarefa || "").localeCompare(String(a.data_tarefa || ""));
+      });
+
+      const upsertRows = items.map((item: any, idx: number) => {
+        const existing = existingMap[item.auvo_task_id];
+        const autoColuna = budgetColumnForItem(item);
+
+        let finalColuna = autoColuna;
+        let finalPosicao = idx;
+
+        if (existing) {
+          const oldData = existing.dados || {};
+          const hadUpdate =
+            (!oldData.orcamento_realizado && item.orcamento_realizado) ||
+            (!oldData.os_realizada && item.os_realizada) ||
+            (oldData.gc_orcamento?.gc_situacao !== item.gc_orcamento?.gc_situacao && item.orcamento_realizado) ||
+            (oldData.gc_os?.gc_situacao !== item.gc_os?.gc_situacao && item.os_realizada);
+          const stuckInInitial = ["a_fazer", "falta_preenchimento"].includes(existing.coluna) && autoColuna !== existing.coluna;
+
+          if (hadUpdate || stuckInInitial) {
+            finalColuna = autoColuna;
+            finalPosicao = 0;
+            movedCount++;
+          } else {
+            finalColuna = existing.coluna;
+            finalPosicao = existing.posicao;
+            keptCount++;
+          }
+        }
+
+        return {
+          auvo_task_id: item.auvo_task_id,
+          dados: item,
+          coluna: finalColuna,
+          posicao: finalPosicao,
+          atualizado_em: now,
+        };
+      });
+
+      for (let i = 0; i < upsertRows.length; i += 50) {
+        const batch = upsertRows.slice(i, i + 50);
+        await sbClient
+          .from("kanban_orcamentos_cache")
+          .upsert(batch, { onConflict: "auvo_task_id" });
+      }
+
+      await sbClient
+        .from("kanban_sync_meta")
+        .upsert({
+          id: "default",
+          ultimo_sync: now,
+          periodo_inicio: startDate,
+          periodo_fim: endDate,
+        });
+
+      console.log(`[budget-kanban] Cache atualizado via central: ${upsertRows.length} itens (${movedCount} movidos, ${keptCount} mantidos)`);
+      return;
+    }
+
+    // Fallback: busca APIs externas quando a central ainda não tem o período.
     const [auvoPrimary, gcOrcMap, gcOsMap] = await Promise.all([
       fetchAuvoTasksWithQuestionnaire(bearerToken, startDate, endDate),
       fetchGcOrcamentosMap(gcH),
@@ -1026,9 +1184,7 @@ async function runBudgetKanbanSync(opts: {
       const existing = existingMap[item.auvo_task_id];
 
       // Determine the "correct" column based on current data
-      let autoColuna = "a_fazer";
-      if (item.os_realizada) autoColuna = "os_realizada";
-      else if (item.orcamento_realizado) autoColuna = `orc_${(item.gc_orcamento?.gc_situacao || "sem_situacao").replace(/\s+/g, "_").toLowerCase()}`;
+      const autoColuna = budgetColumnForItem(item);
 
       let finalColuna: string;
       let finalPosicao: number;
@@ -1050,10 +1206,10 @@ async function runBudgetKanbanSync(opts: {
           // OS situation changed
           (oldData.gc_os?.gc_situacao !== item.gc_os?.gc_situacao && item.os_realizada);
 
-        // Also force-move if card has orçamento/OS but is stuck in "a_fazer"
-        const stuckInAFazer = existing.coluna === "a_fazer" && autoColuna !== "a_fazer";
+        // Also force-move if card is stuck in an initial column after its status changed
+        const stuckInInitial = ["a_fazer", "falta_preenchimento"].includes(existing.coluna) && autoColuna !== existing.coluna;
 
-        if (hadUpdate || stuckInAFazer) {
+        if (hadUpdate || stuckInInitial) {
           // Data changed or card misplaced → move to correct column
           finalColuna = autoColuna;
           finalPosicao = 0; // top of column
