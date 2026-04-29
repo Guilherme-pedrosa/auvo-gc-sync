@@ -162,10 +162,14 @@ export default function BudgetKanbanPage() {
       if (syncData?.success === false || syncData?.error) {
         toast.error(syncData?.error || "Erro na sincronização. Mantendo último estado.");
       } else {
+        if (syncData?.background) {
+          toast.info("Sincronização iniciada no servidor. Vou atualizar assim que terminar.");
+        }
+
         const pollStartedAt = Date.now();
         let refreshed: ApiResponse | null = null;
 
-        while (Date.now() - pollStartedAt < 120_000) {
+        while (Date.now() - pollStartedAt < 180_000) {
           const result = await refetch();
           const latest = result.data as ApiResponse | undefined;
           if (latest?.ultimo_sync && latest.ultimo_sync !== previousSync) {
