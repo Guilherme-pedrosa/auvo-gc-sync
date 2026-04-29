@@ -760,8 +760,9 @@ async function runBudgetKanbanSync(opts: {
     let auvoTasks = auvoPrimary.tasks;
     let auvoError = auvoPrimary.errorMessage;
 
-    // Fallback robusto: se vier vazio/erro no range escolhido, tenta range amplo no Auvo e filtra localmente
-    if ((auvoPrimary.hadError || auvoTasks.length === 0) && (startDate !== AUVO_SAFE_START || endDate !== AUVO_SAFE_END)) {
+    // Fallback robusto: se vier vazio sem erro no range escolhido, tenta range amplo e filtra localmente.
+    // Se o Auvo retornou erro (ex.: 502), NÃO dispara busca 2020-2030 — isso piora timeout e cancela a sync.
+    if (!auvoPrimary.hadError && auvoTasks.length === 0 && (startDate !== AUVO_SAFE_START || endDate !== AUVO_SAFE_END)) {
       console.warn("[budget-kanban] Tentando fallback Auvo com range amplo (2020-2030)");
       const auvoFallback = await fetchAuvoTasksWithQuestionnaire(bearerToken, AUVO_SAFE_START, AUVO_SAFE_END);
       if (!auvoError && auvoFallback.errorMessage) auvoError = auvoFallback.errorMessage;
