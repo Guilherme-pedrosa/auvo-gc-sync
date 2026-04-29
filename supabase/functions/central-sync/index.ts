@@ -536,8 +536,6 @@ async function runCentralSync(body: CentralSyncBody = {}) {
     // Step 1: Fetch GC data first (faster, ~20s) — Auvo will come after status refresh
     const gcOsOptions = {
       situacaoIds: situacaoIds.length > 0 ? situacaoIds : undefined,
-      dataInicio: bodyStart || undefined,
-      dataFim: bodyEnd || undefined,
     };
     const [gcOrcResult, gcOsResult] = await Promise.all([
       fetchGcOrcamentos(gcH),
