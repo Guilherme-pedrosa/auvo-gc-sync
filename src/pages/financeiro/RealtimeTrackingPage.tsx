@@ -634,11 +634,10 @@ export default function RealtimeTrackingPage() {
                                   variant="ghost"
                                   size="sm"
                                   className="h-7 text-xs"
-                                  onClick={() => {
-                                    void Promise.all([refetchAtrasadas(), refetchPendencias()]);
-                                  }}
+                                  onClick={() => void atualizarDivergencias()}
+                                  disabled={isSyncingDivergencias}
                                 >
-                                  <RefreshCw className="h-3 w-3 mr-1" /> Atualizar
+                                  <RefreshCw className={`h-3 w-3 mr-1 ${isSyncingDivergencias ? "animate-spin" : ""}`} /> Atualizar
                                 </Button>
                               </div>
                             </div>
