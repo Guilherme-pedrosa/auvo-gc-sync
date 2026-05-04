@@ -91,6 +91,7 @@ export default function RealtimeTrackingPage() {
   const dateStr = format(selectedDate, "yyyy-MM-dd");
 
   const [lastFetchTime, setLastFetchTime] = useState<string | null>(null);
+  const [isSyncingDivergencias, setIsSyncingDivergencias] = useState(false);
 
   const { data, isLoading, refetch, isFetching } = useQuery({
     queryKey: ["realtime-tracking", dateStr],
@@ -211,6 +212,45 @@ export default function RealtimeTrackingPage() {
       };
     });
   }, [pendenciasMesRaw]);
+
+  const atualizarDivergencias = useCallback(async () => {
+    if (isSyncingDivergencias) return;
+
+    setIsSyncingDivergencias(true);
+    const toastId = toast.loading("Sincronizando pendências...");
+
+    try {
+      const { data: syncResult, error } = await supabase.functions.invoke("central-sync", {
+        body: {
+          start_date: divStart,
+          end_date: divEnd,
+          wait: true,
+        },
+      });
+
+      if (error) throw error;
+      if (syncResult?.success === false || syncResult?.error) {
+        throw new Error(syncResult?.error || "Falha ao sincronizar pendências");
+      }
+
+      await Promise.all([refetchAtrasadas(), refetchPendencias()]);
+
+      toast.success("Pendências atualizadas", {
+        id: toastId,
+        description: syncResult?.auvo_tarefas
+          ? `${syncResult.auvo_tarefas} tarefa(s) conferida(s) no período.`
+          : "Dados recarregados com sucesso.",
+      });
+    } catch (err) {
+      console.error("[RealtimeTracking] Erro ao atualizar divergências:", err);
+      toast.error("Falha ao atualizar pendências", {
+        id: toastId,
+        description: err instanceof Error ? err.message : "Tente novamente em alguns instantes.",
+      });
+    } finally {
+      setIsSyncingDivergencias(false);
+    }
+  }, [divEnd, divStart, isSyncingDivergencias, refetchAtrasadas, refetchPendencias]);
 
   const goDay = (dir: number) => setSelectedDate((d) => (dir > 0 ? addDays(d, 1) : subDays(d, 1)));
 
