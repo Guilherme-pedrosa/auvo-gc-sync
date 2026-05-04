@@ -1009,6 +1009,13 @@ export default function RealtimeTrackingPage() {
                                     )}
                                   </div>
                                 )}
+                                {task.taskId && (
+                                  <div className="flex items-center gap-1.5 mt-0.5">
+                                    <Badge variant="secondary" className="text-[9px] h-4 px-1.5 font-mono">
+                                      Auvo {task.taskId}
+                                    </Badge>
+                                  </div>
+                                )}
                                 {task.pendencia && task.pendencia.toLowerCase() !== "nenhuma" && task.pendencia !== "0" && (
                                   <Badge variant="destructive" className="text-[9px] h-4 mt-1">
                                     ⚠ Pendência
