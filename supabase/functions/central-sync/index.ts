@@ -494,8 +494,12 @@ async function upsertGcOsShellRows(sbClient: any, gcOsResult: { byTaskIdAll: Rec
 
   for (const osPayload of Object.values(gcOsResult.byCodigo || {})) {
     const taskIds = normalizeTaskIdList((osPayload as any).gc_os_tarefa_os).split("/").filter(Boolean);
-    const primaryTaskId = taskIds[0] || normalizeTaskIdList((osPayload as any).gc_os_tarefa_exec).split("/").filter(Boolean)[0];
-    if (!primaryTaskId || !(osPayload as any).gc_os_id) continue;
+    const execIds = normalizeTaskIdList((osPayload as any).gc_os_tarefa_exec).split("/").filter(Boolean);
+    const realTaskId = taskIds[0] || execIds[0] || "";
+    if (!(osPayload as any).gc_os_id) continue;
+    // If no Auvo task linked, create a synthetic shell so the OS still appears (flagged red in UI)
+    const primaryTaskId = realTaskId || `gc-only::${(osPayload as any).gc_os_id}`;
+    const semTarefa = !realTaskId;
 
     const key = `${primaryTaskId}::${(osPayload as any).gc_os_id}`;
     if (seen.has(key)) continue;
@@ -507,17 +511,17 @@ async function upsertGcOsShellRows(sbClient: any, gcOsResult: { byTaskIdAll: Rec
       tecnico: "",
       tecnico_id: "",
       data_tarefa: (osPayload as any).gc_os_data_saida || (osPayload as any).gc_os_data || null,
-      status_auvo: "Pendente vínculo Auvo",
+      status_auvo: semTarefa ? "Sem tarefa Auvo" : "Pendente vínculo Auvo",
       orientacao: "",
       pendencia: "",
-      descricao: "OS GestãoClick",
+      descricao: semTarefa ? "OS GestãoClick (sem tarefa Auvo vinculada)" : "OS GestãoClick",
       duracao_decimal: 0,
       hora_inicio: "",
       hora_fim: "",
       check_in: false,
       check_out: false,
       endereco: "",
-      auvo_link: `https://app2.auvo.com.br/relatorioTarefas/DetalheTarefa/${primaryTaskId}`,
+      auvo_link: semTarefa ? "" : `https://app2.auvo.com.br/relatorioTarefas/DetalheTarefa/${primaryTaskId}`,
       auvo_task_url: "",
       auvo_survey_url: "",
       questionario_id: null,
