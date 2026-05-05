@@ -969,8 +969,14 @@ export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, o
                               <TableBody>
                                 {row.items
                                   .sort((a: any, b: any) => (Number(b.gc_os_valor_total) || 0) - (Number(a.gc_os_valor_total) || 0))
-                                  .map((item: any) => (
-                                    <TableRow key={item.auvo_task_id} className="text-xs">
+                                  .map((item: any) => {
+                                    const semTarefa = String(item.auvo_task_id || "").startsWith("gc-only::");
+                                    return (
+                                    <TableRow
+                                      key={item.auvo_task_id}
+                                      className={`text-xs ${semTarefa ? "bg-destructive/10 hover:bg-destructive/20 text-destructive" : ""}`}
+                                      title={semTarefa ? "OS sem tarefa Auvo vinculada" : undefined}
+                                    >
                                       <TableCell>
                                         <button
                                           className="text-primary hover:underline font-medium"
