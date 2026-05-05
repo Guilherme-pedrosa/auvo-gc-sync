@@ -1163,7 +1163,7 @@ async function runCentralSync(body: CentralSyncBody = {}) {
       }
 
       // Skip tasks that don't exist in Auvo (deleted/ghost tasks)
-      if (!fallbackSnapshot) {
+      if (!fallbackSnapshot && !isGcSolicitadasOnly) {
         console.log(`[central-sync] Ignorando taskId ${taskId} (OS ${gcOs?.gc_os_codigo}): tarefa não encontrada no Auvo (possível fantasma)`);
         continue;
       }
@@ -1174,7 +1174,7 @@ async function runCentralSync(body: CentralSyncBody = {}) {
         tecnico: "",
         tecnico_id: "",
         data_tarefa: gcOs?.gc_os_data || null,
-        status_auvo: "Sem tarefa Auvo",
+        status_auvo: fallbackSnapshot ? "Sem tarefa Auvo" : "Pendente vínculo Auvo",
         orientacao: fallbackSnapshot?.orientation || "",
         pendencia: "",
         descricao: "",
