@@ -619,6 +619,23 @@ async function runCentralSync(body: CentralSyncBody = {}) {
 
     console.log(`[central-sync] GC carregado: Orç: ${Object.keys(gcOrcMap).length}, OS: ${Object.keys(gcOsMap).length}`);
 
+    const isGcSolicitadasOnly = situacaoIds.length > 0;
+    let gcFirstUpserted = 0;
+    if (isGcSolicitadasOnly) {
+      gcFirstUpserted = await upsertGcOsShellRows(sbClient, gcOsResult);
+      console.log(`[central-sync] GC-first: ${gcFirstUpserted} OS solicitadas gravadas antes do Auvo`);
+      if (body?.fast === true) {
+        return {
+          success: true,
+          mode: "gc-first-fast",
+          periodo: { inicio: startDate, fim: endDate },
+          gc_os: Object.keys(gcOsResult.byCodigo).length,
+          upserted: gcFirstUpserted,
+          errors: 0,
+        };
+      }
+    }
+
     // ── IMMEDIATE: Late linkage — link existing DB tasks to GC OS/ORC when gc_os_id is null ──
     // Runs FIRST (before heavy lookups) to handle OS created after the task was synced
     {
