@@ -430,15 +430,8 @@ async function fetchGcOs(gcHeaders: Record<string, string>, options?: { situacao
 
       for (const os of records) {
         const atributos: any[] = os.atributos || [];
-        // Extract 73344 (tarefa execução) value for this OS
-        const attrExec = atributos.find((a: any) => {
-          const nested = a?.atributo || a;
-          return String(nested.atributo_id || nested.id || "") === GC_ATRIBUTO_TAREFA_EXEC;
-        });
-        const execTaskVal = attrExec
-          ? String((attrExec?.atributo || attrExec)?.conteudo || (attrExec?.atributo || attrExec)?.valor || "").trim()
-          : "";
-        const gc_os_tarefa_exec = execTaskVal && /^\d+$/.test(execTaskVal) ? execTaskVal : null;
+        const gc_os_tarefa_os = normalizeTaskIdList(getGcAttrValue(atributos, GC_ATRIBUTO_TAREFA_OS));
+        const gc_os_tarefa_exec = normalizeTaskIdList(getGcAttrValue(atributos, GC_ATRIBUTO_TAREFA_EXEC)) || null;
 
         const osPayload = {
           gc_os_id: String(os.id),
@@ -453,6 +446,7 @@ async function fetchGcOs(gcHeaders: Record<string, string>, options?: { situacao
           gc_os_data_saida: String(os.data_saida || "").split("T")[0] || null,
           gc_os_link: `https://gestaoclick.com/ordens_servicos/editar/${os.id}?retorno=%2Fordens_servicos`,
           gc_os_tarefa_exec,
+          gc_os_tarefa_os,
         };
 
         // Reverse map by OS código
@@ -474,17 +468,7 @@ async function fetchGcOs(gcHeaders: Record<string, string>, options?: { situacao
 
         // 73343 = tarefa OS. Do NOT map 73344 here: it is execution-only and
         // must not make the OS appear under the execution task.
-        for (const attrId of [GC_ATRIBUTO_TAREFA_OS]) {
-          const attrTarefa = atributos.find((a: any) => {
-            const nested = a?.atributo || a;
-            return String(nested.atributo_id || nested.id || "") === attrId;
-          });
-
-          if (!attrTarefa) continue;
-
-          const nested = attrTarefa?.atributo || attrTarefa;
-          const taskId = String(nested?.conteudo || nested?.valor || "").trim();
-          if (!taskId || !/^\d+$/.test(taskId)) continue;
+        for (const taskId of gc_os_tarefa_os.split("/").filter(Boolean)) {
 
           if (!map[taskId]) {
             map[taskId] = osPayload;
