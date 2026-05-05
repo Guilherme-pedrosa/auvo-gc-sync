@@ -1564,7 +1564,7 @@ Deno.serve(async (req) => {
   try {
     const body = await req.json().catch(() => ({}));
 
-    if (body?.wait === true) {
+    if (body?.wait === true || body?.fast === true) {
       const result = await runCentralSync(body);
       return new Response(JSON.stringify(result), {
         status: 200,
