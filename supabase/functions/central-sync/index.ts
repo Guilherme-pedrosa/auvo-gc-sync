@@ -50,6 +50,23 @@ function normalizeDate(dateLike: unknown): string | null {
   return d;
 }
 
+function getGcAttrValue(atributos: any[], attrId: string): string {
+  const found = atributos.find((a: any) => {
+    const nested = a?.atributo || a;
+    return String(nested.atributo_id || nested.id || "") === attrId;
+  });
+  const nested = found?.atributo || found;
+  return String(nested?.conteudo || nested?.valor || "").trim();
+}
+
+function normalizeTaskIdList(value: unknown): string {
+  return String(value || "")
+    .split("/")
+    .map((part) => part.trim())
+    .filter((part) => /^\d+$/.test(part))
+    .join("/");
+}
+
 function extractTimeFromDateStr(dateStr: string): string {
   // Extract HH:MM:SS or HH:MM from ISO-like date string e.g. "2025-03-18T10:00:00"
   const raw = String(dateStr || "").trim();
@@ -413,15 +430,8 @@ async function fetchGcOs(gcHeaders: Record<string, string>, options?: { situacao
 
       for (const os of records) {
         const atributos: any[] = os.atributos || [];
-        // Extract 73344 (tarefa execução) value for this OS
-        const attrExec = atributos.find((a: any) => {
-          const nested = a?.atributo || a;
-          return String(nested.atributo_id || nested.id || "") === GC_ATRIBUTO_TAREFA_EXEC;
-        });
-        const execTaskVal = attrExec
-          ? String((attrExec?.atributo || attrExec)?.conteudo || (attrExec?.atributo || attrExec)?.valor || "").trim()
-          : "";
-        const gc_os_tarefa_exec = execTaskVal && /^\d+$/.test(execTaskVal) ? execTaskVal : null;
+        const gc_os_tarefa_os = normalizeTaskIdList(getGcAttrValue(atributos, GC_ATRIBUTO_TAREFA_OS));
+        const gc_os_tarefa_exec = normalizeTaskIdList(getGcAttrValue(atributos, GC_ATRIBUTO_TAREFA_EXEC)) || null;
 
         const osPayload = {
           gc_os_id: String(os.id),
@@ -436,6 +446,7 @@ async function fetchGcOs(gcHeaders: Record<string, string>, options?: { situacao
           gc_os_data_saida: String(os.data_saida || "").split("T")[0] || null,
           gc_os_link: `https://gestaoclick.com/ordens_servicos/editar/${os.id}?retorno=%2Fordens_servicos`,
           gc_os_tarefa_exec,
+          gc_os_tarefa_os,
         };
 
         // Reverse map by OS código
@@ -457,17 +468,7 @@ async function fetchGcOs(gcHeaders: Record<string, string>, options?: { situacao
 
         // 73343 = tarefa OS. Do NOT map 73344 here: it is execution-only and
         // must not make the OS appear under the execution task.
-        for (const attrId of [GC_ATRIBUTO_TAREFA_OS]) {
-          const attrTarefa = atributos.find((a: any) => {
-            const nested = a?.atributo || a;
-            return String(nested.atributo_id || nested.id || "") === attrId;
-          });
-
-          if (!attrTarefa) continue;
-
-          const nested = attrTarefa?.atributo || attrTarefa;
-          const taskId = String(nested?.conteudo || nested?.valor || "").trim();
-          if (!taskId || !/^\d+$/.test(taskId)) continue;
+        for (const taskId of gc_os_tarefa_os.split("/").filter(Boolean)) {
 
           if (!map[taskId]) {
             map[taskId] = osPayload;
@@ -487,12 +488,80 @@ async function fetchGcOs(gcHeaders: Record<string, string>, options?: { situacao
   return { byTaskId: map, byTaskIdAll, byCodigo, byOrcNumero };
 }
 
+async function upsertGcOsShellRows(sbClient: any, gcOsResult: { byTaskIdAll: Record<string, any[]>; byCodigo: Record<string, any> }) {
+  const shells: any[] = [];
+  const seen = new Set<string>();
+
+  for (const osPayload of Object.values(gcOsResult.byCodigo || {})) {
+    const taskIds = normalizeTaskIdList((osPayload as any).gc_os_tarefa_os).split("/").filter(Boolean);
+    const primaryTaskId = taskIds[0] || normalizeTaskIdList((osPayload as any).gc_os_tarefa_exec).split("/").filter(Boolean)[0];
+    if (!primaryTaskId || !(osPayload as any).gc_os_id) continue;
+
+    const key = `${primaryTaskId}::${(osPayload as any).gc_os_id}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+
+    shells.push({
+      auvo_task_id: primaryTaskId,
+      cliente: (osPayload as any).gc_os_cliente || "Cliente não identificado",
+      tecnico: "",
+      tecnico_id: "",
+      data_tarefa: (osPayload as any).gc_os_data_saida || (osPayload as any).gc_os_data || null,
+      status_auvo: "Pendente vínculo Auvo",
+      orientacao: "",
+      pendencia: "",
+      descricao: "OS GestãoClick",
+      duracao_decimal: 0,
+      hora_inicio: "",
+      hora_fim: "",
+      check_in: false,
+      check_out: false,
+      endereco: "",
+      auvo_link: `https://app2.auvo.com.br/relatorioTarefas/DetalheTarefa/${primaryTaskId}`,
+      auvo_task_url: "",
+      auvo_survey_url: "",
+      questionario_id: null,
+      questionario_respostas: [],
+      questionario_preenchido: false,
+      os_realizada: true,
+      orcamento_realizado: false,
+      atualizado_em: new Date().toISOString(),
+      gc_os_id: (osPayload as any).gc_os_id,
+      gc_os_codigo: (osPayload as any).gc_os_codigo,
+      gc_os_cliente: (osPayload as any).gc_os_cliente,
+      gc_os_situacao: (osPayload as any).gc_os_situacao,
+      gc_os_situacao_id: (osPayload as any).gc_os_situacao_id,
+      gc_os_cor_situacao: (osPayload as any).gc_os_cor_situacao,
+      gc_os_valor_total: (osPayload as any).gc_os_valor_total,
+      gc_os_vendedor: (osPayload as any).gc_os_vendedor,
+      gc_os_data: (osPayload as any).gc_os_data,
+      gc_os_data_saida: (osPayload as any).gc_os_data_saida,
+      gc_os_link: (osPayload as any).gc_os_link,
+      gc_os_tarefa_exec: (osPayload as any).gc_os_tarefa_exec || null,
+      mirror_key: `${primaryTaskId}::os:${(osPayload as any).gc_os_id}::orc:`,
+    });
+  }
+
+  let upserted = 0;
+  for (let i = 0; i < shells.length; i += 100) {
+    const batch = shells.slice(i, i + 100);
+    const { error } = await sbClient
+      .from("tarefas_central")
+      .upsert(batch, { onConflict: "mirror_key", ignoreDuplicates: false, defaultToNull: false });
+    if (error) console.error("[central-sync] GC-first shell upsert error:", error.message);
+    else upserted += batch.length;
+  }
+
+  return upserted;
+}
+
 
 type CentralSyncBody = {
   start_date?: unknown;
   end_date?: unknown;
   situacao_ids?: unknown;
   wait?: unknown;
+  fast?: unknown;
 };
 
 async function runCentralSync(body: CentralSyncBody = {}) {
@@ -550,6 +619,23 @@ async function runCentralSync(body: CentralSyncBody = {}) {
     const gcOsByOrcNumero = gcOsResult.byOrcNumero;
 
     console.log(`[central-sync] GC carregado: Orç: ${Object.keys(gcOrcMap).length}, OS: ${Object.keys(gcOsMap).length}`);
+
+    const isGcSolicitadasOnly = situacaoIds.length > 0;
+    let gcFirstUpserted = 0;
+    if (isGcSolicitadasOnly) {
+      gcFirstUpserted = await upsertGcOsShellRows(sbClient, gcOsResult);
+      console.log(`[central-sync] GC-first: ${gcFirstUpserted} OS solicitadas gravadas antes do Auvo`);
+      if (body?.fast === true) {
+        return {
+          success: true,
+          mode: "gc-first-fast",
+          periodo: { inicio: startDate, fim: endDate },
+          gc_os: Object.keys(gcOsResult.byCodigo).length,
+          upserted: gcFirstUpserted,
+          errors: 0,
+        };
+      }
+    }
 
     // ── IMMEDIATE: Late linkage — link existing DB tasks to GC OS/ORC when gc_os_id is null ──
     // Runs FIRST (before heavy lookups) to handle OS created after the task was synced
@@ -1078,7 +1164,7 @@ async function runCentralSync(body: CentralSyncBody = {}) {
       }
 
       // Skip tasks that don't exist in Auvo (deleted/ghost tasks)
-      if (!fallbackSnapshot) {
+      if (!fallbackSnapshot && !isGcSolicitadasOnly) {
         console.log(`[central-sync] Ignorando taskId ${taskId} (OS ${gcOs?.gc_os_codigo}): tarefa não encontrada no Auvo (possível fantasma)`);
         continue;
       }
@@ -1089,7 +1175,7 @@ async function runCentralSync(body: CentralSyncBody = {}) {
         tecnico: "",
         tecnico_id: "",
         data_tarefa: gcOs?.gc_os_data || null,
-        status_auvo: "Sem tarefa Auvo",
+        status_auvo: fallbackSnapshot ? "Sem tarefa Auvo" : "Pendente vínculo Auvo",
         orientacao: fallbackSnapshot?.orientation || "",
         pendencia: "",
         descricao: "",
@@ -1478,7 +1564,7 @@ Deno.serve(async (req) => {
   try {
     const body = await req.json().catch(() => ({}));
 
-    if (body?.wait === true) {
+    if (body?.wait === true || body?.fast === true) {
       const result = await runCentralSync(body);
       return new Response(JSON.stringify(result), {
         status: 200,

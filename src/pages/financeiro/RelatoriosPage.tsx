@@ -155,8 +155,9 @@ export default function RelatoriosPage() {
     const syncTo = format(dateTo, "yyyy-MM-dd");
 
     try {
+      const syncSolicitadasOnly = !!situacaoIds?.length;
       const { data, error } = await supabase.functions.invoke("central-sync", {
-        body: { start_date: syncFrom, end_date: syncTo, situacao_ids: situacaoIds || [], wait: true },
+        body: { start_date: syncFrom, end_date: syncTo, situacao_ids: situacaoIds || [], fast: syncSolicitadasOnly },
       });
       if (error) throw error;
       if (data?.success === false) throw new Error(data.error || "Erro na sincronização");
@@ -171,8 +172,9 @@ export default function RelatoriosPage() {
         return;
       }
 
-      toast.success(
-        `Sync ${syncFrom} → ${syncTo}: ${data.auvo_tarefas || 0} tarefas, ${data.upserted || 0} atualizadas`
+      toast.success(syncSolicitadasOnly
+        ? `OS solicitadas do GC atualizadas: ${data.upserted || 0}`
+        : `Sync ${syncFrom} → ${syncTo}: ${data.auvo_tarefas || 0} tarefas, ${data.upserted || 0} atualizadas`
       );
       stopProgressSimulation(true);
       setSyncStatusMessage(null);
