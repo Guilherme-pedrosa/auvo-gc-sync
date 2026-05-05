@@ -561,6 +561,7 @@ type CentralSyncBody = {
   end_date?: unknown;
   situacao_ids?: unknown;
   wait?: unknown;
+  fast?: unknown;
 };
 
 async function runCentralSync(body: CentralSyncBody = {}) {
