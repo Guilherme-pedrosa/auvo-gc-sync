@@ -50,6 +50,23 @@ function normalizeDate(dateLike: unknown): string | null {
   return d;
 }
 
+function getGcAttrValue(atributos: any[], attrId: string): string {
+  const found = atributos.find((a: any) => {
+    const nested = a?.atributo || a;
+    return String(nested.atributo_id || nested.id || "") === attrId;
+  });
+  const nested = found?.atributo || found;
+  return String(nested?.conteudo || nested?.valor || "").trim();
+}
+
+function normalizeTaskIdList(value: unknown): string {
+  return String(value || "")
+    .split("/")
+    .map((part) => part.trim())
+    .filter((part) => /^\d+$/.test(part))
+    .join("/");
+}
+
 function extractTimeFromDateStr(dateStr: string): string {
   // Extract HH:MM:SS or HH:MM from ISO-like date string e.g. "2025-03-18T10:00:00"
   const raw = String(dateStr || "").trim();
