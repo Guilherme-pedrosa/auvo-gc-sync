@@ -1140,7 +1140,8 @@ export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, o
                                         </div>
                                       </TableCell>
                                     </TableRow>
-                                  ))}
+                                    );
+                                  })}
                               </TableBody>
                             </Table>
                             </div>
