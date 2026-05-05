@@ -156,10 +156,11 @@ export default function RelatoriosPage() {
 
     try {
       const { data, error } = await supabase.functions.invoke("central-sync", {
-        body: { start_date: syncFrom, end_date: syncTo, situacao_ids: situacaoIds || [] },
+        body: { start_date: syncFrom, end_date: syncTo, situacao_ids: situacaoIds || [], wait: true },
       });
       if (error) throw error;
       if (data?.success === false) throw new Error(data.error || "Erro na sincronização");
+      if (data?.auvo_error) throw new Error(data.auvo_error);
 
       if (data?.background) {
         toast.info("Sync iniciado em background — a tela será atualizada automaticamente");
