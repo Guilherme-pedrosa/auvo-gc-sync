@@ -488,6 +488,73 @@ async function fetchGcOs(gcHeaders: Record<string, string>, options?: { situacao
   return { byTaskId: map, byTaskIdAll, byCodigo, byOrcNumero };
 }
 
+async function upsertGcOsShellRows(sbClient: any, gcOsResult: { byTaskIdAll: Record<string, any[]>; byCodigo: Record<string, any> }) {
+  const shells: any[] = [];
+  const seen = new Set<string>();
+
+  for (const osPayload of Object.values(gcOsResult.byCodigo || {})) {
+    const taskIds = normalizeTaskIdList((osPayload as any).gc_os_tarefa_os).split("/").filter(Boolean);
+    const primaryTaskId = taskIds[0] || normalizeTaskIdList((osPayload as any).gc_os_tarefa_exec).split("/").filter(Boolean)[0];
+    if (!primaryTaskId || !(osPayload as any).gc_os_id) continue;
+
+    const key = `${primaryTaskId}::${(osPayload as any).gc_os_id}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+
+    shells.push({
+      auvo_task_id: primaryTaskId,
+      cliente: (osPayload as any).gc_os_cliente || "Cliente não identificado",
+      tecnico: "",
+      tecnico_id: "",
+      data_tarefa: (osPayload as any).gc_os_data_saida || (osPayload as any).gc_os_data || null,
+      status_auvo: "Pendente vínculo Auvo",
+      orientacao: "",
+      pendencia: "",
+      descricao: "OS GestãoClick",
+      duracao_decimal: 0,
+      hora_inicio: "",
+      hora_fim: "",
+      check_in: false,
+      check_out: false,
+      endereco: "",
+      auvo_link: `https://app2.auvo.com.br/relatorioTarefas/DetalheTarefa/${primaryTaskId}`,
+      auvo_task_url: "",
+      auvo_survey_url: "",
+      questionario_id: null,
+      questionario_respostas: [],
+      questionario_preenchido: false,
+      os_realizada: true,
+      orcamento_realizado: false,
+      atualizado_em: new Date().toISOString(),
+      gc_os_id: (osPayload as any).gc_os_id,
+      gc_os_codigo: (osPayload as any).gc_os_codigo,
+      gc_os_cliente: (osPayload as any).gc_os_cliente,
+      gc_os_situacao: (osPayload as any).gc_os_situacao,
+      gc_os_situacao_id: (osPayload as any).gc_os_situacao_id,
+      gc_os_cor_situacao: (osPayload as any).gc_os_cor_situacao,
+      gc_os_valor_total: (osPayload as any).gc_os_valor_total,
+      gc_os_vendedor: (osPayload as any).gc_os_vendedor,
+      gc_os_data: (osPayload as any).gc_os_data,
+      gc_os_data_saida: (osPayload as any).gc_os_data_saida,
+      gc_os_link: (osPayload as any).gc_os_link,
+      gc_os_tarefa_exec: (osPayload as any).gc_os_tarefa_exec || null,
+      mirror_key: `${primaryTaskId}::os:${(osPayload as any).gc_os_id}::orc:`,
+    });
+  }
+
+  let upserted = 0;
+  for (let i = 0; i < shells.length; i += 100) {
+    const batch = shells.slice(i, i + 100);
+    const { error } = await sbClient
+      .from("tarefas_central")
+      .upsert(batch, { onConflict: "mirror_key", ignoreDuplicates: false, defaultToNull: false });
+    if (error) console.error("[central-sync] GC-first shell upsert error:", error.message);
+    else upserted += batch.length;
+  }
+
+  return upserted;
+}
+
 
 type CentralSyncBody = {
   start_date?: unknown;
