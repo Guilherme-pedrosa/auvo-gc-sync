@@ -25,6 +25,30 @@ async function rateLimitedFetch(url: string, options: RequestInit, type: "gc" | 
   return fetch(url, options);
 }
 
+// Retry 502/503 (Auvo) — 3 tentativas: 3s, 6s, 9s
+async function auvoFetchWithRetry(url: string, options: RequestInit, label: string): Promise<Response> {
+  const BACKOFF = [3000, 6000, 9000];
+  let resp = await rateLimitedFetch(url, options, "auvo");
+  for (let i = 0; i < BACKOFF.length && (resp.status === 502 || resp.status === 503); i++) {
+    console.warn(`[oficina-kanban] Auvo ${label} ${resp.status}, retry em ${BACKOFF[i]}ms (${i + 1}/${BACKOFF.length})`);
+    await new Promise(r => setTimeout(r, BACKOFF[i]));
+    resp = await rateLimitedFetch(url, options, "auvo");
+  }
+  return resp;
+}
+
+// Retry 429 (GC) — 2 tentativas extras: 5s, 10s
+async function gcFetchWithRetry(url: string, options: RequestInit, label: string): Promise<Response> {
+  const BACKOFF = [5000, 10000];
+  let resp = await rateLimitedFetch(url, options, "gc");
+  for (let i = 0; i < BACKOFF.length && resp.status === 429; i++) {
+    console.warn(`[oficina-kanban] GC ${label} 429, retry em ${BACKOFF[i]}ms (${i + 1}/${BACKOFF.length})`);
+    await new Promise(r => setTimeout(r, BACKOFF[i]));
+    resp = await rateLimitedFetch(url, options, "gc");
+  }
+  return resp;
+}
+
 async function auvoLogin(apiKey: string, apiToken: string): Promise<string> {
   const url = `${AUVO_BASE_URL}/login/?apiKey=${encodeURIComponent(apiKey)}&apiToken=${encodeURIComponent(apiToken)}`;
   const response = await fetch(url, { method: "GET", headers: { "Content-Type": "application/json" } });
@@ -62,7 +86,7 @@ async function fetchAllAuvoTasks(
   while (page <= MAX_PAGES) {
     const paramFilter = encodeURIComponent(JSON.stringify(filterObj));
     const url = `${AUVO_BASE_URL}/tasks/?page=${page}&pageSize=${pageSize}&order=desc&paramFilter=${paramFilter}`;
-    const response = await rateLimitedFetch(url, { headers: auvoHeaders(bearerToken) }, "auvo");
+    const response = await auvoFetchWithRetry(url, { headers: auvoHeaders(bearerToken) }, `/tasks page ${page}`);
 
     if (response.status === 404) break;
     if (!response.ok) {
@@ -86,6 +110,10 @@ async function fetchAllAuvoTasks(
     page++;
   }
 
+  if (page > MAX_PAGES) {
+    console.warn(`[oficina-kanban] TRUNCAMENTO: MAX_PAGES atingido em Auvo /tasks, possível perda de dados`);
+  }
+
   return { entryTasks, allTasks, hadError, errorMessage };
 }
 
@@ -97,11 +125,7 @@ async function fetchGcOsMap(gcHeaders: Record<string, string>): Promise<Record<s
 
   while (page <= totalPages && page <= MAX_PAGES) {
     const url = `${GC_BASE_URL}/api/ordens_servicos?limite=100&pagina=${page}`;
-    const response = await rateLimitedFetch(url, { headers: gcHeaders }, "gc");
-    if (response.status === 429) {
-      await new Promise(r => setTimeout(r, 3000));
-      continue;
-    }
+    const response = await gcFetchWithRetry(url, { headers: gcHeaders }, `ordens_servicos page ${page}`);
     if (!response.ok) break;
 
     const data = await response.json();
@@ -135,6 +159,9 @@ async function fetchGcOsMap(gcHeaders: Record<string, string>): Promise<Record<s
     }
     page++;
   }
+  if (page > MAX_PAGES && page <= totalPages) {
+    console.warn(`[oficina-kanban] TRUNCAMENTO: MAX_PAGES atingido em GC ordens_servicos (totalPages=${totalPages}), possível perda de dados`);
+  }
   return map;
 }
 
@@ -146,11 +173,7 @@ async function fetchGcOrcamentosMap(gcHeaders: Record<string, string>): Promise<
 
   while (page <= totalPages && page <= MAX_PAGES) {
     const url = `${GC_BASE_URL}/api/orcamentos?limite=100&pagina=${page}`;
-    const response = await rateLimitedFetch(url, { headers: gcHeaders }, "gc");
-    if (response.status === 429) {
-      await new Promise(r => setTimeout(r, 3000));
-      continue;
-    }
+    const response = await gcFetchWithRetry(url, { headers: gcHeaders }, `orcamentos page ${page}`);
     if (!response.ok) break;
 
     const data = await response.json();
@@ -183,6 +206,9 @@ async function fetchGcOrcamentosMap(gcHeaders: Record<string, string>): Promise<
       }
     }
     page++;
+  }
+  if (page > MAX_PAGES && page <= totalPages) {
+    console.warn(`[oficina-kanban] TRUNCAMENTO: MAX_PAGES atingido em GC orcamentos (totalPages=${totalPages}), possível perda de dados`);
   }
   return map;
 }
