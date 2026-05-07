@@ -286,13 +286,22 @@ function auvoHeaders(token: string): Record<string, string> {
   return { Authorization: `Bearer ${token}`, "Content-Type": "application/json" };
 }
 
+const RATE_LIMIT_BACKOFFS_MS = [5000, 10000, 20000];
+
 async function rateLimitedFetch(url: string, options: RequestInit): Promise<Response> {
   await new Promise((resolve) => setTimeout(resolve, RATE_LIMIT_DELAY_MS));
-  const res = await fetch(url, options);
+  let res = await fetch(url, options);
+
+  for (let attempt = 0; attempt < RATE_LIMIT_BACKOFFS_MS.length; attempt++) {
+    if (res.status !== 403 && res.status !== 429) return res;
+    const wait = RATE_LIMIT_BACKOFFS_MS[attempt];
+    console.warn(`[equipment-sync] Rate limit (${res.status}) tentativa ${attempt + 1}/${RATE_LIMIT_BACKOFFS_MS.length} — aguardando ${wait}ms`);
+    await new Promise((resolve) => setTimeout(resolve, wait));
+    res = await fetch(url, options);
+  }
+
   if (res.status === 403 || res.status === 429) {
-    console.log(`[equipment-sync] Rate limit hit (${res.status}), waiting 10s...`);
-    await new Promise((resolve) => setTimeout(resolve, 10000));
-    return fetch(url, options);
+    throw new Error(`[equipment-sync] Rate limit persistente (${res.status}) após ${RATE_LIMIT_BACKOFFS_MS.length} tentativas em ${url}`);
   }
   return res;
 }
