@@ -618,9 +618,15 @@ export default function BudgetKanbanPage() {
       const destCol = newCols.find((c) => c.id === destination.droppableId);
       if (!srcCol || !destCol) return prev;
       const [moved] = srcCol.items.splice(source.index, 1);
+      for (const col of newCols) {
+        if (col.id !== destCol.id) {
+          col.items = col.items.filter((item) => item.auvo_task_id !== moved.auvo_task_id);
+        }
+      }
       destCol.items.splice(destination.index, 0, moved);
-      savePositions(newCols);
-      return newCols;
+      const uniqueCols = dedupeKanbanColumns(newCols);
+      savePositions(uniqueCols);
+      return uniqueCols;
     });
   }, [savePositions]);
 
@@ -678,8 +684,9 @@ export default function BudgetKanbanPage() {
         newCols.push(target);
       }
       target.items.unshift(movedCard);
-      savePositions(newCols);
-      return newCols;
+      const uniqueCols = dedupeKanbanColumns(newCols);
+      savePositions(uniqueCols);
+      return uniqueCols;
     });
     toast.success(successMsg);
   }, [savePositions]);
