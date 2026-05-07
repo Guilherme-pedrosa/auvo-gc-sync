@@ -616,13 +616,51 @@ async function executarPutOs(
     `[auvo-gc-sync] ${label} OS ${gcOsId}: situacao_id=${String(payload.situacao_id)}, vendedor_id=${String(payload.vendedor_id || "N/A")}, nome_vendedor=${String(payload.nome_vendedor || "N/A")}, valor_total=${String(payload.valor_total || "N/A")}`,
   );
 
-  let response = await rateLimitedFetch(url, {
-    method: "PUT",
-    headers: gcHeaders,
-    body: JSON.stringify(payload),
-  }, "gc");
+  const targetSituacaoId = String(payload.situacao_id ?? "");
+  const doPut = async () =>
+    rateLimitedFetch(url, {
+      method: "PUT",
+      headers: gcHeaders,
+      body: JSON.stringify(payload),
+    }, "gc");
 
+  let response = await doPut();
   let body = await response.json().catch(() => ({}));
+
+  // Retries para 429 (1x após 5s) e 502/503 (até 2x: 3s, 6s).
+  // Antes de cada retry, conferir se o GET já mostra a situação destino — idempotência.
+  const transientPlan: Array<{ status: number; waitMs: number }> = [];
+  if (response.status === 429) transientPlan.push({ status: 429, waitMs: 5000 });
+  if (response.status === 502 || response.status === 503) {
+    transientPlan.push({ status: response.status, waitMs: 3000 });
+    transientPlan.push({ status: response.status, waitMs: 6000 });
+  }
+
+  for (const step of transientPlan) {
+    if (response.ok) break;
+    if (response.status !== 429 && response.status !== 502 && response.status !== 503) break;
+
+    console.warn(`[auvo-gc-sync] ${label} OS ${gcOsId}: HTTP ${response.status} — aguardando ${step.waitMs}ms para retry`);
+    await new Promise((r) => setTimeout(r, step.waitMs));
+
+    // Idempotência: se a primeira tentativa gravou e devolveu erro de rede,
+    // o GET vai mostrar situação já no destino — não sobrescrever.
+    if (targetSituacaoId) {
+      try {
+        const osCheck = await buscarOsAtual(gcOsId, gcHeaders);
+        const situacaoAtual = String((osCheck as any)?.situacao_id ?? (osCheck as any)?.situacao?.id ?? "");
+        if (osCheck && situacaoAtual === targetSituacaoId) {
+          console.warn(`[auvo-gc-sync] ${label} OS ${gcOsId}: situação já está em ${targetSituacaoId} — considerando sucesso (idempotente)`);
+          return { success: true, status: 200, body: { idempotent: true, situacao_id: situacaoAtual } };
+        }
+      } catch (err) {
+        console.warn(`[auvo-gc-sync] ${label} OS ${gcOsId}: falha no GET de idempotência:`, err);
+      }
+    }
+
+    response = await doPut();
+    body = await response.json().catch(() => ({}));
+  }
 
   // Retry automático para erro clássico de centavos do GC ("faltando/sobrando 0.01")
   if (!response.ok) {
