@@ -252,6 +252,44 @@ Deno.serve(async (req) => {
 
     console.log(`[auvo-agenda] ${allTasks.length} tasks, ${gcOsMap.size} OS, ${gcOrcMap.size} orçamentos`);
 
+    // For finished tasks, the list endpoint usually omits checkInDate/checkOutDate.
+    // Fetch the per-task snapshot in parallel (limited concurrency) so the agenda
+    // shows the effective time spent (real check-in → check-out) instead of the
+    // initially scheduled window.
+    const snapshotMap = new Map<string, { checkInDate: string; checkOutDate: string }>();
+    const finishedIds: string[] = [];
+    for (const t of allTasks) {
+      const tid = String(t.taskID || t.taskId || t.id || "");
+      const sd = String(t.taskStatus?.description || t.status?.description || "").trim();
+      const isFin = !!t.finished || sd === "Finalizada";
+      const hasInList =
+        !!(t.checkInDate || t.checkinDate || t.dateCheckIn) &&
+        !!(t.checkOutDate || t.checkoutDate || t.dateCheckOut);
+      if (isFin && tid && !hasInList) finishedIds.push(tid);
+    }
+    const CONCURRENCY = 5;
+    for (let i = 0; i < finishedIds.length; i += CONCURRENCY) {
+      const batch = finishedIds.slice(i, i + CONCURRENCY);
+      await Promise.all(batch.map(async (tid) => {
+        try {
+          const url = `${AUVO_BASE_URL}/tasks/${encodeURIComponent(tid)}`;
+          const resp = await fetchWithRetry(url, { headers }, {
+            retryStatuses: [502, 503],
+            delaysMs: [1500, 3000],
+            label: `Auvo task ${tid} snapshot`,
+          });
+          if (!resp.ok) return;
+          const json = await resp.json().catch(() => ({}));
+          const r = json?.result || json || {};
+          snapshotMap.set(tid, {
+            checkInDate: String(r.checkInDate || r.checkinDate || r.checkin_date || "").trim(),
+            checkOutDate: String(r.checkOutDate || r.checkoutDate || r.checkout_date || "").trim(),
+          });
+        } catch (_) { /* ignore */ }
+      }));
+    }
+    console.log(`[auvo-agenda] snapshot fetched for ${snapshotMap.size}/${finishedIds.length} finished tasks`);
+
     // Map to simplified format + enrich with GC
     const enriched = allTasks.map((t: any) => {
       const taskId = String(t.taskID || t.taskId || t.id || "");
@@ -278,11 +316,20 @@ Deno.serve(async (req) => {
       const rawEndTime = String(t.endTime || t.endHour || "").trim();
       const isFinished = !!t.finished || statusDesc === "Finalizada";
       
-      // For non-finished tasks, prefer scheduled end time (taskEndDate) over actual endTime
-      // because endTime may contain partial checkout timestamps
-      const startTime = rawStartTime || taskDateTime || "";
+      // Real check-in/check-out timestamps (when technician actually started/finished)
+      const snap = snapshotMap.get(taskId);
+      const rawCheckInDate = String(t.checkInDate || t.checkinDate || t.dateCheckIn || snap?.checkInDate || "");
+      const rawCheckOutDate = String(t.checkOutDate || t.checkoutDate || t.dateCheckOut || snap?.checkOutDate || "");
+      const checkInTime = rawCheckInDate.length >= 16 ? rawCheckInDate.substring(11, 16) : "";
+      const checkOutTime = rawCheckOutDate.length >= 16 ? rawCheckOutDate.substring(11, 16) : "";
+
+      // For finished tasks, show effective time spent (check-in → check-out).
+      // For other tasks, fall back to scheduled window.
+      const startTime = isFinished
+        ? (checkInTime || rawStartTime || taskDateTime || "")
+        : (rawStartTime || taskDateTime || "");
       const endTime = isFinished
-        ? (rawEndTime || taskEndDateTime || "")
+        ? (checkOutTime || rawEndTime || taskEndDateTime || "")
         : (taskEndDateTime || rawEndTime || "");
 
       const address = typeof t.address === "object" ? "" : String(t.address || "").substring(0, 200);
