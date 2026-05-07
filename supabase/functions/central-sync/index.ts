@@ -542,6 +542,7 @@ async function upsertGcOsShellRows(sbClient: any, gcOsResult: { byTaskIdAll: Rec
       gc_os_data_saida: (osPayload as any).gc_os_data_saida,
       gc_os_link: (osPayload as any).gc_os_link,
       gc_os_tarefa_exec: (osPayload as any).gc_os_tarefa_exec || null,
+      gc_os_tarefa_os: (osPayload as any).gc_os_tarefa_os || null,
       mirror_key: `${primaryTaskId}::os:${(osPayload as any).gc_os_id}::orc:`,
     });
   }
