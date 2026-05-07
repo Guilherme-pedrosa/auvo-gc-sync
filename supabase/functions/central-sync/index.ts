@@ -468,13 +468,23 @@ async function fetchGcOs(gcHeaders: Record<string, string>, options?: { situacao
           }
         }
 
-        // 73343 = tarefa OS. Do NOT map 73344 here: it is execution-only and
-        // must not make the OS appear under the execution task.
-        for (const taskId of gc_os_tarefa_os.split("/").filter(Boolean)) {
-
-          if (!map[taskId]) {
-            map[taskId] = osPayload;
+        // 73343 = tarefa OS (vínculo prioritário).
+        // 73344 = tarefa execução (vínculo secundário, usado quando a OS foi
+        // feita sem orçamento prévio - contrato/garantia/atendimento direto).
+        // Ambos devem mapear a OS para a tarefa Auvo correspondente, mas 73343
+        // tem prioridade quando os dois existem.
+        const tarefaOsIds = gc_os_tarefa_os.split("/").filter(Boolean);
+        const tarefaExecIds = (gc_os_tarefa_exec || "").split("/").filter(Boolean);
+        for (const taskId of tarefaOsIds) {
+          if (!map[taskId]) map[taskId] = osPayload;
+          const bucket = byTaskIdAll[taskId] || [];
+          if (!bucket.some((existing) => existing?.gc_os_id === osPayload.gc_os_id)) {
+            bucket.push(osPayload);
+            byTaskIdAll[taskId] = bucket;
           }
+        }
+        for (const taskId of tarefaExecIds) {
+          if (!map[taskId]) map[taskId] = osPayload;
           const bucket = byTaskIdAll[taskId] || [];
           if (!bucket.some((existing) => existing?.gc_os_id === osPayload.gc_os_id)) {
             bucket.push(osPayload);
