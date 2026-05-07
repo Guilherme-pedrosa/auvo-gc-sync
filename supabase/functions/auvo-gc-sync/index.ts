@@ -1738,6 +1738,24 @@ Deno.serve(async (req) => {
       erros, dry_run: dryRun, duracao_ms: duracao, detalhes: logEntries,
     });
 
+    if (pendentesPorErroAuvo > 0 || pendentesPorTempo > 0) {
+      try {
+        await supabase.from("auvo_gc_sync_log").insert({
+          executado_em: new Date().toISOString(),
+          observacao: "OS_PENDENTE_RETRY",
+          dry_run: dryRun,
+          duracao_ms: duracao,
+          detalhes: {
+            pendentes_por_erro_auvo: pendentesPorErroAuvo,
+            pendentes_por_tempo: pendentesPorTempo,
+            itens: pendentesDetalhe,
+          },
+        });
+      } catch (err) {
+        console.warn("[auvo-gc-sync] Falha ao gravar log de pendentes:", err);
+      }
+    }
+
     const summary = { atualizadas, comPendencia, semPendencia, naoEncontradas, divergenciaPecas, erros, osCandidatas: osCandidatas.length, dryRun, duracao_ms: duracao };
     console.log("[auvo-gc-sync] Concluído:", summary);
 
