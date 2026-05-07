@@ -8,6 +8,39 @@ const corsHeaders = {
 
 const AUVO_BASE_URL = "https://api.auvo.com.br/v2";
 
+// Idempotent retry for PATCH only — backoff 2s, 4s, 8s on 502/503/timeout.
+// NEVER use for POST/PUT-create endpoints (não-idempotentes).
+async function patchWithRetry(
+  url: string,
+  init: RequestInit,
+  reqId: string,
+): Promise<Response> {
+  const BACKOFF = [2000, 4000, 8000];
+  let lastErr: unknown = null;
+  for (let attempt = 0; attempt < BACKOFF.length; attempt++) {
+    try {
+      const resp = await fetch(url, init);
+      if (resp.status === 502 || resp.status === 503) {
+        if (attempt < BACKOFF.length - 1) {
+          console.warn(`[auvo-task-update][reqId=${reqId}] PATCH ${resp.status}, retry ${attempt + 1}/${BACKOFF.length - 1} em ${BACKOFF[attempt]}ms`);
+          await new Promise(r => setTimeout(r, BACKOFF[attempt]));
+          continue;
+        }
+      }
+      return resp;
+    } catch (err) {
+      lastErr = err;
+      if (attempt < BACKOFF.length - 1) {
+        console.warn(`[auvo-task-update][reqId=${reqId}] PATCH timeout/network, retry ${attempt + 1}/${BACKOFF.length - 1} em ${BACKOFF[attempt]}ms`);
+        await new Promise(r => setTimeout(r, BACKOFF[attempt]));
+        continue;
+      }
+      throw lastErr;
+    }
+  }
+  throw lastErr ?? new Error("PATCH retry exhausted");
+}
+
 async function auvoLogin(apiKey: string, apiToken: string): Promise<string> {
   const url = `${AUVO_BASE_URL}/login/?apiKey=${encodeURIComponent(apiKey)}&apiToken=${encodeURIComponent(apiToken)}`;
   const response = await fetch(url, { method: "GET", headers: { "Content-Type": "application/json" } });
@@ -88,18 +121,22 @@ function sanitizeCentralRow(row: any) {
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
+  const reqId = req.headers.get("x-request-id") || crypto.randomUUID();
+  const respHeaders = { ...corsHeaders, "Content-Type": "application/json", "X-Request-Id": reqId };
+
   try {
     const apiKey = Deno.env.get("AUVO_APP_KEY");
     const apiToken = Deno.env.get("AUVO_TOKEN");
     if (!apiKey || !apiToken) {
       return new Response(
         JSON.stringify({ error: "Credenciais Auvo não configuradas" }),
-        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        { status: 500, headers: respHeaders }
       );
     }
 
     const body = await req.json();
     const { action } = body;
+    console.log(`[auvo-task-update][reqId=${reqId}] action=${action}`);
 
     if (action === "persist-central") {
       const isSingleRowPatch = !!body?.row && !Array.isArray(body?.rows);
@@ -187,19 +224,29 @@ Deno.serve(async (req) => {
       }
 
       const url = `${AUVO_BASE_URL}/tasks/${taskId}`;
-      const response = await fetch(url, {
-        method: "PATCH",
-        headers,
-        body: JSON.stringify(patches),
-      });
+      // PATCH é idempotente para os campos enviados → retry seguro em 502/503/timeout
+      let response: Response;
+      try {
+        response = await patchWithRetry(url, {
+          method: "PATCH",
+          headers,
+          body: JSON.stringify(patches),
+        }, reqId);
+      } catch (err) {
+        console.error(`[auvo-task-update][reqId=${reqId}] PATCH /tasks/${taskId} falhou após retries:`, err);
+        return new Response(
+          JSON.stringify({ success: false, status: 503, retryable: true, message: "Auvo instável. Tente novamente.", reqId }),
+          { status: 200, headers: respHeaders }
+        );
+      }
 
       const responseText = await response.text();
       let data;
       try { data = JSON.parse(responseText); } catch { data = { raw: responseText }; }
 
       return new Response(
-        JSON.stringify({ data, status: response.status }),
-        { status: response.ok ? 200 : response.status, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        JSON.stringify({ data, status: response.status, reqId }),
+        { status: response.ok ? 200 : response.status, headers: respHeaders }
       );
     }
 
@@ -210,24 +257,42 @@ Deno.serve(async (req) => {
       if (!task) {
         return new Response(
           JSON.stringify({ error: "task é obrigatório" }),
-          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          { status: 400, headers: respHeaders }
         );
       }
 
       const url = `${AUVO_BASE_URL}/tasks`;
-      const response = await fetch(url, {
-        method: "PUT",
-        headers,
-        body: JSON.stringify(task),
-      });
+      // Não-idempotente (cria tarefa). Nunca fazer retry automático aqui.
+      let response: Response;
+      try {
+        response = await fetch(url, {
+          method: "PUT",
+          headers,
+          body: JSON.stringify(task),
+        });
+      } catch (err) {
+        console.error(`[auvo-task-update][reqId=${reqId}] upsert /tasks erro de rede:`, err);
+        return new Response(
+          JSON.stringify({ success: false, status: 503, retryable: true, message: "Auvo instável. Tente novamente.", reqId }),
+          { status: 200, headers: respHeaders }
+        );
+      }
+
+      if (response.status === 502 || response.status === 503) {
+        console.error(`[auvo-task-update][reqId=${reqId}] upsert /tasks ${response.status} — não fazendo retry (POST não-idempotente)`);
+        return new Response(
+          JSON.stringify({ success: false, status: response.status, retryable: true, message: "Auvo instável. Tente novamente.", reqId }),
+          { status: 200, headers: respHeaders }
+        );
+      }
 
       const responseText = await response.text();
       let data;
       try { data = JSON.parse(responseText); } catch { data = { raw: responseText }; }
 
       return new Response(
-        JSON.stringify({ data, status: response.status }),
-        { status: response.ok ? 200 : response.status, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        JSON.stringify({ data, status: response.status, reqId }),
+        { status: response.ok ? 200 : response.status, headers: respHeaders }
       );
     }
 
@@ -307,10 +372,10 @@ Deno.serve(async (req) => {
       { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   } catch (error) {
-    console.error("[auvo-task-update] Erro:", error);
+    console.error(`[auvo-task-update][reqId=${reqId}] Erro:`, error);
     return new Response(
-      JSON.stringify({ error: (error as Error).message }),
-      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      JSON.stringify({ error: (error as Error).message, reqId }),
+      { status: 500, headers: respHeaders }
     );
   }
 });
