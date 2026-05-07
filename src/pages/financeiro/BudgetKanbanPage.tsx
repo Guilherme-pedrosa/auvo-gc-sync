@@ -259,7 +259,7 @@ export default function BudgetKanbanPage() {
       );
 
     const resolveSystemColumn = (item: KanbanItem) => {
-      if (item.os_realizada && item.orcamento_realizado) return "os_realizada";
+      if (item.os_realizada) return "os_realizada";
       if (item.orcamento_realizado) {
         const sit = item.gc_orcamento?.gc_situacao || "Sem situação";
         return `orc_${sit.replace(/\s+/g, "_").toLowerCase()}`;
@@ -362,7 +362,7 @@ export default function BudgetKanbanPage() {
         let col = (item as any)._coluna || "a_fazer";
         const { _coluna, _posicao, ...cleanItem } = item as any;
 
-        // Re-check system columns: "OS Realizada" only when orçamento + OS are both confirmed.
+        // Re-check system columns: "OS Realizada" wins whenever the task is in GC field 73343.
         if (col === "a_fazer" || col === "falta_preenchimento" || col === "os_realizada" || col.startsWith("orc_")) {
           col = resolveSystemColumn(cleanItem);
         }
