@@ -8,6 +8,28 @@ const corsHeaders = {
 const AUVO_BASE_URL = "https://api.auvo.com.br/v2";
 const GC_BASE_URL = "https://api.gestaoclick.com";
 
+// Retry silencioso 502/503 Auvo (3s/6s/9s) — só loga se a tentativa final falhar
+async function auvoFetchSilent(url: string, init: RequestInit): Promise<Response> {
+  const BACKOFF = [3000, 6000, 9000];
+  let resp = await fetch(url, init);
+  for (let i = 0; i < BACKOFF.length && (resp.status === 502 || resp.status === 503); i++) {
+    await new Promise(r => setTimeout(r, BACKOFF[i]));
+    resp = await fetch(url, init);
+  }
+  return resp;
+}
+
+// Retry silencioso 429 GC (5s/10s) — só loga se a tentativa final falhar
+async function gcFetchSilent(url: string, init: RequestInit): Promise<Response> {
+  const BACKOFF = [5000, 10000];
+  let resp = await fetch(url, init);
+  for (let i = 0; i < BACKOFF.length && resp.status === 429; i++) {
+    await new Promise(r => setTimeout(r, BACKOFF[i]));
+    resp = await fetch(url, init);
+  }
+  return resp;
+}
+
 // Fetch GC docs and build a map of auvo_task_id → { codigo, valor_total }
 // Window: filter by GC document date to capture recent records (avoid pagination cap missing today's docs)
 async function fetchGcDocMap(
@@ -22,12 +44,16 @@ async function fetchGcDocMap(
   let page = 1;
   let totalPages = 1;
 
-  while (page <= totalPages && page <= 30) {
+  const MAX_PAGES = 30;
+  while (page <= totalPages && page <= MAX_PAGES) {
     let url = `${GC_BASE_URL}/api/${endpoint}?limite=100&pagina=${page}`;
     if (dataInicio) url += `&data_inicio=${dataInicio}`;
     if (dataFim) url += `&data_fim=${dataFim}`;
-    const response = await fetch(url, { headers: gcHeaders });
-    if (!response.ok) break;
+    const response = await gcFetchSilent(url, { headers: gcHeaders });
+    if (!response.ok) {
+      console.warn(`[realtime-tracking] GC ${endpoint} page ${page} final status ${response.status}`);
+      break;
+    }
     const data = await response.json();
     const records: any[] = Array.isArray(data?.data) ? data.data : [];
     totalPages = data?.meta?.total_paginas || 1;
@@ -52,6 +78,9 @@ async function fetchGcDocMap(
     }
     page++;
   }
+  if (page > MAX_PAGES && page <= totalPages) {
+    console.warn(`[realtime-tracking] TRUNCAMENTO: MAX_PAGES atingido em GC ${endpoint} (totalPages=${totalPages})`);
+  }
 
   return map;
 }
@@ -66,12 +95,16 @@ async function fetchGcOsMap(
   let page = 1;
   let totalPages = 1;
 
-  while (page <= totalPages && page <= 30) {
+  const MAX_PAGES = 30;
+  while (page <= totalPages && page <= MAX_PAGES) {
     let url = `${GC_BASE_URL}/api/ordens_servicos?limite=100&pagina=${page}`;
     if (dataInicio) url += `&data_inicio=${dataInicio}`;
     if (dataFim) url += `&data_fim=${dataFim}`;
-    const response = await fetch(url, { headers: gcHeaders });
-    if (!response.ok) break;
+    const response = await gcFetchSilent(url, { headers: gcHeaders });
+    if (!response.ok) {
+      console.warn(`[realtime-tracking] GC ordens_servicos page ${page} final status ${response.status}`);
+      break;
+    }
     const data = await response.json();
     const records: any[] = Array.isArray(data?.data) ? data.data : [];
     totalPages = data?.meta?.total_paginas || 1;
@@ -96,6 +129,9 @@ async function fetchGcOsMap(
       }
     }
     page++;
+  }
+  if (page > MAX_PAGES && page <= totalPages) {
+    console.warn(`[realtime-tracking] TRUNCAMENTO: MAX_PAGES atingido em GC ordens_servicos (totalPages=${totalPages})`);
   }
 
   console.log(`[realtime-tracking] GC map: ${Object.keys(map).length} OS mapeadas (janela ${dataInicio || "all"} → ${dataFim || "all"})`);
@@ -151,7 +187,7 @@ async function fetchAllTasks(
   while (page <= MAX_PAGES) {
     const paramFilter = encodeURIComponent(JSON.stringify(filterObj));
     const url = `${AUVO_BASE_URL}/tasks/?page=${page}&pageSize=${pageSize}&order=asc&paramFilter=${paramFilter}`;
-    const response = await fetch(url, { headers: auvoHeaders(bearerToken) });
+    const response = await auvoFetchSilent(url, { headers: auvoHeaders(bearerToken) });
 
     if (response.status === 404) break;
     if (!response.ok) {
@@ -164,6 +200,10 @@ async function fetchAllTasks(
     allTasks.push(...entities);
     if (entities.length < pageSize) break;
     page++;
+  }
+
+  if (page > MAX_PAGES) {
+    console.warn(`[realtime-tracking] TRUNCAMENTO: MAX_PAGES atingido em Auvo /tasks`);
   }
 
   return allTasks;
