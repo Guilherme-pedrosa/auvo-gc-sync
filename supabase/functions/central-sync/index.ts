@@ -310,6 +310,10 @@ async function fetchAuvoTasksForPeriod(bearerToken: string, startDate: string, e
     page++;
   }
 
+  if (page > MAX_PAGES) {
+    console.warn(`[central-sync] TRUNCAMENTO: MAX_PAGES atingido em Auvo /tasks (${startDate}→${endDate})`);
+  }
+
   return allTasks;
 }
 
@@ -349,10 +353,17 @@ async function fetchGcOrcamentos(gcHeaders: Record<string, string>): Promise<{ b
 
   while (page <= totalPages && page <= MAX_PAGES) {
     const url = `${GC_BASE_URL}/api/orcamentos?limite=100&pagina=${page}`;
-    const response = await rateLimitedFetch(url, { headers: gcHeaders }, "gc");
-    if (response.status === 429) {
-      await new Promise(r => setTimeout(r, 3000));
-      continue;
+    let response: Response | null = null;
+    const RATE_BACKOFF = [3000, 6000, 12000];
+    for (let attempt = 0; attempt < RATE_BACKOFF.length; attempt++) {
+      response = await rateLimitedFetch(url, { headers: gcHeaders }, "gc");
+      if (response.status !== 429) break;
+      console.warn(`[central-sync] GC orcamentos page ${page} 429, retry ${attempt + 1}/${RATE_BACKOFF.length} em ${RATE_BACKOFF[attempt]}ms`);
+      await new Promise(r => setTimeout(r, RATE_BACKOFF[attempt]));
+    }
+    if (!response || response.status === 429) {
+      console.error(`[central-sync] GC orcamentos page ${page}: 429 persistente após retries — retornando mapa parcial`);
+      break;
     }
     if (!response.ok) break;
 
@@ -395,6 +406,9 @@ async function fetchGcOrcamentos(gcHeaders: Record<string, string>): Promise<{ b
     console.log(`[central-sync] GC orçamentos page ${page}/${totalPages}: ${records.length} registros, ${Object.keys(map).length} com tarefa`);
     page++;
   }
+  if (page > MAX_PAGES && page <= totalPages) {
+    console.warn(`[central-sync] TRUNCAMENTO: MAX_PAGES atingido em GC orcamentos (totalPages=${totalPages})`);
+  }
   return { byTaskId: map, byCodigo };
 }
 
@@ -419,10 +433,17 @@ async function fetchGcOs(gcHeaders: Record<string, string>, options?: { situacao
       if (options?.dataInicio) url += `&data_inicio=${options.dataInicio}`;
       if (options?.dataFim) url += `&data_fim=${options.dataFim}`;
 
-      const response = await rateLimitedFetch(url, { headers: gcHeaders }, "gc");
-      if (response.status === 429) {
-        await new Promise(r => setTimeout(r, 3000));
-        continue;
+      let response: Response | null = null;
+      const RATE_BACKOFF = [3000, 6000, 12000];
+      for (let attempt = 0; attempt < RATE_BACKOFF.length; attempt++) {
+        response = await rateLimitedFetch(url, { headers: gcHeaders }, "gc");
+        if (response.status !== 429) break;
+        console.warn(`[central-sync] GC ordens_servicos page ${page}${sitId ? ` sit=${sitId}` : ""} 429, retry ${attempt + 1}/${RATE_BACKOFF.length} em ${RATE_BACKOFF[attempt]}ms`);
+        await new Promise(r => setTimeout(r, RATE_BACKOFF[attempt]));
+      }
+      if (!response || response.status === 429) {
+        console.error(`[central-sync] GC ordens_servicos page ${page}${sitId ? ` sit=${sitId}` : ""}: 429 persistente após retries — retornando mapa parcial`);
+        break;
       }
       if (!response.ok) break;
 
