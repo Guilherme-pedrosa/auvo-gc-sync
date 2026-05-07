@@ -540,9 +540,11 @@ async function fetchGcOsMap(
         }
         return ids;
       };
+      // Apenas o atributo 73343 (TAREFA OS) define vínculo de OS realizada.
+      // 73344 (TAREFA EXECUÇÃO) NÃO entra aqui — execução pura sem orçamento
+      // não pertence ao funil de vendas do Kanban Orçamentos.
       const tarefaOsIds = collectTaskIds(GC_ATRIBUTO_TAREFA_OS);
-      const tarefaExecIds = collectTaskIds(GC_ATRIBUTO_TAREFA_EXEC);
-      if (tarefaOsIds.length === 0 && tarefaExecIds.length === 0) continue;
+      if (tarefaOsIds.length === 0) continue;
       const osPayload = {
         gc_os_id: String(os.id),
         gc_os_codigo: String(os.codigo || ""),
@@ -558,9 +560,6 @@ async function fetchGcOsMap(
       };
       for (const tid of tarefaOsIds) {
         map[tid] = { ...osPayload, _vinculo: "73343" };
-      }
-      for (const tid of tarefaExecIds) {
-        if (!map[tid]) map[tid] = { ...osPayload, _vinculo: "73344" };
       }
     }
   };
