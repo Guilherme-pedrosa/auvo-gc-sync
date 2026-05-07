@@ -10,6 +10,7 @@ const GC_BASE_URL = "https://api.gestaoclick.com";
 const QUESTIONNAIRE_ID = "216040";
 const GC_ATRIBUTO_TAREFA_ORC = "73341";
 const GC_ATRIBUTO_TAREFA_OS = "73343";
+const GC_ATRIBUTO_TAREFA_EXEC = "73344";
 const AUVO_SAFE_START = "2020-01-01";
 const AUVO_SAFE_END = "2030-12-31";
 const MIN_DELAY_MS = 200;
