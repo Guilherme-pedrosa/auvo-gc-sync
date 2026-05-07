@@ -848,10 +848,28 @@ async function runBudgetKanbanSync(opts: {
       .lte("data_tarefa", endDate)
       .eq("questionario_id", QUESTIONNAIRE_ID);
 
+    // Buscar TAMBÉM tarefas que tenham GC orçamento/OS no período mesmo sem questionario_id (JBS Complementar etc)
+    const { data: centralRowsExtras } = await sbClient
+      .from("tarefas_central")
+      .select("*")
+      .gte("data_tarefa", startDate)
+      .lte("data_tarefa", endDate)
+      .or("gc_orcamento_id.not.is.null,gc_os_id.not.is.null");
+
+    const seenIds = new Set<string>();
+    const combinedCentral: any[] = [];
+    for (const row of [...(centralRows || []), ...(centralRowsExtras || [])]) {
+      const tid = String(row.auvo_task_id || "");
+      if (!tid || seenIds.has(tid)) continue;
+      seenIds.add(tid);
+      combinedCentral.push(row);
+    }
+
     if (centralError) {
       console.warn("[budget-kanban] Erro ao ler tarefas_central, usando APIs externas:", centralError.message);
-    } else if (false && (centralRows || []).length > 0) {
-      console.log(`[budget-kanban] Central encontrada: ${(centralRows || []).length} tarefas com questionário ${QUESTIONNAIRE_ID}`);
+    } else if (combinedCentral.length > 0) {
+      const centralRowsAll = combinedCentral;
+      console.log(`[budget-kanban] Central encontrada: ${centralRowsAll.length} tarefas (questionário ${QUESTIONNAIRE_ID} + GC docs)`);
 
       const { data: existingCache } = await sbClient
         .from("kanban_orcamentos_cache")
@@ -866,7 +884,7 @@ async function runBudgetKanbanSync(opts: {
       let movedCount = 0;
       let keptCount = 0;
 
-      const items = (centralRows || [])
+      const items = centralRowsAll
         .map(buildBudgetItemFromCentral)
         .filter((item: any) => item.auvo_task_id);
 
