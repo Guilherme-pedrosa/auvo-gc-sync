@@ -496,8 +496,10 @@ async function upsertGcOsShellRows(sbClient: any, gcOsResult: { byTaskIdAll: Rec
 
   for (const osPayload of Object.values(gcOsResult.byCodigo || {})) {
     const taskIds = normalizeTaskIdList((osPayload as any).gc_os_tarefa_os).split("/").filter(Boolean);
-    const execIds = normalizeTaskIdList((osPayload as any).gc_os_tarefa_exec).split("/").filter(Boolean);
-    const realTaskId = taskIds[0] || execIds[0] || "";
+    // ⚠️ Regra de negócio: somente Tarefa OS (73343) vincula a OS a uma tarefa Auvo.
+    // A Tarefa Execução (73344) é apenas operacional e NÃO deve ser usada para definir
+    // que a OS está vinculada/realizada em relação a orçamento.
+    const realTaskId = taskIds[0] || "";
     if (!(osPayload as any).gc_os_id) continue;
     // If no Auvo task linked, create a synthetic shell so the OS still appears (flagged red in UI)
     const primaryTaskId = realTaskId || `gc-only::${(osPayload as any).gc_os_id}`;
