@@ -468,22 +468,10 @@ async function fetchGcOs(gcHeaders: Record<string, string>, options?: { situacao
           }
         }
 
-        // 73343 = tarefa OS (vínculo prioritário).
-        // 73344 = tarefa execução (vínculo secundário, usado quando a OS foi
-        // feita sem orçamento prévio - contrato/garantia/atendimento direto).
-        // Ambos devem mapear a OS para a tarefa Auvo correspondente, mas 73343
-        // tem prioridade quando os dois existem.
+        // 73343 = TAREFA OS. É o único campo que vincula uma OS à tarefa Auvo.
+        // 73344 = TAREFA EXECUÇÃO; nunca deve amarrar a OS no Kanban/central.
         const tarefaOsIds = gc_os_tarefa_os.split("/").filter(Boolean);
-        const tarefaExecIds = (gc_os_tarefa_exec || "").split("/").filter(Boolean);
         for (const taskId of tarefaOsIds) {
-          if (!map[taskId]) map[taskId] = osPayload;
-          const bucket = byTaskIdAll[taskId] || [];
-          if (!bucket.some((existing) => existing?.gc_os_id === osPayload.gc_os_id)) {
-            bucket.push(osPayload);
-            byTaskIdAll[taskId] = bucket;
-          }
-        }
-        for (const taskId of tarefaExecIds) {
           if (!map[taskId]) map[taskId] = osPayload;
           const bucket = byTaskIdAll[taskId] || [];
           if (!bucket.some((existing) => existing?.gc_os_id === osPayload.gc_os_id)) {
@@ -506,10 +494,8 @@ async function upsertGcOsShellRows(sbClient: any, gcOsResult: { byTaskIdAll: Rec
 
   for (const osPayload of Object.values(gcOsResult.byCodigo || {})) {
     const taskIds = normalizeTaskIdList((osPayload as any).gc_os_tarefa_os).split("/").filter(Boolean);
-    const execIds = normalizeTaskIdList((osPayload as any).gc_os_tarefa_exec || "").split("/").filter(Boolean);
-    // 73343 (tarefa OS) tem prioridade. 73344 (tarefa execução) é fallback
-    // quando a OS foi feita sem orçamento prévio (contrato/garantia/atendimento direto).
-    const realTaskId = taskIds[0] || execIds[0] || "";
+    // Só 73343 (TAREFA OS) pode criar/atualizar vínculo de OS.
+    const realTaskId = taskIds[0] || "";
     if (!(osPayload as any).gc_os_id) continue;
     // If no Auvo task linked, create a synthetic shell so the OS still appears (flagged red in UI)
     const primaryTaskId = realTaskId || `gc-only::${(osPayload as any).gc_os_id}`;
