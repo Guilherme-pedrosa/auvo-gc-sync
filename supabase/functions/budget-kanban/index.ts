@@ -1183,28 +1183,37 @@ async function runBudgetKanbanSync(opts: {
     let movedCount = 0;
     let keptCount = 0;
 
+    // Colunas SISTÊMICAS são auto-classificadas por budgetColumnForItem
+    // e devem ser recalculadas a cada sync. Colunas manuais (ex.:
+    // "resolvido_sem_orcamento" ou colunas custom do usuário) são
+    // preservadas — fonte de verdade é o operador.
+    const SISTEMICAS = new Set<string>([
+      "a_fazer",
+      "falta_preenchimento",
+      "os_realizada",
+    ]);
+    const isSistemica = (col: string): boolean =>
+      SISTEMICAS.has(col) || (typeof col === "string" && col.startsWith("orc_"));
+
     const upsertRows = items.map((item: any, idx: number) => {
       const existing = existingMap[item.auvo_task_id];
 
-      // Determine the "correct" column based on current data
       const autoColuna = budgetColumnForItem(item);
 
       let finalColuna: string;
       let finalPosicao: number;
 
       if (!existing) {
-        // New item → auto-assign
         finalColuna = autoColuna;
         finalPosicao = idx;
-      } else if (existing.coluna === "os_realizada" && autoColuna !== "os_realizada") {
-        // Corrige cache antigo criado quando Tarefa Execução foi confundida com OS.
-        // Mantém colunas manuais, mas não preserva a coluna sistêmica "OS Realizada" se a regra atual não confirma orçamento+OS.
+      } else if (isSistemica(existing.coluna)) {
+        // Coluna anterior foi auto-classificada → recalcular sempre.
         finalColuna = autoColuna;
-        finalPosicao = idx;
-        movedCount++;
+        finalPosicao = existing.coluna === autoColuna ? existing.posicao : idx;
+        if (existing.coluna !== autoColuna) movedCount++;
+        else keptCount++;
       } else {
-        // Coluna manual é fonte de verdade: sync só atualiza os dados do card.
-        // Nunca devolver para coluna automática, principalmente "Já Resolvido".
+        // Coluna MANUAL (resolvido_sem_orcamento, custom) → preservar.
         finalColuna = existing.coluna;
         finalPosicao = existing.posicao;
         keptCount++;
