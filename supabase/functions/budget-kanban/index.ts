@@ -458,10 +458,13 @@ async function fetchGcOrcamentosMap(
     let url = `${GC_BASE_URL}/api/orcamentos?limite=100&pagina=${page}`;
     if (startDate) url += `&data_inicio=${startDate}`;
     if (endDate) url += `&data_fim=${endDate}`;
+    const RATE_BACKOFF = [5000, 5000, 10000]; // 1ª espera + 2 retries extras
     for (let attempt = 0; attempt < 3; attempt++) {
       const response = await rateLimitedFetch(url, { headers: gcHeaders }, "gc");
       if (response.status === 429) {
-        await new Promise(r => setTimeout(r, 3000));
+        const wait = RATE_BACKOFF[attempt];
+        console.warn(`[budget-kanban] GC orcamentos page ${page} 429, retry em ${wait}ms (${attempt + 1}/3)`);
+        await new Promise(r => setTimeout(r, wait));
         continue;
       }
       if (!response.ok) {
@@ -510,6 +513,9 @@ async function fetchGcOrcamentosMap(
   if (!first) return map;
   ingest(first.records);
   const totalPages = Math.min(first.totalPages, MAX_PAGES);
+  if (first.totalPages > MAX_PAGES) {
+    console.warn(`[budget-kanban] TRUNCAMENTO: MAX_PAGES atingido em GC orcamentos (totalPages=${first.totalPages}), possível perda de dados`);
+  }
   console.log(`[budget-kanban] GC orçamentos: ${totalPages} páginas (paralelo x${CONCURRENCY})`);
 
   // Fetch remaining pages in parallel batches
@@ -537,10 +543,13 @@ async function fetchGcOsMap(
     let url = `${GC_BASE_URL}/api/ordens_servicos?limite=100&pagina=${page}`;
     if (startDate) url += `&data_inicio=${startDate}`;
     if (endDate) url += `&data_fim=${endDate}`;
+    const RATE_BACKOFF = [5000, 5000, 10000];
     for (let attempt = 0; attempt < 3; attempt++) {
       const response = await rateLimitedFetch(url, { headers: gcHeaders }, "gc");
       if (response.status === 429) {
-        await new Promise(r => setTimeout(r, 3000));
+        const wait = RATE_BACKOFF[attempt];
+        console.warn(`[budget-kanban] GC OS page ${page} 429, retry em ${wait}ms (${attempt + 1}/3)`);
+        await new Promise(r => setTimeout(r, wait));
         continue;
       }
       if (!response.ok) {
@@ -598,6 +607,9 @@ async function fetchGcOsMap(
   if (!first) return map;
   ingest(first.records);
   const totalPages = Math.min(first.totalPages, MAX_PAGES);
+  if (first.totalPages > MAX_PAGES) {
+    console.warn(`[budget-kanban] TRUNCAMENTO: MAX_PAGES atingido em GC ordens_servicos (totalPages=${first.totalPages}), possível perda de dados`);
+  }
   console.log(`[budget-kanban] GC OS: ${totalPages} páginas (paralelo x${CONCURRENCY})`);
 
   for (let start = 2; start <= totalPages; start += CONCURRENCY) {
