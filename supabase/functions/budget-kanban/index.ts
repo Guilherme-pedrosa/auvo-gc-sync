@@ -10,7 +10,6 @@ const GC_BASE_URL = "https://api.gestaoclick.com";
 const QUESTIONNAIRE_ID = "216040";
 const GC_ATRIBUTO_TAREFA_ORC = "73341";
 const GC_ATRIBUTO_TAREFA_OS = "73343";
-const GC_ATRIBUTO_TAREFA_EXEC = "73344";
 const AUVO_SAFE_START = "2020-01-01";
 const AUVO_SAFE_END = "2030-12-31";
 const MIN_DELAY_MS = 200;
@@ -590,7 +589,7 @@ function hasFilledQuestionnaireAnswers(item: any): boolean {
 
 function budgetColumnForItem(item: any): string {
   // Regra do Kanban Orçamentos: se a tarefa estiver vinculada a uma OS GC
-  // (atributo 73343 ou 73344, mapeado em fetchGcOsMap), ela já foi realizada
+  // pelo atributo 73343 (TAREFA OS), ela já foi realizada
   // e sai de "A Fazer" — independentemente de existir orçamento associado.
   if (item.os_realizada) return "os_realizada";
   if (item.orcamento_realizado) {
@@ -601,27 +600,24 @@ function budgetColumnForItem(item: any): string {
   return "a_fazer";
 }
 
+function sanitizeBudgetItemOsLink(item: any): any {
+  if (!item?.os_realizada || !item?.gc_os) return item;
+  // Cache antigo pode ter sido salvo a partir do atributo 73344 (Tarefa Execução).
+  // No Kanban Orçamentos, OS Realizada só é válida quando veio do 73343 (Tarefa OS).
+  if (String(item.gc_os?._vinculo || "").trim() === GC_ATRIBUTO_TAREFA_OS) return item;
+  return {
+    ...item,
+    os_realizada: false,
+    gc_os: null,
+  };
+}
+
 function buildBudgetItemFromCentral(row: any, gcOrcMap: Record<string, any> = {}, gcOsMap: Record<string, any> = {}) {
   const taskId = String(row.auvo_task_id || "").trim();
   const questionarioRespostas = Array.isArray(row.questionario_respostas) ? row.questionario_respostas : [];
   const freshOrc = gcOrcMap[taskId] || null;
   const freshOs = gcOsMap[taskId] || null;
-  // Fallback: se a tarefa já foi vinculada a uma OS GC em sync anterior
-  // (gc_os_id persistido em tarefas_central), considerar OS Realizada mesmo
-  // que a paginação atual da API GC não tenha trazido essa OS.
-  const centralOsFallback = row?.gc_os_id ? {
-    gc_os_id: String(row.gc_os_id),
-    gc_os_codigo: String(row.gc_os_codigo || ""),
-    gc_cliente: String(row.gc_os_cliente || row.cliente || ""),
-    gc_situacao: String(row.gc_os_situacao || ""),
-    gc_situacao_id: String(row.gc_os_situacao_id || ""),
-    gc_cor_situacao: String(row.gc_os_cor_situacao || ""),
-    gc_valor_total: String(row.gc_os_valor_total || "0"),
-    gc_vendedor: String(row.gc_os_vendedor || ""),
-    gc_data: String(row.gc_os_data || ""),
-    gc_link: String(row.gc_os_link || ""),
-  } : null;
-  const effectiveOs = freshOs || centralOsFallback;
+  const effectiveOs = freshOs;
   const hasOrcamento = Boolean(freshOrc);
   const hasOs = Boolean(effectiveOs);
 
