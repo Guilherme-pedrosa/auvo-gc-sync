@@ -1007,8 +1007,13 @@ async function runCentralSync(body: CentralSyncBody = {}) {
       const cliente = desc || nameRaw || nameGc || "Cliente não identificado";
 
       // Questionnaire
+      // IMPORTANTE: se a Auvo (listagem) devolveu o campo `questionnaires` (mesmo vazio),
+      // tratamos isso como verdade — significa "ainda não preenchido". NÃO cair no
+      // snapshot antigo, senão o formulário fica congelado eternamente.
+      // Só usamos snapshot quando a listagem nem trouxe a chave (undefined).
       const snapshotForQ = taskSnapshotById.get(taskId);
-      const questionnairesSource = (Array.isArray(task.questionnaires) && task.questionnaires.length > 0)
+      const listHasQField = Array.isArray(task.questionnaires);
+      const questionnairesSource = listHasQField
         ? task.questionnaires
         : (snapshotForQ?.questionnaires || []);
       const targetQ = questionnairesSource.find(
