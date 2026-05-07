@@ -885,23 +885,11 @@ async function runBudgetKanbanSync(opts: {
         let finalPosicao = idx;
 
         if (existing) {
-          const oldData = existing.dados || {};
-          const hadUpdate =
-            (!oldData.orcamento_realizado && item.orcamento_realizado) ||
-            (!oldData.os_realizada && item.os_realizada) ||
-            (oldData.gc_orcamento?.gc_situacao !== item.gc_orcamento?.gc_situacao && item.orcamento_realizado) ||
-            (oldData.gc_os?.gc_situacao !== item.gc_os?.gc_situacao && item.os_realizada);
-          const stuckInInitial = ["a_fazer", "falta_preenchimento"].includes(existing.coluna) && autoColuna !== existing.coluna;
-
-          if (hadUpdate || stuckInInitial) {
-            finalColuna = autoColuna;
-            finalPosicao = 0;
-            movedCount++;
-          } else {
-            finalColuna = existing.coluna;
-            finalPosicao = existing.posicao;
-            keptCount++;
-          }
+          // Coluna manual é fonte de verdade: sync só atualiza os dados do card.
+          // Nunca devolver para coluna automática, principalmente "Já Resolvido".
+          finalColuna = existing.coluna;
+          finalPosicao = existing.posicao;
+          keptCount++;
         }
 
         return {
@@ -1196,32 +1184,11 @@ async function runBudgetKanbanSync(opts: {
         finalColuna = autoColuna;
         finalPosicao = idx;
       } else {
-        // Existing item: check if data changed in ways that should trigger a move
-        const oldData = existing.dados || {};
-        const hadUpdate =
-          // Gained an orçamento
-          (!oldData.orcamento_realizado && item.orcamento_realizado) ||
-          // Gained an OS
-          (!oldData.os_realizada && item.os_realizada) ||
-          // Orçamento situation changed
-          (oldData.gc_orcamento?.gc_situacao !== item.gc_orcamento?.gc_situacao && item.orcamento_realizado) ||
-          // OS situation changed
-          (oldData.gc_os?.gc_situacao !== item.gc_os?.gc_situacao && item.os_realizada);
-
-        // Also force-move if card is stuck in an initial column after its status changed
-        const stuckInInitial = ["a_fazer", "falta_preenchimento"].includes(existing.coluna) && autoColuna !== existing.coluna;
-
-        if (hadUpdate || stuckInInitial) {
-          // Data changed or card misplaced → move to correct column
-          finalColuna = autoColuna;
-          finalPosicao = 0; // top of column
-          movedCount++;
-        } else {
-          // No meaningful update → keep user's position
-          finalColuna = existing.coluna;
-          finalPosicao = existing.posicao;
-          keptCount++;
-        }
+        // Coluna manual é fonte de verdade: sync só atualiza os dados do card.
+        // Nunca devolver para coluna automática, principalmente "Já Resolvido".
+        finalColuna = existing.coluna;
+        finalPosicao = existing.posicao;
+        keptCount++;
       }
 
       return {
