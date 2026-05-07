@@ -1569,13 +1569,18 @@ Deno.serve(async (req) => {
     let naoEncontradas = 0;
     let divergenciaPecas = 0;
 
-    const MAX_EXECUTION_TIME_MS = 50000;
+    const MAX_EXECUTION_TIME_MS = 120000;
     let auvoChecks = 0;
+    let pendentesPorTempo = 0;
+    let pendentesPorErroAuvo = 0;
+    const pendentesDetalhe: Array<Record<string, unknown>> = [];
 
     for (const os of osCandidatas) {
       // Check de tempo e limite de chamadas Auvo
       if (Date.now() - startTime > MAX_EXECUTION_TIME_MS) {
-        console.warn(`[auvo-gc-sync] ⚠️ Tempo limite atingido — parando com ${logEntries.length} OS processadas de ${osCandidatas.length} candidatas`);
+        const restantes = osCandidatas.length - (logEntries.length + pendentesPorTempo);
+        pendentesPorTempo = restantes > 0 ? restantes : 0;
+        console.warn(`[auvo-gc-sync] Limite de tempo atingido. ${pendentesPorTempo} OS pendentes para próximo ciclo.`);
         break;
       }
       if (auvoChecks >= MAX_AUVO_CHECKS) {
@@ -1587,7 +1592,24 @@ Deno.serve(async (req) => {
       if (filtroCliente && !os.gc_cliente.toLowerCase().includes(filtroCliente)) continue;
 
       auvoChecks++;
-      const tarefa = await getAuvoTask(os.auvo_task_id, auvoBearerToken);
+      const auvoResult = await getAuvoTaskDetailed(os.auvo_task_id, auvoBearerToken);
+
+      // Caso (c): erro de rede / 5xx — NÃO alterar GC. OS volta no próximo ciclo.
+      if ("error" in auvoResult && auvoResult.error) {
+        pendentesPorErroAuvo++;
+        pendentesDetalhe.push({
+          gc_os_id: os.gc_os_id,
+          gc_os_codigo: os.gc_os_codigo,
+          auvo_task_id: os.auvo_task_id,
+          motivo: "erro_auvo",
+          status_auvo: auvoResult.status,
+        });
+        console.warn(`[auvo-gc-sync] OS ${os.gc_os_codigo}: erro Auvo HTTP ${auvoResult.status} — pulando (será reprocessada no próximo ciclo)`);
+        continue;
+      }
+
+      // Caso (b): tarefa não existe (404) — preservar comportamento anterior
+      const tarefa = "found" in auvoResult ? auvoResult.task : null;
 
       if (!tarefa) {
         naoEncontradas++;
