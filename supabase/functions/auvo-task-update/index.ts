@@ -372,10 +372,10 @@ Deno.serve(async (req) => {
       { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   } catch (error) {
-    console.error("[auvo-task-update] Erro:", error);
+    console.error(`[auvo-task-update][reqId=${reqId}] Erro:`, error);
     return new Response(
-      JSON.stringify({ error: (error as Error).message }),
-      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      JSON.stringify({ error: (error as Error).message, reqId }),
+      { status: 500, headers: respHeaders }
     );
   }
 });
