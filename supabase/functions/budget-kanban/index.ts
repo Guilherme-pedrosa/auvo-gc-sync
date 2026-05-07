@@ -853,13 +853,16 @@ async function runBudgetKanbanSync(opts: {
       .lte("data_tarefa", endDate)
       .eq("questionario_id", QUESTIONNAIRE_ID);
 
-    // Buscar TAMBÉM tarefas que tenham GC orçamento/OS no período mesmo sem questionario_id (JBS Complementar etc)
+    // Regra de negócio WeDo:
+    // Kanban Orçamentos é funil de venda. OS só entra se houver
+    // orçamento associado. OS de execução pura (contratos, garantia,
+    // atendimento direto sem orçamento) NÃO pertencem a este Kanban.
     const { data: centralRowsExtras } = await sbClient
       .from("tarefas_central")
       .select("*")
       .gte("data_tarefa", startDate)
       .lte("data_tarefa", endDate)
-      .or("gc_orcamento_id.not.is.null,gc_os_id.not.is.null");
+      .not("gc_orcamento_id", "is", null);
 
     const seenIds = new Set<string>();
     const combinedCentral: any[] = [];
