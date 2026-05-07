@@ -20,20 +20,45 @@ async function auvoLogin(apiKey: string, apiToken: string): Promise<string> {
   return token;
 }
 
+// Fetch with retry for transient errors (429 for GC, 502/503 for Auvo)
+async function fetchWithRetry(
+  url: string,
+  init: RequestInit,
+  opts: { retryStatuses: number[]; delaysMs: number[]; label: string }
+): Promise<Response> {
+  let lastResp: Response | null = null;
+  const attempts = opts.delaysMs.length + 1;
+  for (let i = 0; i < attempts; i++) {
+    const resp = await fetch(url, init);
+    if (!opts.retryStatuses.includes(resp.status)) return resp;
+    lastResp = resp;
+    if (i < opts.delaysMs.length) {
+      console.warn(`[auvo-agenda] ${opts.label} got ${resp.status}, retrying in ${opts.delaysMs[i]}ms (attempt ${i + 1}/${attempts - 1})`);
+      await new Promise(r => setTimeout(r, opts.delaysMs[i]));
+    }
+  }
+  return lastResp!;
+}
+
 // Fetch all GC OS pages and build taskId -> OS map
-async function fetchGcOsMap(gcHeaders: Record<string, string>): Promise<Map<string, any>> {
+async function fetchGcOsMap(
+  gcHeaders: Record<string, string>,
+  startDate?: string,
+  endDate?: string,
+): Promise<Map<string, any>> {
   const map = new Map<string, any>();
   let page = 1;
   let totalPages = 1;
   const MAX_PAGES = 50;
+  const dateQs = (startDate && endDate) ? `&data_inicio=${startDate}&data_fim=${endDate}` : "";
 
   while (page <= totalPages && page <= MAX_PAGES) {
-    const url = `${GC_BASE_URL}/api/ordens_servicos?limite=100&pagina=${page}`;
-    const response = await fetch(url, { headers: gcHeaders });
-    if (response.status === 429) {
-      await new Promise(r => setTimeout(r, 3000));
-      continue;
-    }
+    const url = `${GC_BASE_URL}/api/ordens_servicos?limite=100&pagina=${page}${dateQs}`;
+    const response = await fetchWithRetry(url, { headers: gcHeaders }, {
+      retryStatuses: [429],
+      delaysMs: [5000, 10000],
+      label: `GC OS page ${page}`,
+    });
     if (!response.ok) break;
 
     const data = await response.json();
@@ -66,24 +91,32 @@ async function fetchGcOsMap(gcHeaders: Record<string, string>): Promise<Map<stri
     }
     page++;
   }
+  if (page > MAX_PAGES && page <= totalPages) {
+    console.warn(`[auvo-agenda] GC OS truncated at MAX_PAGES=${MAX_PAGES} (totalPages=${totalPages})`);
+  }
   console.log(`[auvo-agenda] GC OS map: ${map.size} entries`);
   return map;
 }
 
 // Fetch all GC orçamentos and build taskId -> orc map
-async function fetchGcOrcMap(gcHeaders: Record<string, string>): Promise<Map<string, any>> {
+async function fetchGcOrcMap(
+  gcHeaders: Record<string, string>,
+  startDate?: string,
+  endDate?: string,
+): Promise<Map<string, any>> {
   const map = new Map<string, any>();
   let page = 1;
   let totalPages = 1;
   const MAX_PAGES = 50;
+  const dateQs = (startDate && endDate) ? `&data_inicio=${startDate}&data_fim=${endDate}` : "";
 
   while (page <= totalPages && page <= MAX_PAGES) {
-    const url = `${GC_BASE_URL}/api/orcamentos?limite=100&pagina=${page}`;
-    const response = await fetch(url, { headers: gcHeaders });
-    if (response.status === 429) {
-      await new Promise(r => setTimeout(r, 3000));
-      continue;
-    }
+    const url = `${GC_BASE_URL}/api/orcamentos?limite=100&pagina=${page}${dateQs}`;
+    const response = await fetchWithRetry(url, { headers: gcHeaders }, {
+      retryStatuses: [429],
+      delaysMs: [5000, 10000],
+      label: `GC Orc page ${page}`,
+    });
     if (!response.ok) break;
 
     const data = await response.json();
@@ -110,6 +143,9 @@ async function fetchGcOrcMap(gcHeaders: Record<string, string>): Promise<Map<str
       }
     }
     page++;
+  }
+  if (page > MAX_PAGES && page <= totalPages) {
+    console.warn(`[auvo-agenda] GC Orc truncated at MAX_PAGES=${MAX_PAGES} (totalPages=${totalPages})`);
   }
   console.log(`[auvo-agenda] GC Orc map: ${map.size} entries`);
   return map;
@@ -183,7 +219,11 @@ Deno.serve(async (req) => {
       while (page <= MAX_PAGES) {
         const paramFilter = encodeURIComponent(JSON.stringify(filterObj));
         const url = `${AUVO_BASE_URL}/tasks/?page=${page}&pageSize=${pageSize}&order=asc&paramFilter=${paramFilter}`;
-        const response = await fetch(url, { headers });
+        const response = await fetchWithRetry(url, { headers }, {
+          retryStatuses: [502, 503],
+          delaysMs: [3000, 6000, 9000],
+          label: `Auvo tasks page ${page}`,
+        });
         if (response.status === 404) break;
         if (!response.ok) {
           const text = await response.text();
@@ -197,14 +237,17 @@ Deno.serve(async (req) => {
         if (tasks.length < pageSize) break;
         page++;
       }
+      if (page > MAX_PAGES) {
+        console.warn(`[auvo-agenda] Auvo tasks truncated at MAX_PAGES=${MAX_PAGES}`);
+      }
       return allTasks;
     };
 
     // Run in parallel: Auvo tasks + GC OS + GC Orçamentos
     const [allTasks, gcOsMap, gcOrcMap] = await Promise.all([
       fetchTasks(),
-      hasGc ? fetchGcOsMap(gcHeaders) : Promise.resolve(new Map<string, any>()),
-      hasGc ? fetchGcOrcMap(gcHeaders) : Promise.resolve(new Map<string, any>()),
+      hasGc ? fetchGcOsMap(gcHeaders, startDate, endDate) : Promise.resolve(new Map<string, any>()),
+      hasGc ? fetchGcOrcMap(gcHeaders, startDate, endDate) : Promise.resolve(new Map<string, any>()),
     ]);
 
     console.log(`[auvo-agenda] ${allTasks.length} tasks, ${gcOsMap.size} OS, ${gcOrcMap.size} orçamentos`);
