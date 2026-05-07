@@ -590,9 +590,10 @@ function hasFilledQuestionnaireAnswers(item: any): boolean {
 }
 
 function budgetColumnForItem(item: any): string {
-  // Regra do Kanban Orçamentos: OS só conta como realizada se houver orçamento vinculado.
-  // Tarefa Execução/OS solta não pode empurrar card para "OS Realizada".
-  if (item.os_realizada && item.orcamento_realizado) return "os_realizada";
+  // Regra do Kanban Orçamentos: se a tarefa estiver vinculada a uma OS GC
+  // (atributo 73343 ou 73344, mapeado em fetchGcOsMap), ela já foi realizada
+  // e sai de "A Fazer" — independentemente de existir orçamento associado.
+  if (item.os_realizada) return "os_realizada";
   if (item.orcamento_realizado) {
     const situacao = String(item.gc_orcamento?.gc_situacao || "sem_situacao").trim() || "sem_situacao";
     return `orc_${situacao.replace(/\s+/g, "_").toLowerCase()}`;
