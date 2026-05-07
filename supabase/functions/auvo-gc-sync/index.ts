@@ -229,6 +229,45 @@ async function getAuvoTask(taskId: string, bearerToken: string): Promise<any | n
   }
 }
 
+// Variante detalhada: distingue 404 (notFound) de erros transitórios 5xx/rede (error).
+// Usada no loop de escrita (decisão de mudar situação no GC) para não confundir
+// "tarefa não existe" com "Auvo instável".
+type AuvoTaskDetailed =
+  | { found: true; task: any }
+  | { notFound: true }
+  | { error: true; status: number };
+
+async function getAuvoTaskDetailed(taskId: string, bearerToken: string): Promise<AuvoTaskDetailed> {
+  const url = `${AUVO_BASE_URL}/tasks/${taskId}`;
+  try {
+    const response = await rateLimitedFetch(url, { headers: auvoHeaders(bearerToken) }, "auvo");
+    if (response.status === 404) return { notFound: true };
+    if (!response.ok) {
+      console.error(`[auvo-gc-sync] Auvo task ${taskId} error: ${response.status}`);
+      return { error: true, status: response.status };
+    }
+    const data = await response.json();
+    const entity = data?.result ?? data;
+    if (!entity) return { notFound: true };
+    return {
+      found: true,
+      task: {
+        taskID: entity.taskID ?? entity.id,
+        finished: entity.finished === true || entity.finished === "true",
+        pendency: String(entity.pendency ?? entity.pendencia ?? ""),
+        taskStatus: String(entity.taskStatus ?? ""),
+        checkIn: entity.checkIn === true,
+        checkOut: entity.checkOut === true,
+        report: String(entity.report ?? ""),
+        _raw: entity,
+      },
+    };
+  } catch (err) {
+    console.error(`[auvo-gc-sync] Erro ao buscar tarefa ${taskId}:`, err);
+    return { error: true, status: 0 };
+  }
+}
+
 // ─── STEP 2.1: Buscar peças do orçamento GC ───
 async function fetchItensPecasOsGC(
   gcOsId: string, gcHeaders: Record<string, string>
@@ -577,13 +616,51 @@ async function executarPutOs(
     `[auvo-gc-sync] ${label} OS ${gcOsId}: situacao_id=${String(payload.situacao_id)}, vendedor_id=${String(payload.vendedor_id || "N/A")}, nome_vendedor=${String(payload.nome_vendedor || "N/A")}, valor_total=${String(payload.valor_total || "N/A")}`,
   );
 
-  let response = await rateLimitedFetch(url, {
-    method: "PUT",
-    headers: gcHeaders,
-    body: JSON.stringify(payload),
-  }, "gc");
+  const targetSituacaoId = String(payload.situacao_id ?? "");
+  const doPut = async () =>
+    rateLimitedFetch(url, {
+      method: "PUT",
+      headers: gcHeaders,
+      body: JSON.stringify(payload),
+    }, "gc");
 
+  let response = await doPut();
   let body = await response.json().catch(() => ({}));
+
+  // Retries para 429 (1x após 5s) e 502/503 (até 2x: 3s, 6s).
+  // Antes de cada retry, conferir se o GET já mostra a situação destino — idempotência.
+  const transientPlan: Array<{ status: number; waitMs: number }> = [];
+  if (response.status === 429) transientPlan.push({ status: 429, waitMs: 5000 });
+  if (response.status === 502 || response.status === 503) {
+    transientPlan.push({ status: response.status, waitMs: 3000 });
+    transientPlan.push({ status: response.status, waitMs: 6000 });
+  }
+
+  for (const step of transientPlan) {
+    if (response.ok) break;
+    if (response.status !== 429 && response.status !== 502 && response.status !== 503) break;
+
+    console.warn(`[auvo-gc-sync] ${label} OS ${gcOsId}: HTTP ${response.status} — aguardando ${step.waitMs}ms para retry`);
+    await new Promise((r) => setTimeout(r, step.waitMs));
+
+    // Idempotência: se a primeira tentativa gravou e devolveu erro de rede,
+    // o GET vai mostrar situação já no destino — não sobrescrever.
+    if (targetSituacaoId) {
+      try {
+        const osCheck = await buscarOsAtual(gcOsId, gcHeaders);
+        const situacaoAtual = String((osCheck as any)?.situacao_id ?? (osCheck as any)?.situacao?.id ?? "");
+        if (osCheck && situacaoAtual === targetSituacaoId) {
+          console.warn(`[auvo-gc-sync] ${label} OS ${gcOsId}: situação já está em ${targetSituacaoId} — considerando sucesso (idempotente)`);
+          return { success: true, status: 200, body: { idempotent: true, situacao_id: situacaoAtual } };
+        }
+      } catch (err) {
+        console.warn(`[auvo-gc-sync] ${label} OS ${gcOsId}: falha no GET de idempotência:`, err);
+      }
+    }
+
+    response = await doPut();
+    body = await response.json().catch(() => ({}));
+  }
 
   // Retry automático para erro clássico de centavos do GC ("faltando/sobrando 0.01")
   if (!response.ok) {
@@ -1492,13 +1569,18 @@ Deno.serve(async (req) => {
     let naoEncontradas = 0;
     let divergenciaPecas = 0;
 
-    const MAX_EXECUTION_TIME_MS = 50000;
+    const MAX_EXECUTION_TIME_MS = 120000;
     let auvoChecks = 0;
+    let pendentesPorTempo = 0;
+    let pendentesPorErroAuvo = 0;
+    const pendentesDetalhe: Array<Record<string, unknown>> = [];
 
     for (const os of osCandidatas) {
       // Check de tempo e limite de chamadas Auvo
       if (Date.now() - startTime > MAX_EXECUTION_TIME_MS) {
-        console.warn(`[auvo-gc-sync] ⚠️ Tempo limite atingido — parando com ${logEntries.length} OS processadas de ${osCandidatas.length} candidatas`);
+        const restantes = osCandidatas.length - (logEntries.length + pendentesPorTempo);
+        pendentesPorTempo = restantes > 0 ? restantes : 0;
+        console.warn(`[auvo-gc-sync] Limite de tempo atingido. ${pendentesPorTempo} OS pendentes para próximo ciclo.`);
         break;
       }
       if (auvoChecks >= MAX_AUVO_CHECKS) {
@@ -1510,7 +1592,24 @@ Deno.serve(async (req) => {
       if (filtroCliente && !os.gc_cliente.toLowerCase().includes(filtroCliente)) continue;
 
       auvoChecks++;
-      const tarefa = await getAuvoTask(os.auvo_task_id, auvoBearerToken);
+      const auvoResult = await getAuvoTaskDetailed(os.auvo_task_id, auvoBearerToken);
+
+      // Caso (c): erro de rede / 5xx — NÃO alterar GC. OS volta no próximo ciclo.
+      if ("error" in auvoResult && auvoResult.error) {
+        pendentesPorErroAuvo++;
+        pendentesDetalhe.push({
+          gc_os_id: os.gc_os_id,
+          gc_os_codigo: os.gc_os_codigo,
+          auvo_task_id: os.auvo_task_id,
+          motivo: "erro_auvo",
+          status_auvo: auvoResult.status,
+        });
+        console.warn(`[auvo-gc-sync] OS ${os.gc_os_codigo}: erro Auvo HTTP ${auvoResult.status} — pulando (será reprocessada no próximo ciclo)`);
+        continue;
+      }
+
+      // Caso (b): tarefa não existe (404) — preservar comportamento anterior
+      const tarefa = "found" in auvoResult ? auvoResult.task : null;
 
       if (!tarefa) {
         naoEncontradas++;
@@ -1638,6 +1737,24 @@ Deno.serve(async (req) => {
       os_divergencia_pecas: divergenciaPecas,
       erros, dry_run: dryRun, duracao_ms: duracao, detalhes: logEntries,
     });
+
+    if (pendentesPorErroAuvo > 0 || pendentesPorTempo > 0) {
+      try {
+        await supabase.from("auvo_gc_sync_log").insert({
+          executado_em: new Date().toISOString(),
+          observacao: "OS_PENDENTE_RETRY",
+          dry_run: dryRun,
+          duracao_ms: duracao,
+          detalhes: {
+            pendentes_por_erro_auvo: pendentesPorErroAuvo,
+            pendentes_por_tempo: pendentesPorTempo,
+            itens: pendentesDetalhe,
+          },
+        });
+      } catch (err) {
+        console.warn("[auvo-gc-sync] Falha ao gravar log de pendentes:", err);
+      }
+    }
 
     const summary = { atualizadas, comPendencia, semPendencia, naoEncontradas, divergenciaPecas, erros, osCandidatas: osCandidatas.length, dryRun, duracao_ms: duracao };
     console.log("[auvo-gc-sync] Concluído:", summary);
