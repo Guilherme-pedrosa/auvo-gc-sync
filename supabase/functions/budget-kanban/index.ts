@@ -365,20 +365,49 @@ async function fetchAuvoTasksWithQuestionnaire(
     const url = `${AUVO_BASE_URL}/tasks/?page=${page}&pageSize=${pageSize}&order=desc&paramFilter=${paramFilter}`;
 
     console.log(`[budget-kanban] Auvo page ${page}`);
-    let response: Response;
-    try {
-      const now = Date.now();
-      const elapsed = now - lastAuvoCall;
-      if (elapsed < MIN_DELAY_MS) await new Promise(r => setTimeout(r, MIN_DELAY_MS - elapsed));
-      lastAuvoCall = Date.now();
-      response = await fetchWithTimeout(url, { headers: auvoHeaders(bearerToken) }, AUVO_TASKS_TIMEOUT_MS);
-    } catch (err) {
-      hadError = true;
-      errorMessage = `Auvo /tasks timeout ou conexão cancelada na página ${page}`;
-      console.error(`[budget-kanban] ${errorMessage}:`, err);
+    // Retry: 502/503 → 3 tentativas (3s/6s/9s); timeout → 2 tentativas (5s/10s)
+    const STATUS_BACKOFF = [3000, 6000, 9000];
+    const TIMEOUT_BACKOFF = [5000, 10000];
+    let response: Response | null = null;
+    let pageError: string | null = null;
+    let statusAttempt = 0;
+    let timeoutAttempt = 0;
+
+    while (true) {
+      try {
+        const now = Date.now();
+        const elapsed = now - lastAuvoCall;
+        if (elapsed < MIN_DELAY_MS) await new Promise(r => setTimeout(r, MIN_DELAY_MS - elapsed));
+        lastAuvoCall = Date.now();
+        response = await fetchWithTimeout(url, { headers: auvoHeaders(bearerToken) }, AUVO_TASKS_TIMEOUT_MS);
+      } catch (err) {
+        if (timeoutAttempt < TIMEOUT_BACKOFF.length) {
+          const wait = TIMEOUT_BACKOFF[timeoutAttempt++];
+          console.warn(`[budget-kanban] Auvo /tasks timeout pg ${page}, retry em ${wait}ms (${timeoutAttempt}/${TIMEOUT_BACKOFF.length})`);
+          await new Promise(r => setTimeout(r, wait));
+          continue;
+        }
+        pageError = `Auvo /tasks timeout ou conexão cancelada na página ${page}`;
+        console.error(`[budget-kanban] ${pageError}:`, err);
+        break;
+      }
+
+      if (response.status === 502 || response.status === 503) {
+        if (statusAttempt < STATUS_BACKOFF.length) {
+          const wait = STATUS_BACKOFF[statusAttempt++];
+          console.warn(`[budget-kanban] Auvo /tasks ${response.status} pg ${page}, retry em ${wait}ms (${statusAttempt}/${STATUS_BACKOFF.length})`);
+          await new Promise(r => setTimeout(r, wait));
+          continue;
+        }
+      }
       break;
     }
 
+    if (!response) {
+      hadError = true;
+      errorMessage = pageError;
+      break;
+    }
     if (response.status === 404) break;
     if (!response.ok) {
       const errBody = await response.text().catch(() => "");
@@ -403,6 +432,10 @@ async function fetchAuvoTasksWithQuestionnaire(
     page++;
   }
 
+  if (page > MAX_PAGES) {
+    console.warn(`[budget-kanban] TRUNCAMENTO: MAX_PAGES atingido em Auvo /tasks, possível perda de dados`);
+  }
+
   if (allTasks.length > 0) {
     const sample = allTasks[0];
     console.log(`[budget-kanban] Sample task fields: taskID=${sample.taskID}, customerDescription=${sample.customerDescription}, customerName=${sample.customerName}, customerId=${sample.customerId}, externalId=${sample.externalId}`);
@@ -425,10 +458,13 @@ async function fetchGcOrcamentosMap(
     let url = `${GC_BASE_URL}/api/orcamentos?limite=100&pagina=${page}`;
     if (startDate) url += `&data_inicio=${startDate}`;
     if (endDate) url += `&data_fim=${endDate}`;
+    const RATE_BACKOFF = [5000, 5000, 10000]; // 1ª espera + 2 retries extras
     for (let attempt = 0; attempt < 3; attempt++) {
       const response = await rateLimitedFetch(url, { headers: gcHeaders }, "gc");
       if (response.status === 429) {
-        await new Promise(r => setTimeout(r, 3000));
+        const wait = RATE_BACKOFF[attempt];
+        console.warn(`[budget-kanban] GC orcamentos page ${page} 429, retry em ${wait}ms (${attempt + 1}/3)`);
+        await new Promise(r => setTimeout(r, wait));
         continue;
       }
       if (!response.ok) {
@@ -477,6 +513,9 @@ async function fetchGcOrcamentosMap(
   if (!first) return map;
   ingest(first.records);
   const totalPages = Math.min(first.totalPages, MAX_PAGES);
+  if (first.totalPages > MAX_PAGES) {
+    console.warn(`[budget-kanban] TRUNCAMENTO: MAX_PAGES atingido em GC orcamentos (totalPages=${first.totalPages}), possível perda de dados`);
+  }
   console.log(`[budget-kanban] GC orçamentos: ${totalPages} páginas (paralelo x${CONCURRENCY})`);
 
   // Fetch remaining pages in parallel batches
@@ -504,10 +543,13 @@ async function fetchGcOsMap(
     let url = `${GC_BASE_URL}/api/ordens_servicos?limite=100&pagina=${page}`;
     if (startDate) url += `&data_inicio=${startDate}`;
     if (endDate) url += `&data_fim=${endDate}`;
+    const RATE_BACKOFF = [5000, 5000, 10000];
     for (let attempt = 0; attempt < 3; attempt++) {
       const response = await rateLimitedFetch(url, { headers: gcHeaders }, "gc");
       if (response.status === 429) {
-        await new Promise(r => setTimeout(r, 3000));
+        const wait = RATE_BACKOFF[attempt];
+        console.warn(`[budget-kanban] GC OS page ${page} 429, retry em ${wait}ms (${attempt + 1}/3)`);
+        await new Promise(r => setTimeout(r, wait));
         continue;
       }
       if (!response.ok) {
@@ -565,6 +607,9 @@ async function fetchGcOsMap(
   if (!first) return map;
   ingest(first.records);
   const totalPages = Math.min(first.totalPages, MAX_PAGES);
+  if (first.totalPages > MAX_PAGES) {
+    console.warn(`[budget-kanban] TRUNCAMENTO: MAX_PAGES atingido em GC ordens_servicos (totalPages=${first.totalPages}), possível perda de dados`);
+  }
   console.log(`[budget-kanban] GC OS: ${totalPages} páginas (paralelo x${CONCURRENCY})`);
 
   for (let start = 2; start <= totalPages; start += CONCURRENCY) {
