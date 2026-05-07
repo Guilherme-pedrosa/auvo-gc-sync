@@ -310,6 +310,10 @@ async function fetchAuvoTasksForPeriod(bearerToken: string, startDate: string, e
     page++;
   }
 
+  if (page > MAX_PAGES) {
+    console.warn(`[central-sync] TRUNCAMENTO: MAX_PAGES atingido em Auvo /tasks (${startDate}→${endDate})`);
+  }
+
   return allTasks;
 }
 
@@ -349,10 +353,17 @@ async function fetchGcOrcamentos(gcHeaders: Record<string, string>): Promise<{ b
 
   while (page <= totalPages && page <= MAX_PAGES) {
     const url = `${GC_BASE_URL}/api/orcamentos?limite=100&pagina=${page}`;
-    const response = await rateLimitedFetch(url, { headers: gcHeaders }, "gc");
-    if (response.status === 429) {
-      await new Promise(r => setTimeout(r, 3000));
-      continue;
+    let response: Response | null = null;
+    const RATE_BACKOFF = [3000, 6000, 12000];
+    for (let attempt = 0; attempt < RATE_BACKOFF.length; attempt++) {
+      response = await rateLimitedFetch(url, { headers: gcHeaders }, "gc");
+      if (response.status !== 429) break;
+      console.warn(`[central-sync] GC orcamentos page ${page} 429, retry ${attempt + 1}/${RATE_BACKOFF.length} em ${RATE_BACKOFF[attempt]}ms`);
+      await new Promise(r => setTimeout(r, RATE_BACKOFF[attempt]));
+    }
+    if (!response || response.status === 429) {
+      console.error(`[central-sync] GC orcamentos page ${page}: 429 persistente após retries — retornando mapa parcial`);
+      break;
     }
     if (!response.ok) break;
 
@@ -395,6 +406,9 @@ async function fetchGcOrcamentos(gcHeaders: Record<string, string>): Promise<{ b
     console.log(`[central-sync] GC orçamentos page ${page}/${totalPages}: ${records.length} registros, ${Object.keys(map).length} com tarefa`);
     page++;
   }
+  if (page > MAX_PAGES && page <= totalPages) {
+    console.warn(`[central-sync] TRUNCAMENTO: MAX_PAGES atingido em GC orcamentos (totalPages=${totalPages})`);
+  }
   return { byTaskId: map, byCodigo };
 }
 
@@ -419,10 +433,17 @@ async function fetchGcOs(gcHeaders: Record<string, string>, options?: { situacao
       if (options?.dataInicio) url += `&data_inicio=${options.dataInicio}`;
       if (options?.dataFim) url += `&data_fim=${options.dataFim}`;
 
-      const response = await rateLimitedFetch(url, { headers: gcHeaders }, "gc");
-      if (response.status === 429) {
-        await new Promise(r => setTimeout(r, 3000));
-        continue;
+      let response: Response | null = null;
+      const RATE_BACKOFF = [3000, 6000, 12000];
+      for (let attempt = 0; attempt < RATE_BACKOFF.length; attempt++) {
+        response = await rateLimitedFetch(url, { headers: gcHeaders }, "gc");
+        if (response.status !== 429) break;
+        console.warn(`[central-sync] GC ordens_servicos page ${page}${sitId ? ` sit=${sitId}` : ""} 429, retry ${attempt + 1}/${RATE_BACKOFF.length} em ${RATE_BACKOFF[attempt]}ms`);
+        await new Promise(r => setTimeout(r, RATE_BACKOFF[attempt]));
+      }
+      if (!response || response.status === 429) {
+        console.error(`[central-sync] GC ordens_servicos page ${page}${sitId ? ` sit=${sitId}` : ""}: 429 persistente após retries — retornando mapa parcial`);
+        break;
       }
       if (!response.ok) break;
 
@@ -483,6 +504,9 @@ async function fetchGcOs(gcHeaders: Record<string, string>, options?: { situacao
 
       console.log(`[central-sync] GC OS${sitId ? ` sit=${sitId}` : ''} page ${page}/${totalPages}: ${records.length} registros, ${Object.keys(map).length} com tarefa`);
       page++;
+    }
+    if (page > 50 && page <= totalPages) {
+      console.warn(`[central-sync] TRUNCAMENTO: MAX_PAGES atingido em GC ordens_servicos${sitId ? ` sit=${sitId}` : ''} (totalPages=${totalPages})`);
     }
   }
   return { byTaskId: map, byTaskIdAll, byCodigo, byOrcNumero };
@@ -772,11 +796,13 @@ async function runCentralSync(body: CentralSyncBody = {}) {
 
       // For OS in DB but NOT in GC listing (e.g. cancelled OS filtered by API), fetch individually
       const missingOsIds = Array.from(dbOsIds).filter(id => !allGcOsById[id]);
+      let pendingIndividualOsLookups = 0;
       if (missingOsIds.length > 0) {
         // Cap individual lookups to avoid IDLE_TIMEOUT (150s). Remaining IDs will be picked up next sync.
         const MAX_INDIVIDUAL = 80;
         const toFetch = missingOsIds.slice(0, MAX_INDIVIDUAL);
         if (missingOsIds.length > MAX_INDIVIDUAL) {
+          pendingIndividualOsLookups = missingOsIds.length - MAX_INDIVIDUAL;
           console.log(`[central-sync] ${missingOsIds.length} OS faltantes — limitando a ${MAX_INDIVIDUAL} nesta execução`);
         } else {
           console.log(`[central-sync] ${missingOsIds.length} OS no banco não encontradas na listagem GC — buscando individualmente...`);
@@ -818,6 +844,10 @@ async function runCentralSync(body: CentralSyncBody = {}) {
           }
         }
         console.log(`[central-sync] OS individuais recuperadas: ${missingOsIds.length - Array.from(dbOsIds).filter(id => !allGcOsById[id]).length}`);
+        (globalThis as any).__centralSyncPending = {
+          os_individuais: pendingIndividualOsLookups,
+          lookups_auvo: 0,
+        };
       }
 
       let globalOsUpdated = 0;
@@ -1572,6 +1602,10 @@ async function runCentralSync(body: CentralSyncBody = {}) {
       .lt("data_tarefa", cleanupCutoff);
 
     console.log(`[central-sync] Concluído: ${upserted} upserted, ${errors} erros, ${deleted || 0} removidos (> 6 meses)`);
+
+    const pending = (globalThis as any).__centralSyncPending || { os_individuais: 0, lookups_auvo: 0 };
+    console.log(`[central-sync] Pendentes para próximo ciclo: OS individuais=${pending.os_individuais}, lookups Auvo=${pending.lookups_auvo}`);
+    (globalThis as any).__centralSyncPending = { os_individuais: 0, lookups_auvo: 0 };
 
     const auvoFailed = auvoTasks.length === 0;
     return {
