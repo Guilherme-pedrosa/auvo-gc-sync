@@ -255,7 +255,8 @@ async function fetchAuvoTaskSnapshot(bearerToken: string, taskId: string): Promi
     equipmentSerial = String(result?.equipmentIdentifier || result?.equipment?.identifier || result?.equipment?.serial || "").trim();
   }
 
-  return { address, orientation, displacementStart, checkInDate, checkOutDate, taskEndDate, startTime, endTime, estimatedDuration, equipmentName, equipmentSerial, equipmentIds: equipIds };
+  const questionnaires = Array.isArray(result?.questionnaires) ? result.questionnaires : [];
+  return { address, orientation, displacementStart, checkInDate, checkOutDate, taskEndDate, startTime, endTime, estimatedDuration, equipmentName, equipmentSerial, equipmentIds: equipIds, questionnaires };
 }
 
 // Fetch Auvo tasks for a single month window
