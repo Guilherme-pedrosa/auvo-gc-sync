@@ -838,9 +838,10 @@ async function runBudgetKanbanSync(opts: {
       console.warn(`[budget-kanban] Erro ao carregar snapshot:`, err);
     }
 
-    // Estratégia: busca direta na Auvo (igual ao kanban-custom) para garantir que
-    // todas as tarefas com o questionário 216040 apareçam, mesmo que ainda não estejam
-    // na tabela central. O caminho via tarefas_central só é usado como reforço.
+    // Auvo é fonte de verdade do questionário 216040. Sempre buscamos Auvo + GC em
+    // paralelo, e usamos tarefas_central apenas como complemento (tarefas que a Auvo
+    // não devolveu na janela). Respostas frescas da Auvo SOBRESCREVEM o que está no
+    // banco, sem depender do central-sync ter rodado antes.
     const { data: centralRows, error: centralError } = await sbClient
       .from("tarefas_central")
       .select("*")
@@ -867,165 +868,9 @@ async function runBudgetKanbanSync(opts: {
 
     if (centralError) {
       console.warn("[budget-kanban] Erro ao ler tarefas_central, usando APIs externas:", centralError.message);
-    } else if (combinedCentral.length > 0) {
-      const centralRowsAll = combinedCentral;
-      console.log(`[budget-kanban] Central encontrada: ${centralRowsAll.length} tarefas (questionário ${QUESTIONNAIRE_ID} + GC docs)`);
-
-      // FONTE DE VERDADE = AUVO AO VIVO. Buscar em paralelo e sobrescrever
-      // questionario_respostas com o que veio fresco. Tarefas Auvo que ainda
-      // não estão na central são adicionadas (montadas direto do Auvo).
-      let auvoFreshById: Record<string, any> = {};
-      let auvoFreshTasks: any[] = [];
-      let gcOrcMapFresh: Record<string, any> = {};
-      let gcOsMapFresh: Record<string, any> = {};
-      try {
-        const [auvoPrimary, gcOrcMap, gcOsMap] = await Promise.all([
-          fetchAuvoTasksWithQuestionnaire(bearerToken, startDate, endDate),
-          fetchGcOrcamentosMap(gcH),
-          fetchGcOsMap(gcH),
-        ]);
-        auvoFreshTasks = auvoPrimary.tasks || [];
-        gcOrcMapFresh = gcOrcMap || {};
-        gcOsMapFresh = gcOsMap || {};
-        for (const t of auvoFreshTasks) {
-          const tid = String(t?.taskID || "").trim();
-          if (tid) auvoFreshById[tid] = t;
-        }
-        console.log(`[budget-kanban] Auvo ao vivo: ${auvoFreshTasks.length} tarefas com questionário ${QUESTIONNAIRE_ID}`);
-      } catch (e) {
-        console.warn("[budget-kanban] Falha ao buscar Auvo ao vivo (mantendo dados da central):", (e as Error).message);
-      }
-
-      // Overlay: para cada linha da central que está no Auvo, atualizar respostas
-      let overlayCount = 0;
-      for (const row of centralRowsAll) {
-        const tid = String(row.auvo_task_id || "").trim();
-        const t = auvoFreshById[tid];
-        if (!t) continue;
-        const targetQ = (t.questionnaires || []).find(
-          (q: any) => String(q.questionnaireId) === QUESTIONNAIRE_ID
-        );
-        if (targetQ && Array.isArray(targetQ.answers)) {
-          row.questionario_respostas = targetQ.answers.map((a: any) => ({
-            question: String(a.questionDescription || ""),
-            reply: String(a.reply || ""),
-          }));
-          overlayCount++;
-        }
-      }
-      console.log(`[budget-kanban] Overlay Auvo→central: ${overlayCount} tarefas com respostas frescas`);
-
-      const { data: existingCache } = await sbClient
-        .from("kanban_orcamentos_cache")
-        .select("auvo_task_id, coluna, posicao, dados");
-
-      const existingMap: Record<string, { coluna: string; posicao: number; dados: any }> = {};
-      for (const row of existingCache || []) {
-        existingMap[row.auvo_task_id] = { coluna: row.coluna, posicao: row.posicao, dados: row.dados };
-      }
-
-      const now = new Date().toISOString();
-      let movedCount = 0;
-      let keptCount = 0;
-
-      const items = centralRowsAll
-        .map(buildBudgetItemFromCentral)
-        .filter((item: any) => item.auvo_task_id);
-
-      // Adicionar tarefas Auvo ainda não presentes na central (ex.: 216040 recém preenchido)
-      const centralIds = new Set(items.map((i: any) => String(i.auvo_task_id)));
-      let addedFromAuvo = 0;
-      for (const t of auvoFreshTasks) {
-        const tid = String(t?.taskID || "").trim();
-        if (!tid || centralIds.has(tid)) continue;
-        const targetQ = (t.questionnaires || []).find(
-          (q: any) => String(q.questionnaireId) === QUESTIONNAIRE_ID
-        );
-        const answers = (targetQ?.answers || []).map((a: any) => ({
-          question: String(a.questionDescription || ""),
-          reply: String(a.reply || ""),
-        }));
-        const gcOrc = gcOrcMapFresh[tid] || null;
-        const gcOs = gcOsMapFresh[tid] || null;
-        const desc = String(t.customerDescription || "").trim();
-        const nameRaw = String(
-          t.customerName || t.customer?.tradeName || t.customer?.companyName || ""
-        ).trim();
-        const cliente = desc || nameRaw || gcOrc?.gc_cliente || gcOs?.gc_cliente || auvoTaskClienteMap[tid] || "";
-        items.push({
-          auvo_task_id: tid,
-          auvo_link: `https://app2.auvo.com.br/relatorioTarefas/DetalheTarefa/${tid}`,
-          auvo_task_url: String(t.taskUrl || ""),
-          auvo_survey_url: String(t.survey || ""),
-          cliente,
-          tecnico: String(t.userToName || ""),
-          data_tarefa: String(t.taskDate || "").split("T")[0],
-          orientacao: String(t.orientation || ""),
-          status_auvo: t.finished ? "Finalizada" : (t.checkIn ? "Em andamento" : "Aberta"),
-          questionario_respostas: answers,
-          orcamento_realizado: !!gcOrc,
-          os_realizada: !!gcOs,
-          gc_orcamento: gcOrc,
-          gc_os: gcOs,
-        });
-        addedFromAuvo++;
-      }
-      if (addedFromAuvo > 0) {
-        console.log(`[budget-kanban] +${addedFromAuvo} tarefas Auvo ainda ausentes da central foram adicionadas`);
-      }
-
-      items.sort((a: any, b: any) => {
-        const aHasGc = a.orcamento_realizado || a.os_realizada;
-        const bHasGc = b.orcamento_realizado || b.os_realizada;
-        if (aHasGc !== bHasGc) return aHasGc ? 1 : -1;
-        return String(b.data_tarefa || "").localeCompare(String(a.data_tarefa || ""));
-      });
-
-      const upsertRows = items.map((item: any, idx: number) => {
-        const existing = existingMap[item.auvo_task_id];
-        const autoColuna = budgetColumnForItem(item);
-
-        let finalColuna = autoColuna;
-        let finalPosicao = idx;
-
-        if (existing) {
-          // Coluna manual é fonte de verdade: sync só atualiza os dados do card.
-          // Nunca devolver para coluna automática, principalmente "Já Resolvido".
-          finalColuna = existing.coluna;
-          finalPosicao = existing.posicao;
-          keptCount++;
-        }
-
-        return {
-          auvo_task_id: item.auvo_task_id,
-          dados: item,
-          coluna: finalColuna,
-          posicao: finalPosicao,
-          atualizado_em: now,
-        };
-      });
-
-      for (let i = 0; i < upsertRows.length; i += 50) {
-        const batch = upsertRows.slice(i, i + 50);
-        await sbClient
-          .from("kanban_orcamentos_cache")
-          .upsert(batch, { onConflict: "auvo_task_id" });
-      }
-
-      await sbClient
-        .from("kanban_sync_meta")
-        .upsert({
-          id: "default",
-          ultimo_sync: now,
-          periodo_inicio: startDate,
-          periodo_fim: endDate,
-        });
-
-      console.log(`[budget-kanban] Cache atualizado via central: ${upsertRows.length} itens (${movedCount} movidos, ${keptCount} mantidos)`);
-      return;
     }
 
-    // Fallback: busca APIs externas quando a central ainda não tem o período.
+    // Sempre busca Auvo + GC em paralelo. Auvo é fonte de verdade.
     const [auvoPrimary, gcOrcMap, gcOsMap] = await Promise.all([
       fetchAuvoTasksWithQuestionnaire(bearerToken, startDate, endDate),
       fetchGcOrcamentosMap(gcH),
@@ -1054,8 +899,8 @@ async function runBudgetKanbanSync(opts: {
 
     console.log(`[budget-kanban] Auvo tasks: ${auvoTasks.length}, GC orçamentos: ${Object.keys(gcOrcMap).length}, GC OS: ${Object.keys(gcOsMap).length}`);
 
-    // Se Auvo falhar, não sobrescreve cache com vazio
-    if (auvoTasks.length === 0 && auvoError) {
+    // Se Auvo falhar E central também estiver vazia, devolve cache sem sobrescrever
+    if (auvoTasks.length === 0 && auvoError && combinedCentral.length === 0) {
       console.warn(`[budget-kanban] Sync preservado por erro Auvo: ${auvoError}`);
 
       const { data: cached } = await sbClient
@@ -1095,8 +940,50 @@ async function runBudgetKanbanSync(opts: {
       });
     }
 
-    // Build kanban items — first pass (resolve what we can synchronously)
-    const items = auvoTasks.map((task: any) => {
+    // Index Auvo tasks by ID for overlay
+    const auvoById: Record<string, any> = {};
+    for (const t of auvoTasks) {
+      const tid = String(t?.taskID || "").trim();
+      if (tid) auvoById[tid] = t;
+    }
+
+    // Overlay: respostas frescas da Auvo sobrescrevem o que veio da central
+    let overlayCount = 0;
+    for (const row of combinedCentral) {
+      const tid = String(row.auvo_task_id || "").trim();
+      const t = auvoById[tid];
+      if (!t) continue;
+      const targetQ = (t.questionnaires || []).find(
+        (q: any) => String(q.questionnaireId) === QUESTIONNAIRE_ID
+      );
+      if (targetQ && Array.isArray(targetQ.answers)) {
+        row.questionario_respostas = targetQ.answers.map((a: any) => ({
+          question: String(a.questionDescription || ""),
+          reply: String(a.reply || ""),
+        }));
+        row.questionario_id = QUESTIONNAIRE_ID;
+        overlayCount++;
+      }
+    }
+
+    // Build kanban items: central rows (com overlay) + Auvo-only (não na central)
+    const centralIds = new Set(
+      combinedCentral
+        .map((r: any) => String(r.auvo_task_id || "").trim())
+        .filter(Boolean)
+    );
+    const auvoOnlyTasks = auvoTasks.filter(
+      (t: any) => !centralIds.has(String(t?.taskID || "").trim())
+    );
+
+    console.log(`[budget-kanban] sync_path=auvo+central`);
+    console.log(`[budget-kanban] auvo_tasks=${auvoTasks.length} central_rows=${combinedCentral.length} merged=${overlayCount} only_auvo=${auvoOnlyTasks.length}`);
+
+    const itemsFromCentral = combinedCentral
+      .map(buildBudgetItemFromCentral)
+      .filter((item: any) => item.auvo_task_id);
+
+    const itemsFromAuvo = auvoOnlyTasks.map((task: any) => {
       const taskId = String(task.taskID || "");
       const gcOrcMatch = gcOrcMap[taskId] || null;
       const gcOsMatch = gcOsMap[taskId] || null;
@@ -1143,6 +1030,8 @@ async function runBudgetKanbanSync(opts: {
         gc_os: gcOsMatch,
       };
     });
+
+    const items = [...itemsFromCentral, ...itemsFromAuvo];
 
     // === RESOLUÇÃO ASYNC: customerId → Auvo /customers/{id} ===
     const needsCustomerLookup = items.filter((i: any) => i._customerId);
