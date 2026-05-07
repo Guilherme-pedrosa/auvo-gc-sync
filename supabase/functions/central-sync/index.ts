@@ -1349,21 +1349,9 @@ async function runCentralSync(body: CentralSyncBody = {}) {
       if (!row.equipamento_nome && existing.equipamento_nome) row.equipamento_nome = existing.equipamento_nome;
       if (!row.equipamento_id_serie && existing.equipamento_id_serie) row.equipamento_id_serie = existing.equipamento_id_serie;
 
-      // Preserve GC OS when current sync didn't find a match for the task
-      if (!row.gc_os_id && existing.gc_os_id) {
-        row.gc_os_id = existing.gc_os_id;
-        row.gc_os_codigo = existing.gc_os_codigo;
-        row.gc_os_cliente = existing.gc_os_cliente;
-        row.gc_os_situacao = existing.gc_os_situacao;
-        row.gc_os_situacao_id = existing.gc_os_situacao_id;
-        row.gc_os_cor_situacao = existing.gc_os_cor_situacao;
-        row.gc_os_valor_total = existing.gc_os_valor_total;
-        row.gc_os_vendedor = existing.gc_os_vendedor;
-        row.gc_os_data = existing.gc_os_data;
-        row.gc_os_data_saida = existing.gc_os_data_saida;
-        row.gc_os_link = existing.gc_os_link;
-        row.os_realizada = existing.os_realizada ?? true;
-      } else if (row.gc_os_id && (row.gc_os_valor_total === null || row.gc_os_valor_total === undefined) && existing.gc_os_valor_total !== null) {
+      // Não preservar OS antiga quando a sync atual não encontrou 73343 para esta tarefa.
+      // Isso evita ressuscitar vínculo contaminado pelo 73344 (TAREFA EXECUÇÃO).
+      if (row.gc_os_id && (row.gc_os_valor_total === null || row.gc_os_valor_total === undefined) && existing.gc_os_valor_total !== null) {
         row.gc_os_valor_total = existing.gc_os_valor_total;
       }
 
