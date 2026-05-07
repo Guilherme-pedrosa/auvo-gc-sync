@@ -1007,7 +1007,11 @@ async function runCentralSync(body: CentralSyncBody = {}) {
       const cliente = desc || nameRaw || nameGc || "Cliente não identificado";
 
       // Questionnaire
-      const targetQ = (task.questionnaires || []).find(
+      const snapshotForQ = taskSnapshotById.get(taskId);
+      const questionnairesSource = (Array.isArray(task.questionnaires) && task.questionnaires.length > 0)
+        ? task.questionnaires
+        : (snapshotForQ?.questionnaires || []);
+      const targetQ = questionnairesSource.find(
         (q: any) => String(q.questionnaireId) === QUESTIONNAIRE_ID
       );
       const answers = (targetQ?.answers || []).map((a: any) => ({
