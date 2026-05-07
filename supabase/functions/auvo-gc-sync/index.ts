@@ -229,6 +229,45 @@ async function getAuvoTask(taskId: string, bearerToken: string): Promise<any | n
   }
 }
 
+// Variante detalhada: distingue 404 (notFound) de erros transitórios 5xx/rede (error).
+// Usada no loop de escrita (decisão de mudar situação no GC) para não confundir
+// "tarefa não existe" com "Auvo instável".
+type AuvoTaskDetailed =
+  | { found: true; task: any }
+  | { notFound: true }
+  | { error: true; status: number };
+
+async function getAuvoTaskDetailed(taskId: string, bearerToken: string): Promise<AuvoTaskDetailed> {
+  const url = `${AUVO_BASE_URL}/tasks/${taskId}`;
+  try {
+    const response = await rateLimitedFetch(url, { headers: auvoHeaders(bearerToken) }, "auvo");
+    if (response.status === 404) return { notFound: true };
+    if (!response.ok) {
+      console.error(`[auvo-gc-sync] Auvo task ${taskId} error: ${response.status}`);
+      return { error: true, status: response.status };
+    }
+    const data = await response.json();
+    const entity = data?.result ?? data;
+    if (!entity) return { notFound: true };
+    return {
+      found: true,
+      task: {
+        taskID: entity.taskID ?? entity.id,
+        finished: entity.finished === true || entity.finished === "true",
+        pendency: String(entity.pendency ?? entity.pendencia ?? ""),
+        taskStatus: String(entity.taskStatus ?? ""),
+        checkIn: entity.checkIn === true,
+        checkOut: entity.checkOut === true,
+        report: String(entity.report ?? ""),
+        _raw: entity,
+      },
+    };
+  } catch (err) {
+    console.error(`[auvo-gc-sync] Erro ao buscar tarefa ${taskId}:`, err);
+    return { error: true, status: 0 };
+  }
+}
+
 // ─── STEP 2.1: Buscar peças do orçamento GC ───
 async function fetchItensPecasOsGC(
   gcOsId: string, gcHeaders: Record<string, string>
