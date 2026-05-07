@@ -505,6 +505,9 @@ async function fetchGcOs(gcHeaders: Record<string, string>, options?: { situacao
       console.log(`[central-sync] GC OS${sitId ? ` sit=${sitId}` : ''} page ${page}/${totalPages}: ${records.length} registros, ${Object.keys(map).length} com tarefa`);
       page++;
     }
+    if (page > 50 && page <= totalPages) {
+      console.warn(`[central-sync] TRUNCAMENTO: MAX_PAGES atingido em GC ordens_servicos${sitId ? ` sit=${sitId}` : ''} (totalPages=${totalPages})`);
+    }
   }
   return { byTaskId: map, byTaskIdAll, byCodigo, byOrcNumero };
 }
