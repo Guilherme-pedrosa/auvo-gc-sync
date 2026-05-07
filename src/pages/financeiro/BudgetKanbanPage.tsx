@@ -65,6 +65,18 @@ type KanbanColumn = {
   items: KanbanItem[];
 };
 
+const dedupeKanbanColumns = (cols: KanbanColumn[]): KanbanColumn[] => {
+  const seen = new Set<string>();
+  return cols.map((col) => ({
+    ...col,
+    items: col.items.filter((item) => {
+      if (seen.has(item.auvo_task_id)) return false;
+      seen.add(item.auvo_task_id);
+      return true;
+    }),
+  }));
+};
+
 type ApiResponse = {
   resumo: {
     periodo: { inicio: string; fim: string };
@@ -331,7 +343,7 @@ export default function BudgetKanbanPage() {
         items: col.items.filter((card) => freshDataMap.has(card.auvo_task_id)),
       }));
 
-      setColumns(finalCols);
+      setColumns(dedupeKanbanColumns(finalCols));
       setColumnsInitialized(true);
       return;
     }
@@ -426,7 +438,7 @@ export default function BudgetKanbanPage() {
         }
       }
 
-      setColumns(cols);
+      setColumns(dedupeKanbanColumns(cols));
     } else {
       // Fresh data (from sync) — auto-assign columns
       const faltaPreenchimento = data.items.filter(
@@ -453,13 +465,13 @@ export default function BudgetKanbanPage() {
           items,
         }));
 
-      setColumns([
+      setColumns(dedupeKanbanColumns([
         { id: "falta_preenchimento", title: "⚠️ Falta Preenchimento", items: faltaPreenchimento },
         { id: "a_fazer", title: "📋 A Fazer", items: aFazer },
         { id: "os_realizada", title: "🔧 OS Realizada", items: osRealizada },
         ...orcColumns,
         { id: "resolvido_sem_orcamento", title: "✅ Já Resolvido", items: [] },
-      ]);
+      ]));
     }
 
     setColumnsInitialized(true);
