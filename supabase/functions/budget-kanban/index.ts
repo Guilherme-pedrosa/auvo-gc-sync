@@ -982,7 +982,7 @@ async function runBudgetKanbanSync(opts: {
     console.log(`[budget-kanban] auvo_tasks=${auvoTasks.length} central_rows=${combinedCentral.length} merged=${overlayCount} only_auvo=${auvoOnlyTasks.length}`);
 
     const itemsFromCentral = combinedCentral
-      .map(buildBudgetItemFromCentral)
+      .map((row: any) => buildBudgetItemFromCentral(row, gcOrcMap, gcOsMap))
       .filter((item: any) => item.auvo_task_id);
 
     const itemsFromAuvo = auvoOnlyTasks.map((task: any) => {
