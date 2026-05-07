@@ -606,8 +606,24 @@ function buildBudgetItemFromCentral(row: any, gcOrcMap: Record<string, any> = {}
   const questionarioRespostas = Array.isArray(row.questionario_respostas) ? row.questionario_respostas : [];
   const freshOrc = gcOrcMap[taskId] || null;
   const freshOs = gcOsMap[taskId] || null;
+  // Fallback: se a tarefa já foi vinculada a uma OS GC em sync anterior
+  // (gc_os_id persistido em tarefas_central), considerar OS Realizada mesmo
+  // que a paginação atual da API GC não tenha trazido essa OS.
+  const centralOsFallback = row?.gc_os_id ? {
+    gc_os_id: String(row.gc_os_id),
+    gc_os_codigo: String(row.gc_os_codigo || ""),
+    gc_cliente: String(row.gc_os_cliente || row.cliente || ""),
+    gc_situacao: String(row.gc_os_situacao || ""),
+    gc_situacao_id: String(row.gc_os_situacao_id || ""),
+    gc_cor_situacao: String(row.gc_os_cor_situacao || ""),
+    gc_valor_total: String(row.gc_os_valor_total || "0"),
+    gc_vendedor: String(row.gc_os_vendedor || ""),
+    gc_data: String(row.gc_os_data || ""),
+    gc_link: String(row.gc_os_link || ""),
+  } : null;
+  const effectiveOs = freshOs || centralOsFallback;
   const hasOrcamento = Boolean(freshOrc);
-  const hasOs = Boolean(freshOs);
+  const hasOs = Boolean(effectiveOs);
 
   return {
     auvo_task_id: taskId,
@@ -635,16 +651,16 @@ function buildBudgetItemFromCentral(row: any, gcOrcMap: Record<string, any> = {}
       gc_link: String(freshOrc.gc_link || freshOrc.gc_orc_link || ""),
     } : null,
     gc_os: hasOs ? {
-      gc_os_id: String(freshOs.gc_os_id || ""),
-      gc_os_codigo: String(freshOs.gc_os_codigo || ""),
-      gc_cliente: String(freshOs.gc_cliente || freshOs.gc_os_cliente || row.cliente || ""),
-      gc_situacao: String(freshOs.gc_situacao || freshOs.gc_os_situacao || ""),
-      gc_situacao_id: String(freshOs.gc_situacao_id || freshOs.gc_os_situacao_id || ""),
-      gc_cor_situacao: String(freshOs.gc_cor_situacao || freshOs.gc_os_cor_situacao || ""),
-      gc_valor_total: String(freshOs.gc_valor_total || freshOs.gc_os_valor_total || "0"),
-      gc_vendedor: String(freshOs.gc_vendedor || freshOs.gc_os_vendedor || ""),
-      gc_data: String(freshOs.gc_data || freshOs.gc_os_data || ""),
-      gc_link: String(freshOs.gc_link || freshOs.gc_os_link || ""),
+      gc_os_id: String(effectiveOs.gc_os_id || ""),
+      gc_os_codigo: String(effectiveOs.gc_os_codigo || ""),
+      gc_cliente: String(effectiveOs.gc_cliente || effectiveOs.gc_os_cliente || row.cliente || ""),
+      gc_situacao: String(effectiveOs.gc_situacao || effectiveOs.gc_os_situacao || ""),
+      gc_situacao_id: String(effectiveOs.gc_situacao_id || effectiveOs.gc_os_situacao_id || ""),
+      gc_cor_situacao: String(effectiveOs.gc_cor_situacao || effectiveOs.gc_os_cor_situacao || ""),
+      gc_valor_total: String(effectiveOs.gc_valor_total || effectiveOs.gc_os_valor_total || "0"),
+      gc_vendedor: String(effectiveOs.gc_vendedor || effectiveOs.gc_os_vendedor || ""),
+      gc_data: String(effectiveOs.gc_data || effectiveOs.gc_os_data || ""),
+      gc_link: String(effectiveOs.gc_link || effectiveOs.gc_os_link || ""),
     } : null,
     equipamento_nome: row.equipamento_nome || null,
     equipamento_id_serie: row.equipamento_id_serie || null,
