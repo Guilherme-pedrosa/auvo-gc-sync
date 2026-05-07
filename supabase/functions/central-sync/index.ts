@@ -624,6 +624,37 @@ async function runCentralSync(body: CentralSyncBody = {}) {
 
     console.log(`[central-sync] GC carregado: Orç: ${Object.keys(gcOrcMap).length}, OS: ${Object.keys(gcOsMap).length}`);
 
+    // Remove vínculos antigos/duplicados de OS que não aparecem mais pelo campo 73343.
+    // A chave válida é sempre tarefa Auvo + OS GC vinda de gcOsResult.byTaskIdAll (somente 73343).
+    const validOsTaskKeys = new Set<string>();
+    for (const [taskId, osList] of Object.entries(gcOsByTaskIdAll)) {
+      for (const osPayload of osList as any[]) {
+        if (taskId && osPayload?.gc_os_id) validOsTaskKeys.add(`${taskId}::${String(osPayload.gc_os_id)}`);
+      }
+    }
+    const fetchedOsIds = [...new Set(Object.values(gcOsByCodigo).map((os: any) => String(os?.gc_os_id || "")).filter(Boolean))];
+    let staleOsLinksDeleted = 0;
+    for (let i = 0; i < fetchedOsIds.length; i += 100) {
+      const batchIds = fetchedOsIds.slice(i, i + 100);
+      const { data: linkedRows } = await sbClient
+        .from("tarefas_central")
+        .select("mirror_key, auvo_task_id, gc_os_id")
+        .in("gc_os_id", batchIds);
+      const staleKeys = (linkedRows || [])
+        .filter((row: any) => !validOsTaskKeys.has(`${String(row.auvo_task_id)}::${String(row.gc_os_id)}`))
+        .map((row: any) => String(row.mirror_key || ""))
+        .filter(Boolean);
+      if (staleKeys.length === 0) continue;
+      const { count } = await sbClient
+        .from("tarefas_central")
+        .delete({ count: "exact" })
+        .in("mirror_key", staleKeys);
+      staleOsLinksDeleted += count || 0;
+    }
+    if (staleOsLinksDeleted > 0) {
+      console.log(`[central-sync] Removidos ${staleOsLinksDeleted} vínculos de OS inválidos (não-73343)`);
+    }
+
     const isGcSolicitadasOnly = situacaoIds.length > 0;
     let gcFirstUpserted = 0;
     if (isGcSolicitadasOnly) {
