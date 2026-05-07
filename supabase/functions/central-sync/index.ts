@@ -195,6 +195,7 @@ type AuvoTaskSnapshot = {
   equipmentName: string;
   equipmentSerial: string;
   equipmentIds: string[];
+  questionnaires: any[];
 };
 
 async function fetchAuvoTaskSnapshot(bearerToken: string, taskId: string): Promise<AuvoTaskSnapshot | null> {
