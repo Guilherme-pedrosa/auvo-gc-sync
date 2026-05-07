@@ -286,13 +286,22 @@ function auvoHeaders(token: string): Record<string, string> {
   return { Authorization: `Bearer ${token}`, "Content-Type": "application/json" };
 }
 
+const RATE_LIMIT_BACKOFFS_MS = [5000, 10000, 20000];
+
 async function rateLimitedFetch(url: string, options: RequestInit): Promise<Response> {
   await new Promise((resolve) => setTimeout(resolve, RATE_LIMIT_DELAY_MS));
-  const res = await fetch(url, options);
+  let res = await fetch(url, options);
+
+  for (let attempt = 0; attempt < RATE_LIMIT_BACKOFFS_MS.length; attempt++) {
+    if (res.status !== 403 && res.status !== 429) return res;
+    const wait = RATE_LIMIT_BACKOFFS_MS[attempt];
+    console.warn(`[equipment-sync] Rate limit (${res.status}) tentativa ${attempt + 1}/${RATE_LIMIT_BACKOFFS_MS.length} — aguardando ${wait}ms`);
+    await new Promise((resolve) => setTimeout(resolve, wait));
+    res = await fetch(url, options);
+  }
+
   if (res.status === 403 || res.status === 429) {
-    console.log(`[equipment-sync] Rate limit hit (${res.status}), waiting 10s...`);
-    await new Promise((resolve) => setTimeout(resolve, 10000));
-    return fetch(url, options);
+    throw new Error(`[equipment-sync] Rate limit persistente (${res.status}) após ${RATE_LIMIT_BACKOFFS_MS.length} tentativas em ${url}`);
   }
   return res;
 }
@@ -320,22 +329,35 @@ async function fetchAllEquipments(token: string): Promise<any[]> {
   const allEquipments: any[] = [];
   let page = 1;
   const pageSize = 100;
+  const MAX_PAGES = 100;
+  let failedPages = 0;
 
-  while (true) {
+  while (page <= MAX_PAGES) {
     const url = `${AUVO_BASE_URL}/equipments/?paramFilter=${encodeURIComponent("{}")}&page=${page}&pageSize=${pageSize}&order=asc`;
-    const res = await rateLimitedFetch(url, { method: "GET", headers });
-    if (!res.ok) throw new Error(`Auvo equipments fetch failed (${res.status})`);
+    try {
+      const res = await rateLimitedFetch(url, { method: "GET", headers });
+      if (!res.ok) throw new Error(`Auvo equipments fetch failed (${res.status})`);
+      const data = await res.json();
+      const list = data?.result?.entityList || [];
+      if (!Array.isArray(list) || list.length === 0) break;
+      allEquipments.push(...list);
+      const totalItems = data?.result?.pagedSearchReturnData?.totalItems || 0;
+      console.log(`[equipment-sync] Equipments page ${page}: got ${list.length} (total: ${totalItems})`);
+      if (allEquipments.length >= totalItems || list.length < pageSize) break;
+      page++;
+    } catch (err) {
+      failedPages++;
+      console.error(`[equipment-sync] Falha ao buscar equipments page ${page}:`, err);
+      page++;
+      continue;
+    }
+  }
 
-    const data = await res.json();
-    const list = data?.result?.entityList || [];
-    if (!Array.isArray(list) || list.length === 0) break;
-
-    allEquipments.push(...list);
-    const totalItems = data?.result?.pagedSearchReturnData?.totalItems || 0;
-    console.log(`[equipment-sync] Equipments page ${page}: got ${list.length} (total: ${totalItems})`);
-
-    if (allEquipments.length >= totalItems || list.length < pageSize) break;
-    page++;
+  if (page > MAX_PAGES) {
+    console.warn(`[equipment-sync] TRUNCAMENTO: MAX_PAGES=${MAX_PAGES} atingido em /equipments`);
+  }
+  if (failedPages > 0) {
+    console.error(`[equipment-sync] ${failedPages} página(s) de equipments falharam — equipamentos podem estar faltando neste ciclo`);
   }
 
   return allEquipments;
@@ -346,25 +368,32 @@ async function fetchAllCategories(token: string): Promise<Map<number, string>> {
   const catMap = new Map<number, string>();
   let page = 1;
   const pageSize = 100;
+  const MAX_PAGES = 100;
 
-  while (true) {
+  while (page <= MAX_PAGES) {
     const url = `${AUVO_BASE_URL}/equipmentCategories/?paramFilter=${encodeURIComponent("{}")}&page=${page}&pageSize=${pageSize}&order=asc`;
-    const res = await rateLimitedFetch(url, { method: "GET", headers });
-    if (!res.ok) break;
-
-    const data = await res.json();
-    const list = data?.result?.entityList || [];
-    if (!Array.isArray(list) || list.length === 0) break;
-
-    for (const cat of list) {
-      if (typeof cat?.id === "number") {
-        catMap.set(cat.id, String(cat.description || "").trim());
+    try {
+      const res = await rateLimitedFetch(url, { method: "GET", headers });
+      if (!res.ok) break;
+      const data = await res.json();
+      const list = data?.result?.entityList || [];
+      if (!Array.isArray(list) || list.length === 0) break;
+      for (const cat of list) {
+        if (typeof cat?.id === "number") {
+          catMap.set(cat.id, String(cat.description || "").trim());
+        }
       }
+      const totalItems = data?.result?.pagedSearchReturnData?.totalItems || 0;
+      if (catMap.size >= totalItems || list.length < pageSize) break;
+      page++;
+    } catch (err) {
+      console.error(`[equipment-sync] Falha em equipmentCategories page ${page}:`, err);
+      break;
     }
+  }
 
-    const totalItems = data?.result?.pagedSearchReturnData?.totalItems || 0;
-    if (catMap.size >= totalItems || list.length < pageSize) break;
-    page++;
+  if (page > MAX_PAGES) {
+    console.warn(`[equipment-sync] TRUNCAMENTO: MAX_PAGES=${MAX_PAGES} atingido em /equipmentCategories`);
   }
 
   return catMap;
@@ -380,12 +409,12 @@ async function fetchCustomerName(customerId: number, token: string, cache: Map<n
       headers: auvoHeaders(token),
     });
     if (!res.ok) return null;
-
     const data = await res.json();
     const name = data?.result?.description || null;
     if (name) cache.set(customerId, name);
     return name;
-  } catch {
+  } catch (err) {
+    console.error(`[equipment-sync] Falha ao buscar customer ${customerId}:`, err);
     return null;
   }
 }
@@ -440,7 +469,13 @@ async function fetchTasksWithEquipmentsForWindow(
   while (page <= maxPages) {
     const url = buildTasksListUrl(windowStart, windowEnd, page, TASK_PAGE_SIZE);
 
-    const res = await rateLimitedFetch(url, { method: "GET", headers });
+    let res: Response;
+    try {
+      res = await rateLimitedFetch(url, { method: "GET", headers });
+    } catch (err) {
+      console.error(`[equipment-sync] Falha em tasks page ${page} (${windowStart}):`, err);
+      break;
+    }
     if (!res.ok) {
       if (res.status === 404) break;
       const errBody = await res.text().catch(() => "");
@@ -495,6 +530,10 @@ async function fetchTasksWithEquipmentsForWindow(
 
     if (tasks.length < TASK_PAGE_SIZE) break;
     page++;
+  }
+
+  if (page > maxPages) {
+    console.warn(`[equipment-sync] TRUNCAMENTO: maxPages=${maxPages} atingido em /tasks (${windowStart} → ${windowEnd})`);
   }
 
   console.log(`[equipment-sync] Total tasks from listing: ${totalTasks}`);
