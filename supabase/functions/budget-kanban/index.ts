@@ -577,7 +577,9 @@ function hasFilledQuestionnaireAnswers(item: any): boolean {
 }
 
 function budgetColumnForItem(item: any): string {
-  if (item.os_realizada) return "os_realizada";
+  // Regra do Kanban Orçamentos: OS só conta como realizada se houver orçamento vinculado.
+  // Tarefa Execução/OS solta não pode empurrar card para "OS Realizada".
+  if (item.os_realizada && item.orcamento_realizado) return "os_realizada";
   if (item.orcamento_realizado) {
     const situacao = String(item.gc_orcamento?.gc_situacao || "sem_situacao").trim() || "sem_situacao";
     return `orc_${situacao.replace(/\s+/g, "_").toLowerCase()}`;
@@ -1178,6 +1180,12 @@ async function runBudgetKanbanSync(opts: {
         // New item → auto-assign
         finalColuna = autoColuna;
         finalPosicao = idx;
+      } else if (existing.coluna === "os_realizada" && autoColuna !== "os_realizada") {
+        // Corrige cache antigo criado quando Tarefa Execução foi confundida com OS.
+        // Mantém colunas manuais, mas não preserva a coluna sistêmica "OS Realizada" se a regra atual não confirma orçamento+OS.
+        finalColuna = autoColuna;
+        finalPosicao = idx;
+        movedCount++;
       } else {
         // Coluna manual é fonte de verdade: sync só atualiza os dados do card.
         // Nunca devolver para coluna automática, principalmente "Já Resolvido".

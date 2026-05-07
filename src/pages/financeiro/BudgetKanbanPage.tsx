@@ -258,6 +258,16 @@ export default function BudgetKanbanPage() {
         (r) => r.reply && r.reply.trim() !== "" && !r.reply.startsWith("http")
       );
 
+    const resolveSystemColumn = (item: KanbanItem) => {
+      if (item.os_realizada && item.orcamento_realizado) return "os_realizada";
+      if (item.orcamento_realizado) {
+        const sit = item.gc_orcamento?.gc_situacao || "Sem situação";
+        return `orc_${sit.replace(/\s+/g, "_").toLowerCase()}`;
+      }
+      if (!hasFilledQuestionnaire(item)) return "falta_preenchimento";
+      return "a_fazer";
+    };
+
     // Build a map of fresh API data by task id
     const freshDataMap = new Map<string, KanbanItem>();
     for (const item of data.items) {
@@ -324,13 +334,8 @@ export default function BudgetKanbanPage() {
           let targetCol = "a_fazer";
           if (feitoHojeCol && isOrcDataToday(card)) {
             targetCol = feitoHojeCol.id;
-          } else if (!card.orcamento_realizado && !card.os_realizada && !hasFilledQuestionnaire(card)) {
-            targetCol = "falta_preenchimento";
-          } else if (card.os_realizada) {
-            targetCol = "os_realizada";
-          } else if (card.orcamento_realizado) {
-            const sit = card.gc_orcamento?.gc_situacao || "Sem situação";
-            targetCol = `orc_${sit.replace(/\s+/g, "_").toLowerCase()}`;
+          } else {
+            targetCol = resolveSystemColumn(card);
           }
           const col = mergedCols.find((c) => c.id === targetCol) || mergedCols.find((c) => c.id === "a_fazer");
           if (col) col.items.push(card);
@@ -357,9 +362,9 @@ export default function BudgetKanbanPage() {
         let col = (item as any)._coluna || "a_fazer";
         const { _coluna, _posicao, ...cleanItem } = item as any;
 
-        // Re-check: items in "a_fazer" without questionnaire should go to "falta_preenchimento"
-        if (col === "a_fazer" && !cleanItem.orcamento_realizado && !cleanItem.os_realizada && !hasFilledQuestionnaire(cleanItem)) {
-          col = "falta_preenchimento";
+        // Re-check system columns: "OS Realizada" only when orçamento + OS are both confirmed.
+        if (col === "a_fazer" || col === "falta_preenchimento" || col === "os_realizada" || col.startsWith("orc_")) {
+          col = resolveSystemColumn(cleanItem);
         }
 
         if (!colMap[col]) colMap[col] = [];
@@ -447,7 +452,7 @@ export default function BudgetKanbanPage() {
       const aFazer = data.items.filter(
         (i) => !i.orcamento_realizado && !i.os_realizada && hasFilledQuestionnaire(i)
       );
-      const osRealizada = data.items.filter((i) => i.os_realizada);
+      const osRealizada = data.items.filter((i) => i.os_realizada && i.orcamento_realizado);
       const orcItems = data.items.filter((i) => i.orcamento_realizado && !i.os_realizada);
 
       const situacaoMap: Record<string, KanbanItem[]> = {};
