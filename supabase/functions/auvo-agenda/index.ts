@@ -278,11 +278,19 @@ Deno.serve(async (req) => {
       const rawEndTime = String(t.endTime || t.endHour || "").trim();
       const isFinished = !!t.finished || statusDesc === "Finalizada";
       
-      // For non-finished tasks, prefer scheduled end time (taskEndDate) over actual endTime
-      // because endTime may contain partial checkout timestamps
-      const startTime = rawStartTime || taskDateTime || "";
+      // Real check-in/check-out timestamps (when technician actually started/finished)
+      const rawCheckInDate = String(t.checkInDate || t.checkinDate || t.dateCheckIn || "");
+      const rawCheckOutDate = String(t.checkOutDate || t.checkoutDate || t.dateCheckOut || "");
+      const checkInTime = rawCheckInDate.length >= 16 ? rawCheckInDate.substring(11, 16) : "";
+      const checkOutTime = rawCheckOutDate.length >= 16 ? rawCheckOutDate.substring(11, 16) : "";
+
+      // For finished tasks, show effective time spent (check-in → check-out).
+      // For other tasks, fall back to scheduled window.
+      const startTime = isFinished
+        ? (checkInTime || rawStartTime || taskDateTime || "")
+        : (rawStartTime || taskDateTime || "");
       const endTime = isFinished
-        ? (rawEndTime || taskEndDateTime || "")
+        ? (checkOutTime || rawEndTime || taskEndDateTime || "")
         : (taskEndDateTime || rawEndTime || "");
 
       const address = typeof t.address === "object" ? "" : String(t.address || "").substring(0, 200);
