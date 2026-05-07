@@ -65,6 +65,18 @@ type KanbanColumn = {
   items: KanbanItem[];
 };
 
+const dedupeKanbanColumns = (cols: KanbanColumn[]): KanbanColumn[] => {
+  const seen = new Set<string>();
+  return cols.map((col) => ({
+    ...col,
+    items: col.items.filter((item) => {
+      if (seen.has(item.auvo_task_id)) return false;
+      seen.add(item.auvo_task_id);
+      return true;
+    }),
+  }));
+};
+
 type ApiResponse = {
   resumo: {
     periodo: { inicio: string; fim: string };
@@ -331,7 +343,7 @@ export default function BudgetKanbanPage() {
         items: col.items.filter((card) => freshDataMap.has(card.auvo_task_id)),
       }));
 
-      setColumns(finalCols);
+      setColumns(dedupeKanbanColumns(finalCols));
       setColumnsInitialized(true);
       return;
     }
@@ -426,7 +438,7 @@ export default function BudgetKanbanPage() {
         }
       }
 
-      setColumns(cols);
+      setColumns(dedupeKanbanColumns(cols));
     } else {
       // Fresh data (from sync) — auto-assign columns
       const faltaPreenchimento = data.items.filter(
@@ -453,13 +465,13 @@ export default function BudgetKanbanPage() {
           items,
         }));
 
-      setColumns([
+      setColumns(dedupeKanbanColumns([
         { id: "falta_preenchimento", title: "⚠️ Falta Preenchimento", items: faltaPreenchimento },
         { id: "a_fazer", title: "📋 A Fazer", items: aFazer },
         { id: "os_realizada", title: "🔧 OS Realizada", items: osRealizada },
         ...orcColumns,
         { id: "resolvido_sem_orcamento", title: "✅ Já Resolvido", items: [] },
-      ]);
+      ]));
     }
 
     setColumnsInitialized(true);
@@ -606,9 +618,15 @@ export default function BudgetKanbanPage() {
       const destCol = newCols.find((c) => c.id === destination.droppableId);
       if (!srcCol || !destCol) return prev;
       const [moved] = srcCol.items.splice(source.index, 1);
+      for (const col of newCols) {
+        if (col.id !== destCol.id) {
+          col.items = col.items.filter((item) => item.auvo_task_id !== moved.auvo_task_id);
+        }
+      }
       destCol.items.splice(destination.index, 0, moved);
-      savePositions(newCols);
-      return newCols;
+      const uniqueCols = dedupeKanbanColumns(newCols);
+      savePositions(uniqueCols);
+      return uniqueCols;
     });
   }, [savePositions]);
 
@@ -666,8 +684,9 @@ export default function BudgetKanbanPage() {
         newCols.push(target);
       }
       target.items.unshift(movedCard);
-      savePositions(newCols);
-      return newCols;
+      const uniqueCols = dedupeKanbanColumns(newCols);
+      savePositions(uniqueCols);
+      return uniqueCols;
     });
     toast.success(successMsg);
   }, [savePositions]);

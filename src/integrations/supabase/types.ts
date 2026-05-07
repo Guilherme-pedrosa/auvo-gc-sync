@@ -361,6 +361,33 @@ export type Database = {
         }
         Relationships: []
       }
+      kanban_os_cache: {
+        Row: {
+          atualizado_em: string
+          auvo_task_id: string | null
+          coluna: string
+          criado_em: string
+          gc_os_id: string
+          posicao: number
+        }
+        Insert: {
+          atualizado_em?: string
+          auvo_task_id?: string | null
+          coluna?: string
+          criado_em?: string
+          gc_os_id: string
+          posicao?: number
+        }
+        Update: {
+          atualizado_em?: string
+          auvo_task_id?: string | null
+          coluna?: string
+          criado_em?: string
+          gc_os_id?: string
+          posicao?: number
+        }
+        Relationships: []
+      }
       kanban_resolution_details: {
         Row: {
           atualizado_em: string
