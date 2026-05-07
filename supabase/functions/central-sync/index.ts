@@ -1603,6 +1603,10 @@ async function runCentralSync(body: CentralSyncBody = {}) {
 
     console.log(`[central-sync] Concluído: ${upserted} upserted, ${errors} erros, ${deleted || 0} removidos (> 6 meses)`);
 
+    const pending = (globalThis as any).__centralSyncPending || { os_individuais: 0, lookups_auvo: 0 };
+    console.log(`[central-sync] Pendentes para próximo ciclo: OS individuais=${pending.os_individuais}, lookups Auvo=${pending.lookups_auvo}`);
+    (globalThis as any).__centralSyncPending = { os_individuais: 0, lookups_auvo: 0 };
+
     const auvoFailed = auvoTasks.length === 0;
     return {
       success: true,
