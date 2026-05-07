@@ -124,8 +124,10 @@ async function fetchOsComTarefaAuvo(gcHeaders: Record<string, string>, dataInici
   data_os: string;
   gc_cliente: string;
 }>> {
-  const atributoId = Deno.env.get("GC_ATRIBUTO_TAREFA_ID") || "73344";
-  const atributoLabel = (Deno.env.get("AUVO_ATRIBUTO_LABEL") || "Tarefa Execução").toLowerCase();
+  // ⚠️ Regra de negócio: somente "Tarefa OS" (73343) define vínculo de orçamento/execução financeira.
+  // A "Tarefa Execução" (73344) é apenas operacional e NÃO deve ser usada para marcar orçamento ou execução.
+  const atributoId = Deno.env.get("GC_ATRIBUTO_TAREFA_ID") || "73343";
+  const atributoLabel = (Deno.env.get("AUVO_ATRIBUTO_LABEL") || "Tarefa OS").toLowerCase();
   const results: Array<{
     gc_os_id: string; gc_os_codigo: string; auvo_task_id: string;
     nome_situacao: string; situacao_id: string; data_os: string; gc_cliente: string; gc_valor_total: string;
@@ -175,7 +177,7 @@ async function fetchOsComTarefaAuvo(gcHeaders: Record<string, string>, dataInici
         const nested = a?.atributo || a;
         const id = String(nested.atributo_id || nested.id || "");
         const label = String(nested.descricao || nested.label || nested.nome || "").toLowerCase();
-        return id === atributoId || label === atributoLabel || label.includes("tarefa execu");
+        return id === atributoId || label === atributoLabel || label.includes("tarefa os");
       });
       if (!atributoTarefa) { totalSemAtributo++; continue; }
       const nested2 = atributoTarefa?.atributo || atributoTarefa;
