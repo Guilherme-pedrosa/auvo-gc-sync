@@ -796,11 +796,13 @@ async function runCentralSync(body: CentralSyncBody = {}) {
 
       // For OS in DB but NOT in GC listing (e.g. cancelled OS filtered by API), fetch individually
       const missingOsIds = Array.from(dbOsIds).filter(id => !allGcOsById[id]);
+      let pendingIndividualOsLookups = 0;
       if (missingOsIds.length > 0) {
         // Cap individual lookups to avoid IDLE_TIMEOUT (150s). Remaining IDs will be picked up next sync.
         const MAX_INDIVIDUAL = 80;
         const toFetch = missingOsIds.slice(0, MAX_INDIVIDUAL);
         if (missingOsIds.length > MAX_INDIVIDUAL) {
+          pendingIndividualOsLookups = missingOsIds.length - MAX_INDIVIDUAL;
           console.log(`[central-sync] ${missingOsIds.length} OS faltantes — limitando a ${MAX_INDIVIDUAL} nesta execução`);
         } else {
           console.log(`[central-sync] ${missingOsIds.length} OS no banco não encontradas na listagem GC — buscando individualmente...`);
@@ -842,6 +844,10 @@ async function runCentralSync(body: CentralSyncBody = {}) {
           }
         }
         console.log(`[central-sync] OS individuais recuperadas: ${missingOsIds.length - Array.from(dbOsIds).filter(id => !allGcOsById[id]).length}`);
+        (globalThis as any).__centralSyncPending = {
+          os_individuais: pendingIndividualOsLookups,
+          lookups_auvo: 0,
+        };
       }
 
       let globalOsUpdated = 0;
