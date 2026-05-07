@@ -126,80 +126,35 @@ export default function AgendaSemanalPage() {
   const { data: tarefas, isLoading, refetch, isFetching } = useQuery({
     queryKey,
     queryFn: async () => {
-      const { data: rows, error } = await supabase
-        .from("tarefas_central")
-        .select(
-          "auvo_task_id, cliente, tecnico, tecnico_id, data_tarefa, status_auvo, " +
-          "orientacao, endereco, auvo_link, hora_inicio, hora_fim, duracao_decimal, check_in, check_out, " +
-          "gc_os_valor_total, gc_orc_valor_total, gc_os_situacao, gc_os_codigo, gc_os_link, " +
-          "gc_orc_situacao, gc_orcamento_codigo, gc_orc_link, pendencia"
-        )
-        .gte("data_tarefa", queryStartDate)
-        .lte("data_tarefa", queryEndDate)
-        .neq("status_auvo", "Sem tarefa Auvo")
-        .order("data_tarefa", { ascending: true });
-
+      // Fonte direta: edge function auvo-agenda (lê do Auvo + enriquece com GC).
+      // Substitui leitura de tarefas_central, que dependia do central-sync
+      // (que estava estourando CPU e nunca gravando).
+      const { data, error } = await supabase.functions.invoke("auvo-agenda", {
+        body: { startDate: queryStartDate, endDate: queryEndDate },
+      });
       if (error) throw error;
-
-      // Map orientacao -> descricao for component compatibility
-      return (rows || []).map((r: any) => ({
+      const rows = (data?.data || []) as any[];
+      return rows.map((r) => ({
         ...r,
-        descricao: r.orientacao || r.descricao || null,
+        descricao: r.descricao || r.orientacao || null,
       })) as Tarefa[];
     },
     staleTime: 1000 * 60 * 5,
   });
 
-  // Refresh: fire central-sync in background, then poll tarefas_central for updates
+  // Refresh: re-invoca auvo-agenda diretamente (sem central-sync, sem polling).
   const refreshFromApi = useCallback(async () => {
     setIsRefreshingFromApi(true);
-    const syncStartedAt = new Date().toISOString();
-
-    // Fire-and-forget: don't await the edge function (it may timeout on the client)
-    let syncResponse: any = null;
-    supabase.functions.invoke("central-sync", {
-      body: { start_date: queryStartDate, end_date: queryEndDate },
-    }).then((res) => {
-      syncResponse = res.data;
-      if (res.data?.success !== false) {
-        console.log("[agenda] Sync retornou com sucesso direto");
-      }
-      if (res.data?.auvo_error) {
-        toast.error(res.data.auvo_error);
-      }
-    }).catch(() => {
-      console.log("[agenda] Sync em background (timeout do cliente, mas continua no servidor)");
-    });
-
-    toast.info("Sincronização iniciada em segundo plano...");
-
-    // Poll tarefas_central for fresh data (intervals: 5s, 10s, 15s, 20s, 30s, 45s, 60s)
-    const delays = [5000, 10000, 15000, 20000, 30000, 45000, 60000];
-    let updated = false;
-    for (const delay of delays) {
-      await new Promise(r => setTimeout(r, delay));
-      const { data: check } = await supabase
-        .from("tarefas_central")
-        .select("atualizado_em")
-        .order("atualizado_em", { ascending: false })
-        .limit(1);
-      const latestSync = check?.[0]?.atualizado_em;
-      if (latestSync && latestSync > syncStartedAt) {
-        updated = true;
-        break;
-      }
+    try {
+      await refetch();
+      queryClient.invalidateQueries({ queryKey: ["last-sync-timestamp"] });
+      toast.success("Agenda atualizada");
+    } catch (err: any) {
+      toast.error(`Falha ao atualizar agenda: ${err?.message || "erro desconhecido"}`);
+    } finally {
+      setIsRefreshingFromApi(false);
     }
-
-    await refetch();
-    queryClient.invalidateQueries({ queryKey: ["last-sync-timestamp"] });
-
-    if (updated) {
-      toast.success("Sincronização concluída — dados atualizados!");
-    } else {
-      toast.warning("Sincronização pode ainda estar em andamento. Tente atualizar novamente em alguns segundos.");
-    }
-    setIsRefreshingFromApi(false);
-  }, [queryStartDate, queryEndDate, queryClient, refetch]);
+  }, [refetch, queryClient]);
 
   const tecnicos = useMemo(() => {
     const map = new Map<string, { nome: string; id: string | null }>();
