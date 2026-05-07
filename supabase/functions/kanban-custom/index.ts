@@ -31,6 +31,30 @@ async function rateLimitedFetch(url: string, options: RequestInit, type: "gc" | 
   return fetch(url, options);
 }
 
+// Wrapper com retry para 429 (GC) — backoff 5s, 10s (2 tentativas extras)
+async function gcFetchWithRetry(url: string, options: RequestInit, label: string): Promise<Response> {
+  const BACKOFF = [5000, 10000];
+  let resp = await rateLimitedFetch(url, options, "gc");
+  for (let i = 0; i < BACKOFF.length && resp.status === 429; i++) {
+    console.warn(`[kanban-custom] GC ${label} 429, retry em ${BACKOFF[i]}ms (${i + 1}/${BACKOFF.length})`);
+    await new Promise(r => setTimeout(r, BACKOFF[i]));
+    resp = await rateLimitedFetch(url, options, "gc");
+  }
+  return resp;
+}
+
+// Wrapper com retry para 502/503 (Auvo) — backoff 3s, 6s, 9s (3 tentativas)
+async function auvoFetchWithRetry(url: string, options: RequestInit, label: string): Promise<Response> {
+  const BACKOFF = [3000, 6000, 9000];
+  let resp = await rateLimitedFetch(url, options, "auvo");
+  for (let i = 0; i < BACKOFF.length && (resp.status === 502 || resp.status === 503); i++) {
+    console.warn(`[kanban-custom] Auvo ${label} ${resp.status}, retry em ${BACKOFF[i]}ms (${i + 1}/${BACKOFF.length})`);
+    await new Promise(r => setTimeout(r, BACKOFF[i]));
+    resp = await rateLimitedFetch(url, options, "auvo");
+  }
+  return resp;
+}
+
 async function auvoLogin(apiKey: string, apiToken: string): Promise<string> {
   const url = `${AUVO_BASE_URL}/login/?apiKey=${encodeURIComponent(apiKey)}&apiToken=${encodeURIComponent(apiToken)}`;
   const response = await fetch(url, { method: "GET", headers: { "Content-Type": "application/json" } });
@@ -70,7 +94,7 @@ async function fetchAuvoTasksAll(
     const url = `${AUVO_BASE_URL}/tasks/?page=${page}&pageSize=${pageSize}&order=desc&paramFilter=${paramFilter}`;
 
     console.log(`[kanban-custom] Auvo page ${page}`);
-    const response = await rateLimitedFetch(url, { headers: auvoHeaders(bearerToken) }, "auvo");
+    const response = await auvoFetchWithRetry(url, { headers: auvoHeaders(bearerToken) }, `/tasks page ${page}`);
 
     if (response.status === 404) break;
     if (!response.ok) {
@@ -99,6 +123,10 @@ async function fetchAuvoTasksAll(
     console.log(`[kanban-custom] Page ${page}: ${entities.length} tasks, ${allTasks.length} total`);
     if (entities.length < pageSize || (totalItems > 0 && allTasks.length >= totalItems)) break;
     page++;
+  }
+
+  if (page > MAX_PAGES) {
+    console.warn(`[kanban-custom] TRUNCAMENTO: MAX_PAGES atingido em Auvo /tasks, possível perda de dados`);
   }
 
   const questionnaires = Array.from(questionnaireMap.entries()).map(([id, description]) => ({ id, description }));
@@ -133,12 +161,7 @@ async function fetchGcOsMapByAttr(
     if (startDate) url += `&data_inicio=${startDate}`;
     if (endDate) url += `&data_fim=${endDate}`;
 
-    const response = await rateLimitedFetch(url, { headers: gcHeaders }, "gc");
-    if (response.status === 429) {
-      console.warn(`[kanban-custom] GC ${label} rate limit — aguardando 3s...`);
-      await new Promise(r => setTimeout(r, 3000));
-      continue;
-    }
+    const response = await gcFetchWithRetry(url, { headers: gcHeaders }, `${label} page ${page}`);
     if (!response.ok) {
       console.error(`[kanban-custom] GC ${label} error: ${response.status}`);
       break;
@@ -177,6 +200,9 @@ async function fetchGcOsMapByAttr(
 
     console.log(`[kanban-custom] GC ${label} page ${page}/${totalPages}: ${records.length} registros`);
     page++;
+  }
+  if (page > MAX_PAGES && page <= totalPages) {
+    console.warn(`[kanban-custom] TRUNCAMENTO: MAX_PAGES atingido em GC ${label} (totalPages=${totalPages}), possível perda de dados`);
   }
   return map;
 }
@@ -460,7 +486,7 @@ Deno.serve(async (req) => {
         const cid = (item as any)._customerId;
         if (customerCache[cid]) { (item as any).cliente = customerCache[cid]; continue; }
         try {
-          const resp = await rateLimitedFetch(`${AUVO_BASE_URL}/customers/${cid}`, { headers: auvoHeaders(bearerToken) }, "auvo");
+          const resp = await auvoFetchWithRetry(`${AUVO_BASE_URL}/customers/${cid}`, { headers: auvoHeaders(bearerToken) }, `/customers/${cid}`);
           if (resp.ok) {
             const cData = await resp.json();
             const cust = cData?.result;
@@ -477,7 +503,7 @@ Deno.serve(async (req) => {
       for (const item of needsExternalLookup) {
         const extId = (item as any)._externalId;
         try {
-          const resp = await rateLimitedFetch(`${GC_BASE_URL}/api/ordens_servicos?codigo=${encodeURIComponent(extId)}&limite=1`, { headers: gcH }, "gc");
+          const resp = await gcFetchWithRetry(`${GC_BASE_URL}/api/ordens_servicos?codigo=${encodeURIComponent(extId)}&limite=1`, { headers: gcH }, `OS lookup codigo=${extId}`);
           if (resp.ok) {
             const data = await resp.json();
             const os = Array.isArray(data?.data) ? data.data[0] : null;
