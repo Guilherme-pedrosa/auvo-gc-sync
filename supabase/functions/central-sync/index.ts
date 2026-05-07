@@ -468,22 +468,10 @@ async function fetchGcOs(gcHeaders: Record<string, string>, options?: { situacao
           }
         }
 
-        // 73343 = tarefa OS (vínculo prioritário).
-        // 73344 = tarefa execução (vínculo secundário, usado quando a OS foi
-        // feita sem orçamento prévio - contrato/garantia/atendimento direto).
-        // Ambos devem mapear a OS para a tarefa Auvo correspondente, mas 73343
-        // tem prioridade quando os dois existem.
+        // 73343 = TAREFA OS. É o único campo que vincula uma OS à tarefa Auvo.
+        // 73344 = TAREFA EXECUÇÃO; nunca deve amarrar a OS no Kanban/central.
         const tarefaOsIds = gc_os_tarefa_os.split("/").filter(Boolean);
-        const tarefaExecIds = (gc_os_tarefa_exec || "").split("/").filter(Boolean);
         for (const taskId of tarefaOsIds) {
-          if (!map[taskId]) map[taskId] = osPayload;
-          const bucket = byTaskIdAll[taskId] || [];
-          if (!bucket.some((existing) => existing?.gc_os_id === osPayload.gc_os_id)) {
-            bucket.push(osPayload);
-            byTaskIdAll[taskId] = bucket;
-          }
-        }
-        for (const taskId of tarefaExecIds) {
           if (!map[taskId]) map[taskId] = osPayload;
           const bucket = byTaskIdAll[taskId] || [];
           if (!bucket.some((existing) => existing?.gc_os_id === osPayload.gc_os_id)) {
@@ -506,10 +494,8 @@ async function upsertGcOsShellRows(sbClient: any, gcOsResult: { byTaskIdAll: Rec
 
   for (const osPayload of Object.values(gcOsResult.byCodigo || {})) {
     const taskIds = normalizeTaskIdList((osPayload as any).gc_os_tarefa_os).split("/").filter(Boolean);
-    const execIds = normalizeTaskIdList((osPayload as any).gc_os_tarefa_exec || "").split("/").filter(Boolean);
-    // 73343 (tarefa OS) tem prioridade. 73344 (tarefa execução) é fallback
-    // quando a OS foi feita sem orçamento prévio (contrato/garantia/atendimento direto).
-    const realTaskId = taskIds[0] || execIds[0] || "";
+    // Só 73343 (TAREFA OS) pode criar/atualizar vínculo de OS.
+    const realTaskId = taskIds[0] || "";
     if (!(osPayload as any).gc_os_id) continue;
     // If no Auvo task linked, create a synthetic shell so the OS still appears (flagged red in UI)
     const primaryTaskId = realTaskId || `gc-only::${(osPayload as any).gc_os_id}`;
@@ -637,6 +623,37 @@ async function runCentralSync(body: CentralSyncBody = {}) {
     const gcOsByOrcNumero = gcOsResult.byOrcNumero;
 
     console.log(`[central-sync] GC carregado: Orç: ${Object.keys(gcOrcMap).length}, OS: ${Object.keys(gcOsMap).length}`);
+
+    // Remove vínculos antigos/duplicados de OS que não aparecem mais pelo campo 73343.
+    // A chave válida é sempre tarefa Auvo + OS GC vinda de gcOsResult.byTaskIdAll (somente 73343).
+    const validOsTaskKeys = new Set<string>();
+    for (const [taskId, osList] of Object.entries(gcOsByTaskIdAll)) {
+      for (const osPayload of osList as any[]) {
+        if (taskId && osPayload?.gc_os_id) validOsTaskKeys.add(`${taskId}::${String(osPayload.gc_os_id)}`);
+      }
+    }
+    const fetchedOsIds = [...new Set(Object.values(gcOsByCodigo).map((os: any) => String(os?.gc_os_id || "")).filter(Boolean))];
+    let staleOsLinksDeleted = 0;
+    for (let i = 0; i < fetchedOsIds.length; i += 100) {
+      const batchIds = fetchedOsIds.slice(i, i + 100);
+      const { data: linkedRows } = await sbClient
+        .from("tarefas_central")
+        .select("mirror_key, auvo_task_id, gc_os_id")
+        .in("gc_os_id", batchIds);
+      const staleKeys = (linkedRows || [])
+        .filter((row: any) => !validOsTaskKeys.has(`${String(row.auvo_task_id)}::${String(row.gc_os_id)}`))
+        .map((row: any) => String(row.mirror_key || ""))
+        .filter(Boolean);
+      if (staleKeys.length === 0) continue;
+      const { count } = await sbClient
+        .from("tarefas_central")
+        .delete({ count: "exact" })
+        .in("mirror_key", staleKeys);
+      staleOsLinksDeleted += count || 0;
+    }
+    if (staleOsLinksDeleted > 0) {
+      console.log(`[central-sync] Removidos ${staleOsLinksDeleted} vínculos de OS inválidos (não-73343)`);
+    }
 
     const isGcSolicitadasOnly = situacaoIds.length > 0;
     let gcFirstUpserted = 0;
@@ -1363,21 +1380,9 @@ async function runCentralSync(body: CentralSyncBody = {}) {
       if (!row.equipamento_nome && existing.equipamento_nome) row.equipamento_nome = existing.equipamento_nome;
       if (!row.equipamento_id_serie && existing.equipamento_id_serie) row.equipamento_id_serie = existing.equipamento_id_serie;
 
-      // Preserve GC OS when current sync didn't find a match for the task
-      if (!row.gc_os_id && existing.gc_os_id) {
-        row.gc_os_id = existing.gc_os_id;
-        row.gc_os_codigo = existing.gc_os_codigo;
-        row.gc_os_cliente = existing.gc_os_cliente;
-        row.gc_os_situacao = existing.gc_os_situacao;
-        row.gc_os_situacao_id = existing.gc_os_situacao_id;
-        row.gc_os_cor_situacao = existing.gc_os_cor_situacao;
-        row.gc_os_valor_total = existing.gc_os_valor_total;
-        row.gc_os_vendedor = existing.gc_os_vendedor;
-        row.gc_os_data = existing.gc_os_data;
-        row.gc_os_data_saida = existing.gc_os_data_saida;
-        row.gc_os_link = existing.gc_os_link;
-        row.os_realizada = existing.os_realizada ?? true;
-      } else if (row.gc_os_id && (row.gc_os_valor_total === null || row.gc_os_valor_total === undefined) && existing.gc_os_valor_total !== null) {
+      // Não preservar OS antiga quando a sync atual não encontrou 73343 para esta tarefa.
+      // Isso evita ressuscitar vínculo contaminado pelo 73344 (TAREFA EXECUÇÃO).
+      if (row.gc_os_id && (row.gc_os_valor_total === null || row.gc_os_valor_total === undefined) && existing.gc_os_valor_total !== null) {
         row.gc_os_valor_total = existing.gc_os_valor_total;
       }
 
