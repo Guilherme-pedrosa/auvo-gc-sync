@@ -195,6 +195,7 @@ type AuvoTaskSnapshot = {
   equipmentName: string;
   equipmentSerial: string;
   equipmentIds: string[];
+  questionnaires: any[];
 };
 
 async function fetchAuvoTaskSnapshot(bearerToken: string, taskId: string): Promise<AuvoTaskSnapshot | null> {
@@ -254,7 +255,8 @@ async function fetchAuvoTaskSnapshot(bearerToken: string, taskId: string): Promi
     equipmentSerial = String(result?.equipmentIdentifier || result?.equipment?.identifier || result?.equipment?.serial || "").trim();
   }
 
-  return { address, orientation, displacementStart, checkInDate, checkOutDate, taskEndDate, startTime, endTime, estimatedDuration, equipmentName, equipmentSerial, equipmentIds: equipIds };
+  const questionnaires = Array.isArray(result?.questionnaires) ? result.questionnaires : [];
+  return { address, orientation, displacementStart, checkInDate, checkOutDate, taskEndDate, startTime, endTime, estimatedDuration, equipmentName, equipmentSerial, equipmentIds: equipIds, questionnaires };
 }
 
 // Fetch Auvo tasks for a single month window
@@ -1005,7 +1007,11 @@ async function runCentralSync(body: CentralSyncBody = {}) {
       const cliente = desc || nameRaw || nameGc || "Cliente não identificado";
 
       // Questionnaire
-      const targetQ = (task.questionnaires || []).find(
+      const snapshotForQ = taskSnapshotById.get(taskId);
+      const questionnairesSource = (Array.isArray(task.questionnaires) && task.questionnaires.length > 0)
+        ? task.questionnaires
+        : (snapshotForQ?.questionnaires || []);
+      const targetQ = questionnairesSource.find(
         (q: any) => String(q.questionnaireId) === QUESTIONNAIRE_ID
       );
       const answers = (targetQ?.answers || []).map((a: any) => ({
