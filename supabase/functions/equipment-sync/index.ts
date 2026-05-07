@@ -409,12 +409,12 @@ async function fetchCustomerName(customerId: number, token: string, cache: Map<n
       headers: auvoHeaders(token),
     });
     if (!res.ok) return null;
-
     const data = await res.json();
     const name = data?.result?.description || null;
     if (name) cache.set(customerId, name);
     return name;
-  } catch {
+  } catch (err) {
+    console.error(`[equipment-sync] Falha ao buscar customer ${customerId}:`, err);
     return null;
   }
 }
@@ -469,7 +469,13 @@ async function fetchTasksWithEquipmentsForWindow(
   while (page <= maxPages) {
     const url = buildTasksListUrl(windowStart, windowEnd, page, TASK_PAGE_SIZE);
 
-    const res = await rateLimitedFetch(url, { method: "GET", headers });
+    let res: Response;
+    try {
+      res = await rateLimitedFetch(url, { method: "GET", headers });
+    } catch (err) {
+      console.error(`[equipment-sync] Falha em tasks page ${page} (${windowStart}):`, err);
+      break;
+    }
     if (!res.ok) {
       if (res.status === 404) break;
       const errBody = await res.text().catch(() => "");
@@ -524,6 +530,10 @@ async function fetchTasksWithEquipmentsForWindow(
 
     if (tasks.length < TASK_PAGE_SIZE) break;
     page++;
+  }
+
+  if (page > maxPages) {
+    console.warn(`[equipment-sync] TRUNCAMENTO: maxPages=${maxPages} atingido em /tasks (${windowStart} → ${windowEnd})`);
   }
 
   console.log(`[equipment-sync] Total tasks from listing: ${totalTasks}`);
