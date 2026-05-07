@@ -598,18 +598,6 @@ function budgetColumnForItem(item: any): string {
   return "a_fazer";
 }
 
-function sanitizeBudgetItemOsLink(item: any): any {
-  if (!item?.os_realizada || !item?.gc_os) return item;
-  // Cache antigo pode ter sido salvo a partir do atributo 73344 (Tarefa Execução).
-  // No Kanban Orçamentos, OS Realizada só é válida quando veio do 73343 (Tarefa OS).
-  if (String(item.gc_os?._vinculo || "").trim() === GC_ATRIBUTO_TAREFA_OS) return item;
-  return {
-    ...item,
-    os_realizada: false,
-    gc_os: null,
-  };
-}
-
 function buildBudgetItemFromCentral(row: any, gcOrcMap: Record<string, any> = {}, gcOsMap: Record<string, any> = {}) {
   const taskId = String(row.auvo_task_id || "").trim();
   const questionarioRespostas = Array.isArray(row.questionario_respostas) ? row.questionario_respostas : [];
@@ -691,7 +679,7 @@ Deno.serve(async (req) => {
       } catch {}
 
       const items = (cached || []).map((row: any) => {
-        const item = sanitizeBudgetItemOsLink(row.dados || {});
+        const item = row.dados || {};
         return {
           ...item,
           _coluna: budgetColumnForItem(item),
@@ -950,7 +938,7 @@ async function runBudgetKanbanSync(opts: {
 
       const fallbackItems = (cached || [])
         .map((row: any) => {
-          const item = sanitizeBudgetItemOsLink(row.dados || {});
+          const item = row.dados || {};
           return { ...item, _coluna: budgetColumnForItem(item), _posicao: row.posicao };
         })
         .filter((item: any) => inDateRange(item.data_tarefa, startDate, endDate));
