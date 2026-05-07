@@ -1180,6 +1180,7 @@ async function runCentralSync(body: CentralSyncBody = {}) {
         row.gc_os_data_saida = gcOs.gc_os_data_saida;
         row.gc_os_link = gcOs.gc_os_link;
         row.gc_os_tarefa_exec = gcOs.gc_os_tarefa_exec || null;
+        row.gc_os_tarefa_os = gcOs.gc_os_tarefa_os || taskId;
       }
 
       rows.push(row);
@@ -1246,6 +1247,7 @@ async function runCentralSync(body: CentralSyncBody = {}) {
         gc_os_data_saida: gcOs.gc_os_data_saida,
         gc_os_link: gcOs.gc_os_link,
         gc_os_tarefa_exec: gcOs.gc_os_tarefa_exec || null,
+        gc_os_tarefa_os: gcOs.gc_os_tarefa_os || taskId,
       };
 
       if (gcOrc) {
