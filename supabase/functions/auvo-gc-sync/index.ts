@@ -1110,8 +1110,9 @@ Deno.serve(async (req) => {
       }
 
       // Buscar TODAS as OS com tarefa Auvo (incluindo situações finais)
-      const atributoId = Deno.env.get("GC_ATRIBUTO_TAREFA_ID") || "73344";
-      const atributoLabel = (Deno.env.get("AUVO_ATRIBUTO_LABEL") || "Tarefa Execução").toLowerCase();
+      // Conciliação também depende exclusivamente de Tarefa OS (73343).
+      const atributoId = Deno.env.get("GC_ATRIBUTO_TAREFA_ID") || "73343";
+      const atributoLabel = (Deno.env.get("AUVO_ATRIBUTO_LABEL") || "Tarefa OS").toLowerCase();
       const todasOs: Array<{
         gc_os_id: string; gc_os_codigo: string; auvo_task_id: string;
         nome_situacao: string; situacao_id: string; data_os: string; gc_cliente: string; gc_valor_total: string;
@@ -1144,7 +1145,7 @@ Deno.serve(async (req) => {
             const nested = a?.atributo || a;
             const id = String(nested.atributo_id || nested.id || "");
             const label = String(nested.descricao || nested.label || nested.nome || "").toLowerCase();
-            return id === atributoId || label === atributoLabel || label.includes("tarefa execu");
+            return id === atributoId || label === atributoLabel || label.includes("tarefa os");
           });
           if (!atributoTarefa) continue;
           const nested2 = atributoTarefa?.atributo || atributoTarefa;
