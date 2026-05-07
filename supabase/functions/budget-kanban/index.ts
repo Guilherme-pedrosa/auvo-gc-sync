@@ -10,6 +10,7 @@ const GC_BASE_URL = "https://api.gestaoclick.com";
 const QUESTIONNAIRE_ID = "216040";
 const GC_ATRIBUTO_TAREFA_ORC = "73341";
 const GC_ATRIBUTO_TAREFA_OS = "73343";
+const GC_ATRIBUTO_TAREFA_EXEC = "73344";
 const AUVO_SAFE_START = "2020-01-01";
 const AUVO_SAFE_END = "2030-12-31";
 const MIN_DELAY_MS = 200;
@@ -526,28 +527,40 @@ async function fetchGcOsMap(
   const ingest = (records: any[]) => {
     for (const os of records) {
       const atributos: any[] = os.atributos || [];
-      const attrTarefa = atributos.find((a: any) => {
-        const nested = a?.atributo || a;
-        return String(nested.atributo_id || nested.id || "") === GC_ATRIBUTO_TAREFA_OS;
-      });
-      if (attrTarefa) {
-        const nested = attrTarefa?.atributo || attrTarefa;
-        const taskId = String(nested?.conteudo || nested?.valor || "").trim();
-        if (taskId && /^\d+$/.test(taskId)) {
-          map[taskId] = {
-            gc_os_id: String(os.id),
-            gc_os_codigo: String(os.codigo || ""),
-            gc_cliente: String(os.nome_cliente || ""),
-            gc_situacao: String(os.nome_situacao || ""),
-            gc_situacao_id: String(os.situacao_id || ""),
-            gc_cor_situacao: String(os.cor_situacao || ""),
-            gc_valor_total: String(os.valor_total || "0"),
-            gc_vendedor: String(os.nome_vendedor || ""),
-            gc_data: String(os.data || ""),
-            gc_data_saida: String(os.data_saida || ""),
-            gc_link: `https://gestaoclick.com/ordens_servicos/editar/${os.id}?retorno=%2Fordens_servicos`,
-          };
+      const collectTaskIds = (atrId: string): string[] => {
+        const ids: string[] = [];
+        for (const a of atributos) {
+          const nested = a?.atributo || a;
+          if (String(nested.atributo_id || nested.id || "") !== atrId) continue;
+          const raw = String(nested?.conteudo || nested?.valor || "").trim();
+          for (const piece of raw.split(/[\/,;]/)) {
+            const tid = piece.trim();
+            if (tid && /^\d+$/.test(tid)) ids.push(tid);
+          }
         }
+        return ids;
+      };
+      const tarefaOsIds = collectTaskIds(GC_ATRIBUTO_TAREFA_OS);
+      const tarefaExecIds = collectTaskIds(GC_ATRIBUTO_TAREFA_EXEC);
+      if (tarefaOsIds.length === 0 && tarefaExecIds.length === 0) continue;
+      const osPayload = {
+        gc_os_id: String(os.id),
+        gc_os_codigo: String(os.codigo || ""),
+        gc_cliente: String(os.nome_cliente || ""),
+        gc_situacao: String(os.nome_situacao || ""),
+        gc_situacao_id: String(os.situacao_id || ""),
+        gc_cor_situacao: String(os.cor_situacao || ""),
+        gc_valor_total: String(os.valor_total || "0"),
+        gc_vendedor: String(os.nome_vendedor || ""),
+        gc_data: String(os.data || ""),
+        gc_data_saida: String(os.data_saida || ""),
+        gc_link: `https://gestaoclick.com/ordens_servicos/editar/${os.id}?retorno=%2Fordens_servicos`,
+      };
+      for (const tid of tarefaOsIds) {
+        map[tid] = { ...osPayload, _vinculo: "73343" };
+      }
+      for (const tid of tarefaExecIds) {
+        if (!map[tid]) map[tid] = { ...osPayload, _vinculo: "73344" };
       }
     }
   };
@@ -862,7 +875,7 @@ async function runBudgetKanbanSync(opts: {
       .select("*")
       .gte("data_tarefa", startDate)
       .lte("data_tarefa", endDate)
-      .not("gc_orcamento_id", "is", null);
+      .or("gc_orcamento_id.not.is.null,gc_os_id.not.is.null");
 
     const seenIds = new Set<string>();
     const combinedCentral: any[] = [];
