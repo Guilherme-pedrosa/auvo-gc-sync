@@ -692,11 +692,14 @@ Deno.serve(async (req) => {
         if (colMeta?.periodo_inicio) customColumns = JSON.parse(colMeta.periodo_inicio);
       } catch {}
 
-      const items = (cached || []).map((row: any) => ({
-        ...row.dados,
-        _coluna: row.coluna,
-        _posicao: row.posicao,
-      }));
+      const items = (cached || []).map((row: any) => {
+        const item = sanitizeBudgetItemOsLink(row.dados || {});
+        return {
+          ...item,
+          _coluna: budgetColumnForItem(item),
+          _posicao: row.posicao,
+        };
+      });
 
       const filteredItems = items.filter((item: any) =>
         inDateRange(item.data_tarefa, startDate, endDate)
@@ -948,7 +951,10 @@ async function runBudgetKanbanSync(opts: {
         .single();
 
       const fallbackItems = (cached || [])
-        .map((row: any) => ({ ...row.dados, _coluna: row.coluna, _posicao: row.posicao }))
+        .map((row: any) => {
+          const item = sanitizeBudgetItemOsLink(row.dados || {});
+          return { ...item, _coluna: budgetColumnForItem(item), _posicao: row.posicao };
+        })
         .filter((item: any) => inDateRange(item.data_tarefa, startDate, endDate));
 
       const resumo = {
