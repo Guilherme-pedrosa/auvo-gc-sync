@@ -838,7 +838,9 @@ async function runBudgetKanbanSync(opts: {
       console.warn(`[budget-kanban] Erro ao carregar snapshot:`, err);
     }
 
-    // Primeiro usa a tabela central já sincronizada: ela é mais rápida e já contém os vínculos GC.
+    // Estratégia: busca direta na Auvo (igual ao kanban-custom) para garantir que
+    // todas as tarefas com o questionário 216040 apareçam, mesmo que ainda não estejam
+    // na tabela central. O caminho via tarefas_central só é usado como reforço.
     const { data: centralRows, error: centralError } = await sbClient
       .from("tarefas_central")
       .select("*")
@@ -848,7 +850,7 @@ async function runBudgetKanbanSync(opts: {
 
     if (centralError) {
       console.warn("[budget-kanban] Erro ao ler tarefas_central, usando APIs externas:", centralError.message);
-    } else if ((centralRows || []).length > 0) {
+    } else if (false && (centralRows || []).length > 0) {
       console.log(`[budget-kanban] Central encontrada: ${(centralRows || []).length} tarefas com questionário ${QUESTIONNAIRE_ID}`);
 
       const { data: existingCache } = await sbClient
