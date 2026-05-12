@@ -1,6 +1,6 @@
 import { useState, useMemo, useCallback, useEffect, useRef } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { startOfMonth, endOfMonth, format } from "date-fns";
+import { startOfMonth, endOfMonth, format, subMonths } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -62,7 +62,8 @@ export default function OrcamentosControlePage() {
   const queryClient = useQueryClient();
   const { profile } = useAuth();
   const today = new Date();
-  const [dateFrom, setDateFrom] = useState<Date>(startOfMonth(today));
+  // Default: últimos 12 meses até fim do mês atual (pega antigos + novos)
+  const [dateFrom, setDateFrom] = useState<Date>(startOfMonth(subMonths(today, 12)));
   const [dateTo, setDateTo] = useState<Date>(endOfMonth(today));
   const [syncing, setSyncing] = useState(false);
 
@@ -175,8 +176,16 @@ export default function OrcamentosControlePage() {
     if (excludedSituacoes.size > 0) {
       items = items.filter((t) => !excludedSituacoes.has(t.gc_orc_situacao || ""));
     }
+    // Filtro por data do orçamento (gc_orc_data) dentro do range selecionado
+    const fromStr = format(dateFrom, "yyyy-MM-dd");
+    const toStr = format(dateTo, "yyyy-MM-dd");
+    items = items.filter((t) => {
+      const d = (t.gc_orc_data || "").slice(0, 10);
+      if (!d) return false;
+      return d >= fromStr && d <= toStr;
+    });
     return items;
-  }, [orcamentos, excludedSituacoes, movedIds]);
+  }, [orcamentos, excludedSituacoes, movedIds, dateFrom, dateTo]);
 
   const clienteSummary = useMemo(() => {
     const map = new Map<string, { cliente: string; count: number; total: number; items: any[] }>();
