@@ -27,6 +27,7 @@ const navGroups: NavGroup[] = [
       { label: "Acompanhamento", icon: Radio, path: "/financeiro/acompanhamento" },
       { label: "Agenda Semanal", icon: CalendarDays, path: "/financeiro/agenda-semanal" },
       { label: "Controle OS", icon: FileText, path: "/financeiro/relatorios" },
+      { label: "Controle Orçamentos", icon: FileText, path: "/financeiro/controle-orcamentos" },
       { label: "OS Cruzadas", icon: ArrowLeftRight, path: "/financeiro/os-cruzadas" },
       { label: "Preventiva Equip.", icon: Thermometer, path: "/financeiro/equipamentos-preventivos" },
     ],
