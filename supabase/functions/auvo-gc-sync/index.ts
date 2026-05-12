@@ -1044,6 +1044,61 @@ Deno.serve(async (req) => {
       });
     }
 
+    // ─── Action: revert_orcamento — alterar situação de Orçamento no GC ───
+    if (body?.action === "revert_orcamento") {
+      const gcOrcId = String(body.gc_orcamento_id || "");
+      const novaSituacaoId = String(body.situacao_id || "");
+      const gcOrcCodigo = String(body.gc_orcamento_codigo || "");
+      const gcUsuarioId = body.gc_usuario_id ? String(body.gc_usuario_id) : null;
+      if (!gcOrcId || !novaSituacaoId) {
+        return new Response(JSON.stringify({ error: "gc_orcamento_id e situacao_id são obrigatórios" }), {
+          status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+      try {
+        const getUrl = `${GC_BASE_URL}/api/orcamentos/${gcOrcId}`;
+        const getResp = await rateLimitedFetch(getUrl, { headers: gcHeaders }, "gc");
+        const getJson: any = await getResp.json().catch(() => ({}));
+        const orcAtual = getJson?.data ?? getJson;
+        if (!orcAtual || typeof orcAtual !== "object") {
+          return new Response(JSON.stringify({ success: false, error: `Orçamento ${gcOrcId} não encontrado (HTTP ${getResp.status})` }), {
+            status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
+          });
+        }
+        const payload: Record<string, unknown> = { ...orcAtual, situacao_id: novaSituacaoId };
+        if (gcUsuarioId) payload.usuario_id = gcUsuarioId;
+        // Remove read-only fields
+        for (const f of ["id", "codigo", "nome_situacao", "cor_situacao", "hash", "cadastrado_em", "modificado_em"]) {
+          delete (payload as any)[f];
+        }
+        const putResp = await rateLimitedFetch(getUrl, {
+          method: "PUT", headers: gcHeaders, body: JSON.stringify(payload),
+        }, "gc");
+        const putJson: any = await putResp.json().catch(() => ({}));
+        const success = putResp.ok && putJson?.code !== 400;
+        await supabase.from("auvo_gc_sync_log").insert({
+          executado_em: new Date().toISOString(),
+          os_candidatas: 1,
+          os_atualizadas: success ? 1 : 0,
+          erros: success ? 0 : 1,
+          dry_run: false,
+          duracao_ms: Date.now() - startTime,
+          observacao: `REVERSÃO ORÇAMENTO manual: ${gcOrcCodigo || gcOrcId}`,
+          detalhes: [{ gc_orcamento_id: gcOrcId, gc_orcamento_codigo: gcOrcCodigo, situacao_id_depois: novaSituacaoId, http_status: putResp.status, body: putJson }],
+        });
+        return new Response(JSON.stringify({
+          success, gc_orcamento_id: gcOrcId, gc_orcamento_codigo: gcOrcCodigo,
+          status: putResp.status, body: putJson,
+        }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      } catch (err) {
+        return new Response(JSON.stringify({ success: false, error: String(err) }), {
+          status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+    }
+
+    // ─── (legado removido — duplicate handler) ───
+
     // ─── Auvo Login (v2 — Bearer token) ───
     console.log("[auvo-gc-sync] Fazendo login na API Auvo v2...");
     let auvoBearerToken: string;

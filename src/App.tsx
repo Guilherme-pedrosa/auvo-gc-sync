@@ -15,6 +15,7 @@ import CustomKanbanPage from "./pages/financeiro/CustomKanbanPage.tsx";
 import RealtimeTrackingPage from "./pages/financeiro/RealtimeTrackingPage.tsx";
 import OSKanbanPage from "./pages/financeiro/OSKanbanPage.tsx";
 import AgendaSemanalPage from "./pages/financeiro/AgendaSemanalPage.tsx";
+import OrcamentosControlePage from "./pages/financeiro/OrcamentosControlePage.tsx";
 import UsersPage from "./pages/admin/UsersPage.tsx";
 import RelatoriosPage from "./pages/financeiro/RelatoriosPage.tsx";
 import OSCruzadasPage from "./pages/financeiro/OSCruzadasPage.tsx";
@@ -63,6 +64,7 @@ const AppRoutes = () => {
                 <Route path="/financeiro/kanban-os" element={<OSKanbanPage />} />
                 <Route path="/financeiro/agenda-semanal" element={<AgendaSemanalPage />} />
                 <Route path="/financeiro/relatorios" element={<RelatoriosPage />} />
+                <Route path="/financeiro/controle-orcamentos" element={<OrcamentosControlePage />} />
                 <Route path="/financeiro/os-cruzadas" element={<OSCruzadasPage />} />
                 <Route path="/financeiro/kanban-oficina" element={<OficinaKanbanPage />} />
                 <Route path="/financeiro/equipamentos-preventivos" element={<EquipamentosPreventivosPage />} />
