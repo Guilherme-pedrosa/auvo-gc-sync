@@ -18,7 +18,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Label } from "@/components/ui/label";
 import {
   Search, Filter, RefreshCw, CalendarIcon, ExternalLink, Edit2,
-  FileText, Loader2, CheckCircle2,
+  FileText, Loader2, CheckCircle2, Package, ClipboardList,
 } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
@@ -140,6 +140,67 @@ export default function OrcamentosControlePage() {
       return (data?.data || []) as { userID: number; login: string; name: string }[];
     },
     staleTime: 1000 * 60 * 30,
+  });
+
+  // Detalhe do orçamento (peças/serviços) — busca quando abre o modal
+  const selectedOrcId = selectedCard?.gc_orcamento_id || null;
+  const { data: orcDetail, isLoading: orcDetailLoading } = useQuery({
+    queryKey: ["orcamento-detail", selectedOrcId],
+    queryFn: async () => {
+      const { data, error } = await supabase.functions.invoke("gc-proxy", {
+        body: { endpoint: `/api/orcamentos/${selectedOrcId}`, method: "GET" },
+      });
+      if (error) return null;
+      const orcObj = data?.data?.data ?? data?.data ?? null;
+      if (orcObj) {
+        const produtosRaw: any[] = orcObj?.produtos || [];
+        const servicosRaw: any[] = orcObj?.servicos || [];
+        const allItems = [
+          ...produtosRaw.map((p: any) => ({ item: p?.produto || p })),
+          ...servicosRaw.map((s: any) => ({ item: s?.servico || s })),
+        ];
+        const uniqueIds = [
+          ...new Set(
+            allItems
+              .map((i) => String(i.item?.produto_id || i.item?.servico_id || ""))
+              .filter(Boolean)
+          ),
+        ];
+        if (uniqueIds.length > 0) {
+          const codeMap = new Map<string, string>();
+          await Promise.all(
+            uniqueIds.map(async (pid) => {
+              for (const endpoint of [`/api/produtos/${pid}`, `/api/servicos/${pid}`]) {
+                try {
+                  const { data: prodData, error: prodError } = await supabase.functions.invoke("gc-proxy", {
+                    body: { endpoint, method: "GET" },
+                  });
+                  if (prodError) continue;
+                  const prodObj = prodData?.data?.data ?? prodData?.data ?? null;
+                  if (!prodObj || prodData?.status === 404 || prodData?.code === 404) continue;
+                  const code = prodObj?.codigo_interno || prodObj?.codigo_barra || prodObj?.codigo || "";
+                  if (code) { codeMap.set(pid, code); break; }
+                } catch { /* ignore */ }
+              }
+            })
+          );
+          for (const p of produtosRaw) {
+            const inner = p?.produto || p;
+            const pid = String(inner?.produto_id || "");
+            if (pid && codeMap.has(pid)) inner.codigo_interno = codeMap.get(pid);
+          }
+          for (const s of servicosRaw) {
+            const inner = s?.servico || s;
+            const sid = String(inner?.servico_id || inner?.produto_id || "");
+            if (sid && codeMap.has(sid)) inner.codigo_interno = codeMap.get(sid);
+          }
+        }
+      }
+      return orcObj;
+    },
+    enabled: !!selectedOrcId,
+    staleTime: 1000 * 60 * 5,
+    gcTime: 1000 * 60 * 10,
   });
 
   // Dedup orçamentos por gc_orcamento_id
@@ -596,6 +657,133 @@ export default function OrcamentosControlePage() {
                   <p className="whitespace-pre-wrap text-xs bg-muted/30 p-2 rounded">{selectedCard.orientacao}</p>
                 </div>
               )}
+
+              {/* Peças e Serviços do orçamento */}
+              {orcDetailLoading && (
+                <div className="border rounded-md p-3 space-y-2">
+                  <Skeleton className="h-4 w-40" />
+                  <Skeleton className="h-8 w-full" />
+                  <Skeleton className="h-8 w-full" />
+                </div>
+              )}
+              {!orcDetailLoading && orcDetail && (() => {
+                const produtos: any[] = (orcDetail?.produtos || []).map((p: any) => p?.produto || p);
+                const servicos: any[] = (orcDetail?.servicos || []).map((s: any) => s?.servico || s);
+                const hasItems = produtos.length > 0 || servicos.length > 0;
+                const valorProdutos = Number(orcDetail?.valor_produtos || orcDetail?.total_produtos || 0);
+                const valorServicos = Number(orcDetail?.valor_servicos || orcDetail?.total_servicos || 0);
+                const valorDesconto = Number(orcDetail?.desconto || orcDetail?.valor_desconto || 0);
+                const valorTotal = Number(orcDetail?.valor_total || selectedCard.gc_orc_valor_total || 0);
+
+                return (
+                  <>
+                    <div className="border rounded-md">
+                      <div className="flex items-center gap-2 px-3 py-2 bg-muted/50 border-b">
+                        <span className="text-sm font-semibold">💰 Resumo Financeiro</span>
+                      </div>
+                      <div className="grid grid-cols-4 gap-2 p-3 text-sm">
+                        <div className="text-center">
+                          <span className="text-muted-foreground text-xs block">Produtos</span>
+                          <p className="font-semibold">{formatCurrency(valorProdutos)}</p>
+                        </div>
+                        <div className="text-center">
+                          <span className="text-muted-foreground text-xs block">Serviços</span>
+                          <p className="font-semibold">{formatCurrency(valorServicos)}</p>
+                        </div>
+                        <div className="text-center">
+                          <span className="text-muted-foreground text-xs block">Desconto</span>
+                          <p className="font-semibold text-destructive">
+                            {valorDesconto > 0 ? `-${formatCurrency(valorDesconto)}` : "—"}
+                          </p>
+                        </div>
+                        <div className="text-center">
+                          <span className="text-muted-foreground text-xs block">Total</span>
+                          <p className="font-bold text-foreground">{formatCurrency(valorTotal)}</p>
+                        </div>
+                      </div>
+                    </div>
+
+                    {produtos.length > 0 && (
+                      <div className="border rounded-md">
+                        <div className="flex items-center gap-2 px-3 py-2 bg-muted/50 border-b">
+                          <Package className="h-4 w-4 text-muted-foreground" />
+                          <span className="text-sm font-semibold">Peças ({produtos.length})</span>
+                        </div>
+                        <Table>
+                          <TableHeader>
+                            <TableRow>
+                              <TableHead className="text-xs">Código</TableHead>
+                              <TableHead className="text-xs">Descrição</TableHead>
+                              <TableHead className="text-xs text-right">Qtd</TableHead>
+                              <TableHead className="text-xs text-right">Unit.</TableHead>
+                              <TableHead className="text-xs text-right">Total</TableHead>
+                            </TableRow>
+                          </TableHeader>
+                          <TableBody>
+                            {produtos.map((p: any, i: number) => {
+                              const qtd = Number(p.quantidade || p.qtd || 1);
+                              const unitario = Number(p.valor_venda || p.valor_unitario || p.preco || p.valor || 0);
+                              const total = Number(p.valor_total || p.subtotal || qtd * unitario);
+                              return (
+                                <TableRow key={i}>
+                                  <TableCell className="text-xs font-mono py-1.5">{String(p.codigo_interno || p.codigo || p.produto_id || "—")}</TableCell>
+                                  <TableCell className="text-xs py-1.5 max-w-[220px] truncate">{String(p.nome_produto || p.descricao || p.nome || "—")}</TableCell>
+                                  <TableCell className="text-xs py-1.5 text-right">{qtd}</TableCell>
+                                  <TableCell className="text-xs py-1.5 text-right">{formatCurrency(unitario)}</TableCell>
+                                  <TableCell className="text-xs py-1.5 text-right font-medium">{formatCurrency(total)}</TableCell>
+                                </TableRow>
+                              );
+                            })}
+                          </TableBody>
+                        </Table>
+                      </div>
+                    )}
+
+                    {servicos.length > 0 && (
+                      <div className="border rounded-md">
+                        <div className="flex items-center gap-2 px-3 py-2 bg-muted/50 border-b">
+                          <ClipboardList className="h-4 w-4 text-muted-foreground" />
+                          <span className="text-sm font-semibold">Serviços ({servicos.length})</span>
+                        </div>
+                        <Table>
+                          <TableHeader>
+                            <TableRow>
+                              <TableHead className="text-xs">Código</TableHead>
+                              <TableHead className="text-xs">Descrição</TableHead>
+                              <TableHead className="text-xs text-right">Qtd</TableHead>
+                              <TableHead className="text-xs text-right">Unit.</TableHead>
+                              <TableHead className="text-xs text-right">Total</TableHead>
+                            </TableRow>
+                          </TableHeader>
+                          <TableBody>
+                            {servicos.map((s: any, i: number) => {
+                              const qtd = Number(s.quantidade || s.qtd || 1);
+                              const unitario = Number(s.valor_venda || s.valor_unitario || s.preco || s.valor || 0);
+                              const total = Number(s.valor_total || s.subtotal || qtd * unitario);
+                              return (
+                                <TableRow key={i}>
+                                  <TableCell className="text-xs font-mono py-1.5">{String(s.codigo_interno || s.codigo || s.servico_id || "—")}</TableCell>
+                                  <TableCell className="text-xs py-1.5 max-w-[220px] truncate">{String(s.nome_servico || s.descricao || s.nome || "—")}</TableCell>
+                                  <TableCell className="text-xs py-1.5 text-right">{qtd}</TableCell>
+                                  <TableCell className="text-xs py-1.5 text-right">{formatCurrency(unitario)}</TableCell>
+                                  <TableCell className="text-xs py-1.5 text-right font-medium">{formatCurrency(total)}</TableCell>
+                                </TableRow>
+                              );
+                            })}
+                          </TableBody>
+                        </Table>
+                      </div>
+                    )}
+
+                    {!hasItems && (
+                      <div className="border rounded-md p-3 text-sm text-muted-foreground text-center">
+                        Nenhuma peça ou serviço cadastrado neste orçamento
+                      </div>
+                    )}
+                  </>
+                );
+              })()}
+
               <div className="flex gap-2 pt-2">
                 {selectedCard.gc_orc_link && (
                   <a href={selectedCard.gc_orc_link} target="_blank" rel="noopener noreferrer">
