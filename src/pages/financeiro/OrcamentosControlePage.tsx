@@ -489,6 +489,7 @@ export default function OrcamentosControlePage() {
                                   <TableHead className="text-xs">Situação</TableHead>
                                   <TableHead className="text-xs">Vendedor</TableHead>
                                   <TableHead className="text-xs">Téc. Auvo</TableHead>
+                                  <TableHead className="text-xs">Equipamento</TableHead>
                                   <TableHead className="text-xs">Data Orç.</TableHead>
                                   <TableHead className="text-xs">Data Tarefa</TableHead>
                                   <TableHead className="text-xs text-right">Valor</TableHead>
@@ -512,6 +513,7 @@ export default function OrcamentosControlePage() {
                                     </TableCell>
                                     <TableCell>{item.gc_orc_vendedor || "—"}</TableCell>
                                     <TableCell>{item.tecnico || "—"}</TableCell>
+                                    <TableCell>{item.equipamento_nome || "—"}</TableCell>
                                     <TableCell>{item.gc_orc_data || "—"}</TableCell>
                                     <TableCell>{item.data_tarefa || "—"}</TableCell>
                                     <TableCell className="text-right font-medium">{formatCurrency(Number(item.gc_orc_valor_total) || 0)}</TableCell>
