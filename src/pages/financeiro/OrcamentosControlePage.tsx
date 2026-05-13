@@ -18,7 +18,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Label } from "@/components/ui/label";
 import {
   Search, Filter, RefreshCw, CalendarIcon, ExternalLink, Edit2,
-  FileText, Loader2, CheckCircle2,
+  FileText, Loader2, CheckCircle2, Package, ClipboardList,
 } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
@@ -140,6 +140,67 @@ export default function OrcamentosControlePage() {
       return (data?.data || []) as { userID: number; login: string; name: string }[];
     },
     staleTime: 1000 * 60 * 30,
+  });
+
+  // Detalhe do orçamento (peças/serviços) — busca quando abre o modal
+  const selectedOrcId = selectedCard?.gc_orcamento_id || null;
+  const { data: orcDetail, isLoading: orcDetailLoading } = useQuery({
+    queryKey: ["orcamento-detail", selectedOrcId],
+    queryFn: async () => {
+      const { data, error } = await supabase.functions.invoke("gc-proxy", {
+        body: { endpoint: `/api/orcamentos/${selectedOrcId}`, method: "GET" },
+      });
+      if (error) return null;
+      const orcObj = data?.data?.data ?? data?.data ?? null;
+      if (orcObj) {
+        const produtosRaw: any[] = orcObj?.produtos || [];
+        const servicosRaw: any[] = orcObj?.servicos || [];
+        const allItems = [
+          ...produtosRaw.map((p: any) => ({ item: p?.produto || p })),
+          ...servicosRaw.map((s: any) => ({ item: s?.servico || s })),
+        ];
+        const uniqueIds = [
+          ...new Set(
+            allItems
+              .map((i) => String(i.item?.produto_id || i.item?.servico_id || ""))
+              .filter(Boolean)
+          ),
+        ];
+        if (uniqueIds.length > 0) {
+          const codeMap = new Map<string, string>();
+          await Promise.all(
+            uniqueIds.map(async (pid) => {
+              for (const endpoint of [`/api/produtos/${pid}`, `/api/servicos/${pid}`]) {
+                try {
+                  const { data: prodData, error: prodError } = await supabase.functions.invoke("gc-proxy", {
+                    body: { endpoint, method: "GET" },
+                  });
+                  if (prodError) continue;
+                  const prodObj = prodData?.data?.data ?? prodData?.data ?? null;
+                  if (!prodObj || prodData?.status === 404 || prodData?.code === 404) continue;
+                  const code = prodObj?.codigo_interno || prodObj?.codigo_barra || prodObj?.codigo || "";
+                  if (code) { codeMap.set(pid, code); break; }
+                } catch { /* ignore */ }
+              }
+            })
+          );
+          for (const p of produtosRaw) {
+            const inner = p?.produto || p;
+            const pid = String(inner?.produto_id || "");
+            if (pid && codeMap.has(pid)) inner.codigo_interno = codeMap.get(pid);
+          }
+          for (const s of servicosRaw) {
+            const inner = s?.servico || s;
+            const sid = String(inner?.servico_id || inner?.produto_id || "");
+            if (sid && codeMap.has(sid)) inner.codigo_interno = codeMap.get(sid);
+          }
+        }
+      }
+      return orcObj;
+    },
+    enabled: !!selectedOrcId,
+    staleTime: 1000 * 60 * 5,
+    gcTime: 1000 * 60 * 10,
   });
 
   // Dedup orçamentos por gc_orcamento_id
