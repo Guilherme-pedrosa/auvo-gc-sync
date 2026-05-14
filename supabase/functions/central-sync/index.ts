@@ -876,10 +876,14 @@ async function runCentralSync(body: CentralSyncBody = {}) {
       }
 
       let globalOsUpdated = 0;
-      for (const osId of dbOsIds) {
-        const fresh = allGcOsById[osId];
-        if (!fresh) continue;
-        const updatePayload: any = {
+      const osIdsArray = Array.from(dbOsIds);
+      const PARALLEL_REFRESH = 20;
+      for (let i = 0; i < osIdsArray.length; i += PARALLEL_REFRESH) {
+        const slice = osIdsArray.slice(i, i + PARALLEL_REFRESH);
+        const results = await Promise.all(slice.map(async (osId) => {
+          const fresh = allGcOsById[osId];
+          if (!fresh) return 0;
+          const updatePayload: any = {
             gc_os_situacao: fresh.gc_os_situacao,
             gc_os_situacao_id: fresh.gc_os_situacao_id,
             gc_os_cor_situacao: fresh.gc_os_cor_situacao,
@@ -889,31 +893,37 @@ async function runCentralSync(body: CentralSyncBody = {}) {
             gc_os_data_saida: fresh.gc_os_data_saida,
             atualizado_em: new Date().toISOString(),
           };
-        if (fresh.gc_os_tarefa_exec) {
-          updatePayload.gc_os_tarefa_exec = fresh.gc_os_tarefa_exec;
-        }
-        const { count } = await sbClient
-          .from("tarefas_central")
-          .update(updatePayload, { count: "exact" })
-          .eq("gc_os_id", osId)
-          .neq("gc_os_situacao", fresh.gc_os_situacao);
-        globalOsUpdated += count || 0;
+          if (fresh.gc_os_tarefa_exec) {
+            updatePayload.gc_os_tarefa_exec = fresh.gc_os_tarefa_exec;
+          }
+          const { count } = await sbClient
+            .from("tarefas_central")
+            .update(updatePayload, { count: "exact" })
+            .eq("gc_os_id", osId)
+            .neq("gc_os_situacao", fresh.gc_os_situacao);
+          return count || 0;
+        }));
+        globalOsUpdated += results.reduce((s, c) => s + c, 0);
       }
 
       // Second pass: fill gc_os_tarefa_exec for OS that have it null but GC has it
       let execFilled = 0;
-      for (const osId of dbOsIds) {
-        const fresh = allGcOsById[osId];
-        if (!fresh?.gc_os_tarefa_exec) continue;
-        const { count } = await sbClient
-          .from("tarefas_central")
-          .update({
-            gc_os_tarefa_exec: fresh.gc_os_tarefa_exec,
-            atualizado_em: new Date().toISOString(),
-          }, { count: "exact" })
-          .eq("gc_os_id", osId)
-          .is("gc_os_tarefa_exec", null);
-        execFilled += count || 0;
+      for (let i = 0; i < osIdsArray.length; i += PARALLEL_REFRESH) {
+        const slice = osIdsArray.slice(i, i + PARALLEL_REFRESH);
+        const results = await Promise.all(slice.map(async (osId) => {
+          const fresh = allGcOsById[osId];
+          if (!fresh?.gc_os_tarefa_exec) return 0;
+          const { count } = await sbClient
+            .from("tarefas_central")
+            .update({
+              gc_os_tarefa_exec: fresh.gc_os_tarefa_exec,
+              atualizado_em: new Date().toISOString(),
+            }, { count: "exact" })
+            .eq("gc_os_id", osId)
+            .is("gc_os_tarefa_exec", null);
+          return count || 0;
+        }));
+        execFilled += results.reduce((s, c) => s + c, 0);
       }
       if (execFilled > 0) {
         console.log(`[central-sync] gc_os_tarefa_exec preenchido para ${execFilled} registros`);
@@ -937,23 +947,28 @@ async function runCentralSync(body: CentralSyncBody = {}) {
       }
 
       let globalOrcUpdated = 0;
-      for (const orcId of dbOrcIds) {
-        const fresh = allGcOrcById[orcId];
-        if (!fresh) continue;
-        const { count } = await sbClient
-          .from("tarefas_central")
-          .update({
-            gc_orc_situacao: fresh.gc_orc_situacao,
-            gc_orc_situacao_id: fresh.gc_orc_situacao_id,
-            gc_orc_cor_situacao: fresh.gc_orc_cor_situacao,
-            gc_orc_valor_total: fresh.gc_orc_valor_total,
-            gc_orc_vendedor: fresh.gc_orc_vendedor,
-            gc_orc_cliente: fresh.gc_orc_cliente,
-            atualizado_em: new Date().toISOString(),
-          }, { count: "exact" })
-          .eq("gc_orcamento_id", orcId)
-          .neq("gc_orc_situacao", fresh.gc_orc_situacao);
-        globalOrcUpdated += count || 0;
+      const orcIdsArray = Array.from(dbOrcIds);
+      for (let i = 0; i < orcIdsArray.length; i += PARALLEL_REFRESH) {
+        const slice = orcIdsArray.slice(i, i + PARALLEL_REFRESH);
+        const results = await Promise.all(slice.map(async (orcId) => {
+          const fresh = allGcOrcById[orcId];
+          if (!fresh) return 0;
+          const { count } = await sbClient
+            .from("tarefas_central")
+            .update({
+              gc_orc_situacao: fresh.gc_orc_situacao,
+              gc_orc_situacao_id: fresh.gc_orc_situacao_id,
+              gc_orc_cor_situacao: fresh.gc_orc_cor_situacao,
+              gc_orc_valor_total: fresh.gc_orc_valor_total,
+              gc_orc_vendedor: fresh.gc_orc_vendedor,
+              gc_orc_cliente: fresh.gc_orc_cliente,
+              atualizado_em: new Date().toISOString(),
+            }, { count: "exact" })
+            .eq("gc_orcamento_id", orcId)
+            .neq("gc_orc_situacao", fresh.gc_orc_situacao);
+          return count || 0;
+        }));
+        globalOrcUpdated += results.reduce((s, c) => s + c, 0);
       }
 
       console.log(`[central-sync] Atualização global de status: ${globalOsUpdated} OS e ${globalOrcUpdated} orçamentos atualizados no banco`);
