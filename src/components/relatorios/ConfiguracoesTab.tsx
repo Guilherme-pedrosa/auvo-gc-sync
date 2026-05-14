@@ -7,11 +7,14 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
 import { toast } from "sonner";
-import { Plus, Trash2, Users, DollarSign, Loader2, AlertTriangle } from "lucide-react";
+import { Plus, Trash2, Users, DollarSign, Loader2, AlertTriangle, ChevronsUpDown } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 
 interface Props {
@@ -29,6 +32,10 @@ export default function ConfiguracoesTab({ grupos, membros, allClientes, allTecn
   const [addingGrupo, setAddingGrupo] = useState(false);
   const [selectedGrupo, setSelectedGrupo] = useState<string | null>(null);
   const [newMembroCliente, setNewMembroCliente] = useState("");
+  // Bulk add state: per-grupo selected client names + open state
+  const [bulkSelection, setBulkSelection] = useState<Record<string, string[]>>({});
+  const [bulkOpen, setBulkOpen] = useState<Record<string, boolean>>({});
+  const [bulkAdding, setBulkAdding] = useState<string | null>(null);
 
   // Valor hora CRUD
   const [vhTecnico, setVhTecnico] = useState("");
@@ -72,6 +79,23 @@ export default function ConfiguracoesTab({ grupos, membros, allClientes, allTecn
     }
     toast.success("Cliente adicionado ao grupo!");
     setNewMembroCliente("");
+    onRefresh();
+  };
+
+  const handleAddMembrosBulk = async (grupoId: string) => {
+    const selected = bulkSelection[grupoId] || [];
+    if (selected.length === 0) return;
+    setBulkAdding(grupoId);
+    const rows = selected.map((cliente_nome) => ({ grupo_id: grupoId, cliente_nome }));
+    const { error } = await supabase.from("grupo_cliente_membros").insert(rows);
+    setBulkAdding(null);
+    if (error) {
+      toast.error("Erro ao adicionar clientes");
+      return;
+    }
+    toast.success(`${selected.length} cliente(s) adicionado(s)!`);
+    setBulkSelection((s) => ({ ...s, [grupoId]: [] }));
+    setBulkOpen((s) => ({ ...s, [grupoId]: false }));
     onRefresh();
   };
 
@@ -223,28 +247,81 @@ export default function ConfiguracoesTab({ grupos, membros, allClientes, allTecn
                       </div>
                     </div>
 
-                    {/* Add member */}
-                    <div className="flex gap-2">
-                      <Select value={selectedGrupo === g.id ? newMembroCliente : ""} onValueChange={(v) => { setSelectedGrupo(g.id); setNewMembroCliente(v); }}>
-                        <SelectTrigger className="h-8 text-xs flex-1">
-                          <SelectValue placeholder="Adicionar cliente..." />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {allClientes
-                            .filter((c) => !gMembros.some((m: any) => m.cliente_nome === c))
-                            .map((c) => <SelectItem key={c} value={c}>{c}</SelectItem>)}
-                        </SelectContent>
-                      </Select>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="h-8"
-                        onClick={() => { setSelectedGrupo(g.id); handleAddMembro(); }}
-                        disabled={selectedGrupo !== g.id || !newMembroCliente}
-                      >
-                        <Plus className="h-3 w-3" />
-                      </Button>
-                    </div>
+                    {/* Add members (multi-select) */}
+                    {(() => {
+                      const available = allClientes.filter(
+                        (c) => !gMembros.some((m: any) => m.cliente_nome === c)
+                      );
+                      const selected = bulkSelection[g.id] || [];
+                      const isOpen = !!bulkOpen[g.id];
+                      const toggle = (c: string) => {
+                        setBulkSelection((s) => {
+                          const cur = s[g.id] || [];
+                          return {
+                            ...s,
+                            [g.id]: cur.includes(c) ? cur.filter((x) => x !== c) : [...cur, c],
+                          };
+                        });
+                      };
+                      return (
+                        <div className="flex gap-2">
+                          <Popover
+                            open={isOpen}
+                            onOpenChange={(o) => setBulkOpen((s) => ({ ...s, [g.id]: o }))}
+                          >
+                            <PopoverTrigger asChild>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className="h-8 text-xs flex-1 justify-between font-normal"
+                              >
+                                {selected.length > 0
+                                  ? `${selected.length} cliente(s) selecionado(s)`
+                                  : "Adicionar clientes..."}
+                                <ChevronsUpDown className="h-3 w-3 opacity-50" />
+                              </Button>
+                            </PopoverTrigger>
+                            <PopoverContent className="w-[380px] p-0" align="start">
+                              <Command>
+                                <CommandInput placeholder="Buscar cliente..." className="h-9" />
+                                <CommandList className="max-h-72">
+                                  <CommandEmpty>Nenhum cliente disponível</CommandEmpty>
+                                  <CommandGroup>
+                                    {available.map((c) => {
+                                      const checked = selected.includes(c);
+                                      return (
+                                        <CommandItem
+                                          key={c}
+                                          value={c}
+                                          onSelect={() => toggle(c)}
+                                          className="text-xs gap-2"
+                                        >
+                                          <Checkbox checked={checked} className="h-3.5 w-3.5" />
+                                          <span className="truncate">{c}</span>
+                                        </CommandItem>
+                                      );
+                                    })}
+                                  </CommandGroup>
+                                </CommandList>
+                              </Command>
+                            </PopoverContent>
+                          </Popover>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="h-8"
+                            onClick={() => handleAddMembrosBulk(g.id)}
+                            disabled={selected.length === 0 || bulkAdding === g.id}
+                          >
+                            {bulkAdding === g.id ? (
+                              <Loader2 className="h-3 w-3 animate-spin" />
+                            ) : (
+                              <Plus className="h-3 w-3" />
+                            )}
+                          </Button>
+                        </div>
+                      );
+                    })()}
 
                     {/* Members */}
                     {gMembros.length > 0 && (
