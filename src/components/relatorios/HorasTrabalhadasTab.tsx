@@ -214,17 +214,15 @@ export default function HorasTrabalhadasTab({
     return t.cliente || t.gc_os_cliente || "Sem cliente";
   };
 
-  // Build hourly rate lookup - checks both auvo and gc client names against group members
-  const getHourlyRate = (tecnico: string, clienteAuvo: string, clienteGc?: string): number => {
-    // First check direct client config (try both names)
+  // Build hourly config lookup — returns the full config row so callers can read
+  // valor_hora_fds / taxa_fixa_emergencial / task_types_emergenciais.
+  const getHourlyConfig = (tecnico: string, clienteAuvo: string, clienteGc?: string): any | null => {
     for (const nome of [clienteAuvo, clienteGc].filter(Boolean)) {
       const directConfig = valorHoraConfigs.find(
         (c: any) => c.tecnico_nome === tecnico && c.tipo_referencia === "cliente" && c.referencia_nome === nome
       );
-      if (directConfig) return Number(directConfig.valor_hora) || 0;
+      if (directConfig) return directConfig;
     }
-
-    // Check group config - match if either client name is in the group (normalized)
     for (const g of grupos) {
       const gClientes = grupoClienteMap.get(g.id) || [];
       const nAuvo = normalizeName(clienteAuvo);
@@ -237,19 +235,43 @@ export default function HorasTrabalhadasTab({
         const groupConfig = valorHoraConfigs.find(
           (c: any) => c.tecnico_nome === tecnico && c.tipo_referencia === "grupo" && c.grupo_id === g.id
         );
-        if (groupConfig) return Number(groupConfig.valor_hora) || 0;
+        if (groupConfig) return groupConfig;
       }
     }
-    return 0;
+    return null;
   };
 
-  // Calculate task value: only hourly rate (no GC values)
+  // Calculate task value applying FDS/holiday rate and emergencial flat fee.
   const getTaskValor = (t: any, tecnico: string): number => {
     const horas = getTaskHoras(t);
     const cliente = t.cliente || t.gc_os_cliente || "";
     const clienteGc = t.gc_os_cliente || "";
-    const rate = getHourlyRate(tecnico, cliente, clienteGc);
-    return horas * rate;
+    const cfg = getHourlyConfig(tecnico, cliente, clienteGc);
+    if (!cfg) return 0;
+
+    // 1. FDS or feriado nacional → use weekend rate when defined
+    const dateRef = t.data_conclusao || t.data_tarefa;
+    let isFds = false;
+    if (dateRef) {
+      const dow = new Date(dateRef + "T12:00:00").getDay();
+      isFds = dow === 0 || dow === 6 || isFeriadoBR(dateRef);
+    }
+    const rate = isFds && cfg.valor_hora_fds != null && Number(cfg.valor_hora_fds) > 0
+      ? Number(cfg.valor_hora_fds)
+      : Number(cfg.valor_hora || 0);
+
+    // 2. Emergencial detected by Auvo taskType ID match against config list
+    const taskTypeIds = String(cfg.task_types_emergenciais || "")
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean);
+    const taskTypeId = String(t.task_type_id ?? t.taskType ?? "").trim();
+    const isEmergencial = taskTypeIds.length > 0 && taskTypeIds.includes(taskTypeId);
+    const taxaFixa = isEmergencial && cfg.aplica_taxa_emergencial
+      ? Number(cfg.taxa_fixa_emergencial || 0)
+      : 0;
+
+    return horas * rate + taxaFixa;
   };
 
   // Summary by technician
