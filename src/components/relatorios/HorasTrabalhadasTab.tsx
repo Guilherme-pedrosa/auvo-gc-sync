@@ -504,7 +504,8 @@ export default function HorasTrabalhadasTab({
     const limMin = (alertasConfig?.limite_minimo_minutos ?? 45) / 60;
     const limMax = Number(alertasConfig?.limite_maximo_horas ?? 8);
     const limExc = Number(alertasConfig?.limite_excessivo_horas ?? 12);
-    const detectarOverlap = !!alertasConfig?.detectar_overlap_tecnico;
+    // Overlap desativado permanentemente — não gera alerta nem bloqueio.
+    const detectarOverlap = false;
     const detectarNegativas = alertasConfig?.detectar_horas_negativas !== false;
 
     const byTecDia = new Map<string, any[]>();
@@ -568,7 +569,7 @@ export default function HorasTrabalhadasTab({
       if (a === "longo" && alertasConfig?.longa_requer_revisao) return true;
       if (a === "excessivo" && alertasConfig?.excessiva_requer_revisao) return true;
       if (a === "negativo" && alertasConfig?.negativa_requer_revisao) return true;
-      if (a === "overlap" && alertasConfig?.overlap_requer_revisao) return true;
+      // "overlap" desativado por regra de negócio — não bloqueia faturamento.
       // "sem_janela" (sem checkout / sem hora_fim) NÃO bloqueia faturamento.
       // Regra de negócio: horas trabalhadas devem ser cobradas mesmo sem checkout.
       // O alerta continua visível como informação, mas não joga a OS para Em Revisão.
