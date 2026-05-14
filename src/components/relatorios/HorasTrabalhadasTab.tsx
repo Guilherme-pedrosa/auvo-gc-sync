@@ -703,6 +703,35 @@ export default function HorasTrabalhadasTab({
 
     curY = (doc as any).lastAutoTable.finalY + 12;
 
+    // ── Inconsistências ──
+    if (alertCounts.total > 0) {
+      if (curY > 230) { doc.addPage(); curY = 20; }
+      doc.setFontSize(12);
+      doc.setFont("helvetica", "bold");
+      doc.text("Inconsistências detectadas", 14, curY);
+      curY += 4;
+      const incBody = (Object.keys(alertCounts.counts) as Array<Exclude<AlertaTipo, null>>)
+        .filter((k) => alertCounts.counts[k] > 0)
+        .sort((a, b) => ALERTA_SEVERIDADE[b] - ALERTA_SEVERIDADE[a])
+        .map((k) => [ALERTA_LABEL[k], String(alertCounts.counts[k])]);
+      autoTable(doc, {
+        startY: curY,
+        head: [["Tipo", "OS afetadas"]],
+        body: incBody,
+        styles: { fontSize: 9 },
+        headStyles: { fillColor: [234, 179, 8] },
+        columnStyles: { 1: { halign: "right", cellWidth: 30 } },
+      });
+      curY = (doc as any).lastAutoTable.finalY + 4;
+      doc.setFontSize(8);
+      doc.setFont("helvetica", "italic");
+      doc.setTextColor(120);
+      doc.text("Detalhamento por OS disponível na aba 'Inconsistências' do export Excel.", 14, curY);
+      doc.setTextColor(0);
+      doc.setFont("helvetica", "normal");
+      curY += 10;
+    }
+
     // ── Resumo por Técnico ──
     if (curY > 240) { doc.addPage(); curY = 20; }
     doc.setFontSize(12);
