@@ -2204,7 +2204,7 @@ function ReviewBoxDialog(props: {
           </div>
         </div>
 
-        <ScrollArea className="flex-1 -mx-6 px-6">
+        <div className="flex-1 overflow-auto -mx-6 px-6 border-t">
           <Table className="min-w-[1100px]">
             <TableHeader className="sticky top-0 bg-background z-10">
               <TableRow>
@@ -2353,8 +2353,11 @@ function ReviewBoxDialog(props: {
               })}
             </TableBody>
           </Table>
-          <ScrollBar orientation="horizontal" />
-        </ScrollArea>
+        </div>
+        <div className="text-[11px] text-muted-foreground pt-2 border-t flex items-center justify-between">
+          <span>Mostrando {filtered.length} de {tasks.length} OS</span>
+          <span>Role para ver mais ↕</span>
+        </div>
       </DialogContent>
     </Dialog>
   );
