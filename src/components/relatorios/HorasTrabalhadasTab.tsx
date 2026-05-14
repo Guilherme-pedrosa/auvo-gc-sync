@@ -568,7 +568,7 @@ export default function HorasTrabalhadasTab({
       if (a === "longo" && alertasConfig?.longa_requer_revisao) return true;
       if (a === "excessivo" && alertasConfig?.excessiva_requer_revisao) return true;
       if (a === "negativo" && alertasConfig?.negativa_requer_revisao) return true;
-      if (a === "overlap" && alertasConfig?.overlap_requer_revisao) return true;
+      // "overlap" desativado por regra de negócio — não bloqueia faturamento.
       // "sem_janela" (sem checkout / sem hora_fim) NÃO bloqueia faturamento.
       // Regra de negócio: horas trabalhadas devem ser cobradas mesmo sem checkout.
       // O alerta continua visível como informação, mas não joga a OS para Em Revisão.
