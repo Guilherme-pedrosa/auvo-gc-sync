@@ -569,8 +569,8 @@ export default function RelatoriosPage() {
 
         <TabsContent value="horas">
           <HorasTrabalhadasTab
-            data={todasTarefas || []}
-            isLoading={isLoadingAll}
+            data={horasData || []}
+            isLoading={isLoadingHoras}
             allClientes={allClientes}
             allTecnicos={allTecnicos}
             allTiposTarefa={allTiposTarefa}
