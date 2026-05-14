@@ -1272,13 +1272,13 @@ async function runCentralSync(body: CentralSyncBody = {}) {
 
       const gcOrc = gcOrcMap[taskId] || null;
       let fallbackSnapshot = taskSnapshotById.get(taskId) || null;
-      if (!fallbackSnapshot) {
+      if (!fallbackSnapshot && !isLiteSync) {
         fallbackSnapshot = await fetchAuvoTaskSnapshot(bearerToken, taskId);
         if (fallbackSnapshot) taskSnapshotById.set(taskId, fallbackSnapshot);
       }
 
       // Skip tasks that don't exist in Auvo (deleted/ghost tasks)
-      if (!fallbackSnapshot && !isGcSolicitadasOnly) {
+      if (!fallbackSnapshot && !isGcSolicitadasOnly && !isLiteSync) {
         console.log(`[central-sync] Ignorando taskId ${taskId} (OS ${gcOs?.gc_os_codigo}): tarefa não encontrada no Auvo (possível fantasma)`);
         continue;
       }
@@ -1350,7 +1350,7 @@ async function runCentralSync(body: CentralSyncBody = {}) {
       .lte("data_tarefa", endDate)
       .or("endereco.is.null,endereco.eq.");
 
-    if (rowsMissingAddress?.length) {
+    if (!isLiteSync && rowsMissingAddress?.length) {
       const patchIds = rowsMissingAddress
         .map((r) => String((r as any).auvo_task_id || "").trim())
         .filter((id) => id && !existingTaskIds.has(id));
