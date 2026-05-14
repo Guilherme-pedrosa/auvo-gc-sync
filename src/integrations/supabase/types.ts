@@ -29,6 +29,7 @@ export type Database = {
           negativa_requer_revisao: boolean | null
           overlap_requer_revisao: boolean | null
           sem_checkout_requer_revisao: boolean | null
+          sem_janela_requer_revisao: boolean | null
         }
         Insert: {
           atualizado_em?: string
@@ -44,6 +45,7 @@ export type Database = {
           negativa_requer_revisao?: boolean | null
           overlap_requer_revisao?: boolean | null
           sem_checkout_requer_revisao?: boolean | null
+          sem_janela_requer_revisao?: boolean | null
         }
         Update: {
           atualizado_em?: string
@@ -59,6 +61,7 @@ export type Database = {
           negativa_requer_revisao?: boolean | null
           overlap_requer_revisao?: boolean | null
           sem_checkout_requer_revisao?: boolean | null
+          sem_janela_requer_revisao?: boolean | null
         }
         Relationships: []
       }
