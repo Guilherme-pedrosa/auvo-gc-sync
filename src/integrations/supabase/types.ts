@@ -631,6 +631,7 @@ export type Database = {
           questionario_preenchido: boolean | null
           questionario_respostas: Json | null
           status_auvo: string | null
+          task_type_id: string | null
           tecnico: string | null
           tecnico_id: string | null
         }
@@ -687,6 +688,7 @@ export type Database = {
           questionario_preenchido?: boolean | null
           questionario_respostas?: Json | null
           status_auvo?: string | null
+          task_type_id?: string | null
           tecnico?: string | null
           tecnico_id?: string | null
         }
@@ -743,6 +745,7 @@ export type Database = {
           questionario_preenchido?: boolean | null
           questionario_respostas?: Json | null
           status_auvo?: string | null
+          task_type_id?: string | null
           tecnico?: string | null
           tecnico_id?: string | null
         }
