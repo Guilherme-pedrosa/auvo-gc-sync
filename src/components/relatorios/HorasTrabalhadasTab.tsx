@@ -504,7 +504,8 @@ export default function HorasTrabalhadasTab({
     const limMin = (alertasConfig?.limite_minimo_minutos ?? 45) / 60;
     const limMax = Number(alertasConfig?.limite_maximo_horas ?? 8);
     const limExc = Number(alertasConfig?.limite_excessivo_horas ?? 12);
-    const detectarOverlap = !!alertasConfig?.detectar_overlap_tecnico;
+    // Overlap desativado permanentemente — não gera alerta nem bloqueio.
+    const detectarOverlap = false;
     const detectarNegativas = alertasConfig?.detectar_horas_negativas !== false;
 
     const byTecDia = new Map<string, any[]>();
