@@ -150,7 +150,7 @@ export default function ConfiguracoesTab({ grupos, membros, allClientes, allTecn
     excessiva_requer_revisao: true,
     negativa_requer_revisao: true,
     overlap_requer_revisao: true,
-    sem_checkout_requer_revisao: true,
+    sem_janela_requer_revisao: true,
   });
   const [savingAlertaCfg, setSavingAlertaCfg] = useState(false);
 
@@ -178,7 +178,7 @@ export default function ConfiguracoesTab({ grupos, membros, allClientes, allTecn
       excessiva_requer_revisao: !!alertaCfg.excessiva_requer_revisao,
       negativa_requer_revisao: !!alertaCfg.negativa_requer_revisao,
       overlap_requer_revisao: !!alertaCfg.overlap_requer_revisao,
-      sem_checkout_requer_revisao: !!alertaCfg.sem_checkout_requer_revisao,
+      sem_janela_requer_revisao: !!alertaCfg.sem_janela_requer_revisao,
       atualizado_em: new Date().toISOString(),
     };
     let error: any = null;
@@ -576,7 +576,7 @@ export default function ConfiguracoesTab({ grupos, membros, allClientes, allTecn
                 { key: "excessiva_requer_revisao", label: "OS excessiva" },
                 { key: "negativa_requer_revisao", label: "Duração negativa" },
                 { key: "overlap_requer_revisao", label: "Sobreposição de horários" },
-                { key: "sem_checkout_requer_revisao", label: "Sem checkout (com horas)" },
+                { key: "sem_janela_requer_revisao", label: "Sem janela de trabalho" },
               ].map(({ key, label }) => (
                 <div key={key} className="flex items-center justify-between border rounded-md px-3 py-2">
                   <Label className="text-xs cursor-pointer" htmlFor={`req-${key}`}>{label}</Label>
