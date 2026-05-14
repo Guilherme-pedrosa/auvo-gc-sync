@@ -637,9 +637,10 @@ async function runReportsOnlySync(sbClient: any, bearerToken: string, startDate:
       : typeof task.taskStatus?.id === "number" ? task.taskStatus.id
       : typeof task.taskStatus === "object" ? Number(task.taskStatus?.id || task.taskStatus?.status || 0) : 0;
 
-    const checkOutRaw = task.checkOut || task.checkOutDate || task.checkoutDate || "";
+    const checkOutDateRaw = String(task.checkOutDate || task.checkoutDate || task.taskEndDate || task.taskEndDateTime || "").trim();
+    const hasCheckOut = !!task.checkOut || !!checkOutDateRaw;
     const startTimeResolved = String(task.startTime || task.startHour || "").trim() || extractTimeFromDateStr(String(task.taskDate || ""));
-    let endTimeResolved = String(task.endTime || task.endHour || "").trim() || extractTimeFromDateStr(String(task.taskEndDate || task.taskEndDateTime || checkOutRaw || ""));
+    let endTimeResolved = String(task.endTime || task.endHour || "").trim() || extractTimeFromDateStr(checkOutDateRaw);
     const durationDecimalResolved = parseFloat(task.durationDecimal || "0") || parseDurationToHours(task.estimatedDuration || "");
 
     if (!endTimeResolved && startTimeResolved && durationDecimalResolved > 0) {
@@ -653,12 +654,12 @@ async function runReportsOnlySync(sbClient: any, bearerToken: string, startDate:
       tecnico: String(task.userToName || ""),
       tecnico_id: String(task.idUserTo || ""),
       data_tarefa: normalizeDate(task.taskDate) || null,
-      data_conclusao: normalizeDate(checkOutRaw) || null,
+      data_conclusao: normalizeDate(checkOutDateRaw) || null,
       deslocamento_inicio: String(task.displacementStart || task.displacement_start || "").trim() || null,
       duracao_deslocamento: null,
       status_auvo: (() => {
         if (statusCode === 6) return "Pausada";
-        if (statusCode === 4 || statusCode === 5 || !!checkOutRaw) return "Finalizada";
+        if (statusCode === 4 || statusCode === 5 || hasCheckOut) return "Finalizada";
         if (statusCode === 3) return "Em andamento";
         if (statusCode === 2) return "Em deslocamento";
         return "Aberta";
@@ -670,7 +671,7 @@ async function runReportsOnlySync(sbClient: any, bearerToken: string, startDate:
       hora_inicio: startTimeResolved,
       hora_fim: endTimeResolved,
       check_in: !!(task.checkIn || task.checkInDate || task.checkinDate),
-      check_out: !!checkOutRaw,
+      check_out: hasCheckOut,
       endereco: resolveTaskAddress(task),
       auvo_link: `https://app2.auvo.com.br/relatorioTarefas/DetalheTarefa/${taskId}`,
       auvo_task_url: String(task.taskUrl || ""),
