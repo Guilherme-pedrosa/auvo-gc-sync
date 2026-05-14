@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect } from "react";
 import { cn } from "@/lib/utils";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
@@ -112,9 +112,32 @@ export default function HorasTrabalhadasTab({
   const [filterCliente, setFilterCliente] = useState("todos");
   const [filterGrupo, setFilterGrupo] = useState("todos");
   const [grupoOpen, setGrupoOpen] = useState(false);
-  const [selectedTipos, setSelectedTipos] = useState<Set<string>>(new Set());
-  const [allTiposSelected, setAllTiposSelected] = useState(true);
-  const [searchTipo, setSearchTipo] = useState("");
+  // Tipo de Tarefa (multi-select por task_type_id, persistente em localStorage).
+  // null = "todos marcados" (default na primeira visita).
+  const TIPOS_STORAGE_KEY = "horas-trabalhadas-tipos-filtro";
+  const [tiposSelecionados, setTiposSelecionados] = useState<Set<string> | null>(() => {
+    try {
+      const raw = localStorage.getItem(TIPOS_STORAGE_KEY);
+      if (raw) {
+        const arr = JSON.parse(raw);
+        if (Array.isArray(arr)) return new Set(arr.map(String));
+      }
+    } catch {}
+    return null;
+  });
+  useEffect(() => {
+    try {
+      if (tiposSelecionados === null) {
+        localStorage.removeItem(TIPOS_STORAGE_KEY);
+      } else {
+        localStorage.setItem(TIPOS_STORAGE_KEY, JSON.stringify(Array.from(tiposSelecionados)));
+      }
+    } catch {}
+  }, [tiposSelecionados]);
+  const tipoIncluido = (id: string): boolean => {
+    if (tiposSelecionados === null) return true;
+    return tiposSelecionados.has(id);
+  };
   const [clienteModal, setClienteModal] = useState<string | null>(null);
   const [alertFilter, setAlertFilter] = useState<AlertaTipo>(null);
   const [reviewModalOpen, setReviewModalOpen] = useState(false);
@@ -320,16 +343,14 @@ export default function HorasTrabalhadasTab({
         if (!matched) return false;
       }
 
-      if (!allTiposSelected && selectedTipos.size > 0) {
-        const tipoTarefaKey = getTipoKey(t.descricao);
-        if (!selectedTipos.has(tipoTarefaKey)) return false;
-      }
+      const taskTypeKey = String(t.task_type_id ?? "").trim() || "SEM_ID";
+      if (!tipoIncluido(taskTypeKey)) return false;
 
       return true;
     });
   }, [
     data, periodoStart, periodoEnd, filterTecnico, filterCliente,
-    filterGrupo, selectedTipos, allTiposSelected, grupoClienteMap,
+    filterGrupo, tiposSelecionados, grupoClienteMap,
   ]);
 
   // When filtering by group, resolve which side (Auvo or GC) matched the group
@@ -406,7 +427,8 @@ export default function HorasTrabalhadasTab({
       : Number(cfg.valor_hora || 0);
 
     // 2. Emergencial detectado por taskType do Auvo configurado em task_types_emergenciais.
-    //    Regra: SUBSTITUI — visita emergencial é taxa fixa por OS, não soma horas×rate.
+    //    Regra: MAX(taxa_fixa, horas × rate). Garante o piso da taxa fixa
+    //    quando a OS é curta, e mantém o valor por hora quando excede.
     const taskTypeIds = String(cfg.task_types_emergenciais || "")
       .split(",")
       .map((s) => s.trim())
@@ -416,7 +438,8 @@ export default function HorasTrabalhadasTab({
 
     const valorPorHora = horas * rate;
     if (isEmergencial && cfg.aplica_taxa_emergencial) {
-      return Number(cfg.taxa_fixa_emergencial || 0);
+      const taxaFixa = Number(cfg.taxa_fixa_emergencial || 0);
+      return Math.max(taxaFixa, valorPorHora);
     }
     return valorPorHora;
   };
@@ -930,25 +953,34 @@ export default function HorasTrabalhadasTab({
     }));
   }, [filtered]);
 
-  const tipoOptions = useMemo(() => {
-    const map = new Map<string, string>();
-
-    for (const tipo of allTiposTarefa) {
-      const label = getTipoLabel(tipo);
-      const key = getTipoKey(label);
-      if (!map.has(key)) map.set(key, label);
+  // Tipos de tarefa disponíveis no dataset atual (pré-filtro de tipo),
+  // agrupados por task_type_id com nome amigável e contagem de OS.
+  const tiposDisponiveis = useMemo(() => {
+    // Dedup por auvo_task_id para casar com a fonte do filtered.
+    const byId = new Map<string, any>();
+    for (const t of data) {
+      if (!t?.auvo_task_id) continue;
+      const existing = byId.get(t.auvo_task_id);
+      if (!existing || (t.atualizado_em || "") > (existing.atualizado_em || "")) {
+        byId.set(t.auvo_task_id, t);
+      }
     }
-
-    return Array.from(map.entries())
-      .map(([key, label]) => ({ key, label }))
-      .sort((a, b) => a.label.localeCompare(b.label, "pt-BR"));
-  }, [allTiposTarefa]);
-
-  const filteredTipos = useMemo(() => {
-    if (!searchTipo) return tipoOptions;
-    const term = searchTipo.toLocaleLowerCase("pt-BR");
-    return tipoOptions.filter((t) => t.label.toLocaleLowerCase("pt-BR").includes(term));
-  }, [tipoOptions, searchTipo]);
+    const tiposMap = new Map<string, { id: string; nome: string; qtd: number }>();
+    for (const t of byId.values()) {
+      const id = String(t.task_type_id ?? "").trim() || "SEM_ID";
+      const nomeBruto = (t.descricao || "").toString().trim();
+      const nome = nomeBruto || (id === "SEM_ID" ? "Sem tipo definido" : `Tipo ${id}`);
+      const atual = tiposMap.get(id);
+      if (atual) {
+        atual.qtd += 1;
+        // Mantém o nome mais comum / primeiro não-vazio.
+        if (!atual.nome || atual.nome.startsWith("Tipo ")) atual.nome = nome;
+      } else {
+        tiposMap.set(id, { id, nome, qtd: 1 });
+      }
+    }
+    return Array.from(tiposMap.values()).sort((a, b) => b.qtd - a.qtd);
+  }, [data]);
 
   const fmtBRL = (v: number) => v > 0 ? "R$ " + v.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : "—";
 
@@ -1477,57 +1509,69 @@ export default function HorasTrabalhadasTab({
                 <Button variant="outline" size="sm" className="gap-1.5">
                   <Filter className="h-3.5 w-3.5" />
                   Tipos de Tarefa
-                  {!allTiposSelected && selectedTipos.size > 0 && (
-                    <Badge variant="secondary" className="ml-1 text-[10px]">{selectedTipos.size}</Badge>
-                  )}
+                  <Badge variant="secondary" className="ml-1 text-[10px]">
+                    {tiposSelecionados === null
+                      ? `${tiposDisponiveis.length}/${tiposDisponiveis.length}`
+                      : `${tiposSelecionados.size}/${tiposDisponiveis.length}`}
+                  </Badge>
                 </Button>
               </PopoverTrigger>
-              <PopoverContent className="w-72" align="start">
-                <div className="space-y-2">
-                  <Input
-                    placeholder="Buscar tipo..."
-                    value={searchTipo}
-                    onChange={(e) => setSearchTipo(e.target.value)}
-                    className="h-8 text-xs"
-                  />
-                  <div className="flex items-center gap-2 pb-1">
-                    <Checkbox
-                      checked={allTiposSelected}
-                      onCheckedChange={(checked) => {
-                        setAllTiposSelected(!!checked);
-                        if (checked) setSelectedTipos(new Set());
-                      }}
-                    />
-                    <span className="text-xs font-medium">Todos</span>
+              <PopoverContent className="w-80 p-3" align="start">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-sm font-medium">Tipos de Tarefa</span>
+                  <div className="flex gap-1">
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="h-7 px-2 text-xs"
+                      onClick={() => setTiposSelecionados(null)}
+                    >
+                      Todos
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="h-7 px-2 text-xs"
+                      onClick={() => setTiposSelecionados(new Set())}
+                    >
+                      Nenhum
+                    </Button>
                   </div>
-                  <ScrollArea className="h-48">
-                    <div className="space-y-1">
-                      {filteredTipos.map((tipo) => (
-                        <div key={tipo.key} className="flex items-center gap-2">
-                          <Checkbox
-                            checked={allTiposSelected || selectedTipos.has(tipo.key)}
-                            onCheckedChange={() => {
-                              if (allTiposSelected) {
-                                // Sai do modo "Todos": seleciona todos exceto o clicado
-                                const next = new Set(tipoOptions.map((t) => t.key));
-                                next.delete(tipo.key);
-                                setAllTiposSelected(false);
-                                setSelectedTipos(next);
-                              } else {
-                                setSelectedTipos((prev) => {
-                                  const next = new Set(prev);
-                                  if (next.has(tipo.key)) next.delete(tipo.key);
-                                  else next.add(tipo.key);
-                                  return next;
-                                });
-                              }
-                            }}
-                          />
-                          <span className="text-xs truncate">{tipo.label}</span>
-                        </div>
-                      ))}
+                </div>
+                <div className="border-t -mx-3 mb-2" />
+                <div className="max-h-72 overflow-y-auto space-y-1 pr-1">
+                  {tiposDisponiveis.map((t) => {
+                    const checked = tipoIncluido(t.id);
+                    return (
+                      <label
+                        key={t.id}
+                        className="flex items-center gap-2 cursor-pointer hover:bg-muted rounded px-2 py-1"
+                      >
+                        <Checkbox
+                          checked={checked}
+                          onCheckedChange={(v) => {
+                            setTiposSelecionados((prev) => {
+                              const base = prev === null
+                                ? new Set(tiposDisponiveis.map((x) => x.id))
+                                : new Set(prev);
+                              if (v) base.add(t.id);
+                              else base.delete(t.id);
+                              return base;
+                            });
+                          }}
+                        />
+                        <span className="text-sm flex-1 truncate" title={t.nome}>
+                          {t.nome}
+                        </span>
+                        <span className="text-xs text-muted-foreground tabular-nums">{t.qtd}</span>
+                      </label>
+                    );
+                  })}
+                  {tiposDisponiveis.length === 0 && (
+                    <div className="text-xs text-muted-foreground px-2 py-3 text-center">
+                      Nenhum tipo no período.
                     </div>
-                  </ScrollArea>
+                  )}
                 </div>
               </PopoverContent>
             </Popover>
