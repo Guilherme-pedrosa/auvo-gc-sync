@@ -51,6 +51,14 @@ function normalizeDate(dateLike: unknown): string | null {
   return d;
 }
 
+function normalizeDateTime(dateLike: unknown): string | null {
+  const raw = String(dateLike || "").trim();
+  if (!raw || raw.startsWith("0001-01-01")) return null;
+  const d = new Date(raw);
+  if (Number.isNaN(d.getTime())) return null;
+  return d.toISOString();
+}
+
 function getGcAttrValue(atributos: any[], attrId: string): string {
   const found = atributos.find((a: any) => {
     const nested = a?.atributo || a;
