@@ -717,52 +717,62 @@ async function runCentralSync(body: CentralSyncBody = {}) {
     {
       let lateLinkOS = 0;
       let lateLinkOrc = 0;
-      for (const [taskId, osPayload] of Object.entries(gcOsResult.byTaskId)) {
-        if (!taskId || !osPayload?.gc_os_id) continue;
-        const { count } = await sbClient
-          .from("tarefas_central")
-          .update({
-            gc_os_id: osPayload.gc_os_id,
-            gc_os_codigo: osPayload.gc_os_codigo,
-            gc_os_cliente: osPayload.gc_os_cliente,
-            gc_os_situacao: osPayload.gc_os_situacao,
-            gc_os_situacao_id: osPayload.gc_os_situacao_id,
-            gc_os_cor_situacao: osPayload.gc_os_cor_situacao,
-            gc_os_valor_total: osPayload.gc_os_valor_total,
-            gc_os_vendedor: osPayload.gc_os_vendedor,
-            gc_os_data: osPayload.gc_os_data,
-            gc_os_data_saida: osPayload.gc_os_data_saida,
-            gc_os_link: osPayload.gc_os_link,
-            gc_os_tarefa_exec: osPayload.gc_os_tarefa_exec || null,
-            os_realizada: true,
-            atualizado_em: new Date().toISOString(),
-          }, { count: "exact" })
-          .eq("auvo_task_id", taskId)
-          .is("gc_os_id", null);
-        lateLinkOS += count || 0;
+      // Run updates in parallel chunks to avoid IDLE_TIMEOUT.
+      const osLinkEntries = Object.entries(gcOsResult.byTaskId).filter(([t, p]: any) => t && p?.gc_os_id);
+      const PARALLEL_LINK = 20;
+      for (let i = 0; i < osLinkEntries.length; i += PARALLEL_LINK) {
+        const slice = osLinkEntries.slice(i, i + PARALLEL_LINK);
+        const results = await Promise.all(slice.map(async ([taskId, osPayload]: any) => {
+          const { count } = await sbClient
+            .from("tarefas_central")
+            .update({
+              gc_os_id: osPayload.gc_os_id,
+              gc_os_codigo: osPayload.gc_os_codigo,
+              gc_os_cliente: osPayload.gc_os_cliente,
+              gc_os_situacao: osPayload.gc_os_situacao,
+              gc_os_situacao_id: osPayload.gc_os_situacao_id,
+              gc_os_cor_situacao: osPayload.gc_os_cor_situacao,
+              gc_os_valor_total: osPayload.gc_os_valor_total,
+              gc_os_vendedor: osPayload.gc_os_vendedor,
+              gc_os_data: osPayload.gc_os_data,
+              gc_os_data_saida: osPayload.gc_os_data_saida,
+              gc_os_link: osPayload.gc_os_link,
+              gc_os_tarefa_exec: osPayload.gc_os_tarefa_exec || null,
+              os_realizada: true,
+              atualizado_em: new Date().toISOString(),
+            }, { count: "exact" })
+            .eq("auvo_task_id", taskId)
+            .is("gc_os_id", null);
+          return count || 0;
+        }));
+        lateLinkOS += results.reduce((s, c) => s + c, 0);
       }
 
-      for (const [taskId, orcPayload] of Object.entries(gcOrcResult.byTaskId)) {
-        if (!taskId || !orcPayload?.gc_orcamento_id) continue;
-        const { count } = await sbClient
-          .from("tarefas_central")
-          .update({
-            gc_orcamento_id: orcPayload.gc_orcamento_id,
-            gc_orcamento_codigo: orcPayload.gc_orcamento_codigo,
-            gc_orc_cliente: orcPayload.gc_orc_cliente,
-            gc_orc_situacao: orcPayload.gc_orc_situacao,
-            gc_orc_situacao_id: orcPayload.gc_orc_situacao_id,
-            gc_orc_cor_situacao: orcPayload.gc_orc_cor_situacao,
-            gc_orc_valor_total: orcPayload.gc_orc_valor_total,
-            gc_orc_vendedor: orcPayload.gc_orc_vendedor,
-            gc_orc_data: orcPayload.gc_orc_data,
-            gc_orc_link: orcPayload.gc_orc_link,
-            orcamento_realizado: true,
-            atualizado_em: new Date().toISOString(),
-          }, { count: "exact" })
-          .eq("auvo_task_id", taskId)
-          .is("gc_orcamento_id", null);
-        lateLinkOrc += count || 0;
+      const orcLinkEntries = Object.entries(gcOrcResult.byTaskId).filter(([t, p]: any) => t && p?.gc_orcamento_id);
+      for (let i = 0; i < orcLinkEntries.length; i += PARALLEL_LINK) {
+        const slice = orcLinkEntries.slice(i, i + PARALLEL_LINK);
+        const results = await Promise.all(slice.map(async ([taskId, orcPayload]: any) => {
+          const { count } = await sbClient
+            .from("tarefas_central")
+            .update({
+              gc_orcamento_id: orcPayload.gc_orcamento_id,
+              gc_orcamento_codigo: orcPayload.gc_orcamento_codigo,
+              gc_orc_cliente: orcPayload.gc_orc_cliente,
+              gc_orc_situacao: orcPayload.gc_orc_situacao,
+              gc_orc_situacao_id: orcPayload.gc_orc_situacao_id,
+              gc_orc_cor_situacao: orcPayload.gc_orc_cor_situacao,
+              gc_orc_valor_total: orcPayload.gc_orc_valor_total,
+              gc_orc_vendedor: orcPayload.gc_orc_vendedor,
+              gc_orc_data: orcPayload.gc_orc_data,
+              gc_orc_link: orcPayload.gc_orc_link,
+              orcamento_realizado: true,
+              atualizado_em: new Date().toISOString(),
+            }, { count: "exact" })
+            .eq("auvo_task_id", taskId)
+            .is("gc_orcamento_id", null);
+          return count || 0;
+        }));
+        lateLinkOrc += results.reduce((s, c) => s + c, 0);
       }
 
       if (lateLinkOS > 0 || lateLinkOrc > 0) {
