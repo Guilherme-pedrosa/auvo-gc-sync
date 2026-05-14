@@ -668,7 +668,9 @@ export default function HorasTrabalhadasTab({
         deslocamento,
         data_tarefa: t.data_tarefa || "",
         data_conclusao: t.data_conclusao || "",
-        valor: status === "faturavel" ? valorEfetivo : 0,
+        // Detalhe sempre mostra o valor real calculado (não zerar em revisão/rejeitada).
+        // O bloqueio de faturamento é representado nos cards do topo, não zerando linhas.
+        valor: status === "faturavel" ? valorEfetivo : valorPotencial,
         tecnico: tec,
         equipamento: t.equipamento_nome || equipamentoTaskMap[t.auvo_task_id]?.nome || "",
         equipamento_id_serie:
