@@ -30,7 +30,7 @@ const SYNC_STEPS = [
 ];
 
 const TAREFAS_CENTRAL_PAGE_SIZE = 1000;
-const REPORTS_SYNC_CHUNK_DAYS = 3;
+const REPORTS_SYNC_CHUNK_DAYS = 1;
 
 const parseAuvoTaskIds = (value: unknown): string[] => {
   const raw = String(value ?? "").trim();
