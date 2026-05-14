@@ -93,6 +93,37 @@ const fetchAllTarefasCentral = async ({
   return rows;
 };
 
+const fetchHorasTrabalhadasCentral = async (startDate: string, endDate: string) => {
+  const rows: any[] = [];
+  let from = 0;
+
+  while (true) {
+    const { data, error } = await supabase
+      .from("tarefas_central")
+      .select("*")
+      .or(
+        `and(data_conclusao.gte.${startDate},data_conclusao.lte.${endDate}),` +
+        `and(data_conclusao.is.null,data_tarefa.gte.${startDate},data_tarefa.lte.${endDate})`
+      )
+      .order("data_tarefa", { ascending: false })
+      .order("auvo_task_id", { ascending: false })
+      .range(from, from + TAREFAS_CENTRAL_PAGE_SIZE - 1);
+
+    if (error) throw error;
+
+    const batch = data || [];
+    rows.push(...batch);
+
+    if (batch.length < TAREFAS_CENTRAL_PAGE_SIZE) {
+      break;
+    }
+
+    from += TAREFAS_CENTRAL_PAGE_SIZE;
+  }
+
+  return rows;
+};
+
 export default function RelatoriosPage() {
   const queryClient = useQueryClient();
   const [syncing, setSyncing] = useState(false);
@@ -108,6 +139,7 @@ export default function RelatoriosPage() {
   const refreshRelatoriosData = useCallback(() => {
     queryClient.invalidateQueries({ queryKey: ["relatorios-tarefas-os"] });
     queryClient.invalidateQueries({ queryKey: ["relatorios-todas-tarefas"] });
+    queryClient.invalidateQueries({ queryKey: ["relatorios-horas-trabalhadas"] });
     queryClient.invalidateQueries({ queryKey: ["last-sync-timestamp"] });
   }, [queryClient]);
 
@@ -296,17 +328,12 @@ export default function RelatoriosPage() {
     staleTime: 60_000,
   });
 
-  // Dedicated fetch for Horas Trabalhadas tab — pulls DB rows by execution date
-  // and merges with Auvo tasks updated since startDate. Does NOT touch any
-  // other tab's data flow.
+  // Dedicated fetch for Horas Trabalhadas tab: reads the local mirror directly.
+  // Live Auvo refresh remains explicit per OS to avoid freezing the report UI.
   const { data: horasData, isLoading: isLoadingHoras } = useQuery({
     queryKey: ["relatorios-horas-trabalhadas", format(dateFrom, "yyyy-MM-dd"), format(dateTo, "yyyy-MM-dd")],
     queryFn: async () => {
-      const { data, error } = await supabase.functions.invoke("horas-trabalhadas-fetch", {
-        body: { startDate: format(dateFrom, "yyyy-MM-dd"), endDate: format(dateTo, "yyyy-MM-dd") },
-      });
-      if (error) throw error;
-      return (data?.tasks as any[]) || [];
+      return fetchHorasTrabalhadasCentral(format(dateFrom, "yyyy-MM-dd"), format(dateTo, "yyyy-MM-dd"));
     },
     staleTime: 60_000,
   });
