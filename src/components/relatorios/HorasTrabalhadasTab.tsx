@@ -326,8 +326,8 @@ export default function HorasTrabalhadasTab({
   };
 
   // Calculate task value applying FDS/holiday rate and emergencial flat fee.
-  const getTaskValor = (t: any, tecnico: string): number => {
-    const horas = getTaskHoras(t);
+  const getTaskValor = (t: any, tecnico: string, horasOverride?: number): number => {
+    const horas = horasOverride != null ? horasOverride : getTaskHoras(t);
     const cliente = t.cliente || t.gc_os_cliente || "";
     const clienteGc = t.gc_os_cliente || "";
     const cfg = getHourlyConfig(tecnico, cliente, clienteGc);
