@@ -30,11 +30,31 @@ const SYNC_STEPS = [
 ];
 
 const TAREFAS_CENTRAL_PAGE_SIZE = 1000;
+const REPORTS_SYNC_CHUNK_DAYS = 3;
 
 const parseAuvoTaskIds = (value: unknown): string[] => {
   const raw = String(value ?? "").trim();
   if (!raw) return [];
   return raw.split("/").map((id) => id.trim()).filter((id) => /^\d+$/.test(id));
+};
+
+const buildDateChunks = (from: Date, to: Date, chunkDays = REPORTS_SYNC_CHUNK_DAYS) => {
+  const chunks: { start: string; end: string }[] = [];
+  const cursor = new Date(from);
+  cursor.setHours(0, 0, 0, 0);
+  const finalDate = new Date(to);
+  finalDate.setHours(0, 0, 0, 0);
+
+  while (cursor <= finalDate) {
+    const chunkStart = new Date(cursor);
+    const chunkEnd = new Date(cursor);
+    chunkEnd.setDate(chunkEnd.getDate() + chunkDays - 1);
+    if (chunkEnd > finalDate) chunkEnd.setTime(finalDate.getTime());
+    chunks.push({ start: format(chunkStart, "yyyy-MM-dd"), end: format(chunkEnd, "yyyy-MM-dd") });
+    cursor.setDate(chunkEnd.getDate() + 1);
+  }
+
+  return chunks;
 };
 
 const fetchAllTarefasCentral = async ({
@@ -172,10 +192,40 @@ export default function RelatoriosPage() {
 
     try {
       const syncSolicitadasOnly = !!situacaoIds?.length;
+      if (!syncSolicitadasOnly) {
+        const chunks = buildDateChunks(dateFrom, dateTo);
+        let totalAuvo = 0;
+        let totalUpserted = 0;
+        let totalErrors = 0;
+
+        for (let i = 0; i < chunks.length; i++) {
+          const chunk = chunks[i];
+          setSyncProgress(Math.min(95, 10 + Math.round((i / Math.max(chunks.length, 1)) * 85)));
+          setSyncStatusMessage(`Buscando Auvo ${i + 1}/${chunks.length}: ${chunk.start} → ${chunk.end}`);
+
+          const { data, error } = await supabase.functions.invoke("central-sync", {
+            body: { start_date: chunk.start, end_date: chunk.end, situacao_ids: [], reports_only: true, wait: true },
+          });
+          if (error) throw error;
+          if (data?.success === false) throw new Error(data.error || "Erro na sincronização");
+          if (data?.auvo_error) throw new Error(data.auvo_error);
+
+          totalAuvo += Number(data?.auvo_tarefas || 0);
+          totalUpserted += Number(data?.upserted || 0);
+          totalErrors += Number(data?.errors || 0);
+        }
+
+        toast.success(`Sync ${syncFrom} → ${syncTo}: ${totalAuvo} tarefas, ${totalUpserted} atualizadas`);
+        stopProgressSimulation(true);
+        setSyncStatusMessage(
+          `Última sincronização concluída em ${chunks.length} lotes: ${totalAuvo} tarefas Auvo, ${totalUpserted} atualizadas no banco${totalErrors ? `, ${totalErrors} lotes com erro` : ""}.`
+        );
+        refreshRelatoriosData();
+        return;
+      }
+
       const { data, error } = await supabase.functions.invoke("central-sync", {
-        body: syncSolicitadasOnly
-          ? { start_date: syncFrom, end_date: syncTo, situacao_ids: situacaoIds || [], fast: true }
-          : { start_date: syncFrom, end_date: syncTo, situacao_ids: [], reports_only: true },
+        body: { start_date: syncFrom, end_date: syncTo, situacao_ids: situacaoIds || [], fast: true },
       });
       if (error) throw error;
       if (data?.success === false) throw new Error(data.error || "Erro na sincronização");
