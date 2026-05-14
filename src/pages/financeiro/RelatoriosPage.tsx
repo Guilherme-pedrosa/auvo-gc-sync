@@ -97,15 +97,31 @@ export default function RelatoriosPage() {
 
   const scheduleBackgroundRefresh = useCallback(() => {
     clearScheduledRefreshes();
-    const delays = [15000, 30000, 60000, 120000];
-    refreshTimeoutsRef.current = delays.map((delay) =>
+    // Step the progress bar forward as the background sync runs server-side,
+    // and only release the syncing UI on the final refresh.
+    const steps: { delay: number; progress: number; message: string }[] = [
+      { delay: 15000, progress: 50, message: "Sync rodando no servidor — buscando Auvo..." },
+      { delay: 30000, progress: 65, message: "Sync rodando no servidor — cruzando GC × Auvo..." },
+      { delay: 60000, progress: 80, message: "Sync rodando no servidor — gravando no banco..." },
+      { delay: 120000, progress: 95, message: "Finalizando sincronização..." },
+    ];
+    refreshTimeoutsRef.current = steps.map(({ delay, progress, message }) =>
       setTimeout(() => {
         refreshRelatoriosData();
+        setSyncProgress(progress);
+        setSyncStatusMessage(message);
         if (delay >= 60000) {
           queryClient.invalidateQueries({ queryKey: ["last-sync-timestamp"] });
         }
         if (delay === 120000) {
-          setSyncStatusMessage("Se ainda não atualizou, rode novamente em um período menor.");
+          // Final tick: complete the bar and release the UI
+          setSyncProgress(100);
+          setSyncStatusMessage("Atualização concluída — se ainda faltar dado, rode novamente em um período menor.");
+          setTimeout(() => {
+            setSyncing(false);
+            setSyncProgress(0);
+            setSyncStep(0);
+          }, 2000);
         }
       }, delay)
     );
@@ -167,7 +183,7 @@ export default function RelatoriosPage() {
         toast.info("Sync iniciado em background — a tela será atualizada automaticamente");
         setSyncProgress(35);
         setSyncStatusMessage("Sincronização rodando no servidor. Pode levar alguns minutos.");
-        setTimeout(() => setSyncing(false), 2500);
+        // Keep syncing=true so the progress bar stays visible until background refresh finishes.
         scheduleBackgroundRefresh();
         return;
       }
@@ -194,7 +210,7 @@ export default function RelatoriosPage() {
         toast.info("Sync pode estar rodando em background — atualizando a tela automaticamente");
         setSyncProgress(35);
         setSyncStatusMessage("A chamada demorou, mas vou atualizar os dados automaticamente.");
-        setTimeout(() => setSyncing(false), 2500);
+        // Keep syncing=true so the progress bar stays visible until background refresh finishes.
         scheduleBackgroundRefresh();
       } else {
         toast.error(`Erro: ${message}`);
