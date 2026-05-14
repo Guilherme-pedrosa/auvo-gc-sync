@@ -1770,9 +1770,8 @@ export default function HorasTrabalhadasTab({
                 </TableRow>
               ) : (
                 tecnicoSummary.map((tec) => (
-                  <>
+                  <React.Fragment key={tec.tecnico}>
                     <TableRow
-                      key={tec.tecnico}
                       className="cursor-pointer hover:bg-muted/50"
                       onClick={() => setExpanded(expanded === tec.tecnico ? null : tec.tecnico)}
                     >
@@ -1787,7 +1786,7 @@ export default function HorasTrabalhadasTab({
                       </TableCell>
                     </TableRow>
                     {expanded === tec.tecnico && (
-                      <TableRow key={`${tec.tecnico}-detail`}>
+                      <TableRow>
                           <TableCell colSpan={6} className="p-0">
                           <div className="bg-muted/30 px-6 py-3">
                             <Table>
@@ -1855,7 +1854,7 @@ export default function HorasTrabalhadasTab({
                         </TableCell>
                       </TableRow>
                     )}
-                  </>
+                  </React.Fragment>
                 ))
               )}
             </TableBody>
