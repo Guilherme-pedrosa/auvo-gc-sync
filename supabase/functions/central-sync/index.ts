@@ -676,6 +676,12 @@ async function runReportsOnlySync(sbClient: any, bearerToken: string, startDate:
       data_conclusao: normalizeDate(checkOutDateRaw) || null,
       deslocamento_inicio: String(task.displacementStart || task.displacement_start || "").trim() || null,
       duracao_deslocamento: null,
+      task_type_id: (() => {
+        const tt = task.taskType ?? task.TaskType;
+        if (tt == null) return null;
+        if (typeof tt === "object") return String(tt.id ?? tt.taskTypeId ?? "") || null;
+        return String(tt) || null;
+      })(),
       status_auvo: (() => {
         if (statusCode === 6) return "Pausada";
         if (statusCode === 4 || statusCode === 5 || hasCheckOut) return "Finalizada";
