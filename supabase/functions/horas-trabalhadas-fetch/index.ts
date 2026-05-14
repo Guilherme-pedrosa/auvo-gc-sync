@@ -7,7 +7,7 @@ const corsHeaders = {
 
 const AUVO_BASE_URL = "https://api.auvo.com.br/v2";
 const PAGE_SIZE = 100;
-const MAX_PAGES = 15;
+const MAX_PAGES = 30;
 const DB_PAGE_SIZE = 1000;
 
 async function auvoLogin(apiKey: string, apiToken: string): Promise<string> {
@@ -32,33 +32,46 @@ function isoDate(s: string | null | undefined): string | null {
   return d;
 }
 
-async function fetchAuvoTasksUpdatedSince(token: string, sinceDate: string, untilDate: string) {
-  // Narrow the Auvo window to the report period itself. The UI re-filters by
-  // (data_conclusao || data_tarefa) within [sinceDate, untilDate], so fetching
-  // tasks whose taskDate falls in this window is sufficient and avoids the
-  // 150s edge timeout that the wide 2020→2099 + dateLastUpdate query caused.
-  const filterObj = {
-    startDate: `${sinceDate}T00:00:00`,
-    endDate: `${untilDate}T23:59:59`,
-  };
+function isoTimestamp(s: string | null | undefined): string | null {
+  const raw = String(s || "").trim();
+  if (!raw) return null;
+  if (raw.startsWith("0001-01-01")) return null;
+  return raw;
+}
+
+async function fetchWithRetry(url: string, token: string, attempts = 3): Promise<Response | null> {
+  let delay = 600;
+  for (let i = 0; i < attempts; i++) {
+    const ctrl = new AbortController();
+    const tid = setTimeout(() => ctrl.abort(), 25000);
+    try {
+      const r = await fetch(url, { headers: authHeaders(token), signal: ctrl.signal });
+      clearTimeout(tid);
+      if (r.ok) return r;
+      if (r.status !== 502 && r.status !== 503 && r.status !== 504) return r;
+    } catch (e) {
+      clearTimeout(tid);
+      console.warn("fetchWithRetry attempt", i, e);
+    }
+    await new Promise((res) => setTimeout(res, delay));
+    delay *= 2;
+  }
+  return null;
+}
+
+async function fetchAuvoTasks(
+  token: string,
+  filterObj: Record<string, unknown>,
+  label: string,
+): Promise<any[]> {
   const all: any[] = [];
   let page = 1;
   while (page <= MAX_PAGES) {
     const paramFilter = encodeURIComponent(JSON.stringify(filterObj));
     const url = `${AUVO_BASE_URL}/tasks/?page=${page}&pageSize=${PAGE_SIZE}&order=desc&paramFilter=${paramFilter}`;
-    const ctrl = new AbortController();
-    const tid = setTimeout(() => ctrl.abort(), 20000);
-    let r: Response;
-    try {
-      r = await fetch(url, { headers: authHeaders(token), signal: ctrl.signal });
-    } catch (e) {
-      console.warn(`[horas-trabalhadas-fetch] page ${page} aborted/failed:`, e);
-      break;
-    } finally {
-      clearTimeout(tid);
-    }
-    if (!r.ok) {
-      console.warn(`[horas-trabalhadas-fetch] Auvo page ${page} status ${r.status}`);
+    const r = await fetchWithRetry(url, token);
+    if (!r || !r.ok) {
+      console.warn(`[horas-trabalhadas-fetch:${label}] page ${page} failed (${r?.status ?? "no-response"})`);
       break;
     }
     const j = await r.json();
@@ -83,11 +96,14 @@ function mapAuvoTask(t: any) {
   return {
     auvo_task_id: taskId,
     task_type_id: taskType != null ? String(taskType) : "",
+    task_type_description: String(t?.taskTypeDescription || t?.TaskTypeDescription || "").trim(),
     auvo_status_label: statusLabel,
-    auvo_date_last_update: t?.dateLastUpdate || t?.DateLastUpdate || null,
+    auvo_date_last_update: isoTimestamp(t?.dateLastUpdate || t?.DateLastUpdate),
     auvo_task_date: isoDate(t?.taskDate || t?.TaskDate),
     auvo_check_in_date: isoDate(t?.checkInDate || t?.CheckInDate),
     auvo_check_out_date: isoDate(t?.checkOutDate || t?.CheckOutDate),
+    check_in_iso: isoTimestamp(t?.checkInDate || t?.CheckInDate),
+    check_out_iso: isoTimestamp(t?.checkOutDate || t?.CheckOutDate),
   };
 }
 
@@ -95,7 +111,6 @@ Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
   const avisos: string[] = [];
-
   try {
     const body = await req.json().catch(() => ({}));
     const startDate = String(body?.startDate || "");
@@ -111,8 +126,7 @@ Deno.serve(async (req) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
     );
 
-    // 1. Read DB tasks (deterministic order to avoid pagination duplication).
-    //    Filter by COALESCE(data_conclusao, data_tarefa) within [startDate, endDate].
+    // 1) Read DB tasks within period (deterministic order to avoid pagination dupes).
     const dbRows: any[] = [];
     let from = 0;
     while (true) {
@@ -123,6 +137,7 @@ Deno.serve(async (req) => {
           `and(data_conclusao.gte.${startDate},data_conclusao.lte.${endDate}),` +
           `and(data_conclusao.is.null,data_tarefa.gte.${startDate},data_tarefa.lte.${endDate})`
         )
+        .order("data_tarefa", { ascending: false })
         .order("auvo_task_id", { ascending: false })
         .range(from, from + DB_PAGE_SIZE - 1);
       if (error) throw error;
@@ -132,20 +147,57 @@ Deno.serve(async (req) => {
       from += DB_PAGE_SIZE;
     }
 
-    // 2. Fetch Auvo /tasks updated since startDate, in parallel-friendly way
+    // 2 + 3) Auvo: recently-updated since startDate AND in-progress within period.
     let auvoTasks: any[] = [];
     try {
       const apiKey = Deno.env.get("AUVO_APP_KEY");
       const apiToken = Deno.env.get("AUVO_TOKEN");
       if (!apiKey || !apiToken) throw new Error("AUVO_APP_KEY/AUVO_TOKEN ausentes");
       const token = await auvoLogin(apiKey, apiToken);
-      auvoTasks = await fetchAuvoTasksUpdatedSince(token, startDate, endDate);
+
+      // (a) Tasks updated since startDate (catches recently-modified historical OS)
+      const recentFilter = {
+        startDate: "2020-01-01T00:00:00",
+        endDate: "2099-12-31T23:59:59",
+        dateLastUpdate: `${startDate}T00:00:00`,
+      };
+      // (b) Tasks scheduled within period — catches OS that haven't been
+      //     updated lately but have work in the period (e.g. open/paused).
+      const periodFilter = {
+        startDate: `${startDate}T00:00:00`,
+        endDate: `${endDate}T23:59:59`,
+      };
+
+      const [recent, period] = await Promise.all([
+        fetchAuvoTasks(token, recentFilter, "recent"),
+        fetchAuvoTasks(token, periodFilter, "period"),
+      ]);
+
+      // Filter recent: drop entries whose dateLastUpdate is AFTER endDate (they
+      // are post-period changes and shouldn't drive period inclusion).
+      const endStamp = `${endDate}T23:59:59`;
+      const recentFiltered = recent.filter((t: any) => {
+        const dlu = String(t?.dateLastUpdate || t?.DateLastUpdate || "");
+        return !dlu || dlu <= endStamp;
+      });
+
+      const merged = new Map<string, any>();
+      for (const t of [...recentFiltered, ...period]) {
+        const id = String(t?.taskID ?? t?.taskId ?? t?.id ?? "");
+        if (!id) continue;
+        const ex = merged.get(id);
+        const dlu = String(t?.dateLastUpdate || t?.DateLastUpdate || "");
+        if (!ex || dlu > String(ex?.dateLastUpdate || ex?.DateLastUpdate || "")) {
+          merged.set(id, t);
+        }
+      }
+      auvoTasks = Array.from(merged.values());
     } catch (e: any) {
-      avisos.push(`Falha ao buscar Auvo: ${e?.message || e}. Usando apenas dados do banco.`);
+      avisos.push(`Auvo indisponível — OS recentemente atualizadas podem não estar refletidas: ${e?.message || e}`);
       auvoTasks = [];
     }
 
-    // 3. Hydrate Auvo tasks with DB row when present (so UI sees gc_*, equipamento, etc.)
+    // 4) Index DB rows by id (most recent atualizado_em wins).
     const dbById = new Map<string, any>();
     for (const r of dbRows) {
       const id = String(r.auvo_task_id || "");
@@ -156,54 +208,42 @@ Deno.serve(async (req) => {
       }
     }
 
-    // 4. Merge: prefer the most recent of (DB.atualizado_em, Auvo.dateLastUpdate)
+    // 5) Merge: prefer DB columns, attach Auvo-only fields (task_type_id,
+    //    check_in_iso/check_out_iso). For Auvo-only rows, keep minimal record.
     const merged = new Map<string, any>();
     for (const r of dbById.values()) {
-      merged.set(String(r.auvo_task_id), { ...r, task_type_id: r.task_type_id ?? null });
+      merged.set(String(r.auvo_task_id), { ...r });
     }
-
     for (const t of auvoTasks) {
       const m = mapAuvoTask(t);
       if (!m.auvo_task_id) continue;
-      const dbRow = dbById.get(m.auvo_task_id);
       const existing = merged.get(m.auvo_task_id);
       if (existing) {
-        // Always attach task_type_id from Auvo (the DB doesn't carry it)
         existing.task_type_id = m.task_type_id || existing.task_type_id || "";
-        // If Auvo update is newer than DB row, keep DB columns but stamp the
-        // updated marker so the dedup fallback in the UI prefers this entry.
+        existing.task_type_description = m.task_type_description || existing.task_type_description || "";
+        existing.check_in_iso = m.check_in_iso || existing.check_in_iso || null;
+        existing.check_out_iso = m.check_out_iso || existing.check_out_iso || null;
         const dbStamp = String(existing.atualizado_em || "");
         const auvoStamp = String(m.auvo_date_last_update || "");
         if (auvoStamp && auvoStamp > dbStamp) {
           existing.atualizado_em = auvoStamp;
         }
       } else {
-        // Auvo-only task (not yet synced into DB). Provide minimal fields so it
-        // still appears in the report.
         merged.set(m.auvo_task_id, {
           auvo_task_id: m.auvo_task_id,
           task_type_id: m.task_type_id,
+          task_type_description: m.task_type_description,
           status_auvo: m.auvo_status_label,
           data_tarefa: m.auvo_task_date,
           data_conclusao: m.auvo_check_out_date,
           atualizado_em: m.auvo_date_last_update,
-          // Hours unknown from /tasks summary alone — UI will skip rows with no
-          // duration and no hora_inicio/hora_fim, which is correct.
+          check_in_iso: m.check_in_iso,
+          check_out_iso: m.check_out_iso,
         });
       }
     }
 
     const tasks = Array.from(merged.values());
-
-    // Aviso: tasks com horas mas status não-finalizado
-    const naoFechadasComHoras = tasks.filter((t: any) => {
-      const dur = Number(t.duracao_decimal) || 0;
-      const tem = dur > 0 || (!!t.hora_inicio && !!t.hora_fim);
-      return tem && t.status_auvo !== "Finalizada";
-    });
-    if (naoFechadasComHoras.length > 0) {
-      avisos.push(`${naoFechadasComHoras.length} tarefa(s) com horas registradas mas status não-finalizado.`);
-    }
 
     return new Response(JSON.stringify({ tasks, avisos }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },

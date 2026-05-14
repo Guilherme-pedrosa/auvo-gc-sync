@@ -63,7 +63,8 @@ type AlertaTipo =
   | "longo"
   | "excessivo"
   | "overlap"
-  | "sem_checkout"
+  | "sem_janela"
+  | "multi_periodo"
   | null;
 
 type StatusRevisao = "faturavel" | "em_revisao" | "rejeitada";
@@ -74,7 +75,8 @@ const ALERTA_LABEL: Record<Exclude<AlertaTipo, null>, string> = {
   longo: "OS longa",
   excessivo: "OS excessiva",
   overlap: "Sobreposição",
-  sem_checkout: "Sem checkout",
+  sem_janela: "Sem janela de trabalho",
+  multi_periodo: "Atravessa o período",
 };
 
 // Severidade: maior número = mais grave.
@@ -82,9 +84,10 @@ const ALERTA_SEVERIDADE: Record<Exclude<AlertaTipo, null>, number> = {
   excessivo: 6,
   negativo: 5,
   overlap: 4,
-  sem_checkout: 3,
+  sem_janela: 3,
   curto: 2,
   longo: 1,
+  multi_periodo: 0,
 };
 
 const piorAlerta = (lst: AlertaTipo[]): AlertaTipo => {
@@ -113,7 +116,6 @@ export default function HorasTrabalhadasTab({
   const [allTiposSelected, setAllTiposSelected] = useState(true);
   const [searchTipo, setSearchTipo] = useState("");
   const [clienteModal, setClienteModal] = useState<string | null>(null);
-  const [somenteFaturaveis, setSomenteFaturaveis] = useState(true);
   const [alertFilter, setAlertFilter] = useState<AlertaTipo>(null);
   const [reviewModalOpen, setReviewModalOpen] = useState(false);
 
@@ -138,7 +140,7 @@ export default function HorasTrabalhadasTab({
           excessiva_requer_revisao: true,
           negativa_requer_revisao: true,
           overlap_requer_revisao: true,
-          sem_checkout_requer_revisao: true,
+          sem_janela_requer_revisao: true,
         }
       );
     },
@@ -155,9 +157,82 @@ export default function HorasTrabalhadasTab({
     staleTime: 30_000,
   });
 
-  // Get task hours: use Auvo's durationDecimal (already deducts pauses)
+  // Full duration as recorded by Auvo (already deducts pauses).
   const getTaskHoras = (t: any): number => {
     return Number(t.duracao_decimal) || 0;
+  };
+
+  // ── Período helpers (rateio por janela de trabalho) ──────────────
+  const periodoStart = useMemo(
+    () => new Date(format(dateFrom, "yyyy-MM-dd") + "T00:00:00"),
+    [dateFrom],
+  );
+  const periodoEnd = useMemo(
+    () => new Date(format(dateTo, "yyyy-MM-dd") + "T23:59:59"),
+    [dateTo],
+  );
+
+  const obterInicioTask = (t: any): Date | null => {
+    if (t.check_in_iso) {
+      const d = new Date(t.check_in_iso);
+      if (!isNaN(d.getTime())) return d;
+    }
+    if (t.data_tarefa && t.hora_inicio) {
+      const d = new Date(`${t.data_tarefa}T${t.hora_inicio}`);
+      if (!isNaN(d.getTime())) return d;
+    }
+    if (t.data_tarefa) {
+      const d = new Date(`${t.data_tarefa}T00:00:00`);
+      if (!isNaN(d.getTime())) return d;
+    }
+    return null;
+  };
+
+  const obterFimTask = (t: any, cap: Date): Date | null => {
+    if (t.check_out_iso) {
+      const d = new Date(t.check_out_iso);
+      if (!isNaN(d.getTime())) return d;
+    }
+    if (t.data_conclusao && t.hora_fim) {
+      const d = new Date(`${t.data_conclusao}T${t.hora_fim}`);
+      if (!isNaN(d.getTime())) return d;
+    }
+    if (t.status_auvo !== "Finalizada" && (Number(t.duracao_decimal) || 0) > 0) {
+      const now = new Date();
+      return new Date(Math.min(now.getTime(), cap.getTime()));
+    }
+    return null;
+  };
+
+  const getTaskHorasNoPeriodo = (t: any): number => {
+    const dur = Number(t.duracao_decimal) || 0;
+    if (dur <= 0) return 0;
+    const tsInicio = obterInicioTask(t);
+    const tsFim = obterFimTask(t, periodoEnd);
+    if (!tsInicio || !tsFim || tsFim <= tsInicio) return dur;
+    if (tsInicio >= periodoStart && tsFim <= periodoEnd) return dur;
+    if (tsFim < periodoStart || tsInicio > periodoEnd) return 0;
+    const janelaMs = tsFim.getTime() - tsInicio.getTime();
+    const interStart = Math.max(tsInicio.getTime(), periodoStart.getTime());
+    const interEnd = Math.min(tsFim.getTime(), periodoEnd.getTime());
+    const interMs = Math.max(0, interEnd - interStart);
+    const proporcao = janelaMs > 0 ? interMs / janelaMs : 1;
+    return Number((dur * proporcao).toFixed(4));
+  };
+
+  const atravessaPeriodo = (t: any): boolean => {
+    const tsInicio = obterInicioTask(t);
+    const tsFim = obterFimTask(t, periodoEnd);
+    if (!tsInicio || !tsFim) return false;
+    return tsInicio < periodoStart || tsFim > periodoEnd;
+  };
+
+  const rateioPercent = (t: any): number => {
+    const dur = Number(t.duracao_decimal) || 0;
+    if (dur <= 0) return 100;
+    const horas = getTaskHorasNoPeriodo(t);
+    if (horas <= 0) return 0;
+    return Math.round((horas / dur) * 100);
   };
 
   const isExcessiveTask = (horas: number) => horas > 12;
@@ -200,13 +275,10 @@ export default function HorasTrabalhadasTab({
     return ["01-01", "04-21", "05-01", "09-07", "10-12", "11-02", "11-15", "12-25"].includes(md);
   };
 
-  // Filter data by execution date (data_conclusao when present, fallback to data_tarefa).
+  // Filter data by intersection of [check_in, check_out] with the period.
+  // Status is irrelevant — what matters is whether work happened in the window.
   const filtered = useMemo(() => {
-    const fromStr = format(dateFrom, "yyyy-MM-dd");
-    const toStr = format(dateTo, "yyyy-MM-dd");
-
-    // Defensive dedup by auvo_task_id (edge function already dedups, but in case
-    // duplicates slip through pagination we keep the most recently updated row).
+    // Defensive dedup by auvo_task_id.
     const byId = new Map<string, any>();
     for (const t of data) {
       if (!t?.auvo_task_id) continue;
@@ -218,20 +290,17 @@ export default function HorasTrabalhadasTab({
     const dedupedData = Array.from(byId.values());
 
     return dedupedData.filter((t) => {
-      if (!t.hora_inicio && !t.hora_fim && t.duracao_decimal == null) return false;
-
-      const dateRef = t.data_conclusao || t.data_tarefa;
-      if (!dateRef) return false;
-      if (dateRef < fromStr || dateRef > toStr) return false;
-
-      // Conta toda tarefa com horas reais registradas no Auvo
-      // (não exigir check_out — técnico pode esquecer de fechar e a tarefa fica
-      //  como "Aberta/Pausada/Em andamento" mesmo tendo trabalho registrado).
       const dur = Number(t.duracao_decimal) || 0;
-      const hasHoras = dur > 0 || (!!t.hora_inicio && !!t.hora_fim);
-      if (!t.check_out && !hasHoras) return false;
+      if (dur <= 0) return false;
 
-      if (somenteFaturaveis && t.status_auvo !== "Finalizada") return false;
+      const tsInicio = obterInicioTask(t);
+      const tsFim = obterFimTask(t, periodoEnd);
+
+      // Sem janela computável → mantém para a Caixa de Revisão sinalizar.
+      if (tsInicio && tsFim) {
+        if (tsFim < periodoStart) return false;
+        if (tsInicio > periodoEnd) return false;
+      }
 
       if (filterTecnico !== "todos" && t.tecnico !== filterTecnico) return false;
 
@@ -256,31 +325,10 @@ export default function HorasTrabalhadasTab({
 
       return true;
     });
-  }, [data, dateFrom, dateTo, filterTecnico, filterCliente, filterGrupo, selectedTipos, allTiposSelected, grupoClienteMap, somenteFaturaveis]);
-
-  // Tasks suppressed by the "apenas finalizadas" toggle — exposed for the
-  // "OS Pendentes" Excel sheet and to help the financial team chase pending closures.
-  const pendentesTasks = useMemo(() => {
-    if (!somenteFaturaveis) return [] as any[];
-    const fromStr = format(dateFrom, "yyyy-MM-dd");
-    const toStr = format(dateTo, "yyyy-MM-dd");
-    const byId = new Map<string, any>();
-    for (const t of data) {
-      if (!t?.auvo_task_id) continue;
-      const existing = byId.get(t.auvo_task_id);
-      if (!existing || (t.atualizado_em || "") > (existing.atualizado_em || "")) {
-        byId.set(t.auvo_task_id, t);
-      }
-    }
-    return Array.from(byId.values()).filter((t) => {
-      const dateRef = t.data_conclusao || t.data_tarefa;
-      if (!dateRef || dateRef < fromStr || dateRef > toStr) return false;
-      const dur = Number(t.duracao_decimal) || 0;
-      const hasHoras = dur > 0 || (!!t.hora_inicio && !!t.hora_fim);
-      if (!t.check_out && !hasHoras) return false;
-      return t.status_auvo !== "Finalizada";
-    });
-  }, [data, dateFrom, dateTo, somenteFaturaveis]);
+  }, [
+    data, periodoStart, periodoEnd, filterTecnico, filterCliente,
+    filterGrupo, selectedTipos, allTiposSelected, grupoClienteMap,
+  ]);
 
   // When filtering by group, resolve which side (Auvo or GC) matched the group
   // so the display name comes from the group member, not the unrelated other side.
@@ -433,7 +481,7 @@ export default function HorasTrabalhadasTab({
       }
 
       if (t.status_auvo && t.status_auvo !== "Finalizada" && horas > 0) {
-        alertas.push("sem_checkout");
+        alertas.push("sem_janela");
       }
 
       if (detectarOverlap && t.hora_inicio && t.hora_fim && t.tecnico && t.data_tarefa) {
@@ -464,7 +512,7 @@ export default function HorasTrabalhadasTab({
       if (a === "excessivo" && alertasConfig?.excessiva_requer_revisao) return true;
       if (a === "negativo" && alertasConfig?.negativa_requer_revisao) return true;
       if (a === "overlap" && alertasConfig?.overlap_requer_revisao) return true;
-      if (a === "sem_checkout" && alertasConfig?.sem_checkout_requer_revisao) return true;
+      if (a === "sem_janela" && alertasConfig?.sem_janela_requer_revisao) return true;
       return false;
     });
     return exigeRevisao ? "em_revisao" : "faturavel";
@@ -632,7 +680,7 @@ export default function HorasTrabalhadasTab({
   // Contadores por tipo + lista plana de alertas para cards e exports
   const alertCounts = useMemo(() => {
     const counts: Record<Exclude<AlertaTipo, null>, number> = {
-      negativo: 0, curto: 0, longo: 0, excessivo: 0, overlap: 0, sem_checkout: 0,
+      negativo: 0, curto: 0, longo: 0, excessivo: 0, overlap: 0, sem_janela: 0, multi_periodo: 0,
     };
     const seenByType = new Map<string, Set<string>>();
     for (const [id, alerts] of tasksWithAlertas) {
@@ -665,7 +713,7 @@ export default function HorasTrabalhadasTab({
         return "Duração negativa — bug de apontamento (checkout antes do check-in)";
       case "overlap":
         return `Sobreposição de horário: técnico ${t.tecnico} em outra OS no mesmo intervalo`;
-      case "sem_checkout":
+      case "sem_janela":
         return `Status '${t.status_auvo}' com horas registradas — técnico não fechou a OS`;
       default:
         return "";
@@ -678,13 +726,13 @@ export default function HorasTrabalhadasTab({
     if (a === "longo") return <Clock className="h-3.5 w-3.5 text-blue-600" />;
     if (a === "excessivo" || a === "overlap") return <AlertCircle className="h-3.5 w-3.5 text-destructive" />;
     if (a === "negativo") return <Ban className="h-3.5 w-3.5 text-destructive" />;
-    if (a === "sem_checkout") return <Clock className="h-3.5 w-3.5 text-destructive" />;
+    if (a === "sem_janela") return <Clock className="h-3.5 w-3.5 text-destructive" />;
     return null;
   };
 
   const rowAlertClass = (a: AlertaTipo): string => {
     if (a === "excessivo" || a === "negativo" || a === "overlap") return "bg-destructive/10";
-    if (a === "sem_checkout") return "bg-destructive/5";
+    if (a === "sem_janela") return "bg-destructive/5";
     if (a === "curto") return "bg-yellow-100/50 dark:bg-yellow-900/20";
     if (a === "longo") return "bg-blue-100/50 dark:bg-blue-900/20";
     return "";
@@ -1048,7 +1096,6 @@ export default function HorasTrabalhadasTab({
     const resumoClienteRows: any[] = [
       ["Relatório de Horas Trabalhadas — Resumo por Cliente"],
       [`Período: ${periodoStr}`],
-      [`Critério: ${somenteFaturaveis ? "Apenas Finalizadas" : "Todas as OS"}`],
       [],
       ["Cliente", "Tarefas", "Horas", "Deslocamento (h)", "Técnicos", "Valor (R$)"],
       ...clienteSummary.map((c) => [
@@ -1137,41 +1184,8 @@ export default function HorasTrabalhadasTab({
     wsTec["!cols"] = [{ wch: 28 }, { wch: 10 }, { wch: 10 }, { wch: 16 }, { wch: 14 }];
     XLSX.utils.book_append_sheet(wb, wsTec, "Resumo Técnico");
 
-    // Sheet 4: OS Pendentes (apenas quando o toggle está ligado)
-    if (somenteFaturaveis && pendentesTasks.length > 0) {
-      const pendHeader = [
-        "Cliente", "Cliente GC", "Data Tarefa", "Data Conclusão",
-        "Técnico", "Status Auvo", "Horas", "Valor Potencial (R$)",
-        "Link Auvo", "Link OS GC",
-      ];
-      const pendRows: any[] = [
-        ["OS Pendentes — filtradas pelo toggle 'Apenas Finalizadas'"],
-        [`Período: ${periodoStr}`],
-        [],
-        pendHeader,
-      ];
-      for (const t of pendentesTasks) {
-        const tec = t.tecnico || "Desconhecido";
-        pendRows.push([
-          t.cliente || t.gc_os_cliente || "",
-          t.gc_os_cliente || "",
-          t.data_tarefa || "",
-          t.data_conclusao || "",
-          tec,
-          t.status_auvo || "",
-          Number((Number(t.duracao_decimal) || 0).toFixed(2)),
-          Number(getTaskValor(t, tec).toFixed(2)),
-          t.auvo_link || t.auvo_task_url || "",
-          t.gc_os_link || "",
-        ]);
-      }
-      const wsPend = XLSX.utils.aoa_to_sheet(pendRows);
-      wsPend["!cols"] = [
-        { wch: 30 }, { wch: 30 }, { wch: 12 }, { wch: 14 }, { wch: 22 },
-        { wch: 14 }, { wch: 8 }, { wch: 18 }, { wch: 40 }, { wch: 40 },
-      ];
-      XLSX.utils.book_append_sheet(wb, wsPend, "OS Pendentes");
-    }
+    // (Aba "OS Pendentes" removida — toda OS com hora trabalhada é faturada
+    //  e OS suspeitas vão para a aba "OS em Revisão" / Caixa de Revisão.)
 
     // Sheet: Inconsistências (apenas OS com algum alerta)
     if (alertCounts.total > 0) {
@@ -1422,17 +1436,8 @@ export default function HorasTrabalhadasTab({
               Exportar Excel
             </Button>
 
-            {/* Toggle: apenas OS finalizadas (faturáveis) */}
-            <div className="flex items-center gap-2 ml-auto pl-2 border-l">
-              <Switch
-                id="somente-faturaveis"
-                checked={somenteFaturaveis}
-                onCheckedChange={setSomenteFaturaveis}
-              />
-              <Label htmlFor="somente-faturaveis" className="text-xs cursor-pointer">
-                Apenas OS finalizadas (faturáveis)
-              </Label>
-            </div>
+            {/* Toggle 'Apenas finalizadas' removido — regra única: faturar
+                hora trabalhada no período, independente de status. */}
           </div>
         </CardContent>
       </Card>
@@ -1471,7 +1476,7 @@ export default function HorasTrabalhadasTab({
               {(Object.keys(alertCounts.counts) as Array<Exclude<AlertaTipo, null>>).map((k) => {
                 const n = alertCounts.counts[k];
                 if (n === 0) return null;
-                const isRed = k === "excessivo" || k === "negativo" || k === "overlap" || k === "sem_checkout";
+                const isRed = k === "excessivo" || k === "negativo" || k === "overlap" || k === "sem_janela";
                 const colorCls =
                   k === "curto" ? "border-yellow-500 hover:bg-yellow-100/50 dark:hover:bg-yellow-900/20 text-yellow-900 dark:text-yellow-100"
                   : k === "longo" ? "border-blue-500 hover:bg-blue-100/50 dark:hover:bg-blue-900/20 text-blue-900 dark:text-blue-100"
@@ -1726,7 +1731,7 @@ export default function HorasTrabalhadasTab({
                                             .map((task, idx) => {
                                               const alerts = tasksWithAlertas.get(task.auvo_task_id) || [];
                                               const pa = piorAlerta(alerts);
-                                              const isRed = pa === "excessivo" || pa === "negativo" || pa === "overlap" || pa === "sem_checkout";
+                                              const isRed = pa === "excessivo" || pa === "negativo" || pa === "overlap" || pa === "sem_janela";
                                               return (
                                                 <Badge
                                                   key={idx}
@@ -1851,7 +1856,7 @@ export default function HorasTrabalhadasTab({
                     <TableCell className="font-mono whitespace-nowrap">
                       {t.hora_inicio && t.hora_fim ? `${t.hora_inicio}–${t.hora_fim}` : (t.hora_inicio || "—")}
                     </TableCell>
-                    <TableCell className={cn("text-right font-medium", (pa === "excessivo" || pa === "negativo" || pa === "overlap" || pa === "sem_checkout") && "text-destructive")}>
+                    <TableCell className={cn("text-right font-medium", (pa === "excessivo" || pa === "negativo" || pa === "overlap" || pa === "sem_janela") && "text-destructive")}>
                       <div className="flex items-center justify-end gap-1.5">
                         {alerts.filter(Boolean).map((a) => (
                           <span
