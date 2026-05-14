@@ -17,30 +17,48 @@ export type Database = {
       alertas_horas_config: {
         Row: {
           atualizado_em: string
+          curta_requer_revisao: boolean | null
           detectar_horas_negativas: boolean
           detectar_overlap_tecnico: boolean
+          excessiva_requer_revisao: boolean | null
           id: string
           limite_excessivo_horas: number
           limite_maximo_horas: number
           limite_minimo_minutos: number
+          longa_requer_revisao: boolean | null
+          negativa_requer_revisao: boolean | null
+          overlap_requer_revisao: boolean | null
+          sem_checkout_requer_revisao: boolean | null
         }
         Insert: {
           atualizado_em?: string
+          curta_requer_revisao?: boolean | null
           detectar_horas_negativas?: boolean
           detectar_overlap_tecnico?: boolean
+          excessiva_requer_revisao?: boolean | null
           id?: string
           limite_excessivo_horas?: number
           limite_maximo_horas?: number
           limite_minimo_minutos?: number
+          longa_requer_revisao?: boolean | null
+          negativa_requer_revisao?: boolean | null
+          overlap_requer_revisao?: boolean | null
+          sem_checkout_requer_revisao?: boolean | null
         }
         Update: {
           atualizado_em?: string
+          curta_requer_revisao?: boolean | null
           detectar_horas_negativas?: boolean
           detectar_overlap_tecnico?: boolean
+          excessiva_requer_revisao?: boolean | null
           id?: string
           limite_excessivo_horas?: number
           limite_maximo_horas?: number
           limite_minimo_minutos?: number
+          longa_requer_revisao?: boolean | null
+          negativa_requer_revisao?: boolean | null
+          overlap_requer_revisao?: boolean | null
+          sem_checkout_requer_revisao?: boolean | null
         }
         Relationships: []
       }
@@ -484,6 +502,45 @@ export type Database = {
           locked_at?: string
           locked_by?: string
           operation?: string
+        }
+        Relationships: []
+      }
+      os_revisao: {
+        Row: {
+          alertas_motivo: string
+          atualizado_em: string
+          auvo_task_id: string
+          criado_em: string
+          decidido_em: string | null
+          decidido_por: string | null
+          horas_ajustadas: number | null
+          horas_originais: number
+          justificativa: string | null
+          status_revisao: string
+        }
+        Insert: {
+          alertas_motivo: string
+          atualizado_em?: string
+          auvo_task_id: string
+          criado_em?: string
+          decidido_em?: string | null
+          decidido_por?: string | null
+          horas_ajustadas?: number | null
+          horas_originais: number
+          justificativa?: string | null
+          status_revisao: string
+        }
+        Update: {
+          alertas_motivo?: string
+          atualizado_em?: string
+          auvo_task_id?: string
+          criado_em?: string
+          decidido_em?: string | null
+          decidido_por?: string | null
+          horas_ajustadas?: number | null
+          horas_originais?: number
+          justificativa?: string | null
+          status_revisao?: string
         }
         Relationships: []
       }
