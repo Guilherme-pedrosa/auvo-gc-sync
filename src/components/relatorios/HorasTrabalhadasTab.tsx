@@ -376,15 +376,24 @@ export default function HorasTrabalhadasTab({
   };
 
   // Calculate task value applying FDS/holiday rate and emergencial flat fee.
-  const getTaskValor = (t: any, tecnico: string, horasOverride?: number): number => {
+  const getTaskValor = (
+    t: any,
+    tecnico: string,
+    horasOverride?: number,
+    dateRefOverride?: string | null,
+  ): number => {
     const horas = horasOverride != null ? horasOverride : getTaskHoras(t);
     const cliente = t.cliente || t.gc_os_cliente || "";
     const clienteGc = t.gc_os_cliente || "";
     const cfg = getHourlyConfig(tecnico, cliente, clienteGc);
     if (!cfg) return 0;
 
-    // 1. FDS or feriado nacional → use weekend rate when defined
-    const dateRef = t.data_conclusao || t.data_tarefa;
+    // 1. FDS / feriado: usa data de INÍCIO da janela (a hora foi trabalhada nesse dia)
+    const dateRef =
+      dateRefOverride
+      || (obterInicioTask(t)?.toISOString().slice(0, 10))
+      || t.data_tarefa
+      || t.data_conclusao;
     let isFds = false;
     if (dateRef) {
       const dow = new Date(dateRef + "T12:00:00").getDay();
