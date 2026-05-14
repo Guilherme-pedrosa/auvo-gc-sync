@@ -118,6 +118,8 @@ export default function HorasTrabalhadasTab({
   const [clienteModal, setClienteModal] = useState<string | null>(null);
   const [alertFilter, setAlertFilter] = useState<AlertaTipo>(null);
   const [reviewModalOpen, setReviewModalOpen] = useState(false);
+  const [rejectedModalOpen, setRejectedModalOpen] = useState(false);
+  const [syncingTaskId, setSyncingTaskId] = useState<string | null>(null);
 
   // ── Config de limites de alerta (tabela alertas_horas_config) ──
   const { data: alertasConfig } = useQuery({
@@ -376,15 +378,24 @@ export default function HorasTrabalhadasTab({
   };
 
   // Calculate task value applying FDS/holiday rate and emergencial flat fee.
-  const getTaskValor = (t: any, tecnico: string, horasOverride?: number): number => {
+  const getTaskValor = (
+    t: any,
+    tecnico: string,
+    horasOverride?: number,
+    dateRefOverride?: string | null,
+  ): number => {
     const horas = horasOverride != null ? horasOverride : getTaskHoras(t);
     const cliente = t.cliente || t.gc_os_cliente || "";
     const clienteGc = t.gc_os_cliente || "";
     const cfg = getHourlyConfig(tecnico, cliente, clienteGc);
     if (!cfg) return 0;
 
-    // 1. FDS or feriado nacional → use weekend rate when defined
-    const dateRef = t.data_conclusao || t.data_tarefa;
+    // 1. FDS / feriado: usa data de INÍCIO da janela (a hora foi trabalhada nesse dia)
+    const dateRef =
+      dateRefOverride
+      || (obterInicioTask(t)?.toISOString().slice(0, 10))
+      || t.data_tarefa
+      || t.data_conclusao;
     let isFds = false;
     if (dateRef) {
       const dow = new Date(dateRef + "T12:00:00").getDay();
@@ -480,9 +491,14 @@ export default function HorasTrabalhadasTab({
         alertas.push("excessivo");
       }
 
-      if (t.status_auvo && t.status_auvo !== "Finalizada" && horas > 0) {
+      // "sem janela" = não conseguimos determinar [início, fim] reais
+      const tsIni = obterInicioTask(t);
+      const tsFim = obterFimTask(t, periodoEnd);
+      if ((!tsIni || !tsFim || tsFim <= tsIni) && horas > 0) {
         alertas.push("sem_janela");
       }
+
+      if (atravessaPeriodo(t)) alertas.push("multi_periodo");
 
       if (detectarOverlap && t.hora_inicio && t.hora_fim && t.tecnico && t.data_tarefa) {
         const k = `${t.tecnico}\u0001${t.data_tarefa}`;
@@ -535,13 +551,16 @@ export default function HorasTrabalhadasTab({
       const revisao = revisoesMap?.get(taskId) || null;
       const status = getStatusRevisao(alertas, revisao);
 
-      const horasOriginais = getTaskHoras(t);
+      // Horas faturáveis = duração da Auvo PRO-RATEADA pela janela do período
+      const horasOriginais = getTaskHorasNoPeriodo(t);
+      const tsIniRef = obterInicioTask(t);
+      const dataRefPeriodo = tsIniRef ? tsIniRef.toISOString().slice(0, 10) : (t.data_tarefa || t.data_conclusao);
       const horasEfetivas =
         revisao?.status_revisao === "ajustada" && revisao.horas_ajustadas != null
           ? Number(revisao.horas_ajustadas)
           : horasOriginais;
-      const valorEfetivo = getTaskValor(t, tec, horasEfetivas);
-      const valorPotencial = getTaskValor(t, tec, horasOriginais);
+      const valorEfetivo = getTaskValor(t, tec, horasEfetivas, dataRefPeriodo);
+      const valorPotencial = getTaskValor(t, tec, horasOriginais, dataRefPeriodo);
       const deslocamento = Number(t.duracao_deslocamento) || 0;
 
       let entry = map.get(tec);
@@ -769,6 +788,13 @@ export default function HorasTrabalhadasTab({
     return out;
   }, [clienteSummary, tasksWithAlertas]);
 
+  const osRejeitadas = useMemo(() => {
+    const out: TaskDetail[] = [];
+    for (const c of clienteSummary) for (const t of c.tasks) if (t.statusRevisao === "rejeitada") out.push(t);
+    out.sort((a, b) => (b.data_tarefa || "").localeCompare(a.data_tarefa || ""));
+    return out;
+  }, [clienteSummary]);
+
   // Persistir uma decisão de revisão
   const persistRevisao = async (
     task: TaskDetail,
@@ -804,6 +830,47 @@ export default function HorasTrabalhadasTab({
     );
     queryClient.invalidateQueries({ queryKey: ["os-revisao"] });
     return true;
+  };
+
+  // Revoga uma decisão de revisão (DELETE em os_revisao). A OS volta ao
+  // estado calculado: vai para "Em Revisão" se ainda tem alertas, ou
+  // para "Faturável" se não tem.
+  const revogarRevisao = async (task: TaskDetail) => {
+    const { error } = await (supabase as any)
+      .from("os_revisao")
+      .delete()
+      .eq("auvo_task_id", task.auvo_task_id);
+    if (error) { toast.error("Erro ao revogar: " + error.message); return false; }
+    toast.success("Rejeição revogada");
+    queryClient.invalidateQueries({ queryKey: ["os-revisao"] });
+    return true;
+  };
+
+  // Re-sincroniza UMA OS direto do Auvo (modo single da edge function)
+  const sincronizarOsDoAuvo = async (task: TaskDetail) => {
+    setSyncingTaskId(task.auvo_task_id);
+    try {
+      const { data, error } = await supabase.functions.invoke("horas-trabalhadas-fetch", {
+        body: { mode: "single", taskId: task.auvo_task_id },
+      });
+      if (error || !data?.ok) {
+        toast.error("Falha ao sincronizar: " + (data?.error || error?.message || "erro desconhecido"));
+        return;
+      }
+      const a = data.alteracoes || {};
+      const partes: string[] = [];
+      if (a.horas_anteriores !== a.horas_atuais) {
+        partes.push(`horas: ${(a.horas_anteriores ?? 0).toFixed(2)}h → ${(a.horas_atuais ?? 0).toFixed(2)}h`);
+      }
+      if (a.status_anterior !== a.status_atual) {
+        partes.push(`status: ${a.status_anterior || "—"} → ${a.status_atual || "—"}`);
+      }
+      toast.success(`OS ${task.auvo_task_id} sincronizada${partes.length ? ` — ${partes.join(" · ")}` : ""}`);
+      queryClient.invalidateQueries({ queryKey: ["relatorios-horas-trabalhadas"] });
+      queryClient.invalidateQueries({ queryKey: ["os-revisao"] });
+    } finally {
+      setSyncingTaskId(null);
+    }
   };
 
   // Chart data
@@ -1530,7 +1597,13 @@ export default function HorasTrabalhadasTab({
             <p className="text-xs text-muted-foreground mt-1">{totalTarefas} OS · {totalHoras.toFixed(1)}h</p>
           </CardContent>
         </Card>
-        <Card className="border-l-4 border-l-yellow-500">
+        <Card
+          className={cn(
+            "border-l-4 border-l-yellow-500",
+            totalEmRevisao.tarefas > 0 && "cursor-pointer hover:bg-muted/50 transition-colors",
+          )}
+          onClick={() => { if (totalEmRevisao.tarefas > 0) setReviewModalOpen(true); }}
+        >
           <CardHeader className="py-3 px-4">
             <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-1.5">
               <AlertTriangle className="h-4 w-4 text-yellow-600" />
@@ -1543,13 +1616,19 @@ export default function HorasTrabalhadasTab({
             </p>
             <p className="text-xs text-muted-foreground mt-1">{totalEmRevisao.tarefas} OS · {totalEmRevisao.horas.toFixed(1)}h</p>
             {totalEmRevisao.tarefas > 0 && (
-              <Button size="sm" variant="outline" className="mt-2 h-7 text-xs gap-1.5" onClick={() => setReviewModalOpen(true)}>
-                <Inbox className="h-3.5 w-3.5" /> Abrir caixa
-              </Button>
+              <p className="text-[10px] text-yellow-700 dark:text-yellow-300 mt-2 flex items-center gap-1">
+                <Inbox className="h-3 w-3" /> Clique para revisar
+              </p>
             )}
           </CardContent>
         </Card>
-        <Card className="border-l-4 border-l-destructive">
+        <Card
+          className={cn(
+            "border-l-4 border-l-destructive",
+            totalRejeitado.tarefas > 0 && "cursor-pointer hover:bg-muted/50 transition-colors",
+          )}
+          onClick={() => { if (totalRejeitado.tarefas > 0) setRejectedModalOpen(true); }}
+        >
           <CardHeader className="py-3 px-4">
             <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-1.5">
               <ShieldX className="h-4 w-4 text-destructive" />
@@ -1561,6 +1640,11 @@ export default function HorasTrabalhadasTab({
               {totalRejeitado.valor.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
             </p>
             <p className="text-xs text-muted-foreground mt-1">{totalRejeitado.tarefas} OS · {totalRejeitado.horas.toFixed(1)}h</p>
+            {totalRejeitado.tarefas > 0 && (
+              <p className="text-[10px] text-destructive mt-2 flex items-center gap-1">
+                <Inbox className="h-3 w-3" /> Clique para gerenciar
+              </p>
+            )}
           </CardContent>
         </Card>
       </div>
@@ -1898,6 +1982,298 @@ export default function HorasTrabalhadasTab({
           </ScrollArea>
         </DialogContent>
       </Dialog>
+
+      {/* Modal: Caixa de Revisão (Em Revisão) */}
+      <ReviewBoxDialog
+        open={reviewModalOpen}
+        onClose={() => setReviewModalOpen(false)}
+        kind="em_revisao"
+        tasks={osEmRevisao}
+        tasksWithAlertas={tasksWithAlertas}
+        syncingTaskId={syncingTaskId}
+        onApprove={(t, j) => persistRevisao(t, "aprovada", j)}
+        onAdjust={(t, j, h) => persistRevisao(t, "ajustada", j, h)}
+        onReject={(t, j) => persistRevisao(t, "rejeitada", j)}
+        onSync={sincronizarOsDoAuvo}
+      />
+
+      {/* Modal: OS Rejeitadas */}
+      <ReviewBoxDialog
+        open={rejectedModalOpen}
+        onClose={() => setRejectedModalOpen(false)}
+        kind="rejeitada"
+        tasks={osRejeitadas}
+        tasksWithAlertas={tasksWithAlertas}
+        syncingTaskId={syncingTaskId}
+        onApprove={(t, j) => persistRevisao(t, "aprovada", j)}
+        onRevoke={(t) => revogarRevisao(t)}
+        onSync={sincronizarOsDoAuvo}
+      />
     </div>
   );
 }
+
+// ────────────────────────────────────────────────────────────────────
+// Caixa de Revisão — modal compartilhado para "Em Revisão" e "Rejeitadas"
+// ────────────────────────────────────────────────────────────────────
+function ReviewBoxDialog(props: {
+  open: boolean;
+  onClose: () => void;
+  kind: "em_revisao" | "rejeitada";
+  tasks: any[];
+  tasksWithAlertas: Map<string, AlertaTipo[]>;
+  syncingTaskId: string | null;
+  onApprove: (t: any, justificativa: string) => Promise<boolean | void>;
+  onAdjust?: (t: any, justificativa: string, horas: number) => Promise<boolean | void>;
+  onReject?: (t: any, justificativa: string) => Promise<boolean | void>;
+  onRevoke?: (t: any) => Promise<boolean | void>;
+  onSync: (t: any) => Promise<void>;
+}) {
+  const { open, onClose, kind, tasks, tasksWithAlertas, syncingTaskId, onApprove, onAdjust, onReject, onRevoke, onSync } = props;
+  const [filterTec, setFilterTec] = useState("todos");
+  const [filterCli, setFilterCli] = useState("todos");
+  const [filterAlerta, setFilterAlerta] = useState<AlertaTipo>(null);
+  const [actionTaskId, setActionTaskId] = useState<string | null>(null);
+  const [actionMode, setActionMode] = useState<"approve" | "adjust" | "reject" | "revoke" | null>(null);
+  const [justificativa, setJustificativa] = useState("");
+  const [horasAjuste, setHorasAjuste] = useState("");
+
+  const allTec = useMemo(() => Array.from(new Set(tasks.map((t: any) => t.tecnico).filter(Boolean))).sort(), [tasks]);
+  const allCli = useMemo(() => Array.from(new Set(tasks.map((t: any) => t.cliente).filter(Boolean))).sort(), [tasks]);
+  const allAlertaTipos = useMemo(() => {
+    const s = new Set<AlertaTipo>();
+    for (const t of tasks) (tasksWithAlertas.get(t.auvo_task_id) || []).forEach((a) => a && s.add(a));
+    return Array.from(s);
+  }, [tasks, tasksWithAlertas]);
+
+  const filtered = useMemo(() => tasks.filter((t: any) => {
+    if (filterTec !== "todos" && t.tecnico !== filterTec) return false;
+    if (filterCli !== "todos" && t.cliente !== filterCli) return false;
+    if (filterAlerta) {
+      const lst = tasksWithAlertas.get(t.auvo_task_id) || [];
+      if (!lst.includes(filterAlerta)) return false;
+    }
+    return true;
+  }), [tasks, filterTec, filterCli, filterAlerta, tasksWithAlertas]);
+
+  const totalValor = useMemo(() => filtered.reduce((s: number, t: any) => s + (t.valorPotencial || 0), 0), [filtered]);
+
+  const resetAction = () => {
+    setActionTaskId(null); setActionMode(null);
+    setJustificativa(""); setHorasAjuste("");
+  };
+
+  const handleConfirmAction = async (t: any) => {
+    if (actionMode === "approve") await onApprove(t, justificativa);
+    else if (actionMode === "adjust" && onAdjust) await onAdjust(t, justificativa, Number(horasAjuste));
+    else if (actionMode === "reject" && onReject) await onReject(t, justificativa);
+    else if (actionMode === "revoke" && onRevoke) await onRevoke(t);
+    resetAction();
+  };
+
+  const titulo = kind === "em_revisao" ? "OS em Revisão" : "OS Rejeitadas";
+  const subtitulo = kind === "em_revisao"
+    ? `${filtered.length} OS pendentes — ${totalValor.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })} bloqueados`
+    : `${filtered.length} OS rejeitadas — ${totalValor.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })} descartados`;
+
+  return (
+    <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
+      <DialogContent className="max-w-7xl max-h-[90vh] overflow-hidden flex flex-col">
+        <DialogHeader>
+          <DialogTitle className="text-base flex items-center gap-2">
+            {kind === "em_revisao" ? <AlertTriangle className="h-4 w-4 text-yellow-600" /> : <ShieldX className="h-4 w-4 text-destructive" />}
+            {titulo}
+          </DialogTitle>
+          <DialogDescription className="text-xs">{subtitulo}</DialogDescription>
+        </DialogHeader>
+
+        {/* Filtros */}
+        <div className="flex flex-wrap gap-2 items-end pb-2 border-b">
+          <div>
+            <Label className="text-[10px] uppercase">Técnico</Label>
+            <Select value={filterTec} onValueChange={setFilterTec}>
+              <SelectTrigger className="h-8 w-[160px] text-xs"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="todos">Todos</SelectItem>
+                {allTec.map((t) => <SelectItem key={t} value={t}>{t}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </div>
+          <div>
+            <Label className="text-[10px] uppercase">Cliente</Label>
+            <Select value={filterCli} onValueChange={setFilterCli}>
+              <SelectTrigger className="h-8 w-[200px] text-xs"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="todos">Todos</SelectItem>
+                {allCli.map((c) => <SelectItem key={c} value={c}>{c}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </div>
+          <div>
+            <Label className="text-[10px] uppercase">Alerta</Label>
+            <Select value={filterAlerta || "todos"} onValueChange={(v) => setFilterAlerta(v === "todos" ? null : (v as AlertaTipo))}>
+              <SelectTrigger className="h-8 w-[180px] text-xs"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="todos">Todos</SelectItem>
+                {allAlertaTipos.map((a) => <SelectItem key={a as string} value={a as string}>{ALERTA_LABEL[a as Exclude<AlertaTipo, null>]}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+
+        <ScrollArea className="flex-1 -mx-6 px-6">
+          <Table className="min-w-[1100px]">
+            <TableHeader className="sticky top-0 bg-background z-10">
+              <TableRow>
+                <TableHead className="text-xs">Gravidade</TableHead>
+                <TableHead className="text-xs">Alertas</TableHead>
+                <TableHead className="text-xs">Cliente</TableHead>
+                <TableHead className="text-xs">Técnico</TableHead>
+                <TableHead className="text-xs">Data</TableHead>
+                <TableHead className="text-xs">ID Tarefa</TableHead>
+                <TableHead className="text-xs text-right">Horas</TableHead>
+                <TableHead className="text-xs text-right">Valor potencial</TableHead>
+                <TableHead className="text-xs">Status atual</TableHead>
+                <TableHead className="text-xs">Justificativa</TableHead>
+                <TableHead className="text-xs">Ações</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {filtered.length === 0 ? (
+                <TableRow><TableCell colSpan={11} className="text-center py-8 text-muted-foreground text-sm">Nenhuma OS</TableCell></TableRow>
+              ) : filtered.map((t: any) => {
+                const alerts = (tasksWithAlertas.get(t.auvo_task_id) || []).filter(Boolean) as Exclude<AlertaTipo, null>[];
+                const pior: AlertaTipo = alerts.length
+                  ? alerts.reduce((b, a) => (ALERTA_SEVERIDADE[a] > ALERTA_SEVERIDADE[b]) ? a : b, alerts[0])
+                  : null;
+                const isAct = actionTaskId === t.auvo_task_id;
+                const rev = t.revisao;
+                return (
+                  <>
+                    <TableRow key={t.auvo_task_id} className="text-xs align-top">
+                      <TableCell>
+                        {pior && (
+                          <Badge variant={(pior === "excessivo" || pior === "negativo" || pior === "overlap" || pior === "sem_janela") ? "destructive" : "outline"} className="text-[9px]">
+                            {ALERTA_LABEL[pior]}
+                          </Badge>
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex flex-wrap gap-1">
+                          {alerts.map((a) => (
+                            <Badge key={a} variant="outline" className="text-[9px]">{ALERTA_LABEL[a]}</Badge>
+                          ))}
+                        </div>
+                      </TableCell>
+                      <TableCell className="max-w-[180px] truncate" title={t.cliente}>{t.cliente}</TableCell>
+                      <TableCell className="max-w-[140px] truncate" title={t.tecnico}>{t.tecnico}</TableCell>
+                      <TableCell className="font-mono whitespace-nowrap">
+                        {(t.data_tarefa || t.data_conclusao)
+                          ? format(new Date((t.data_tarefa || t.data_conclusao) + "T12:00:00"), "dd/MM/yy")
+                          : "—"}
+                      </TableCell>
+                      <TableCell>
+                        <button
+                          onClick={() => window.open(`https://app2.auvo.com.br/relatorioTarefas/DetalheTarefa/${t.auvo_task_id}`, "_blank")}
+                          className="font-mono text-primary hover:underline inline-flex items-center gap-1"
+                          title="Abrir no Auvo"
+                        >
+                          #{t.auvo_task_id}
+                          <ExternalLink className="h-3 w-3" />
+                        </button>
+                      </TableCell>
+                      <TableCell className="text-right font-mono">{(t.horasOriginais ?? t.horas).toFixed(2)}h</TableCell>
+                      <TableCell className={cn("text-right font-medium", kind === "rejeitada" && "text-muted-foreground")}>
+                        {(t.valorPotencial || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
+                      </TableCell>
+                      <TableCell className="text-[10px]">
+                        {kind === "em_revisao" && "Pendente"}
+                        {kind === "rejeitada" && rev && (
+                          <>
+                            <div className="font-medium text-destructive">Rejeitada {rev.decidido_em ? format(new Date(rev.decidido_em), "dd/MM") : ""}</div>
+                            {rev.decidido_por && <div className="text-muted-foreground">por {rev.decidido_por}</div>}
+                          </>
+                        )}
+                      </TableCell>
+                      <TableCell className="max-w-[180px] text-[10px] truncate" title={rev?.justificativa || ""}>
+                        {rev?.justificativa || "—"}
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex flex-wrap gap-1">
+                          {kind === "em_revisao" && (
+                            <>
+                              <Button size="sm" variant="outline" className="h-7 text-[10px] gap-1 border-emerald-600 text-emerald-700 hover:bg-emerald-50 dark:hover:bg-emerald-950"
+                                onClick={() => { setActionTaskId(t.auvo_task_id); setActionMode("approve"); setJustificativa(""); }}>
+                                <ShieldCheck className="h-3 w-3" /> Aprovar
+                              </Button>
+                              <Button size="sm" variant="outline" className="h-7 text-[10px] gap-1 border-yellow-600 text-yellow-700 hover:bg-yellow-50 dark:hover:bg-yellow-950"
+                                onClick={() => { setActionTaskId(t.auvo_task_id); setActionMode("adjust"); setJustificativa(""); setHorasAjuste(String(t.horasOriginais ?? t.horas ?? "")); }}>
+                                <Pencil className="h-3 w-3" /> Ajustar
+                              </Button>
+                              <Button size="sm" variant="outline" className="h-7 text-[10px] gap-1 border-destructive text-destructive hover:bg-destructive/10"
+                                onClick={() => { setActionTaskId(t.auvo_task_id); setActionMode("reject"); setJustificativa(""); }}>
+                                <ShieldX className="h-3 w-3" /> Rejeitar
+                              </Button>
+                            </>
+                          )}
+                          {kind === "rejeitada" && (
+                            <>
+                              <Button size="sm" variant="outline" className="h-7 text-[10px] gap-1 border-blue-600 text-blue-700 hover:bg-blue-50 dark:hover:bg-blue-950"
+                                onClick={() => { setActionTaskId(t.auvo_task_id); setActionMode("revoke"); setJustificativa(""); }}>
+                                Revogar rejeição
+                              </Button>
+                              <Button size="sm" variant="outline" className="h-7 text-[10px] gap-1 border-emerald-600 text-emerald-700 hover:bg-emerald-50 dark:hover:bg-emerald-950"
+                                onClick={() => { setActionTaskId(t.auvo_task_id); setActionMode("approve"); setJustificativa(""); }}>
+                                <ShieldCheck className="h-3 w-3" /> Aprovar mesmo assim
+                              </Button>
+                            </>
+                          )}
+                          <Button size="sm" variant="outline" className="h-7 text-[10px] gap-1"
+                            disabled={syncingTaskId === t.auvo_task_id}
+                            onClick={() => onSync(t)}>
+                            <Clock className={cn("h-3 w-3", syncingTaskId === t.auvo_task_id && "animate-spin")} /> Sincronizar
+                          </Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                    {isAct && (
+                      <TableRow key={`${t.auvo_task_id}-act`}>
+                        <TableCell colSpan={11} className="bg-muted/40 p-3">
+                          <div className="flex flex-col gap-2">
+                            <div className="text-xs font-medium">
+                              {actionMode === "approve" && "Aprovar OS — justificativa opcional"}
+                              {actionMode === "adjust" && "Ajustar horas — justificativa obrigatória"}
+                              {actionMode === "reject" && "Rejeitar OS — justificativa obrigatória"}
+                              {actionMode === "revoke" && "Revogar rejeição — confirme"}
+                            </div>
+                            {actionMode === "adjust" && (
+                              <div className="flex items-center gap-2">
+                                <Label className="text-xs">Novas horas:</Label>
+                                <Input type="number" step="0.01" min="0" value={horasAjuste}
+                                  onChange={(e) => setHorasAjuste(e.target.value)} className="h-8 w-32 text-xs" />
+                              </div>
+                            )}
+                            {actionMode !== "revoke" && (
+                              <Textarea value={justificativa} onChange={(e) => setJustificativa(e.target.value)}
+                                placeholder="Justificativa..." className="text-xs min-h-[60px]" />
+                            )}
+                            <div className="flex gap-2">
+                              <Button size="sm" className="h-7 text-xs" onClick={() => handleConfirmAction(t)}>Confirmar</Button>
+                              <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={resetAction}>Cancelar</Button>
+                            </div>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    )}
+                  </>
+                );
+              })}
+            </TableBody>
+          </Table>
+          <ScrollBar orientation="horizontal" />
+        </ScrollArea>
+      </DialogContent>
+    </Dialog>
+  );
+}
+

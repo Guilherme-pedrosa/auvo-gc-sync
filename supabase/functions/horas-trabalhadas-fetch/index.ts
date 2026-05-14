@@ -113,6 +113,108 @@ Deno.serve(async (req) => {
   const avisos: string[] = [];
   try {
     const body = await req.json().catch(() => ({}));
+    const mode = String(body?.mode || "batch");
+
+    const supabase = createClient(
+      Deno.env.get("SUPABASE_URL")!,
+      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
+    );
+
+    // ─── Modo "single": refetch de UMA OS específica do Auvo ────────
+    if (mode === "single") {
+      const taskId = String(body?.taskId || "").trim();
+      if (!taskId) {
+        return new Response(JSON.stringify({ ok: false, error: "taskId obrigatório" }), {
+          status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      // Estado anterior (para retornar diff ao cliente)
+      const { data: prev } = await supabase
+        .from("tarefas_central")
+        .select("auvo_task_id, duracao_decimal, status_auvo, check_in_iso, check_out_iso, hora_inicio, hora_fim, data_tarefa, data_conclusao, atualizado_em")
+        .eq("auvo_task_id", taskId)
+        .maybeSingle();
+
+      try {
+        const apiKey = Deno.env.get("AUVO_APP_KEY");
+        const apiToken = Deno.env.get("AUVO_TOKEN");
+        if (!apiKey || !apiToken) throw new Error("AUVO_APP_KEY/AUVO_TOKEN ausentes");
+        const token = await auvoLogin(apiKey, apiToken);
+
+        const url = `${AUVO_BASE_URL}/tasks/${encodeURIComponent(taskId)}`;
+        const r = await fetchWithRetry(url, token);
+        if (!r || !r.ok) {
+          return new Response(
+            JSON.stringify({ ok: false, error: `Auvo respondeu ${r?.status ?? "sem resposta"} para a OS ${taskId}` }),
+            { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+          );
+        }
+        const j = await r.json();
+        const t = j?.result?.entity || j?.result || j;
+        const m = mapAuvoTask(t);
+        if (!m.auvo_task_id) {
+          return new Response(
+            JSON.stringify({ ok: false, error: "Auvo retornou OS sem ID" }),
+            { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+          );
+        }
+
+        // Atualiza somente os campos seguros — não toca em campos GC/financeiros
+        // nem dispara qualquer reescrita de OS Em Aberto.
+        const update: any = {
+          task_type_id: m.task_type_id || null,
+          status_auvo: m.auvo_status_label || null,
+          data_tarefa: m.auvo_task_date,
+          data_conclusao: m.auvo_check_out_date,
+          check_in_iso: m.check_in_iso,
+          check_out_iso: m.check_out_iso,
+          atualizado_em: m.auvo_date_last_update || new Date().toISOString(),
+        };
+        // Recalcula hora_inicio / hora_fim a partir do ISO quando disponível
+        if (m.check_in_iso) update.hora_inicio = String(m.check_in_iso).slice(11, 16);
+        if (m.check_out_iso) update.hora_fim = String(m.check_out_iso).slice(11, 16);
+        // Recalcula duracao_decimal (horas) baseado em check_in/out
+        if (m.check_in_iso && m.check_out_iso) {
+          const ms = new Date(m.check_out_iso).getTime() - new Date(m.check_in_iso).getTime();
+          if (Number.isFinite(ms)) update.duracao_decimal = Math.round((ms / 3_600_000) * 10000) / 10000;
+        }
+
+        // Upsert restrito por auvo_task_id (mirror_key permanece como está)
+        if (prev) {
+          await supabase.from("tarefas_central").update(update).eq("auvo_task_id", taskId);
+        } else {
+          await supabase.from("tarefas_central").upsert(
+            { auvo_task_id: taskId, mirror_key: taskId, ...update },
+            { onConflict: "mirror_key" },
+          );
+        }
+
+        const { data: nowRow } = await supabase
+          .from("tarefas_central")
+          .select("*")
+          .eq("auvo_task_id", taskId)
+          .maybeSingle();
+
+        return new Response(JSON.stringify({
+          ok: true,
+          task: nowRow,
+          alteracoes: {
+            horas_anteriores: prev?.duracao_decimal ?? null,
+            horas_atuais: nowRow?.duracao_decimal ?? null,
+            status_anterior: prev?.status_auvo ?? null,
+            status_atual: nowRow?.status_auvo ?? null,
+          },
+        }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      } catch (e: any) {
+        return new Response(
+          JSON.stringify({ ok: false, error: e?.message || String(e) }),
+          { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+        );
+      }
+    }
+
+    // ─── Modo "batch" (default) ────────────────────────────────────
     const startDate = String(body?.startDate || "");
     const endDate = String(body?.endDate || "");
     if (!/^\d{4}-\d{2}-\d{2}$/.test(startDate) || !/^\d{4}-\d{2}-\d{2}$/.test(endDate)) {
@@ -120,11 +222,6 @@ Deno.serve(async (req) => {
         status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
-
-    const supabase = createClient(
-      Deno.env.get("SUPABASE_URL")!,
-      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
-    );
 
     // 1) Read DB tasks within period (deterministic order to avoid pagination dupes).
     const dbRows: any[] = [];
