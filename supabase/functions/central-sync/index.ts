@@ -591,6 +591,7 @@ type CentralSyncBody = {
   situacao_ids?: unknown;
   wait?: unknown;
   fast?: unknown;
+  lite?: unknown;
 };
 
 async function runCentralSync(body: CentralSyncBody = {}) {
@@ -654,6 +655,7 @@ async function runCentralSync(body: CentralSyncBody = {}) {
     // Without this, the function frequently hits IDLE_TIMEOUT before Auvo even starts,
     // breaking the Horas Trabalhadas tab (which depends on Auvo data).
     const isFastGcOnly = situacaoIds.length > 0 && body?.fast === true;
+    const isLiteSync = body?.lite === true;
     const auvoTasksPromise: Promise<any[]> = isFastGcOnly
       ? Promise.resolve([])
       : fetchAuvoTasks(bearerToken, startDate, endDate).catch((err) => {
@@ -1003,8 +1005,9 @@ async function runCentralSync(body: CentralSyncBody = {}) {
     for (const task of auvoTasks) {
       const taskId = String(task.taskID || "").trim();
       if (!taskId || seenCandidates.has(taskId)) continue;
-      // Fetch snapshot for ALL tasks to get accurate hora_fim (taskEndDate), address, displacement
-      candidateTaskIds.push(taskId);
+      // Full snapshots are expensive and can make manual report syncs time out.
+      // Lite sync persists the list data first and skips detail-only enrichment.
+      if (!isLiteSync) candidateTaskIds.push(taskId);
       seenCandidates.add(taskId);
     }
 
