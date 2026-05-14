@@ -51,7 +51,8 @@ const buildDateChunks = (from: Date, to: Date, chunkDays = REPORTS_SYNC_CHUNK_DA
     chunkEnd.setDate(chunkEnd.getDate() + chunkDays - 1);
     if (chunkEnd > finalDate) chunkEnd.setTime(finalDate.getTime());
     chunks.push({ start: format(chunkStart, "yyyy-MM-dd"), end: format(chunkEnd, "yyyy-MM-dd") });
-    cursor.setDate(chunkEnd.getDate() + 1);
+    cursor.setTime(chunkEnd.getTime());
+    cursor.setDate(cursor.getDate() + 1);
   }
 
   return chunks;
