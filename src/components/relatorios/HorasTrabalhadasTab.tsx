@@ -116,7 +116,6 @@ export default function HorasTrabalhadasTab({
   const [allTiposSelected, setAllTiposSelected] = useState(true);
   const [searchTipo, setSearchTipo] = useState("");
   const [clienteModal, setClienteModal] = useState<string | null>(null);
-  const [somenteFaturaveis, setSomenteFaturaveis] = useState(true);
   const [alertFilter, setAlertFilter] = useState<AlertaTipo>(null);
   const [reviewModalOpen, setReviewModalOpen] = useState(false);
 
@@ -158,9 +157,82 @@ export default function HorasTrabalhadasTab({
     staleTime: 30_000,
   });
 
-  // Get task hours: use Auvo's durationDecimal (already deducts pauses)
+  // Full duration as recorded by Auvo (already deducts pauses).
   const getTaskHoras = (t: any): number => {
     return Number(t.duracao_decimal) || 0;
+  };
+
+  // ── Período helpers (rateio por janela de trabalho) ──────────────
+  const periodoStart = useMemo(
+    () => new Date(format(dateFrom, "yyyy-MM-dd") + "T00:00:00"),
+    [dateFrom],
+  );
+  const periodoEnd = useMemo(
+    () => new Date(format(dateTo, "yyyy-MM-dd") + "T23:59:59"),
+    [dateTo],
+  );
+
+  const obterInicioTask = (t: any): Date | null => {
+    if (t.check_in_iso) {
+      const d = new Date(t.check_in_iso);
+      if (!isNaN(d.getTime())) return d;
+    }
+    if (t.data_tarefa && t.hora_inicio) {
+      const d = new Date(`${t.data_tarefa}T${t.hora_inicio}`);
+      if (!isNaN(d.getTime())) return d;
+    }
+    if (t.data_tarefa) {
+      const d = new Date(`${t.data_tarefa}T00:00:00`);
+      if (!isNaN(d.getTime())) return d;
+    }
+    return null;
+  };
+
+  const obterFimTask = (t: any, cap: Date): Date | null => {
+    if (t.check_out_iso) {
+      const d = new Date(t.check_out_iso);
+      if (!isNaN(d.getTime())) return d;
+    }
+    if (t.data_conclusao && t.hora_fim) {
+      const d = new Date(`${t.data_conclusao}T${t.hora_fim}`);
+      if (!isNaN(d.getTime())) return d;
+    }
+    if (t.status_auvo !== "Finalizada" && (Number(t.duracao_decimal) || 0) > 0) {
+      const now = new Date();
+      return new Date(Math.min(now.getTime(), cap.getTime()));
+    }
+    return null;
+  };
+
+  const getTaskHorasNoPeriodo = (t: any): number => {
+    const dur = Number(t.duracao_decimal) || 0;
+    if (dur <= 0) return 0;
+    const tsInicio = obterInicioTask(t);
+    const tsFim = obterFimTask(t, periodoEnd);
+    if (!tsInicio || !tsFim || tsFim <= tsInicio) return dur;
+    if (tsInicio >= periodoStart && tsFim <= periodoEnd) return dur;
+    if (tsFim < periodoStart || tsInicio > periodoEnd) return 0;
+    const janelaMs = tsFim.getTime() - tsInicio.getTime();
+    const interStart = Math.max(tsInicio.getTime(), periodoStart.getTime());
+    const interEnd = Math.min(tsFim.getTime(), periodoEnd.getTime());
+    const interMs = Math.max(0, interEnd - interStart);
+    const proporcao = janelaMs > 0 ? interMs / janelaMs : 1;
+    return Number((dur * proporcao).toFixed(4));
+  };
+
+  const atravessaPeriodo = (t: any): boolean => {
+    const tsInicio = obterInicioTask(t);
+    const tsFim = obterFimTask(t, periodoEnd);
+    if (!tsInicio || !tsFim) return false;
+    return tsInicio < periodoStart || tsFim > periodoEnd;
+  };
+
+  const rateioPercent = (t: any): number => {
+    const dur = Number(t.duracao_decimal) || 0;
+    if (dur <= 0) return 100;
+    const horas = getTaskHorasNoPeriodo(t);
+    if (horas <= 0) return 0;
+    return Math.round((horas / dur) * 100);
   };
 
   const isExcessiveTask = (horas: number) => horas > 12;
@@ -203,13 +275,10 @@ export default function HorasTrabalhadasTab({
     return ["01-01", "04-21", "05-01", "09-07", "10-12", "11-02", "11-15", "12-25"].includes(md);
   };
 
-  // Filter data by execution date (data_conclusao when present, fallback to data_tarefa).
+  // Filter data by intersection of [check_in, check_out] with the period.
+  // Status is irrelevant — what matters is whether work happened in the window.
   const filtered = useMemo(() => {
-    const fromStr = format(dateFrom, "yyyy-MM-dd");
-    const toStr = format(dateTo, "yyyy-MM-dd");
-
-    // Defensive dedup by auvo_task_id (edge function already dedups, but in case
-    // duplicates slip through pagination we keep the most recently updated row).
+    // Defensive dedup by auvo_task_id.
     const byId = new Map<string, any>();
     for (const t of data) {
       if (!t?.auvo_task_id) continue;
@@ -221,20 +290,17 @@ export default function HorasTrabalhadasTab({
     const dedupedData = Array.from(byId.values());
 
     return dedupedData.filter((t) => {
-      if (!t.hora_inicio && !t.hora_fim && t.duracao_decimal == null) return false;
-
-      const dateRef = t.data_conclusao || t.data_tarefa;
-      if (!dateRef) return false;
-      if (dateRef < fromStr || dateRef > toStr) return false;
-
-      // Conta toda tarefa com horas reais registradas no Auvo
-      // (não exigir check_out — técnico pode esquecer de fechar e a tarefa fica
-      //  como "Aberta/Pausada/Em andamento" mesmo tendo trabalho registrado).
       const dur = Number(t.duracao_decimal) || 0;
-      const hasHoras = dur > 0 || (!!t.hora_inicio && !!t.hora_fim);
-      if (!t.check_out && !hasHoras) return false;
+      if (dur <= 0) return false;
 
-      if (somenteFaturaveis && t.status_auvo !== "Finalizada") return false;
+      const tsInicio = obterInicioTask(t);
+      const tsFim = obterFimTask(t, periodoEnd);
+
+      // Sem janela computável → mantém para a Caixa de Revisão sinalizar.
+      if (tsInicio && tsFim) {
+        if (tsFim < periodoStart) return false;
+        if (tsInicio > periodoEnd) return false;
+      }
 
       if (filterTecnico !== "todos" && t.tecnico !== filterTecnico) return false;
 
@@ -259,31 +325,10 @@ export default function HorasTrabalhadasTab({
 
       return true;
     });
-  }, [data, dateFrom, dateTo, filterTecnico, filterCliente, filterGrupo, selectedTipos, allTiposSelected, grupoClienteMap, somenteFaturaveis]);
-
-  // Tasks suppressed by the "apenas finalizadas" toggle — exposed for the
-  // "OS Pendentes" Excel sheet and to help the financial team chase pending closures.
-  const pendentesTasks = useMemo(() => {
-    if (!somenteFaturaveis) return [] as any[];
-    const fromStr = format(dateFrom, "yyyy-MM-dd");
-    const toStr = format(dateTo, "yyyy-MM-dd");
-    const byId = new Map<string, any>();
-    for (const t of data) {
-      if (!t?.auvo_task_id) continue;
-      const existing = byId.get(t.auvo_task_id);
-      if (!existing || (t.atualizado_em || "") > (existing.atualizado_em || "")) {
-        byId.set(t.auvo_task_id, t);
-      }
-    }
-    return Array.from(byId.values()).filter((t) => {
-      const dateRef = t.data_conclusao || t.data_tarefa;
-      if (!dateRef || dateRef < fromStr || dateRef > toStr) return false;
-      const dur = Number(t.duracao_decimal) || 0;
-      const hasHoras = dur > 0 || (!!t.hora_inicio && !!t.hora_fim);
-      if (!t.check_out && !hasHoras) return false;
-      return t.status_auvo !== "Finalizada";
-    });
-  }, [data, dateFrom, dateTo, somenteFaturaveis]);
+  }, [
+    data, periodoStart, periodoEnd, filterTecnico, filterCliente,
+    filterGrupo, selectedTipos, allTiposSelected, grupoClienteMap,
+  ]);
 
   // When filtering by group, resolve which side (Auvo or GC) matched the group
   // so the display name comes from the group member, not the unrelated other side.
