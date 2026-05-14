@@ -1,5 +1,7 @@
 import { useState, useMemo } from "react";
 import { cn } from "@/lib/utils";
+import { useQuery } from "@tanstack/react-query";
+import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -15,7 +17,7 @@ import {
 } from "@/components/ui/table";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { AlertTriangle } from "lucide-react";
+import { AlertTriangle, AlertCircle, Ban, Clock, X } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip,
@@ -53,6 +55,45 @@ const CHART_COLORS = [
   "hsl(330, 65%, 50%)", "hsl(45, 85%, 50%)",
 ];
 
+type AlertaTipo =
+  | "negativo"
+  | "curto"
+  | "longo"
+  | "excessivo"
+  | "overlap"
+  | "sem_checkout"
+  | null;
+
+const ALERTA_LABEL: Record<Exclude<AlertaTipo, null>, string> = {
+  negativo: "Duração negativa",
+  curto: "OS curta",
+  longo: "OS longa",
+  excessivo: "OS excessiva",
+  overlap: "Sobreposição",
+  sem_checkout: "Sem checkout",
+};
+
+// Severidade: maior número = mais grave.
+const ALERTA_SEVERIDADE: Record<Exclude<AlertaTipo, null>, number> = {
+  excessivo: 6,
+  negativo: 5,
+  overlap: 4,
+  sem_checkout: 3,
+  curto: 2,
+  longo: 1,
+};
+
+const piorAlerta = (lst: AlertaTipo[]): AlertaTipo => {
+  let best: AlertaTipo = null;
+  let bestScore = -1;
+  for (const a of lst) {
+    if (!a) continue;
+    const s = ALERTA_SEVERIDADE[a];
+    if (s > bestScore) { best = a; bestScore = s; }
+  }
+  return best;
+};
+
 export default function HorasTrabalhadasTab({
   data, isLoading, allClientes, allTecnicos, allTiposTarefa,
   grupos, membros, valorHoraConfigs,
@@ -68,6 +109,29 @@ export default function HorasTrabalhadasTab({
   const [searchTipo, setSearchTipo] = useState("");
   const [clienteModal, setClienteModal] = useState<string | null>(null);
   const [somenteFaturaveis, setSomenteFaturaveis] = useState(true);
+  const [alertFilter, setAlertFilter] = useState<AlertaTipo>(null);
+
+  // ── Config de limites de alerta (tabela alertas_horas_config) ──
+  const { data: alertasConfig } = useQuery({
+    queryKey: ["alertas-horas-config"],
+    queryFn: async () => {
+      const { data } = await (supabase as any)
+        .from("alertas_horas_config")
+        .select("*")
+        .limit(1)
+        .maybeSingle();
+      return (
+        data || {
+          limite_minimo_minutos: 45,
+          limite_maximo_horas: 8,
+          limite_excessivo_horas: 12,
+          detectar_overlap_tecnico: true,
+          detectar_horas_negativas: true,
+        }
+      );
+    },
+    staleTime: 60_000,
+  });
 
   // Get task hours: use Auvo's durationDecimal (already deducts pauses)
   const getTaskHoras = (t: any): number => {
@@ -392,6 +456,132 @@ export default function HorasTrabalhadasTab({
     [clienteModal, clienteSummary]
   );
 
+  // ── Detecção de alertas (apenas visual, não muda valor) ───────────
+  const tasksWithAlertas = useMemo(() => {
+    const allTasks: TaskDetail[] = clienteSummary.flatMap((c) => c.tasks);
+    const result = new Map<string, AlertaTipo[]>();
+
+    const limMin = (alertasConfig?.limite_minimo_minutos ?? 45) / 60;
+    const limMax = Number(alertasConfig?.limite_maximo_horas ?? 8);
+    const limExc = Number(alertasConfig?.limite_excessivo_horas ?? 12);
+    const detectarOverlap = !!alertasConfig?.detectar_overlap_tecnico;
+    const detectarNegativas = alertasConfig?.detectar_horas_negativas !== false;
+
+    // Pré-agrupa por técnico+dia para overlap O(n) por grupo
+    const byTecDia = new Map<string, TaskDetail[]>();
+    if (detectarOverlap) {
+      for (const t of allTasks) {
+        if (!t.tecnico || !t.data_tarefa || !t.hora_inicio || !t.hora_fim) continue;
+        const k = `${t.tecnico}\u0001${t.data_tarefa}`;
+        const arr = byTecDia.get(k) || [];
+        arr.push(t);
+        byTecDia.set(k, arr);
+      }
+    }
+
+    for (const t of allTasks) {
+      const alertas: AlertaTipo[] = [];
+      const horas = t.horas;
+
+      if (detectarNegativas && horas < 0) {
+        alertas.push("negativo");
+      } else if (horas > 0 && horas < limMin) {
+        alertas.push("curto");
+      } else if (horas >= limMax && horas < limExc) {
+        alertas.push("longo");
+      } else if (horas >= limExc) {
+        alertas.push("excessivo");
+      }
+
+      if (t.status_auvo && t.status_auvo !== "Finalizada" && horas > 0) {
+        alertas.push("sem_checkout");
+      }
+
+      if (detectarOverlap && t.hora_inicio && t.hora_fim && t.tecnico && t.data_tarefa) {
+        const k = `${t.tecnico}\u0001${t.data_tarefa}`;
+        const peers = byTecDia.get(k) || [];
+        const ini = t.hora_inicio;
+        const fim = t.hora_fim;
+        const overlap = peers.some((o) =>
+          o.auvo_task_id !== t.auvo_task_id &&
+          o.hora_inicio && o.hora_fim &&
+          ini < o.hora_fim && o.hora_inicio < fim
+        );
+        if (overlap) alertas.push("overlap");
+      }
+
+      result.set(t.auvo_task_id, alertas);
+    }
+    return result;
+  }, [clienteSummary, alertasConfig]);
+
+  // Contadores por tipo + lista plana de alertas para cards e exports
+  const alertCounts = useMemo(() => {
+    const counts: Record<Exclude<AlertaTipo, null>, number> = {
+      negativo: 0, curto: 0, longo: 0, excessivo: 0, overlap: 0, sem_checkout: 0,
+    };
+    const seenByType = new Map<string, Set<string>>();
+    for (const [id, alerts] of tasksWithAlertas) {
+      for (const a of alerts) {
+        if (!a) continue;
+        let s = seenByType.get(a);
+        if (!s) { s = new Set(); seenByType.set(a, s); }
+        if (s.has(id)) continue;
+        s.add(id);
+        counts[a]++;
+      }
+    }
+    const total = Object.values(counts).reduce((a, b) => a + b, 0);
+    return { counts, total };
+  }, [tasksWithAlertas]);
+
+  const alertaTooltip = (a: AlertaTipo, t: TaskDetail): string => {
+    if (!a) return "";
+    const limMin = alertasConfig?.limite_minimo_minutos ?? 45;
+    const limMax = alertasConfig?.limite_maximo_horas ?? 8;
+    const limExc = alertasConfig?.limite_excessivo_horas ?? 12;
+    switch (a) {
+      case "curto":
+        return `OS abaixo do tempo mínimo de ${limMin} min — verificar checkout precoce`;
+      case "longo":
+        return `OS acima de ${limMax}h — possível checkout esquecido`;
+      case "excessivo":
+        return `OS acima de ${limExc}h — apontamento provavelmente incorreto`;
+      case "negativo":
+        return "Duração negativa — bug de apontamento (checkout antes do check-in)";
+      case "overlap":
+        return `Sobreposição de horário: técnico ${t.tecnico} em outra OS no mesmo intervalo`;
+      case "sem_checkout":
+        return `Status '${t.status_auvo}' com horas registradas — técnico não fechou a OS`;
+      default:
+        return "";
+    }
+  };
+
+  const alertaIcone = (a: AlertaTipo): JSX.Element | null => {
+    if (!a) return null;
+    if (a === "curto") return <AlertTriangle className="h-3.5 w-3.5 text-yellow-600" />;
+    if (a === "longo") return <Clock className="h-3.5 w-3.5 text-blue-600" />;
+    if (a === "excessivo" || a === "overlap") return <AlertCircle className="h-3.5 w-3.5 text-destructive" />;
+    if (a === "negativo") return <Ban className="h-3.5 w-3.5 text-destructive" />;
+    if (a === "sem_checkout") return <Clock className="h-3.5 w-3.5 text-destructive" />;
+    return null;
+  };
+
+  const rowAlertClass = (a: AlertaTipo): string => {
+    if (a === "excessivo" || a === "negativo" || a === "overlap") return "bg-destructive/10";
+    if (a === "sem_checkout") return "bg-destructive/5";
+    if (a === "curto") return "bg-yellow-100/50 dark:bg-yellow-900/20";
+    if (a === "longo") return "bg-blue-100/50 dark:bg-blue-900/20";
+    return "";
+  };
+
+  const taskMatchesAlertFilter = (taskId: string): boolean => {
+    if (!alertFilter) return true;
+    const lst = tasksWithAlertas.get(taskId) || [];
+    return lst.includes(alertFilter);
+  };
+
   const totalHoras = useMemo(() => tecnicoSummary.reduce((s, t) => s + t.horas, 0), [tecnicoSummary]);
   const totalDeslocamento = useMemo(() => tecnicoSummary.reduce((s, t) => s + t.deslocamento, 0), [tecnicoSummary]);
   const totalValor = useMemo(() => tecnicoSummary.reduce((s, t) => s + t.valor, 0), [tecnicoSummary]);
@@ -512,6 +702,35 @@ export default function HorasTrabalhadasTab({
     });
 
     curY = (doc as any).lastAutoTable.finalY + 12;
+
+    // ── Inconsistências ──
+    if (alertCounts.total > 0) {
+      if (curY > 230) { doc.addPage(); curY = 20; }
+      doc.setFontSize(12);
+      doc.setFont("helvetica", "bold");
+      doc.text("Inconsistências detectadas", 14, curY);
+      curY += 4;
+      const incBody = (Object.keys(alertCounts.counts) as Array<Exclude<AlertaTipo, null>>)
+        .filter((k) => alertCounts.counts[k] > 0)
+        .sort((a, b) => ALERTA_SEVERIDADE[b] - ALERTA_SEVERIDADE[a])
+        .map((k) => [ALERTA_LABEL[k], String(alertCounts.counts[k])]);
+      autoTable(doc, {
+        startY: curY,
+        head: [["Tipo", "OS afetadas"]],
+        body: incBody,
+        styles: { fontSize: 9 },
+        headStyles: { fillColor: [234, 179, 8] },
+        columnStyles: { 1: { halign: "right", cellWidth: 30 } },
+      });
+      curY = (doc as any).lastAutoTable.finalY + 4;
+      doc.setFontSize(8);
+      doc.setFont("helvetica", "italic");
+      doc.setTextColor(120);
+      doc.text("Detalhamento por OS disponível na aba 'Inconsistências' do export Excel.", 14, curY);
+      doc.setTextColor(0);
+      doc.setFont("helvetica", "normal");
+      curY += 10;
+    }
 
     // ── Resumo por Técnico ──
     if (curY > 240) { doc.addPage(); curY = 20; }
@@ -679,7 +898,7 @@ export default function HorasTrabalhadasTab({
     const detalheHeader = [
       "Cliente", "Cliente GC", "Data Conclusão", "Data Tarefa", "ID Tarefa", "Cód. OS GC",
       "Técnico", "Tipo de Tarefa", "Equipamento", "ID/Série",
-      "Status Auvo", "Início", "Fim", "Horas", "Deslocamento (h)", "Valor (R$)",
+      "Status Auvo", "Alertas", "Início", "Fim", "Horas", "Deslocamento (h)", "Valor (R$)",
       "Orientação", "Pendência", "Relatório Auvo", "Tarefa Auvo", "Pesquisa Satisfação", "Link OS GC",
     ];
     const detalheRows: any[] = [
@@ -690,6 +909,8 @@ export default function HorasTrabalhadasTab({
     ];
     for (const c of clienteSummary) {
       for (const t of c.tasks) {
+        const alerts = (tasksWithAlertas.get(t.auvo_task_id) || []).filter(Boolean) as Exclude<AlertaTipo, null>[];
+        const alertasStr = alerts.map((a) => ALERTA_LABEL[a]).join(", ");
         detalheRows.push([
           c.cliente,
           t.cliente_gc,
@@ -702,6 +923,7 @@ export default function HorasTrabalhadasTab({
           t.equipamento,
           t.equipamento_id_serie,
           t.status_auvo,
+          alertasStr,
           t.hora_inicio,
           t.hora_fim,
           Number(t.horas.toFixed(2)),
@@ -720,7 +942,7 @@ export default function HorasTrabalhadasTab({
     wsDet["!cols"] = [
       { wch: 30 }, { wch: 30 }, { wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 12 },
       { wch: 22 }, { wch: 28 }, { wch: 30 }, { wch: 16 },
-      { wch: 14 }, { wch: 8 }, { wch: 8 }, { wch: 8 }, { wch: 14 }, { wch: 12 },
+      { wch: 14 }, { wch: 28 }, { wch: 8 }, { wch: 8 }, { wch: 8 }, { wch: 14 }, { wch: 12 },
       { wch: 40 }, { wch: 40 }, { wch: 40 }, { wch: 40 }, { wch: 40 }, { wch: 40 },
     ];
     XLSX.utils.book_append_sheet(wb, wsDet, "Detalhe OS");
@@ -778,6 +1000,54 @@ export default function HorasTrabalhadasTab({
         { wch: 14 }, { wch: 8 }, { wch: 18 }, { wch: 40 }, { wch: 40 },
       ];
       XLSX.utils.book_append_sheet(wb, wsPend, "OS Pendentes");
+    }
+
+    // Sheet: Inconsistências (apenas OS com algum alerta)
+    if (alertCounts.total > 0) {
+      const incHeader = [
+        "Gravidade", "Alertas", "Cliente", "Técnico", "Data",
+        "ID Tarefa", "Cód. OS GC", "Horas", "Status Auvo",
+        "Link Auvo", "Link OS GC",
+      ];
+      const incRows: any[] = [
+        ["Inconsistências detectadas — OS com algum alerta no período"],
+        [`Período: ${periodoStr}`],
+        [],
+        incHeader,
+      ];
+      const flat: { sev: number; t: TaskDetail; alerts: Exclude<AlertaTipo, null>[]; cliente: string }[] = [];
+      for (const c of clienteSummary) {
+        for (const t of c.tasks) {
+          const alerts = (tasksWithAlertas.get(t.auvo_task_id) || []).filter(Boolean) as Exclude<AlertaTipo, null>[];
+          if (alerts.length === 0) continue;
+          const sev = Math.max(...alerts.map((a) => ALERTA_SEVERIDADE[a]));
+          flat.push({ sev, t, alerts, cliente: c.cliente });
+        }
+      }
+      flat.sort((a, b) => b.sev - a.sev);
+      for (const r of flat) {
+        const pa = piorAlerta(r.alerts);
+        incRows.push([
+          pa ? ALERTA_LABEL[pa] : "",
+          r.alerts.map((a) => ALERTA_LABEL[a]).join(", "),
+          r.cliente,
+          r.t.tecnico,
+          r.t.data_tarefa || r.t.data_conclusao,
+          r.t.auvo_task_id,
+          r.t.gc_os_codigo,
+          Number(r.t.horas.toFixed(2)),
+          r.t.status_auvo,
+          r.t.auvo_link || r.t.auvo_task_url || "",
+          r.t.gc_os_link || "",
+        ]);
+      }
+      const wsInc = XLSX.utils.aoa_to_sheet(incRows);
+      wsInc["!cols"] = [
+        { wch: 16 }, { wch: 36 }, { wch: 30 }, { wch: 22 }, { wch: 12 },
+        { wch: 12 }, { wch: 12 }, { wch: 8 }, { wch: 14 },
+        { wch: 40 }, { wch: 40 },
+      ];
+      XLSX.utils.book_append_sheet(wb, wsInc, "Inconsistências");
     }
 
     XLSX.writeFile(wb, `horas-trabalhadas-${format(dateFrom, "yyyyMMdd")}-${format(dateTo, "yyyyMMdd")}.xlsx`);
@@ -996,6 +1266,70 @@ export default function HorasTrabalhadasTab({
         </CardContent>
       </Card>
 
+      {/* Chip de filtro de alerta ativo */}
+      {alertFilter && (
+        <div className="flex items-center gap-2 text-xs">
+          <Badge variant="secondary" className="gap-1.5">
+            Filtrado por: {ALERTA_LABEL[alertFilter]}
+            <button
+              onClick={() => setAlertFilter(null)}
+              className="hover:text-destructive ml-0.5"
+              title="Limpar filtro"
+            >
+              <X className="h-3 w-3" />
+            </button>
+          </Badge>
+          <span className="text-muted-foreground">
+            Detalhes filtrados — totais e gráficos não são afetados.
+          </span>
+        </div>
+      )}
+
+      {/* Card de inconsistências detectadas */}
+      {alertCounts.total > 0 && (
+        <Card className="border-l-4 border-l-yellow-500">
+          <CardHeader className="py-3 px-4">
+            <CardTitle className="text-sm flex items-center gap-2">
+              <AlertTriangle className="h-4 w-4 text-yellow-600" />
+              Inconsistências detectadas no período
+              <Badge variant="secondary" className="ml-1">{alertCounts.total}</Badge>
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="px-4 pb-4">
+            <div className="grid grid-cols-2 md:grid-cols-6 gap-2 text-xs">
+              {(Object.keys(alertCounts.counts) as Array<Exclude<AlertaTipo, null>>).map((k) => {
+                const n = alertCounts.counts[k];
+                if (n === 0) return null;
+                const isRed = k === "excessivo" || k === "negativo" || k === "overlap" || k === "sem_checkout";
+                const colorCls =
+                  k === "curto" ? "border-yellow-500 hover:bg-yellow-100/50 dark:hover:bg-yellow-900/20 text-yellow-900 dark:text-yellow-100"
+                  : k === "longo" ? "border-blue-500 hover:bg-blue-100/50 dark:hover:bg-blue-900/20 text-blue-900 dark:text-blue-100"
+                  : "border-destructive hover:bg-destructive/10 text-destructive";
+                const isActive = alertFilter === k;
+                return (
+                  <button
+                    key={k}
+                    onClick={() => setAlertFilter(isActive ? null : k)}
+                    className={cn(
+                      "border rounded-md px-3 py-2 flex items-center justify-between gap-2 transition-colors text-left",
+                      colorCls,
+                      isActive && "ring-2 ring-offset-1 ring-current"
+                    )}
+                    title={`Clique para filtrar apenas OS com '${ALERTA_LABEL[k]}'`}
+                  >
+                    <span className="flex items-center gap-1.5">
+                      {alertaIcone(k)}
+                      {ALERTA_LABEL[k]}
+                    </span>
+                    <span className="font-bold">{n}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Summary cards */}
       <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
         <Card>
@@ -1210,26 +1544,35 @@ export default function HorasTrabalhadasTab({
                                       <TableCell>
                                         <div className="flex flex-wrap gap-1">
                                           {cd.tasks
+                                            .filter((task) => taskMatchesAlertFilter(task.auvo_task_id))
                                             .sort((a, b) => a.data_tarefa.localeCompare(b.data_tarefa) || a.hora_inicio.localeCompare(b.hora_inicio))
-                                            .map((task, idx) => (
-                                              <Badge
-                                                key={idx}
-                                                variant={task.horas < 0 ? "destructive" : "outline"}
-                                                className={cn(
-                                                  "text-[9px] font-mono gap-1",
-                                                  task.horas < 0 && "animate-pulse"
-                                                )}
-                                              >
-                                                #{task.auvo_task_id}
-                                                {task.hora_inicio && task.hora_fim
-                                                  ? ` ${task.hora_inicio}–${task.hora_fim}`
-                                                  : task.hora_inicio
-                                                  ? ` ${task.hora_inicio}`
-                                                  : ""}
-                                                {" · "}{task.horas.toFixed(1)}h
-                                                {task.horas < 0 && " ⚠️"}
-                                              </Badge>
-                                            ))}
+                                            .map((task, idx) => {
+                                              const alerts = tasksWithAlertas.get(task.auvo_task_id) || [];
+                                              const pa = piorAlerta(alerts);
+                                              const isRed = pa === "excessivo" || pa === "negativo" || pa === "overlap" || pa === "sem_checkout";
+                                              return (
+                                                <Badge
+                                                  key={idx}
+                                                  variant={isRed ? "destructive" : "outline"}
+                                                  className={cn(
+                                                    "text-[9px] font-mono gap-1",
+                                                    pa === "curto" && "border-yellow-500 text-yellow-900 dark:text-yellow-100 bg-yellow-100/50 dark:bg-yellow-900/20",
+                                                    pa === "longo" && "border-blue-500 text-blue-900 dark:text-blue-100 bg-blue-100/50 dark:bg-blue-900/20",
+                                                    task.horas < 0 && "animate-pulse"
+                                                  )}
+                                                  title={pa ? alertaTooltip(pa, task) : undefined}
+                                                >
+                                                  {alertaIcone(pa)}
+                                                  #{task.auvo_task_id}
+                                                  {task.hora_inicio && task.hora_fim
+                                                    ? ` ${task.hora_inicio}–${task.hora_fim}`
+                                                    : task.hora_inicio
+                                                    ? ` ${task.hora_inicio}`
+                                                    : ""}
+                                                  {" · "}{task.horas.toFixed(1)}h
+                                                </Badge>
+                                              );
+                                            })}
                                         </div>
                                       </TableCell>
                                       <TableCell className="text-center">{cd.tarefas}</TableCell>
@@ -1300,8 +1643,13 @@ export default function HorasTrabalhadasTab({
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {clienteSelecionado?.tasks.map((t, idx) => (
-                  <TableRow key={`${t.auvo_task_id}-${idx}`} className={cn("text-xs", isExcessiveTask(t.horas) && "bg-destructive/5") }>
+                {clienteSelecionado?.tasks
+                  .filter((t) => taskMatchesAlertFilter(t.auvo_task_id))
+                  .map((t, idx) => {
+                  const alerts = tasksWithAlertas.get(t.auvo_task_id) || [];
+                  const pa = piorAlerta(alerts);
+                  return (
+                  <TableRow key={`${t.auvo_task_id}-${idx}`} className={cn("text-xs", rowAlertClass(pa))}>
                     <TableCell className="font-mono whitespace-nowrap">
                       {(t.data_tarefa || t.data_conclusao)
                         ? format(new Date((t.data_tarefa || t.data_conclusao) + "T12:00:00"), "dd/MM/yy")
@@ -1326,13 +1674,17 @@ export default function HorasTrabalhadasTab({
                     <TableCell className="font-mono whitespace-nowrap">
                       {t.hora_inicio && t.hora_fim ? `${t.hora_inicio}–${t.hora_fim}` : (t.hora_inicio || "—")}
                     </TableCell>
-                    <TableCell className={cn("text-right font-medium", (t.horas < 0 || isExcessiveTask(t.horas)) && "text-destructive")}>
-                      <div className="flex items-center justify-end gap-2">
-                        {isExcessiveTask(t.horas) && (
-                          <Badge variant="destructive" className="px-1.5 py-0 text-[10px]">
-                            +12h
-                          </Badge>
-                        )}
+                    <TableCell className={cn("text-right font-medium", (pa === "excessivo" || pa === "negativo" || pa === "overlap" || pa === "sem_checkout") && "text-destructive")}>
+                      <div className="flex items-center justify-end gap-1.5">
+                        {alerts.filter(Boolean).map((a) => (
+                          <span
+                            key={a as string}
+                            title={alertaTooltip(a, t)}
+                            className="inline-flex"
+                          >
+                            {alertaIcone(a)}
+                          </span>
+                        ))}
                         <span>{t.horas.toFixed(2)}h</span>
                       </div>
                     </TableCell>
@@ -1356,7 +1708,8 @@ export default function HorasTrabalhadasTab({
                       </div>
                     </TableCell>
                   </TableRow>
-                ))}
+                  );
+                })}
               </TableBody>
             </Table>
             <ScrollBar orientation="horizontal" />

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -11,7 +11,7 @@ import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
 import { toast } from "sonner";
-import { Plus, Trash2, Users, DollarSign, Loader2 } from "lucide-react";
+import { Plus, Trash2, Users, DollarSign, Loader2, AlertTriangle } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 
 interface Props {
@@ -111,6 +111,59 @@ export default function ConfiguracoesTab({ grupos, membros, allClientes, allTecn
     await supabase.from("valor_hora_config").delete().eq("id", id);
     toast.success("Removido");
     onRefresh();
+  };
+
+  // ── Limites de alerta de horas ──────────────────────────────────────
+  const [alertaCfg, setAlertaCfg] = useState<any>({
+    id: null,
+    limite_minimo_minutos: 45,
+    limite_maximo_horas: 8,
+    limite_excessivo_horas: 12,
+    detectar_overlap_tecnico: true,
+    detectar_horas_negativas: true,
+  });
+  const [savingAlertaCfg, setSavingAlertaCfg] = useState(false);
+
+  useEffect(() => {
+    (async () => {
+      const { data } = await (supabase as any)
+        .from("alertas_horas_config")
+        .select("*")
+        .limit(1)
+        .maybeSingle();
+      if (data) setAlertaCfg(data);
+    })();
+  }, []);
+
+  const handleSaveAlertaCfg = async () => {
+    setSavingAlertaCfg(true);
+    const payload = {
+      limite_minimo_minutos: Number(alertaCfg.limite_minimo_minutos) || 45,
+      limite_maximo_horas: Number(alertaCfg.limite_maximo_horas) || 8,
+      limite_excessivo_horas: Number(alertaCfg.limite_excessivo_horas) || 12,
+      detectar_overlap_tecnico: !!alertaCfg.detectar_overlap_tecnico,
+      detectar_horas_negativas: !!alertaCfg.detectar_horas_negativas,
+      atualizado_em: new Date().toISOString(),
+    };
+    let error: any = null;
+    if (alertaCfg.id) {
+      const res = await (supabase as any)
+        .from("alertas_horas_config")
+        .update(payload)
+        .eq("id", alertaCfg.id);
+      error = res.error;
+    } else {
+      const res = await (supabase as any)
+        .from("alertas_horas_config")
+        .insert(payload)
+        .select()
+        .single();
+      error = res.error;
+      if (res.data) setAlertaCfg(res.data);
+    }
+    setSavingAlertaCfg(false);
+    if (error) { toast.error("Erro ao salvar: " + error.message); return; }
+    toast.success("Limites de alerta atualizados!");
   };
 
   return (
@@ -352,6 +405,72 @@ export default function ConfiguracoesTab({ grupos, membros, allClientes, allTecn
               </TableBody>
             </Table>
           )}
+        </CardContent>
+      </Card>
+
+      {/* Limites de Alerta de Horas */}
+      <Card>
+        <CardHeader className="py-4 px-5">
+          <CardTitle className="text-base flex items-center gap-2">
+            <AlertTriangle className="h-4 w-4" />
+            Limites de Alerta de Horas
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="px-5 pb-5 space-y-4">
+          <p className="text-xs text-muted-foreground">
+            Limites usados pelo tab "Horas Trabalhadas" para sinalizar OS suspeitas.
+            Não afetam o cálculo de valor — são apenas alertas visuais.
+          </p>
+          <div className="flex flex-wrap gap-4 items-end">
+            <div className="space-y-1">
+              <Label className="text-xs">OS curta — alerta amarelo abaixo de (min)</Label>
+              <Input
+                type="number"
+                value={alertaCfg.limite_minimo_minutos ?? ""}
+                onChange={(e) => setAlertaCfg({ ...alertaCfg, limite_minimo_minutos: e.target.value })}
+                className="w-[140px] h-9 text-xs"
+              />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">OS longa — alerta azul acima de (h)</Label>
+              <Input
+                type="number"
+                value={alertaCfg.limite_maximo_horas ?? ""}
+                onChange={(e) => setAlertaCfg({ ...alertaCfg, limite_maximo_horas: e.target.value })}
+                className="w-[140px] h-9 text-xs"
+              />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">OS excessiva — alerta vermelho acima de (h)</Label>
+              <Input
+                type="number"
+                value={alertaCfg.limite_excessivo_horas ?? ""}
+                onChange={(e) => setAlertaCfg({ ...alertaCfg, limite_excessivo_horas: e.target.value })}
+                className="w-[140px] h-9 text-xs"
+              />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">Detectar sobreposição por técnico</Label>
+              <div className="h-9 flex items-center">
+                <Switch
+                  checked={!!alertaCfg.detectar_overlap_tecnico}
+                  onCheckedChange={(v) => setAlertaCfg({ ...alertaCfg, detectar_overlap_tecnico: v })}
+                />
+              </div>
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">Sinalizar duração negativa</Label>
+              <div className="h-9 flex items-center">
+                <Switch
+                  checked={!!alertaCfg.detectar_horas_negativas}
+                  onCheckedChange={(v) => setAlertaCfg({ ...alertaCfg, detectar_horas_negativas: v })}
+                />
+              </div>
+            </div>
+            <Button size="sm" onClick={handleSaveAlertaCfg} disabled={savingAlertaCfg}>
+              {savingAlertaCfg ? <Loader2 className="h-4 w-4 animate-spin" /> : "Salvar"}
+            </Button>
+          </div>
         </CardContent>
       </Card>
     </div>

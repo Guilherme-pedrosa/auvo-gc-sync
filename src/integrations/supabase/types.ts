@@ -14,6 +14,36 @@ export type Database = {
   }
   public: {
     Tables: {
+      alertas_horas_config: {
+        Row: {
+          atualizado_em: string
+          detectar_horas_negativas: boolean
+          detectar_overlap_tecnico: boolean
+          id: string
+          limite_excessivo_horas: number
+          limite_maximo_horas: number
+          limite_minimo_minutos: number
+        }
+        Insert: {
+          atualizado_em?: string
+          detectar_horas_negativas?: boolean
+          detectar_overlap_tecnico?: boolean
+          id?: string
+          limite_excessivo_horas?: number
+          limite_maximo_horas?: number
+          limite_minimo_minutos?: number
+        }
+        Update: {
+          atualizado_em?: string
+          detectar_horas_negativas?: boolean
+          detectar_overlap_tecnico?: boolean
+          id?: string
+          limite_excessivo_horas?: number
+          limite_maximo_horas?: number
+          limite_minimo_minutos?: number
+        }
+        Relationships: []
+      }
       atividades_nao_executadas: {
         Row: {
           auvo_task_id: string
