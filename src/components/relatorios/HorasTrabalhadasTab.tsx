@@ -102,6 +102,7 @@ export default function HorasTrabalhadasTab({
   dateFrom, dateTo, onDateFromChange, onDateToChange,
   equipamentoTaskMap = {},
 }: Props) {
+  const queryClient = useQueryClient();
   const [filterTecnico, setFilterTecnico] = useState("todos");
   const [filterCliente, setFilterCliente] = useState("todos");
   const [filterGrupo, setFilterGrupo] = useState("todos");
@@ -112,6 +113,7 @@ export default function HorasTrabalhadasTab({
   const [clienteModal, setClienteModal] = useState<string | null>(null);
   const [somenteFaturaveis, setSomenteFaturaveis] = useState(true);
   const [alertFilter, setAlertFilter] = useState<AlertaTipo>(null);
+  const [reviewModalOpen, setReviewModalOpen] = useState(false);
 
   // ── Config de limites de alerta (tabela alertas_horas_config) ──
   const { data: alertasConfig } = useQuery({
@@ -129,10 +131,26 @@ export default function HorasTrabalhadasTab({
           limite_excessivo_horas: 12,
           detectar_overlap_tecnico: true,
           detectar_horas_negativas: true,
+          curta_requer_revisao: true,
+          longa_requer_revisao: false,
+          excessiva_requer_revisao: true,
+          negativa_requer_revisao: true,
+          overlap_requer_revisao: true,
+          sem_checkout_requer_revisao: true,
         }
       );
     },
     staleTime: 60_000,
+  });
+
+  // Decisões já tomadas por OS (auvo_task_id → registro de revisão)
+  const { data: revisoesMap } = useQuery({
+    queryKey: ["os-revisao"],
+    queryFn: async () => {
+      const { data } = await (supabase as any).from("os_revisao").select("*");
+      return new Map<string, any>((data || []).map((r: any) => [String(r.auvo_task_id), r]));
+    },
+    staleTime: 30_000,
   });
 
   // Get task hours: use Auvo's durationDecimal (already deducts pauses)
