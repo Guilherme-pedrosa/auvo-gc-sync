@@ -569,7 +569,9 @@ export default function HorasTrabalhadasTab({
       if (a === "excessivo" && alertasConfig?.excessiva_requer_revisao) return true;
       if (a === "negativo" && alertasConfig?.negativa_requer_revisao) return true;
       if (a === "overlap" && alertasConfig?.overlap_requer_revisao) return true;
-      if (a === "sem_janela" && alertasConfig?.sem_janela_requer_revisao) return true;
+      // "sem_janela" (sem checkout / sem hora_fim) NÃO bloqueia faturamento.
+      // Regra de negócio: horas trabalhadas devem ser cobradas mesmo sem checkout.
+      // O alerta continua visível como informação, mas não joga a OS para Em Revisão.
       return false;
     });
     return exigeRevisao ? "em_revisao" : "faturavel";
