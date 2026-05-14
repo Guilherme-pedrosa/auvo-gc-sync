@@ -592,7 +592,123 @@ type CentralSyncBody = {
   wait?: unknown;
   fast?: unknown;
   lite?: unknown;
+  reports_only?: unknown;
 };
+
+async function runReportsOnlySync(sbClient: any, bearerToken: string, startDate: string, endDate: string) {
+  console.log(`[central-sync] Reports-only: buscando Auvo ${startDate} → ${endDate}`);
+  const auvoTasks = await fetchAuvoTasks(bearerToken, startDate, endDate);
+  console.log(`[central-sync] Reports-only Auvo: ${auvoTasks.length} tarefas`);
+
+  const taskIds = auvoTasks
+    .map((task: any) => String(task.taskID || "").trim())
+    .filter(Boolean);
+
+  const existingMirrorByTaskId = new Map<string, string>();
+  for (let i = 0; i < taskIds.length; i += 200) {
+    const batch = taskIds.slice(i, i + 200);
+    const { data: existingRows } = await sbClient
+      .from("tarefas_central")
+      .select("auvo_task_id, mirror_key")
+      .in("auvo_task_id", batch);
+
+    for (const row of existingRows || []) {
+      const taskId = String(row.auvo_task_id || "").trim();
+      const mirrorKey = String(row.mirror_key || "").trim();
+      if (taskId && mirrorKey && !existingMirrorByTaskId.has(taskId)) {
+        existingMirrorByTaskId.set(taskId, mirrorKey);
+      }
+    }
+  }
+
+  const rows = auvoTasks.map((task: any) => {
+    const taskId = String(task.taskID || "").trim();
+    if (!taskId) return null;
+
+    const questionnairesSource = Array.isArray(task.questionnaires) ? task.questionnaires : [];
+    const targetQ = questionnairesSource.find((q: any) => String(q.questionnaireId) === QUESTIONNAIRE_ID);
+    const answers = (targetQ?.answers || []).map((a: any) => ({
+      question: String(a.questionDescription || ""),
+      reply: String(a.reply || ""),
+    }));
+    const hasFilledQ = answers.some((r: any) => r.reply && r.reply.trim() !== "" && !r.reply.startsWith("http"));
+
+    const statusCode = typeof task.taskStatus === "number" ? task.taskStatus
+      : typeof task.taskStatus?.id === "number" ? task.taskStatus.id
+      : typeof task.taskStatus === "object" ? Number(task.taskStatus?.id || task.taskStatus?.status || 0) : 0;
+
+    const checkOutDateRaw = String(task.checkOutDate || task.checkoutDate || task.taskEndDate || task.taskEndDateTime || "").trim();
+    const hasCheckOut = !!task.checkOut || !!checkOutDateRaw;
+    const startTimeResolved = String(task.startTime || task.startHour || "").trim() || extractTimeFromDateStr(String(task.taskDate || ""));
+    let endTimeResolved = String(task.endTime || task.endHour || "").trim() || extractTimeFromDateStr(checkOutDateRaw);
+    const durationDecimalResolved = parseFloat(task.durationDecimal || "0") || parseDurationToHours(task.estimatedDuration || "");
+
+    if (!endTimeResolved && startTimeResolved && durationDecimalResolved > 0) {
+      const startMinutes = parseClockToMinutes(startTimeResolved);
+      if (startMinutes >= 0) endTimeResolved = minutesToClock(startMinutes + Math.round(durationDecimalResolved * 60));
+    }
+
+    return {
+      auvo_task_id: taskId,
+      cliente: String(task.customerDescription || task.customerName || task.customer?.tradeName || task.customer?.companyName || "Cliente não identificado").trim(),
+      tecnico: String(task.userToName || ""),
+      tecnico_id: String(task.idUserTo || ""),
+      data_tarefa: normalizeDate(task.taskDate) || null,
+      data_conclusao: normalizeDate(checkOutDateRaw) || null,
+      deslocamento_inicio: String(task.displacementStart || task.displacement_start || "").trim() || null,
+      duracao_deslocamento: null,
+      status_auvo: (() => {
+        if (statusCode === 6) return "Pausada";
+        if (statusCode === 4 || statusCode === 5 || hasCheckOut) return "Finalizada";
+        if (statusCode === 3) return "Em andamento";
+        if (statusCode === 2) return "Em deslocamento";
+        return "Aberta";
+      })(),
+      orientacao: String(task.orientation || "").substring(0, 500),
+      pendencia: String(task.pendency ?? "").trim(),
+      descricao: resolveTaskType(task),
+      duracao_decimal: durationDecimalResolved,
+      hora_inicio: startTimeResolved,
+      hora_fim: endTimeResolved,
+      check_in: !!(task.checkIn || task.checkInDate || task.checkinDate),
+      check_out: hasCheckOut,
+      endereco: resolveTaskAddress(task),
+      auvo_link: `https://app2.auvo.com.br/relatorioTarefas/DetalheTarefa/${taskId}`,
+      auvo_task_url: String(task.taskUrl || ""),
+      auvo_survey_url: String(task.survey || ""),
+      questionario_id: targetQ ? String(targetQ.questionnaireId) : null,
+      questionario_respostas: answers,
+      questionario_preenchido: hasFilledQ,
+      atualizado_em: new Date().toISOString(),
+      mirror_key: existingMirrorByTaskId.get(taskId) || `${taskId}::os:::orc:`,
+    };
+  }).filter(Boolean);
+
+  let upserted = 0;
+  let errors = 0;
+  for (let i = 0; i < rows.length; i += 100) {
+    const batch = rows.slice(i, i + 100);
+    const { error } = await sbClient
+      .from("tarefas_central")
+      .upsert(batch, { onConflict: "mirror_key", ignoreDuplicates: false, defaultToNull: false });
+
+    if (error) {
+      console.error(`[central-sync] Reports-only batch ${i}-${i + batch.length} error:`, error.message);
+      errors++;
+    } else {
+      upserted += batch.length;
+    }
+  }
+
+  return {
+    success: true,
+    mode: "reports-only",
+    periodo: { inicio: startDate, fim: endDate },
+    auvo_tarefas: auvoTasks.length,
+    upserted,
+    errors,
+  };
+}
 
 async function runCentralSync(body: CentralSyncBody = {}) {
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
@@ -631,6 +747,10 @@ async function runCentralSync(body: CentralSyncBody = {}) {
       "secret-access-token": gcSecretToken,
       "Content-Type": "application/json",
     };
+
+    if (body?.reports_only === true) {
+      return await runReportsOnlySync(sbClient, bearerToken, startDate, endDate);
+    }
 
     // Step 1: Fetch GC data first (faster, ~20s) — Auvo will come after status refresh
     const gcOsOptions = {
@@ -1353,7 +1473,7 @@ async function runCentralSync(body: CentralSyncBody = {}) {
     if (!isLiteSync && rowsMissingAddress?.length) {
       const patchIds = rowsMissingAddress
         .map((r) => String((r as any).auvo_task_id || "").trim())
-        .filter((id) => id && !existingTaskIds.has(id));
+        .filter((id) => id && !existingTaskIdsInDb.has(id));
 
       console.log(`[central-sync] Patch endereço para ${patchIds.length} OS existentes sem endereço...`);
       const PARALLEL = 5;
