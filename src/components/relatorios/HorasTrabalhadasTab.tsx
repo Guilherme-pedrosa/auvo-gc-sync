@@ -63,7 +63,8 @@ type AlertaTipo =
   | "longo"
   | "excessivo"
   | "overlap"
-  | "sem_checkout"
+  | "sem_janela"
+  | "multi_periodo"
   | null;
 
 type StatusRevisao = "faturavel" | "em_revisao" | "rejeitada";
@@ -74,7 +75,8 @@ const ALERTA_LABEL: Record<Exclude<AlertaTipo, null>, string> = {
   longo: "OS longa",
   excessivo: "OS excessiva",
   overlap: "Sobreposição",
-  sem_checkout: "Sem checkout",
+  sem_janela: "Sem janela de trabalho",
+  multi_periodo: "Atravessa o período",
 };
 
 // Severidade: maior número = mais grave.
@@ -82,9 +84,10 @@ const ALERTA_SEVERIDADE: Record<Exclude<AlertaTipo, null>, number> = {
   excessivo: 6,
   negativo: 5,
   overlap: 4,
-  sem_checkout: 3,
+  sem_janela: 3,
   curto: 2,
   longo: 1,
+  multi_periodo: 0,
 };
 
 const piorAlerta = (lst: AlertaTipo[]): AlertaTipo => {
