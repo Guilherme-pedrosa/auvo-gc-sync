@@ -1290,13 +1290,14 @@ async function runCentralSync(body: CentralSyncBody = {}) {
       const resolvedOrientation = String(snapshot?.orientation || task.orientation || "").substring(0, 500);
 
       // Resolve checkout date for monthly accounting
-      const checkOutDateRaw = normalizeDate(task.checkOutDate || task.checkoutDate || snapshot?.checkOutDate);
+      const checkOutDateRawFull = String(task.checkOutDate || task.checkoutDate || snapshot?.checkOutDate || "").trim();
+      const checkOutDateRaw = normalizeDate(checkOutDateRawFull);
       // displacementStart: try list endpoint first, then snapshot
       const displacementStartRaw = String(task.displacementStart || task.displacement_start || snapshot?.displacementStart || "").trim();
       // checkInDate: try list endpoint first, then snapshot
       const checkInDateRaw = String(task.checkInDate || task.checkinDate || snapshot?.checkInDate || "").trim();
       const checkInIso = normalizeDateTime(checkInDateRaw);
-      const checkOutIso = normalizeDateTime(task.checkOutDate || task.checkoutDate || snapshot?.checkOutDate);
+      const checkOutIso = normalizeDateTime(checkOutDateRawFull);
 
       // Calculate displacement duration (displacementStart → checkInDate) in decimal hours
       let duracaoDeslocamento: number | null = null;
@@ -1312,10 +1313,12 @@ async function runCentralSync(body: CentralSyncBody = {}) {
       }
 
       const startTimeResolved =
+        extractTimeFromDateStr(checkInDateRaw) ||
         String(task.startTime || task.startHour || snapshot?.startTime || "").trim() ||
         extractTimeFromDateStr(String(task.taskDate || ""));
 
       let endTimeResolved =
+        extractTimeFromDateStr(checkOutDateRawFull) ||
         String(task.endTime || task.endHour || snapshot?.endTime || "").trim() ||
         extractTimeFromDateStr(String(task.taskEndDate || task.taskEndDateTime || snapshot?.taskEndDate || ""));
 
@@ -1369,8 +1372,8 @@ async function runCentralSync(body: CentralSyncBody = {}) {
         duracao_decimal: durationDecimalResolved,
         hora_inicio: startTimeResolved,
         hora_fim: endTimeResolved,
-        check_in: !!task.checkIn,
-        check_out: !!task.checkOut,
+        check_in: !!(task.checkIn || checkInIso),
+        check_out: !!(task.checkOut || checkOutIso),
         endereco: resolvedAddress,
         auvo_link: `https://app2.auvo.com.br/relatorioTarefas/DetalheTarefa/${taskId}`,
         auvo_task_url: String(task.taskUrl || ""),
