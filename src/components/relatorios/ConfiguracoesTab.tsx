@@ -7,11 +7,14 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
 import { toast } from "sonner";
-import { Plus, Trash2, Users, DollarSign, Loader2, AlertTriangle } from "lucide-react";
+import { Plus, Trash2, Users, DollarSign, Loader2, AlertTriangle, ChevronsUpDown } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 
 interface Props {
@@ -29,6 +32,10 @@ export default function ConfiguracoesTab({ grupos, membros, allClientes, allTecn
   const [addingGrupo, setAddingGrupo] = useState(false);
   const [selectedGrupo, setSelectedGrupo] = useState<string | null>(null);
   const [newMembroCliente, setNewMembroCliente] = useState("");
+  // Bulk add state: per-grupo selected client names + open state
+  const [bulkSelection, setBulkSelection] = useState<Record<string, string[]>>({});
+  const [bulkOpen, setBulkOpen] = useState<Record<string, boolean>>({});
+  const [bulkAdding, setBulkAdding] = useState<string | null>(null);
 
   // Valor hora CRUD
   const [vhTecnico, setVhTecnico] = useState("");
@@ -72,6 +79,23 @@ export default function ConfiguracoesTab({ grupos, membros, allClientes, allTecn
     }
     toast.success("Cliente adicionado ao grupo!");
     setNewMembroCliente("");
+    onRefresh();
+  };
+
+  const handleAddMembrosBulk = async (grupoId: string) => {
+    const selected = bulkSelection[grupoId] || [];
+    if (selected.length === 0) return;
+    setBulkAdding(grupoId);
+    const rows = selected.map((cliente_nome) => ({ grupo_id: grupoId, cliente_nome }));
+    const { error } = await supabase.from("grupo_cliente_membros").insert(rows);
+    setBulkAdding(null);
+    if (error) {
+      toast.error("Erro ao adicionar clientes");
+      return;
+    }
+    toast.success(`${selected.length} cliente(s) adicionado(s)!`);
+    setBulkSelection((s) => ({ ...s, [grupoId]: [] }));
+    setBulkOpen((s) => ({ ...s, [grupoId]: false }));
     onRefresh();
   };
 
