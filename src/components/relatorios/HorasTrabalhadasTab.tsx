@@ -1991,7 +1991,21 @@ export default function HorasTrabalhadasTab({
                         : "—"}
                     </TableCell>
                     <TableCell className="font-mono">#{t.auvo_task_id}</TableCell>
-                    <TableCell>{t.tecnico}</TableCell>
+                    <TableCell>
+                      <div className="flex items-center gap-1.5">
+                        {t.emergencial && (
+                          <Badge
+                            variant="outline"
+                            className="text-[9px] font-bold gap-0.5 border-orange-500 text-orange-700 dark:text-orange-300 bg-orange-100/60 dark:bg-orange-900/30"
+                            title="Visita emergencial"
+                          >
+                            <Siren className="h-2.5 w-2.5" />
+                            EMERG
+                          </Badge>
+                        )}
+                        <span>{t.tecnico}</span>
+                      </div>
+                    </TableCell>
                     <TableCell className="max-w-[220px]">
                       <div className="font-medium truncate" title={t.descricao}>{t.descricao}</div>
                       {t.orientacao && (
