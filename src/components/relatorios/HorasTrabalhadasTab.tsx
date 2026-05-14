@@ -2204,7 +2204,7 @@ function ReviewBoxDialog(props: {
           </div>
         </div>
 
-        <ScrollArea className="flex-1 -mx-6 px-6">
+        <div className="flex-1 overflow-auto -mx-6 px-6 border-t">
           <Table className="min-w-[1100px]">
             <TableHeader className="sticky top-0 bg-background z-10">
               <TableRow>
