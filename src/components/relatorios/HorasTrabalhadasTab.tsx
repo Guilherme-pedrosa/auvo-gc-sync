@@ -680,7 +680,7 @@ export default function HorasTrabalhadasTab({
   // Contadores por tipo + lista plana de alertas para cards e exports
   const alertCounts = useMemo(() => {
     const counts: Record<Exclude<AlertaTipo, null>, number> = {
-      negativo: 0, curto: 0, longo: 0, excessivo: 0, overlap: 0, sem_janela: 0,
+      negativo: 0, curto: 0, longo: 0, excessivo: 0, overlap: 0, sem_janela: 0, multi_periodo: 0,
     };
     const seenByType = new Map<string, Set<string>>();
     for (const [id, alerts] of tasksWithAlertas) {
@@ -1096,7 +1096,6 @@ export default function HorasTrabalhadasTab({
     const resumoClienteRows: any[] = [
       ["Relatório de Horas Trabalhadas — Resumo por Cliente"],
       [`Período: ${periodoStr}`],
-      [`Critério: ${somenteFaturaveis ? "Apenas Finalizadas" : "Todas as OS"}`],
       [],
       ["Cliente", "Tarefas", "Horas", "Deslocamento (h)", "Técnicos", "Valor (R$)"],
       ...clienteSummary.map((c) => [
@@ -1185,41 +1184,8 @@ export default function HorasTrabalhadasTab({
     wsTec["!cols"] = [{ wch: 28 }, { wch: 10 }, { wch: 10 }, { wch: 16 }, { wch: 14 }];
     XLSX.utils.book_append_sheet(wb, wsTec, "Resumo Técnico");
 
-    // Sheet 4: OS Pendentes (apenas quando o toggle está ligado)
-    if (somenteFaturaveis && pendentesTasks.length > 0) {
-      const pendHeader = [
-        "Cliente", "Cliente GC", "Data Tarefa", "Data Conclusão",
-        "Técnico", "Status Auvo", "Horas", "Valor Potencial (R$)",
-        "Link Auvo", "Link OS GC",
-      ];
-      const pendRows: any[] = [
-        ["OS Pendentes — filtradas pelo toggle 'Apenas Finalizadas'"],
-        [`Período: ${periodoStr}`],
-        [],
-        pendHeader,
-      ];
-      for (const t of pendentesTasks) {
-        const tec = t.tecnico || "Desconhecido";
-        pendRows.push([
-          t.cliente || t.gc_os_cliente || "",
-          t.gc_os_cliente || "",
-          t.data_tarefa || "",
-          t.data_conclusao || "",
-          tec,
-          t.status_auvo || "",
-          Number((Number(t.duracao_decimal) || 0).toFixed(2)),
-          Number(getTaskValor(t, tec).toFixed(2)),
-          t.auvo_link || t.auvo_task_url || "",
-          t.gc_os_link || "",
-        ]);
-      }
-      const wsPend = XLSX.utils.aoa_to_sheet(pendRows);
-      wsPend["!cols"] = [
-        { wch: 30 }, { wch: 30 }, { wch: 12 }, { wch: 14 }, { wch: 22 },
-        { wch: 14 }, { wch: 8 }, { wch: 18 }, { wch: 40 }, { wch: 40 },
-      ];
-      XLSX.utils.book_append_sheet(wb, wsPend, "OS Pendentes");
-    }
+    // (Aba "OS Pendentes" removida — toda OS com hora trabalhada é faturada
+    //  e OS suspeitas vão para a aba "OS em Revisão" / Caixa de Revisão.)
 
     // Sheet: Inconsistências (apenas OS com algum alerta)
     if (alertCounts.total > 0) {
@@ -1470,17 +1436,8 @@ export default function HorasTrabalhadasTab({
               Exportar Excel
             </Button>
 
-            {/* Toggle: apenas OS finalizadas (faturáveis) */}
-            <div className="flex items-center gap-2 ml-auto pl-2 border-l">
-              <Switch
-                id="somente-faturaveis"
-                checked={somenteFaturaveis}
-                onCheckedChange={setSomenteFaturaveis}
-              />
-              <Label htmlFor="somente-faturaveis" className="text-xs cursor-pointer">
-                Apenas OS finalizadas (faturáveis)
-              </Label>
-            </div>
+            {/* Toggle 'Apenas finalizadas' removido — regra única: faturar
+                hora trabalhada no período, independente de status. */}
           </div>
         </CardContent>
       </Card>
