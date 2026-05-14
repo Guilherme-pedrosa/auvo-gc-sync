@@ -67,6 +67,7 @@ export default function HorasTrabalhadasTab({
   const [allTiposSelected, setAllTiposSelected] = useState(true);
   const [searchTipo, setSearchTipo] = useState("");
   const [clienteModal, setClienteModal] = useState<string | null>(null);
+  const [somenteFaturaveis, setSomenteFaturaveis] = useState(true);
 
   // Get task hours: use Auvo's durationDecimal (already deducts pauses)
   const getTaskHoras = (t: any): number => {
@@ -106,16 +107,34 @@ export default function HorasTrabalhadasTab({
     return map;
   }, [grupos, membros]);
 
-  // Filter data by Auvo task date. This report answers "hours worked in the selected period";
-  // using checkout date hides tasks whose hours were registered but checkout fell outside/was missing.
+  // Holiday helper — Brazilian fixed national holidays. Treats holidays as FDS for billing.
+  const isFeriadoBR = (dateStr: string): boolean => {
+    if (!dateStr) return false;
+    const md = dateStr.slice(5, 10); // mm-dd
+    return ["01-01", "04-21", "05-01", "09-07", "10-12", "11-02", "11-15", "12-25"].includes(md);
+  };
+
+  // Filter data by execution date (data_conclusao when present, fallback to data_tarefa).
   const filtered = useMemo(() => {
     const fromStr = format(dateFrom, "yyyy-MM-dd");
     const toStr = format(dateTo, "yyyy-MM-dd");
 
-    return data.filter((t) => {
+    // Defensive dedup by auvo_task_id (edge function already dedups, but in case
+    // duplicates slip through pagination we keep the most recently updated row).
+    const byId = new Map<string, any>();
+    for (const t of data) {
+      if (!t?.auvo_task_id) continue;
+      const existing = byId.get(t.auvo_task_id);
+      if (!existing || (t.atualizado_em || "") > (existing.atualizado_em || "")) {
+        byId.set(t.auvo_task_id, t);
+      }
+    }
+    const dedupedData = Array.from(byId.values());
+
+    return dedupedData.filter((t) => {
       if (!t.hora_inicio && !t.hora_fim && t.duracao_decimal == null) return false;
 
-      const dateRef = t.data_tarefa;
+      const dateRef = t.data_conclusao || t.data_tarefa;
       if (!dateRef) return false;
       if (dateRef < fromStr || dateRef > toStr) return false;
 
@@ -125,6 +144,8 @@ export default function HorasTrabalhadasTab({
       const dur = Number(t.duracao_decimal) || 0;
       const hasHoras = dur > 0 || (!!t.hora_inicio && !!t.hora_fim);
       if (!t.check_out && !hasHoras) return false;
+
+      if (somenteFaturaveis && t.status_auvo !== "Finalizada") return false;
 
       if (filterTecnico !== "todos" && t.tecnico !== filterTecnico) return false;
 
@@ -149,7 +170,31 @@ export default function HorasTrabalhadasTab({
 
       return true;
     });
-  }, [data, dateFrom, dateTo, filterTecnico, filterCliente, filterGrupo, selectedTipos, allTiposSelected, grupoClienteMap]);
+  }, [data, dateFrom, dateTo, filterTecnico, filterCliente, filterGrupo, selectedTipos, allTiposSelected, grupoClienteMap, somenteFaturaveis]);
+
+  // Tasks suppressed by the "apenas finalizadas" toggle — exposed for the
+  // "OS Pendentes" Excel sheet and to help the financial team chase pending closures.
+  const pendentesTasks = useMemo(() => {
+    if (!somenteFaturaveis) return [] as any[];
+    const fromStr = format(dateFrom, "yyyy-MM-dd");
+    const toStr = format(dateTo, "yyyy-MM-dd");
+    const byId = new Map<string, any>();
+    for (const t of data) {
+      if (!t?.auvo_task_id) continue;
+      const existing = byId.get(t.auvo_task_id);
+      if (!existing || (t.atualizado_em || "") > (existing.atualizado_em || "")) {
+        byId.set(t.auvo_task_id, t);
+      }
+    }
+    return Array.from(byId.values()).filter((t) => {
+      const dateRef = t.data_conclusao || t.data_tarefa;
+      if (!dateRef || dateRef < fromStr || dateRef > toStr) return false;
+      const dur = Number(t.duracao_decimal) || 0;
+      const hasHoras = dur > 0 || (!!t.hora_inicio && !!t.hora_fim);
+      if (!t.check_out && !hasHoras) return false;
+      return t.status_auvo !== "Finalizada";
+    });
+  }, [data, dateFrom, dateTo, somenteFaturaveis]);
 
   // When filtering by group, resolve which side (Auvo or GC) matched the group
   // so the display name comes from the group member, not the unrelated other side.
