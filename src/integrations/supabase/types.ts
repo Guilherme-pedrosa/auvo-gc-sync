@@ -585,7 +585,9 @@ export type Database = {
           auvo_task_id: string
           auvo_task_url: string | null
           check_in: boolean | null
+          check_in_iso: string | null
           check_out: boolean | null
+          check_out_iso: string | null
           cliente: string | null
           criado_em: string | null
           data_conclusao: string | null
@@ -642,7 +644,9 @@ export type Database = {
           auvo_task_id: string
           auvo_task_url?: string | null
           check_in?: boolean | null
+          check_in_iso?: string | null
           check_out?: boolean | null
+          check_out_iso?: string | null
           cliente?: string | null
           criado_em?: string | null
           data_conclusao?: string | null
@@ -699,7 +703,9 @@ export type Database = {
           auvo_task_id?: string
           auvo_task_url?: string | null
           check_in?: boolean | null
+          check_in_iso?: string | null
           check_out?: boolean | null
+          check_out_iso?: string | null
           cliente?: string | null
           criado_em?: string | null
           data_conclusao?: string | null
