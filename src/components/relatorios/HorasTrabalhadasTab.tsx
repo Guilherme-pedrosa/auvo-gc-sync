@@ -105,7 +105,8 @@ export default function HorasTrabalhadasTab({
     return map;
   }, [grupos, membros]);
 
-  // Filter data - use data_conclusao (checkout date) for monthly accounting, fallback to data_tarefa
+  // Filter data by Auvo task date. This report answers "hours worked in the selected period";
+  // using checkout date hides tasks whose hours were registered but checkout fell outside/was missing.
   const filtered = useMemo(() => {
     const fromStr = format(dateFrom, "yyyy-MM-dd");
     const toStr = format(dateTo, "yyyy-MM-dd");
@@ -113,8 +114,7 @@ export default function HorasTrabalhadasTab({
     return data.filter((t) => {
       if (!t.hora_inicio && !t.hora_fim && t.duracao_decimal == null) return false;
 
-      // Use completion date (data_conclusao) when available, otherwise data_tarefa
-      const dateRef = t.data_conclusao || t.data_tarefa;
+      const dateRef = t.data_tarefa;
       if (!dateRef) return false;
       if (dateRef < fromStr || dateRef > toStr) return false;
 
