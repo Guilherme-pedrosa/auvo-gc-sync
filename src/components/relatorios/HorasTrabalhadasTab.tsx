@@ -70,6 +70,29 @@ export default function HorasTrabalhadasTab({
   const [searchTipo, setSearchTipo] = useState("");
   const [clienteModal, setClienteModal] = useState<string | null>(null);
   const [somenteFaturaveis, setSomenteFaturaveis] = useState(true);
+  const [alertFilter, setAlertFilter] = useState<AlertaTipo>(null);
+
+  // ── Config de limites de alerta (tabela alertas_horas_config) ──
+  const { data: alertasConfig } = useQuery({
+    queryKey: ["alertas-horas-config"],
+    queryFn: async () => {
+      const { data } = await (supabase as any)
+        .from("alertas_horas_config")
+        .select("*")
+        .limit(1)
+        .maybeSingle();
+      return (
+        data || {
+          limite_minimo_minutos: 45,
+          limite_maximo_horas: 8,
+          limite_excessivo_horas: 12,
+          detectar_overlap_tecnico: true,
+          detectar_horas_negativas: true,
+        }
+      );
+    },
+    staleTime: 60_000,
+  });
 
   // Get task hours: use Auvo's durationDecimal (already deducts pauses)
   const getTaskHoras = (t: any): number => {
