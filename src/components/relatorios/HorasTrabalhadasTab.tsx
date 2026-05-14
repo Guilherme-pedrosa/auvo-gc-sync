@@ -2353,8 +2353,11 @@ function ReviewBoxDialog(props: {
               })}
             </TableBody>
           </Table>
-          <ScrollBar orientation="horizontal" />
-        </ScrollArea>
+        </div>
+        <div className="text-[11px] text-muted-foreground pt-2 border-t flex items-center justify-between">
+          <span>Mostrando {filtered.length} de {tasks.length} OS</span>
+          <span>Role para ver mais ↕</span>
+        </div>
       </DialogContent>
     </Dialog>
   );
