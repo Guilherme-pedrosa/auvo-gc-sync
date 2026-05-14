@@ -480,9 +480,14 @@ export default function HorasTrabalhadasTab({
         alertas.push("excessivo");
       }
 
-      if (t.status_auvo && t.status_auvo !== "Finalizada" && horas > 0) {
+      // "sem janela" = não conseguimos determinar [início, fim] reais
+      const tsIni = obterInicioTask(t);
+      const tsFim = obterFimTask(t, periodoEnd);
+      if ((!tsIni || !tsFim || tsFim <= tsIni) && horas > 0) {
         alertas.push("sem_janela");
       }
+
+      if (atravessaPeriodo(t)) alertas.push("multi_periodo");
 
       if (detectarOverlap && t.hora_inicio && t.hora_fim && t.tecnico && t.data_tarefa) {
         const k = `${t.tecnico}\u0001${t.data_tarefa}`;
