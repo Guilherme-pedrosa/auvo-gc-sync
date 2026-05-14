@@ -121,6 +121,12 @@ export default function ConfiguracoesTab({ grupos, membros, allClientes, allTecn
     limite_excessivo_horas: 12,
     detectar_overlap_tecnico: true,
     detectar_horas_negativas: true,
+    curta_requer_revisao: true,
+    longa_requer_revisao: false,
+    excessiva_requer_revisao: true,
+    negativa_requer_revisao: true,
+    overlap_requer_revisao: true,
+    sem_checkout_requer_revisao: true,
   });
   const [savingAlertaCfg, setSavingAlertaCfg] = useState(false);
 
@@ -143,6 +149,12 @@ export default function ConfiguracoesTab({ grupos, membros, allClientes, allTecn
       limite_excessivo_horas: Number(alertaCfg.limite_excessivo_horas) || 12,
       detectar_overlap_tecnico: !!alertaCfg.detectar_overlap_tecnico,
       detectar_horas_negativas: !!alertaCfg.detectar_horas_negativas,
+      curta_requer_revisao: !!alertaCfg.curta_requer_revisao,
+      longa_requer_revisao: !!alertaCfg.longa_requer_revisao,
+      excessiva_requer_revisao: !!alertaCfg.excessiva_requer_revisao,
+      negativa_requer_revisao: !!alertaCfg.negativa_requer_revisao,
+      overlap_requer_revisao: !!alertaCfg.overlap_requer_revisao,
+      sem_checkout_requer_revisao: !!alertaCfg.sem_checkout_requer_revisao,
       atualizado_em: new Date().toISOString(),
     };
     let error: any = null;
@@ -470,6 +482,35 @@ export default function ConfiguracoesTab({ grupos, membros, allClientes, allTecn
             <Button size="sm" onClick={handleSaveAlertaCfg} disabled={savingAlertaCfg}>
               {savingAlertaCfg ? <Loader2 className="h-4 w-4 animate-spin" /> : "Salvar"}
             </Button>
+          </div>
+
+          {/* Toggles "requer revisão antes de faturar" */}
+          <div className="border-t pt-4 mt-2 space-y-3">
+            <div>
+              <h4 className="text-sm font-semibold">Requer revisão antes de faturar?</h4>
+              <p className="text-xs text-muted-foreground">
+                Quando ligado, OS com este alerta ficam bloqueadas do total faturável até alguém aprovar manualmente na "Caixa de Revisão".
+              </p>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+              {[
+                { key: "curta_requer_revisao", label: "OS curta" },
+                { key: "longa_requer_revisao", label: "OS longa" },
+                { key: "excessiva_requer_revisao", label: "OS excessiva" },
+                { key: "negativa_requer_revisao", label: "Duração negativa" },
+                { key: "overlap_requer_revisao", label: "Sobreposição de horários" },
+                { key: "sem_checkout_requer_revisao", label: "Sem checkout (com horas)" },
+              ].map(({ key, label }) => (
+                <div key={key} className="flex items-center justify-between border rounded-md px-3 py-2">
+                  <Label className="text-xs cursor-pointer" htmlFor={`req-${key}`}>{label}</Label>
+                  <Switch
+                    id={`req-${key}`}
+                    checked={!!alertaCfg[key]}
+                    onCheckedChange={(v) => setAlertaCfg({ ...alertaCfg, [key]: v })}
+                  />
+                </div>
+              ))}
+            </div>
           </div>
         </CardContent>
       </Card>

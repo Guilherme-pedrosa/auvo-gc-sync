@@ -1,6 +1,6 @@
 import { useState, useMemo } from "react";
 import { cn } from "@/lib/utils";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -17,7 +17,7 @@ import {
 } from "@/components/ui/table";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { AlertTriangle, AlertCircle, Ban, Clock, X } from "lucide-react";
+import { AlertTriangle, AlertCircle, Ban, Clock, X, ShieldCheck, ShieldX, Pencil, Inbox } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip,
@@ -32,6 +32,8 @@ import autoTable from "jspdf-autotable";
 import * as XLSX from "xlsx";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { ExternalLink, FileSpreadsheet, FileText } from "lucide-react";
+import { toast } from "sonner";
+import { Textarea } from "@/components/ui/textarea";
 
 interface Props {
   data: any[];
@@ -63,6 +65,8 @@ type AlertaTipo =
   | "overlap"
   | "sem_checkout"
   | null;
+
+type StatusRevisao = "faturavel" | "em_revisao" | "rejeitada";
 
 const ALERTA_LABEL: Record<Exclude<AlertaTipo, null>, string> = {
   negativo: "Duração negativa",
@@ -100,6 +104,7 @@ export default function HorasTrabalhadasTab({
   dateFrom, dateTo, onDateFromChange, onDateToChange,
   equipamentoTaskMap = {},
 }: Props) {
+  const queryClient = useQueryClient();
   const [filterTecnico, setFilterTecnico] = useState("todos");
   const [filterCliente, setFilterCliente] = useState("todos");
   const [filterGrupo, setFilterGrupo] = useState("todos");
@@ -110,6 +115,7 @@ export default function HorasTrabalhadasTab({
   const [clienteModal, setClienteModal] = useState<string | null>(null);
   const [somenteFaturaveis, setSomenteFaturaveis] = useState(true);
   const [alertFilter, setAlertFilter] = useState<AlertaTipo>(null);
+  const [reviewModalOpen, setReviewModalOpen] = useState(false);
 
   // ── Config de limites de alerta (tabela alertas_horas_config) ──
   const { data: alertasConfig } = useQuery({
@@ -127,10 +133,26 @@ export default function HorasTrabalhadasTab({
           limite_excessivo_horas: 12,
           detectar_overlap_tecnico: true,
           detectar_horas_negativas: true,
+          curta_requer_revisao: true,
+          longa_requer_revisao: false,
+          excessiva_requer_revisao: true,
+          negativa_requer_revisao: true,
+          overlap_requer_revisao: true,
+          sem_checkout_requer_revisao: true,
         }
       );
     },
     staleTime: 60_000,
+  });
+
+  // Decisões já tomadas por OS (auvo_task_id → registro de revisão)
+  const { data: revisoesMap } = useQuery({
+    queryKey: ["os-revisao"],
+    queryFn: async () => {
+      const { data } = await (supabase as any).from("os_revisao").select("*");
+      return new Map<string, any>((data || []).map((r: any) => [String(r.auvo_task_id), r]));
+    },
+    staleTime: 30_000,
   });
 
   // Get task hours: use Auvo's durationDecimal (already deducts pauses)
@@ -306,8 +328,8 @@ export default function HorasTrabalhadasTab({
   };
 
   // Calculate task value applying FDS/holiday rate and emergencial flat fee.
-  const getTaskValor = (t: any, tecnico: string): number => {
-    const horas = getTaskHoras(t);
+  const getTaskValor = (t: any, tecnico: string, horasOverride?: number): number => {
+    const horas = horasOverride != null ? horasOverride : getTaskHoras(t);
     const cliente = t.cliente || t.gc_os_cliente || "";
     const clienteGc = t.gc_os_cliente || "";
     const cfg = getHourlyConfig(tecnico, cliente, clienteGc);
@@ -363,116 +385,31 @@ export default function HorasTrabalhadasTab({
     cliente_gc: string;
     gc_os_codigo: string;
     gc_os_link: string;
+    cliente: string;
+    statusRevisao: StatusRevisao;
+    horasOriginais: number;
+    valorPotencial: number;
+    revisao: any | null;
   };
-  type ClienteData = { horas: number; deslocamento: number; tarefas: number; valor: number; tipos: Map<string, number>; tasks: TaskDetail[] };
-  const tecnicoSummary = useMemo(() => {
-    const map = new Map<string, { tecnico: string; horas: number; deslocamento: number; tarefas: number; valor: number; byCliente: Map<string, ClienteData> }>();
-    for (const t of filtered) {
-      const tec = t.tecnico || "Desconhecido";
-      const cliente = resolveDisplayCliente(t);
-      const horas = getTaskHoras(t);
-      const deslocamento = Number(t.duracao_deslocamento) || 0;
-      const valor = getTaskValor(t, tec);
+  type ClienteData = {
+    horas: number; deslocamento: number; tarefas: number; valor: number;
+    horasEmRevisao: number; valorEmRevisao: number; tarefasEmRevisao: number;
+    horasRejeitado: number; valorRejeitado: number; tarefasRejeitado: number;
+    tipos: Map<string, number>; tasks: TaskDetail[];
+  };
 
-      let entry = map.get(tec);
-      if (!entry) {
-        entry = { tecnico: tec, horas: 0, deslocamento: 0, tarefas: 0, valor: 0, byCliente: new Map() };
-        map.set(tec, entry);
-      }
-      entry.horas += horas;
-      entry.deslocamento += deslocamento;
-      entry.tarefas++;
-      entry.valor += valor;
-
-      let clienteEntry = entry.byCliente.get(cliente);
-      if (!clienteEntry) {
-        clienteEntry = { horas: 0, deslocamento: 0, tarefas: 0, valor: 0, tipos: new Map(), tasks: [] };
-        entry.byCliente.set(cliente, clienteEntry);
-      }
-      clienteEntry.horas += horas;
-      clienteEntry.deslocamento += deslocamento;
-      clienteEntry.tarefas++;
-      clienteEntry.valor += valor;
-
-      const tipo = getTipoLabel(t.descricao);
-      clienteEntry.tipos.set(tipo, (clienteEntry.tipos.get(tipo) || 0) + horas);
-      clienteEntry.tasks.push({
-        auvo_task_id: t.auvo_task_id || "",
-        descricao: getTipoLabel(t.descricao),
-        orientacao: t.orientacao || "",
-        pendencia: t.pendencia || "",
-        hora_inicio: t.hora_inicio || "",
-        hora_fim: t.hora_fim || "",
-        horas,
-        deslocamento,
-        data_tarefa: t.data_tarefa || "",
-        data_conclusao: t.data_conclusao || "",
-        valor,
-        tecnico: tec,
-        equipamento: t.equipamento_nome || equipamentoTaskMap[t.auvo_task_id]?.nome || "",
-        equipamento_id_serie:
-          t.equipamento_id_serie || equipamentoTaskMap[t.auvo_task_id]?.id_serie || "",
-        auvo_link: t.auvo_link || "",
-        auvo_task_url: t.auvo_task_url || "",
-        auvo_survey_url: t.auvo_survey_url || "",
-        status_auvo: t.status_auvo || "",
-        cliente_gc: t.gc_os_cliente || "",
-        gc_os_codigo: t.gc_os_codigo || "",
-        gc_os_link: t.gc_os_link || "",
-      });
-    }
-    return Array.from(map.values()).sort((a, b) => b.valor - a.valor);
-  }, [filtered, valorHoraConfigs, grupos, grupoClienteMap, filterGrupo, equipamentoTaskMap]);
-
-  // Summary by client (across all technicians)
-  const clienteSummary = useMemo(() => {
-    const map = new Map<string, { cliente: string; horas: number; deslocamento: number; tarefas: number; valor: number; tecnicos: Set<string>; tasks: TaskDetail[] }>();
-    for (const tec of tecnicoSummary) {
-      for (const [cliente, cd] of tec.byCliente) {
-        let entry = map.get(cliente);
-        if (!entry) {
-          entry = { cliente, horas: 0, deslocamento: 0, tarefas: 0, valor: 0, tecnicos: new Set(), tasks: [] };
-          map.set(cliente, entry);
-        }
-        entry.horas += cd.horas;
-        entry.deslocamento += cd.deslocamento;
-        entry.tarefas += cd.tarefas;
-        entry.valor += cd.valor;
-        entry.tecnicos.add(tec.tecnico);
-        entry.tasks.push(...cd.tasks);
-      }
-    }
-    // sort each client's tasks by date asc
-    for (const e of map.values()) {
-      e.tasks.sort((a, b) =>
-        Number(isExcessiveTask(b.horas)) - Number(isExcessiveTask(a.horas)) ||
-        (a.data_tarefa || a.data_conclusao || "").localeCompare(b.data_tarefa || b.data_conclusao || "") ||
-        (a.hora_inicio || "").localeCompare(b.hora_inicio || "")
-      );
-    }
-    return Array.from(map.values()).sort((a, b) => b.valor - a.valor);
-  }, [tecnicoSummary]);
-
-  const clienteSelecionado = useMemo(
-    () => (clienteModal ? clienteSummary.find((c) => c.cliente === clienteModal) : null),
-    [clienteModal, clienteSummary]
-  );
-
-  // ── Detecção de alertas (apenas visual, não muda valor) ───────────
+  // ── Detecção de alertas (independe de revisão) ────────────────────
   const tasksWithAlertas = useMemo(() => {
-    const allTasks: TaskDetail[] = clienteSummary.flatMap((c) => c.tasks);
     const result = new Map<string, AlertaTipo[]>();
-
     const limMin = (alertasConfig?.limite_minimo_minutos ?? 45) / 60;
     const limMax = Number(alertasConfig?.limite_maximo_horas ?? 8);
     const limExc = Number(alertasConfig?.limite_excessivo_horas ?? 12);
     const detectarOverlap = !!alertasConfig?.detectar_overlap_tecnico;
     const detectarNegativas = alertasConfig?.detectar_horas_negativas !== false;
 
-    // Pré-agrupa por técnico+dia para overlap O(n) por grupo
-    const byTecDia = new Map<string, TaskDetail[]>();
+    const byTecDia = new Map<string, any[]>();
     if (detectarOverlap) {
-      for (const t of allTasks) {
+      for (const t of filtered) {
         if (!t.tecnico || !t.data_tarefa || !t.hora_inicio || !t.hora_fim) continue;
         const k = `${t.tecnico}\u0001${t.data_tarefa}`;
         const arr = byTecDia.get(k) || [];
@@ -481,9 +418,9 @@ export default function HorasTrabalhadasTab({
       }
     }
 
-    for (const t of allTasks) {
+    for (const t of filtered) {
       const alertas: AlertaTipo[] = [];
-      const horas = t.horas;
+      const horas = getTaskHoras(t);
 
       if (detectarNegativas && horas < 0) {
         alertas.push("negativo");
@@ -504,7 +441,7 @@ export default function HorasTrabalhadasTab({
         const peers = byTecDia.get(k) || [];
         const ini = t.hora_inicio;
         const fim = t.hora_fim;
-        const overlap = peers.some((o) =>
+        const overlap = peers.some((o: any) =>
           o.auvo_task_id !== t.auvo_task_id &&
           o.hora_inicio && o.hora_fim &&
           ini < o.hora_fim && o.hora_inicio < fim
@@ -512,10 +449,185 @@ export default function HorasTrabalhadasTab({
         if (overlap) alertas.push("overlap");
       }
 
-      result.set(t.auvo_task_id, alertas);
+      result.set(String(t.auvo_task_id || ""), alertas);
     }
     return result;
-  }, [clienteSummary, alertasConfig]);
+  }, [filtered, alertasConfig]);
+
+  // ── Status de revisão (decisão humana ou regra automática) ────────
+  const getStatusRevisao = (alertas: AlertaTipo[], revisao: any): StatusRevisao => {
+    if (revisao?.status_revisao === "aprovada" || revisao?.status_revisao === "ajustada") return "faturavel";
+    if (revisao?.status_revisao === "rejeitada") return "rejeitada";
+    const exigeRevisao = alertas.some((a) => {
+      if (a === "curto" && alertasConfig?.curta_requer_revisao) return true;
+      if (a === "longo" && alertasConfig?.longa_requer_revisao) return true;
+      if (a === "excessivo" && alertasConfig?.excessiva_requer_revisao) return true;
+      if (a === "negativo" && alertasConfig?.negativa_requer_revisao) return true;
+      if (a === "overlap" && alertasConfig?.overlap_requer_revisao) return true;
+      if (a === "sem_checkout" && alertasConfig?.sem_checkout_requer_revisao) return true;
+      return false;
+    });
+    return exigeRevisao ? "em_revisao" : "faturavel";
+  };
+
+  const tecnicoSummary = useMemo(() => {
+    const map = new Map<string, {
+      tecnico: string;
+      horas: number; deslocamento: number; tarefas: number; valor: number;
+      horasEmRevisao: number; valorEmRevisao: number; tarefasEmRevisao: number;
+      horasRejeitado: number; valorRejeitado: number; tarefasRejeitado: number;
+      byCliente: Map<string, ClienteData>;
+    }>();
+
+    for (const t of filtered) {
+      const tec = t.tecnico || "Desconhecido";
+      const cliente = resolveDisplayCliente(t);
+      const taskId = String(t.auvo_task_id || "");
+      const alertas = tasksWithAlertas.get(taskId) || [];
+      const revisao = revisoesMap?.get(taskId) || null;
+      const status = getStatusRevisao(alertas, revisao);
+
+      const horasOriginais = getTaskHoras(t);
+      const horasEfetivas =
+        revisao?.status_revisao === "ajustada" && revisao.horas_ajustadas != null
+          ? Number(revisao.horas_ajustadas)
+          : horasOriginais;
+      const valorEfetivo = getTaskValor(t, tec, horasEfetivas);
+      const valorPotencial = getTaskValor(t, tec, horasOriginais);
+      const deslocamento = Number(t.duracao_deslocamento) || 0;
+
+      let entry = map.get(tec);
+      if (!entry) {
+        entry = {
+          tecnico: tec, horas: 0, deslocamento: 0, tarefas: 0, valor: 0,
+          horasEmRevisao: 0, valorEmRevisao: 0, tarefasEmRevisao: 0,
+          horasRejeitado: 0, valorRejeitado: 0, tarefasRejeitado: 0,
+          byCliente: new Map(),
+        };
+        map.set(tec, entry);
+      }
+      let clienteEntry = entry.byCliente.get(cliente);
+      if (!clienteEntry) {
+        clienteEntry = {
+          horas: 0, deslocamento: 0, tarefas: 0, valor: 0,
+          horasEmRevisao: 0, valorEmRevisao: 0, tarefasEmRevisao: 0,
+          horasRejeitado: 0, valorRejeitado: 0, tarefasRejeitado: 0,
+          tipos: new Map(), tasks: [],
+        };
+        entry.byCliente.set(cliente, clienteEntry);
+      }
+
+      // Deslocamento sempre conta (não é faturado pela hora trabalhada)
+      entry.deslocamento += deslocamento;
+      clienteEntry.deslocamento += deslocamento;
+
+      if (status === "faturavel") {
+        entry.horas += horasEfetivas;
+        entry.tarefas++;
+        entry.valor += valorEfetivo;
+        clienteEntry.horas += horasEfetivas;
+        clienteEntry.tarefas++;
+        clienteEntry.valor += valorEfetivo;
+        const tipo = getTipoLabel(t.descricao);
+        clienteEntry.tipos.set(tipo, (clienteEntry.tipos.get(tipo) || 0) + horasEfetivas);
+      } else if (status === "em_revisao") {
+        entry.horasEmRevisao += horasOriginais;
+        entry.valorEmRevisao += valorPotencial;
+        entry.tarefasEmRevisao++;
+        clienteEntry.horasEmRevisao += horasOriginais;
+        clienteEntry.valorEmRevisao += valorPotencial;
+        clienteEntry.tarefasEmRevisao++;
+      } else {
+        entry.horasRejeitado += horasOriginais;
+        entry.valorRejeitado += valorPotencial;
+        entry.tarefasRejeitado++;
+        clienteEntry.horasRejeitado += horasOriginais;
+        clienteEntry.valorRejeitado += valorPotencial;
+        clienteEntry.tarefasRejeitado++;
+      }
+
+      clienteEntry.tasks.push({
+        auvo_task_id: taskId,
+        descricao: getTipoLabel(t.descricao),
+        orientacao: t.orientacao || "",
+        pendencia: t.pendencia || "",
+        hora_inicio: t.hora_inicio || "",
+        hora_fim: t.hora_fim || "",
+        horas: status === "faturavel" ? horasEfetivas : horasOriginais,
+        deslocamento,
+        data_tarefa: t.data_tarefa || "",
+        data_conclusao: t.data_conclusao || "",
+        valor: status === "faturavel" ? valorEfetivo : 0,
+        tecnico: tec,
+        equipamento: t.equipamento_nome || equipamentoTaskMap[t.auvo_task_id]?.nome || "",
+        equipamento_id_serie:
+          t.equipamento_id_serie || equipamentoTaskMap[t.auvo_task_id]?.id_serie || "",
+        auvo_link: t.auvo_link || "",
+        auvo_task_url: t.auvo_task_url || "",
+        auvo_survey_url: t.auvo_survey_url || "",
+        status_auvo: t.status_auvo || "",
+        cliente_gc: t.gc_os_cliente || "",
+        gc_os_codigo: t.gc_os_codigo || "",
+        gc_os_link: t.gc_os_link || "",
+        cliente,
+        statusRevisao: status,
+        horasOriginais,
+        valorPotencial,
+        revisao,
+      });
+    }
+    return Array.from(map.values()).sort((a, b) => b.valor - a.valor);
+  }, [filtered, valorHoraConfigs, grupos, grupoClienteMap, filterGrupo, equipamentoTaskMap, tasksWithAlertas, revisoesMap, alertasConfig]);
+
+  // Summary by client (across all technicians)
+  const clienteSummary = useMemo(() => {
+    const map = new Map<string, {
+      cliente: string;
+      horas: number; deslocamento: number; tarefas: number; valor: number;
+      horasEmRevisao: number; valorEmRevisao: number; tarefasEmRevisao: number;
+      horasRejeitado: number; valorRejeitado: number; tarefasRejeitado: number;
+      tecnicos: Set<string>; tasks: TaskDetail[];
+    }>();
+    for (const tec of tecnicoSummary) {
+      for (const [cliente, cd] of tec.byCliente) {
+        let entry = map.get(cliente);
+        if (!entry) {
+          entry = {
+            cliente, horas: 0, deslocamento: 0, tarefas: 0, valor: 0,
+            horasEmRevisao: 0, valorEmRevisao: 0, tarefasEmRevisao: 0,
+            horasRejeitado: 0, valorRejeitado: 0, tarefasRejeitado: 0,
+            tecnicos: new Set(), tasks: [],
+          };
+          map.set(cliente, entry);
+        }
+        entry.horas += cd.horas;
+        entry.deslocamento += cd.deslocamento;
+        entry.tarefas += cd.tarefas;
+        entry.valor += cd.valor;
+        entry.horasEmRevisao += cd.horasEmRevisao;
+        entry.valorEmRevisao += cd.valorEmRevisao;
+        entry.tarefasEmRevisao += cd.tarefasEmRevisao;
+        entry.horasRejeitado += cd.horasRejeitado;
+        entry.valorRejeitado += cd.valorRejeitado;
+        entry.tarefasRejeitado += cd.tarefasRejeitado;
+        entry.tecnicos.add(tec.tecnico);
+        entry.tasks.push(...cd.tasks);
+      }
+    }
+    for (const e of map.values()) {
+      e.tasks.sort((a, b) =>
+        Number(isExcessiveTask(b.horas)) - Number(isExcessiveTask(a.horas)) ||
+        (a.data_tarefa || a.data_conclusao || "").localeCompare(b.data_tarefa || b.data_conclusao || "") ||
+        (a.hora_inicio || "").localeCompare(b.hora_inicio || "")
+      );
+    }
+    return Array.from(map.values()).sort((a, b) => b.valor - a.valor);
+  }, [tecnicoSummary]);
+
+  const clienteSelecionado = useMemo(
+    () => (clienteModal ? clienteSummary.find((c) => c.cliente === clienteModal) : null),
+    [clienteModal, clienteSummary]
+  );
 
   // Contadores por tipo + lista plana de alertas para cards e exports
   const alertCounts = useMemo(() => {
@@ -588,6 +700,63 @@ export default function HorasTrabalhadasTab({
   const totalDeslocamento = useMemo(() => tecnicoSummary.reduce((s, t) => s + t.deslocamento, 0), [tecnicoSummary]);
   const totalValor = useMemo(() => tecnicoSummary.reduce((s, t) => s + t.valor, 0), [tecnicoSummary]);
   const totalTarefas = useMemo(() => tecnicoSummary.reduce((s, t) => s + t.tarefas, 0), [tecnicoSummary]);
+  const totalEmRevisao = useMemo(() => tecnicoSummary.reduce((acc, t) => ({
+    horas: acc.horas + t.horasEmRevisao, valor: acc.valor + t.valorEmRevisao, tarefas: acc.tarefas + t.tarefasEmRevisao,
+  }), { horas: 0, valor: 0, tarefas: 0 }), [tecnicoSummary]);
+  const totalRejeitado = useMemo(() => tecnicoSummary.reduce((acc, t) => ({
+    horas: acc.horas + t.horasRejeitado, valor: acc.valor + t.valorRejeitado, tarefas: acc.tarefas + t.tarefasRejeitado,
+  }), { horas: 0, valor: 0, tarefas: 0 }), [tecnicoSummary]);
+
+  // Lista plana de OS em revisão (para o modal)
+  const osEmRevisao = useMemo(() => {
+    const out: TaskDetail[] = [];
+    for (const c of clienteSummary) for (const t of c.tasks) if (t.statusRevisao === "em_revisao") out.push(t);
+    out.sort((a, b) => {
+      const aA = tasksWithAlertas.get(a.auvo_task_id) || [];
+      const bA = tasksWithAlertas.get(b.auvo_task_id) || [];
+      const aS = Math.max(0, ...aA.filter(Boolean).map((x) => ALERTA_SEVERIDADE[x as Exclude<AlertaTipo, null>]));
+      const bS = Math.max(0, ...bA.filter(Boolean).map((x) => ALERTA_SEVERIDADE[x as Exclude<AlertaTipo, null>]));
+      return bS - aS;
+    });
+    return out;
+  }, [clienteSummary, tasksWithAlertas]);
+
+  // Persistir uma decisão de revisão
+  const persistRevisao = async (
+    task: TaskDetail,
+    status: "aprovada" | "rejeitada" | "ajustada",
+    justificativa: string,
+    horasAjustadas?: number,
+  ) => {
+    if ((status === "rejeitada" || status === "ajustada") && !justificativa.trim()) {
+      toast.error("Justificativa obrigatória para Rejeitar/Ajustar");
+      return false;
+    }
+    const { data: { user } } = await supabase.auth.getUser();
+    const decididoPor = user?.email || user?.id || "desconhecido";
+    const alertas = (tasksWithAlertas.get(task.auvo_task_id) || []).filter(Boolean);
+    const payload: any = {
+      auvo_task_id: task.auvo_task_id,
+      status_revisao: status,
+      alertas_motivo: JSON.stringify(alertas),
+      horas_originais: task.horasOriginais,
+      horas_ajustadas: status === "ajustada" ? Number(horasAjustadas) : null,
+      justificativa: justificativa.trim() || null,
+      decidido_por: decididoPor,
+      decidido_em: new Date().toISOString(),
+    };
+    const { error } = await (supabase as any)
+      .from("os_revisao")
+      .upsert(payload, { onConflict: "auvo_task_id" });
+    if (error) { toast.error("Erro ao salvar: " + error.message); return false; }
+    toast.success(
+      status === "aprovada" ? "OS aprovada — somou ao faturável"
+      : status === "rejeitada" ? "OS rejeitada — fora do faturável"
+      : "OS ajustada e aprovada"
+    );
+    queryClient.invalidateQueries({ queryKey: ["os-revisao"] });
+    return true;
+  };
 
   // Chart data
   const chartData = useMemo(() =>
@@ -1333,7 +1502,7 @@ export default function HorasTrabalhadasTab({
       )}
 
       {/* Summary cards */}
-      <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         <Card>
           <CardHeader className="py-3 px-4">
             <CardTitle className="text-sm font-medium text-muted-foreground">Horas Trabalhadas</CardTitle>
@@ -1342,45 +1511,51 @@ export default function HorasTrabalhadasTab({
             <p className="text-2xl font-bold text-foreground">{totalHoras.toFixed(1)}h</p>
           </CardContent>
         </Card>
-        <Card>
+        <Card className="border-l-4 border-l-emerald-600">
           <CardHeader className="py-3 px-4">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Horas Deslocamento</CardTitle>
-          </CardHeader>
-          <CardContent className="px-4 pb-3">
-            <p className="text-2xl font-bold text-foreground">{totalDeslocamento.toFixed(1)}h</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="py-3 px-4">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Tarefas Executadas</CardTitle>
-          </CardHeader>
-          <CardContent className="px-4 pb-3">
-            <p className="text-2xl font-bold text-foreground">{totalTarefas}</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="py-3 px-4">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Técnicos</CardTitle>
-          </CardHeader>
-          <CardContent className="px-4 pb-3">
-            <p className="text-2xl font-bold text-foreground">{tecnicoSummary.length}</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="py-3 px-4">
-            <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
-              Valor Total
-              {somenteFaturaveis && (
-                <Badge variant="secondary" className="text-[9px] font-normal">
-                  Critério: apenas finalizadas
-                </Badge>
-              )}
+            <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-1.5">
+              <ShieldCheck className="h-4 w-4 text-emerald-600" />
+              Faturável Aprovado
             </CardTitle>
           </CardHeader>
           <CardContent className="px-4 pb-3">
             <p className="text-2xl font-bold text-foreground">
-              {totalValor > 0 ? totalValor.toLocaleString("pt-BR", { style: "currency", currency: "BRL" }) : "—"}
+              {totalValor.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
             </p>
+            <p className="text-xs text-muted-foreground mt-1">{totalTarefas} OS · {totalHoras.toFixed(1)}h</p>
+          </CardContent>
+        </Card>
+        <Card className="border-l-4 border-l-yellow-500">
+          <CardHeader className="py-3 px-4">
+            <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-1.5">
+              <AlertTriangle className="h-4 w-4 text-yellow-600" />
+              Em Revisão
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="px-4 pb-3">
+            <p className="text-2xl font-bold text-foreground">
+              {totalEmRevisao.valor.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
+            </p>
+            <p className="text-xs text-muted-foreground mt-1">{totalEmRevisao.tarefas} OS · {totalEmRevisao.horas.toFixed(1)}h</p>
+            {totalEmRevisao.tarefas > 0 && (
+              <Button size="sm" variant="outline" className="mt-2 h-7 text-xs gap-1.5" onClick={() => setReviewModalOpen(true)}>
+                <Inbox className="h-3.5 w-3.5" /> Abrir caixa
+              </Button>
+            )}
+          </CardContent>
+        </Card>
+        <Card className="border-l-4 border-l-destructive">
+          <CardHeader className="py-3 px-4">
+            <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-1.5">
+              <ShieldX className="h-4 w-4 text-destructive" />
+              Rejeitado
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="px-4 pb-3">
+            <p className="text-2xl font-bold text-foreground">
+              {totalRejeitado.valor.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
+            </p>
+            <p className="text-xs text-muted-foreground mt-1">{totalRejeitado.tarefas} OS · {totalRejeitado.horas.toFixed(1)}h</p>
           </CardContent>
         </Card>
       </div>
