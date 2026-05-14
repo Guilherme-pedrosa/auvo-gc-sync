@@ -1490,8 +1490,13 @@ export default function HorasTrabalhadasTab({
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {clienteSelecionado?.tasks.map((t, idx) => (
-                  <TableRow key={`${t.auvo_task_id}-${idx}`} className={cn("text-xs", isExcessiveTask(t.horas) && "bg-destructive/5") }>
+                {clienteSelecionado?.tasks
+                  .filter((t) => taskMatchesAlertFilter(t.auvo_task_id))
+                  .map((t, idx) => {
+                  const alerts = tasksWithAlertas.get(t.auvo_task_id) || [];
+                  const pa = piorAlerta(alerts);
+                  return (
+                  <TableRow key={`${t.auvo_task_id}-${idx}`} className={cn("text-xs", rowAlertClass(pa))}>
                     <TableCell className="font-mono whitespace-nowrap">
                       {(t.data_tarefa || t.data_conclusao)
                         ? format(new Date((t.data_tarefa || t.data_conclusao) + "T12:00:00"), "dd/MM/yy")
@@ -1516,13 +1521,17 @@ export default function HorasTrabalhadasTab({
                     <TableCell className="font-mono whitespace-nowrap">
                       {t.hora_inicio && t.hora_fim ? `${t.hora_inicio}–${t.hora_fim}` : (t.hora_inicio || "—")}
                     </TableCell>
-                    <TableCell className={cn("text-right font-medium", (t.horas < 0 || isExcessiveTask(t.horas)) && "text-destructive")}>
-                      <div className="flex items-center justify-end gap-2">
-                        {isExcessiveTask(t.horas) && (
-                          <Badge variant="destructive" className="px-1.5 py-0 text-[10px]">
-                            +12h
-                          </Badge>
-                        )}
+                    <TableCell className={cn("text-right font-medium", (pa === "excessivo" || pa === "negativo" || pa === "overlap" || pa === "sem_checkout") && "text-destructive")}>
+                      <div className="flex items-center justify-end gap-1.5">
+                        {alerts.filter(Boolean).map((a) => (
+                          <span
+                            key={a as string}
+                            title={alertaTooltip(a, t)}
+                            className="inline-flex"
+                          >
+                            {alertaIcone(a)}
+                          </span>
+                        ))}
                         <span>{t.horas.toFixed(2)}h</span>
                       </div>
                     </TableCell>
@@ -1546,7 +1555,8 @@ export default function HorasTrabalhadasTab({
                       </div>
                     </TableCell>
                   </TableRow>
-                ))}
+                  );
+                })}
               </TableBody>
             </Table>
             <ScrollBar orientation="horizontal" />
