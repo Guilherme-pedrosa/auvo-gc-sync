@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect } from "react";
 import { cn } from "@/lib/utils";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
@@ -112,9 +112,32 @@ export default function HorasTrabalhadasTab({
   const [filterCliente, setFilterCliente] = useState("todos");
   const [filterGrupo, setFilterGrupo] = useState("todos");
   const [grupoOpen, setGrupoOpen] = useState(false);
-  const [selectedTipos, setSelectedTipos] = useState<Set<string>>(new Set());
-  const [allTiposSelected, setAllTiposSelected] = useState(true);
-  const [searchTipo, setSearchTipo] = useState("");
+  // Tipo de Tarefa (multi-select por task_type_id, persistente em localStorage).
+  // null = "todos marcados" (default na primeira visita).
+  const TIPOS_STORAGE_KEY = "horas-trabalhadas-tipos-filtro";
+  const [tiposSelecionados, setTiposSelecionados] = useState<Set<string> | null>(() => {
+    try {
+      const raw = localStorage.getItem(TIPOS_STORAGE_KEY);
+      if (raw) {
+        const arr = JSON.parse(raw);
+        if (Array.isArray(arr)) return new Set(arr.map(String));
+      }
+    } catch {}
+    return null;
+  });
+  useEffect(() => {
+    try {
+      if (tiposSelecionados === null) {
+        localStorage.removeItem(TIPOS_STORAGE_KEY);
+      } else {
+        localStorage.setItem(TIPOS_STORAGE_KEY, JSON.stringify(Array.from(tiposSelecionados)));
+      }
+    } catch {}
+  }, [tiposSelecionados]);
+  const tipoIncluido = (id: string): boolean => {
+    if (tiposSelecionados === null) return true;
+    return tiposSelecionados.has(id);
+  };
   const [clienteModal, setClienteModal] = useState<string | null>(null);
   const [alertFilter, setAlertFilter] = useState<AlertaTipo>(null);
   const [reviewModalOpen, setReviewModalOpen] = useState(false);
