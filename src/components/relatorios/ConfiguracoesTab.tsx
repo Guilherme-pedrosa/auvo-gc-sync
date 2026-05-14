@@ -247,28 +247,81 @@ export default function ConfiguracoesTab({ grupos, membros, allClientes, allTecn
                       </div>
                     </div>
 
-                    {/* Add member */}
-                    <div className="flex gap-2">
-                      <Select value={selectedGrupo === g.id ? newMembroCliente : ""} onValueChange={(v) => { setSelectedGrupo(g.id); setNewMembroCliente(v); }}>
-                        <SelectTrigger className="h-8 text-xs flex-1">
-                          <SelectValue placeholder="Adicionar cliente..." />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {allClientes
-                            .filter((c) => !gMembros.some((m: any) => m.cliente_nome === c))
-                            .map((c) => <SelectItem key={c} value={c}>{c}</SelectItem>)}
-                        </SelectContent>
-                      </Select>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="h-8"
-                        onClick={() => { setSelectedGrupo(g.id); handleAddMembro(); }}
-                        disabled={selectedGrupo !== g.id || !newMembroCliente}
-                      >
-                        <Plus className="h-3 w-3" />
-                      </Button>
-                    </div>
+                    {/* Add members (multi-select) */}
+                    {(() => {
+                      const available = allClientes.filter(
+                        (c) => !gMembros.some((m: any) => m.cliente_nome === c)
+                      );
+                      const selected = bulkSelection[g.id] || [];
+                      const isOpen = !!bulkOpen[g.id];
+                      const toggle = (c: string) => {
+                        setBulkSelection((s) => {
+                          const cur = s[g.id] || [];
+                          return {
+                            ...s,
+                            [g.id]: cur.includes(c) ? cur.filter((x) => x !== c) : [...cur, c],
+                          };
+                        });
+                      };
+                      return (
+                        <div className="flex gap-2">
+                          <Popover
+                            open={isOpen}
+                            onOpenChange={(o) => setBulkOpen((s) => ({ ...s, [g.id]: o }))}
+                          >
+                            <PopoverTrigger asChild>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className="h-8 text-xs flex-1 justify-between font-normal"
+                              >
+                                {selected.length > 0
+                                  ? `${selected.length} cliente(s) selecionado(s)`
+                                  : "Adicionar clientes..."}
+                                <ChevronsUpDown className="h-3 w-3 opacity-50" />
+                              </Button>
+                            </PopoverTrigger>
+                            <PopoverContent className="w-[380px] p-0" align="start">
+                              <Command>
+                                <CommandInput placeholder="Buscar cliente..." className="h-9" />
+                                <CommandList className="max-h-72">
+                                  <CommandEmpty>Nenhum cliente disponível</CommandEmpty>
+                                  <CommandGroup>
+                                    {available.map((c) => {
+                                      const checked = selected.includes(c);
+                                      return (
+                                        <CommandItem
+                                          key={c}
+                                          value={c}
+                                          onSelect={() => toggle(c)}
+                                          className="text-xs gap-2"
+                                        >
+                                          <Checkbox checked={checked} className="h-3.5 w-3.5" />
+                                          <span className="truncate">{c}</span>
+                                        </CommandItem>
+                                      );
+                                    })}
+                                  </CommandGroup>
+                                </CommandList>
+                              </Command>
+                            </PopoverContent>
+                          </Popover>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="h-8"
+                            onClick={() => handleAddMembrosBulk(g.id)}
+                            disabled={selected.length === 0 || bulkAdding === g.id}
+                          >
+                            {bulkAdding === g.id ? (
+                              <Loader2 className="h-3 w-3 animate-spin" />
+                            ) : (
+                              <Plus className="h-3 w-3" />
+                            )}
+                          </Button>
+                        </div>
+                      );
+                    })()}
 
                     {/* Members */}
                     {gMembros.length > 0 && (
