@@ -995,7 +995,14 @@ export default function HorasTrabalhadasTab({
         </Card>
         <Card>
           <CardHeader className="py-3 px-4">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Valor Total</CardTitle>
+            <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
+              Valor Total
+              {somenteFaturaveis && (
+                <Badge variant="secondary" className="text-[9px] font-normal">
+                  Critério: apenas finalizadas
+                </Badge>
+              )}
+            </CardTitle>
           </CardHeader>
           <CardContent className="px-4 pb-3">
             <p className="text-2xl font-bold text-foreground">
