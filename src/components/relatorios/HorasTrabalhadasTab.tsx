@@ -832,6 +832,47 @@ export default function HorasTrabalhadasTab({
     return true;
   };
 
+  // Revoga uma decisão de revisão (DELETE em os_revisao). A OS volta ao
+  // estado calculado: vai para "Em Revisão" se ainda tem alertas, ou
+  // para "Faturável" se não tem.
+  const revogarRevisao = async (task: TaskDetail) => {
+    const { error } = await (supabase as any)
+      .from("os_revisao")
+      .delete()
+      .eq("auvo_task_id", task.auvo_task_id);
+    if (error) { toast.error("Erro ao revogar: " + error.message); return false; }
+    toast.success("Rejeição revogada");
+    queryClient.invalidateQueries({ queryKey: ["os-revisao"] });
+    return true;
+  };
+
+  // Re-sincroniza UMA OS direto do Auvo (modo single da edge function)
+  const sincronizarOsDoAuvo = async (task: TaskDetail) => {
+    setSyncingTaskId(task.auvo_task_id);
+    try {
+      const { data, error } = await supabase.functions.invoke("horas-trabalhadas-fetch", {
+        body: { mode: "single", taskId: task.auvo_task_id },
+      });
+      if (error || !data?.ok) {
+        toast.error("Falha ao sincronizar: " + (data?.error || error?.message || "erro desconhecido"));
+        return;
+      }
+      const a = data.alteracoes || {};
+      const partes: string[] = [];
+      if (a.horas_anteriores !== a.horas_atuais) {
+        partes.push(`horas: ${(a.horas_anteriores ?? 0).toFixed(2)}h → ${(a.horas_atuais ?? 0).toFixed(2)}h`);
+      }
+      if (a.status_anterior !== a.status_atual) {
+        partes.push(`status: ${a.status_anterior || "—"} → ${a.status_atual || "—"}`);
+      }
+      toast.success(`OS ${task.auvo_task_id} sincronizada${partes.length ? ` — ${partes.join(" · ")}` : ""}`);
+      queryClient.invalidateQueries({ queryKey: ["relatorios-horas-trabalhadas"] });
+      queryClient.invalidateQueries({ queryKey: ["os-revisao"] });
+    } finally {
+      setSyncingTaskId(null);
+    }
+  };
+
   // Chart data
   const chartData = useMemo(() =>
     tecnicoSummary.map((t) => ({
