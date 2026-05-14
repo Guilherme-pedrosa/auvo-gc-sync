@@ -383,8 +383,18 @@ export default function HorasTrabalhadasTab({
     cliente_gc: string;
     gc_os_codigo: string;
     gc_os_link: string;
+    cliente: string;
+    statusRevisao: StatusRevisao;
+    horasOriginais: number;
+    valorPotencial: number;
+    revisao: any | null;
   };
-  type ClienteData = { horas: number; deslocamento: number; tarefas: number; valor: number; tipos: Map<string, number>; tasks: TaskDetail[] };
+  type ClienteData = {
+    horas: number; deslocamento: number; tarefas: number; valor: number;
+    horasEmRevisao: number; valorEmRevisao: number; tarefasEmRevisao: number;
+    horasRejeitado: number; valorRejeitado: number; tarefasRejeitado: number;
+    tipos: Map<string, number>; tasks: TaskDetail[];
+  };
   const tecnicoSummary = useMemo(() => {
     const map = new Map<string, { tecnico: string; horas: number; deslocamento: number; tarefas: number; valor: number; byCliente: Map<string, ClienteData> }>();
     for (const t of filtered) {
