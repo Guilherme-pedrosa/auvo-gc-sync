@@ -141,7 +141,7 @@ export default function HorasTrabalhadasTab({
           excessiva_requer_revisao: true,
           negativa_requer_revisao: true,
           overlap_requer_revisao: true,
-          sem_checkout_requer_revisao: true,
+          sem_janela_requer_revisao: true,
         }
       );
     },
@@ -436,7 +436,7 @@ export default function HorasTrabalhadasTab({
       }
 
       if (t.status_auvo && t.status_auvo !== "Finalizada" && horas > 0) {
-        alertas.push("sem_checkout");
+        alertas.push("sem_janela");
       }
 
       if (detectarOverlap && t.hora_inicio && t.hora_fim && t.tecnico && t.data_tarefa) {
@@ -467,7 +467,7 @@ export default function HorasTrabalhadasTab({
       if (a === "excessivo" && alertasConfig?.excessiva_requer_revisao) return true;
       if (a === "negativo" && alertasConfig?.negativa_requer_revisao) return true;
       if (a === "overlap" && alertasConfig?.overlap_requer_revisao) return true;
-      if (a === "sem_checkout" && alertasConfig?.sem_checkout_requer_revisao) return true;
+      if (a === "sem_janela" && alertasConfig?.sem_janela_requer_revisao) return true;
       return false;
     });
     return exigeRevisao ? "em_revisao" : "faturavel";
@@ -635,7 +635,7 @@ export default function HorasTrabalhadasTab({
   // Contadores por tipo + lista plana de alertas para cards e exports
   const alertCounts = useMemo(() => {
     const counts: Record<Exclude<AlertaTipo, null>, number> = {
-      negativo: 0, curto: 0, longo: 0, excessivo: 0, overlap: 0, sem_checkout: 0,
+      negativo: 0, curto: 0, longo: 0, excessivo: 0, overlap: 0, sem_janela: 0,
     };
     const seenByType = new Map<string, Set<string>>();
     for (const [id, alerts] of tasksWithAlertas) {
@@ -668,7 +668,7 @@ export default function HorasTrabalhadasTab({
         return "Duração negativa — bug de apontamento (checkout antes do check-in)";
       case "overlap":
         return `Sobreposição de horário: técnico ${t.tecnico} em outra OS no mesmo intervalo`;
-      case "sem_checkout":
+      case "sem_janela":
         return `Status '${t.status_auvo}' com horas registradas — técnico não fechou a OS`;
       default:
         return "";
@@ -681,13 +681,13 @@ export default function HorasTrabalhadasTab({
     if (a === "longo") return <Clock className="h-3.5 w-3.5 text-blue-600" />;
     if (a === "excessivo" || a === "overlap") return <AlertCircle className="h-3.5 w-3.5 text-destructive" />;
     if (a === "negativo") return <Ban className="h-3.5 w-3.5 text-destructive" />;
-    if (a === "sem_checkout") return <Clock className="h-3.5 w-3.5 text-destructive" />;
+    if (a === "sem_janela") return <Clock className="h-3.5 w-3.5 text-destructive" />;
     return null;
   };
 
   const rowAlertClass = (a: AlertaTipo): string => {
     if (a === "excessivo" || a === "negativo" || a === "overlap") return "bg-destructive/10";
-    if (a === "sem_checkout") return "bg-destructive/5";
+    if (a === "sem_janela") return "bg-destructive/5";
     if (a === "curto") return "bg-yellow-100/50 dark:bg-yellow-900/20";
     if (a === "longo") return "bg-blue-100/50 dark:bg-blue-900/20";
     return "";
@@ -1474,7 +1474,7 @@ export default function HorasTrabalhadasTab({
               {(Object.keys(alertCounts.counts) as Array<Exclude<AlertaTipo, null>>).map((k) => {
                 const n = alertCounts.counts[k];
                 if (n === 0) return null;
-                const isRed = k === "excessivo" || k === "negativo" || k === "overlap" || k === "sem_checkout";
+                const isRed = k === "excessivo" || k === "negativo" || k === "overlap" || k === "sem_janela";
                 const colorCls =
                   k === "curto" ? "border-yellow-500 hover:bg-yellow-100/50 dark:hover:bg-yellow-900/20 text-yellow-900 dark:text-yellow-100"
                   : k === "longo" ? "border-blue-500 hover:bg-blue-100/50 dark:hover:bg-blue-900/20 text-blue-900 dark:text-blue-100"
@@ -1729,7 +1729,7 @@ export default function HorasTrabalhadasTab({
                                             .map((task, idx) => {
                                               const alerts = tasksWithAlertas.get(task.auvo_task_id) || [];
                                               const pa = piorAlerta(alerts);
-                                              const isRed = pa === "excessivo" || pa === "negativo" || pa === "overlap" || pa === "sem_checkout";
+                                              const isRed = pa === "excessivo" || pa === "negativo" || pa === "overlap" || pa === "sem_janela";
                                               return (
                                                 <Badge
                                                   key={idx}
@@ -1854,7 +1854,7 @@ export default function HorasTrabalhadasTab({
                     <TableCell className="font-mono whitespace-nowrap">
                       {t.hora_inicio && t.hora_fim ? `${t.hora_inicio}–${t.hora_fim}` : (t.hora_inicio || "—")}
                     </TableCell>
-                    <TableCell className={cn("text-right font-medium", (pa === "excessivo" || pa === "negativo" || pa === "overlap" || pa === "sem_checkout") && "text-destructive")}>
+                    <TableCell className={cn("text-right font-medium", (pa === "excessivo" || pa === "negativo" || pa === "overlap" || pa === "sem_janela") && "text-destructive")}>
                       <div className="flex items-center justify-end gap-1.5">
                         {alerts.filter(Boolean).map((a) => (
                           <span
