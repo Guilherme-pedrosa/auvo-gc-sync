@@ -406,7 +406,7 @@ export default function HorasTrabalhadasTab({
       : Number(cfg.valor_hora || 0);
 
     // 2. Emergencial detectado por taskType do Auvo configurado em task_types_emergenciais.
-    //    Regra: NÃO substitui — usa MAX(taxa_fixa, horas × rate aplicável).
+    //    Regra: SUBSTITUI — visita emergencial é taxa fixa por OS, não soma horas×rate.
     const taskTypeIds = String(cfg.task_types_emergenciais || "")
       .split(",")
       .map((s) => s.trim())
@@ -416,7 +416,7 @@ export default function HorasTrabalhadasTab({
 
     const valorPorHora = horas * rate;
     if (isEmergencial && cfg.aplica_taxa_emergencial) {
-      return Math.max(Number(cfg.taxa_fixa_emergencial || 0), valorPorHora);
+      return Number(cfg.taxa_fixa_emergencial || 0);
     }
     return valorPorHora;
   };
