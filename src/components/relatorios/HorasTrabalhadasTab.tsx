@@ -788,6 +788,13 @@ export default function HorasTrabalhadasTab({
     return out;
   }, [clienteSummary, tasksWithAlertas]);
 
+  const osRejeitadas = useMemo(() => {
+    const out: TaskDetail[] = [];
+    for (const c of clienteSummary) for (const t of c.tasks) if (t.statusRevisao === "rejeitada") out.push(t);
+    out.sort((a, b) => (b.data_tarefa || "").localeCompare(a.data_tarefa || ""));
+    return out;
+  }, [clienteSummary]);
+
   // Persistir uma decisão de revisão
   const persistRevisao = async (
     task: TaskDetail,
