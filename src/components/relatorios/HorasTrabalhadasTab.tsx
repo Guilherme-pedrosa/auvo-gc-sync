@@ -55,6 +55,45 @@ const CHART_COLORS = [
   "hsl(330, 65%, 50%)", "hsl(45, 85%, 50%)",
 ];
 
+type AlertaTipo =
+  | "negativo"
+  | "curto"
+  | "longo"
+  | "excessivo"
+  | "overlap"
+  | "sem_checkout"
+  | null;
+
+const ALERTA_LABEL: Record<Exclude<AlertaTipo, null>, string> = {
+  negativo: "Duração negativa",
+  curto: "OS curta",
+  longo: "OS longa",
+  excessivo: "OS excessiva",
+  overlap: "Sobreposição",
+  sem_checkout: "Sem checkout",
+};
+
+// Severidade: maior número = mais grave.
+const ALERTA_SEVERIDADE: Record<Exclude<AlertaTipo, null>, number> = {
+  excessivo: 6,
+  negativo: 5,
+  overlap: 4,
+  sem_checkout: 3,
+  curto: 2,
+  longo: 1,
+};
+
+const piorAlerta = (lst: AlertaTipo[]): AlertaTipo => {
+  let best: AlertaTipo = null;
+  let bestScore = -1;
+  for (const a of lst) {
+    if (!a) continue;
+    const s = ALERTA_SEVERIDADE[a];
+    if (s > bestScore) { best = a; bestScore = s; }
+  }
+  return best;
+};
+
 export default function HorasTrabalhadasTab({
   data, isLoading, allClientes, allTecnicos, allTiposTarefa,
   grupos, membros, valorHoraConfigs,
