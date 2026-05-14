@@ -549,13 +549,16 @@ export default function HorasTrabalhadasTab({
       const revisao = revisoesMap?.get(taskId) || null;
       const status = getStatusRevisao(alertas, revisao);
 
-      const horasOriginais = getTaskHoras(t);
+      // Horas faturáveis = duração da Auvo PRO-RATEADA pela janela do período
+      const horasOriginais = getTaskHorasNoPeriodo(t);
+      const tsIniRef = obterInicioTask(t);
+      const dataRefPeriodo = tsIniRef ? tsIniRef.toISOString().slice(0, 10) : (t.data_tarefa || t.data_conclusao);
       const horasEfetivas =
         revisao?.status_revisao === "ajustada" && revisao.horas_ajustadas != null
           ? Number(revisao.horas_ajustadas)
           : horasOriginais;
-      const valorEfetivo = getTaskValor(t, tec, horasEfetivas);
-      const valorPotencial = getTaskValor(t, tec, horasOriginais);
+      const valorEfetivo = getTaskValor(t, tec, horasEfetivas, dataRefPeriodo);
+      const valorPotencial = getTaskValor(t, tec, horasOriginais, dataRefPeriodo);
       const deslocamento = Number(t.duracao_deslocamento) || 0;
 
       let entry = map.get(tec);
