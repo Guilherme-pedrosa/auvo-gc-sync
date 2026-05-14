@@ -456,18 +456,13 @@ export default function RelatoriosPage() {
               {syncing ? "Sincronizando..." : "Sincronizar"}
             </Button>
           </div>
-          {syncing && (
-            <div className="w-64 space-y-1.5">
-              <Progress value={syncProgress} className="h-2" />
+          {(syncing || syncStatusMessage) && (
+            <div className="w-72 space-y-1.5">
+              <Progress value={syncing ? syncProgress : 100} className="h-2" />
               <p className="text-[11px] text-muted-foreground text-right">
-                {syncStatusMessage || SYNC_STEPS[syncStep]?.label}
+                {syncStatusMessage || SYNC_STEPS[syncStep]?.label || "Iniciando..."}
               </p>
             </div>
-          )}
-          {!syncing && syncStatusMessage && (
-            <p className="max-w-80 text-[11px] text-muted-foreground text-right">
-              {syncStatusMessage}
-            </p>
           )}
         </div>
       </div>
