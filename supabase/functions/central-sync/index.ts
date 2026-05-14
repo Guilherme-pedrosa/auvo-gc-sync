@@ -1295,6 +1295,8 @@ async function runCentralSync(body: CentralSyncBody = {}) {
       const displacementStartRaw = String(task.displacementStart || task.displacement_start || snapshot?.displacementStart || "").trim();
       // checkInDate: try list endpoint first, then snapshot
       const checkInDateRaw = String(task.checkInDate || task.checkinDate || snapshot?.checkInDate || "").trim();
+      const checkInIso = normalizeDateTime(checkInDateRaw);
+      const checkOutIso = normalizeDateTime(task.checkOutDate || task.checkoutDate || snapshot?.checkOutDate);
 
       // Calculate displacement duration (displacementStart → checkInDate) in decimal hours
       let duracaoDeslocamento: number | null = null;
@@ -1336,6 +1338,8 @@ async function runCentralSync(body: CentralSyncBody = {}) {
         tecnico_id: String(task.idUserTo || ""),
         data_tarefa: normalizeDate(task.taskDate) || gcOs?.gc_os_data || null,
         data_conclusao: checkOutDateRaw || null,
+        check_in_iso: checkInIso,
+        check_out_iso: checkOutIso,
         deslocamento_inicio: displacementStartRaw || null,
         duracao_deslocamento: duracaoDeslocamento,
         status_auvo: (() => {
