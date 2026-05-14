@@ -869,7 +869,7 @@ export default function HorasTrabalhadasTab({
     const detalheHeader = [
       "Cliente", "Cliente GC", "Data Conclusão", "Data Tarefa", "ID Tarefa", "Cód. OS GC",
       "Técnico", "Tipo de Tarefa", "Equipamento", "ID/Série",
-      "Status Auvo", "Início", "Fim", "Horas", "Deslocamento (h)", "Valor (R$)",
+      "Status Auvo", "Alertas", "Início", "Fim", "Horas", "Deslocamento (h)", "Valor (R$)",
       "Orientação", "Pendência", "Relatório Auvo", "Tarefa Auvo", "Pesquisa Satisfação", "Link OS GC",
     ];
     const detalheRows: any[] = [
@@ -880,6 +880,8 @@ export default function HorasTrabalhadasTab({
     ];
     for (const c of clienteSummary) {
       for (const t of c.tasks) {
+        const alerts = (tasksWithAlertas.get(t.auvo_task_id) || []).filter(Boolean) as Exclude<AlertaTipo, null>[];
+        const alertasStr = alerts.map((a) => ALERTA_LABEL[a]).join(", ");
         detalheRows.push([
           c.cliente,
           t.cliente_gc,
@@ -892,6 +894,7 @@ export default function HorasTrabalhadasTab({
           t.equipamento,
           t.equipamento_id_serie,
           t.status_auvo,
+          alertasStr,
           t.hora_inicio,
           t.hora_fim,
           Number(t.horas.toFixed(2)),
@@ -910,7 +913,7 @@ export default function HorasTrabalhadasTab({
     wsDet["!cols"] = [
       { wch: 30 }, { wch: 30 }, { wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 12 },
       { wch: 22 }, { wch: 28 }, { wch: 30 }, { wch: 16 },
-      { wch: 14 }, { wch: 8 }, { wch: 8 }, { wch: 8 }, { wch: 14 }, { wch: 12 },
+      { wch: 14 }, { wch: 28 }, { wch: 8 }, { wch: 8 }, { wch: 8 }, { wch: 14 }, { wch: 12 },
       { wch: 40 }, { wch: 40 }, { wch: 40 }, { wch: 40 }, { wch: 40 }, { wch: 40 },
     ];
     XLSX.utils.book_append_sheet(wb, wsDet, "Detalhe OS");
