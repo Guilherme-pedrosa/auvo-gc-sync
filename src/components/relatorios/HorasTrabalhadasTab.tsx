@@ -105,7 +105,8 @@ export default function HorasTrabalhadasTab({
     return map;
   }, [grupos, membros]);
 
-  // Filter data - use data_conclusao (checkout date) for monthly accounting, fallback to data_tarefa
+  // Filter data by Auvo task date. This report answers "hours worked in the selected period";
+  // using checkout date hides tasks whose hours were registered but checkout fell outside/was missing.
   const filtered = useMemo(() => {
     const fromStr = format(dateFrom, "yyyy-MM-dd");
     const toStr = format(dateTo, "yyyy-MM-dd");
@@ -113,8 +114,7 @@ export default function HorasTrabalhadasTab({
     return data.filter((t) => {
       if (!t.hora_inicio && !t.hora_fim && t.duracao_decimal == null) return false;
 
-      // Use completion date (data_conclusao) when available, otherwise data_tarefa
-      const dateRef = t.data_conclusao || t.data_tarefa;
+      const dateRef = t.data_tarefa;
       if (!dateRef) return false;
       if (dateRef < fromStr || dateRef > toStr) return false;
 
@@ -312,7 +312,7 @@ export default function HorasTrabalhadasTab({
     for (const e of map.values()) {
       e.tasks.sort((a, b) =>
         Number(isExcessiveTask(b.horas)) - Number(isExcessiveTask(a.horas)) ||
-        (a.data_conclusao || a.data_tarefa).localeCompare(b.data_conclusao || b.data_tarefa) ||
+        (a.data_tarefa || a.data_conclusao || "").localeCompare(b.data_tarefa || b.data_conclusao || "") ||
         (a.hora_inicio || "").localeCompare(b.hora_inicio || "")
       );
     }
@@ -537,7 +537,7 @@ export default function HorasTrabalhadasTab({
       curY += 6;
 
       const osRows = c.tasks.map((t) => [
-        t.data_conclusao || t.data_tarefa,
+        t.data_tarefa || t.data_conclusao,
         `#${t.auvo_task_id}`,
         t.tecnico,
         t.descricao,
@@ -1179,8 +1179,8 @@ export default function HorasTrabalhadasTab({
                 {clienteSelecionado?.tasks.map((t, idx) => (
                   <TableRow key={`${t.auvo_task_id}-${idx}`} className={cn("text-xs", isExcessiveTask(t.horas) && "bg-destructive/5") }>
                     <TableCell className="font-mono whitespace-nowrap">
-                      {(t.data_conclusao || t.data_tarefa)
-                        ? format(new Date((t.data_conclusao || t.data_tarefa) + "T12:00:00"), "dd/MM/yy")
+                      {(t.data_tarefa || t.data_conclusao)
+                        ? format(new Date((t.data_tarefa || t.data_conclusao) + "T12:00:00"), "dd/MM/yy")
                         : "—"}
                     </TableCell>
                     <TableCell className="font-mono">#{t.auvo_task_id}</TableCell>
