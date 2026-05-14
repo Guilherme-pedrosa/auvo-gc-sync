@@ -649,6 +649,21 @@ async function runCentralSync(body: CentralSyncBody = {}) {
 
     console.log(`[central-sync] GC carregado: Orç: ${Object.keys(gcOrcMap).length}, OS: ${Object.keys(gcOsMap).length}`);
 
+    // Kick off Auvo fetch IN PARALLEL with the heavy GC refresh blocks below.
+    // Auvo is network-bound and the refresh is DB-bound, so they overlap nicely.
+    // Without this, the function frequently hits IDLE_TIMEOUT before Auvo even starts,
+    // breaking the Horas Trabalhadas tab (which depends on Auvo data).
+    const isFastGcOnly = isGcSolicitadasOnly && body?.fast === true;
+    const auvoTasksPromise: Promise<any[]> = isFastGcOnly
+      ? Promise.resolve([])
+      : fetchAuvoTasks(bearerToken, startDate, endDate).catch((err) => {
+          console.error(`[central-sync] Auvo fetch falhou: ${(err as Error).message}`);
+          return [];
+        });
+    if (!isFastGcOnly) {
+      console.log(`[central-sync] Auvo fetch iniciado em paralelo: ${startDate} → ${endDate}`);
+    }
+
     // Remove vínculos antigos/duplicados de OS que não aparecem mais pelo campo 73343.
     // A chave válida é sempre tarefa Auvo + OS GC vinda de gcOsResult.byTaskIdAll (somente 73343).
     const validOsTaskKeys = new Set<string>();
