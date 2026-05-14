@@ -2148,8 +2148,8 @@ function ReviewBoxDialog(props: {
                 const isAct = actionTaskId === t.auvo_task_id;
                 const rev = t.revisao;
                 return (
-                  <>
-                    <TableRow key={t.auvo_task_id} className="text-xs align-top">
+                  <React.Fragment key={t.auvo_task_id}>
+                    <TableRow className="text-xs align-top">
                       <TableCell>
                         {pior && (
                           <Badge variant={(pior === "excessivo" || pior === "negativo" || pior === "overlap" || pior === "sem_janela") ? "destructive" : "outline"} className="text-[9px]">
@@ -2236,7 +2236,7 @@ function ReviewBoxDialog(props: {
                       </TableCell>
                     </TableRow>
                     {isAct && (
-                      <TableRow key={`${t.auvo_task_id}-act`}>
+                      <TableRow>
                         <TableCell colSpan={11} className="bg-muted/40 p-3">
                           <div className="flex flex-col gap-2">
                             <div className="text-xs font-medium">
@@ -2264,7 +2264,7 @@ function ReviewBoxDialog(props: {
                         </TableCell>
                       </TableRow>
                     )}
-                  </>
+                  </React.Fragment>
                 );
               })}
             </TableBody>
