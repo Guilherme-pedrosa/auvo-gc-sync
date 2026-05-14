@@ -649,6 +649,21 @@ async function runCentralSync(body: CentralSyncBody = {}) {
 
     console.log(`[central-sync] GC carregado: Orç: ${Object.keys(gcOrcMap).length}, OS: ${Object.keys(gcOsMap).length}`);
 
+    // Kick off Auvo fetch IN PARALLEL with the heavy GC refresh blocks below.
+    // Auvo is network-bound and the refresh is DB-bound, so they overlap nicely.
+    // Without this, the function frequently hits IDLE_TIMEOUT before Auvo even starts,
+    // breaking the Horas Trabalhadas tab (which depends on Auvo data).
+    const isFastGcOnly = situacaoIds.length > 0 && body?.fast === true;
+    const auvoTasksPromise: Promise<any[]> = isFastGcOnly
+      ? Promise.resolve([])
+      : fetchAuvoTasks(bearerToken, startDate, endDate).catch((err) => {
+          console.error(`[central-sync] Auvo fetch falhou: ${(err as Error).message}`);
+          return [];
+        });
+    if (!isFastGcOnly) {
+      console.log(`[central-sync] Auvo fetch iniciado em paralelo: ${startDate} → ${endDate}`);
+    }
+
     // Remove vínculos antigos/duplicados de OS que não aparecem mais pelo campo 73343.
     // A chave válida é sempre tarefa Auvo + OS GC vinda de gcOsResult.byTaskIdAll (somente 73343).
     const validOsTaskKeys = new Set<string>();
@@ -702,52 +717,62 @@ async function runCentralSync(body: CentralSyncBody = {}) {
     {
       let lateLinkOS = 0;
       let lateLinkOrc = 0;
-      for (const [taskId, osPayload] of Object.entries(gcOsResult.byTaskId)) {
-        if (!taskId || !osPayload?.gc_os_id) continue;
-        const { count } = await sbClient
-          .from("tarefas_central")
-          .update({
-            gc_os_id: osPayload.gc_os_id,
-            gc_os_codigo: osPayload.gc_os_codigo,
-            gc_os_cliente: osPayload.gc_os_cliente,
-            gc_os_situacao: osPayload.gc_os_situacao,
-            gc_os_situacao_id: osPayload.gc_os_situacao_id,
-            gc_os_cor_situacao: osPayload.gc_os_cor_situacao,
-            gc_os_valor_total: osPayload.gc_os_valor_total,
-            gc_os_vendedor: osPayload.gc_os_vendedor,
-            gc_os_data: osPayload.gc_os_data,
-            gc_os_data_saida: osPayload.gc_os_data_saida,
-            gc_os_link: osPayload.gc_os_link,
-            gc_os_tarefa_exec: osPayload.gc_os_tarefa_exec || null,
-            os_realizada: true,
-            atualizado_em: new Date().toISOString(),
-          }, { count: "exact" })
-          .eq("auvo_task_id", taskId)
-          .is("gc_os_id", null);
-        lateLinkOS += count || 0;
+      // Run updates in parallel chunks to avoid IDLE_TIMEOUT.
+      const osLinkEntries = Object.entries(gcOsResult.byTaskId).filter(([t, p]: any) => t && p?.gc_os_id);
+      const PARALLEL_LINK = 20;
+      for (let i = 0; i < osLinkEntries.length; i += PARALLEL_LINK) {
+        const slice = osLinkEntries.slice(i, i + PARALLEL_LINK);
+        const results = await Promise.all(slice.map(async ([taskId, osPayload]: any) => {
+          const { count } = await sbClient
+            .from("tarefas_central")
+            .update({
+              gc_os_id: osPayload.gc_os_id,
+              gc_os_codigo: osPayload.gc_os_codigo,
+              gc_os_cliente: osPayload.gc_os_cliente,
+              gc_os_situacao: osPayload.gc_os_situacao,
+              gc_os_situacao_id: osPayload.gc_os_situacao_id,
+              gc_os_cor_situacao: osPayload.gc_os_cor_situacao,
+              gc_os_valor_total: osPayload.gc_os_valor_total,
+              gc_os_vendedor: osPayload.gc_os_vendedor,
+              gc_os_data: osPayload.gc_os_data,
+              gc_os_data_saida: osPayload.gc_os_data_saida,
+              gc_os_link: osPayload.gc_os_link,
+              gc_os_tarefa_exec: osPayload.gc_os_tarefa_exec || null,
+              os_realizada: true,
+              atualizado_em: new Date().toISOString(),
+            }, { count: "exact" })
+            .eq("auvo_task_id", taskId)
+            .is("gc_os_id", null);
+          return count || 0;
+        }));
+        lateLinkOS += results.reduce((s, c) => s + c, 0);
       }
 
-      for (const [taskId, orcPayload] of Object.entries(gcOrcResult.byTaskId)) {
-        if (!taskId || !orcPayload?.gc_orcamento_id) continue;
-        const { count } = await sbClient
-          .from("tarefas_central")
-          .update({
-            gc_orcamento_id: orcPayload.gc_orcamento_id,
-            gc_orcamento_codigo: orcPayload.gc_orcamento_codigo,
-            gc_orc_cliente: orcPayload.gc_orc_cliente,
-            gc_orc_situacao: orcPayload.gc_orc_situacao,
-            gc_orc_situacao_id: orcPayload.gc_orc_situacao_id,
-            gc_orc_cor_situacao: orcPayload.gc_orc_cor_situacao,
-            gc_orc_valor_total: orcPayload.gc_orc_valor_total,
-            gc_orc_vendedor: orcPayload.gc_orc_vendedor,
-            gc_orc_data: orcPayload.gc_orc_data,
-            gc_orc_link: orcPayload.gc_orc_link,
-            orcamento_realizado: true,
-            atualizado_em: new Date().toISOString(),
-          }, { count: "exact" })
-          .eq("auvo_task_id", taskId)
-          .is("gc_orcamento_id", null);
-        lateLinkOrc += count || 0;
+      const orcLinkEntries = Object.entries(gcOrcResult.byTaskId).filter(([t, p]: any) => t && p?.gc_orcamento_id);
+      for (let i = 0; i < orcLinkEntries.length; i += PARALLEL_LINK) {
+        const slice = orcLinkEntries.slice(i, i + PARALLEL_LINK);
+        const results = await Promise.all(slice.map(async ([taskId, orcPayload]: any) => {
+          const { count } = await sbClient
+            .from("tarefas_central")
+            .update({
+              gc_orcamento_id: orcPayload.gc_orcamento_id,
+              gc_orcamento_codigo: orcPayload.gc_orcamento_codigo,
+              gc_orc_cliente: orcPayload.gc_orc_cliente,
+              gc_orc_situacao: orcPayload.gc_orc_situacao,
+              gc_orc_situacao_id: orcPayload.gc_orc_situacao_id,
+              gc_orc_cor_situacao: orcPayload.gc_orc_cor_situacao,
+              gc_orc_valor_total: orcPayload.gc_orc_valor_total,
+              gc_orc_vendedor: orcPayload.gc_orc_vendedor,
+              gc_orc_data: orcPayload.gc_orc_data,
+              gc_orc_link: orcPayload.gc_orc_link,
+              orcamento_realizado: true,
+              atualizado_em: new Date().toISOString(),
+            }, { count: "exact" })
+            .eq("auvo_task_id", taskId)
+            .is("gc_orcamento_id", null);
+          return count || 0;
+        }));
+        lateLinkOrc += results.reduce((s, c) => s + c, 0);
       }
 
       if (lateLinkOS > 0 || lateLinkOrc > 0) {
@@ -851,10 +876,14 @@ async function runCentralSync(body: CentralSyncBody = {}) {
       }
 
       let globalOsUpdated = 0;
-      for (const osId of dbOsIds) {
-        const fresh = allGcOsById[osId];
-        if (!fresh) continue;
-        const updatePayload: any = {
+      const osIdsArray = Array.from(dbOsIds);
+      const PARALLEL_REFRESH = 20;
+      for (let i = 0; i < osIdsArray.length; i += PARALLEL_REFRESH) {
+        const slice = osIdsArray.slice(i, i + PARALLEL_REFRESH);
+        const results = await Promise.all(slice.map(async (osId) => {
+          const fresh = allGcOsById[osId];
+          if (!fresh) return 0;
+          const updatePayload: any = {
             gc_os_situacao: fresh.gc_os_situacao,
             gc_os_situacao_id: fresh.gc_os_situacao_id,
             gc_os_cor_situacao: fresh.gc_os_cor_situacao,
@@ -864,31 +893,37 @@ async function runCentralSync(body: CentralSyncBody = {}) {
             gc_os_data_saida: fresh.gc_os_data_saida,
             atualizado_em: new Date().toISOString(),
           };
-        if (fresh.gc_os_tarefa_exec) {
-          updatePayload.gc_os_tarefa_exec = fresh.gc_os_tarefa_exec;
-        }
-        const { count } = await sbClient
-          .from("tarefas_central")
-          .update(updatePayload, { count: "exact" })
-          .eq("gc_os_id", osId)
-          .neq("gc_os_situacao", fresh.gc_os_situacao);
-        globalOsUpdated += count || 0;
+          if (fresh.gc_os_tarefa_exec) {
+            updatePayload.gc_os_tarefa_exec = fresh.gc_os_tarefa_exec;
+          }
+          const { count } = await sbClient
+            .from("tarefas_central")
+            .update(updatePayload, { count: "exact" })
+            .eq("gc_os_id", osId)
+            .neq("gc_os_situacao", fresh.gc_os_situacao);
+          return count || 0;
+        }));
+        globalOsUpdated += results.reduce((s, c) => s + c, 0);
       }
 
       // Second pass: fill gc_os_tarefa_exec for OS that have it null but GC has it
       let execFilled = 0;
-      for (const osId of dbOsIds) {
-        const fresh = allGcOsById[osId];
-        if (!fresh?.gc_os_tarefa_exec) continue;
-        const { count } = await sbClient
-          .from("tarefas_central")
-          .update({
-            gc_os_tarefa_exec: fresh.gc_os_tarefa_exec,
-            atualizado_em: new Date().toISOString(),
-          }, { count: "exact" })
-          .eq("gc_os_id", osId)
-          .is("gc_os_tarefa_exec", null);
-        execFilled += count || 0;
+      for (let i = 0; i < osIdsArray.length; i += PARALLEL_REFRESH) {
+        const slice = osIdsArray.slice(i, i + PARALLEL_REFRESH);
+        const results = await Promise.all(slice.map(async (osId) => {
+          const fresh = allGcOsById[osId];
+          if (!fresh?.gc_os_tarefa_exec) return 0;
+          const { count } = await sbClient
+            .from("tarefas_central")
+            .update({
+              gc_os_tarefa_exec: fresh.gc_os_tarefa_exec,
+              atualizado_em: new Date().toISOString(),
+            }, { count: "exact" })
+            .eq("gc_os_id", osId)
+            .is("gc_os_tarefa_exec", null);
+          return count || 0;
+        }));
+        execFilled += results.reduce((s, c) => s + c, 0);
       }
       if (execFilled > 0) {
         console.log(`[central-sync] gc_os_tarefa_exec preenchido para ${execFilled} registros`);
@@ -912,31 +947,36 @@ async function runCentralSync(body: CentralSyncBody = {}) {
       }
 
       let globalOrcUpdated = 0;
-      for (const orcId of dbOrcIds) {
-        const fresh = allGcOrcById[orcId];
-        if (!fresh) continue;
-        const { count } = await sbClient
-          .from("tarefas_central")
-          .update({
-            gc_orc_situacao: fresh.gc_orc_situacao,
-            gc_orc_situacao_id: fresh.gc_orc_situacao_id,
-            gc_orc_cor_situacao: fresh.gc_orc_cor_situacao,
-            gc_orc_valor_total: fresh.gc_orc_valor_total,
-            gc_orc_vendedor: fresh.gc_orc_vendedor,
-            gc_orc_cliente: fresh.gc_orc_cliente,
-            atualizado_em: new Date().toISOString(),
-          }, { count: "exact" })
-          .eq("gc_orcamento_id", orcId)
-          .neq("gc_orc_situacao", fresh.gc_orc_situacao);
-        globalOrcUpdated += count || 0;
+      const orcIdsArray = Array.from(dbOrcIds);
+      for (let i = 0; i < orcIdsArray.length; i += PARALLEL_REFRESH) {
+        const slice = orcIdsArray.slice(i, i + PARALLEL_REFRESH);
+        const results = await Promise.all(slice.map(async (orcId) => {
+          const fresh = allGcOrcById[orcId];
+          if (!fresh) return 0;
+          const { count } = await sbClient
+            .from("tarefas_central")
+            .update({
+              gc_orc_situacao: fresh.gc_orc_situacao,
+              gc_orc_situacao_id: fresh.gc_orc_situacao_id,
+              gc_orc_cor_situacao: fresh.gc_orc_cor_situacao,
+              gc_orc_valor_total: fresh.gc_orc_valor_total,
+              gc_orc_vendedor: fresh.gc_orc_vendedor,
+              gc_orc_cliente: fresh.gc_orc_cliente,
+              atualizado_em: new Date().toISOString(),
+            }, { count: "exact" })
+            .eq("gc_orcamento_id", orcId)
+            .neq("gc_orc_situacao", fresh.gc_orc_situacao);
+          return count || 0;
+        }));
+        globalOrcUpdated += results.reduce((s, c) => s + c, 0);
       }
 
       console.log(`[central-sync] Atualização global de status: ${globalOsUpdated} OS e ${globalOrcUpdated} orçamentos atualizados no banco`);
     }
 
-    // Step 3: NOW fetch Auvo tasks (heavy, can take minutes)
-    console.log(`[central-sync] Iniciando busca Auvo: ${startDate} → ${endDate}`);
-    const auvoTasks = await fetchAuvoTasks(bearerToken, startDate, endDate);
+    // Step 3: NOW await Auvo (kicked off earlier in parallel with GC refresh)
+    console.log(`[central-sync] Aguardando Auvo (iniciado em paralelo): ${startDate} → ${endDate}`);
+    const auvoTasks = await auvoTasksPromise;
     console.log(`[central-sync] Auvo: ${auvoTasks.length} tarefas`);
 
     if (auvoTasks.length === 0) {
