@@ -591,6 +591,7 @@ type CentralSyncBody = {
   situacao_ids?: unknown;
   wait?: unknown;
   fast?: unknown;
+  lite?: unknown;
 };
 
 async function runCentralSync(body: CentralSyncBody = {}) {
@@ -654,6 +655,7 @@ async function runCentralSync(body: CentralSyncBody = {}) {
     // Without this, the function frequently hits IDLE_TIMEOUT before Auvo even starts,
     // breaking the Horas Trabalhadas tab (which depends on Auvo data).
     const isFastGcOnly = situacaoIds.length > 0 && body?.fast === true;
+    const isLiteSync = body?.lite === true;
     const auvoTasksPromise: Promise<any[]> = isFastGcOnly
       ? Promise.resolve([])
       : fetchAuvoTasks(bearerToken, startDate, endDate).catch((err) => {
@@ -1003,8 +1005,9 @@ async function runCentralSync(body: CentralSyncBody = {}) {
     for (const task of auvoTasks) {
       const taskId = String(task.taskID || "").trim();
       if (!taskId || seenCandidates.has(taskId)) continue;
-      // Fetch snapshot for ALL tasks to get accurate hora_fim (taskEndDate), address, displacement
-      candidateTaskIds.push(taskId);
+      // Full snapshots are expensive and can make manual report syncs time out.
+      // Lite sync persists the list data first and skips detail-only enrichment.
+      if (!isLiteSync) candidateTaskIds.push(taskId);
       seenCandidates.add(taskId);
     }
 
@@ -1269,13 +1272,13 @@ async function runCentralSync(body: CentralSyncBody = {}) {
 
       const gcOrc = gcOrcMap[taskId] || null;
       let fallbackSnapshot = taskSnapshotById.get(taskId) || null;
-      if (!fallbackSnapshot) {
+      if (!fallbackSnapshot && !isLiteSync) {
         fallbackSnapshot = await fetchAuvoTaskSnapshot(bearerToken, taskId);
         if (fallbackSnapshot) taskSnapshotById.set(taskId, fallbackSnapshot);
       }
 
       // Skip tasks that don't exist in Auvo (deleted/ghost tasks)
-      if (!fallbackSnapshot && !isGcSolicitadasOnly) {
+      if (!fallbackSnapshot && !isGcSolicitadasOnly && !isLiteSync) {
         console.log(`[central-sync] Ignorando taskId ${taskId} (OS ${gcOs?.gc_os_codigo}): tarefa não encontrada no Auvo (possível fantasma)`);
         continue;
       }
@@ -1347,7 +1350,7 @@ async function runCentralSync(body: CentralSyncBody = {}) {
       .lte("data_tarefa", endDate)
       .or("endereco.is.null,endereco.eq.");
 
-    if (rowsMissingAddress?.length) {
+    if (!isLiteSync && rowsMissingAddress?.length) {
       const patchIds = rowsMissingAddress
         .map((r) => String((r as any).auvo_task_id || "").trim())
         .filter((id) => id && !existingTaskIds.has(id));
@@ -1668,7 +1671,7 @@ Deno.serve(async (req) => {
   try {
     const body = await req.json().catch(() => ({}));
 
-    if (body?.wait === true || body?.fast === true) {
+    if (body?.wait === true || body?.fast === true || body?.lite === true) {
       const result = await runCentralSync(body);
       return new Response(JSON.stringify(result), {
         status: 200,

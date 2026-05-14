@@ -173,7 +173,9 @@ export default function RelatoriosPage() {
     try {
       const syncSolicitadasOnly = !!situacaoIds?.length;
       const { data, error } = await supabase.functions.invoke("central-sync", {
-        body: { start_date: syncFrom, end_date: syncTo, situacao_ids: situacaoIds || [], fast: syncSolicitadasOnly },
+        body: syncSolicitadasOnly
+          ? { start_date: syncFrom, end_date: syncTo, situacao_ids: situacaoIds || [], fast: true }
+          : { start_date: syncFrom, end_date: syncTo, situacao_ids: [], wait: true, lite: true },
       });
       if (error) throw error;
       if (data?.success === false) throw new Error(data.error || "Erro na sincronização");
