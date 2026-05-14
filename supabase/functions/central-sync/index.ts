@@ -657,6 +657,8 @@ async function runReportsOnlySync(sbClient: any, bearerToken: string, startDate:
 
     const checkOutDateRaw = String(task.checkOutDate || task.checkoutDate || task.taskEndDate || task.taskEndDateTime || "").trim();
     const checkInDateRaw = String(task.checkInDate || task.checkinDate || "").trim();
+    const checkInIso = normalizeDateTime(checkInDateRaw);
+    const checkOutIso = normalizeDateTime(checkOutDateRaw);
     const hasCheckOut = !!task.checkOut || !!checkOutDateRaw;
     // Preferimos sempre o horário REAL de check-in/check-out (Auvo monitoring)
     // sobre o horário AGENDADO (startTime/endTime). Isso evita falsos alertas
@@ -682,6 +684,8 @@ async function runReportsOnlySync(sbClient: any, bearerToken: string, startDate:
       tecnico_id: String(task.idUserTo || ""),
       data_tarefa: normalizeDate(task.taskDate) || null,
       data_conclusao: normalizeDate(checkOutDateRaw) || null,
+      check_in_iso: checkInIso,
+      check_out_iso: checkOutIso,
       deslocamento_inicio: String(task.displacementStart || task.displacement_start || "").trim() || null,
       duracao_deslocamento: null,
       task_type_id: (() => {
