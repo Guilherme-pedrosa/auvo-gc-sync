@@ -16,6 +16,7 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { AlertTriangle } from "lucide-react";
+import { Switch } from "@/components/ui/switch";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip,
   ResponsiveContainer, Cell,
@@ -66,6 +67,7 @@ export default function HorasTrabalhadasTab({
   const [allTiposSelected, setAllTiposSelected] = useState(true);
   const [searchTipo, setSearchTipo] = useState("");
   const [clienteModal, setClienteModal] = useState<string | null>(null);
+  const [somenteFaturaveis, setSomenteFaturaveis] = useState(true);
 
   // Get task hours: use Auvo's durationDecimal (already deducts pauses)
   const getTaskHoras = (t: any): number => {
@@ -105,16 +107,34 @@ export default function HorasTrabalhadasTab({
     return map;
   }, [grupos, membros]);
 
-  // Filter data by Auvo task date. This report answers "hours worked in the selected period";
-  // using checkout date hides tasks whose hours were registered but checkout fell outside/was missing.
+  // Holiday helper — Brazilian fixed national holidays. Treats holidays as FDS for billing.
+  const isFeriadoBR = (dateStr: string): boolean => {
+    if (!dateStr) return false;
+    const md = dateStr.slice(5, 10); // mm-dd
+    return ["01-01", "04-21", "05-01", "09-07", "10-12", "11-02", "11-15", "12-25"].includes(md);
+  };
+
+  // Filter data by execution date (data_conclusao when present, fallback to data_tarefa).
   const filtered = useMemo(() => {
     const fromStr = format(dateFrom, "yyyy-MM-dd");
     const toStr = format(dateTo, "yyyy-MM-dd");
 
-    return data.filter((t) => {
+    // Defensive dedup by auvo_task_id (edge function already dedups, but in case
+    // duplicates slip through pagination we keep the most recently updated row).
+    const byId = new Map<string, any>();
+    for (const t of data) {
+      if (!t?.auvo_task_id) continue;
+      const existing = byId.get(t.auvo_task_id);
+      if (!existing || (t.atualizado_em || "") > (existing.atualizado_em || "")) {
+        byId.set(t.auvo_task_id, t);
+      }
+    }
+    const dedupedData = Array.from(byId.values());
+
+    return dedupedData.filter((t) => {
       if (!t.hora_inicio && !t.hora_fim && t.duracao_decimal == null) return false;
 
-      const dateRef = t.data_tarefa;
+      const dateRef = t.data_conclusao || t.data_tarefa;
       if (!dateRef) return false;
       if (dateRef < fromStr || dateRef > toStr) return false;
 
@@ -124,6 +144,8 @@ export default function HorasTrabalhadasTab({
       const dur = Number(t.duracao_decimal) || 0;
       const hasHoras = dur > 0 || (!!t.hora_inicio && !!t.hora_fim);
       if (!t.check_out && !hasHoras) return false;
+
+      if (somenteFaturaveis && t.status_auvo !== "Finalizada") return false;
 
       if (filterTecnico !== "todos" && t.tecnico !== filterTecnico) return false;
 
@@ -148,7 +170,31 @@ export default function HorasTrabalhadasTab({
 
       return true;
     });
-  }, [data, dateFrom, dateTo, filterTecnico, filterCliente, filterGrupo, selectedTipos, allTiposSelected, grupoClienteMap]);
+  }, [data, dateFrom, dateTo, filterTecnico, filterCliente, filterGrupo, selectedTipos, allTiposSelected, grupoClienteMap, somenteFaturaveis]);
+
+  // Tasks suppressed by the "apenas finalizadas" toggle — exposed for the
+  // "OS Pendentes" Excel sheet and to help the financial team chase pending closures.
+  const pendentesTasks = useMemo(() => {
+    if (!somenteFaturaveis) return [] as any[];
+    const fromStr = format(dateFrom, "yyyy-MM-dd");
+    const toStr = format(dateTo, "yyyy-MM-dd");
+    const byId = new Map<string, any>();
+    for (const t of data) {
+      if (!t?.auvo_task_id) continue;
+      const existing = byId.get(t.auvo_task_id);
+      if (!existing || (t.atualizado_em || "") > (existing.atualizado_em || "")) {
+        byId.set(t.auvo_task_id, t);
+      }
+    }
+    return Array.from(byId.values()).filter((t) => {
+      const dateRef = t.data_conclusao || t.data_tarefa;
+      if (!dateRef || dateRef < fromStr || dateRef > toStr) return false;
+      const dur = Number(t.duracao_decimal) || 0;
+      const hasHoras = dur > 0 || (!!t.hora_inicio && !!t.hora_fim);
+      if (!t.check_out && !hasHoras) return false;
+      return t.status_auvo !== "Finalizada";
+    });
+  }, [data, dateFrom, dateTo, somenteFaturaveis]);
 
   // When filtering by group, resolve which side (Auvo or GC) matched the group
   // so the display name comes from the group member, not the unrelated other side.
@@ -168,17 +214,15 @@ export default function HorasTrabalhadasTab({
     return t.cliente || t.gc_os_cliente || "Sem cliente";
   };
 
-  // Build hourly rate lookup - checks both auvo and gc client names against group members
-  const getHourlyRate = (tecnico: string, clienteAuvo: string, clienteGc?: string): number => {
-    // First check direct client config (try both names)
+  // Build hourly config lookup — returns the full config row so callers can read
+  // valor_hora_fds / taxa_fixa_emergencial / task_types_emergenciais.
+  const getHourlyConfig = (tecnico: string, clienteAuvo: string, clienteGc?: string): any | null => {
     for (const nome of [clienteAuvo, clienteGc].filter(Boolean)) {
       const directConfig = valorHoraConfigs.find(
         (c: any) => c.tecnico_nome === tecnico && c.tipo_referencia === "cliente" && c.referencia_nome === nome
       );
-      if (directConfig) return Number(directConfig.valor_hora) || 0;
+      if (directConfig) return directConfig;
     }
-
-    // Check group config - match if either client name is in the group (normalized)
     for (const g of grupos) {
       const gClientes = grupoClienteMap.get(g.id) || [];
       const nAuvo = normalizeName(clienteAuvo);
@@ -191,19 +235,43 @@ export default function HorasTrabalhadasTab({
         const groupConfig = valorHoraConfigs.find(
           (c: any) => c.tecnico_nome === tecnico && c.tipo_referencia === "grupo" && c.grupo_id === g.id
         );
-        if (groupConfig) return Number(groupConfig.valor_hora) || 0;
+        if (groupConfig) return groupConfig;
       }
     }
-    return 0;
+    return null;
   };
 
-  // Calculate task value: only hourly rate (no GC values)
+  // Calculate task value applying FDS/holiday rate and emergencial flat fee.
   const getTaskValor = (t: any, tecnico: string): number => {
     const horas = getTaskHoras(t);
     const cliente = t.cliente || t.gc_os_cliente || "";
     const clienteGc = t.gc_os_cliente || "";
-    const rate = getHourlyRate(tecnico, cliente, clienteGc);
-    return horas * rate;
+    const cfg = getHourlyConfig(tecnico, cliente, clienteGc);
+    if (!cfg) return 0;
+
+    // 1. FDS or feriado nacional → use weekend rate when defined
+    const dateRef = t.data_conclusao || t.data_tarefa;
+    let isFds = false;
+    if (dateRef) {
+      const dow = new Date(dateRef + "T12:00:00").getDay();
+      isFds = dow === 0 || dow === 6 || isFeriadoBR(dateRef);
+    }
+    const rate = isFds && cfg.valor_hora_fds != null && Number(cfg.valor_hora_fds) > 0
+      ? Number(cfg.valor_hora_fds)
+      : Number(cfg.valor_hora || 0);
+
+    // 2. Emergencial detected by Auvo taskType ID match against config list
+    const taskTypeIds = String(cfg.task_types_emergenciais || "")
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean);
+    const taskTypeId = String(t.task_type_id ?? t.taskType ?? "").trim();
+    const isEmergencial = taskTypeIds.length > 0 && taskTypeIds.includes(taskTypeId);
+    const taxaFixa = isEmergencial && cfg.aplica_taxa_emergencial
+      ? Number(cfg.taxa_fixa_emergencial || 0)
+      : 0;
+
+    return horas * rate + taxaFixa;
   };
 
   // Summary by technician
@@ -590,6 +658,7 @@ export default function HorasTrabalhadasTab({
     const resumoClienteRows: any[] = [
       ["Relatório de Horas Trabalhadas — Resumo por Cliente"],
       [`Período: ${periodoStr}`],
+      [`Critério: ${somenteFaturaveis ? "Apenas Finalizadas" : "Todas as OS"}`],
       [],
       ["Cliente", "Tarefas", "Horas", "Deslocamento (h)", "Técnicos", "Valor (R$)"],
       ...clienteSummary.map((c) => [
@@ -674,6 +743,42 @@ export default function HorasTrabalhadasTab({
     const wsTec = XLSX.utils.aoa_to_sheet(tecRows);
     wsTec["!cols"] = [{ wch: 28 }, { wch: 10 }, { wch: 10 }, { wch: 16 }, { wch: 14 }];
     XLSX.utils.book_append_sheet(wb, wsTec, "Resumo Técnico");
+
+    // Sheet 4: OS Pendentes (apenas quando o toggle está ligado)
+    if (somenteFaturaveis && pendentesTasks.length > 0) {
+      const pendHeader = [
+        "Cliente", "Cliente GC", "Data Tarefa", "Data Conclusão",
+        "Técnico", "Status Auvo", "Horas", "Valor Potencial (R$)",
+        "Link Auvo", "Link OS GC",
+      ];
+      const pendRows: any[] = [
+        ["OS Pendentes — filtradas pelo toggle 'Apenas Finalizadas'"],
+        [`Período: ${periodoStr}`],
+        [],
+        pendHeader,
+      ];
+      for (const t of pendentesTasks) {
+        const tec = t.tecnico || "Desconhecido";
+        pendRows.push([
+          t.cliente || t.gc_os_cliente || "",
+          t.gc_os_cliente || "",
+          t.data_tarefa || "",
+          t.data_conclusao || "",
+          tec,
+          t.status_auvo || "",
+          Number((Number(t.duracao_decimal) || 0).toFixed(2)),
+          Number(getTaskValor(t, tec).toFixed(2)),
+          t.auvo_link || t.auvo_task_url || "",
+          t.gc_os_link || "",
+        ]);
+      }
+      const wsPend = XLSX.utils.aoa_to_sheet(pendRows);
+      wsPend["!cols"] = [
+        { wch: 30 }, { wch: 30 }, { wch: 12 }, { wch: 14 }, { wch: 22 },
+        { wch: 14 }, { wch: 8 }, { wch: 18 }, { wch: 40 }, { wch: 40 },
+      ];
+      XLSX.utils.book_append_sheet(wb, wsPend, "OS Pendentes");
+    }
 
     XLSX.writeFile(wb, `horas-trabalhadas-${format(dateFrom, "yyyyMMdd")}-${format(dateTo, "yyyyMMdd")}.xlsx`);
   };
@@ -875,6 +980,18 @@ export default function HorasTrabalhadasTab({
               <FileSpreadsheet className="h-3.5 w-3.5" />
               Exportar Excel
             </Button>
+
+            {/* Toggle: apenas OS finalizadas (faturáveis) */}
+            <div className="flex items-center gap-2 ml-auto pl-2 border-l">
+              <Switch
+                id="somente-faturaveis"
+                checked={somenteFaturaveis}
+                onCheckedChange={setSomenteFaturaveis}
+              />
+              <Label htmlFor="somente-faturaveis" className="text-xs cursor-pointer">
+                Apenas OS finalizadas (faturáveis)
+              </Label>
+            </div>
           </div>
         </CardContent>
       </Card>
@@ -915,7 +1032,14 @@ export default function HorasTrabalhadasTab({
         </Card>
         <Card>
           <CardHeader className="py-3 px-4">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Valor Total</CardTitle>
+            <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
+              Valor Total
+              {somenteFaturaveis && (
+                <Badge variant="secondary" className="text-[9px] font-normal">
+                  Critério: apenas finalizadas
+                </Badge>
+              )}
+            </CardTitle>
           </CardHeader>
           <CardContent className="px-4 pb-3">
             <p className="text-2xl font-bold text-foreground">

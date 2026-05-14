@@ -678,34 +678,46 @@ export type Database = {
       }
       valor_hora_config: {
         Row: {
+          aplica_taxa_emergencial: boolean | null
           atualizado_em: string
           criado_em: string
           grupo_id: string | null
           id: string
           referencia_nome: string
+          task_types_emergenciais: string | null
+          taxa_fixa_emergencial: number | null
           tecnico_nome: string
           tipo_referencia: string
           valor_hora: number
+          valor_hora_fds: number | null
         }
         Insert: {
+          aplica_taxa_emergencial?: boolean | null
           atualizado_em?: string
           criado_em?: string
           grupo_id?: string | null
           id?: string
           referencia_nome: string
+          task_types_emergenciais?: string | null
+          taxa_fixa_emergencial?: number | null
           tecnico_nome: string
           tipo_referencia?: string
           valor_hora?: number
+          valor_hora_fds?: number | null
         }
         Update: {
+          aplica_taxa_emergencial?: boolean | null
           atualizado_em?: string
           criado_em?: string
           grupo_id?: string | null
           id?: string
           referencia_nome?: string
+          task_types_emergenciais?: string | null
+          taxa_fixa_emergencial?: number | null
           tecnico_nome?: string
           tipo_referencia?: string
           valor_hora?: number
+          valor_hora_fds?: number | null
         }
         Relationships: [
           {

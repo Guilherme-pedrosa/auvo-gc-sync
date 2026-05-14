@@ -12,6 +12,7 @@ import {
 } from "@/components/ui/table";
 import { toast } from "sonner";
 import { Plus, Trash2, Users, DollarSign, Loader2 } from "lucide-react";
+import { Switch } from "@/components/ui/switch";
 
 interface Props {
   grupos: any[];
@@ -35,6 +36,10 @@ export default function ConfiguracoesTab({ grupos, membros, allClientes, allTecn
   const [vhRefNome, setVhRefNome] = useState("");
   const [vhGrupoId, setVhGrupoId] = useState("");
   const [vhValor, setVhValor] = useState("");
+  const [vhValorFds, setVhValorFds] = useState("");
+  const [vhAplicaEmerg, setVhAplicaEmerg] = useState(false);
+  const [vhTaxaEmerg, setVhTaxaEmerg] = useState("");
+  const [vhTaskTypesEmerg, setVhTaskTypesEmerg] = useState("201522");
   const [addingVH, setAddingVH] = useState(false);
 
   const handleAddGrupo = async () => {
@@ -86,6 +91,10 @@ export default function ConfiguracoesTab({ grupos, membros, allClientes, allTecn
       referencia_nome: vhTipoRef === "cliente" ? vhRefNome : grupos.find((g: any) => g.id === vhGrupoId)?.nome || "",
       grupo_id: vhTipoRef === "grupo" ? vhGrupoId : null,
       valor_hora: parseFloat(vhValor),
+      valor_hora_fds: vhValorFds ? parseFloat(vhValorFds) : null,
+      aplica_taxa_emergencial: vhAplicaEmerg,
+      taxa_fixa_emergencial: vhAplicaEmerg && vhTaxaEmerg ? parseFloat(vhTaxaEmerg) : null,
+      task_types_emergenciais: (vhTaskTypesEmerg || "").trim() || null,
     };
 
     const { error } = await supabase.from("valor_hora_config").insert(insert);
@@ -93,6 +102,8 @@ export default function ConfiguracoesTab({ grupos, membros, allClientes, allTecn
     if (error) { toast.error("Erro: " + error.message); return; }
     toast.success("Valor/hora cadastrado!");
     setVhValor("");
+    setVhValorFds("");
+    setVhTaxaEmerg("");
     onRefresh();
   };
 
@@ -256,6 +267,46 @@ export default function ConfiguracoesTab({ grupos, membros, allClientes, allTecn
                 onChange={(e) => setVhValor(e.target.value)}
                 placeholder="0.00"
                 className="w-[100px] h-9 text-xs"
+              />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">R$/hora FDS</Label>
+              <Input
+                type="number"
+                value={vhValorFds}
+                onChange={(e) => setVhValorFds(e.target.value)}
+                placeholder="opcional"
+                className="w-[100px] h-9 text-xs"
+              />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">Aplica taxa emerg.</Label>
+              <div className="h-9 flex items-center">
+                <Switch checked={vhAplicaEmerg} onCheckedChange={setVhAplicaEmerg} />
+              </div>
+            </div>
+            {vhAplicaEmerg && (
+              <div className="space-y-1">
+                <Label className="text-xs">Taxa fixa emerg. (R$)</Label>
+                <Input
+                  type="number"
+                  value={vhTaxaEmerg}
+                  onChange={(e) => setVhTaxaEmerg(e.target.value)}
+                  placeholder="0.00"
+                  className="w-[110px] h-9 text-xs"
+                />
+              </div>
+            )}
+            <div className="space-y-1">
+              <Label className="text-xs" title="IDs de tipo de tarefa do Auvo, separados por vírgula">
+                IDs taskType emerg.
+              </Label>
+              <Input
+                type="text"
+                value={vhTaskTypesEmerg}
+                onChange={(e) => setVhTaskTypesEmerg(e.target.value)}
+                placeholder="ex.: 201522,201523"
+                className="w-[160px] h-9 text-xs"
               />
             </div>
             <Button size="sm" onClick={handleAddValorHora} disabled={addingVH}>
