@@ -1612,7 +1612,7 @@ export default function HorasTrabalhadasTab({
       )}
 
       {/* Summary cards */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-4">
         <Card>
           <CardHeader className="py-3 px-4">
             <CardTitle className="text-sm font-medium text-muted-foreground">Horas Trabalhadas</CardTitle>
@@ -1681,6 +1681,27 @@ export default function HorasTrabalhadasTab({
             {totalRejeitado.tarefas > 0 && (
               <p className="text-[10px] text-destructive mt-2 flex items-center gap-1">
                 <Inbox className="h-3 w-3" /> Clique para gerenciar
+              </p>
+            )}
+          </CardContent>
+        </Card>
+        <Card className="border-l-4 border-l-orange-500">
+          <CardHeader className="py-3 px-4">
+            <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-1.5">
+              <Siren className="h-4 w-4 text-orange-600" />
+              Visitas Emergenciais
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="px-4 pb-3">
+            <p className="text-2xl font-bold text-foreground">
+              {totalEmergencial.valor.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
+            </p>
+            <p className="text-xs text-muted-foreground mt-1">
+              {totalEmergencial.tarefas} OS · {totalEmergencial.horas.toFixed(1)}h
+            </p>
+            {totalEmergencial.tarefas === 0 && (
+              <p className="text-[10px] text-muted-foreground mt-2">
+                Nenhuma no período
               </p>
             )}
           </CardContent>
