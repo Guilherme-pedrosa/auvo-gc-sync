@@ -1502,7 +1502,7 @@ export default function HorasTrabalhadasTab({
       )}
 
       {/* Summary cards */}
-      <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         <Card>
           <CardHeader className="py-3 px-4">
             <CardTitle className="text-sm font-medium text-muted-foreground">Horas Trabalhadas</CardTitle>
@@ -1511,45 +1511,51 @@ export default function HorasTrabalhadasTab({
             <p className="text-2xl font-bold text-foreground">{totalHoras.toFixed(1)}h</p>
           </CardContent>
         </Card>
-        <Card>
+        <Card className="border-l-4 border-l-emerald-600">
           <CardHeader className="py-3 px-4">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Horas Deslocamento</CardTitle>
-          </CardHeader>
-          <CardContent className="px-4 pb-3">
-            <p className="text-2xl font-bold text-foreground">{totalDeslocamento.toFixed(1)}h</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="py-3 px-4">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Tarefas Executadas</CardTitle>
-          </CardHeader>
-          <CardContent className="px-4 pb-3">
-            <p className="text-2xl font-bold text-foreground">{totalTarefas}</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="py-3 px-4">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Técnicos</CardTitle>
-          </CardHeader>
-          <CardContent className="px-4 pb-3">
-            <p className="text-2xl font-bold text-foreground">{tecnicoSummary.length}</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="py-3 px-4">
-            <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
-              Valor Total
-              {somenteFaturaveis && (
-                <Badge variant="secondary" className="text-[9px] font-normal">
-                  Critério: apenas finalizadas
-                </Badge>
-              )}
+            <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-1.5">
+              <ShieldCheck className="h-4 w-4 text-emerald-600" />
+              Faturável Aprovado
             </CardTitle>
           </CardHeader>
           <CardContent className="px-4 pb-3">
             <p className="text-2xl font-bold text-foreground">
-              {totalValor > 0 ? totalValor.toLocaleString("pt-BR", { style: "currency", currency: "BRL" }) : "—"}
+              {totalValor.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
             </p>
+            <p className="text-xs text-muted-foreground mt-1">{totalTarefas} OS · {totalHoras.toFixed(1)}h</p>
+          </CardContent>
+        </Card>
+        <Card className="border-l-4 border-l-yellow-500">
+          <CardHeader className="py-3 px-4">
+            <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-1.5">
+              <AlertTriangle className="h-4 w-4 text-yellow-600" />
+              Em Revisão
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="px-4 pb-3">
+            <p className="text-2xl font-bold text-foreground">
+              {totalEmRevisao.valor.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
+            </p>
+            <p className="text-xs text-muted-foreground mt-1">{totalEmRevisao.tarefas} OS · {totalEmRevisao.horas.toFixed(1)}h</p>
+            {totalEmRevisao.tarefas > 0 && (
+              <Button size="sm" variant="outline" className="mt-2 h-7 text-xs gap-1.5" onClick={() => setReviewModalOpen(true)}>
+                <Inbox className="h-3.5 w-3.5" /> Abrir caixa
+              </Button>
+            )}
+          </CardContent>
+        </Card>
+        <Card className="border-l-4 border-l-destructive">
+          <CardHeader className="py-3 px-4">
+            <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-1.5">
+              <ShieldX className="h-4 w-4 text-destructive" />
+              Rejeitado
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="px-4 pb-3">
+            <p className="text-2xl font-bold text-foreground">
+              {totalRejeitado.valor.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
+            </p>
+            <p className="text-xs text-muted-foreground mt-1">{totalRejeitado.tarefas} OS · {totalRejeitado.horas.toFixed(1)}h</p>
           </CardContent>
         </Card>
       </div>
