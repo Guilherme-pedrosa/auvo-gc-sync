@@ -973,6 +973,54 @@ export default function HorasTrabalhadasTab({
       XLSX.utils.book_append_sheet(wb, wsPend, "OS Pendentes");
     }
 
+    // Sheet: Inconsistências (apenas OS com algum alerta)
+    if (alertCounts.total > 0) {
+      const incHeader = [
+        "Gravidade", "Alertas", "Cliente", "Técnico", "Data",
+        "ID Tarefa", "Cód. OS GC", "Horas", "Status Auvo",
+        "Link Auvo", "Link OS GC",
+      ];
+      const incRows: any[] = [
+        ["Inconsistências detectadas — OS com algum alerta no período"],
+        [`Período: ${periodoStr}`],
+        [],
+        incHeader,
+      ];
+      const flat: { sev: number; t: TaskDetail; alerts: Exclude<AlertaTipo, null>[]; cliente: string }[] = [];
+      for (const c of clienteSummary) {
+        for (const t of c.tasks) {
+          const alerts = (tasksWithAlertas.get(t.auvo_task_id) || []).filter(Boolean) as Exclude<AlertaTipo, null>[];
+          if (alerts.length === 0) continue;
+          const sev = Math.max(...alerts.map((a) => ALERTA_SEVERIDADE[a]));
+          flat.push({ sev, t, alerts, cliente: c.cliente });
+        }
+      }
+      flat.sort((a, b) => b.sev - a.sev);
+      for (const r of flat) {
+        const pa = piorAlerta(r.alerts);
+        incRows.push([
+          pa ? ALERTA_LABEL[pa] : "",
+          r.alerts.map((a) => ALERTA_LABEL[a]).join(", "),
+          r.cliente,
+          r.t.tecnico,
+          r.t.data_tarefa || r.t.data_conclusao,
+          r.t.auvo_task_id,
+          r.t.gc_os_codigo,
+          Number(r.t.horas.toFixed(2)),
+          r.t.status_auvo,
+          r.t.auvo_link || r.t.auvo_task_url || "",
+          r.t.gc_os_link || "",
+        ]);
+      }
+      const wsInc = XLSX.utils.aoa_to_sheet(incRows);
+      wsInc["!cols"] = [
+        { wch: 16 }, { wch: 36 }, { wch: 30 }, { wch: 22 }, { wch: 12 },
+        { wch: 12 }, { wch: 12 }, { wch: 8 }, { wch: 14 },
+        { wch: 40 }, { wch: 40 },
+      ];
+      XLSX.utils.book_append_sheet(wb, wsInc, "Inconsistências");
+    }
+
     XLSX.writeFile(wb, `horas-trabalhadas-${format(dateFrom, "yyyyMMdd")}-${format(dateTo, "yyyyMMdd")}.xlsx`);
   };
 
