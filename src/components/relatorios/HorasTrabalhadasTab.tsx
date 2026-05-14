@@ -17,7 +17,7 @@ import {
 } from "@/components/ui/table";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { AlertTriangle, AlertCircle, Ban, Clock, X, ShieldCheck, ShieldX, Pencil, Inbox } from "lucide-react";
+import { AlertTriangle, AlertCircle, Ban, Clock, X, ShieldCheck, ShieldX, Pencil, Inbox, Siren } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip,
@@ -421,6 +421,23 @@ export default function HorasTrabalhadasTab({
     return valorPorHora;
   };
 
+  // Detect emergencial task: type id configured in task_types_emergenciais
+  // for this technician/client/group. Independent of value calculation so the UI
+  // can flag it visually even when aplica_taxa_emergencial is off.
+  const isTaskEmergencial = (t: any, tecnico: string): boolean => {
+    const cliente = t.cliente || t.gc_os_cliente || "";
+    const clienteGc = t.gc_os_cliente || "";
+    const cfg = getHourlyConfig(tecnico, cliente, clienteGc);
+    if (!cfg) return false;
+    const ids = String(cfg.task_types_emergenciais || "")
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean);
+    if (!ids.length) return false;
+    const taskTypeId = String(t.task_type_id ?? t.taskType ?? "").trim();
+    return ids.includes(taskTypeId);
+  };
+
   // Summary by technician
   type TaskDetail = {
     auvo_task_id: string;
@@ -448,6 +465,7 @@ export default function HorasTrabalhadasTab({
     statusRevisao: StatusRevisao;
     horasOriginais: number;
     valorPotencial: number;
+    emergencial: boolean;
     revisao: any | null;
   };
   type ClienteData = {
@@ -640,6 +658,7 @@ export default function HorasTrabalhadasTab({
         statusRevisao: status,
         horasOriginais,
         valorPotencial,
+        emergencial: isTaskEmergencial(t, tec),
         revisao,
       });
     }
@@ -773,6 +792,25 @@ export default function HorasTrabalhadasTab({
   const totalRejeitado = useMemo(() => tecnicoSummary.reduce((acc, t) => ({
     horas: acc.horas + t.horasRejeitado, valor: acc.valor + t.valorRejeitado, tarefas: acc.tarefas + t.tarefasRejeitado,
   }), { horas: 0, valor: 0, tarefas: 0 }), [tecnicoSummary]);
+
+  // Visitas emergenciais (qualquer status de revisão; usa valorPotencial p/ não esconder em revisão)
+  const totalEmergencial = useMemo(() => {
+    const seen = new Set<string>();
+    let tarefas = 0, horas = 0, valor = 0;
+    for (const tec of tecnicoSummary) {
+      for (const cd of tec.byCliente.values()) {
+        for (const tk of cd.tasks) {
+          if (!tk.emergencial) continue;
+          if (seen.has(tk.auvo_task_id)) continue;
+          seen.add(tk.auvo_task_id);
+          tarefas++;
+          horas += tk.horasOriginais;
+          valor += tk.statusRevisao === "faturavel" ? tk.valor : tk.valorPotencial;
+        }
+      }
+    }
+    return { tarefas, horas, valor };
+  }, [tecnicoSummary]);
 
   // Lista plana de OS em revisão (para o modal)
   const osEmRevisao = useMemo(() => {
