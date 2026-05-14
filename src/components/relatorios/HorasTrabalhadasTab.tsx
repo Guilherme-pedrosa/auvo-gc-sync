@@ -324,18 +324,20 @@ export default function HorasTrabalhadasTab({
       ? Number(cfg.valor_hora_fds)
       : Number(cfg.valor_hora || 0);
 
-    // 2. Emergencial detected by Auvo taskType ID match against config list
+    // 2. Emergencial detectado por taskType do Auvo configurado em task_types_emergenciais.
+    //    Regra: NÃO substitui — usa MAX(taxa_fixa, horas × rate aplicável).
     const taskTypeIds = String(cfg.task_types_emergenciais || "")
       .split(",")
       .map((s) => s.trim())
       .filter(Boolean);
     const taskTypeId = String(t.task_type_id ?? t.taskType ?? "").trim();
     const isEmergencial = taskTypeIds.length > 0 && taskTypeIds.includes(taskTypeId);
-    const taxaFixa = isEmergencial && cfg.aplica_taxa_emergencial
-      ? Number(cfg.taxa_fixa_emergencial || 0)
-      : 0;
 
-    return horas * rate + taxaFixa;
+    const valorPorHora = horas * rate;
+    if (isEmergencial && cfg.aplica_taxa_emergencial) {
+      return Math.max(Number(cfg.taxa_fixa_emergencial || 0), valorPorHora);
+    }
+    return valorPorHora;
   };
 
   // Summary by technician
