@@ -1400,26 +1400,35 @@ export default function HorasTrabalhadasTab({
                                       <TableCell>
                                         <div className="flex flex-wrap gap-1">
                                           {cd.tasks
+                                            .filter((task) => taskMatchesAlertFilter(task.auvo_task_id))
                                             .sort((a, b) => a.data_tarefa.localeCompare(b.data_tarefa) || a.hora_inicio.localeCompare(b.hora_inicio))
-                                            .map((task, idx) => (
-                                              <Badge
-                                                key={idx}
-                                                variant={task.horas < 0 ? "destructive" : "outline"}
-                                                className={cn(
-                                                  "text-[9px] font-mono gap-1",
-                                                  task.horas < 0 && "animate-pulse"
-                                                )}
-                                              >
-                                                #{task.auvo_task_id}
-                                                {task.hora_inicio && task.hora_fim
-                                                  ? ` ${task.hora_inicio}–${task.hora_fim}`
-                                                  : task.hora_inicio
-                                                  ? ` ${task.hora_inicio}`
-                                                  : ""}
-                                                {" · "}{task.horas.toFixed(1)}h
-                                                {task.horas < 0 && " ⚠️"}
-                                              </Badge>
-                                            ))}
+                                            .map((task, idx) => {
+                                              const alerts = tasksWithAlertas.get(task.auvo_task_id) || [];
+                                              const pa = piorAlerta(alerts);
+                                              const isRed = pa === "excessivo" || pa === "negativo" || pa === "overlap" || pa === "sem_checkout";
+                                              return (
+                                                <Badge
+                                                  key={idx}
+                                                  variant={isRed ? "destructive" : "outline"}
+                                                  className={cn(
+                                                    "text-[9px] font-mono gap-1",
+                                                    pa === "curto" && "border-yellow-500 text-yellow-900 dark:text-yellow-100 bg-yellow-100/50 dark:bg-yellow-900/20",
+                                                    pa === "longo" && "border-blue-500 text-blue-900 dark:text-blue-100 bg-blue-100/50 dark:bg-blue-900/20",
+                                                    task.horas < 0 && "animate-pulse"
+                                                  )}
+                                                  title={pa ? alertaTooltip(pa, task) : undefined}
+                                                >
+                                                  {alertaIcone(pa)}
+                                                  #{task.auvo_task_id}
+                                                  {task.hora_inicio && task.hora_fim
+                                                    ? ` ${task.hora_inicio}–${task.hora_fim}`
+                                                    : task.hora_inicio
+                                                    ? ` ${task.hora_inicio}`
+                                                    : ""}
+                                                  {" · "}{task.horas.toFixed(1)}h
+                                                </Badge>
+                                              );
+                                            })}
                                         </div>
                                       </TableCell>
                                       <TableCell className="text-center">{cd.tarefas}</TableCell>
