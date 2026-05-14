@@ -1186,6 +1186,70 @@ export default function HorasTrabalhadasTab({
         </CardContent>
       </Card>
 
+      {/* Chip de filtro de alerta ativo */}
+      {alertFilter && (
+        <div className="flex items-center gap-2 text-xs">
+          <Badge variant="secondary" className="gap-1.5">
+            Filtrado por: {ALERTA_LABEL[alertFilter]}
+            <button
+              onClick={() => setAlertFilter(null)}
+              className="hover:text-destructive ml-0.5"
+              title="Limpar filtro"
+            >
+              <X className="h-3 w-3" />
+            </button>
+          </Badge>
+          <span className="text-muted-foreground">
+            Detalhes filtrados — totais e gráficos não são afetados.
+          </span>
+        </div>
+      )}
+
+      {/* Card de inconsistências detectadas */}
+      {alertCounts.total > 0 && (
+        <Card className="border-l-4 border-l-yellow-500">
+          <CardHeader className="py-3 px-4">
+            <CardTitle className="text-sm flex items-center gap-2">
+              <AlertTriangle className="h-4 w-4 text-yellow-600" />
+              Inconsistências detectadas no período
+              <Badge variant="secondary" className="ml-1">{alertCounts.total}</Badge>
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="px-4 pb-4">
+            <div className="grid grid-cols-2 md:grid-cols-6 gap-2 text-xs">
+              {(Object.keys(alertCounts.counts) as Array<Exclude<AlertaTipo, null>>).map((k) => {
+                const n = alertCounts.counts[k];
+                if (n === 0) return null;
+                const isRed = k === "excessivo" || k === "negativo" || k === "overlap" || k === "sem_checkout";
+                const colorCls =
+                  k === "curto" ? "border-yellow-500 hover:bg-yellow-100/50 dark:hover:bg-yellow-900/20 text-yellow-900 dark:text-yellow-100"
+                  : k === "longo" ? "border-blue-500 hover:bg-blue-100/50 dark:hover:bg-blue-900/20 text-blue-900 dark:text-blue-100"
+                  : "border-destructive hover:bg-destructive/10 text-destructive";
+                const isActive = alertFilter === k;
+                return (
+                  <button
+                    key={k}
+                    onClick={() => setAlertFilter(isActive ? null : k)}
+                    className={cn(
+                      "border rounded-md px-3 py-2 flex items-center justify-between gap-2 transition-colors text-left",
+                      colorCls,
+                      isActive && "ring-2 ring-offset-1 ring-current"
+                    )}
+                    title={`Clique para filtrar apenas OS com '${ALERTA_LABEL[k]}'`}
+                  >
+                    <span className="flex items-center gap-1.5">
+                      {alertaIcone(k)}
+                      {ALERTA_LABEL[k]}
+                    </span>
+                    <span className="font-bold">{n}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Summary cards */}
       <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
         <Card>
