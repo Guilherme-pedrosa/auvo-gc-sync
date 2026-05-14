@@ -1597,7 +1597,13 @@ export default function HorasTrabalhadasTab({
             <p className="text-xs text-muted-foreground mt-1">{totalTarefas} OS · {totalHoras.toFixed(1)}h</p>
           </CardContent>
         </Card>
-        <Card className="border-l-4 border-l-yellow-500">
+        <Card
+          className={cn(
+            "border-l-4 border-l-yellow-500",
+            totalEmRevisao.tarefas > 0 && "cursor-pointer hover:bg-muted/50 transition-colors",
+          )}
+          onClick={() => { if (totalEmRevisao.tarefas > 0) setReviewModalOpen(true); }}
+        >
           <CardHeader className="py-3 px-4">
             <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-1.5">
               <AlertTriangle className="h-4 w-4 text-yellow-600" />
@@ -1610,13 +1616,19 @@ export default function HorasTrabalhadasTab({
             </p>
             <p className="text-xs text-muted-foreground mt-1">{totalEmRevisao.tarefas} OS · {totalEmRevisao.horas.toFixed(1)}h</p>
             {totalEmRevisao.tarefas > 0 && (
-              <Button size="sm" variant="outline" className="mt-2 h-7 text-xs gap-1.5" onClick={() => setReviewModalOpen(true)}>
-                <Inbox className="h-3.5 w-3.5" /> Abrir caixa
-              </Button>
+              <p className="text-[10px] text-yellow-700 dark:text-yellow-300 mt-2 flex items-center gap-1">
+                <Inbox className="h-3 w-3" /> Clique para revisar
+              </p>
             )}
           </CardContent>
         </Card>
-        <Card className="border-l-4 border-l-destructive">
+        <Card
+          className={cn(
+            "border-l-4 border-l-destructive",
+            totalRejeitado.tarefas > 0 && "cursor-pointer hover:bg-muted/50 transition-colors",
+          )}
+          onClick={() => { if (totalRejeitado.tarefas > 0) setRejectedModalOpen(true); }}
+        >
           <CardHeader className="py-3 px-4">
             <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-1.5">
               <ShieldX className="h-4 w-4 text-destructive" />
@@ -1628,6 +1640,11 @@ export default function HorasTrabalhadasTab({
               {totalRejeitado.valor.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
             </p>
             <p className="text-xs text-muted-foreground mt-1">{totalRejeitado.tarefas} OS · {totalRejeitado.horas.toFixed(1)}h</p>
+            {totalRejeitado.tarefas > 0 && (
+              <p className="text-[10px] text-destructive mt-2 flex items-center gap-1">
+                <Inbox className="h-3 w-3" /> Clique para gerenciar
+              </p>
+            )}
           </CardContent>
         </Card>
       </div>
