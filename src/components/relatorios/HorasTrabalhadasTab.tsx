@@ -700,6 +700,63 @@ export default function HorasTrabalhadasTab({
   const totalDeslocamento = useMemo(() => tecnicoSummary.reduce((s, t) => s + t.deslocamento, 0), [tecnicoSummary]);
   const totalValor = useMemo(() => tecnicoSummary.reduce((s, t) => s + t.valor, 0), [tecnicoSummary]);
   const totalTarefas = useMemo(() => tecnicoSummary.reduce((s, t) => s + t.tarefas, 0), [tecnicoSummary]);
+  const totalEmRevisao = useMemo(() => tecnicoSummary.reduce((acc, t) => ({
+    horas: acc.horas + t.horasEmRevisao, valor: acc.valor + t.valorEmRevisao, tarefas: acc.tarefas + t.tarefasEmRevisao,
+  }), { horas: 0, valor: 0, tarefas: 0 }), [tecnicoSummary]);
+  const totalRejeitado = useMemo(() => tecnicoSummary.reduce((acc, t) => ({
+    horas: acc.horas + t.horasRejeitado, valor: acc.valor + t.valorRejeitado, tarefas: acc.tarefas + t.tarefasRejeitado,
+  }), { horas: 0, valor: 0, tarefas: 0 }), [tecnicoSummary]);
+
+  // Lista plana de OS em revisão (para o modal)
+  const osEmRevisao = useMemo(() => {
+    const out: TaskDetail[] = [];
+    for (const c of clienteSummary) for (const t of c.tasks) if (t.statusRevisao === "em_revisao") out.push(t);
+    out.sort((a, b) => {
+      const aA = tasksWithAlertas.get(a.auvo_task_id) || [];
+      const bA = tasksWithAlertas.get(b.auvo_task_id) || [];
+      const aS = Math.max(0, ...aA.filter(Boolean).map((x) => ALERTA_SEVERIDADE[x as Exclude<AlertaTipo, null>]));
+      const bS = Math.max(0, ...bA.filter(Boolean).map((x) => ALERTA_SEVERIDADE[x as Exclude<AlertaTipo, null>]));
+      return bS - aS;
+    });
+    return out;
+  }, [clienteSummary, tasksWithAlertas]);
+
+  // Persistir uma decisão de revisão
+  const persistRevisao = async (
+    task: TaskDetail,
+    status: "aprovada" | "rejeitada" | "ajustada",
+    justificativa: string,
+    horasAjustadas?: number,
+  ) => {
+    if ((status === "rejeitada" || status === "ajustada") && !justificativa.trim()) {
+      toast.error("Justificativa obrigatória para Rejeitar/Ajustar");
+      return false;
+    }
+    const { data: { user } } = await supabase.auth.getUser();
+    const decididoPor = user?.email || user?.id || "desconhecido";
+    const alertas = (tasksWithAlertas.get(task.auvo_task_id) || []).filter(Boolean);
+    const payload: any = {
+      auvo_task_id: task.auvo_task_id,
+      status_revisao: status,
+      alertas_motivo: JSON.stringify(alertas),
+      horas_originais: task.horasOriginais,
+      horas_ajustadas: status === "ajustada" ? Number(horasAjustadas) : null,
+      justificativa: justificativa.trim() || null,
+      decidido_por: decididoPor,
+      decidido_em: new Date().toISOString(),
+    };
+    const { error } = await (supabase as any)
+      .from("os_revisao")
+      .upsert(payload, { onConflict: "auvo_task_id" });
+    if (error) { toast.error("Erro ao salvar: " + error.message); return false; }
+    toast.success(
+      status === "aprovada" ? "OS aprovada — somou ao faturável"
+      : status === "rejeitada" ? "OS rejeitada — fora do faturável"
+      : "OS ajustada e aprovada"
+    );
+    queryClient.invalidateQueries({ queryKey: ["os-revisao"] });
+    return true;
+  };
 
   // Chart data
   const chartData = useMemo(() =>
