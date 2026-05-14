@@ -343,16 +343,14 @@ export default function HorasTrabalhadasTab({
         if (!matched) return false;
       }
 
-      if (!allTiposSelected && selectedTipos.size > 0) {
-        const tipoTarefaKey = getTipoKey(t.descricao);
-        if (!selectedTipos.has(tipoTarefaKey)) return false;
-      }
+      const taskTypeKey = String(t.task_type_id ?? "").trim() || "SEM_ID";
+      if (!tipoIncluido(taskTypeKey)) return false;
 
       return true;
     });
   }, [
     data, periodoStart, periodoEnd, filterTecnico, filterCliente,
-    filterGrupo, selectedTipos, allTiposSelected, grupoClienteMap,
+    filterGrupo, tiposSelecionados, grupoClienteMap,
   ]);
 
   // When filtering by group, resolve which side (Auvo or GC) matched the group
@@ -953,25 +951,34 @@ export default function HorasTrabalhadasTab({
     }));
   }, [filtered]);
 
-  const tipoOptions = useMemo(() => {
-    const map = new Map<string, string>();
-
-    for (const tipo of allTiposTarefa) {
-      const label = getTipoLabel(tipo);
-      const key = getTipoKey(label);
-      if (!map.has(key)) map.set(key, label);
+  // Tipos de tarefa disponíveis no dataset atual (pré-filtro de tipo),
+  // agrupados por task_type_id com nome amigável e contagem de OS.
+  const tiposDisponiveis = useMemo(() => {
+    // Dedup por auvo_task_id para casar com a fonte do filtered.
+    const byId = new Map<string, any>();
+    for (const t of data) {
+      if (!t?.auvo_task_id) continue;
+      const existing = byId.get(t.auvo_task_id);
+      if (!existing || (t.atualizado_em || "") > (existing.atualizado_em || "")) {
+        byId.set(t.auvo_task_id, t);
+      }
     }
-
-    return Array.from(map.entries())
-      .map(([key, label]) => ({ key, label }))
-      .sort((a, b) => a.label.localeCompare(b.label, "pt-BR"));
-  }, [allTiposTarefa]);
-
-  const filteredTipos = useMemo(() => {
-    if (!searchTipo) return tipoOptions;
-    const term = searchTipo.toLocaleLowerCase("pt-BR");
-    return tipoOptions.filter((t) => t.label.toLocaleLowerCase("pt-BR").includes(term));
-  }, [tipoOptions, searchTipo]);
+    const tiposMap = new Map<string, { id: string; nome: string; qtd: number }>();
+    for (const t of byId.values()) {
+      const id = String(t.task_type_id ?? "").trim() || "SEM_ID";
+      const nomeBruto = (t.descricao || "").toString().trim();
+      const nome = nomeBruto || (id === "SEM_ID" ? "Sem tipo definido" : `Tipo ${id}`);
+      const atual = tiposMap.get(id);
+      if (atual) {
+        atual.qtd += 1;
+        // Mantém o nome mais comum / primeiro não-vazio.
+        if (!atual.nome || atual.nome.startsWith("Tipo ")) atual.nome = nome;
+      } else {
+        tiposMap.set(id, { id, nome, qtd: 1 });
+      }
+    }
+    return Array.from(tiposMap.values()).sort((a, b) => b.qtd - a.qtd);
+  }, [data]);
 
   const fmtBRL = (v: number) => v > 0 ? "R$ " + v.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : "—";
 
