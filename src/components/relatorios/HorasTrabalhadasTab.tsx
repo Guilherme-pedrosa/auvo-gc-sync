@@ -1985,3 +1985,4 @@ export default function HorasTrabalhadasTab({
     </div>
   );
 }
+
