@@ -7,7 +7,7 @@ const corsHeaders = {
 
 const AUVO_BASE_URL = "https://api.auvo.com.br/v2";
 const PAGE_SIZE = 100;
-const MAX_PAGES = 30;
+const MAX_PAGES = 15;
 const DB_PAGE_SIZE = 1000;
 
 async function auvoLogin(apiKey: string, apiToken: string): Promise<string> {
@@ -33,19 +33,30 @@ function isoDate(s: string | null | undefined): string | null {
 }
 
 async function fetchAuvoTasksUpdatedSince(token: string, sinceDate: string, untilDate: string) {
-  // Use a wide startDate/endDate window plus dateLastUpdate to catch tasks
-  // updated on/after sinceDate. Then filter in-client by dateLastUpdate <= untilDate.
+  // Narrow the Auvo window to the report period itself. The UI re-filters by
+  // (data_conclusao || data_tarefa) within [sinceDate, untilDate], so fetching
+  // tasks whose taskDate falls in this window is sufficient and avoids the
+  // 150s edge timeout that the wide 2020→2099 + dateLastUpdate query caused.
   const filterObj = {
-    startDate: "2020-01-01T00:00:00",
-    endDate: "2099-12-31T23:59:59",
-    dateLastUpdate: `${sinceDate}T00:00:00`,
+    startDate: `${sinceDate}T00:00:00`,
+    endDate: `${untilDate}T23:59:59`,
   };
   const all: any[] = [];
   let page = 1;
   while (page <= MAX_PAGES) {
     const paramFilter = encodeURIComponent(JSON.stringify(filterObj));
     const url = `${AUVO_BASE_URL}/tasks/?page=${page}&pageSize=${PAGE_SIZE}&order=desc&paramFilter=${paramFilter}`;
-    const r = await fetch(url, { headers: authHeaders(token) });
+    const ctrl = new AbortController();
+    const tid = setTimeout(() => ctrl.abort(), 20000);
+    let r: Response;
+    try {
+      r = await fetch(url, { headers: authHeaders(token), signal: ctrl.signal });
+    } catch (e) {
+      console.warn(`[horas-trabalhadas-fetch] page ${page} aborted/failed:`, e);
+      break;
+    } finally {
+      clearTimeout(tid);
+    }
     if (!r.ok) {
       console.warn(`[horas-trabalhadas-fetch] Auvo page ${page} status ${r.status}`);
       break;
@@ -57,13 +68,7 @@ async function fetchAuvoTasksUpdatedSince(token: string, sinceDate: string, unti
     if (tasks.length < PAGE_SIZE) break;
     page++;
   }
-  // Client-side filter: dateLastUpdate <= untilDate (inclusive)
-  const untilCutoff = `${untilDate}T23:59:59`;
-  return all.filter((t: any) => {
-    const dlu = String(t?.dateLastUpdate || t?.DateLastUpdate || "");
-    if (!dlu) return true;
-    return dlu <= untilCutoff;
-  });
+  return all;
 }
 
 function mapAuvoTask(t: any) {
