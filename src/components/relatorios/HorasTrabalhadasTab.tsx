@@ -1507,57 +1507,69 @@ export default function HorasTrabalhadasTab({
                 <Button variant="outline" size="sm" className="gap-1.5">
                   <Filter className="h-3.5 w-3.5" />
                   Tipos de Tarefa
-                  {!allTiposSelected && selectedTipos.size > 0 && (
-                    <Badge variant="secondary" className="ml-1 text-[10px]">{selectedTipos.size}</Badge>
-                  )}
+                  <Badge variant="secondary" className="ml-1 text-[10px]">
+                    {tiposSelecionados === null
+                      ? `${tiposDisponiveis.length}/${tiposDisponiveis.length}`
+                      : `${tiposSelecionados.size}/${tiposDisponiveis.length}`}
+                  </Badge>
                 </Button>
               </PopoverTrigger>
-              <PopoverContent className="w-72" align="start">
-                <div className="space-y-2">
-                  <Input
-                    placeholder="Buscar tipo..."
-                    value={searchTipo}
-                    onChange={(e) => setSearchTipo(e.target.value)}
-                    className="h-8 text-xs"
-                  />
-                  <div className="flex items-center gap-2 pb-1">
-                    <Checkbox
-                      checked={allTiposSelected}
-                      onCheckedChange={(checked) => {
-                        setAllTiposSelected(!!checked);
-                        if (checked) setSelectedTipos(new Set());
-                      }}
-                    />
-                    <span className="text-xs font-medium">Todos</span>
+              <PopoverContent className="w-80 p-3" align="start">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-sm font-medium">Tipos de Tarefa</span>
+                  <div className="flex gap-1">
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="h-7 px-2 text-xs"
+                      onClick={() => setTiposSelecionados(null)}
+                    >
+                      Todos
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="h-7 px-2 text-xs"
+                      onClick={() => setTiposSelecionados(new Set())}
+                    >
+                      Nenhum
+                    </Button>
                   </div>
-                  <ScrollArea className="h-48">
-                    <div className="space-y-1">
-                      {filteredTipos.map((tipo) => (
-                        <div key={tipo.key} className="flex items-center gap-2">
-                          <Checkbox
-                            checked={allTiposSelected || selectedTipos.has(tipo.key)}
-                            onCheckedChange={() => {
-                              if (allTiposSelected) {
-                                // Sai do modo "Todos": seleciona todos exceto o clicado
-                                const next = new Set(tipoOptions.map((t) => t.key));
-                                next.delete(tipo.key);
-                                setAllTiposSelected(false);
-                                setSelectedTipos(next);
-                              } else {
-                                setSelectedTipos((prev) => {
-                                  const next = new Set(prev);
-                                  if (next.has(tipo.key)) next.delete(tipo.key);
-                                  else next.add(tipo.key);
-                                  return next;
-                                });
-                              }
-                            }}
-                          />
-                          <span className="text-xs truncate">{tipo.label}</span>
-                        </div>
-                      ))}
+                </div>
+                <div className="border-t -mx-3 mb-2" />
+                <div className="max-h-72 overflow-y-auto space-y-1 pr-1">
+                  {tiposDisponiveis.map((t) => {
+                    const checked = tipoIncluido(t.id);
+                    return (
+                      <label
+                        key={t.id}
+                        className="flex items-center gap-2 cursor-pointer hover:bg-muted rounded px-2 py-1"
+                      >
+                        <Checkbox
+                          checked={checked}
+                          onCheckedChange={(v) => {
+                            setTiposSelecionados((prev) => {
+                              const base = prev === null
+                                ? new Set(tiposDisponiveis.map((x) => x.id))
+                                : new Set(prev);
+                              if (v) base.add(t.id);
+                              else base.delete(t.id);
+                              return base;
+                            });
+                          }}
+                        />
+                        <span className="text-sm flex-1 truncate" title={t.nome}>
+                          {t.nome}
+                        </span>
+                        <span className="text-xs text-muted-foreground tabular-nums">{t.qtd}</span>
+                      </label>
+                    );
+                  })}
+                  {tiposDisponiveis.length === 0 && (
+                    <div className="text-xs text-muted-foreground px-2 py-3 text-center">
+                      Nenhum tipo no período.
                     </div>
-                  </ScrollArea>
+                  )}
                 </div>
               </PopoverContent>
             </Popover>
