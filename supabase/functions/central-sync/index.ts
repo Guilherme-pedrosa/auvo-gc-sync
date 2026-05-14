@@ -13,7 +13,7 @@ const GC_ATRIBUTO_TAREFA_OS = "73343";
 const GC_ATRIBUTO_TAREFA_EXEC = "73344";
 const MIN_DELAY_MS = 200;
 const FUTURE_DAYS_WINDOW = 30;
-const AUVO_TASK_CHUNK_DAYS = 3;
+const AUVO_TASK_CHUNK_DAYS = 1;
 let lastAuvoCall = 0;
 let lastGcCall = 0;
 
