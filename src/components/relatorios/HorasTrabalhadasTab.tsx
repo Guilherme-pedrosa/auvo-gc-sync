@@ -456,6 +456,132 @@ export default function HorasTrabalhadasTab({
     [clienteModal, clienteSummary]
   );
 
+  // ── Detecção de alertas (apenas visual, não muda valor) ───────────
+  const tasksWithAlertas = useMemo(() => {
+    const allTasks: TaskDetail[] = clienteSummary.flatMap((c) => c.tasks);
+    const result = new Map<string, AlertaTipo[]>();
+
+    const limMin = (alertasConfig?.limite_minimo_minutos ?? 45) / 60;
+    const limMax = Number(alertasConfig?.limite_maximo_horas ?? 8);
+    const limExc = Number(alertasConfig?.limite_excessivo_horas ?? 12);
+    const detectarOverlap = !!alertasConfig?.detectar_overlap_tecnico;
+    const detectarNegativas = alertasConfig?.detectar_horas_negativas !== false;
+
+    // Pré-agrupa por técnico+dia para overlap O(n) por grupo
+    const byTecDia = new Map<string, TaskDetail[]>();
+    if (detectarOverlap) {
+      for (const t of allTasks) {
+        if (!t.tecnico || !t.data_tarefa || !t.hora_inicio || !t.hora_fim) continue;
+        const k = `${t.tecnico}\u0001${t.data_tarefa}`;
+        const arr = byTecDia.get(k) || [];
+        arr.push(t);
+        byTecDia.set(k, arr);
+      }
+    }
+
+    for (const t of allTasks) {
+      const alertas: AlertaTipo[] = [];
+      const horas = t.horas;
+
+      if (detectarNegativas && horas < 0) {
+        alertas.push("negativo");
+      } else if (horas > 0 && horas < limMin) {
+        alertas.push("curto");
+      } else if (horas >= limMax && horas < limExc) {
+        alertas.push("longo");
+      } else if (horas >= limExc) {
+        alertas.push("excessivo");
+      }
+
+      if (t.status_auvo && t.status_auvo !== "Finalizada" && horas > 0) {
+        alertas.push("sem_checkout");
+      }
+
+      if (detectarOverlap && t.hora_inicio && t.hora_fim && t.tecnico && t.data_tarefa) {
+        const k = `${t.tecnico}\u0001${t.data_tarefa}`;
+        const peers = byTecDia.get(k) || [];
+        const ini = t.hora_inicio;
+        const fim = t.hora_fim;
+        const overlap = peers.some((o) =>
+          o.auvo_task_id !== t.auvo_task_id &&
+          o.hora_inicio && o.hora_fim &&
+          ini < o.hora_fim && o.hora_inicio < fim
+        );
+        if (overlap) alertas.push("overlap");
+      }
+
+      result.set(t.auvo_task_id, alertas);
+    }
+    return result;
+  }, [clienteSummary, alertasConfig]);
+
+  // Contadores por tipo + lista plana de alertas para cards e exports
+  const alertCounts = useMemo(() => {
+    const counts: Record<Exclude<AlertaTipo, null>, number> = {
+      negativo: 0, curto: 0, longo: 0, excessivo: 0, overlap: 0, sem_checkout: 0,
+    };
+    const seenByType = new Map<string, Set<string>>();
+    for (const [id, alerts] of tasksWithAlertas) {
+      for (const a of alerts) {
+        if (!a) continue;
+        let s = seenByType.get(a);
+        if (!s) { s = new Set(); seenByType.set(a, s); }
+        if (s.has(id)) continue;
+        s.add(id);
+        counts[a]++;
+      }
+    }
+    const total = Object.values(counts).reduce((a, b) => a + b, 0);
+    return { counts, total };
+  }, [tasksWithAlertas]);
+
+  const alertaTooltip = (a: AlertaTipo, t: TaskDetail): string => {
+    if (!a) return "";
+    const limMin = alertasConfig?.limite_minimo_minutos ?? 45;
+    const limMax = alertasConfig?.limite_maximo_horas ?? 8;
+    const limExc = alertasConfig?.limite_excessivo_horas ?? 12;
+    switch (a) {
+      case "curto":
+        return `OS abaixo do tempo mínimo de ${limMin} min — verificar checkout precoce`;
+      case "longo":
+        return `OS acima de ${limMax}h — possível checkout esquecido`;
+      case "excessivo":
+        return `OS acima de ${limExc}h — apontamento provavelmente incorreto`;
+      case "negativo":
+        return "Duração negativa — bug de apontamento (checkout antes do check-in)";
+      case "overlap":
+        return `Sobreposição de horário: técnico ${t.tecnico} em outra OS no mesmo intervalo`;
+      case "sem_checkout":
+        return `Status '${t.status_auvo}' com horas registradas — técnico não fechou a OS`;
+      default:
+        return "";
+    }
+  };
+
+  const alertaIcone = (a: AlertaTipo): JSX.Element | null => {
+    if (!a) return null;
+    if (a === "curto") return <AlertTriangle className="h-3.5 w-3.5 text-yellow-600" />;
+    if (a === "longo") return <Clock className="h-3.5 w-3.5 text-blue-600" />;
+    if (a === "excessivo" || a === "overlap") return <AlertCircle className="h-3.5 w-3.5 text-destructive" />;
+    if (a === "negativo") return <Ban className="h-3.5 w-3.5 text-destructive" />;
+    if (a === "sem_checkout") return <Clock className="h-3.5 w-3.5 text-destructive" />;
+    return null;
+  };
+
+  const rowAlertClass = (a: AlertaTipo): string => {
+    if (a === "excessivo" || a === "negativo" || a === "overlap") return "bg-destructive/10";
+    if (a === "sem_checkout") return "bg-destructive/5";
+    if (a === "curto") return "bg-yellow-100/50 dark:bg-yellow-900/20";
+    if (a === "longo") return "bg-blue-100/50 dark:bg-blue-900/20";
+    return "";
+  };
+
+  const taskMatchesAlertFilter = (taskId: string): boolean => {
+    if (!alertFilter) return true;
+    const lst = tasksWithAlertas.get(taskId) || [];
+    return lst.includes(alertFilter);
+  };
+
   const totalHoras = useMemo(() => tecnicoSummary.reduce((s, t) => s + t.horas, 0), [tecnicoSummary]);
   const totalDeslocamento = useMemo(() => tecnicoSummary.reduce((s, t) => s + t.deslocamento, 0), [tecnicoSummary]);
   const totalValor = useMemo(() => tecnicoSummary.reduce((s, t) => s + t.valor, 0), [tecnicoSummary]);
