@@ -296,6 +296,21 @@ export default function RelatoriosPage() {
     staleTime: 60_000,
   });
 
+  // Dedicated fetch for Horas Trabalhadas tab — pulls DB rows by execution date
+  // and merges with Auvo tasks updated since startDate. Does NOT touch any
+  // other tab's data flow.
+  const { data: horasData, isLoading: isLoadingHoras } = useQuery({
+    queryKey: ["relatorios-horas-trabalhadas", format(dateFrom, "yyyy-MM-dd"), format(dateTo, "yyyy-MM-dd")],
+    queryFn: async () => {
+      const { data, error } = await supabase.functions.invoke("horas-trabalhadas-fetch", {
+        body: { startDate: format(dateFrom, "yyyy-MM-dd"), endDate: format(dateTo, "yyyy-MM-dd") },
+      });
+      if (error) throw error;
+      return (data?.tasks as any[]) || [];
+    },
+    staleTime: 60_000,
+  });
+
   const { data: grupos, refetch: refetchGrupos } = useQuery({
     queryKey: ["grupos-clientes"],
     queryFn: async () => {
