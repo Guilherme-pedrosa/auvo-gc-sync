@@ -943,6 +943,18 @@ export default function HorasTrabalhadasTab({
               <FileSpreadsheet className="h-3.5 w-3.5" />
               Exportar Excel
             </Button>
+
+            {/* Toggle: apenas OS finalizadas (faturáveis) */}
+            <div className="flex items-center gap-2 ml-auto pl-2 border-l">
+              <Switch
+                id="somente-faturaveis"
+                checked={somenteFaturaveis}
+                onCheckedChange={setSomenteFaturaveis}
+              />
+              <Label htmlFor="somente-faturaveis" className="text-xs cursor-pointer">
+                Apenas OS finalizadas (faturáveis)
+              </Label>
+            </div>
           </div>
         </CardContent>
       </Card>
