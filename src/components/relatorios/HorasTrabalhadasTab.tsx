@@ -658,6 +658,7 @@ export default function HorasTrabalhadasTab({
     const resumoClienteRows: any[] = [
       ["Relatório de Horas Trabalhadas — Resumo por Cliente"],
       [`Período: ${periodoStr}`],
+      [`Critério: ${somenteFaturaveis ? "Apenas Finalizadas" : "Todas as OS"}`],
       [],
       ["Cliente", "Tarefas", "Horas", "Deslocamento (h)", "Técnicos", "Valor (R$)"],
       ...clienteSummary.map((c) => [
@@ -742,6 +743,42 @@ export default function HorasTrabalhadasTab({
     const wsTec = XLSX.utils.aoa_to_sheet(tecRows);
     wsTec["!cols"] = [{ wch: 28 }, { wch: 10 }, { wch: 10 }, { wch: 16 }, { wch: 14 }];
     XLSX.utils.book_append_sheet(wb, wsTec, "Resumo Técnico");
+
+    // Sheet 4: OS Pendentes (apenas quando o toggle está ligado)
+    if (somenteFaturaveis && pendentesTasks.length > 0) {
+      const pendHeader = [
+        "Cliente", "Cliente GC", "Data Tarefa", "Data Conclusão",
+        "Técnico", "Status Auvo", "Horas", "Valor Potencial (R$)",
+        "Link Auvo", "Link OS GC",
+      ];
+      const pendRows: any[] = [
+        ["OS Pendentes — filtradas pelo toggle 'Apenas Finalizadas'"],
+        [`Período: ${periodoStr}`],
+        [],
+        pendHeader,
+      ];
+      for (const t of pendentesTasks) {
+        const tec = t.tecnico || "Desconhecido";
+        pendRows.push([
+          t.cliente || t.gc_os_cliente || "",
+          t.gc_os_cliente || "",
+          t.data_tarefa || "",
+          t.data_conclusao || "",
+          tec,
+          t.status_auvo || "",
+          Number((Number(t.duracao_decimal) || 0).toFixed(2)),
+          Number(getTaskValor(t, tec).toFixed(2)),
+          t.auvo_link || t.auvo_task_url || "",
+          t.gc_os_link || "",
+        ]);
+      }
+      const wsPend = XLSX.utils.aoa_to_sheet(pendRows);
+      wsPend["!cols"] = [
+        { wch: 30 }, { wch: 30 }, { wch: 12 }, { wch: 14 }, { wch: 22 },
+        { wch: 14 }, { wch: 8 }, { wch: 18 }, { wch: 40 }, { wch: 40 },
+      ];
+      XLSX.utils.book_append_sheet(wb, wsPend, "OS Pendentes");
+    }
 
     XLSX.writeFile(wb, `horas-trabalhadas-${format(dateFrom, "yyyyMMdd")}-${format(dateTo, "yyyyMMdd")}.xlsx`);
   };
