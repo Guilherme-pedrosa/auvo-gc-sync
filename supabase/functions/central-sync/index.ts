@@ -648,9 +648,18 @@ async function runReportsOnlySync(sbClient: any, bearerToken: string, startDate:
       : typeof task.taskStatus === "object" ? Number(task.taskStatus?.id || task.taskStatus?.status || 0) : 0;
 
     const checkOutDateRaw = String(task.checkOutDate || task.checkoutDate || task.taskEndDate || task.taskEndDateTime || "").trim();
+    const checkInDateRaw = String(task.checkInDate || task.checkinDate || "").trim();
     const hasCheckOut = !!task.checkOut || !!checkOutDateRaw;
-    const startTimeResolved = String(task.startTime || task.startHour || "").trim() || extractTimeFromDateStr(String(task.taskDate || ""));
-    let endTimeResolved = String(task.endTime || task.endHour || "").trim() || extractTimeFromDateStr(checkOutDateRaw);
+    // Preferimos sempre o horário REAL de check-in/check-out (Auvo monitoring)
+    // sobre o horário AGENDADO (startTime/endTime). Isso evita falsos alertas
+    // de "Sem janela de trabalho" quando o técnico chegou bem antes/depois do agendado.
+    const startTimeResolved =
+      extractTimeFromDateStr(checkInDateRaw) ||
+      String(task.startTime || task.startHour || "").trim() ||
+      extractTimeFromDateStr(String(task.taskDate || ""));
+    let endTimeResolved =
+      extractTimeFromDateStr(checkOutDateRaw) ||
+      String(task.endTime || task.endHour || "").trim();
     const durationDecimalResolved = parseFloat(task.durationDecimal || "0") || parseDurationToHours(task.estimatedDuration || "");
 
     if (!endTimeResolved && startTimeResolved && durationDecimalResolved > 0) {
