@@ -39,11 +39,11 @@ function isoTimestamp(s: string | null | undefined): string | null {
   return raw;
 }
 
-async function fetchWithRetry(url: string, token: string, attempts = 3): Promise<Response | null> {
-  let delay = 600;
+async function fetchWithRetry(url: string, token: string, attempts = 2): Promise<Response | null> {
+  let delay = 400;
   for (let i = 0; i < attempts; i++) {
     const ctrl = new AbortController();
-    const tid = setTimeout(() => ctrl.abort(), 25000);
+    const tid = setTimeout(() => ctrl.abort(), 8000);
     try {
       const r = await fetch(url, { headers: authHeaders(token), signal: ctrl.signal });
       clearTimeout(tid);
