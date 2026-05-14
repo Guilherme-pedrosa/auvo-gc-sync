@@ -17,7 +17,7 @@ import {
 } from "@/components/ui/table";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { AlertTriangle, AlertCircle, Ban, Clock, X, ShieldCheck, ShieldX, Pencil, Inbox } from "lucide-react";
+import { AlertTriangle, AlertCircle, Ban, Clock, X, ShieldCheck, ShieldX, Pencil, Inbox, Siren } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip,
@@ -421,6 +421,23 @@ export default function HorasTrabalhadasTab({
     return valorPorHora;
   };
 
+  // Detect emergencial task: type id configured in task_types_emergenciais
+  // for this technician/client/group. Independent of value calculation so the UI
+  // can flag it visually even when aplica_taxa_emergencial is off.
+  const isTaskEmergencial = (t: any, tecnico: string): boolean => {
+    const cliente = t.cliente || t.gc_os_cliente || "";
+    const clienteGc = t.gc_os_cliente || "";
+    const cfg = getHourlyConfig(tecnico, cliente, clienteGc);
+    if (!cfg) return false;
+    const ids = String(cfg.task_types_emergenciais || "")
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean);
+    if (!ids.length) return false;
+    const taskTypeId = String(t.task_type_id ?? t.taskType ?? "").trim();
+    return ids.includes(taskTypeId);
+  };
+
   // Summary by technician
   type TaskDetail = {
     auvo_task_id: string;
@@ -448,6 +465,7 @@ export default function HorasTrabalhadasTab({
     statusRevisao: StatusRevisao;
     horasOriginais: number;
     valorPotencial: number;
+    emergencial: boolean;
     revisao: any | null;
   };
   type ClienteData = {
@@ -640,6 +658,7 @@ export default function HorasTrabalhadasTab({
         statusRevisao: status,
         horasOriginais,
         valorPotencial,
+        emergencial: isTaskEmergencial(t, tec),
         revisao,
       });
     }
@@ -773,6 +792,25 @@ export default function HorasTrabalhadasTab({
   const totalRejeitado = useMemo(() => tecnicoSummary.reduce((acc, t) => ({
     horas: acc.horas + t.horasRejeitado, valor: acc.valor + t.valorRejeitado, tarefas: acc.tarefas + t.tarefasRejeitado,
   }), { horas: 0, valor: 0, tarefas: 0 }), [tecnicoSummary]);
+
+  // Visitas emergenciais (qualquer status de revisão; usa valorPotencial p/ não esconder em revisão)
+  const totalEmergencial = useMemo(() => {
+    const seen = new Set<string>();
+    let tarefas = 0, horas = 0, valor = 0;
+    for (const tec of tecnicoSummary) {
+      for (const cd of tec.byCliente.values()) {
+        for (const tk of cd.tasks) {
+          if (!tk.emergencial) continue;
+          if (seen.has(tk.auvo_task_id)) continue;
+          seen.add(tk.auvo_task_id);
+          tarefas++;
+          horas += tk.horasOriginais;
+          valor += tk.statusRevisao === "faturavel" ? tk.valor : tk.valorPotencial;
+        }
+      }
+    }
+    return { tarefas, horas, valor };
+  }, [tecnicoSummary]);
 
   // Lista plana de OS em revisão (para o modal)
   const osEmRevisao = useMemo(() => {
@@ -1574,7 +1612,7 @@ export default function HorasTrabalhadasTab({
       )}
 
       {/* Summary cards */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-4">
         <Card>
           <CardHeader className="py-3 px-4">
             <CardTitle className="text-sm font-medium text-muted-foreground">Horas Trabalhadas</CardTitle>
@@ -1643,6 +1681,27 @@ export default function HorasTrabalhadasTab({
             {totalRejeitado.tarefas > 0 && (
               <p className="text-[10px] text-destructive mt-2 flex items-center gap-1">
                 <Inbox className="h-3 w-3" /> Clique para gerenciar
+              </p>
+            )}
+          </CardContent>
+        </Card>
+        <Card className="border-l-4 border-l-orange-500">
+          <CardHeader className="py-3 px-4">
+            <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-1.5">
+              <Siren className="h-4 w-4 text-orange-600" />
+              Visitas Emergenciais
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="px-4 pb-3">
+            <p className="text-2xl font-bold text-foreground">
+              {totalEmergencial.valor.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
+            </p>
+            <p className="text-xs text-muted-foreground mt-1">
+              {totalEmergencial.tarefas} OS · {totalEmergencial.horas.toFixed(1)}h
+            </p>
+            {totalEmergencial.tarefas === 0 && (
+              <p className="text-[10px] text-muted-foreground mt-2">
+                Nenhuma no período
               </p>
             )}
           </CardContent>
@@ -1816,8 +1875,18 @@ export default function HorasTrabalhadasTab({
                                               const pa = piorAlerta(alerts);
                                               const isRed = pa === "excessivo" || pa === "negativo" || pa === "overlap" || pa === "sem_janela";
                                               return (
+                                                <span key={idx} className="inline-flex items-center gap-1">
+                                                {task.emergencial && (
+                                                  <Badge
+                                                    variant="outline"
+                                                    className="text-[9px] font-bold gap-0.5 border-orange-500 text-orange-700 dark:text-orange-300 bg-orange-100/60 dark:bg-orange-900/30"
+                                                    title="Visita emergencial"
+                                                  >
+                                                    <Siren className="h-2.5 w-2.5" />
+                                                    EMERG
+                                                  </Badge>
+                                                )}
                                                 <Badge
-                                                  key={idx}
                                                   variant={isRed ? "destructive" : "outline"}
                                                   className={cn(
                                                     "text-[9px] font-mono gap-1",
@@ -1836,6 +1905,7 @@ export default function HorasTrabalhadasTab({
                                                     : ""}
                                                   {" · "}{task.horas.toFixed(1)}h
                                                 </Badge>
+                                                </span>
                                               );
                                             })}
                                         </div>
@@ -1921,7 +1991,21 @@ export default function HorasTrabalhadasTab({
                         : "—"}
                     </TableCell>
                     <TableCell className="font-mono">#{t.auvo_task_id}</TableCell>
-                    <TableCell>{t.tecnico}</TableCell>
+                    <TableCell>
+                      <div className="flex items-center gap-1.5">
+                        {t.emergencial && (
+                          <Badge
+                            variant="outline"
+                            className="text-[9px] font-bold gap-0.5 border-orange-500 text-orange-700 dark:text-orange-300 bg-orange-100/60 dark:bg-orange-900/30"
+                            title="Visita emergencial"
+                          >
+                            <Siren className="h-2.5 w-2.5" />
+                            EMERG
+                          </Badge>
+                        )}
+                        <span>{t.tecnico}</span>
+                      </div>
+                    </TableCell>
                     <TableCell className="max-w-[220px]">
                       <div className="font-medium truncate" title={t.descricao}>{t.descricao}</div>
                       {t.orientacao && (
