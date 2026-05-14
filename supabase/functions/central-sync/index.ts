@@ -653,7 +653,7 @@ async function runCentralSync(body: CentralSyncBody = {}) {
     // Auvo is network-bound and the refresh is DB-bound, so they overlap nicely.
     // Without this, the function frequently hits IDLE_TIMEOUT before Auvo even starts,
     // breaking the Horas Trabalhadas tab (which depends on Auvo data).
-    const isFastGcOnly = isGcSolicitadasOnly && body?.fast === true;
+    const isFastGcOnly = situacaoIds.length > 0 && body?.fast === true;
     const auvoTasksPromise: Promise<any[]> = isFastGcOnly
       ? Promise.resolve([])
       : fetchAuvoTasks(bearerToken, startDate, endDate).catch((err) => {
