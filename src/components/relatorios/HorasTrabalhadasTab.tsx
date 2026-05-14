@@ -66,6 +66,8 @@ type AlertaTipo =
   | "sem_checkout"
   | null;
 
+type StatusRevisao = "faturavel" | "em_revisao" | "rejeitada";
+
 const ALERTA_LABEL: Record<Exclude<AlertaTipo, null>, string> = {
   negativo: "Duração negativa",
   curto: "OS curta",
@@ -395,114 +397,19 @@ export default function HorasTrabalhadasTab({
     horasRejeitado: number; valorRejeitado: number; tarefasRejeitado: number;
     tipos: Map<string, number>; tasks: TaskDetail[];
   };
-  const tecnicoSummary = useMemo(() => {
-    const map = new Map<string, { tecnico: string; horas: number; deslocamento: number; tarefas: number; valor: number; byCliente: Map<string, ClienteData> }>();
-    for (const t of filtered) {
-      const tec = t.tecnico || "Desconhecido";
-      const cliente = resolveDisplayCliente(t);
-      const horas = getTaskHoras(t);
-      const deslocamento = Number(t.duracao_deslocamento) || 0;
-      const valor = getTaskValor(t, tec);
 
-      let entry = map.get(tec);
-      if (!entry) {
-        entry = { tecnico: tec, horas: 0, deslocamento: 0, tarefas: 0, valor: 0, byCliente: new Map() };
-        map.set(tec, entry);
-      }
-      entry.horas += horas;
-      entry.deslocamento += deslocamento;
-      entry.tarefas++;
-      entry.valor += valor;
-
-      let clienteEntry = entry.byCliente.get(cliente);
-      if (!clienteEntry) {
-        clienteEntry = { horas: 0, deslocamento: 0, tarefas: 0, valor: 0, tipos: new Map(), tasks: [] };
-        entry.byCliente.set(cliente, clienteEntry);
-      }
-      clienteEntry.horas += horas;
-      clienteEntry.deslocamento += deslocamento;
-      clienteEntry.tarefas++;
-      clienteEntry.valor += valor;
-
-      const tipo = getTipoLabel(t.descricao);
-      clienteEntry.tipos.set(tipo, (clienteEntry.tipos.get(tipo) || 0) + horas);
-      clienteEntry.tasks.push({
-        auvo_task_id: t.auvo_task_id || "",
-        descricao: getTipoLabel(t.descricao),
-        orientacao: t.orientacao || "",
-        pendencia: t.pendencia || "",
-        hora_inicio: t.hora_inicio || "",
-        hora_fim: t.hora_fim || "",
-        horas,
-        deslocamento,
-        data_tarefa: t.data_tarefa || "",
-        data_conclusao: t.data_conclusao || "",
-        valor,
-        tecnico: tec,
-        equipamento: t.equipamento_nome || equipamentoTaskMap[t.auvo_task_id]?.nome || "",
-        equipamento_id_serie:
-          t.equipamento_id_serie || equipamentoTaskMap[t.auvo_task_id]?.id_serie || "",
-        auvo_link: t.auvo_link || "",
-        auvo_task_url: t.auvo_task_url || "",
-        auvo_survey_url: t.auvo_survey_url || "",
-        status_auvo: t.status_auvo || "",
-        cliente_gc: t.gc_os_cliente || "",
-        gc_os_codigo: t.gc_os_codigo || "",
-        gc_os_link: t.gc_os_link || "",
-      });
-    }
-    return Array.from(map.values()).sort((a, b) => b.valor - a.valor);
-  }, [filtered, valorHoraConfigs, grupos, grupoClienteMap, filterGrupo, equipamentoTaskMap]);
-
-  // Summary by client (across all technicians)
-  const clienteSummary = useMemo(() => {
-    const map = new Map<string, { cliente: string; horas: number; deslocamento: number; tarefas: number; valor: number; tecnicos: Set<string>; tasks: TaskDetail[] }>();
-    for (const tec of tecnicoSummary) {
-      for (const [cliente, cd] of tec.byCliente) {
-        let entry = map.get(cliente);
-        if (!entry) {
-          entry = { cliente, horas: 0, deslocamento: 0, tarefas: 0, valor: 0, tecnicos: new Set(), tasks: [] };
-          map.set(cliente, entry);
-        }
-        entry.horas += cd.horas;
-        entry.deslocamento += cd.deslocamento;
-        entry.tarefas += cd.tarefas;
-        entry.valor += cd.valor;
-        entry.tecnicos.add(tec.tecnico);
-        entry.tasks.push(...cd.tasks);
-      }
-    }
-    // sort each client's tasks by date asc
-    for (const e of map.values()) {
-      e.tasks.sort((a, b) =>
-        Number(isExcessiveTask(b.horas)) - Number(isExcessiveTask(a.horas)) ||
-        (a.data_tarefa || a.data_conclusao || "").localeCompare(b.data_tarefa || b.data_conclusao || "") ||
-        (a.hora_inicio || "").localeCompare(b.hora_inicio || "")
-      );
-    }
-    return Array.from(map.values()).sort((a, b) => b.valor - a.valor);
-  }, [tecnicoSummary]);
-
-  const clienteSelecionado = useMemo(
-    () => (clienteModal ? clienteSummary.find((c) => c.cliente === clienteModal) : null),
-    [clienteModal, clienteSummary]
-  );
-
-  // ── Detecção de alertas (apenas visual, não muda valor) ───────────
+  // ── Detecção de alertas (independe de revisão) ────────────────────
   const tasksWithAlertas = useMemo(() => {
-    const allTasks: TaskDetail[] = clienteSummary.flatMap((c) => c.tasks);
     const result = new Map<string, AlertaTipo[]>();
-
     const limMin = (alertasConfig?.limite_minimo_minutos ?? 45) / 60;
     const limMax = Number(alertasConfig?.limite_maximo_horas ?? 8);
     const limExc = Number(alertasConfig?.limite_excessivo_horas ?? 12);
     const detectarOverlap = !!alertasConfig?.detectar_overlap_tecnico;
     const detectarNegativas = alertasConfig?.detectar_horas_negativas !== false;
 
-    // Pré-agrupa por técnico+dia para overlap O(n) por grupo
-    const byTecDia = new Map<string, TaskDetail[]>();
+    const byTecDia = new Map<string, any[]>();
     if (detectarOverlap) {
-      for (const t of allTasks) {
+      for (const t of filtered) {
         if (!t.tecnico || !t.data_tarefa || !t.hora_inicio || !t.hora_fim) continue;
         const k = `${t.tecnico}\u0001${t.data_tarefa}`;
         const arr = byTecDia.get(k) || [];
@@ -511,9 +418,9 @@ export default function HorasTrabalhadasTab({
       }
     }
 
-    for (const t of allTasks) {
+    for (const t of filtered) {
       const alertas: AlertaTipo[] = [];
-      const horas = t.horas;
+      const horas = getTaskHoras(t);
 
       if (detectarNegativas && horas < 0) {
         alertas.push("negativo");
@@ -534,7 +441,7 @@ export default function HorasTrabalhadasTab({
         const peers = byTecDia.get(k) || [];
         const ini = t.hora_inicio;
         const fim = t.hora_fim;
-        const overlap = peers.some((o) =>
+        const overlap = peers.some((o: any) =>
           o.auvo_task_id !== t.auvo_task_id &&
           o.hora_inicio && o.hora_fim &&
           ini < o.hora_fim && o.hora_inicio < fim
@@ -542,10 +449,185 @@ export default function HorasTrabalhadasTab({
         if (overlap) alertas.push("overlap");
       }
 
-      result.set(t.auvo_task_id, alertas);
+      result.set(String(t.auvo_task_id || ""), alertas);
     }
     return result;
-  }, [clienteSummary, alertasConfig]);
+  }, [filtered, alertasConfig]);
+
+  // ── Status de revisão (decisão humana ou regra automática) ────────
+  const getStatusRevisao = (alertas: AlertaTipo[], revisao: any): StatusRevisao => {
+    if (revisao?.status_revisao === "aprovada" || revisao?.status_revisao === "ajustada") return "faturavel";
+    if (revisao?.status_revisao === "rejeitada") return "rejeitada";
+    const exigeRevisao = alertas.some((a) => {
+      if (a === "curto" && alertasConfig?.curta_requer_revisao) return true;
+      if (a === "longo" && alertasConfig?.longa_requer_revisao) return true;
+      if (a === "excessivo" && alertasConfig?.excessiva_requer_revisao) return true;
+      if (a === "negativo" && alertasConfig?.negativa_requer_revisao) return true;
+      if (a === "overlap" && alertasConfig?.overlap_requer_revisao) return true;
+      if (a === "sem_checkout" && alertasConfig?.sem_checkout_requer_revisao) return true;
+      return false;
+    });
+    return exigeRevisao ? "em_revisao" : "faturavel";
+  };
+
+  const tecnicoSummary = useMemo(() => {
+    const map = new Map<string, {
+      tecnico: string;
+      horas: number; deslocamento: number; tarefas: number; valor: number;
+      horasEmRevisao: number; valorEmRevisao: number; tarefasEmRevisao: number;
+      horasRejeitado: number; valorRejeitado: number; tarefasRejeitado: number;
+      byCliente: Map<string, ClienteData>;
+    }>();
+
+    for (const t of filtered) {
+      const tec = t.tecnico || "Desconhecido";
+      const cliente = resolveDisplayCliente(t);
+      const taskId = String(t.auvo_task_id || "");
+      const alertas = tasksWithAlertas.get(taskId) || [];
+      const revisao = revisoesMap?.get(taskId) || null;
+      const status = getStatusRevisao(alertas, revisao);
+
+      const horasOriginais = getTaskHoras(t);
+      const horasEfetivas =
+        revisao?.status_revisao === "ajustada" && revisao.horas_ajustadas != null
+          ? Number(revisao.horas_ajustadas)
+          : horasOriginais;
+      const valorEfetivo = getTaskValor(t, tec, horasEfetivas);
+      const valorPotencial = getTaskValor(t, tec, horasOriginais);
+      const deslocamento = Number(t.duracao_deslocamento) || 0;
+
+      let entry = map.get(tec);
+      if (!entry) {
+        entry = {
+          tecnico: tec, horas: 0, deslocamento: 0, tarefas: 0, valor: 0,
+          horasEmRevisao: 0, valorEmRevisao: 0, tarefasEmRevisao: 0,
+          horasRejeitado: 0, valorRejeitado: 0, tarefasRejeitado: 0,
+          byCliente: new Map(),
+        };
+        map.set(tec, entry);
+      }
+      let clienteEntry = entry.byCliente.get(cliente);
+      if (!clienteEntry) {
+        clienteEntry = {
+          horas: 0, deslocamento: 0, tarefas: 0, valor: 0,
+          horasEmRevisao: 0, valorEmRevisao: 0, tarefasEmRevisao: 0,
+          horasRejeitado: 0, valorRejeitado: 0, tarefasRejeitado: 0,
+          tipos: new Map(), tasks: [],
+        };
+        entry.byCliente.set(cliente, clienteEntry);
+      }
+
+      // Deslocamento sempre conta (não é faturado pela hora trabalhada)
+      entry.deslocamento += deslocamento;
+      clienteEntry.deslocamento += deslocamento;
+
+      if (status === "faturavel") {
+        entry.horas += horasEfetivas;
+        entry.tarefas++;
+        entry.valor += valorEfetivo;
+        clienteEntry.horas += horasEfetivas;
+        clienteEntry.tarefas++;
+        clienteEntry.valor += valorEfetivo;
+        const tipo = getTipoLabel(t.descricao);
+        clienteEntry.tipos.set(tipo, (clienteEntry.tipos.get(tipo) || 0) + horasEfetivas);
+      } else if (status === "em_revisao") {
+        entry.horasEmRevisao += horasOriginais;
+        entry.valorEmRevisao += valorPotencial;
+        entry.tarefasEmRevisao++;
+        clienteEntry.horasEmRevisao += horasOriginais;
+        clienteEntry.valorEmRevisao += valorPotencial;
+        clienteEntry.tarefasEmRevisao++;
+      } else {
+        entry.horasRejeitado += horasOriginais;
+        entry.valorRejeitado += valorPotencial;
+        entry.tarefasRejeitado++;
+        clienteEntry.horasRejeitado += horasOriginais;
+        clienteEntry.valorRejeitado += valorPotencial;
+        clienteEntry.tarefasRejeitado++;
+      }
+
+      clienteEntry.tasks.push({
+        auvo_task_id: taskId,
+        descricao: getTipoLabel(t.descricao),
+        orientacao: t.orientacao || "",
+        pendencia: t.pendencia || "",
+        hora_inicio: t.hora_inicio || "",
+        hora_fim: t.hora_fim || "",
+        horas: status === "faturavel" ? horasEfetivas : horasOriginais,
+        deslocamento,
+        data_tarefa: t.data_tarefa || "",
+        data_conclusao: t.data_conclusao || "",
+        valor: status === "faturavel" ? valorEfetivo : 0,
+        tecnico: tec,
+        equipamento: t.equipamento_nome || equipamentoTaskMap[t.auvo_task_id]?.nome || "",
+        equipamento_id_serie:
+          t.equipamento_id_serie || equipamentoTaskMap[t.auvo_task_id]?.id_serie || "",
+        auvo_link: t.auvo_link || "",
+        auvo_task_url: t.auvo_task_url || "",
+        auvo_survey_url: t.auvo_survey_url || "",
+        status_auvo: t.status_auvo || "",
+        cliente_gc: t.gc_os_cliente || "",
+        gc_os_codigo: t.gc_os_codigo || "",
+        gc_os_link: t.gc_os_link || "",
+        cliente,
+        statusRevisao: status,
+        horasOriginais,
+        valorPotencial,
+        revisao,
+      });
+    }
+    return Array.from(map.values()).sort((a, b) => b.valor - a.valor);
+  }, [filtered, valorHoraConfigs, grupos, grupoClienteMap, filterGrupo, equipamentoTaskMap, tasksWithAlertas, revisoesMap, alertasConfig]);
+
+  // Summary by client (across all technicians)
+  const clienteSummary = useMemo(() => {
+    const map = new Map<string, {
+      cliente: string;
+      horas: number; deslocamento: number; tarefas: number; valor: number;
+      horasEmRevisao: number; valorEmRevisao: number; tarefasEmRevisao: number;
+      horasRejeitado: number; valorRejeitado: number; tarefasRejeitado: number;
+      tecnicos: Set<string>; tasks: TaskDetail[];
+    }>();
+    for (const tec of tecnicoSummary) {
+      for (const [cliente, cd] of tec.byCliente) {
+        let entry = map.get(cliente);
+        if (!entry) {
+          entry = {
+            cliente, horas: 0, deslocamento: 0, tarefas: 0, valor: 0,
+            horasEmRevisao: 0, valorEmRevisao: 0, tarefasEmRevisao: 0,
+            horasRejeitado: 0, valorRejeitado: 0, tarefasRejeitado: 0,
+            tecnicos: new Set(), tasks: [],
+          };
+          map.set(cliente, entry);
+        }
+        entry.horas += cd.horas;
+        entry.deslocamento += cd.deslocamento;
+        entry.tarefas += cd.tarefas;
+        entry.valor += cd.valor;
+        entry.horasEmRevisao += cd.horasEmRevisao;
+        entry.valorEmRevisao += cd.valorEmRevisao;
+        entry.tarefasEmRevisao += cd.tarefasEmRevisao;
+        entry.horasRejeitado += cd.horasRejeitado;
+        entry.valorRejeitado += cd.valorRejeitado;
+        entry.tarefasRejeitado += cd.tarefasRejeitado;
+        entry.tecnicos.add(tec.tecnico);
+        entry.tasks.push(...cd.tasks);
+      }
+    }
+    for (const e of map.values()) {
+      e.tasks.sort((a, b) =>
+        Number(isExcessiveTask(b.horas)) - Number(isExcessiveTask(a.horas)) ||
+        (a.data_tarefa || a.data_conclusao || "").localeCompare(b.data_tarefa || b.data_conclusao || "") ||
+        (a.hora_inicio || "").localeCompare(b.hora_inicio || "")
+      );
+    }
+    return Array.from(map.values()).sort((a, b) => b.valor - a.valor);
+  }, [tecnicoSummary]);
+
+  const clienteSelecionado = useMemo(
+    () => (clienteModal ? clienteSummary.find((c) => c.cliente === clienteModal) : null),
+    [clienteModal, clienteSummary]
+  );
 
   // Contadores por tipo + lista plana de alertas para cards e exports
   const alertCounts = useMemo(() => {
