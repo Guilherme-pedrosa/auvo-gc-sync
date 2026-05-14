@@ -129,7 +129,7 @@ export default function RelatoriosPage() {
 
   const startProgressSimulation = () => {
     setSyncStep(0);
-    setSyncProgress(0);
+    setSyncProgress(SYNC_STEPS[0]?.progress ?? 5);
     let currentStep = 0;
 
     stepTimerRef.current = setInterval(() => {
@@ -140,7 +140,7 @@ export default function RelatoriosPage() {
       } else {
         if (stepTimerRef.current) clearInterval(stepTimerRef.current);
       }
-    }, 8000);
+    }, 4000);
   };
 
   const stopProgressSimulation = (success: boolean) => {
@@ -152,8 +152,8 @@ export default function RelatoriosPage() {
       setSyncProgress(100);
       setTimeout(() => {
         setSyncing(false);
-        setSyncProgress(0);
         setSyncStep(0);
+        // Mantemos syncProgress=100 e syncStatusMessage para a barra continuar visível.
       }, 1500);
     } else {
       setSyncing(false);
@@ -193,7 +193,9 @@ export default function RelatoriosPage() {
         : `Sync ${syncFrom} → ${syncTo}: ${data.auvo_tarefas || 0} tarefas, ${data.upserted || 0} atualizadas`
       );
       stopProgressSimulation(true);
-      setSyncStatusMessage(null);
+      setSyncStatusMessage(
+        `Última sincronização concluída: ${data?.auvo_tarefas ?? 0} tarefas Auvo, ${data?.upserted ?? 0} atualizadas no banco.`
+      );
       refreshRelatoriosData();
     } catch (err: any) {
       const message = String(err?.message || "");
@@ -214,7 +216,7 @@ export default function RelatoriosPage() {
         scheduleBackgroundRefresh();
       } else {
         toast.error(`Erro: ${message}`);
-        setSyncStatusMessage(null);
+        setSyncStatusMessage(`Erro na última sincronização: ${message}`);
         stopProgressSimulation(false);
       }
     }
