@@ -1472,7 +1472,7 @@ async function runCentralSync(body: CentralSyncBody = {}) {
     if (!isLiteSync && rowsMissingAddress?.length) {
       const patchIds = rowsMissingAddress
         .map((r) => String((r as any).auvo_task_id || "").trim())
-        .filter((id) => id && !existingTaskIds.has(id));
+        .filter((id) => id && !existingTaskIdsInDb.has(id));
 
       console.log(`[central-sync] Patch endereço para ${patchIds.length} OS existentes sem endereço...`);
       const PARALLEL = 5;
