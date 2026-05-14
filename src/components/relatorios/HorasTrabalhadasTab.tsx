@@ -1875,8 +1875,18 @@ export default function HorasTrabalhadasTab({
                                               const pa = piorAlerta(alerts);
                                               const isRed = pa === "excessivo" || pa === "negativo" || pa === "overlap" || pa === "sem_janela";
                                               return (
+                                                <span key={idx} className="inline-flex items-center gap-1">
+                                                {task.emergencial && (
+                                                  <Badge
+                                                    variant="outline"
+                                                    className="text-[9px] font-bold gap-0.5 border-orange-500 text-orange-700 dark:text-orange-300 bg-orange-100/60 dark:bg-orange-900/30"
+                                                    title="Visita emergencial"
+                                                  >
+                                                    <Siren className="h-2.5 w-2.5" />
+                                                    EMERG
+                                                  </Badge>
+                                                )}
                                                 <Badge
-                                                  key={idx}
                                                   variant={isRed ? "destructive" : "outline"}
                                                   className={cn(
                                                     "text-[9px] font-mono gap-1",
@@ -1895,6 +1905,7 @@ export default function HorasTrabalhadasTab({
                                                     : ""}
                                                   {" · "}{task.horas.toFixed(1)}h
                                                 </Badge>
+                                                </span>
                                               );
                                             })}
                                         </div>
