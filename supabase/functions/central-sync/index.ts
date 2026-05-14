@@ -13,6 +13,7 @@ const GC_ATRIBUTO_TAREFA_OS = "73343";
 const GC_ATRIBUTO_TAREFA_EXEC = "73344";
 const MIN_DELAY_MS = 200;
 const FUTURE_DAYS_WINDOW = 30;
+const AUVO_TASK_CHUNK_DAYS = 3;
 let lastAuvoCall = 0;
 let lastGcCall = 0;
 
@@ -317,26 +318,35 @@ async function fetchAuvoTasksForPeriod(bearerToken: string, startDate: string, e
   return allTasks;
 }
 
-// Fetch ALL Auvo tasks month-by-month to avoid API limits
+// Fetch ALL Auvo tasks in short date windows. The Auvo /tasks endpoint becomes
+// very slow on full-month ranges and can hit the 150s function idle timeout;
+// short windows keep each request bounded while still collecting every task.
 async function fetchAuvoTasks(bearerToken: string, startDate: string, endDate: string): Promise<any[]> {
   const allTasks: any[] = [];
+  const seenTaskIds = new Set<string>();
   const start = new Date(startDate);
   const end = new Date(endDate);
 
-  // Split into monthly chunks
   const current = new Date(start);
   while (current <= end) {
-    const monthStart = current.toISOString().split("T")[0];
-    const monthEnd = new Date(current.getFullYear(), current.getMonth() + 1, 0);
-    const clampedEnd = monthEnd > end ? endDate : monthEnd.toISOString().split("T")[0];
+    const chunkStart = current.toISOString().split("T")[0];
+    const chunkEndDate = new Date(current);
+    chunkEndDate.setDate(chunkEndDate.getDate() + AUVO_TASK_CHUNK_DAYS - 1);
+    if (chunkEndDate > end) chunkEndDate.setTime(end.getTime());
+    const chunkEnd = chunkEndDate.toISOString().split("T")[0];
 
-    console.log(`[central-sync] Buscando Auvo: ${monthStart} → ${clampedEnd}`);
-    const tasks = await fetchAuvoTasksForPeriod(bearerToken, monthStart, clampedEnd);
-    allTasks.push(...tasks);
-    console.log(`[central-sync] Mês ${monthStart}: ${tasks.length} tarefas (acumulado: ${allTasks.length})`);
+    console.log(`[central-sync] Buscando Auvo: ${chunkStart} → ${chunkEnd}`);
+    const tasks = await fetchAuvoTasksForPeriod(bearerToken, chunkStart, chunkEnd);
+    for (const task of tasks) {
+      const taskId = String(task?.taskID || "").trim();
+      if (taskId && seenTaskIds.has(taskId)) continue;
+      if (taskId) seenTaskIds.add(taskId);
+      allTasks.push(task);
+    }
+    console.log(`[central-sync] Janela ${chunkStart}: ${tasks.length} tarefas (${allTasks.length} únicas acumuladas)`);
 
-    current.setMonth(current.getMonth() + 1);
-    current.setDate(1);
+    current.setTime(chunkEndDate.getTime());
+    current.setDate(current.getDate() + 1);
   }
 
   return allTasks;
