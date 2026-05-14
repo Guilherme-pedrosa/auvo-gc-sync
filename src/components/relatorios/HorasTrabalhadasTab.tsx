@@ -118,8 +118,12 @@ export default function HorasTrabalhadasTab({
       if (!dateRef) return false;
       if (dateRef < fromStr || dateRef > toStr) return false;
 
-      // Must have check_out (completed work)
-      if (!t.check_out) return false;
+      // Conta toda tarefa com horas reais registradas no Auvo
+      // (não exigir check_out — técnico pode esquecer de fechar e a tarefa fica
+      //  como "Aberta/Pausada/Em andamento" mesmo tendo trabalho registrado).
+      const dur = Number(t.duracao_decimal) || 0;
+      const hasHoras = dur > 0 || (!!t.hora_inicio && !!t.hora_fim);
+      if (!t.check_out && !hasHoras) return false;
 
       if (filterTecnico !== "todos" && t.tecnico !== filterTecnico) return false;
 
