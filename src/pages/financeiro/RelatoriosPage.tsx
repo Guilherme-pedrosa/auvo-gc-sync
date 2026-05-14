@@ -175,7 +175,7 @@ export default function RelatoriosPage() {
       const { data, error } = await supabase.functions.invoke("central-sync", {
         body: syncSolicitadasOnly
           ? { start_date: syncFrom, end_date: syncTo, situacao_ids: situacaoIds || [], fast: true }
-          : { start_date: syncFrom, end_date: syncTo, situacao_ids: [], wait: true, lite: true },
+          : { start_date: syncFrom, end_date: syncTo, situacao_ids: [], reports_only: true },
       });
       if (error) throw error;
       if (data?.success === false) throw new Error(data.error || "Erro na sincronização");
