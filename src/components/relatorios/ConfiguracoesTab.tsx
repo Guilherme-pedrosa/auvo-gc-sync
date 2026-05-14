@@ -269,6 +269,46 @@ export default function ConfiguracoesTab({ grupos, membros, allClientes, allTecn
                 className="w-[100px] h-9 text-xs"
               />
             </div>
+            <div className="space-y-1">
+              <Label className="text-xs">R$/hora FDS</Label>
+              <Input
+                type="number"
+                value={vhValorFds}
+                onChange={(e) => setVhValorFds(e.target.value)}
+                placeholder="opcional"
+                className="w-[100px] h-9 text-xs"
+              />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">Aplica taxa emerg.</Label>
+              <div className="h-9 flex items-center">
+                <Switch checked={vhAplicaEmerg} onCheckedChange={setVhAplicaEmerg} />
+              </div>
+            </div>
+            {vhAplicaEmerg && (
+              <div className="space-y-1">
+                <Label className="text-xs">Taxa fixa emerg. (R$)</Label>
+                <Input
+                  type="number"
+                  value={vhTaxaEmerg}
+                  onChange={(e) => setVhTaxaEmerg(e.target.value)}
+                  placeholder="0.00"
+                  className="w-[110px] h-9 text-xs"
+                />
+              </div>
+            )}
+            <div className="space-y-1">
+              <Label className="text-xs" title="IDs de tipo de tarefa do Auvo, separados por vírgula">
+                IDs taskType emerg.
+              </Label>
+              <Input
+                type="text"
+                value={vhTaskTypesEmerg}
+                onChange={(e) => setVhTaskTypesEmerg(e.target.value)}
+                placeholder="ex.: 201522,201523"
+                className="w-[160px] h-9 text-xs"
+              />
+            </div>
             <Button size="sm" onClick={handleAddValorHora} disabled={addingVH}>
               {addingVH ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4 mr-1" />}
               Adicionar
