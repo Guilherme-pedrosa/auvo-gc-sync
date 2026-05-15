@@ -472,6 +472,115 @@ async function hydrateMissingOrcamentosByCodigo(gcHeaders: Record<string, string
   return hydrated;
 }
 
+// Hidrata OS GC pelo código (quando referenciada na orientação Auvo mas fora da janela de listagem)
+async function hydrateMissingOsByCodigo(
+  gcHeaders: Record<string, string>,
+  gcOsResult: {
+    byTaskId: Record<string, any>;
+    byTaskIdAll: Record<string, any[]>;
+    byExecTaskId: Record<string, any[]>;
+    byCodigo: Record<string, any>;
+    byOrcNumero: Record<string, any>;
+  },
+  codigos: string[],
+) {
+  const unique = [...new Set(codigos.map((c) => String(c || "").trim()).filter((c) => /^\d+$/.test(c) && !gcOsResult.byCodigo[c]))];
+  if (unique.length === 0) return 0;
+  let hydrated = 0;
+  const PARALLEL = 8;
+  for (let i = 0; i < unique.length; i += PARALLEL) {
+    const batch = unique.slice(i, i + PARALLEL);
+    const results = await Promise.all(batch.map(async (codigo) => {
+      const url = `${GC_BASE_URL}/api/ordens_servicos?codigo=${encodeURIComponent(codigo)}&limite=5`;
+      const response = await rateLimitedFetch(url, { headers: gcHeaders }, "gc");
+      if (!response.ok) return null;
+      const data = await response.json().catch(() => ({}));
+      const records: any[] = Array.isArray(data?.data) ? data.data : [];
+      return records.find((os) => String(os?.codigo || "").trim() === codigo) || null;
+    }));
+    for (const os of results) {
+      if (!os?.id) continue;
+      const atributos: any[] = os.atributos || [];
+      const gc_os_tarefa_os = collectGcAttrTaskIds(atributos, GC_ATRIBUTO_TAREFA_OS).join("/");
+      const gc_os_tarefa_exec = collectGcAttrTaskIds(atributos, GC_ATRIBUTO_TAREFA_EXEC).join("/") || null;
+      const osPayload: any = {
+        gc_os_id: String(os.id),
+        gc_os_codigo: String(os.codigo || ""),
+        gc_os_cliente: String(os.nome_cliente || ""),
+        gc_os_situacao: String(os.nome_situacao || ""),
+        gc_os_situacao_id: String(os.situacao_id || ""),
+        gc_os_cor_situacao: String(os.cor_situacao || ""),
+        gc_os_valor_total: parseFloat(os.valor_total || "0"),
+        gc_os_vendedor: String(os.nome_vendedor || ""),
+        gc_os_data: String(os.data_entrada || os.data || "").split("T")[0] || null,
+        gc_os_data_saida: String(os.data_saida || "").split("T")[0] || null,
+        gc_os_link: `https://gestaoclick.com/ordens_servicos/editar/${os.id}?retorno=%2Fordens_servicos`,
+        gc_os_link_cobranca: os.hash ? `https://gestaoclick.com/cobranca/${String(os.hash).trim()}` : null,
+        gc_os_tarefa_exec,
+        gc_os_tarefa_os,
+        gc_os_orcamento_codigo: null as string | null,
+      };
+      const codigo = String(os.codigo || "").trim();
+      if (codigo) gcOsResult.byCodigo[codigo] = osPayload;
+      const attrOrcNum = atributos.find((a: any) => {
+        const nested = a?.atributo || a;
+        return String(nested.atributo_id || nested.id || "") === "81831";
+      });
+      if (attrOrcNum) {
+        const nested = attrOrcNum?.atributo || attrOrcNum;
+        const orcNum = String(nested?.conteudo || nested?.valor || "").trim();
+        if (orcNum && /^\d+$/.test(orcNum)) {
+          osPayload.gc_os_orcamento_codigo = orcNum;
+          gcOsResult.byOrcNumero[orcNum] = osPayload;
+        }
+      }
+      const tarefaOsIds = gc_os_tarefa_os.split("/").filter(Boolean);
+      for (const taskId of tarefaOsIds) {
+        if (!gcOsResult.byTaskId[taskId]) gcOsResult.byTaskId[taskId] = osPayload;
+        const bucket = gcOsResult.byTaskIdAll[taskId] || [];
+        if (!bucket.some((existing: any) => existing?.gc_os_id === osPayload.gc_os_id)) {
+          bucket.push(osPayload);
+          gcOsResult.byTaskIdAll[taskId] = bucket;
+        }
+      }
+      const tarefaExecIds = String(gc_os_tarefa_exec || "").split("/").filter(Boolean);
+      for (const execId of tarefaExecIds) {
+        const bucket = gcOsResult.byExecTaskId[execId] || [];
+        if (!bucket.some((existing: any) => existing?.gc_os_id === osPayload.gc_os_id)) {
+          bucket.push(osPayload);
+          gcOsResult.byExecTaskId[execId] = bucket;
+        }
+      }
+      hydrated++;
+    }
+  }
+  console.log(`[central-sync] OS hidratadas por código (orientação): ${hydrated}/${unique.length}`);
+  return hydrated;
+}
+
+// Extrai códigos de OS / Orçamento mencionados em texto de orientação Auvo
+function extractReferencedCodes(text: string): { osCodigos: string[]; orcCodigos: string[] } {
+  const osCodigos = new Set<string>();
+  const orcCodigos = new Set<string>();
+  if (!text) return { osCodigos: [], orcCodigos: [] };
+
+  // Orçamento variantes: "Orçamento #5185", "OR N° 331", "ORÇAMENTO 331", "N° DO ORÇAMENTO 331", "ref. Orçamento #5082"
+  const orcRe = /(?:N[°º]?\s*(?:DO\s+)?)?(?:OR|Or[çc]amento|OR[ÇC]AMENTO)\s*(?:N[°º]|#|:)?\s*(\d{2,6})\b/gi;
+  let m: RegExpExecArray | null;
+  while ((m = orcRe.exec(text))) orcCodigos.add(m[1]);
+
+  // OS variantes: "OS N° 9224", "OS 9224", "OS: 9224", "OS #9224"
+  const osRe = /\bOS\s*(?:N[°º]|:|#)?\s*(\d{2,6})\b/gi;
+  while ((m = osRe.exec(text))) {
+    // descarta se vier de "TAREFA OS" (normalmente IDs de tarefa Auvo, 7-8 dígitos)
+    const start = Math.max(0, m.index - 8);
+    const prefix = text.slice(start, m.index).toUpperCase();
+    if (prefix.includes("TAREFA")) continue;
+    osCodigos.add(m[1]);
+  }
+  return { osCodigos: [...osCodigos], orcCodigos: [...orcCodigos] };
+}
+
 // Fetch GC OS with optional filters (situacao_ids, date range)
 async function fetchGcOs(gcHeaders: Record<string, string>, options?: { situacaoIds?: string[]; dataInicio?: string; dataFim?: string }): Promise<{ byTaskId: Record<string, any>; byTaskIdAll: Record<string, any[]>; byExecTaskId: Record<string, any[]>; byCodigo: Record<string, any>; byOrcNumero: Record<string, any> }> {
   const map: Record<string, any> = {};
@@ -1312,6 +1421,30 @@ async function runCentralSync(body: CentralSyncBody = {}) {
       console.log(`[central-sync] Snapshots obtidos: ${taskSnapshotById.size}/${candidateTaskIds.length}`);
     }
 
+    // Pré-hidratação: varre orientações Auvo e busca no GC OS/Orçamentos referenciados
+    // que não vieram na listagem (ex.: "OS N° 9224", "Orçamento #5082", "ORÇAMENTO 331").
+    {
+      const allOsCodes = new Set<string>();
+      const allOrcCodes = new Set<string>();
+      for (const task of auvoTasks) {
+        const taskId = String(task.taskID || "");
+        const snap = taskSnapshotById.get(taskId);
+        const text = String(snap?.orientation || task.orientation || "");
+        if (!text) continue;
+        const refs = extractReferencedCodes(text);
+        for (const c of refs.osCodigos) if (!gcOsByCodigo[c]) allOsCodes.add(c);
+        for (const c of refs.orcCodigos) if (!gcOrcByCodigo[c]) allOrcCodes.add(c);
+      }
+      if (allOsCodes.size > 0) {
+        console.log(`[central-sync] Hidratando ${allOsCodes.size} OS referenciadas em orientações...`);
+        await hydrateMissingOsByCodigo(gcH, gcOsResult, [...allOsCodes]);
+      }
+      if (allOrcCodes.size > 0) {
+        console.log(`[central-sync] Hidratando ${allOrcCodes.size} Orçamentos referenciados em orientações...`);
+        await hydrateMissingOrcamentosByCodigo(gcH, gcOrcResult, [...allOrcCodes]);
+      }
+    }
+
     // Secondary linkage: parse orientacao for OS/Orçamento/Tarefa references
     function secondaryLinkage(orientation: string, taskId: string): { os: any | null; orc: any | null } {
       let os: any = null;
@@ -1327,31 +1460,20 @@ async function runCentralSync(body: CentralSyncBody = {}) {
         }
       }
 
-      // Try "OS N° XXXX" or "OS: XXXX" or "OS Nº XXXX" → look up by OS código
+      const refs = extractReferencedCodes(orientation);
+
+      // OS por código (loose): "OS N° 9224", "OS 9224", "OS:9224"
       if (!os) {
-        const osNumMatch = orientation.match(/OS\s*(?:N[°º]|:)\s*(\d{3,})/i);
-        if (osNumMatch && gcOsByCodigo[osNumMatch[1]]) {
-          os = gcOsByCodigo[osNumMatch[1]];
+        for (const code of refs.osCodigos) {
+          if (gcOsByCodigo[code]) { os = gcOsByCodigo[code]; break; }
         }
       }
 
-      // Try "OR N° XXXX" or "Orçamento #XXXX" or "OR: XXXX" → look up by orçamento código
-      if (!orc) {
-        const orcMatch = orientation.match(/(?:OR|Or[çc]amento)\s*(?:N[°º]|#|:)\s*(\d{3,})/i);
-        if (orcMatch) {
-          const orcNum = orcMatch[1];
-          if (gcOrcByCodigo[orcNum]) orc = gcOrcByCodigo[orcNum];
-          // Also link to OS via "NÚMERO ORÇAMENTO" attribute (81831)
-          if (!os && gcOsByOrcNumero[orcNum]) os = gcOsByOrcNumero[orcNum];
-        }
-      }
-
-      // Also try "OS ref. Orçamento #XXXX" pattern
-      if (!orc) {
-        const orcRefMatch = orientation.match(/ref\.\s*Or[çc]amento\s*#?\s*(\d{3,})/i);
-        if (orcRefMatch && gcOrcByCodigo[orcRefMatch[1]]) {
-          orc = gcOrcByCodigo[orcRefMatch[1]];
-        }
+      // Orçamento por código (loose): "Orçamento #5185", "ORÇAMENTO 331", "OR N° 331"
+      for (const code of refs.orcCodigos) {
+        if (!orc && gcOrcByCodigo[code]) orc = gcOrcByCodigo[code];
+        if (!os && gcOsByOrcNumero[code]) os = gcOsByOrcNumero[code];
+        if (orc && os) break;
       }
 
       return { os, orc };
