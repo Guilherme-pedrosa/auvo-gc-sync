@@ -1005,6 +1005,24 @@ async function runCentralSync(body: CentralSyncBody = {}) {
         lateLinkOrc += results.reduce((s, c) => s + c, 0);
       }
 
+      const osOrcEntries = Object.values(gcOsResult.byCodigo || {})
+        .map((osPayload: any) => ({ osPayload, orcPayload: findOrcForOs(osPayload) }))
+        .filter(({ osPayload, orcPayload }: any) => osPayload?.gc_os_id && orcPayload?.gc_orcamento_id);
+      for (let i = 0; i < osOrcEntries.length; i += PARALLEL_LINK) {
+        const slice = osOrcEntries.slice(i, i + PARALLEL_LINK);
+        const results = await Promise.all(slice.map(async ({ osPayload, orcPayload }: any) => {
+          const updatePayload: any = { atualizado_em: new Date().toISOString() };
+          applyOrcPayload(updatePayload, orcPayload);
+          const { count } = await sbClient
+            .from("tarefas_central")
+            .update(updatePayload, { count: "exact" })
+            .eq("gc_os_id", osPayload.gc_os_id)
+            .is("gc_orcamento_id", null);
+          return count || 0;
+        }));
+        lateLinkOrc += results.reduce((s, c) => s + c, 0);
+      }
+
       if (lateLinkOS > 0 || lateLinkOrc > 0) {
         console.log(`[central-sync] Late linkage: ${lateLinkOS} tarefas vinculadas a OS, ${lateLinkOrc} a orçamentos`);
       }
