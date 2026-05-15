@@ -933,25 +933,40 @@ async function runCentralSync(body: CentralSyncBody = {}) {
       for (let i = 0; i < osLinkEntries.length; i += PARALLEL_LINK) {
         const slice = osLinkEntries.slice(i, i + PARALLEL_LINK);
         const results = await Promise.all(slice.map(async ([taskId, osPayload]: any) => {
+          const orcPayload = findOrcForOs(osPayload);
+          const updatePayload: any = {
+            gc_os_id: osPayload.gc_os_id,
+            gc_os_codigo: osPayload.gc_os_codigo,
+            gc_os_cliente: osPayload.gc_os_cliente,
+            gc_os_situacao: osPayload.gc_os_situacao,
+            gc_os_situacao_id: osPayload.gc_os_situacao_id,
+            gc_os_cor_situacao: osPayload.gc_os_cor_situacao,
+            gc_os_valor_total: osPayload.gc_os_valor_total,
+            gc_os_vendedor: osPayload.gc_os_vendedor,
+            gc_os_data: osPayload.gc_os_data,
+            gc_os_data_saida: osPayload.gc_os_data_saida,
+            gc_os_link: osPayload.gc_os_link,
+            gc_os_link_cobranca: osPayload.gc_os_link_cobranca || null,
+            gc_os_tarefa_exec: osPayload.gc_os_tarefa_exec || null,
+            os_realizada: true,
+            atualizado_em: new Date().toISOString(),
+          };
+          if (orcPayload?.gc_orcamento_id) {
+            updatePayload.gc_orcamento_id = orcPayload.gc_orcamento_id;
+            updatePayload.gc_orcamento_codigo = orcPayload.gc_orcamento_codigo;
+            updatePayload.gc_orc_cliente = orcPayload.gc_orc_cliente;
+            updatePayload.gc_orc_situacao = orcPayload.gc_orc_situacao;
+            updatePayload.gc_orc_situacao_id = orcPayload.gc_orc_situacao_id;
+            updatePayload.gc_orc_cor_situacao = orcPayload.gc_orc_cor_situacao;
+            updatePayload.gc_orc_valor_total = orcPayload.gc_orc_valor_total;
+            updatePayload.gc_orc_vendedor = orcPayload.gc_orc_vendedor;
+            updatePayload.gc_orc_data = orcPayload.gc_orc_data;
+            updatePayload.gc_orc_link = orcPayload.gc_orc_link;
+            updatePayload.orcamento_realizado = true;
+          }
           const { count } = await sbClient
             .from("tarefas_central")
-            .update({
-              gc_os_id: osPayload.gc_os_id,
-              gc_os_codigo: osPayload.gc_os_codigo,
-              gc_os_cliente: osPayload.gc_os_cliente,
-              gc_os_situacao: osPayload.gc_os_situacao,
-              gc_os_situacao_id: osPayload.gc_os_situacao_id,
-              gc_os_cor_situacao: osPayload.gc_os_cor_situacao,
-              gc_os_valor_total: osPayload.gc_os_valor_total,
-              gc_os_vendedor: osPayload.gc_os_vendedor,
-              gc_os_data: osPayload.gc_os_data,
-              gc_os_data_saida: osPayload.gc_os_data_saida,
-              gc_os_link: osPayload.gc_os_link,
-              gc_os_link_cobranca: osPayload.gc_os_link_cobranca || null,
-              gc_os_tarefa_exec: osPayload.gc_os_tarefa_exec || null,
-              os_realizada: true,
-              atualizado_em: new Date().toISOString(),
-            }, { count: "exact" })
+            .update(updatePayload, { count: "exact" })
             .eq("auvo_task_id", taskId)
             .is("gc_os_id", null);
           return count || 0;
