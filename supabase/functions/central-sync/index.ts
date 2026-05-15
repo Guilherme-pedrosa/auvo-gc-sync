@@ -498,6 +498,7 @@ async function fetchGcOs(gcHeaders: Record<string, string>, options?: { situacao
           gc_os_link_cobranca: os.hash ? `https://gestaoclick.com/cobranca/${String(os.hash).trim()}` : null,
           gc_os_tarefa_exec,
           gc_os_tarefa_os,
+          gc_os_orcamento_codigo: null as string | null,
         };
 
         // Reverse map by OS código
