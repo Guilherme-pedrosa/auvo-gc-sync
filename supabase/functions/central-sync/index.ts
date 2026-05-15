@@ -68,9 +68,23 @@ function getGcAttrValue(atributos: any[], attrId: string): string {
   return String(nested?.conteudo || nested?.valor || "").trim();
 }
 
+function collectGcAttrTaskIds(atributos: any[], attrId: string): string[] {
+  const ids: string[] = [];
+  for (const attr of atributos || []) {
+    const nested = attr?.atributo || attr;
+    if (String(nested?.atributo_id || nested?.id || "") !== attrId) continue;
+    const raw = String(nested?.conteudo || nested?.valor || "").trim();
+    for (const piece of raw.split(/[\/,;\s]+/)) {
+      const id = piece.trim();
+      if (id && /^\d+$/.test(id) && !ids.includes(id)) ids.push(id);
+    }
+  }
+  return ids;
+}
+
 function normalizeTaskIdList(value: unknown): string {
   return String(value || "")
-    .split("/")
+    .split(/[\/,;\s]+/)
     .map((part) => part.trim())
     .filter((part) => /^\d+$/.test(part))
     .join("/");
