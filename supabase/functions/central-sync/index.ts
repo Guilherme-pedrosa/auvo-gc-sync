@@ -1275,6 +1275,22 @@ async function runCentralSync(body: CentralSyncBody = {}) {
       let gcOrc = gcOrcMap[taskId] || null;
       let gcOs = gcOsMap[taskId] || null;
 
+      // Cross-link via 73343/73344 ↔ 73341
+      // Se temos OS mas não orçamento, procura orçamento usando 73343 OU 73344 da OS.
+      if (gcOs && !gcOrc) {
+        const found = findOrcForOs(gcOs);
+        if (found) gcOrc = found;
+      }
+      // Se temos orçamento mas não OS, procura OS cuja 73344 (execução) == taskId.
+      if (gcOrc && !gcOs) {
+        const found = findOsForTaskId(taskId);
+        if (found) {
+          gcOs = found;
+          // E re-tenta orçamento via OS encontrada (caso 73341 aponte pra outra ponta)
+          if (!gcOrc) gcOrc = findOrcForOs(gcOs);
+        }
+      }
+
       // Secondary linkage: if no direct match, parse orientacao for references
       if (!gcOs || !gcOrc) {
         const orientation = String(task.orientation || "");
