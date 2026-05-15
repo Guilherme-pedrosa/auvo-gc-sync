@@ -1185,6 +1185,8 @@ export default function HorasTrabalhadasTab({
       const osRows = c.tasks.map((t) => [
         t.data_tarefa || t.data_conclusao,
         `#${t.auvo_task_id}`,
+        t.gc_os_codigo ? `OS ${t.gc_os_codigo}` : "—",
+        t.gc_orcamento_codigo ? `Orç ${t.gc_orcamento_codigo}` : "—",
         t.tecnico,
         t.descricao,
         t.equipamento || "—",
@@ -1196,15 +1198,16 @@ export default function HorasTrabalhadasTab({
 
       autoTable(doc, {
         startY: curY,
-        head: [["Data", "ID", "Técnico", "Tipo de Tarefa", "Equipamento", "Horário", "Horas", "Desloc.", "Valor"]],
+        head: [["Data", "ID", "OS GC", "Orç. GC", "Técnico", "Tipo de Tarefa", "Equipamento", "Horário", "Horas", "Desloc.", "Valor"]],
         body: osRows,
         styles: { fontSize: 7, cellPadding: 1.5 },
         headStyles: { fillColor: [37, 99, 235], fontSize: 7 },
         columnStyles: {
-          0: { cellWidth: 22 }, 1: { cellWidth: 18 }, 2: { cellWidth: 35 },
-          3: { cellWidth: 55 }, 4: { cellWidth: 55 },
-          5: { cellWidth: 24 }, 6: { cellWidth: 18, halign: "right" },
-          7: { cellWidth: 18, halign: "right" }, 8: { halign: "right" },
+          0: { cellWidth: 20 }, 1: { cellWidth: 16 },
+          2: { cellWidth: 20 }, 3: { cellWidth: 22 },
+          4: { cellWidth: 32 }, 5: { cellWidth: 45 }, 6: { cellWidth: 45 },
+          7: { cellWidth: 22 }, 8: { cellWidth: 16, halign: "right" },
+          9: { cellWidth: 16, halign: "right" }, 10: { halign: "right" },
         },
         margin: { left: 14, right: 14 },
       });
