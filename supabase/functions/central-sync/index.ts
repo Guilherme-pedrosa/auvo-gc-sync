@@ -966,17 +966,7 @@ async function runCentralSync(body: CentralSyncBody = {}) {
             atualizado_em: new Date().toISOString(),
           };
           if (orcPayload?.gc_orcamento_id) {
-            updatePayload.gc_orcamento_id = orcPayload.gc_orcamento_id;
-            updatePayload.gc_orcamento_codigo = orcPayload.gc_orcamento_codigo;
-            updatePayload.gc_orc_cliente = orcPayload.gc_orc_cliente;
-            updatePayload.gc_orc_situacao = orcPayload.gc_orc_situacao;
-            updatePayload.gc_orc_situacao_id = orcPayload.gc_orc_situacao_id;
-            updatePayload.gc_orc_cor_situacao = orcPayload.gc_orc_cor_situacao;
-            updatePayload.gc_orc_valor_total = orcPayload.gc_orc_valor_total;
-            updatePayload.gc_orc_vendedor = orcPayload.gc_orc_vendedor;
-            updatePayload.gc_orc_data = orcPayload.gc_orc_data;
-            updatePayload.gc_orc_link = orcPayload.gc_orc_link;
-            updatePayload.orcamento_realizado = true;
+            applyOrcPayload(updatePayload, orcPayload);
           }
           const { count } = await sbClient
             .from("tarefas_central")
