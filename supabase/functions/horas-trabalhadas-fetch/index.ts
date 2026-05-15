@@ -367,7 +367,7 @@ Deno.serve(async (req) => {
             "gc_os_data_saida, gc_os_valor_total, gc_os_vendedor, gc_os_cliente, " +
             "gc_orcamento_codigo, gc_orcamento_id, gc_orc_link, gc_orc_situacao, " +
             "gc_orc_situacao_id, gc_orc_cor_situacao, gc_orc_data, gc_orc_valor_total, " +
-            "gc_orc_vendedor, gc_orc_cliente"
+            "gc_orc_vendedor, gc_orc_cliente, equipamento_nome, equipamento_id_serie"
           )
           .or(orFilter);
 
@@ -397,6 +397,7 @@ Deno.serve(async (req) => {
             "gc_orcamento_codigo","gc_orcamento_id","gc_orc_link","gc_orc_situacao",
             "gc_orc_situacao_id","gc_orc_cor_situacao","gc_orc_data","gc_orc_valor_total",
             "gc_orc_vendedor","gc_orc_cliente",
+            "equipamento_nome","equipamento_id_serie",
           ];
           let touched = false;
           for (const f of fields) {
