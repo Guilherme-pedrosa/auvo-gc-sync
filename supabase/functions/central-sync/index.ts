@@ -431,9 +431,10 @@ async function fetchGcOrcamentos(gcHeaders: Record<string, string>): Promise<{ b
 }
 
 // Fetch GC OS with optional filters (situacao_ids, date range)
-async function fetchGcOs(gcHeaders: Record<string, string>, options?: { situacaoIds?: string[]; dataInicio?: string; dataFim?: string }): Promise<{ byTaskId: Record<string, any>; byTaskIdAll: Record<string, any[]>; byCodigo: Record<string, any>; byOrcNumero: Record<string, any> }> {
+async function fetchGcOs(gcHeaders: Record<string, string>, options?: { situacaoIds?: string[]; dataInicio?: string; dataFim?: string }): Promise<{ byTaskId: Record<string, any>; byTaskIdAll: Record<string, any[]>; byExecTaskId: Record<string, any[]>; byCodigo: Record<string, any>; byOrcNumero: Record<string, any> }> {
   const map: Record<string, any> = {};
   const byTaskIdAll: Record<string, any[]> = {};
+  const byExecTaskId: Record<string, any[]> = {};
   const byCodigo: Record<string, any> = {};
   const byOrcNumero: Record<string, any> = {};
 
@@ -518,6 +519,17 @@ async function fetchGcOs(gcHeaders: Record<string, string>, options?: { situacao
             byTaskIdAll[taskId] = bucket;
           }
         }
+
+        // Index by 73344 (TAREFA EXECUÇÃO) — usado APENAS para casar com orçamento (73341),
+        // nunca para criar/atualizar vínculo de OS no Kanban.
+        const tarefaExecIds = String(gc_os_tarefa_exec || "").split("/").filter(Boolean);
+        for (const execId of tarefaExecIds) {
+          const bucket = byExecTaskId[execId] || [];
+          if (!bucket.some((existing) => existing?.gc_os_id === osPayload.gc_os_id)) {
+            bucket.push(osPayload);
+            byExecTaskId[execId] = bucket;
+          }
+        }
       }
 
       console.log(`[central-sync] GC OS${sitId ? ` sit=${sitId}` : ''} page ${page}/${totalPages}: ${records.length} registros, ${Object.keys(map).length} com tarefa`);
@@ -527,7 +539,7 @@ async function fetchGcOs(gcHeaders: Record<string, string>, options?: { situacao
       console.warn(`[central-sync] TRUNCAMENTO: MAX_PAGES atingido em GC ordens_servicos${sitId ? ` sit=${sitId}` : ''} (totalPages=${totalPages})`);
     }
   }
-  return { byTaskId: map, byTaskIdAll, byCodigo, byOrcNumero };
+  return { byTaskId: map, byTaskIdAll, byExecTaskId, byCodigo, byOrcNumero };
 }
 
 async function upsertGcOsShellRows(sbClient: any, gcOsResult: { byTaskIdAll: Record<string, any[]>; byCodigo: Record<string, any> }) {
@@ -802,10 +814,35 @@ async function runCentralSync(body: CentralSyncBody = {}) {
     const gcOrcByCodigo = gcOrcResult.byCodigo;
     const gcOsMap = gcOsResult.byTaskId;
     const gcOsByTaskIdAll = gcOsResult.byTaskIdAll || {};
+    const gcOsByExecTaskId = gcOsResult.byExecTaskId || {};
     const gcOsByCodigo = gcOsResult.byCodigo;
     const gcOsByOrcNumero = gcOsResult.byOrcNumero;
 
     console.log(`[central-sync] GC carregado: Orç: ${Object.keys(gcOrcMap).length}, OS: ${Object.keys(gcOsMap).length}`);
+
+    // Helpers de amarração OS↔Orçamento via tarefas Auvo (73343 / 73344 / 73341)
+    // - Orçamento (73341) geralmente aponta pra TAREFA EXECUÇÃO da OS, não pra TAREFA OS.
+    // - Por isso, ao casar com orçamento, olhamos 73343 OU 73344.
+    const findOrcForOs = (gcOs: any): any | null => {
+      if (!gcOs) return null;
+      const candidates: string[] = [];
+      const osIds = String(gcOs.gc_os_tarefa_os || "").split("/").filter(Boolean);
+      const execIds = String(gcOs.gc_os_tarefa_exec || "").split("/").filter(Boolean);
+      candidates.push(...osIds, ...execIds);
+      for (const id of candidates) {
+        if (gcOrcMap[id]) return gcOrcMap[id];
+      }
+      return null;
+    };
+    const findOsForTaskId = (taskId: string): any | null => {
+      if (!taskId) return null;
+      // 1) OS com 73343 == taskId
+      if (gcOsMap[taskId]) return gcOsMap[taskId];
+      // 2) OS com 73344 == taskId (orçamento aponta pra execução)
+      const execBucket = gcOsByExecTaskId[taskId];
+      if (execBucket && execBucket.length > 0) return execBucket[0];
+      return null;
+    };
 
     // Kick off Auvo fetch IN PARALLEL with the heavy GC refresh blocks below.
     // Auvo is network-bound and the refresh is DB-bound, so they overlap nicely.
@@ -1238,6 +1275,22 @@ async function runCentralSync(body: CentralSyncBody = {}) {
       let gcOrc = gcOrcMap[taskId] || null;
       let gcOs = gcOsMap[taskId] || null;
 
+      // Cross-link via 73343/73344 ↔ 73341
+      // Se temos OS mas não orçamento, procura orçamento usando 73343 OU 73344 da OS.
+      if (gcOs && !gcOrc) {
+        const found = findOrcForOs(gcOs);
+        if (found) gcOrc = found;
+      }
+      // Se temos orçamento mas não OS, procura OS cuja 73344 (execução) == taskId.
+      if (gcOrc && !gcOs) {
+        const found = findOsForTaskId(taskId);
+        if (found) {
+          gcOs = found;
+          // E re-tenta orçamento via OS encontrada (caso 73341 aponte pra outra ponta)
+          if (!gcOrc) gcOrc = findOrcForOs(gcOs);
+        }
+      }
+
       // Secondary linkage: if no direct match, parse orientacao for references
       if (!gcOs || !gcOrc) {
         const orientation = String(task.orientation || "");
@@ -1434,7 +1487,8 @@ async function runCentralSync(body: CentralSyncBody = {}) {
       for (const gcOs of osList as any[]) {
       if (existingTaskOsKeys.has(`${taskId}::${String(gcOs?.gc_os_id || "")}`)) continue;
 
-      const gcOrc = gcOrcMap[taskId] || null;
+      // Amarração orçamento: tenta primeiro pelo taskId (73343), depois via 73344 da OS
+      const gcOrc = gcOrcMap[taskId] || findOrcForOs(gcOs) || null;
       let fallbackSnapshot = taskSnapshotById.get(taskId) || null;
       if (!fallbackSnapshot && !isLiteSync) {
         fallbackSnapshot = await fetchAuvoTaskSnapshot(bearerToken, taskId);
