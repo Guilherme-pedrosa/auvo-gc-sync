@@ -1436,31 +1436,20 @@ async function runCentralSync(body: CentralSyncBody = {}) {
         }
       }
 
-      // Try "OS N° XXXX" or "OS: XXXX" or "OS Nº XXXX" → look up by OS código
+      const refs = extractReferencedCodes(orientation);
+
+      // OS por código (loose): "OS N° 9224", "OS 9224", "OS:9224"
       if (!os) {
-        const osNumMatch = orientation.match(/OS\s*(?:N[°º]|:)\s*(\d{3,})/i);
-        if (osNumMatch && gcOsByCodigo[osNumMatch[1]]) {
-          os = gcOsByCodigo[osNumMatch[1]];
+        for (const code of refs.osCodigos) {
+          if (gcOsByCodigo[code]) { os = gcOsByCodigo[code]; break; }
         }
       }
 
-      // Try "OR N° XXXX" or "Orçamento #XXXX" or "OR: XXXX" → look up by orçamento código
-      if (!orc) {
-        const orcMatch = orientation.match(/(?:OR|Or[çc]amento)\s*(?:N[°º]|#|:)\s*(\d{3,})/i);
-        if (orcMatch) {
-          const orcNum = orcMatch[1];
-          if (gcOrcByCodigo[orcNum]) orc = gcOrcByCodigo[orcNum];
-          // Also link to OS via "NÚMERO ORÇAMENTO" attribute (81831)
-          if (!os && gcOsByOrcNumero[orcNum]) os = gcOsByOrcNumero[orcNum];
-        }
-      }
-
-      // Also try "OS ref. Orçamento #XXXX" pattern
-      if (!orc) {
-        const orcRefMatch = orientation.match(/ref\.\s*Or[çc]amento\s*#?\s*(\d{3,})/i);
-        if (orcRefMatch && gcOrcByCodigo[orcRefMatch[1]]) {
-          orc = gcOrcByCodigo[orcRefMatch[1]];
-        }
+      // Orçamento por código (loose): "Orçamento #5185", "ORÇAMENTO 331", "OR N° 331"
+      for (const code of refs.orcCodigos) {
+        if (!orc && gcOrcByCodigo[code]) orc = gcOrcByCodigo[code];
+        if (!os && gcOsByOrcNumero[code]) os = gcOsByOrcNumero[code];
+        if (orc && os) break;
       }
 
       return { os, orc };
