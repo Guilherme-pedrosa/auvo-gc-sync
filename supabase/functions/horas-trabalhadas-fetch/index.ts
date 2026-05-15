@@ -419,69 +419,70 @@ Deno.serve(async (req) => {
       avisos.push(`Falha ao enriquecer execuções com GC: ${e?.message || e}`);
     }
 
-    // 6.b) Fallback de equipamento: para qualquer tarefa que ainda esteja sem
-    //      equipamento_nome, herdar de tarefas-irmãs do mesmo cliente na mesma
-    //      data (ou ±1 dia) que possuam equipamento. Concatena nomes únicos.
+    // 6.b) Equipamento real por tarefa: a tabela equipamento_tarefas_auvo
+    //      contém o vínculo nativo Auvo (task_id → equipment_id). Usamos isso
+    //      para resolver equipamento_nome SEM chutar/inferir de tarefas-irmãs.
     try {
       const semEquip = tasks.filter((t: any) =>
         !String(t.equipamento_nome || "").trim() &&
-        String(t.cliente || "").trim() &&
-        String(t.data_tarefa || "").trim()
+        String(t.auvo_task_id || "").trim()
       );
       if (semEquip.length > 0) {
-        const clientes = Array.from(new Set(semEquip.map((t: any) => String(t.cliente))));
-        const datas = Array.from(new Set(semEquip.map((t: any) => String(t.data_tarefa).slice(0, 10))));
-        // Janela ±1 dia
-        const minD = datas.reduce((a, b) => (a < b ? a : b));
-        const maxD = datas.reduce((a, b) => (a > b ? a : b));
-        const expand = (d: string, delta: number) => {
-          const dt = new Date(d + "T00:00:00Z");
-          dt.setUTCDate(dt.getUTCDate() + delta);
-          return dt.toISOString().slice(0, 10);
-        };
-        const { data: irmas } = await supabase
-          .from("tarefas_central")
-          .select("cliente, data_tarefa, equipamento_nome, equipamento_id_serie")
-          .in("cliente", clientes)
-          .gte("data_tarefa", expand(minD, -1))
-          .lte("data_tarefa", expand(maxD, 1))
-          .not("equipamento_nome", "is", null);
+        const ids = semEquip.map((t: any) => String(t.auvo_task_id));
+        const { data: links } = await supabase
+          .from("equipamento_tarefas_auvo")
+          .select("auvo_task_id, auvo_equipment_id")
+          .in("auvo_task_id", ids);
 
-        const byKey = new Map<string, { nomes: Set<string>; series: Set<string> }>();
-        for (const r of irmas || []) {
-          const nome = String(r.equipamento_nome || "").trim();
-          if (!nome) continue;
-          const key = `${String(r.cliente)}|${String(r.data_tarefa).slice(0, 10)}`;
-          if (!byKey.has(key)) byKey.set(key, { nomes: new Set(), series: new Set() });
-          byKey.get(key)!.nomes.add(nome);
-          const serie = String(r.equipamento_id_serie || "").trim();
-          if (serie) byKey.get(key)!.series.add(serie);
+        // Agrupa equipment_ids por task (uma tarefa pode ter vários equipamentos)
+        const eqByTask = new Map<string, Set<string>>();
+        const allEqIds = new Set<string>();
+        for (const l of links || []) {
+          const tid = String(l.auvo_task_id || "");
+          const eid = String(l.auvo_equipment_id || "");
+          if (!tid || !eid) continue;
+          if (!eqByTask.has(tid)) eqByTask.set(tid, new Set());
+          eqByTask.get(tid)!.add(eid);
+          allEqIds.add(eid);
         }
 
-        let inferidos = 0;
-        for (const t of semEquip) {
-          const key = `${String(t.cliente)}|${String(t.data_tarefa).slice(0, 10)}`;
-          let entry = byKey.get(key);
-          // Se não achou no mesmo dia, tenta ±1 dia
-          if (!entry) {
-            const d = String(t.data_tarefa).slice(0, 10);
-            for (const delta of [-1, 1]) {
-              const k2 = `${String(t.cliente)}|${expand(d, delta)}`;
-              if (byKey.has(k2)) { entry = byKey.get(k2); break; }
-            }
+        // Busca os nomes dos equipamentos
+        const eqNames = new Map<string, { nome: string; serie: string }>();
+        if (allEqIds.size > 0) {
+          const { data: eqs } = await supabase
+            .from("equipamentos_auvo")
+            .select("auvo_equipment_id, nome, identificador")
+            .in("auvo_equipment_id", Array.from(allEqIds));
+          for (const e of eqs || []) {
+            eqNames.set(String(e.auvo_equipment_id), {
+              nome: String(e.nome || "").trim(),
+              serie: String(e.identificador || "").trim(),
+            });
           }
-          if (!entry || entry.nomes.size === 0) continue;
-          t.equipamento_nome = Array.from(entry.nomes).join(" / ");
-          if (entry.series.size > 0) t.equipamento_id_serie = Array.from(entry.series).join(" / ");
-          t.equipamento_inferido = true;
-          inferidos++;
         }
-        if (inferidos > 0) {
-          avisos.push(`${inferidos} tarefa(s) com equipamento inferido de tarefas-irmãs do mesmo cliente/data.`);
+
+        let resolvidos = 0;
+        for (const t of semEquip) {
+          const eqIds = eqByTask.get(String(t.auvo_task_id));
+          if (!eqIds || eqIds.size === 0) continue;
+          const nomes: string[] = [];
+          const series: string[] = [];
+          for (const eid of eqIds) {
+            const info = eqNames.get(eid);
+            if (info?.nome) nomes.push(info.nome);
+            if (info?.serie) series.push(info.serie);
+          }
+          if (nomes.length === 0) continue;
+          t.equipamento_nome = nomes.join(" / ");
+          if (series.length > 0) t.equipamento_id_serie = series.join(" / ");
+          resolvidos++;
+        }
+        if (resolvidos > 0) {
+          avisos.push(`${resolvidos} tarefa(s) com equipamento resolvido via vínculo nativo Auvo.`);
         }
       }
     } catch (e: any) {
-      console.warn("[horas-trabalhadas-fetch] equip fallback failed:", e?.message || e);
+      console.warn("[horas-trabalhadas-fetch] equip lookup failed:", e?.message || e);
     }
 
     return new Response(JSON.stringify({ tasks, avisos }), {
