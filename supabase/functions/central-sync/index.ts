@@ -513,6 +513,7 @@ async function fetchGcOs(gcHeaders: Record<string, string>, options?: { situacao
           const nested = attrOrcNum?.atributo || attrOrcNum;
           const orcNum = String(nested?.conteudo || nested?.valor || "").trim();
           if (orcNum && /^\d+$/.test(orcNum)) {
+            osPayload.gc_os_orcamento_codigo = orcNum;
             byOrcNumero[orcNum] = osPayload;
           }
         }
