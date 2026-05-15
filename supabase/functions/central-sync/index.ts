@@ -68,9 +68,23 @@ function getGcAttrValue(atributos: any[], attrId: string): string {
   return String(nested?.conteudo || nested?.valor || "").trim();
 }
 
+function collectGcAttrTaskIds(atributos: any[], attrId: string): string[] {
+  const ids: string[] = [];
+  for (const attr of atributos || []) {
+    const nested = attr?.atributo || attr;
+    if (String(nested?.atributo_id || nested?.id || "") !== attrId) continue;
+    const raw = String(nested?.conteudo || nested?.valor || "").trim();
+    for (const piece of raw.split(/[\/,;\s]+/)) {
+      const id = piece.trim();
+      if (id && /^\d+$/.test(id) && !ids.includes(id)) ids.push(id);
+    }
+  }
+  return ids;
+}
+
 function normalizeTaskIdList(value: unknown): string {
   return String(value || "")
-    .split("/")
+    .split(/[\/,;\s]+/)
     .map((part) => part.trim())
     .filter((part) => /^\d+$/.test(part))
     .join("/");
@@ -362,12 +376,28 @@ async function fetchAuvoTasks(bearerToken: string, startDate: string, endDate: s
 
 // Fetch ALL GC orçamentos (no date filter)
 // Returns { byTaskId, byCodigo } for secondary linkage
-async function fetchGcOrcamentos(gcHeaders: Record<string, string>): Promise<{ byTaskId: Record<string, any>; byCodigo: Record<string, any> }> {
+function buildGcOrcPayload(orc: any) {
+  return {
+    gc_orcamento_id: String(orc.id),
+    gc_orcamento_codigo: String(orc.codigo || ""),
+    gc_orc_cliente: String(orc.nome_cliente || ""),
+    gc_orc_situacao: String(orc.nome_situacao || ""),
+    gc_orc_situacao_id: String(orc.situacao_id || ""),
+    gc_orc_cor_situacao: String(orc.cor_situacao || ""),
+    gc_orc_valor_total: parseFloat(orc.valor_total || "0"),
+    gc_orc_vendedor: String(orc.nome_vendedor || ""),
+    gc_orc_data: String(orc.data || "").split("T")[0] || null,
+    gc_orc_link: `https://gestaoclick.com/orcamentos_servicos/editar/${orc.id}?retorno=%2Forcamentos_servicos`,
+  };
+}
+
+async function fetchGcOrcamentos(gcHeaders: Record<string, string>): Promise<{ byTaskId: Record<string, any>; byCodigo: Record<string, any>; pagesFetched: number; totalPages: number }> {
   const map: Record<string, any> = {};
   const byCodigo: Record<string, any> = {};
   let page = 1;
   let totalPages = 1;
-  const MAX_PAGES = 50;
+  const MAX_PAGES = 500;
+  let pagesFetched = 0;
 
   while (page <= totalPages && page <= MAX_PAGES) {
     const url = `${GC_BASE_URL}/api/orcamentos?limite=100&pagina=${page}`;
@@ -391,43 +421,55 @@ async function fetchGcOrcamentos(gcHeaders: Record<string, string>): Promise<{ b
 
     for (const orc of records) {
       const atributos: any[] = orc.atributos || [];
-      const orcPayload = {
-        gc_orcamento_id: String(orc.id),
-        gc_orcamento_codigo: String(orc.codigo || ""),
-        gc_orc_cliente: String(orc.nome_cliente || ""),
-        gc_orc_situacao: String(orc.nome_situacao || ""),
-        gc_orc_situacao_id: String(orc.situacao_id || ""),
-        gc_orc_cor_situacao: String(orc.cor_situacao || ""),
-        gc_orc_valor_total: parseFloat(orc.valor_total || "0"),
-        gc_orc_vendedor: String(orc.nome_vendedor || ""),
-        gc_orc_data: String(orc.data || "").split("T")[0] || null,
-        gc_orc_link: `https://gestaoclick.com/orcamentos_servicos/editar/${orc.id}?retorno=%2Forcamentos_servicos`,
-      };
+      const orcPayload = buildGcOrcPayload(orc);
 
       // Reverse map by orçamento código
       const codigo = String(orc.codigo || "").trim();
       if (codigo) byCodigo[codigo] = orcPayload;
 
-      const attrTarefa = atributos.find((a: any) => {
-        const nested = a?.atributo || a;
-        return String(nested.atributo_id || nested.id || "") === GC_ATRIBUTO_TAREFA_ORC;
-      });
-      if (attrTarefa) {
-        const nested = attrTarefa?.atributo || attrTarefa;
-        const taskId = String(nested?.conteudo || nested?.valor || "").trim();
-        if (taskId && /^\d+$/.test(taskId)) {
-          map[taskId] = orcPayload;
-        }
+      for (const taskId of collectGcAttrTaskIds(atributos, GC_ATRIBUTO_TAREFA_ORC)) {
+        map[taskId] = orcPayload;
       }
     }
 
+    pagesFetched++;
     console.log(`[central-sync] GC orçamentos page ${page}/${totalPages}: ${records.length} registros, ${Object.keys(map).length} com tarefa`);
     page++;
   }
   if (page > MAX_PAGES && page <= totalPages) {
     console.warn(`[central-sync] TRUNCAMENTO: MAX_PAGES atingido em GC orcamentos (totalPages=${totalPages})`);
   }
-  return { byTaskId: map, byCodigo };
+  return { byTaskId: map, byCodigo, pagesFetched, totalPages };
+}
+
+async function hydrateMissingOrcamentosByCodigo(gcHeaders: Record<string, string>, gcOrcResult: { byTaskId: Record<string, any>; byCodigo: Record<string, any> }, codigos: string[]) {
+  const unique = [...new Set(codigos.map((c) => String(c || "").trim()).filter((c) => /^\d+$/.test(c) && !gcOrcResult.byCodigo[c]))];
+  if (unique.length === 0) return 0;
+  let hydrated = 0;
+  const PARALLEL = 8;
+  for (let i = 0; i < unique.length; i += PARALLEL) {
+    const batch = unique.slice(i, i + PARALLEL);
+    const results = await Promise.all(batch.map(async (codigo) => {
+      const url = `${GC_BASE_URL}/api/orcamentos?codigo=${encodeURIComponent(codigo)}&limite=5`;
+      const response = await rateLimitedFetch(url, { headers: gcHeaders }, "gc");
+      if (!response.ok) return null;
+      const data = await response.json().catch(() => ({}));
+      const records: any[] = Array.isArray(data?.data) ? data.data : [];
+      return records.find((orc) => String(orc?.codigo || "").trim() === codigo) || null;
+    }));
+    for (const orc of results) {
+      if (!orc?.id) continue;
+      const payload = buildGcOrcPayload(orc);
+      const codigo = String(orc.codigo || "").trim();
+      if (codigo) gcOrcResult.byCodigo[codigo] = payload;
+      for (const taskId of collectGcAttrTaskIds(orc.atributos || [], GC_ATRIBUTO_TAREFA_ORC)) {
+        gcOrcResult.byTaskId[taskId] = payload;
+      }
+      hydrated++;
+    }
+  }
+  console.log(`[central-sync] Orçamentos hidratados por código via OS/81831: ${hydrated}/${unique.length}`);
+  return hydrated;
 }
 
 // Fetch GC OS with optional filters (situacao_ids, date range)
@@ -444,7 +486,7 @@ async function fetchGcOs(gcHeaders: Record<string, string>, options?: { situacao
   for (const sitId of situacaoIds) {
     let page = 1;
     let totalPages = 1;
-    const MAX_PAGES = 50;
+    const MAX_PAGES = 500;
 
     while (page <= totalPages && page <= MAX_PAGES) {
       let url = `${GC_BASE_URL}/api/ordens_servicos?limite=100&pagina=${page}`;
@@ -472,8 +514,8 @@ async function fetchGcOs(gcHeaders: Record<string, string>, options?: { situacao
 
       for (const os of records) {
         const atributos: any[] = os.atributos || [];
-        const gc_os_tarefa_os = normalizeTaskIdList(getGcAttrValue(atributos, GC_ATRIBUTO_TAREFA_OS));
-        const gc_os_tarefa_exec = normalizeTaskIdList(getGcAttrValue(atributos, GC_ATRIBUTO_TAREFA_EXEC)) || null;
+        const gc_os_tarefa_os = collectGcAttrTaskIds(atributos, GC_ATRIBUTO_TAREFA_OS).join("/");
+        const gc_os_tarefa_exec = collectGcAttrTaskIds(atributos, GC_ATRIBUTO_TAREFA_EXEC).join("/") || null;
 
         const osPayload = {
           gc_os_id: String(os.id),
@@ -490,6 +532,7 @@ async function fetchGcOs(gcHeaders: Record<string, string>, options?: { situacao
           gc_os_link_cobranca: os.hash ? `https://gestaoclick.com/cobranca/${String(os.hash).trim()}` : null,
           gc_os_tarefa_exec,
           gc_os_tarefa_os,
+          gc_os_orcamento_codigo: null as string | null,
         };
 
         // Reverse map by OS código
@@ -505,6 +548,7 @@ async function fetchGcOs(gcHeaders: Record<string, string>, options?: { situacao
           const nested = attrOrcNum?.atributo || attrOrcNum;
           const orcNum = String(nested?.conteudo || nested?.valor || "").trim();
           if (orcNum && /^\d+$/.test(orcNum)) {
+            osPayload.gc_os_orcamento_codigo = orcNum;
             byOrcNumero[orcNum] = osPayload;
           }
         }
@@ -536,7 +580,7 @@ async function fetchGcOs(gcHeaders: Record<string, string>, options?: { situacao
       console.log(`[central-sync] GC OS${sitId ? ` sit=${sitId}` : ''} page ${page}/${totalPages}: ${records.length} registros, ${Object.keys(map).length} com tarefa`);
       page++;
     }
-    if (page > 50 && page <= totalPages) {
+    if (page > 500 && page <= totalPages) {
       console.warn(`[central-sync] TRUNCAMENTO: MAX_PAGES atingido em GC ordens_servicos${sitId ? ` sit=${sitId}` : ''} (totalPages=${totalPages})`);
     }
   }
@@ -812,6 +856,12 @@ async function runCentralSync(body: CentralSyncBody = {}) {
       fetchGcOs(gcH, gcOsOptions),
     ]);
 
+    await hydrateMissingOrcamentosByCodigo(
+      gcH,
+      gcOrcResult,
+      Object.values(gcOsResult.byCodigo || {}).map((os: any) => String(os?.gc_os_orcamento_codigo || ""))
+    );
+
     const gcOrcMap = gcOrcResult.byTaskId;
     const gcOrcByCodigo = gcOrcResult.byCodigo;
     const gcOsMap = gcOsResult.byTaskId;
@@ -827,6 +877,8 @@ async function runCentralSync(body: CentralSyncBody = {}) {
     // - Por isso, ao casar com orçamento, olhamos 73343 OU 73344.
     const findOrcForOs = (gcOs: any): any | null => {
       if (!gcOs) return null;
+      const orcCodigo = String(gcOs.gc_os_orcamento_codigo || "").trim();
+      if (orcCodigo && gcOrcByCodigo[orcCodigo]) return gcOrcByCodigo[orcCodigo];
       const candidates: string[] = [];
       const osIds = String(gcOs.gc_os_tarefa_os || "").split("/").filter(Boolean);
       const execIds = String(gcOs.gc_os_tarefa_exec || "").split("/").filter(Boolean);
@@ -844,6 +896,20 @@ async function runCentralSync(body: CentralSyncBody = {}) {
       const execBucket = gcOsByExecTaskId[taskId];
       if (execBucket && execBucket.length > 0) return execBucket[0];
       return null;
+    };
+    const applyOrcPayload = (target: any, orcPayload: any) => {
+      if (!target || !orcPayload?.gc_orcamento_id) return;
+      target.gc_orcamento_id = orcPayload.gc_orcamento_id;
+      target.gc_orcamento_codigo = orcPayload.gc_orcamento_codigo;
+      target.gc_orc_cliente = orcPayload.gc_orc_cliente;
+      target.gc_orc_situacao = orcPayload.gc_orc_situacao;
+      target.gc_orc_situacao_id = orcPayload.gc_orc_situacao_id;
+      target.gc_orc_cor_situacao = orcPayload.gc_orc_cor_situacao;
+      target.gc_orc_valor_total = orcPayload.gc_orc_valor_total;
+      target.gc_orc_vendedor = orcPayload.gc_orc_vendedor;
+      target.gc_orc_data = orcPayload.gc_orc_data;
+      target.gc_orc_link = orcPayload.gc_orc_link;
+      target.orcamento_realizado = true;
     };
 
     // Kick off Auvo fetch IN PARALLEL with the heavy GC refresh blocks below.
@@ -921,25 +987,30 @@ async function runCentralSync(body: CentralSyncBody = {}) {
       for (let i = 0; i < osLinkEntries.length; i += PARALLEL_LINK) {
         const slice = osLinkEntries.slice(i, i + PARALLEL_LINK);
         const results = await Promise.all(slice.map(async ([taskId, osPayload]: any) => {
+          const orcPayload = findOrcForOs(osPayload);
+          const updatePayload: any = {
+            gc_os_id: osPayload.gc_os_id,
+            gc_os_codigo: osPayload.gc_os_codigo,
+            gc_os_cliente: osPayload.gc_os_cliente,
+            gc_os_situacao: osPayload.gc_os_situacao,
+            gc_os_situacao_id: osPayload.gc_os_situacao_id,
+            gc_os_cor_situacao: osPayload.gc_os_cor_situacao,
+            gc_os_valor_total: osPayload.gc_os_valor_total,
+            gc_os_vendedor: osPayload.gc_os_vendedor,
+            gc_os_data: osPayload.gc_os_data,
+            gc_os_data_saida: osPayload.gc_os_data_saida,
+            gc_os_link: osPayload.gc_os_link,
+            gc_os_link_cobranca: osPayload.gc_os_link_cobranca || null,
+            gc_os_tarefa_exec: osPayload.gc_os_tarefa_exec || null,
+            os_realizada: true,
+            atualizado_em: new Date().toISOString(),
+          };
+          if (orcPayload?.gc_orcamento_id) {
+            applyOrcPayload(updatePayload, orcPayload);
+          }
           const { count } = await sbClient
             .from("tarefas_central")
-            .update({
-              gc_os_id: osPayload.gc_os_id,
-              gc_os_codigo: osPayload.gc_os_codigo,
-              gc_os_cliente: osPayload.gc_os_cliente,
-              gc_os_situacao: osPayload.gc_os_situacao,
-              gc_os_situacao_id: osPayload.gc_os_situacao_id,
-              gc_os_cor_situacao: osPayload.gc_os_cor_situacao,
-              gc_os_valor_total: osPayload.gc_os_valor_total,
-              gc_os_vendedor: osPayload.gc_os_vendedor,
-              gc_os_data: osPayload.gc_os_data,
-              gc_os_data_saida: osPayload.gc_os_data_saida,
-              gc_os_link: osPayload.gc_os_link,
-              gc_os_link_cobranca: osPayload.gc_os_link_cobranca || null,
-              gc_os_tarefa_exec: osPayload.gc_os_tarefa_exec || null,
-              os_realizada: true,
-              atualizado_em: new Date().toISOString(),
-            }, { count: "exact" })
+            .update(updatePayload, { count: "exact" })
             .eq("auvo_task_id", taskId)
             .is("gc_os_id", null);
           return count || 0;
@@ -968,6 +1039,24 @@ async function runCentralSync(body: CentralSyncBody = {}) {
               atualizado_em: new Date().toISOString(),
             }, { count: "exact" })
             .eq("auvo_task_id", taskId)
+            .is("gc_orcamento_id", null);
+          return count || 0;
+        }));
+        lateLinkOrc += results.reduce((s, c) => s + c, 0);
+      }
+
+      const osOrcEntries = Object.values(gcOsResult.byCodigo || {})
+        .map((osPayload: any) => ({ osPayload, orcPayload: findOrcForOs(osPayload) }))
+        .filter(({ osPayload, orcPayload }: any) => osPayload?.gc_os_id && orcPayload?.gc_orcamento_id);
+      for (let i = 0; i < osOrcEntries.length; i += PARALLEL_LINK) {
+        const slice = osOrcEntries.slice(i, i + PARALLEL_LINK);
+        const results = await Promise.all(slice.map(async ({ osPayload, orcPayload }: any) => {
+          const updatePayload: any = { atualizado_em: new Date().toISOString() };
+          applyOrcPayload(updatePayload, orcPayload);
+          const { count } = await sbClient
+            .from("tarefas_central")
+            .update(updatePayload, { count: "exact" })
+            .eq("gc_os_id", osPayload.gc_os_id)
             .is("gc_orcamento_id", null);
           return count || 0;
         }));
