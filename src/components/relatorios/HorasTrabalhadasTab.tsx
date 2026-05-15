@@ -610,13 +610,16 @@ export default function HorasTrabalhadasTab({
       entry.deslocamento += deslocamento;
       clienteEntry.deslocamento += deslocamento;
 
+      // Valor SEMPRE entra no total (faturável + em revisão + rejeitada).
+      // Quem decide o que cobrar é o usuário; o sistema apenas informa o status.
+      entry.valor += valorEfetivo;
+      clienteEntry.valor += valorEfetivo;
+
       if (status === "faturavel") {
         entry.horas += horasEfetivas;
         entry.tarefas++;
-        entry.valor += valorEfetivo;
         clienteEntry.horas += horasEfetivas;
         clienteEntry.tarefas++;
-        clienteEntry.valor += valorEfetivo;
         const tipo = getTipoLabel(t.descricao);
         clienteEntry.tipos.set(tipo, (clienteEntry.tipos.get(tipo) || 0) + horasEfetivas);
       } else if (status === "em_revisao") {
