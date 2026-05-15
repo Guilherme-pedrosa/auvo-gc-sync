@@ -484,6 +484,8 @@ export default function HorasTrabalhadasTab({
     cliente_gc: string;
     gc_os_codigo: string;
     gc_os_link: string;
+    gc_orcamento_codigo: string;
+    gc_orc_link: string;
     cliente: string;
     statusRevisao: StatusRevisao;
     horasOriginais: number;
