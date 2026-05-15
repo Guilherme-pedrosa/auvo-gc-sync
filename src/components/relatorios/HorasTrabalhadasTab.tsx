@@ -1052,32 +1052,34 @@ export default function HorasTrabalhadasTab({
     curY = (doc as any).lastAutoTable.finalY + 12;
 
     // ── Inconsistências ──
-    if (alertCounts.total > 0) {
-      if (curY > 230) { doc.addPage(); curY = 20; }
-      doc.setFontSize(12);
-      doc.setFont("helvetica", "bold");
-      doc.text("Inconsistências detectadas", 14, curY);
-      curY += 4;
+    {
       const incBody = (Object.keys(alertCounts.counts) as Array<Exclude<AlertaTipo, null>>)
-        .filter((k) => alertCounts.counts[k] > 0)
+        .filter((k) => k !== "curto" && k !== "longo" && alertCounts.counts[k] > 0)
         .sort((a, b) => ALERTA_SEVERIDADE[b] - ALERTA_SEVERIDADE[a])
         .map((k) => [ALERTA_LABEL[k], String(alertCounts.counts[k])]);
-      autoTable(doc, {
-        startY: curY,
-        head: [["Tipo", "OS afetadas"]],
-        body: incBody,
-        styles: { fontSize: 9 },
-        headStyles: { fillColor: [234, 179, 8] },
-        columnStyles: { 1: { halign: "right", cellWidth: 30 } },
-      });
-      curY = (doc as any).lastAutoTable.finalY + 4;
-      doc.setFontSize(8);
-      doc.setFont("helvetica", "italic");
-      doc.setTextColor(120);
-      doc.text("Detalhamento por OS disponível na aba 'Inconsistências' do export Excel.", 14, curY);
-      doc.setTextColor(0);
-      doc.setFont("helvetica", "normal");
-      curY += 10;
+      if (incBody.length > 0) {
+        if (curY > 230) { doc.addPage(); curY = 20; }
+        doc.setFontSize(12);
+        doc.setFont("helvetica", "bold");
+        doc.text("Inconsistências detectadas", 14, curY);
+        curY += 4;
+        autoTable(doc, {
+          startY: curY,
+          head: [["Tipo", "OS afetadas"]],
+          body: incBody,
+          styles: { fontSize: 9 },
+          headStyles: { fillColor: [234, 179, 8] },
+          columnStyles: { 1: { halign: "right", cellWidth: 30 } },
+        });
+        curY = (doc as any).lastAutoTable.finalY + 4;
+        doc.setFontSize(8);
+        doc.setFont("helvetica", "italic");
+        doc.setTextColor(120);
+        doc.text("Detalhamento por OS disponível na aba 'Inconsistências' do export Excel.", 14, curY);
+        doc.setTextColor(0);
+        doc.setFont("helvetica", "normal");
+        curY += 10;
+      }
     }
 
     // ── Resumo por Técnico ──
@@ -1317,27 +1319,31 @@ export default function HorasTrabalhadasTab({
     //  e OS suspeitas vão para a aba "OS em Revisão" / Caixa de Revisão.)
 
     // Sheet: Inconsistências (apenas OS com algum alerta)
-    if (alertCounts.total > 0) {
+    {
       const incHeader = [
         "Gravidade", "Alertas", "Cliente", "Técnico", "Data",
         "ID Tarefa", "Cód. OS GC", "Horas", "Status Auvo",
         "Link Auvo", "Link OS GC",
       ];
+      const flat: { sev: number; t: TaskDetail; alerts: Exclude<AlertaTipo, null>[]; cliente: string }[] = [];
+      for (const c of clienteSummary) {
+        for (const t of c.tasks) {
+          const alerts = ((tasksWithAlertas.get(t.auvo_task_id) || []).filter(Boolean) as Exclude<AlertaTipo, null>[])
+            .filter((a) => a !== "curto" && a !== "longo");
+          if (alerts.length === 0) continue;
+          const sev = Math.max(...alerts.map((a) => ALERTA_SEVERIDADE[a]));
+          flat.push({ sev, t, alerts, cliente: c.cliente });
+        }
+      }
+      if (flat.length === 0) {
+        // sem inconsistências reais — não cria a aba
+      } else {
       const incRows: any[] = [
         ["Inconsistências detectadas — OS com algum alerta no período"],
         [`Período: ${periodoStr}`],
         [],
         incHeader,
       ];
-      const flat: { sev: number; t: TaskDetail; alerts: Exclude<AlertaTipo, null>[]; cliente: string }[] = [];
-      for (const c of clienteSummary) {
-        for (const t of c.tasks) {
-          const alerts = (tasksWithAlertas.get(t.auvo_task_id) || []).filter(Boolean) as Exclude<AlertaTipo, null>[];
-          if (alerts.length === 0) continue;
-          const sev = Math.max(...alerts.map((a) => ALERTA_SEVERIDADE[a]));
-          flat.push({ sev, t, alerts, cliente: c.cliente });
-        }
-      }
       flat.sort((a, b) => b.sev - a.sev);
       for (const r of flat) {
         const pa = piorAlerta(r.alerts);
@@ -1362,6 +1368,7 @@ export default function HorasTrabalhadasTab({
         { wch: 40 }, { wch: 40 },
       ];
       XLSX.utils.book_append_sheet(wb, wsInc, "Inconsistências");
+      }
     }
 
     XLSX.writeFile(wb, `horas-trabalhadas-${format(dateFrom, "yyyyMMdd")}-${format(dateTo, "yyyyMMdd")}.xlsx`);
