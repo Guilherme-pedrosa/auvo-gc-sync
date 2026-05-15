@@ -659,6 +659,8 @@ export default function HorasTrabalhadasTab({
         cliente_gc: t.gc_os_cliente || "",
         gc_os_codigo: t.gc_os_codigo || "",
         gc_os_link: t.gc_os_link || "",
+        gc_orcamento_codigo: t.gc_orcamento_codigo || "",
+        gc_orc_link: t.gc_orc_link || "",
         cliente,
         statusRevisao: status,
         horasOriginais,
