@@ -58,6 +58,7 @@ type OSItem = {
   gc_os_vendedor: string | null;
   gc_os_data: string | null;
   gc_os_link: string | null;
+  gc_os_link_cobranca: string | null;
   gc_os_tarefa_exec: string | null;
   gc_orcamento_id: string | null;
   gc_orcamento_codigo: string | null;
@@ -1952,6 +1953,13 @@ export default function OSKanbanPage() {
                   <Button size="sm" variant="outline" asChild>
                     <a href={selectedCard.gc_os_link} target="_blank" rel="noopener noreferrer" className="gap-1">
                       <ExternalLink className="h-3.5 w-3.5" /> OS no GestãoClick
+                    </a>
+                  </Button>
+                )}
+                {selectedCard.gc_os_link_cobranca && (
+                  <Button size="sm" variant="outline" asChild className="border-emerald-500 text-emerald-700 hover:bg-emerald-50">
+                    <a href={selectedCard.gc_os_link_cobranca} target="_blank" rel="noopener noreferrer" className="gap-1">
+                      <ExternalLink className="h-3.5 w-3.5" /> Link de Cobrança
                     </a>
                   </Button>
                 )}

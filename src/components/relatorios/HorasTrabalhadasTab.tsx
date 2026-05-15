@@ -31,7 +31,7 @@ import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import * as XLSX from "xlsx";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
-import { ExternalLink, FileSpreadsheet, FileText } from "lucide-react";
+import { ExternalLink, FileSpreadsheet, FileText, DollarSign } from "lucide-react";
 import { toast } from "sonner";
 import { Textarea } from "@/components/ui/textarea";
 
@@ -484,6 +484,7 @@ export default function HorasTrabalhadasTab({
     cliente_gc: string;
     gc_os_codigo: string;
     gc_os_link: string;
+    gc_os_link_cobranca: string;
     gc_orcamento_codigo: string;
     gc_orc_link: string;
     cliente: string;
@@ -659,6 +660,7 @@ export default function HorasTrabalhadasTab({
         cliente_gc: t.gc_os_cliente || "",
         gc_os_codigo: t.gc_os_codigo || "",
         gc_os_link: t.gc_os_link || "",
+        gc_os_link_cobranca: t.gc_os_link_cobranca || "",
         gc_orcamento_codigo: t.gc_orcamento_codigo || "",
         gc_orc_link: t.gc_orc_link || "",
         cliente,
@@ -2091,20 +2093,33 @@ export default function HorasTrabalhadasTab({
                     </TableCell>
                     <TableCell className="text-center font-mono text-[11px]">
                       {t.gc_os_codigo ? (
-                        t.gc_os_link ? (
-                          <a
-                            href={t.gc_os_link}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="text-primary hover:underline inline-flex items-center gap-1"
-                            title="Abrir OS no GestãoClick"
-                          >
-                            <ExternalLink className="h-3 w-3" />
-                            {t.gc_os_codigo}
-                          </a>
-                        ) : (
-                          <span>{t.gc_os_codigo}</span>
-                        )
+                        <span className="inline-flex items-center gap-1">
+                          {t.gc_os_link ? (
+                            <a
+                              href={t.gc_os_link}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="text-primary hover:underline inline-flex items-center gap-1"
+                              title="Abrir OS no GestãoClick"
+                            >
+                              <ExternalLink className="h-3 w-3" />
+                              {t.gc_os_codigo}
+                            </a>
+                          ) : (
+                            <span>{t.gc_os_codigo}</span>
+                          )}
+                          {t.gc_os_link_cobranca && (
+                            <a
+                              href={t.gc_os_link_cobranca}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="text-emerald-600 hover:text-emerald-700"
+                              title="Abrir link de cobrança"
+                            >
+                              <DollarSign className="h-3 w-3" />
+                            </a>
+                          )}
+                        </span>
                       ) : (
                         <span className="text-muted-foreground">—</span>
                       )}

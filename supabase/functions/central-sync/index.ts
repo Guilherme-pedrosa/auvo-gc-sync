@@ -487,6 +487,7 @@ async function fetchGcOs(gcHeaders: Record<string, string>, options?: { situacao
           gc_os_data: String(os.data_entrada || os.data || "").split("T")[0] || null,
           gc_os_data_saida: String(os.data_saida || "").split("T")[0] || null,
           gc_os_link: `https://gestaoclick.com/ordens_servicos/editar/${os.id}?retorno=%2Fordens_servicos`,
+          gc_os_link_cobranca: os.hash ? `https://gestaoclick.com/cobranca/${String(os.hash).trim()}` : null,
           gc_os_tarefa_exec,
           gc_os_tarefa_os,
         };
@@ -595,6 +596,7 @@ async function upsertGcOsShellRows(sbClient: any, gcOsResult: { byTaskIdAll: Rec
       gc_os_data: (osPayload as any).gc_os_data,
       gc_os_data_saida: (osPayload as any).gc_os_data_saida,
       gc_os_link: (osPayload as any).gc_os_link,
+      gc_os_link_cobranca: (osPayload as any).gc_os_link_cobranca || null,
       gc_os_tarefa_exec: (osPayload as any).gc_os_tarefa_exec || null,
       gc_os_tarefa_os: (osPayload as any).gc_os_tarefa_os || null,
       mirror_key: `${primaryTaskId}::os:${(osPayload as any).gc_os_id}::orc:`,
@@ -933,6 +935,7 @@ async function runCentralSync(body: CentralSyncBody = {}) {
               gc_os_data: osPayload.gc_os_data,
               gc_os_data_saida: osPayload.gc_os_data_saida,
               gc_os_link: osPayload.gc_os_link,
+              gc_os_link_cobranca: osPayload.gc_os_link_cobranca || null,
               gc_os_tarefa_exec: osPayload.gc_os_tarefa_exec || null,
               os_realizada: true,
               atualizado_em: new Date().toISOString(),
@@ -1469,6 +1472,7 @@ async function runCentralSync(body: CentralSyncBody = {}) {
         row.gc_os_data = gcOs.gc_os_data;
         row.gc_os_data_saida = gcOs.gc_os_data_saida;
         row.gc_os_link = gcOs.gc_os_link;
+        row.gc_os_link_cobranca = (gcOs as any).gc_os_link_cobranca || null;
         row.gc_os_tarefa_exec = gcOs.gc_os_tarefa_exec || null;
         row.gc_os_tarefa_os = gcOs.gc_os_tarefa_os || taskId;
       }
@@ -1537,6 +1541,7 @@ async function runCentralSync(body: CentralSyncBody = {}) {
         gc_os_data: gcOs.gc_os_data,
         gc_os_data_saida: gcOs.gc_os_data_saida,
         gc_os_link: gcOs.gc_os_link,
+        gc_os_link_cobranca: (gcOs as any).gc_os_link_cobranca || null,
         gc_os_tarefa_exec: gcOs.gc_os_tarefa_exec || null,
         gc_os_tarefa_os: gcOs.gc_os_tarefa_os || taskId,
       };
