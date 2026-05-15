@@ -485,6 +485,135 @@ Deno.serve(async (req) => {
       console.warn("[horas-trabalhadas-fetch] equip lookup failed:", e?.message || e);
     }
 
+    // 6.c) Resolução direta no GC: para tarefas ainda sem gc_os_codigo /
+    //      gc_orcamento_codigo, extrai o número da OS / orçamento citado em
+    //      `orientacao` (ex.: "OS:9308", "OS Nº 9280", "Orçamento 1234")
+    //      e busca direto na API do GC para preencher os campos.
+    try {
+      const gcAccessToken = Deno.env.get("GC_ACCESS_TOKEN");
+      const gcSecretToken = Deno.env.get("GC_SECRET_TOKEN");
+      if (gcAccessToken && gcSecretToken) {
+        const gcH = {
+          "access-token": gcAccessToken,
+          "secret-access-token": gcSecretToken,
+          "Content-Type": "application/json",
+        };
+        const GC_BASE = "https://api.gestaoclick.com";
+
+        // Regex tolerante: captura "OS:9308", "OS Nº 9280", "OS N° 9308",
+        // "OS 9280", "ORD. SERVIÇO 9308". Procura no início de linha de
+        // preferência para evitar matches dentro de palavras maiores.
+        const reOS = /\bOS(?:\s*[NnRr][.°ºo]?)?\s*[:#-]?\s*(\d{3,6})\b/i;
+        const reORC = /\b(?:OR[ÇCç]|ORC|ORCAMENTO|OR[ÇC]AMENTO)\s*[NnRr]?[.°ºo]?\s*[:#-]?\s*(\d{3,6})\b/i;
+
+        const candidatos = tasks.filter((t: any) =>
+          (!String(t.gc_os_codigo || "").trim() || !String(t.gc_orcamento_codigo || "").trim()) &&
+          String(t.orientacao || "").trim()
+        );
+
+        // Coleta códigos únicos pra dedupe de chamadas
+        const osCodigos = new Map<string, any[]>(); // codigo → tasks
+        const orcCodigos = new Map<string, any[]>();
+        for (const t of candidatos) {
+          const ori = String(t.orientacao || "");
+          if (!t.gc_os_codigo) {
+            const m = ori.match(reOS);
+            if (m && m[1]) {
+              const code = m[1];
+              if (!osCodigos.has(code)) osCodigos.set(code, []);
+              osCodigos.get(code)!.push(t);
+            }
+          }
+          if (!t.gc_orcamento_codigo) {
+            const m = ori.match(reORC);
+            if (m && m[1]) {
+              const code = m[1];
+              if (!orcCodigos.has(code)) orcCodigos.set(code, []);
+              orcCodigos.get(code)!.push(t);
+            }
+          }
+        }
+
+        const fetchOne = async (url: string) => {
+          const ctrl = new AbortController();
+          const tid = setTimeout(() => ctrl.abort(), 8000);
+          try {
+            const r = await fetch(url, { headers: gcH, signal: ctrl.signal });
+            clearTimeout(tid);
+            if (!r.ok) return null;
+            return await r.json().catch(() => null);
+          } catch {
+            clearTimeout(tid);
+            return null;
+          }
+        };
+
+        // OS lookups
+        let osResolvidas = 0;
+        const osEntries = Array.from(osCodigos.entries());
+        const PAR = 8;
+        for (let i = 0; i < osEntries.length; i += PAR) {
+          const slice = osEntries.slice(i, i + PAR);
+          await Promise.all(slice.map(async ([code, ts]) => {
+            const data = await fetchOne(`${GC_BASE}/api/ordens_servicos?codigo=${encodeURIComponent(code)}&limite=1`);
+            const arr = data?.data;
+            const os = Array.isArray(arr) ? arr[0] : (arr?.id ? arr : null);
+            if (!os?.id) return;
+            const valorTotal = parseFloat(String(os.valor_total || "0")) || 0;
+            for (const t of ts) {
+              if (!t.gc_os_codigo) t.gc_os_codigo = String(os.codigo || code);
+              if (!t.gc_os_id) t.gc_os_id = String(os.id);
+              if (!t.gc_os_situacao) t.gc_os_situacao = String(os.nome_situacao || "");
+              if (!t.gc_os_situacao_id) t.gc_os_situacao_id = String(os.situacao_id || "");
+              if (!t.gc_os_cor_situacao) t.gc_os_cor_situacao = String(os.cor_situacao || "");
+              if (!t.gc_os_valor_total) t.gc_os_valor_total = valorTotal;
+              if (!t.gc_os_vendedor) t.gc_os_vendedor = String(os.nome_vendedor || "");
+              if (!t.gc_os_cliente) t.gc_os_cliente = String(os.nome_cliente || "");
+              if (!t.gc_os_data) t.gc_os_data = String(os.data_inicio || os.data || "").split("T")[0] || null;
+              if (!t.gc_os_data_saida) t.gc_os_data_saida = String(os.data_saida || "").split("T")[0] || null;
+              if (!t.gc_os_link) t.gc_os_link = `https://app.gestaoclick.com/ordens_servicos/visualizar/${os.id}`;
+              t.gc_os_inferido_de_orientacao = true;
+              osResolvidas++;
+            }
+          }));
+        }
+
+        // Orçamento lookups
+        let orcResolvidos = 0;
+        const orcEntries = Array.from(orcCodigos.entries());
+        for (let i = 0; i < orcEntries.length; i += PAR) {
+          const slice = orcEntries.slice(i, i + PAR);
+          await Promise.all(slice.map(async ([code, ts]) => {
+            const data = await fetchOne(`${GC_BASE}/api/orcamentos?codigo=${encodeURIComponent(code)}&limite=1`);
+            const arr = data?.data;
+            const orc = Array.isArray(arr) ? arr[0] : (arr?.id ? arr : null);
+            if (!orc?.id) return;
+            const valorTotal = parseFloat(String(orc.valor_total || "0")) || 0;
+            for (const t of ts) {
+              if (!t.gc_orcamento_codigo) t.gc_orcamento_codigo = String(orc.codigo || code);
+              if (!t.gc_orcamento_id) t.gc_orcamento_id = String(orc.id);
+              if (!t.gc_orc_situacao) t.gc_orc_situacao = String(orc.nome_situacao || "");
+              if (!t.gc_orc_situacao_id) t.gc_orc_situacao_id = String(orc.situacao_id || "");
+              if (!t.gc_orc_cor_situacao) t.gc_orc_cor_situacao = String(orc.cor_situacao || "");
+              if (!t.gc_orc_valor_total) t.gc_orc_valor_total = valorTotal;
+              if (!t.gc_orc_vendedor) t.gc_orc_vendedor = String(orc.nome_vendedor || "");
+              if (!t.gc_orc_cliente) t.gc_orc_cliente = String(orc.nome_cliente || "");
+              if (!t.gc_orc_data) t.gc_orc_data = String(orc.data || orc.data_inicio || "").split("T")[0] || null;
+              if (!t.gc_orc_link) t.gc_orc_link = `https://app.gestaoclick.com/orcamentos/visualizar/${orc.id}`;
+              t.gc_orc_inferido_de_orientacao = true;
+              orcResolvidos++;
+            }
+          }));
+        }
+
+        if (osResolvidas > 0 || orcResolvidos > 0) {
+          avisos.push(`${osResolvidas} OS e ${orcResolvidos} orçamento(s) resolvidos no GC via código citado em orientação.`);
+        }
+      }
+    } catch (e: any) {
+      console.warn("[horas-trabalhadas-fetch] gc lookup failed:", e?.message || e);
+    }
+
     return new Response(JSON.stringify({ tasks, avisos }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
