@@ -368,6 +368,15 @@ Deno.serve(async (req) => {
         existing.task_type_description = m.task_type_description || existing.task_type_description || "";
         existing.check_in_iso = m.check_in_iso || existing.check_in_iso || null;
         existing.check_out_iso = m.check_out_iso || existing.check_out_iso || null;
+        // Sobrescreve horários e duração com a verdade do Auvo (tempo trabalhado, sem pausas).
+        if (m.has_check_in) {
+          existing.duracao_decimal = m.worked_hours;
+          if (m.check_in_iso) existing.hora_inicio = String(m.check_in_iso).slice(11, 16);
+          if (m.check_out_iso) existing.hora_fim = String(m.check_out_iso).slice(11, 16);
+        } else {
+          // Sem check-in => não houve execução real. Zera horas planejadas.
+          existing.duracao_decimal = 0;
+        }
         const dbStamp = String(existing.atualizado_em || "");
         const auvoStamp = String(m.auvo_date_last_update || "");
         if (auvoStamp && auvoStamp > dbStamp) {
@@ -384,6 +393,9 @@ Deno.serve(async (req) => {
           atualizado_em: m.auvo_date_last_update,
           check_in_iso: m.check_in_iso,
           check_out_iso: m.check_out_iso,
+          duracao_decimal: m.has_check_in ? m.worked_hours : 0,
+          hora_inicio: m.check_in_iso ? String(m.check_in_iso).slice(11, 16) : null,
+          hora_fim: m.check_out_iso ? String(m.check_out_iso).slice(11, 16) : null,
         });
       }
     }
