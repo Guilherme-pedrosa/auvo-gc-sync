@@ -2021,6 +2021,8 @@ export default function HorasTrabalhadasTab({
                   <TableHead className="text-xs">Horário</TableHead>
                   <TableHead className="text-xs text-right">Horas</TableHead>
                   <TableHead className="text-xs text-right">Valor</TableHead>
+                  <TableHead className="text-xs text-center">OS GC</TableHead>
+                  <TableHead className="text-xs text-center">OR GC</TableHead>
                   <TableHead className="text-xs text-center">Auvo</TableHead>
                 </TableRow>
               </TableHeader>
@@ -2086,6 +2088,46 @@ export default function HorasTrabalhadasTab({
                     </TableCell>
                     <TableCell className="text-right font-medium">
                       {t.valor > 0 ? t.valor.toLocaleString("pt-BR", { style: "currency", currency: "BRL" }) : "—"}
+                    </TableCell>
+                    <TableCell className="text-center font-mono text-[11px]">
+                      {t.gc_os_codigo ? (
+                        t.gc_os_link ? (
+                          <a
+                            href={t.gc_os_link}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="text-primary hover:underline inline-flex items-center gap-1"
+                            title="Abrir OS no GestãoClick"
+                          >
+                            <ExternalLink className="h-3 w-3" />
+                            {t.gc_os_codigo}
+                          </a>
+                        ) : (
+                          <span>{t.gc_os_codigo}</span>
+                        )
+                      ) : (
+                        <span className="text-muted-foreground">—</span>
+                      )}
+                    </TableCell>
+                    <TableCell className="text-center font-mono text-[11px]">
+                      {t.gc_orcamento_codigo ? (
+                        t.gc_orc_link ? (
+                          <a
+                            href={t.gc_orc_link}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="text-primary hover:underline inline-flex items-center gap-1"
+                            title="Abrir orçamento no GestãoClick"
+                          >
+                            <ExternalLink className="h-3 w-3" />
+                            {t.gc_orcamento_codigo}
+                          </a>
+                        ) : (
+                          <span>{t.gc_orcamento_codigo}</span>
+                        )
+                      ) : (
+                        <span className="text-muted-foreground">—</span>
+                      )}
                     </TableCell>
                     <TableCell className="text-center">
                       <div className="flex items-center justify-center gap-1">
