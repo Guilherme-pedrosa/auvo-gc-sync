@@ -376,12 +376,13 @@ async function fetchAuvoTasks(bearerToken: string, startDate: string, endDate: s
 
 // Fetch ALL GC orçamentos (no date filter)
 // Returns { byTaskId, byCodigo } for secondary linkage
-async function fetchGcOrcamentos(gcHeaders: Record<string, string>): Promise<{ byTaskId: Record<string, any>; byCodigo: Record<string, any> }> {
+async function fetchGcOrcamentos(gcHeaders: Record<string, string>): Promise<{ byTaskId: Record<string, any>; byCodigo: Record<string, any>; pagesFetched: number; totalPages: number }> {
   const map: Record<string, any> = {};
   const byCodigo: Record<string, any> = {};
   let page = 1;
   let totalPages = 1;
-  const MAX_PAGES = 50;
+  const MAX_PAGES = 500;
+  let pagesFetched = 0;
 
   while (page <= totalPages && page <= MAX_PAGES) {
     const url = `${GC_BASE_URL}/api/orcamentos?limite=100&pagina=${page}`;
@@ -422,26 +423,19 @@ async function fetchGcOrcamentos(gcHeaders: Record<string, string>): Promise<{ b
       const codigo = String(orc.codigo || "").trim();
       if (codigo) byCodigo[codigo] = orcPayload;
 
-      const attrTarefa = atributos.find((a: any) => {
-        const nested = a?.atributo || a;
-        return String(nested.atributo_id || nested.id || "") === GC_ATRIBUTO_TAREFA_ORC;
-      });
-      if (attrTarefa) {
-        const nested = attrTarefa?.atributo || attrTarefa;
-        const taskId = String(nested?.conteudo || nested?.valor || "").trim();
-        if (taskId && /^\d+$/.test(taskId)) {
-          map[taskId] = orcPayload;
-        }
+      for (const taskId of collectGcAttrTaskIds(atributos, GC_ATRIBUTO_TAREFA_ORC)) {
+        map[taskId] = orcPayload;
       }
     }
 
+    pagesFetched++;
     console.log(`[central-sync] GC orçamentos page ${page}/${totalPages}: ${records.length} registros, ${Object.keys(map).length} com tarefa`);
     page++;
   }
   if (page > MAX_PAGES && page <= totalPages) {
     console.warn(`[central-sync] TRUNCAMENTO: MAX_PAGES atingido em GC orcamentos (totalPages=${totalPages})`);
   }
-  return { byTaskId: map, byCodigo };
+  return { byTaskId: map, byCodigo, pagesFetched, totalPages };
 }
 
 // Fetch GC OS with optional filters (situacao_ids, date range)
