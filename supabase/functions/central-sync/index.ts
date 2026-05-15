@@ -814,10 +814,35 @@ async function runCentralSync(body: CentralSyncBody = {}) {
     const gcOrcByCodigo = gcOrcResult.byCodigo;
     const gcOsMap = gcOsResult.byTaskId;
     const gcOsByTaskIdAll = gcOsResult.byTaskIdAll || {};
+    const gcOsByExecTaskId = gcOsResult.byExecTaskId || {};
     const gcOsByCodigo = gcOsResult.byCodigo;
     const gcOsByOrcNumero = gcOsResult.byOrcNumero;
 
     console.log(`[central-sync] GC carregado: Orç: ${Object.keys(gcOrcMap).length}, OS: ${Object.keys(gcOsMap).length}`);
+
+    // Helpers de amarração OS↔Orçamento via tarefas Auvo (73343 / 73344 / 73341)
+    // - Orçamento (73341) geralmente aponta pra TAREFA EXECUÇÃO da OS, não pra TAREFA OS.
+    // - Por isso, ao casar com orçamento, olhamos 73343 OU 73344.
+    const findOrcForOs = (gcOs: any): any | null => {
+      if (!gcOs) return null;
+      const candidates: string[] = [];
+      const osIds = String(gcOs.gc_os_tarefa_os || "").split("/").filter(Boolean);
+      const execIds = String(gcOs.gc_os_tarefa_exec || "").split("/").filter(Boolean);
+      candidates.push(...osIds, ...execIds);
+      for (const id of candidates) {
+        if (gcOrcMap[id]) return gcOrcMap[id];
+      }
+      return null;
+    };
+    const findOsForTaskId = (taskId: string): any | null => {
+      if (!taskId) return null;
+      // 1) OS com 73343 == taskId
+      if (gcOsMap[taskId]) return gcOsMap[taskId];
+      // 2) OS com 73344 == taskId (orçamento aponta pra execução)
+      const execBucket = gcOsByExecTaskId[taskId];
+      if (execBucket && execBucket.length > 0) return execBucket[0];
+      return null;
+    };
 
     // Kick off Auvo fetch IN PARALLEL with the heavy GC refresh blocks below.
     // Auvo is network-bound and the refresh is DB-bound, so they overlap nicely.
