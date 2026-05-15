@@ -342,6 +342,80 @@ Deno.serve(async (req) => {
 
     const tasks = Array.from(merged.values());
 
+    // 6) Enriquecimento: para tarefas sem vínculo GC (OS/Orçamento), buscar a
+    //    tarefa "pai" (Visita técnica - Ordem de Serviço) cujo campo
+    //    gc_os_tarefa_exec referencia esta tarefa de execução, e herdar os
+    //    campos GC. Cobre casos onde a tarefa de execução aparece no relatório
+    //    sem código GC mesmo havendo uma OS pai sincronizada.
+    try {
+      const orfas = tasks.filter((t: any) =>
+        !String(t.gc_os_codigo || "").trim() &&
+        !String(t.gc_orcamento_codigo || "").trim() &&
+        String(t.auvo_task_id || "").trim()
+      );
+      if (orfas.length > 0) {
+        // Busca em lotes — gc_os_tarefa_exec pode conter IDs separados por barra.
+        const ids = orfas.map((t: any) => String(t.auvo_task_id));
+        const orFilter = ids
+          .map((id) => `gc_os_tarefa_exec.ilike.%${id}%`)
+          .join(",");
+        const { data: parents } = await supabase
+          .from("tarefas_central")
+          .select(
+            "auvo_task_id, gc_os_tarefa_exec, gc_os_codigo, gc_os_id, gc_os_link, " +
+            "gc_os_situacao, gc_os_situacao_id, gc_os_cor_situacao, gc_os_data, " +
+            "gc_os_data_saida, gc_os_valor_total, gc_os_vendedor, gc_os_cliente, " +
+            "gc_orcamento_codigo, gc_orcamento_id, gc_orc_link, gc_orc_situacao, " +
+            "gc_orc_situacao_id, gc_orc_cor_situacao, gc_orc_data, gc_orc_valor_total, " +
+            "gc_orc_vendedor, gc_orc_cliente"
+          )
+          .or(orFilter);
+
+        // Mapa: execId → parent row (prefere quem tem gc_os_codigo preenchido)
+        const byExec = new Map<string, any>();
+        for (const p of parents || []) {
+          const execStr = String(p.gc_os_tarefa_exec || "");
+          if (!execStr) continue;
+          const execIds = execStr.split(/[\/,;\s]+/).map((x) => x.trim()).filter(Boolean);
+          for (const eid of execIds) {
+            const cur = byExec.get(eid);
+            const score = (p.gc_os_codigo ? 2 : 0) + (p.gc_orcamento_codigo ? 1 : 0);
+            const curScore = cur ? (cur.gc_os_codigo ? 2 : 0) + (cur.gc_orcamento_codigo ? 1 : 0) : -1;
+            if (!cur || score > curScore) byExec.set(eid, p);
+          }
+        }
+
+        let enriched = 0;
+        for (const t of orfas) {
+          const p = byExec.get(String(t.auvo_task_id));
+          if (!p) continue;
+          // Herda apenas campos GC vazios — nunca sobrescreve dados existentes.
+          const fields = [
+            "gc_os_codigo","gc_os_id","gc_os_link","gc_os_situacao","gc_os_situacao_id",
+            "gc_os_cor_situacao","gc_os_data","gc_os_data_saida","gc_os_valor_total",
+            "gc_os_vendedor","gc_os_cliente",
+            "gc_orcamento_codigo","gc_orcamento_id","gc_orc_link","gc_orc_situacao",
+            "gc_orc_situacao_id","gc_orc_cor_situacao","gc_orc_data","gc_orc_valor_total",
+            "gc_orc_vendedor","gc_orc_cliente",
+          ];
+          let touched = false;
+          for (const f of fields) {
+            if (!t[f] && p[f]) { t[f] = p[f]; touched = true; }
+          }
+          if (touched) {
+            t.gc_inherited_from = p.auvo_task_id;
+            enriched++;
+          }
+        }
+        if (enriched > 0) {
+          avisos.push(`${enriched} tarefa(s) de execução enriquecidas com OS/Orçamento da tarefa pai.`);
+        }
+      }
+    } catch (e: any) {
+      console.warn("[horas-trabalhadas-fetch] enrichment failed:", e?.message || e);
+      avisos.push(`Falha ao enriquecer execuções com GC: ${e?.message || e}`);
+    }
+
     return new Response(JSON.stringify({ tasks, avisos }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
