@@ -1810,6 +1810,57 @@ async function runCentralSync(body: CentralSyncBody = {}) {
 
     console.log(`[central-sync] Concluído: ${upserted} upserted, ${errors} erros, ${deleted || 0} removidos (> 6 meses)`);
 
+    // Mirror Auvo: remover tarefas do período que não voltaram mais do Auvo
+    // Só executa se o Auvo respondeu (length > 0) e somente apaga linhas SEM vínculo GC
+    // (gc_os_id e gc_orcamento_id nulos) — GC-only nunca é removida por este passo.
+    let ghostsDeleted = 0;
+    try {
+      if (auvoTasks.length > 0) {
+        const auvoIdSet = new Set(auvoTasks.map((t: any) => String(t?.taskID ?? t?.taskId ?? t?.id ?? "")).filter(Boolean));
+
+        // Carrega rows do período (Auvo-only) para comparar
+        const periodRows: { mirror_key: string; auvo_task_id: string }[] = [];
+        for (let from = 0; ; from += 1000) {
+          const { data: chunk, error: chunkErr } = await sbClient
+            .from("tarefas_central")
+            .select("mirror_key, auvo_task_id, gc_os_id, gc_orcamento_id")
+            .gte("data_tarefa", startDate)
+            .lte("data_tarefa", endDate)
+            .range(from, from + 999);
+          if (chunkErr || !chunk || chunk.length === 0) break;
+          for (const row of chunk as any[]) {
+            if (!row?.auvo_task_id) continue;
+            if (row.gc_os_id || row.gc_orcamento_id) continue; // preserva qualquer linha com vínculo GC
+            if (!auvoIdSet.has(String(row.auvo_task_id))) {
+              periodRows.push({ mirror_key: String(row.mirror_key), auvo_task_id: String(row.auvo_task_id) });
+            }
+          }
+          if (chunk.length < 1000) break;
+        }
+
+        // Apaga em batches por mirror_key
+        for (let i = 0; i < periodRows.length; i += 200) {
+          const batchKeys = periodRows.slice(i, i + 200).map((r) => r.mirror_key);
+          const { count: delCount, error: delErr } = await sbClient
+            .from("tarefas_central")
+            .delete({ count: "exact" })
+            .in("mirror_key", batchKeys);
+          if (delErr) {
+            console.warn(`[central-sync] mirror-delete erro:`, delErr.message);
+          } else {
+            ghostsDeleted += delCount || 0;
+          }
+        }
+        if (ghostsDeleted > 0) {
+          console.log(`[central-sync] Mirror Auvo: removidas ${ghostsDeleted} tarefas Auvo-only que não existem mais (período ${startDate}..${endDate})`);
+        }
+      } else {
+        console.warn(`[central-sync] Mirror Auvo pulado: Auvo retornou 0 tarefas (não vamos apagar nada por segurança)`);
+      }
+    } catch (mirrorErr) {
+      console.warn(`[central-sync] Mirror Auvo falhou:`, (mirrorErr as Error).message);
+    }
+
     const pending = (globalThis as any).__centralSyncPending || { os_individuais: 0, lookups_auvo: 0 };
     console.log(`[central-sync] Pendentes para próximo ciclo: OS individuais=${pending.os_individuais}, lookups Auvo=${pending.lookups_auvo}`);
     (globalThis as any).__centralSyncPending = { os_individuais: 0, lookups_auvo: 0 };
@@ -1825,6 +1876,7 @@ async function runCentralSync(body: CentralSyncBody = {}) {
       upserted,
       errors,
       deleted: deleted || 0,
+      ghosts_deleted: ghostsDeleted,
     };
 
 }
