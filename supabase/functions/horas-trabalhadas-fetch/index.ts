@@ -485,10 +485,13 @@ Deno.serve(async (req) => {
       console.warn("[horas-trabalhadas-fetch] equip lookup failed:", e?.message || e);
     }
 
-    // 6.c) Resolução direta no GC: para tarefas ainda sem gc_os_codigo /
-    //      gc_orcamento_codigo, extrai o número da OS / orçamento citado em
-    //      `orientacao` (ex.: "OS:9308", "OS Nº 9280", "Orçamento 1234")
-    //      e busca direto na API do GC para preencher os campos.
+    // 6.c) Varredura completa do GC no período: lista todas as OS e
+    //      orçamentos (paginado) e mapeia por atributos custom:
+    //        - 73343 = Tarefa OS  (vínculo OS → Auvo task da OS)
+    //        - 73344 = Tarefa Execução (vínculo OS → Auvo task de execução)
+    //        - 73341 = Tarefa Orçamento (vínculo Orç → Auvo task)
+    //      Mesma estratégia usada por kanban-os / budget-kanban.
+    //      Se não achar match no GC, deixa em branco — sem chutar.
     try {
       const gcAccessToken = Deno.env.get("GC_ACCESS_TOKEN");
       const gcSecretToken = Deno.env.get("GC_SECRET_TOKEN");
@@ -499,119 +502,158 @@ Deno.serve(async (req) => {
           "Content-Type": "application/json",
         };
         const GC_BASE = "https://api.gestaoclick.com";
+        const ATR_OS = "73343";
+        const ATR_EXEC = "73344";
+        const ATR_ORC = "73341";
+        const MAX_PAGES = 30;
+        const CONCURRENCY = 5;
 
-        // Regex tolerante: captura "OS:9308", "OS Nº 9280", "OS N° 9308",
-        // "OS 9280", "ORD. SERVIÇO 9308". Procura no início de linha de
-        // preferência para evitar matches dentro de palavras maiores.
-        const reOS = /\bOS(?:\s*[NnRr][.°ºo]?)?\s*[:#-]?\s*(\d{3,6})\b/i;
-        const reORC = /\b(?:OR[ÇCç]|ORC|ORCAMENTO|OR[ÇC]AMENTO)\s*[NnRr]?[.°ºo]?\s*[:#-]?\s*(\d{3,6})\b/i;
-
-        const candidatos = tasks.filter((t: any) =>
-          (!String(t.gc_os_codigo || "").trim() || !String(t.gc_orcamento_codigo || "").trim()) &&
-          String(t.orientacao || "").trim()
-        );
-
-        // Coleta códigos únicos pra dedupe de chamadas
-        const osCodigos = new Map<string, any[]>(); // codigo → tasks
-        const orcCodigos = new Map<string, any[]>();
-        for (const t of candidatos) {
-          const ori = String(t.orientacao || "");
-          if (!t.gc_os_codigo) {
-            const m = ori.match(reOS);
-            if (m && m[1]) {
-              const code = m[1];
-              if (!osCodigos.has(code)) osCodigos.set(code, []);
-              osCodigos.get(code)!.push(t);
+        const fetchPage = async (resource: "ordens_servicos" | "orcamentos", page: number) => {
+          const url = `${GC_BASE}/api/${resource}?limite=100&pagina=${page}&data_inicio=${startDate}&data_fim=${endDate}`;
+          for (let attempt = 0; attempt < 3; attempt++) {
+            const ctrl = new AbortController();
+            const tid = setTimeout(() => ctrl.abort(), 12000);
+            try {
+              const r = await fetch(url, { headers: gcH, signal: ctrl.signal });
+              clearTimeout(tid);
+              if (r.status === 429) { await new Promise(s => setTimeout(s, 4000)); continue; }
+              if (!r.ok) return null;
+              const data = await r.json().catch(() => null);
+              return {
+                records: Array.isArray(data?.data) ? data.data : [],
+                totalPages: data?.meta?.total_paginas || 1,
+              };
+            } catch {
+              clearTimeout(tid);
+              await new Promise(s => setTimeout(s, 1500));
             }
           }
-          if (!t.gc_orcamento_codigo) {
-            const m = ori.match(reORC);
-            if (m && m[1]) {
-              const code = m[1];
-              if (!orcCodigos.has(code)) orcCodigos.set(code, []);
-              orcCodigos.get(code)!.push(t);
-            }
-          }
-        }
-
-        const fetchOne = async (url: string) => {
-          const ctrl = new AbortController();
-          const tid = setTimeout(() => ctrl.abort(), 8000);
-          try {
-            const r = await fetch(url, { headers: gcH, signal: ctrl.signal });
-            clearTimeout(tid);
-            if (!r.ok) return null;
-            return await r.json().catch(() => null);
-          } catch {
-            clearTimeout(tid);
-            return null;
-          }
+          return null;
         };
 
-        // OS lookups
-        let osResolvidas = 0;
-        const osEntries = Array.from(osCodigos.entries());
-        const PAR = 8;
-        for (let i = 0; i < osEntries.length; i += PAR) {
-          const slice = osEntries.slice(i, i + PAR);
-          await Promise.all(slice.map(async ([code, ts]) => {
-            const data = await fetchOne(`${GC_BASE}/api/ordens_servicos?codigo=${encodeURIComponent(code)}&limite=1`);
-            const arr = data?.data;
-            const os = Array.isArray(arr) ? arr[0] : (arr?.id ? arr : null);
-            if (!os?.id) return;
-            const valorTotal = parseFloat(String(os.valor_total || "0")) || 0;
-            for (const t of ts) {
-              if (!t.gc_os_codigo) t.gc_os_codigo = String(os.codigo || code);
-              if (!t.gc_os_id) t.gc_os_id = String(os.id);
-              if (!t.gc_os_situacao) t.gc_os_situacao = String(os.nome_situacao || "");
-              if (!t.gc_os_situacao_id) t.gc_os_situacao_id = String(os.situacao_id || "");
-              if (!t.gc_os_cor_situacao) t.gc_os_cor_situacao = String(os.cor_situacao || "");
-              if (!t.gc_os_valor_total) t.gc_os_valor_total = valorTotal;
-              if (!t.gc_os_vendedor) t.gc_os_vendedor = String(os.nome_vendedor || "");
-              if (!t.gc_os_cliente) t.gc_os_cliente = String(os.nome_cliente || "");
-              if (!t.gc_os_data) t.gc_os_data = String(os.data_inicio || os.data || "").split("T")[0] || null;
-              if (!t.gc_os_data_saida) t.gc_os_data_saida = String(os.data_saida || "").split("T")[0] || null;
-              if (!t.gc_os_link) t.gc_os_link = `https://app.gestaoclick.com/ordens_servicos/visualizar/${os.id}`;
-              t.gc_os_inferido_de_orientacao = true;
-              osResolvidas++;
+        const fetchAll = async (resource: "ordens_servicos" | "orcamentos") => {
+          const all: any[] = [];
+          const first = await fetchPage(resource, 1);
+          if (!first) return all;
+          all.push(...first.records);
+          const totalPages = Math.min(first.totalPages, MAX_PAGES);
+          for (let start = 2; start <= totalPages; start += CONCURRENCY) {
+            const batch: number[] = [];
+            for (let p = start; p < start + CONCURRENCY && p <= totalPages; p++) batch.push(p);
+            const results = await Promise.all(batch.map((p) => fetchPage(resource, p)));
+            for (const r of results) if (r) all.push(...r.records);
+          }
+          return all;
+        };
+
+        const collectTaskIds = (atributos: any[], atrId: string): string[] => {
+          const ids: string[] = [];
+          for (const a of atributos || []) {
+            const nested = a?.atributo || a;
+            if (String(nested.atributo_id || nested.id || "") !== atrId) continue;
+            const raw = String(nested?.conteudo || nested?.valor || "").trim();
+            for (const piece of raw.split(/[\/,;]/)) {
+              const tid = piece.trim();
+              if (tid && /^\d+$/.test(tid)) ids.push(tid);
             }
-          }));
+          }
+          return ids;
+        };
+
+        const [osList, orcList] = await Promise.all([
+          fetchAll("ordens_servicos"),
+          fetchAll("orcamentos"),
+        ]);
+
+        // Indexa OS: aceita match por atributo 73343 OU 73344
+        const osByTaskId = new Map<string, any>();
+        for (const os of osList) {
+          const atributos: any[] = os.atributos || [];
+          const tids = new Set<string>([
+            ...collectTaskIds(atributos, ATR_OS),
+            ...collectTaskIds(atributos, ATR_EXEC),
+          ]);
+          if (tids.size === 0) continue;
+          const payload = {
+            gc_os_id: String(os.id),
+            gc_os_codigo: String(os.codigo || ""),
+            gc_os_situacao: String(os.nome_situacao || ""),
+            gc_os_situacao_id: String(os.situacao_id || ""),
+            gc_os_cor_situacao: String(os.cor_situacao || ""),
+            gc_os_valor_total: parseFloat(String(os.valor_total || "0")) || 0,
+            gc_os_vendedor: String(os.nome_vendedor || ""),
+            gc_os_cliente: String(os.nome_cliente || ""),
+            gc_os_data: String(os.data || os.data_entrada || "").split("T")[0] || null,
+            gc_os_data_saida: String(os.data_saida || "").split("T")[0] || null,
+            gc_os_link: `https://gestaoclick.com/ordens_servicos/editar/${os.id}?retorno=%2Fordens_servicos`,
+          };
+          for (const tid of tids) {
+            // Mantém o de maior valor caso colisão (geralmente OS principal)
+            const cur = osByTaskId.get(tid);
+            if (!cur || payload.gc_os_valor_total > (cur.gc_os_valor_total || 0)) {
+              osByTaskId.set(tid, payload);
+            }
+          }
         }
 
-        // Orçamento lookups
-        let orcResolvidos = 0;
-        const orcEntries = Array.from(orcCodigos.entries());
-        for (let i = 0; i < orcEntries.length; i += PAR) {
-          const slice = orcEntries.slice(i, i + PAR);
-          await Promise.all(slice.map(async ([code, ts]) => {
-            const data = await fetchOne(`${GC_BASE}/api/orcamentos?codigo=${encodeURIComponent(code)}&limite=1`);
-            const arr = data?.data;
-            const orc = Array.isArray(arr) ? arr[0] : (arr?.id ? arr : null);
-            if (!orc?.id) return;
-            const valorTotal = parseFloat(String(orc.valor_total || "0")) || 0;
-            for (const t of ts) {
-              if (!t.gc_orcamento_codigo) t.gc_orcamento_codigo = String(orc.codigo || code);
-              if (!t.gc_orcamento_id) t.gc_orcamento_id = String(orc.id);
-              if (!t.gc_orc_situacao) t.gc_orc_situacao = String(orc.nome_situacao || "");
-              if (!t.gc_orc_situacao_id) t.gc_orc_situacao_id = String(orc.situacao_id || "");
-              if (!t.gc_orc_cor_situacao) t.gc_orc_cor_situacao = String(orc.cor_situacao || "");
-              if (!t.gc_orc_valor_total) t.gc_orc_valor_total = valorTotal;
-              if (!t.gc_orc_vendedor) t.gc_orc_vendedor = String(orc.nome_vendedor || "");
-              if (!t.gc_orc_cliente) t.gc_orc_cliente = String(orc.nome_cliente || "");
-              if (!t.gc_orc_data) t.gc_orc_data = String(orc.data || orc.data_inicio || "").split("T")[0] || null;
-              if (!t.gc_orc_link) t.gc_orc_link = `https://app.gestaoclick.com/orcamentos/visualizar/${orc.id}`;
-              t.gc_orc_inferido_de_orientacao = true;
-              orcResolvidos++;
+        // Indexa Orçamento por atributo 73341
+        const orcByTaskId = new Map<string, any>();
+        for (const orc of orcList) {
+          const tids = collectTaskIds(orc.atributos || [], ATR_ORC);
+          if (tids.length === 0) continue;
+          const payload = {
+            gc_orcamento_id: String(orc.id),
+            gc_orcamento_codigo: String(orc.codigo || ""),
+            gc_orc_situacao: String(orc.nome_situacao || ""),
+            gc_orc_situacao_id: String(orc.situacao_id || ""),
+            gc_orc_cor_situacao: String(orc.cor_situacao || ""),
+            gc_orc_valor_total: parseFloat(String(orc.valor_total || "0")) || 0,
+            gc_orc_vendedor: String(orc.nome_vendedor || ""),
+            gc_orc_cliente: String(orc.nome_cliente || ""),
+            gc_orc_data: String(orc.data || "").split("T")[0] || null,
+            gc_orc_link: `https://gestaoclick.com/orcamentos_servicos/editar/${orc.id}?retorno=%2Forcamentos_servicos`,
+          };
+          for (const tid of tids) {
+            const cur = orcByTaskId.get(tid);
+            if (!cur || payload.gc_orc_valor_total > (cur.gc_orc_valor_total || 0)) {
+              orcByTaskId.set(tid, payload);
             }
-          }));
+          }
         }
 
-        if (osResolvidas > 0 || orcResolvidos > 0) {
-          avisos.push(`${osResolvidas} OS e ${orcResolvidos} orçamento(s) resolvidos no GC via código citado em orientação.`);
+        let osMatched = 0;
+        let orcMatched = 0;
+        for (const t of tasks) {
+          const tid = String(t.auvo_task_id || "");
+          if (!tid) continue;
+
+          if (!String(t.gc_os_codigo || "").trim()) {
+            const os = osByTaskId.get(tid);
+            if (os) {
+              for (const [k, v] of Object.entries(os)) {
+                if (!t[k]) t[k] = v;
+              }
+              osMatched++;
+            }
+          }
+          if (!String(t.gc_orcamento_codigo || "").trim()) {
+            const orc = orcByTaskId.get(tid);
+            if (orc) {
+              for (const [k, v] of Object.entries(orc)) {
+                if (!t[k]) t[k] = v;
+              }
+              orcMatched++;
+            }
+          }
+        }
+
+        if (osMatched > 0 || orcMatched > 0) {
+          avisos.push(`Varredura GC: ${osMatched} OS e ${orcMatched} orçamento(s) vinculados via atributos 73343/73344/73341.`);
         }
       }
     } catch (e: any) {
-      console.warn("[horas-trabalhadas-fetch] gc lookup failed:", e?.message || e);
+      console.warn("[horas-trabalhadas-fetch] gc scan failed:", e?.message || e);
+      avisos.push(`Falha ao varrer GC: ${e?.message || e}`);
     }
 
     return new Response(JSON.stringify({ tasks, avisos }), {
