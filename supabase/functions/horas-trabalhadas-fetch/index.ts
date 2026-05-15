@@ -419,6 +419,71 @@ Deno.serve(async (req) => {
       avisos.push(`Falha ao enriquecer execuções com GC: ${e?.message || e}`);
     }
 
+    // 6.b) Fallback de equipamento: para qualquer tarefa que ainda esteja sem
+    //      equipamento_nome, herdar de tarefas-irmãs do mesmo cliente na mesma
+    //      data (ou ±1 dia) que possuam equipamento. Concatena nomes únicos.
+    try {
+      const semEquip = tasks.filter((t: any) =>
+        !String(t.equipamento_nome || "").trim() &&
+        String(t.cliente || "").trim() &&
+        String(t.data_tarefa || "").trim()
+      );
+      if (semEquip.length > 0) {
+        const clientes = Array.from(new Set(semEquip.map((t: any) => String(t.cliente))));
+        const datas = Array.from(new Set(semEquip.map((t: any) => String(t.data_tarefa).slice(0, 10))));
+        // Janela ±1 dia
+        const minD = datas.reduce((a, b) => (a < b ? a : b));
+        const maxD = datas.reduce((a, b) => (a > b ? a : b));
+        const expand = (d: string, delta: number) => {
+          const dt = new Date(d + "T00:00:00Z");
+          dt.setUTCDate(dt.getUTCDate() + delta);
+          return dt.toISOString().slice(0, 10);
+        };
+        const { data: irmas } = await supabase
+          .from("tarefas_central")
+          .select("cliente, data_tarefa, equipamento_nome, equipamento_id_serie")
+          .in("cliente", clientes)
+          .gte("data_tarefa", expand(minD, -1))
+          .lte("data_tarefa", expand(maxD, 1))
+          .not("equipamento_nome", "is", null);
+
+        const byKey = new Map<string, { nomes: Set<string>; series: Set<string> }>();
+        for (const r of irmas || []) {
+          const nome = String(r.equipamento_nome || "").trim();
+          if (!nome) continue;
+          const key = `${String(r.cliente)}|${String(r.data_tarefa).slice(0, 10)}`;
+          if (!byKey.has(key)) byKey.set(key, { nomes: new Set(), series: new Set() });
+          byKey.get(key)!.nomes.add(nome);
+          const serie = String(r.equipamento_id_serie || "").trim();
+          if (serie) byKey.get(key)!.series.add(serie);
+        }
+
+        let inferidos = 0;
+        for (const t of semEquip) {
+          const key = `${String(t.cliente)}|${String(t.data_tarefa).slice(0, 10)}`;
+          let entry = byKey.get(key);
+          // Se não achou no mesmo dia, tenta ±1 dia
+          if (!entry) {
+            const d = String(t.data_tarefa).slice(0, 10);
+            for (const delta of [-1, 1]) {
+              const k2 = `${String(t.cliente)}|${expand(d, delta)}`;
+              if (byKey.has(k2)) { entry = byKey.get(k2); break; }
+            }
+          }
+          if (!entry || entry.nomes.size === 0) continue;
+          t.equipamento_nome = Array.from(entry.nomes).join(" / ");
+          if (entry.series.size > 0) t.equipamento_id_serie = Array.from(entry.series).join(" / ");
+          t.equipamento_inferido = true;
+          inferidos++;
+        }
+        if (inferidos > 0) {
+          avisos.push(`${inferidos} tarefa(s) com equipamento inferido de tarefas-irmãs do mesmo cliente/data.`);
+        }
+      }
+    } catch (e: any) {
+      console.warn("[horas-trabalhadas-fetch] equip fallback failed:", e?.message || e);
+    }
+
     return new Response(JSON.stringify({ tasks, avisos }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
