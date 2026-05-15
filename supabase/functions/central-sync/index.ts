@@ -452,7 +452,7 @@ async function fetchGcOs(gcHeaders: Record<string, string>, options?: { situacao
   for (const sitId of situacaoIds) {
     let page = 1;
     let totalPages = 1;
-    const MAX_PAGES = 50;
+    const MAX_PAGES = 500;
 
     while (page <= totalPages && page <= MAX_PAGES) {
       let url = `${GC_BASE_URL}/api/ordens_servicos?limite=100&pagina=${page}`;
@@ -480,8 +480,8 @@ async function fetchGcOs(gcHeaders: Record<string, string>, options?: { situacao
 
       for (const os of records) {
         const atributos: any[] = os.atributos || [];
-        const gc_os_tarefa_os = normalizeTaskIdList(getGcAttrValue(atributos, GC_ATRIBUTO_TAREFA_OS));
-        const gc_os_tarefa_exec = normalizeTaskIdList(getGcAttrValue(atributos, GC_ATRIBUTO_TAREFA_EXEC)) || null;
+        const gc_os_tarefa_os = collectGcAttrTaskIds(atributos, GC_ATRIBUTO_TAREFA_OS).join("/");
+        const gc_os_tarefa_exec = collectGcAttrTaskIds(atributos, GC_ATRIBUTO_TAREFA_EXEC).join("/") || null;
 
         const osPayload = {
           gc_os_id: String(os.id),
@@ -544,7 +544,7 @@ async function fetchGcOs(gcHeaders: Record<string, string>, options?: { situacao
       console.log(`[central-sync] GC OS${sitId ? ` sit=${sitId}` : ''} page ${page}/${totalPages}: ${records.length} registros, ${Object.keys(map).length} com tarefa`);
       page++;
     }
-    if (page > 50 && page <= totalPages) {
+    if (page > 500 && page <= totalPages) {
       console.warn(`[central-sync] TRUNCAMENTO: MAX_PAGES atingido em GC ordens_servicos${sitId ? ` sit=${sitId}` : ''} (totalPages=${totalPages})`);
     }
   }
