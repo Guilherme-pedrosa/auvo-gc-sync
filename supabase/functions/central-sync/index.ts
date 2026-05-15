@@ -376,6 +376,21 @@ async function fetchAuvoTasks(bearerToken: string, startDate: string, endDate: s
 
 // Fetch ALL GC orçamentos (no date filter)
 // Returns { byTaskId, byCodigo } for secondary linkage
+function buildGcOrcPayload(orc: any) {
+  return {
+    gc_orcamento_id: String(orc.id),
+    gc_orcamento_codigo: String(orc.codigo || ""),
+    gc_orc_cliente: String(orc.nome_cliente || ""),
+    gc_orc_situacao: String(orc.nome_situacao || ""),
+    gc_orc_situacao_id: String(orc.situacao_id || ""),
+    gc_orc_cor_situacao: String(orc.cor_situacao || ""),
+    gc_orc_valor_total: parseFloat(orc.valor_total || "0"),
+    gc_orc_vendedor: String(orc.nome_vendedor || ""),
+    gc_orc_data: String(orc.data || "").split("T")[0] || null,
+    gc_orc_link: `https://gestaoclick.com/orcamentos_servicos/editar/${orc.id}?retorno=%2Forcamentos_servicos`,
+  };
+}
+
 async function fetchGcOrcamentos(gcHeaders: Record<string, string>): Promise<{ byTaskId: Record<string, any>; byCodigo: Record<string, any>; pagesFetched: number; totalPages: number }> {
   const map: Record<string, any> = {};
   const byCodigo: Record<string, any> = {};
@@ -406,18 +421,7 @@ async function fetchGcOrcamentos(gcHeaders: Record<string, string>): Promise<{ b
 
     for (const orc of records) {
       const atributos: any[] = orc.atributos || [];
-      const orcPayload = {
-        gc_orcamento_id: String(orc.id),
-        gc_orcamento_codigo: String(orc.codigo || ""),
-        gc_orc_cliente: String(orc.nome_cliente || ""),
-        gc_orc_situacao: String(orc.nome_situacao || ""),
-        gc_orc_situacao_id: String(orc.situacao_id || ""),
-        gc_orc_cor_situacao: String(orc.cor_situacao || ""),
-        gc_orc_valor_total: parseFloat(orc.valor_total || "0"),
-        gc_orc_vendedor: String(orc.nome_vendedor || ""),
-        gc_orc_data: String(orc.data || "").split("T")[0] || null,
-        gc_orc_link: `https://gestaoclick.com/orcamentos_servicos/editar/${orc.id}?retorno=%2Forcamentos_servicos`,
-      };
+      const orcPayload = buildGcOrcPayload(orc);
 
       // Reverse map by orçamento código
       const codigo = String(orc.codigo || "").trim();
