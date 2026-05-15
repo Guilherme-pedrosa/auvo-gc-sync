@@ -1487,7 +1487,8 @@ async function runCentralSync(body: CentralSyncBody = {}) {
       for (const gcOs of osList as any[]) {
       if (existingTaskOsKeys.has(`${taskId}::${String(gcOs?.gc_os_id || "")}`)) continue;
 
-      const gcOrc = gcOrcMap[taskId] || null;
+      // Amarração orçamento: tenta primeiro pelo taskId (73343), depois via 73344 da OS
+      const gcOrc = gcOrcMap[taskId] || findOrcForOs(gcOs) || null;
       let fallbackSnapshot = taskSnapshotById.get(taskId) || null;
       if (!fallbackSnapshot && !isLiteSync) {
         fallbackSnapshot = await fetchAuvoTaskSnapshot(bearerToken, taskId);
