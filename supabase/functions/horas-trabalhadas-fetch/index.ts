@@ -225,11 +225,8 @@ Deno.serve(async (req) => {
         // Recalcula hora_inicio / hora_fim a partir do ISO quando disponível
         if (m.check_in_iso) update.hora_inicio = String(m.check_in_iso).slice(11, 16);
         if (m.check_out_iso) update.hora_fim = String(m.check_out_iso).slice(11, 16);
-        // Recalcula duracao_decimal (horas) baseado em check_in/out
-        if (m.check_in_iso && m.check_out_iso) {
-          const ms = new Date(m.check_out_iso).getTime() - new Date(m.check_in_iso).getTime();
-          if (Number.isFinite(ms)) update.duracao_decimal = Math.round((ms / 3_600_000) * 10000) / 10000;
-        }
+        // Tempo TRABALHADO (já desconta pausas). Sem check-in => 0.
+        update.duracao_decimal = m.has_check_in ? m.worked_hours : 0;
 
         // Upsert restrito por auvo_task_id (mirror_key permanece como está)
         if (prev) {
