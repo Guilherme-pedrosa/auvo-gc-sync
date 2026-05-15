@@ -785,10 +785,22 @@ export default function HorasTrabalhadasTab({
     return lst.includes(alertFilter);
   };
 
-  const totalHoras = useMemo(() => tecnicoSummary.reduce((s, t) => s + t.horas, 0), [tecnicoSummary]);
+  // Totais incluem tarefas em revisão (continuam sinalizadas no card "Em Revisão",
+  // mas somam ao total — regra de negócio: faturamos mesmo o que está em revisão).
+  // Rejeitado segue fora.
+  const totalHoras = useMemo(
+    () => tecnicoSummary.reduce((s, t) => s + t.horas + t.horasEmRevisao, 0),
+    [tecnicoSummary],
+  );
   const totalDeslocamento = useMemo(() => tecnicoSummary.reduce((s, t) => s + t.deslocamento, 0), [tecnicoSummary]);
-  const totalValor = useMemo(() => tecnicoSummary.reduce((s, t) => s + t.valor, 0), [tecnicoSummary]);
-  const totalTarefas = useMemo(() => tecnicoSummary.reduce((s, t) => s + t.tarefas, 0), [tecnicoSummary]);
+  const totalValor = useMemo(
+    () => tecnicoSummary.reduce((s, t) => s + t.valor + t.valorEmRevisao, 0),
+    [tecnicoSummary],
+  );
+  const totalTarefas = useMemo(
+    () => tecnicoSummary.reduce((s, t) => s + t.tarefas + t.tarefasEmRevisao, 0),
+    [tecnicoSummary],
+  );
   const totalEmRevisao = useMemo(() => tecnicoSummary.reduce((acc, t) => ({
     horas: acc.horas + t.horasEmRevisao, valor: acc.valor + t.valorEmRevisao, tarefas: acc.tarefas + t.tarefasEmRevisao,
   }), { horas: 0, valor: 0, tarefas: 0 }), [tecnicoSummary]);
