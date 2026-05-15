@@ -837,6 +837,8 @@ async function runCentralSync(body: CentralSyncBody = {}) {
     // - Por isso, ao casar com orçamento, olhamos 73343 OU 73344.
     const findOrcForOs = (gcOs: any): any | null => {
       if (!gcOs) return null;
+      const orcCodigo = String(gcOs.gc_os_orcamento_codigo || "").trim();
+      if (orcCodigo && gcOrcByCodigo[orcCodigo]) return gcOrcByCodigo[orcCodigo];
       const candidates: string[] = [];
       const osIds = String(gcOs.gc_os_tarefa_os || "").split("/").filter(Boolean);
       const execIds = String(gcOs.gc_os_tarefa_exec || "").split("/").filter(Boolean);
