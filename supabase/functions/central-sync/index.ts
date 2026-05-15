@@ -856,6 +856,12 @@ async function runCentralSync(body: CentralSyncBody = {}) {
       fetchGcOs(gcH, gcOsOptions),
     ]);
 
+    await hydrateMissingOrcamentosByCodigo(
+      gcH,
+      gcOrcResult,
+      Object.values(gcOsResult.byCodigo || {}).map((os: any) => String(os?.gc_os_orcamento_codigo || ""))
+    );
+
     const gcOrcMap = gcOrcResult.byTaskId;
     const gcOrcByCodigo = gcOrcResult.byCodigo;
     const gcOsMap = gcOsResult.byTaskId;
