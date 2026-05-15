@@ -442,6 +442,36 @@ async function fetchGcOrcamentos(gcHeaders: Record<string, string>): Promise<{ b
   return { byTaskId: map, byCodigo, pagesFetched, totalPages };
 }
 
+async function hydrateMissingOrcamentosByCodigo(gcHeaders: Record<string, string>, gcOrcResult: { byTaskId: Record<string, any>; byCodigo: Record<string, any> }, codigos: string[]) {
+  const unique = [...new Set(codigos.map((c) => String(c || "").trim()).filter((c) => /^\d+$/.test(c) && !gcOrcResult.byCodigo[c]))];
+  if (unique.length === 0) return 0;
+  let hydrated = 0;
+  const PARALLEL = 8;
+  for (let i = 0; i < unique.length; i += PARALLEL) {
+    const batch = unique.slice(i, i + PARALLEL);
+    const results = await Promise.all(batch.map(async (codigo) => {
+      const url = `${GC_BASE_URL}/api/orcamentos?codigo=${encodeURIComponent(codigo)}&limite=5`;
+      const response = await rateLimitedFetch(url, { headers: gcHeaders }, "gc");
+      if (!response.ok) return null;
+      const data = await response.json().catch(() => ({}));
+      const records: any[] = Array.isArray(data?.data) ? data.data : [];
+      return records.find((orc) => String(orc?.codigo || "").trim() === codigo) || null;
+    }));
+    for (const orc of results) {
+      if (!orc?.id) continue;
+      const payload = buildGcOrcPayload(orc);
+      const codigo = String(orc.codigo || "").trim();
+      if (codigo) gcOrcResult.byCodigo[codigo] = payload;
+      for (const taskId of collectGcAttrTaskIds(orc.atributos || [], GC_ATRIBUTO_TAREFA_ORC)) {
+        gcOrcResult.byTaskId[taskId] = payload;
+      }
+      hydrated++;
+    }
+  }
+  console.log(`[central-sync] Orçamentos hidratados por código via OS/81831: ${hydrated}/${unique.length}`);
+  return hydrated;
+}
+
 // Fetch GC OS with optional filters (situacao_ids, date range)
 async function fetchGcOs(gcHeaders: Record<string, string>, options?: { situacaoIds?: string[]; dataInicio?: string; dataFim?: string }): Promise<{ byTaskId: Record<string, any>; byTaskIdAll: Record<string, any[]>; byExecTaskId: Record<string, any[]>; byCodigo: Record<string, any>; byOrcNumero: Record<string, any> }> {
   const map: Record<string, any> = {};
