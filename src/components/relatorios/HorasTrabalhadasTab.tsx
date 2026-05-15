@@ -504,20 +504,8 @@ export default function HorasTrabalhadasTab({
     const limMin = (alertasConfig?.limite_minimo_minutos ?? 45) / 60;
     const limMax = Number(alertasConfig?.limite_maximo_horas ?? 8);
     const limExc = Number(alertasConfig?.limite_excessivo_horas ?? 12);
-    // Overlap desativado permanentemente — não gera alerta nem bloqueio.
-    const detectarOverlap = false;
+    // Overlap REMOVIDO permanentemente — não gera alerta, badge nem bloqueio.
     const detectarNegativas = alertasConfig?.detectar_horas_negativas !== false;
-
-    const byTecDia = new Map<string, any[]>();
-    if (detectarOverlap) {
-      for (const t of filtered) {
-        if (!t.tecnico || !t.data_tarefa || !t.hora_inicio || !t.hora_fim) continue;
-        const k = `${t.tecnico}\u0001${t.data_tarefa}`;
-        const arr = byTecDia.get(k) || [];
-        arr.push(t);
-        byTecDia.set(k, arr);
-      }
-    }
 
     for (const t of filtered) {
       const alertas: AlertaTipo[] = [];
@@ -541,19 +529,6 @@ export default function HorasTrabalhadasTab({
       }
 
       if (atravessaPeriodo(t)) alertas.push("multi_periodo");
-
-      if (detectarOverlap && t.hora_inicio && t.hora_fim && t.tecnico && t.data_tarefa) {
-        const k = `${t.tecnico}\u0001${t.data_tarefa}`;
-        const peers = byTecDia.get(k) || [];
-        const ini = t.hora_inicio;
-        const fim = t.hora_fim;
-        const overlap = peers.some((o: any) =>
-          o.auvo_task_id !== t.auvo_task_id &&
-          o.hora_inicio && o.hora_fim &&
-          ini < o.hora_fim && o.hora_inicio < fim
-        );
-        if (overlap) alertas.push("overlap");
-      }
 
       result.set(String(t.auvo_task_id || ""), alertas);
     }
