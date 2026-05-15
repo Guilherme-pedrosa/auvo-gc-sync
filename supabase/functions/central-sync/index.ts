@@ -431,9 +431,10 @@ async function fetchGcOrcamentos(gcHeaders: Record<string, string>): Promise<{ b
 }
 
 // Fetch GC OS with optional filters (situacao_ids, date range)
-async function fetchGcOs(gcHeaders: Record<string, string>, options?: { situacaoIds?: string[]; dataInicio?: string; dataFim?: string }): Promise<{ byTaskId: Record<string, any>; byTaskIdAll: Record<string, any[]>; byCodigo: Record<string, any>; byOrcNumero: Record<string, any> }> {
+async function fetchGcOs(gcHeaders: Record<string, string>, options?: { situacaoIds?: string[]; dataInicio?: string; dataFim?: string }): Promise<{ byTaskId: Record<string, any>; byTaskIdAll: Record<string, any[]>; byExecTaskId: Record<string, any[]>; byCodigo: Record<string, any>; byOrcNumero: Record<string, any> }> {
   const map: Record<string, any> = {};
   const byTaskIdAll: Record<string, any[]> = {};
+  const byExecTaskId: Record<string, any[]> = {};
   const byCodigo: Record<string, any> = {};
   const byOrcNumero: Record<string, any> = {};
 
@@ -518,6 +519,17 @@ async function fetchGcOs(gcHeaders: Record<string, string>, options?: { situacao
             byTaskIdAll[taskId] = bucket;
           }
         }
+
+        // Index by 73344 (TAREFA EXECUÇÃO) — usado APENAS para casar com orçamento (73341),
+        // nunca para criar/atualizar vínculo de OS no Kanban.
+        const tarefaExecIds = String(gc_os_tarefa_exec || "").split("/").filter(Boolean);
+        for (const execId of tarefaExecIds) {
+          const bucket = byExecTaskId[execId] || [];
+          if (!bucket.some((existing) => existing?.gc_os_id === osPayload.gc_os_id)) {
+            bucket.push(osPayload);
+            byExecTaskId[execId] = bucket;
+          }
+        }
       }
 
       console.log(`[central-sync] GC OS${sitId ? ` sit=${sitId}` : ''} page ${page}/${totalPages}: ${records.length} registros, ${Object.keys(map).length} com tarefa`);
@@ -527,7 +539,7 @@ async function fetchGcOs(gcHeaders: Record<string, string>, options?: { situacao
       console.warn(`[central-sync] TRUNCAMENTO: MAX_PAGES atingido em GC ordens_servicos${sitId ? ` sit=${sitId}` : ''} (totalPages=${totalPages})`);
     }
   }
-  return { byTaskId: map, byTaskIdAll, byCodigo, byOrcNumero };
+  return { byTaskId: map, byTaskIdAll, byExecTaskId, byCodigo, byOrcNumero };
 }
 
 async function upsertGcOsShellRows(sbClient: any, gcOsResult: { byTaskIdAll: Record<string, any[]>; byCodigo: Record<string, any> }) {
