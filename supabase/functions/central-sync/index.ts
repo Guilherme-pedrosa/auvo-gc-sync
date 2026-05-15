@@ -1421,6 +1421,30 @@ async function runCentralSync(body: CentralSyncBody = {}) {
       console.log(`[central-sync] Snapshots obtidos: ${taskSnapshotById.size}/${candidateTaskIds.length}`);
     }
 
+    // Pré-hidratação: varre orientações Auvo e busca no GC OS/Orçamentos referenciados
+    // que não vieram na listagem (ex.: "OS N° 9224", "Orçamento #5082", "ORÇAMENTO 331").
+    {
+      const allOsCodes = new Set<string>();
+      const allOrcCodes = new Set<string>();
+      for (const task of auvoTasks) {
+        const taskId = String(task.taskID || "");
+        const snap = taskSnapshotById.get(taskId);
+        const text = String(snap?.orientation || task.orientation || "");
+        if (!text) continue;
+        const refs = extractReferencedCodes(text);
+        for (const c of refs.osCodigos) if (!gcOsByCodigo[c]) allOsCodes.add(c);
+        for (const c of refs.orcCodigos) if (!gcOrcByCodigo[c]) allOrcCodes.add(c);
+      }
+      if (allOsCodes.size > 0) {
+        console.log(`[central-sync] Hidratando ${allOsCodes.size} OS referenciadas em orientações...`);
+        await hydrateMissingOsByCodigo(gcH, gcOsResult, [...allOsCodes]);
+      }
+      if (allOrcCodes.size > 0) {
+        console.log(`[central-sync] Hidratando ${allOrcCodes.size} Orçamentos referenciados em orientações...`);
+        await hydrateMissingOrcamentosByCodigo(gcH, gcOrcResult, [...allOrcCodes]);
+      }
+    }
+
     // Secondary linkage: parse orientacao for OS/Orçamento/Tarefa references
     function secondaryLinkage(orientation: string, taskId: string): { os: any | null; orc: any | null } {
       let os: any = null;
