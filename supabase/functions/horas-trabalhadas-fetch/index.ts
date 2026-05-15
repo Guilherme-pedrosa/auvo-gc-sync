@@ -348,11 +348,13 @@ Deno.serve(async (req) => {
     //    campos GC. Cobre casos onde a tarefa de execução aparece no relatório
     //    sem código GC mesmo havendo uma OS pai sincronizada.
     try {
-      const orfas = tasks.filter((t: any) =>
-        !String(t.gc_os_codigo || "").trim() &&
-        !String(t.gc_orcamento_codigo || "").trim() &&
-        String(t.auvo_task_id || "").trim()
-      );
+      const orfas = tasks.filter((t: any) => {
+        if (!String(t.auvo_task_id || "").trim()) return false;
+        const semGc = !String(t.gc_os_codigo || "").trim() &&
+                      !String(t.gc_orcamento_codigo || "").trim();
+        const semEquip = !String(t.equipamento_nome || "").trim();
+        return semGc || semEquip;
+      });
       if (orfas.length > 0) {
         // Busca em lotes — gc_os_tarefa_exec pode conter IDs separados por barra.
         const ids = orfas.map((t: any) => String(t.auvo_task_id));
