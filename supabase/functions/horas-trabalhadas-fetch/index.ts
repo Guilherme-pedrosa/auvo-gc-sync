@@ -93,6 +93,55 @@ function mapAuvoTask(t: any) {
     4: "Finalizada", 5: "Finalizada", 6: "Pausada",
   };
   const statusLabel = typeof status === "number" ? statusLabelMap[status] ?? "" : "";
+
+  // ── Tempo TRABALHADO (não planejado) ──────────────────────────────
+  // Fonte 1: campo `duration` do Auvo ("HH:MM:SS"), que já desconta pausas.
+  // Fonte 2: (checkOut - checkIn) - Σ pausas (do array timeControl).
+  // Sem check-in → 0 (não considerar janela planejada).
+  const checkIn = t?.checkInDate || t?.CheckInDate || null;
+  const checkOut = t?.checkOutDate || t?.CheckOutDate || null;
+  let workedSeconds = 0;
+  const dStr = String(t?.duration || t?.Duration || "").trim();
+  const dMatch = dStr.match(/^(\d+):(\d{1,2}):(\d{1,2})$/);
+  if (dMatch) {
+    workedSeconds =
+      parseInt(dMatch[1], 10) * 3600 +
+      parseInt(dMatch[2], 10) * 60 +
+      parseInt(dMatch[3], 10);
+  } else if (checkIn) {
+    // Calcula manualmente a partir dos eventos de monitoramento.
+    const tc: any[] = Array.isArray(t?.timeControl) ? t.timeControl : [];
+    let pauseSec = 0;
+    let openPauseStart: number | null = null;
+    for (const ev of tc) {
+      const ps = ev?.pauseStart || ev?.startPause || ev?.start;
+      const pe = ev?.pauseEnd || ev?.endPause || ev?.end || ev?.resumeDate;
+      if (ps && pe) {
+        const diff = new Date(pe).getTime() - new Date(ps).getTime();
+        if (Number.isFinite(diff) && diff > 0) pauseSec += Math.floor(diff / 1000);
+      } else if (ps && !pe) {
+        const ts = new Date(ps).getTime();
+        if (Number.isFinite(ts) && (openPauseStart === null || ts > openPauseStart)) {
+          openPauseStart = ts;
+        }
+      }
+      if (typeof ev?.duration === "number") pauseSec += ev.duration;
+    }
+    const inMs = new Date(checkIn).getTime();
+    let endMs: number | null = null;
+    if (checkOut) {
+      endMs = new Date(checkOut).getTime();
+    } else if (openPauseStart !== null) {
+      // Pausa em aberto: trabalhado vai até o início da pausa atual.
+      endMs = openPauseStart;
+    }
+    if (endMs !== null && Number.isFinite(inMs) && Number.isFinite(endMs) && endMs > inMs) {
+      const totalSec = Math.floor((endMs - inMs) / 1000);
+      workedSeconds = Math.max(0, totalSec - pauseSec);
+    }
+  }
+  const workedHours = Math.round((workedSeconds / 3600) * 10000) / 10000;
+
   return {
     auvo_task_id: taskId,
     task_type_id: taskType != null ? String(taskType) : "",
@@ -104,6 +153,8 @@ function mapAuvoTask(t: any) {
     auvo_check_out_date: isoDate(t?.checkOutDate || t?.CheckOutDate),
     check_in_iso: isoTimestamp(t?.checkInDate || t?.CheckInDate),
     check_out_iso: isoTimestamp(t?.checkOutDate || t?.CheckOutDate),
+    worked_hours: workedHours,
+    has_check_in: !!checkIn,
   };
 }
 
