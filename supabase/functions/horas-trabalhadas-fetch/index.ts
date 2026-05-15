@@ -348,11 +348,13 @@ Deno.serve(async (req) => {
     //    campos GC. Cobre casos onde a tarefa de execução aparece no relatório
     //    sem código GC mesmo havendo uma OS pai sincronizada.
     try {
-      const orfas = tasks.filter((t: any) =>
-        !String(t.gc_os_codigo || "").trim() &&
-        !String(t.gc_orcamento_codigo || "").trim() &&
-        String(t.auvo_task_id || "").trim()
-      );
+      const orfas = tasks.filter((t: any) => {
+        if (!String(t.auvo_task_id || "").trim()) return false;
+        const semGc = !String(t.gc_os_codigo || "").trim() &&
+                      !String(t.gc_orcamento_codigo || "").trim();
+        const semEquip = !String(t.equipamento_nome || "").trim();
+        return semGc || semEquip;
+      });
       if (orfas.length > 0) {
         // Busca em lotes — gc_os_tarefa_exec pode conter IDs separados por barra.
         const ids = orfas.map((t: any) => String(t.auvo_task_id));
@@ -367,7 +369,7 @@ Deno.serve(async (req) => {
             "gc_os_data_saida, gc_os_valor_total, gc_os_vendedor, gc_os_cliente, " +
             "gc_orcamento_codigo, gc_orcamento_id, gc_orc_link, gc_orc_situacao, " +
             "gc_orc_situacao_id, gc_orc_cor_situacao, gc_orc_data, gc_orc_valor_total, " +
-            "gc_orc_vendedor, gc_orc_cliente"
+            "gc_orc_vendedor, gc_orc_cliente, equipamento_nome, equipamento_id_serie"
           )
           .or(orFilter);
 
@@ -397,6 +399,7 @@ Deno.serve(async (req) => {
             "gc_orcamento_codigo","gc_orcamento_id","gc_orc_link","gc_orc_situacao",
             "gc_orc_situacao_id","gc_orc_cor_situacao","gc_orc_data","gc_orc_valor_total",
             "gc_orc_vendedor","gc_orc_cliente",
+            "equipamento_nome","equipamento_id_serie",
           ];
           let touched = false;
           for (const f of fields) {
