@@ -857,6 +857,20 @@ async function runCentralSync(body: CentralSyncBody = {}) {
       if (execBucket && execBucket.length > 0) return execBucket[0];
       return null;
     };
+    const applyOrcPayload = (target: any, orcPayload: any) => {
+      if (!target || !orcPayload?.gc_orcamento_id) return;
+      target.gc_orcamento_id = orcPayload.gc_orcamento_id;
+      target.gc_orcamento_codigo = orcPayload.gc_orcamento_codigo;
+      target.gc_orc_cliente = orcPayload.gc_orc_cliente;
+      target.gc_orc_situacao = orcPayload.gc_orc_situacao;
+      target.gc_orc_situacao_id = orcPayload.gc_orc_situacao_id;
+      target.gc_orc_cor_situacao = orcPayload.gc_orc_cor_situacao;
+      target.gc_orc_valor_total = orcPayload.gc_orc_valor_total;
+      target.gc_orc_vendedor = orcPayload.gc_orc_vendedor;
+      target.gc_orc_data = orcPayload.gc_orc_data;
+      target.gc_orc_link = orcPayload.gc_orc_link;
+      target.orcamento_realizado = true;
+    };
 
     // Kick off Auvo fetch IN PARALLEL with the heavy GC refresh blocks below.
     // Auvo is network-bound and the refresh is DB-bound, so they overlap nicely.
