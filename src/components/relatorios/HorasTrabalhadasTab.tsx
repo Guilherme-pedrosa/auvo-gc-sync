@@ -1059,9 +1059,12 @@ export default function HorasTrabalhadasTab({
       doc.text("Inconsistências detectadas", 14, curY);
       curY += 4;
       const incBody = (Object.keys(alertCounts.counts) as Array<Exclude<AlertaTipo, null>>)
-        .filter((k) => alertCounts.counts[k] > 0)
+        .filter((k) => k !== "curto" && k !== "longo" && alertCounts.counts[k] > 0)
         .sort((a, b) => ALERTA_SEVERIDADE[b] - ALERTA_SEVERIDADE[a])
         .map((k) => [ALERTA_LABEL[k], String(alertCounts.counts[k])]);
+      if (incBody.length === 0) {
+        // sem inconsistências reais — pula a seção
+      } else {
       autoTable(doc, {
         startY: curY,
         head: [["Tipo", "OS afetadas"]],
@@ -1078,6 +1081,7 @@ export default function HorasTrabalhadasTab({
       doc.setTextColor(0);
       doc.setFont("helvetica", "normal");
       curY += 10;
+      }
     }
 
     // ── Resumo por Técnico ──
