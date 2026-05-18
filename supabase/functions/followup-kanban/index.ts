@@ -109,6 +109,20 @@ Deno.serve(async (req) => {
         all.push(...recs);
       }
 
+      // Atualiza títulos das colunas fixas com o nome real da situação vindo do GC
+      const nomePorSituacao = new Map<string, string>();
+      for (const orc of all) {
+        const sid = String(orc.situacao_id || "");
+        const nome = String(orc.nome_situacao || "").trim();
+        if (sid && nome && !nomePorSituacao.has(sid)) nomePorSituacao.set(sid, nome);
+      }
+      for (const [sid, nome] of nomePorSituacao.entries()) {
+        await sb
+          .from("followup_kanban_colunas")
+          .update({ titulo: nome, atualizado_em: new Date().toISOString() })
+          .eq("id", sid);
+      }
+
       // Cache atual
       const { data: cacheAtual } = await sb.from("followup_kanban_cache").select("*");
       const cacheMap = new Map<string, any>();
