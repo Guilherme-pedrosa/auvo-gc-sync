@@ -281,6 +281,66 @@ export type Database = {
         }
         Relationships: []
       }
+      followup_kanban_cache: {
+        Row: {
+          atualizado_em: string
+          coluna: string
+          criado_em: string
+          dados: Json
+          gc_orcamento_id: string
+          posicao: number
+          situacao_id_origem: string
+        }
+        Insert: {
+          atualizado_em?: string
+          coluna: string
+          criado_em?: string
+          dados?: Json
+          gc_orcamento_id: string
+          posicao?: number
+          situacao_id_origem: string
+        }
+        Update: {
+          atualizado_em?: string
+          coluna?: string
+          criado_em?: string
+          dados?: Json
+          gc_orcamento_id?: string
+          posicao?: number
+          situacao_id_origem?: string
+        }
+        Relationships: []
+      }
+      followup_kanban_colunas: {
+        Row: {
+          atualizado_em: string
+          criado_em: string
+          eh_situacao: boolean
+          id: string
+          ordem: number
+          situacao_id: string | null
+          titulo: string
+        }
+        Insert: {
+          atualizado_em?: string
+          criado_em?: string
+          eh_situacao?: boolean
+          id: string
+          ordem?: number
+          situacao_id?: string | null
+          titulo: string
+        }
+        Update: {
+          atualizado_em?: string
+          criado_em?: string
+          eh_situacao?: boolean
+          id?: string
+          ordem?: number
+          situacao_id?: string | null
+          titulo?: string
+        }
+        Relationships: []
+      }
       grupo_cliente_membros: {
         Row: {
           cliente_nome: string
