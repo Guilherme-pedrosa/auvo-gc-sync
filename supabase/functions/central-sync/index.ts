@@ -780,7 +780,92 @@ type CentralSyncBody = {
   reports_only?: unknown;
 };
 
-async function runReportsOnlySync(sbClient: any, bearerToken: string, startDate: string, endDate: string) {
+async function refreshGcOsStatusesForReportsOnly(
+  sbClient: any,
+  gcHeaders: Record<string, string>,
+  startDate: string,
+  endDate: string,
+  auvoTaskIdsInWindow: string[],
+) {
+  const taskIds = new Set(auvoTaskIdsInWindow.map((id) => String(id || "").trim()).filter(Boolean));
+  const isInWindow = (value: unknown) => {
+    const d = normalizeDate(value);
+    return !!d && d >= startDate && d <= endDate;
+  };
+
+  const targetOsIds = new Set<string>();
+  for (let from = 0; ; from += 1000) {
+    const { data: chunk, error } = await sbClient
+      .from("tarefas_central")
+      .select("gc_os_id, gc_os_tarefa_exec, data_tarefa, data_conclusao")
+      .not("gc_os_id", "is", null)
+      .range(from, from + 999);
+    if (error || !chunk || chunk.length === 0) break;
+
+    for (const row of chunk) {
+      const osId = String(row.gc_os_id || "").trim();
+      if (!osId) continue;
+      const execIds = normalizeTaskIdList(row.gc_os_tarefa_exec).split("/").filter(Boolean);
+      const execInWindow = execIds.some((id) => taskIds.has(id));
+      if (isInWindow(row.data_tarefa) || isInWindow(row.data_conclusao) || execInWindow) {
+        targetOsIds.add(osId);
+      }
+    }
+
+    if (chunk.length < 1000) break;
+  }
+
+  let updated = 0;
+  const osIds = Array.from(targetOsIds);
+  const PARALLEL = 12;
+  for (let i = 0; i < osIds.length; i += PARALLEL) {
+    const batch = osIds.slice(i, i + PARALLEL);
+    const freshList = await Promise.all(batch.map(async (osId) => {
+      const resp = await rateLimitedFetch(`${GC_BASE_URL}/api/ordens_servicos/${osId}`, { headers: gcHeaders }, "gc");
+      if (!resp.ok) return null;
+      const data = await resp.json().catch(() => null);
+      const os = data?.data || data;
+      if (!os?.id) return null;
+      const atributos: any[] = os.atributos || [];
+      return {
+        gc_os_id: String(os.id),
+        gc_os_cliente: String(os.nome_cliente || ""),
+        gc_os_situacao: String(os.nome_situacao || ""),
+        gc_os_situacao_id: String(os.situacao_id || ""),
+        gc_os_cor_situacao: String(os.cor_situacao || ""),
+        gc_os_valor_total: parseFloat(os.valor_total || "0"),
+        gc_os_vendedor: String(os.nome_vendedor || ""),
+        gc_os_data_saida: String(os.data_saida || "").split("T")[0] || null,
+        gc_os_tarefa_exec: collectGcAttrTaskIds(atributos, GC_ATRIBUTO_TAREFA_EXEC).join("/") || null,
+      };
+    }));
+
+    const counts = await Promise.all(freshList.filter(Boolean).map(async (fresh: any) => {
+      const updatePayload: any = {
+        gc_os_cliente: fresh.gc_os_cliente,
+        gc_os_situacao: fresh.gc_os_situacao,
+        gc_os_situacao_id: fresh.gc_os_situacao_id,
+        gc_os_cor_situacao: fresh.gc_os_cor_situacao,
+        gc_os_valor_total: fresh.gc_os_valor_total,
+        gc_os_vendedor: fresh.gc_os_vendedor,
+        gc_os_data_saida: fresh.gc_os_data_saida,
+        atualizado_em: new Date().toISOString(),
+      };
+      if (fresh.gc_os_tarefa_exec) updatePayload.gc_os_tarefa_exec = fresh.gc_os_tarefa_exec;
+      const { count } = await sbClient
+        .from("tarefas_central")
+        .update(updatePayload, { count: "exact" })
+        .eq("gc_os_id", fresh.gc_os_id);
+      return count || 0;
+    }));
+    updated += counts.reduce((sum, count) => sum + count, 0);
+  }
+
+  console.log(`[central-sync] Reports-only GC OS status refresh: ${updated} registros atualizados (${targetOsIds.size} OS verificadas)`);
+  return { checked: targetOsIds.size, updated };
+}
+
+async function runReportsOnlySync(sbClient: any, bearerToken: string, gcHeaders: Record<string, string>, startDate: string, endDate: string) {
   console.log(`[central-sync] Reports-only: buscando Auvo ${startDate} → ${endDate}`);
   const auvoTasks = await fetchAuvoTasks(bearerToken, startDate, endDate);
   console.log(`[central-sync] Reports-only Auvo: ${auvoTasks.length} tarefas`);
@@ -904,12 +989,16 @@ async function runReportsOnlySync(sbClient: any, bearerToken: string, startDate:
     }
   }
 
+  const gcStatusRefresh = await refreshGcOsStatusesForReportsOnly(sbClient, gcHeaders, startDate, endDate, taskIds);
+
   return {
     success: true,
     mode: "reports-only",
     periodo: { inicio: startDate, fim: endDate },
     auvo_tarefas: auvoTasks.length,
     upserted,
+    gc_os_status_checked: gcStatusRefresh.checked,
+    gc_os_status_updated: gcStatusRefresh.updated,
     errors,
   };
 }
@@ -953,7 +1042,7 @@ async function runCentralSync(body: CentralSyncBody = {}) {
     };
 
     if (body?.reports_only === true) {
-      return await runReportsOnlySync(sbClient, bearerToken, startDate, endDate);
+      return await runReportsOnlySync(sbClient, bearerToken, gcH, startDate, endDate);
     }
 
     // Step 1: Fetch GC data first (faster, ~20s) — Auvo will come after status refresh
