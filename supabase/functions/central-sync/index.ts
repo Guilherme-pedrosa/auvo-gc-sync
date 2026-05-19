@@ -1205,7 +1205,12 @@ async function runCentralSync(body: CentralSyncBody = {}) {
           .select("gc_os_id")
           .not("gc_os_id", "is", null);
         if (isScoped) {
-          query = query.gte("data_tarefa", startDate).lte("data_tarefa", endDate);
+          // Inclui OS com data_tarefa OU data_conclusao dentro do período
+          // (Relatórios filtra por data execução; sem isso, OS com execução no mês
+          // mas planejada em mês anterior nunca tinham situação atualizada)
+          query = query.or(
+            `and(data_tarefa.gte.${startDate},data_tarefa.lte.${endDate}),and(data_conclusao.gte.${startDate},data_conclusao.lte.${endDate})`
+          );
         }
         const { data: chunk } = await query.range(from, from + 999);
         if (!chunk || chunk.length === 0) break;
