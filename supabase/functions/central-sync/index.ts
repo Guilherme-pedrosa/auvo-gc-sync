@@ -787,38 +787,51 @@ async function refreshGcOsStatusesForReportsOnly(
   endDate: string,
   auvoTaskIdsInWindow: string[],
 ) {
-  const taskIds = new Set(auvoTaskIdsInWindow.map((id) => String(id || "").trim()).filter(Boolean));
-  const isInWindow = (value: unknown) => {
-    const d = normalizeDate(value);
-    return !!d && d >= startDate && d <= endDate;
-  };
+  const taskIds = Array.from(new Set(auvoTaskIdsInWindow.map((id) => String(id || "").trim()).filter(Boolean)));
 
+  // Hard time budget so we never timeout the function. If exceeded, return what was done.
+  const HARD_BUDGET_MS = 25_000;
+  const tStart = Date.now();
+  const timeUp = () => Date.now() - tStart > HARD_BUDGET_MS;
+
+  // Scope: only OS whose Auvo task (OS or Execução) is in this window. Avoids full-table scans.
   const targetOsIds = new Set<string>();
-  for (let from = 0; ; from += 1000) {
-    const { data: chunk, error } = await sbClient
+  const IN_CHUNK = 200;
+  for (let i = 0; i < taskIds.length; i += IN_CHUNK) {
+    if (timeUp()) break;
+    const batch = taskIds.slice(i, i + IN_CHUNK);
+    // (a) rows where OS task id matches
+    const { data: rowsByOsTask } = await sbClient
       .from("tarefas_central")
-      .select("gc_os_id, gc_os_tarefa_exec, data_tarefa, data_conclusao")
+      .select("gc_os_id")
       .not("gc_os_id", "is", null)
-      .range(from, from + 999);
-    if (error || !chunk || chunk.length === 0) break;
-
-    for (const row of chunk) {
-      const osId = String(row.gc_os_id || "").trim();
-      if (!osId) continue;
-      const execIds = normalizeTaskIdList(row.gc_os_tarefa_exec).split("/").filter(Boolean);
-      const execInWindow = execIds.some((id) => taskIds.has(id));
-      if (isInWindow(row.data_tarefa) || isInWindow(row.data_conclusao) || execInWindow) {
-        targetOsIds.add(osId);
-      }
+      .in("auvo_task_id", batch);
+    for (const r of rowsByOsTask || []) {
+      const id = String(r.gc_os_id || "").trim();
+      if (id) targetOsIds.add(id);
     }
-
-    if (chunk.length < 1000) break;
+    // (b) rows whose exec-task reference contains one of the ids (handles slash-separated)
+    const orExpr = batch.map((id) => `gc_os_tarefa_exec.ilike.%${id}%`).join(",");
+    const { data: rowsByExec } = await sbClient
+      .from("tarefas_central")
+      .select("gc_os_id")
+      .not("gc_os_id", "is", null)
+      .or(orExpr);
+    for (const r of rowsByExec || []) {
+      const id = String(r.gc_os_id || "").trim();
+      if (id) targetOsIds.add(id);
+    }
   }
 
   let updated = 0;
+  let processed = 0;
   const osIds = Array.from(targetOsIds);
-  const PARALLEL = 12;
+  const PARALLEL = 8;
   for (let i = 0; i < osIds.length; i += PARALLEL) {
+    if (timeUp()) {
+      console.warn(`[central-sync] Budget esgotado em refreshGcOsStatusesForReportsOnly após ${processed}/${osIds.length} OS`);
+      break;
+    }
     const batch = osIds.slice(i, i + PARALLEL);
     const freshList = await Promise.all(batch.map(async (osId) => {
       const resp = await rateLimitedFetch(`${GC_BASE_URL}/api/ordens_servicos/${osId}`, { headers: gcHeaders }, "gc");
@@ -859,10 +872,11 @@ async function refreshGcOsStatusesForReportsOnly(
       return count || 0;
     }));
     updated += counts.reduce((sum, count) => sum + count, 0);
+    processed += batch.length;
   }
 
-  console.log(`[central-sync] Reports-only GC OS status refresh: ${updated} registros atualizados (${targetOsIds.size} OS verificadas)`);
-  return { checked: targetOsIds.size, updated };
+  console.log(`[central-sync] Reports-only GC OS status refresh: ${updated} registros atualizados (${processed}/${targetOsIds.size} OS verificadas em ${Date.now() - tStart}ms)`);
+  return { checked: processed, updated };
 }
 
 async function runReportsOnlySync(sbClient: any, bearerToken: string, gcHeaders: Record<string, string>, startDate: string, endDate: string) {
