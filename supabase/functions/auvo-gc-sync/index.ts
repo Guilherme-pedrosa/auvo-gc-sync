@@ -963,6 +963,7 @@ Deno.serve(async (req) => {
         });
       }
 
+      const localAuvoBearerToken = await auvoLogin(auvoApiKey, auvoApiToken);
       const results: any[] = [];
       for (const os of (osRows || [])) {
         const gcOsId = String((os as any).gc_os_id || "");
@@ -971,7 +972,6 @@ Deno.serve(async (req) => {
         const execTaskId = (os as any).gc_os_tarefa_exec ? String((os as any).gc_os_tarefa_exec) : null;
         if (!gcOsId) { results.push({ gc_os_codigo: gcOsCodigo, resultado: "sem_gc_os_id" }); continue; }
 
-        const localAuvoBearerToken = await auvoLogin(auvoApiKey, auvoApiToken);
         const resolvida = await resolverDataSaidaExecucao({
           supabase,
           gcHeaders,
