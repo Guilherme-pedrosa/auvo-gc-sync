@@ -971,20 +971,17 @@ Deno.serve(async (req) => {
         const execTaskId = (os as any).gc_os_tarefa_exec ? String((os as any).gc_os_tarefa_exec) : null;
         if (!gcOsId) { results.push({ gc_os_codigo: gcOsCodigo, resultado: "sem_gc_os_id" }); continue; }
 
-        let novaData: string | null = null;
-        const lookupTaskId = execTaskId && execTaskId !== auvoTaskIdOs ? execTaskId : auvoTaskIdOs;
-        if (lookupTaskId) {
-          const { data: execTarefa } = await supabase
-            .from("tarefas_central")
-            .select("check_out_iso, data_conclusao, data_tarefa")
-            .eq("auvo_task_id", lookupTaskId)
-            .limit(1)
-            .maybeSingle();
-          const candidato = execTarefa?.check_out_iso || execTarefa?.data_conclusao || execTarefa?.data_tarefa || null;
-          if (candidato) novaData = String(candidato).split("T")[0];
-        }
+        const localAuvoBearerToken = await auvoLogin(auvoApiKey, auvoApiToken);
+        const resolvida = await resolverDataSaidaExecucao({
+          supabase,
+          gcHeaders,
+          auvoBearerToken: localAuvoBearerToken,
+          gcOsId,
+          auvoTaskIdOs,
+        });
+        const novaData = resolvida.dataSaida;
 
-        if (!novaData) { results.push({ gc_os_id: gcOsId, gc_os_codigo: gcOsCodigo, resultado: "sem_data_execucao" }); continue; }
+        if (!novaData) { results.push({ gc_os_id: gcOsId, gc_os_codigo: gcOsCodigo, resultado: "sem_data_execucao", origem: resolvida.origem, motivo: resolvida.motivo }); continue; }
 
         const osAtual = await buscarOsAtual(gcOsId, gcHeaders);
         if (!osAtual) { results.push({ gc_os_id: gcOsId, gc_os_codigo: gcOsCodigo, resultado: "gc_get_falhou" }); continue; }
@@ -1008,6 +1005,8 @@ Deno.serve(async (req) => {
           gc_os_id: gcOsId, gc_os_codigo: gcOsCodigo,
           resultado: putResult.success ? "atualizada" : "erro_gc",
           data_saida_antes: dataSaidaAtual, data_saida_depois: novaData,
+          exec_task_id: resolvida.execTaskId,
+          origem_data_saida: resolvida.origem,
           situacao_id: situacaoAtualId,
           http_status: putResult.status,
           erro: putResult.success ? null : putResult.body,
