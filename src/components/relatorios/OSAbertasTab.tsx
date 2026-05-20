@@ -189,10 +189,10 @@ export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, o
           action: "revert_os",
           gc_os_id: item.gc_os_id,
           gc_os_codigo: item.gc_os_codigo,
+          auvo_task_id: item.auvo_task_id,
           situacao_id_antes: situacaoId,
           gc_vendedor_id: gcVendedorId,
           gc_vendedor_nome: gcVendedorNome,
-          data_saida: item.data_tarefa || null,
           gc_usuario_id: profile?.gc_user_id || null,
         },
       });
