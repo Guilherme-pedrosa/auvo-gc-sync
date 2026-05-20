@@ -114,6 +114,44 @@ function formatCurrency(value: number): string {
   return Math.max(0, value).toFixed(2);
 }
 
+function parseAuvoTaskIds(raw: unknown): string[] {
+  return String(raw ?? "")
+    .split("/")
+    .map((id) => id.trim())
+    .filter((id) => /^\d+$/.test(id));
+}
+
+function dataValida(raw: unknown): string | null {
+  const match = String(raw ?? "").trim().match(/^(\d{4}-\d{2}-\d{2})/);
+  if (!match) return null;
+  const value = match[1];
+  if (value === "0001-01-01" || value === "1900-01-01") return null;
+  return value;
+}
+
+function extrairAtributoGc(osObj: unknown, atributoId: string, labelFragmentos: string[] = []): string | null {
+  const atributos: any[] = Array.isArray((osObj as any)?.atributos) ? (osObj as any).atributos : [];
+  const attr = atributos.find((a: any) => {
+    const nested = a?.atributo || a;
+    const id = String(nested?.atributo_id || nested?.id || "");
+    const label = String(nested?.descricao || nested?.label || nested?.nome || "").toLowerCase();
+    return id === atributoId || labelFragmentos.some((fragmento) => label.includes(fragmento));
+  });
+  const nested = attr?.atributo || attr;
+  const value = String(nested?.conteudo || nested?.valor || "").trim();
+  return value || null;
+}
+
+function dataDeRawAuvo(raw: any): { data: string | null; origem: string } {
+  const checkOut = dataValida(raw?.checkOutDate || raw?.check_out_iso || raw?.checkout_hora);
+  if (checkOut) return { data: checkOut, origem: "auvo_check_out" };
+  const conclusao = dataValida(raw?.data_conclusao || raw?.dateConclusion || raw?.finishDate);
+  if (conclusao) return { data: conclusao, origem: "auvo_conclusao" };
+  const taskDate = dataValida(raw?.taskDate || raw?.task_date || raw?.data_tarefa || raw?.date);
+  if (taskDate) return { data: taskDate, origem: "auvo_data_tarefa_execucao" };
+  return { data: null, origem: "sem_data" };
+}
+
 // ─── STEP 1: Buscar OS com tarefa Auvo ───
 async function fetchOsComTarefaAuvo(gcHeaders: Record<string, string>, dataInicio?: string, dataFim?: string): Promise<Array<{
   gc_os_id: string;
@@ -730,6 +768,53 @@ async function buscarOsAtual(gcOsId: string, gcHeaders: Record<string, string>):
   return osAtual as Record<string, unknown>;
 }
 
+async function resolverDataSaidaExecucao(params: {
+  supabase: any;
+  gcHeaders: Record<string, string>;
+  auvoBearerToken: string;
+  gcOsId: string;
+  auvoTaskIdOs?: string | null;
+}): Promise<{ dataSaida: string | null; execTaskId: string | null; origem: string; motivo?: string }> {
+  const osAtual = await buscarOsAtual(params.gcOsId, params.gcHeaders);
+  const taskOsDoGc = extrairAtributoGc(osAtual, "73343", ["tarefa os"]);
+  const taskOsId = params.auvoTaskIdOs || parseAuvoTaskIds(taskOsDoGc)[0] || null;
+  const execIds = parseAuvoTaskIds(extrairAtributoGc(osAtual, "73344", ["execução", "execucao"]));
+
+  if (execIds.length === 0) {
+    const { data: rows } = await params.supabase
+      .from("tarefas_central")
+      .select("gc_os_tarefa_exec")
+      .eq("gc_os_id", params.gcOsId)
+      .not("gc_os_tarefa_exec", "is", null)
+      .limit(10);
+    for (const row of (rows || [])) execIds.push(...parseAuvoTaskIds(row?.gc_os_tarefa_exec));
+  }
+
+  const candidatos = [...new Set(execIds.filter((id) => id && id !== taskOsId))];
+  if (candidatos.length === 0) {
+    return { dataSaida: null, execTaskId: null, origem: "sem_tarefa_execucao", motivo: "Atributo 73344 ausente ou igual à Tarefa OS (73343)" };
+  }
+
+  for (const execTaskId of candidatos) {
+    const { data: execTarefa } = await params.supabase
+      .from("tarefas_central")
+      .select("check_out_iso, data_conclusao, data_tarefa")
+      .eq("auvo_task_id", execTaskId)
+      .limit(1)
+      .maybeSingle();
+
+    const centralDate = dataValida(execTarefa?.check_out_iso) || dataValida(execTarefa?.data_conclusao) || dataValida(execTarefa?.data_tarefa);
+    if (centralDate) return { dataSaida: centralDate, execTaskId, origem: "tarefas_central_execucao" };
+
+    const execResult = await getAuvoTaskDetailed(execTaskId, params.auvoBearerToken);
+    const execRaw = "found" in execResult ? execResult.task?._raw : null;
+    const resolved = dataDeRawAuvo(execRaw);
+    if (resolved.data) return { dataSaida: resolved.data, execTaskId, origem: resolved.origem };
+  }
+
+  return { dataSaida: null, execTaskId: candidatos[0] || null, origem: "sem_data_execucao", motivo: "Tarefa de execução encontrada, mas sem check-out/data válida" };
+}
+
 async function atualizarSituacaoOsGC(
   gcOsId: string,
   situacaoId: string,
@@ -878,6 +963,7 @@ Deno.serve(async (req) => {
         });
       }
 
+      const localAuvoBearerToken = await auvoLogin(auvoApiKey, auvoApiToken);
       const results: any[] = [];
       for (const os of (osRows || [])) {
         const gcOsId = String((os as any).gc_os_id || "");
@@ -886,20 +972,16 @@ Deno.serve(async (req) => {
         const execTaskId = (os as any).gc_os_tarefa_exec ? String((os as any).gc_os_tarefa_exec) : null;
         if (!gcOsId) { results.push({ gc_os_codigo: gcOsCodigo, resultado: "sem_gc_os_id" }); continue; }
 
-        let novaData: string | null = null;
-        const lookupTaskId = execTaskId && execTaskId !== auvoTaskIdOs ? execTaskId : auvoTaskIdOs;
-        if (lookupTaskId) {
-          const { data: execTarefa } = await supabase
-            .from("tarefas_central")
-            .select("check_out_iso, data_conclusao, data_tarefa")
-            .eq("auvo_task_id", lookupTaskId)
-            .limit(1)
-            .maybeSingle();
-          const candidato = execTarefa?.check_out_iso || execTarefa?.data_conclusao || execTarefa?.data_tarefa || null;
-          if (candidato) novaData = String(candidato).split("T")[0];
-        }
+        const resolvida = await resolverDataSaidaExecucao({
+          supabase,
+          gcHeaders,
+          auvoBearerToken: localAuvoBearerToken,
+          gcOsId,
+          auvoTaskIdOs,
+        });
+        const novaData = resolvida.dataSaida;
 
-        if (!novaData) { results.push({ gc_os_id: gcOsId, gc_os_codigo: gcOsCodigo, resultado: "sem_data_execucao" }); continue; }
+        if (!novaData) { results.push({ gc_os_id: gcOsId, gc_os_codigo: gcOsCodigo, resultado: "sem_data_execucao", origem: resolvida.origem, motivo: resolvida.motivo }); continue; }
 
         const osAtual = await buscarOsAtual(gcOsId, gcHeaders);
         if (!osAtual) { results.push({ gc_os_id: gcOsId, gc_os_codigo: gcOsCodigo, resultado: "gc_get_falhou" }); continue; }
@@ -923,6 +1005,8 @@ Deno.serve(async (req) => {
           gc_os_id: gcOsId, gc_os_codigo: gcOsCodigo,
           resultado: putResult.success ? "atualizada" : "erro_gc",
           data_saida_antes: dataSaidaAtual, data_saida_depois: novaData,
+          exec_task_id: resolvida.execTaskId,
+          origem_data_saida: resolvida.origem,
           situacao_id: situacaoAtualId,
           http_status: putResult.status,
           erro: putResult.success ? null : putResult.body,
@@ -1045,7 +1129,6 @@ Deno.serve(async (req) => {
       const gcOsCodigo = String(body.gc_os_codigo || "");
       const vendedorId = body.gc_vendedor_id ? String(body.gc_vendedor_id) : null;
       const vendedorNome = body.gc_vendedor_nome ? String(body.gc_vendedor_nome) : null;
-      const dataSaida = body.data_saida ? String(body.data_saida) : null;
       const gcUsuarioId = body.gc_usuario_id ? String(body.gc_usuario_id) : null;
       if (!gcOsId || !situacaoAnteriorId) {
         return new Response(JSON.stringify({ error: "gc_os_id e situacao_id_antes são obrigatórios" }), {
@@ -1057,7 +1140,23 @@ Deno.serve(async (req) => {
           status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
-      console.log(`[auvo-gc-sync] REVERT: OS ${gcOsCodigo} (${gcOsId}) → situação ${situacaoAnteriorId} | vendedor: ${vendedorNome || "N/A"} (${vendedorId || "N/A"}) | data_saida: ${dataSaida || "N/A"} | gc_usuario_id: ${gcUsuarioId || "N/A"}`);
+      const auvoTaskIdOs = body.auvo_task_id ? String(body.auvo_task_id) : null;
+      const localAuvoBearerToken = await auvoLogin(auvoApiKey, auvoApiToken);
+      const resolvida = await resolverDataSaidaExecucao({ supabase, gcHeaders, auvoBearerToken: localAuvoBearerToken, gcOsId, auvoTaskIdOs });
+      const dataSaida = resolvida.dataSaida;
+      if (!dataSaida) {
+        return new Response(JSON.stringify({
+          success: false,
+          gc_os_id: gcOsId,
+          gc_os_codigo: gcOsCodigo,
+          error: "data_saida_bloqueada_sem_tarefa_execucao",
+          message: "Não alterei a OS porque não encontrei data válida na Tarefa Execução (73344).",
+          origem: resolvida.origem,
+          motivo: resolvida.motivo,
+        }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      }
+
+      console.log(`[auvo-gc-sync] REVERT: OS ${gcOsCodigo} (${gcOsId}) → situação ${situacaoAnteriorId} | vendedor: ${vendedorNome || "N/A"} (${vendedorId || "N/A"}) | data_saida_execucao: ${dataSaida} (${resolvida.origem}, task ${resolvida.execTaskId || "N/A"}) | gc_usuario_id: ${gcUsuarioId || "N/A"}`);
       const revertResult = await atualizarSituacaoOsGC(gcOsId, situacaoAnteriorId, gcHeaders, { vendedorId, vendedorNome, dataSaida, gcUsuarioId });
       
       await supabase.from("auvo_gc_sync_log").insert({
@@ -1810,43 +1909,27 @@ Deno.serve(async (req) => {
         }
       }
 
-      // ─── Extrair data de execução para data_saida da OS ───
-      // Prioridade: data da TAREFA DE EXECUÇÃO (gc_os_tarefa_exec via attr 73344) sobre a tarefa OS.
-      // Formato esperado pelo GC: yyyy-MM-dd.
-      let auvoTaskDate: string | null = null;
-      try {
-        const { data: execRow } = await supabase
-          .from("tarefas_central")
-          .select("gc_os_tarefa_exec")
-          .eq("gc_os_id", os.gc_os_id)
-          .not("gc_os_tarefa_exec", "is", null)
-          .limit(1)
-          .maybeSingle();
-        const execTaskId = execRow?.gc_os_tarefa_exec ? String(execRow.gc_os_tarefa_exec) : null;
-        if (execTaskId && execTaskId !== String(os.auvo_task_id)) {
-          const { data: execTarefa } = await supabase
-            .from("tarefas_central")
-            .select("check_out_iso, data_conclusao, data_tarefa")
-            .eq("auvo_task_id", execTaskId)
-            .limit(1)
-            .maybeSingle();
-          const candidato = execTarefa?.check_out_iso || execTarefa?.data_conclusao || execTarefa?.data_tarefa || null;
-          if (candidato) auvoTaskDate = String(candidato).split("T")[0];
-          // Fallback: buscar direto no Auvo se central ainda não tem
-          if (!auvoTaskDate) {
-            const execResult = await getAuvoTaskDetailed(execTaskId, auvoBearerToken);
-            const execRaw = ("found" in execResult ? execResult.task?._raw : null) as any;
-            const rawDate = String(execRaw?.checkOutDate || execRaw?.taskDate || "").split("T")[0];
-            if (rawDate) auvoTaskDate = rawDate;
-          }
-        }
-      } catch (err) {
-        console.warn(`[auvo-gc-sync] OS ${os.gc_os_codigo}: falha ao resolver data da tarefa de execução:`, err);
-      }
+      const dataExecucaoResolvida = await resolverDataSaidaExecucao({
+        supabase,
+        gcHeaders,
+        auvoBearerToken,
+        gcOsId: os.gc_os_id,
+        auvoTaskIdOs: os.auvo_task_id,
+      });
+      const auvoTaskDate = dataExecucaoResolvida.dataSaida;
       if (!auvoTaskDate) {
-        auvoTaskDate = String(tarefa._raw?.checkOutDate || tarefa._raw?.taskDate || "").split("T")[0] || null;
+        erros++;
+        logEntries.push({
+          gc_os_id: os.gc_os_id, gc_os_codigo: os.gc_os_codigo, auvo_task_id: os.auvo_task_id,
+          resultado: "sem_data_execucao", detalhe: dataExecucaoResolvida.motivo || "Sem data válida na Tarefa Execução (73344)",
+          situacao_antes: os.nome_situacao, situacao_id_antes: os.situacao_id, situacao_depois: null,
+          data_os: os.data_os, gc_cliente: os.gc_cliente, origem_data_saida: dataExecucaoResolvida.origem,
+          exec_task_id: dataExecucaoResolvida.execTaskId,
+        });
+        console.warn(`[auvo-gc-sync] OS ${os.gc_os_codigo} BLOQUEADA: sem data válida na Tarefa Execução (73344). Não vou usar data da OS.`);
+        continue;
       }
-      console.log(`[auvo-gc-sync] OS ${os.gc_os_codigo} — data_saida resolvida: ${auvoTaskDate || "N/A"}`);
+      console.log(`[auvo-gc-sync] OS ${os.gc_os_codigo} — data_saida da execução: ${auvoTaskDate} (${dataExecucaoResolvida.origem}, task ${dataExecucaoResolvida.execTaskId || "N/A"})`);
 
       if (dryRun) {
         logEntries.push({
