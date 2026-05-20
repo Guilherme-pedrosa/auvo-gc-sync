@@ -1732,9 +1732,43 @@ Deno.serve(async (req) => {
         }
       }
 
-      // ─── Extrair data de execução da tarefa (taskDate) para data_saida da OS ───
-      // Formato esperado pelo GC: yyyy-MM-dd
-      const auvoTaskDate = String(tarefa._raw?.taskDate || tarefa._raw?.checkOutDate || "").split("T")[0] || null;
+      // ─── Extrair data de execução para data_saida da OS ───
+      // Prioridade: data da TAREFA DE EXECUÇÃO (gc_os_tarefa_exec via attr 73344) sobre a tarefa OS.
+      // Formato esperado pelo GC: yyyy-MM-dd.
+      let auvoTaskDate: string | null = null;
+      try {
+        const { data: execRow } = await supabase
+          .from("tarefas_central")
+          .select("gc_os_tarefa_exec")
+          .eq("gc_os_id", os.gc_os_id)
+          .not("gc_os_tarefa_exec", "is", null)
+          .limit(1)
+          .maybeSingle();
+        const execTaskId = execRow?.gc_os_tarefa_exec ? String(execRow.gc_os_tarefa_exec) : null;
+        if (execTaskId && execTaskId !== String(os.auvo_task_id)) {
+          const { data: execTarefa } = await supabase
+            .from("tarefas_central")
+            .select("check_out_iso, data_conclusao, data_tarefa")
+            .eq("auvo_task_id", execTaskId)
+            .limit(1)
+            .maybeSingle();
+          const candidato = execTarefa?.check_out_iso || execTarefa?.data_conclusao || execTarefa?.data_tarefa || null;
+          if (candidato) auvoTaskDate = String(candidato).split("T")[0];
+          // Fallback: buscar direto no Auvo se central ainda não tem
+          if (!auvoTaskDate) {
+            const execResult = await getAuvoTaskDetailed(execTaskId, auvoBearerToken);
+            const execRaw = ("found" in execResult ? execResult.task?._raw : null) as any;
+            const rawDate = String(execRaw?.checkOutDate || execRaw?.taskDate || "").split("T")[0];
+            if (rawDate) auvoTaskDate = rawDate;
+          }
+        }
+      } catch (err) {
+        console.warn(`[auvo-gc-sync] OS ${os.gc_os_codigo}: falha ao resolver data da tarefa de execução:`, err);
+      }
+      if (!auvoTaskDate) {
+        auvoTaskDate = String(tarefa._raw?.checkOutDate || tarefa._raw?.taskDate || "").split("T")[0] || null;
+      }
+      console.log(`[auvo-gc-sync] OS ${os.gc_os_codigo} — data_saida resolvida: ${auvoTaskDate || "N/A"}`);
 
       if (dryRun) {
         logEntries.push({
