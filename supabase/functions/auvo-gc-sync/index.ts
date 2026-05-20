@@ -114,6 +114,44 @@ function formatCurrency(value: number): string {
   return Math.max(0, value).toFixed(2);
 }
 
+function parseAuvoTaskIds(raw: unknown): string[] {
+  return String(raw ?? "")
+    .split("/")
+    .map((id) => id.trim())
+    .filter((id) => /^\d+$/.test(id));
+}
+
+function dataValida(raw: unknown): string | null {
+  const match = String(raw ?? "").trim().match(/^(\d{4}-\d{2}-\d{2})/);
+  if (!match) return null;
+  const value = match[1];
+  if (value === "0001-01-01" || value === "1900-01-01") return null;
+  return value;
+}
+
+function extrairAtributoGc(osObj: unknown, atributoId: string, labelFragmentos: string[] = []): string | null {
+  const atributos: any[] = Array.isArray((osObj as any)?.atributos) ? (osObj as any).atributos : [];
+  const attr = atributos.find((a: any) => {
+    const nested = a?.atributo || a;
+    const id = String(nested?.atributo_id || nested?.id || "");
+    const label = String(nested?.descricao || nested?.label || nested?.nome || "").toLowerCase();
+    return id === atributoId || labelFragmentos.some((fragmento) => label.includes(fragmento));
+  });
+  const nested = attr?.atributo || attr;
+  const value = String(nested?.conteudo || nested?.valor || "").trim();
+  return value || null;
+}
+
+function dataDeRawAuvo(raw: any): { data: string | null; origem: string } {
+  const checkOut = dataValida(raw?.checkOutDate || raw?.check_out_iso || raw?.checkout_hora);
+  if (checkOut) return { data: checkOut, origem: "auvo_check_out" };
+  const conclusao = dataValida(raw?.data_conclusao || raw?.dateConclusion || raw?.finishDate);
+  if (conclusao) return { data: conclusao, origem: "auvo_conclusao" };
+  const taskDate = dataValida(raw?.taskDate || raw?.task_date || raw?.data_tarefa || raw?.date);
+  if (taskDate) return { data: taskDate, origem: "auvo_data_tarefa_execucao" };
+  return { data: null, origem: "sem_data" };
+}
+
 // ─── STEP 1: Buscar OS com tarefa Auvo ───
 async function fetchOsComTarefaAuvo(gcHeaders: Record<string, string>, dataInicio?: string, dataFim?: string): Promise<Array<{
   gc_os_id: string;
