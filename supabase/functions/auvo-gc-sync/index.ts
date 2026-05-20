@@ -768,6 +768,53 @@ async function buscarOsAtual(gcOsId: string, gcHeaders: Record<string, string>):
   return osAtual as Record<string, unknown>;
 }
 
+async function resolverDataSaidaExecucao(params: {
+  supabase: any;
+  gcHeaders: Record<string, string>;
+  auvoBearerToken: string;
+  gcOsId: string;
+  auvoTaskIdOs?: string | null;
+}): Promise<{ dataSaida: string | null; execTaskId: string | null; origem: string; motivo?: string }> {
+  const osAtual = await buscarOsAtual(params.gcOsId, params.gcHeaders);
+  const taskOsDoGc = extrairAtributoGc(osAtual, "73343", ["tarefa os"]);
+  const taskOsId = params.auvoTaskIdOs || parseAuvoTaskIds(taskOsDoGc)[0] || null;
+  const execIds = parseAuvoTaskIds(extrairAtributoGc(osAtual, "73344", ["execução", "execucao"]));
+
+  if (execIds.length === 0) {
+    const { data: rows } = await params.supabase
+      .from("tarefas_central")
+      .select("gc_os_tarefa_exec")
+      .eq("gc_os_id", params.gcOsId)
+      .not("gc_os_tarefa_exec", "is", null)
+      .limit(10);
+    for (const row of (rows || [])) execIds.push(...parseAuvoTaskIds(row?.gc_os_tarefa_exec));
+  }
+
+  const candidatos = [...new Set(execIds.filter((id) => id && id !== taskOsId))];
+  if (candidatos.length === 0) {
+    return { dataSaida: null, execTaskId: null, origem: "sem_tarefa_execucao", motivo: "Atributo 73344 ausente ou igual à Tarefa OS (73343)" };
+  }
+
+  for (const execTaskId of candidatos) {
+    const { data: execTarefa } = await params.supabase
+      .from("tarefas_central")
+      .select("check_out_iso, data_conclusao, data_tarefa")
+      .eq("auvo_task_id", execTaskId)
+      .limit(1)
+      .maybeSingle();
+
+    const centralDate = dataValida(execTarefa?.check_out_iso) || dataValida(execTarefa?.data_conclusao) || dataValida(execTarefa?.data_tarefa);
+    if (centralDate) return { dataSaida: centralDate, execTaskId, origem: "tarefas_central_execucao" };
+
+    const execResult = await getAuvoTaskDetailed(execTaskId, params.auvoBearerToken);
+    const execRaw = "found" in execResult ? execResult.task?._raw : null;
+    const resolved = dataDeRawAuvo(execRaw);
+    if (resolved.data) return { dataSaida: resolved.data, execTaskId, origem: resolved.origem };
+  }
+
+  return { dataSaida: null, execTaskId: candidatos[0] || null, origem: "sem_data_execucao", motivo: "Tarefa de execução encontrada, mas sem check-out/data válida" };
+}
+
 async function atualizarSituacaoOsGC(
   gcOsId: string,
   situacaoId: string,
