@@ -856,6 +856,84 @@ Deno.serve(async (req) => {
     // ─── Actions that only need GC (no Auvo login required) ───
     
     // ─── Action: batch_scan — listar OS na situação 7116099 modificadas após uma data ───
+    // (action fix_data_saida adicionado mais abaixo, antes de batch_scan via early-return acima)
+    if (body?.action === "fix_data_saida") {
+      const codigos: string[] = Array.isArray(body.gc_os_codigos) ? body.gc_os_codigos.map(String) : [];
+      const gcOsIdsInput: string[] = Array.isArray(body.gc_os_ids) ? body.gc_os_ids.map(String) : [];
+      const dryRun: boolean = body.dry_run === true;
+
+      if (!codigos.length && !gcOsIdsInput.length) {
+        return new Response(JSON.stringify({ error: "Forneça gc_os_codigos[] ou gc_os_ids[]" }), {
+          status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      let query = supabase.from("tarefas_central").select("gc_os_id, gc_os_codigo, auvo_task_id, gc_os_tarefa_exec");
+      if (codigos.length) query = query.in("gc_os_codigo", codigos);
+      else query = query.in("gc_os_id", gcOsIdsInput);
+      const { data: osRows, error: osErr } = await query;
+      if (osErr) {
+        return new Response(JSON.stringify({ error: `Erro DB: ${osErr.message}` }), {
+          status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      const results: any[] = [];
+      for (const os of (osRows || [])) {
+        const gcOsId = String((os as any).gc_os_id || "");
+        const gcOsCodigo = String((os as any).gc_os_codigo || "");
+        const auvoTaskIdOs = String((os as any).auvo_task_id || "");
+        const execTaskId = (os as any).gc_os_tarefa_exec ? String((os as any).gc_os_tarefa_exec) : null;
+        if (!gcOsId) { results.push({ gc_os_codigo: gcOsCodigo, resultado: "sem_gc_os_id" }); continue; }
+
+        let novaData: string | null = null;
+        const lookupTaskId = execTaskId && execTaskId !== auvoTaskIdOs ? execTaskId : auvoTaskIdOs;
+        if (lookupTaskId) {
+          const { data: execTarefa } = await supabase
+            .from("tarefas_central")
+            .select("check_out_iso, data_conclusao, data_tarefa")
+            .eq("auvo_task_id", lookupTaskId)
+            .limit(1)
+            .maybeSingle();
+          const candidato = execTarefa?.check_out_iso || execTarefa?.data_conclusao || execTarefa?.data_tarefa || null;
+          if (candidato) novaData = String(candidato).split("T")[0];
+        }
+
+        if (!novaData) { results.push({ gc_os_id: gcOsId, gc_os_codigo: gcOsCodigo, resultado: "sem_data_execucao" }); continue; }
+
+        const osAtual = await buscarOsAtual(gcOsId, gcHeaders);
+        if (!osAtual) { results.push({ gc_os_id: gcOsId, gc_os_codigo: gcOsCodigo, resultado: "gc_get_falhou" }); continue; }
+        const dataSaidaAtual = String((osAtual as any).data_saida || "").split("T")[0] || null;
+        const situacaoAtualId = String((osAtual as any).situacao_id ?? (osAtual as any)?.situacao?.id ?? "");
+
+        if (dataSaidaAtual === novaData) {
+          results.push({ gc_os_id: gcOsId, gc_os_codigo: gcOsCodigo, resultado: "ja_correta", data_saida: novaData });
+          continue;
+        }
+
+        if (dryRun) {
+          results.push({ gc_os_id: gcOsId, gc_os_codigo: gcOsCodigo, resultado: "dry_run_ok", data_saida_antes: dataSaidaAtual, data_saida_depois: novaData, situacao_id: situacaoAtualId });
+          continue;
+        }
+
+        const payload: Record<string, unknown> = { ...osAtual, data_saida: novaData };
+        if (body?.gc_usuario_id) payload.usuario_id = String(body.gc_usuario_id);
+        const putResult = await executarPutOs(gcOsId, payload, gcHeaders, "FIX_DATA_SAIDA");
+        results.push({
+          gc_os_id: gcOsId, gc_os_codigo: gcOsCodigo,
+          resultado: putResult.success ? "atualizada" : "erro_gc",
+          data_saida_antes: dataSaidaAtual, data_saida_depois: novaData,
+          situacao_id: situacaoAtualId,
+          http_status: putResult.status,
+          erro: putResult.success ? null : putResult.body,
+        });
+      }
+
+      return new Response(JSON.stringify({ success: true, total: results.length, results }), {
+        status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
     if (body?.action === "batch_scan") {
       const modificadoApos = body.modificado_apos || "2026-03-11 17:46:00";
       console.log(`[auvo-gc-sync] BATCH_SCAN: buscando OS em situação 7116099 modificadas após ${modificadoApos}`);
