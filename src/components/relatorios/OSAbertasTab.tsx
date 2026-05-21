@@ -1246,6 +1246,7 @@ export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, o
           </DialogHeader>
           {selectedCard && (() => {
             const atributos: any[] = osDetail?.atributos || [];
+            const liveResolvedOs = liveOsMap.get(String(selectedCard.gc_os_id));
             const liveResolvedExec = liveExecMap.get(String(selectedCard.gc_os_id));
             const findAttrRaw = (attrId: string) => {
               const attr = atributos.find((a: any) => {
@@ -1266,9 +1267,10 @@ export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, o
             const osRow = (() => {
               if (osTaskId) {
                 return allTasks.find((t: any) => String(t.auvo_task_id) === String(osTaskId))
-                  || (String(selectedCard.auvo_task_id) === String(osTaskId) ? selectedCard : null);
+                  || (String(selectedCard.auvo_task_id) === String(osTaskId) ? { ...selectedCard, tecnico: selectedCard.tecnico || liveResolvedOs?.tecnico || null, tecnico_id: selectedCard.tecnico_id || liveResolvedOs?.tecnicoId || null, data_tarefa: selectedCard.data_tarefa || liveResolvedOs?.dataTarefa || null, status_auvo: selectedCard.status_auvo || liveResolvedOs?.status || null } : null)
+                  || (liveResolvedOs ? { auvo_task_id: String(osTaskId), tecnico: liveResolvedOs.tecnico || null, tecnico_id: liveResolvedOs.tecnicoId || null, data_tarefa: liveResolvedOs.dataTarefa || null, status_auvo: liveResolvedOs.status || null } : null);
               }
-              if (!firstExecId || String(selectedCard.auvo_task_id) !== String(firstExecId)) return selectedCard;
+              if (!firstExecId || String(selectedCard.auvo_task_id) !== String(firstExecId)) return { ...selectedCard, tecnico: selectedCard.tecnico || liveResolvedOs?.tecnico || null, tecnico_id: selectedCard.tecnico_id || liveResolvedOs?.tecnicoId || null, data_tarefa: selectedCard.data_tarefa || liveResolvedOs?.dataTarefa || null, status_auvo: selectedCard.status_auvo || liveResolvedOs?.status || null };
               return null;
             })();
 
@@ -1296,7 +1298,7 @@ export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, o
                 return {
                   ...mirrorExecRow,
                   auvo_task_id: String(firstExecId),
-                  tecnico: fbTecnico || mirrorExecRow?.tecnico || liveResolvedExec?.tecnico || selectedCard.gc_os_vendedor || null,
+                  tecnico: fbTecnico || mirrorExecRow?.tecnico || liveResolvedExec?.tecnico || null,
                   data_tarefa: (fbDateValid ? fbTaskDate.slice(0, 10) : null) || mirrorExecRow?.data_tarefa || liveResolvedExec?.dataTarefa || null,
                   status_auvo: getAuvoStatusFromTask(execTaskFallback),
                   hora_inicio: execTaskFallback?.checkInDate ? String(execTaskFallback.checkInDate).slice(11, 19) : (mirrorExecRow?.hora_inicio || (fbDateValid ? fbTaskDate.slice(11, 19) : null) || null),
