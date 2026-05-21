@@ -220,6 +220,7 @@ type AuvoTaskSnapshot = {
   orientation: string;
   technicianName: string;
   technicianId: string;
+  taskDate: string;
   displacementStart: string;
   checkInDate: string;
   checkOutDate: string;
@@ -261,6 +262,7 @@ async function fetchAuvoTaskSnapshot(bearerToken: string, taskId: string): Promi
   const orientation = String(result?.orientation || "").substring(0, 500);
   const technicianName = resolveAuvoTechnicianName(result);
   const technicianId = resolveAuvoTechnicianId(result);
+  const taskDate = String(result?.taskDate || result?.task_date || result?.date || "").trim();
   const displacementStart = String(result?.displacementStart || result?.displacement_start || "").trim();
   const checkInDate = String(result?.checkInDate || result?.checkinDate || result?.checkin_date || "").trim();
   const checkOutDate = String(result?.checkOutDate || result?.checkoutDate || result?.checkout_date || "").trim();
@@ -293,7 +295,7 @@ async function fetchAuvoTaskSnapshot(bearerToken: string, taskId: string): Promi
   }
 
   const questionnaires = Array.isArray(result?.questionnaires) ? result.questionnaires : [];
-  return { address, orientation, technicianName, technicianId, displacementStart, checkInDate, checkOutDate, taskEndDate, startTime, endTime, estimatedDuration, equipmentName, equipmentSerial, equipmentIds: equipIds, questionnaires };
+  return { address, orientation, technicianName, technicianId, taskDate, displacementStart, checkInDate, checkOutDate, taskEndDate, startTime, endTime, estimatedDuration, equipmentName, equipmentSerial, equipmentIds: equipIds, questionnaires };
 }
 
 // Fetch Auvo tasks for a single month window
