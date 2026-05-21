@@ -1866,6 +1866,25 @@ export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, o
               </div>
 
               <div className="space-y-2">
+                <Label>Duração da Atividade</Label>
+                <Select value={editDuration} onValueChange={setEditDuration}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Selecionar duração" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {[
+                      "00:30","01:00","01:30","02:00","02:30","03:00",
+                      "03:30","04:00","05:00","06:00","07:00","08:00",
+                    ].map((d) => {
+                      const [h, m] = d.split(":");
+                      const label = Number(m) === 0 ? `${Number(h)}h` : `${Number(h)}h${m}`;
+                      return <SelectItem key={d} value={d}>{label}</SelectItem>;
+                    })}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-2">
                 <Label>Técnico</Label>
                 <Select value={editTecnicoId} onValueChange={setEditTecnicoId}>
                   <SelectTrigger>
