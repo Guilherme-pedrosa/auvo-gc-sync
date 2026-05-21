@@ -1062,7 +1062,8 @@ export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, o
                                       <TableCell>
                                         {(() => {
                                           const osTask = osTaskByGcOsId.get(String(item.gc_os_id));
-                                          return osTask?.tecnico || item.tecnico || item.gc_os_vendedor || "—";
+                                          const live = liveOsMap.get(String(item.gc_os_id));
+                                          return osTask?.tecnico || item.tecnico || live?.tecnico || "—";
                                         })()}
                                       </TableCell>
                                       <TableCell>
@@ -1076,8 +1077,7 @@ export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, o
                                             const execRow = allTasks.find((t: any) => String(t.auvo_task_id) === eid);
                                             if (execRow?.tecnico) return execRow.tecnico;
                                           }
-                                          // Fallback to GC vendedor
-                                          return item.gc_os_vendedor || "—";
+                                          return "—";
                                         })()}
                                       </TableCell>
                                       <TableCell className="text-xs font-mono">
