@@ -426,7 +426,24 @@ export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, o
         const osTaskId = parseExecIds(item.gc_os_tarefa_os)[0] || String(item.auvo_task_id || "").trim();
         if (!/^\d+$/.test(osTaskId)) continue;
         const resolved = await resolveAuvoTaskLive(osTaskId);
-        if (!cancelled && resolved) updates.set(String(item.gc_os_id), resolved);
+        if (!cancelled && resolved) {
+          updates.set(String(item.gc_os_id), resolved);
+          if (resolved.tecnico || resolved.tecnicoId || resolved.dataTarefa || resolved.status) {
+            await supabase.functions.invoke("auvo-task-update", {
+              body: {
+                action: "persist-central",
+                row: {
+                  auvo_task_id: osTaskId,
+                  gc_os_id: item.gc_os_id,
+                  tecnico: resolved.tecnico || null,
+                  tecnico_id: resolved.tecnicoId || null,
+                  data_tarefa: resolved.dataTarefa || null,
+                  status_auvo: resolved.status || null,
+                },
+              },
+            }).catch(() => null);
+          }
+        }
       }
 
       if (!cancelled) setLiveOsMap(updates);
