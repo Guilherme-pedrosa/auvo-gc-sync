@@ -778,7 +778,10 @@ async function resolverDataSaidaExecucao(params: {
   const osAtual = await buscarOsAtual(params.gcOsId, params.gcHeaders);
   const taskOsDoGc = extrairAtributoGc(osAtual, "73343", ["tarefa os"]);
   const taskOsId = params.auvoTaskIdOs || parseAuvoTaskIds(taskOsDoGc)[0] || null;
-  const execIds = parseAuvoTaskIds(extrairAtributoGc(osAtual, "73344", ["execução", "execucao"]));
+  const execAttrRaw = extrairAtributoGc(osAtual, "73344", ["execução", "execucao"]);
+  const execIdsFromAttr = parseAuvoTaskIds(execAttrRaw);
+  const execIds = [...execIdsFromAttr];
+  const attrExplicit = execIdsFromAttr.length > 0;
 
   if (execIds.length === 0) {
     const { data: rows } = await params.supabase
@@ -790,7 +793,11 @@ async function resolverDataSaidaExecucao(params: {
     for (const row of (rows || [])) execIds.push(...parseAuvoTaskIds(row?.gc_os_tarefa_exec));
   }
 
-  const candidatos = [...new Set(execIds.filter((id) => id && id !== taskOsId))];
+  // Se 73344 foi preenchido explicitamente, aceita inclusive quando aponta para a mesma task da OS
+  // (caso comum: a Tarefa OS também é a tarefa de execução do técnico).
+  const candidatos = attrExplicit
+    ? [...new Set(execIds.filter((id) => !!id))]
+    : [...new Set(execIds.filter((id) => id && id !== taskOsId))];
   if (candidatos.length === 0) {
     return { dataSaida: null, execTaskId: null, origem: "sem_tarefa_execucao", motivo: "Atributo 73344 ausente ou igual à Tarefa OS (73343)" };
   }
