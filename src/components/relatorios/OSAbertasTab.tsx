@@ -799,9 +799,8 @@ export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, o
       if (editTecnicoId) {
         patches.push({ op: "replace", path: "idUserTo", value: Number(editTecnicoId) });
       }
-      if (editDuration) {
-        patches.push({ op: "replace", path: "estimatedDuration", value: `${editDuration}:00` });
-      }
+      // ⚠️ Auvo API NÃO aceita PATCH em estimatedDuration (campo read-only via REST).
+      // Mantemos o seletor na UI apenas como referência visual; não enviamos patch.
       if (patches.length === 0) {
         toast.warning("Nenhuma alteração para salvar");
         setEditSaving(false);
