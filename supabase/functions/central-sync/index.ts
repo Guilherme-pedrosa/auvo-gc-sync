@@ -205,9 +205,22 @@ function resolveTaskAddress(task: any): string {
   );
 }
 
+function resolveAuvoTechnicianName(task: any): string {
+  const userTo = task?.userTo || task?.user_to || task?.assignedUser || {};
+  return String(task?.userToName || userTo?.name || userTo?.login || task?.technician || "").trim();
+}
+
+function resolveAuvoTechnicianId(task: any): string {
+  const userTo = task?.userTo || task?.user_to || task?.assignedUser || {};
+  return String(task?.idUserTo || task?.id_user_to || userTo?.userID || userTo?.id || "").trim();
+}
+
 type AuvoTaskSnapshot = {
   address: string;
   orientation: string;
+  technicianName: string;
+  technicianId: string;
+  taskDate: string;
   displacementStart: string;
   checkInDate: string;
   checkOutDate: string;
@@ -247,6 +260,9 @@ async function fetchAuvoTaskSnapshot(bearerToken: string, taskId: string): Promi
     ""
   );
   const orientation = String(result?.orientation || "").substring(0, 500);
+  const technicianName = resolveAuvoTechnicianName(result);
+  const technicianId = resolveAuvoTechnicianId(result);
+  const taskDate = String(result?.taskDate || result?.task_date || result?.date || "").trim();
   const displacementStart = String(result?.displacementStart || result?.displacement_start || "").trim();
   const checkInDate = String(result?.checkInDate || result?.checkinDate || result?.checkin_date || "").trim();
   const checkOutDate = String(result?.checkOutDate || result?.checkoutDate || result?.checkout_date || "").trim();
@@ -279,7 +295,7 @@ async function fetchAuvoTaskSnapshot(bearerToken: string, taskId: string): Promi
   }
 
   const questionnaires = Array.isArray(result?.questionnaires) ? result.questionnaires : [];
-  return { address, orientation, displacementStart, checkInDate, checkOutDate, taskEndDate, startTime, endTime, estimatedDuration, equipmentName, equipmentSerial, equipmentIds: equipIds, questionnaires };
+  return { address, orientation, technicianName, technicianId, taskDate, displacementStart, checkInDate, checkOutDate, taskEndDate, startTime, endTime, estimatedDuration, equipmentName, equipmentSerial, equipmentIds: equipIds, questionnaires };
 }
 
 // Fetch Auvo tasks for a single month window
@@ -946,8 +962,8 @@ async function runReportsOnlySync(sbClient: any, bearerToken: string, gcHeaders:
     return {
       auvo_task_id: taskId,
       cliente: String(task.customerDescription || task.customerName || task.customer?.tradeName || task.customer?.companyName || "Cliente não identificado").trim(),
-      tecnico: String(task.userToName || ""),
-      tecnico_id: String(task.idUserTo || ""),
+      tecnico: resolveAuvoTechnicianName(task),
+      tecnico_id: resolveAuvoTechnicianId(task),
       data_tarefa: normalizeDate(task.taskDate) || null,
       data_conclusao: normalizeDate(checkOutDateRaw) || null,
       check_in_iso: checkInIso,
@@ -1712,8 +1728,8 @@ async function runCentralSync(body: CentralSyncBody = {}) {
       const row: any = {
         auvo_task_id: taskId,
         cliente,
-        tecnico: String(task.userToName || ""),
-        tecnico_id: String(task.idUserTo || ""),
+        tecnico: resolveAuvoTechnicianName(task),
+        tecnico_id: resolveAuvoTechnicianId(task),
         data_tarefa: normalizeDate(task.taskDate) || gcOs?.gc_os_data || null,
         data_conclusao: checkOutDateRaw || null,
         check_in_iso: checkInIso,
@@ -1827,9 +1843,9 @@ async function runCentralSync(body: CentralSyncBody = {}) {
       const fallbackRow: any = {
         auvo_task_id: taskId,
         cliente: gcOs?.gc_os_cliente || gcOrc?.gc_orc_cliente || "Cliente não identificado",
-        tecnico: "",
-        tecnico_id: "",
-        data_tarefa: gcOs?.gc_os_data || null,
+        tecnico: fallbackSnapshot?.technicianName || "",
+        tecnico_id: fallbackSnapshot?.technicianId || "",
+        data_tarefa: normalizeDate(fallbackSnapshot?.taskDate || fallbackSnapshot?.taskEndDate || fallbackSnapshot?.checkOutDate || fallbackSnapshot?.checkInDate) || gcOs?.gc_os_data || null,
         status_auvo: fallbackSnapshot ? "Sem tarefa Auvo" : "Pendente vínculo Auvo",
         orientacao: fallbackSnapshot?.orientation || "",
         pendencia: "",
@@ -2073,7 +2089,7 @@ async function runCentralSync(body: CentralSyncBody = {}) {
       else if (statusCode === 1) statusAuvo = "Aberta";
 
       const cliente = String(task.customerDescription || task.customerName || task.customer?.tradeName || "").trim();
-      const tecnico = String(task.userToName || "").trim();
+      const tecnico = resolveAuvoTechnicianName(task);
       const taskTypeId = String(task.taskType || "");
       const taskTypeDesc = String(task.taskTypeDescription || "");
 

@@ -115,6 +115,22 @@ const extractEquipmentInfo = (raw: any): { nome: string; serie: string } => {
   return { nome, serie };
 };
 
+type LiveTaskResolution = { taskId: string; tecnico: string; tecnicoId: string; dataTarefa: string; status: string };
+
+const extractLiveTaskResolution = (taskData: any, taskId: string): LiveTaskResolution | null => {
+  const taskObj = taskData?.data?.result ?? taskData?.data ?? taskData?.result ?? taskData ?? null;
+  if (!taskObj) return null;
+
+  const userTo = taskObj?.userTo || taskObj?.user_to || taskObj?.assignedUser || {};
+  const tecnico = String(taskObj?.userToName || userTo?.name || userTo?.login || taskObj?.technician || "").trim();
+  const tecnicoId = String(taskObj?.idUserTo || taskObj?.id_user_to || userTo?.userID || userTo?.id || "").trim();
+  const taskDate = taskObj?.taskDate || taskObj?.task_date || taskObj?.date || "";
+  const dateStr = taskDate ? String(taskDate).substring(0, 10) : "";
+  const dataTarefa = dateStr && !dateStr.startsWith("0001-01-01") ? dateStr : "";
+
+  return { taskId, tecnico, tecnicoId, dataTarefa, status: getAuvoStatusFromTask(taskObj) };
+};
+
 export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, onRefresh, onSync, syncing, execTaskStatusMap, equipamentoTaskMap = {} }: Props) {
   const { profile } = useAuth();
   const [search, setSearch] = useState("");
@@ -138,7 +154,8 @@ export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, o
   const [execTaskId, setExecTaskId] = useState<string | null>(null);
   const [execTaskLoading, setExecTaskLoading] = useState(false);
 
-  // Live exec task resolution for OS items missing gc_os_tarefa_exec
+  // Live Auvo task resolution for rows whose local mirror is missing technician data
+  const [liveOsMap, setLiveOsMap] = useState<Map<string, LiveTaskResolution>>(new Map());
   const [liveExecMap, setLiveExecMap] = useState<Map<string, { execTaskId: string; tecnico: string; dataTarefa: string; status: string }>>(new Map());
   const [liveEquipmentMap, setLiveEquipmentMap] = useState<Map<string, { nome: string; serie: string }>>(new Map());
 
@@ -377,6 +394,66 @@ export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, o
   const grandTotal = useMemo(() => filtered.reduce((sum, c) => sum + c.total, 0), [filtered]);
   const grandCount = useMemo(() => filtered.reduce((sum, c) => sum + c.count, 0), [filtered]);
 
+  const resolveAuvoTaskLive = useCallback(async (taskId: string): Promise<LiveTaskResolution | null> => {
+    const { data: taskData, error } = await supabase.functions.invoke("auvo-task-update", {
+      body: { action: "get", taskId: Number(taskId) },
+    });
+    if (error) return null;
+    return extractLiveTaskResolution(taskData, taskId);
+  }, []);
+
+  useEffect(() => {
+    if (!expanded) return;
+    const row = filtered.find((r) => r.cliente === expanded);
+    if (!row) return;
+
+    const itemsToResolve = row.items.filter((item: any) => {
+      if (!item?.gc_os_id || liveOsMap.has(String(item.gc_os_id))) return false;
+      const osTaskId = parseExecIds(item.gc_os_tarefa_os)[0] || (!String(item.auvo_task_id || "").startsWith("gc-only::") ? String(item.auvo_task_id || "") : "");
+      if (!osTaskId) return false;
+      const osTask = osTaskByGcOsId.get(String(item.gc_os_id));
+      return !String(osTask?.tecnico || item.tecnico || "").trim();
+    });
+    if (itemsToResolve.length === 0) return;
+
+    let cancelled = false;
+
+    (async () => {
+      const updates = new Map(liveOsMap);
+
+      for (const item of itemsToResolve) {
+        if (cancelled) break;
+        const osTaskId = parseExecIds(item.gc_os_tarefa_os)[0] || String(item.auvo_task_id || "").trim();
+        if (!/^\d+$/.test(osTaskId)) continue;
+        const resolved = await resolveAuvoTaskLive(osTaskId);
+        if (!cancelled && resolved) {
+          updates.set(String(item.gc_os_id), resolved);
+          if (resolved.tecnico || resolved.tecnicoId || resolved.dataTarefa || resolved.status) {
+            await supabase.functions.invoke("auvo-task-update", {
+              body: {
+                action: "persist-central",
+                row: {
+                  auvo_task_id: osTaskId,
+                  gc_os_id: item.gc_os_id,
+                  tecnico: resolved.tecnico || null,
+                  tecnico_id: resolved.tecnicoId || null,
+                  data_tarefa: resolved.dataTarefa || null,
+                  status_auvo: resolved.status || null,
+                },
+              },
+            }).catch(() => null);
+          }
+        }
+      }
+
+      if (!cancelled) setLiveOsMap(updates);
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [expanded, filtered, liveOsMap, osTaskByGcOsId, resolveAuvoTaskLive]);
+
   // Fetch live exec task info when client row is expanded
   useEffect(() => {
     if (!expanded) return;
@@ -430,35 +507,24 @@ export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, o
 
           for (const eid of allExecIds) {
             if (cancelled) break;
-            const { data: taskData, error: taskError } = await supabase.functions.invoke("auvo-task-update", {
-              body: { action: "get", taskId: Number(eid) },
-            });
-            if (taskError || cancelled) continue;
-
-            const taskObj = taskData?.data?.result ?? taskData?.data ?? null;
-            if (!taskObj) continue;
-
-            const userTo = taskObj?.userTo || taskObj?.user_to || {};
-            const tecName = String(taskObj?.userToName || userTo?.name || userTo?.login || taskObj?.technician || "").trim();
-            const taskDate = taskObj?.taskDate || taskObj?.task_date || taskObj?.date || "";
-            const dateStr = taskDate ? String(taskDate).substring(0, 10) : "";
-            const invalidDate = dateStr.startsWith("0001-01-01");
-            const status = getAuvoStatusFromTask(taskObj);
+            const resolved = await resolveAuvoTaskLive(eid);
+            if (!resolved || cancelled) continue;
+            const tecName = resolved.tecnico;
+            const dateStr = resolved.dataTarefa;
+            const status = resolved.status;
 
             // Prefer task with a valid date & assigned technician
             if (!bestTecnico && tecName) bestTecnico = tecName;
-            if (!bestDate && dateStr && !invalidDate) bestDate = dateStr;
+            if (!bestDate && dateStr) bestDate = dateStr;
             if (!bestStatus && status && status !== "Agendada") bestStatus = status;
             // Override with more meaningful data
-            if (tecName && dateStr && !invalidDate) {
+            if (tecName && dateStr) {
               bestTecnico = tecName;
               bestDate = dateStr;
               bestStatus = status;
             }
           }
 
-          // Fallback to GC vendedor if no technician resolved
-          if (!bestTecnico) bestTecnico = item.gc_os_vendedor || "";
           if (!bestDate) bestDate = item.gc_os_data_saida || item.gc_os_data || "";
 
           updates.set(String(item.gc_os_id), {
@@ -478,7 +544,7 @@ export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, o
     return () => {
       cancelled = true;
     };
-  }, [expanded, filtered, liveExecMap]);
+  }, [expanded, filtered, liveExecMap, resolveAuvoTaskLive]);
 
   useEffect(() => {
     if (!expanded) return;
@@ -1013,7 +1079,8 @@ export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, o
                                       <TableCell>
                                         {(() => {
                                           const osTask = osTaskByGcOsId.get(String(item.gc_os_id));
-                                          return osTask?.tecnico || item.tecnico || item.gc_os_vendedor || "—";
+                                          const live = liveOsMap.get(String(item.gc_os_id));
+                                          return osTask?.tecnico || item.tecnico || live?.tecnico || "—";
                                         })()}
                                       </TableCell>
                                       <TableCell>
@@ -1027,8 +1094,7 @@ export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, o
                                             const execRow = allTasks.find((t: any) => String(t.auvo_task_id) === eid);
                                             if (execRow?.tecnico) return execRow.tecnico;
                                           }
-                                          // Fallback to GC vendedor
-                                          return item.gc_os_vendedor || "—";
+                                          return "—";
                                         })()}
                                       </TableCell>
                                       <TableCell className="text-xs font-mono">
@@ -1197,6 +1263,7 @@ export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, o
           </DialogHeader>
           {selectedCard && (() => {
             const atributos: any[] = osDetail?.atributos || [];
+            const liveResolvedOs = liveOsMap.get(String(selectedCard.gc_os_id));
             const liveResolvedExec = liveExecMap.get(String(selectedCard.gc_os_id));
             const findAttrRaw = (attrId: string) => {
               const attr = atributos.find((a: any) => {
@@ -1217,9 +1284,10 @@ export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, o
             const osRow = (() => {
               if (osTaskId) {
                 return allTasks.find((t: any) => String(t.auvo_task_id) === String(osTaskId))
-                  || (String(selectedCard.auvo_task_id) === String(osTaskId) ? selectedCard : null);
+                  || (String(selectedCard.auvo_task_id) === String(osTaskId) ? { ...selectedCard, tecnico: selectedCard.tecnico || liveResolvedOs?.tecnico || null, tecnico_id: selectedCard.tecnico_id || liveResolvedOs?.tecnicoId || null, data_tarefa: selectedCard.data_tarefa || liveResolvedOs?.dataTarefa || null, status_auvo: selectedCard.status_auvo || liveResolvedOs?.status || null } : null)
+                  || (liveResolvedOs ? { auvo_task_id: String(osTaskId), tecnico: liveResolvedOs.tecnico || null, tecnico_id: liveResolvedOs.tecnicoId || null, data_tarefa: liveResolvedOs.dataTarefa || null, status_auvo: liveResolvedOs.status || null } : null);
               }
-              if (!firstExecId || String(selectedCard.auvo_task_id) !== String(firstExecId)) return selectedCard;
+              if (!firstExecId || String(selectedCard.auvo_task_id) !== String(firstExecId)) return { ...selectedCard, tecnico: selectedCard.tecnico || liveResolvedOs?.tecnico || null, tecnico_id: selectedCard.tecnico_id || liveResolvedOs?.tecnicoId || null, data_tarefa: selectedCard.data_tarefa || liveResolvedOs?.dataTarefa || null, status_auvo: selectedCard.status_auvo || liveResolvedOs?.status || null };
               return null;
             })();
 
@@ -1247,7 +1315,7 @@ export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, o
                 return {
                   ...mirrorExecRow,
                   auvo_task_id: String(firstExecId),
-                  tecnico: fbTecnico || mirrorExecRow?.tecnico || liveResolvedExec?.tecnico || selectedCard.gc_os_vendedor || null,
+                  tecnico: fbTecnico || mirrorExecRow?.tecnico || liveResolvedExec?.tecnico || null,
                   data_tarefa: (fbDateValid ? fbTaskDate.slice(0, 10) : null) || mirrorExecRow?.data_tarefa || liveResolvedExec?.dataTarefa || null,
                   status_auvo: getAuvoStatusFromTask(execTaskFallback),
                   hora_inicio: execTaskFallback?.checkInDate ? String(execTaskFallback.checkInDate).slice(11, 19) : (mirrorExecRow?.hora_inicio || (fbDateValid ? fbTaskDate.slice(11, 19) : null) || null),
