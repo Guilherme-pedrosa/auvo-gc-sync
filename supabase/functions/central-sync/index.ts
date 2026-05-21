@@ -205,9 +205,21 @@ function resolveTaskAddress(task: any): string {
   );
 }
 
+function resolveAuvoTechnicianName(task: any): string {
+  const userTo = task?.userTo || task?.user_to || task?.assignedUser || {};
+  return String(task?.userToName || userTo?.name || userTo?.login || task?.technician || "").trim();
+}
+
+function resolveAuvoTechnicianId(task: any): string {
+  const userTo = task?.userTo || task?.user_to || task?.assignedUser || {};
+  return String(task?.idUserTo || task?.id_user_to || userTo?.userID || userTo?.id || "").trim();
+}
+
 type AuvoTaskSnapshot = {
   address: string;
   orientation: string;
+  technicianName: string;
+  technicianId: string;
   displacementStart: string;
   checkInDate: string;
   checkOutDate: string;
@@ -247,6 +259,8 @@ async function fetchAuvoTaskSnapshot(bearerToken: string, taskId: string): Promi
     ""
   );
   const orientation = String(result?.orientation || "").substring(0, 500);
+  const technicianName = resolveAuvoTechnicianName(result);
+  const technicianId = resolveAuvoTechnicianId(result);
   const displacementStart = String(result?.displacementStart || result?.displacement_start || "").trim();
   const checkInDate = String(result?.checkInDate || result?.checkinDate || result?.checkin_date || "").trim();
   const checkOutDate = String(result?.checkOutDate || result?.checkoutDate || result?.checkout_date || "").trim();
@@ -279,7 +293,7 @@ async function fetchAuvoTaskSnapshot(bearerToken: string, taskId: string): Promi
   }
 
   const questionnaires = Array.isArray(result?.questionnaires) ? result.questionnaires : [];
-  return { address, orientation, displacementStart, checkInDate, checkOutDate, taskEndDate, startTime, endTime, estimatedDuration, equipmentName, equipmentSerial, equipmentIds: equipIds, questionnaires };
+  return { address, orientation, technicianName, technicianId, displacementStart, checkInDate, checkOutDate, taskEndDate, startTime, endTime, estimatedDuration, equipmentName, equipmentSerial, equipmentIds: equipIds, questionnaires };
 }
 
 // Fetch Auvo tasks for a single month window
