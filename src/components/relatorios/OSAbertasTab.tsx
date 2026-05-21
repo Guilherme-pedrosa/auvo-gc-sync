@@ -394,6 +394,49 @@ export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, o
   const grandTotal = useMemo(() => filtered.reduce((sum, c) => sum + c.total, 0), [filtered]);
   const grandCount = useMemo(() => filtered.reduce((sum, c) => sum + c.count, 0), [filtered]);
 
+  const resolveAuvoTaskLive = useCallback(async (taskId: string): Promise<LiveTaskResolution | null> => {
+    const { data: taskData, error } = await supabase.functions.invoke("auvo-task-update", {
+      body: { action: "get", taskId: Number(taskId) },
+    });
+    if (error) return null;
+    return extractLiveTaskResolution(taskData, taskId);
+  }, []);
+
+  useEffect(() => {
+    if (!expanded) return;
+    const row = filtered.find((r) => r.cliente === expanded);
+    if (!row) return;
+
+    const itemsToResolve = row.items.filter((item: any) => {
+      if (!item?.gc_os_id || liveOsMap.has(String(item.gc_os_id))) return false;
+      const osTaskId = parseExecIds(item.gc_os_tarefa_os)[0] || (!String(item.auvo_task_id || "").startsWith("gc-only::") ? String(item.auvo_task_id || "") : "");
+      if (!osTaskId) return false;
+      const osTask = osTaskByGcOsId.get(String(item.gc_os_id));
+      return !String(osTask?.tecnico || item.tecnico || "").trim();
+    });
+    if (itemsToResolve.length === 0) return;
+
+    let cancelled = false;
+
+    (async () => {
+      const updates = new Map(liveOsMap);
+
+      for (const item of itemsToResolve) {
+        if (cancelled) break;
+        const osTaskId = parseExecIds(item.gc_os_tarefa_os)[0] || String(item.auvo_task_id || "").trim();
+        if (!/^\d+$/.test(osTaskId)) continue;
+        const resolved = await resolveAuvoTaskLive(osTaskId);
+        if (!cancelled && resolved) updates.set(String(item.gc_os_id), resolved);
+      }
+
+      if (!cancelled) setLiveOsMap(updates);
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [expanded, filtered, liveOsMap, osTaskByGcOsId, resolveAuvoTaskLive]);
+
   // Fetch live exec task info when client row is expanded
   useEffect(() => {
     if (!expanded) return;
@@ -447,35 +490,24 @@ export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, o
 
           for (const eid of allExecIds) {
             if (cancelled) break;
-            const { data: taskData, error: taskError } = await supabase.functions.invoke("auvo-task-update", {
-              body: { action: "get", taskId: Number(eid) },
-            });
-            if (taskError || cancelled) continue;
-
-            const taskObj = taskData?.data?.result ?? taskData?.data ?? null;
-            if (!taskObj) continue;
-
-            const userTo = taskObj?.userTo || taskObj?.user_to || {};
-            const tecName = String(taskObj?.userToName || userTo?.name || userTo?.login || taskObj?.technician || "").trim();
-            const taskDate = taskObj?.taskDate || taskObj?.task_date || taskObj?.date || "";
-            const dateStr = taskDate ? String(taskDate).substring(0, 10) : "";
-            const invalidDate = dateStr.startsWith("0001-01-01");
-            const status = getAuvoStatusFromTask(taskObj);
+            const resolved = await resolveAuvoTaskLive(eid);
+            if (!resolved || cancelled) continue;
+            const tecName = resolved.tecnico;
+            const dateStr = resolved.dataTarefa;
+            const status = resolved.status;
 
             // Prefer task with a valid date & assigned technician
             if (!bestTecnico && tecName) bestTecnico = tecName;
-            if (!bestDate && dateStr && !invalidDate) bestDate = dateStr;
+            if (!bestDate && dateStr) bestDate = dateStr;
             if (!bestStatus && status && status !== "Agendada") bestStatus = status;
             // Override with more meaningful data
-            if (tecName && dateStr && !invalidDate) {
+            if (tecName && dateStr) {
               bestTecnico = tecName;
               bestDate = dateStr;
               bestStatus = status;
             }
           }
 
-          // Fallback to GC vendedor if no technician resolved
-          if (!bestTecnico) bestTecnico = item.gc_os_vendedor || "";
           if (!bestDate) bestDate = item.gc_os_data_saida || item.gc_os_data || "";
 
           updates.set(String(item.gc_os_id), {
@@ -495,7 +527,7 @@ export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, o
     return () => {
       cancelled = true;
     };
-  }, [expanded, filtered, liveExecMap]);
+  }, [expanded, filtered, liveExecMap, resolveAuvoTaskLive]);
 
   useEffect(() => {
     if (!expanded) return;
