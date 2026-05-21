@@ -1845,7 +1845,7 @@ async function runCentralSync(body: CentralSyncBody = {}) {
         cliente: gcOs?.gc_os_cliente || gcOrc?.gc_orc_cliente || "Cliente não identificado",
         tecnico: fallbackSnapshot?.technicianName || "",
         tecnico_id: fallbackSnapshot?.technicianId || "",
-        data_tarefa: normalizeDate(fallbackSnapshot?.taskEndDate || fallbackSnapshot?.checkOutDate || fallbackSnapshot?.checkInDate) || gcOs?.gc_os_data || null,
+        data_tarefa: normalizeDate(fallbackSnapshot?.taskDate || fallbackSnapshot?.taskEndDate || fallbackSnapshot?.checkOutDate || fallbackSnapshot?.checkInDate) || gcOs?.gc_os_data || null,
         status_auvo: fallbackSnapshot ? "Sem tarefa Auvo" : "Pendente vínculo Auvo",
         orientacao: fallbackSnapshot?.orientation || "",
         pendencia: "",
