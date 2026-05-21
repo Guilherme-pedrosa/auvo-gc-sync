@@ -2089,7 +2089,7 @@ async function runCentralSync(body: CentralSyncBody = {}) {
       else if (statusCode === 1) statusAuvo = "Aberta";
 
       const cliente = String(task.customerDescription || task.customerName || task.customer?.tradeName || "").trim();
-      const tecnico = String(task.userToName || "").trim();
+      const tecnico = resolveAuvoTechnicianName(task);
       const taskTypeId = String(task.taskType || "");
       const taskTypeDesc = String(task.taskTypeDescription || "");
 
