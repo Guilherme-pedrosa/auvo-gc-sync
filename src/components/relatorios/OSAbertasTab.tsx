@@ -115,6 +115,22 @@ const extractEquipmentInfo = (raw: any): { nome: string; serie: string } => {
   return { nome, serie };
 };
 
+type LiveTaskResolution = { taskId: string; tecnico: string; tecnicoId: string; dataTarefa: string; status: string };
+
+const extractLiveTaskResolution = (taskData: any, taskId: string): LiveTaskResolution | null => {
+  const taskObj = taskData?.data?.result ?? taskData?.data ?? taskData?.result ?? taskData ?? null;
+  if (!taskObj) return null;
+
+  const userTo = taskObj?.userTo || taskObj?.user_to || taskObj?.assignedUser || {};
+  const tecnico = String(taskObj?.userToName || userTo?.name || userTo?.login || taskObj?.technician || "").trim();
+  const tecnicoId = String(taskObj?.idUserTo || taskObj?.id_user_to || userTo?.userID || userTo?.id || "").trim();
+  const taskDate = taskObj?.taskDate || taskObj?.task_date || taskObj?.date || "";
+  const dateStr = taskDate ? String(taskDate).substring(0, 10) : "";
+  const dataTarefa = dateStr && !dateStr.startsWith("0001-01-01") ? dateStr : "";
+
+  return { taskId, tecnico, tecnicoId, dataTarefa, status: getAuvoStatusFromTask(taskObj) };
+};
+
 export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, onRefresh, onSync, syncing, execTaskStatusMap, equipamentoTaskMap = {} }: Props) {
   const { profile } = useAuth();
   const [search, setSearch] = useState("");
@@ -138,7 +154,8 @@ export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, o
   const [execTaskId, setExecTaskId] = useState<string | null>(null);
   const [execTaskLoading, setExecTaskLoading] = useState(false);
 
-  // Live exec task resolution for OS items missing gc_os_tarefa_exec
+  // Live Auvo task resolution for rows whose local mirror is missing technician data
+  const [liveOsMap, setLiveOsMap] = useState<Map<string, LiveTaskResolution>>(new Map());
   const [liveExecMap, setLiveExecMap] = useState<Map<string, { execTaskId: string; tecnico: string; dataTarefa: string; status: string }>>(new Map());
   const [liveEquipmentMap, setLiveEquipmentMap] = useState<Map<string, { nome: string; serie: string }>>(new Map());
 
