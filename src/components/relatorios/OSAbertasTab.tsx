@@ -150,6 +150,7 @@ export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, o
   const [editHour, setEditHour] = useState("08");
   const [editMinute, setEditMinute] = useState("00");
   const [editTecnicoId, setEditTecnicoId] = useState("");
+  const [editDuration, setEditDuration] = useState("01:00");
   const [editSaving, setEditSaving] = useState(false);
   const [execTaskId, setExecTaskId] = useState<string | null>(null);
   const [execTaskLoading, setExecTaskLoading] = useState(false);
@@ -735,6 +736,7 @@ export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, o
     setEditDate(undefined);
     setEditHour("08");
     setEditMinute("00");
+    setEditDuration("01:00");
     const currentTecnico = auvoUsers?.find((u) => u.name === card.tecnico || u.login === card.tecnico);
     setEditTecnicoId(currentTecnico ? String(currentTecnico.userID) : card.tecnico_id || "");
     setShowEditModal(true);
@@ -767,6 +769,15 @@ export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, o
         }
         const rawUserTo = taskObj?.idUserTo ?? taskObj?.id_user_to ?? null;
         if (rawUserTo) setEditTecnicoId(String(rawUserTo));
+        const rawDuration = taskObj?.estimatedDuration ?? taskObj?.estimated_duration ?? null;
+        if (rawDuration && typeof rawDuration === "string") {
+          const parts = rawDuration.split(":");
+          if (parts.length >= 2) {
+            const hh = parts[0].padStart(2, "0");
+            const mm = parts[1].padStart(2, "0");
+            if (`${hh}:${mm}` !== "00:00") setEditDuration(`${hh}:${mm}`);
+          }
+        }
       }
     }
     setExecTaskLoading(false);
@@ -787,6 +798,9 @@ export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, o
       }
       if (editTecnicoId) {
         patches.push({ op: "replace", path: "idUserTo", value: Number(editTecnicoId) });
+      }
+      if (editDuration) {
+        patches.push({ op: "replace", path: "estimatedDuration", value: `${editDuration}:00` });
       }
       if (patches.length === 0) {
         toast.warning("Nenhuma alteração para salvar");
@@ -828,7 +842,7 @@ export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, o
     } finally {
       setEditSaving(false);
     }
-  }, [auvoUsers, editDate, editHour, editMinute, editTecnicoId, editingCard, execTaskId, onRefresh]);
+  }, [auvoUsers, editDate, editHour, editMinute, editTecnicoId, editDuration, editingCard, execTaskId, onRefresh]);
 
   if (isLoading) {
     return (
@@ -1849,6 +1863,25 @@ export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, o
                     </SelectContent>
                   </Select>
                 </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label>Duração da Atividade</Label>
+                <Select value={editDuration} onValueChange={setEditDuration}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Selecionar duração" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {[
+                      "00:30","01:00","01:30","02:00","02:30","03:00",
+                      "03:30","04:00","05:00","06:00","07:00","08:00",
+                    ].map((d) => {
+                      const [h, m] = d.split(":");
+                      const label = Number(m) === 0 ? `${Number(h)}h` : `${Number(h)}h${m}`;
+                      return <SelectItem key={d} value={d}>{label}</SelectItem>;
+                    })}
+                  </SelectContent>
+                </Select>
               </div>
 
               <div className="space-y-2">
