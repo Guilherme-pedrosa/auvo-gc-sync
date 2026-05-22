@@ -732,9 +732,26 @@ Deno.serve(async (req) => {
         };
       });
 
-      const filteredItems = items.filter((item: any) =>
-        inDateRange(item.data_tarefa, startDate, endDate)
-      );
+      // Filtro de data inteligente:
+      // - Pendentes (sem orçamento/OS): usam data_tarefa (Auvo).
+      // - Orçamento realizado: usa gc_orcamento.gc_data (data do orçamento no GC).
+      // - OS realizada: usa gc_os.gc_data (data da OS no GC).
+      // Assim "orçamentos realizados" não somem quando a tarefa Auvo é antiga
+      // mas o orçamento foi gerado dentro do período visualizado.
+      const filteredItems = items.filter((item: any) => {
+        const candidates: string[] = [];
+        if (item.os_realizada) {
+          const d = item.gc_os?.gc_data || item.gc_os?.gc_orc_data;
+          if (d) candidates.push(String(d));
+        }
+        if (item.orcamento_realizado) {
+          const d = item.gc_orcamento?.gc_data || item.gc_orcamento?.gc_orc_data;
+          if (d) candidates.push(String(d));
+        }
+        if (item.data_tarefa) candidates.push(String(item.data_tarefa));
+        // Mantém o item se QUALQUER uma das datas relevantes cair no período.
+        return candidates.some((d) => inDateRange(d, startDate, endDate));
+      });
 
       const persistedEquipmentMap = await loadPersistedEquipmentMap(
         sbClient,
