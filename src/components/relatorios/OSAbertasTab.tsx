@@ -361,7 +361,8 @@ export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, o
         .replace(/\b(ltda|me|s\.?a\.?|eireli|epp|cia)\b/g, "")
         .replace(/[^a-z0-9]+/g, " ") // pontuação vira espaço
         .trim()
-        .replace(/\s+/g, " ");
+        .replace(/\s+/g, " ")
+        .replace(/(.)\1+/g, "$1"); // colapsa letras repetidas (CARGILL ≡ CARGIL)
     };
     const map = new Map<string, { cliente: string; count: number; total: number; items: any[] }>();
     for (const item of filteredItems) {
