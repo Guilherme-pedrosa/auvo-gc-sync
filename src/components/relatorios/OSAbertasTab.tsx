@@ -352,14 +352,28 @@ export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, o
 
   // Group by client, sum values
   const clienteSummary = useMemo(() => {
+    // Normaliza nome do cliente para agrupar variações (CARGIL vs CARGILL, com/sem hífen, acentos, LTDA/ME/SA)
+    const normalizeKey = (raw: string): string => {
+      return (raw || "")
+        .toLowerCase()
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "") // remove acentos
+        .replace(/\b(ltda|me|s\.?a\.?|eireli|epp|cia)\b/g, "")
+        .replace(/[^a-z0-9]+/g, " ") // pontuação vira espaço
+        .trim()
+        .replace(/\s+/g, " ");
+    };
     const map = new Map<string, { cliente: string; count: number; total: number; items: any[] }>();
     for (const item of filteredItems) {
       const cliente = item.cliente || item.gc_os_cliente || "Sem cliente";
-      const entry = map.get(cliente) || { cliente, count: 0, total: 0, items: [] };
+      const key = normalizeKey(cliente) || cliente;
+      const entry = map.get(key) || { cliente, count: 0, total: 0, items: [] };
       entry.count++;
       entry.total += Number(item.gc_os_valor_total) || 0;
       entry.items.push(item);
-      map.set(cliente, entry);
+      // Mantém o nome mais longo como display (geralmente mais completo)
+      if (cliente.length > entry.cliente.length) entry.cliente = cliente;
+      map.set(key, entry);
     }
     return Array.from(map.values()).sort((a, b) => b.total - a.total);
   }, [filteredItems]);
