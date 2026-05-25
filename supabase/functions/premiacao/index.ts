@@ -630,7 +630,31 @@ Deno.serve(async (req) => {
           if (batch.length < pageSize) break;
           from += pageSize;
         }
-        console.log(`[premiacao] TVH: ${kmByTec.size} motoristas com KM no mês`);
+        // Telemetrias reais: 1 linha por evento na tabela vehicle_telemetry_events
+        // (a coluna daily_vehicle_km.telemetrias foi descontinuada e fica 0)
+        let tFrom = 0;
+        for (let i = 0; i < 100; i++) {
+          const { data: telRows, error: telErr } = await tvh
+            .from("vehicle_telemetry_events")
+            .select("motorista_nome, data")
+            .gte("data", startDate)
+            .lte("data", endDate)
+            .range(tFrom, tFrom + pageSize - 1);
+          if (telErr) { console.error("[premiacao] TVH telemetria erro:", telErr.message); break; }
+          const batch = telRows || [];
+          for (const r of batch) {
+            const nome = String((r as any).motorista_nome || "").trim();
+            if (!nome) continue;
+            const first = normalize(nome).split(/\s+/)[0];
+            if (!first) continue;
+            const cur = kmByTec.get(first) || { km: 0, tel: 0, motorista: nome };
+            cur.tel += 1;
+            kmByTec.set(first, cur);
+          }
+          if (batch.length < pageSize) break;
+          tFrom += pageSize;
+        }
+        console.log(`[premiacao] TVH: ${kmByTec.size} motoristas (km + telemetrias)`);
       } catch (e) {
         console.error("[premiacao] TVH fetch falhou:", (e as Error).message);
       }
