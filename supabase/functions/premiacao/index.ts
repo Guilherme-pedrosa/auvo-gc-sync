@@ -21,6 +21,11 @@ function isDeslocamento(desc: string): boolean {
   return n.includes("deslocamento") || n.includes("desloc.") || n.startsWith("desloc");
 }
 
+function isHospedagemAlimentacao(desc: string): boolean {
+  const n = normalize(desc);
+  return n.includes("hospedag") || n.includes("alimentac") || n.includes("refeic") || n.includes("diaria") || n.includes("hotel");
+}
+
 function toNum(v: any): number {
   if (v === null || v === undefined) return 0;
   if (typeof v === "number") return v;
@@ -208,16 +213,21 @@ Deno.serve(async (req) => {
       let pecas_count = 0;
       const itens_pecas: any[] = [];
       for (const p of produtos) {
+        const descProd = String(p.nome_produto || p.detalhes || "");
         const bruto = toNum(p.valor_total) || (toNum(p.valor_venda) * toNum(p.quantidade)) || (toNum(p.valor_unitario) * toNum(p.quantidade));
         const desc = toNum(p.valor_desconto) || toNum(p.desconto);
         const total = Math.max(0, bruto - desc);
-        valor_pecas += total;
-        pecas_count += 1;
+        const hospAlim = isHospedagemAlimentacao(descProd);
+        if (!hospAlim) {
+          valor_pecas += total;
+          pecas_count += 1;
+        }
         itens_pecas.push({
           descricao: String(p.nome_produto || p.detalhes || "Produto"),
           quantidade: toNum(p.quantidade),
           valor_unitario: toNum(p.valor_venda) || toNum(p.valor_unitario),
           valor_total: total,
+          nao_comissionado: hospAlim,
         });
       }
 
@@ -230,7 +240,9 @@ Deno.serve(async (req) => {
         const descItem = toNum(s.valor_desconto) || toNum(s.desconto);
         const total = Math.max(0, bruto - descItem);
         const desloc = isDeslocamento(desc);
-        if (!desloc) {
+        const hospAlim = isHospedagemAlimentacao(desc);
+        const naoComissionado = desloc || hospAlim;
+        if (!naoComissionado) {
           valor_servicos += total;
           servicos_count += 1;
         }
@@ -240,6 +252,7 @@ Deno.serve(async (req) => {
           valor_unitario: toNum(s.valor_venda) || toNum(s.valor_unitario),
           valor_total: total,
           deslocamento: desloc,
+          nao_comissionado: naoComissionado,
         });
       }
 
