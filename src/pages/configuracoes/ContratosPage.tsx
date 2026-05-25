@@ -215,8 +215,8 @@ export default function ContratosPage() {
         </CardContent>
       </Card>
 
-      <GrupoDialog state={grupoDialog} onClose={() => setGrupoDialog({ open: false })} />
-      <ContratoDialog state={contratoDialog} grupos={grupos} onClose={() => setContratoDialog({ open: false })} />
+      <GrupoDialog key={`g-${grupoDialog.grupo?.id ?? "new"}-${grupoDialog.open}`} state={grupoDialog} onClose={() => setGrupoDialog({ open: false })} />
+      <ContratoDialog key={`c-${contratoDialog.contrato?.id ?? "new"}-${contratoDialog.open}`} state={contratoDialog} grupos={grupos} onClose={() => setContratoDialog({ open: false })} />
       <MembrosDialog state={membrosDialog} membros={membros} onClose={() => setMembrosDialog({ open: false })} />
     </div>
   );
