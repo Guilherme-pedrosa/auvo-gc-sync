@@ -236,6 +236,14 @@ export default function PremiacaoPage() {
                     </div>
                     <div className="text-right flex-shrink-0">
                       <div className="flex items-start justify-end gap-6">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={(e) => { e.stopPropagation(); gerarPdfTecnico(activeMonth, t as any); }}
+                          title="Baixar espelho deste técnico"
+                        >
+                          <FileText className="h-4 w-4" />
+                        </Button>
                         <div>
                           <div className="text-xs text-muted-foreground">Faturamento</div>
                           <div className="text-xl font-semibold">{brl(t.faturamento ?? (t.valor_pecas + t.valor_servicos))}</div>
