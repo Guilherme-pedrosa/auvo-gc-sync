@@ -2,7 +2,7 @@ import { useNavigate, useLocation } from "react-router-dom";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/hooks/useAuth";
 import {
-  RefreshCw, BarChart3, Kanban, LayoutDashboard, ListChecks, Radio, Wrench, CalendarDays, ChevronDown, Users, LogOut, Shield, FileText, PanelLeftClose, PanelLeft, Thermometer, ArrowLeftRight, Trophy
+ RefreshCw, BarChart3, Kanban, LayoutDashboard, ListChecks, Radio, Wrench, CalendarDays, ChevronDown, Users, LogOut, Shield, FileText, PanelLeftClose, PanelLeft, Thermometer, ArrowLeftRight, Trophy, Settings
 } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useState } from "react";
@@ -47,6 +47,12 @@ const navGroups: NavGroup[] = [
     label: "Integrações",
     items: [
       { label: "Auvo → GC Sync", icon: RefreshCw, path: "/financeiro/auvo-sync" },
+    ],
+  },
+  {
+    label: "Configurações",
+    items: [
+      { label: "Contratos", icon: Settings, path: "/configuracoes/contratos" },
     ],
   },
 ];

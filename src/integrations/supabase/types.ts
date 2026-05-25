@@ -185,6 +185,56 @@ export type Database = {
         }
         Relationships: []
       }
+      contratos: {
+        Row: {
+          ativo: boolean
+          atualizado_em: string
+          criado_em: string
+          grupo_id: string
+          id: string
+          nome: string
+          observacao: string | null
+          taxa_comissao_servico: number
+          valor_hora: number
+          vigencia_fim: string | null
+          vigencia_inicio: string | null
+        }
+        Insert: {
+          ativo?: boolean
+          atualizado_em?: string
+          criado_em?: string
+          grupo_id: string
+          id?: string
+          nome: string
+          observacao?: string | null
+          taxa_comissao_servico?: number
+          valor_hora?: number
+          vigencia_fim?: string | null
+          vigencia_inicio?: string | null
+        }
+        Update: {
+          ativo?: boolean
+          atualizado_em?: string
+          criado_em?: string
+          grupo_id?: string
+          id?: string
+          nome?: string
+          observacao?: string | null
+          taxa_comissao_servico?: number
+          valor_hora?: number
+          vigencia_fim?: string | null
+          vigencia_inicio?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "contratos_grupo_id_fkey"
+            columns: ["grupo_id"]
+            isOneToOne: false
+            referencedRelation: "grupos_clientes"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       equipamento_tarefas_auvo: {
         Row: {
           auvo_equipment_id: string
