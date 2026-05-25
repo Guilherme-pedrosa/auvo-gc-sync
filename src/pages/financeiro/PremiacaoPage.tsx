@@ -36,7 +36,7 @@ type OsRow = {
   auvo_link?: string | null;
   itens_pecas?: ItemRow[];
   itens_servicos?: ItemRow[];
-  contrato?: { nome: string; valor_hora: number; taxa: number; horas: number; base_servico: number } | null;
+  contrato?: { nome: string; valor_hora: number; taxa: number; taxa_peca?: number; horas: number; base_servico: number } | null;
 };
 type Tech = {
   tecnico: string;
@@ -319,7 +319,7 @@ function OsDetailDialog({ os, onClose }: { os: OsRow | null; onClose: () => void
                 items={os.itens_pecas || []}
                 totalLabel="Total peças"
                 total={os.valor_pecas}
-                commissionLabel="Comissão (1%)"
+                commissionLabel={os.contrato ? `Comissão contrato (${((os.contrato.taxa_peca ?? 0.02) * 100).toFixed(1)}%)` : "Comissão (1%)"}
                 commission={os.comissao_pecas}
                 emptyMsg="Sem peças nesta OS"
               />
