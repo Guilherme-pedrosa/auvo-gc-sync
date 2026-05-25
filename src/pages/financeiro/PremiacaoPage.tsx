@@ -305,13 +305,28 @@ function OsDetailDialog({ os, onClose }: { os: OsRow | null; onClose: () => void
                 title="Serviços"
                 icon={<Wrench className="h-4 w-4" />}
                 items={os.itens_servicos || []}
-                totalLabel="Total serviços (sem deslocamento)"
+                totalLabel="Total serviços GC (sem deslocamento)"
                 total={os.valor_servicos}
-                commissionLabel="Comissão (15%)"
+                commissionLabel={os.contrato ? `Comissão contrato (${(os.contrato.taxa * 100).toFixed(1)}%)` : "Comissão (15%)"}
                 commission={os.comissao_servicos}
                 emptyMsg="Sem serviços nesta OS"
                 highlightDeslocamento
               />
+
+              {os.contrato && (
+                <div className="border rounded-md p-3 bg-muted/30 text-sm space-y-1">
+                  <div className="flex items-center gap-2 font-medium">
+                    <Badge variant="secondary">Contrato</Badge>
+                    <span>{os.contrato.nome}</span>
+                  </div>
+                  <div className="text-xs text-muted-foreground grid grid-cols-2 gap-1">
+                    <span>Valor/hora: <b>{brl(os.contrato.valor_hora)}</b></span>
+                    <span>Horas trabalhadas: <b>{os.contrato.horas.toFixed(2)}h</b></span>
+                    <span>Base de comissão: <b>{brl(os.contrato.base_servico)}</b></span>
+                    <span>Taxa: <b>{(os.contrato.taxa * 100).toFixed(1)}%</b></span>
+                  </div>
+                </div>
+              )}
 
               <div className="border-t pt-3 flex items-center justify-between">
                 <span className="text-sm font-medium">Comissão total da OS</span>
