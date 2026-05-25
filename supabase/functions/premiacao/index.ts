@@ -333,7 +333,6 @@ Deno.serve(async (req) => {
           total = baseUnitaria;
           recuperado = true;
         }
-        if (!desloc && !hospAlim && total > 0) faturamento_os += total;
         const semValorRecebido = recuperado
           ? false
           : (total <= 0 || totalRecebidoOS <= 0 || totalRecebidoServicosOS <= 0);
