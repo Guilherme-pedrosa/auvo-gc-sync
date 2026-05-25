@@ -271,7 +271,11 @@ Deno.serve(async (req) => {
       });
       const _execNested = _execAttr?.atributo || _execAttr;
       const _execRaw = String(_execNested?.conteudo || _execNested?.valor || "").trim();
-      const execTaskId = _execRaw.split("/").map((s: string) => s.trim()).find((s: string) => /^\d+$/.test(s)) || "";
+      let execTaskId = _execRaw.split("/").map((s: string) => s.trim()).find((s: string) => /^\d+$/.test(s)) || "";
+      // Fallback: se o GC não tem atributo 73344, usa o próprio auvo_task_id da OS
+      if (!execTaskId && row.auvo_task_id) {
+        execTaskId = String(row.auvo_task_id);
+      }
       const dataSaidaStr = String(dataSaidaRaw).split("T")[0];
 
       // Re-filtra pelo data_saida real (mês solicitado)
