@@ -36,6 +36,38 @@ function toNum(v: any): number {
   return isNaN(n2) ? 0 : n2;
 }
 
+function calcItemTotal(item: any): number {
+  const quantidade = toNum(item.quantidade) || 1;
+  const bruto =
+    toNum(item.valor_total_bruto) ||
+    toNum(item.valor_bruto) ||
+    toNum(item.subtotal) ||
+    ((toNum(item.valor_venda) || toNum(item.valor_unitario)) * quantidade) ||
+    toNum(item.valor_total);
+
+  const descontoPercentual =
+    toNum(item.desconto_porcentagem) ||
+    toNum(item.desconto_percentual) ||
+    toNum(item.percentual_desconto) ||
+    toNum(item.percentualDesconto);
+
+  if (descontoPercentual >= 100) return 0;
+  if (descontoPercentual > 0) return Math.max(0, bruto - (bruto * descontoPercentual / 100));
+
+  const descontoValor =
+    toNum(item.desconto_valor) ||
+    toNum(item.valor_desconto) ||
+    toNum(item.valorDesconto);
+
+  if (descontoValor > 0) return Math.max(0, bruto - descontoValor);
+
+  const descontoGenerico = toNum(item.desconto);
+  if (descontoGenerico >= 100) return 0;
+  if (descontoGenerico > 0) return Math.max(0, bruto - (bruto * descontoGenerico / 100));
+
+  return Math.max(0, bruto);
+}
+
 async function fetchOsDetail(osId: string, gcHeaders: Record<string, string>): Promise<any | null> {
   for (let attempt = 0; attempt < 3; attempt++) {
     try {
@@ -214,11 +246,9 @@ Deno.serve(async (req) => {
       const itens_pecas: any[] = [];
       for (const p of produtos) {
         const descProd = String(p.nome_produto || p.detalhes || "");
-        const bruto = toNum(p.valor_total) || (toNum(p.valor_venda) * toNum(p.quantidade)) || (toNum(p.valor_unitario) * toNum(p.quantidade));
-        const desc = toNum(p.valor_desconto) || toNum(p.desconto);
-        const total = Math.max(0, bruto - desc);
+        const total = calcItemTotal(p);
         const hospAlim = isHospedagemAlimentacao(descProd);
-        if (!hospAlim) {
+        if (!hospAlim && total > 0) {
           valor_pecas += total;
           pecas_count += 1;
         }
@@ -236,13 +266,11 @@ Deno.serve(async (req) => {
       const itens_servicos: any[] = [];
       for (const s of servicos) {
         const desc = s.nome_servico || s.nome || s.descricao || s.detalhes || "";
-        const bruto = toNum(s.valor_total) || (toNum(s.valor_venda) * toNum(s.quantidade)) || (toNum(s.valor_unitario) * toNum(s.quantidade));
-        const descItem = toNum(s.valor_desconto) || toNum(s.desconto);
-        const total = Math.max(0, bruto - descItem);
+        const total = calcItemTotal(s);
         const desloc = isDeslocamento(desc);
         const hospAlim = isHospedagemAlimentacao(desc);
         const naoComissionado = desloc || hospAlim;
-        if (!naoComissionado) {
+        if (!naoComissionado && total > 0) {
           valor_servicos += total;
           servicos_count += 1;
         }
@@ -282,7 +310,9 @@ Deno.serve(async (req) => {
       let comissao_pecas = valor_pecas * 0.01;
       let comissao_servicos: number;
       let base_servico_contrato = 0;
-      if (contrato) {
+      if (valor_servicos <= 0 || servicos_count <= 0) {
+        comissao_servicos = 0;
+      } else if (contrato) {
         base_servico_contrato = horas * toNum(contrato.valor_hora);
         comissao_servicos = base_servico_contrato * toNum(contrato.taxa_comissao_servico);
       } else {
