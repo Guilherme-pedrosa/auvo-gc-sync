@@ -107,7 +107,7 @@ export default function ContratosPage() {
       <Card>
         <CardHeader className="flex flex-row items-center justify-between">
           <CardTitle className="flex items-center gap-2"><FileText className="h-5 w-5" />Contratos</CardTitle>
-          <Button size="sm" onClick={() => setContratoDialog({ open: true })} disabled={grupos.length === 0}>
+          <Button size="sm" onClick={() => setContratoDialog({ open: true })}>
             <Plus className="h-4 w-4 mr-1" /> Novo contrato
           </Button>
         </CardHeader>
