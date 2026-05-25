@@ -33,6 +33,27 @@ function isServicoTaxa5(desc: string): boolean {
   return n.includes("higienizac") && n.includes("coifa");
 }
 
+// Aliases de técnicos — consolida variações de nome (mesma pessoa) em um único registro
+const TECNICO_ALIASES: Array<{ canonical: string; match: (n: string) => boolean }> = [
+  {
+    canonical: "Elton Jhonny de Oliveira Vargas",
+    match: (n) => n.startsWith("elton") || n.includes("elton jhonny"),
+  },
+  {
+    canonical: "Romário Gonçalves Vieira",
+    match: (n) => n.includes("romario") && n.includes("goncalves"),
+  },
+];
+
+function canonicalTecnico(name: string): string {
+  const n = normalize(name);
+  if (!n) return name;
+  for (const a of TECNICO_ALIASES) {
+    if (a.match(n)) return a.canonical;
+  }
+  return name;
+}
+
 function toNum(v: any): number {
   if (v === null || v === undefined) return 0;
   if (typeof v === "number") return v;
