@@ -80,7 +80,7 @@ Deno.serve(async (req) => {
     // Fetch tarefas with OS data_saida in month
     const { data: rows, error } = await supabase
       .from("tarefas_central")
-      .select("auvo_task_id, gc_os_id, gc_os_codigo, gc_os_cliente, gc_os_data_saida, gc_os_valor_total, tecnico, tecnico_id, data_tarefa, status_auvo")
+      .select("auvo_task_id, gc_os_id, gc_os_codigo, gc_os_cliente, gc_os_data_saida, gc_os_valor_total, gc_os_vendedor, tecnico, tecnico_id, data_tarefa, status_auvo")
       .not("gc_os_id", "is", null)
       .gte("gc_os_data_saida", startDate)
       .lte("gc_os_data_saida", endDate);
@@ -92,7 +92,7 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Dedupe by gc_os_id — pick row with technician set, prefer most recent data_tarefa
+    // Dedupe by gc_os_id — prefer row with execution technician set
     const byOs = new Map<string, any>();
     for (const r of rows || []) {
       const k = String(r.gc_os_id);
@@ -146,13 +146,18 @@ Deno.serve(async (req) => {
       const detail = osDetails.get(osId);
       if (!detail) continue;
 
-      const produtos: any[] = Array.isArray(detail.produtos) ? detail.produtos : [];
-      const servicos: any[] = Array.isArray(detail.servicos) ? detail.servicos : [];
+      // GC nests items: produtos[].produto, servicos[].servico
+      const produtos: any[] = (Array.isArray(detail.produtos) ? detail.produtos : [])
+        .map((x: any) => x?.produto || x)
+        .filter(Boolean);
+      const servicos: any[] = (Array.isArray(detail.servicos) ? detail.servicos : [])
+        .map((x: any) => x?.servico || x)
+        .filter(Boolean);
 
       let valor_pecas = 0;
       let pecas_count = 0;
       for (const p of produtos) {
-        const total = toNum(p.valor_total ?? (toNum(p.valor_unitario) * toNum(p.quantidade)));
+        const total = toNum(p.valor_total) || (toNum(p.valor_venda) * toNum(p.quantidade)) || (toNum(p.valor_unitario) * toNum(p.quantidade));
         valor_pecas += total;
         pecas_count += 1;
       }
@@ -160,9 +165,9 @@ Deno.serve(async (req) => {
       let valor_servicos = 0;
       let servicos_count = 0;
       for (const s of servicos) {
-        const desc = s.nome || s.descricao || "";
+        const desc = s.nome_servico || s.nome || s.descricao || s.detalhes || "";
         if (isDeslocamento(desc)) continue;
-        const total = toNum(s.valor_total ?? (toNum(s.valor_unitario) * toNum(s.quantidade)));
+        const total = toNum(s.valor_total) || (toNum(s.valor_venda) * toNum(s.quantidade)) || (toNum(s.valor_unitario) * toNum(s.quantidade));
         valor_servicos += total;
         servicos_count += 1;
       }
@@ -171,9 +176,15 @@ Deno.serve(async (req) => {
       const comissao_servicos = valor_servicos * 0.15;
       const comissao_total = comissao_pecas + comissao_servicos;
 
-      const tecnico = (row.tecnico || "Sem técnico").trim() || "Sem técnico";
-      const tecnico_id = String(row.tecnico_id || "");
-      const key = tecnico_id || tecnico;
+      // Técnico: prioriza execução Auvo, fallback para vendedor GC
+      const tecnico =
+        (row.tecnico || "").trim() ||
+        String(detail.nome_vendedor || "").trim() ||
+        (row.gc_os_vendedor || "").trim() ||
+        String(detail.nome_tecnico || "").trim() ||
+        "Sem técnico";
+      const tecnico_id = String(row.tecnico_id || detail.vendedor_id || "");
+      const key = (tecnico_id ? `${tecnico_id}|` : "") + tecnico.toLowerCase();
 
       let agg = techMap.get(key);
       if (!agg) {
