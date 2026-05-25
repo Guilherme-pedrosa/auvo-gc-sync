@@ -390,14 +390,16 @@ Deno.serve(async (req) => {
 
       // Técnico: prioriza VENDEDOR DA OS GC (responsável comercial/técnico),
       // fallback para execução Auvo
-      const tecnico =
+      const tecnicoRaw =
         String(detail.nome_vendedor || "").trim() ||
         (row.gc_os_vendedor || "").trim() ||
         String(detail.nome_tecnico || "").trim() ||
         (row.tecnico || "").trim() ||
         "Sem técnico";
+      const tecnico = canonicalTecnico(tecnicoRaw);
       const tecnico_id = String(detail.vendedor_id || row.tecnico_id || "");
-      const key = (tecnico_id ? `${tecnico_id}|` : "") + tecnico.toLowerCase();
+      // Chave de agregação baseada apenas no nome canônico para consolidar aliases
+      const key = normalize(tecnico);
 
       let agg = techMap.get(key);
       if (!agg) {
