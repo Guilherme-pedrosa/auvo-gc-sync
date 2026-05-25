@@ -18,7 +18,8 @@ type Membro = { id: string; grupo_id: string; cliente_nome: string };
 type Contrato = {
   id: string;
   nome: string;
-  grupo_id: string;
+  grupo_id: string | null;
+  cliente_nome: string | null;
   valor_hora: number;
   taxa_comissao_servico: number;
   vigencia_inicio: string | null;
@@ -120,7 +121,7 @@ export default function ContratosPage() {
               <TableHeader>
                 <TableRow>
                   <TableHead>Nome</TableHead>
-                  <TableHead>Grupo</TableHead>
+                  <TableHead>Alvo</TableHead>
                   <TableHead className="text-right">R$/hora</TableHead>
                   <TableHead className="text-right">% Comissão</TableHead>
                   <TableHead>Vigência</TableHead>
@@ -132,7 +133,13 @@ export default function ContratosPage() {
                 {contratos.map((c) => (
                   <TableRow key={c.id}>
                     <TableCell className="font-medium">{c.nome}</TableCell>
-                    <TableCell>{grupoNomeById[c.grupo_id] || "—"}</TableCell>
+                    <TableCell>
+                      {c.grupo_id
+                        ? `Grupo: ${grupoNomeById[c.grupo_id] || "—"}`
+                        : c.cliente_nome
+                        ? `Cliente: ${c.cliente_nome}`
+                        : "—"}
+                    </TableCell>
                     <TableCell className="text-right">{c.valor_hora.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</TableCell>
                     <TableCell className="text-right">{(c.taxa_comissao_servico * 100).toFixed(1)}%</TableCell>
                     <TableCell className="text-xs text-muted-foreground">
