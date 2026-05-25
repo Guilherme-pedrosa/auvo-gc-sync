@@ -490,25 +490,22 @@ Deno.serve(async (req) => {
 
       const taxaPecas = contrato ? toNum(contrato.taxa_comissao_peca ?? 0.02) : 0.01;
       let comissao_pecas = valor_pecas * taxaPecas;
-      let comissao_servicos: number;
+      let comissao_servicos = 0;
       let base_servico_contrato = 0;
-      if (valor_servicos > 0 && servicos_count > 0 && contrato) {
-        // Contrato com serviço lançado na GC: aplica taxa do contrato sobre o valor recebido.
-        comissao_servicos = valor_servicos * toNum(contrato.taxa_comissao_servico);
-      } else if (contrato && totalRecebidoOS > 0 && horas > 0) {
-        // Serviço zerado na GC mas há contrato + horas trabalhadas: paga por hora-homem.
+      const possuiServicoRecebido = (valor_servicos + valor_servicos_taxa5 + valor_servicos_taxa10 + valor_servicos_recuperado) > 0;
+      if (valor_servicos > 0 && servicos_count > 0) {
+        // Serviço com valor recebido na GC paga a taxa normal de serviço.
+        // Regra de contrato só entra quando o serviço ficou 100% descontado/zerado.
+        comissao_servicos = valor_servicos * 0.15;
+      } else if (!possuiServicoRecebido && contrato && totalRecebidoOS > 0 && horas > 0) {
+        // Serviço 100% descontado/zerado na GC mas há contrato + horas trabalhadas: paga por hora-homem.
         base_servico_contrato = horas * toNum(contrato.valor_hora);
         comissao_servicos = base_servico_contrato * toNum(contrato.taxa_comissao_servico);
-      } else if (valor_servicos <= 0 || servicos_count <= 0) {
-        comissao_servicos = 0;
-      } else {
-        comissao_servicos = valor_servicos * 0.15;
       }
       // Serviço RECUPERADO (item GC zerado mas qtd × valor_unit > 0 + horas Auvo):
-      // comissiona pela taxa do contrato se houver, senão 15%.
+      // segue a taxa normal de serviço. As taxas especiais 5%/10% são tratadas abaixo.
       if (valor_servicos_recuperado > 0) {
-        const taxaRec = contrato ? toNum(contrato.taxa_comissao_servico) : 0.15;
-        comissao_servicos += valor_servicos_recuperado * taxaRec;
+        comissao_servicos += valor_servicos_recuperado * 0.15;
         valor_servicos += valor_servicos_recuperado;
       }
       // Serviços com taxa especial de 5% (ex.: higienização de coifas)
