@@ -574,6 +574,7 @@ Deno.serve(async (req) => {
         itens_pecas,
         itens_servicos,
         contrato: contrato ? { nome: contrato.nome, valor_hora: toNum(contrato.valor_hora), taxa: toNum(contrato.taxa_comissao_servico), taxa_peca: toNum(contrato.taxa_comissao_peca ?? 0.02), horas, base_servico: base_servico_contrato } : null,
+        retorno: tecnicoRetorno ? { tecnico: tecnicoRetorno } : null,
       });
     }
 
