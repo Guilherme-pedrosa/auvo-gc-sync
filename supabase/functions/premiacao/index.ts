@@ -37,13 +37,16 @@ function toNum(v: any): number {
 }
 
 function calcItemTotal(item: any): number {
+  if (item.valor_total !== null && item.valor_total !== undefined && String(item.valor_total).trim() !== "") {
+    return Math.max(0, toNum(item.valor_total));
+  }
+
   const quantidade = toNum(item.quantidade) || 1;
   const bruto =
     toNum(item.valor_total_bruto) ||
     toNum(item.valor_bruto) ||
     toNum(item.subtotal) ||
-    ((toNum(item.valor_venda) || toNum(item.valor_unitario)) * quantidade) ||
-    toNum(item.valor_total);
+    ((toNum(item.valor_venda) || toNum(item.valor_unitario)) * quantidade);
 
   const descontoPercentual =
     toNum(item.desconto_porcentagem) ||
