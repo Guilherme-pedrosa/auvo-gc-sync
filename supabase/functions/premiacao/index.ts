@@ -713,6 +713,46 @@ Deno.serve(async (req) => {
       (t as any).comissao_final = comissao_final;
     }
 
+    // ============================================================
+    // DEMÉRITOS lançados manualmente (tabela demerito_lancamentos)
+    // Cada lançamento reduz X% adicional sobre a premiação bruta.
+    // ============================================================
+    try {
+      const { data: demRows } = await supabase
+        .from("demerito_lancamentos")
+        .select("tecnico_nome, motivo_nome, percentual, observacao")
+        .eq("mes", month);
+      const byTec = new Map<string, Array<{ motivo: string; pct: number; obs?: string }>>();
+      for (const r of (demRows || [])) {
+        const first = normalize(String((r as any).tecnico_nome || "")).split(/\s+/)[0];
+        if (!first) continue;
+        const arr = byTec.get(first) || [];
+        arr.push({
+          motivo: String((r as any).motivo_nome || ""),
+          pct: toNum((r as any).percentual) / 100,
+          obs: (r as any).observacao || undefined,
+        });
+        byTec.set(first, arr);
+      }
+      for (const t of tecnicos) {
+        const first = normalize(t.tecnico).split(/\s+/)[0];
+        const dems = byTec.get(first);
+        if (!dems || dems.length === 0) continue;
+        for (const d of dems) {
+          (t as any).reducao_pct = ((t as any).reducao_pct || 0) + d.pct;
+          (t as any).reducoes = [
+            ...((t as any).reducoes || []),
+            { motivo: `Demérito: ${d.motivo}${d.obs ? ` — ${d.obs}` : ""}`, pct: d.pct, valor: t.comissao_total * d.pct },
+          ];
+        }
+        const pctTotal = Math.min(1, (t as any).reducao_pct || 0);
+        (t as any).reducao_valor = t.comissao_total * pctTotal;
+        (t as any).comissao_final = Math.max(0, t.comissao_total - (t as any).reducao_valor);
+      }
+    } catch (e) {
+      console.error("[premiacao] deméritos falhou:", (e as Error).message);
+    }
+
     const totais = tecnicos.reduce((acc, t) => ({
       os_count: acc.os_count + t.os_count,
       valor_pecas: acc.valor_pecas + t.valor_pecas,
