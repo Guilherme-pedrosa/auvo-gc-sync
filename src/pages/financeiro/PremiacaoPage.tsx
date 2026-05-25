@@ -11,6 +11,7 @@ import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { OsRetornosManager } from "@/components/financeiro/OsRetornosManager";
 import { DemeritosManager } from "@/components/financeiro/DemeritosManager";
+import { MetasManager } from "@/components/financeiro/MetasManager";
 import { gerarPdfsTelemetrias, gerarPdfTecnico } from "@/lib/pdf/telemetriaPdf";
 import { FileText } from "lucide-react";
 
@@ -62,6 +63,10 @@ type Tech = {
   reducao_valor?: number;
   reducoes?: Array<{ motivo: string; pct: number; valor: number }>;
   comissao_final?: number;
+  meta?: number | null;
+  meta_atingida?: boolean;
+  bonus_meta_pct?: number;
+  bonus_meta_valor?: number;
 };
 type Resp = {
   ok: boolean;
@@ -152,6 +157,10 @@ export default function PremiacaoPage() {
             </Button>
             <DemeritosManager
               month={activeMonth}
+              tecnicos={tecnicos.map((t) => t.tecnico)}
+              onChanged={() => refetch()}
+            />
+            <MetasManager
               tecnicos={tecnicos.map((t) => t.tecnico)}
               onChanged={() => refetch()}
             />
@@ -260,6 +269,16 @@ export default function PremiacaoPage() {
                           {(t.reducao_valor ?? 0) > 0 && (
                             <div className="text-[10px] text-destructive mt-0.5">
                               −{brl(t.reducao_valor || 0)} ({Math.round((t.reducao_pct || 0) * 100)}% redução)
+                            </div>
+                          )}
+                          {(t.bonus_meta_valor ?? 0) > 0 && (
+                            <div className="text-[10px] text-emerald-600 mt-0.5">
+                              +{brl(t.bonus_meta_valor || 0)} (bônus meta 10%)
+                            </div>
+                          )}
+                          {t.meta != null && t.meta > 0 && (
+                            <div className="text-[10px] text-muted-foreground mt-0.5">
+                              Meta: {brl(t.meta)} · {t.meta_atingida ? "✅ atingida" : `${Math.round(((t.faturamento ?? 0) / t.meta) * 100)}%`}
                             </div>
                           )}
                           {t.km_por_telemetria != null && (

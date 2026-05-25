@@ -753,6 +753,50 @@ Deno.serve(async (req) => {
       console.error("[premiacao] deméritos falhou:", (e as Error).message);
     }
 
+    // ============================================================
+    // METAS de faturamento — bônus de 10% sobre a comissão BRUTA
+    // quando o faturamento do mês atingir/superar a meta cadastrada.
+    // ============================================================
+    try {
+      const { data: metasRows } = await supabase
+        .from("metas_tecnicos")
+        .select("nome_tecnico, meta_faturamento, ativo")
+        .eq("ativo", true);
+      const metaByTec = new Map<string, { nome: string; meta: number }>();
+      for (const r of (metasRows || [])) {
+        const nome = String((r as any).nome_tecnico || "").trim();
+        if (!nome) continue;
+        const first = normalize(nome).split(/\s+/)[0];
+        if (!first) continue;
+        metaByTec.set(first, { nome, meta: toNum((r as any).meta_faturamento) });
+      }
+      for (const t of tecnicos) {
+        const first = normalize(t.tecnico).split(/\s+/)[0];
+        const m = metaByTec.get(first);
+        if (!m) {
+          (t as any).meta = null;
+          (t as any).meta_atingida = false;
+          (t as any).bonus_meta_pct = 0;
+          (t as any).bonus_meta_valor = 0;
+          continue;
+        }
+        const fat = t.faturamento || 0;
+        const atingiu = m.meta > 0 && fat >= m.meta;
+        const bonusPct = atingiu ? 0.10 : 0;
+        const bonusValor = t.comissao_total * bonusPct;
+        (t as any).meta = m.meta;
+        (t as any).meta_atingida = atingiu;
+        (t as any).bonus_meta_pct = bonusPct;
+        (t as any).bonus_meta_valor = bonusValor;
+        if (bonusValor > 0) {
+          const baseFinal = (t as any).comissao_final ?? t.comissao_total;
+          (t as any).comissao_final = baseFinal + bonusValor;
+        }
+      }
+    } catch (e) {
+      console.error("[premiacao] metas falhou:", (e as Error).message);
+    }
+
     const totais = tecnicos.reduce((acc, t) => ({
       os_count: acc.os_count + t.os_count,
       valor_pecas: acc.valor_pecas + t.valor_pecas,
@@ -762,8 +806,9 @@ Deno.serve(async (req) => {
       comissao_servicos: acc.comissao_servicos + t.comissao_servicos,
       comissao_total: acc.comissao_total + t.comissao_total,
       reducao_valor: acc.reducao_valor + ((t as any).reducao_valor || 0),
+      bonus_meta_valor: acc.bonus_meta_valor + ((t as any).bonus_meta_valor || 0),
       comissao_final: acc.comissao_final + ((t as any).comissao_final ?? t.comissao_total),
-    }), { os_count: 0, valor_pecas: 0, valor_servicos: 0, faturamento: 0, comissao_pecas: 0, comissao_servicos: 0, comissao_total: 0, reducao_valor: 0, comissao_final: 0 });
+    }), { os_count: 0, valor_pecas: 0, valor_servicos: 0, faturamento: 0, comissao_pecas: 0, comissao_servicos: 0, comissao_total: 0, reducao_valor: 0, bonus_meta_valor: 0, comissao_final: 0 });
 
     return new Response(
       JSON.stringify({
