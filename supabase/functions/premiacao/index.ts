@@ -26,6 +26,13 @@ function isHospedagemAlimentacao(desc: string): boolean {
   return n.includes("hospedag") || n.includes("alimentac") || n.includes("refeic") || n.includes("diaria") || n.includes("hotel");
 }
 
+// Serviços com taxa fixa de 5% (regra especial)
+// Ex.: "HIGIENIZAÇÃO DE COIFAS COM DESENGORDURANTE BIODEGRADÁVEL + LAUDO TÉCNICO FOTOGRÁFICO (HORA HOMEM)"
+function isServicoTaxa5(desc: string): boolean {
+  const n = normalize(desc);
+  return n.includes("higienizac") && n.includes("coifa");
+}
+
 function toNum(v: any): number {
   if (v === null || v === undefined) return 0;
   if (typeof v === "number") return v;
@@ -270,6 +277,7 @@ Deno.serve(async (req) => {
 
       let valor_servicos = 0;
       let servicos_count = 0;
+      let valor_servicos_taxa5 = 0;
       const itens_servicos: any[] = [];
       for (const s of servicos) {
         const desc = s.nome_servico || s.nome || s.descricao || s.detalhes || "";
@@ -278,9 +286,14 @@ Deno.serve(async (req) => {
         const hospAlim = isHospedagemAlimentacao(desc);
         const semValorRecebido = total <= 0 || totalRecebidoOS <= 0 || totalRecebidoServicosOS <= 0;
         const naoComissionado = desloc || hospAlim || semValorRecebido;
+        const taxa5 = isServicoTaxa5(desc);
         if (!naoComissionado && total > 0) {
-          valor_servicos += total;
-          servicos_count += 1;
+          if (taxa5) {
+            valor_servicos_taxa5 += total;
+          } else {
+            valor_servicos += total;
+            servicos_count += 1;
+          }
         }
         itens_servicos.push({
           descricao: String(desc || "Serviço"),
@@ -289,6 +302,7 @@ Deno.serve(async (req) => {
           valor_total: total,
           deslocamento: desloc,
           nao_comissionado: naoComissionado,
+          taxa_especial: taxa5 && !naoComissionado ? 0.05 : undefined,
         });
       }
 
@@ -301,12 +315,14 @@ Deno.serve(async (req) => {
         ? descValorOS
         : (descPctOS > 0 ? subtotalOS * (descPctOS / 100) : 0);
       if (descontoGeral > 0) {
-        const baseTotal = valor_pecas + valor_servicos;
+        const baseTotal = valor_pecas + valor_servicos + valor_servicos_taxa5;
         if (baseTotal > 0) {
           const rateioPecas = descontoGeral * (valor_pecas / baseTotal);
           const rateioServ = descontoGeral * (valor_servicos / baseTotal);
+          const rateioServ5 = descontoGeral * (valor_servicos_taxa5 / baseTotal);
           valor_pecas = Math.max(0, valor_pecas - rateioPecas);
           valor_servicos = Math.max(0, valor_servicos - rateioServ);
+          valor_servicos_taxa5 = Math.max(0, valor_servicos_taxa5 - rateioServ5);
         }
       }
 
@@ -316,9 +332,16 @@ Deno.serve(async (req) => {
       if (totalRecebidoOS <= 0) {
         valor_pecas = 0;
         valor_servicos = 0;
+        valor_servicos_taxa5 = 0;
       } else {
         valor_pecas = Math.min(valor_pecas, totalRecebidoPecasOS);
-        valor_servicos = Math.min(valor_servicos, totalRecebidoServicosOS);
+        // Aplica teto consolidado de serviços recebidos respeitando ambas as faixas
+        const totServ = valor_servicos + valor_servicos_taxa5;
+        if (totServ > totalRecebidoServicosOS && totServ > 0) {
+          const ratio = totalRecebidoServicosOS / totServ;
+          valor_servicos = valor_servicos * ratio;
+          valor_servicos_taxa5 = valor_servicos_taxa5 * ratio;
+        }
       }
 
       // Verifica contrato pelo cliente da OS
@@ -337,6 +360,11 @@ Deno.serve(async (req) => {
       } else {
         comissao_servicos = valor_servicos * 0.15;
       }
+      // Serviços com taxa especial de 5% (ex.: higienização de coifas)
+      const comissao_servicos_taxa5 = valor_servicos_taxa5 * 0.05;
+      comissao_servicos += comissao_servicos_taxa5;
+      // Soma o valor especial ao valor_servicos exibido (para totais)
+      valor_servicos += valor_servicos_taxa5;
       const comissao_total = comissao_pecas + comissao_servicos;
 
       // Técnico: prioriza VENDEDOR DA OS GC (responsável comercial/técnico),
