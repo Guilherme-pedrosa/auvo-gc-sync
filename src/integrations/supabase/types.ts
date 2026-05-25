@@ -674,6 +674,33 @@ export type Database = {
         }
         Relationships: []
       }
+      metas_tecnicos: {
+        Row: {
+          ativo: boolean
+          atualizado_em: string
+          criado_em: string
+          id: string
+          meta_faturamento: number
+          nome_tecnico: string
+        }
+        Insert: {
+          ativo?: boolean
+          atualizado_em?: string
+          criado_em?: string
+          id?: string
+          meta_faturamento?: number
+          nome_tecnico: string
+        }
+        Update: {
+          ativo?: boolean
+          atualizado_em?: string
+          criado_em?: string
+          id?: string
+          meta_faturamento?: number
+          nome_tecnico?: string
+        }
+        Relationships: []
+      }
       os_operation_locks: {
         Row: {
           gc_os_id: string
