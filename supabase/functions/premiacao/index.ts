@@ -26,6 +26,13 @@ function isHospedagemAlimentacao(desc: string): boolean {
   return n.includes("hospedag") || n.includes("alimentac") || n.includes("refeic") || n.includes("diaria") || n.includes("hotel");
 }
 
+// Serviços com taxa fixa de 5% (regra especial)
+// Ex.: "HIGIENIZAÇÃO DE COIFAS COM DESENGORDURANTE BIODEGRADÁVEL + LAUDO TÉCNICO FOTOGRÁFICO (HORA HOMEM)"
+function isServicoTaxa5(desc: string): boolean {
+  const n = normalize(desc);
+  return n.includes("higienizac") && n.includes("coifa");
+}
+
 function toNum(v: any): number {
   if (v === null || v === undefined) return 0;
   if (typeof v === "number") return v;
