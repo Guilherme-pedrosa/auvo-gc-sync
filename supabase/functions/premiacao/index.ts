@@ -578,6 +578,76 @@ Deno.serve(async (req) => {
     const tecnicos = Array.from(techMap.values()).sort((a, b) => b.comissao_total - a.comissao_total);
     for (const t of tecnicos) t.ordens.sort((a, b) => b.comissao_total - a.comissao_total);
 
+    // ============================================================
+    // FATOR DE REDUÇÃO: KM por telemetria (fonte: Technician & Vehicle Hub)
+    // Se km/telemetria < 120 no mês, reduz 15% da premiação total do técnico.
+    // ============================================================
+    const tvhUrl = Deno.env.get("TVH_SUPABASE_URL");
+    const tvhKey = Deno.env.get("TVH_SERVICE_ROLE_KEY");
+    const kmByTec = new Map<string, { km: number; tel: number; motorista: string }>();
+    if (tvhUrl && tvhKey) {
+      try {
+        const tvh = createClient(tvhUrl, tvhKey);
+        const pageSize = 1000;
+        let from = 0;
+        for (let i = 0; i < 50; i++) {
+          const { data: kmRows, error: kmErr } = await tvh
+            .from("daily_vehicle_km")
+            .select("motorista_nome, km_percorrido, telemetrias, data")
+            .gte("data", startDate)
+            .lte("data", endDate)
+            .range(from, from + pageSize - 1);
+          if (kmErr) { console.error("[premiacao] TVH km erro:", kmErr.message); break; }
+          const batch = kmRows || [];
+          for (const r of batch) {
+            const nome = String((r as any).motorista_nome || "").trim();
+            if (!nome) continue;
+            const first = normalize(nome).split(/\s+/)[0];
+            if (!first) continue;
+            const cur = kmByTec.get(first) || { km: 0, tel: 0, motorista: nome };
+            cur.km += toNum((r as any).km_percorrido);
+            cur.tel += toNum((r as any).telemetrias);
+            kmByTec.set(first, cur);
+          }
+          if (batch.length < pageSize) break;
+          from += pageSize;
+        }
+        console.log(`[premiacao] TVH: ${kmByTec.size} motoristas com KM no mês`);
+      } catch (e) {
+        console.error("[premiacao] TVH fetch falhou:", (e as Error).message);
+      }
+    } else {
+      console.warn("[premiacao] TVH_SUPABASE_URL/TVH_SERVICE_ROLE_KEY não configurados — reduções de KM não aplicadas");
+    }
+
+    for (const t of tecnicos) {
+      const first = normalize(t.tecnico).split(/\s+/)[0];
+      const km = kmByTec.get(first);
+      const km_total = km?.km || 0;
+      const telemetrias = km?.tel || 0;
+      const km_por_telemetria = telemetrias > 0 ? km_total / telemetrias : null;
+      let reducao_pct = 0;
+      const reducoes: Array<{ motivo: string; pct: number; valor: number }> = [];
+      if (km && km_por_telemetria !== null && km_por_telemetria < 120) {
+        reducao_pct += 0.15;
+        reducoes.push({
+          motivo: `KM/telemetria abaixo de 120 (${km_por_telemetria.toFixed(1)} km)`,
+          pct: 0.15,
+          valor: t.comissao_total * 0.15,
+        });
+      }
+      const reducao_valor = t.comissao_total * reducao_pct;
+      const comissao_final = Math.max(0, t.comissao_total - reducao_valor);
+      (t as any).km_total = km_total;
+      (t as any).telemetrias = telemetrias;
+      (t as any).km_por_telemetria = km_por_telemetria;
+      (t as any).km_motorista_match = km?.motorista || null;
+      (t as any).reducao_pct = reducao_pct;
+      (t as any).reducao_valor = reducao_valor;
+      (t as any).reducoes = reducoes;
+      (t as any).comissao_final = comissao_final;
+    }
+
     const totais = tecnicos.reduce((acc, t) => ({
       os_count: acc.os_count + t.os_count,
       valor_pecas: acc.valor_pecas + t.valor_pecas,
@@ -586,7 +656,9 @@ Deno.serve(async (req) => {
       comissao_pecas: acc.comissao_pecas + t.comissao_pecas,
       comissao_servicos: acc.comissao_servicos + t.comissao_servicos,
       comissao_total: acc.comissao_total + t.comissao_total,
-    }), { os_count: 0, valor_pecas: 0, valor_servicos: 0, faturamento: 0, comissao_pecas: 0, comissao_servicos: 0, comissao_total: 0 });
+      reducao_valor: acc.reducao_valor + ((t as any).reducao_valor || 0),
+      comissao_final: acc.comissao_final + ((t as any).comissao_final ?? t.comissao_total),
+    }), { os_count: 0, valor_pecas: 0, valor_servicos: 0, faturamento: 0, comissao_pecas: 0, comissao_servicos: 0, comissao_total: 0, reducao_valor: 0, comissao_final: 0 });
 
     return new Response(
       JSON.stringify({
