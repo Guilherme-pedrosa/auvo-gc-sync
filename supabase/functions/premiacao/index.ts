@@ -77,17 +77,38 @@ Deno.serve(async (req) => {
       "Content-Type": "application/json",
     };
 
+    // Carrega contratos ativos e mapeia cliente_normalizado -> contrato
+    const { data: contratosData } = await supabase
+      .from("contratos")
+      .select("id, nome, grupo_id, valor_hora, taxa_comissao_servico, vigencia_inicio, vigencia_fim, ativo")
+      .eq("ativo", true);
+    const grupoIds = (contratosData || []).map((c: any) => c.grupo_id);
+    const { data: membrosData } = grupoIds.length > 0
+      ? await supabase.from("grupo_cliente_membros").select("grupo_id, cliente_nome").in("grupo_id", grupoIds)
+      : { data: [] as any[] };
+    const contratoByCliente = new Map<string, any>();
+    for (const c of contratosData || []) {
+      const ini = c.vigencia_inicio || null;
+      const fim = c.vigencia_fim || null;
+      if (ini && ini > endDate) continue;
+      if (fim && fim < startDate) continue;
+      for (const m of (membrosData || []).filter((x: any) => x.grupo_id === c.grupo_id)) {
+        contratoByCliente.set(normalize(m.cliente_nome), c);
+      }
+    }
+    console.log(`[premiacao] ${contratosData?.length || 0} contratos ativos, ${contratoByCliente.size} clientes mapeados`);
+
     // Candidatos: OS com data_saida cacheada no mês OU sem data_saida cacheada mas com conclusão Auvo no mês
     // (re-filtramos abaixo pelo data_saida real do GC detail)
     const { data: rowsA, error: errA } = await supabase
       .from("tarefas_central")
-      .select("auvo_task_id, gc_os_id, gc_os_codigo, gc_os_cliente, gc_os_data_saida, gc_os_valor_total, gc_os_vendedor, tecnico, tecnico_id, data_tarefa, status_auvo, data_conclusao")
+      .select("auvo_task_id, gc_os_id, gc_os_codigo, gc_os_cliente, gc_os_data_saida, gc_os_valor_total, gc_os_vendedor, tecnico, tecnico_id, data_tarefa, status_auvo, data_conclusao, duracao_decimal")
       .not("gc_os_id", "is", null)
       .gte("gc_os_data_saida", startDate)
       .lte("gc_os_data_saida", endDate);
     const { data: rowsB, error: errB } = await supabase
       .from("tarefas_central")
-      .select("auvo_task_id, gc_os_id, gc_os_codigo, gc_os_cliente, gc_os_data_saida, gc_os_valor_total, gc_os_vendedor, tecnico, tecnico_id, data_tarefa, status_auvo, data_conclusao")
+      .select("auvo_task_id, gc_os_id, gc_os_codigo, gc_os_cliente, gc_os_data_saida, gc_os_valor_total, gc_os_vendedor, tecnico, tecnico_id, data_tarefa, status_auvo, data_conclusao, duracao_decimal")
       .not("gc_os_id", "is", null)
       .is("gc_os_data_saida", null);
     const error = errA || errB;
@@ -98,6 +119,13 @@ Deno.serve(async (req) => {
         JSON.stringify({ ok: false, error: error.message }),
         { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
+    }
+
+    // Soma horas (duracao_decimal) por gc_os_id — pode haver várias tarefas Auvo por OS
+    const horasByOs = new Map<string, number>();
+    for (const r of rows || []) {
+      const k = String(r.gc_os_id);
+      horasByOs.set(k, (horasByOs.get(k) || 0) + toNum(r.duracao_decimal));
     }
 
     // Dedupe by gc_os_id — prefer row with execution technician set
@@ -227,8 +255,20 @@ Deno.serve(async (req) => {
         }
       }
 
-      const comissao_pecas = valor_pecas * 0.01;
-      const comissao_servicos = valor_servicos * 0.15;
+      // Verifica contrato pelo cliente da OS
+      const clienteNome = String(row.gc_os_cliente || detail.nome_cliente || "");
+      const contrato = contratoByCliente.get(normalize(clienteNome));
+      const horas = horasByOs.get(osId) || 0;
+
+      let comissao_pecas = valor_pecas * 0.01;
+      let comissao_servicos: number;
+      let base_servico_contrato = 0;
+      if (contrato) {
+        base_servico_contrato = horas * toNum(contrato.valor_hora);
+        comissao_servicos = base_servico_contrato * toNum(contrato.taxa_comissao_servico);
+      } else {
+        comissao_servicos = valor_servicos * 0.15;
+      }
       const comissao_total = comissao_pecas + comissao_servicos;
 
       // Técnico: prioriza VENDEDOR DA OS GC (responsável comercial/técnico),
@@ -271,6 +311,7 @@ Deno.serve(async (req) => {
         gc_link: `https://gestaoclick.com/ordens_servicos/editar/${osId}?retorno=%2Fordens_servicos`,
         itens_pecas,
         itens_servicos,
+        contrato: contrato ? { nome: contrato.nome, valor_hora: toNum(contrato.valor_hora), taxa: toNum(contrato.taxa_comissao_servico), horas, base_servico: base_servico_contrato } : null,
       });
     }
 
