@@ -43,14 +43,20 @@ export function OsRetornosManager({ onChanged }: { onChanged?: () => void }) {
   const { data: tecnicos } = useQuery<TecnicoOption[]>({
     queryKey: ["tecnicos_distinct"],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from("tarefas_central")
-        .select("tecnico")
-        .not("tecnico", "is", null)
-        .neq("tecnico", "");
-      if (error) throw error;
       const set = new Set<string>();
-      (data || []).forEach((row: any) => set.add(row.tecnico));
+      const pageSize = 1000;
+      for (let from = 0; from < 100000; from += pageSize) {
+        const { data, error } = await supabase
+          .from("tarefas_central")
+          .select("tecnico")
+          .not("tecnico", "is", null)
+          .neq("tecnico", "")
+          .range(from, from + pageSize - 1);
+        if (error) throw error;
+        if (!data || data.length === 0) break;
+        data.forEach((row: any) => { if (row.tecnico) set.add(row.tecnico); });
+        if (data.length < pageSize) break;
+      }
       const arr = Array.from(set)
         .sort((a, b) => a.localeCompare(b))
         .map((t) => ({ value: t, label: t }));
