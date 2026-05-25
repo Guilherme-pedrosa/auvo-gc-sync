@@ -43,6 +43,7 @@ type Tech = {
   os_count: number;
   valor_pecas: number;
   valor_servicos: number;
+  faturamento?: number;
   comissao_pecas: number;
   comissao_servicos: number;
   comissao_total: number;
@@ -194,10 +195,19 @@ export default function PremiacaoPage() {
                       </div>
                     </div>
                     <div className="text-right flex-shrink-0">
-                      <div className="text-xs text-muted-foreground">Comissão</div>
-                      <div className="text-xl font-semibold text-primary">{brl(t.comissao_total)}</div>
-                      <div className="text-[10px] text-muted-foreground">
-                        {brl(t.comissao_pecas)} peças + {brl(t.comissao_servicos)} serv.
+                      <div className="flex items-start justify-end gap-6">
+                        <div>
+                          <div className="text-xs text-muted-foreground">Faturamento</div>
+                          <div className="text-xl font-semibold">{brl(t.faturamento ?? (t.valor_pecas + t.valor_servicos))}</div>
+                          <div className="text-[10px] text-muted-foreground">excl. deslocamento/hosp.</div>
+                        </div>
+                        <div>
+                          <div className="text-xs text-muted-foreground">Comissão</div>
+                          <div className="text-xl font-semibold text-primary">{brl(t.comissao_total)}</div>
+                          <div className="text-[10px] text-muted-foreground">
+                            {brl(t.comissao_pecas)} peças + {brl(t.comissao_servicos)} serv.
+                          </div>
+                        </div>
                       </div>
                     </div>
                   </div>
