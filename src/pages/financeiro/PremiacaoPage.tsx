@@ -369,10 +369,10 @@ function ItemSection({
             </TableHeader>
             <TableBody>
               {items.map((it, i) => (
-                <TableRow key={i} className={cn(highlightDeslocamento && it.deslocamento && "opacity-60")}>
+                <TableRow key={i} className={cn(highlightDeslocamento && it.nao_comissionado && "opacity-60")}>
                   <TableCell className="text-sm">
                     {it.descricao}
-                    {highlightDeslocamento && it.deslocamento && (
+                    {highlightDeslocamento && it.nao_comissionado && (
                       <Badge variant="secondary" className="ml-2 text-[10px]">não comissionado</Badge>
                     )}
                   </TableCell>
