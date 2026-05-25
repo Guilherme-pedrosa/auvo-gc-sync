@@ -628,13 +628,36 @@ Deno.serve(async (req) => {
       const km_por_telemetria = telemetrias > 0 ? km_total / telemetrias : null;
       let reducao_pct = 0;
       const reducoes: Array<{ motivo: string; pct: number; valor: number }> = [];
-      if (km && km_por_telemetria !== null && km_por_telemetria < 120) {
-        reducao_pct += 0.15;
-        reducoes.push({
-          motivo: `KM/telemetria abaixo de 120 (${km_por_telemetria.toFixed(1)} km)`,
-          pct: 0.15,
-          valor: t.comissao_total * 0.15,
-        });
+      if (km && km_por_telemetria !== null) {
+        if (km_por_telemetria < 40) {
+          reducao_pct += 0.30;
+          reducoes.push({
+            motivo: `KM/telemetria abaixo de 40 (${km_por_telemetria.toFixed(1)} km)`,
+            pct: 0.30,
+            valor: t.comissao_total * 0.30,
+          });
+        } else if (km_por_telemetria < 70) {
+          reducao_pct += 0.25;
+          reducoes.push({
+            motivo: `KM/telemetria de 40 a 70 (${km_por_telemetria.toFixed(1)} km)`,
+            pct: 0.25,
+            valor: t.comissao_total * 0.25,
+          });
+        } else if (km_por_telemetria < 100) {
+          reducao_pct += 0.20;
+          reducoes.push({
+            motivo: `KM/telemetria de 70 a 100 (${km_por_telemetria.toFixed(1)} km)`,
+            pct: 0.20,
+            valor: t.comissao_total * 0.20,
+          });
+        } else if (km_por_telemetria < 120) {
+          reducao_pct += 0.15;
+          reducoes.push({
+            motivo: `KM/telemetria de 100 a 120 (${km_por_telemetria.toFixed(1)} km)`,
+            pct: 0.15,
+            valor: t.comissao_total * 0.15,
+          });
+        }
       }
       const reducao_valor = t.comissao_total * reducao_pct;
       const comissao_final = Math.max(0, t.comissao_total - reducao_valor);
