@@ -593,8 +593,14 @@ Deno.serve(async (req) => {
     // FATOR DE REDUÇÃO: KM por telemetria (fonte: Technician & Vehicle Hub)
     // Se km/telemetria < 120 no mês, reduz 15% da premiação total do técnico.
     // ============================================================
-    const tvhUrl = Deno.env.get("TVH_SUPABASE_URL");
-    const tvhKey = Deno.env.get("TVH_SERVICE_ROLE_KEY");
+    // Fallback hardcoded — anon key do TVH é JWT público (publishable), sem risco.
+    const TVH_URL_FALLBACK = "https://qfmpyrekjbbqekxrjgov.supabase.co";
+    const TVH_KEY_FALLBACK = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFmbXB5cmVramJicWVreHJqZ292Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM4Njc5NzMsImV4cCI6MjA4OTQ0Mzk3M30.ac7r6m5dLzMrEQxMQr74Bo38bgeupr5-bs0Ja4CCo2s";
+    const envTvhUrl = Deno.env.get("TVH_SUPABASE_URL");
+    const envTvhKey = Deno.env.get("TVH_SERVICE_ROLE_KEY");
+    // Usa env só se for um JWT válido (começa com eyJ). Senão usa fallback.
+    const tvhUrl = (envTvhUrl && envTvhUrl.startsWith("https://")) ? envTvhUrl : TVH_URL_FALLBACK;
+    const tvhKey = (envTvhKey && envTvhKey.startsWith("eyJ") && envTvhKey.length > 100) ? envTvhKey : TVH_KEY_FALLBACK;
     const kmByTec = new Map<string, { km: number; tel: number; motorista: string }>();
     console.log(`[premiacao] TVH config: url=${tvhUrl ? tvhUrl.slice(0, 40) : "MISSING"} key=${tvhKey ? `${tvhKey.slice(0, 20)}...(len=${tvhKey.length})` : "MISSING"}`);
     if (tvhUrl && tvhKey) {
