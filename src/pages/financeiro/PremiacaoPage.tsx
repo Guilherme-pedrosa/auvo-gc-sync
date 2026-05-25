@@ -16,6 +16,7 @@ type ItemRow = {
   valor_unitario: number;
   valor_total: number;
   deslocamento?: boolean;
+  nao_comissionado?: boolean;
 };
 type OsRow = {
   gc_os_id: string;
