@@ -190,6 +190,18 @@ Deno.serve(async (req) => {
     }
     console.log(`[premiacao] ${contratosData?.length || 0} contratos ativos, ${contratoByCliente.size} clientes mapeados`);
 
+    // Retornos de OS: quando uma OS recebe retorno, o técnico que atendeu o retorno
+    // passa a receber o faturamento/premiação no lugar do técnico original.
+    const { data: retornosData } = await supabase
+      .from("os_retornos")
+      .select("gc_os_codigo, tecnico_retorno");
+    const retornoByCodigo = new Map<string, string>();
+    for (const r of retornosData || []) {
+      const cod = String(r.gc_os_codigo || "").trim();
+      const tec = String(r.tecnico_retorno || "").trim();
+      if (cod && tec) retornoByCodigo.set(cod, tec);
+    }
+
     // Candidatos: OS com data_saida cacheada no mês OU sem data_saida cacheada mas com conclusão Auvo no mês
     // (re-filtramos abaixo pelo data_saida real do GC detail)
     const { data: rowsA, error: errA } = await supabase
@@ -511,15 +523,18 @@ Deno.serve(async (req) => {
       const comissao_total = comissao_pecas + comissao_servicos;
 
       // Técnico: prioriza VENDEDOR DA OS GC (responsável comercial/técnico),
-      // fallback para execução Auvo
-      const tecnicoRaw =
+      // fallback para execução Auvo. Se houver retorno registrado, o técnico
+      // do retorno assume a OS.
+      const gcCodigo = String(row.gc_os_codigo || detail.codigo || "").trim();
+      const tecnicoRetorno = gcCodigo ? retornoByCodigo.get(gcCodigo) : undefined;
+      const tecnicoRaw = tecnicoRetorno ||
         String(detail.nome_vendedor || "").trim() ||
         (row.gc_os_vendedor || "").trim() ||
         String(detail.nome_tecnico || "").trim() ||
         (row.tecnico || "").trim() ||
         "Sem técnico";
       const tecnico = canonicalTecnico(tecnicoRaw);
-      const tecnico_id = String(detail.vendedor_id || row.tecnico_id || "");
+      const tecnico_id = tecnicoRetorno ? "" : String(detail.vendedor_id || row.tecnico_id || "");
       // Chave de agregação pelo PRIMEIRO NOME — consolida todas as variações da mesma pessoa
       const primeiroNome = normalize(tecnico).split(/\s+/)[0] || normalize(tecnico);
       const key = primeiroNome;
@@ -559,6 +574,7 @@ Deno.serve(async (req) => {
         itens_pecas,
         itens_servicos,
         contrato: contrato ? { nome: contrato.nome, valor_hora: toNum(contrato.valor_hora), taxa: toNum(contrato.taxa_comissao_servico), taxa_peca: toNum(contrato.taxa_comissao_peca ?? 0.02), horas, base_servico: base_servico_contrato } : null,
+        retorno: tecnicoRetorno ? { tecnico: tecnicoRetorno } : null,
       });
     }
 
