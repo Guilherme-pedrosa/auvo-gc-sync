@@ -124,7 +124,8 @@ export default function ContratosPage() {
                   <TableHead>Nome</TableHead>
                   <TableHead>Alvo</TableHead>
                   <TableHead className="text-right">R$/hora</TableHead>
-                  <TableHead className="text-right">% Comissão</TableHead>
+                  <TableHead className="text-right">% Serv.</TableHead>
+                  <TableHead className="text-right">% Peças</TableHead>
                   <TableHead>Vigência</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead className="text-right">Ações</TableHead>
@@ -143,6 +144,7 @@ export default function ContratosPage() {
                     </TableCell>
                     <TableCell className="text-right">{c.valor_hora.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</TableCell>
                     <TableCell className="text-right">{(c.taxa_comissao_servico * 100).toFixed(1)}%</TableCell>
+                    <TableCell className="text-right">{((c.taxa_comissao_peca ?? 0.02) * 100).toFixed(1)}%</TableCell>
                     <TableCell className="text-xs text-muted-foreground">
                       {c.vigencia_inicio || "∞"} → {c.vigencia_fim || "∞"}
                     </TableCell>
