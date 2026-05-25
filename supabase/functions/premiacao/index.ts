@@ -166,7 +166,9 @@ Deno.serve(async (req) => {
       let pecas_count = 0;
       const itens_pecas: any[] = [];
       for (const p of produtos) {
-        const total = toNum(p.valor_total) || (toNum(p.valor_venda) * toNum(p.quantidade)) || (toNum(p.valor_unitario) * toNum(p.quantidade));
+        const bruto = toNum(p.valor_total) || (toNum(p.valor_venda) * toNum(p.quantidade)) || (toNum(p.valor_unitario) * toNum(p.quantidade));
+        const desc = toNum(p.valor_desconto) || toNum(p.desconto);
+        const total = Math.max(0, bruto - desc);
         valor_pecas += total;
         pecas_count += 1;
         itens_pecas.push({
@@ -182,7 +184,9 @@ Deno.serve(async (req) => {
       const itens_servicos: any[] = [];
       for (const s of servicos) {
         const desc = s.nome_servico || s.nome || s.descricao || s.detalhes || "";
-        const total = toNum(s.valor_total) || (toNum(s.valor_venda) * toNum(s.quantidade)) || (toNum(s.valor_unitario) * toNum(s.quantidade));
+        const bruto = toNum(s.valor_total) || (toNum(s.valor_venda) * toNum(s.quantidade)) || (toNum(s.valor_unitario) * toNum(s.quantidade));
+        const descItem = toNum(s.valor_desconto) || toNum(s.desconto);
+        const total = Math.max(0, bruto - descItem);
         const desloc = isDeslocamento(desc);
         if (!desloc) {
           valor_servicos += total;
@@ -195,6 +199,18 @@ Deno.serve(async (req) => {
           valor_total: total,
           deslocamento: desloc,
         });
+      }
+
+      // Desconto geral da OS — rateia proporcional entre peças e serviços (comissionáveis)
+      const descontoGeral = toNum(detail.desconto) || toNum(detail.valor_desconto);
+      if (descontoGeral > 0) {
+        const baseTotal = valor_pecas + valor_servicos;
+        if (baseTotal > 0) {
+          const rateioPecas = descontoGeral * (valor_pecas / baseTotal);
+          const rateioServ = descontoGeral * (valor_servicos / baseTotal);
+          valor_pecas = Math.max(0, valor_pecas - rateioPecas);
+          valor_servicos = Math.max(0, valor_servicos - rateioServ);
+        }
       }
 
       const comissao_pecas = valor_pecas * 0.01;
