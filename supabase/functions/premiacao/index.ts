@@ -21,6 +21,11 @@ function isDeslocamento(desc: string): boolean {
   return n.includes("deslocamento") || n.includes("desloc.") || n.startsWith("desloc");
 }
 
+function isHospedagemAlimentacao(desc: string): boolean {
+  const n = normalize(desc);
+  return n.includes("hospedag") || n.includes("alimentac") || n.includes("refeic") || n.includes("diaria") || n.includes("hotel");
+}
+
 function toNum(v: any): number {
   if (v === null || v === undefined) return 0;
   if (typeof v === "number") return v;
