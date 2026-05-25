@@ -151,7 +151,7 @@ Deno.serve(async (req) => {
     // Carrega contratos ativos e mapeia cliente_normalizado -> contrato
     const { data: contratosData } = await supabase
       .from("contratos")
-      .select("id, nome, grupo_id, cliente_nome, valor_hora, taxa_comissao_servico, vigencia_inicio, vigencia_fim, ativo")
+      .select("id, nome, grupo_id, cliente_nome, valor_hora, taxa_comissao_servico, taxa_comissao_peca, vigencia_inicio, vigencia_fim, ativo")
       .eq("ativo", true);
     const grupoIds = (contratosData || []).map((c: any) => c.grupo_id).filter(Boolean);
     const { data: membrosData } = grupoIds.length > 0
@@ -417,7 +417,8 @@ Deno.serve(async (req) => {
       const clienteNome = String(row.gc_os_cliente || detail.nome_cliente || "");
       const contrato = contratoByCliente.get(normalize(clienteNome));
 
-      let comissao_pecas = valor_pecas * 0.01;
+      const taxaPecas = contrato ? toNum(contrato.taxa_comissao_peca ?? 0.02) : 0.01;
+      let comissao_pecas = valor_pecas * taxaPecas;
       let comissao_servicos: number;
       let base_servico_contrato = 0;
       if (valor_servicos > 0 && servicos_count > 0 && contrato) {
@@ -494,7 +495,7 @@ Deno.serve(async (req) => {
         auvo_link: execTaskId ? `https://app2.auvo.com.br/relatorioTarefas/DetalheTarefa/${execTaskId}` : null,
         itens_pecas,
         itens_servicos,
-        contrato: contrato ? { nome: contrato.nome, valor_hora: toNum(contrato.valor_hora), taxa: toNum(contrato.taxa_comissao_servico), horas, base_servico: base_servico_contrato } : null,
+        contrato: contrato ? { nome: contrato.nome, valor_hora: toNum(contrato.valor_hora), taxa: toNum(contrato.taxa_comissao_servico), taxa_peca: toNum(contrato.taxa_comissao_peca ?? 0.02), horas, base_servico: base_servico_contrato } : null,
       });
     }
 

@@ -22,6 +22,7 @@ type Contrato = {
   cliente_nome: string | null;
   valor_hora: number;
   taxa_comissao_servico: number;
+  taxa_comissao_peca: number;
   vigencia_inicio: string | null;
   vigencia_fim: string | null;
   ativo: boolean;
@@ -123,7 +124,8 @@ export default function ContratosPage() {
                   <TableHead>Nome</TableHead>
                   <TableHead>Alvo</TableHead>
                   <TableHead className="text-right">R$/hora</TableHead>
-                  <TableHead className="text-right">% Comissão</TableHead>
+                  <TableHead className="text-right">% Serv.</TableHead>
+                  <TableHead className="text-right">% Peças</TableHead>
                   <TableHead>Vigência</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead className="text-right">Ações</TableHead>
@@ -142,6 +144,7 @@ export default function ContratosPage() {
                     </TableCell>
                     <TableCell className="text-right">{c.valor_hora.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</TableCell>
                     <TableCell className="text-right">{(c.taxa_comissao_servico * 100).toFixed(1)}%</TableCell>
+                    <TableCell className="text-right">{((c.taxa_comissao_peca ?? 0.02) * 100).toFixed(1)}%</TableCell>
                     <TableCell className="text-xs text-muted-foreground">
                       {c.vigencia_inicio || "∞"} → {c.vigencia_fim || "∞"}
                     </TableCell>
@@ -272,6 +275,7 @@ function ContratoDialog({
   const [clienteNome, setClienteNome] = useState(c?.cliente_nome || "");
   const [valorHora, setValorHora] = useState(String(c?.valor_hora ?? ""));
   const [taxa, setTaxa] = useState(String(((c?.taxa_comissao_servico ?? 0.15) * 100).toFixed(2)));
+  const [taxaPeca, setTaxaPeca] = useState(String(((c?.taxa_comissao_peca ?? 0.02) * 100).toFixed(2)));
   const [vigIni, setVigIni] = useState(c?.vigencia_inicio || "");
   const [vigFim, setVigFim] = useState(c?.vigencia_fim || "");
   const [ativo, setAtivo] = useState(c?.ativo ?? true);
@@ -304,6 +308,7 @@ function ContratoDialog({
         cliente_nome: tipo === "cliente" ? clienteNome.trim() : null,
         valor_hora: parseFloat(valorHora.replace(",", ".")) || 0,
         taxa_comissao_servico: (parseFloat(taxa.replace(",", ".")) || 0) / 100,
+        taxa_comissao_peca: (parseFloat(taxaPeca.replace(",", ".")) || 0) / 100,
         vigencia_inicio: vigIni || null,
         vigencia_fim: vigFim || null,
         ativo,
@@ -334,6 +339,7 @@ function ContratoDialog({
         setGrupoId(c?.grupo_id || "");
         setClienteNome(c?.cliente_nome || "");
         setValorHora(String(c?.valor_hora ?? "")); setTaxa(String(((c?.taxa_comissao_servico ?? 0.15) * 100).toFixed(2)));
+        setTaxaPeca(String(((c?.taxa_comissao_peca ?? 0.02) * 100).toFixed(2)));
         setVigIni(c?.vigencia_inicio || ""); setVigFim(c?.vigencia_fim || "");
         setAtivo(c?.ativo ?? true); setObs(c?.observacao || "");
       }
@@ -376,9 +382,10 @@ function ContratoDialog({
               </datalist>
             </div>
           )}
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-3 gap-3">
             <div><Label>Valor por hora (R$)</Label><Input value={valorHora} onChange={(e) => setValorHora(e.target.value)} placeholder="0,00" /></div>
-            <div><Label>% Comissão sobre base</Label><Input value={taxa} onChange={(e) => setTaxa(e.target.value)} placeholder="15" /></div>
+            <div><Label>% Comissão serviços</Label><Input value={taxa} onChange={(e) => setTaxa(e.target.value)} placeholder="15" /></div>
+            <div><Label>% Comissão peças</Label><Input value={taxaPeca} onChange={(e) => setTaxaPeca(e.target.value)} placeholder="2" /></div>
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div><Label>Vigência início</Label><Input type="date" value={vigIni} onChange={(e) => setVigIni(e.target.value)} /></div>
