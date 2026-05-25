@@ -309,8 +309,9 @@ Deno.serve(async (req) => {
       // Data de saída: prioriza GC detail (fonte da verdade), fallback para cache
       const dataSaidaRaw = detail.data_saida || detail.dataSaida || row.gc_os_data_saida || "";
 
-      // Tarefa Execução (atributo 73344) — fonte única para horas e link Auvo
-      const execTaskId = execTaskIdByOs.get(osId) || extractExecTaskId(detail, row.auvo_task_id);
+      // Tarefa Execução — usa apenas o vínculo já salvo localmente na base.
+      const execTaskIds = parseTaskIds(row.gc_os_tarefa_exec);
+      const execTaskId = execTaskIds[0] || (row.auvo_task_id ? String(row.auvo_task_id) : "");
       const dataSaidaStr = String(dataSaidaRaw).split("T")[0];
 
       // Re-filtra pelo data_saida real (mês solicitado)
@@ -362,8 +363,10 @@ Deno.serve(async (req) => {
       let valor_servicos = 0;
       let servicos_count = 0;
       let valor_servicos_taxa5 = 0;
-      // Horas reais trabalhadas (Auvo) — APENAS da Tarefa Execução (73344) do GC.
-      const horas = execTaskId ? (duracaoByAuvoTask.get(execTaskId) || 0) : 0;
+      // Horas reais trabalhadas (Auvo) — APENAS das tarefas de execução já salvas na base.
+      const horas = execTaskIds.length > 0
+        ? execTaskIds.reduce((acc, id) => acc + (duracaoByAuvoTask.get(id) || 0), 0)
+        : (execTaskId ? (duracaoByAuvoTask.get(execTaskId) || 0) : 0);
       let valor_servicos_recuperado = 0;
       const itens_servicos: any[] = [];
       for (const s of servicos) {
