@@ -624,6 +624,33 @@ export type Database = {
         }
         Relationships: []
       }
+      os_retornos: {
+        Row: {
+          criado_em: string
+          criado_por: string | null
+          gc_os_codigo: string
+          id: string
+          observacao: string | null
+          tecnico_retorno: string
+        }
+        Insert: {
+          criado_em?: string
+          criado_por?: string | null
+          gc_os_codigo: string
+          id?: string
+          observacao?: string | null
+          tecnico_retorno: string
+        }
+        Update: {
+          criado_em?: string
+          criado_por?: string | null
+          gc_os_codigo?: string
+          id?: string
+          observacao?: string | null
+          tecnico_retorno?: string
+        }
+        Relationships: []
+      }
       os_revisao: {
         Row: {
           alertas_motivo: string
