@@ -120,22 +120,13 @@ async function fetchOsDetail(osId: string, gcHeaders: Record<string, string>): P
   return null;
 }
 
-function extractExecTaskId(detail: any, fallbackAuvoTaskId?: string | number | null): string {
-  const atributos: any[] = Array.isArray(detail?.atributos) ? detail.atributos : [];
-  const execAttr = atributos.find((a: any) => {
-    const nested = a?.atributo || a;
-    return String(nested?.atributo_id || nested?.id || "") === "73344";
-  });
-  const execNested = execAttr?.atributo || execAttr;
-  const execRaw = String(execNested?.conteudo || execNested?.valor || "").trim();
-  const execTaskId = execRaw
-    .split("/")
-    .map((s: string) => s.trim())
-    .find((s: string) => /^\d+$/.test(s));
-
-  if (execTaskId) return execTaskId;
-  if (fallbackAuvoTaskId) return String(fallbackAuvoTaskId);
-  return "";
+function parseTaskIds(value: any): string[] {
+  return Array.from(new Set(
+    String(value || "")
+      .split("/")
+      .map((s) => s.trim())
+      .filter((s) => /^\d+$/.test(s))
+  ));
 }
 
 Deno.serve(async (req) => {
@@ -196,13 +187,13 @@ Deno.serve(async (req) => {
     // (re-filtramos abaixo pelo data_saida real do GC detail)
     const { data: rowsA, error: errA } = await supabase
       .from("tarefas_central")
-      .select("auvo_task_id, gc_os_id, gc_os_codigo, gc_os_cliente, gc_os_data_saida, gc_os_valor_total, gc_os_vendedor, tecnico, tecnico_id, data_tarefa, status_auvo, data_conclusao, duracao_decimal")
+      .select("auvo_task_id, gc_os_id, gc_os_codigo, gc_os_cliente, gc_os_data_saida, gc_os_valor_total, gc_os_vendedor, gc_os_tarefa_exec, tecnico, tecnico_id, data_tarefa, status_auvo, data_conclusao, duracao_decimal")
       .not("gc_os_id", "is", null)
       .gte("gc_os_data_saida", startDate)
       .lte("gc_os_data_saida", endDate);
     const { data: rowsB, error: errB } = await supabase
       .from("tarefas_central")
-      .select("auvo_task_id, gc_os_id, gc_os_codigo, gc_os_cliente, gc_os_data_saida, gc_os_valor_total, gc_os_vendedor, tecnico, tecnico_id, data_tarefa, status_auvo, data_conclusao, duracao_decimal")
+      .select("auvo_task_id, gc_os_id, gc_os_codigo, gc_os_cliente, gc_os_data_saida, gc_os_valor_total, gc_os_vendedor, gc_os_tarefa_exec, tecnico, tecnico_id, data_tarefa, status_auvo, data_conclusao, duracao_decimal")
       .not("gc_os_id", "is", null)
       .is("gc_os_data_saida", null);
     const error = errA || errB;
@@ -246,17 +237,13 @@ Deno.serve(async (req) => {
       batch.forEach((id, idx) => { if (results[idx]) osDetails.set(id, results[idx]); });
     }
 
-    // Reforça o mapa de duração usando a Tarefa Execução vinculada no GC,
-    // inclusive quando essa tarefa não está ligada à OS na cache local.
-    const execTaskIdByOs = new Map<string, string>();
+    // Reforça o mapa de duração usando apenas as tarefas de execução já
+    // resolvidas e salvas localmente em `gc_os_tarefa_exec`.
     const execTaskIds = new Set<string>();
-    for (const [osId, row] of byOs.entries()) {
-      const detail = osDetails.get(osId);
-      if (!detail) continue;
-      const execTaskId = extractExecTaskId(detail, row.auvo_task_id);
-      if (!execTaskId) continue;
-      execTaskIdByOs.set(osId, execTaskId);
-      execTaskIds.add(execTaskId);
+    for (const row of byOs.values()) {
+      for (const execTaskId of parseTaskIds(row.gc_os_tarefa_exec)) {
+        execTaskIds.add(execTaskId);
+      }
     }
 
     if (execTaskIds.size > 0) {
