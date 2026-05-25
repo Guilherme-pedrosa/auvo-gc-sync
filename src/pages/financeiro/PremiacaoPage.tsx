@@ -51,6 +51,14 @@ type Tech = {
   comissao_servicos: number;
   comissao_total: number;
   ordens: OsRow[];
+  km_total?: number;
+  telemetrias?: number;
+  km_por_telemetria?: number | null;
+  km_motorista_match?: string | null;
+  reducao_pct?: number;
+  reducao_valor?: number;
+  reducoes?: Array<{ motivo: string; pct: number; valor: number }>;
+  comissao_final?: number;
 };
 type Resp = {
   ok: boolean;
@@ -66,6 +74,8 @@ type Resp = {
     comissao_pecas: number;
     comissao_servicos: number;
     comissao_total: number;
+    reducao_valor?: number;
+    comissao_final?: number;
   };
 };
 
@@ -164,8 +174,17 @@ export default function PremiacaoPage() {
             <KpiCard label="Valor peças" value={brl(totais.valor_pecas)} icon={<Package className="h-4 w-4" />} />
             <KpiCard label="Valor serviços" value={brl(totais.valor_servicos)} icon={<Wrench className="h-4 w-4" />} />
             <KpiCard label="Premiação peças (1%)" value={brl(totais.comissao_pecas)} />
-            <KpiCard label="Premiação total" value={brl(totais.comissao_total)} highlight />
+            <KpiCard
+              label="Premiação final"
+              value={brl(totais.comissao_final ?? totais.comissao_total)}
+              highlight
+            />
           </div>
+        )}
+        {totais && (totais.reducao_valor ?? 0) > 0 && (
+          <p className="text-xs text-muted-foreground -mt-3">
+            Bruto {brl(totais.comissao_total)} − reduções {brl(totais.reducao_valor || 0)}
+          </p>
         )}
 
         {isFetching && !data && (
@@ -208,10 +227,23 @@ export default function PremiacaoPage() {
                         </div>
                         <div>
                           <div className="text-xs text-muted-foreground">Premiação</div>
-                          <div className="text-xl font-semibold text-primary">{brl(t.comissao_total)}</div>
+                          <div className="text-xl font-semibold text-primary">
+                            {brl(t.comissao_final ?? t.comissao_total)}
+                          </div>
                           <div className="text-[10px] text-muted-foreground">
                             {brl(t.comissao_pecas)} peças + {brl(t.comissao_servicos)} serv.
                           </div>
+                          {(t.reducao_valor ?? 0) > 0 && (
+                            <div className="text-[10px] text-destructive mt-0.5">
+                              −{brl(t.reducao_valor || 0)} ({Math.round((t.reducao_pct || 0) * 100)}% redução)
+                            </div>
+                          )}
+                          {t.km_por_telemetria != null && (
+                            <div className="text-[10px] text-muted-foreground mt-0.5">
+                              KM/telem.: {t.km_por_telemetria.toFixed(1)} km
+                              {t.km_por_telemetria < 120 && " ⚠ <120"}
+                            </div>
+                          )}
                         </div>
                       </div>
                     </div>
