@@ -523,15 +523,18 @@ Deno.serve(async (req) => {
       const comissao_total = comissao_pecas + comissao_servicos;
 
       // Técnico: prioriza VENDEDOR DA OS GC (responsável comercial/técnico),
-      // fallback para execução Auvo
-      const tecnicoRaw =
+      // fallback para execução Auvo. Se houver retorno registrado, o técnico
+      // do retorno assume a OS.
+      const gcCodigo = String(row.gc_os_codigo || detail.codigo || "").trim();
+      const tecnicoRetorno = gcCodigo ? retornoByCodigo.get(gcCodigo) : undefined;
+      const tecnicoRaw = tecnicoRetorno ||
         String(detail.nome_vendedor || "").trim() ||
         (row.gc_os_vendedor || "").trim() ||
         String(detail.nome_tecnico || "").trim() ||
         (row.tecnico || "").trim() ||
         "Sem técnico";
       const tecnico = canonicalTecnico(tecnicoRaw);
-      const tecnico_id = String(detail.vendedor_id || row.tecnico_id || "");
+      const tecnico_id = tecnicoRetorno ? "" : String(detail.vendedor_id || row.tecnico_id || "");
       // Chave de agregação pelo PRIMEIRO NOME — consolida todas as variações da mesma pessoa
       const primeiroNome = normalize(tecnico).split(/\s+/)[0] || normalize(tecnico);
       const key = primeiroNome;
