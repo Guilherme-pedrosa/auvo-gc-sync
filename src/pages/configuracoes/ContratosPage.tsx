@@ -115,7 +115,7 @@ export default function ContratosPage() {
           {loadingContratos ? (
             <div className="flex justify-center py-8"><Loader2 className="h-6 w-6 animate-spin" /></div>
           ) : contratos.length === 0 ? (
-            <p className="text-sm text-muted-foreground text-center py-6">Nenhum contrato cadastrado. {grupos.length === 0 && "Crie um grupo de clientes primeiro."}</p>
+            <p className="text-sm text-muted-foreground text-center py-6">Nenhum contrato cadastrado.</p>
           ) : (
             <Table>
               <TableHeader>
