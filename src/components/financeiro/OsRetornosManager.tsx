@@ -5,6 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { SearchableSelect } from "@/components/ui/searchable-select";
 import { Loader2, Plus, Trash2, RotateCcw } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
 
@@ -14,6 +15,11 @@ type Retorno = {
   tecnico_retorno: string;
   observacao: string | null;
   criado_em: string;
+};
+
+type TecnicoOption = {
+  value: string;
+  label: string;
 };
 
 export function OsRetornosManager({ onChanged }: { onChanged?: () => void }) {
@@ -31,6 +37,24 @@ export function OsRetornosManager({ onChanged }: { onChanged?: () => void }) {
         .order("criado_em", { ascending: false });
       if (error) throw error;
       return (data || []) as Retorno[];
+    },
+  });
+
+  const { data: tecnicos } = useQuery<TecnicoOption[]>({
+    queryKey: ["tecnicos_distinct"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("tarefas_central")
+        .select("tecnico")
+        .not("tecnico", "is", null)
+        .neq("tecnico", "");
+      if (error) throw error;
+      const set = new Set<string>();
+      (data || []).forEach((row: any) => set.add(row.tecnico));
+      const arr = Array.from(set)
+        .sort((a, b) => a.localeCompare(b))
+        .map((t) => ({ value: t, label: t }));
+      return arr;
     },
   });
 
@@ -83,7 +107,15 @@ export function OsRetornosManager({ onChanged }: { onChanged?: () => void }) {
           </div>
           <div>
             <label className="text-xs text-muted-foreground block mb-1">Técnico do retorno</label>
-            <Input value={tecnico} onChange={(e) => setTecnico(e.target.value)} placeholder="Nome do técnico" />
+            <SearchableSelect
+              options={tecnicos || []}
+              value={tecnico}
+              onValueChange={(val) => setTecnico(val)}
+              placeholder="Selecionar técnico…"
+              searchPlaceholder="Buscar técnico…"
+              emptyText="Nenhum técnico encontrado."
+              className="w-full"
+            />
           </div>
           <div>
             <label className="text-xs text-muted-foreground block mb-1">Observação (opcional)</label>
