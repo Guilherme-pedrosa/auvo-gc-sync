@@ -161,7 +161,7 @@ export default function PremiacaoPage() {
               disabled={!tecnicos.length}
               onClick={() => gerarPdfTelemetrias(activeMonth, tecnicos as any)}
             >
-              <FileText className="h-4 w-4 mr-1.5" /> PDF telemetrias
+              <FileText className="h-4 w-4 mr-1.5" /> Espelho de cálculo
             </Button>
           </div>
         </div>
