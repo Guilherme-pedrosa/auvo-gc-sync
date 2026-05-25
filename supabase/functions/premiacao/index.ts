@@ -257,7 +257,13 @@ Deno.serve(async (req) => {
       }
 
       // Desconto geral da OS — rateia proporcional entre peças e serviços (comissionáveis)
-      const descontoGeral = toNum(detail.desconto) || toNum(detail.valor_desconto);
+      // GC usa os campos `desconto_valor` (R$) e `desconto_porcentagem` (%)
+      const descValorOS = toNum(detail.desconto_valor) || toNum(detail.desconto) || toNum(detail.valor_desconto);
+      const descPctOS = toNum(detail.desconto_porcentagem);
+      const subtotalOS = valor_pecas + valor_servicos;
+      const descontoGeral = descValorOS > 0
+        ? descValorOS
+        : (descPctOS > 0 ? subtotalOS * (descPctOS / 100) : 0);
       if (descontoGeral > 0) {
         const baseTotal = valor_pecas + valor_servicos;
         if (baseTotal > 0) {
