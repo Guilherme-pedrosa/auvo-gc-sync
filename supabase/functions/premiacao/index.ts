@@ -596,6 +596,7 @@ Deno.serve(async (req) => {
     const tvhUrl = Deno.env.get("TVH_SUPABASE_URL");
     const tvhKey = Deno.env.get("TVH_SERVICE_ROLE_KEY");
     const kmByTec = new Map<string, { km: number; tel: number; motorista: string }>();
+    console.log(`[premiacao] TVH config: url=${tvhUrl ? tvhUrl.slice(0, 40) : "MISSING"} key=${tvhKey ? `${tvhKey.slice(0, 20)}...(len=${tvhKey.length})` : "MISSING"}`);
     if (tvhUrl && tvhKey) {
       try {
         const tvh = createClient(tvhUrl, tvhKey);
