@@ -159,14 +159,14 @@ export default function PremiacaoPage() {
             <KpiCard label="OS no mês" value={String(totais.os_count)} icon={<Wrench className="h-4 w-4" />} />
             <KpiCard label="Valor peças" value={brl(totais.valor_pecas)} icon={<Package className="h-4 w-4" />} />
             <KpiCard label="Valor serviços" value={brl(totais.valor_servicos)} icon={<Wrench className="h-4 w-4" />} />
-            <KpiCard label="Comissão peças (1%)" value={brl(totais.comissao_pecas)} />
-            <KpiCard label="Comissão total" value={brl(totais.comissao_total)} highlight />
+            <KpiCard label="Premiação peças (1%)" value={brl(totais.comissao_pecas)} />
+            <KpiCard label="Premiação total" value={brl(totais.comissao_total)} highlight />
           </div>
         )}
 
         {isFetching && !data && (
           <div className="flex items-center justify-center py-20 text-muted-foreground gap-2">
-            <Loader2 className="h-5 w-5 animate-spin" /> Buscando OS e calculando comissões…
+            <Loader2 className="h-5 w-5 animate-spin" /> Buscando OS e calculando premiações…
           </div>
         )}
 
@@ -203,7 +203,7 @@ export default function PremiacaoPage() {
                           <div className="text-[10px] text-muted-foreground">excl. deslocamento/hosp.</div>
                         </div>
                         <div>
-                          <div className="text-xs text-muted-foreground">Comissão</div>
+                          <div className="text-xs text-muted-foreground">Premiação</div>
                           <div className="text-xl font-semibold text-primary">{brl(t.comissao_total)}</div>
                           <div className="text-[10px] text-muted-foreground">
                             {brl(t.comissao_pecas)} peças + {brl(t.comissao_servicos)} serv.
@@ -223,8 +223,8 @@ export default function PremiacaoPage() {
                           <TableHead>Saída</TableHead>
                           <TableHead className="text-right">Peças</TableHead>
                           <TableHead className="text-right">Serviços</TableHead>
-                          <TableHead className="text-right">Com. peças</TableHead>
-                          <TableHead className="text-right">Com. serv.</TableHead>
+                          <TableHead className="text-right">Prem. peças</TableHead>
+                          <TableHead className="text-right">Prem. serv.</TableHead>
                           <TableHead className="text-right">Total</TableHead>
                         </TableRow>
                       </TableHeader>
@@ -319,7 +319,7 @@ function OsDetailDialog({ os, onClose }: { os: OsRow | null; onClose: () => void
                 items={os.itens_pecas || []}
                 totalLabel="Total peças"
                 total={os.valor_pecas}
-                commissionLabel={os.contrato ? `Comissão contrato (${((os.contrato.taxa_peca ?? 0.02) * 100).toFixed(1)}%)` : "Comissão (1%)"}
+                commissionLabel={os.contrato ? `Premiação contrato (${((os.contrato.taxa_peca ?? 0.02) * 100).toFixed(1)}%)` : "Premiação (1%)"}
                 commission={os.comissao_pecas}
                 emptyMsg="Sem peças nesta OS"
               />
@@ -329,7 +329,7 @@ function OsDetailDialog({ os, onClose }: { os: OsRow | null; onClose: () => void
                 items={os.itens_servicos || []}
                 totalLabel="Total serviços GC (sem deslocamento)"
                 total={os.valor_servicos}
-                commissionLabel={os.contrato ? `Comissão contrato (${(os.contrato.taxa * 100).toFixed(1)}%)` : "Comissão (15%)"}
+                commissionLabel={os.contrato ? `Premiação contrato (${(os.contrato.taxa * 100).toFixed(1)}%)` : "Premiação (15%)"}
                 commission={os.comissao_servicos}
                 emptyMsg="Sem serviços nesta OS"
                 highlightDeslocamento
@@ -344,14 +344,14 @@ function OsDetailDialog({ os, onClose }: { os: OsRow | null; onClose: () => void
                   <div className="text-xs text-muted-foreground grid grid-cols-2 gap-1">
                     <span>Valor/hora: <b>{brl(os.contrato.valor_hora)}</b></span>
                     <span>Horas trabalhadas: <b>{os.contrato.horas.toFixed(2)}h</b></span>
-                    <span>Base de comissão: <b>{brl(os.contrato.base_servico)}</b></span>
+                    <span>Base de premiação: <b>{brl(os.contrato.base_servico)}</b></span>
                     <span>Taxa: <b>{(os.contrato.taxa * 100).toFixed(1)}%</b></span>
                   </div>
                 </div>
               )}
 
               <div className="border-t pt-3 flex items-center justify-between">
-                <span className="text-sm font-medium">Comissão total da OS</span>
+                <span className="text-sm font-medium">Premiação total da OS</span>
                 <span className="text-lg font-semibold text-primary">{brl(os.comissao_total)}</span>
               </div>
             </div>
