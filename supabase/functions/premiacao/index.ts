@@ -232,6 +232,7 @@ Deno.serve(async (req) => {
       data_saida: string;
       valor_pecas: number;
       valor_servicos: number;
+      faturamento: number;
       comissao_pecas: number;
       comissao_servicos: number;
       comissao_total: number;
@@ -282,6 +283,7 @@ Deno.serve(async (req) => {
 
       let valor_pecas = 0;
       let pecas_count = 0;
+      let faturamento_os = 0;
       const itens_pecas: any[] = [];
       for (const p of produtos) {
         const descProd = String(p.nome_produto || p.detalhes || "");
@@ -292,6 +294,7 @@ Deno.serve(async (req) => {
           valor_pecas += total;
           pecas_count += 1;
         }
+        if (!hospAlim && total > 0) faturamento_os += total;
         itens_pecas.push({
           descricao: String(p.nome_produto || p.detalhes || "Produto"),
           quantidade: toNum(p.quantidade),
@@ -327,6 +330,7 @@ Deno.serve(async (req) => {
           total = baseUnitaria;
           recuperado = true;
         }
+        if (!desloc && !hospAlim && total > 0) faturamento_os += total;
         const semValorRecebido = recuperado
           ? false
           : (total <= 0 || totalRecebidoOS <= 0 || totalRecebidoServicosOS <= 0);
@@ -445,6 +449,7 @@ Deno.serve(async (req) => {
         agg = {
           tecnico: displayNome, tecnico_id, os_count: 0,
           valor_pecas: 0, valor_servicos: 0,
+          faturamento: 0,
           comissao_pecas: 0, comissao_servicos: 0, comissao_total: 0,
           ordens: [],
         };
@@ -453,6 +458,7 @@ Deno.serve(async (req) => {
       agg.os_count += 1;
       agg.valor_pecas += valor_pecas;
       agg.valor_servicos += valor_servicos;
+      agg.faturamento += faturamento_os;
       agg.comissao_pecas += comissao_pecas;
       agg.comissao_servicos += comissao_servicos;
       agg.comissao_total += comissao_total;
@@ -462,6 +468,7 @@ Deno.serve(async (req) => {
         cliente: String(row.gc_os_cliente || detail.nome_cliente || ""),
         data_saida: dataSaidaStr,
         valor_pecas, valor_servicos,
+        faturamento: faturamento_os,
         comissao_pecas, comissao_servicos, comissao_total,
         pecas_count, servicos_count,
         situacao: String(detail.nome_situacao || ""),
@@ -480,10 +487,11 @@ Deno.serve(async (req) => {
       os_count: acc.os_count + t.os_count,
       valor_pecas: acc.valor_pecas + t.valor_pecas,
       valor_servicos: acc.valor_servicos + t.valor_servicos,
+      faturamento: acc.faturamento + t.faturamento,
       comissao_pecas: acc.comissao_pecas + t.comissao_pecas,
       comissao_servicos: acc.comissao_servicos + t.comissao_servicos,
       comissao_total: acc.comissao_total + t.comissao_total,
-    }), { os_count: 0, valor_pecas: 0, valor_servicos: 0, comissao_pecas: 0, comissao_servicos: 0, comissao_total: 0 });
+    }), { os_count: 0, valor_pecas: 0, valor_servicos: 0, faturamento: 0, comissao_pecas: 0, comissao_servicos: 0, comissao_total: 0 });
 
     return new Response(
       JSON.stringify({
