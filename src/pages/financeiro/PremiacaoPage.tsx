@@ -174,8 +174,17 @@ export default function PremiacaoPage() {
             <KpiCard label="Valor peças" value={brl(totais.valor_pecas)} icon={<Package className="h-4 w-4" />} />
             <KpiCard label="Valor serviços" value={brl(totais.valor_servicos)} icon={<Wrench className="h-4 w-4" />} />
             <KpiCard label="Premiação peças (1%)" value={brl(totais.comissao_pecas)} />
-            <KpiCard label="Premiação total" value={brl(totais.comissao_total)} highlight />
+            <KpiCard
+              label="Premiação final"
+              value={brl(totais.comissao_final ?? totais.comissao_total)}
+              highlight
+            />
           </div>
+        )}
+        {totais && (totais.reducao_valor ?? 0) > 0 && (
+          <p className="text-xs text-muted-foreground -mt-3">
+            Bruto {brl(totais.comissao_total)} − reduções {brl(totais.reducao_valor || 0)}
+          </p>
         )}
 
         {isFetching && !data && (
