@@ -259,6 +259,16 @@ Deno.serve(async (req) => {
 
       // Data de saída: prioriza GC detail (fonte da verdade), fallback para cache
       const dataSaidaRaw = detail.data_saida || detail.dataSaida || row.gc_os_data_saida || "";
+
+      // Tarefa Execução (atributo 73344) — fonte única para horas e link Auvo
+      const _atributos: any[] = Array.isArray(detail?.atributos) ? detail.atributos : [];
+      const _execAttr = _atributos.find((a: any) => {
+        const nested = a?.atributo || a;
+        return String(nested?.atributo_id || nested?.id || "") === "73344";
+      });
+      const _execNested = _execAttr?.atributo || _execAttr;
+      const _execRaw = String(_execNested?.conteudo || _execNested?.valor || "").trim();
+      const execTaskId = _execRaw.split("/").map((s: string) => s.trim()).find((s: string) => /^\d+$/.test(s)) || "";
       const dataSaidaStr = String(dataSaidaRaw).split("T")[0];
 
       // Re-filtra pelo data_saida real (mês solicitado)
