@@ -395,7 +395,6 @@ Deno.serve(async (req) => {
       // Verifica contrato pelo cliente da OS
       const clienteNome = String(row.gc_os_cliente || detail.nome_cliente || "");
       const contrato = contratoByCliente.get(normalize(clienteNome));
-      const horas = horasByOs.get(osId) || 0;
 
       let comissao_pecas = valor_pecas * 0.01;
       let comissao_servicos: number;
@@ -411,6 +410,13 @@ Deno.serve(async (req) => {
         comissao_servicos = 0;
       } else {
         comissao_servicos = valor_servicos * 0.15;
+      }
+      // Serviço RECUPERADO (item GC zerado mas qtd × valor_unit > 0 + horas Auvo):
+      // comissiona pela taxa do contrato se houver, senão 15%.
+      if (valor_servicos_recuperado > 0) {
+        const taxaRec = contrato ? toNum(contrato.taxa_comissao_servico) : 0.15;
+        comissao_servicos += valor_servicos_recuperado * taxaRec;
+        valor_servicos += valor_servicos_recuperado;
       }
       // Serviços com taxa especial de 5% (ex.: higienização de coifas)
       const comissao_servicos_taxa5 = valor_servicos_taxa5 * 0.05;
