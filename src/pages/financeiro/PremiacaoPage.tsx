@@ -297,6 +297,16 @@ function OsDetailDialog({ os, onClose }: { os: OsRow | null; onClose: () => void
                     Abrir no GC <ExternalLink className="h-3 w-3" />
                   </a>
                 )}
+                {os.auvo_link && (
+                  <a
+                    href={os.auvo_link}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-xs text-primary inline-flex items-center gap-1 hover:underline"
+                  >
+                    Abrir no Auvo <ExternalLink className="h-3 w-3" />
+                  </a>
+                )}
               </DialogTitle>
               <p className="text-sm text-muted-foreground">
                 {os.cliente} · Saída {os.data_saida}
