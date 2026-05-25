@@ -304,18 +304,39 @@ Deno.serve(async (req) => {
       let valor_servicos = 0;
       let servicos_count = 0;
       let valor_servicos_taxa5 = 0;
+      // Horas reais trabalhadas (Auvo) — usadas como gatilho de recuperação
+      // quando o serviço veio zerado na GC.
+      const horas = horasByOs.get(osId) || 0;
+      let valor_servicos_recuperado = 0;
       const itens_servicos: any[] = [];
       for (const s of servicos) {
         const desc = s.nome_servico || s.nome || s.descricao || s.detalhes || "";
-        const total = calcItemTotal(s);
+        let total = calcItemTotal(s);
         const desloc = isDeslocamento(desc);
         const hospAlim = isHospedagemAlimentacao(desc);
-        const semValorRecebido = total <= 0 || totalRecebidoOS <= 0 || totalRecebidoServicosOS <= 0;
-        const naoComissionado = desloc || hospAlim || semValorRecebido;
         const taxa5 = isServicoTaxa5(desc);
+        // Recuperação: se o item de serviço foi lançado com total=0 mas
+        // tem qtd × valor_unitário > 0 e há horas Auvo finalizadas,
+        // assume que houve erro de lançamento e recupera a base
+        // (qtd × valor_unitário) — ignora a checagem de totalRecebidoServicosOS.
+        const qtd = toNum(s.quantidade);
+        const vu = toNum(s.valor_venda) || toNum(s.valor_unitario);
+        const baseUnitaria = qtd * vu;
+        let recuperado = false;
+        if (total <= 0 && baseUnitaria > 0 && horas > 0 && totalRecebidoOS > 0 && !desloc && !hospAlim) {
+          total = baseUnitaria;
+          recuperado = true;
+        }
+        const semValorRecebido = recuperado
+          ? false
+          : (total <= 0 || totalRecebidoOS <= 0 || totalRecebidoServicosOS <= 0);
+        const naoComissionado = desloc || hospAlim || semValorRecebido;
         if (!naoComissionado && total > 0) {
           if (taxa5) {
             valor_servicos_taxa5 += total;
+          } else if (recuperado) {
+            valor_servicos_recuperado += total;
+            servicos_count += 1;
           } else {
             valor_servicos += total;
             servicos_count += 1;
@@ -323,12 +344,13 @@ Deno.serve(async (req) => {
         }
         itens_servicos.push({
           descricao: String(desc || "Serviço"),
-          quantidade: toNum(s.quantidade),
-          valor_unitario: toNum(s.valor_venda) || toNum(s.valor_unitario),
+          quantidade: qtd,
+          valor_unitario: vu,
           valor_total: total,
           deslocamento: desloc,
           nao_comissionado: naoComissionado,
           taxa_especial: taxa5 && !naoComissionado ? 0.05 : undefined,
+          recuperado: recuperado || undefined,
         });
       }
 
