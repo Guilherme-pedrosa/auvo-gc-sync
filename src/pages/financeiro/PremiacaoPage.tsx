@@ -11,7 +11,7 @@ import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { OsRetornosManager } from "@/components/financeiro/OsRetornosManager";
 import { DemeritosManager } from "@/components/financeiro/DemeritosManager";
-import { gerarPdfTelemetrias } from "@/lib/pdf/telemetriaPdf";
+import { gerarPdfsTelemetrias, gerarPdfTecnico } from "@/lib/pdf/telemetriaPdf";
 import { FileText } from "lucide-react";
 
 type ItemRow = {
@@ -159,9 +159,9 @@ export default function PremiacaoPage() {
               variant="outline"
               size="sm"
               disabled={!tecnicos.length}
-              onClick={() => gerarPdfTelemetrias(activeMonth, tecnicos as any)}
+              onClick={() => gerarPdfsTelemetrias(activeMonth, tecnicos as any)}
             >
-              <FileText className="h-4 w-4 mr-1.5" /> Espelho de cálculo
+              <FileText className="h-4 w-4 mr-1.5" /> Espelhos (ZIP por técnico)
             </Button>
           </div>
         </div>
