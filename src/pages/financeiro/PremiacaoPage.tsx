@@ -10,6 +10,9 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { OsRetornosManager } from "@/components/financeiro/OsRetornosManager";
+import { DemeritosManager } from "@/components/financeiro/DemeritosManager";
+import { gerarPdfTelemetrias } from "@/lib/pdf/telemetriaPdf";
+import { FileText } from "lucide-react";
 
 type ItemRow = {
   descricao: string;
@@ -146,6 +149,19 @@ export default function PremiacaoPage() {
             <Button onClick={handleCalc} disabled={isFetching}>
               {isFetching ? <Loader2 className="h-4 w-4 animate-spin" /> : <Calculator className="h-4 w-4" />}
               Calcular
+            </Button>
+            <DemeritosManager
+              month={activeMonth}
+              tecnicos={tecnicos.map((t) => t.tecnico)}
+              onChanged={() => refetch()}
+            />
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={!tecnicos.length}
+              onClick={() => gerarPdfTelemetrias(activeMonth, tecnicos as any)}
+            >
+              <FileText className="h-4 w-4 mr-1.5" /> PDF telemetrias
             </Button>
           </div>
         </div>
