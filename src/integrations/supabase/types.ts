@@ -241,6 +241,77 @@ export type Database = {
           },
         ]
       }
+      demerito_lancamentos: {
+        Row: {
+          criado_em: string
+          criado_por: string | null
+          id: string
+          mes: string
+          motivo_id: string | null
+          motivo_nome: string
+          observacao: string | null
+          percentual: number
+          tecnico_nome: string
+        }
+        Insert: {
+          criado_em?: string
+          criado_por?: string | null
+          id?: string
+          mes: string
+          motivo_id?: string | null
+          motivo_nome: string
+          observacao?: string | null
+          percentual?: number
+          tecnico_nome: string
+        }
+        Update: {
+          criado_em?: string
+          criado_por?: string | null
+          id?: string
+          mes?: string
+          motivo_id?: string | null
+          motivo_nome?: string
+          observacao?: string | null
+          percentual?: number
+          tecnico_nome?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "demerito_lancamentos_motivo_id_fkey"
+            columns: ["motivo_id"]
+            isOneToOne: false
+            referencedRelation: "demerito_motivos"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      demerito_motivos: {
+        Row: {
+          ativo: boolean
+          atualizado_em: string
+          criado_em: string
+          id: string
+          nome: string
+          percentual: number
+        }
+        Insert: {
+          ativo?: boolean
+          atualizado_em?: string
+          criado_em?: string
+          id?: string
+          nome: string
+          percentual?: number
+        }
+        Update: {
+          ativo?: boolean
+          atualizado_em?: string
+          criado_em?: string
+          id?: string
+          nome?: string
+          percentual?: number
+        }
+        Relationships: []
+      }
       equipamento_tarefas_auvo: {
         Row: {
           auvo_equipment_id: string
