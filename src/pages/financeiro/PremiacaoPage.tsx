@@ -51,6 +51,14 @@ type Tech = {
   comissao_servicos: number;
   comissao_total: number;
   ordens: OsRow[];
+  km_total?: number;
+  telemetrias?: number;
+  km_por_telemetria?: number | null;
+  km_motorista_match?: string | null;
+  reducao_pct?: number;
+  reducao_valor?: number;
+  reducoes?: Array<{ motivo: string; pct: number; valor: number }>;
+  comissao_final?: number;
 };
 type Resp = {
   ok: boolean;
@@ -66,6 +74,8 @@ type Resp = {
     comissao_pecas: number;
     comissao_servicos: number;
     comissao_total: number;
+    reducao_valor?: number;
+    comissao_final?: number;
   };
 };
 
