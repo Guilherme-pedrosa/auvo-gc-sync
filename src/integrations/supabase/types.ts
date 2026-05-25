@@ -189,8 +189,9 @@ export type Database = {
         Row: {
           ativo: boolean
           atualizado_em: string
+          cliente_nome: string | null
           criado_em: string
-          grupo_id: string
+          grupo_id: string | null
           id: string
           nome: string
           observacao: string | null
@@ -202,8 +203,9 @@ export type Database = {
         Insert: {
           ativo?: boolean
           atualizado_em?: string
+          cliente_nome?: string | null
           criado_em?: string
-          grupo_id: string
+          grupo_id?: string | null
           id?: string
           nome: string
           observacao?: string | null
@@ -215,8 +217,9 @@ export type Database = {
         Update: {
           ativo?: boolean
           atualizado_em?: string
+          cliente_nome?: string | null
           criado_em?: string
-          grupo_id?: string
+          grupo_id?: string | null
           id?: string
           nome?: string
           observacao?: string | null

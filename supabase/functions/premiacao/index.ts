@@ -148,9 +148,9 @@ Deno.serve(async (req) => {
     // Carrega contratos ativos e mapeia cliente_normalizado -> contrato
     const { data: contratosData } = await supabase
       .from("contratos")
-      .select("id, nome, grupo_id, valor_hora, taxa_comissao_servico, vigencia_inicio, vigencia_fim, ativo")
+      .select("id, nome, grupo_id, cliente_nome, valor_hora, taxa_comissao_servico, vigencia_inicio, vigencia_fim, ativo")
       .eq("ativo", true);
-    const grupoIds = (contratosData || []).map((c: any) => c.grupo_id);
+    const grupoIds = (contratosData || []).map((c: any) => c.grupo_id).filter(Boolean);
     const { data: membrosData } = grupoIds.length > 0
       ? await supabase.from("grupo_cliente_membros").select("grupo_id, cliente_nome").in("grupo_id", grupoIds)
       : { data: [] as any[] };
@@ -160,8 +160,13 @@ Deno.serve(async (req) => {
       const fim = c.vigencia_fim || null;
       if (ini && ini > endDate) continue;
       if (fim && fim < startDate) continue;
-      for (const m of (membrosData || []).filter((x: any) => x.grupo_id === c.grupo_id)) {
-        contratoByCliente.set(normalize(m.cliente_nome), c);
+      if (c.grupo_id) {
+        for (const m of (membrosData || []).filter((x: any) => x.grupo_id === c.grupo_id)) {
+          contratoByCliente.set(normalize(m.cliente_nome), c);
+        }
+      }
+      if (c.cliente_nome) {
+        contratoByCliente.set(normalize(c.cliente_nome), c);
       }
     }
     console.log(`[premiacao] ${contratosData?.length || 0} contratos ativos, ${contratoByCliente.size} clientes mapeados`);

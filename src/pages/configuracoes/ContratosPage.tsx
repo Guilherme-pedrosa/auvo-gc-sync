@@ -18,7 +18,8 @@ type Membro = { id: string; grupo_id: string; cliente_nome: string };
 type Contrato = {
   id: string;
   nome: string;
-  grupo_id: string;
+  grupo_id: string | null;
+  cliente_nome: string | null;
   valor_hora: number;
   taxa_comissao_servico: number;
   vigencia_inicio: string | null;
@@ -106,7 +107,7 @@ export default function ContratosPage() {
       <Card>
         <CardHeader className="flex flex-row items-center justify-between">
           <CardTitle className="flex items-center gap-2"><FileText className="h-5 w-5" />Contratos</CardTitle>
-          <Button size="sm" onClick={() => setContratoDialog({ open: true })} disabled={grupos.length === 0}>
+          <Button size="sm" onClick={() => setContratoDialog({ open: true })}>
             <Plus className="h-4 w-4 mr-1" /> Novo contrato
           </Button>
         </CardHeader>
@@ -114,13 +115,13 @@ export default function ContratosPage() {
           {loadingContratos ? (
             <div className="flex justify-center py-8"><Loader2 className="h-6 w-6 animate-spin" /></div>
           ) : contratos.length === 0 ? (
-            <p className="text-sm text-muted-foreground text-center py-6">Nenhum contrato cadastrado. {grupos.length === 0 && "Crie um grupo de clientes primeiro."}</p>
+            <p className="text-sm text-muted-foreground text-center py-6">Nenhum contrato cadastrado.</p>
           ) : (
             <Table>
               <TableHeader>
                 <TableRow>
                   <TableHead>Nome</TableHead>
-                  <TableHead>Grupo</TableHead>
+                  <TableHead>Alvo</TableHead>
                   <TableHead className="text-right">R$/hora</TableHead>
                   <TableHead className="text-right">% Comissão</TableHead>
                   <TableHead>Vigência</TableHead>
@@ -132,7 +133,13 @@ export default function ContratosPage() {
                 {contratos.map((c) => (
                   <TableRow key={c.id}>
                     <TableCell className="font-medium">{c.nome}</TableCell>
-                    <TableCell>{grupoNomeById[c.grupo_id] || "—"}</TableCell>
+                    <TableCell>
+                      {c.grupo_id
+                        ? `Grupo: ${grupoNomeById[c.grupo_id] || "—"}`
+                        : c.cliente_nome
+                        ? `Cliente: ${c.cliente_nome}`
+                        : "—"}
+                    </TableCell>
                     <TableCell className="text-right">{c.valor_hora.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</TableCell>
                     <TableCell className="text-right">{(c.taxa_comissao_servico * 100).toFixed(1)}%</TableCell>
                     <TableCell className="text-xs text-muted-foreground">
@@ -260,7 +267,9 @@ function ContratoDialog({
   const qc = useQueryClient();
   const c = state.contrato;
   const [nome, setNome] = useState(c?.nome || "");
+  const [tipo, setTipo] = useState<"grupo" | "cliente">(c?.cliente_nome ? "cliente" : "grupo");
   const [grupoId, setGrupoId] = useState(c?.grupo_id || "");
+  const [clienteNome, setClienteNome] = useState(c?.cliente_nome || "");
   const [valorHora, setValorHora] = useState(String(c?.valor_hora ?? ""));
   const [taxa, setTaxa] = useState(String(((c?.taxa_comissao_servico ?? 0.15) * 100).toFixed(2)));
   const [vigIni, setVigIni] = useState(c?.vigencia_inicio || "");
@@ -268,13 +277,31 @@ function ContratoDialog({
   const [ativo, setAtivo] = useState(c?.ativo ?? true);
   const [obs, setObs] = useState(c?.observacao || "");
 
+  const { data: clientesDisponiveis = [] } = useQuery({
+    queryKey: ["clientes_distintos"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("tarefas_central")
+        .select("gc_os_cliente")
+        .not("gc_os_cliente", "is", null)
+        .limit(5000);
+      if (error) throw error;
+      const set = new Set<string>();
+      (data || []).forEach((r: any) => { if (r.gc_os_cliente) set.add(r.gc_os_cliente); });
+      return Array.from(set).sort();
+    },
+    enabled: state.open,
+  });
+
   const save = useMutation({
     mutationFn: async () => {
       if (!nome.trim()) throw new Error("Nome obrigatório");
-      if (!grupoId) throw new Error("Selecione um grupo");
+      if (tipo === "grupo" && !grupoId) throw new Error("Selecione um grupo");
+      if (tipo === "cliente" && !clienteNome.trim()) throw new Error("Informe o cliente");
       const payload = {
         nome,
-        grupo_id: grupoId,
+        grupo_id: tipo === "grupo" ? grupoId : null,
+        cliente_nome: tipo === "cliente" ? clienteNome.trim() : null,
         valor_hora: parseFloat(valorHora.replace(",", ".")) || 0,
         taxa_comissao_servico: (parseFloat(taxa.replace(",", ".")) || 0) / 100,
         vigencia_inicio: vigIni || null,
@@ -302,7 +329,10 @@ function ContratoDialog({
     <Dialog open={state.open} onOpenChange={(o) => {
       if (!o) onClose();
       else {
-        setNome(c?.nome || ""); setGrupoId(c?.grupo_id || "");
+        setNome(c?.nome || "");
+        setTipo(c?.cliente_nome ? "cliente" : "grupo");
+        setGrupoId(c?.grupo_id || "");
+        setClienteNome(c?.cliente_nome || "");
         setValorHora(String(c?.valor_hora ?? "")); setTaxa(String(((c?.taxa_comissao_servico ?? 0.15) * 100).toFixed(2)));
         setVigIni(c?.vigencia_inicio || ""); setVigFim(c?.vigencia_fim || "");
         setAtivo(c?.ativo ?? true); setObs(c?.observacao || "");
@@ -313,14 +343,39 @@ function ContratoDialog({
         <div className="space-y-3">
           <div><Label>Nome do contrato</Label><Input value={nome} onChange={(e) => setNome(e.target.value)} /></div>
           <div>
-            <Label>Grupo de clientes</Label>
-            <Select value={grupoId} onValueChange={setGrupoId}>
-              <SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
+            <Label>Aplicar a</Label>
+            <Select value={tipo} onValueChange={(v) => setTipo(v as "grupo" | "cliente")}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
               <SelectContent>
-                {grupos.map((g) => <SelectItem key={g.id} value={g.id}>{g.nome}</SelectItem>)}
+                <SelectItem value="grupo">Grupo de clientes</SelectItem>
+                <SelectItem value="cliente">Cliente específico</SelectItem>
               </SelectContent>
             </Select>
           </div>
+          {tipo === "grupo" ? (
+            <div>
+              <Label>Grupo de clientes</Label>
+              <Select value={grupoId} onValueChange={setGrupoId}>
+                <SelectTrigger><SelectValue placeholder={grupos.length === 0 ? "Crie um grupo primeiro" : "Selecione"} /></SelectTrigger>
+                <SelectContent>
+                  {grupos.map((g) => <SelectItem key={g.id} value={g.id}>{g.nome}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+          ) : (
+            <div>
+              <Label>Cliente</Label>
+              <Input
+                list="contrato-clientes-list"
+                value={clienteNome}
+                onChange={(e) => setClienteNome(e.target.value)}
+                placeholder="Digite ou selecione um cliente"
+              />
+              <datalist id="contrato-clientes-list">
+                {clientesDisponiveis.map((cn) => <option key={cn} value={cn} />)}
+              </datalist>
+            </div>
+          )}
           <div className="grid grid-cols-2 gap-3">
             <div><Label>Valor por hora (R$)</Label><Input value={valorHora} onChange={(e) => setValorHora(e.target.value)} placeholder="0,00" /></div>
             <div><Label>% Comissão sobre base</Label><Input value={taxa} onChange={(e) => setTaxa(e.target.value)} placeholder="15" /></div>
