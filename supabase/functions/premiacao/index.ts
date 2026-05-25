@@ -36,6 +36,13 @@ function isServicoTaxa5(desc: string): boolean {
   return n.includes("higienizac") && n.includes("coifa");
 }
 
+// Serviços com taxa fixa de 10% (regra especial)
+// Ex.: "REOPERAÇÃO COMPLETA EM SISTEMA DE REFRIGERAÇÃO COM DESCONTAMINAÇÃO E CARGA DE GÁS"
+function isServicoTaxa10(desc: string): boolean {
+  const n = normalize(desc);
+  return n.includes("reoperac");
+}
+
 // Aliases de técnicos — consolida variações de nome (mesma pessoa) em um único registro
 const TECNICO_ALIASES: Array<{ canonical: string; match: (n: string) => boolean }> = [
   {
@@ -363,6 +370,7 @@ Deno.serve(async (req) => {
       let valor_servicos = 0;
       let servicos_count = 0;
       let valor_servicos_taxa5 = 0;
+      let valor_servicos_taxa10 = 0;
       // Horas reais trabalhadas (Auvo) — APENAS das tarefas de execução já salvas na base.
       const horas = execTaskIds.length > 0
         ? execTaskIds.reduce((acc, id) => acc + (duracaoByAuvoTask.get(id) || 0), 0)
@@ -375,6 +383,7 @@ Deno.serve(async (req) => {
         const desloc = isDeslocamento(desc);
         const hospAlim = isHospedagemAlimentacao(desc);
         const taxa5 = isServicoTaxa5(desc);
+        const taxa10 = !taxa5 && isServicoTaxa10(desc);
         // Recuperação: se o item de serviço foi lançado com total=0 mas
         // tem qtd × valor_unitário > 0 e há horas Auvo finalizadas,
         // assume que houve erro de lançamento e recupera a base
@@ -394,6 +403,8 @@ Deno.serve(async (req) => {
         if (!naoComissionado && total > 0) {
           if (taxa5) {
             valor_servicos_taxa5 += total;
+          } else if (taxa10) {
+            valor_servicos_taxa10 += total;
           } else if (recuperado) {
             valor_servicos_recuperado += total;
             servicos_count += 1;
@@ -412,7 +423,9 @@ Deno.serve(async (req) => {
           valor_total: total,
           deslocamento: desloc,
           nao_comissionado: naoComissionado,
-          taxa_especial: taxa5 && !naoComissionado ? 0.05 : undefined,
+          taxa_especial: !naoComissionado
+            ? (taxa5 ? 0.05 : (taxa10 ? 0.10 : undefined))
+            : undefined,
           recuperado: recuperado || undefined,
         });
       }
@@ -426,14 +439,16 @@ Deno.serve(async (req) => {
         ? descValorOS
         : (descPctOS > 0 ? subtotalOS * (descPctOS / 100) : 0);
       if (descontoGeral > 0) {
-        const baseTotal = valor_pecas + valor_servicos + valor_servicos_taxa5;
+        const baseTotal = valor_pecas + valor_servicos + valor_servicos_taxa5 + valor_servicos_taxa10;
         if (baseTotal > 0) {
           const rateioPecas = descontoGeral * (valor_pecas / baseTotal);
           const rateioServ = descontoGeral * (valor_servicos / baseTotal);
           const rateioServ5 = descontoGeral * (valor_servicos_taxa5 / baseTotal);
+          const rateioServ10 = descontoGeral * (valor_servicos_taxa10 / baseTotal);
           valor_pecas = Math.max(0, valor_pecas - rateioPecas);
           valor_servicos = Math.max(0, valor_servicos - rateioServ);
           valor_servicos_taxa5 = Math.max(0, valor_servicos_taxa5 - rateioServ5);
+          valor_servicos_taxa10 = Math.max(0, valor_servicos_taxa10 - rateioServ10);
         }
       }
 
@@ -444,14 +459,16 @@ Deno.serve(async (req) => {
         valor_pecas = 0;
         valor_servicos = 0;
         valor_servicos_taxa5 = 0;
+        valor_servicos_taxa10 = 0;
       } else {
         valor_pecas = Math.min(valor_pecas, totalRecebidoPecasOS);
         // Aplica teto consolidado de serviços recebidos respeitando ambas as faixas
-        const totServ = valor_servicos + valor_servicos_taxa5;
+        const totServ = valor_servicos + valor_servicos_taxa5 + valor_servicos_taxa10;
         if (totServ > totalRecebidoServicosOS && totServ > 0) {
           const ratio = totalRecebidoServicosOS / totServ;
           valor_servicos = valor_servicos * ratio;
           valor_servicos_taxa5 = valor_servicos_taxa5 * ratio;
+          valor_servicos_taxa10 = valor_servicos_taxa10 * ratio;
         }
       }
 
@@ -487,6 +504,10 @@ Deno.serve(async (req) => {
       comissao_servicos += comissao_servicos_taxa5;
       // Soma o valor especial ao valor_servicos exibido (para totais)
       valor_servicos += valor_servicos_taxa5;
+      // Serviços com taxa especial de 10% (ex.: reoperação completa de refrigeração)
+      const comissao_servicos_taxa10 = valor_servicos_taxa10 * 0.10;
+      comissao_servicos += comissao_servicos_taxa10;
+      valor_servicos += valor_servicos_taxa10;
       const comissao_total = comissao_pecas + comissao_servicos;
 
       // Técnico: prioriza VENDEDOR DA OS GC (responsável comercial/técnico),
