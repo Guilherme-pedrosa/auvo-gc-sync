@@ -194,11 +194,12 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Soma horas (duracao_decimal) por gc_os_id — pode haver várias tarefas Auvo por OS
-    const horasByOs = new Map<string, number>();
+    // Index duracao por auvo_task_id — para somar APENAS a Tarefa Execução (73344) por OS
+    const duracaoByAuvoTask = new Map<string, number>();
     for (const r of rows || []) {
-      const k = String(r.gc_os_id);
-      horasByOs.set(k, (horasByOs.get(k) || 0) + toNum(r.duracao_decimal));
+      const k = String(r.auvo_task_id || "");
+      if (!k) continue;
+      duracaoByAuvoTask.set(k, (duracaoByAuvoTask.get(k) || 0) + toNum(r.duracao_decimal));
     }
 
     // Dedupe by gc_os_id — prefer row with execution technician set
@@ -258,6 +259,16 @@ Deno.serve(async (req) => {
 
       // Data de saída: prioriza GC detail (fonte da verdade), fallback para cache
       const dataSaidaRaw = detail.data_saida || detail.dataSaida || row.gc_os_data_saida || "";
+
+      // Tarefa Execução (atributo 73344) — fonte única para horas e link Auvo
+      const _atributos: any[] = Array.isArray(detail?.atributos) ? detail.atributos : [];
+      const _execAttr = _atributos.find((a: any) => {
+        const nested = a?.atributo || a;
+        return String(nested?.atributo_id || nested?.id || "") === "73344";
+      });
+      const _execNested = _execAttr?.atributo || _execAttr;
+      const _execRaw = String(_execNested?.conteudo || _execNested?.valor || "").trim();
+      const execTaskId = _execRaw.split("/").map((s: string) => s.trim()).find((s: string) => /^\d+$/.test(s)) || "";
       const dataSaidaStr = String(dataSaidaRaw).split("T")[0];
 
       // Re-filtra pelo data_saida real (mês solicitado)
@@ -309,9 +320,8 @@ Deno.serve(async (req) => {
       let valor_servicos = 0;
       let servicos_count = 0;
       let valor_servicos_taxa5 = 0;
-      // Horas reais trabalhadas (Auvo) — usadas como gatilho de recuperação
-      // quando o serviço veio zerado na GC.
-      const horas = horasByOs.get(osId) || 0;
+      // Horas reais trabalhadas (Auvo) — APENAS da Tarefa Execução (73344) do GC.
+      const horas = execTaskId ? (duracaoByAuvoTask.get(execTaskId) || 0) : 0;
       let valor_servicos_recuperado = 0;
       const itens_servicos: any[] = [];
       for (const s of servicos) {
@@ -478,17 +488,7 @@ Deno.serve(async (req) => {
         situacao: String(detail.nome_situacao || ""),
         cor_situacao: String(detail.cor_situacao || ""),
         gc_link: `https://gestaoclick.com/ordens_servicos/editar/${osId}?retorno=%2Fordens_servicos`,
-        auvo_link: (() => {
-          const atributos: any[] = Array.isArray(detail?.atributos) ? detail.atributos : [];
-          const execAttr = atributos.find((a: any) => {
-            const nested = a?.atributo || a;
-            return String(nested?.atributo_id || nested?.id || "") === "73344";
-          });
-          const nested = execAttr?.atributo || execAttr;
-          const raw = String(nested?.conteudo || nested?.valor || "").trim();
-          const execId = raw.split("/").map((s: string) => s.trim()).find((s: string) => /^\d+$/.test(s));
-          return execId ? `https://app2.auvo.com.br/relatorioTarefas/DetalheTarefa/${execId}` : null;
-        })(),
+        auvo_link: execTaskId ? `https://app2.auvo.com.br/relatorioTarefas/DetalheTarefa/${execTaskId}` : null,
         itens_pecas,
         itens_servicos,
         contrato: contrato ? { nome: contrato.nome, valor_hora: toNum(contrato.valor_hora), taxa: toNum(contrato.taxa_comissao_servico), horas, base_servico: base_servico_contrato } : null,
