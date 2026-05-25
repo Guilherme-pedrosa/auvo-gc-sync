@@ -146,6 +146,14 @@ Deno.serve(async (req) => {
       const detail = osDetails.get(osId);
       if (!detail) continue;
 
+      // Skip OS executadas em sábado/domingo (técnicos já recebem extra)
+      const dataSaidaStr = String(row.gc_os_data_saida || "").split("T")[0];
+      if (dataSaidaStr) {
+        const [y, m, d] = dataSaidaStr.split("-").map(Number);
+        const dow = new Date(Date.UTC(y, (m || 1) - 1, d || 1)).getUTCDay();
+        if (dow === 0 || dow === 6) continue;
+      }
+
       // GC nests items: produtos[].produto, servicos[].servico
       const produtos: any[] = (Array.isArray(detail.produtos) ? detail.produtos : [])
         .map((x: any) => x?.produto || x)
