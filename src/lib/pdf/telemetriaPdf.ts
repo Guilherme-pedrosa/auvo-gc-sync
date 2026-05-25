@@ -1,5 +1,6 @@
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
+import JSZip from "jszip";
 
 export type TelemetriaTech = {
   tecnico: string;
@@ -33,14 +34,18 @@ export type TelemetriaTech = {
 
 const brl = (n: number) => n.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 
-export function gerarPdfTelemetrias(month: string, tecnicos: TelemetriaTech[]) {
+function sanitize(s: string) {
+  return s.normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-zA-Z0-9]+/g, "_").replace(/^_+|_+$/g, "");
+}
+
+function buildPdfForTech(month: string, t: TelemetriaTech): jsPDF {
   const doc = new jsPDF({ orientation: "landscape", unit: "pt", format: "a4" });
   const pageW = doc.internal.pageSize.getWidth();
   const pageH = doc.internal.pageSize.getHeight();
 
   doc.setFontSize(16);
   doc.setFont("helvetica", "bold");
-  doc.text("Espelho de Cálculo — Premiação Técnicos", 40, 40);
+  doc.text(`Espelho de Cálculo — ${t.tecnico}`, 40, 40);
   doc.setFont("helvetica", "normal");
   doc.setFontSize(10);
   doc.text(`Mês de referência: ${month}`, 40, 58);
@@ -56,54 +61,9 @@ export function gerarPdfTelemetrias(month: string, tecnicos: TelemetriaTech[]) {
   );
   doc.setTextColor(0);
 
-  const sorted = [...tecnicos].sort((a, b) => (b.comissao_total || 0) - (a.comissao_total || 0));
-
-  // Resumo geral
+  // Quadro de totais
   autoTable(doc, {
-    startY: 92,
-    head: [["Técnico", "OS", "Peças", "Serviços", "Faturam.", "Prem. peças", "Prem. serv.", "Bruta", "Redução", "Final"]],
-    body: sorted.map((t) => [
-      t.tecnico,
-      String(t.os_count ?? t.ordens?.length ?? 0),
-      brl(t.valor_pecas ?? 0),
-      brl(t.valor_servicos ?? 0),
-      brl(t.faturamento ?? (t.valor_pecas ?? 0) + (t.valor_servicos ?? 0)),
-      brl(t.comissao_pecas ?? 0),
-      brl(t.comissao_servicos ?? 0),
-      brl(t.comissao_total),
-      (t.reducao_pct ?? 0) > 0 ? `−${Math.round((t.reducao_pct || 0) * 100)}%` : "—",
-      brl(t.comissao_final ?? t.comissao_total),
-    ]),
-    styles: { fontSize: 9, cellPadding: 4 },
-    headStyles: { fillColor: [37, 99, 235], textColor: 255, fontStyle: "bold" },
-    columnStyles: {
-      1: { halign: "right" },
-      2: { halign: "right" },
-      3: { halign: "right" },
-      4: { halign: "right" },
-      5: { halign: "right" },
-      6: { halign: "right" },
-      7: { halign: "right" },
-      8: { halign: "right" },
-      9: { halign: "right", fontStyle: "bold" },
-    },
-  });
-
-  // Detalhe por técnico (uma seção por técnico)
-  for (const t of sorted) {
-    doc.addPage();
-    doc.setFontSize(14);
-    doc.setFont("helvetica", "bold");
-    doc.text(t.tecnico, 40, 40);
-    doc.setFont("helvetica", "normal");
-    doc.setFontSize(9);
-    doc.setTextColor(110);
-    doc.text(`Mês ${month}`, 40, 56);
-    doc.setTextColor(0);
-
-    // Quadro de totais
-    autoTable(doc, {
-      startY: 70,
+      startY: 92,
       head: [["Faturamento", "Peças", "Serviços", "Prem. peças (1%)", "Prem. serv.", "Prem. bruta"]],
       body: [[
         brl(t.faturamento ?? (t.valor_pecas ?? 0) + (t.valor_servicos ?? 0)),
@@ -212,7 +172,6 @@ export function gerarPdfTelemetrias(month: string, tecnicos: TelemetriaTech[]) {
         },
       });
     }
-  }
 
   // Rodapé
   const pages = doc.getNumberOfPages();
@@ -223,5 +182,32 @@ export function gerarPdfTelemetrias(month: string, tecnicos: TelemetriaTech[]) {
     doc.text(`Página ${i} de ${pages}`, pageW - 40, pageH - 20, { align: "right" });
   }
 
-  doc.save(`espelho-premiacao-${month}.pdf`);
+  return doc;
 }
+
+export function gerarPdfTecnico(month: string, t: TelemetriaTech) {
+  const doc = buildPdfForTech(month, t);
+  doc.save(`espelho-${sanitize(t.tecnico)}-${month}.pdf`);
+}
+
+export async function gerarPdfsTelemetrias(month: string, tecnicos: TelemetriaTech[]) {
+  const zip = new JSZip();
+  const sorted = [...tecnicos].sort((a, b) => (b.comissao_total || 0) - (a.comissao_total || 0));
+  for (const t of sorted) {
+    const doc = buildPdfForTech(month, t);
+    const blob = doc.output("blob");
+    zip.file(`espelho-${sanitize(t.tecnico)}-${month}.pdf`, blob);
+  }
+  const content = await zip.generateAsync({ type: "blob" });
+  const url = URL.createObjectURL(content);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `espelhos-premiacao-${month}.zip`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+// compat
+export const gerarPdfTelemetrias = gerarPdfsTelemetrias;

@@ -11,7 +11,7 @@ import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { OsRetornosManager } from "@/components/financeiro/OsRetornosManager";
 import { DemeritosManager } from "@/components/financeiro/DemeritosManager";
-import { gerarPdfTelemetrias } from "@/lib/pdf/telemetriaPdf";
+import { gerarPdfsTelemetrias, gerarPdfTecnico } from "@/lib/pdf/telemetriaPdf";
 import { FileText } from "lucide-react";
 
 type ItemRow = {
@@ -159,9 +159,9 @@ export default function PremiacaoPage() {
               variant="outline"
               size="sm"
               disabled={!tecnicos.length}
-              onClick={() => gerarPdfTelemetrias(activeMonth, tecnicos as any)}
+              onClick={() => gerarPdfsTelemetrias(activeMonth, tecnicos as any)}
             >
-              <FileText className="h-4 w-4 mr-1.5" /> Espelho de cálculo
+              <FileText className="h-4 w-4 mr-1.5" /> Espelhos (ZIP por técnico)
             </Button>
           </div>
         </div>
@@ -236,6 +236,14 @@ export default function PremiacaoPage() {
                     </div>
                     <div className="text-right flex-shrink-0">
                       <div className="flex items-start justify-end gap-6">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={(e) => { e.stopPropagation(); gerarPdfTecnico(activeMonth, t as any); }}
+                          title="Baixar espelho deste técnico"
+                        >
+                          <FileText className="h-4 w-4" />
+                        </Button>
                         <div>
                           <div className="text-xs text-muted-foreground">Faturamento</div>
                           <div className="text-xl font-semibold">{brl(t.faturamento ?? (t.valor_pecas + t.valor_servicos))}</div>
