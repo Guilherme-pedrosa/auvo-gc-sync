@@ -154,9 +154,15 @@ Deno.serve(async (req) => {
       const detail = osDetails.get(osId);
       if (!detail) continue;
 
+      // Data de saída: prioriza GC detail (fonte da verdade), fallback para cache
+      const dataSaidaRaw = detail.data_saida || detail.dataSaida || row.gc_os_data_saida || "";
+      const dataSaidaStr = String(dataSaidaRaw).split("T")[0];
+
+      // Re-filtra pelo data_saida real (mês solicitado)
+      if (!dataSaidaStr || dataSaidaStr < startDate || dataSaidaStr > endDate) continue;
+
       // Skip OS executadas em sábado/domingo (técnicos já recebem extra)
-      const dataSaidaStr = String(row.gc_os_data_saida || "").split("T")[0];
-      if (dataSaidaStr) {
+      {
         const [y, m, d] = dataSaidaStr.split("-").map(Number);
         const dow = new Date(Date.UTC(y, (m || 1) - 1, d || 1)).getUTCDay();
         if (dow === 0 || dow === 6) continue;
@@ -225,14 +231,15 @@ Deno.serve(async (req) => {
       const comissao_servicos = valor_servicos * 0.15;
       const comissao_total = comissao_pecas + comissao_servicos;
 
-      // Técnico: prioriza execução Auvo, fallback para vendedor GC
+      // Técnico: prioriza VENDEDOR DA OS GC (responsável comercial/técnico),
+      // fallback para execução Auvo
       const tecnico =
-        (row.tecnico || "").trim() ||
         String(detail.nome_vendedor || "").trim() ||
         (row.gc_os_vendedor || "").trim() ||
         String(detail.nome_tecnico || "").trim() ||
+        (row.tecnico || "").trim() ||
         "Sem técnico";
-      const tecnico_id = String(row.tecnico_id || detail.vendedor_id || "");
+      const tecnico_id = String(detail.vendedor_id || row.tecnico_id || "");
       const key = (tecnico_id ? `${tecnico_id}|` : "") + tecnico.toLowerCase();
 
       let agg = techMap.get(key);
@@ -255,7 +262,7 @@ Deno.serve(async (req) => {
         gc_os_id: osId,
         gc_os_codigo: String(row.gc_os_codigo || detail.codigo || ""),
         cliente: String(row.gc_os_cliente || detail.nome_cliente || ""),
-        data_saida: String(row.gc_os_data_saida || "").split("T")[0],
+        data_saida: dataSaidaStr,
         valor_pecas, valor_servicos,
         comissao_pecas, comissao_servicos, comissao_total,
         pecas_count, servicos_count,
