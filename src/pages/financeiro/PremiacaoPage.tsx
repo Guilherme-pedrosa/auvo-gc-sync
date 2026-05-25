@@ -34,6 +34,7 @@ type OsRow = {
   gc_link?: string;
   itens_pecas?: ItemRow[];
   itens_servicos?: ItemRow[];
+  contrato?: { nome: string; valor_hora: number; taxa: number; horas: number; base_servico: number } | null;
 };
 type Tech = {
   tecnico: string;
