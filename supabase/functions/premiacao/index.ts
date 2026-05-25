@@ -488,17 +488,7 @@ Deno.serve(async (req) => {
         situacao: String(detail.nome_situacao || ""),
         cor_situacao: String(detail.cor_situacao || ""),
         gc_link: `https://gestaoclick.com/ordens_servicos/editar/${osId}?retorno=%2Fordens_servicos`,
-        auvo_link: (() => {
-          const atributos: any[] = Array.isArray(detail?.atributos) ? detail.atributos : [];
-          const execAttr = atributos.find((a: any) => {
-            const nested = a?.atributo || a;
-            return String(nested?.atributo_id || nested?.id || "") === "73344";
-          });
-          const nested = execAttr?.atributo || execAttr;
-          const raw = String(nested?.conteudo || nested?.valor || "").trim();
-          const execId = raw.split("/").map((s: string) => s.trim()).find((s: string) => /^\d+$/.test(s));
-          return execId ? `https://app2.auvo.com.br/relatorioTarefas/DetalheTarefa/${execId}` : null;
-        })(),
+        auvo_link: execTaskId ? `https://app2.auvo.com.br/relatorioTarefas/DetalheTarefa/${execTaskId}` : null,
         itens_pecas,
         itens_servicos,
         contrato: contrato ? { nome: contrato.nome, valor_hora: toNum(contrato.valor_hora), taxa: toNum(contrato.taxa_comissao_servico), horas, base_servico: base_servico_contrato } : null,
