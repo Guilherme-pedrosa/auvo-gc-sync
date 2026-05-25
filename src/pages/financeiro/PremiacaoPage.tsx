@@ -336,13 +336,13 @@ function OsDetailDialog({ os, onClose }: { os: OsRow | null; onClose: () => void
                 items={os.itens_servicos || []}
                 totalLabel="Total serviços GC (sem deslocamento)"
                 total={os.valor_servicos}
-                commissionLabel={os.contrato ? `Premiação contrato (${(os.contrato.taxa * 100).toFixed(1)}%)` : "Premiação (15%)"}
+                commissionLabel={os.contrato && os.contrato.base_servico > 0 ? `Premiação contrato (${(os.contrato.taxa * 100).toFixed(1)}%)` : "Premiação (15% / 10% / 5%)"}
                 commission={os.comissao_servicos}
                 emptyMsg="Sem serviços nesta OS"
                 highlightDeslocamento
               />
 
-              {os.contrato && (
+              {os.contrato && os.contrato.base_servico > 0 && (
                 <div className="border rounded-md p-3 bg-muted/30 text-sm space-y-1">
                   <div className="flex items-center gap-2 font-medium">
                     <Badge variant="secondary">Contrato</Badge>
