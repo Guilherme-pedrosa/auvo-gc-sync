@@ -404,7 +404,18 @@ Deno.serve(async (req) => {
         const vu = toNum(s.valor_venda) || toNum(s.valor_unitario);
         const baseUnitaria = qtd * vu;
         let recuperado = false;
-        if (total <= 0 && baseUnitaria > 0 && horas > 0 && totalRecebidoOS > 0 && !desloc && !hospAlim) {
+        // Só recupera se o GC NÃO declarou explicitamente valor_servicos = 0.
+        // Quando totalRecebidoServicosOS = 0, o serviço foi zerado por desconto
+        // no GC e NÃO deve gerar premiação.
+        if (
+          total <= 0 &&
+          baseUnitaria > 0 &&
+          horas > 0 &&
+          totalRecebidoOS > 0 &&
+          totalRecebidoServicosOS > 0 &&
+          !desloc &&
+          !hospAlim
+        ) {
           total = baseUnitaria;
           recuperado = true;
         }
