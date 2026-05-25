@@ -232,6 +232,7 @@ Deno.serve(async (req) => {
       data_saida: string;
       valor_pecas: number;
       valor_servicos: number;
+      faturamento: number;
       comissao_pecas: number;
       comissao_servicos: number;
       comissao_total: number;
