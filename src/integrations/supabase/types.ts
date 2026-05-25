@@ -195,6 +195,7 @@ export type Database = {
           id: string
           nome: string
           observacao: string | null
+          taxa_comissao_peca: number
           taxa_comissao_servico: number
           valor_hora: number
           vigencia_fim: string | null
@@ -209,6 +210,7 @@ export type Database = {
           id?: string
           nome: string
           observacao?: string | null
+          taxa_comissao_peca?: number
           taxa_comissao_servico?: number
           valor_hora?: number
           vigencia_fim?: string | null
@@ -223,6 +225,7 @@ export type Database = {
           id?: string
           nome?: string
           observacao?: string | null
+          taxa_comissao_peca?: number
           taxa_comissao_servico?: number
           valor_hora?: number
           vigencia_fim?: string | null

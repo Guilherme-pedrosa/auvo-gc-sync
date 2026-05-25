@@ -1,0 +1,1 @@
+ALTER TABLE public.contratos ADD COLUMN IF NOT EXISTS taxa_comissao_peca numeric NOT NULL DEFAULT 0.02;
