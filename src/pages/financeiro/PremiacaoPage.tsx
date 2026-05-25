@@ -9,6 +9,7 @@ import { Loader2, Trophy, Wrench, Package, Calculator, ChevronDown, ChevronRight
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
+import { OsRetornosManager } from "@/components/financeiro/OsRetornosManager";
 
 type ItemRow = {
   descricao: string;
@@ -37,6 +38,7 @@ type OsRow = {
   itens_pecas?: ItemRow[];
   itens_servicos?: ItemRow[];
   contrato?: { nome: string; valor_hora: number; taxa: number; taxa_peca?: number; horas: number; base_servico: number } | null;
+  retorno?: { tecnico: string } | null;
 };
 type Tech = {
   tecnico: string;
@@ -154,6 +156,8 @@ export default function PremiacaoPage() {
           </Card>
         )}
 
+        <OsRetornosManager onChanged={() => refetch()} />
+
         {totais && (
           <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
             <KpiCard label="OS no mês" value={String(totais.os_count)} icon={<Wrench className="h-4 w-4" />} />
@@ -243,6 +247,9 @@ export default function PremiacaoPage() {
                                 <span className="truncate">{o.cliente}</span>
                                 {o.contrato && (
                                   <Badge variant="secondary" className="text-[10px] shrink-0">Contrato</Badge>
+                                )}
+                                {o.retorno && (
+                                  <Badge className="text-[10px] shrink-0" variant="outline">Retorno</Badge>
                                 )}
                               </div>
                             </TableCell>
