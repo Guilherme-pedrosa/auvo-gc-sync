@@ -243,6 +243,9 @@ Deno.serve(async (req) => {
       const servicos: any[] = (Array.isArray(detail.servicos) ? detail.servicos : [])
         .map((x: any) => x?.servico || x)
         .filter(Boolean);
+      const totalRecebidoOS = toNum(detail.valor_total);
+      const totalRecebidoPecasOS = toNum(detail.valor_produtos);
+      const totalRecebidoServicosOS = toNum(detail.valor_servicos);
 
       let valor_pecas = 0;
       let pecas_count = 0;
@@ -251,7 +254,8 @@ Deno.serve(async (req) => {
         const descProd = String(p.nome_produto || p.detalhes || "");
         const total = calcItemTotal(p);
         const hospAlim = isHospedagemAlimentacao(descProd);
-        if (!hospAlim && total > 0) {
+        const semValorRecebido = total <= 0 || totalRecebidoOS <= 0 || totalRecebidoPecasOS <= 0;
+        if (!hospAlim && !semValorRecebido) {
           valor_pecas += total;
           pecas_count += 1;
         }
@@ -260,7 +264,7 @@ Deno.serve(async (req) => {
           quantidade: toNum(p.quantidade),
           valor_unitario: toNum(p.valor_venda) || toNum(p.valor_unitario),
           valor_total: total,
-          nao_comissionado: hospAlim,
+          nao_comissionado: hospAlim || semValorRecebido,
         });
       }
 
@@ -272,7 +276,8 @@ Deno.serve(async (req) => {
         const total = calcItemTotal(s);
         const desloc = isDeslocamento(desc);
         const hospAlim = isHospedagemAlimentacao(desc);
-        const naoComissionado = desloc || hospAlim;
+        const semValorRecebido = total <= 0 || totalRecebidoOS <= 0 || totalRecebidoServicosOS <= 0;
+        const naoComissionado = desloc || hospAlim || semValorRecebido;
         if (!naoComissionado && total > 0) {
           valor_servicos += total;
           servicos_count += 1;
@@ -308,15 +313,12 @@ Deno.serve(async (req) => {
       // Regra de premiação: só comissiona sobre o valor líquido recebido na GC.
       // Os totais consolidados da OS são o teto final, cobrindo desconto de 100%
       // em produtos, serviços ou na OS inteira mesmo que algum item venha divergente.
-      const totalRecebidoOS = toNum(detail.valor_total);
-      const totalRecebidoPecas = toNum(detail.valor_produtos);
-      const totalRecebidoServicos = toNum(detail.valor_servicos);
       if (totalRecebidoOS <= 0) {
         valor_pecas = 0;
         valor_servicos = 0;
       } else {
-        valor_pecas = Math.min(valor_pecas, totalRecebidoPecas);
-        valor_servicos = Math.min(valor_servicos, totalRecebidoServicos);
+        valor_pecas = Math.min(valor_pecas, totalRecebidoPecasOS);
+        valor_servicos = Math.min(valor_servicos, totalRecebidoServicosOS);
       }
 
       // Verifica contrato pelo cliente da OS
