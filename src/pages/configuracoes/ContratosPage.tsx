@@ -100,7 +100,7 @@ export default function ContratosPage() {
       <div>
         <h1 className="text-2xl font-semibold">Configurações · Contratos</h1>
         <p className="text-sm text-muted-foreground">
-          Lance os contratos por grupo de clientes. O valor por hora será usado como base da comissão de serviços nas OS dos clientes do contrato.
+          Lance os contratos por grupo de clientes. O valor por hora será usado como base da premiação de serviços nas OS dos clientes do contrato.
         </p>
       </div>
 
@@ -384,8 +384,8 @@ function ContratoDialog({
           )}
           <div className="grid grid-cols-3 gap-3">
             <div><Label>Valor por hora (R$)</Label><Input value={valorHora} onChange={(e) => setValorHora(e.target.value)} placeholder="0,00" /></div>
-            <div><Label>% Comissão serviços</Label><Input value={taxa} onChange={(e) => setTaxa(e.target.value)} placeholder="15" /></div>
-            <div><Label>% Comissão peças</Label><Input value={taxaPeca} onChange={(e) => setTaxaPeca(e.target.value)} placeholder="2" /></div>
+            <div><Label>% Premiação serviços</Label><Input value={taxa} onChange={(e) => setTaxa(e.target.value)} placeholder="15" /></div>
+            <div><Label>% Premiação peças</Label><Input value={taxaPeca} onChange={(e) => setTaxaPeca(e.target.value)} placeholder="2" /></div>
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div><Label>Vigência início</Label><Input type="date" value={vigIni} onChange={(e) => setVigIni(e.target.value)} /></div>
