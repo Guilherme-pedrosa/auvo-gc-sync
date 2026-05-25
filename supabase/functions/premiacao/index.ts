@@ -305,6 +305,20 @@ Deno.serve(async (req) => {
         }
       }
 
+      // Regra de premiação: só comissiona sobre o valor líquido recebido na GC.
+      // Os totais consolidados da OS são o teto final, cobrindo desconto de 100%
+      // em produtos, serviços ou na OS inteira mesmo que algum item venha divergente.
+      const totalRecebidoOS = toNum(detail.valor_total);
+      const totalRecebidoPecas = toNum(detail.valor_produtos);
+      const totalRecebidoServicos = toNum(detail.valor_servicos);
+      if (totalRecebidoOS <= 0) {
+        valor_pecas = 0;
+        valor_servicos = 0;
+      } else {
+        valor_pecas = Math.min(valor_pecas, totalRecebidoPecas);
+        valor_servicos = Math.min(valor_servicos, totalRecebidoServicos);
+      }
+
       // Verifica contrato pelo cliente da OS
       const clienteNome = String(row.gc_os_cliente || detail.nome_cliente || "");
       const contrato = contratoByCliente.get(normalize(clienteNome));
