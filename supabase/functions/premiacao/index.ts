@@ -190,6 +190,18 @@ Deno.serve(async (req) => {
     }
     console.log(`[premiacao] ${contratosData?.length || 0} contratos ativos, ${contratoByCliente.size} clientes mapeados`);
 
+    // Retornos de OS: quando uma OS recebe retorno, o técnico que atendeu o retorno
+    // passa a receber o faturamento/premiação no lugar do técnico original.
+    const { data: retornosData } = await supabase
+      .from("os_retornos")
+      .select("gc_os_codigo, tecnico_retorno");
+    const retornoByCodigo = new Map<string, string>();
+    for (const r of retornosData || []) {
+      const cod = String(r.gc_os_codigo || "").trim();
+      const tec = String(r.tecnico_retorno || "").trim();
+      if (cod && tec) retornoByCodigo.set(cod, tec);
+    }
+
     // Candidatos: OS com data_saida cacheada no mês OU sem data_saida cacheada mas com conclusão Auvo no mês
     // (re-filtramos abaixo pelo data_saida real do GC detail)
     const { data: rowsA, error: errA } = await supabase
