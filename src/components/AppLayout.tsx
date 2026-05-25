@@ -2,7 +2,7 @@ import { useNavigate, useLocation } from "react-router-dom";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/hooks/useAuth";
 import {
-  RefreshCw, BarChart3, Kanban, LayoutDashboard, ListChecks, Radio, Wrench, CalendarDays, ChevronDown, Users, LogOut, Shield, FileText, PanelLeftClose, PanelLeft, Thermometer, ArrowLeftRight
+  RefreshCw, BarChart3, Kanban, LayoutDashboard, ListChecks, Radio, Wrench, CalendarDays, ChevronDown, Users, LogOut, Shield, FileText, PanelLeftClose, PanelLeft, Thermometer, ArrowLeftRight, Trophy
 } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useState } from "react";
@@ -30,6 +30,7 @@ const navGroups: NavGroup[] = [
       { label: "Controle Orçamentos", icon: FileText, path: "/financeiro/controle-orcamentos" },
       { label: "OS Cruzadas", icon: ArrowLeftRight, path: "/financeiro/os-cruzadas" },
       { label: "Preventiva Equip.", icon: Thermometer, path: "/financeiro/equipamentos-preventivos" },
+      { label: "Premiação", icon: Trophy, path: "/financeiro/premiacao" },
     ],
   },
   {
