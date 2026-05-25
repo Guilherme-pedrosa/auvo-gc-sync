@@ -120,6 +120,24 @@ async function fetchOsDetail(osId: string, gcHeaders: Record<string, string>): P
   return null;
 }
 
+function extractExecTaskId(detail: any, fallbackAuvoTaskId?: string | number | null): string {
+  const atributos: any[] = Array.isArray(detail?.atributos) ? detail.atributos : [];
+  const execAttr = atributos.find((a: any) => {
+    const nested = a?.atributo || a;
+    return String(nested?.atributo_id || nested?.id || "") === "73344";
+  });
+  const execNested = execAttr?.atributo || execAttr;
+  const execRaw = String(execNested?.conteudo || execNested?.valor || "").trim();
+  const execTaskId = execRaw
+    .split("/")
+    .map((s: string) => s.trim())
+    .find((s: string) => /^\d+$/.test(s));
+
+  if (execTaskId) return execTaskId;
+  if (fallbackAuvoTaskId) return String(fallbackAuvoTaskId);
+  return "";
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
@@ -228,6 +246,47 @@ Deno.serve(async (req) => {
       batch.forEach((id, idx) => { if (results[idx]) osDetails.set(id, results[idx]); });
     }
 
+    // Reforça o mapa de duração usando a Tarefa Execução vinculada no GC,
+    // inclusive quando essa tarefa não está ligada à OS na cache local.
+    const execTaskIdByOs = new Map<string, string>();
+    const execTaskIds = new Set<string>();
+    for (const [osId, row] of byOs.entries()) {
+      const detail = osDetails.get(osId);
+      if (!detail) continue;
+      const execTaskId = extractExecTaskId(detail, row.auvo_task_id);
+      if (!execTaskId) continue;
+      execTaskIdByOs.set(osId, execTaskId);
+      execTaskIds.add(execTaskId);
+    }
+
+    if (execTaskIds.size > 0) {
+      const execRowsAll: any[] = [];
+      const execIds = Array.from(execTaskIds);
+      const EXEC_PAR = 200;
+      for (let i = 0; i < execIds.length; i += EXEC_PAR) {
+        const chunk = execIds.slice(i, i + EXEC_PAR);
+        const { data: execRows, error: execError } = await supabase
+          .from("tarefas_central")
+          .select("auvo_task_id, duracao_decimal")
+          .in("auvo_task_id", chunk);
+
+        if (execError) {
+          return new Response(
+            JSON.stringify({ ok: false, error: execError.message }),
+            { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+
+        execRowsAll.push(...(execRows || []));
+      }
+
+      for (const r of execRowsAll) {
+        const k = String(r.auvo_task_id || "");
+        if (!k) continue;
+        duracaoByAuvoTask.set(k, (duracaoByAuvoTask.get(k) || 0) + toNum(r.duracao_decimal));
+      }
+    }
+
     // Aggregate per technician
     type OsRow = {
       gc_os_id: string;
@@ -264,18 +323,7 @@ Deno.serve(async (req) => {
       const dataSaidaRaw = detail.data_saida || detail.dataSaida || row.gc_os_data_saida || "";
 
       // Tarefa Execução (atributo 73344) — fonte única para horas e link Auvo
-      const _atributos: any[] = Array.isArray(detail?.atributos) ? detail.atributos : [];
-      const _execAttr = _atributos.find((a: any) => {
-        const nested = a?.atributo || a;
-        return String(nested?.atributo_id || nested?.id || "") === "73344";
-      });
-      const _execNested = _execAttr?.atributo || _execAttr;
-      const _execRaw = String(_execNested?.conteudo || _execNested?.valor || "").trim();
-      let execTaskId = _execRaw.split("/").map((s: string) => s.trim()).find((s: string) => /^\d+$/.test(s)) || "";
-      // Fallback: se o GC não tem atributo 73344, usa o próprio auvo_task_id da OS
-      if (!execTaskId && row.auvo_task_id) {
-        execTaskId = String(row.auvo_task_id);
-      }
+      const execTaskId = execTaskIdByOs.get(osId) || extractExecTaskId(detail, row.auvo_task_id);
       const dataSaidaStr = String(dataSaidaRaw).split("T")[0];
 
       // Re-filtra pelo data_saida real (mês solicitado)
