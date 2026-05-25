@@ -240,7 +240,9 @@ Deno.serve(async (req) => {
         const descItem = toNum(s.valor_desconto) || toNum(s.desconto);
         const total = Math.max(0, bruto - descItem);
         const desloc = isDeslocamento(desc);
-        if (!desloc) {
+        const hospAlim = isHospedagemAlimentacao(desc);
+        const naoComissionado = desloc || hospAlim;
+        if (!naoComissionado) {
           valor_servicos += total;
           servicos_count += 1;
         }
@@ -250,6 +252,7 @@ Deno.serve(async (req) => {
           valor_unitario: toNum(s.valor_venda) || toNum(s.valor_unitario),
           valor_total: total,
           deslocamento: desloc,
+          nao_comissionado: naoComissionado,
         });
       }
 
