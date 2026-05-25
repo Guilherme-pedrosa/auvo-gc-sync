@@ -213,16 +213,21 @@ Deno.serve(async (req) => {
       let pecas_count = 0;
       const itens_pecas: any[] = [];
       for (const p of produtos) {
+        const descProd = String(p.nome_produto || p.detalhes || "");
         const bruto = toNum(p.valor_total) || (toNum(p.valor_venda) * toNum(p.quantidade)) || (toNum(p.valor_unitario) * toNum(p.quantidade));
         const desc = toNum(p.valor_desconto) || toNum(p.desconto);
         const total = Math.max(0, bruto - desc);
-        valor_pecas += total;
-        pecas_count += 1;
+        const hospAlim = isHospedagemAlimentacao(descProd);
+        if (!hospAlim) {
+          valor_pecas += total;
+          pecas_count += 1;
+        }
         itens_pecas.push({
           descricao: String(p.nome_produto || p.detalhes || "Produto"),
           quantidade: toNum(p.quantidade),
           valor_unitario: toNum(p.valor_venda) || toNum(p.valor_unitario),
           valor_total: total,
+          nao_comissionado: hospAlim,
         });
       }
 
