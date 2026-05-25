@@ -33,6 +33,27 @@ function isServicoTaxa5(desc: string): boolean {
   return n.includes("higienizac") && n.includes("coifa");
 }
 
+// Aliases de técnicos — consolida variações de nome (mesma pessoa) em um único registro
+const TECNICO_ALIASES: Array<{ canonical: string; match: (n: string) => boolean }> = [
+  {
+    canonical: "Elton Jhonny de Oliveira Vargas",
+    match: (n) => n.startsWith("elton") || n.includes("elton jhonny"),
+  },
+  {
+    canonical: "Romário Gonçalves Vieira",
+    match: (n) => n.includes("romario") && n.includes("goncalves"),
+  },
+];
+
+function canonicalTecnico(name: string): string {
+  const n = normalize(name);
+  if (!n) return name;
+  for (const a of TECNICO_ALIASES) {
+    if (a.match(n)) return a.canonical;
+  }
+  return name;
+}
+
 function toNum(v: any): number {
   if (v === null || v === undefined) return 0;
   if (typeof v === "number") return v;
@@ -369,14 +390,16 @@ Deno.serve(async (req) => {
 
       // Técnico: prioriza VENDEDOR DA OS GC (responsável comercial/técnico),
       // fallback para execução Auvo
-      const tecnico =
+      const tecnicoRaw =
         String(detail.nome_vendedor || "").trim() ||
         (row.gc_os_vendedor || "").trim() ||
         String(detail.nome_tecnico || "").trim() ||
         (row.tecnico || "").trim() ||
         "Sem técnico";
+      const tecnico = canonicalTecnico(tecnicoRaw);
       const tecnico_id = String(detail.vendedor_id || row.tecnico_id || "");
-      const key = (tecnico_id ? `${tecnico_id}|` : "") + tecnico.toLowerCase();
+      // Chave de agregação baseada apenas no nome canônico para consolidar aliases
+      const key = normalize(tecnico);
 
       let agg = techMap.get(key);
       if (!agg) {
