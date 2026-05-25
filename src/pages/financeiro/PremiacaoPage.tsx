@@ -226,7 +226,14 @@ export default function PremiacaoPage() {
                             <TableCell className="font-mono text-xs text-primary underline-offset-2 hover:underline">
                               {o.gc_os_codigo || o.gc_os_id}
                             </TableCell>
-                            <TableCell className="text-sm truncate max-w-[220px]">{o.cliente}</TableCell>
+                            <TableCell className="text-sm truncate max-w-[220px]">
+                              <div className="flex items-center gap-2">
+                                <span className="truncate">{o.cliente}</span>
+                                {o.contrato && (
+                                  <Badge variant="secondary" className="text-[10px] shrink-0">Contrato</Badge>
+                                )}
+                              </div>
+                            </TableCell>
                             <TableCell className="text-xs">{o.data_saida}</TableCell>
                             <TableCell className="text-right text-sm">{brl(o.valor_pecas)}</TableCell>
                             <TableCell className="text-right text-sm">{brl(o.valor_servicos)}</TableCell>
