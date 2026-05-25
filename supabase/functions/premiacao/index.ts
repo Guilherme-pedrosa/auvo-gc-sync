@@ -156,23 +156,40 @@ Deno.serve(async (req) => {
 
       let valor_pecas = 0;
       let pecas_count = 0;
+      const itens_pecas: any[] = [];
       for (const p of produtos) {
         const total = toNum(p.valor_total) || (toNum(p.valor_venda) * toNum(p.quantidade)) || (toNum(p.valor_unitario) * toNum(p.quantidade));
         valor_pecas += total;
         pecas_count += 1;
+        itens_pecas.push({
+          descricao: String(p.nome_produto || p.detalhes || "Produto"),
+          quantidade: toNum(p.quantidade),
+          valor_unitario: toNum(p.valor_venda) || toNum(p.valor_unitario),
+          valor_total: total,
+        });
       }
 
       let valor_servicos = 0;
       let servicos_count = 0;
+      const itens_servicos: any[] = [];
       for (const s of servicos) {
         const desc = s.nome_servico || s.nome || s.descricao || s.detalhes || "";
-        if (isDeslocamento(desc)) continue;
         const total = toNum(s.valor_total) || (toNum(s.valor_venda) * toNum(s.quantidade)) || (toNum(s.valor_unitario) * toNum(s.quantidade));
-        valor_servicos += total;
-        servicos_count += 1;
+        const desloc = isDeslocamento(desc);
+        if (!desloc) {
+          valor_servicos += total;
+          servicos_count += 1;
+        }
+        itens_servicos.push({
+          descricao: String(desc || "Serviço"),
+          quantidade: toNum(s.quantidade),
+          valor_unitario: toNum(s.valor_venda) || toNum(s.valor_unitario),
+          valor_total: total,
+          deslocamento: desloc,
+        });
       }
 
-      const comissao_pecas = valor_pecas * 0.02;
+      const comissao_pecas = valor_pecas * 0.01;
       const comissao_servicos = valor_servicos * 0.15;
       const comissao_total = comissao_pecas + comissao_servicos;
 
@@ -210,6 +227,11 @@ Deno.serve(async (req) => {
         valor_pecas, valor_servicos,
         comissao_pecas, comissao_servicos, comissao_total,
         pecas_count, servicos_count,
+        situacao: String(detail.nome_situacao || ""),
+        cor_situacao: String(detail.cor_situacao || ""),
+        gc_link: `https://gestaoclick.com/ordens_servicos/editar/${osId}?retorno=%2Fordens_servicos`,
+        itens_pecas,
+        itens_servicos,
       });
     }
 
