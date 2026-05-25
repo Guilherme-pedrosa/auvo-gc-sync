@@ -120,22 +120,13 @@ async function fetchOsDetail(osId: string, gcHeaders: Record<string, string>): P
   return null;
 }
 
-function extractExecTaskId(detail: any, fallbackAuvoTaskId?: string | number | null): string {
-  const atributos: any[] = Array.isArray(detail?.atributos) ? detail.atributos : [];
-  const execAttr = atributos.find((a: any) => {
-    const nested = a?.atributo || a;
-    return String(nested?.atributo_id || nested?.id || "") === "73344";
-  });
-  const execNested = execAttr?.atributo || execAttr;
-  const execRaw = String(execNested?.conteudo || execNested?.valor || "").trim();
-  const execTaskId = execRaw
-    .split("/")
-    .map((s: string) => s.trim())
-    .find((s: string) => /^\d+$/.test(s));
-
-  if (execTaskId) return execTaskId;
-  if (fallbackAuvoTaskId) return String(fallbackAuvoTaskId);
-  return "";
+function parseTaskIds(value: any): string[] {
+  return Array.from(new Set(
+    String(value || "")
+      .split("/")
+      .map((s) => s.trim())
+      .filter((s) => /^\d+$/.test(s))
+  ));
 }
 
 Deno.serve(async (req) => {
@@ -196,13 +187,13 @@ Deno.serve(async (req) => {
     // (re-filtramos abaixo pelo data_saida real do GC detail)
     const { data: rowsA, error: errA } = await supabase
       .from("tarefas_central")
-      .select("auvo_task_id, gc_os_id, gc_os_codigo, gc_os_cliente, gc_os_data_saida, gc_os_valor_total, gc_os_vendedor, tecnico, tecnico_id, data_tarefa, status_auvo, data_conclusao, duracao_decimal")
+      .select("auvo_task_id, gc_os_id, gc_os_codigo, gc_os_cliente, gc_os_data_saida, gc_os_valor_total, gc_os_vendedor, gc_os_tarefa_exec, tecnico, tecnico_id, data_tarefa, status_auvo, data_conclusao, duracao_decimal")
       .not("gc_os_id", "is", null)
       .gte("gc_os_data_saida", startDate)
       .lte("gc_os_data_saida", endDate);
     const { data: rowsB, error: errB } = await supabase
       .from("tarefas_central")
-      .select("auvo_task_id, gc_os_id, gc_os_codigo, gc_os_cliente, gc_os_data_saida, gc_os_valor_total, gc_os_vendedor, tecnico, tecnico_id, data_tarefa, status_auvo, data_conclusao, duracao_decimal")
+      .select("auvo_task_id, gc_os_id, gc_os_codigo, gc_os_cliente, gc_os_data_saida, gc_os_valor_total, gc_os_vendedor, gc_os_tarefa_exec, tecnico, tecnico_id, data_tarefa, status_auvo, data_conclusao, duracao_decimal")
       .not("gc_os_id", "is", null)
       .is("gc_os_data_saida", null);
     const error = errA || errB;
@@ -246,17 +237,13 @@ Deno.serve(async (req) => {
       batch.forEach((id, idx) => { if (results[idx]) osDetails.set(id, results[idx]); });
     }
 
-    // Reforça o mapa de duração usando a Tarefa Execução vinculada no GC,
-    // inclusive quando essa tarefa não está ligada à OS na cache local.
-    const execTaskIdByOs = new Map<string, string>();
+    // Reforça o mapa de duração usando apenas as tarefas de execução já
+    // resolvidas e salvas localmente em `gc_os_tarefa_exec`.
     const execTaskIds = new Set<string>();
-    for (const [osId, row] of byOs.entries()) {
-      const detail = osDetails.get(osId);
-      if (!detail) continue;
-      const execTaskId = extractExecTaskId(detail, row.auvo_task_id);
-      if (!execTaskId) continue;
-      execTaskIdByOs.set(osId, execTaskId);
-      execTaskIds.add(execTaskId);
+    for (const row of byOs.values()) {
+      for (const execTaskId of parseTaskIds(row.gc_os_tarefa_exec)) {
+        execTaskIds.add(execTaskId);
+      }
     }
 
     if (execTaskIds.size > 0) {
@@ -322,8 +309,9 @@ Deno.serve(async (req) => {
       // Data de saída: prioriza GC detail (fonte da verdade), fallback para cache
       const dataSaidaRaw = detail.data_saida || detail.dataSaida || row.gc_os_data_saida || "";
 
-      // Tarefa Execução (atributo 73344) — fonte única para horas e link Auvo
-      const execTaskId = execTaskIdByOs.get(osId) || extractExecTaskId(detail, row.auvo_task_id);
+      // Tarefa Execução — usa apenas o vínculo já salvo localmente na base.
+      const execTaskIds = parseTaskIds(row.gc_os_tarefa_exec);
+      const execTaskId = execTaskIds[0] || (row.auvo_task_id ? String(row.auvo_task_id) : "");
       const dataSaidaStr = String(dataSaidaRaw).split("T")[0];
 
       // Re-filtra pelo data_saida real (mês solicitado)
@@ -375,8 +363,10 @@ Deno.serve(async (req) => {
       let valor_servicos = 0;
       let servicos_count = 0;
       let valor_servicos_taxa5 = 0;
-      // Horas reais trabalhadas (Auvo) — APENAS da Tarefa Execução (73344) do GC.
-      const horas = execTaskId ? (duracaoByAuvoTask.get(execTaskId) || 0) : 0;
+      // Horas reais trabalhadas (Auvo) — APENAS das tarefas de execução já salvas na base.
+      const horas = execTaskIds.length > 0
+        ? execTaskIds.reduce((acc, id) => acc + (duracaoByAuvoTask.get(id) || 0), 0)
+        : (execTaskId ? (duracaoByAuvoTask.get(execTaskId) || 0) : 0);
       let valor_servicos_recuperado = 0;
       const itens_servicos: any[] = [];
       for (const s of servicos) {
