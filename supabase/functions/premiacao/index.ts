@@ -194,11 +194,12 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Soma horas (duracao_decimal) por gc_os_id — pode haver várias tarefas Auvo por OS
-    const horasByOs = new Map<string, number>();
+    // Index duracao por auvo_task_id — para somar APENAS a Tarefa Execução (73344) por OS
+    const duracaoByAuvoTask = new Map<string, number>();
     for (const r of rows || []) {
-      const k = String(r.gc_os_id);
-      horasByOs.set(k, (horasByOs.get(k) || 0) + toNum(r.duracao_decimal));
+      const k = String(r.auvo_task_id || "");
+      if (!k) continue;
+      duracaoByAuvoTask.set(k, (duracaoByAuvoTask.get(k) || 0) + toNum(r.duracao_decimal));
     }
 
     // Dedupe by gc_os_id — prefer row with execution technician set
