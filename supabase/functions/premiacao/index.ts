@@ -449,6 +449,7 @@ Deno.serve(async (req) => {
         agg = {
           tecnico: displayNome, tecnico_id, os_count: 0,
           valor_pecas: 0, valor_servicos: 0,
+          faturamento: 0,
           comissao_pecas: 0, comissao_servicos: 0, comissao_total: 0,
           ordens: [],
         };
@@ -457,6 +458,7 @@ Deno.serve(async (req) => {
       agg.os_count += 1;
       agg.valor_pecas += valor_pecas;
       agg.valor_servicos += valor_servicos;
+      agg.faturamento += faturamento_os;
       agg.comissao_pecas += comissao_pecas;
       agg.comissao_servicos += comissao_servicos;
       agg.comissao_total += comissao_total;
@@ -466,6 +468,7 @@ Deno.serve(async (req) => {
         cliente: String(row.gc_os_cliente || detail.nome_cliente || ""),
         data_saida: dataSaidaStr,
         valor_pecas, valor_servicos,
+        faturamento: faturamento_os,
         comissao_pecas, comissao_servicos, comissao_total,
         pecas_count, servicos_count,
         situacao: String(detail.nome_situacao || ""),
@@ -484,10 +487,11 @@ Deno.serve(async (req) => {
       os_count: acc.os_count + t.os_count,
       valor_pecas: acc.valor_pecas + t.valor_pecas,
       valor_servicos: acc.valor_servicos + t.valor_servicos,
+      faturamento: acc.faturamento + t.faturamento,
       comissao_pecas: acc.comissao_pecas + t.comissao_pecas,
       comissao_servicos: acc.comissao_servicos + t.comissao_servicos,
       comissao_total: acc.comissao_total + t.comissao_total,
-    }), { os_count: 0, valor_pecas: 0, valor_servicos: 0, comissao_pecas: 0, comissao_servicos: 0, comissao_total: 0 });
+    }), { os_count: 0, valor_pecas: 0, valor_servicos: 0, faturamento: 0, comissao_pecas: 0, comissao_servicos: 0, comissao_total: 0 });
 
     return new Response(
       JSON.stringify({
