@@ -283,11 +283,9 @@ Deno.serve(async (req) => {
 
       let valor_pecas = 0;
       let pecas_count = 0;
-      // Faturamento por OS (alinhado ao Painel TV WeDo): valor_total - valor_deslocamento da OS GC
-      const faturamento_os = Math.max(
-        0,
-        toNum(detail.valor_total) - toNum(detail.valor_deslocamento)
-      );
+      // Faturamento por OS: soma apenas itens voltados ao serviço.
+      // Exclui deslocamento, hospedagem/alimentação e quaisquer itens não comissionáveis.
+      let faturamento_os = 0;
       const itens_pecas: any[] = [];
       for (const p of produtos) {
         const descProd = String(p.nome_produto || p.detalhes || "");
@@ -297,6 +295,7 @@ Deno.serve(async (req) => {
         if (!hospAlim && !semValorRecebido) {
           valor_pecas += total;
           pecas_count += 1;
+          faturamento_os += total;
         }
         itens_pecas.push({
           descricao: String(p.nome_produto || p.detalhes || "Produto"),
@@ -346,6 +345,9 @@ Deno.serve(async (req) => {
           } else {
             valor_servicos += total;
             servicos_count += 1;
+          }
+          if (!desloc && !hospAlim) {
+            faturamento_os += total;
           }
         }
         itens_servicos.push({
