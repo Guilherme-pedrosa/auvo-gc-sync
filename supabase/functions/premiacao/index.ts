@@ -435,13 +435,15 @@ Deno.serve(async (req) => {
         "Sem técnico";
       const tecnico = canonicalTecnico(tecnicoRaw);
       const tecnico_id = String(detail.vendedor_id || row.tecnico_id || "");
-      // Chave de agregação baseada apenas no nome canônico para consolidar aliases
-      const key = normalize(tecnico);
+      // Chave de agregação pelo PRIMEIRO NOME — consolida todas as variações da mesma pessoa
+      const primeiroNome = normalize(tecnico).split(/\s+/)[0] || normalize(tecnico);
+      const key = primeiroNome;
+      const displayNome = primeiroNome ? primeiroNome.charAt(0).toUpperCase() + primeiroNome.slice(1) : tecnico;
 
       let agg = techMap.get(key);
       if (!agg) {
         agg = {
-          tecnico, tecnico_id, os_count: 0,
+          tecnico: displayNome, tecnico_id, os_count: 0,
           valor_pecas: 0, valor_servicos: 0,
           comissao_pecas: 0, comissao_servicos: 0, comissao_total: 0,
           ordens: [],
