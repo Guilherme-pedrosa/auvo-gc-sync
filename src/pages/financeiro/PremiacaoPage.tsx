@@ -33,6 +33,8 @@ type OsRow = {
   situacao?: string;
   cor_situacao?: string;
   gc_link?: string;
+  auvo_link?: string | null;
+  auvo_task_id?: string | null;
   itens_pecas?: ItemRow[];
   itens_servicos?: ItemRow[];
   contrato?: { nome: string; valor_hora: number; taxa: number; horas: number; base_servico: number } | null;
@@ -293,6 +295,16 @@ function OsDetailDialog({ os, onClose }: { os: OsRow | null; onClose: () => void
                     className="text-xs text-primary inline-flex items-center gap-1 hover:underline"
                   >
                     Abrir no GC <ExternalLink className="h-3 w-3" />
+                  </a>
+                )}
+                {os.auvo_link && (
+                  <a
+                    href={os.auvo_link}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-xs text-primary inline-flex items-center gap-1 hover:underline"
+                  >
+                    Abrir no Auvo <ExternalLink className="h-3 w-3" />
                   </a>
                 )}
               </DialogTitle>
