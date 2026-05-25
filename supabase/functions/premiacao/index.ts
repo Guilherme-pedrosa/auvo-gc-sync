@@ -378,11 +378,13 @@ Deno.serve(async (req) => {
       let comissao_pecas = valor_pecas * 0.01;
       let comissao_servicos: number;
       let base_servico_contrato = 0;
-      if (valor_servicos <= 0 || servicos_count <= 0) {
-        comissao_servicos = 0;
-      } else if (contrato) {
+      if (contrato && totalRecebidoOS > 0 && horas > 0) {
+        // Contrato é por hora-homem: paga sempre sobre horas trabalhadas,
+        // independente do valor de serviço lançado na GC (pode estar zerado).
         base_servico_contrato = horas * toNum(contrato.valor_hora);
         comissao_servicos = base_servico_contrato * toNum(contrato.taxa_comissao_servico);
+      } else if (valor_servicos <= 0 || servicos_count <= 0) {
+        comissao_servicos = 0;
       } else {
         comissao_servicos = valor_servicos * 0.15;
       }
