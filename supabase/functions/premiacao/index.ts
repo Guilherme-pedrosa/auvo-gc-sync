@@ -320,9 +320,8 @@ Deno.serve(async (req) => {
       let valor_servicos = 0;
       let servicos_count = 0;
       let valor_servicos_taxa5 = 0;
-      // Horas reais trabalhadas (Auvo) — usadas como gatilho de recuperação
-      // quando o serviço veio zerado na GC.
-      const horas = horasByOs.get(osId) || 0;
+      // Horas reais trabalhadas (Auvo) — APENAS da Tarefa Execução (73344) do GC.
+      const horas = execTaskId ? (duracaoByAuvoTask.get(execTaskId) || 0) : 0;
       let valor_servicos_recuperado = 0;
       const itens_servicos: any[] = [];
       for (const s of servicos) {
