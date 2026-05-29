@@ -712,7 +712,11 @@ async function fetchGcOs(gcHeaders: Record<string, string>, options?: { situacao
   return { byTaskId: map, byTaskIdAll, byExecTaskId, byCodigo, byOrcNumero };
 }
 
-async function upsertGcOsShellRows(sbClient: any, gcOsResult: { byTaskIdAll: Record<string, any[]>; byCodigo: Record<string, any> }) {
+async function upsertGcOsShellRows(
+  sbClient: any,
+  gcOsResult: { byTaskIdAll: Record<string, any[]>; byCodigo: Record<string, any> },
+  options?: { orphansOnly?: boolean },
+) {
   const shells: any[] = [];
   const seen = new Set<string>();
 
@@ -724,6 +728,10 @@ async function upsertGcOsShellRows(sbClient: any, gcOsResult: { byTaskIdAll: Rec
     // If no Auvo task linked, create a synthetic shell so the OS still appears (flagged red in UI)
     const primaryTaskId = realTaskId || `gc-only::${(osPayload as any).gc_os_id}`;
     const semTarefa = !realTaskId;
+    // Quando rodando em modo "orphansOnly", só cria/atualiza shells de OS sem 73343
+    // (as com 73343 são tratadas pelo fluxo Auvo-driven adiante e poderiam colidir
+    // com mirror_keys que incluem o orçamento vinculado).
+    if (options?.orphansOnly && !semTarefa) continue;
 
     const key = `${primaryTaskId}::${(osPayload as any).gc_os_id}`;
     if (seen.has(key)) continue;
@@ -1192,6 +1200,16 @@ async function runCentralSync(body: CentralSyncBody = {}) {
     if (isGcSolicitadasOnly) {
       gcFirstUpserted = await upsertGcOsShellRows(sbClient, gcOsResult);
       console.log(`[central-sync] GC-first: ${gcFirstUpserted} OS solicitadas gravadas antes do Auvo`);
+    } else {
+      // Sync normal: garante que OS GC sem TAREFA OS (73343) — ex.: só com 73344
+      // ou totalmente desvinculadas — apareçam no central e tenham data_saida atualizada
+      // mesmo quando a tarefa Auvo de execução está fora da janela sincronizada.
+      gcFirstUpserted = await upsertGcOsShellRows(sbClient, gcOsResult, { orphansOnly: true });
+      if (gcFirstUpserted > 0) {
+        console.log(`[central-sync] GC orphan backfill: ${gcFirstUpserted} OS sem 73343 gravadas/atualizadas`);
+      }
+    }
+    if (isGcSolicitadasOnly) {
       if (body?.fast === true) {
         return {
           success: true,
