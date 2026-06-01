@@ -9,6 +9,17 @@ const AUVO_BASE_URL = "https://api.auvo.com.br/v2";
 const PAGE_SIZE = 100;
 const MAX_PAGES = 30;
 const DB_PAGE_SIZE = 1000;
+const REPORT_COLUMNS = [
+  "auvo_task_id", "cliente", "tecnico", "tecnico_id", "data_tarefa", "data_conclusao", "status_auvo",
+  "orientacao", "pendencia", "descricao", "duracao_decimal", "hora_inicio", "hora_fim", "check_in", "check_out",
+  "check_in_iso", "check_out_iso", "duracao_deslocamento", "equipamento_nome", "equipamento_id_serie",
+  "auvo_link", "auvo_task_url", "auvo_survey_url", "gc_os_id", "gc_os_codigo", "gc_os_cliente",
+  "gc_os_situacao", "gc_os_situacao_id", "gc_os_cor_situacao", "gc_os_valor_total", "gc_os_vendedor",
+  "gc_os_data", "gc_os_data_saida", "gc_os_link", "gc_os_link_cobranca", "gc_os_tarefa_exec", "gc_os_tarefa_os",
+  "gc_orcamento_id", "gc_orcamento_codigo", "gc_orc_cliente", "gc_orc_situacao", "gc_orc_situacao_id",
+  "gc_orc_cor_situacao", "gc_orc_valor_total", "gc_orc_vendedor", "gc_orc_data", "gc_orc_link",
+  "task_type_id", "atualizado_em",
+].join(",");
 
 function isGcEditLink(value: unknown): boolean {
   return typeof value === "string" && value.includes("gestaoclick.com/") && value.includes("/editar/");
@@ -353,7 +364,7 @@ Deno.serve(async (req) => {
     while (true) {
       const { data, error } = await supabase
         .from("tarefas_central")
-        .select("*")
+        .select(REPORT_COLUMNS)
         .or(
           `and(data_conclusao.gte.${startDate},data_conclusao.lte.${endDate}),` +
           `and(data_conclusao.is.null,data_tarefa.gte.${startDate},data_tarefa.lte.${endDate})`
