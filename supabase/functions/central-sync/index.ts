@@ -19,6 +19,16 @@ let lastGcCall = 0;
 
 declare const EdgeRuntime: { waitUntil?: (promise: Promise<unknown>) => void } | undefined;
 
+function buildGcOsPublicLink(os: any): string | null {
+  const hash = String(os?.hash || "").trim();
+  return hash ? `https://gestaoclick.com/cobranca/${hash}` : null;
+}
+
+function buildGcOrcPublicLink(orc: any): string | null {
+  const hash = String(orc?.hash || "").trim();
+  return hash ? `https://gestaoclick.com/prop/${hash}` : null;
+}
+
 async function rateLimitedFetch(url: string, options: RequestInit, type: "gc" | "auvo"): Promise<Response> {
   const now = Date.now();
   const last = type === "gc" ? lastGcCall : lastAuvoCall;
@@ -408,7 +418,7 @@ function buildGcOrcPayload(orc: any) {
     gc_orc_valor_total: parseFloat(orc.valor_total || "0"),
     gc_orc_vendedor: String(orc.nome_vendedor || ""),
     gc_orc_data: String(orc.data || "").split("T")[0] || null,
-    gc_orc_link: `https://gestaoclick.com/orcamentos_servicos/editar/${orc.id}?retorno=%2Forcamentos_servicos`,
+    gc_orc_link: buildGcOrcPublicLink(orc),
   };
 }
 
@@ -535,8 +545,8 @@ async function hydrateMissingOsByCodigo(
         gc_os_vendedor: String(os.nome_vendedor || ""),
         gc_os_data: String(os.data_entrada || os.data || "").split("T")[0] || null,
         gc_os_data_saida: String(os.data_saida || "").split("T")[0] || null,
-        gc_os_link: `https://gestaoclick.com/ordens_servicos/editar/${os.id}?retorno=%2Fordens_servicos`,
-        gc_os_link_cobranca: os.hash ? `https://gestaoclick.com/cobranca/${String(os.hash).trim()}` : null,
+        gc_os_link: buildGcOsPublicLink(os),
+        gc_os_link_cobranca: buildGcOsPublicLink(os),
         gc_os_tarefa_exec,
         gc_os_tarefa_os,
         gc_os_orcamento_codigo: null as string | null,
@@ -658,8 +668,8 @@ async function fetchGcOs(gcHeaders: Record<string, string>, options?: { situacao
           gc_os_vendedor: String(os.nome_vendedor || ""),
           gc_os_data: String(os.data_entrada || os.data || "").split("T")[0] || null,
           gc_os_data_saida: String(os.data_saida || "").split("T")[0] || null,
-          gc_os_link: `https://gestaoclick.com/ordens_servicos/editar/${os.id}?retorno=%2Fordens_servicos`,
-          gc_os_link_cobranca: os.hash ? `https://gestaoclick.com/cobranca/${String(os.hash).trim()}` : null,
+          gc_os_link: buildGcOsPublicLink(os),
+          gc_os_link_cobranca: buildGcOsPublicLink(os),
           gc_os_tarefa_exec,
           gc_os_tarefa_os,
           gc_os_orcamento_codigo: null as string | null,
