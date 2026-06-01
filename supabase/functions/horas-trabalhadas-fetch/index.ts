@@ -523,6 +523,7 @@ Deno.serve(async (req) => {
         }
 
         let enriched = 0;
+        const inheritedUpdates: any[] = [];
         for (const t of orfas) {
           const p = sanitizeGcLinks(byExec.get(String(t.auvo_task_id)));
           if (!p) continue;
@@ -542,11 +543,28 @@ Deno.serve(async (req) => {
           }
           if (touched) {
             t.gc_inherited_from = p.auvo_task_id;
+            const update: any = {};
+            for (const f of fields) {
+              if (f.startsWith("gc_") && t[f]) update[f] = t[f];
+            }
+            if (Object.keys(update).length > 0) {
+              inheritedUpdates.push({ auvo_task_id: String(t.auvo_task_id), update });
+            }
             enriched++;
           }
         }
         if (enriched > 0) {
           avisos.push(`${enriched} tarefa(s) de execução enriquecidas com OS/Orçamento da tarefa pai.`);
+          for (let i = 0; i < inheritedUpdates.length; i += 8) {
+            const batch = inheritedUpdates.slice(i, i + 8);
+            await Promise.allSettled(batch.map(({ auvo_task_id, update }) =>
+              supabase
+                .from("tarefas_central")
+                .update(update)
+                .eq("auvo_task_id", auvo_task_id)
+                .is("gc_os_id", null)
+            ));
+          }
         }
       }
     } catch (e: any) {
