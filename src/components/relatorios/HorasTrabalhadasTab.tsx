@@ -31,7 +31,7 @@ import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import * as XLSX from "xlsx";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
-import { ExternalLink, FileSpreadsheet, FileText, DollarSign } from "lucide-react";
+import { ExternalLink, FileSpreadsheet, FileText, DollarSign, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 import { Textarea } from "@/components/ui/textarea";
 
@@ -143,6 +143,26 @@ export default function HorasTrabalhadasTab({
   const [reviewModalOpen, setReviewModalOpen] = useState(false);
   const [rejectedModalOpen, setRejectedModalOpen] = useState(false);
   const [syncingTaskId, setSyncingTaskId] = useState<string | null>(null);
+  const [reprocessandoGc, setReprocessandoGc] = useState(false);
+
+  const reprocessarGc = async () => {
+    setReprocessandoGc(true);
+    try {
+      const startDate = format(dateFrom, "yyyy-MM-dd");
+      const endDate = format(dateTo, "yyyy-MM-dd");
+      const { data, error } = await supabase.functions.invoke("horas-trabalhadas-fetch", {
+        body: { startDate, endDate, refreshGc: true },
+      });
+      if (error || data?.ok === false) {
+        toast.error("Falha ao reprocessar GC: " + (data?.error || error?.message || "erro desconhecido"));
+        return;
+      }
+      toast.success("Vínculos GC reprocessados");
+      queryClient.invalidateQueries({ queryKey: ["relatorios-horas-trabalhadas"] });
+    } finally {
+      setReprocessandoGc(false);
+    }
+  };
 
   // ── Config de limites de alerta (tabela alertas_horas_config) ──
   const { data: alertasConfig } = useQuery({
