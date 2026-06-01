@@ -580,6 +580,14 @@ Deno.serve(async (req) => {
         const MAX_PAGES = 30;
         const CONCURRENCY = 5;
 
+        const fetchGcById = async (resource: "ordens_servicos" | "orcamentos", id: string) => {
+          const url = `${GC_BASE}/api/${resource}/${encodeURIComponent(id)}`;
+          const r = await fetch(url, { headers: gcH });
+          if (!r.ok) return null;
+          const data = await r.json().catch(() => null);
+          return data?.data || data;
+        };
+
         const fetchPage = async (resource: "ordens_servicos" | "orcamentos", page: number) => {
           const url = `${GC_BASE}/api/${resource}?limite=100&pagina=${page}&data_inicio=${startDate}&data_fim=${endDate}`;
           for (let attempt = 0; attempt < 3; attempt++) {
@@ -745,6 +753,31 @@ Deno.serve(async (req) => {
           } else if (typeof t.gc_orc_link === "string" && t.gc_orc_link.includes("/orcamentos_servicos/editar/")) {
             t.gc_orc_link = "";
           }
+        }
+
+        const unresolvedOsIds = [...new Set(tasks
+          .filter((t: any) => String(t.gc_os_id || "") && !String(t.gc_os_link || "").includes("/cobranca/"))
+          .map((t: any) => String(t.gc_os_id)))];
+        const unresolvedOrcIds = [...new Set(tasks
+          .filter((t: any) => String(t.gc_orcamento_id || "") && !String(t.gc_orc_link || "").includes("/prop/"))
+          .map((t: any) => String(t.gc_orcamento_id)))];
+
+        for (const id of unresolvedOsIds) {
+          const os = await fetchGcById("ordens_servicos", id);
+          const hash = String(os?.hash || "").trim();
+          if (hash) osHashById.set(id, hash);
+        }
+        for (const id of unresolvedOrcIds) {
+          const orc = await fetchGcById("orcamentos", id);
+          const hash = String(orc?.hash || "").trim();
+          if (hash) orcHashById.set(id, hash);
+        }
+        for (const t of tasks) {
+          const osId = String(t.gc_os_id || "");
+          const orcId = String(t.gc_orcamento_id || "");
+          if (osId && osHashById.has(osId)) t.gc_os_link = `https://gestaoclick.com/cobranca/${osHashById.get(osId)}`;
+          if (orcId && orcHashById.has(orcId)) t.gc_orc_link = `https://gestaoclick.com/prop/${orcHashById.get(orcId)}`;
+          sanitizeGcLinks(t);
         }
 
         if (osMatched > 0 || orcMatched > 0) {
