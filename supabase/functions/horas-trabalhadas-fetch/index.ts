@@ -687,6 +687,15 @@ Deno.serve(async (req) => {
 
         let osMatched = 0;
         let orcMatched = 0;
+        // Mapas id→hash pra reescrever links antigos /editar/ persistidos no DB
+        const osHashById = new Map<string, string>();
+        for (const os of osList) {
+          if (os?.id && os?.hash) osHashById.set(String(os.id), String(os.hash));
+        }
+        const orcHashById = new Map<string, string>();
+        for (const orc of orcList) {
+          if (orc?.id && orc?.hash) orcHashById.set(String(orc.id), String(orc.hash));
+        }
         for (const t of tasks) {
           const tid = String(t.auvo_task_id || "");
           if (!tid) continue;
@@ -708,6 +717,20 @@ Deno.serve(async (req) => {
               }
               orcMatched++;
             }
+          }
+
+          // Força link público mesmo se já existia link "/editar/" persistido no DB
+          const osId = String(t.gc_os_id || "");
+          if (osId && osHashById.has(osId)) {
+            t.gc_os_link = `https://gestaoclick.com/cobranca/${osHashById.get(osId)}`;
+          } else if (typeof t.gc_os_link === "string" && t.gc_os_link.includes("/ordens_servicos/editar/")) {
+            t.gc_os_link = "";
+          }
+          const orcId = String(t.gc_orcamento_id || "");
+          if (orcId && orcHashById.has(orcId)) {
+            t.gc_orc_link = `https://gestaoclick.com/prop/${orcHashById.get(orcId)}`;
+          } else if (typeof t.gc_orc_link === "string" && t.gc_orc_link.includes("/orcamentos_servicos/editar/")) {
+            t.gc_orc_link = "";
           }
         }
 
