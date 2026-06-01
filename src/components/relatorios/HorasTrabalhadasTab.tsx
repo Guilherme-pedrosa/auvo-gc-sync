@@ -1219,6 +1219,23 @@ export default function HorasTrabalhadasTab({
           9: { cellWidth: 16, halign: "right" }, 10: { halign: "right" },
         },
         margin: { left: 14, right: 14 },
+        didDrawCell: (data: any) => {
+          if (data.section !== "body") return;
+          const task = c.tasks[data.row.index];
+          if (!task) return;
+          let url: string | null = null;
+          if (data.column.index === 2) {
+            url = task.gc_os_link_cobranca || task.gc_os_link || null;
+          } else if (data.column.index === 3) {
+            url = task.gc_orc_link || null;
+          }
+          if (!url) return;
+          const text = String(data.cell.text?.[0] ?? "");
+          if (!text || text === "—") return;
+          doc.setTextColor(37, 99, 235);
+          doc.textWithLink(text, data.cell.x + 1.5, data.cell.y + data.cell.height / 2 + 1.5, { url });
+          doc.setTextColor(0, 0, 0);
+        },
       });
 
       curY = (doc as any).lastAutoTable.finalY + 8;
