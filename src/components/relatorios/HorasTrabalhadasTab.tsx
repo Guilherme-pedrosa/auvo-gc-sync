@@ -341,7 +341,7 @@ export default function HorasTrabalhadasTab({
         if (!matched) return false;
       }
 
-      const taskTypeKey = String(t.task_type_id ?? "").trim() || "SEM_ID";
+      const taskTypeKey = resolveTaskTypeKey(t);
       if (!tipoIncluido(taskTypeKey)) return false;
 
       return true;
