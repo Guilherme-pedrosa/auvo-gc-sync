@@ -821,20 +821,19 @@ export default function HorasTrabalhadasTab({
     return lst.includes(alertFilter);
   };
 
-  // Totais incluem tarefas em revisão (continuam sinalizadas no card "Em Revisão",
-  // mas somam ao total — regra de negócio: faturamos mesmo o que está em revisão).
+  // Totais já incluem tarefas em revisão; o card amarelo é apenas destaque do subconjunto.
   // Rejeitado segue fora.
   const totalHoras = useMemo(
-    () => tecnicoSummary.reduce((s, t) => s + t.horas + t.horasEmRevisao, 0),
+    () => tecnicoSummary.reduce((s, t) => s + t.horas, 0),
     [tecnicoSummary],
   );
   const totalDeslocamento = useMemo(() => tecnicoSummary.reduce((s, t) => s + t.deslocamento, 0), [tecnicoSummary]);
   const totalValor = useMemo(
-    () => tecnicoSummary.reduce((s, t) => s + t.valor + t.valorEmRevisao, 0),
+    () => tecnicoSummary.reduce((s, t) => s + t.valor, 0),
     [tecnicoSummary],
   );
   const totalTarefas = useMemo(
-    () => tecnicoSummary.reduce((s, t) => s + t.tarefas + t.tarefasEmRevisao, 0),
+    () => tecnicoSummary.reduce((s, t) => s + t.tarefas, 0),
     [tecnicoSummary],
   );
   const totalEmRevisao = useMemo(() => tecnicoSummary.reduce((acc, t) => ({
