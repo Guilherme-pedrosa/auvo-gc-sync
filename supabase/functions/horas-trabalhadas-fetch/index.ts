@@ -14,6 +14,14 @@ function isGcEditLink(value: unknown): boolean {
   return typeof value === "string" && value.includes("gestaoclick.com/") && value.includes("/editar/");
 }
 
+function isPublicGcOsLink(value: unknown): boolean {
+  return typeof value === "string" && value.includes("gestaoclick.com/cobranca/");
+}
+
+function isPublicGcOrcLink(value: unknown): boolean {
+  return typeof value === "string" && value.includes("gestaoclick.com/prop/");
+}
+
 function sanitizeGcLinks(row: any) {
   if (!row) return row;
   if (isGcEditLink(row.gc_os_link)) row.gc_os_link = row.gc_os_link_cobranca || "";
@@ -282,6 +290,7 @@ Deno.serve(async (req) => {
     // central-sync já popula gc_os_link/gc_orc_link com o hash público.
     // Use refreshGc=true para forçar reprocessamento.
     const refreshGc = body?.refreshGc === true;
+    const refreshAuvo = body?.refreshAuvo === true;
     if (!/^\d{4}-\d{2}-\d{2}$/.test(startDate) || !/^\d{4}-\d{2}-\d{2}$/.test(endDate)) {
       return new Response(JSON.stringify({ error: "startDate/endDate inválidos (yyyy-mm-dd)" }), {
         status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -312,6 +321,7 @@ Deno.serve(async (req) => {
     // 2 + 3) Auvo: recently-updated since startDate AND in-progress within period.
     let auvoTasks: any[] = [];
     try {
+      if (!refreshAuvo) throw new Error("SKIP_AUVO_REFRESH");
       const apiKey = Deno.env.get("AUVO_APP_KEY");
       const apiToken = Deno.env.get("AUVO_TOKEN");
       if (!apiKey || !apiToken) throw new Error("AUVO_APP_KEY/AUVO_TOKEN ausentes");
@@ -355,7 +365,9 @@ Deno.serve(async (req) => {
       }
       auvoTasks = Array.from(merged.values());
     } catch (e: any) {
-      avisos.push(`Auvo indisponível — OS recentemente atualizadas podem não estar refletidas: ${e?.message || e}`);
+      if ((e?.message || e) !== "SKIP_AUVO_REFRESH") {
+        avisos.push(`Auvo indisponível — OS recentemente atualizadas podem não estar refletidas: ${e?.message || e}`);
+      }
       auvoTasks = [];
     }
 
@@ -442,7 +454,7 @@ Deno.serve(async (req) => {
           .from("tarefas_central")
           .select(
             "auvo_task_id, gc_os_tarefa_exec, gc_os_codigo, gc_os_id, gc_os_link, " +
-            "gc_os_situacao, gc_os_situacao_id, gc_os_cor_situacao, gc_os_data, " +
+            "gc_os_link_cobranca, gc_os_situacao, gc_os_situacao_id, gc_os_cor_situacao, gc_os_data, " +
             "gc_os_data_saida, gc_os_valor_total, gc_os_vendedor, gc_os_cliente, " +
             "gc_orcamento_codigo, gc_orcamento_id, gc_orc_link, gc_orc_situacao, " +
             "gc_orc_situacao_id, gc_orc_cor_situacao, gc_orc_data, gc_orc_valor_total, " +
@@ -470,7 +482,7 @@ Deno.serve(async (req) => {
           if (!p) continue;
           // Herda apenas campos GC vazios — nunca sobrescreve dados existentes.
           const fields = [
-            "gc_os_codigo","gc_os_id","gc_os_link","gc_os_situacao","gc_os_situacao_id",
+            "gc_os_codigo","gc_os_id","gc_os_link","gc_os_link_cobranca","gc_os_situacao","gc_os_situacao_id",
             "gc_os_cor_situacao","gc_os_data","gc_os_data_saida","gc_os_valor_total",
             "gc_os_vendedor","gc_os_cliente",
             "gc_orcamento_codigo","gc_orcamento_id","gc_orc_link","gc_orc_situacao",
@@ -682,6 +694,9 @@ Deno.serve(async (req) => {
             gc_os_link: os.hash
               ? `https://gestaoclick.com/cobranca/${os.hash}`
               : "",
+            gc_os_link_cobranca: os.hash
+              ? `https://gestaoclick.com/cobranca/${os.hash}`
+              : "",
           };
           for (const tid of tids) {
             // Mantém o de maior valor caso colisão (geralmente OS principal)
@@ -770,7 +785,7 @@ Deno.serve(async (req) => {
         }
 
         const unresolvedOsIds = [...new Set(tasks
-          .filter((t: any) => String(t.gc_os_id || "") && !String(t.gc_os_link || "").includes("/cobranca/"))
+          .filter((t: any) => String(t.gc_os_id || "") && !isPublicGcOsLink(t.gc_os_link) && !isPublicGcOsLink(t.gc_os_link_cobranca))
           .map((t: any) => String(t.gc_os_id)))];
         const unresolvedOrcIds = [...new Set(tasks
           .filter((t: any) => String(t.gc_orcamento_id || "") && !String(t.gc_orc_link || "").includes("/prop/"))
@@ -789,7 +804,11 @@ Deno.serve(async (req) => {
         for (const t of tasks) {
           const osId = String(t.gc_os_id || "");
           const orcId = String(t.gc_orcamento_id || "");
-          if (osId && osHashById.has(osId)) t.gc_os_link = `https://gestaoclick.com/cobranca/${osHashById.get(osId)}`;
+          if (osId && osHashById.has(osId)) {
+            const link = `https://gestaoclick.com/cobranca/${osHashById.get(osId)}`;
+            t.gc_os_link = link;
+            t.gc_os_link_cobranca = link;
+          }
           if (orcId && orcHashById.has(orcId)) t.gc_orc_link = `https://gestaoclick.com/prop/${orcHashById.get(orcId)}`;
           sanitizeGcLinks(t);
         }
@@ -834,11 +853,31 @@ Deno.serve(async (req) => {
             } catch { return null; }
           };
 
+          const knownOsLinks = new Map<string, string>();
+          const knownOrcLinks = new Map<string, string>();
+          for (const r of dbRows) {
+            const osId = String(r.gc_os_id || "");
+            const osLink = isPublicGcOsLink(r.gc_os_link_cobranca) ? r.gc_os_link_cobranca : r.gc_os_link;
+            if (osId && isPublicGcOsLink(osLink)) knownOsLinks.set(osId, osLink);
+            const orcId = String(r.gc_orcamento_id || "");
+            if (orcId && isPublicGcOrcLink(r.gc_orc_link)) knownOrcLinks.set(orcId, r.gc_orc_link);
+          }
+          for (const t of tasks) {
+            const osId = String(t.gc_os_id || "");
+            if (osId && !isPublicGcOsLink(t.gc_os_link) && !isPublicGcOsLink(t.gc_os_link_cobranca) && knownOsLinks.has(osId)) {
+              const link = knownOsLinks.get(osId)!;
+              t.gc_os_link = link;
+              t.gc_os_link_cobranca = link;
+            }
+            const orcId = String(t.gc_orcamento_id || "");
+            if (orcId && !isPublicGcOrcLink(t.gc_orc_link) && knownOrcLinks.has(orcId)) t.gc_orc_link = knownOrcLinks.get(orcId)!;
+          }
+
           const needOs = [...new Set(tasks
-            .filter((t: any) => String(t.gc_os_id || "") && !String(t.gc_os_link || "").includes("/cobranca/"))
+            .filter((t: any) => String(t.gc_os_id || "") && !isPublicGcOsLink(t.gc_os_link) && !isPublicGcOsLink(t.gc_os_link_cobranca))
             .map((t: any) => String(t.gc_os_id)))];
           const needOrc = [...new Set(tasks
-            .filter((t: any) => String(t.gc_orcamento_id || "") && !String(t.gc_orc_link || "").includes("/prop/"))
+            .filter((t: any) => String(t.gc_orcamento_id || "") && !isPublicGcOrcLink(t.gc_orc_link))
             .map((t: any) => String(t.gc_orcamento_id)))];
 
           // Limita pra não estourar tempo: máximo 20 lookups por tipo.
@@ -862,7 +901,11 @@ Deno.serve(async (req) => {
           for (const t of tasks) {
             const osId = String(t.gc_os_id || "");
             const orcId = String(t.gc_orcamento_id || "");
-            if (osId && osHash.has(osId)) t.gc_os_link = `https://gestaoclick.com/cobranca/${osHash.get(osId)}`;
+            if (osId && osHash.has(osId)) {
+              const link = `https://gestaoclick.com/cobranca/${osHash.get(osId)}`;
+              t.gc_os_link = link;
+              t.gc_os_link_cobranca = link;
+            }
             if (orcId && orcHash.has(orcId)) t.gc_orc_link = `https://gestaoclick.com/prop/${orcHash.get(orcId)}`;
           }
         }
