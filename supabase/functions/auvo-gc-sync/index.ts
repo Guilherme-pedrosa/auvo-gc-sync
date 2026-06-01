@@ -481,9 +481,9 @@ interface ResultadoValidacaoPecas {
   sem_pecas_orcamento: boolean;
   pecas_orcamento: Array<{ descricao: string; quantidade: number; codigo?: string }>;
   materiais_execucao: Array<{ descricao: string; quantidade: number }>;
-  itens_cobertos: Array<{ descricao: string; match: string; score: number }>;
+  itens_cobertos: Array<{ descricao: string; match: string; score: number; qtd_orc?: number; qtd_exec?: number }>;
   itens_faltando: Array<{ descricao: string; motivo: string }>;
-  itens_parciais: Array<{ descricao: string; melhor_match: string; score: number }>;
+  itens_parciais: Array<{ descricao: string; melhor_match: string; score: number; qtd_orc?: number; qtd_exec?: number; motivo?: string }>;
   resumo: string;
 }
 
