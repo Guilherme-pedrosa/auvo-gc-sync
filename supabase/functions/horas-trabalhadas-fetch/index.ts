@@ -594,7 +594,16 @@ Deno.serve(async (req) => {
         };
 
         const fetchPage = async (resource: "ordens_servicos" | "orcamentos", page: number) => {
-          const url = `${GC_BASE}/api/${resource}?limite=100&pagina=${page}&data_inicio=${startDate}&data_fim=${endDate}`;
+          // Expande a janela ~180 dias para trás: GC OS/Orçamento podem ter sido
+          // criados meses antes da tarefa Auvo ser executada (ex.: OS de março
+          // executada em abril). Filtrar pelo período do relatório perde essas.
+          const d = new Date(`${startDate}T00:00:00Z`);
+          d.setUTCDate(d.getUTCDate() - 180);
+          const gcStart = d.toISOString().slice(0, 10);
+          const e = new Date(`${endDate}T00:00:00Z`);
+          e.setUTCDate(e.getUTCDate() + 30);
+          const gcEnd = e.toISOString().slice(0, 10);
+          const url = `${GC_BASE}/api/${resource}?limite=100&pagina=${page}&data_inicio=${gcStart}&data_fim=${gcEnd}`;
           for (let attempt = 0; attempt < 3; attempt++) {
             const ctrl = new AbortController();
             const tid = setTimeout(() => ctrl.abort(), 12000);
