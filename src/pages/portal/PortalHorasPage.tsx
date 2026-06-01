@@ -17,9 +17,24 @@ const normalizeClient = (s: string) =>
     .replace(/\s+(ltda|me|sa|s\.a\.|s\/a|eireli|epp)\s*\.?$/i, "")
     .replace(/\s+/g, " ");
 
+const normalizeTaskType = (s: string) =>
+  (s || "")
+    .trim()
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/\s+/g, " ");
+
+const RAFAEL_SADO_BLOCKED_TASK_TYPES = [
+  "higienizacao de coifas",
+  "retirada de pecas fornecedor",
+  "visita comercial - entrega de vendas",
+];
+
 export default function PortalHorasPage() {
   const { user, profile, role, loading: authLoading, signOut } = useAuth();
   const navigate = useNavigate();
+  const isRafaelSadoUser = normalizeTaskType(profile?.nome || profile?.email || "").includes("rafael sado");
 
   useEffect(() => {
     if (authLoading) return;
@@ -93,9 +108,13 @@ export default function PortalHorasPage() {
     return tasksRaw.filter((t) => {
       const cli = normalizeClient(t.cliente || t.gc_os_cliente || "");
       if (!set.has(cli)) return false;
+      if (isRafaelSadoUser) {
+        const taskType = normalizeTaskType(t.descricao || "");
+        if (RAFAEL_SADO_BLOCKED_TASK_TYPES.some((type) => taskType.includes(type))) return false;
+      }
       return true;
     });
-  }, [tasksRaw, grupoInfo, revisaoMap]);
+  }, [tasksRaw, grupoInfo, revisaoMap, isRafaelSadoUser]);
 
   const allClientes = useMemo(() => {
     const seen = new Map<string, string>();

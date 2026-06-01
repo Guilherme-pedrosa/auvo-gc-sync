@@ -342,19 +342,6 @@ export default function HorasTrabalhadasTab({
       const cliente = t.cliente || t.gc_os_cliente || "";
       if (filterCliente !== "todos" && cliente !== filterCliente) return false;
 
-      // Exclusão fixa por cliente: Rafael Hernani Silva nunca lista certos tipos
-      // de tarefa, independentemente do filtro de tipo selecionado.
-      const clienteKey = getTipoKey(cliente);
-      if (clienteKey.includes("rafael hernani")) {
-        const descKey = getTipoKey(t.descricao);
-        const blocked = [
-          "higienizacao de coifas",
-          "retirada de pecas fornecedor",
-          "visita comercial - entrega de vendas",
-        ];
-        if (blocked.some((b) => descKey.includes(b))) return false;
-      }
-
       if (filterGrupo !== "todos") {
         const grupoClientes = grupoClienteMap.get(filterGrupo) || [];
         const clienteAuvo = normalizeName(t.cliente || "");
@@ -1003,18 +990,6 @@ export default function HorasTrabalhadasTab({
     }
     const tiposMap = new Map<string, { id: string; nome: string; qtd: number }>();
     for (const t of byId.values()) {
-      // Mesma exclusão fixa aplicada em `filtered`: quando o relatório está
-      // focado no cliente Rafael Hernani, esses tipos não aparecem nem como opção.
-      const clienteFiltradoKey = getTipoKey(filterCliente);
-      if (filterCliente !== "todos" && clienteFiltradoKey.includes("rafael hernani")) {
-        const descKey = getTipoKey(t.descricao);
-        const blocked = [
-          "higienizacao de coifas",
-          "retirada de pecas fornecedor",
-          "visita comercial - entrega de vendas",
-        ];
-        if (blocked.some((b) => descKey.includes(b))) continue;
-      }
       const id = resolveTaskTypeKey(t);
       const nomeBruto = (t.descricao || "").toString().trim();
       const nome = nomeBruto || (id === "SEM_ID" ? "Sem tipo definido" : `Tipo ${id.replace(/^desc::/, "")}`);
@@ -1028,7 +1003,7 @@ export default function HorasTrabalhadasTab({
       }
     }
     return Array.from(tiposMap.values()).sort((a, b) => b.qtd - a.qtd);
-  }, [data, filterCliente]);
+  }, [data]);
 
   const fmtBRL = (v: number) => v > 0 ? "R$ " + v.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : "—";
 
