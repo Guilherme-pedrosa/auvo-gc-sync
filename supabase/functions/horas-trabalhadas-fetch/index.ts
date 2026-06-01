@@ -804,7 +804,11 @@ Deno.serve(async (req) => {
         for (const t of tasks) {
           const osId = String(t.gc_os_id || "");
           const orcId = String(t.gc_orcamento_id || "");
-          if (osId && osHashById.has(osId)) t.gc_os_link = `https://gestaoclick.com/cobranca/${osHashById.get(osId)}`;
+          if (osId && osHashById.has(osId)) {
+            const link = `https://gestaoclick.com/cobranca/${osHashById.get(osId)}`;
+            t.gc_os_link = link;
+            t.gc_os_link_cobranca = link;
+          }
           if (orcId && orcHashById.has(orcId)) t.gc_orc_link = `https://gestaoclick.com/prop/${orcHashById.get(orcId)}`;
           sanitizeGcLinks(t);
         }
@@ -849,11 +853,31 @@ Deno.serve(async (req) => {
             } catch { return null; }
           };
 
+          const knownOsLinks = new Map<string, string>();
+          const knownOrcLinks = new Map<string, string>();
+          for (const r of dbRows) {
+            const osId = String(r.gc_os_id || "");
+            const osLink = isPublicGcOsLink(r.gc_os_link_cobranca) ? r.gc_os_link_cobranca : r.gc_os_link;
+            if (osId && isPublicGcOsLink(osLink)) knownOsLinks.set(osId, osLink);
+            const orcId = String(r.gc_orcamento_id || "");
+            if (orcId && isPublicGcOrcLink(r.gc_orc_link)) knownOrcLinks.set(orcId, r.gc_orc_link);
+          }
+          for (const t of tasks) {
+            const osId = String(t.gc_os_id || "");
+            if (osId && !isPublicGcOsLink(t.gc_os_link) && !isPublicGcOsLink(t.gc_os_link_cobranca) && knownOsLinks.has(osId)) {
+              const link = knownOsLinks.get(osId)!;
+              t.gc_os_link = link;
+              t.gc_os_link_cobranca = link;
+            }
+            const orcId = String(t.gc_orcamento_id || "");
+            if (orcId && !isPublicGcOrcLink(t.gc_orc_link) && knownOrcLinks.has(orcId)) t.gc_orc_link = knownOrcLinks.get(orcId)!;
+          }
+
           const needOs = [...new Set(tasks
-            .filter((t: any) => String(t.gc_os_id || "") && !String(t.gc_os_link || "").includes("/cobranca/"))
+            .filter((t: any) => String(t.gc_os_id || "") && !isPublicGcOsLink(t.gc_os_link) && !isPublicGcOsLink(t.gc_os_link_cobranca))
             .map((t: any) => String(t.gc_os_id)))];
           const needOrc = [...new Set(tasks
-            .filter((t: any) => String(t.gc_orcamento_id || "") && !String(t.gc_orc_link || "").includes("/prop/"))
+            .filter((t: any) => String(t.gc_orcamento_id || "") && !isPublicGcOrcLink(t.gc_orc_link))
             .map((t: any) => String(t.gc_orcamento_id)))];
 
           // Limita pra não estourar tempo: máximo 20 lookups por tipo.
