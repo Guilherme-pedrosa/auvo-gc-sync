@@ -1513,7 +1513,7 @@ export default function HorasTrabalhadasTab({
             </div>
 
             {/* Technician filter */}
-            <div className="space-y-1">
+            {!clientMode && (<div className="space-y-1">
               <Label className="text-xs">Técnico</Label>
               <Select value={filterTecnico} onValueChange={setFilterTecnico}>
                 <SelectTrigger className="w-[160px] h-9 text-xs">
@@ -1524,10 +1524,10 @@ export default function HorasTrabalhadasTab({
                   {allTecnicos.map((t) => <SelectItem key={t} value={t}>{t}</SelectItem>)}
                 </SelectContent>
               </Select>
-            </div>
+            </div>)}
 
             {/* Client filter */}
-            <div className="space-y-1">
+            {!clientMode && (<div className="space-y-1">
               <Label className="text-xs">Cliente</Label>
               <Select value={filterCliente} onValueChange={setFilterCliente}>
                 <SelectTrigger className="w-[180px] h-9 text-xs">
@@ -1538,10 +1538,10 @@ export default function HorasTrabalhadasTab({
                   {allClientes.map((c) => <SelectItem key={c} value={c}>{c}</SelectItem>)}
                 </SelectContent>
               </Select>
-            </div>
+            </div>)}
 
             {/* Group filter - searchable */}
-            <div className="space-y-1">
+            {!clientMode && (<div className="space-y-1">
               <Label className="text-xs">Grupo</Label>
               <Popover open={grupoOpen} onOpenChange={setGrupoOpen}>
                 <PopoverTrigger asChild>
