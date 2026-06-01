@@ -10,6 +10,18 @@ const PAGE_SIZE = 100;
 const MAX_PAGES = 30;
 const DB_PAGE_SIZE = 1000;
 
+function isGcEditLink(value: unknown): boolean {
+  return typeof value === "string" && value.includes("gestaoclick.com/") && value.includes("/editar/");
+}
+
+function sanitizeGcLinks(row: any) {
+  if (!row) return row;
+  if (isGcEditLink(row.gc_os_link)) row.gc_os_link = row.gc_os_link_cobranca || "";
+  if (isGcEditLink(row.gc_os_link_cobranca)) row.gc_os_link_cobranca = "";
+  if (isGcEditLink(row.gc_orc_link)) row.gc_orc_link = "";
+  return row;
+}
+
 async function auvoLogin(apiKey: string, apiToken: string): Promise<string> {
   const url = `${AUVO_BASE_URL}/login/?apiKey=${encodeURIComponent(apiKey)}&apiToken=${encodeURIComponent(apiToken)}`;
   const r = await fetch(url, { headers: { "Content-Type": "application/json" } });
@@ -449,7 +461,7 @@ Deno.serve(async (req) => {
 
         let enriched = 0;
         for (const t of orfas) {
-          const p = byExec.get(String(t.auvo_task_id));
+          const p = sanitizeGcLinks(byExec.get(String(t.auvo_task_id)));
           if (!p) continue;
           // Herda apenas campos GC vazios — nunca sobrescreve dados existentes.
           const fields = [
@@ -568,6 +580,14 @@ Deno.serve(async (req) => {
         const MAX_PAGES = 30;
         const CONCURRENCY = 5;
 
+        const fetchGcById = async (resource: "ordens_servicos" | "orcamentos", id: string) => {
+          const url = `${GC_BASE}/api/${resource}/${encodeURIComponent(id)}`;
+          const r = await fetch(url, { headers: gcH });
+          if (!r.ok) return null;
+          const data = await r.json().catch(() => null);
+          return data?.data || data;
+        };
+
         const fetchPage = async (resource: "ordens_servicos" | "orcamentos", page: number) => {
           const url = `${GC_BASE}/api/${resource}?limite=100&pagina=${page}&data_inicio=${startDate}&data_fim=${endDate}`;
           for (let attempt = 0; attempt < 3; attempt++) {
@@ -647,7 +667,7 @@ Deno.serve(async (req) => {
             gc_os_data_saida: String(os.data_saida || "").split("T")[0] || null,
             gc_os_link: os.hash
               ? `https://gestaoclick.com/cobranca/${os.hash}`
-              : `https://gestaoclick.com/ordens_servicos/editar/${os.id}?retorno=%2Fordens_servicos`,
+              : "",
           };
           for (const tid of tids) {
             // Mantém o de maior valor caso colisão (geralmente OS principal)
@@ -675,7 +695,7 @@ Deno.serve(async (req) => {
             gc_orc_data: String(orc.data || "").split("T")[0] || null,
             gc_orc_link: orc.hash
               ? `https://gestaoclick.com/prop/${orc.hash}`
-              : `https://gestaoclick.com/orcamentos_servicos/editar/${orc.id}?retorno=%2Forcamentos_servicos`,
+              : "",
           };
           for (const tid of tids) {
             const cur = orcByTaskId.get(tid);
@@ -721,6 +741,7 @@ Deno.serve(async (req) => {
 
           // Força link público mesmo se já existia link "/editar/" persistido no DB
           const osId = String(t.gc_os_id || "");
+          sanitizeGcLinks(t);
           if (osId && osHashById.has(osId)) {
             t.gc_os_link = `https://gestaoclick.com/cobranca/${osHashById.get(osId)}`;
           } else if (typeof t.gc_os_link === "string" && t.gc_os_link.includes("/ordens_servicos/editar/")) {
@@ -732,6 +753,31 @@ Deno.serve(async (req) => {
           } else if (typeof t.gc_orc_link === "string" && t.gc_orc_link.includes("/orcamentos_servicos/editar/")) {
             t.gc_orc_link = "";
           }
+        }
+
+        const unresolvedOsIds = [...new Set(tasks
+          .filter((t: any) => String(t.gc_os_id || "") && !String(t.gc_os_link || "").includes("/cobranca/"))
+          .map((t: any) => String(t.gc_os_id)))];
+        const unresolvedOrcIds = [...new Set(tasks
+          .filter((t: any) => String(t.gc_orcamento_id || "") && !String(t.gc_orc_link || "").includes("/prop/"))
+          .map((t: any) => String(t.gc_orcamento_id)))];
+
+        for (const id of unresolvedOsIds) {
+          const os = await fetchGcById("ordens_servicos", id);
+          const hash = String(os?.hash || "").trim();
+          if (hash) osHashById.set(id, hash);
+        }
+        for (const id of unresolvedOrcIds) {
+          const orc = await fetchGcById("orcamentos", id);
+          const hash = String(orc?.hash || "").trim();
+          if (hash) orcHashById.set(id, hash);
+        }
+        for (const t of tasks) {
+          const osId = String(t.gc_os_id || "");
+          const orcId = String(t.gc_orcamento_id || "");
+          if (osId && osHashById.has(osId)) t.gc_os_link = `https://gestaoclick.com/cobranca/${osHashById.get(osId)}`;
+          if (orcId && orcHashById.has(orcId)) t.gc_orc_link = `https://gestaoclick.com/prop/${orcHashById.get(orcId)}`;
+          sanitizeGcLinks(t);
         }
 
         if (osMatched > 0 || orcMatched > 0) {

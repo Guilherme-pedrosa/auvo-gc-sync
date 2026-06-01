@@ -94,34 +94,12 @@ const fetchAllTarefasCentral = async ({
 };
 
 const fetchHorasTrabalhadasCentral = async (startDate: string, endDate: string) => {
-  const rows: any[] = [];
-  let from = 0;
-
-  while (true) {
-    const { data, error } = await supabase
-      .from("tarefas_central")
-      .select("*")
-      .or(
-        `and(data_conclusao.gte.${startDate},data_conclusao.lte.${endDate}),` +
-        `and(data_conclusao.is.null,data_tarefa.gte.${startDate},data_tarefa.lte.${endDate})`
-      )
-      .order("data_tarefa", { ascending: false })
-      .order("auvo_task_id", { ascending: false })
-      .range(from, from + TAREFAS_CENTRAL_PAGE_SIZE - 1);
-
-    if (error) throw error;
-
-    const batch = data || [];
-    rows.push(...batch);
-
-    if (batch.length < TAREFAS_CENTRAL_PAGE_SIZE) {
-      break;
-    }
-
-    from += TAREFAS_CENTRAL_PAGE_SIZE;
-  }
-
-  return rows;
+  const { data, error } = await supabase.functions.invoke("horas-trabalhadas-fetch", {
+    body: { startDate, endDate },
+  });
+  if (error) throw error;
+  if (data?.ok === false) throw new Error(data.error || "Falha ao buscar horas trabalhadas");
+  return data?.tasks || [];
 };
 
 export default function RelatoriosPage() {
