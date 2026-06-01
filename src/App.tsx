@@ -31,9 +31,10 @@ import { Loader2 } from "lucide-react";
 const queryClient = new QueryClient();
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
-  const { user, loading, isCliente } = useAuth();
+  const { user, loading, isCliente, role } = useAuth();
 
-  if (loading) {
+  // Aguarda role carregar para evitar flash de conteúdo interno para clientes
+  if (loading || (user && role === null)) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
         <Loader2 className="h-8 w-8 animate-spin text-primary" />
