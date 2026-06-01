@@ -646,7 +646,7 @@ Deno.serve(async (req) => {
             gc_os_data: String(os.data || os.data_entrada || "").split("T")[0] || null,
             gc_os_data_saida: String(os.data_saida || "").split("T")[0] || null,
             gc_os_link: os.hash
-              ? `https://gestaoclick.com/prop/${os.hash}`
+              ? `https://gestaoclick.com/cobranca/${os.hash}`
               : `https://gestaoclick.com/ordens_servicos/editar/${os.id}?retorno=%2Fordens_servicos`,
           };
           for (const tid of tids) {
