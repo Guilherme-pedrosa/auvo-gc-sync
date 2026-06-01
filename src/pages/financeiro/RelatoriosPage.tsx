@@ -33,7 +33,8 @@ const TAREFAS_CENTRAL_PAGE_SIZE = 1000;
 const REPORTS_SYNC_CHUNK_DAYS = 1;
 const TAREFAS_CENTRAL_REPORT_COLUMNS = [
   "auvo_task_id", "cliente", "tecnico", "tecnico_id", "data_tarefa", "data_conclusao", "status_auvo",
-  "orientacao", "descricao", "duracao_decimal", "hora_inicio", "hora_fim", "check_in", "check_out",
+  "orientacao", "pendencia", "descricao", "endereco", "auvo_link", "auvo_task_url", "auvo_survey_url",
+  "duracao_decimal", "hora_inicio", "hora_fim", "check_in", "check_out",
   "check_in_iso", "check_out_iso", "duracao_deslocamento", "equipamento_nome", "equipamento_id_serie",
   "gc_os_id", "gc_os_codigo", "gc_os_cliente", "gc_os_situacao", "gc_os_situacao_id", "gc_os_cor_situacao",
   "gc_os_valor_total", "gc_os_vendedor", "gc_os_data", "gc_os_data_saida", "gc_os_link", "gc_os_link_cobranca",
