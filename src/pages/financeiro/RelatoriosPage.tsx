@@ -312,7 +312,7 @@ export default function RelatoriosPage() {
     staleTime: 60_000,
   });
 
-  // Fetch ALL tasks (for Horas Trabalhadas tab - includes tasks without OS)
+  // Mantém a query antiga desligada: a tela de horas usa busca por período, não a base inteira.
   const { data: todasTarefas } = useQuery({
     queryKey: ["relatorios-todas-tarefas"],
     queryFn: async ({ signal }) => fetchAllTarefasCentral({ signal }),
@@ -482,7 +482,7 @@ export default function RelatoriosPage() {
 
   const allTiposTarefa = useMemo(() => {
     if (!horasData?.length) return [] as string[];
-    const set = new Set(
+    const set = new Set<string>(
       horasData.map((t) => {
         const tipo = (t.descricao || "").trim();
         return tipo.length > 0 ? tipo : "Sem tipo";
@@ -579,7 +579,7 @@ export default function RelatoriosPage() {
         <TabsContent value="os-abertas">
           <OSAbertasTab
             data={osAbertas}
-            allTasks={todasTarefas || []}
+            allTasks={osAbertasTasks}
             isLoading={isLoadingOS}
             allClientes={allClientes}
             onRefresh={refreshRelatoriosData}
