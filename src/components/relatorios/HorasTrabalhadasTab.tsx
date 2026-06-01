@@ -290,6 +290,18 @@ export default function HorasTrabalhadasTab({
       .replace(/[\u0300-\u036f]/g, "");
   };
 
+  // Resolve a stable grouping key for a task type.
+  // Prefer the Auvo task_type_id; when missing, fall back to a normalized
+  // descricao so OS with empty task_type_id but valid description still
+  // group correctly instead of all collapsing into "Sem tipo definido".
+  const resolveTaskTypeKey = (t: any): string => {
+    const id = String(t?.task_type_id ?? "").trim();
+    if (id) return id;
+    const desc = String(t?.descricao ?? "").trim();
+    if (desc) return `desc::${getTipoKey(desc)}`;
+    return "SEM_ID";
+  };
+
   // Resolve group members
   const grupoClienteMap = useMemo(() => {
     const map = new Map<string, string[]>();
