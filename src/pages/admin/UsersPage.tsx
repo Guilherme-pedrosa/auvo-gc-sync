@@ -318,10 +318,15 @@ export default function UsersPage() {
                     <TableCell className="font-medium">{u.nome || "—"}</TableCell>
                     <TableCell>{u.email}</TableCell>
                     <TableCell>
-                      <Badge variant={u.role === "admin" ? "default" : "secondary"} className="gap-1">
+                      <Badge variant={u.role === "admin" ? "default" : u.role === "cliente" ? "outline" : "secondary"} className="gap-1">
                         {u.role === "admin" ? <Shield className="h-3 w-3" /> : <User className="h-3 w-3" />}
-                        {u.role === "admin" ? "Admin" : "Usuário"}
+                        {u.role === "admin" ? "Admin" : u.role === "cliente" ? "Cliente" : "Usuário"}
                       </Badge>
+                      {u.role === "cliente" && u.grupo_id && (
+                        <div className="text-xs text-muted-foreground mt-1">
+                          {grupos.find((g) => g.id === u.grupo_id)?.nome || "—"}
+                        </div>
+                      )}
                     </TableCell>
                     <TableCell className="text-muted-foreground">{u.gc_user_id || "—"}</TableCell>
                     <TableCell className="text-muted-foreground">{u.auvo_user_id || "—"}</TableCell>
