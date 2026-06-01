@@ -130,7 +130,6 @@ export default function RelatoriosPage() {
 
   const refreshRelatoriosData = useCallback(() => {
     queryClient.invalidateQueries({ queryKey: ["relatorios-tarefas-os"] });
-    queryClient.invalidateQueries({ queryKey: ["relatorios-todas-tarefas"] });
     queryClient.invalidateQueries({ queryKey: ["relatorios-horas-trabalhadas"] });
     queryClient.invalidateQueries({ queryKey: ["last-sync-timestamp"] });
   }, [queryClient]);
@@ -312,14 +311,6 @@ export default function RelatoriosPage() {
     queryFn: async ({ signal }) => fetchAllTarefasCentral({ onlyWithOs: true, signal }),
     staleTime: 60_000,
     enabled: activeTab === "os-abertas",
-  });
-
-  // Mantém a query antiga desligada: a tela de horas usa busca por período, não a base inteira.
-  const { data: todasTarefas } = useQuery({
-    queryKey: ["relatorios-todas-tarefas"],
-    queryFn: async ({ signal }) => fetchAllTarefasCentral({ signal }),
-    staleTime: 60_000,
-    enabled: false,
   });
 
   // Dedicated fetch for Horas Trabalhadas tab: reads the local mirror directly.
