@@ -49,6 +49,12 @@ interface Props {
   onDateFromChange: (d: Date) => void;
   onDateToChange: (d: Date) => void;
   equipamentoTaskMap?: Record<string, { nome: string; id_serie: string }>;
+  /**
+   * When true, hides internal-only UI (review boxes, inconsistency alerts,
+   * "Em Revisão" / "Rejeitado" KPIs, reprocess button, filter chrome).
+   * Used by the Client Portal page.
+   */
+  clientMode?: boolean;
 }
 
 const CHART_COLORS = [
@@ -106,6 +112,7 @@ export default function HorasTrabalhadasTab({
   grupos, membros, valorHoraConfigs,
   dateFrom, dateTo, onDateFromChange, onDateToChange,
   equipamentoTaskMap = {},
+  clientMode = false,
 }: Props) {
   const queryClient = useQueryClient();
   const [filterTecnico, setFilterTecnico] = useState("todos");
