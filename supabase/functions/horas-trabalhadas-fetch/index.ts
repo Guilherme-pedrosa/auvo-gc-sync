@@ -337,6 +337,10 @@ Deno.serve(async (req) => {
     // Use refreshGc=true para forçar reprocessamento.
     const refreshGc = body?.refreshGc === true;
     const refreshAuvo = body?.refreshAuvo === true;
+    // Resolver hashes faltantes do GC via N chamadas individuais é caro e bloqueia
+    // a resposta. Por padrão, NÃO faz — usa apenas o que já está no banco.
+    // O caller pode forçar com resolveLinks=true (ex.: botão "Reprocessar GC").
+    const resolveLinks = body?.resolveLinks === true || refreshGc;
     if (!/^\d{4}-\d{2}-\d{2}$/.test(startDate) || !/^\d{4}-\d{2}-\d{2}$/.test(endDate)) {
       return new Response(JSON.stringify({ error: "startDate/endDate inválidos (yyyy-mm-dd)" }), {
         status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
