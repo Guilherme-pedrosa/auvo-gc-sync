@@ -1374,7 +1374,7 @@ export default function HorasTrabalhadasTab({
       const incHeader = [
         "Gravidade", "Alertas", "Cliente", "Técnico", "Data",
         "ID Tarefa", "Cód. OS GC", "Horas", "Status Auvo",
-        "Link Auvo", "Link OS GC",
+        "Link Auvo", "Link OS GC (Cobrança)", "Link Orçamento GC",
       ];
       const flat: { sev: number; t: TaskDetail; alerts: Exclude<AlertaTipo, null>[]; cliente: string }[] = [];
       for (const c of clienteSummary) {
@@ -1409,14 +1409,15 @@ export default function HorasTrabalhadasTab({
           Number(r.t.horas.toFixed(2)),
           r.t.status_auvo,
           r.t.auvo_link || r.t.auvo_task_url || "",
-          r.t.gc_os_link || "",
+          r.t.gc_os_link_cobranca || r.t.gc_os_link || "",
+          r.t.gc_orc_link || "",
         ]);
       }
       const wsInc = XLSX.utils.aoa_to_sheet(incRows);
       wsInc["!cols"] = [
         { wch: 16 }, { wch: 36 }, { wch: 30 }, { wch: 22 }, { wch: 12 },
         { wch: 12 }, { wch: 12 }, { wch: 8 }, { wch: 14 },
-        { wch: 40 }, { wch: 40 },
+        { wch: 40 }, { wch: 40 }, { wch: 40 },
       ];
       XLSX.utils.book_append_sheet(wb, wsInc, "Inconsistências");
       }
