@@ -308,15 +308,16 @@ export default function RelatoriosPage() {
   // Fetch OS-linked tasks (for OS em Aberto tab)
   const { data: tarefasOS, isLoading: isLoadingOS } = useQuery({
     queryKey: ["relatorios-tarefas-os"],
-    queryFn: async () => fetchAllTarefasCentral({ onlyWithOs: true }),
+    queryFn: async ({ signal }) => fetchAllTarefasCentral({ onlyWithOs: true, signal }),
     staleTime: 60_000,
   });
 
   // Fetch ALL tasks (for Horas Trabalhadas tab - includes tasks without OS)
-  const { data: todasTarefas, isLoading: isLoadingAll } = useQuery({
+  const { data: todasTarefas } = useQuery({
     queryKey: ["relatorios-todas-tarefas"],
-    queryFn: async () => fetchAllTarefasCentral(),
+    queryFn: async ({ signal }) => fetchAllTarefasCentral({ signal }),
     staleTime: 60_000,
+    enabled: false,
   });
 
   // Dedicated fetch for Horas Trabalhadas tab: reads the local mirror directly.
@@ -437,8 +438,10 @@ export default function RelatoriosPage() {
 
   // Map: auvo_task_id → status_auvo (to look up execution task status)
   // Uses ALL tasks so execution tasks not directly linked to an OS are still found
+  const osAbertasTasks = tarefasOS || [];
+
   const execTaskStatusMap = useMemo(() => {
-    const source = todasTarefas || tarefasOS;
+    const source = osAbertasTasks;
     if (!source) return new Map<string, string>();
     const map = new Map<string, string>();
     for (const t of source) {
@@ -451,40 +454,42 @@ export default function RelatoriosPage() {
       map.set(t.auvo_task_id, status);
     }
     return map;
-  }, [todasTarefas, tarefasOS]);
+  }, [osAbertasTasks]);
 
   const allClientes = useMemo(() => {
-    if (!todasTarefas) return [] as string[];
+    const source = horasData?.length ? horasData : osAbertasTasks;
+    if (!source.length) return [] as string[];
     const normalize = (s: string) =>
       s.trim().toUpperCase()
         .replace(/\s+(LTDA|ME|SA|S\.A\.|S\/A|EIRELI|EPP|SOCIEDADE SIMPLES|SS)\s*\.?$/i, "")
         .trim();
     const map = new Map<string, string>();
-    for (const t of todasTarefas) {
+    for (const t of source) {
       const raw = (t.cliente || t.gc_os_cliente || "").trim();
       if (!raw) continue;
       const key = normalize(raw);
       if (!map.has(key)) map.set(key, raw);
     }
     return Array.from(map.values()).sort() as string[];
-  }, [todasTarefas]);
+  }, [horasData, osAbertasTasks]);
 
   const allTecnicos = useMemo(() => {
-    if (!todasTarefas) return [] as string[];
-    const set = new Set(todasTarefas.map((t) => t.tecnico || "").filter(Boolean));
+    const source = horasData?.length ? horasData : osAbertasTasks;
+    if (!source.length) return [] as string[];
+    const set = new Set(source.map((t) => t.tecnico || "").filter(Boolean));
     return Array.from(set).sort() as string[];
-  }, [todasTarefas]);
+  }, [horasData, osAbertasTasks]);
 
   const allTiposTarefa = useMemo(() => {
-    if (!todasTarefas) return [] as string[];
+    if (!horasData?.length) return [] as string[];
     const set = new Set(
-      todasTarefas.map((t) => {
+      horasData.map((t) => {
         const tipo = (t.descricao || "").trim();
         return tipo.length > 0 ? tipo : "Sem tipo";
       })
     );
     return Array.from(set).sort((a, b) => a.localeCompare(b, "pt-BR")) as string[];
-  }, [todasTarefas]);
+  }, [horasData]);
 
   return (
     <div className="p-6 space-y-6">
