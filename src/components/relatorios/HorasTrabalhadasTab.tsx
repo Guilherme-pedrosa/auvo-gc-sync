@@ -1224,7 +1224,8 @@ export default function HorasTrabalhadasTab({
           const task = c.tasks[data.row.index];
           if (!task) return;
           let url: string | null = null;
-          if (data.column.index === 2) url = task.gc_os_link_cobranca || task.gc_os_link || null;
+          if (data.column.index === 1) url = task.auvo_task_url || task.auvo_link || null;
+          else if (data.column.index === 2) url = task.gc_os_link_cobranca || task.gc_os_link || null;
           else if (data.column.index === 3) url = task.gc_orc_link || null;
           const text = String(data.cell.text?.[0] ?? "");
           if (url && text && text !== "—") {
@@ -1236,7 +1237,9 @@ export default function HorasTrabalhadasTab({
           const task = c.tasks[data.row.index];
           if (!task) return;
           let url: string | null = null;
-          if (data.column.index === 2) {
+          if (data.column.index === 1) {
+            url = task.auvo_task_url || task.auvo_link || null;
+          } else if (data.column.index === 2) {
             url = task.gc_os_link_cobranca || task.gc_os_link || null;
           } else if (data.column.index === 3) {
             url = task.gc_orc_link || null;
