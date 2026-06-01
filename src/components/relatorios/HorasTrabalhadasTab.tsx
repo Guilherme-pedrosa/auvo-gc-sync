@@ -1582,10 +1582,10 @@ export default function HorasTrabalhadasTab({
                   </Command>
                 </PopoverContent>
               </Popover>
-            </div>
+            </div>)}
 
             {/* Task type filter */}
-            <Popover>
+            {!clientMode && (<Popover>
               <PopoverTrigger asChild>
                 <Button variant="outline" size="sm" className="gap-1.5">
                   <Filter className="h-3.5 w-3.5" />
