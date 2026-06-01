@@ -128,6 +128,9 @@ export default function HorasTrabalhadasTab({
       localStorage.removeItem(TIPOS_STORAGE_KEY);
     } catch {}
   }, []);
+  useEffect(() => {
+    setTiposSelecionados(null);
+  }, [dateFrom, dateTo, filterGrupo]);
   const tipoIncluido = (id: string): boolean => {
     if (tiposSelecionados === null) return true;
     return tiposSelecionados.has(id);
