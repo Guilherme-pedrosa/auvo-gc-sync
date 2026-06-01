@@ -30,6 +30,52 @@ function sanitizeGcLinks(row: any) {
   return row;
 }
 
+async function persistResolvedGcLinks(supabase: any, tasks: any[]) {
+  const osLinks = new Map<string, string>();
+  const orcLinks = new Map<string, string>();
+
+  for (const task of tasks) {
+    const osId = String(task?.gc_os_id || "").trim();
+    const osLink = isPublicGcOsLink(task?.gc_os_link_cobranca) ? task.gc_os_link_cobranca : task?.gc_os_link;
+    if (osId && isPublicGcOsLink(osLink)) osLinks.set(osId, osLink);
+
+    const orcId = String(task?.gc_orcamento_id || "").trim();
+    if (orcId && isPublicGcOrcLink(task?.gc_orc_link)) orcLinks.set(orcId, task.gc_orc_link);
+  }
+
+  const updateInBatches = async (
+    entries: [string, string][],
+    updateOne: (id: string, link: string) => Promise<unknown>,
+  ) => {
+    let updated = 0;
+    const batchSize = 8;
+    for (let i = 0; i < entries.length; i += batchSize) {
+      const batch = entries.slice(i, i + batchSize);
+      const results = await Promise.allSettled(batch.map(([id, link]) => updateOne(id, link)));
+      updated += results.filter((r) => r.status === "fulfilled").length;
+    }
+    return updated;
+  };
+
+  const osUpdated = await updateInBatches(Array.from(osLinks.entries()), async (id, link) => {
+    const { error } = await supabase
+      .from("tarefas_central")
+      .update({ gc_os_link: link, gc_os_link_cobranca: link })
+      .eq("gc_os_id", id);
+    if (error) throw error;
+  });
+
+  const orcUpdated = await updateInBatches(Array.from(orcLinks.entries()), async (id, link) => {
+    const { error } = await supabase
+      .from("tarefas_central")
+      .update({ gc_orc_link: link })
+      .eq("gc_orcamento_id", id);
+    if (error) throw error;
+  });
+
+  return { osUpdated, orcUpdated };
+}
+
 async function auvoLogin(apiKey: string, apiToken: string): Promise<string> {
   const url = `${AUVO_BASE_URL}/login/?apiKey=${encodeURIComponent(apiKey)}&apiToken=${encodeURIComponent(apiToken)}`;
   const r = await fetch(url, { headers: { "Content-Type": "application/json" } });
