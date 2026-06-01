@@ -1961,6 +1961,19 @@ Deno.serve(async (req) => {
         }
       }
 
+      if (!gcVendedorId) {
+        erros++;
+        logEntries.push({
+          gc_os_id: os.gc_os_id, gc_os_codigo: os.gc_os_codigo, auvo_task_id: os.auvo_task_id,
+          resultado: "sem_mapeamento_executor", detalhe: `Tarefa Execução ${dataExecucaoResolvida.execTaskId || "N/A"} executada por ${tecnicoExecutorNome || "sem nome"} (${tecnicoExecutorId || "sem ID"}), sem mapeamento GC. OS não atualizada para não manter vendedor incorreto.`,
+          situacao_antes: os.nome_situacao, situacao_id_antes: os.situacao_id, situacao_depois: null,
+          data_os: os.data_os, gc_cliente: os.gc_cliente, auvo_cliente: auvoCliente || null,
+          exec_task_id: dataExecucaoResolvida.execTaskId, auvo_tecnico_id: tecnicoExecutorId, auvo_tecnico_nome: tecnicoExecutorNome,
+          vendedor_status: vendedorStatus,
+        });
+        continue;
+      }
+
       if (dryRun) {
         logEntries.push({
           gc_os_id: os.gc_os_id, gc_os_codigo: os.gc_os_codigo, auvo_task_id: os.auvo_task_id,
