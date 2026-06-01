@@ -1219,6 +1219,34 @@ export default function HorasTrabalhadasTab({
           9: { cellWidth: 16, halign: "right" }, 10: { halign: "right" },
         },
         margin: { left: 14, right: 14 },
+        willDrawCell: (data: any) => {
+          if (data.section !== "body") return;
+          const task = c.tasks[data.row.index];
+          if (!task) return;
+          let url: string | null = null;
+          if (data.column.index === 2) url = task.gc_os_link_cobranca || task.gc_os_link || null;
+          else if (data.column.index === 3) url = task.gc_orc_link || null;
+          const text = String(data.cell.text?.[0] ?? "");
+          if (url && text && text !== "—") {
+            data.cell.styles.textColor = [37, 99, 235];
+          }
+        },
+        didDrawCell: (data: any) => {
+          if (data.section !== "body") return;
+          const task = c.tasks[data.row.index];
+          if (!task) return;
+          let url: string | null = null;
+          if (data.column.index === 2) {
+            url = task.gc_os_link_cobranca || task.gc_os_link || null;
+          } else if (data.column.index === 3) {
+            url = task.gc_orc_link || null;
+          }
+          if (!url) return;
+          const text = String(data.cell.text?.[0] ?? "");
+          if (!text || text === "—") return;
+          // Clickable region over the existing cell text
+          doc.link(data.cell.x, data.cell.y, data.cell.width, data.cell.height, { url });
+        },
       });
 
       curY = (doc as any).lastAutoTable.finalY + 8;
@@ -1269,7 +1297,8 @@ export default function HorasTrabalhadasTab({
       "Cliente", "Cliente GC", "Data Conclusão", "Data Tarefa", "ID Tarefa", "Cód. OS GC",
       "Técnico", "Tipo de Tarefa", "Equipamento", "ID/Série",
       "Status Auvo", "Alertas", "Início", "Fim", "Horas", "Deslocamento (h)", "Valor (R$)",
-      "Orientação", "Pendência", "Relatório Auvo", "Tarefa Auvo", "Pesquisa Satisfação", "Link OS GC",
+      "Orientação", "Pendência", "Relatório Auvo", "Tarefa Auvo", "Pesquisa Satisfação",
+      "Link OS GC (Cobrança)", "Link Orçamento GC",
     ];
     const detalheRows: any[] = [
       ["Detalhe Completo por OS"],
@@ -1304,7 +1333,8 @@ export default function HorasTrabalhadasTab({
           t.auvo_link,
           t.auvo_task_url,
           t.auvo_survey_url,
-          t.gc_os_link,
+          t.gc_os_link_cobranca || t.gc_os_link || "",
+          t.gc_orc_link || "",
         ]);
       }
     }
@@ -1313,7 +1343,7 @@ export default function HorasTrabalhadasTab({
       { wch: 30 }, { wch: 30 }, { wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 12 },
       { wch: 22 }, { wch: 28 }, { wch: 30 }, { wch: 16 },
       { wch: 14 }, { wch: 28 }, { wch: 8 }, { wch: 8 }, { wch: 8 }, { wch: 14 }, { wch: 12 },
-      { wch: 40 }, { wch: 40 }, { wch: 40 }, { wch: 40 }, { wch: 40 }, { wch: 40 },
+      { wch: 40 }, { wch: 40 }, { wch: 40 }, { wch: 40 }, { wch: 40 }, { wch: 40 }, { wch: 40 },
     ];
     XLSX.utils.book_append_sheet(wb, wsDet, "Detalhe OS");
 
@@ -1344,7 +1374,7 @@ export default function HorasTrabalhadasTab({
       const incHeader = [
         "Gravidade", "Alertas", "Cliente", "Técnico", "Data",
         "ID Tarefa", "Cód. OS GC", "Horas", "Status Auvo",
-        "Link Auvo", "Link OS GC",
+        "Link Auvo", "Link OS GC (Cobrança)", "Link Orçamento GC",
       ];
       const flat: { sev: number; t: TaskDetail; alerts: Exclude<AlertaTipo, null>[]; cliente: string }[] = [];
       for (const c of clienteSummary) {
@@ -1379,14 +1409,15 @@ export default function HorasTrabalhadasTab({
           Number(r.t.horas.toFixed(2)),
           r.t.status_auvo,
           r.t.auvo_link || r.t.auvo_task_url || "",
-          r.t.gc_os_link || "",
+          r.t.gc_os_link_cobranca || r.t.gc_os_link || "",
+          r.t.gc_orc_link || "",
         ]);
       }
       const wsInc = XLSX.utils.aoa_to_sheet(incRows);
       wsInc["!cols"] = [
         { wch: 16 }, { wch: 36 }, { wch: 30 }, { wch: 22 }, { wch: 12 },
         { wch: 12 }, { wch: 12 }, { wch: 8 }, { wch: 14 },
-        { wch: 40 }, { wch: 40 },
+        { wch: 40 }, { wch: 40 }, { wch: 40 },
       ];
       XLSX.utils.book_append_sheet(wb, wsInc, "Inconsistências");
       }
