@@ -31,6 +31,17 @@ const SYNC_STEPS = [
 
 const TAREFAS_CENTRAL_PAGE_SIZE = 1000;
 const REPORTS_SYNC_CHUNK_DAYS = 1;
+const TAREFAS_CENTRAL_REPORT_COLUMNS = [
+  "auvo_task_id", "cliente", "tecnico", "tecnico_id", "data_tarefa", "data_conclusao", "status_auvo",
+  "orientacao", "pendencia", "descricao", "endereco", "auvo_link", "auvo_task_url", "auvo_survey_url",
+  "duracao_decimal", "hora_inicio", "hora_fim", "check_in", "check_out",
+  "check_in_iso", "check_out_iso", "duracao_deslocamento", "equipamento_nome", "equipamento_id_serie",
+  "gc_os_id", "gc_os_codigo", "gc_os_cliente", "gc_os_situacao", "gc_os_situacao_id", "gc_os_cor_situacao",
+  "gc_os_valor_total", "gc_os_vendedor", "gc_os_data", "gc_os_data_saida", "gc_os_link", "gc_os_link_cobranca",
+  "gc_os_tarefa_exec", "gc_os_tarefa_os", "gc_orcamento_id", "gc_orcamento_codigo", "gc_orc_cliente",
+  "gc_orc_situacao", "gc_orc_situacao_id", "gc_orc_cor_situacao", "gc_orc_valor_total", "gc_orc_vendedor",
+  "gc_orc_data", "gc_orc_link", "task_type_id", "atualizado_em",
+].join(",");
 
 const parseAuvoTaskIds = (value: unknown): string[] => {
   const raw = String(value ?? "").trim();
@@ -60,8 +71,10 @@ const buildDateChunks = (from: Date, to: Date, chunkDays = REPORTS_SYNC_CHUNK_DA
 
 const fetchAllTarefasCentral = async ({
   onlyWithOs = false,
+  signal,
 }: {
   onlyWithOs?: boolean;
+  signal?: AbortSignal;
 } = {}) => {
   const rows: any[] = [];
   let from = 0;
@@ -69,9 +82,10 @@ const fetchAllTarefasCentral = async ({
   while (true) {
     let query = supabase
       .from("tarefas_central")
-      .select("*")
+      .select(TAREFAS_CENTRAL_REPORT_COLUMNS)
       .order("data_tarefa", { ascending: false })
-      .range(from, from + TAREFAS_CENTRAL_PAGE_SIZE - 1);
+      .range(from, from + TAREFAS_CENTRAL_PAGE_SIZE - 1)
+      .abortSignal(signal);
 
     if (onlyWithOs) {
       query = query.not("gc_os_id", "is", null);
@@ -108,6 +122,7 @@ export default function RelatoriosPage() {
   const [syncStep, setSyncStep] = useState(0);
   const [syncProgress, setSyncProgress] = useState(0);
   const [syncStatusMessage, setSyncStatusMessage] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState("os-abertas");
   const stepTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const refreshTimeoutsRef = useRef<ReturnType<typeof setTimeout>[]>([]);
   const today = new Date();
@@ -116,7 +131,6 @@ export default function RelatoriosPage() {
 
   const refreshRelatoriosData = useCallback(() => {
     queryClient.invalidateQueries({ queryKey: ["relatorios-tarefas-os"] });
-    queryClient.invalidateQueries({ queryKey: ["relatorios-todas-tarefas"] });
     queryClient.invalidateQueries({ queryKey: ["relatorios-horas-trabalhadas"] });
     queryClient.invalidateQueries({ queryKey: ["last-sync-timestamp"] });
   }, [queryClient]);
@@ -295,15 +309,9 @@ export default function RelatoriosPage() {
   // Fetch OS-linked tasks (for OS em Aberto tab)
   const { data: tarefasOS, isLoading: isLoadingOS } = useQuery({
     queryKey: ["relatorios-tarefas-os"],
-    queryFn: async () => fetchAllTarefasCentral({ onlyWithOs: true }),
+    queryFn: async ({ signal }) => fetchAllTarefasCentral({ onlyWithOs: true, signal }),
     staleTime: 60_000,
-  });
-
-  // Fetch ALL tasks (for Horas Trabalhadas tab - includes tasks without OS)
-  const { data: todasTarefas, isLoading: isLoadingAll } = useQuery({
-    queryKey: ["relatorios-todas-tarefas"],
-    queryFn: async () => fetchAllTarefasCentral(),
-    staleTime: 60_000,
+    enabled: activeTab === "os-abertas",
   });
 
   // Dedicated fetch for Horas Trabalhadas tab: reads the local mirror directly.
@@ -314,6 +322,7 @@ export default function RelatoriosPage() {
       return fetchHorasTrabalhadasCentral(format(dateFrom, "yyyy-MM-dd"), format(dateTo, "yyyy-MM-dd"));
     },
     staleTime: 60_000,
+    enabled: activeTab === "horas" || activeTab === "config",
   });
 
   const { data: grupos, refetch: refetchGrupos } = useQuery({
@@ -400,7 +409,7 @@ export default function RelatoriosPage() {
       }
       return map;
     },
-    enabled: equipamentoLookupTaskIds.length > 0,
+    enabled: activeTab === "os-abertas" && equipamentoLookupTaskIds.length > 0,
     staleTime: 5 * 60_000,
   });
 
@@ -424,8 +433,10 @@ export default function RelatoriosPage() {
 
   // Map: auvo_task_id → status_auvo (to look up execution task status)
   // Uses ALL tasks so execution tasks not directly linked to an OS are still found
+  const osAbertasTasks = tarefasOS || [];
+
   const execTaskStatusMap = useMemo(() => {
-    const source = todasTarefas || tarefasOS;
+    const source = osAbertasTasks;
     if (!source) return new Map<string, string>();
     const map = new Map<string, string>();
     for (const t of source) {
@@ -438,40 +449,42 @@ export default function RelatoriosPage() {
       map.set(t.auvo_task_id, status);
     }
     return map;
-  }, [todasTarefas, tarefasOS]);
+  }, [osAbertasTasks]);
 
   const allClientes = useMemo(() => {
-    if (!todasTarefas) return [] as string[];
+    const source = horasData?.length ? horasData : osAbertasTasks;
+    if (!source.length) return [] as string[];
     const normalize = (s: string) =>
       s.trim().toUpperCase()
         .replace(/\s+(LTDA|ME|SA|S\.A\.|S\/A|EIRELI|EPP|SOCIEDADE SIMPLES|SS)\s*\.?$/i, "")
         .trim();
     const map = new Map<string, string>();
-    for (const t of todasTarefas) {
+    for (const t of source) {
       const raw = (t.cliente || t.gc_os_cliente || "").trim();
       if (!raw) continue;
       const key = normalize(raw);
       if (!map.has(key)) map.set(key, raw);
     }
     return Array.from(map.values()).sort() as string[];
-  }, [todasTarefas]);
+  }, [horasData, osAbertasTasks]);
 
   const allTecnicos = useMemo(() => {
-    if (!todasTarefas) return [] as string[];
-    const set = new Set(todasTarefas.map((t) => t.tecnico || "").filter(Boolean));
+    const source = horasData?.length ? horasData : osAbertasTasks;
+    if (!source.length) return [] as string[];
+    const set = new Set(source.map((t) => t.tecnico || "").filter(Boolean));
     return Array.from(set).sort() as string[];
-  }, [todasTarefas]);
+  }, [horasData, osAbertasTasks]);
 
   const allTiposTarefa = useMemo(() => {
-    if (!todasTarefas) return [] as string[];
-    const set = new Set(
-      todasTarefas.map((t) => {
+    if (!horasData?.length) return [] as string[];
+    const set = new Set<string>(
+      horasData.map((t) => {
         const tipo = (t.descricao || "").trim();
         return tipo.length > 0 ? tipo : "Sem tipo";
       })
     );
     return Array.from(set).sort((a, b) => a.localeCompare(b, "pt-BR")) as string[];
-  }, [todasTarefas]);
+  }, [horasData]);
 
   return (
     <div className="p-6 space-y-6">
@@ -542,7 +555,7 @@ export default function RelatoriosPage() {
         </div>
       </div>
 
-      <Tabs defaultValue="os-abertas" className="space-y-4">
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
         <TabsList>
           <TabsTrigger value="os-abertas" className="gap-1.5">
             <FileText className="h-4 w-4" />
@@ -561,7 +574,7 @@ export default function RelatoriosPage() {
         <TabsContent value="os-abertas">
           <OSAbertasTab
             data={osAbertas}
-            allTasks={todasTarefas || []}
+            allTasks={osAbertasTasks}
             isLoading={isLoadingOS}
             allClientes={allClientes}
             onRefresh={refreshRelatoriosData}
