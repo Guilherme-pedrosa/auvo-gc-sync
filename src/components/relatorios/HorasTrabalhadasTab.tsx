@@ -1559,7 +1559,7 @@ export default function HorasTrabalhadasTab({
             </div>)}
 
             {/* Task type filter */}
-            {!clientMode && (<Popover>
+            <Popover>
               <PopoverTrigger asChild>
                 <Button variant="outline" size="sm" className="gap-1.5">
                   <Filter className="h-3.5 w-3.5" />
@@ -1629,7 +1629,7 @@ export default function HorasTrabalhadasTab({
                   )}
                 </div>
               </PopoverContent>
-            </Popover>)}
+            </Popover>
 
             <Button variant="outline" size="sm" className="gap-1.5" onClick={handleExportPDF}>
               <FileText className="h-3.5 w-3.5" />
