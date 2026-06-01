@@ -19,12 +19,14 @@ interface UserProfile {
   email: string;
   gc_user_id: string | null;
   auvo_user_id: string | null;
+  grupo_id: string | null;
   role: string;
 }
 
 export default function UsersPage() {
   const { isAdmin, user: currentUser } = useAuth();
   const [users, setUsers] = useState<UserProfile[]>([]);
+  const [grupos, setGrupos] = useState<{ id: string; nome: string }[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
@@ -39,6 +41,7 @@ export default function UsersPage() {
   const [cRole, setCRole] = useState("user");
   const [cGc, setCGc] = useState("");
   const [cAuvo, setCAuvo] = useState("");
+  const [cGrupoId, setCGrupoId] = useState<string>("");
 
   // Edit form
   const [eNome, setENome] = useState("");
@@ -46,16 +49,19 @@ export default function UsersPage() {
   const [eGc, setEGc] = useState("");
   const [eAuvo, setEAuvo] = useState("");
   const [ePassword, setEPassword] = useState("");
+  const [eGrupoId, setEGrupoId] = useState<string>("");
 
   const fetchUsers = async () => {
     setLoading(true);
-    const [{ data: profiles }, { data: roles }] = await Promise.all([
-      supabase.from("profiles").select("id, nome, email, gc_user_id, auvo_user_id"),
+    const [{ data: profiles }, { data: roles }, { data: grps }] = await Promise.all([
+      supabase.from("profiles").select("id, nome, email, gc_user_id, auvo_user_id, grupo_id"),
       supabase.from("user_roles").select("user_id, role"),
+      supabase.from("grupos_clientes").select("id, nome").order("nome"),
     ]);
+    setGrupos(grps || []);
     if (profiles) {
       const rolesMap = new Map(roles?.map((r) => [r.user_id, r.role]) ?? []);
-      setUsers(profiles.map((p) => ({ ...p, role: rolesMap.get(p.id) ?? "user" })));
+      setUsers(profiles.map((p: any) => ({ ...p, role: rolesMap.get(p.id) ?? "user" })));
     }
     setLoading(false);
   };
@@ -63,14 +69,18 @@ export default function UsersPage() {
   useEffect(() => { fetchUsers(); }, []);
 
   const resetCreate = () => {
-    setCNome(""); setCEmail(""); setCPassword(""); setCRole("user"); setCGc(""); setCAuvo("");
+    setCNome(""); setCEmail(""); setCPassword(""); setCRole("user"); setCGc(""); setCAuvo(""); setCGrupoId("");
   };
 
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
     setSaving(true);
     const res = await supabase.functions.invoke("admin-create-user", {
-      body: { email: cEmail, password: cPassword, nome: cNome, role: cRole, gc_user_id: cGc || null, auvo_user_id: cAuvo || null },
+      body: {
+        email: cEmail, password: cPassword, nome: cNome, role: cRole,
+        gc_user_id: cGc || null, auvo_user_id: cAuvo || null,
+        grupo_id: cRole === "cliente" ? (cGrupoId || null) : null,
+      },
     });
     setSaving(false);
     if (res.error || res.data?.error) {
@@ -90,6 +100,7 @@ export default function UsersPage() {
     setEGc(u.gc_user_id || "");
     setEAuvo(u.auvo_user_id || "");
     setEPassword("");
+    setEGrupoId(u.grupo_id || "");
     setEditOpen(true);
   };
 
@@ -106,6 +117,7 @@ export default function UsersPage() {
         gc_user_id: eGc || null,
         auvo_user_id: eAuvo || null,
         password: ePassword || undefined,
+        grupo_id: eRole === "cliente" ? (eGrupoId || null) : null,
       },
     });
     setSaving(false);
@@ -146,7 +158,7 @@ export default function UsersPage() {
   const renderForm = (
     mode: "create" | "edit",
     onSubmit: (e: React.FormEvent) => void,
-    { nome, setNome, role, setRole, gc, setGc, auvo, setAuvo, password, setPassword, email, setEmail }: any
+    { nome, setNome, role, setRole, gc, setGc, auvo, setAuvo, password, setPassword, email, setEmail, grupoId, setGrupoId }: any
   ) => (
     <form onSubmit={onSubmit} className="space-y-4">
       <div className="space-y-2">
@@ -182,9 +194,26 @@ export default function UsersPage() {
           <SelectContent>
             <SelectItem value="user">Usuário</SelectItem>
             <SelectItem value="admin">Administrador</SelectItem>
+            <SelectItem value="cliente">Cliente (portal externo)</SelectItem>
           </SelectContent>
         </Select>
       </div>
+      {role === "cliente" && (
+        <div className="space-y-2">
+          <Label>Grupo de clientes liberado</Label>
+          <Select value={grupoId || ""} onValueChange={setGrupoId}>
+            <SelectTrigger><SelectValue placeholder="Selecione o grupo..." /></SelectTrigger>
+            <SelectContent>
+              {grupos.map((g) => (
+                <SelectItem key={g.id} value={g.id}>{g.nome}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <p className="text-xs text-muted-foreground">
+            O cliente verá apenas as horas dos clientes deste grupo no portal externo.
+          </p>
+        </div>
+      )}
       <div className="grid grid-cols-2 gap-3">
         <div className="space-y-2">
           <Label>ID GestãoClick</Label>
@@ -219,6 +248,7 @@ export default function UsersPage() {
               nome: cNome, setNome: setCNome, role: cRole, setRole: setCRole,
               gc: cGc, setGc: setCGc, auvo: cAuvo, setAuvo: setCAuvo,
               password: cPassword, setPassword: setCPassword, email: cEmail, setEmail: setCEmail,
+              grupoId: cGrupoId, setGrupoId: setCGrupoId,
             })}
           </DialogContent>
         </Dialog>
@@ -232,6 +262,7 @@ export default function UsersPage() {
             nome: eNome, setNome: setENome, role: eRole, setRole: setERole,
             gc: eGc, setGc: setEGc, auvo: eAuvo, setAuvo: setEAuvo,
             password: ePassword, setPassword: setEPassword, email: "", setEmail: () => {},
+            grupoId: eGrupoId, setGrupoId: setEGrupoId,
           })}
         </DialogContent>
       </Dialog>
@@ -287,10 +318,15 @@ export default function UsersPage() {
                     <TableCell className="font-medium">{u.nome || "—"}</TableCell>
                     <TableCell>{u.email}</TableCell>
                     <TableCell>
-                      <Badge variant={u.role === "admin" ? "default" : "secondary"} className="gap-1">
+                      <Badge variant={u.role === "admin" ? "default" : u.role === "cliente" ? "outline" : "secondary"} className="gap-1">
                         {u.role === "admin" ? <Shield className="h-3 w-3" /> : <User className="h-3 w-3" />}
-                        {u.role === "admin" ? "Admin" : "Usuário"}
+                        {u.role === "admin" ? "Admin" : u.role === "cliente" ? "Cliente" : "Usuário"}
                       </Badge>
+                      {u.role === "cliente" && u.grupo_id && (
+                        <div className="text-xs text-muted-foreground mt-1">
+                          {grupos.find((g) => g.id === u.grupo_id)?.nome || "—"}
+                        </div>
+                      )}
                     </TableCell>
                     <TableCell className="text-muted-foreground">{u.gc_user_id || "—"}</TableCell>
                     <TableCell className="text-muted-foreground">{u.auvo_user_id || "—"}</TableCell>

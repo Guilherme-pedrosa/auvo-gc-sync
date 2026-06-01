@@ -795,6 +795,7 @@ export type Database = {
           criado_em: string
           email: string
           gc_user_id: string | null
+          grupo_id: string | null
           id: string
           nome: string
         }
@@ -804,6 +805,7 @@ export type Database = {
           criado_em?: string
           email?: string
           gc_user_id?: string | null
+          grupo_id?: string | null
           id: string
           nome?: string
         }
@@ -813,10 +815,19 @@ export type Database = {
           criado_em?: string
           email?: string
           gc_user_id?: string | null
+          grupo_id?: string | null
           id?: string
           nome?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "profiles_grupo_id_fkey"
+            columns: ["grupo_id"]
+            isOneToOne: false
+            referencedRelation: "grupos_clientes"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       tarefas_central: {
         Row: {
@@ -1161,7 +1172,7 @@ export type Database = {
       }
     }
     Enums: {
-      app_role: "admin" | "user"
+      app_role: "admin" | "user" | "cliente"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -1289,7 +1300,7 @@ export type CompositeTypes<
 export const Constants = {
   public: {
     Enums: {
-      app_role: ["admin", "user"],
+      app_role: ["admin", "user", "cliente"],
     },
   },
 } as const
