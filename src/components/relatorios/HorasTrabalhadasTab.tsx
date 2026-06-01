@@ -1658,6 +1658,17 @@ export default function HorasTrabalhadasTab({
               <FileSpreadsheet className="h-3.5 w-3.5" />
               Exportar Excel
             </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              className="gap-1.5"
+              onClick={reprocessarGc}
+              disabled={reprocessandoGc}
+              title="Refaz a varredura completa de OS e orçamentos no GestãoClick para o período"
+            >
+              <RefreshCw className={`h-3.5 w-3.5 ${reprocessandoGc ? "animate-spin" : ""}`} />
+              {reprocessandoGc ? "Reprocessando..." : "Reprocessar GC"}
+            </Button>
 
             {/* Toggle 'Apenas finalizadas' removido — regra única: faturar
                 hora trabalhada no período, independente de status. */}
