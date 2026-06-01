@@ -990,9 +990,9 @@ export default function HorasTrabalhadasTab({
     }
     const tiposMap = new Map<string, { id: string; nome: string; qtd: number }>();
     for (const t of byId.values()) {
-      const id = String(t.task_type_id ?? "").trim() || "SEM_ID";
+      const id = resolveTaskTypeKey(t);
       const nomeBruto = (t.descricao || "").toString().trim();
-      const nome = nomeBruto || (id === "SEM_ID" ? "Sem tipo definido" : `Tipo ${id}`);
+      const nome = nomeBruto || (id === "SEM_ID" ? "Sem tipo definido" : `Tipo ${id.replace(/^desc::/, "")}`);
       const atual = tiposMap.get(id);
       if (atual) {
         atual.qtd += 1;
