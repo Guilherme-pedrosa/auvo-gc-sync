@@ -8,6 +8,7 @@ interface AuthContextType {
   isAdmin: boolean;
   isCliente: boolean;
   role: string | null;
+  roleLoaded: boolean;
   loading: boolean;
   signOut: () => Promise<void>;
 }
@@ -18,6 +19,7 @@ const AuthContext = createContext<AuthContextType>({
   isAdmin: false,
   isCliente: false,
   role: null,
+  roleLoaded: false,
   loading: true,
   signOut: async () => {},
 });
@@ -28,6 +30,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [isAdmin, setIsAdmin] = useState(false);
   const [isCliente, setIsCliente] = useState(false);
   const [role, setRole] = useState<string | null>(null);
+  const [roleLoaded, setRoleLoaded] = useState(false);
   const [loading, setLoading] = useState(true);
 
   const fetchUserData = async (u: User) => {
@@ -41,12 +44,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setRole(r);
       setIsAdmin(r === "admin");
       setIsCliente(r === "cliente");
+      setRoleLoaded(true);
     } catch (err) {
       console.error("Error fetching user data:", err);
       setProfile(null);
       setIsAdmin(false);
       setIsCliente(false);
       setRole(null);
+      setRoleLoaded(true);
     }
   };
 
@@ -74,10 +79,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setIsAdmin(false);
         setIsCliente(false);
         setRole(null);
+        setRoleLoaded(true);
         releaseLoading();
         return;
       }
 
+      setRoleLoaded(false);
       // Do not block UI on profile/role fetch
       void fetchUserData(u).finally(() => {
         releaseLoading();
@@ -119,7 +126,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   return (
-    <AuthContext.Provider value={{ user, profile, isAdmin, isCliente, role, loading, signOut }}>
+    <AuthContext.Provider value={{ user, profile, isAdmin, isCliente, role, roleLoaded, loading, signOut }}>
       {children}
     </AuthContext.Provider>
   );
