@@ -820,16 +820,23 @@ async function resolverDataSaidaExecucao(params: {
     const centralDate = dataValida(execTarefa?.check_out_iso) || dataValida(execTarefa?.data_conclusao) || dataValida(execTarefa?.data_tarefa);
     const centralTecnicoId = String(execTarefa?.tecnico_id || "").trim();
     const centralTecnicoNome = String(execTarefa?.tecnico || "").trim();
-    if (centralDate && centralTecnicoId) {
-      return { dataSaida: centralDate, execTaskId, origem: "tarefas_central_execucao", tecnicoId: centralTecnicoId, tecnicoNome: centralTecnicoNome };
-    }
 
     const execResult = await getAuvoTaskDetailed(execTaskId, params.auvoBearerToken);
     const execRaw = "found" in execResult ? execResult.task?._raw : null;
     const resolved = dataDeRawAuvo(execRaw);
     const tecnicoExec = extrairTecnicoAuvo(execRaw);
-    if (resolved.data && tecnicoExec.tecnicoId) {
-      return { dataSaida: resolved.data, execTaskId, origem: resolved.origem, tecnicoId: tecnicoExec.tecnicoId, tecnicoNome: tecnicoExec.tecnicoNome, execTarefaRaw: execRaw };
+    const dataSaida = resolved.data || centralDate;
+    const tecnicoId = tecnicoExec.tecnicoId || centralTecnicoId;
+    const tecnicoNome = tecnicoExec.tecnicoNome || centralTecnicoNome;
+    if (dataSaida && tecnicoId) {
+      return {
+        dataSaida,
+        execTaskId,
+        origem: resolved.data ? resolved.origem : "tarefas_central_execucao",
+        tecnicoId,
+        tecnicoNome,
+        execTarefaRaw: execRaw,
+      };
     }
   }
 
