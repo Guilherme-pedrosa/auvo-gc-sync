@@ -1684,7 +1684,7 @@ export default function HorasTrabalhadasTab({
       </Card>
 
       {/* Chip de filtro de alerta ativo */}
-      {alertFilter && (
+      {!clientMode && alertFilter && (
         <div className="flex items-center gap-2 text-xs">
           <Badge variant="secondary" className="gap-1.5">
             Filtrado por: {ALERTA_LABEL[alertFilter]}
@@ -1703,7 +1703,7 @@ export default function HorasTrabalhadasTab({
       )}
 
       {/* Card de inconsistências detectadas */}
-      {alertCounts.total > 0 && (
+      {!clientMode && alertCounts.total > 0 && (
         <Card className="border-l-4 border-l-yellow-500">
           <CardHeader className="py-3 px-4">
             <CardTitle className="text-sm flex items-center gap-2">
