@@ -1761,7 +1761,7 @@ export default function HorasTrabalhadasTab({
           <CardHeader className="py-3 px-4">
             <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-1.5">
               <ShieldCheck className="h-4 w-4 text-emerald-600" />
-              Faturável Aprovado
+              {clientMode ? "Total Faturável" : "Faturável Aprovado"}
             </CardTitle>
           </CardHeader>
           <CardContent className="px-4 pb-3">
@@ -1771,7 +1771,7 @@ export default function HorasTrabalhadasTab({
             <p className="text-xs text-muted-foreground mt-1">{totalTarefas} OS · {totalHoras.toFixed(1)}h</p>
           </CardContent>
         </Card>
-        <Card
+        {!clientMode && (<Card
           className={cn(
             "border-l-4 border-l-yellow-500",
             totalEmRevisao.tarefas > 0 && "cursor-pointer hover:bg-muted/50 transition-colors",
@@ -1795,8 +1795,8 @@ export default function HorasTrabalhadasTab({
               </p>
             )}
           </CardContent>
-        </Card>
-        <Card
+        </Card>)}
+        {!clientMode && (<Card
           className={cn(
             "border-l-4 border-l-destructive",
             totalRejeitado.tarefas > 0 && "cursor-pointer hover:bg-muted/50 transition-colors",
@@ -1820,7 +1820,7 @@ export default function HorasTrabalhadasTab({
               </p>
             )}
           </CardContent>
-        </Card>
+        </Card>)}
         <Card className="border-l-4 border-l-orange-500">
           <CardHeader className="py-3 px-4">
             <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-1.5">
