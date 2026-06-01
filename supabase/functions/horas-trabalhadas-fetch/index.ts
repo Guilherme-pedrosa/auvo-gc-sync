@@ -667,7 +667,7 @@ Deno.serve(async (req) => {
             gc_os_data_saida: String(os.data_saida || "").split("T")[0] || null,
             gc_os_link: os.hash
               ? `https://gestaoclick.com/cobranca/${os.hash}`
-              : `https://gestaoclick.com/ordens_servicos/editar/${os.id}?retorno=%2Fordens_servicos`,
+              : "",
           };
           for (const tid of tids) {
             // Mantém o de maior valor caso colisão (geralmente OS principal)
@@ -695,7 +695,7 @@ Deno.serve(async (req) => {
             gc_orc_data: String(orc.data || "").split("T")[0] || null,
             gc_orc_link: orc.hash
               ? `https://gestaoclick.com/prop/${orc.hash}`
-              : `https://gestaoclick.com/orcamentos_servicos/editar/${orc.id}?retorno=%2Forcamentos_servicos`,
+              : "",
           };
           for (const tid of tids) {
             const cur = orcByTaskId.get(tid);
