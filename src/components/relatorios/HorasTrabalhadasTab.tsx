@@ -1845,7 +1845,7 @@ export default function HorasTrabalhadasTab({
       </div>
 
       {/* Warning for negative durations */}
-      {negativeTasks.length > 0 && (
+      {!clientMode && negativeTasks.length > 0 && (
         <Alert variant="destructive">
           <AlertTriangle className="h-4 w-4" />
           <AlertTitle>⚠️ {negativeTasks.length} tarefa(s) com duração negativa</AlertTitle>
@@ -2258,7 +2258,7 @@ export default function HorasTrabalhadasTab({
       </Dialog>
 
       {/* Modal: Caixa de Revisão (Em Revisão) */}
-      <ReviewBoxDialog
+      {!clientMode && (<ReviewBoxDialog
         open={reviewModalOpen}
         onClose={() => setReviewModalOpen(false)}
         kind="em_revisao"
@@ -2269,10 +2269,10 @@ export default function HorasTrabalhadasTab({
         onAdjust={(t, j, h) => persistRevisao(t, "ajustada", j, h)}
         onReject={(t, j) => persistRevisao(t, "rejeitada", j)}
         onSync={sincronizarOsDoAuvo}
-      />
+      />)}
 
       {/* Modal: OS Rejeitadas */}
-      <ReviewBoxDialog
+      {!clientMode && (<ReviewBoxDialog
         open={rejectedModalOpen}
         onClose={() => setRejectedModalOpen(false)}
         kind="rejeitada"
@@ -2282,7 +2282,7 @@ export default function HorasTrabalhadasTab({
         onApprove={(t, j) => persistRevisao(t, "aprovada", j)}
         onRevoke={(t) => revogarRevisao(t)}
         onSync={sincronizarOsDoAuvo}
-      />
+      />)}
     </div>
   );
 }
