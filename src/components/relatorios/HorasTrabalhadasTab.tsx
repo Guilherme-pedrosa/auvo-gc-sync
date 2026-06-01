@@ -290,6 +290,18 @@ export default function HorasTrabalhadasTab({
       .replace(/[\u0300-\u036f]/g, "");
   };
 
+  // Resolve a stable grouping key for a task type.
+  // Prefer the Auvo task_type_id; when missing, fall back to a normalized
+  // descricao so OS with empty task_type_id but valid description still
+  // group correctly instead of all collapsing into "Sem tipo definido".
+  const resolveTaskTypeKey = (t: any): string => {
+    const id = String(t?.task_type_id ?? "").trim();
+    if (id) return id;
+    const desc = String(t?.descricao ?? "").trim();
+    if (desc) return `desc::${getTipoKey(desc)}`;
+    return "SEM_ID";
+  };
+
   // Resolve group members
   const grupoClienteMap = useMemo(() => {
     const map = new Map<string, string[]>();
@@ -341,7 +353,7 @@ export default function HorasTrabalhadasTab({
         if (!matched) return false;
       }
 
-      const taskTypeKey = String(t.task_type_id ?? "").trim() || "SEM_ID";
+      const taskTypeKey = resolveTaskTypeKey(t);
       if (!tipoIncluido(taskTypeKey)) return false;
 
       return true;
@@ -978,9 +990,9 @@ export default function HorasTrabalhadasTab({
     }
     const tiposMap = new Map<string, { id: string; nome: string; qtd: number }>();
     for (const t of byId.values()) {
-      const id = String(t.task_type_id ?? "").trim() || "SEM_ID";
+      const id = resolveTaskTypeKey(t);
       const nomeBruto = (t.descricao || "").toString().trim();
-      const nome = nomeBruto || (id === "SEM_ID" ? "Sem tipo definido" : `Tipo ${id}`);
+      const nome = nomeBruto || (id === "SEM_ID" ? "Sem tipo definido" : `Tipo ${id.replace(/^desc::/, "")}`);
       const atual = tiposMap.get(id);
       if (atual) {
         atual.qtd += 1;
