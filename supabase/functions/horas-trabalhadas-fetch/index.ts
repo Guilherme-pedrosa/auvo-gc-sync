@@ -926,9 +926,10 @@ Deno.serve(async (req) => {
             .filter((t: any) => String(t.gc_orcamento_id || "") && !isPublicGcOrcLink(t.gc_orc_link))
             .map((t: any) => String(t.gc_orcamento_id)))];
 
-          // Limita pra não estourar tempo: máximo 20 lookups por tipo.
-          const limitedOs = needOs.slice(0, 20);
-          const limitedOrc = needOrc.slice(0, 20);
+          // Resolve todos os links faltantes do período; em paralelo controlado
+          // para não congelar a tela nem deixar a maioria sem link.
+          const limitedOs = needOs;
+          const limitedOrc = needOrc;
 
           const osHash = new Map<string, string>();
           const orcHash = new Map<string, string>();
