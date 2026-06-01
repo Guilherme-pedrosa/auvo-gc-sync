@@ -70,7 +70,8 @@ export default function PortalHorasPage() {
     staleTime: 60_000,
   });
 
-  // Internal review statuses must NEVER leak to the client.
+  // Internal review statuses are loaded only so the component can calculate totals;
+  // the portal hides the internal review UI through clientMode.
   const { data: revisaoMap } = useQuery({
     queryKey: ["portal-revisao"],
     queryFn: async () => {
@@ -84,15 +85,14 @@ export default function PortalHorasPage() {
     staleTime: 60_000,
   });
 
-  // Filter tasks: only this group's clients, exclude em_revisao/rejeitada.
+  // Filter tasks: only this group's clients. Do not remove "em revisão" here:
+  // it must remain in the same total the internal report shows.
   const visibleTasks = useMemo(() => {
     if (!tasksRaw || !grupoInfo) return [];
     const set = grupoInfo.clientesNorm;
     return tasksRaw.filter((t) => {
       const cli = normalizeClient(t.cliente || t.gc_os_cliente || "");
       if (!set.has(cli)) return false;
-      const st = revisaoMap?.get(String(t.auvo_task_id));
-      if (st === "em_revisao" || st === "rejeitada") return false;
       return true;
     });
   }, [tasksRaw, grupoInfo, revisaoMap]);

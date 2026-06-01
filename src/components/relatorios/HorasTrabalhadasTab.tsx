@@ -119,28 +119,18 @@ export default function HorasTrabalhadasTab({
   const [filterCliente, setFilterCliente] = useState("todos");
   const [filterGrupo, setFilterGrupo] = useState("todos");
   const [grupoOpen, setGrupoOpen] = useState(false);
-  // Tipo de Tarefa (multi-select por task_type_id, persistente em localStorage).
-  // null = "todos marcados" (default na primeira visita).
+  // Tipo de Tarefa (multi-select por task_type_id).
+  // null = "todos marcados". Não persiste para não esconder OS em acessos futuros.
   const TIPOS_STORAGE_KEY = "horas-trabalhadas-tipos-filtro";
-  const [tiposSelecionados, setTiposSelecionados] = useState<Set<string> | null>(() => {
-    try {
-      const raw = localStorage.getItem(TIPOS_STORAGE_KEY);
-      if (raw) {
-        const arr = JSON.parse(raw);
-        if (Array.isArray(arr)) return new Set(arr.map(String));
-      }
-    } catch {}
-    return null;
-  });
+  const [tiposSelecionados, setTiposSelecionados] = useState<Set<string> | null>(null);
   useEffect(() => {
     try {
-      if (tiposSelecionados === null) {
-        localStorage.removeItem(TIPOS_STORAGE_KEY);
-      } else {
-        localStorage.setItem(TIPOS_STORAGE_KEY, JSON.stringify(Array.from(tiposSelecionados)));
-      }
+      localStorage.removeItem(TIPOS_STORAGE_KEY);
     } catch {}
-  }, [tiposSelecionados]);
+  }, []);
+  useEffect(() => {
+    setTiposSelecionados(null);
+  }, [dateFrom, dateTo, filterGrupo]);
   const tipoIncluido = (id: string): boolean => {
     if (tiposSelecionados === null) return true;
     return tiposSelecionados.has(id);
@@ -646,22 +636,26 @@ export default function HorasTrabalhadasTab({
       entry.deslocamento += deslocamento;
       clienteEntry.deslocamento += deslocamento;
 
-      // Valor SEMPRE entra no total (faturável + em revisão + rejeitada).
-      // Quem decide o que cobrar é o usuário; o sistema apenas informa o status.
-      entry.valor += valorEfetivo;
-      clienteEntry.valor += valorEfetivo;
-
       if (status === "faturavel") {
         entry.horas += horasEfetivas;
         entry.tarefas++;
+        entry.valor += valorEfetivo;
         clienteEntry.horas += horasEfetivas;
         clienteEntry.tarefas++;
+        clienteEntry.valor += valorEfetivo;
         const tipo = getTipoLabel(t.descricao);
         clienteEntry.tipos.set(tipo, (clienteEntry.tipos.get(tipo) || 0) + horasEfetivas);
       } else if (status === "em_revisao") {
+        // Em revisão entra no total faturável; o card amarelo só destaca o subconjunto.
+        entry.horas += horasOriginais;
+        entry.tarefas++;
+        entry.valor += valorPotencial;
         entry.horasEmRevisao += horasOriginais;
         entry.valorEmRevisao += valorPotencial;
         entry.tarefasEmRevisao++;
+        clienteEntry.horas += horasOriginais;
+        clienteEntry.tarefas++;
+        clienteEntry.valor += valorPotencial;
         clienteEntry.horasEmRevisao += horasOriginais;
         clienteEntry.valorEmRevisao += valorPotencial;
         clienteEntry.tarefasEmRevisao++;
@@ -830,20 +824,19 @@ export default function HorasTrabalhadasTab({
     return lst.includes(alertFilter);
   };
 
-  // Totais incluem tarefas em revisão (continuam sinalizadas no card "Em Revisão",
-  // mas somam ao total — regra de negócio: faturamos mesmo o que está em revisão).
+  // Totais já incluem tarefas em revisão; o card amarelo é apenas destaque do subconjunto.
   // Rejeitado segue fora.
   const totalHoras = useMemo(
-    () => tecnicoSummary.reduce((s, t) => s + t.horas + t.horasEmRevisao, 0),
+    () => tecnicoSummary.reduce((s, t) => s + t.horas, 0),
     [tecnicoSummary],
   );
   const totalDeslocamento = useMemo(() => tecnicoSummary.reduce((s, t) => s + t.deslocamento, 0), [tecnicoSummary]);
   const totalValor = useMemo(
-    () => tecnicoSummary.reduce((s, t) => s + t.valor + t.valorEmRevisao, 0),
+    () => tecnicoSummary.reduce((s, t) => s + t.valor, 0),
     [tecnicoSummary],
   );
   const totalTarefas = useMemo(
-    () => tecnicoSummary.reduce((s, t) => s + t.tarefas + t.tarefasEmRevisao, 0),
+    () => tecnicoSummary.reduce((s, t) => s + t.tarefas, 0),
     [tecnicoSummary],
   );
   const totalEmRevisao = useMemo(() => tecnicoSummary.reduce((acc, t) => ({
