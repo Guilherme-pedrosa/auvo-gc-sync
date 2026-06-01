@@ -1655,7 +1655,7 @@ export default function HorasTrabalhadasTab({
                   )}
                 </div>
               </PopoverContent>
-            </Popover>
+            </Popover>)}
 
             <Button variant="outline" size="sm" className="gap-1.5" onClick={handleExportPDF}>
               <FileText className="h-3.5 w-3.5" />
@@ -1665,7 +1665,7 @@ export default function HorasTrabalhadasTab({
               <FileSpreadsheet className="h-3.5 w-3.5" />
               Exportar Excel
             </Button>
-            <Button
+            {!clientMode && (<Button
               variant="outline"
               size="sm"
               className="gap-1.5"
@@ -1675,7 +1675,7 @@ export default function HorasTrabalhadasTab({
             >
               <RefreshCw className={`h-3.5 w-3.5 ${reprocessandoGc ? "animate-spin" : ""}`} />
               {reprocessandoGc ? "Reprocessando..." : "Reprocessar GC"}
-            </Button>
+            </Button>)}
 
             {/* Toggle 'Apenas finalizadas' removido — regra única: faturar
                 hora trabalhada no período, independente de status. */}
