@@ -572,7 +572,7 @@ Deno.serve(async (req) => {
     try {
       const gcAccessToken = Deno.env.get("GC_ACCESS_TOKEN");
       const gcSecretToken = Deno.env.get("GC_SECRET_TOKEN");
-      if (gcAccessToken && gcSecretToken) {
+      if (gcAccessToken && gcSecretToken && refreshGc) {
         const gcH = {
           "access-token": gcAccessToken,
           "secret-access-token": gcSecretToken,
