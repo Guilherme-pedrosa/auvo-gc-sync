@@ -1920,23 +1920,6 @@ Deno.serve(async (req) => {
         continue;
       }
 
-      // ─── Resolver vendedor ───
-      let gcVendedorId: string | null = null;
-      let gcVendedorNome: string | null = null;
-      let vendedorStatus: "mapeado" | "sem_mapeamento" | "sem_tecnico" = "sem_tecnico";
-
-      if (auvoTecnicoId && auvoTecnicoId !== "0") {
-        const vendedorMap = mapaVendedores[auvoTecnicoId];
-        if (vendedorMap) {
-          gcVendedorId = vendedorMap.gc_vendedor_id;
-          gcVendedorNome = vendedorMap.gc_vendedor_nome;
-          vendedorStatus = "mapeado";
-        } else {
-          vendedorStatus = "sem_mapeamento";
-          console.warn(`[auvo-gc-sync] Técnico Auvo ID ${auvoTecnicoId} sem mapeamento GC`);
-        }
-      }
-
       const dataExecucaoResolvida = await resolverDataSaidaExecucao({
         supabase,
         gcHeaders,
