@@ -24,12 +24,14 @@ import EquipamentosPreventivosPage from "./pages/financeiro/EquipamentosPreventi
 import FollowUpKanbanPage from "./pages/financeiro/FollowUpKanbanPage.tsx";
 import PremiacaoPage from "./pages/financeiro/PremiacaoPage.tsx";
 import ContratosPage from "./pages/configuracoes/ContratosPage.tsx";
+import PortalLoginPage from "./pages/portal/PortalLoginPage.tsx";
+import PortalHorasPage from "./pages/portal/PortalHorasPage.tsx";
 import { Loader2 } from "lucide-react";
 
 const queryClient = new QueryClient();
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
-  const { user, loading } = useAuth();
+  const { user, loading, isCliente } = useAuth();
 
   if (loading) {
     return (
@@ -43,15 +45,25 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
     return <Navigate to="/login" replace />;
   }
 
+  // Clientes externos não acessam a área interna
+  if (isCliente) {
+    return <Navigate to="/portal/horas" replace />;
+  }
+
   return <>{children}</>;
 }
 
 const AppRoutes = () => {
-  const { user } = useAuth();
+  const { user, isCliente } = useAuth();
 
   return (
     <Routes>
-      <Route path="/login" element={user ? <Navigate to="/" replace /> : <LoginPage />} />
+      <Route
+        path="/login"
+        element={user ? <Navigate to={isCliente ? "/portal/horas" : "/"} replace /> : <LoginPage />}
+      />
+      <Route path="/portal/login" element={<PortalLoginPage />} />
+      <Route path="/portal/horas" element={<PortalHorasPage />} />
       <Route
         path="/*"
         element={
