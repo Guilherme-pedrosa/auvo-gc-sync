@@ -1219,6 +1219,18 @@ export default function HorasTrabalhadasTab({
           9: { cellWidth: 16, halign: "right" }, 10: { halign: "right" },
         },
         margin: { left: 14, right: 14 },
+        willDrawCell: (data: any) => {
+          if (data.section !== "body") return;
+          const task = c.tasks[data.row.index];
+          if (!task) return;
+          let url: string | null = null;
+          if (data.column.index === 2) url = task.gc_os_link_cobranca || task.gc_os_link || null;
+          else if (data.column.index === 3) url = task.gc_orc_link || null;
+          const text = String(data.cell.text?.[0] ?? "");
+          if (url && text && text !== "—") {
+            data.cell.styles.textColor = [37, 99, 235];
+          }
+        },
         didDrawCell: (data: any) => {
           if (data.section !== "body") return;
           const task = c.tasks[data.row.index];
