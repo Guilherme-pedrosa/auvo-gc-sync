@@ -53,7 +53,7 @@ Deno.serve(async (req) => {
       );
     }
 
-    const { email, password, nome, role, gc_user_id, auvo_user_id } = await req.json();
+    const { email, password, nome, role, gc_user_id, auvo_user_id, grupo_id } = await req.json();
 
     if (!email || !password || !nome) {
       return new Response(
@@ -80,11 +80,12 @@ Deno.serve(async (req) => {
     // Update profile with extra fields
     await adminClient
       .from("profiles")
-      .update({ gc_user_id, auvo_user_id, nome })
+      .update({ gc_user_id, auvo_user_id, nome, grupo_id: grupo_id || null })
       .eq("id", newUser.user.id);
 
     // Assign role
-    const userRole = role === "admin" ? "admin" : "user";
+    const allowedRoles = ["admin", "user", "cliente"];
+    const userRole = allowedRoles.includes(role) ? role : "user";
     await adminClient
       .from("user_roles")
       .insert({ user_id: newUser.user.id, role: userRole });

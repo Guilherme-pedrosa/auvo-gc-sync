@@ -4,8 +4,10 @@ import type { User, Session } from "@supabase/supabase-js";
 
 interface AuthContextType {
   user: User | null;
-  profile: { nome: string; email: string; gc_user_id: string | null; auvo_user_id: string | null } | null;
+  profile: { nome: string; email: string; gc_user_id: string | null; auvo_user_id: string | null; grupo_id: string | null } | null;
   isAdmin: boolean;
+  isCliente: boolean;
+  role: string | null;
   loading: boolean;
   signOut: () => Promise<void>;
 }
@@ -14,6 +16,8 @@ const AuthContext = createContext<AuthContextType>({
   user: null,
   profile: null,
   isAdmin: false,
+  isCliente: false,
+  role: null,
   loading: true,
   signOut: async () => {},
 });
@@ -22,20 +26,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [profile, setProfile] = useState<AuthContextType["profile"]>(null);
   const [isAdmin, setIsAdmin] = useState(false);
+  const [isCliente, setIsCliente] = useState(false);
+  const [role, setRole] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
   const fetchUserData = async (u: User) => {
     try {
       const [{ data: profileData }, { data: roleData }] = await Promise.all([
-        supabase.from("profiles").select("nome, email, gc_user_id, auvo_user_id").eq("id", u.id).maybeSingle(),
-        supabase.from("user_roles").select("role").eq("user_id", u.id).eq("role", "admin").maybeSingle(),
+        supabase.from("profiles").select("nome, email, gc_user_id, auvo_user_id, grupo_id").eq("id", u.id).maybeSingle(),
+        supabase.from("user_roles").select("role").eq("user_id", u.id).maybeSingle(),
       ]);
-      setProfile(profileData);
-      setIsAdmin(!!roleData);
+      setProfile(profileData as any);
+      const r = (roleData?.role as string) ?? null;
+      setRole(r);
+      setIsAdmin(r === "admin");
+      setIsCliente(r === "cliente");
     } catch (err) {
       console.error("Error fetching user data:", err);
       setProfile(null);
       setIsAdmin(false);
+      setIsCliente(false);
+      setRole(null);
     }
   };
 
@@ -61,6 +72,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (!u) {
         setProfile(null);
         setIsAdmin(false);
+        setIsCliente(false);
+        setRole(null);
         releaseLoading();
         return;
       }
@@ -88,6 +101,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           setUser(null);
           setProfile(null);
           setIsAdmin(false);
+          setIsCliente(false);
+          setRole(null);
         }
         releaseLoading();
       });
@@ -104,7 +119,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   return (
-    <AuthContext.Provider value={{ user, profile, isAdmin, loading, signOut }}>
+    <AuthContext.Provider value={{ user, profile, isAdmin, isCliente, role, loading, signOut }}>
       {children}
     </AuthContext.Provider>
   );

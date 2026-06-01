@@ -51,7 +51,7 @@ Deno.serve(async (req) => {
       );
     }
 
-    const { action, user_id, nome, role, gc_user_id, auvo_user_id, password } = await req.json();
+    const { action, user_id, nome, role, gc_user_id, auvo_user_id, password, grupo_id } = await req.json();
 
     if (action === "update") {
       if (!user_id) {
@@ -66,13 +66,16 @@ Deno.serve(async (req) => {
       if (nome !== undefined) profileUpdate.nome = nome;
       if (gc_user_id !== undefined) profileUpdate.gc_user_id = gc_user_id;
       if (auvo_user_id !== undefined) profileUpdate.auvo_user_id = auvo_user_id;
+      if (grupo_id !== undefined) profileUpdate.grupo_id = grupo_id || null;
 
       await adminClient.from("profiles").update(profileUpdate).eq("id", user_id);
 
       // Update role if changed
       if (role) {
+        const allowedRoles = ["admin", "user", "cliente"];
+        const newRole = allowedRoles.includes(role) ? role : "user";
         await adminClient.from("user_roles").delete().eq("user_id", user_id);
-        await adminClient.from("user_roles").insert({ user_id, role });
+        await adminClient.from("user_roles").insert({ user_id, role: newRole });
       }
 
       // Update password if provided
