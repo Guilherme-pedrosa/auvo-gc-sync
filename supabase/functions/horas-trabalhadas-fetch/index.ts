@@ -694,6 +694,9 @@ Deno.serve(async (req) => {
             gc_os_link: os.hash
               ? `https://gestaoclick.com/cobranca/${os.hash}`
               : "",
+            gc_os_link_cobranca: os.hash
+              ? `https://gestaoclick.com/cobranca/${os.hash}`
+              : "",
           };
           for (const tid of tids) {
             // Mantém o de maior valor caso colisão (geralmente OS principal)
@@ -782,7 +785,7 @@ Deno.serve(async (req) => {
         }
 
         const unresolvedOsIds = [...new Set(tasks
-          .filter((t: any) => String(t.gc_os_id || "") && !String(t.gc_os_link || "").includes("/cobranca/"))
+          .filter((t: any) => String(t.gc_os_id || "") && !isPublicGcOsLink(t.gc_os_link) && !isPublicGcOsLink(t.gc_os_link_cobranca))
           .map((t: any) => String(t.gc_os_id)))];
         const unresolvedOrcIds = [...new Set(tasks
           .filter((t: any) => String(t.gc_orcamento_id || "") && !String(t.gc_orc_link || "").includes("/prop/"))
@@ -874,7 +877,11 @@ Deno.serve(async (req) => {
           for (const t of tasks) {
             const osId = String(t.gc_os_id || "");
             const orcId = String(t.gc_orcamento_id || "");
-            if (osId && osHash.has(osId)) t.gc_os_link = `https://gestaoclick.com/cobranca/${osHash.get(osId)}`;
+            if (osId && osHash.has(osId)) {
+              const link = `https://gestaoclick.com/cobranca/${osHash.get(osId)}`;
+              t.gc_os_link = link;
+              t.gc_os_link_cobranca = link;
+            }
             if (orcId && orcHash.has(orcId)) t.gc_orc_link = `https://gestaoclick.com/prop/${orcHash.get(orcId)}`;
           }
         }
