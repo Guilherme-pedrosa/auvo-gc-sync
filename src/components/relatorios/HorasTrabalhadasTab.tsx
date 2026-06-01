@@ -347,8 +347,8 @@ export default function HorasTrabalhadasTab({
       return true;
     });
   }, [
-    data, periodoStart, periodoEnd, filterTecnico, filterCliente,
-    filterGrupo, tiposSelecionados, grupoClienteMap,
+    data, filterTecnico, filterCliente, filterGrupo, tiposSelecionados,
+    grupoClienteMap,
   ]);
 
   // When filtering by group, resolve which side (Auvo or GC) matched the group
