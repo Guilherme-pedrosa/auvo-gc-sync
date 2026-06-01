@@ -49,6 +49,12 @@ interface Props {
   onDateFromChange: (d: Date) => void;
   onDateToChange: (d: Date) => void;
   equipamentoTaskMap?: Record<string, { nome: string; id_serie: string }>;
+  /**
+   * When true, hides internal-only UI (review boxes, inconsistency alerts,
+   * "Em Revisão" / "Rejeitado" KPIs, reprocess button, filter chrome).
+   * Used by the Client Portal page.
+   */
+  clientMode?: boolean;
 }
 
 const CHART_COLORS = [
@@ -106,6 +112,7 @@ export default function HorasTrabalhadasTab({
   grupos, membros, valorHoraConfigs,
   dateFrom, dateTo, onDateFromChange, onDateToChange,
   equipamentoTaskMap = {},
+  clientMode = false,
 }: Props) {
   const queryClient = useQueryClient();
   const [filterTecnico, setFilterTecnico] = useState("todos");
@@ -1506,7 +1513,7 @@ export default function HorasTrabalhadasTab({
             </div>
 
             {/* Technician filter */}
-            <div className="space-y-1">
+            {!clientMode && (<div className="space-y-1">
               <Label className="text-xs">Técnico</Label>
               <Select value={filterTecnico} onValueChange={setFilterTecnico}>
                 <SelectTrigger className="w-[160px] h-9 text-xs">
@@ -1517,10 +1524,10 @@ export default function HorasTrabalhadasTab({
                   {allTecnicos.map((t) => <SelectItem key={t} value={t}>{t}</SelectItem>)}
                 </SelectContent>
               </Select>
-            </div>
+            </div>)}
 
             {/* Client filter */}
-            <div className="space-y-1">
+            {!clientMode && (<div className="space-y-1">
               <Label className="text-xs">Cliente</Label>
               <Select value={filterCliente} onValueChange={setFilterCliente}>
                 <SelectTrigger className="w-[180px] h-9 text-xs">
@@ -1531,10 +1538,10 @@ export default function HorasTrabalhadasTab({
                   {allClientes.map((c) => <SelectItem key={c} value={c}>{c}</SelectItem>)}
                 </SelectContent>
               </Select>
-            </div>
+            </div>)}
 
             {/* Group filter - searchable */}
-            <div className="space-y-1">
+            {!clientMode && (<div className="space-y-1">
               <Label className="text-xs">Grupo</Label>
               <Popover open={grupoOpen} onOpenChange={setGrupoOpen}>
                 <PopoverTrigger asChild>
@@ -1575,10 +1582,10 @@ export default function HorasTrabalhadasTab({
                   </Command>
                 </PopoverContent>
               </Popover>
-            </div>
+            </div>)}
 
             {/* Task type filter */}
-            <Popover>
+            {!clientMode && (<Popover>
               <PopoverTrigger asChild>
                 <Button variant="outline" size="sm" className="gap-1.5">
                   <Filter className="h-3.5 w-3.5" />
@@ -1648,7 +1655,7 @@ export default function HorasTrabalhadasTab({
                   )}
                 </div>
               </PopoverContent>
-            </Popover>
+            </Popover>)}
 
             <Button variant="outline" size="sm" className="gap-1.5" onClick={handleExportPDF}>
               <FileText className="h-3.5 w-3.5" />
@@ -1658,7 +1665,7 @@ export default function HorasTrabalhadasTab({
               <FileSpreadsheet className="h-3.5 w-3.5" />
               Exportar Excel
             </Button>
-            <Button
+            {!clientMode && (<Button
               variant="outline"
               size="sm"
               className="gap-1.5"
@@ -1668,7 +1675,7 @@ export default function HorasTrabalhadasTab({
             >
               <RefreshCw className={`h-3.5 w-3.5 ${reprocessandoGc ? "animate-spin" : ""}`} />
               {reprocessandoGc ? "Reprocessando..." : "Reprocessar GC"}
-            </Button>
+            </Button>)}
 
             {/* Toggle 'Apenas finalizadas' removido — regra única: faturar
                 hora trabalhada no período, independente de status. */}
@@ -1677,7 +1684,7 @@ export default function HorasTrabalhadasTab({
       </Card>
 
       {/* Chip de filtro de alerta ativo */}
-      {alertFilter && (
+      {!clientMode && alertFilter && (
         <div className="flex items-center gap-2 text-xs">
           <Badge variant="secondary" className="gap-1.5">
             Filtrado por: {ALERTA_LABEL[alertFilter]}
@@ -1696,7 +1703,7 @@ export default function HorasTrabalhadasTab({
       )}
 
       {/* Card de inconsistências detectadas */}
-      {alertCounts.total > 0 && (
+      {!clientMode && alertCounts.total > 0 && (
         <Card className="border-l-4 border-l-yellow-500">
           <CardHeader className="py-3 px-4">
             <CardTitle className="text-sm flex items-center gap-2">
@@ -1754,7 +1761,7 @@ export default function HorasTrabalhadasTab({
           <CardHeader className="py-3 px-4">
             <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-1.5">
               <ShieldCheck className="h-4 w-4 text-emerald-600" />
-              Faturável Aprovado
+              {clientMode ? "Total Faturável" : "Faturável Aprovado"}
             </CardTitle>
           </CardHeader>
           <CardContent className="px-4 pb-3">
@@ -1764,7 +1771,7 @@ export default function HorasTrabalhadasTab({
             <p className="text-xs text-muted-foreground mt-1">{totalTarefas} OS · {totalHoras.toFixed(1)}h</p>
           </CardContent>
         </Card>
-        <Card
+        {!clientMode && (<Card
           className={cn(
             "border-l-4 border-l-yellow-500",
             totalEmRevisao.tarefas > 0 && "cursor-pointer hover:bg-muted/50 transition-colors",
@@ -1788,8 +1795,8 @@ export default function HorasTrabalhadasTab({
               </p>
             )}
           </CardContent>
-        </Card>
-        <Card
+        </Card>)}
+        {!clientMode && (<Card
           className={cn(
             "border-l-4 border-l-destructive",
             totalRejeitado.tarefas > 0 && "cursor-pointer hover:bg-muted/50 transition-colors",
@@ -1813,7 +1820,7 @@ export default function HorasTrabalhadasTab({
               </p>
             )}
           </CardContent>
-        </Card>
+        </Card>)}
         <Card className="border-l-4 border-l-orange-500">
           <CardHeader className="py-3 px-4">
             <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-1.5">
@@ -1838,7 +1845,7 @@ export default function HorasTrabalhadasTab({
       </div>
 
       {/* Warning for negative durations */}
-      {negativeTasks.length > 0 && (
+      {!clientMode && negativeTasks.length > 0 && (
         <Alert variant="destructive">
           <AlertTriangle className="h-4 w-4" />
           <AlertTitle>⚠️ {negativeTasks.length} tarefa(s) com duração negativa</AlertTitle>
@@ -2251,7 +2258,7 @@ export default function HorasTrabalhadasTab({
       </Dialog>
 
       {/* Modal: Caixa de Revisão (Em Revisão) */}
-      <ReviewBoxDialog
+      {!clientMode && (<ReviewBoxDialog
         open={reviewModalOpen}
         onClose={() => setReviewModalOpen(false)}
         kind="em_revisao"
@@ -2262,10 +2269,10 @@ export default function HorasTrabalhadasTab({
         onAdjust={(t, j, h) => persistRevisao(t, "ajustada", j, h)}
         onReject={(t, j) => persistRevisao(t, "rejeitada", j)}
         onSync={sincronizarOsDoAuvo}
-      />
+      />)}
 
       {/* Modal: OS Rejeitadas */}
-      <ReviewBoxDialog
+      {!clientMode && (<ReviewBoxDialog
         open={rejectedModalOpen}
         onClose={() => setRejectedModalOpen(false)}
         kind="rejeitada"
@@ -2275,7 +2282,7 @@ export default function HorasTrabalhadasTab({
         onApprove={(t, j) => persistRevisao(t, "aprovada", j)}
         onRevoke={(t) => revogarRevisao(t)}
         onSync={sincronizarOsDoAuvo}
-      />
+      />)}
     </div>
   );
 }
