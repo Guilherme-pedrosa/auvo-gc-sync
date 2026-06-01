@@ -1004,17 +1004,16 @@ export default function HorasTrabalhadasTab({
     const tiposMap = new Map<string, { id: string; nome: string; qtd: number }>();
     for (const t of byId.values()) {
       // Mesma exclusão fixa aplicada em `filtered`: quando o relatório está
-      // focado no Rafael Nunes, esses tipos não aparecem nem como opção.
-      if (filterTecnico === "RAFAEL NUNES" || String(t.tecnico || "").trim().toUpperCase() === "RAFAEL NUNES") {
-        if (filterTecnico === "RAFAEL NUNES") {
-          const descKey = getTipoKey(t.descricao);
-          const blocked = [
-            "higienizacao de coifas",
-            "retirada de pecas fornecedor",
-            "visita comercial - entrega de vendas",
-          ];
-          if (blocked.some((b) => descKey.includes(b))) continue;
-        }
+      // focado no cliente Rafael Hernani, esses tipos não aparecem nem como opção.
+      const clienteFiltradoKey = getTipoKey(filterCliente);
+      if (filterCliente !== "todos" && clienteFiltradoKey.includes("rafael hernani")) {
+        const descKey = getTipoKey(t.descricao);
+        const blocked = [
+          "higienizacao de coifas",
+          "retirada de pecas fornecedor",
+          "visita comercial - entrega de vendas",
+        ];
+        if (blocked.some((b) => descKey.includes(b))) continue;
       }
       const id = resolveTaskTypeKey(t);
       const nomeBruto = (t.descricao || "").toString().trim();
@@ -1029,7 +1028,7 @@ export default function HorasTrabalhadasTab({
       }
     }
     return Array.from(tiposMap.values()).sort((a, b) => b.qtd - a.qtd);
-  }, [data, filterTecnico]);
+  }, [data, filterCliente]);
 
   const fmtBRL = (v: number) => v > 0 ? "R$ " + v.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : "—";
 
