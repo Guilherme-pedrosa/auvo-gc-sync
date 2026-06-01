@@ -339,6 +339,19 @@ export default function HorasTrabalhadasTab({
 
       if (filterTecnico !== "todos" && t.tecnico !== filterTecnico) return false;
 
+      // Exclusão fixa por técnico: Rafael Nunes nunca lista certos tipos de tarefa
+      // independentemente do filtro de tipo selecionado.
+      const tecnicoNome = String(t.tecnico || "").trim().toUpperCase();
+      if (tecnicoNome === "RAFAEL NUNES") {
+        const descKey = getTipoKey(t.descricao);
+        const blocked = [
+          "higienizacao de coifas",
+          "retirada de pecas fornecedor",
+          "visita comercial - entrega de vendas",
+        ];
+        if (blocked.some((b) => descKey.includes(b))) return false;
+      }
+
       const cliente = t.cliente || t.gc_os_cliente || "";
       if (filterCliente !== "todos" && cliente !== filterCliente) return false;
 
