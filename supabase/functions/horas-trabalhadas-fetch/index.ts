@@ -277,6 +277,11 @@ Deno.serve(async (req) => {
     // ─── Modo "batch" (default) ────────────────────────────────────
     const startDate = String(body?.startDate || "");
     const endDate = String(body?.endDate || "");
+    // Por padrão NÃO faz a varredura completa do GC (lista todas as OS e
+    // orçamentos do período) — isso é o que torna o endpoint lento. O
+    // central-sync já popula gc_os_link/gc_orc_link com o hash público.
+    // Use refreshGc=true para forçar reprocessamento.
+    const refreshGc = body?.refreshGc === true;
     if (!/^\d{4}-\d{2}-\d{2}$/.test(startDate) || !/^\d{4}-\d{2}-\d{2}$/.test(endDate)) {
       return new Response(JSON.stringify({ error: "startDate/endDate inválidos (yyyy-mm-dd)" }), {
         status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -567,7 +572,7 @@ Deno.serve(async (req) => {
     try {
       const gcAccessToken = Deno.env.get("GC_ACCESS_TOKEN");
       const gcSecretToken = Deno.env.get("GC_SECRET_TOKEN");
-      if (gcAccessToken && gcSecretToken) {
+      if (gcAccessToken && gcSecretToken && refreshGc) {
         const gcH = {
           "access-token": gcAccessToken,
           "secret-access-token": gcSecretToken,
@@ -787,6 +792,74 @@ Deno.serve(async (req) => {
     } catch (e: any) {
       console.warn("[horas-trabalhadas-fetch] gc scan failed:", e?.message || e);
       avisos.push(`Falha ao varrer GC: ${e?.message || e}`);
+    }
+
+    // 6.d) Modo rápido (default): apenas sanitiza links `/editar/` e resolve
+    //      hashes faltantes via GET por ID (paralelo) — sem paginar tudo no GC.
+    if (!refreshGc) {
+      try {
+        const gcAccessToken = Deno.env.get("GC_ACCESS_TOKEN");
+        const gcSecretToken = Deno.env.get("GC_SECRET_TOKEN");
+        for (const t of tasks) sanitizeGcLinks(t);
+
+        if (gcAccessToken && gcSecretToken) {
+          const gcH = {
+            "access-token": gcAccessToken,
+            "secret-access-token": gcSecretToken,
+            "Content-Type": "application/json",
+          };
+          const GC_BASE = "https://api.gestaoclick.com";
+
+          const fetchById = async (resource: "ordens_servicos" | "orcamentos", id: string) => {
+            try {
+              const ctrl = new AbortController();
+              const tid = setTimeout(() => ctrl.abort(), 6000);
+              const r = await fetch(`${GC_BASE}/api/${resource}/${encodeURIComponent(id)}`, {
+                headers: gcH, signal: ctrl.signal,
+              });
+              clearTimeout(tid);
+              if (!r.ok) return null;
+              const j = await r.json().catch(() => null);
+              const hash = String((j?.data || j)?.hash || "").trim();
+              return hash || null;
+            } catch { return null; }
+          };
+
+          const needOs = [...new Set(tasks
+            .filter((t: any) => String(t.gc_os_id || "") && !String(t.gc_os_link || "").includes("/cobranca/"))
+            .map((t: any) => String(t.gc_os_id)))];
+          const needOrc = [...new Set(tasks
+            .filter((t: any) => String(t.gc_orcamento_id || "") && !String(t.gc_orc_link || "").includes("/prop/"))
+            .map((t: any) => String(t.gc_orcamento_id)))];
+
+          // Limita pra não estourar tempo: máximo 20 lookups por tipo.
+          const limitedOs = needOs.slice(0, 20);
+          const limitedOrc = needOrc.slice(0, 20);
+
+          const osHash = new Map<string, string>();
+          const orcHash = new Map<string, string>();
+          const CONC = 6;
+          for (let i = 0; i < limitedOs.length; i += CONC) {
+            const batch = limitedOs.slice(i, i + CONC);
+            const res = await Promise.all(batch.map((id) => fetchById("ordens_servicos", id)));
+            res.forEach((h, idx) => { if (h) osHash.set(batch[idx], h); });
+          }
+          for (let i = 0; i < limitedOrc.length; i += CONC) {
+            const batch = limitedOrc.slice(i, i + CONC);
+            const res = await Promise.all(batch.map((id) => fetchById("orcamentos", id)));
+            res.forEach((h, idx) => { if (h) orcHash.set(batch[idx], h); });
+          }
+
+          for (const t of tasks) {
+            const osId = String(t.gc_os_id || "");
+            const orcId = String(t.gc_orcamento_id || "");
+            if (osId && osHash.has(osId)) t.gc_os_link = `https://gestaoclick.com/cobranca/${osHash.get(osId)}`;
+            if (orcId && orcHash.has(orcId)) t.gc_orc_link = `https://gestaoclick.com/prop/${orcHash.get(orcId)}`;
+          }
+        }
+      } catch (e: any) {
+        console.warn("[horas-trabalhadas-fetch] fast link resolve failed:", e?.message || e);
+      }
     }
 
     return new Response(JSON.stringify({ tasks, avisos }), {
