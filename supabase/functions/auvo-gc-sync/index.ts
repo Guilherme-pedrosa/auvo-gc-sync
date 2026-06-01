@@ -1980,7 +1980,7 @@ Deno.serve(async (req) => {
           resultado: "dry_run_ok",
           detalhe: `Seria atualizada para situação 7116099 | Peças: ${validacaoPecas.resumo} | Vendedor: ${gcVendedorNome || vendedorStatus} | data_saida: ${auvoTaskDate || "N/A"}`,
           situacao_antes: os.nome_situacao, situacao_id_antes: os.situacao_id, situacao_depois: "EXECUTADO – AG. NEGOCIAÇÃO (7116099)",
-          auvo_tecnico_id: auvoTecnicoId || null, auvo_tecnico_nome: auvoTecnicoNome || null, data_os: os.data_os,
+          auvo_tecnico_id: tecnicoExecutorId || null, auvo_tecnico_nome: tecnicoExecutorNome || null, auvo_tecnico_os_id: auvoTecnicoId || null, auvo_tecnico_os_nome: auvoTecnicoNome || null, data_os: os.data_os,
           gc_cliente: os.gc_cliente, auvo_cliente: auvoCliente || null,
           gc_vendedor_id: gcVendedorId, gc_vendedor_nome: gcVendedorNome, vendedor_status: vendedorStatus,
         });
@@ -2002,7 +2002,7 @@ Deno.serve(async (req) => {
           resultado: "atualizada",
           detalhe: `HTTP ${gcResult.status} — situação 7116099 | Vendedor: ${gcVendedorNome || vendedorStatus} | Peças: ${validacaoPecas.resumo}`,
           situacao_antes: os.nome_situacao, situacao_id_antes: os.situacao_id, situacao_depois: "EXECUTADO – AGUARDANDO NEGOCIAÇÃO FINANCEIRA",
-          auvo_tecnico_id: auvoTecnicoId || null, auvo_tecnico_nome: auvoTecnicoNome || null, data_os: os.data_os,
+          auvo_tecnico_id: tecnicoExecutorId || null, auvo_tecnico_nome: tecnicoExecutorNome || null, auvo_tecnico_os_id: auvoTecnicoId || null, auvo_tecnico_os_nome: auvoTecnicoNome || null, data_os: os.data_os,
           gc_cliente: os.gc_cliente, auvo_cliente: auvoCliente || null,
           gc_vendedor_id: gcVendedorId, gc_vendedor_nome: gcVendedorNome, vendedor_status: vendedorStatus,
         });
