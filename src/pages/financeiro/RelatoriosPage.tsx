@@ -563,7 +563,7 @@ export default function RelatoriosPage() {
         </div>
       </div>
 
-      <Tabs defaultValue="os-abertas" className="space-y-4">
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
         <TabsList>
           <TabsTrigger value="os-abertas" className="gap-1.5">
             <FileText className="h-4 w-4" />
