@@ -862,6 +862,15 @@ Deno.serve(async (req) => {
         if (osMatched > 0 || orcMatched > 0) {
           avisos.push(`Varredura GC: ${osMatched} OS e ${orcMatched} orçamento(s) vinculados via atributos 73343/73344/73341.`);
         }
+
+        try {
+          const persisted = await persistResolvedGcLinks(supabase, tasks);
+          if (persisted.osUpdated > 0 || persisted.orcUpdated > 0) {
+            avisos.push(`Links GC salvos no banco: ${persisted.osUpdated} OS e ${persisted.orcUpdated} orçamento(s).`);
+          }
+        } catch (e: any) {
+          console.warn("[horas-trabalhadas-fetch] persist gc scan links failed:", e?.message || e);
+        }
       }
     } catch (e: any) {
       console.warn("[horas-trabalhadas-fetch] gc scan failed:", e?.message || e);
