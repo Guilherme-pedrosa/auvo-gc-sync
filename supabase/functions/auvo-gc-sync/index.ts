@@ -781,7 +781,7 @@ async function resolverDataSaidaExecucao(params: {
   auvoBearerToken: string;
   gcOsId: string;
   auvoTaskIdOs?: string | null;
-}): Promise<{ dataSaida: string | null; execTaskId: string | null; origem: string; motivo?: string }> {
+}): Promise<{ dataSaida: string | null; execTaskId: string | null; origem: string; tecnicoId: string | null; tecnicoNome: string | null; execTarefaRaw?: any; motivo?: string }> {
   const osAtual = await buscarOsAtual(params.gcOsId, params.gcHeaders);
   const taskOsDoGc = extrairAtributoGc(osAtual, "73343", ["tarefa os"]);
   const taskOsId = params.auvoTaskIdOs || parseAuvoTaskIds(taskOsDoGc)[0] || null;
@@ -806,27 +806,34 @@ async function resolverDataSaidaExecucao(params: {
     ? [...new Set(execIds.filter((id) => !!id))]
     : [...new Set(execIds.filter((id) => id && id !== taskOsId))];
   if (candidatos.length === 0) {
-    return { dataSaida: null, execTaskId: null, origem: "sem_tarefa_execucao", motivo: "Atributo 73344 ausente ou igual à Tarefa OS (73343)" };
+    return { dataSaida: null, execTaskId: null, origem: "sem_tarefa_execucao", tecnicoId: null, tecnicoNome: null, motivo: "Atributo 73344 ausente ou igual à Tarefa OS (73343)" };
   }
 
   for (const execTaskId of candidatos) {
     const { data: execTarefa } = await params.supabase
       .from("tarefas_central")
-      .select("check_out_iso, data_conclusao, data_tarefa")
+      .select("check_out_iso, data_conclusao, data_tarefa, tecnico_id, tecnico")
       .eq("auvo_task_id", execTaskId)
       .limit(1)
       .maybeSingle();
 
     const centralDate = dataValida(execTarefa?.check_out_iso) || dataValida(execTarefa?.data_conclusao) || dataValida(execTarefa?.data_tarefa);
-    if (centralDate) return { dataSaida: centralDate, execTaskId, origem: "tarefas_central_execucao" };
+    const centralTecnicoId = String(execTarefa?.tecnico_id || "").trim();
+    const centralTecnicoNome = String(execTarefa?.tecnico || "").trim();
+    if (centralDate && centralTecnicoId) {
+      return { dataSaida: centralDate, execTaskId, origem: "tarefas_central_execucao", tecnicoId: centralTecnicoId, tecnicoNome: centralTecnicoNome };
+    }
 
     const execResult = await getAuvoTaskDetailed(execTaskId, params.auvoBearerToken);
     const execRaw = "found" in execResult ? execResult.task?._raw : null;
     const resolved = dataDeRawAuvo(execRaw);
-    if (resolved.data) return { dataSaida: resolved.data, execTaskId, origem: resolved.origem };
+    const tecnicoExec = extrairTecnicoAuvo(execRaw);
+    if (resolved.data && tecnicoExec.tecnicoId) {
+      return { dataSaida: resolved.data, execTaskId, origem: resolved.origem, tecnicoId: tecnicoExec.tecnicoId, tecnicoNome: tecnicoExec.tecnicoNome, execTarefaRaw: execRaw };
+    }
   }
 
-  return { dataSaida: null, execTaskId: candidatos[0] || null, origem: "sem_data_execucao", motivo: "Tarefa de execução encontrada, mas sem check-out/data válida" };
+  return { dataSaida: null, execTaskId: candidatos[0] || null, origem: "sem_data_execucao", tecnicoId: null, tecnicoNome: null, motivo: "Tarefa de execução encontrada, mas sem check-out/data válida e técnico executor" };
 }
 
 async function atualizarSituacaoOsGC(
