@@ -30,6 +30,52 @@ function sanitizeGcLinks(row: any) {
   return row;
 }
 
+async function persistResolvedGcLinks(supabase: any, tasks: any[]) {
+  const osLinks = new Map<string, string>();
+  const orcLinks = new Map<string, string>();
+
+  for (const task of tasks) {
+    const osId = String(task?.gc_os_id || "").trim();
+    const osLink = isPublicGcOsLink(task?.gc_os_link_cobranca) ? task.gc_os_link_cobranca : task?.gc_os_link;
+    if (osId && isPublicGcOsLink(osLink)) osLinks.set(osId, osLink);
+
+    const orcId = String(task?.gc_orcamento_id || "").trim();
+    if (orcId && isPublicGcOrcLink(task?.gc_orc_link)) orcLinks.set(orcId, task.gc_orc_link);
+  }
+
+  const updateInBatches = async (
+    entries: [string, string][],
+    updateOne: (id: string, link: string) => Promise<unknown>,
+  ) => {
+    let updated = 0;
+    const batchSize = 8;
+    for (let i = 0; i < entries.length; i += batchSize) {
+      const batch = entries.slice(i, i + batchSize);
+      const results = await Promise.allSettled(batch.map(([id, link]) => updateOne(id, link)));
+      updated += results.filter((r) => r.status === "fulfilled").length;
+    }
+    return updated;
+  };
+
+  const osUpdated = await updateInBatches(Array.from(osLinks.entries()), async (id, link) => {
+    const { error } = await supabase
+      .from("tarefas_central")
+      .update({ gc_os_link: link, gc_os_link_cobranca: link })
+      .eq("gc_os_id", id);
+    if (error) throw error;
+  });
+
+  const orcUpdated = await updateInBatches(Array.from(orcLinks.entries()), async (id, link) => {
+    const { error } = await supabase
+      .from("tarefas_central")
+      .update({ gc_orc_link: link })
+      .eq("gc_orcamento_id", id);
+    if (error) throw error;
+  });
+
+  return { osUpdated, orcUpdated };
+}
+
 async function auvoLogin(apiKey: string, apiToken: string): Promise<string> {
   const url = `${AUVO_BASE_URL}/login/?apiKey=${encodeURIComponent(apiKey)}&apiToken=${encodeURIComponent(apiToken)}`;
   const r = await fetch(url, { headers: { "Content-Type": "application/json" } });
@@ -816,6 +862,15 @@ Deno.serve(async (req) => {
         if (osMatched > 0 || orcMatched > 0) {
           avisos.push(`Varredura GC: ${osMatched} OS e ${orcMatched} orçamento(s) vinculados via atributos 73343/73344/73341.`);
         }
+
+        try {
+          const persisted = await persistResolvedGcLinks(supabase, tasks);
+          if (persisted.osUpdated > 0 || persisted.orcUpdated > 0) {
+            avisos.push(`Links GC salvos no banco: ${persisted.osUpdated} OS e ${persisted.orcUpdated} orçamento(s).`);
+          }
+        } catch (e: any) {
+          console.warn("[horas-trabalhadas-fetch] persist gc scan links failed:", e?.message || e);
+        }
       }
     } catch (e: any) {
       console.warn("[horas-trabalhadas-fetch] gc scan failed:", e?.message || e);
@@ -880,9 +935,10 @@ Deno.serve(async (req) => {
             .filter((t: any) => String(t.gc_orcamento_id || "") && !isPublicGcOrcLink(t.gc_orc_link))
             .map((t: any) => String(t.gc_orcamento_id)))];
 
-          // Limita pra não estourar tempo: máximo 20 lookups por tipo.
-          const limitedOs = needOs.slice(0, 20);
-          const limitedOrc = needOrc.slice(0, 20);
+          // Resolve todos os links faltantes do período; em paralelo controlado
+          // para não congelar a tela nem deixar a maioria sem link.
+          const limitedOs = needOs;
+          const limitedOrc = needOrc;
 
           const osHash = new Map<string, string>();
           const orcHash = new Map<string, string>();
@@ -907,6 +963,15 @@ Deno.serve(async (req) => {
               t.gc_os_link_cobranca = link;
             }
             if (orcId && orcHash.has(orcId)) t.gc_orc_link = `https://gestaoclick.com/prop/${orcHash.get(orcId)}`;
+          }
+
+          if (osHash.size > 0 || orcHash.size > 0) {
+            try {
+              const persisted = await persistResolvedGcLinks(supabase, tasks);
+              avisos.push(`Links GC salvos no banco: ${persisted.osUpdated} OS e ${persisted.orcUpdated} orçamento(s).`);
+            } catch (e: any) {
+              console.warn("[horas-trabalhadas-fetch] persist resolved links failed:", e?.message || e);
+            }
           }
         }
       } catch (e: any) {
