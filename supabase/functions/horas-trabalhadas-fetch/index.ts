@@ -277,6 +277,11 @@ Deno.serve(async (req) => {
     // ─── Modo "batch" (default) ────────────────────────────────────
     const startDate = String(body?.startDate || "");
     const endDate = String(body?.endDate || "");
+    // Por padrão NÃO faz a varredura completa do GC (lista todas as OS e
+    // orçamentos do período) — isso é o que torna o endpoint lento. O
+    // central-sync já popula gc_os_link/gc_orc_link com o hash público.
+    // Use refreshGc=true para forçar reprocessamento.
+    const refreshGc = body?.refreshGc === true;
     if (!/^\d{4}-\d{2}-\d{2}$/.test(startDate) || !/^\d{4}-\d{2}-\d{2}$/.test(endDate)) {
       return new Response(JSON.stringify({ error: "startDate/endDate inválidos (yyyy-mm-dd)" }), {
         status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
