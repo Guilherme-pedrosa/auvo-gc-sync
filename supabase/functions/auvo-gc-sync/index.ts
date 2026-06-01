@@ -516,9 +516,9 @@ async function validarPecasOsVsExecucao(
     };
   }
 
-  const cobertos: Array<{ descricao: string; match: string; score: number }> = [];
+  const cobertos: ResultadoValidacaoPecas["itens_cobertos"] = [];
   const faltando: Array<{ descricao: string; motivo: string }> = [];
-  const parciais: Array<{ descricao: string; melhor_match: string; score: number }> = [];
+  const parciais: ResultadoValidacaoPecas["itens_parciais"] = [];
 
   for (const peca of pecasOrcamento) {
     const resultado = itemOrcamentoCoberto(peca, materiaisExecucao, THRESHOLD_COMPLETO, THRESHOLD_PARCIAL);
