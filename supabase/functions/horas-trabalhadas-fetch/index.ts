@@ -10,6 +10,18 @@ const PAGE_SIZE = 100;
 const MAX_PAGES = 30;
 const DB_PAGE_SIZE = 1000;
 
+function isGcEditLink(value: unknown): boolean {
+  return typeof value === "string" && value.includes("gestaoclick.com/") && value.includes("/editar/");
+}
+
+function sanitizeGcLinks(row: any) {
+  if (!row) return row;
+  if (isGcEditLink(row.gc_os_link)) row.gc_os_link = row.gc_os_link_cobranca || "";
+  if (isGcEditLink(row.gc_os_link_cobranca)) row.gc_os_link_cobranca = "";
+  if (isGcEditLink(row.gc_orc_link)) row.gc_orc_link = "";
+  return row;
+}
+
 async function auvoLogin(apiKey: string, apiToken: string): Promise<string> {
   const url = `${AUVO_BASE_URL}/login/?apiKey=${encodeURIComponent(apiKey)}&apiToken=${encodeURIComponent(apiToken)}`;
   const r = await fetch(url, { headers: { "Content-Type": "application/json" } });
@@ -449,7 +461,7 @@ Deno.serve(async (req) => {
 
         let enriched = 0;
         for (const t of orfas) {
-          const p = byExec.get(String(t.auvo_task_id));
+          const p = sanitizeGcLinks(byExec.get(String(t.auvo_task_id)));
           if (!p) continue;
           // Herda apenas campos GC vazios — nunca sobrescreve dados existentes.
           const fields = [
@@ -721,6 +733,7 @@ Deno.serve(async (req) => {
 
           // Força link público mesmo se já existia link "/editar/" persistido no DB
           const osId = String(t.gc_os_id || "");
+          sanitizeGcLinks(t);
           if (osId && osHashById.has(osId)) {
             t.gc_os_link = `https://gestaoclick.com/cobranca/${osHashById.get(osId)}`;
           } else if (typeof t.gc_os_link === "string" && t.gc_os_link.includes("/ordens_servicos/editar/")) {
