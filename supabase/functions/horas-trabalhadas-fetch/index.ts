@@ -907,6 +907,8 @@ Deno.serve(async (req) => {
         const gcSecretToken = Deno.env.get("GC_SECRET_TOKEN");
         for (const t of tasks) sanitizeGcLinks(t);
 
+        // Sempre reaproveita links já persistidos em outras linhas do mesmo DB pull
+        // (barato, sem chamadas externas). Só faz GET por ID se resolveLinks=true.
         if (gcAccessToken && gcSecretToken) {
           const gcH = {
             "access-token": gcAccessToken,
@@ -948,6 +950,13 @@ Deno.serve(async (req) => {
             }
             const orcId = String(t.gc_orcamento_id || "");
             if (orcId && !isPublicGcOrcLink(t.gc_orc_link) && knownOrcLinks.has(orcId)) t.gc_orc_link = knownOrcLinks.get(orcId)!;
+          }
+
+          // Resolver via GET por ID é caro. Pula a menos que explicitamente solicitado.
+          if (!resolveLinks) {
+            return new Response(JSON.stringify({ tasks, avisos }), {
+              headers: { ...corsHeaders, "Content-Type": "application/json" },
+            });
           }
 
           const needOs = [...new Set(tasks
