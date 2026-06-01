@@ -121,6 +121,7 @@ export default function RelatoriosPage() {
   const [syncStep, setSyncStep] = useState(0);
   const [syncProgress, setSyncProgress] = useState(0);
   const [syncStatusMessage, setSyncStatusMessage] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState("os-abertas");
   const stepTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const refreshTimeoutsRef = useRef<ReturnType<typeof setTimeout>[]>([]);
   const today = new Date();
@@ -310,6 +311,7 @@ export default function RelatoriosPage() {
     queryKey: ["relatorios-tarefas-os"],
     queryFn: async ({ signal }) => fetchAllTarefasCentral({ onlyWithOs: true, signal }),
     staleTime: 60_000,
+    enabled: activeTab === "os-abertas",
   });
 
   // Mantém a query antiga desligada: a tela de horas usa busca por período, não a base inteira.
@@ -328,6 +330,7 @@ export default function RelatoriosPage() {
       return fetchHorasTrabalhadasCentral(format(dateFrom, "yyyy-MM-dd"), format(dateTo, "yyyy-MM-dd"));
     },
     staleTime: 60_000,
+    enabled: activeTab === "horas" || activeTab === "config",
   });
 
   const { data: grupos, refetch: refetchGrupos } = useQuery({
@@ -414,7 +417,7 @@ export default function RelatoriosPage() {
       }
       return map;
     },
-    enabled: equipamentoLookupTaskIds.length > 0,
+    enabled: activeTab === "os-abertas" && equipamentoLookupTaskIds.length > 0,
     staleTime: 5 * 60_000,
   });
 
