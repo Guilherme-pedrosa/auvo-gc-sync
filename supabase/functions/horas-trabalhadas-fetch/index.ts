@@ -955,6 +955,15 @@ Deno.serve(async (req) => {
             }
             if (orcId && orcHash.has(orcId)) t.gc_orc_link = `https://gestaoclick.com/prop/${orcHash.get(orcId)}`;
           }
+
+          if (osHash.size > 0 || orcHash.size > 0) {
+            try {
+              const persisted = await persistResolvedGcLinks(supabase, tasks);
+              avisos.push(`Links GC salvos no banco: ${persisted.osUpdated} OS e ${persisted.orcUpdated} orçamento(s).`);
+            } catch (e: any) {
+              console.warn("[horas-trabalhadas-fetch] persist resolved links failed:", e?.message || e);
+            }
+          }
         }
       } catch (e: any) {
         console.warn("[horas-trabalhadas-fetch] fast link resolve failed:", e?.message || e);
