@@ -501,6 +501,15 @@ export default function HorasTrabalhadasTab({
     tipos: Map<string, number>; tasks: TaskDetail[];
   };
 
+  const isGcEditLink = (value?: string | null) =>
+    Boolean(value && value.includes("gestaoclick.com/") && value.includes("/editar/"));
+
+  const safeGcOsLink = (osLink?: string | null, cobrancaLink?: string | null) =>
+    isGcEditLink(osLink) ? cobrancaLink || "" : osLink || "";
+
+  const safeGcOrcLink = (orcLink?: string | null) =>
+    isGcEditLink(orcLink) ? "" : orcLink || "";
+
   // ── Detecção de alertas (independe de revisão) ────────────────────
   const tasksWithAlertas = useMemo(() => {
     const result = new Map<string, AlertaTipo[]>();
@@ -662,10 +671,10 @@ export default function HorasTrabalhadasTab({
         status_auvo: t.status_auvo || "",
         cliente_gc: t.gc_os_cliente || "",
         gc_os_codigo: t.gc_os_codigo || "",
-        gc_os_link: t.gc_os_link || "",
-        gc_os_link_cobranca: t.gc_os_link_cobranca || "",
+        gc_os_link: safeGcOsLink(t.gc_os_link, t.gc_os_link_cobranca),
+        gc_os_link_cobranca: safeGcOsLink(t.gc_os_link_cobranca, null),
         gc_orcamento_codigo: t.gc_orcamento_codigo || "",
-        gc_orc_link: t.gc_orc_link || "",
+        gc_orc_link: safeGcOrcLink(t.gc_orc_link),
         cliente,
         statusRevisao: status,
         horasOriginais,
