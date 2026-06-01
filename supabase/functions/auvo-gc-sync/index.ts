@@ -1942,6 +1942,25 @@ Deno.serve(async (req) => {
       }
       console.log(`[auvo-gc-sync] OS ${os.gc_os_codigo} — data_saida da execução: ${auvoTaskDate} (${dataExecucaoResolvida.origem}, task ${dataExecucaoResolvida.execTaskId || "N/A"})`);
 
+      // ─── Resolver vendedor pelo técnico que EXECUTOU a Tarefa Execução (73344), não pelo responsável da Tarefa OS (73343) ───
+      const tecnicoExecutorId = dataExecucaoResolvida.tecnicoId || null;
+      const tecnicoExecutorNome = dataExecucaoResolvida.tecnicoNome || null;
+      let gcVendedorId: string | null = null;
+      let gcVendedorNome: string | null = null;
+      let vendedorStatus: "mapeado" | "sem_mapeamento" | "sem_tecnico" = "sem_tecnico";
+
+      if (tecnicoExecutorId && tecnicoExecutorId !== "0") {
+        const vendedorMap = mapaVendedores[tecnicoExecutorId];
+        if (vendedorMap) {
+          gcVendedorId = vendedorMap.gc_vendedor_id;
+          gcVendedorNome = vendedorMap.gc_vendedor_nome;
+          vendedorStatus = "mapeado";
+        } else {
+          vendedorStatus = "sem_mapeamento";
+          console.warn(`[auvo-gc-sync] Executor Auvo ID ${tecnicoExecutorId} (${tecnicoExecutorNome || "sem nome"}) sem mapeamento GC`);
+        }
+      }
+
       if (dryRun) {
         logEntries.push({
           gc_os_id: os.gc_os_id, gc_os_codigo: os.gc_os_codigo, auvo_task_id: os.auvo_task_id,
