@@ -1232,9 +1232,8 @@ export default function HorasTrabalhadasTab({
           if (!url) return;
           const text = String(data.cell.text?.[0] ?? "");
           if (!text || text === "—") return;
-          doc.setTextColor(37, 99, 235);
-          doc.textWithLink(text, data.cell.x + 1.5, data.cell.y + data.cell.height / 2 + 1.5, { url });
-          doc.setTextColor(0, 0, 0);
+          // Clickable region over the existing cell text
+          doc.link(data.cell.x, data.cell.y, data.cell.width, data.cell.height, { url });
         },
       });
 
