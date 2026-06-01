@@ -1155,8 +1155,6 @@ Deno.serve(async (req) => {
       const gcOsId = String(body.gc_os_id || "");
       const situacaoAnteriorId = String(body.situacao_id_antes || "");
       const gcOsCodigo = String(body.gc_os_codigo || "");
-      const vendedorId = body.gc_vendedor_id ? String(body.gc_vendedor_id) : null;
-      const vendedorNome = body.gc_vendedor_nome ? String(body.gc_vendedor_nome) : null;
       const gcUsuarioId = body.gc_usuario_id ? String(body.gc_usuario_id) : null;
       if (!gcOsId || !situacaoAnteriorId) {
         return new Response(JSON.stringify({ error: "gc_os_id e situacao_id_antes são obrigatórios" }), {
@@ -1184,7 +1182,25 @@ Deno.serve(async (req) => {
         }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
       }
 
-      console.log(`[auvo-gc-sync] REVERT: OS ${gcOsCodigo} (${gcOsId}) → situação ${situacaoAnteriorId} | vendedor: ${vendedorNome || "N/A"} (${vendedorId || "N/A"}) | data_saida_execucao: ${dataSaida} (${resolvida.origem}, task ${resolvida.execTaskId || "N/A"}) | gc_usuario_id: ${gcUsuarioId || "N/A"}`);
+      const { data: mapsRevert } = await supabase
+        .from("auvo_gc_usuario_map")
+        .select("auvo_user_id, gc_vendedor_id, gc_vendedor_nome")
+        .eq("ativo", true);
+      const vendedorMap = (mapsRevert || []).find((m: any) => String(m.auvo_user_id) === String(resolvida.tecnicoId || ""));
+      const vendedorId = vendedorMap?.gc_vendedor_id ? String(vendedorMap.gc_vendedor_id) : null;
+      const vendedorNome = vendedorMap?.gc_vendedor_nome ? String(vendedorMap.gc_vendedor_nome) : null;
+
+      if (situacaoAnteriorId === "7116099" && !vendedorId) {
+        return new Response(JSON.stringify({
+          success: false,
+          gc_os_id: gcOsId,
+          gc_os_codigo: gcOsCodigo,
+          error: "executor_sem_mapeamento_gc",
+          message: `Não alterei a OS para executada porque a Tarefa Execução ${resolvida.execTaskId || "N/A"} está com ${resolvida.tecnicoNome || "técnico sem nome"} (${resolvida.tecnicoId || "sem ID"}) e esse executor não tem mapeamento GC.`,
+        }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      }
+
+      console.log(`[auvo-gc-sync] REVERT: OS ${gcOsCodigo} (${gcOsId}) → situação ${situacaoAnteriorId} | executor: ${resolvida.tecnicoNome || "N/A"} (${resolvida.tecnicoId || "N/A"}) | vendedor GC: ${vendedorNome || "N/A"} (${vendedorId || "N/A"}) | data_saida_execucao: ${dataSaida} (${resolvida.origem}, task ${resolvida.execTaskId || "N/A"}) | gc_usuario_id: ${gcUsuarioId || "N/A"}`);
       const revertResult = await atualizarSituacaoOsGC(gcOsId, situacaoAnteriorId, gcHeaders, { vendedorId, vendedorNome, dataSaida, gcUsuarioId });
       
       await supabase.from("auvo_gc_sync_log").insert({
