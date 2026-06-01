@@ -247,19 +247,9 @@ export default function HorasTrabalhadasTab({
   };
 
   const getTaskHorasNoPeriodo = (t: any): number => {
-    const dur = Number(t.duracao_decimal) || 0;
-    if (dur <= 0) return 0;
-    const tsInicio = obterInicioTask(t);
-    const tsFim = obterFimTask(t, periodoEnd);
-    if (!tsInicio || !tsFim || tsFim <= tsInicio) return dur;
-    if (tsInicio >= periodoStart && tsFim <= periodoEnd) return dur;
-    if (tsFim < periodoStart || tsInicio > periodoEnd) return 0;
-    const janelaMs = tsFim.getTime() - tsInicio.getTime();
-    const interStart = Math.max(tsInicio.getTime(), periodoStart.getTime());
-    const interEnd = Math.min(tsFim.getTime(), periodoEnd.getTime());
-    const interMs = Math.max(0, interEnd - interStart);
-    const proporcao = janelaMs > 0 ? interMs / janelaMs : 1;
-    return Number((dur * proporcao).toFixed(4));
+    // O relatório já vem filtrado pelo período no backend. Não rateia a duração
+    // pela janela check-in/check-out, para manter o mesmo total do PDF/export.
+    return getTaskHoras(t);
   };
 
   const atravessaPeriodo = (t: any): boolean => {
@@ -317,8 +307,8 @@ export default function HorasTrabalhadasTab({
     return ["01-01", "04-21", "05-01", "09-07", "10-12", "11-02", "11-15", "12-25"].includes(md);
   };
 
-  // Filter data by intersection of [check_in, check_out] with the period.
-  // Status is irrelevant — what matters is whether work happened in the window.
+  // Filter data by selected UI filters. The backend already applies the period;
+  // do not trim hours again by check-in/check-out here.
   const filtered = useMemo(() => {
     // Defensive dedup by auvo_task_id.
     const byId = new Map<string, any>();
@@ -334,15 +324,6 @@ export default function HorasTrabalhadasTab({
     return dedupedData.filter((t) => {
       const dur = Number(t.duracao_decimal) || 0;
       if (dur <= 0) return false;
-
-      const tsInicio = obterInicioTask(t);
-      const tsFim = obterFimTask(t, periodoEnd);
-
-      // Sem janela computável → mantém para a Caixa de Revisão sinalizar.
-      if (tsInicio && tsFim) {
-        if (tsFim < periodoStart) return false;
-        if (tsInicio > periodoEnd) return false;
-      }
 
       if (filterTecnico !== "todos" && t.tecnico !== filterTecnico) return false;
 
