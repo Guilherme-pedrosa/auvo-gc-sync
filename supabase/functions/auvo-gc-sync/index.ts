@@ -152,6 +152,13 @@ function dataDeRawAuvo(raw: any): { data: string | null; origem: string } {
   return { data: null, origem: "sem_data" };
 }
 
+function extrairTecnicoAuvo(raw: any): { tecnicoId: string; tecnicoNome: string } {
+  return {
+    tecnicoId: String(raw?.idUserTo || raw?.idUserFrom || raw?.technicianId || "").trim(),
+    tecnicoNome: String(raw?.userToName || raw?.userFromName || raw?.collaboratorName || raw?.technicianName || "").trim(),
+  };
+}
+
 // ─── STEP 1: Buscar OS com tarefa Auvo ───
 async function fetchOsComTarefaAuvo(gcHeaders: Record<string, string>, dataInicio?: string, dataFim?: string): Promise<Array<{
   gc_os_id: string;
@@ -474,9 +481,9 @@ interface ResultadoValidacaoPecas {
   sem_pecas_orcamento: boolean;
   pecas_orcamento: Array<{ descricao: string; quantidade: number; codigo?: string }>;
   materiais_execucao: Array<{ descricao: string; quantidade: number }>;
-  itens_cobertos: Array<{ descricao: string; match: string; score: number }>;
+  itens_cobertos: Array<{ descricao: string; match: string; score: number; qtd_orc?: number; qtd_exec?: number }>;
   itens_faltando: Array<{ descricao: string; motivo: string }>;
-  itens_parciais: Array<{ descricao: string; melhor_match: string; score: number }>;
+  itens_parciais: Array<{ descricao: string; melhor_match: string; score: number; qtd_orc?: number; qtd_exec?: number; motivo?: string }>;
   resumo: string;
 }
 
@@ -509,9 +516,9 @@ async function validarPecasOsVsExecucao(
     };
   }
 
-  const cobertos: Array<{ descricao: string; match: string; score: number }> = [];
+  const cobertos: ResultadoValidacaoPecas["itens_cobertos"] = [];
   const faltando: Array<{ descricao: string; motivo: string }> = [];
-  const parciais: Array<{ descricao: string; melhor_match: string; score: number }> = [];
+  const parciais: ResultadoValidacaoPecas["itens_parciais"] = [];
 
   for (const peca of pecasOrcamento) {
     const resultado = itemOrcamentoCoberto(peca, materiaisExecucao, THRESHOLD_COMPLETO, THRESHOLD_PARCIAL);
@@ -774,7 +781,7 @@ async function resolverDataSaidaExecucao(params: {
   auvoBearerToken: string;
   gcOsId: string;
   auvoTaskIdOs?: string | null;
-}): Promise<{ dataSaida: string | null; execTaskId: string | null; origem: string; motivo?: string }> {
+}): Promise<{ dataSaida: string | null; execTaskId: string | null; origem: string; tecnicoId: string | null; tecnicoNome: string | null; execTarefaRaw?: any; motivo?: string }> {
   const osAtual = await buscarOsAtual(params.gcOsId, params.gcHeaders);
   const taskOsDoGc = extrairAtributoGc(osAtual, "73343", ["tarefa os"]);
   const taskOsId = params.auvoTaskIdOs || parseAuvoTaskIds(taskOsDoGc)[0] || null;
@@ -799,27 +806,41 @@ async function resolverDataSaidaExecucao(params: {
     ? [...new Set(execIds.filter((id) => !!id))]
     : [...new Set(execIds.filter((id) => id && id !== taskOsId))];
   if (candidatos.length === 0) {
-    return { dataSaida: null, execTaskId: null, origem: "sem_tarefa_execucao", motivo: "Atributo 73344 ausente ou igual à Tarefa OS (73343)" };
+    return { dataSaida: null, execTaskId: null, origem: "sem_tarefa_execucao", tecnicoId: null, tecnicoNome: null, motivo: "Atributo 73344 ausente ou igual à Tarefa OS (73343)" };
   }
 
   for (const execTaskId of candidatos) {
     const { data: execTarefa } = await params.supabase
       .from("tarefas_central")
-      .select("check_out_iso, data_conclusao, data_tarefa")
+      .select("check_out_iso, data_conclusao, data_tarefa, tecnico_id, tecnico")
       .eq("auvo_task_id", execTaskId)
       .limit(1)
       .maybeSingle();
 
     const centralDate = dataValida(execTarefa?.check_out_iso) || dataValida(execTarefa?.data_conclusao) || dataValida(execTarefa?.data_tarefa);
-    if (centralDate) return { dataSaida: centralDate, execTaskId, origem: "tarefas_central_execucao" };
+    const centralTecnicoId = String(execTarefa?.tecnico_id || "").trim();
+    const centralTecnicoNome = String(execTarefa?.tecnico || "").trim();
 
     const execResult = await getAuvoTaskDetailed(execTaskId, params.auvoBearerToken);
     const execRaw = "found" in execResult ? execResult.task?._raw : null;
     const resolved = dataDeRawAuvo(execRaw);
-    if (resolved.data) return { dataSaida: resolved.data, execTaskId, origem: resolved.origem };
+    const tecnicoExec = extrairTecnicoAuvo(execRaw);
+    const dataSaida = resolved.data || centralDate;
+    const tecnicoId = tecnicoExec.tecnicoId || centralTecnicoId;
+    const tecnicoNome = tecnicoExec.tecnicoNome || centralTecnicoNome;
+    if (dataSaida && tecnicoId) {
+      return {
+        dataSaida,
+        execTaskId,
+        origem: resolved.data ? resolved.origem : "tarefas_central_execucao",
+        tecnicoId,
+        tecnicoNome,
+        execTarefaRaw: execRaw,
+      };
+    }
   }
 
-  return { dataSaida: null, execTaskId: candidatos[0] || null, origem: "sem_data_execucao", motivo: "Tarefa de execução encontrada, mas sem check-out/data válida" };
+  return { dataSaida: null, execTaskId: candidatos[0] || null, origem: "sem_data_execucao", tecnicoId: null, tecnicoNome: null, motivo: "Tarefa de execução encontrada, mas sem check-out/data válida e técnico executor" };
 }
 
 async function atualizarSituacaoOsGC(
@@ -1067,7 +1088,7 @@ Deno.serve(async (req) => {
 
     // ─── Action: batch_revert — reverter OS em lote para uma situação específica ───
     if (body?.action === "batch_revert") {
-      const osList: Array<{ id: string; codigo: string; situacao_destino_id: string }> = body.os_list || [];
+      const osList: Array<{ id: string; codigo: string; situacao_destino_id: string; gc_vendedor_id?: string; gc_vendedor_nome?: string }> = body.os_list || [];
       const dryRunRevert: boolean = body.dry_run === true;
       
       if (!osList.length) {
@@ -1134,8 +1155,6 @@ Deno.serve(async (req) => {
       const gcOsId = String(body.gc_os_id || "");
       const situacaoAnteriorId = String(body.situacao_id_antes || "");
       const gcOsCodigo = String(body.gc_os_codigo || "");
-      const vendedorId = body.gc_vendedor_id ? String(body.gc_vendedor_id) : null;
-      const vendedorNome = body.gc_vendedor_nome ? String(body.gc_vendedor_nome) : null;
       const gcUsuarioId = body.gc_usuario_id ? String(body.gc_usuario_id) : null;
       if (!gcOsId || !situacaoAnteriorId) {
         return new Response(JSON.stringify({ error: "gc_os_id e situacao_id_antes são obrigatórios" }), {
@@ -1163,7 +1182,25 @@ Deno.serve(async (req) => {
         }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
       }
 
-      console.log(`[auvo-gc-sync] REVERT: OS ${gcOsCodigo} (${gcOsId}) → situação ${situacaoAnteriorId} | vendedor: ${vendedorNome || "N/A"} (${vendedorId || "N/A"}) | data_saida_execucao: ${dataSaida} (${resolvida.origem}, task ${resolvida.execTaskId || "N/A"}) | gc_usuario_id: ${gcUsuarioId || "N/A"}`);
+      const { data: mapsRevert } = await supabase
+        .from("auvo_gc_usuario_map")
+        .select("auvo_user_id, gc_vendedor_id, gc_vendedor_nome")
+        .eq("ativo", true);
+      const vendedorMap = (mapsRevert || []).find((m: any) => String(m.auvo_user_id) === String(resolvida.tecnicoId || ""));
+      const vendedorId = vendedorMap?.gc_vendedor_id ? String(vendedorMap.gc_vendedor_id) : null;
+      const vendedorNome = vendedorMap?.gc_vendedor_nome ? String(vendedorMap.gc_vendedor_nome) : null;
+
+      if (situacaoAnteriorId === "7116099" && !vendedorId) {
+        return new Response(JSON.stringify({
+          success: false,
+          gc_os_id: gcOsId,
+          gc_os_codigo: gcOsCodigo,
+          error: "executor_sem_mapeamento_gc",
+          message: `Não alterei a OS para executada porque a Tarefa Execução ${resolvida.execTaskId || "N/A"} está com ${resolvida.tecnicoNome || "técnico sem nome"} (${resolvida.tecnicoId || "sem ID"}) e esse executor não tem mapeamento GC.`,
+        }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      }
+
+      console.log(`[auvo-gc-sync] REVERT: OS ${gcOsCodigo} (${gcOsId}) → situação ${situacaoAnteriorId} | executor: ${resolvida.tecnicoNome || "N/A"} (${resolvida.tecnicoId || "N/A"}) | vendedor GC: ${vendedorNome || "N/A"} (${vendedorId || "N/A"}) | data_saida_execucao: ${dataSaida} (${resolvida.origem}, task ${resolvida.execTaskId || "N/A"}) | gc_usuario_id: ${gcUsuarioId || "N/A"}`);
       const revertResult = await atualizarSituacaoOsGC(gcOsId, situacaoAnteriorId, gcHeaders, { vendedorId, vendedorNome, dataSaida, gcUsuarioId });
       
       await supabase.from("auvo_gc_sync_log").insert({
@@ -1899,23 +1936,6 @@ Deno.serve(async (req) => {
         continue;
       }
 
-      // ─── Resolver vendedor ───
-      let gcVendedorId: string | null = null;
-      let gcVendedorNome: string | null = null;
-      let vendedorStatus: "mapeado" | "sem_mapeamento" | "sem_tecnico" = "sem_tecnico";
-
-      if (auvoTecnicoId && auvoTecnicoId !== "0") {
-        const vendedorMap = mapaVendedores[auvoTecnicoId];
-        if (vendedorMap) {
-          gcVendedorId = vendedorMap.gc_vendedor_id;
-          gcVendedorNome = vendedorMap.gc_vendedor_nome;
-          vendedorStatus = "mapeado";
-        } else {
-          vendedorStatus = "sem_mapeamento";
-          console.warn(`[auvo-gc-sync] Técnico Auvo ID ${auvoTecnicoId} sem mapeamento GC`);
-        }
-      }
-
       const dataExecucaoResolvida = await resolverDataSaidaExecucao({
         supabase,
         gcHeaders,
@@ -1938,13 +1958,45 @@ Deno.serve(async (req) => {
       }
       console.log(`[auvo-gc-sync] OS ${os.gc_os_codigo} — data_saida da execução: ${auvoTaskDate} (${dataExecucaoResolvida.origem}, task ${dataExecucaoResolvida.execTaskId || "N/A"})`);
 
+      // ─── Resolver vendedor pelo técnico que EXECUTOU a Tarefa Execução (73344), não pelo responsável da Tarefa OS (73343) ───
+      const tecnicoExecutorId = dataExecucaoResolvida.tecnicoId || null;
+      const tecnicoExecutorNome = dataExecucaoResolvida.tecnicoNome || null;
+      let gcVendedorId: string | null = null;
+      let gcVendedorNome: string | null = null;
+      let vendedorStatus: "mapeado" | "sem_mapeamento" | "sem_tecnico" = "sem_tecnico";
+
+      if (tecnicoExecutorId && tecnicoExecutorId !== "0") {
+        const vendedorMap = mapaVendedores[tecnicoExecutorId];
+        if (vendedorMap) {
+          gcVendedorId = vendedorMap.gc_vendedor_id;
+          gcVendedorNome = vendedorMap.gc_vendedor_nome;
+          vendedorStatus = "mapeado";
+        } else {
+          vendedorStatus = "sem_mapeamento";
+          console.warn(`[auvo-gc-sync] Executor Auvo ID ${tecnicoExecutorId} (${tecnicoExecutorNome || "sem nome"}) sem mapeamento GC`);
+        }
+      }
+
+      if (!gcVendedorId) {
+        erros++;
+        logEntries.push({
+          gc_os_id: os.gc_os_id, gc_os_codigo: os.gc_os_codigo, auvo_task_id: os.auvo_task_id,
+          resultado: "sem_mapeamento_executor", detalhe: `Tarefa Execução ${dataExecucaoResolvida.execTaskId || "N/A"} executada por ${tecnicoExecutorNome || "sem nome"} (${tecnicoExecutorId || "sem ID"}), sem mapeamento GC. OS não atualizada para não manter vendedor incorreto.`,
+          situacao_antes: os.nome_situacao, situacao_id_antes: os.situacao_id, situacao_depois: null,
+          data_os: os.data_os, gc_cliente: os.gc_cliente, auvo_cliente: auvoCliente || null,
+          exec_task_id: dataExecucaoResolvida.execTaskId, auvo_tecnico_id: tecnicoExecutorId, auvo_tecnico_nome: tecnicoExecutorNome,
+          vendedor_status: vendedorStatus,
+        });
+        continue;
+      }
+
       if (dryRun) {
         logEntries.push({
           gc_os_id: os.gc_os_id, gc_os_codigo: os.gc_os_codigo, auvo_task_id: os.auvo_task_id,
           resultado: "dry_run_ok",
           detalhe: `Seria atualizada para situação 7116099 | Peças: ${validacaoPecas.resumo} | Vendedor: ${gcVendedorNome || vendedorStatus} | data_saida: ${auvoTaskDate || "N/A"}`,
           situacao_antes: os.nome_situacao, situacao_id_antes: os.situacao_id, situacao_depois: "EXECUTADO – AG. NEGOCIAÇÃO (7116099)",
-          auvo_tecnico_id: auvoTecnicoId || null, auvo_tecnico_nome: auvoTecnicoNome || null, data_os: os.data_os,
+          auvo_tecnico_id: tecnicoExecutorId || null, auvo_tecnico_nome: tecnicoExecutorNome || null, auvo_tecnico_os_id: auvoTecnicoId || null, auvo_tecnico_os_nome: auvoTecnicoNome || null, data_os: os.data_os,
           gc_cliente: os.gc_cliente, auvo_cliente: auvoCliente || null,
           gc_vendedor_id: gcVendedorId, gc_vendedor_nome: gcVendedorNome, vendedor_status: vendedorStatus,
         });
@@ -1966,7 +2018,7 @@ Deno.serve(async (req) => {
           resultado: "atualizada",
           detalhe: `HTTP ${gcResult.status} — situação 7116099 | Vendedor: ${gcVendedorNome || vendedorStatus} | Peças: ${validacaoPecas.resumo}`,
           situacao_antes: os.nome_situacao, situacao_id_antes: os.situacao_id, situacao_depois: "EXECUTADO – AGUARDANDO NEGOCIAÇÃO FINANCEIRA",
-          auvo_tecnico_id: auvoTecnicoId || null, auvo_tecnico_nome: auvoTecnicoNome || null, data_os: os.data_os,
+          auvo_tecnico_id: tecnicoExecutorId || null, auvo_tecnico_nome: tecnicoExecutorNome || null, auvo_tecnico_os_id: auvoTecnicoId || null, auvo_tecnico_os_nome: auvoTecnicoNome || null, data_os: os.data_os,
           gc_cliente: os.gc_cliente, auvo_cliente: auvoCliente || null,
           gc_vendedor_id: gcVendedorId, gc_vendedor_nome: gcVendedorNome, vendedor_status: vendedorStatus,
         });
@@ -1976,7 +2028,7 @@ Deno.serve(async (req) => {
           gc_os_id: os.gc_os_id, gc_os_codigo: os.gc_os_codigo, auvo_task_id: os.auvo_task_id,
           resultado: "erro_gc", detalhe: `HTTP ${gcResult.status} — ${JSON.stringify(gcResult.body)}`,
           situacao_antes: os.nome_situacao, situacao_id_antes: os.situacao_id, situacao_depois: null, data_os: os.data_os,
-          auvo_tecnico_id: auvoTecnicoId || null, vendedor_status: vendedorStatus,
+          auvo_tecnico_id: tecnicoExecutorId || null, auvo_tecnico_nome: tecnicoExecutorNome || null, vendedor_status: vendedorStatus,
           gc_cliente: os.gc_cliente, auvo_cliente: auvoCliente || null,
         });
       }

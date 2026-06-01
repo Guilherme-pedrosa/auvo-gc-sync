@@ -180,28 +180,10 @@ export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, o
     staleTime: 1000 * 60 * 30,
   });
 
-  // Fetch vendedor mapping
-  const { data: vendedorMap } = useQuery({
-    queryKey: ["auvo-gc-usuario-map"],
-    queryFn: async () => {
-      const { data } = await supabase.from("auvo_gc_usuario_map").select("*").eq("ativo", true);
-      return (data || []) as { auvo_user_id: string; gc_vendedor_id: string; gc_vendedor_nome: string }[];
-    },
-    staleTime: 1000 * 60 * 30,
-  });
-
   // Conciliação handler
   const alterarSituacaoOS = useCallback(async (item: any, situacaoId: string) => {
     setChangingId(item.gc_os_id);
     try {
-      // Use the EXECUTION task's technician (gc_os_tarefa_exec) as the vendor, not the OS task's
-      const firstExecId = parseExecIds(item.gc_os_tarefa_exec)[0] || null;
-      const execTask = firstExecId ? allTasks.find((t: any) => String(t.auvo_task_id) === firstExecId) : null;
-      const execTecnicoId = execTask?.tecnico_id || item.tecnico_id; // fallback to OS task tech
-      const mapping = vendedorMap?.find(m => m.auvo_user_id === execTecnicoId);
-      const gcVendedorId = mapping?.gc_vendedor_id || null;
-      const gcVendedorNome = mapping?.gc_vendedor_nome || null;
-
       const { data: resp, error } = await supabase.functions.invoke("auvo-gc-sync", {
         body: {
           action: "revert_os",
@@ -209,8 +191,6 @@ export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, o
           gc_os_codigo: item.gc_os_codigo,
           auvo_task_id: item.auvo_task_id,
           situacao_id_antes: situacaoId,
-          gc_vendedor_id: gcVendedorId,
-          gc_vendedor_nome: gcVendedorNome,
           gc_usuario_id: profile?.gc_user_id || null,
         },
       });
@@ -230,7 +210,7 @@ export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, o
       setConciliacaoCard(null);
       setConciliacaoSituacao("");
     }
-  }, [profile?.gc_user_id, onRefresh, vendedorMap, allTasks]);
+  }, [profile?.gc_user_id, onRefresh]);
 
   const allSituacoes = useMemo(() => {
     const set = new Set(data.map((t) => t.gc_os_situacao || "").filter(Boolean));
