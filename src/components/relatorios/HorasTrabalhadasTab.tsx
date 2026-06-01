@@ -339,10 +339,13 @@ export default function HorasTrabalhadasTab({
 
       if (filterTecnico !== "todos" && t.tecnico !== filterTecnico) return false;
 
-      // Exclusão fixa por técnico: Rafael Nunes nunca lista certos tipos de tarefa
-      // independentemente do filtro de tipo selecionado.
-      const tecnicoNome = String(t.tecnico || "").trim().toUpperCase();
-      if (tecnicoNome === "RAFAEL NUNES") {
+      const cliente = t.cliente || t.gc_os_cliente || "";
+      if (filterCliente !== "todos" && cliente !== filterCliente) return false;
+
+      // Exclusão fixa por cliente: Rafael Hernani Silva nunca lista certos tipos
+      // de tarefa, independentemente do filtro de tipo selecionado.
+      const clienteKey = getTipoKey(cliente);
+      if (clienteKey.includes("rafael hernani")) {
         const descKey = getTipoKey(t.descricao);
         const blocked = [
           "higienizacao de coifas",
@@ -351,9 +354,6 @@ export default function HorasTrabalhadasTab({
         ];
         if (blocked.some((b) => descKey.includes(b))) return false;
       }
-
-      const cliente = t.cliente || t.gc_os_cliente || "";
-      if (filterCliente !== "todos" && cliente !== filterCliente) return false;
 
       if (filterGrupo !== "todos") {
         const grupoClientes = grupoClienteMap.get(filterGrupo) || [];
