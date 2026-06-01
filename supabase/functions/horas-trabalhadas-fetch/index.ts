@@ -14,6 +14,14 @@ function isGcEditLink(value: unknown): boolean {
   return typeof value === "string" && value.includes("gestaoclick.com/") && value.includes("/editar/");
 }
 
+function isPublicGcOsLink(value: unknown): boolean {
+  return typeof value === "string" && value.includes("gestaoclick.com/cobranca/");
+}
+
+function isPublicGcOrcLink(value: unknown): boolean {
+  return typeof value === "string" && value.includes("gestaoclick.com/prop/");
+}
+
 function sanitizeGcLinks(row: any) {
   if (!row) return row;
   if (isGcEditLink(row.gc_os_link)) row.gc_os_link = row.gc_os_link_cobranca || "";
@@ -282,6 +290,7 @@ Deno.serve(async (req) => {
     // central-sync já popula gc_os_link/gc_orc_link com o hash público.
     // Use refreshGc=true para forçar reprocessamento.
     const refreshGc = body?.refreshGc === true;
+    const refreshAuvo = body?.refreshAuvo === true;
     if (!/^\d{4}-\d{2}-\d{2}$/.test(startDate) || !/^\d{4}-\d{2}-\d{2}$/.test(endDate)) {
       return new Response(JSON.stringify({ error: "startDate/endDate inválidos (yyyy-mm-dd)" }), {
         status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -312,6 +321,7 @@ Deno.serve(async (req) => {
     // 2 + 3) Auvo: recently-updated since startDate AND in-progress within period.
     let auvoTasks: any[] = [];
     try {
+      if (!refreshAuvo) throw new Error("SKIP_AUVO_REFRESH");
       const apiKey = Deno.env.get("AUVO_APP_KEY");
       const apiToken = Deno.env.get("AUVO_TOKEN");
       if (!apiKey || !apiToken) throw new Error("AUVO_APP_KEY/AUVO_TOKEN ausentes");
@@ -355,7 +365,9 @@ Deno.serve(async (req) => {
       }
       auvoTasks = Array.from(merged.values());
     } catch (e: any) {
-      avisos.push(`Auvo indisponível — OS recentemente atualizadas podem não estar refletidas: ${e?.message || e}`);
+      if ((e?.message || e) !== "SKIP_AUVO_REFRESH") {
+        avisos.push(`Auvo indisponível — OS recentemente atualizadas podem não estar refletidas: ${e?.message || e}`);
+      }
       auvoTasks = [];
     }
 
@@ -442,7 +454,7 @@ Deno.serve(async (req) => {
           .from("tarefas_central")
           .select(
             "auvo_task_id, gc_os_tarefa_exec, gc_os_codigo, gc_os_id, gc_os_link, " +
-            "gc_os_situacao, gc_os_situacao_id, gc_os_cor_situacao, gc_os_data, " +
+            "gc_os_link_cobranca, gc_os_situacao, gc_os_situacao_id, gc_os_cor_situacao, gc_os_data, " +
             "gc_os_data_saida, gc_os_valor_total, gc_os_vendedor, gc_os_cliente, " +
             "gc_orcamento_codigo, gc_orcamento_id, gc_orc_link, gc_orc_situacao, " +
             "gc_orc_situacao_id, gc_orc_cor_situacao, gc_orc_data, gc_orc_valor_total, " +
@@ -470,7 +482,7 @@ Deno.serve(async (req) => {
           if (!p) continue;
           // Herda apenas campos GC vazios — nunca sobrescreve dados existentes.
           const fields = [
-            "gc_os_codigo","gc_os_id","gc_os_link","gc_os_situacao","gc_os_situacao_id",
+            "gc_os_codigo","gc_os_id","gc_os_link","gc_os_link_cobranca","gc_os_situacao","gc_os_situacao_id",
             "gc_os_cor_situacao","gc_os_data","gc_os_data_saida","gc_os_valor_total",
             "gc_os_vendedor","gc_os_cliente",
             "gc_orcamento_codigo","gc_orcamento_id","gc_orc_link","gc_orc_situacao",
