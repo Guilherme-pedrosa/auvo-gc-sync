@@ -152,6 +152,13 @@ function dataDeRawAuvo(raw: any): { data: string | null; origem: string } {
   return { data: null, origem: "sem_data" };
 }
 
+function extrairTecnicoAuvo(raw: any): { tecnicoId: string; tecnicoNome: string } {
+  return {
+    tecnicoId: String(raw?.idUserTo || raw?.idUserFrom || raw?.technicianId || "").trim(),
+    tecnicoNome: String(raw?.userToName || raw?.userFromName || raw?.collaboratorName || raw?.technicianName || "").trim(),
+  };
+}
+
 // ─── STEP 1: Buscar OS com tarefa Auvo ───
 async function fetchOsComTarefaAuvo(gcHeaders: Record<string, string>, dataInicio?: string, dataFim?: string): Promise<Array<{
   gc_os_id: string;
