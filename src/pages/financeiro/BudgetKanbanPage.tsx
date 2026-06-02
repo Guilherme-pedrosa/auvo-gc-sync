@@ -334,9 +334,14 @@ export default function BudgetKanbanPage() {
       // Auto-route: cards with gc_orc_data === today must live in the "Feito hoje" column
       if (feitoHojeCol) {
         const targetId = feitoHojeCol.id;
+        // Only auto-move from SYSTEM pending columns. Manual columns
+        // (resolvido_sem_orcamento, outras custom do usuário) NUNCA devem
+        // perder cartões para o auto-route "Feito hoje".
+        const autoMoveFrom = new Set(["a_fazer", "falta_preenchimento"]);
         const movers: KanbanItem[] = [];
         for (const col of mergedCols) {
           if (col.id === targetId) continue;
+          if (!autoMoveFrom.has(col.id)) continue;
           const keep: KanbanItem[] = [];
           for (const card of col.items) {
             if (isOrcDataToday(card)) movers.push(card);
