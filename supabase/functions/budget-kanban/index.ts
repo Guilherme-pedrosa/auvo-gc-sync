@@ -643,6 +643,23 @@ function budgetColumnForItem(item: any): string {
   return "a_fazer";
 }
 
+// Resolve a coluna efetiva preservando posições manuais salvas.
+// - Colunas de sistema (a_fazer, falta_preenchimento, os_realizada, orc_*)
+//   são RECALCULADAS conforme o estado atual da tarefa (Auvo/GC).
+// - Colunas manuais (resolvido_sem_orcamento ou colunas custom do usuário)
+//   são PRESERVADAS como salvas no DB.
+function resolveStoredColumn(item: any, savedColuna: string | null): string {
+  const saved = String(savedColuna || "").trim();
+  const isSystem =
+    saved === "" ||
+    saved === "a_fazer" ||
+    saved === "falta_preenchimento" ||
+    saved === "os_realizada" ||
+    saved.startsWith("orc_");
+  if (isSystem) return budgetColumnForItem(item);
+  return saved;
+}
+
 function buildBudgetItemFromCentral(row: any, gcOrcMap: Record<string, any> = {}, gcOsMap: Record<string, any> = {}) {
   const taskId = String(row.auvo_task_id || "").trim();
   const questionarioRespostas = Array.isArray(row.questionario_respostas) ? row.questionario_respostas : [];
@@ -727,7 +744,7 @@ Deno.serve(async (req) => {
         const item = row.dados || {};
         return {
           ...item,
-          _coluna: budgetColumnForItem(item),
+          _coluna: resolveStoredColumn(item, row.coluna),
           _posicao: row.posicao,
         };
       });
@@ -1001,7 +1018,7 @@ async function runBudgetKanbanSync(opts: {
       const fallbackItems = (cached || [])
         .map((row: any) => {
           const item = row.dados || {};
-          return { ...item, _coluna: budgetColumnForItem(item), _posicao: row.posicao };
+          return { ...item, _coluna: resolveStoredColumn(item, row.coluna), _posicao: row.posicao };
         })
         .filter((item: any) => inDateRange(item.data_tarefa, startDate, endDate));
 
