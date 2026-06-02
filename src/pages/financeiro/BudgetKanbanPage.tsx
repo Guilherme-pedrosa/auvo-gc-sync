@@ -1528,7 +1528,12 @@ export default function BudgetKanbanPage() {
                   <Calendar
                     mode="single"
                     selected={dateRange.from}
-                    onSelect={(d) => d && setDateRange((prev) => ({ ...prev, from: d }))}
+                    onSelect={(d) => {
+                      if (d) {
+                        setDateRange((prev) => ({ ...prev, from: d }));
+                        setColumnsInitialized(false);
+                      }
+                    }}
                     locale={ptBR}
                     className="pointer-events-auto"
                   />
