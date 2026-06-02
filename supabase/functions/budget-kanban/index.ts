@@ -744,7 +744,7 @@ Deno.serve(async (req) => {
         const item = row.dados || {};
         return {
           ...item,
-          _coluna: budgetColumnForItem(item),
+          _coluna: resolveStoredColumn(item, row.coluna),
           _posicao: row.posicao,
         };
       });
