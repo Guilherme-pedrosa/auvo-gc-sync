@@ -1018,7 +1018,7 @@ async function runBudgetKanbanSync(opts: {
       const fallbackItems = (cached || [])
         .map((row: any) => {
           const item = row.dados || {};
-          return { ...item, _coluna: budgetColumnForItem(item), _posicao: row.posicao };
+          return { ...item, _coluna: resolveStoredColumn(item, row.coluna), _posicao: row.posicao };
         })
         .filter((item: any) => inDateRange(item.data_tarefa, startDate, endDate));
 
