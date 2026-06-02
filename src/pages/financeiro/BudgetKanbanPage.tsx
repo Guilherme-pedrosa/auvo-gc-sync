@@ -297,6 +297,40 @@ export default function BudgetKanbanPage() {
         }),
       }));
 
+      // Auto-route: cards que viraram "orcamento_realizado" ou "os_realizada"
+      // e ainda estão em coluna de sistema "pendente" (a_fazer / falta_preenchimento)
+      // devem migrar para a coluna correta. Colunas manuais
+      // (resolvido_sem_orcamento, custom do usuário) são preservadas.
+      const pendingSystemCols = new Set(["a_fazer", "falta_preenchimento"]);
+      const promotionMovers: { card: KanbanItem; target: string }[] = [];
+      for (const col of mergedCols) {
+        if (!pendingSystemCols.has(col.id)) continue;
+        const keep: KanbanItem[] = [];
+        for (const card of col.items) {
+          if (card.orcamento_realizado || card.os_realizada) {
+            promotionMovers.push({ card, target: resolveSystemColumn(card) });
+          } else {
+            keep.push(card);
+          }
+        }
+        col.items = keep;
+      }
+      for (const { card, target } of promotionMovers) {
+        let col = mergedCols.find((c) => c.id === target);
+        if (!col) {
+          const title = target === "os_realizada"
+            ? "🔧 OS Realizada"
+            : target.startsWith("orc_")
+              ? `💰 ${target.replace("orc_", "").replace(/_/g, " ")}`
+              : target;
+          col = { id: target, title, items: [] };
+          mergedCols.push(col);
+        }
+        if (!col.items.some((i) => i.auvo_task_id === card.auvo_task_id)) {
+          col.items.unshift(card);
+        }
+      }
+
       // Auto-route: cards with gc_orc_data === today must live in the "Feito hoje" column
       if (feitoHojeCol) {
         const targetId = feitoHojeCol.id;
