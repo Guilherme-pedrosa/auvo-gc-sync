@@ -202,6 +202,7 @@ export default function PremiacaoPage() {
         title: "Telemetrias sincronizadas",
         description: `${insertedEvents} eventos e ${insertedSessions} sessões atualizadas${errors ? ` · ${errors} falhas` : ""}.`,
       });
+      persistMonth(month);
       if (activeMonth === month) await refetch();
       else setActiveMonth(month);
     } catch (err) {
