@@ -614,7 +614,9 @@ Deno.serve(async (req) => {
         situacao: String(detail.nome_situacao || ""),
         cor_situacao: String(detail.cor_situacao || ""),
         gc_link: `https://gestaoclick.com/ordens_servicos/editar/${osId}?retorno=%2Fordens_servicos`,
-        auvo_link: execTaskId ? `https://app2.auvo.com.br/relatorioTarefas/DetalheTarefa/${execTaskId}` : null,
+        auvo_link: execTaskId
+          ? (urlByAuvoTask.get(execTaskId) || `https://app2.auvo.com.br/relatorioTarefas/DetalheTarefa/${execTaskId}`)
+          : null,
         itens_pecas,
         itens_servicos,
         contrato: contrato ? { nome: contrato.nome, valor_hora: toNum(contrato.valor_hora), taxa: toNum(contrato.taxa_comissao_servico), taxa_peca: toNum(contrato.taxa_comissao_peca ?? 0.02), horas, base_servico: base_servico_contrato } : null,
