@@ -406,7 +406,7 @@ export default function PremiacaoPage() {
                           )}
                           {(t.bonus_meta_valor ?? 0) > 0 && (
                             <div className="text-[10px] text-emerald-600 mt-0.5">
-                              +{brl(t.bonus_meta_valor || 0)} (bônus meta 10%)
+                              +{brl(t.bonus_meta_valor || 0)} (bônus meta {(t.bonus_meta_pct === 0.075 ? "7,5" : t.bonus_meta_pct === 0.135 ? "13,5" : "10")}%)
                             </div>
                           )}
                           {t.meta != null && t.meta > 0 && (
