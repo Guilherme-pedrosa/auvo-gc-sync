@@ -19,6 +19,11 @@ export type TelemetriaTech = {
   reducao_pct?: number;
   reducao_valor?: number;
   reducoes?: Array<{ motivo: string; pct: number; valor: number }>;
+  meta?: number | null;
+  meta_atingida?: boolean;
+  faturamento?: number;
+  bonus_meta_pct?: number;
+  bonus_meta_valor?: number;
   ordens?: Array<{
     gc_os_codigo?: string;
     gc_os_id?: string;
