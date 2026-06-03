@@ -642,6 +642,57 @@ function OsDetailDialog({
                 <span className="text-sm font-medium">Premiação total da OS</span>
                 <span className="text-lg font-semibold text-primary">{brl(os.comissao_total)}</span>
               </div>
+
+              <div className="border rounded-md p-3 bg-muted/30 space-y-2">
+                <div className="flex items-center gap-2 text-sm font-medium">
+                  <RotateCcw className="h-4 w-4" /> Retorno
+                  {retornoAtual && (
+                    <Badge variant="outline" className="text-[10px]">
+                      Atribuído a {retornoAtual.tecnico_retorno}
+                    </Badge>
+                  )}
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Move esta OS (premiação + faturamento) para o técnico que atendeu o retorno.
+                </p>
+                {loadingRet ? (
+                  <div className="text-xs text-muted-foreground flex items-center gap-2">
+                    <Loader2 className="h-3 w-3 animate-spin" /> Carregando…
+                  </div>
+                ) : retornoAtual ? (
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="text-xs text-muted-foreground">
+                      Obs: {retornoAtual.observacao || "—"}
+                    </div>
+                    <Button size="sm" variant="ghost" onClick={() => delMut.mutate()} disabled={delMut.isPending}>
+                      <Trash2 className="h-4 w-4 text-destructive mr-1" /> Remover retorno
+                    </Button>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 md:grid-cols-[1fr_1fr_auto] gap-2 items-end">
+                    <div>
+                      <label className="text-xs text-muted-foreground block mb-1">Técnico do retorno</label>
+                      <SearchableSelect
+                        options={tecnicos}
+                        value={tecRetorno}
+                        onValueChange={setTecRetorno}
+                        placeholder="Selecionar técnico…"
+                        searchPlaceholder="Buscar técnico…"
+                        emptyText="Nenhum técnico encontrado."
+                        className="w-full"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-xs text-muted-foreground block mb-1">Observação (opcional)</label>
+                      <Input value={obsRetorno} onChange={(e) => setObsRetorno(e.target.value)} placeholder="Motivo do retorno…" />
+                    </div>
+                    <Button onClick={() => saveMut.mutate()} disabled={saveMut.isPending || !tecRetorno}>
+                      {saveMut.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <RotateCcw className="h-4 w-4" />}
+                      Mover OS
+                    </Button>
+                  </div>
+                )}
+              </div>
             </div>
           </>
         )}
