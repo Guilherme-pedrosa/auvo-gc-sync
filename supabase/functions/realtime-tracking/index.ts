@@ -39,8 +39,8 @@ async function fetchGcDocMap(
   labelHints: string[],
   dataInicio?: string,
   dataFim?: string
-): Promise<Record<string, { codigo: string; valor: string }>> {
-  const map: Record<string, { codigo: string; valor: string }> = {};
+): Promise<Record<string, { codigo: string; valor: string; vendedor: string }>> {
+  const map: Record<string, { codigo: string; valor: string; vendedor: string }> = {};
   let page = 1;
   let totalPages = 1;
 
@@ -74,6 +74,7 @@ async function fetchGcDocMap(
       map[taskIdValue] = {
         codigo: String(doc.codigo || doc.id),
         valor: String(doc.valor_total || "0"),
+        vendedor: String(doc.nome_vendedor || "").trim(),
       };
     }
     page++;
