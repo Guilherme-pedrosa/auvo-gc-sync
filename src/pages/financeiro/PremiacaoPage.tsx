@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Loader2, Trophy, Wrench, Package, Calculator, ChevronDown, ChevronRight, ExternalLink } from "lucide-react";
+import { Loader2, Trophy, Wrench, Package, Calculator, ChevronDown, ChevronRight, ExternalLink, FileText, RefreshCw } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
@@ -13,7 +13,7 @@ import { OsRetornosManager } from "@/components/financeiro/OsRetornosManager";
 import { DemeritosManager } from "@/components/financeiro/DemeritosManager";
 import { MetasManager } from "@/components/financeiro/MetasManager";
 import { gerarPdfsTelemetrias, gerarPdfTecnico } from "@/lib/pdf/telemetriaPdf";
-import { FileText } from "lucide-react";
+import { toast } from "@/hooks/use-toast";
 
 type ItemRow = {
   descricao: string;
@@ -95,11 +95,34 @@ function currentMonth(): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
 }
 
+function monthChunks(month: string, chunkSizeDays = 7): Array<{ start: string; end: string }> {
+  const [year, mon] = month.split("-").map(Number);
+  const endDate = new Date(Date.UTC(year, mon, 0));
+  const cursor = new Date(Date.UTC(year, mon - 1, 1));
+  const chunks: Array<{ start: string; end: string }> = [];
+
+  while (cursor <= endDate) {
+    const chunkStart = new Date(cursor);
+    const chunkEnd = new Date(cursor);
+    chunkEnd.setUTCDate(chunkEnd.getUTCDate() + chunkSizeDays - 1);
+    if (chunkEnd > endDate) chunkEnd.setTime(endDate.getTime());
+    chunks.push({
+      start: chunkStart.toISOString().slice(0, 10),
+      end: chunkEnd.toISOString().slice(0, 10),
+    });
+    cursor.setUTCDate(cursor.getUTCDate() + chunkSizeDays);
+  }
+
+  return chunks;
+}
+
 export default function PremiacaoPage() {
   const [month, setMonth] = useState<string>(currentMonth());
   const [activeMonth, setActiveMonth] = useState<string>(currentMonth());
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [selectedOs, setSelectedOs] = useState<OsRow | null>(null);
+  const [syncingTelemetry, setSyncingTelemetry] = useState(false);
+  const [telemetryProgress, setTelemetryProgress] = useState<string | null>(null);
 
   const { data, isFetching, refetch, error } = useQuery<Resp>({
     queryKey: ["premiacao", activeMonth],
@@ -123,6 +146,49 @@ export default function PremiacaoPage() {
   const handleCalc = () => {
     setActiveMonth(month);
     setTimeout(() => refetch(), 0);
+  };
+
+  const handleSyncTelemetry = async () => {
+    if (syncingTelemetry) return;
+    const chunks = monthChunks(month);
+    setSyncingTelemetry(true);
+    setTelemetryProgress(`0/${chunks.length}`);
+
+    let insertedEvents = 0;
+    let insertedSessions = 0;
+    let errors = 0;
+
+    try {
+      for (let i = 0; i < chunks.length; i++) {
+        const chunk = chunks[i];
+        setTelemetryProgress(`${i + 1}/${chunks.length}`);
+        const { data, error } = await supabase.functions.invoke("sync-tvh-telemetrias", {
+          body: { start_date: chunk.start, end_date: chunk.end },
+        });
+        if (error) throw error;
+        const result = data as { ok?: boolean; error?: string; inserted_events?: number; inserted_sessions?: number; failed?: number; persist_failures?: unknown[] };
+        if (result?.ok === false) throw new Error(result.error || "Falha ao sincronizar telemetrias");
+        insertedEvents += result?.inserted_events ?? 0;
+        insertedSessions += result?.inserted_sessions ?? 0;
+        errors += (result?.failed ?? 0) + (result?.persist_failures?.length ?? 0);
+      }
+
+      toast({
+        title: "Telemetrias sincronizadas",
+        description: `${insertedEvents} eventos e ${insertedSessions} sessões atualizadas${errors ? ` · ${errors} falhas` : ""}.`,
+      });
+      if (activeMonth === month) await refetch();
+      else setActiveMonth(month);
+    } catch (err) {
+      toast({
+        title: "Erro ao sincronizar telemetrias",
+        description: (err as Error).message,
+        variant: "destructive",
+      });
+    } finally {
+      setSyncingTelemetry(false);
+      setTelemetryProgress(null);
+    }
   };
 
   const tecnicos = data?.tecnicos || [];
@@ -154,6 +220,10 @@ export default function PremiacaoPage() {
             <Button onClick={handleCalc} disabled={isFetching}>
               {isFetching ? <Loader2 className="h-4 w-4 animate-spin" /> : <Calculator className="h-4 w-4" />}
               Calcular
+            </Button>
+            <Button variant="outline" onClick={handleSyncTelemetry} disabled={syncingTelemetry}>
+              <RefreshCw className={cn("h-4 w-4", syncingTelemetry && "animate-spin")} />
+              {syncingTelemetry ? `Sincronizando ${telemetryProgress || ""}` : "Sincronizar telemetrias"}
             </Button>
             <DemeritosManager
               month={activeMonth}
