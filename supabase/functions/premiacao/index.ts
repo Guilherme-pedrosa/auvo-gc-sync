@@ -541,13 +541,20 @@ Deno.serve(async (req) => {
       // Se houver retorno registrado, o técnico do retorno assume a OS.
       const gcCodigo = String(row.gc_os_codigo || detail.codigo || "").trim();
       const tecnicoRetorno = gcCodigo ? retornoByCodigo.get(gcCodigo) : undefined;
+      // Técnico da TAREFA DE EXECUÇÃO (73344) — fonte de verdade de quem realmente executou.
+      const execTecInfo = execTaskIds
+        .map((id) => tecnicoByExecTask.get(id))
+        .find((x) => x && x.tecnico);
       const tecnicoRaw = tecnicoRetorno ||
         String(detail.nome_vendedor || "").trim() ||
         String(detail.nome_tecnico || "").trim() ||
+        (execTecInfo?.tecnico || "").trim() ||
         (row.tecnico || "").trim() ||
         "Sem técnico";
       const tecnico = canonicalTecnico(tecnicoRaw);
-      const tecnico_id = tecnicoRetorno ? "" : String(detail.vendedor_id || row.tecnico_id || "");
+      const tecnico_id = tecnicoRetorno
+        ? ""
+        : String(detail.vendedor_id || execTecInfo?.tecnico_id || row.tecnico_id || "");
       // Chave de agregação pelo PRIMEIRO NOME — consolida todas as variações da mesma pessoa
       const primeiroNome = normalize(tecnico).split(/\s+/)[0] || normalize(tecnico);
       const key = primeiroNome;
