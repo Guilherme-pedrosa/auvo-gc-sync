@@ -22,6 +22,8 @@ export type TelemetriaTech = {
   ordens?: Array<{
     gc_os_codigo?: string;
     gc_os_id?: string;
+    auvo_link?: string | null;
+    gc_link?: string | null;
     cliente?: string;
     data_saida?: string;
     valor_pecas?: number;
@@ -150,7 +152,7 @@ function buildPdfForTech(month: string, t: TelemetriaTech): jsPDF {
       doc.setFont("helvetica", "normal");
       autoTable(doc, {
         startY: y + 4,
-        head: [["OS", "Cliente", "Saída", "Peças", "Serviços", "Prem. peças", "Prem. serv.", "Total"]],
+        head: [["OS", "Cliente", "Saída", "Peças", "Serviços", "Prem. peças", "Prem. serv.", "Total", "Relatório"]],
         body: ordens.map((o) => [
           o.gc_os_codigo || o.gc_os_id || "—",
           o.cliente || "—",
@@ -160,6 +162,7 @@ function buildPdfForTech(month: string, t: TelemetriaTech): jsPDF {
           brl(o.comissao_pecas ?? 0),
           brl(o.comissao_servicos ?? 0),
           brl(o.comissao_total ?? 0),
+          o.auvo_link ? "Abrir" : "—",
         ]),
         styles: { fontSize: 8, cellPadding: 3 },
         headStyles: { fillColor: [240, 240, 245], textColor: 30, fontStyle: "bold" },
@@ -169,6 +172,18 @@ function buildPdfForTech(month: string, t: TelemetriaTech): jsPDF {
           5: { halign: "right" },
           6: { halign: "right" },
           7: { halign: "right", fontStyle: "bold" },
+          8: { halign: "center", textColor: [37, 99, 235] },
+        },
+        didDrawCell: (data: any) => {
+          if (data.section !== "body") return;
+          const o = ordens[data.row.index];
+          if (!o) return;
+          if (data.column.index === 0 && o.gc_link) {
+            doc.link(data.cell.x, data.cell.y, data.cell.width, data.cell.height, { url: o.gc_link });
+          }
+          if (data.column.index === 8 && o.auvo_link) {
+            doc.link(data.cell.x, data.cell.y, data.cell.width, data.cell.height, { url: o.auvo_link });
+          }
         },
       });
     }
