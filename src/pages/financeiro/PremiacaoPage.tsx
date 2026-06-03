@@ -143,6 +143,7 @@ export default function PremiacaoPage() {
   const [selectedOs, setSelectedOs] = useState<OsRow | null>(null);
   const [syncingTelemetry, setSyncingTelemetry] = useState(false);
   const [telemetryProgress, setTelemetryProgress] = useState<string | null>(null);
+  const [syncingGc, setSyncingGc] = useState(false);
 
   const { data, isFetching, refetch, error } = useQuery<Resp>({
     queryKey: ["premiacao", activeMonth],
@@ -217,6 +218,36 @@ export default function PremiacaoPage() {
     }
   };
 
+  const handleSyncGc = async () => {
+    if (syncingGc) return;
+    setSyncingGc(true);
+    try {
+      const [y, m] = month.split("-").map(Number);
+      const start = `${month}-01`;
+      const endDate = new Date(y, m, 0).getDate();
+      const end = `${month}-${String(endDate).padStart(2, "0")}`;
+      const { data, error } = await supabase.functions.invoke("central-sync", {
+        body: { start_date: start, end_date: end },
+      });
+      if (error) throw error;
+      if ((data as any)?.ok === false) throw new Error((data as any)?.error || "Falha ao sincronizar GC");
+      toast({
+        title: "GestãoClick sincronizado",
+        description: `Vendedores e valores atualizados para ${month}.`,
+      });
+      if (activeMonth === month) await refetch();
+      else setActiveMonth(month);
+    } catch (err) {
+      toast({
+        title: "Erro ao sincronizar GC",
+        description: (err as Error).message,
+        variant: "destructive",
+      });
+    } finally {
+      setSyncingGc(false);
+    }
+  };
+
   const tecnicos = data?.tecnicos || [];
   const totais = data?.totais;
 
@@ -250,6 +281,10 @@ export default function PremiacaoPage() {
             <Button variant="outline" onClick={handleSyncTelemetry} disabled={syncingTelemetry}>
               <RefreshCw className={cn("h-4 w-4", syncingTelemetry && "animate-spin")} />
               {syncingTelemetry ? `Sincronizando ${telemetryProgress || ""}` : "Sincronizar telemetrias"}
+            </Button>
+            <Button variant="outline" onClick={handleSyncGc} disabled={syncingGc}>
+              <RefreshCw className={cn("h-4 w-4", syncingGc && "animate-spin")} />
+              {syncingGc ? "Sincronizando GC..." : "Sincronizar GC"}
             </Button>
             <DemeritosManager
               month={activeMonth}
