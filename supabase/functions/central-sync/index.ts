@@ -919,6 +919,78 @@ async function refreshGcOsStatusesForReportsOnly(
   return { checked: processed, updated };
 }
 
+async function refreshGcOsFieldsForPeriod(sbClient: any, gcHeaders: Record<string, string>, startDate: string, endDate: string) {
+  const osIds = new Set<string>();
+  for (let from = 0; ; from += 1000) {
+    const { data: chunk, error } = await sbClient
+      .from("tarefas_central")
+      .select("gc_os_id")
+      .not("gc_os_id", "is", null)
+      .gte("gc_os_data_saida", startDate)
+      .lte("gc_os_data_saida", endDate)
+      .range(from, from + 999);
+    if (error) throw new Error(error.message);
+    if (!chunk || chunk.length === 0) break;
+    for (const row of chunk) if (row.gc_os_id) osIds.add(String(row.gc_os_id));
+    if (chunk.length < 1000) break;
+  }
+
+  let updated = 0;
+  const PARALLEL = 10;
+  const ids = Array.from(osIds);
+  for (let i = 0; i < ids.length; i += PARALLEL) {
+    const batch = ids.slice(i, i + PARALLEL);
+    const freshList = await Promise.all(batch.map(async (osId) => {
+      const resp = await rateLimitedFetch(`${GC_BASE_URL}/api/ordens_servicos/${osId}`, { headers: gcHeaders }, "gc");
+      if (!resp.ok) return null;
+      const data = await resp.json().catch(() => null);
+      const os = data?.data || data;
+      if (!os?.id) return null;
+      const atributos: any[] = os.atributos || [];
+      return {
+        gc_os_id: String(os.id),
+        gc_os_cliente: String(os.nome_cliente || ""),
+        gc_os_situacao: String(os.nome_situacao || ""),
+        gc_os_situacao_id: String(os.situacao_id || ""),
+        gc_os_cor_situacao: String(os.cor_situacao || ""),
+        gc_os_valor_total: parseFloat(os.valor_total || "0"),
+        gc_os_vendedor: String(os.nome_vendedor || ""),
+        gc_os_data_saida: String(os.data_saida || "").split("T")[0] || null,
+        gc_os_tarefa_exec: collectGcAttrTaskIds(atributos, GC_ATRIBUTO_TAREFA_EXEC).join("/") || null,
+        gc_os_tarefa_os: collectGcAttrTaskIds(atributos, GC_ATRIBUTO_TAREFA_OS).join("/") || null,
+        gc_os_link: buildGcOsPublicLink(os),
+        gc_os_link_cobranca: buildGcOsPublicLink(os),
+      };
+    }));
+
+    const counts = await Promise.all(freshList.filter(Boolean).map(async (fresh: any) => {
+      const updatePayload: any = {
+        gc_os_cliente: fresh.gc_os_cliente,
+        gc_os_situacao: fresh.gc_os_situacao,
+        gc_os_situacao_id: fresh.gc_os_situacao_id,
+        gc_os_cor_situacao: fresh.gc_os_cor_situacao,
+        gc_os_valor_total: fresh.gc_os_valor_total,
+        gc_os_vendedor: fresh.gc_os_vendedor,
+        gc_os_data_saida: fresh.gc_os_data_saida,
+        gc_os_link: fresh.gc_os_link,
+        gc_os_link_cobranca: fresh.gc_os_link_cobranca || null,
+        gc_os_tarefa_exec: fresh.gc_os_tarefa_exec,
+        gc_os_tarefa_os: fresh.gc_os_tarefa_os,
+        atualizado_em: new Date().toISOString(),
+      };
+      const { count, error } = await sbClient
+        .from("tarefas_central")
+        .update(updatePayload, { count: "exact" })
+        .eq("gc_os_id", fresh.gc_os_id);
+      if (error) console.error("[central-sync] gc_status_only update error:", error.message);
+      return count || 0;
+    }));
+    updated += counts.reduce((sum, count) => sum + count, 0);
+  }
+
+  return { checked: ids.length, updated };
+}
+
 async function runReportsOnlySync(sbClient: any, bearerToken: string, gcHeaders: Record<string, string>, startDate: string, endDate: string) {
   console.log(`[central-sync] Reports-only: buscando Auvo ${startDate} → ${endDate}`);
   const auvoTasks = await fetchAuvoTasks(bearerToken, startDate, endDate);
