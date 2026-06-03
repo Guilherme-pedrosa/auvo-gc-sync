@@ -255,6 +255,84 @@ export function gerarPdfTecnico(month: string, t: TelemetriaTech) {
 export async function gerarPdfsTelemetrias(month: string, tecnicos: TelemetriaTech[]) {
   const zip = new JSZip();
   const sorted = [...tecnicos].sort((a, b) => (b.comissao_total || 0) - (a.comissao_total || 0));
+
+  // Resumo unificado
+  const resumo = new jsPDF({ orientation: "landscape", unit: "pt", format: "a4" });
+  const pageW = resumo.internal.pageSize.getWidth();
+  const pageH = resumo.internal.pageSize.getHeight();
+  resumo.setFontSize(16);
+  resumo.setFont("helvetica", "bold");
+  resumo.text(`Resumo de Premiação — ${month}`, 40, 40);
+  resumo.setFont("helvetica", "normal");
+  resumo.setFontSize(10);
+  resumo.text(`Emitido em: ${new Date().toLocaleString("pt-BR")}`, pageW - 40, 40, { align: "right" });
+  resumo.text(`Técnicos: ${sorted.length}`, 40, 58);
+
+  const totals = sorted.reduce((acc, t) => {
+    const fat = t.faturamento ?? ((t.valor_pecas ?? 0) + (t.valor_servicos ?? 0));
+    acc.fat += fat;
+    acc.bruta += t.comissao_total || 0;
+    acc.red += t.reducao_valor || 0;
+    acc.bonus += t.bonus_meta_valor || 0;
+    acc.final += t.comissao_final ?? t.comissao_total ?? 0;
+    return acc;
+  }, { fat: 0, bruta: 0, red: 0, bonus: 0, final: 0 });
+
+  autoTable(resumo, {
+    startY: 76,
+    head: [["Técnico", "OS", "Faturamento", "Meta", "% Meta", "Prem. bruta", "Redução", "Bônus meta", "Premiação final"]],
+    body: [
+      ...sorted.map((t) => {
+        const fat = t.faturamento ?? ((t.valor_pecas ?? 0) + (t.valor_servicos ?? 0));
+        const meta = t.meta ?? null;
+        const ratio = meta && meta > 0 ? fat / meta : null;
+        return [
+          t.tecnico,
+          String(t.os_count ?? (t.ordens?.length ?? 0)),
+          brl(fat),
+          meta ? brl(meta) : "—",
+          ratio != null ? `${(ratio * 100).toLocaleString("pt-BR", { maximumFractionDigits: 1 })}%` : "—",
+          brl(t.comissao_total || 0),
+          (t.reducao_valor || 0) > 0 ? `−${brl(t.reducao_valor || 0)}` : brl(0),
+          (t.bonus_meta_valor || 0) > 0 ? `+${brl(t.bonus_meta_valor || 0)}` : brl(0),
+          brl(t.comissao_final ?? t.comissao_total ?? 0),
+        ];
+      }),
+      [
+        { content: "TOTAL", styles: { fontStyle: "bold" } },
+        { content: String(sorted.reduce((a, t) => a + (t.os_count ?? (t.ordens?.length ?? 0)), 0)), styles: { fontStyle: "bold", halign: "right" } },
+        { content: brl(totals.fat), styles: { fontStyle: "bold", halign: "right" } },
+        { content: "", styles: {} },
+        { content: "", styles: {} },
+        { content: brl(totals.bruta), styles: { fontStyle: "bold", halign: "right" } },
+        { content: `−${brl(totals.red)}`, styles: { fontStyle: "bold", halign: "right" } },
+        { content: `+${brl(totals.bonus)}`, styles: { fontStyle: "bold", halign: "right" } },
+        { content: brl(totals.final), styles: { fontStyle: "bold", halign: "right" } },
+      ],
+    ],
+    styles: { fontSize: 9, cellPadding: 5 },
+    headStyles: { fillColor: [37, 99, 235], textColor: 255, fontStyle: "bold" },
+    columnStyles: {
+      1: { halign: "right" },
+      2: { halign: "right" },
+      3: { halign: "right" },
+      4: { halign: "right" },
+      5: { halign: "right" },
+      6: { halign: "right" },
+      7: { halign: "right" },
+      8: { halign: "right", fontStyle: "bold", textColor: [37, 99, 235] },
+    },
+  });
+
+  const pages = resumo.getNumberOfPages();
+  for (let i = 1; i <= pages; i++) {
+    resumo.setPage(i);
+    resumo.setFontSize(8);
+    resumo.setTextColor(150);
+    resumo.text(`Página ${i} de ${pages}`, pageW - 40, pageH - 20, { align: "right" });
+  }
+  zip.file(`00-resumo-${month}.pdf`, resumo.output("blob"));
+
   for (const t of sorted) {
     const doc = buildPdfForTech(month, t);
     const blob = doc.output("blob");
