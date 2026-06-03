@@ -43,6 +43,8 @@ type OsRow = {
   itens_servicos?: ItemRow[];
   contrato?: { nome: string; valor_hora: number; taxa: number; taxa_peca?: number; horas: number; base_servico: number } | null;
   retorno?: { tecnico: string } | null;
+  tecnico_execucao?: string | null;
+  divergente_execucao?: boolean;
 };
 type Tech = {
   tecnico: string;
