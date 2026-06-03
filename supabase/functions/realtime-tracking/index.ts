@@ -259,21 +259,25 @@ Deno.serve(async (req) => {
       (async () => {
         const { data } = await sb
           .from("tarefas_central")
-          .select("auvo_task_id, gc_os_codigo, gc_os_valor_total, gc_orc_valor_total, gc_orcamento_codigo, gc_os_id, gc_orcamento_id")
+          .select("auvo_task_id, gc_os_codigo, gc_os_valor_total, gc_orc_valor_total, gc_orcamento_codigo, gc_os_id, gc_orcamento_id, gc_os_vendedor, gc_orc_vendedor")
           .eq("data_tarefa", targetDate);
         return data || [];
       })(),
     ]);
 
     // Build DB fallback map: auvo_task_id → { codigo, valor, tipo }
-    const dbValorMap: Record<string, { codigo: string; valor: string; tipo: string }> = {};
+    const dbValorMap: Record<string, { codigo: string; valor: string; tipo: string; vendedor: string }> = {};
     for (const t of dbTasks) {
       const osVal = Number(t.gc_os_valor_total) || 0;
       const orcVal = Number(t.gc_orc_valor_total) || 0;
       if (osVal > 0) {
-        dbValorMap[t.auvo_task_id] = { codigo: t.gc_os_codigo || "", valor: String(osVal), tipo: "OS" };
+        dbValorMap[t.auvo_task_id] = { codigo: t.gc_os_codigo || "", valor: String(osVal), tipo: "OS", vendedor: String(t.gc_os_vendedor || "").trim() };
       } else if (orcVal > 0) {
-        dbValorMap[t.auvo_task_id] = { codigo: t.gc_orcamento_codigo || "", valor: String(orcVal), tipo: "ORÇ" };
+        dbValorMap[t.auvo_task_id] = { codigo: t.gc_orcamento_codigo || "", valor: String(orcVal), tipo: "ORÇ", vendedor: String(t.gc_orc_vendedor || "").trim() };
+      } else {
+        // Even without value, capture vendedor if present
+        const vend = String(t.gc_os_vendedor || t.gc_orc_vendedor || "").trim();
+        if (vend) dbValorMap[t.auvo_task_id] = { codigo: t.gc_os_codigo || t.gc_orcamento_codigo || "", valor: "0", tipo: t.gc_os_codigo ? "OS" : "ORÇ", vendedor: vend };
       }
     }
     console.log(`[realtime-tracking] DB fallback: ${Object.keys(dbValorMap).length} tarefas com valor`);
@@ -296,16 +300,13 @@ Deno.serve(async (req) => {
       id: string;
       nome: string;
       tarefas: any[];
+      auvoTechIds: Set<string>;
     }> = {};
 
     for (const task of tasks) {
       const techId = String(task.idUserTo || task.userToId || task.collaboratorId || "");
       const techName = String(task.userToName || task.collaboratorName || "Desconhecido").trim();
       if (!techId || techName === "Desconhecido") continue;
-
-      if (!techMap[techId]) {
-        techMap[techId] = { id: techId, nome: techName, tarefas: [] };
-      }
 
       // Determine status label
       let statusLabel = "Agendada";
@@ -371,7 +372,18 @@ Deno.serve(async (req) => {
       const finalValor = gcValorNum > 0 ? gcDoc!.valor : (dbValorNum > 0 ? dbFallback!.valor : (gcDoc?.valor || ""));
       const finalTipo = (gcValorNum > 0 ? gcDocTipo : null) || dbFallback?.tipo || gcDocTipo || "";
 
-      techMap[techId].tarefas.push({
+      // ── Group by GC VENDOR name (gc_os_vendedor / gc_orc_vendedor) ──
+      // GC seller owns the OS for meta/commission purposes; fallback to Auvo executor only when GC vendor missing.
+      const gcVendedor = (gcDoc?.vendedor || dbFallback?.vendedor || "").trim();
+      const groupName = gcVendedor || techName;
+      const groupKey = (gcVendedor ? `vend::${gcVendedor.toLowerCase()}` : `auvo::${techId}`);
+
+      if (!techMap[groupKey]) {
+        techMap[groupKey] = { id: groupKey, nome: groupName, tarefas: [], auvoTechIds: new Set() };
+      }
+      techMap[groupKey].auvoTechIds.add(techId);
+
+      techMap[groupKey].tarefas.push({
         taskId: auvoTaskId,
         cliente: customerName,
         endereco: typeof address === "object" ? "" : String(address).substring(0, 100),
@@ -388,6 +400,8 @@ Deno.serve(async (req) => {
         gcOsCodigo: finalCodigo,
         gcOsValor: finalValor,
         gcOsTipo: finalTipo,
+        _auvoTechId: techId,
+        _auvoTechName: techName,
       });
     }
 
@@ -399,7 +413,9 @@ Deno.serve(async (req) => {
       const agendadas = tech.tarefas.filter(t => t.status === "Agendada").length;
       const atrasadas = tech.tarefas.filter(t => t.atrasada).length;
       return {
-        ...tech,
+        id: tech.id,
+        nome: tech.nome,
+        tarefas: tech.tarefas,
         resumo: {
           total: tech.tarefas.length,
           finalizadas,
@@ -432,8 +448,9 @@ Deno.serve(async (req) => {
             if (isLateNow || isEndOfDayPending) {
               naoExecutadas.push({
                 auvo_task_id: task.taskId,
-                tecnico_id: tech.id,
-                tecnico_nome: tech.nome,
+                // Persist using AUVO executor (who didn't execute), not GC vendor
+                tecnico_id: (task as any)._auvoTechId || tech.id,
+                tecnico_nome: (task as any)._auvoTechName || tech.nome,
                 cliente: task.cliente || null,
                 descricao: task.descricao || null,
                 data_planejada: targetDate,
