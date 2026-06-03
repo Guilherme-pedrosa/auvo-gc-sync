@@ -1,4 +1,4 @@
-import { useState, useEffect, createContext, useContext, ReactNode } from "react";
+import { useState, useEffect, useRef, createContext, useContext, ReactNode } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import type { User, Session } from "@supabase/supabase-js";
 
@@ -32,6 +32,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [role, setRole] = useState<string | null>(null);
   const [roleLoaded, setRoleLoaded] = useState(false);
   const [loading, setLoading] = useState(true);
+  const currentUserIdRef = useRef<string | null>(null);
 
   const fetchUserData = async (u: User) => {
     try {
@@ -75,6 +76,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setUser(u);
 
       if (!u) {
+        currentUserIdRef.current = null;
         setProfile(null);
         setIsAdmin(false);
         setIsCliente(false);
@@ -84,7 +86,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return;
       }
 
-      setRoleLoaded(false);
+      const isSameUser = currentUserIdRef.current === u.id;
+      currentUserIdRef.current = u.id;
+      if (!isSameUser) setRoleLoaded(false);
       // Do not block UI on profile/role fetch
       void fetchUserData(u).finally(() => {
         releaseLoading();
