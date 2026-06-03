@@ -135,6 +135,49 @@ function buildPdfForTech(month: string, t: TelemetriaTech): jsPDF {
       y = (doc as any).lastAutoTable.finalY;
     }
 
+    // Bônus por meta de faturamento (discriminado)
+    y += 14;
+    doc.setFontSize(10);
+    doc.setFont("helvetica", "bold");
+    doc.text("Bônus por meta de faturamento", 40, y);
+    doc.setFont("helvetica", "normal");
+    const fat = t.faturamento ?? ((t.valor_pecas ?? 0) + (t.valor_servicos ?? 0));
+    const meta = t.meta ?? null;
+    const ratio = meta && meta > 0 ? fat / meta : 0;
+    const bonusPct = t.bonus_meta_pct || 0;
+    const bonusValor = t.bonus_meta_valor || 0;
+    if (!meta || meta <= 0) {
+      doc.setFontSize(9);
+      doc.setTextColor(120);
+      doc.text("Sem meta cadastrada para este técnico.", 40, y + 16);
+      doc.setTextColor(0);
+      y += 20;
+    } else {
+      const faixa = bonusPct >= 0.135 ? "≥ 111% da meta" :
+                    bonusPct >= 0.10  ? "100% – 110% da meta" :
+                    bonusPct >= 0.075 ? "75% – 99% da meta" :
+                    "< 75% da meta (sem bônus)";
+      autoTable(doc, {
+        startY: y + 4,
+        head: [["Meta", "Faturamento", "Atingimento", "Faixa", "Bônus %", "Bônus R$"]],
+        body: [[
+          brl(meta),
+          brl(fat),
+          `${(ratio * 100).toLocaleString("pt-BR", { maximumFractionDigits: 1 })}%`,
+          faixa,
+          bonusPct > 0 ? `+${(bonusPct * 100).toLocaleString("pt-BR", { maximumFractionDigits: 1 })}%` : "—",
+          bonusValor > 0 ? `+${brl(bonusValor)}` : brl(0),
+        ]],
+        styles: { fontSize: 9, cellPadding: 4 },
+        headStyles: { fillColor: [34, 197, 94], textColor: 255, fontStyle: "bold" },
+        columnStyles: {
+          0: { halign: "right" }, 1: { halign: "right" }, 2: { halign: "right" },
+          4: { halign: "right" }, 5: { halign: "right", fontStyle: "bold" },
+        },
+      });
+      y = (doc as any).lastAutoTable.finalY;
+    }
+
     // Resultado final
     y += 14;
     doc.setFontSize(11);
