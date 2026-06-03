@@ -602,6 +602,12 @@ Deno.serve(async (req) => {
         itens_servicos,
         contrato: contrato ? { nome: contrato.nome, valor_hora: toNum(contrato.valor_hora), taxa: toNum(contrato.taxa_comissao_servico), taxa_peca: toNum(contrato.taxa_comissao_peca ?? 0.02), horas, base_servico: base_servico_contrato } : null,
         retorno: tecnicoRetorno ? { tecnico: tecnicoRetorno } : null,
+        tecnico_execucao: execTecInfo?.tecnico || null,
+        divergente_execucao: (() => {
+          const exec = normalize(execTecInfo?.tecnico || "").split(/\s+/)[0];
+          const vend = normalize(tecnico).split(/\s+/)[0];
+          return !!exec && !!vend && exec !== vend;
+        })(),
       });
     }
 
