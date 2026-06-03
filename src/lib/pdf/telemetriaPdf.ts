@@ -70,7 +70,7 @@ function buildPdfForTech(month: string, t: TelemetriaTech): jsPDF {
   // Quadro de totais
   autoTable(doc, {
       startY: 92,
-      head: [["Faturamento", "Peças", "Serviços", "Prem. peças (1%)", "Prem. serv.", "Prem. bruta"]],
+      head: [["Faturamento", "Peças", "Serviços", "Prem. peças", "Prem. serv.", "Prem. bruta"]],
       body: [[
         brl(t.faturamento ?? (t.valor_pecas ?? 0) + (t.valor_servicos ?? 0)),
         brl(t.valor_pecas ?? 0),
@@ -200,17 +200,23 @@ function buildPdfForTech(month: string, t: TelemetriaTech): jsPDF {
       autoTable(doc, {
         startY: y + 4,
         head: [["OS", "Cliente", "Saída", "Peças", "Serviços", "Prem. peças", "Prem. serv.", "Total", "Relatório"]],
-        body: ordens.map((o) => [
-          o.gc_os_codigo || o.gc_os_id || "—",
-          o.cliente || "—",
-          o.data_saida || "—",
-          brl(o.valor_pecas ?? 0),
-          brl(o.valor_servicos ?? 0),
-          brl(o.comissao_pecas ?? 0),
-          brl(o.comissao_servicos ?? 0),
-          brl(o.comissao_total ?? 0),
-          o.auvo_link ? "Abrir" : "—",
-        ]),
+      body: ordens.map((o) => {
+          const vp = o.valor_pecas ?? 0;
+          const cp = o.comissao_pecas ?? 0;
+          const taxa = vp > 0 ? cp / vp : 0;
+          const taxaTxt = vp > 0 ? `${(taxa * 100).toLocaleString("pt-BR", { maximumFractionDigits: 1 })}%` : "—";
+          return [
+            o.gc_os_codigo || o.gc_os_id || "—",
+            o.cliente || "—",
+            o.data_saida || "—",
+            brl(vp),
+            brl(o.valor_servicos ?? 0),
+            `${brl(cp)}  (${taxaTxt})`,
+            brl(o.comissao_servicos ?? 0),
+            brl(o.comissao_total ?? 0),
+            o.auvo_link ? "Abrir" : "—",
+          ];
+        }),
         styles: { fontSize: 8, cellPadding: 3 },
         headStyles: { fillColor: [240, 240, 245], textColor: 30, fontStyle: "bold" },
         columnStyles: {
