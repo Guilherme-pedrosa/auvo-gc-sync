@@ -481,13 +481,83 @@ export default function PremiacaoPage() {
           })}
         </div>
 
-        <OsDetailDialog os={selectedOs} onClose={() => setSelectedOs(null)} />
+        <OsDetailDialog
+          os={selectedOs}
+          onClose={() => setSelectedOs(null)}
+          tecnicos={tecnicos.map((t) => ({ value: t.tecnico, label: t.tecnico }))}
+          onChanged={() => refetch()}
+        />
       </div>
     </div>
   );
 }
 
-function OsDetailDialog({ os, onClose }: { os: OsRow | null; onClose: () => void }) {
+function OsDetailDialog({
+  os,
+  onClose,
+  tecnicos,
+  onChanged,
+}: {
+  os: OsRow | null;
+  onClose: () => void;
+  tecnicos: Array<{ value: string; label: string }>;
+  onChanged: () => void;
+}) {
+  const qc = useQueryClient();
+  const [tecRetorno, setTecRetorno] = useState("");
+  const [obsRetorno, setObsRetorno] = useState("");
+
+  const codigo = os?.gc_os_codigo || os?.gc_os_id || "";
+
+  const { data: retornoAtual, isLoading: loadingRet } = useQuery({
+    queryKey: ["os_retorno", codigo],
+    enabled: !!codigo,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("os_retornos")
+        .select("*")
+        .eq("gc_os_codigo", codigo)
+        .maybeSingle();
+      if (error) throw error;
+      return data as { id: string; tecnico_retorno: string; observacao: string | null } | null;
+    },
+  });
+
+  const saveMut = useMutation({
+    mutationFn: async () => {
+      if (!codigo) throw new Error("OS inválida");
+      if (!tecRetorno.trim()) throw new Error("Selecione o técnico do retorno");
+      const { error } = await supabase.from("os_retornos").upsert(
+        { gc_os_codigo: codigo, tecnico_retorno: tecRetorno.trim(), observacao: obsRetorno.trim() || null },
+        { onConflict: "gc_os_codigo" }
+      );
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      toast({ title: "Retorno registrado", description: "A OS foi movida para o técnico do retorno." });
+      setTecRetorno(""); setObsRetorno("");
+      qc.invalidateQueries({ queryKey: ["os_retorno", codigo] });
+      onChanged();
+      onClose();
+    },
+    onError: (e: Error) => toast({ title: "Erro", description: e.message, variant: "destructive" }),
+  });
+
+  const delMut = useMutation({
+    mutationFn: async () => {
+      if (!retornoAtual?.id) return;
+      const { error } = await supabase.from("os_retornos").delete().eq("id", retornoAtual.id);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      toast({ title: "Retorno removido" });
+      qc.invalidateQueries({ queryKey: ["os_retorno", codigo] });
+      onChanged();
+      onClose();
+    },
+    onError: (e: Error) => toast({ title: "Erro", description: e.message, variant: "destructive" }),
+  });
+
   return (
     <Dialog open={!!os} onOpenChange={(o) => !o && onClose()}>
       <DialogContent className="max-w-3xl max-h-[85vh] overflow-y-auto">
