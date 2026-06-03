@@ -324,8 +324,6 @@ export default function PremiacaoPage() {
           </Card>
         )}
 
-        <OsRetornosManager onChanged={() => refetch()} />
-
         {totais && (
           <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
             <KpiCard label="OS no mês" value={String(totais.os_count)} icon={<Wrench className="h-4 w-4" />} />
