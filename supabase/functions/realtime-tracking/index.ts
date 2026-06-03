@@ -90,9 +90,9 @@ async function fetchGcOsMap(
   gcHeaders: Record<string, string>,
   dataInicio?: string,
   dataFim?: string
-): Promise<Record<string, { codigo: string; valor: string }>> {
+): Promise<Record<string, { codigo: string; valor: string; vendedor: string }>> {
   // Fetch GC OS pages filtered by date window, then scan for BOTH attributes (73343=Tarefa OS, 73344=Tarefa Execução)
-  const map: Record<string, { codigo: string; valor: string }> = {};
+  const map: Record<string, { codigo: string; valor: string; vendedor: string }> = {};
   let page = 1;
   let totalPages = 1;
 
@@ -123,9 +123,10 @@ async function fetchGcOsMap(
         const taskIdValue = String(nested?.conteudo || nested?.valor || "").trim();
         if (!taskIdValue || !/^\d+$/.test(taskIdValue)) continue;
         const valor = String(doc.valor_total || "0");
+        const vendedor = String(doc.nome_vendedor || "").trim();
         // Only set if this entry has a real value, or if no entry exists yet
         if (!map[taskIdValue] || (parseFloat(valor) > 0 && parseFloat(map[taskIdValue].valor) <= 0)) {
-          map[taskIdValue] = { codigo: String(doc.codigo || doc.id), valor };
+          map[taskIdValue] = { codigo: String(doc.codigo || doc.id), valor, vendedor };
         }
       }
     }
