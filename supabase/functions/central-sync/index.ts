@@ -1160,7 +1160,6 @@ async function runCentralSync(body: CentralSyncBody = {}) {
 
     console.log(`[central-sync] Período: ${startDate} a ${endDate} (limpeza < ${cleanupCutoff}), situações: ${situacaoIds.length || 'todas'}`);
 
-    const bearerToken = await auvoLogin(auvoApiKey, auvoApiToken);
     const gcH: Record<string, string> = {
       "access-token": gcAccessToken,
       "secret-access-token": gcSecretToken,
@@ -1178,6 +1177,8 @@ async function runCentralSync(body: CentralSyncBody = {}) {
         errors: 0,
       };
     }
+
+    const bearerToken = await auvoLogin(auvoApiKey, auvoApiToken);
 
     if (body?.reports_only === true) {
       return await runReportsOnlySync(sbClient, bearerToken, gcH, startDate, endDate);
