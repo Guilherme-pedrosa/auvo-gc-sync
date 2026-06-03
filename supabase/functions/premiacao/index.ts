@@ -206,13 +206,13 @@ Deno.serve(async (req) => {
     // (re-filtramos abaixo pelo data_saida real do GC detail)
     const { data: rowsA, error: errA } = await supabase
       .from("tarefas_central")
-      .select("auvo_task_id, gc_os_id, gc_os_codigo, gc_os_cliente, gc_os_data_saida, gc_os_valor_total, gc_os_vendedor, gc_os_tarefa_exec, tecnico, tecnico_id, data_tarefa, status_auvo, data_conclusao, duracao_decimal")
+      .select("auvo_task_id, auvo_task_url, gc_os_id, gc_os_codigo, gc_os_cliente, gc_os_data_saida, gc_os_valor_total, gc_os_vendedor, gc_os_tarefa_exec, tecnico, tecnico_id, data_tarefa, status_auvo, data_conclusao, duracao_decimal")
       .not("gc_os_id", "is", null)
       .gte("gc_os_data_saida", startDate)
       .lte("gc_os_data_saida", endDate);
     const { data: rowsB, error: errB } = await supabase
       .from("tarefas_central")
-      .select("auvo_task_id, gc_os_id, gc_os_codigo, gc_os_cliente, gc_os_data_saida, gc_os_valor_total, gc_os_vendedor, gc_os_tarefa_exec, tecnico, tecnico_id, data_tarefa, status_auvo, data_conclusao, duracao_decimal")
+      .select("auvo_task_id, auvo_task_url, gc_os_id, gc_os_codigo, gc_os_cliente, gc_os_data_saida, gc_os_valor_total, gc_os_vendedor, gc_os_tarefa_exec, tecnico, tecnico_id, data_tarefa, status_auvo, data_conclusao, duracao_decimal")
       .not("gc_os_id", "is", null)
       .is("gc_os_data_saida", null);
     const error = errA || errB;
@@ -229,12 +229,15 @@ Deno.serve(async (req) => {
     // tarefas_central representam a mesma tarefa Auvo e NÃO devem ser somadas).
     const duracaoByAuvoTask = new Map<string, number>();
     const tecnicoByExecTask = new Map<string, { tecnico: string; tecnico_id: string }>();
+    const urlByAuvoTask = new Map<string, string>();
     for (const r of rows || []) {
       const k = String(r.auvo_task_id || "");
       if (!k) continue;
       const v = toNum(r.duracao_decimal);
       const prev = duracaoByAuvoTask.get(k) ?? -1;
       if (v > prev) duracaoByAuvoTask.set(k, v);
+      const u = String((r as any).auvo_task_url || "").trim();
+      if (u && !urlByAuvoTask.has(k)) urlByAuvoTask.set(k, u);
     }
 
     // Dedupe by gc_os_id — prefer row with execution technician set
@@ -277,7 +280,7 @@ Deno.serve(async (req) => {
         const chunk = execIds.slice(i, i + EXEC_PAR);
         const { data: execRows, error: execError } = await supabase
           .from("tarefas_central")
-          .select("auvo_task_id, duracao_decimal, tecnico, tecnico_id")
+          .select("auvo_task_id, auvo_task_url, duracao_decimal, tecnico, tecnico_id")
           .in("auvo_task_id", chunk);
 
         if (execError) {
@@ -300,6 +303,8 @@ Deno.serve(async (req) => {
         if (execTec && !tecnicoByExecTask.has(k)) {
           tecnicoByExecTask.set(k, { tecnico: execTec, tecnico_id: String(r.tecnico_id || "") });
         }
+        const u = String((r as any).auvo_task_url || "").trim();
+        if (u && !urlByAuvoTask.has(k)) urlByAuvoTask.set(k, u);
       }
     }
 
@@ -609,7 +614,9 @@ Deno.serve(async (req) => {
         situacao: String(detail.nome_situacao || ""),
         cor_situacao: String(detail.cor_situacao || ""),
         gc_link: `https://gestaoclick.com/ordens_servicos/editar/${osId}?retorno=%2Fordens_servicos`,
-        auvo_link: execTaskId ? `https://app2.auvo.com.br/relatorioTarefas/DetalheTarefa/${execTaskId}` : null,
+        auvo_link: execTaskId
+          ? (urlByAuvoTask.get(execTaskId) || `https://app2.auvo.com.br/relatorioTarefas/DetalheTarefa/${execTaskId}`)
+          : null,
         itens_pecas,
         itens_servicos,
         contrato: contrato ? { nome: contrato.nome, valor_hora: toNum(contrato.valor_hora), taxa: toNum(contrato.taxa_comissao_servico), taxa_peca: toNum(contrato.taxa_comissao_peca ?? 0.02), horas, base_servico: base_servico_contrato } : null,
