@@ -541,6 +541,10 @@ Deno.serve(async (req) => {
       // Se houver retorno registrado, o técnico do retorno assume a OS.
       const gcCodigo = String(row.gc_os_codigo || detail.codigo || "").trim();
       const tecnicoRetorno = gcCodigo ? retornoByCodigo.get(gcCodigo) : undefined;
+      // Técnico que executou (tarefa 73344) — usado pra detectar divergência com o vendedor do GC.
+      const execTecInfo = execTaskIds
+        .map((id) => tecnicoByExecTask.get(id))
+        .find((x) => x && x.tecnico);
       // Vendedor do GC é a fonte da verdade. Se não tiver, NÃO usa execução nem cache:
       // vai pro bucket "Sem vendedor" para revisão manual.
       const vendedorGc = String(detail.nome_vendedor || "").trim();
