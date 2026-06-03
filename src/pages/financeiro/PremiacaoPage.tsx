@@ -95,6 +95,26 @@ function currentMonth(): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
 }
 
+const PREMIACAO_MONTH_STORAGE_KEY = "premiacao:active-month";
+
+function initialMonth(): string {
+  try {
+    const stored = window.localStorage.getItem(PREMIACAO_MONTH_STORAGE_KEY);
+    if (stored && /^\d{4}-\d{2}$/.test(stored)) return stored;
+  } catch {
+    // Ignora indisponibilidade do localStorage e usa o mês atual.
+  }
+  return currentMonth();
+}
+
+function persistMonth(month: string) {
+  try {
+    window.localStorage.setItem(PREMIACAO_MONTH_STORAGE_KEY, month);
+  } catch {
+    // Persistência é apenas conveniência para não resetar ao voltar para a aba.
+  }
+}
+
 function monthChunks(month: string, chunkSizeDays = 7): Array<{ start: string; end: string }> {
   const [year, mon] = month.split("-").map(Number);
   const endDate = new Date(Date.UTC(year, mon, 0));
@@ -117,8 +137,8 @@ function monthChunks(month: string, chunkSizeDays = 7): Array<{ start: string; e
 }
 
 export default function PremiacaoPage() {
-  const [month, setMonth] = useState<string>(currentMonth());
-  const [activeMonth, setActiveMonth] = useState<string>(currentMonth());
+  const [month, setMonth] = useState<string>(() => initialMonth());
+  const [activeMonth, setActiveMonth] = useState<string>(() => initialMonth());
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [selectedOs, setSelectedOs] = useState<OsRow | null>(null);
   const [syncingTelemetry, setSyncingTelemetry] = useState(false);
@@ -133,6 +153,7 @@ export default function PremiacaoPage() {
       if (error) throw error;
       return data as Resp;
     },
+    refetchOnWindowFocus: false,
   });
 
   const toggle = (key: string) => {
@@ -144,8 +165,12 @@ export default function PremiacaoPage() {
   };
 
   const handleCalc = () => {
+    persistMonth(month);
+    if (activeMonth === month) {
+      void refetch();
+      return;
+    }
     setActiveMonth(month);
-    setTimeout(() => refetch(), 0);
   };
 
   const handleSyncTelemetry = async () => {
