@@ -227,13 +227,13 @@ export default function PremiacaoPage() {
       const endDate = new Date(y, m, 0).getDate();
       const end = `${month}-${String(endDate).padStart(2, "0")}`;
       const { data, error } = await supabase.functions.invoke("central-sync", {
-        body: { start_date: start, end_date: end },
+        body: { start_date: start, end_date: end, gc_status_only: true, wait: true },
       });
       if (error) throw error;
       if ((data as any)?.ok === false) throw new Error((data as any)?.error || "Falha ao sincronizar GC");
       toast({
         title: "GestãoClick sincronizado",
-        description: `Vendedores e valores atualizados para ${month}.`,
+        description: `${(data as any)?.gc_os_updated ?? 0} registros atualizados para ${month}.`,
       });
       if (activeMonth === month) await refetch();
       else setActiveMonth(month);
