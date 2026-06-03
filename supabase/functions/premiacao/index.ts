@@ -227,6 +227,7 @@ Deno.serve(async (req) => {
 
     // Index duracao por auvo_task_id — para somar APENAS a Tarefa Execução (73344) por OS
     const duracaoByAuvoTask = new Map<string, number>();
+    const tecnicoByExecTask = new Map<string, { tecnico: string; tecnico_id: string }>();
     for (const r of rows || []) {
       const k = String(r.auvo_task_id || "");
       if (!k) continue;
@@ -273,7 +274,7 @@ Deno.serve(async (req) => {
         const chunk = execIds.slice(i, i + EXEC_PAR);
         const { data: execRows, error: execError } = await supabase
           .from("tarefas_central")
-          .select("auvo_task_id, duracao_decimal")
+          .select("auvo_task_id, duracao_decimal, tecnico, tecnico_id")
           .in("auvo_task_id", chunk);
 
         if (execError) {
@@ -290,6 +291,10 @@ Deno.serve(async (req) => {
         const k = String(r.auvo_task_id || "");
         if (!k) continue;
         duracaoByAuvoTask.set(k, (duracaoByAuvoTask.get(k) || 0) + toNum(r.duracao_decimal));
+        const execTec = String(r.tecnico || "").trim();
+        if (execTec && !tecnicoByExecTask.has(k)) {
+          tecnicoByExecTask.set(k, { tecnico: execTec, tecnico_id: String(r.tecnico_id || "") });
+        }
       }
     }
 
@@ -536,13 +541,20 @@ Deno.serve(async (req) => {
       // Se houver retorno registrado, o técnico do retorno assume a OS.
       const gcCodigo = String(row.gc_os_codigo || detail.codigo || "").trim();
       const tecnicoRetorno = gcCodigo ? retornoByCodigo.get(gcCodigo) : undefined;
+      // Técnico da TAREFA DE EXECUÇÃO (73344) — fonte de verdade de quem realmente executou.
+      const execTecInfo = execTaskIds
+        .map((id) => tecnicoByExecTask.get(id))
+        .find((x) => x && x.tecnico);
       const tecnicoRaw = tecnicoRetorno ||
         String(detail.nome_vendedor || "").trim() ||
         String(detail.nome_tecnico || "").trim() ||
+        (execTecInfo?.tecnico || "").trim() ||
         (row.tecnico || "").trim() ||
         "Sem técnico";
       const tecnico = canonicalTecnico(tecnicoRaw);
-      const tecnico_id = tecnicoRetorno ? "" : String(detail.vendedor_id || row.tecnico_id || "");
+      const tecnico_id = tecnicoRetorno
+        ? ""
+        : String(detail.vendedor_id || execTecInfo?.tecnico_id || row.tecnico_id || "");
       // Chave de agregação pelo PRIMEIRO NOME — consolida todas as variações da mesma pessoa
       const primeiroNome = normalize(tecnico).split(/\s+/)[0] || normalize(tecnico);
       const key = primeiroNome;
