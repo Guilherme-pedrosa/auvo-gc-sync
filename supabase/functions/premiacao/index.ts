@@ -783,8 +783,10 @@ Deno.serve(async (req) => {
     }
 
     // ============================================================
-    // METAS de faturamento — bônus de 10% sobre a comissão BRUTA
-    // quando o faturamento do mês atingir/superar a meta cadastrada.
+    // METAS de faturamento — bônus escalonado sobre a comissão BRUTA
+    // 75% a 99%  → +7,5%
+    // 100% a 110% → +10%
+    // 111% ou mais → +13,5%
     // ============================================================
     try {
       const { data: metasRows } = await supabase
@@ -810,8 +812,12 @@ Deno.serve(async (req) => {
           continue;
         }
         const fat = t.faturamento || 0;
+        const ratio = m.meta > 0 ? fat / m.meta : 0;
+        let bonusPct = 0;
+        if (ratio >= 1.11) bonusPct = 0.135;
+        else if (ratio >= 1.00) bonusPct = 0.10;
+        else if (ratio >= 0.75) bonusPct = 0.075;
         const atingiu = m.meta > 0 && fat >= m.meta;
-        const bonusPct = atingiu ? 0.10 : 0;
         const bonusValor = t.comissao_total * bonusPct;
         (t as any).meta = m.meta;
         (t as any).meta_atingida = atingiu;

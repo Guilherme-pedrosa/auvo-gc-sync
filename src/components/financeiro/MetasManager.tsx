@@ -36,7 +36,7 @@ export function MetasManager({
             <Target className="h-5 w-5 text-primary" /> Metas de Faturamento
           </DialogTitle>
           <p className="text-xs text-muted-foreground">
-            Quem atingir a meta no mês ganha <b>+10% de bônus</b> sobre a comissão bruta.
+            75%–99% da meta: <b>+7,5%</b> · 100%–110%: <b>+10%</b> · 111% ou mais: <b>+13,5%</b> sobre a comissão bruta.
           </p>
         </DialogHeader>
         <MetasInner tecnicos={tecnicos} onChanged={onChanged} />
