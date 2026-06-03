@@ -225,13 +225,16 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Index duracao por auvo_task_id — para somar APENAS a Tarefa Execução (73344) por OS
+    // Index duracao por auvo_task_id — usar MAX por task_id (linhas duplicadas em
+    // tarefas_central representam a mesma tarefa Auvo e NÃO devem ser somadas).
     const duracaoByAuvoTask = new Map<string, number>();
     const tecnicoByExecTask = new Map<string, { tecnico: string; tecnico_id: string }>();
     for (const r of rows || []) {
       const k = String(r.auvo_task_id || "");
       if (!k) continue;
-      duracaoByAuvoTask.set(k, (duracaoByAuvoTask.get(k) || 0) + toNum(r.duracao_decimal));
+      const v = toNum(r.duracao_decimal);
+      const prev = duracaoByAuvoTask.get(k) ?? -1;
+      if (v > prev) duracaoByAuvoTask.set(k, v);
     }
 
     // Dedupe by gc_os_id — prefer row with execution technician set
@@ -290,7 +293,9 @@ Deno.serve(async (req) => {
       for (const r of execRowsAll) {
         const k = String(r.auvo_task_id || "");
         if (!k) continue;
-        duracaoByAuvoTask.set(k, (duracaoByAuvoTask.get(k) || 0) + toNum(r.duracao_decimal));
+        const v = toNum(r.duracao_decimal);
+        const prev = duracaoByAuvoTask.get(k) ?? -1;
+        if (v > prev) duracaoByAuvoTask.set(k, v);
         const execTec = String(r.tecnico || "").trim();
         if (execTec && !tecnicoByExecTask.has(k)) {
           tecnicoByExecTask.set(k, { tecnico: execTec, tecnico_id: String(r.tecnico_id || "") });
