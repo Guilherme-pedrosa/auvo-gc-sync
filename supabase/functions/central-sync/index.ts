@@ -1167,6 +1167,18 @@ async function runCentralSync(body: CentralSyncBody = {}) {
       "Content-Type": "application/json",
     };
 
+    if (body?.gc_status_only === true) {
+      const result = await refreshGcOsFieldsForPeriod(sbClient, gcH, startDate, endDate);
+      return {
+        success: true,
+        mode: "gc-status-only",
+        periodo: { inicio: startDate, fim: endDate },
+        gc_os_checked: result.checked,
+        gc_os_updated: result.updated,
+        errors: 0,
+      };
+    }
+
     if (body?.reports_only === true) {
       return await runReportsOnlySync(sbClient, bearerToken, gcH, startDate, endDate);
     }
