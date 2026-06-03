@@ -22,6 +22,8 @@ export type TelemetriaTech = {
   ordens?: Array<{
     gc_os_codigo?: string;
     gc_os_id?: string;
+    auvo_link?: string | null;
+    gc_link?: string | null;
     cliente?: string;
     data_saida?: string;
     valor_pecas?: number;
