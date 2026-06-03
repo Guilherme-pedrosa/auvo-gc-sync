@@ -444,7 +444,7 @@ export default function PremiacaoPage() {
                         {t.ordens.map((o) => (
                           <TableRow
                             key={o.gc_os_id}
-                            className="cursor-pointer"
+                            className={`cursor-pointer ${o.divergente_execucao ? "bg-destructive/10 hover:bg-destructive/20" : ""}`}
                             onClick={() => setSelectedOs(o)}
                           >
                             <TableCell className="font-mono text-xs text-primary underline-offset-2 hover:underline">
@@ -458,6 +458,11 @@ export default function PremiacaoPage() {
                                 )}
                                 {o.retorno && (
                                   <Badge className="text-[10px] shrink-0" variant="outline">Retorno</Badge>
+                                )}
+                                {o.divergente_execucao && o.tecnico_execucao && (
+                                  <Badge variant="destructive" className="text-[10px] shrink-0" title={`Executado por ${o.tecnico_execucao}`}>
+                                    Exec: {o.tecnico_execucao.split(/\s+/)[0]}
+                                  </Badge>
                                 )}
                               </div>
                             </TableCell>
