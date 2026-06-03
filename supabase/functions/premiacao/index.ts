@@ -290,6 +290,10 @@ Deno.serve(async (req) => {
         const k = String(r.auvo_task_id || "");
         if (!k) continue;
         duracaoByAuvoTask.set(k, (duracaoByAuvoTask.get(k) || 0) + toNum(r.duracao_decimal));
+        const execTec = String(r.tecnico || "").trim();
+        if (execTec && !tecnicoByExecTask.has(k)) {
+          tecnicoByExecTask.set(k, { tecnico: execTec, tecnico_id: String(r.tecnico_id || "") });
+        }
       }
     }
 
