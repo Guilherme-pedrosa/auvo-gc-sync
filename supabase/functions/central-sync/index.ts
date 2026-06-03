@@ -817,6 +817,7 @@ type CentralSyncBody = {
   fast?: unknown;
   lite?: unknown;
   reports_only?: unknown;
+  gc_status_only?: unknown;
 };
 
 async function refreshGcOsStatusesForReportsOnly(
