@@ -1453,8 +1453,7 @@ async function runCentralSync(body: CentralSyncBody = {}) {
           const { count } = await sbClient
             .from("tarefas_central")
             .update(updatePayload, { count: "exact" })
-            .eq("gc_os_id", osId)
-            .neq("gc_os_situacao", fresh.gc_os_situacao);
+            .eq("gc_os_id", osId);
           return count || 0;
         }));
         globalOsUpdated += results.reduce((s, c) => s + c, 0);
@@ -1518,8 +1517,7 @@ async function runCentralSync(body: CentralSyncBody = {}) {
               gc_orc_cliente: fresh.gc_orc_cliente,
               atualizado_em: new Date().toISOString(),
             }, { count: "exact" })
-            .eq("gc_orcamento_id", orcId)
-            .neq("gc_orc_situacao", fresh.gc_orc_situacao);
+            .eq("gc_orcamento_id", orcId);
           return count || 0;
         }));
         globalOrcUpdated += results.reduce((s, c) => s + c, 0);
