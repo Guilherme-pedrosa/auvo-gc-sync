@@ -273,7 +273,7 @@ Deno.serve(async (req) => {
         const chunk = execIds.slice(i, i + EXEC_PAR);
         const { data: execRows, error: execError } = await supabase
           .from("tarefas_central")
-          .select("auvo_task_id, duracao_decimal")
+          .select("auvo_task_id, duracao_decimal, tecnico, tecnico_id")
           .in("auvo_task_id", chunk);
 
         if (execError) {
