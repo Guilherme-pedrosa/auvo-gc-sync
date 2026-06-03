@@ -482,6 +482,9 @@ Deno.serve(async (req) => {
           valor_servicos = Math.max(0, valor_servicos - rateioServ);
           valor_servicos_taxa5 = Math.max(0, valor_servicos_taxa5 - rateioServ5);
           valor_servicos_taxa10 = Math.max(0, valor_servicos_taxa10 - rateioServ10);
+          // Faturamento exibido também reflete o desconto geral da OS (rateado
+          // sobre os itens comissionáveis) — mantém paridade com o relatório do GC.
+          faturamento_os = Math.max(0, faturamento_os - (rateioPecas + rateioServ + rateioServ5 + rateioServ10));
         }
       }
 
