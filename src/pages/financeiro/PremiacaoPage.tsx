@@ -1,15 +1,15 @@
 import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Loader2, Trophy, Wrench, Package, Calculator, ChevronDown, ChevronRight, ExternalLink, FileText, RefreshCw } from "lucide-react";
+import { Loader2, Trophy, Wrench, Package, Calculator, ChevronDown, ChevronRight, ExternalLink, FileText, RefreshCw, RotateCcw, Trash2 } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
-import { OsRetornosManager } from "@/components/financeiro/OsRetornosManager";
+import { SearchableSelect } from "@/components/ui/searchable-select";
 import { DemeritosManager } from "@/components/financeiro/DemeritosManager";
 import { MetasManager } from "@/components/financeiro/MetasManager";
 import { gerarPdfsTelemetrias, gerarPdfTecnico } from "@/lib/pdf/telemetriaPdf";
@@ -324,8 +324,6 @@ export default function PremiacaoPage() {
           </Card>
         )}
 
-        <OsRetornosManager onChanged={() => refetch()} />
-
         {totais && (
           <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
             <KpiCard label="OS no mês" value={String(totais.os_count)} icon={<Wrench className="h-4 w-4" />} />
@@ -483,13 +481,83 @@ export default function PremiacaoPage() {
           })}
         </div>
 
-        <OsDetailDialog os={selectedOs} onClose={() => setSelectedOs(null)} />
+        <OsDetailDialog
+          os={selectedOs}
+          onClose={() => setSelectedOs(null)}
+          tecnicos={tecnicos.map((t) => ({ value: t.tecnico, label: t.tecnico }))}
+          onChanged={() => refetch()}
+        />
       </div>
     </div>
   );
 }
 
-function OsDetailDialog({ os, onClose }: { os: OsRow | null; onClose: () => void }) {
+function OsDetailDialog({
+  os,
+  onClose,
+  tecnicos,
+  onChanged,
+}: {
+  os: OsRow | null;
+  onClose: () => void;
+  tecnicos: Array<{ value: string; label: string }>;
+  onChanged: () => void;
+}) {
+  const qc = useQueryClient();
+  const [tecRetorno, setTecRetorno] = useState("");
+  const [obsRetorno, setObsRetorno] = useState("");
+
+  const codigo = os?.gc_os_codigo || os?.gc_os_id || "";
+
+  const { data: retornoAtual, isLoading: loadingRet } = useQuery({
+    queryKey: ["os_retorno", codigo],
+    enabled: !!codigo,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("os_retornos")
+        .select("*")
+        .eq("gc_os_codigo", codigo)
+        .maybeSingle();
+      if (error) throw error;
+      return data as { id: string; tecnico_retorno: string; observacao: string | null } | null;
+    },
+  });
+
+  const saveMut = useMutation({
+    mutationFn: async () => {
+      if (!codigo) throw new Error("OS inválida");
+      if (!tecRetorno.trim()) throw new Error("Selecione o técnico do retorno");
+      const { error } = await supabase.from("os_retornos").upsert(
+        { gc_os_codigo: codigo, tecnico_retorno: tecRetorno.trim(), observacao: obsRetorno.trim() || null },
+        { onConflict: "gc_os_codigo" }
+      );
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      toast({ title: "Retorno registrado", description: "A OS foi movida para o técnico do retorno." });
+      setTecRetorno(""); setObsRetorno("");
+      qc.invalidateQueries({ queryKey: ["os_retorno", codigo] });
+      onChanged();
+      onClose();
+    },
+    onError: (e: Error) => toast({ title: "Erro", description: e.message, variant: "destructive" }),
+  });
+
+  const delMut = useMutation({
+    mutationFn: async () => {
+      if (!retornoAtual?.id) return;
+      const { error } = await supabase.from("os_retornos").delete().eq("id", retornoAtual.id);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      toast({ title: "Retorno removido" });
+      qc.invalidateQueries({ queryKey: ["os_retorno", codigo] });
+      onChanged();
+      onClose();
+    },
+    onError: (e: Error) => toast({ title: "Erro", description: e.message, variant: "destructive" }),
+  });
+
   return (
     <Dialog open={!!os} onOpenChange={(o) => !o && onClose()}>
       <DialogContent className="max-w-3xl max-h-[85vh] overflow-y-auto">
@@ -573,6 +641,57 @@ function OsDetailDialog({ os, onClose }: { os: OsRow | null; onClose: () => void
               <div className="border-t pt-3 flex items-center justify-between">
                 <span className="text-sm font-medium">Premiação total da OS</span>
                 <span className="text-lg font-semibold text-primary">{brl(os.comissao_total)}</span>
+              </div>
+
+              <div className="border rounded-md p-3 bg-muted/30 space-y-2">
+                <div className="flex items-center gap-2 text-sm font-medium">
+                  <RotateCcw className="h-4 w-4" /> Retorno
+                  {retornoAtual && (
+                    <Badge variant="outline" className="text-[10px]">
+                      Atribuído a {retornoAtual.tecnico_retorno}
+                    </Badge>
+                  )}
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Move esta OS (premiação + faturamento) para o técnico que atendeu o retorno.
+                </p>
+                {loadingRet ? (
+                  <div className="text-xs text-muted-foreground flex items-center gap-2">
+                    <Loader2 className="h-3 w-3 animate-spin" /> Carregando…
+                  </div>
+                ) : retornoAtual ? (
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="text-xs text-muted-foreground">
+                      Obs: {retornoAtual.observacao || "—"}
+                    </div>
+                    <Button size="sm" variant="ghost" onClick={() => delMut.mutate()} disabled={delMut.isPending}>
+                      <Trash2 className="h-4 w-4 text-destructive mr-1" /> Remover retorno
+                    </Button>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 md:grid-cols-[1fr_1fr_auto] gap-2 items-end">
+                    <div>
+                      <label className="text-xs text-muted-foreground block mb-1">Técnico do retorno</label>
+                      <SearchableSelect
+                        options={tecnicos}
+                        value={tecRetorno}
+                        onValueChange={setTecRetorno}
+                        placeholder="Selecionar técnico…"
+                        searchPlaceholder="Buscar técnico…"
+                        emptyText="Nenhum técnico encontrado."
+                        className="w-full"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-xs text-muted-foreground block mb-1">Observação (opcional)</label>
+                      <Input value={obsRetorno} onChange={(e) => setObsRetorno(e.target.value)} placeholder="Motivo do retorno…" />
+                    </div>
+                    <Button onClick={() => saveMut.mutate()} disabled={saveMut.isPending || !tecRetorno}>
+                      {saveMut.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <RotateCcw className="h-4 w-4" />}
+                      Mover OS
+                    </Button>
+                  </div>
+                )}
               </div>
             </div>
           </>
