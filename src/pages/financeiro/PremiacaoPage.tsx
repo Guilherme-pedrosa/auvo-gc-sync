@@ -92,6 +92,14 @@ type Resp = {
 const brl = (n: number) =>
   n.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 
+const formatBonusMetaPct = (t: Tech) => {
+  const pct = t.bonus_meta_pct && t.bonus_meta_pct > 0
+    ? t.bonus_meta_pct
+    : (t.comissao_total > 0 ? (t.bonus_meta_valor || 0) / t.comissao_total : 0);
+  const percent = Math.round(pct * 1000) / 10;
+  return percent.toLocaleString("pt-BR", { maximumFractionDigits: 1 });
+};
+
 function currentMonth(): string {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
@@ -404,7 +412,7 @@ export default function PremiacaoPage() {
                           )}
                           {(t.bonus_meta_valor ?? 0) > 0 && (
                             <div className="text-[10px] text-emerald-600 mt-0.5">
-                              +{brl(t.bonus_meta_valor || 0)} (bônus meta {(t.bonus_meta_pct === 0.075 ? "7,5" : t.bonus_meta_pct === 0.135 ? "13,5" : "10")}%)
+                              +{brl(t.bonus_meta_valor || 0)} (bônus meta {formatBonusMetaPct(t)}%)
                             </div>
                           )}
                           {t.meta != null && t.meta > 0 && (
