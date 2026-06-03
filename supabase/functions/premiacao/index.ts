@@ -227,6 +227,7 @@ Deno.serve(async (req) => {
 
     // Index duracao por auvo_task_id — para somar APENAS a Tarefa Execução (73344) por OS
     const duracaoByAuvoTask = new Map<string, number>();
+    const tecnicoByExecTask = new Map<string, { tecnico: string; tecnico_id: string }>();
     for (const r of rows || []) {
       const k = String(r.auvo_task_id || "");
       if (!k) continue;
