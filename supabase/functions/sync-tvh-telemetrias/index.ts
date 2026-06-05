@@ -74,9 +74,10 @@ Deno.serve(async (req) => {
     // role rotacionado). Vamos direto no `cron-sync-rotaexata`, que aceita a
     // publishable key. Ele sincroniza o dia ATUAL — dias anteriores já são
     // cobertos pelo pg_cron horário do Hub.
-    console.log(`[sync-tvh-telemetrias] chamando cron-sync-rotaexata (range solicitado: ${startDate} → ${endDate})`);
+    console.log(`[sync-tvh-telemetrias] v3 chamando cron-sync-rotaexata (range solicitado: ${startDate} → ${endDate})`);
     let response = await callHub("cron-sync-rotaexata", {}, TVH_PUBLISHABLE_KEY);
-    console.log(`[sync-tvh-telemetrias] cron-sync-rotaexata respondeu ${response.status}`);
+    const dbgText = await response.clone().text();
+    console.log(`[sync-tvh-telemetrias] v3 cron-sync-rotaexata respondeu ${response.status} body=${dbgText.slice(0, 200)}`);
 
     const text = await response.text();
     let data: Record<string, unknown> = {};
