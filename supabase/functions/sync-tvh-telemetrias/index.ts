@@ -70,28 +70,13 @@ Deno.serve(async (req) => {
       });
     }
 
-    // 1) tenta o endpoint completo (range), com a service role key
-    let response = await callHub("sync-daily-km", {
-      start_date: startDate,
-      end_date: endDate,
-      mode: "resilient",
-    }, tvhKey);
-
-    // 2) Se 401 com service role: tenta publishable key
-    if (response.status === 401 && tvhKey !== TVH_PUBLISHABLE_KEY) {
-      console.warn("[sync-tvh-telemetrias] sync-daily-km 401 com service role, tentando publishable");
-      response = await callHub("sync-daily-km", {
-        start_date: startDate,
-        end_date: endDate,
-        mode: "resilient",
-      }, TVH_PUBLISHABLE_KEY);
-    }
-
-    // 3) Se ainda 401: usa cron-sync-rotaexata (aceita publishable, mas só sincroniza hoje)
-    if (response.status === 401) {
-      console.warn("[sync-tvh-telemetrias] fallback final → cron-sync-rotaexata (apenas hoje)");
-      response = await callHub("cron-sync-rotaexata", {}, TVH_PUBLISHABLE_KEY);
-    }
+    // O endpoint `sync-daily-km` está rejeitando JWTs (provavelmente service
+    // role rotacionado). Vamos direto no `cron-sync-rotaexata`, que aceita a
+    // publishable key. Ele sincroniza o dia ATUAL — dias anteriores já são
+    // cobertos pelo pg_cron horário do Hub.
+    console.log(`[sync-tvh-telemetrias] chamando cron-sync-rotaexata (range solicitado: ${startDate} → ${endDate})`);
+    let response = await callHub("cron-sync-rotaexata", {}, TVH_PUBLISHABLE_KEY);
+    console.log(`[sync-tvh-telemetrias] cron-sync-rotaexata respondeu ${response.status}`);
 
     const text = await response.text();
     let data: Record<string, unknown> = {};
