@@ -205,6 +205,56 @@ function buildPdfForTech(month: string, t: TelemetriaTech): jsPDF {
     doc.setTextColor(0);
     y += 32;
 
+    // Visitas Preventivas de Contrato
+    if (t.preventivas && t.preventivas.count > 0) {
+      doc.setFontSize(10);
+      doc.setFont("helvetica", "bold");
+      doc.text(
+        `Visitas Preventivas de Contrato — ${t.preventivas.count} visitas · ${t.preventivas.horas.toFixed(2)}h · ${brl(t.preventivas.valor)}`,
+        40,
+        y
+      );
+      doc.setFont("helvetica", "normal");
+      autoTable(doc, {
+        startY: y + 4,
+        head: [["Data", "Cliente", "Contrato", "Horas", "R$/hora", "Valor"]],
+        body: [
+          ...t.preventivas.atividades.map((a) => [
+            a.data || "—",
+            a.cliente || "—",
+            a.contrato || "—",
+            (a.horas ?? 0).toFixed(2),
+            (a.valor_hora ?? 0) > 0 ? brl(a.valor_hora ?? 0) : "—",
+            brl(a.valor ?? 0),
+          ]),
+          [
+            { content: "TOTAL", styles: { fontStyle: "bold" } },
+            { content: "", styles: {} },
+            { content: "", styles: {} },
+            { content: t.preventivas.horas.toFixed(2), styles: { fontStyle: "bold", halign: "right" } },
+            { content: "", styles: {} },
+            { content: brl(t.preventivas.valor), styles: { fontStyle: "bold", halign: "right", textColor: [37, 99, 235] } },
+          ],
+        ],
+        styles: { fontSize: 8, cellPadding: 3 },
+        headStyles: { fillColor: [240, 240, 245], textColor: 30, fontStyle: "bold" },
+        columnStyles: {
+          3: { halign: "right" },
+          4: { halign: "right" },
+          5: { halign: "right", fontStyle: "bold" },
+        },
+        didDrawCell: (data: any) => {
+          if (data.section !== "body") return;
+          const a = t.preventivas!.atividades[data.row.index];
+          if (!a) return;
+          if (data.column.index === 0 && a.auvo_link) {
+            doc.link(data.cell.x, data.cell.y, data.cell.width, data.cell.height, { url: a.auvo_link });
+          }
+        },
+      });
+      y = (doc as any).lastAutoTable.finalY + 14;
+    }
+
     // OS detalhadas
     const ordens = t.ordens || [];
     if (ordens.length > 0) {
