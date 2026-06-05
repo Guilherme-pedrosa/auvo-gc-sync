@@ -53,34 +53,44 @@ Deno.serve(async (req) => {
       return json({ ok: false, error: "Credenciais do Technician & Vehicle Hub não configuradas" }, 200);
     }
 
-    const endpoint = `${effectiveUrl.replace(/\/$/, "")}/functions/v1/sync-daily-km`;
-    let response = await fetch(endpoint, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${tvhKey}`,
-        apikey: tvhKey,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
+    // O endpoint `sync-daily-km` do Hub está rejeitando JWTs (401 Unauthorized
+    // — provavelmente service role key rotacionado). Como fallback usamos
+    // `cron-sync-rotaexata`, que aceita a anon key publishable e sincroniza o
+    // dia atual. Dados de dias anteriores já são sincronizados pelo pg_cron
+    // horário do próprio Hub.
+    async function callHub(path: string, payload: Record<string, unknown>, key: string) {
+      return await fetch(`${effectiveUrl.replace(/\/$/, "")}/functions/v1/${path}`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${key}`,
+          apikey: key,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(payload),
+      });
+    }
+
+    // 1) tenta o endpoint completo (range), com a service role key
+    let response = await callHub("sync-daily-km", {
+      start_date: startDate,
+      end_date: endDate,
+      mode: "resilient",
+    }, tvhKey);
+
+    // 2) Se 401 com service role: tenta publishable key
+    if (response.status === 401 && tvhKey !== TVH_PUBLISHABLE_KEY) {
+      console.warn("[sync-tvh-telemetrias] sync-daily-km 401 com service role, tentando publishable");
+      response = await callHub("sync-daily-km", {
         start_date: startDate,
         end_date: endDate,
         mode: "resilient",
-      }),
-    });
+      }, TVH_PUBLISHABLE_KEY);
+    }
 
-    // Se o service role key armazenado expirou (401), tenta de novo com o
-    // publishable key (suficiente para passar verify_jwt do Hub).
-    if (response.status === 401 && tvhKey !== TVH_PUBLISHABLE_KEY) {
-      console.warn("[sync-tvh-telemetrias] TVH_SERVICE_ROLE_KEY rejeitado (401), tentando publishable key");
-      response = await fetch(endpoint, {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${TVH_PUBLISHABLE_KEY}`,
-          apikey: TVH_PUBLISHABLE_KEY,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ start_date: startDate, end_date: endDate, mode: "resilient" }),
-      });
+    // 3) Se ainda 401: usa cron-sync-rotaexata (aceita publishable, mas só sincroniza hoje)
+    if (response.status === 401) {
+      console.warn("[sync-tvh-telemetrias] fallback final → cron-sync-rotaexata (apenas hoje)");
+      response = await callHub("cron-sync-rotaexata", {}, TVH_PUBLISHABLE_KEY);
     }
 
     const text = await response.text();
