@@ -343,6 +343,12 @@ Deno.serve(async (req) => {
       // Data de saída: prioriza GC detail (fonte da verdade), fallback para cache
       const dataSaidaRaw = detail.data_saida || detail.dataSaida || row.gc_os_data_saida || "";
 
+      // Skip OS com situação "Retirada pelo técnico" — não gera comissão.
+      {
+        const sit = normalize(String(detail.nome_situacao || ""));
+        if (sit.includes("retirada pelo tecnico") || sit.includes("retirado pelo tecnico")) continue;
+      }
+
       // Tarefa Execução — usa apenas o vínculo já salvo localmente na base.
       const execTaskIds = parseTaskIds(row.gc_os_tarefa_exec);
       const execTaskId = execTaskIds[0] || (row.auvo_task_id ? String(row.auvo_task_id) : "");
