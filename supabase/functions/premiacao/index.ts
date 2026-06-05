@@ -343,10 +343,12 @@ Deno.serve(async (req) => {
       // Data de saída: prioriza GC detail (fonte da verdade), fallback para cache
       const dataSaidaRaw = detail.data_saida || detail.dataSaida || row.gc_os_data_saida || "";
 
-      // Skip OS com situação "Retirada pelo técnico" — não gera comissão.
+      // Apenas OS com situação iniciando por "EXECUTADO" geram comissão.
+      // (ex.: EXECUTADO - AGUARDANDO PAGAMENTO, EXECUTADO COM NOTA EMITIDA,
+      //  EXECUTADO EM GARANTIA, EXECUTADO - CIGAM, EXECUTADO POR CONTRATO, etc.)
       {
-        const sit = normalize(String(detail.nome_situacao || ""));
-        if (sit.includes("retirada pelo tecnico") || sit.includes("retirado pelo tecnico")) continue;
+        const sit = normalize(String(detail.nome_situacao || "")).trim();
+        if (!sit.startsWith("executado")) continue;
       }
 
       // Tarefa Execução — usa apenas o vínculo já salvo localmente na base.
