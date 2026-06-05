@@ -395,6 +395,11 @@ export default function PremiacaoPage() {
                         <p className="text-xs text-muted-foreground mt-0.5">
                           {t.os_count} OS · Peças {brl(t.valor_pecas)} · Serviços {brl(t.valor_servicos)}
                         </p>
+                        {t.preventivas && t.preventivas.count > 0 && (
+                          <p className="text-xs text-muted-foreground mt-0.5">
+                            🛠 Preventivas: {t.preventivas.count} visitas · {t.preventivas.horas.toFixed(1)}h · {brl(t.preventivas.valor)}
+                          </p>
+                        )}
                       </div>
                     </div>
                     <div className="text-right flex-shrink-0">
@@ -448,6 +453,57 @@ export default function PremiacaoPage() {
                 </CardHeader>
                 {isOpen && (
                   <CardContent className="p-0 border-t">
+                    {t.preventivas && t.preventivas.count > 0 && (
+                      <div className="p-4 border-b bg-muted/20">
+                        <div className="flex items-center justify-between mb-2">
+                          <div className="text-sm font-medium flex items-center gap-2">
+                            <Wrench className="h-4 w-4" /> Visitas Preventivas de Contrato
+                            <Badge variant="secondary" className="text-[10px]">{t.preventivas.count}</Badge>
+                          </div>
+                          <div className="text-xs text-muted-foreground">
+                            Total: <strong className="text-foreground">{t.preventivas.horas.toFixed(2)}h</strong> ·
+                            Premiação: <strong className="text-primary">{brl(t.preventivas.valor)}</strong>
+                          </div>
+                        </div>
+                        <div className="border rounded overflow-hidden bg-background">
+                          <Table>
+                            <TableHeader>
+                              <TableRow>
+                                <TableHead className="w-24">Data</TableHead>
+                                <TableHead>Cliente</TableHead>
+                                <TableHead className="text-right w-20">Horas</TableHead>
+                                <TableHead className="text-right w-28">R$/hora</TableHead>
+                                <TableHead className="text-right w-28">Valor</TableHead>
+                                <TableHead className="w-16"></TableHead>
+                              </TableRow>
+                            </TableHeader>
+                            <TableBody>
+                              {t.preventivas.atividades.map((a) => (
+                                <TableRow key={a.auvo_task_id}>
+                                  <TableCell className="text-xs">{a.data}</TableCell>
+                                  <TableCell className="text-sm truncate max-w-[260px]">
+                                    <div className="flex items-center gap-2">
+                                      <span className="truncate">{a.cliente}</span>
+                                      {a.contrato && <Badge variant="secondary" className="text-[10px] shrink-0">Contrato</Badge>}
+                                    </div>
+                                  </TableCell>
+                                  <TableCell className="text-right text-xs">{a.horas.toFixed(2)}</TableCell>
+                                  <TableCell className="text-right text-xs">{a.valor_hora > 0 ? brl(a.valor_hora) : "—"}</TableCell>
+                                  <TableCell className="text-right text-sm font-medium">{brl(a.valor)}</TableCell>
+                                  <TableCell className="text-right">
+                                    {a.auvo_link && (
+                                      <a href={a.auvo_link} target="_blank" rel="noreferrer" className="text-primary inline-flex" title="Abrir no Auvo">
+                                        <ExternalLink className="h-3 w-3" />
+                                      </a>
+                                    )}
+                                  </TableCell>
+                                </TableRow>
+                              ))}
+                            </TableBody>
+                          </Table>
+                        </div>
+                      </div>
+                    )}
                     <Table>
                       <TableHeader>
                         <TableRow>
