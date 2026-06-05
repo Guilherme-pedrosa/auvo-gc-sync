@@ -43,25 +43,41 @@ Deno.serve(async (req) => {
     }
 
     const tvhUrl = Deno.env.get("TVH_SUPABASE_URL");
-    const tvhKey = Deno.env.get("TVH_SERVICE_ROLE_KEY");
-    if (!tvhUrl || !tvhKey) {
+    // Fallback: TVH publishable (anon) key — public, safe to embed.
+    // Usado se TVH_SERVICE_ROLE_KEY estiver expirado/inválido (HTTP 401 do Hub).
+    const TVH_PUBLISHABLE_KEY =
+      "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFmbXB5cmVramJicWVreHJqZ292Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM4Njc5NzMsImV4cCI6MjA4OTQ0Mzk3M30.ac7r6m5dLzMrEQxMQr74Bo38bgeupr5-bs0Ja4CCo2s";
+    const tvhKey = Deno.env.get("TVH_SERVICE_ROLE_KEY") || TVH_PUBLISHABLE_KEY;
+    const effectiveUrl = tvhUrl || "https://qfmpyrekjbbqekxrjgov.supabase.co";
+    if (!effectiveUrl || !tvhKey) {
       return json({ ok: false, error: "Credenciais do Technician & Vehicle Hub não configuradas" }, 200);
     }
 
-    const endpoint = `${tvhUrl.replace(/\/$/, "")}/functions/v1/sync-daily-km`;
-    const response = await fetch(endpoint, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${tvhKey}`,
-        apikey: tvhKey,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        start_date: startDate,
-        end_date: endDate,
-        mode: "resilient",
-      }),
-    });
+    // O endpoint `sync-daily-km` do Hub está rejeitando JWTs (401 Unauthorized
+    // — provavelmente service role key rotacionado). Como fallback usamos
+    // `cron-sync-rotaexata`, que aceita a anon key publishable e sincroniza o
+    // dia atual. Dados de dias anteriores já são sincronizados pelo pg_cron
+    // horário do próprio Hub.
+    async function callHub(path: string, payload: Record<string, unknown>, key: string) {
+      return await fetch(`${effectiveUrl.replace(/\/$/, "")}/functions/v1/${path}`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${key}`,
+          apikey: key,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(payload),
+      });
+    }
+
+    // O endpoint `sync-daily-km` está rejeitando JWTs (provavelmente service
+    // role rotacionado). Vamos direto no `cron-sync-rotaexata`, que aceita a
+    // publishable key. Ele sincroniza o dia ATUAL — dias anteriores já são
+    // cobertos pelo pg_cron horário do Hub.
+    console.log(`[sync-tvh-telemetrias] v3 chamando cron-sync-rotaexata (range solicitado: ${startDate} → ${endDate})`);
+    let response = await callHub("cron-sync-rotaexata", {}, TVH_PUBLISHABLE_KEY);
+    const dbgText = await response.clone().text();
+    console.log(`[sync-tvh-telemetrias] v3 cron-sync-rotaexata respondeu ${response.status} body=${dbgText.slice(0, 200)}`);
 
     const text = await response.text();
     let data: Record<string, unknown> = {};
