@@ -69,6 +69,21 @@ type Tech = {
   meta_atingida?: boolean;
   bonus_meta_pct?: number;
   bonus_meta_valor?: number;
+  preventivas?: {
+    count: number;
+    horas: number;
+    valor: number;
+    atividades: Array<{
+      auvo_task_id: string;
+      data: string;
+      cliente: string;
+      contrato?: string | null;
+      horas: number;
+      valor_hora: number;
+      valor: number;
+      auvo_link?: string | null;
+    }>;
+  };
 };
 type Resp = {
   ok: boolean;
