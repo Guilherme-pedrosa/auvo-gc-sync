@@ -642,6 +642,94 @@ Deno.serve(async (req) => {
     for (const t of tecnicos) t.ordens.sort((a, b) => b.comissao_total - a.comissao_total);
 
     // ============================================================
+    // VISITAS PREVENTIVAS DE CONTRATO (task type Auvo 180176)
+    // Soma horas trabalhadas × valor/hora do contrato do cliente.
+    // O valor entra na comissao_total e sofre redu\u00e7\u00f5es/b\u00f4nus normalmente.
+    // ============================================================
+    try {
+      const PREVENTIVA_TASK_TYPE = "180176";
+      const { data: prevRows } = await supabase
+        .from("tarefas_central")
+        .select("auvo_task_id, auvo_task_url, tecnico, tecnico_id, cliente, data_tarefa, data_conclusao, duracao_decimal, status_auvo")
+        .eq("task_type_id", PREVENTIVA_TASK_TYPE)
+        .gte("data_tarefa", startDate)
+        .lte("data_tarefa", endDate);
+
+      // Dedupe por auvo_task_id (linhas duplicadas em tarefas_central representam a mesma tarefa)
+      const prevByTask = new Map<string, any>();
+      for (const r of prevRows || []) {
+        const tid = String((r as any).auvo_task_id || "");
+        if (!tid) continue;
+        const status = normalize(String((r as any).status_auvo || ""));
+        if (!status.startsWith("finalizada")) continue;
+        const existing = prevByTask.get(tid);
+        if (!existing) { prevByTask.set(tid, r); continue; }
+        if (!(existing.tecnico || "").trim() && (r.tecnico || "").trim()) prevByTask.set(tid, r);
+      }
+
+      for (const r of prevByTask.values()) {
+        const tecRaw = canonicalTecnico(String(r.tecnico || "").trim());
+        if (!tecRaw) continue;
+        const horas = Math.max(0, toNum(r.duracao_decimal));
+        if (horas <= 0) continue;
+        const cliente = String(r.cliente || "");
+        const contrato = contratoByCliente.get(normalize(cliente));
+        const valorHora = contrato ? toNum(contrato.valor_hora) : 0;
+        const valor = horas * valorHora;
+
+        const pn = normalize(tecRaw).split(/\s+/)[0] || normalize(tecRaw);
+        const key = pn;
+        const displayNome = pn ? pn.charAt(0).toUpperCase() + pn.slice(1) : tecRaw;
+
+        let agg = techMap.get(key);
+        if (!agg) {
+          agg = {
+            tecnico: displayNome,
+            tecnico_id: String(r.tecnico_id || ""),
+            os_count: 0,
+            valor_pecas: 0,
+            valor_servicos: 0,
+            faturamento: 0,
+            comissao_pecas: 0,
+            comissao_servicos: 0,
+            comissao_total: 0,
+            ordens: [],
+          };
+          techMap.set(key, agg);
+          tecnicos.push(agg);
+        }
+        const aggAny = agg as any;
+        if (!aggAny.preventivas) {
+          aggAny.preventivas = { count: 0, horas: 0, valor: 0, atividades: [] as any[] };
+        }
+        aggAny.preventivas.count += 1;
+        aggAny.preventivas.horas += horas;
+        aggAny.preventivas.valor += valor;
+        aggAny.preventivas.atividades.push({
+          auvo_task_id: String(r.auvo_task_id || ""),
+          data: String(r.data_conclusao || r.data_tarefa || "").split("T")[0],
+          cliente,
+          contrato: contrato ? String(contrato.nome) : null,
+          horas,
+          valor_hora: valorHora,
+          valor,
+          auvo_link: String(r.auvo_task_url || "").trim() || (r.auvo_task_id ? `https://app2.auvo.com.br/relatorioTarefas/DetalheTarefa/${r.auvo_task_id}` : null),
+        });
+        // Soma na premia\u00e7\u00e3o total — sofre redu\u00e7\u00f5es/b\u00f4nus naturalmente abaixo.
+        agg.comissao_total += valor;
+      }
+
+      // Reordena e ordena atividades por data
+      for (const t of tecnicos) {
+        const p = (t as any).preventivas;
+        if (p?.atividades) p.atividades.sort((a: any, b: any) => String(a.data).localeCompare(String(b.data)));
+      }
+      tecnicos.sort((a, b) => b.comissao_total - a.comissao_total);
+    } catch (e) {
+      console.error("[premiacao] preventivas falhou:", (e as Error).message);
+    }
+
+    // ============================================================
     // FATOR DE REDUÇÃO: KM por telemetria (fonte: Technician & Vehicle Hub)
     // Se km/telemetria < 120 no mês, reduz 15% da premiação total do técnico.
     // ============================================================
