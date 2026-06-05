@@ -36,6 +36,21 @@ export type TelemetriaTech = {
     comissao_servicos?: number;
     comissao_total?: number;
   }>;
+  preventivas?: {
+    count: number;
+    horas: number;
+    valor: number;
+    atividades: Array<{
+      auvo_task_id?: string;
+      data?: string;
+      cliente?: string;
+      contrato?: string | null;
+      horas?: number;
+      valor_hora?: number;
+      valor?: number;
+      auvo_link?: string | null;
+    }>;
+  };
 };
 
 const brl = (n: number) => n.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
