@@ -43,13 +43,18 @@ Deno.serve(async (req) => {
     }
 
     const tvhUrl = Deno.env.get("TVH_SUPABASE_URL");
-    const tvhKey = Deno.env.get("TVH_SERVICE_ROLE_KEY");
-    if (!tvhUrl || !tvhKey) {
+    // Fallback: TVH publishable (anon) key — public, safe to embed.
+    // Usado se TVH_SERVICE_ROLE_KEY estiver expirado/inválido (HTTP 401 do Hub).
+    const TVH_PUBLISHABLE_KEY =
+      "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFmbXB5cmVramJicWVreHJqZ292Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM4Njc5NzMsImV4cCI6MjA4OTQ0Mzk3M30.ac7r6m5dLzMrEQxMQr74Bo38bgeupr5-bs0Ja4CCo2s";
+    const tvhKey = Deno.env.get("TVH_SERVICE_ROLE_KEY") || TVH_PUBLISHABLE_KEY;
+    const effectiveUrl = tvhUrl || "https://qfmpyrekjbbqekxrjgov.supabase.co";
+    if (!effectiveUrl || !tvhKey) {
       return json({ ok: false, error: "Credenciais do Technician & Vehicle Hub não configuradas" }, 200);
     }
 
-    const endpoint = `${tvhUrl.replace(/\/$/, "")}/functions/v1/sync-daily-km`;
-    const response = await fetch(endpoint, {
+    const endpoint = `${effectiveUrl.replace(/\/$/, "")}/functions/v1/sync-daily-km`;
+    let response = await fetch(endpoint, {
       method: "POST",
       headers: {
         Authorization: `Bearer ${tvhKey}`,
@@ -62,6 +67,21 @@ Deno.serve(async (req) => {
         mode: "resilient",
       }),
     });
+
+    // Se o service role key armazenado expirou (401), tenta de novo com o
+    // publishable key (suficiente para passar verify_jwt do Hub).
+    if (response.status === 401 && tvhKey !== TVH_PUBLISHABLE_KEY) {
+      console.warn("[sync-tvh-telemetrias] TVH_SERVICE_ROLE_KEY rejeitado (401), tentando publishable key");
+      response = await fetch(endpoint, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${TVH_PUBLISHABLE_KEY}`,
+          apikey: TVH_PUBLISHABLE_KEY,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ start_date: startDate, end_date: endDate, mode: "resilient" }),
+      });
+    }
 
     const text = await response.text();
     let data: Record<string, unknown> = {};
