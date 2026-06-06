@@ -648,12 +648,13 @@ Deno.serve(async (req) => {
     // ============================================================
     try {
       const PREVENTIVA_TASK_TYPE = "180176";
-      const { data: prevRows } = await supabase
+      const { data: prevRows, error: prevErr } = await supabase
         .from("tarefas_central")
         .select("auvo_task_id, auvo_task_url, tecnico, tecnico_id, cliente, data_tarefa, data_conclusao, duracao_decimal, status_auvo")
         .eq("task_type_id", PREVENTIVA_TASK_TYPE)
         .gte("data_tarefa", startDate)
         .lte("data_tarefa", endDate);
+      console.log(`[premiacao] preventivas query: rows=${(prevRows||[]).length} err=${prevErr?.message || 'none'}`);
 
       // Dedupe por auvo_task_id (linhas duplicadas em tarefas_central representam a mesma tarefa)
       const prevByTask = new Map<string, any>();
