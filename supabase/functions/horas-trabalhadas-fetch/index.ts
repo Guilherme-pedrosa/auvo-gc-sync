@@ -502,8 +502,10 @@ Deno.serve(async (req) => {
         if (!String(t.auvo_task_id || "").trim()) return false;
         const semGc = !String(t.gc_os_codigo || "").trim() &&
                       !String(t.gc_orcamento_codigo || "").trim();
+        const semRefs = !String(t.gc_os_tarefa_os || "").trim() ||
+                        !String(t.gc_os_tarefa_exec || "").trim();
         const semEquip = !String(t.equipamento_nome || "").trim();
-        return semGc || semEquip;
+        return semGc || semRefs || semEquip;
       });
       if (orfas.length > 0) {
         // Busca em lotes — gc_os_tarefa_exec pode conter IDs separados por barra.
@@ -514,7 +516,7 @@ Deno.serve(async (req) => {
         const { data: parents } = await supabase
           .from("tarefas_central")
           .select(
-            "auvo_task_id, gc_os_tarefa_exec, gc_os_codigo, gc_os_id, gc_os_link, " +
+            "auvo_task_id, gc_os_tarefa_os, gc_os_tarefa_exec, gc_os_codigo, gc_os_id, gc_os_link, " +
             "gc_os_link_cobranca, gc_os_situacao, gc_os_situacao_id, gc_os_cor_situacao, gc_os_data, " +
             "gc_os_data_saida, gc_os_valor_total, gc_os_vendedor, gc_os_cliente, " +
             "gc_orcamento_codigo, gc_orcamento_id, gc_orc_link, gc_orc_situacao, " +
@@ -531,8 +533,10 @@ Deno.serve(async (req) => {
           const execIds = execStr.split(/[\/,;\s]+/).map((x) => x.trim()).filter(Boolean);
           for (const eid of execIds) {
             const cur = byExec.get(eid);
-            const score = (p.gc_os_codigo ? 2 : 0) + (p.gc_orcamento_codigo ? 1 : 0);
-            const curScore = cur ? (cur.gc_os_codigo ? 2 : 0) + (cur.gc_orcamento_codigo ? 1 : 0) : -1;
+            const score = (p.gc_os_codigo ? 2 : 0) + (p.gc_orcamento_codigo ? 1 : 0) +
+              (p.gc_os_tarefa_os ? 1 : 0) + (p.gc_os_tarefa_exec ? 1 : 0);
+            const curScore = cur ? (cur.gc_os_codigo ? 2 : 0) + (cur.gc_orcamento_codigo ? 1 : 0) +
+              (cur.gc_os_tarefa_os ? 1 : 0) + (cur.gc_os_tarefa_exec ? 1 : 0) : -1;
             if (!cur || score > curScore) byExec.set(eid, p);
           }
         }
@@ -542,26 +546,33 @@ Deno.serve(async (req) => {
         for (const t of orfas) {
           const p = sanitizeGcLinks(byExec.get(String(t.auvo_task_id)));
           if (!p) continue;
+          if (!String(p.gc_os_tarefa_os || "").trim()) {
+            p.gc_os_tarefa_os = String(p.auvo_task_id || "").trim() || null;
+          }
           // Herda apenas campos GC vazios — nunca sobrescreve dados existentes.
-          const fields = [
+          const osFields = [
+            "gc_os_tarefa_os","gc_os_tarefa_exec",
             "gc_os_codigo","gc_os_id","gc_os_link","gc_os_link_cobranca","gc_os_situacao","gc_os_situacao_id",
             "gc_os_cor_situacao","gc_os_data","gc_os_data_saida","gc_os_valor_total",
             "gc_os_vendedor","gc_os_cliente",
+            "equipamento_nome","equipamento_id_serie",
+          ];
+          const inheritedOnlyIfBlankFields = [
             "gc_orcamento_codigo","gc_orcamento_id","gc_orc_link","gc_orc_situacao",
             "gc_orc_situacao_id","gc_orc_cor_situacao","gc_orc_data","gc_orc_valor_total",
             "gc_orc_vendedor","gc_orc_cliente",
-            "equipamento_nome","equipamento_id_serie",
           ];
+          const fields = [...osFields, ...inheritedOnlyIfBlankFields];
           let touched = false;
-          for (const f of fields) {
-            if (!t[f] && p[f]) { t[f] = p[f]; touched = true; }
+          const update: any = {};
+          for (const f of osFields) {
+            if (p[f] && t[f] !== p[f]) { t[f] = p[f]; update[f] = p[f]; touched = true; }
+          }
+          for (const f of inheritedOnlyIfBlankFields) {
+            if (!t[f] && p[f]) { t[f] = p[f]; update[f] = p[f]; touched = true; }
           }
           if (touched) {
             t.gc_inherited_from = p.auvo_task_id;
-            const update: any = {};
-            for (const f of fields) {
-              if (f.startsWith("gc_") && t[f]) update[f] = t[f];
-            }
             if (Object.keys(update).length > 0) {
               inheritedUpdates.push({ auvo_task_id: String(t.auvo_task_id), update });
             }
@@ -577,7 +588,6 @@ Deno.serve(async (req) => {
                 .from("tarefas_central")
                 .update(update)
                 .eq("auvo_task_id", auvo_task_id)
-                .is("gc_os_id", null)
             ));
           }
         }
@@ -594,8 +604,10 @@ Deno.serve(async (req) => {
     // atributo 73344 mas o técnico colou a referência no texto da OS.
     try {
       const orfas = tasks.filter((t: any) =>
-        !String(t.gc_os_codigo || "").trim() &&
-        !String(t.gc_orcamento_codigo || "").trim()
+        (!String(t.gc_os_codigo || "").trim() &&
+         !String(t.gc_orcamento_codigo || "").trim()) ||
+        !String(t.gc_os_tarefa_os || "").trim() ||
+        !String(t.gc_os_tarefa_exec || "").trim()
       );
       if (orfas.length > 0) {
         const normCli = (s: string) => String(s || "")
@@ -627,6 +639,7 @@ Deno.serve(async (req) => {
         if (perTask.length > 0 && (orcCodes.size > 0 || osCodes.size > 0)) {
           const selectCols =
             "auvo_task_id, cliente, gc_os_cliente, " +
+            "gc_os_tarefa_os, gc_os_tarefa_exec, " +
             "gc_os_codigo, gc_os_id, gc_os_link, gc_os_link_cobranca, gc_os_situacao, " +
             "gc_os_situacao_id, gc_os_cor_situacao, gc_os_data, gc_os_data_saida, " +
             "gc_os_valor_total, gc_os_vendedor, " +
@@ -662,6 +675,7 @@ Deno.serve(async (req) => {
           }
 
           const fields = [
+            "gc_os_tarefa_os","gc_os_tarefa_exec",
             "gc_os_codigo","gc_os_id","gc_os_link","gc_os_link_cobranca","gc_os_situacao","gc_os_situacao_id",
             "gc_os_cor_situacao","gc_os_data","gc_os_data_saida","gc_os_valor_total",
             "gc_os_vendedor","gc_os_cliente",
@@ -682,6 +696,7 @@ Deno.serve(async (req) => {
             let touched = false;
             const update: any = {};
             for (const f of fields) {
+              if (f === "gc_os_tarefa_exec" && String(t.auvo_task_id || "") === String(cand[f] || "")) continue;
               if (!t[f] && cand[f]) { t[f] = cand[f]; update[f] = cand[f]; touched = true; }
             }
             if (touched) {
@@ -699,7 +714,6 @@ Deno.serve(async (req) => {
                   .from("tarefas_central")
                   .update(update)
                   .eq("auvo_task_id", auvo_task_id)
-                  .is("gc_os_id", null)
               ));
             }
           }
