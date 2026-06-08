@@ -36,7 +36,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { toast } from "sonner";
-import { Loader2, LogOut, CheckCircle2, MessageSquare, FileText, Clock, ExternalLink, Package, Wrench } from "lucide-react";
+import { Loader2, LogOut, CheckCircle2, MessageSquare, FileText, Clock, ExternalLink, Package, Wrench, Building2, DollarSign, ListChecks, TrendingUp } from "lucide-react";
 
 interface OrcamentoItem {
   gc_orcamento_id: string;
