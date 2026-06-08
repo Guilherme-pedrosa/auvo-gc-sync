@@ -338,6 +338,17 @@ export default function PortalOrcamentosPage() {
                     <div><span className="text-muted-foreground">Data:</span> {fmtData(selected.data)}</div>
                     <div><span className="text-muted-foreground">Equipamento:</span> {selected.equipamento || "—"}</div>
                     <div><span className="text-muted-foreground">Valor total:</span> <strong>{brl(selected.valor_total)}</strong></div>
+                    {selected.gc_orc_link && (
+                      <a
+                        href={selected.gc_orc_link}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-xs text-primary hover:underline inline-flex items-center gap-1 pt-1"
+                      >
+                        <ExternalLink className="h-3 w-3" />
+                        Abrir orçamento no GestãoClick
+                      </a>
+                    )}
                   </div>
 
                   {detailQuery.isLoading && (
