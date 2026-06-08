@@ -701,6 +701,63 @@ export type Database = {
         }
         Relationships: []
       }
+      orcamento_aprovacao_log: {
+        Row: {
+          acao: string
+          cliente: string | null
+          criado_em: string
+          detalhes: Json | null
+          gc_orcamento_codigo: string | null
+          gc_orcamento_id: string
+          id: string
+          ip: string | null
+          observacao: string | null
+          situacao_id_antes: string | null
+          situacao_id_depois: string | null
+          termo_aceito: boolean | null
+          user_agent: string | null
+          user_email: string | null
+          user_id: string | null
+          user_nome: string | null
+        }
+        Insert: {
+          acao: string
+          cliente?: string | null
+          criado_em?: string
+          detalhes?: Json | null
+          gc_orcamento_codigo?: string | null
+          gc_orcamento_id: string
+          id?: string
+          ip?: string | null
+          observacao?: string | null
+          situacao_id_antes?: string | null
+          situacao_id_depois?: string | null
+          termo_aceito?: boolean | null
+          user_agent?: string | null
+          user_email?: string | null
+          user_id?: string | null
+          user_nome?: string | null
+        }
+        Update: {
+          acao?: string
+          cliente?: string | null
+          criado_em?: string
+          detalhes?: Json | null
+          gc_orcamento_codigo?: string | null
+          gc_orcamento_id?: string
+          id?: string
+          ip?: string | null
+          observacao?: string | null
+          situacao_id_antes?: string | null
+          situacao_id_depois?: string | null
+          termo_aceito?: boolean | null
+          user_agent?: string | null
+          user_email?: string | null
+          user_id?: string | null
+          user_nome?: string | null
+        }
+        Relationships: []
+      }
       os_operation_locks: {
         Row: {
           gc_os_id: string
