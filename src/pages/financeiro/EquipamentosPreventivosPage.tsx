@@ -21,6 +21,14 @@ import {
 import { Label } from "@/components/ui/label";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { SearchableSelect } from "@/components/ui/searchable-select";
+import { Checkbox } from "@/components/ui/checkbox";
+import {
+  Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
+} from "@/components/ui/dialog";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import jsPDF from "jspdf";
+import autoTable from "jspdf-autotable";
+import { FileText, Users } from "lucide-react";
 
 // ── Types ──
 type EquipmentRaw = {
@@ -74,6 +82,17 @@ type SyncWindow = {
 };
 
 // ── Helpers ──
+function normalizeClienteName(name: string | null | undefined): string {
+  return (name || "")
+    .toUpperCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/\s*(LTDA|ME|SA|EPP|EIRELI|S\/A|S\.A\.|LTDA\.?|MEI)\s*/g, "")
+    .replace(/[.\-\/]/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 function getStatusInfo(dias: number | null) {
   if (dias === null) return { label: "Sem registro", color: "text-muted-foreground", bg: "bg-muted", icon: Clock };
   if (dias <= 90) return { label: "Em dia", color: "text-emerald-700 dark:text-emerald-400", bg: "bg-emerald-50 dark:bg-emerald-950/30", icon: CheckCircle2 };
@@ -249,6 +268,10 @@ export default function EquipamentosPreventivosPage() {
   const [editingMarcaValue, setEditingMarcaValue] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
   const PAGE_SIZE = 100;
+  const [grupoFilter, setGrupoFilter] = useState<string>("todos");
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [pdfDialogOpen, setPdfDialogOpen] = useState(false);
+  const [pdfScope, setPdfScope] = useState<"selecionados" | "filtrados" | "feitos" | "atrasados" | "atencao_vencido" | "sem_registro">("filtrados");
 
   // Sync date range — defaults to last 1 month
   const defaultSyncStart = format(new Date(new Date().getFullYear(), new Date().getMonth() - 1, 1), "yyyy-MM-dd");
@@ -261,6 +284,33 @@ export default function EquipamentosPreventivosPage() {
     queryFn: fetchRawData,
     staleTime: 5 * 60 * 1000,
   });
+
+  const { data: gruposData } = useQuery({
+    queryKey: ["preventivos-grupos"],
+    queryFn: async () => {
+      const [{ data: grupos }, { data: membros }] = await Promise.all([
+        supabase.from("grupos_clientes").select("id, nome").order("nome"),
+        supabase.from("grupo_cliente_membros").select("grupo_id, cliente_nome"),
+      ]);
+      return { grupos: grupos ?? [], membros: membros ?? [] };
+    },
+    staleTime: 10 * 60 * 1000,
+  });
+
+  const grupoClienteMap = useMemo(() => {
+    const map = new Map<string, Set<string>>();
+    const grupos = gruposData?.grupos ?? [];
+    const membros = gruposData?.membros ?? [];
+    for (const g of grupos) {
+      const set = new Set<string>(
+        membros
+          .filter((m: any) => m.grupo_id === g.id)
+          .map((m: any) => normalizeClienteName(m.cliente_nome))
+      );
+      map.set(g.id, set);
+    }
+    return map;
+  }, [gruposData]);
 
   const tiposTarefa = useMemo(() => {
     const rels = rawData?.relations ?? [];
@@ -447,6 +497,11 @@ export default function EquipamentosPreventivosPage() {
       result = result.filter((e) => e.cliente && clienteFilter.includes(e.cliente));
     }
 
+    if (grupoFilter !== "todos") {
+      const members = grupoClienteMap.get(grupoFilter) || new Set<string>();
+      result = result.filter((e) => e.cliente && members.has(normalizeClienteName(e.cliente)));
+    }
+
     result = [...result].sort((a, b) => {
       const dir = sortDir === "asc" ? 1 : -1;
       switch (sortField) {
@@ -466,7 +521,7 @@ export default function EquipamentosPreventivosPage() {
     });
 
     return result;
-  }, [equipments, search, statusFilter, marcaFilter, clienteFilter, sortField, sortDir]);
+  }, [equipments, search, statusFilter, marcaFilter, clienteFilter, grupoFilter, grupoClienteMap, sortField, sortDir]);
 
   // Pagination
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
@@ -474,7 +529,7 @@ export default function EquipamentosPreventivosPage() {
   const paginatedItems = filtered.slice((safeCurrentPage - 1) * PAGE_SIZE, safeCurrentPage * PAGE_SIZE);
 
   // Reset to page 1 when filters change
-  const filterKey = `${search}|${statusFilter.join(",")}|${marcaFilter.join(",")}|${clienteFilter.join(",")}|${tipoTarefaFilter.join(",")}|${sortField}|${sortDir}`;
+  const filterKey = `${search}|${statusFilter.join(",")}|${marcaFilter.join(",")}|${clienteFilter.join(",")}|${grupoFilter}|${tipoTarefaFilter.join(",")}|${sortField}|${sortDir}`;
   const [prevFilterKey, setPrevFilterKey] = useState(filterKey);
   if (filterKey !== prevFilterKey) {
     setPrevFilterKey(filterKey);
@@ -544,7 +599,162 @@ export default function EquipamentosPreventivosPage() {
     marcaFilter.length > 0 && `Marcas: ${marcaFilter.length}`,
     clienteFilter.length > 0 && `Clientes: ${clienteFilter.length}`,
     tipoTarefaFilter.length > 0 && `Tipos tarefa: ${tipoTarefaFilter.length}`,
+    grupoFilter !== "todos" && `Grupo: ${(gruposData?.grupos ?? []).find((g: any) => g.id === grupoFilter)?.nome || "—"}`,
   ].filter(Boolean);
+
+  const handleGeneratePdf = useCallback(() => {
+    // Resolve target equipment list per scope
+    let target: EquipmentRow[] = [];
+    let scopeLabel = "";
+    switch (pdfScope) {
+      case "selecionados":
+        target = filtered.filter((e) => selectedIds.has(e.id));
+        scopeLabel = "Apenas selecionados";
+        break;
+      case "atrasados":
+        target = filtered.filter((e) => e.dias_desde !== null && e.dias_desde > 120);
+        scopeLabel = "Atrasados (vencidos)";
+        break;
+      case "atencao_vencido":
+        target = filtered.filter((e) => e.dias_desde !== null && e.dias_desde > 90);
+        scopeLabel = "Atenção + Vencidos";
+        break;
+      case "feitos":
+        target = filtered.filter((e) => e.ultima_data !== null);
+        scopeLabel = "Com intervenção registrada";
+        break;
+      case "sem_registro":
+        target = filtered.filter((e) => e.dias_desde === null);
+        scopeLabel = "Sem histórico";
+        break;
+      case "filtrados":
+      default:
+        target = filtered;
+        scopeLabel = "Tudo (filtrado)";
+    }
+
+    if (target.length === 0) {
+      toast.error("Nenhum equipamento no escopo selecionado");
+      return;
+    }
+
+    const doc = new jsPDF({ orientation: "landscape", unit: "pt", format: "a4" });
+    const pageW = doc.internal.pageSize.getWidth();
+    const pageH = doc.internal.pageSize.getHeight();
+
+    doc.setFontSize(16);
+    doc.setFont("helvetica", "bold");
+    doc.text("Laudo de Preventiva de Equipamentos", 40, 40);
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(10);
+    doc.text(`Escopo: ${scopeLabel}`, 40, 58);
+    doc.text(`Emitido em: ${new Date().toLocaleString("pt-BR")}`, pageW - 40, 58, { align: "right" });
+
+    const filterLine = activeFilters.length > 0 ? `Filtros: ${activeFilters.join(" · ")}` : "Sem filtros adicionais";
+    doc.setFontSize(9);
+    doc.setTextColor(120);
+    doc.text(filterLine, 40, 74, { maxWidth: pageW - 80 });
+    doc.setTextColor(0);
+
+    // Summary table
+    autoTable(doc, {
+      startY: 90,
+      head: [["Status", "Marca", "Equipamento", "Identificador", "Cliente", "Última", "Técnico", "Dias", "Tarefas"]],
+      body: target.map((e) => {
+        const info = getStatusInfo(e.dias_desde);
+        return [
+          info.label,
+          e.marca || "—",
+          e.nome,
+          e.identificador || "—",
+          e.cliente || "—",
+          e.ultima_data ? format(parseISO(e.ultima_data), "dd/MM/yyyy") : "—",
+          e.ultimo_tecnico || "—",
+          e.dias_desde !== null ? `${e.dias_desde}d` : "—",
+          String(e.total_tarefas),
+        ];
+      }),
+      styles: { fontSize: 8, cellPadding: 3 },
+      headStyles: { fillColor: [37, 99, 235], textColor: 255, fontStyle: "bold" },
+      columnStyles: { 7: { halign: "right" }, 8: { halign: "right" } },
+    });
+
+    // Detail per equipment: tasks done
+    const relByEq = new Map<string, EquipTaskRel[]>();
+    for (const r of rawData?.relations ?? []) {
+      if (!relByEq.has(r.auvo_equipment_id)) relByEq.set(r.auvo_equipment_id, []);
+      relByEq.get(r.auvo_equipment_id)!.push(r);
+    }
+
+    for (const eq of target) {
+      doc.addPage();
+      doc.setFontSize(13);
+      doc.setFont("helvetica", "bold");
+      doc.text(eq.nome, 40, 40, { maxWidth: pageW - 80 });
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(9);
+      const info = getStatusInfo(eq.dias_desde);
+      doc.text(
+        `Cliente: ${eq.cliente || "—"}  ·  Marca: ${eq.marca || "—"}  ·  Identificador: ${eq.identificador || "—"}  ·  Status: ${info.label}${eq.dias_desde !== null ? ` (${eq.dias_desde}d)` : ""}`,
+        40, 58, { maxWidth: pageW - 80 }
+      );
+
+      let tasks = (relByEq.get(eq.auvo_equipment_id || "") || [])
+        .filter((t) => t.status_auvo === "Finalizada" && (t.data_conclusao || t.data_tarefa));
+      if (tipoTarefaFilter.length > 0) {
+        tasks = tasks.filter((t) => t.auvo_task_type_id && tipoTarefaFilter.includes(t.auvo_task_type_id));
+      }
+      tasks.sort((a, b) => {
+        const da = a.data_conclusao || a.data_tarefa || "";
+        const db = b.data_conclusao || b.data_tarefa || "";
+        return db.localeCompare(da);
+      });
+
+      if (tasks.length === 0) {
+        doc.setFontSize(10);
+        doc.setTextColor(120);
+        doc.text("Nenhuma intervenção finalizada registrada.", 40, 90);
+        doc.setTextColor(0);
+        continue;
+      }
+
+      autoTable(doc, {
+        startY: 78,
+        head: [["Data", "Tipo de tarefa", "Técnico", "Cliente (tarefa)", "Status", "Link"]],
+        body: tasks.map((t) => [
+          (t.data_conclusao || t.data_tarefa) ? format(parseISO((t.data_conclusao || t.data_tarefa) as string), "dd/MM/yyyy") : "—",
+          t.auvo_task_type_description || "—",
+          t.tecnico || "—",
+          t.cliente || "—",
+          t.status_auvo || "—",
+          t.auvo_link ? "Abrir" : "—",
+        ]),
+        styles: { fontSize: 8, cellPadding: 3 },
+        headStyles: { fillColor: [240, 240, 245], textColor: 30, fontStyle: "bold" },
+        columnStyles: { 5: { halign: "center", textColor: [37, 99, 235] } },
+        didDrawCell: (data: any) => {
+          if (data.section !== "body") return;
+          const t = tasks[data.row.index];
+          if (!t) return;
+          if (data.column.index === 5 && t.auvo_link) {
+            doc.link(data.cell.x, data.cell.y, data.cell.width, data.cell.height, { url: t.auvo_link });
+          }
+        },
+      });
+    }
+
+    const pages = doc.getNumberOfPages();
+    for (let i = 1; i <= pages; i++) {
+      doc.setPage(i);
+      doc.setFontSize(8);
+      doc.setTextColor(150);
+      doc.text(`Página ${i} de ${pages}`, pageW - 40, pageH - 20, { align: "right" });
+    }
+
+    doc.save(`laudo-preventiva-${format(new Date(), "yyyy-MM-dd")}.pdf`);
+    setPdfDialogOpen(false);
+    toast.success(`Laudo gerado com ${target.length} equipamento(s)`);
+  }, [pdfScope, filtered, selectedIds, rawData?.relations, tipoTarefaFilter, activeFilters]);
 
   return (
     <div className="space-y-6">
@@ -564,6 +774,9 @@ export default function EquipamentosPreventivosPage() {
         <div className="flex items-center gap-2 flex-wrap">
           <Button variant="outline" size="sm" onClick={handleExportCsv} disabled={filtered.length === 0}>
             <Download className="h-4 w-4 mr-1" /> CSV
+          </Button>
+          <Button variant="outline" size="sm" onClick={() => setPdfDialogOpen(true)} disabled={equipments.length === 0}>
+            <FileText className="h-4 w-4 mr-1" /> Laudo PDF
           </Button>
           <div className="flex items-center gap-2 bg-muted/50 border rounded-lg px-3 py-1.5">
             <CalendarDays className="h-4 w-4 text-muted-foreground" />
@@ -681,6 +894,19 @@ export default function EquipamentosPreventivosPage() {
         />
 
         <SearchableSelect
+          value={grupoFilter}
+          onValueChange={setGrupoFilter}
+          options={[
+            { value: "todos", label: "Todos os grupos" },
+            ...((gruposData?.grupos ?? []).map((g: any) => ({ value: g.id, label: g.nome }))),
+          ]}
+          placeholder="Grupo"
+          searchPlaceholder="Buscar grupo..."
+          className="w-[200px]"
+          icon={<Users className="h-4 w-4" />}
+        />
+
+        <SearchableSelect
           multiple
           value={tipoTarefaFilter}
           onValueChange={setTipoTarefaFilter}
@@ -700,7 +926,7 @@ export default function EquipamentosPreventivosPage() {
             Filtros ativos: <strong>{activeFilters.join(" · ")}</strong>
             — mostrando {filtered.length} de {equipments.length}
           </span>
-          <Button variant="ghost" size="sm" onClick={() => { setMarcaFilter([]); setClienteFilter([]); setTipoTarefaFilter([]); setStatusFilter([]); }} className="ml-auto text-xs">
+          <Button variant="ghost" size="sm" onClick={() => { setMarcaFilter([]); setClienteFilter([]); setTipoTarefaFilter([]); setStatusFilter([]); setGrupoFilter("todos"); }} className="ml-auto text-xs">
             Limpar filtros
           </Button>
         </div>
@@ -717,6 +943,18 @@ export default function EquipamentosPreventivosPage() {
           <Table>
             <TableHeader>
               <TableRow>
+                <TableHead className="w-8">
+                  <Checkbox
+                    checked={paginatedItems.length > 0 && paginatedItems.every((e) => selectedIds.has(e.id))}
+                    onCheckedChange={(v) => {
+                      const next = new Set(selectedIds);
+                      if (v) paginatedItems.forEach((e) => next.add(e.id));
+                      else paginatedItems.forEach((e) => next.delete(e.id));
+                      setSelectedIds(next);
+                    }}
+                    aria-label="Selecionar página"
+                  />
+                </TableHead>
                 <TableHead className="w-10">Status</TableHead>
                 <TableHead><SortButton field="marca">Marca</SortButton></TableHead>
                 <TableHead><SortButton field="nome">Equipamento</SortButton></TableHead>
@@ -732,7 +970,7 @@ export default function EquipamentosPreventivosPage() {
             <TableBody>
               {filtered.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={10} className="text-center py-10 text-muted-foreground">
+                  <TableCell colSpan={11} className="text-center py-10 text-muted-foreground">
                     Nenhum equipamento encontrado
                   </TableCell>
                 </TableRow>
@@ -744,6 +982,17 @@ export default function EquipamentosPreventivosPage() {
 
                   return (
                     <TableRow key={eq.id} className={cn(info.bg)}>
+                      <TableCell>
+                        <Checkbox
+                          checked={selectedIds.has(eq.id)}
+                          onCheckedChange={(v) => {
+                            const next = new Set(selectedIds);
+                            if (v) next.add(eq.id); else next.delete(eq.id);
+                            setSelectedIds(next);
+                          }}
+                          aria-label="Selecionar"
+                        />
+                      </TableCell>
                       <TableCell>
                         <Tooltip>
                           <TooltipTrigger>
@@ -888,6 +1137,38 @@ export default function EquipamentosPreventivosPage() {
           </Button>
         </div>
       )}
+
+      <Dialog open={pdfDialogOpen} onOpenChange={setPdfDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Gerar Laudo PDF</DialogTitle>
+            <DialogDescription>
+              Escolha quais equipamentos incluir no laudo. Cada equipamento terá uma página com as intervenções finalizadas.
+            </DialogDescription>
+          </DialogHeader>
+          <RadioGroup value={pdfScope} onValueChange={(v) => setPdfScope(v as any)} className="space-y-2">
+            {[
+              { v: "selecionados", l: `Apenas selecionados (${selectedIds.size})` },
+              { v: "filtrados", l: `Tudo o que está na tela (filtrado) — ${filtered.length}` },
+              { v: "feitos", l: `Tudo o que foi feito (com intervenção registrada) — ${filtered.filter((e) => e.ultima_data !== null).length}` },
+              { v: "atrasados", l: `Atrasados / Vencidos (>120d) — ${filtered.filter((e) => e.dias_desde !== null && e.dias_desde > 120).length}` },
+              { v: "atencao_vencido", l: `Atenção + Vencidos (>90d) — ${filtered.filter((e) => e.dias_desde !== null && e.dias_desde > 90).length}` },
+              { v: "sem_registro", l: `Sem histórico — ${filtered.filter((e) => e.dias_desde === null).length}` },
+            ].map((opt) => (
+              <div key={opt.v} className="flex items-center gap-2">
+                <RadioGroupItem value={opt.v} id={`pdf-${opt.v}`} />
+                <Label htmlFor={`pdf-${opt.v}`} className="text-sm font-normal cursor-pointer">{opt.l}</Label>
+              </div>
+            ))}
+          </RadioGroup>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setPdfDialogOpen(false)}>Cancelar</Button>
+            <Button onClick={handleGeneratePdf}>
+              <FileText className="h-4 w-4 mr-1" /> Gerar PDF
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
