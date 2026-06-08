@@ -17,6 +17,17 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from "@/components/ui/command";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { cn } from "@/lib/utils";
+import { Check, ChevronsUpDown } from "lucide-react";
+import {
   Dialog,
   DialogContent,
   DialogDescription,
@@ -61,7 +72,61 @@ const parseData = (s: string): number => {
   return new Date(s).getTime() || 0;
 };
 
-type SortKey = "recente" | "antigo" | "caro" | "barato" | "codigo";
+type SortKey = "recente" | "antigo" | "caro" | "barato" | "codigo" | "casa";
+
+function SearchableSelect({
+  value, onChange, options, placeholder, allLabel,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  options: string[];
+  placeholder: string;
+  allLabel: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const label = value === "all" ? allLabel : value;
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <Button
+          variant="outline"
+          role="combobox"
+          className="w-full justify-between font-normal"
+        >
+          <span className="truncate">{label}</span>
+          <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent className="p-0 w-[--radix-popover-trigger-width]" align="start">
+        <Command>
+          <CommandInput placeholder={placeholder} />
+          <CommandList>
+            <CommandEmpty>Nada encontrado.</CommandEmpty>
+            <CommandGroup>
+              <CommandItem
+                value={allLabel}
+                onSelect={() => { onChange("all"); setOpen(false); }}
+              >
+                <Check className={cn("mr-2 h-4 w-4", value === "all" ? "opacity-100" : "opacity-0")} />
+                {allLabel}
+              </CommandItem>
+              {options.map((opt) => (
+                <CommandItem
+                  key={opt}
+                  value={opt}
+                  onSelect={() => { onChange(opt); setOpen(false); }}
+                >
+                  <Check className={cn("mr-2 h-4 w-4", value === opt ? "opacity-100" : "opacity-0")} />
+                  <span className="truncate">{opt}</span>
+                </CommandItem>
+              ))}
+            </CommandGroup>
+          </CommandList>
+        </Command>
+      </PopoverContent>
+    </Popover>
+  );
+}
 
 export default function PortalOrcamentosPage() {
   const { user, profile, role, loading: authLoading, signOut } = useAuth();
@@ -145,6 +210,8 @@ export default function PortalOrcamentosPage() {
           return parseData(a.data) - parseData(b.data);
         case "codigo":
           return String(a.gc_orcamento_codigo).localeCompare(String(b.gc_orcamento_codigo), "pt-BR", { numeric: true });
+        case "casa":
+          return String(a.cliente || "").localeCompare(String(b.cliente || ""), "pt-BR");
         case "recente":
         default:
           return parseData(b.data) - parseData(a.data);
@@ -225,27 +292,23 @@ export default function PortalOrcamentosPage() {
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
             <div>
               <label className="text-xs text-muted-foreground mb-1 block">Casa</label>
-              <Select value={casaFilter} onValueChange={setCasaFilter}>
-                <SelectTrigger><SelectValue placeholder="Todas as casas" /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">Todas as casas</SelectItem>
-                  {allCasas.map((c) => (
-                    <SelectItem key={c} value={c}>{c}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <SearchableSelect
+                value={casaFilter}
+                onChange={setCasaFilter}
+                options={allCasas}
+                placeholder="Buscar casa…"
+                allLabel="Todas as casas"
+              />
             </div>
             <div>
               <label className="text-xs text-muted-foreground mb-1 block">Equipamento</label>
-              <Select value={equipFilter} onValueChange={setEquipFilter}>
-                <SelectTrigger><SelectValue placeholder="Todos os equipamentos" /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">Todos os equipamentos</SelectItem>
-                  {allEquipamentos.map((c) => (
-                    <SelectItem key={c} value={c}>{c}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <SearchableSelect
+                value={equipFilter}
+                onChange={setEquipFilter}
+                options={allEquipamentos}
+                placeholder="Buscar equipamento…"
+                allLabel="Todos os equipamentos"
+              />
             </div>
             <div>
               <label className="text-xs text-muted-foreground mb-1 block">Ordenar por</label>
@@ -257,6 +320,7 @@ export default function PortalOrcamentosPage() {
                   <SelectItem value="caro">Mais caro</SelectItem>
                   <SelectItem value="barato">Mais barato</SelectItem>
                   <SelectItem value="codigo">Código</SelectItem>
+                  <SelectItem value="casa">Casa (A–Z)</SelectItem>
                 </SelectContent>
               </Select>
             </div>
