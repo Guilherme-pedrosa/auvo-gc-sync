@@ -26,6 +26,7 @@ import PremiacaoPage from "./pages/financeiro/PremiacaoPage.tsx";
 import ContratosPage from "./pages/configuracoes/ContratosPage.tsx";
 import PortalLoginPage from "./pages/portal/PortalLoginPage.tsx";
 import PortalHorasPage from "./pages/portal/PortalHorasPage.tsx";
+import PortalOrcamentosPage from "./pages/portal/PortalOrcamentosPage.tsx";
 import { Loader2 } from "lucide-react";
 
 const queryClient = new QueryClient({
@@ -71,6 +72,7 @@ const AppRoutes = () => {
       />
       <Route path="/portal/login" element={<PortalLoginPage />} />
       <Route path="/portal/horas" element={<PortalHorasPage />} />
+      <Route path="/portal/orcamentos" element={<PortalOrcamentosPage />} />
       <Route
         path="/*"
         element={
