@@ -107,6 +107,30 @@ Deno.serve(async (req) => {
     if (action === "detail") {
       const gcOrcId = String(body.gc_orcamento_id || "");
       if (!gcOrcId) return ok({ ok: false, error: "gc_orcamento_id obrigatório" });
+
+      // Fingerprint a partir do cache do followup (atualiza só quando o sync detecta mudança real)
+      const { data: fkRow } = await admin
+        .from("followup_kanban_cache")
+        .select("dados, atualizado_em")
+        .eq("gc_orcamento_id", gcOrcId)
+        .maybeSingle();
+      const fingerprint = fkRow
+        ? `${fkRow.atualizado_em}|${JSON.stringify(fkRow.dados || {})}`
+        : "no-followup";
+
+      // Lê cache de detalhe
+      const { data: cached } = await admin
+        .from("orcamento_detalhe_cache")
+        .select("orcamento, tarefas, fingerprint")
+        .eq("gc_orcamento_id", gcOrcId)
+        .maybeSingle();
+
+      if (cached && cached.fingerprint === fingerprint) {
+        const cli = normalize(String((cached.orcamento as any)?.nome_cliente || ""));
+        if (!clientesNorm.has(cli)) return ok({ ok: false, error: "Orçamento fora do grupo do usuário" });
+        return ok({ ok: true, orcamento: cached.orcamento, tarefas: cached.tarefas || [], cached: true });
+      }
+
       const resp = await fetch(`${GC_BASE_URL}/api/orcamentos/${gcOrcId}`, { headers: gcHeaders });
       const json: any = await resp.json().catch(() => ({}));
       const orc = json?.data ?? json;
@@ -122,7 +146,16 @@ Deno.serve(async (req) => {
         .eq("gc_orcamento_id", gcOrcId)
         .limit(5);
 
-      return ok({ ok: true, orcamento: orc, tarefas: tarefas || [] });
+      // Persiste no cache
+      await admin.from("orcamento_detalhe_cache").upsert({
+        gc_orcamento_id: gcOrcId,
+        fingerprint,
+        orcamento: orc,
+        tarefas: tarefas || [],
+        atualizado_em: new Date().toISOString(),
+      }, { onConflict: "gc_orcamento_id" });
+
+      return ok({ ok: true, orcamento: orc, tarefas: tarefas || [], cached: false });
     }
 
     if (action === "approve" || action === "observation") {
@@ -203,6 +236,8 @@ Deno.serve(async (req) => {
 
       // Atualiza cache local: remove da coluna 7063588 (some da lista)
       await admin.from("followup_kanban_cache").delete().eq("gc_orcamento_id", gcOrcId);
+      // Invalida cache de detalhe
+      await admin.from("orcamento_detalhe_cache").delete().eq("gc_orcamento_id", gcOrcId);
 
       return ok({ ok: true, situacao_id_depois: novaSituacao });
     }
