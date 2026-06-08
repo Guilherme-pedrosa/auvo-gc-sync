@@ -113,8 +113,53 @@ Deno.serve(async (req) => {
       "Content-Type": "application/json",
     };
 
-    if (action === "list") {
-      // Lê do cache do followup (já sincronizado), coluna 7063588
+    if (action === "refresh") {
+      const atuais = await fetchAguardandoAprovacao(gcHeaders);
+      const atualIds = new Set(atuais.map((orc: any) => String(orc.id)).filter(Boolean));
+      const { data: cacheAtual } = await admin
+        .from("followup_kanban_cache")
+        .select("gc_orcamento_id, coluna, posicao")
+        .eq("coluna", SITUACAO_AGUARDANDO_APROVACAO);
+
+      const posById = new Map<string, number>();
+      let maxPos = -1;
+      for (const row of cacheAtual || []) {
+        const id = String((row as any).gc_orcamento_id);
+        const pos = Number((row as any).posicao ?? 0);
+        posById.set(id, pos);
+        if (pos > maxPos) maxPos = pos;
+      }
+
+      const now = new Date().toISOString();
+      const upserts = atuais.map((orc: any) => {
+        const m = mapOrcamento(orc);
+        const id = m.gc_orcamento_id;
+        const pos = posById.has(id) ? posById.get(id)! : ++maxPos;
+        return {
+          gc_orcamento_id: id,
+          coluna: SITUACAO_AGUARDANDO_APROVACAO,
+          posicao: pos,
+          situacao_id_origem: SITUACAO_AGUARDANDO_APROVACAO,
+          dados: m,
+          atualizado_em: now,
+        };
+      });
+      for (let i = 0; i < upserts.length; i += 200) {
+        const { error } = await admin
+          .from("followup_kanban_cache")
+          .upsert(upserts.slice(i, i + 200), { onConflict: "gc_orcamento_id" });
+        if (error) throw error;
+      }
+      const removidos = (cacheAtual || [])
+        .filter((row: any) => !atualIds.has(String(row.gc_orcamento_id)))
+        .map((row: any) => String(row.gc_orcamento_id));
+      if (removidos.length > 0) {
+        await admin.from("followup_kanban_cache").delete().in("gc_orcamento_id", removidos);
+      }
+    }
+
+    if (action === "list" || action === "refresh") {
+      // Lê do cache do followup, coluna 7063588
       const { data: cache } = await admin
         .from("followup_kanban_cache")
         .select("*")
