@@ -268,6 +268,10 @@ export default function EquipamentosPreventivosPage() {
   const [editingMarcaValue, setEditingMarcaValue] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
   const PAGE_SIZE = 100;
+  const [grupoFilter, setGrupoFilter] = useState<string>("todos");
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [pdfDialogOpen, setPdfDialogOpen] = useState(false);
+  const [pdfScope, setPdfScope] = useState<"selecionados" | "filtrados" | "feitos" | "atrasados" | "atencao_vencido" | "sem_registro">("filtrados");
 
   // Sync date range — defaults to last 1 month
   const defaultSyncStart = format(new Date(new Date().getFullYear(), new Date().getMonth() - 1, 1), "yyyy-MM-dd");
@@ -280,6 +284,33 @@ export default function EquipamentosPreventivosPage() {
     queryFn: fetchRawData,
     staleTime: 5 * 60 * 1000,
   });
+
+  const { data: gruposData } = useQuery({
+    queryKey: ["preventivos-grupos"],
+    queryFn: async () => {
+      const [{ data: grupos }, { data: membros }] = await Promise.all([
+        supabase.from("grupos_clientes").select("id, nome").order("nome"),
+        supabase.from("grupo_cliente_membros").select("grupo_id, cliente_nome"),
+      ]);
+      return { grupos: grupos ?? [], membros: membros ?? [] };
+    },
+    staleTime: 10 * 60 * 1000,
+  });
+
+  const grupoClienteMap = useMemo(() => {
+    const map = new Map<string, Set<string>>();
+    const grupos = gruposData?.grupos ?? [];
+    const membros = gruposData?.membros ?? [];
+    for (const g of grupos) {
+      const set = new Set<string>(
+        membros
+          .filter((m: any) => m.grupo_id === g.id)
+          .map((m: any) => normalizeClienteName(m.cliente_nome))
+      );
+      map.set(g.id, set);
+    }
+    return map;
+  }, [gruposData]);
 
   const tiposTarefa = useMemo(() => {
     const rels = rawData?.relations ?? [];
