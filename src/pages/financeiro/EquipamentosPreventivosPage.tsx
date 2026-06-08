@@ -48,6 +48,7 @@ type EquipmentRaw = {
 type EquipTaskRel = {
   auvo_equipment_id: string;
   auvo_task_id: string;
+  auvo_task_url?: string | null;
   auvo_task_type_id: string | null;
   auvo_task_type_description: string | null;
   status_auvo: string | null;
@@ -186,7 +187,32 @@ async function fetchRawData(): Promise<{ equipamentos: EquipmentRaw[]; relations
     relFrom += REL_PAGE;
   }
 
+  const taskIds = Array.from(new Set(relations.map((r) => r.auvo_task_id).filter(Boolean)));
+  if (taskIds.length > 0) {
+    const urlByTaskId = new Map<string, string>();
+    for (let i = 0; i < taskIds.length; i += 500) {
+      const chunk = taskIds.slice(i, i + 500);
+      const { data, error } = await supabase
+        .from("tarefas_central")
+        .select("auvo_task_id, auvo_task_url")
+        .in("auvo_task_id", chunk);
+      if (error) throw error;
+      for (const row of data || []) {
+        const url = String(row.auvo_task_url || "").trim();
+        if (url) urlByTaskId.set(String(row.auvo_task_id), url);
+      }
+    }
+    relations = relations.map((rel) => ({
+      ...rel,
+      auvo_task_url: urlByTaskId.get(String(rel.auvo_task_id)) || null,
+    }));
+  }
+
   return { equipamentos, relations };
+}
+
+function getTaskDigitalLink(task: Pick<EquipTaskRel, "auvo_task_url" | "auvo_link"> | null | undefined): string | null {
+  return task?.auvo_task_url || task?.auvo_link || null;
 }
 
 function buildEquipmentRows(
@@ -235,7 +261,7 @@ function buildEquipmentRows(
       marca_source: eq.marca_source,
       ultima_data: ultimaData,
       ultimo_tecnico: lastTask?.tecnico || null,
-      ultimo_link: lastTask?.auvo_link || null,
+      ultimo_link: getTaskDigitalLink(lastTask),
       dias_desde: dias,
       tipo_tarefa: lastTask?.auvo_task_type_description || null,
       total_tarefas: completedTasks.length,
@@ -770,7 +796,7 @@ export default function EquipamentosPreventivosPage() {
           t.tecnico || "—",
           t.cliente || "—",
           t.status_auvo || "—",
-          t.auvo_link ? "Abrir relatório" : "—",
+          getTaskDigitalLink(t) ? "Abrir relatório" : "—",
         ]),
         styles: { fontSize: 8, cellPadding: 3 },
         headStyles: { fillColor: [240, 240, 245], textColor: 30, fontStyle: "bold" },
@@ -778,9 +804,10 @@ export default function EquipamentosPreventivosPage() {
         didDrawCell: (data: any) => {
           if (data.section !== "body") return;
           const t = tasks[data.row.index];
-          if (!t || !t.auvo_link) return;
+          const link = getTaskDigitalLink(t);
+          if (!t || !link) return;
           if (data.column.index === 0 || data.column.index === 5) {
-            doc.link(data.cell.x, data.cell.y, data.cell.width, data.cell.height, { url: t.auvo_link });
+            doc.link(data.cell.x, data.cell.y, data.cell.width, data.cell.height, { url: link });
           }
         },
       });
