@@ -15,6 +15,8 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import { Calendar } from "@/components/ui/calendar";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
@@ -850,21 +852,41 @@ export default function EquipamentosPreventivosPage() {
           </Button>
           <div className="flex items-center gap-2 bg-muted/50 border rounded-lg px-3 py-1.5">
             <CalendarDays className="h-4 w-4 text-muted-foreground" />
-            <Input
-              type="date"
-              value={syncStartDate}
-              onChange={(e) => setSyncStartDate(e.target.value)}
-              className="h-7 w-[130px] text-xs"
-              disabled={syncing}
-            />
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button variant="outline" size="sm" className="h-7 w-[120px] text-xs font-normal justify-start" disabled={syncing}>
+                  {syncStartDate ? format(parseISO(syncStartDate), "dd/MM/yyyy") : "Início"}
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-auto p-0" align="start">
+                <Calendar
+                  mode="single"
+                  selected={syncStartDate ? parseISO(syncStartDate) : undefined}
+                  onSelect={(d) => d && setSyncStartDate(format(d, "yyyy-MM-dd"))}
+                  initialFocus
+                  locale={ptBR}
+                  className="p-3 pointer-events-auto"
+                />
+              </PopoverContent>
+            </Popover>
             <span className="text-xs text-muted-foreground">→</span>
-            <Input
-              type="date"
-              value={syncEndDate}
-              onChange={(e) => setSyncEndDate(e.target.value)}
-              className="h-7 w-[130px] text-xs"
-              disabled={syncing}
-            />
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button variant="outline" size="sm" className="h-7 w-[120px] text-xs font-normal justify-start" disabled={syncing}>
+                  {syncEndDate ? format(parseISO(syncEndDate), "dd/MM/yyyy") : "Fim"}
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-auto p-0" align="end">
+                <Calendar
+                  mode="single"
+                  selected={syncEndDate ? parseISO(syncEndDate) : undefined}
+                  onSelect={(d) => d && setSyncEndDate(format(d, "yyyy-MM-dd"))}
+                  initialFocus
+                  locale={ptBR}
+                  className="p-3 pointer-events-auto"
+                />
+              </PopoverContent>
+            </Popover>
           </div>
           <Button onClick={handleSync} disabled={syncing || isFetching} size="sm">
             {syncing ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <RefreshCw className="h-4 w-4 mr-1" />}
