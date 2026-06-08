@@ -696,6 +696,7 @@ Deno.serve(async (req) => {
             let touched = false;
             const update: any = {};
             for (const f of fields) {
+              if (f === "gc_os_tarefa_exec" && String(t.auvo_task_id || "") === String(cand[f] || "")) continue;
               if (!t[f] && cand[f]) { t[f] = cand[f]; update[f] = cand[f]; touched = true; }
             }
             if (touched) {
@@ -709,14 +710,10 @@ Deno.serve(async (req) => {
             for (let i = 0; i < updates.length; i += 8) {
               const batch = updates.slice(i, i + 8);
               await Promise.allSettled(batch.map(({ auvo_task_id, update }) =>
-                {
-                  const blankConditions = Object.keys(update).map((f) => `${f}.is.null`).join(",");
-                  return supabase
-                    .from("tarefas_central")
-                    .update(update)
-                    .eq("auvo_task_id", auvo_task_id)
-                    .or(blankConditions);
-                }
+                supabase
+                  .from("tarefas_central")
+                  .update(update)
+                  .eq("auvo_task_id", auvo_task_id)
               ));
             }
           }
