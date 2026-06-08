@@ -60,6 +60,8 @@ function mapOrc(orc: any) {
     valor_total: Number(orc.valor_total || 0),
     vendedor: String(orc.nome_vendedor || ""),
     data: String(orc.data || ""),
+    tipo: String(orc.tipo || ""),
+    hash: String(orc.hash || ""),
     link: `https://gestaoclick.com/orcamentos_servicos/editar/${orc.id}?retorno=%2Forcamentos_servicos`,
   };
 }
