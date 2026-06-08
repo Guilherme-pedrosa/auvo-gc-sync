@@ -10,6 +10,13 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
   Dialog,
   DialogContent,
   DialogDescription,
@@ -18,7 +25,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { toast } from "sonner";
-import { Loader2, LogOut, CheckCircle2, MessageSquare, FileText, Clock, ExternalLink, Package } from "lucide-react";
+import { Loader2, LogOut, CheckCircle2, MessageSquare, FileText, Clock, ExternalLink, Package, Wrench } from "lucide-react";
 
 interface OrcamentoItem {
   gc_orcamento_id: string;
@@ -29,6 +36,7 @@ interface OrcamentoItem {
   data: string;
   situacao: string;
   cor_situacao?: string;
+  equipamento?: string;
 }
 
 const brl = (n: number) =>
@@ -44,12 +52,25 @@ const fmtData = (s: string) => {
   return s;
 };
 
+const parseData = (s: string): number => {
+  if (!s) return 0;
+  if (/^\d{4}-\d{2}-\d{2}/.test(s)) return new Date(s.slice(0, 10)).getTime();
+  const m = s.match(/^(\d{2})\/(\d{2})\/(\d{4})/);
+  if (m) return new Date(`${m[3]}-${m[2]}-${m[1]}`).getTime();
+  return new Date(s).getTime() || 0;
+};
+
+type SortKey = "recente" | "antigo" | "caro" | "barato" | "codigo";
+
 export default function PortalOrcamentosPage() {
   const { user, profile, role, loading: authLoading, signOut } = useAuth();
   const navigate = useNavigate();
   const qc = useQueryClient();
 
   const [search, setSearch] = useState("");
+  const [casaFilter, setCasaFilter] = useState<string>("all");
+  const [equipFilter, setEquipFilter] = useState<string>("all");
+  const [sortKey, setSortKey] = useState<SortKey>("recente");
   const [selected, setSelected] = useState<OrcamentoItem | null>(null);
   const [mode, setMode] = useState<"view" | "approve" | "observation">("view");
   const [termo, setTermo] = useState(false);
@@ -85,17 +106,49 @@ export default function PortalOrcamentosPage() {
     enabled: !!user && role === "cliente",
   });
 
+  const allCasas = useMemo(() => {
+    const set = new Set<string>();
+    (data || []).forEach((i) => i.cliente && set.add(i.cliente));
+    return Array.from(set).sort((a, b) => a.localeCompare(b, "pt-BR"));
+  }, [data]);
+
+  const allEquipamentos = useMemo(() => {
+    const set = new Set<string>();
+    (data || []).forEach((i) => i.equipamento && set.add(i.equipamento));
+    return Array.from(set).sort((a, b) => a.localeCompare(b, "pt-BR"));
+  }, [data]);
+
   const itens = useMemo(() => {
     const list = data || [];
     const q = search.trim().toLowerCase();
-    if (!q) return list;
-    return list.filter(
-      (i) =>
+    let out = list.filter((i) => {
+      if (casaFilter !== "all" && i.cliente !== casaFilter) return false;
+      if (equipFilter !== "all" && (i.equipamento || "") !== equipFilter) return false;
+      if (!q) return true;
+      return (
         i.gc_orcamento_codigo.toLowerCase().includes(q) ||
         i.cliente.toLowerCase().includes(q) ||
-        (i.vendedor || "").toLowerCase().includes(q),
-    );
-  }, [data, search]);
+        (i.vendedor || "").toLowerCase().includes(q) ||
+        (i.equipamento || "").toLowerCase().includes(q)
+      );
+    });
+    out = [...out].sort((a, b) => {
+      switch (sortKey) {
+        case "caro":
+          return Number(b.valor_total || 0) - Number(a.valor_total || 0);
+        case "barato":
+          return Number(a.valor_total || 0) - Number(b.valor_total || 0);
+        case "antigo":
+          return parseData(a.data) - parseData(b.data);
+        case "codigo":
+          return String(a.gc_orcamento_codigo).localeCompare(String(b.gc_orcamento_codigo), "pt-BR", { numeric: true });
+        case "recente":
+        default:
+          return parseData(b.data) - parseData(a.data);
+      }
+    });
+    return out;
+  }, [data, search, casaFilter, equipFilter, sortKey]);
 
   const mutation = useMutation({
     mutationFn: async (payload: {
@@ -160,20 +213,58 @@ export default function PortalOrcamentosPage() {
       </header>
 
       <main className="max-w-6xl mx-auto px-4 py-6 space-y-4">
-        <div className="flex items-center gap-2">
+        <Card className="p-3 space-y-3">
           <Input
-            placeholder="Buscar por código, cliente ou vendedor…"
+            placeholder="Buscar por código, casa, vendedor ou equipamento…"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="max-w-md"
           />
-          <Button variant="outline" size="sm" onClick={() => refetch()} disabled={isFetching}>
-            {isFetching ? <Loader2 className="h-4 w-4 animate-spin" /> : "Atualizar"}
-          </Button>
-          <span className="ml-auto text-sm text-muted-foreground">
-            {itens.length} orçamento(s)
-          </span>
-        </div>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+            <div>
+              <label className="text-xs text-muted-foreground mb-1 block">Casa</label>
+              <Select value={casaFilter} onValueChange={setCasaFilter}>
+                <SelectTrigger><SelectValue placeholder="Todas as casas" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todas as casas</SelectItem>
+                  {allCasas.map((c) => (
+                    <SelectItem key={c} value={c}>{c}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <label className="text-xs text-muted-foreground mb-1 block">Equipamento</label>
+              <Select value={equipFilter} onValueChange={setEquipFilter}>
+                <SelectTrigger><SelectValue placeholder="Todos os equipamentos" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todos os equipamentos</SelectItem>
+                  {allEquipamentos.map((c) => (
+                    <SelectItem key={c} value={c}>{c}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <label className="text-xs text-muted-foreground mb-1 block">Ordenar por</label>
+              <Select value={sortKey} onValueChange={(v) => setSortKey(v as SortKey)}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="recente">Mais recente</SelectItem>
+                  <SelectItem value="antigo">Mais antigo</SelectItem>
+                  <SelectItem value="caro">Mais caro</SelectItem>
+                  <SelectItem value="barato">Mais barato</SelectItem>
+                  <SelectItem value="codigo">Código</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <div className="flex items-center justify-between text-xs text-muted-foreground">
+            <span>{itens.length} orçamento(s)</span>
+            <Button variant="outline" size="sm" onClick={() => refetch()} disabled={isFetching}>
+              {isFetching ? <Loader2 className="h-4 w-4 animate-spin" /> : "Atualizar"}
+            </Button>
+          </div>
+        </Card>
 
         {isLoading ? (
           <div className="flex justify-center py-16">
@@ -206,6 +297,11 @@ export default function PortalOrcamentosPage() {
                       </Badge>
                     </div>
                     <p className="text-sm font-medium">{o.cliente}</p>
+                    {o.equipamento && (
+                      <p className="text-xs text-muted-foreground flex items-center gap-1">
+                        <Wrench className="h-3 w-3" /> {o.equipamento}
+                      </p>
+                    )}
                     <p className="text-xs text-muted-foreground">
                       Vendedor: {o.vendedor || "—"} · Data: {fmtData(o.data)}
                     </p>
@@ -239,6 +335,7 @@ export default function PortalOrcamentosPage() {
                   <div className="rounded-md border p-3 text-sm space-y-1">
                     <div><span className="text-muted-foreground">Vendedor:</span> {selected.vendedor || "—"}</div>
                     <div><span className="text-muted-foreground">Data:</span> {fmtData(selected.data)}</div>
+                    <div><span className="text-muted-foreground">Equipamento:</span> {selected.equipamento || "—"}</div>
                     <div><span className="text-muted-foreground">Valor total:</span> <strong>{brl(selected.valor_total)}</strong></div>
                   </div>
 
