@@ -600,8 +600,10 @@ Deno.serve(async (req) => {
     // atributo 73344 mas o técnico colou a referência no texto da OS.
     try {
       const orfas = tasks.filter((t: any) =>
-        !String(t.gc_os_codigo || "").trim() &&
-        !String(t.gc_orcamento_codigo || "").trim()
+        (!String(t.gc_os_codigo || "").trim() &&
+         !String(t.gc_orcamento_codigo || "").trim()) ||
+        !String(t.gc_os_tarefa_os || "").trim() ||
+        !String(t.gc_os_tarefa_exec || "").trim()
       );
       if (orfas.length > 0) {
         const normCli = (s: string) => String(s || "")
