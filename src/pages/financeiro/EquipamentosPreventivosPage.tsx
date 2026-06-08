@@ -1137,6 +1137,38 @@ export default function EquipamentosPreventivosPage() {
           </Button>
         </div>
       )}
+
+      <Dialog open={pdfDialogOpen} onOpenChange={setPdfDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Gerar Laudo PDF</DialogTitle>
+            <DialogDescription>
+              Escolha quais equipamentos incluir no laudo. Cada equipamento terá uma página com as intervenções finalizadas.
+            </DialogDescription>
+          </DialogHeader>
+          <RadioGroup value={pdfScope} onValueChange={(v) => setPdfScope(v as any)} className="space-y-2">
+            {[
+              { v: "selecionados", l: `Apenas selecionados (${selectedIds.size})` },
+              { v: "filtrados", l: `Tudo o que está na tela (filtrado) — ${filtered.length}` },
+              { v: "feitos", l: `Tudo o que foi feito (com intervenção registrada) — ${filtered.filter((e) => e.ultima_data !== null).length}` },
+              { v: "atrasados", l: `Atrasados / Vencidos (>120d) — ${filtered.filter((e) => e.dias_desde !== null && e.dias_desde > 120).length}` },
+              { v: "atencao_vencido", l: `Atenção + Vencidos (>90d) — ${filtered.filter((e) => e.dias_desde !== null && e.dias_desde > 90).length}` },
+              { v: "sem_registro", l: `Sem histórico — ${filtered.filter((e) => e.dias_desde === null).length}` },
+            ].map((opt) => (
+              <div key={opt.v} className="flex items-center gap-2">
+                <RadioGroupItem value={opt.v} id={`pdf-${opt.v}`} />
+                <Label htmlFor={`pdf-${opt.v}`} className="text-sm font-normal cursor-pointer">{opt.l}</Label>
+              </div>
+            ))}
+          </RadioGroup>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setPdfDialogOpen(false)}>Cancelar</Button>
+            <Button onClick={handleGeneratePdf}>
+              <FileText className="h-4 w-4 mr-1" /> Gerar PDF
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
