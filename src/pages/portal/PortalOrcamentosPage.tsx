@@ -598,14 +598,33 @@ export default function PortalOrcamentosPage() {
                         );
                       })()}
 
-                      {detailQuery.data.orcamento?.observacao && (
+                      {(detailQuery.data.orcamento?.observacoes ||
+                        detailQuery.data.orcamento?.observacao) && (
                         <div className="rounded-md border p-2 text-xs">
                           <p className="font-semibold mb-1">Observações:</p>
                           <p className="whitespace-pre-wrap text-muted-foreground">
-                            {detailQuery.data.orcamento.observacao}
+                            {detailQuery.data.orcamento.observacoes ||
+                              detailQuery.data.orcamento.observacao}
                           </p>
                         </div>
                       )}
+
+                      {(() => {
+                        const orc: any = detailQuery.data.orcamento || {};
+                        const interna =
+                          orc.observacoes_interna ||
+                          orc.observacao_interna ||
+                          orc.observacoes_internas ||
+                          orc.obs_interna ||
+                          "";
+                        if (!interna) return null;
+                        return (
+                          <div className="rounded-md border border-amber-300 bg-amber-50 p-2 text-xs">
+                            <p className="font-semibold mb-1 text-amber-900">Observações internas (GC):</p>
+                            <p className="whitespace-pre-wrap text-amber-900">{interna}</p>
+                          </div>
+                        );
+                      })()}
 
                       {(() => {
                         const tarefas = (detailQuery.data.tarefas || []).filter(
