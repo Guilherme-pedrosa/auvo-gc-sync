@@ -497,6 +497,11 @@ export default function EquipamentosPreventivosPage() {
       result = result.filter((e) => e.cliente && clienteFilter.includes(e.cliente));
     }
 
+    if (grupoFilter !== "todos") {
+      const members = grupoClienteMap.get(grupoFilter) || new Set<string>();
+      result = result.filter((e) => e.cliente && members.has(normalizeClienteName(e.cliente)));
+    }
+
     result = [...result].sort((a, b) => {
       const dir = sortDir === "asc" ? 1 : -1;
       switch (sortField) {
@@ -516,7 +521,7 @@ export default function EquipamentosPreventivosPage() {
     });
 
     return result;
-  }, [equipments, search, statusFilter, marcaFilter, clienteFilter, sortField, sortDir]);
+  }, [equipments, search, statusFilter, marcaFilter, clienteFilter, grupoFilter, grupoClienteMap, sortField, sortDir]);
 
   // Pagination
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
@@ -524,7 +529,7 @@ export default function EquipamentosPreventivosPage() {
   const paginatedItems = filtered.slice((safeCurrentPage - 1) * PAGE_SIZE, safeCurrentPage * PAGE_SIZE);
 
   // Reset to page 1 when filters change
-  const filterKey = `${search}|${statusFilter.join(",")}|${marcaFilter.join(",")}|${clienteFilter.join(",")}|${tipoTarefaFilter.join(",")}|${sortField}|${sortDir}`;
+  const filterKey = `${search}|${statusFilter.join(",")}|${marcaFilter.join(",")}|${clienteFilter.join(",")}|${grupoFilter}|${tipoTarefaFilter.join(",")}|${sortField}|${sortDir}`;
   const [prevFilterKey, setPrevFilterKey] = useState(filterKey);
   if (filterKey !== prevFilterKey) {
     setPrevFilterKey(filterKey);
