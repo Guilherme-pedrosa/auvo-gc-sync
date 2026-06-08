@@ -8,14 +8,17 @@ import { Button } from "@/components/ui/button";
 import { Loader2, LogOut, FileText } from "lucide-react";
 import HorasTrabalhadasTab from "@/components/relatorios/HorasTrabalhadasTab";
 
+// Mesma normalização usada no HorasTrabalhadasTab (admin) para garantir
+// que o portal conte exatamente as mesmas OS do relatório interno.
 const normalizeClient = (s: string) =>
   (s || "")
-    .trim()
-    .toLowerCase()
+    .toUpperCase()
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
-    .replace(/\s+(ltda|me|sa|s\.a\.|s\/a|eireli|epp)\s*\.?$/i, "")
-    .replace(/\s+/g, " ");
+    .replace(/\s*(LTDA|ME|SA|EPP|EIRELI|S\/A|S\.A\.|LTDA\.?|MEI)\s*/g, "")
+    .replace(/[.\-\/]/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
 
 const normalizeTaskType = (s: string) =>
   (s || "")
@@ -102,12 +105,16 @@ export default function PortalHorasPage() {
 
   // Filter tasks: only this group's clients. Do not remove "em revisão" here:
   // it must remain in the same total the internal report shows.
+  // Match BOTH t.cliente (Auvo) and t.gc_os_cliente (GC) independently, same
+  // as the admin HorasTrabalhadasTab — otherwise OS where only one side
+  // matches the group get dropped and totals diverge.
   const visibleTasks = useMemo(() => {
     if (!tasksRaw || !grupoInfo) return [];
     const set = grupoInfo.clientesNorm;
     return tasksRaw.filter((t) => {
-      const cli = normalizeClient(t.cliente || t.gc_os_cliente || "");
-      if (!set.has(cli)) return false;
+      const cliAuvo = normalizeClient(t.cliente || "");
+      const cliGc = normalizeClient(t.gc_os_cliente || "");
+      if (!set.has(cliAuvo) && !set.has(cliGc)) return false;
       if (isRafaelSadoUser) {
         const taskType = normalizeTaskType(t.descricao || "");
         if (RAFAEL_SADO_BLOCKED_TASK_TYPES.some((type) => taskType.includes(type))) return false;
