@@ -81,7 +81,26 @@ Deno.serve(async (req) => {
       const itens = (cache || [])
         .map((r: any) => r.dados)
         .filter((d: any) => d && clientesNorm.has(normalize(d.cliente)));
-      return ok({ ok: true, itens });
+
+      // Enriquece com equipamento via tarefas_central
+      const ids = itens.map((i: any) => String(i.gc_orcamento_id)).filter(Boolean);
+      const equipMap = new Map<string, string>();
+      if (ids.length > 0) {
+        const { data: tarefas } = await admin
+          .from("tarefas_central")
+          .select("gc_orcamento_id, equipamento_nome")
+          .in("gc_orcamento_id", ids);
+        for (const t of tarefas || []) {
+          const k = String((t as any).gc_orcamento_id);
+          const nome = String((t as any).equipamento_nome || "").trim();
+          if (nome && !equipMap.has(k)) equipMap.set(k, nome);
+        }
+      }
+      const enriched = itens.map((i: any) => ({
+        ...i,
+        equipamento: equipMap.get(String(i.gc_orcamento_id)) || "",
+      }));
+      return ok({ ok: true, itens: enriched });
     }
 
     if (action === "detail") {
