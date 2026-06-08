@@ -141,6 +141,20 @@ export default function HorasTrabalhadasTab({
   const [syncingTaskId, setSyncingTaskId] = useState<string | null>(null);
   const [reprocessandoGc, setReprocessandoGc] = useState(false);
 
+  // E-mail do usuário logado — usado para destacar (em amarelo) vínculos
+  // de OS/Orçamento que vieram por referência textual no orientacao/descricao.
+  // Por enquanto o destaque é exclusivo do Guilherme (admin), mantendo a tela
+  // limpa para os demais usuários.
+  const [currentUserEmail, setCurrentUserEmail] = useState<string | null>(null);
+  useEffect(() => {
+    let mounted = true;
+    supabase.auth.getUser().then(({ data }) => {
+      if (mounted) setCurrentUserEmail(data.user?.email?.toLowerCase() || null);
+    }).catch(() => {});
+    return () => { mounted = false; };
+  }, []);
+  const destacarVinculoTextual = currentUserEmail === "guilherme@wedocorp.com";
+
   const reprocessarGc = async () => {
     setReprocessandoGc(true);
     try {
@@ -507,6 +521,7 @@ export default function HorasTrabalhadasTab({
     gc_os_link_cobranca: string;
     gc_orcamento_codigo: string;
     gc_orc_link: string;
+    gc_link_from_text?: boolean;
     cliente: string;
     statusRevisao: StatusRevisao;
     horasOriginais: number;
@@ -700,6 +715,7 @@ export default function HorasTrabalhadasTab({
         gc_os_link_cobranca: safeGcOsLink(t.gc_os_link_cobranca, null),
         gc_orcamento_codigo: t.gc_orcamento_codigo || "",
         gc_orc_link: safeGcOrcLink(t.gc_orc_link),
+        gc_link_from_text: Boolean((t as any).gc_link_from_text),
         cliente,
         statusRevisao: status,
         horasOriginais,
@@ -2176,7 +2192,18 @@ export default function HorasTrabalhadasTab({
                     <TableCell className="text-right font-medium">
                       {t.valor > 0 ? t.valor.toLocaleString("pt-BR", { style: "currency", currency: "BRL" }) : "—"}
                     </TableCell>
-                    <TableCell className="text-center font-mono text-[11px]">
+                    <TableCell
+                      className={`text-center font-mono text-[11px] ${
+                        destacarVinculoTextual && t.gc_link_from_text && t.gc_os_codigo
+                          ? "bg-yellow-100 dark:bg-yellow-900/30"
+                          : ""
+                      }`}
+                      title={
+                        destacarVinculoTextual && t.gc_link_from_text && t.gc_os_codigo
+                          ? "OS amarrada por referência textual (#código no orientacao/descricao)"
+                          : undefined
+                      }
+                    >
                       {t.gc_os_codigo ? (
                         <span className="inline-flex items-center gap-1">
                           {t.gc_os_link ? (
@@ -2209,7 +2236,18 @@ export default function HorasTrabalhadasTab({
                         <span className="text-muted-foreground">—</span>
                       )}
                     </TableCell>
-                    <TableCell className="text-center font-mono text-[11px]">
+                    <TableCell
+                      className={`text-center font-mono text-[11px] ${
+                        destacarVinculoTextual && t.gc_link_from_text && t.gc_orcamento_codigo
+                          ? "bg-yellow-100 dark:bg-yellow-900/30"
+                          : ""
+                      }`}
+                      title={
+                        destacarVinculoTextual && t.gc_link_from_text && t.gc_orcamento_codigo
+                          ? "Orçamento amarrado por referência textual (#código no orientacao/descricao)"
+                          : undefined
+                      }
+                    >
                       {t.gc_orcamento_codigo ? (
                         t.gc_orc_link ? (
                           <a

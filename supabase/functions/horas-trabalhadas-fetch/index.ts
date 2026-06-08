@@ -701,6 +701,9 @@ Deno.serve(async (req) => {
             }
             if (touched) {
               t.gc_inherited_from = cand.auvo_task_id;
+              // Marca herança por referência textual (#código no orientacao/descricao)
+              // para que o frontend possa destacar visualmente esses vínculos.
+              t.gc_link_from_text = true;
               updates.push({ auvo_task_id: String(t.auvo_task_id), update });
               enriched++;
             }
