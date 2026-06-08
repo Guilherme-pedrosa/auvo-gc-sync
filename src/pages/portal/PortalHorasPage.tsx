@@ -1,12 +1,13 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { startOfMonth, endOfMonth, format } from "date-fns";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { Button } from "@/components/ui/button";
-import { Loader2, LogOut, FileText } from "lucide-react";
+import { Loader2, LogOut, FileText, RefreshCw } from "lucide-react";
 import HorasTrabalhadasTab from "@/components/relatorios/HorasTrabalhadasTab";
+import { toast } from "sonner";
 
 // Mesma normalização usada no HorasTrabalhadasTab (admin) para garantir
 // que o portal conte exatamente as mesmas OS do relatório interno.
@@ -37,6 +38,7 @@ const RAFAEL_SADO_BLOCKED_TASK_TYPES = [
 export default function PortalHorasPage() {
   const { user, profile, role, loading: authLoading, signOut } = useAuth();
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const isRafaelSadoUser = normalizeTaskType(profile?.nome || profile?.email || "").includes("rafael sado");
 
   useEffect(() => {
@@ -86,6 +88,25 @@ export default function PortalHorasPage() {
       return (data?.tasks || []) as any[];
     },
     staleTime: 60_000,
+  });
+
+  const syncMutation = useMutation({
+    mutationFn: async () => {
+      const startDate = format(dateFrom, "yyyy-MM-dd");
+      const endDate = format(dateTo, "yyyy-MM-dd");
+      const { data, error } = await supabase.functions.invoke("central-sync", {
+        body: { start_date: startDate, end_date: endDate, situacao_ids: [], reports_only: true, wait: true },
+      });
+      if (error) throw error;
+      if (data?.success === false) throw new Error(data.error || "Falha ao sincronizar horas");
+      return data;
+    },
+    onSuccess: (result) => {
+      queryClient.invalidateQueries({ queryKey: ["portal-horas"] });
+      queryClient.invalidateQueries({ queryKey: ["portal-revisao"] });
+      toast.success(`Horas sincronizadas: ${result?.upserted || 0} atualizações.`);
+    },
+    onError: (err: Error) => toast.error(err.message),
   });
 
   // Internal review statuses are loaded only so the component can calculate totals;
@@ -200,6 +221,10 @@ export default function PortalHorasPage() {
           </div>
           <div className="flex items-center gap-3 text-sm">
             <span className="text-muted-foreground hidden sm:inline">{profile?.nome || profile?.email}</span>
+            <Button variant="outline" size="sm" onClick={() => syncMutation.mutate()} disabled={syncMutation.isPending}>
+              {syncMutation.isPending ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <RefreshCw className="h-4 w-4 mr-1" />}
+              Atualizar dados
+            </Button>
             <Button variant="outline" size="sm" onClick={() => navigate("/portal/orcamentos")}>
               <FileText className="h-4 w-4 mr-1" /> Orçamentos
             </Button>
@@ -220,7 +245,7 @@ export default function PortalHorasPage() {
         <HorasTrabalhadasTab
           clientMode
           data={visibleTasks}
-          isLoading={isLoading || !grupoInfo}
+          isLoading={isLoading || syncMutation.isPending || !grupoInfo}
           allClientes={allClientes}
           allTecnicos={allTecnicos}
           allTiposTarefa={allTiposTarefa}
