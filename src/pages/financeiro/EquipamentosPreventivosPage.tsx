@@ -602,6 +602,160 @@ export default function EquipamentosPreventivosPage() {
     grupoFilter !== "todos" && `Grupo: ${(gruposData?.grupos ?? []).find((g: any) => g.id === grupoFilter)?.nome || "—"}`,
   ].filter(Boolean);
 
+  const handleGeneratePdf = useCallback(() => {
+    // Resolve target equipment list per scope
+    let target: EquipmentRow[] = [];
+    let scopeLabel = "";
+    switch (pdfScope) {
+      case "selecionados":
+        target = filtered.filter((e) => selectedIds.has(e.id));
+        scopeLabel = "Apenas selecionados";
+        break;
+      case "atrasados":
+        target = filtered.filter((e) => e.dias_desde !== null && e.dias_desde > 120);
+        scopeLabel = "Atrasados (vencidos)";
+        break;
+      case "atencao_vencido":
+        target = filtered.filter((e) => e.dias_desde !== null && e.dias_desde > 90);
+        scopeLabel = "Atenção + Vencidos";
+        break;
+      case "feitos":
+        target = filtered.filter((e) => e.ultima_data !== null);
+        scopeLabel = "Com intervenção registrada";
+        break;
+      case "sem_registro":
+        target = filtered.filter((e) => e.dias_desde === null);
+        scopeLabel = "Sem histórico";
+        break;
+      case "filtrados":
+      default:
+        target = filtered;
+        scopeLabel = "Tudo (filtrado)";
+    }
+
+    if (target.length === 0) {
+      toast.error("Nenhum equipamento no escopo selecionado");
+      return;
+    }
+
+    const doc = new jsPDF({ orientation: "landscape", unit: "pt", format: "a4" });
+    const pageW = doc.internal.pageSize.getWidth();
+    const pageH = doc.internal.pageSize.getHeight();
+
+    doc.setFontSize(16);
+    doc.setFont("helvetica", "bold");
+    doc.text("Laudo de Preventiva de Equipamentos", 40, 40);
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(10);
+    doc.text(`Escopo: ${scopeLabel}`, 40, 58);
+    doc.text(`Emitido em: ${new Date().toLocaleString("pt-BR")}`, pageW - 40, 58, { align: "right" });
+
+    const filterLine = activeFilters.length > 0 ? `Filtros: ${activeFilters.join(" · ")}` : "Sem filtros adicionais";
+    doc.setFontSize(9);
+    doc.setTextColor(120);
+    doc.text(filterLine, 40, 74, { maxWidth: pageW - 80 });
+    doc.setTextColor(0);
+
+    // Summary table
+    autoTable(doc, {
+      startY: 90,
+      head: [["Status", "Marca", "Equipamento", "Identificador", "Cliente", "Última", "Técnico", "Dias", "Tarefas"]],
+      body: target.map((e) => {
+        const info = getStatusInfo(e.dias_desde);
+        return [
+          info.label,
+          e.marca || "—",
+          e.nome,
+          e.identificador || "—",
+          e.cliente || "—",
+          e.ultima_data ? format(parseISO(e.ultima_data), "dd/MM/yyyy") : "—",
+          e.ultimo_tecnico || "—",
+          e.dias_desde !== null ? `${e.dias_desde}d` : "—",
+          String(e.total_tarefas),
+        ];
+      }),
+      styles: { fontSize: 8, cellPadding: 3 },
+      headStyles: { fillColor: [37, 99, 235], textColor: 255, fontStyle: "bold" },
+      columnStyles: { 7: { halign: "right" }, 8: { halign: "right" } },
+    });
+
+    // Detail per equipment: tasks done
+    const relByEq = new Map<string, EquipTaskRel[]>();
+    for (const r of rawData?.relations ?? []) {
+      if (!relByEq.has(r.auvo_equipment_id)) relByEq.set(r.auvo_equipment_id, []);
+      relByEq.get(r.auvo_equipment_id)!.push(r);
+    }
+
+    for (const eq of target) {
+      doc.addPage();
+      doc.setFontSize(13);
+      doc.setFont("helvetica", "bold");
+      doc.text(eq.nome, 40, 40, { maxWidth: pageW - 80 });
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(9);
+      const info = getStatusInfo(eq.dias_desde);
+      doc.text(
+        `Cliente: ${eq.cliente || "—"}  ·  Marca: ${eq.marca || "—"}  ·  Identificador: ${eq.identificador || "—"}  ·  Status: ${info.label}${eq.dias_desde !== null ? ` (${eq.dias_desde}d)` : ""}`,
+        40, 58, { maxWidth: pageW - 80 }
+      );
+
+      let tasks = (relByEq.get(eq.auvo_equipment_id || "") || [])
+        .filter((t) => t.status_auvo === "Finalizada" && (t.data_conclusao || t.data_tarefa));
+      if (tipoTarefaFilter.length > 0) {
+        tasks = tasks.filter((t) => t.auvo_task_type_id && tipoTarefaFilter.includes(t.auvo_task_type_id));
+      }
+      tasks.sort((a, b) => {
+        const da = a.data_conclusao || a.data_tarefa || "";
+        const db = b.data_conclusao || b.data_tarefa || "";
+        return db.localeCompare(da);
+      });
+
+      if (tasks.length === 0) {
+        doc.setFontSize(10);
+        doc.setTextColor(120);
+        doc.text("Nenhuma intervenção finalizada registrada.", 40, 90);
+        doc.setTextColor(0);
+        continue;
+      }
+
+      autoTable(doc, {
+        startY: 78,
+        head: [["Data", "Tipo de tarefa", "Técnico", "Cliente (tarefa)", "Status", "Link"]],
+        body: tasks.map((t) => [
+          (t.data_conclusao || t.data_tarefa) ? format(parseISO((t.data_conclusao || t.data_tarefa) as string), "dd/MM/yyyy") : "—",
+          t.auvo_task_type_description || "—",
+          t.tecnico || "—",
+          t.cliente || "—",
+          t.status_auvo || "—",
+          t.auvo_link ? "Abrir" : "—",
+        ]),
+        styles: { fontSize: 8, cellPadding: 3 },
+        headStyles: { fillColor: [240, 240, 245], textColor: 30, fontStyle: "bold" },
+        columnStyles: { 5: { halign: "center", textColor: [37, 99, 235] } },
+        didDrawCell: (data: any) => {
+          if (data.section !== "body") return;
+          const t = tasks[data.row.index];
+          if (!t) return;
+          if (data.column.index === 5 && t.auvo_link) {
+            doc.link(data.cell.x, data.cell.y, data.cell.width, data.cell.height, { url: t.auvo_link });
+          }
+        },
+      });
+    }
+
+    const pages = doc.getNumberOfPages();
+    for (let i = 1; i <= pages; i++) {
+      doc.setPage(i);
+      doc.setFontSize(8);
+      doc.setTextColor(150);
+      doc.text(`Página ${i} de ${pages}`, pageW - 40, pageH - 20, { align: "right" });
+    }
+
+    doc.save(`laudo-preventiva-${format(new Date(), "yyyy-MM-dd")}.pdf`);
+    setPdfDialogOpen(false);
+    toast.success(`Laudo gerado com ${target.length} equipamento(s)`);
+  }, [pdfScope, filtered, selectedIds, rawData?.relations, tipoTarefaFilter, activeFilters]);
+
   return (
     <div className="space-y-6">
       {/* Header */}
