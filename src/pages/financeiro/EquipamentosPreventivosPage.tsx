@@ -621,6 +621,9 @@ export default function EquipamentosPreventivosPage() {
           <Button variant="outline" size="sm" onClick={handleExportCsv} disabled={filtered.length === 0}>
             <Download className="h-4 w-4 mr-1" /> CSV
           </Button>
+          <Button variant="outline" size="sm" onClick={() => setPdfDialogOpen(true)} disabled={equipments.length === 0}>
+            <FileText className="h-4 w-4 mr-1" /> Laudo PDF
+          </Button>
           <div className="flex items-center gap-2 bg-muted/50 border rounded-lg px-3 py-1.5">
             <CalendarDays className="h-4 w-4 text-muted-foreground" />
             <Input
