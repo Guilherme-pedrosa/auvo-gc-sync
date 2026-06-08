@@ -123,8 +123,7 @@ Deno.serve(async (req) => {
           tipo: String(i.tipo || tipoMap.get(String(i.gc_orcamento_id)) || "").toLowerCase(),
           equipamento: equipMap.get(String(i.gc_orcamento_id)) || "",
           gc_orc_link: linkMap.get(String(i.gc_orcamento_id)) || null,
-        }))
-        .filter((i: any) => i.tipo === "servico" || i.tipo === "serviço");
+        }));
       return ok({ ok: true, itens: enriched });
     }
 
