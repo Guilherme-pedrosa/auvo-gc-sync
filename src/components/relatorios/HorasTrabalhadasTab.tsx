@@ -11,7 +11,6 @@ import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
-import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area";
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
@@ -2068,8 +2067,8 @@ export default function HorasTrabalhadasTab({
 
       {/* Modal: Detalhe de OS por Cliente */}
       <Dialog open={!!clienteModal} onOpenChange={(open) => !open && setClienteModal(null)}>
-        <DialogContent className="max-w-6xl h-[85vh] overflow-hidden flex flex-col">
-          <DialogHeader>
+        <DialogContent className="max-w-[calc(100vw-2rem)] sm:max-w-6xl h-[calc(100dvh-2rem)] max-h-[calc(100dvh-2rem)] !grid grid-rows-[auto_minmax(0,1fr)] gap-0 overflow-hidden p-0">
+          <DialogHeader className="px-6 pb-3 pt-6">
             <DialogTitle className="text-base">{clienteSelecionado?.cliente}</DialogTitle>
             <DialogDescription className="flex flex-wrap gap-3 text-xs">
               <span><strong>{clienteSelecionado?.tarefas}</strong> OS</span>
@@ -2096,7 +2095,7 @@ export default function HorasTrabalhadasTab({
               </div>
             )}
           </DialogHeader>
-          <div className="flex-1 min-h-0 overflow-auto -mx-6 px-6">
+          <div className="min-h-0 overflow-y-auto overflow-x-auto px-6 pb-6 overscroll-contain">
             <Table className="min-w-[1200px]">
               <TableHeader className="sticky top-0 bg-background z-10">
                 <TableRow>
