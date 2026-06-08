@@ -37,6 +37,7 @@ interface OrcamentoItem {
   situacao: string;
   cor_situacao?: string;
   equipamento?: string;
+  gc_orc_link?: string;
 }
 
 const brl = (n: number) =>
