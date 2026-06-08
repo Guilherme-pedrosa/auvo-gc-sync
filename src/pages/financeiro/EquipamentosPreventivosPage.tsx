@@ -796,7 +796,7 @@ export default function EquipamentosPreventivosPage() {
           t.tecnico || "—",
           t.cliente || "—",
           t.status_auvo || "—",
-          t.auvo_link ? "Abrir relatório" : "—",
+          getTaskDigitalLink(t) ? "Abrir relatório" : "—",
         ]),
         styles: { fontSize: 8, cellPadding: 3 },
         headStyles: { fillColor: [240, 240, 245], textColor: 30, fontStyle: "bold" },
@@ -804,9 +804,10 @@ export default function EquipamentosPreventivosPage() {
         didDrawCell: (data: any) => {
           if (data.section !== "body") return;
           const t = tasks[data.row.index];
-          if (!t || !t.auvo_link) return;
+          const link = getTaskDigitalLink(t);
+          if (!t || !link) return;
           if (data.column.index === 0 || data.column.index === 5) {
-            doc.link(data.cell.x, data.cell.y, data.cell.width, data.cell.height, { url: t.auvo_link });
+            doc.link(data.cell.x, data.cell.y, data.cell.width, data.cell.height, { url: link });
           }
         },
       });
