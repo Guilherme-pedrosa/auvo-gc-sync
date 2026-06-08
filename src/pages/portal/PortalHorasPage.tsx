@@ -88,7 +88,6 @@ export default function PortalHorasPage() {
     },
     onSuccess: (result) => {
       queryClient.invalidateQueries({ queryKey: ["portal-horas"] });
-      queryClient.invalidateQueries({ queryKey: ["portal-revisao"] });
       toast.success(`Horas sincronizadas: ${result?.upserted || 0} atualizações.`);
     },
     onError: (err: Error) => toast.error(err.message),
