@@ -1134,9 +1134,20 @@ export default function EquipamentosPreventivosPage() {
                       </TableCell>
                       <TableCell>
                         {eq.ultima_data ? (
-                          <span className={cn("text-sm", info.color)}>
-                            {format(parseISO(eq.ultima_data), "dd/MM/yyyy", { locale: ptBR })}
-                          </span>
+                          eq.ultimo_link ? (
+                            <a
+                              href={eq.ultimo_link}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className={cn("text-sm font-medium hover:underline", info.color)}
+                            >
+                              {format(parseISO(eq.ultima_data), "dd/MM/yyyy", { locale: ptBR })}
+                            </a>
+                          ) : (
+                            <span className={cn("text-sm", info.color)}>
+                              {format(parseISO(eq.ultima_data), "dd/MM/yyyy", { locale: ptBR })}
+                            </span>
+                          )
                         ) : (
                           <span className="text-xs text-muted-foreground">Sem histórico</span>
                         )}
