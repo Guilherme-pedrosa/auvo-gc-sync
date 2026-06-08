@@ -2106,7 +2106,8 @@ export default function HorasTrabalhadasTab({
                   .filter((t) => taskMatchesAlertFilter(t.auvo_task_id))
                   .map((t, idx) => {
                   const alerts = tasksWithAlertas.get(t.auvo_task_id) || [];
-                  const pa = piorAlerta(alerts);
+                  const pa = clientMode ? (null as any) : piorAlerta(alerts);
+                  const showAlerts = !clientMode;
                   return (
                   <TableRow key={`${t.auvo_task_id}-${idx}`} className={cn("text-xs", rowAlertClass(pa))}>
                     <TableCell className="font-mono whitespace-nowrap">
@@ -2149,7 +2150,7 @@ export default function HorasTrabalhadasTab({
                     </TableCell>
                     <TableCell className={cn("text-right font-medium", (pa === "excessivo" || pa === "negativo" || pa === "overlap" || pa === "sem_janela") && "text-destructive")}>
                       <div className="flex items-center justify-end gap-1.5">
-                        {alerts.filter(Boolean).map((a) => (
+                        {showAlerts && alerts.filter(Boolean).map((a) => (
                           <span
                             key={a as string}
                             title={alertaTooltip(a, t)}
