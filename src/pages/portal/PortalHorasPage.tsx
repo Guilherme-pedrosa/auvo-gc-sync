@@ -94,21 +94,6 @@ export default function PortalHorasPage() {
     onError: (err: Error) => toast.error(err.message),
   });
 
-  // Internal review statuses are loaded only so the component can calculate totals;
-  // the portal hides the internal review UI through clientMode.
-  const { data: revisaoMap } = useQuery({
-    queryKey: ["portal-revisao"],
-    queryFn: async () => {
-      const { data } = await (supabase as any)
-        .from("os_revisao")
-        .select("auvo_task_id, status_revisao");
-      const map = new Map<string, string>();
-      for (const r of data || []) map.set(String(r.auvo_task_id), String(r.status_revisao));
-      return map;
-    },
-    staleTime: 60_000,
-  });
-
   // Filter tasks: only this group's clients. Do not remove "em revisão" here:
   // it must remain in the same total the internal report shows.
   // Match BOTH t.cliente (Auvo) and t.gc_os_cliente (GC) independently, same
@@ -123,7 +108,7 @@ export default function PortalHorasPage() {
       if (!set.has(cliAuvo) && !set.has(cliGc)) return false;
       return true;
     });
-  }, [tasksRaw, grupoInfo, revisaoMap]);
+  }, [tasksRaw, grupoInfo]);
 
   const allClientes = useMemo(() => {
     const seen = new Map<string, string>();
