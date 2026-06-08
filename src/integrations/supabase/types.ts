@@ -758,6 +758,30 @@ export type Database = {
         }
         Relationships: []
       }
+      orcamento_detalhe_cache: {
+        Row: {
+          atualizado_em: string
+          fingerprint: string | null
+          gc_orcamento_id: string
+          orcamento: Json
+          tarefas: Json
+        }
+        Insert: {
+          atualizado_em?: string
+          fingerprint?: string | null
+          gc_orcamento_id: string
+          orcamento?: Json
+          tarefas?: Json
+        }
+        Update: {
+          atualizado_em?: string
+          fingerprint?: string | null
+          gc_orcamento_id?: string
+          orcamento?: Json
+          tarefas?: Json
+        }
+        Relationships: []
+      }
       os_operation_locks: {
         Row: {
           gc_os_id: string
