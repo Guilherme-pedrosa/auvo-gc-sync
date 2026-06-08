@@ -626,6 +626,32 @@ export default function PortalOrcamentosPage() {
                         </div>
                       )}
 
+                      {Array.isArray((detailQuery.data as any).observacoes_cliente) &&
+                        (detailQuery.data as any).observacoes_cliente.length > 0 && (
+                          <div className="rounded-md border border-blue-300 bg-blue-50 p-2 text-xs space-y-2">
+                            <p className="font-semibold text-blue-900">
+                              Observações já enviadas por você / sua equipe:
+                            </p>
+                            {(detailQuery.data as any).observacoes_cliente.map(
+                              (o: any, idx: number) => (
+                                <div key={idx} className="border-l-2 border-blue-400 pl-2">
+                                  <p className="text-[11px] text-blue-700">
+                                    {o.user_nome || o.user_email || "Cliente"} ·{" "}
+                                    {o.created_at
+                                      ? new Date(o.created_at).toLocaleString("pt-BR", {
+                                          timeZone: "America/Sao_Paulo",
+                                        })
+                                      : ""}
+                                  </p>
+                                  <p className="whitespace-pre-wrap text-blue-900">
+                                    {o.observacao}
+                                  </p>
+                                </div>
+                              ),
+                            )}
+                          </div>
+                        )}
+
                       {(() => {
                         const orc: any = detailQuery.data.orcamento || {};
                         const interna =
