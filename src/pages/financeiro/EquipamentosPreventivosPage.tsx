@@ -706,14 +706,15 @@ export default function EquipamentosPreventivosPage() {
         styles: { fontSize: 8, cellPadding: 3 },
         headStyles: { fillColor: [240, 240, 245], textColor: 30, fontStyle: "bold" },
         columnStyles: {
+          4: { textColor: [37, 99, 235], fontStyle: "bold" },
           6: { halign: "right" },
-          7: { halign: "right", textColor: [37, 99, 235], fontStyle: "bold" },
+          7: { halign: "right" },
         },
         didDrawCell: (data: any) => {
           if (data.section !== "body") return;
           const e = rows[data.row.index];
           if (!e || !e.ultimo_link) return;
-          if (data.column.index === 7) {
+          if (data.column.index === 4) {
             doc.link(data.cell.x, data.cell.y, data.cell.width, data.cell.height, { url: e.ultimo_link });
           }
         },
