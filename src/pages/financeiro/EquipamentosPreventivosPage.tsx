@@ -599,6 +599,7 @@ export default function EquipamentosPreventivosPage() {
     marcaFilter.length > 0 && `Marcas: ${marcaFilter.length}`,
     clienteFilter.length > 0 && `Clientes: ${clienteFilter.length}`,
     tipoTarefaFilter.length > 0 && `Tipos tarefa: ${tipoTarefaFilter.length}`,
+    grupoFilter !== "todos" && `Grupo: ${(gruposData?.grupos ?? []).find((g: any) => g.id === grupoFilter)?.nome || "—"}`,
   ].filter(Boolean);
 
   return (
