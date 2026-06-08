@@ -932,6 +932,7 @@ export type Database = {
           endereco: string | null
           equipamento_id_serie: string | null
           equipamento_nome: string | null
+          gc_link_from_text: boolean | null
           gc_orc_cliente: string | null
           gc_orc_cor_situacao: string | null
           gc_orc_data: string | null
@@ -992,6 +993,7 @@ export type Database = {
           endereco?: string | null
           equipamento_id_serie?: string | null
           equipamento_nome?: string | null
+          gc_link_from_text?: boolean | null
           gc_orc_cliente?: string | null
           gc_orc_cor_situacao?: string | null
           gc_orc_data?: string | null
@@ -1052,6 +1054,7 @@ export type Database = {
           endereco?: string | null
           equipamento_id_serie?: string | null
           equipamento_nome?: string | null
+          gc_link_from_text?: boolean | null
           gc_orc_cliente?: string | null
           gc_orc_cor_situacao?: string | null
           gc_orc_data?: string | null
