@@ -150,11 +150,31 @@ Deno.serve(async (req) => {
           .upsert(upserts.slice(i, i + 200), { onConflict: "gc_orcamento_id" });
         if (error) throw error;
       }
-      const removidos = (cacheAtual || [])
+      // NÃO remove em bloco: itens que sumiram da paginação do GC podem ser
+      // resultado de race / paginação parcial / mudança temporária de situação.
+      // Em vez disso, verifica cada um individualmente via GET e só remove
+      // se confirmadamente saiu da situação "Aguardando Aprovação".
+      const removidosCandidatos = (cacheAtual || [])
         .filter((row: any) => !atualIds.has(String(row.gc_orcamento_id)))
         .map((row: any) => String(row.gc_orcamento_id));
-      if (removidos.length > 0) {
-        await admin.from("followup_kanban_cache").delete().in("gc_orcamento_id", removidos);
+      const aRemover: string[] = [];
+      await Promise.all(
+        removidosCandidatos.map(async (id) => {
+          try {
+            const r = await fetch(`${GC_BASE_URL}/api/orcamentos/${id}`, { headers: gcHeaders });
+            const j: any = await r.json().catch(() => ({}));
+            const orc = j?.data ?? j;
+            const sit = String(orc?.situacao_id ?? "");
+            if (sit && sit !== SITUACAO_AGUARDANDO_APROVACAO) {
+              aRemover.push(id);
+            }
+          } catch (_) {
+            // erro de rede: NÃO remove (preserva cache)
+          }
+        }),
+      );
+      if (aRemover.length > 0) {
+        await admin.from("followup_kanban_cache").delete().in("gc_orcamento_id", aRemover);
       }
     }
 
