@@ -338,6 +338,14 @@ export default function HorasTrabalhadasTab({
       const dur = Number(t.duracao_decimal) || 0;
       if (dur <= 0) return false;
 
+      // Exclui tipos comerciais (ex.: "Comercial - ENTREGA DA VENDA").
+      // Essas tarefas não são horas técnicas e não devem entrar em nenhum total.
+      const descRaw = String(t.descricao || "")
+        .toUpperCase()
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "");
+      if (descRaw.includes("ENTREGA DA VENDA")) return false;
+
       if (filterTecnico !== "todos" && t.tecnico !== filterTecnico) return false;
 
       const cliente = t.cliente || t.gc_os_cliente || "";
