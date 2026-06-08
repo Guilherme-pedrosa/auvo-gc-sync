@@ -525,7 +525,7 @@ Deno.serve(async (req) => {
 
         // Mapa: execId → parent row (prefere quem tem gc_os_codigo preenchido)
         const byExec = new Map<string, any>();
-        for (const p of parents || []) {
+        for (const p of (parents || []) as any[]) {
           const execStr = String(p.gc_os_tarefa_exec || "");
           if (!execStr) continue;
           const execIds = execStr.split(/[\/,;\s]+/).map((x) => x.trim()).filter(Boolean);
