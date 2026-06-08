@@ -21,25 +21,10 @@ const normalizeClient = (s: string) =>
     .replace(/\s+/g, " ")
     .trim();
 
-const normalizeTaskType = (s: string) =>
-  (s || "")
-    .trim()
-    .toLowerCase()
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .replace(/\s+/g, " ");
-
-const RAFAEL_SADO_BLOCKED_TASK_TYPES = [
-  "higienizacao de coifas",
-  "retirada de pecas fornecedor",
-  "visita comercial - entrega de vendas",
-];
-
 export default function PortalHorasPage() {
   const { user, profile, role, loading: authLoading, signOut } = useAuth();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const isRafaelSadoUser = normalizeTaskType(profile?.nome || profile?.email || "").includes("rafael sado");
 
   useEffect(() => {
     if (authLoading) return;
@@ -136,13 +121,9 @@ export default function PortalHorasPage() {
       const cliAuvo = normalizeClient(t.cliente || "");
       const cliGc = normalizeClient(t.gc_os_cliente || "");
       if (!set.has(cliAuvo) && !set.has(cliGc)) return false;
-      if (isRafaelSadoUser) {
-        const taskType = normalizeTaskType(t.descricao || "");
-        if (RAFAEL_SADO_BLOCKED_TASK_TYPES.some((type) => taskType.includes(type))) return false;
-      }
       return true;
     });
-  }, [tasksRaw, grupoInfo, revisaoMap, isRafaelSadoUser]);
+  }, [tasksRaw, grupoInfo, revisaoMap]);
 
   const allClientes = useMemo(() => {
     const seen = new Map<string, string>();
