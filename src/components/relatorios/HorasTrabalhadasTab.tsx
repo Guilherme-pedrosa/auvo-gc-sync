@@ -141,6 +141,20 @@ export default function HorasTrabalhadasTab({
   const [syncingTaskId, setSyncingTaskId] = useState<string | null>(null);
   const [reprocessandoGc, setReprocessandoGc] = useState(false);
 
+  // E-mail do usuário logado — usado para destacar (em amarelo) vínculos
+  // de OS/Orçamento que vieram por referência textual no orientacao/descricao.
+  // Por enquanto o destaque é exclusivo do Guilherme (admin), mantendo a tela
+  // limpa para os demais usuários.
+  const [currentUserEmail, setCurrentUserEmail] = useState<string | null>(null);
+  useEffect(() => {
+    let mounted = true;
+    supabase.auth.getUser().then(({ data }) => {
+      if (mounted) setCurrentUserEmail(data.user?.email?.toLowerCase() || null);
+    }).catch(() => {});
+    return () => { mounted = false; };
+  }, []);
+  const destacarVinculoTextual = currentUserEmail === "guilherme@wedocorp.com";
+
   const reprocessarGc = async () => {
     setReprocessandoGc(true);
     try {
