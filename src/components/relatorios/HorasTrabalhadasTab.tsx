@@ -2192,7 +2192,18 @@ export default function HorasTrabalhadasTab({
                     <TableCell className="text-right font-medium">
                       {t.valor > 0 ? t.valor.toLocaleString("pt-BR", { style: "currency", currency: "BRL" }) : "—"}
                     </TableCell>
-                    <TableCell className="text-center font-mono text-[11px]">
+                    <TableCell
+                      className={`text-center font-mono text-[11px] ${
+                        destacarVinculoTextual && t.gc_link_from_text && t.gc_os_codigo
+                          ? "bg-yellow-100 dark:bg-yellow-900/30"
+                          : ""
+                      }`}
+                      title={
+                        destacarVinculoTextual && t.gc_link_from_text && t.gc_os_codigo
+                          ? "OS amarrada por referência textual (#código no orientacao/descricao)"
+                          : undefined
+                      }
+                    >
                       {t.gc_os_codigo ? (
                         <span className="inline-flex items-center gap-1">
                           {t.gc_os_link ? (
@@ -2225,7 +2236,18 @@ export default function HorasTrabalhadasTab({
                         <span className="text-muted-foreground">—</span>
                       )}
                     </TableCell>
-                    <TableCell className="text-center font-mono text-[11px]">
+                    <TableCell
+                      className={`text-center font-mono text-[11px] ${
+                        destacarVinculoTextual && t.gc_link_from_text && t.gc_orcamento_codigo
+                          ? "bg-yellow-100 dark:bg-yellow-900/30"
+                          : ""
+                      }`}
+                      title={
+                        destacarVinculoTextual && t.gc_link_from_text && t.gc_orcamento_codigo
+                          ? "Orçamento amarrado por referência textual (#código no orientacao/descricao)"
+                          : undefined
+                      }
+                    >
                       {t.gc_orcamento_codigo ? (
                         t.gc_orc_link ? (
                           <a
