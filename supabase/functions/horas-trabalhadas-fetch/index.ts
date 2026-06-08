@@ -502,8 +502,10 @@ Deno.serve(async (req) => {
         if (!String(t.auvo_task_id || "").trim()) return false;
         const semGc = !String(t.gc_os_codigo || "").trim() &&
                       !String(t.gc_orcamento_codigo || "").trim();
+        const semRefs = !String(t.gc_os_tarefa_os || "").trim() ||
+                        !String(t.gc_os_tarefa_exec || "").trim();
         const semEquip = !String(t.equipamento_nome || "").trim();
-        return semGc || semEquip;
+        return semGc || semRefs || semEquip;
       });
       if (orfas.length > 0) {
         // Busca em lotes — gc_os_tarefa_exec pode conter IDs separados por barra.
@@ -514,7 +516,7 @@ Deno.serve(async (req) => {
         const { data: parents } = await supabase
           .from("tarefas_central")
           .select(
-            "auvo_task_id, gc_os_tarefa_exec, gc_os_codigo, gc_os_id, gc_os_link, " +
+            "auvo_task_id, gc_os_tarefa_os, gc_os_tarefa_exec, gc_os_codigo, gc_os_id, gc_os_link, " +
             "gc_os_link_cobranca, gc_os_situacao, gc_os_situacao_id, gc_os_cor_situacao, gc_os_data, " +
             "gc_os_data_saida, gc_os_valor_total, gc_os_vendedor, gc_os_cliente, " +
             "gc_orcamento_codigo, gc_orcamento_id, gc_orc_link, gc_orc_situacao, " +
@@ -544,6 +546,7 @@ Deno.serve(async (req) => {
           if (!p) continue;
           // Herda apenas campos GC vazios — nunca sobrescreve dados existentes.
           const fields = [
+            "gc_os_tarefa_os","gc_os_tarefa_exec",
             "gc_os_codigo","gc_os_id","gc_os_link","gc_os_link_cobranca","gc_os_situacao","gc_os_situacao_id",
             "gc_os_cor_situacao","gc_os_data","gc_os_data_saida","gc_os_valor_total",
             "gc_os_vendedor","gc_os_cliente",
@@ -573,11 +576,14 @@ Deno.serve(async (req) => {
           for (let i = 0; i < inheritedUpdates.length; i += 8) {
             const batch = inheritedUpdates.slice(i, i + 8);
             await Promise.allSettled(batch.map(({ auvo_task_id, update }) =>
-              supabase
-                .from("tarefas_central")
-                .update(update)
-                .eq("auvo_task_id", auvo_task_id)
-                .is("gc_os_id", null)
+              {
+                const blankConditions = Object.keys(update).map((f) => `${f}.is.null`).join(",");
+                return supabase
+                  .from("tarefas_central")
+                  .update(update)
+                  .eq("auvo_task_id", auvo_task_id)
+                  .or(blankConditions);
+              }
             ));
           }
         }
