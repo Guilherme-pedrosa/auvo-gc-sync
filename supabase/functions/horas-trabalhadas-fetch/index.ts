@@ -587,6 +587,125 @@ Deno.serve(async (req) => {
       avisos.push(`Falha ao enriquecer execuções com GC: ${e?.message || e}`);
     }
 
+    // 6.a.bis) Fallback por regex: extrai "Orçamento #NNNN" e/ou "OS Nº NNNN"
+    // da orientacao/descricao das execuções ainda órfãs e herda OS/Orçamento
+    // de qualquer tarefa do MESMO cliente que já tenha esse código vinculado.
+    // Cobre o caso comum em que a tarefa de execução não foi amarrada pelo
+    // atributo 73344 mas o técnico colou a referência no texto da OS.
+    try {
+      const orfas = tasks.filter((t: any) =>
+        !String(t.gc_os_codigo || "").trim() &&
+        !String(t.gc_orcamento_codigo || "").trim()
+      );
+      if (orfas.length > 0) {
+        const normCli = (s: string) => String(s || "")
+          .toUpperCase()
+          .normalize("NFD")
+          .replace(/[\u0300-\u036f]/g, "")
+          .replace(/\s*(LTDA|ME|SA|EPP|EIRELI|S\/A|S\.A\.|MEI)\s*/g, "")
+          .replace(/[.\-\/]/g, "")
+          .replace(/\s+/g, " ")
+          .trim();
+
+        const orcCodes = new Set<string>();
+        const osCodes = new Set<string>();
+        const perTask: { t: any; orc: string | null; os: string | null }[] = [];
+        for (const t of orfas) {
+          const text = `${t.orientacao || ""}\n${t.descricao || ""}`;
+          const orcMatch = text.match(/or[çc]amento[^0-9#]*#?\s*(\d{3,7})/i);
+          const osMatch = text.match(/\bOS(?:\s*GC)?[^0-9#]*(?:n[º°o]\.?\s*|#\s*)?(\d{3,7})/i);
+          const orc = orcMatch?.[1] || null;
+          const os = osMatch?.[1] || null;
+          if (orc) orcCodes.add(orc);
+          if (os) osCodes.add(os);
+          if (orc || os) perTask.push({ t, orc, os });
+        }
+
+        if (perTask.length > 0 && (orcCodes.size > 0 || osCodes.size > 0)) {
+          const selectCols =
+            "auvo_task_id, cliente, gc_os_cliente, " +
+            "gc_os_codigo, gc_os_id, gc_os_link, gc_os_link_cobranca, gc_os_situacao, " +
+            "gc_os_situacao_id, gc_os_cor_situacao, gc_os_data, gc_os_data_saida, " +
+            "gc_os_valor_total, gc_os_vendedor, " +
+            "gc_orcamento_codigo, gc_orcamento_id, gc_orc_link, gc_orc_situacao, " +
+            "gc_orc_situacao_id, gc_orc_cor_situacao, gc_orc_data, gc_orc_valor_total, " +
+            "gc_orc_vendedor, gc_orc_cliente";
+          const orFilters: string[] = [];
+          if (orcCodes.size > 0) orFilters.push(`gc_orcamento_codigo.in.(${Array.from(orcCodes).join(",")})`);
+          if (osCodes.size > 0) orFilters.push(`gc_os_codigo.in.(${Array.from(osCodes).join(",")})`);
+          const { data: cands } = await supabase
+            .from("tarefas_central")
+            .select(selectCols)
+            .or(orFilters.join(","));
+
+          // Index by code → row (prefer rows that have BOTH os+orc)
+          const byOrc = new Map<string, any>();
+          const byOs = new Map<string, any>();
+          for (const r of (cands || []) as any[]) {
+            const sanitized = sanitizeGcLinks(r);
+            const score = (sanitized.gc_os_codigo ? 2 : 0) + (sanitized.gc_orcamento_codigo ? 1 : 0);
+            const orc = String(sanitized.gc_orcamento_codigo || "").trim();
+            const os = String(sanitized.gc_os_codigo || "").trim();
+            if (orc) {
+              const cur = byOrc.get(orc);
+              const curScore = cur ? (cur.gc_os_codigo ? 2 : 0) + (cur.gc_orcamento_codigo ? 1 : 0) : -1;
+              if (!cur || score > curScore) byOrc.set(orc, sanitized);
+            }
+            if (os) {
+              const cur = byOs.get(os);
+              const curScore = cur ? (cur.gc_os_codigo ? 2 : 0) + (cur.gc_orcamento_codigo ? 1 : 0) : -1;
+              if (!cur || score > curScore) byOs.set(os, sanitized);
+            }
+          }
+
+          const fields = [
+            "gc_os_codigo","gc_os_id","gc_os_link","gc_os_link_cobranca","gc_os_situacao","gc_os_situacao_id",
+            "gc_os_cor_situacao","gc_os_data","gc_os_data_saida","gc_os_valor_total",
+            "gc_os_vendedor","gc_os_cliente",
+            "gc_orcamento_codigo","gc_orcamento_id","gc_orc_link","gc_orc_situacao",
+            "gc_orc_situacao_id","gc_orc_cor_situacao","gc_orc_data","gc_orc_valor_total",
+            "gc_orc_vendedor","gc_orc_cliente",
+          ];
+
+          let enriched = 0;
+          const updates: any[] = [];
+          for (const { t, orc, os } of perTask) {
+            const cand = (orc && byOrc.get(orc)) || (os && byOs.get(os)) || null;
+            if (!cand) continue;
+            // Segurança: só herda se o cliente bater (evita amarrar OS de outro cliente).
+            const cliTask = normCli(t.cliente || t.gc_os_cliente || "");
+            const cliCand = normCli(cand.cliente || cand.gc_os_cliente || cand.gc_orc_cliente || "");
+            if (cliTask && cliCand && cliTask !== cliCand) continue;
+            let touched = false;
+            const update: any = {};
+            for (const f of fields) {
+              if (!t[f] && cand[f]) { t[f] = cand[f]; update[f] = cand[f]; touched = true; }
+            }
+            if (touched) {
+              t.gc_inherited_from = cand.auvo_task_id;
+              updates.push({ auvo_task_id: String(t.auvo_task_id), update });
+              enriched++;
+            }
+          }
+          if (enriched > 0) {
+            avisos.push(`${enriched} execução(ões) vinculadas por referência textual (#código).`);
+            for (let i = 0; i < updates.length; i += 8) {
+              const batch = updates.slice(i, i + 8);
+              await Promise.allSettled(batch.map(({ auvo_task_id, update }) =>
+                supabase
+                  .from("tarefas_central")
+                  .update(update)
+                  .eq("auvo_task_id", auvo_task_id)
+                  .is("gc_os_id", null)
+              ));
+            }
+          }
+        }
+      }
+    } catch (e: any) {
+      console.warn("[horas-trabalhadas-fetch] regex linkage failed:", e?.message || e);
+    }
+
     // 6.b) Equipamento real por tarefa: a tabela equipamento_tarefas_auvo
     //      contém o vínculo nativo Auvo (task_id → equipment_id). Usamos isso
     //      para resolver equipamento_nome SEM chutar/inferir de tarefas-irmãs.
