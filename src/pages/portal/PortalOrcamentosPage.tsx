@@ -162,7 +162,7 @@ export default function PortalOrcamentosPage() {
     if (!user || role !== "cliente") navigate("/portal/login", { replace: true });
   }, [user, role, authLoading, navigate]);
 
-  const { data, isLoading, refetch, isFetching } = useQuery({
+  const { data, isLoading, isFetching } = useQuery({
     queryKey: ["portal-orcamentos"],
     queryFn: async () => {
       const { data, error } = await supabase.functions.invoke("portal-orcamentos", {
@@ -172,6 +172,22 @@ export default function PortalOrcamentosPage() {
       return (data?.itens || []) as OrcamentoItem[];
     },
     enabled: !!user && role === "cliente",
+  });
+
+  const refreshMutation = useMutation({
+    mutationFn: async () => {
+      const { data, error } = await supabase.functions.invoke("portal-orcamentos", {
+        body: { action: "refresh" },
+      });
+      if (error) throw error;
+      if (!data?.ok) throw new Error(data?.error || "Falha ao atualizar orçamentos");
+      return (data?.itens || []) as OrcamentoItem[];
+    },
+    onSuccess: (itensAtualizados) => {
+      qc.setQueryData(["portal-orcamentos"], itensAtualizados);
+      toast.success("Orçamentos sincronizados com o GC.");
+    },
+    onError: (err: Error) => toast.error(err.message),
   });
 
   const allCasas = useMemo(() => {
@@ -194,6 +210,7 @@ export default function PortalOrcamentosPage() {
       if (equipFilter !== "all" && (i.equipamento || "") !== equipFilter) return false;
       if (!q) return true;
       return (
+        String(i.gc_orcamento_id || "").toLowerCase().includes(q) ||
         i.gc_orcamento_codigo.toLowerCase().includes(q) ||
         i.cliente.toLowerCase().includes(q) ||
         (i.vendedor || "").toLowerCase().includes(q) ||
@@ -415,8 +432,8 @@ export default function PortalOrcamentosPage() {
           </div>
           <div className="flex items-center justify-between text-xs text-muted-foreground">
             <span>{itens.length} orçamento(s)</span>
-            <Button variant="outline" size="sm" onClick={() => refetch()} disabled={isFetching}>
-              {isFetching ? <Loader2 className="h-4 w-4 animate-spin" /> : "Atualizar"}
+            <Button variant="outline" size="sm" onClick={() => refreshMutation.mutate()} disabled={isFetching || refreshMutation.isPending}>
+              {isFetching || refreshMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : "Atualizar"}
             </Button>
           </div>
         </Card>

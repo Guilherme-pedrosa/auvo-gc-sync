@@ -11,6 +11,47 @@ const SITUACAO_AGUARDANDO_APROVACAO = "7063588";
 const SITUACAO_APROVADO_VIA_LINK = "9153484";
 const SITUACAO_AG_INFORMACOES = "8757598";
 
+async function fetchAguardandoAprovacao(gcHeaders: Record<string, string>) {
+  const records: any[] = [];
+  const MAX_PAGES = 50;
+  for (let pagina = 1; pagina <= MAX_PAGES; pagina++) {
+    const url = `${GC_BASE_URL}/api/orcamentos?limite=100&pagina=${pagina}&situacao_id=${SITUACAO_AGUARDANDO_APROVACAO}`;
+    let res: Response | null = null;
+    for (let attempt = 0; attempt < 3; attempt++) {
+      res = await fetch(url, { headers: gcHeaders });
+      if (res.status === 429) {
+        await new Promise((r) => setTimeout(r, 4000 + attempt * 2000));
+        continue;
+      }
+      break;
+    }
+    if (!res || !res.ok) throw new Error(`Falha ao sincronizar orçamentos no GC (HTTP ${res?.status || "sem resposta"})`);
+    const json = await res.json().catch(() => ({}));
+    const data = Array.isArray(json?.data) ? json.data : [];
+    records.push(...data);
+    const totalPaginas = Number(json?.meta?.total_paginas || 1);
+    if (pagina >= totalPaginas) break;
+  }
+  return records;
+}
+
+function mapOrcamento(orc: any) {
+  return {
+    gc_orcamento_id: String(orc.id),
+    gc_orcamento_codigo: String(orc.codigo || ""),
+    cliente: String(orc.nome_cliente || ""),
+    situacao_id: String(orc.situacao_id || ""),
+    situacao: String(orc.nome_situacao || ""),
+    cor_situacao: String(orc.cor_situacao || ""),
+    valor_total: Number(orc.valor_total || 0),
+    vendedor: String(orc.nome_vendedor || ""),
+    data: String(orc.data || ""),
+    tipo: String(orc.tipo || ""),
+    hash: String(orc.hash || ""),
+    link: `https://gestaoclick.com/orcamentos_servicos/editar/${orc.id}?retorno=%2Forcamentos_servicos`,
+  };
+}
+
 function ok(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), {
     status,
@@ -72,8 +113,53 @@ Deno.serve(async (req) => {
       "Content-Type": "application/json",
     };
 
-    if (action === "list") {
-      // Lê do cache do followup (já sincronizado), coluna 7063588
+    if (action === "refresh") {
+      const atuais = await fetchAguardandoAprovacao(gcHeaders);
+      const atualIds = new Set(atuais.map((orc: any) => String(orc.id)).filter(Boolean));
+      const { data: cacheAtual } = await admin
+        .from("followup_kanban_cache")
+        .select("gc_orcamento_id, coluna, posicao")
+        .eq("coluna", SITUACAO_AGUARDANDO_APROVACAO);
+
+      const posById = new Map<string, number>();
+      let maxPos = -1;
+      for (const row of cacheAtual || []) {
+        const id = String((row as any).gc_orcamento_id);
+        const pos = Number((row as any).posicao ?? 0);
+        posById.set(id, pos);
+        if (pos > maxPos) maxPos = pos;
+      }
+
+      const now = new Date().toISOString();
+      const upserts = atuais.map((orc: any) => {
+        const m = mapOrcamento(orc);
+        const id = m.gc_orcamento_id;
+        const pos = posById.has(id) ? posById.get(id)! : ++maxPos;
+        return {
+          gc_orcamento_id: id,
+          coluna: SITUACAO_AGUARDANDO_APROVACAO,
+          posicao: pos,
+          situacao_id_origem: SITUACAO_AGUARDANDO_APROVACAO,
+          dados: m,
+          atualizado_em: now,
+        };
+      });
+      for (let i = 0; i < upserts.length; i += 200) {
+        const { error } = await admin
+          .from("followup_kanban_cache")
+          .upsert(upserts.slice(i, i + 200), { onConflict: "gc_orcamento_id" });
+        if (error) throw error;
+      }
+      const removidos = (cacheAtual || [])
+        .filter((row: any) => !atualIds.has(String(row.gc_orcamento_id)))
+        .map((row: any) => String(row.gc_orcamento_id));
+      if (removidos.length > 0) {
+        await admin.from("followup_kanban_cache").delete().in("gc_orcamento_id", removidos);
+      }
+    }
+
+    if (action === "list" || action === "refresh") {
+      // Lê do cache do followup, coluna 7063588
       const { data: cache } = await admin
         .from("followup_kanban_cache")
         .select("*")
