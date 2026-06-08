@@ -162,7 +162,7 @@ export default function PortalOrcamentosPage() {
     if (!user || role !== "cliente") navigate("/portal/login", { replace: true });
   }, [user, role, authLoading, navigate]);
 
-  const { data, isLoading, refetch, isFetching } = useQuery({
+  const { data, isLoading, isFetching } = useQuery({
     queryKey: ["portal-orcamentos"],
     queryFn: async () => {
       const { data, error } = await supabase.functions.invoke("portal-orcamentos", {
