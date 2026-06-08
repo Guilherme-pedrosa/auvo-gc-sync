@@ -367,12 +367,16 @@ export default function PortalOrcamentosPage() {
                           const qtd = Number(it.quantidade || 0);
                           const valor = Number(it.valor_venda ?? it.valor ?? 0);
                           const desconto = Number(it.desconto || 0);
+                          const tipoDesc = String(it.tipo_desconto || "$");
                           const totalApi = it.valor_total != null ? Number(it.valor_total) : null;
-                          const total = totalApi != null ? totalApi : Math.max(qtd * valor - desconto, 0);
+                          const descontoValor =
+                            tipoDesc === "%" ? (qtd * valor) * (desconto / 100) : desconto;
+                          const total =
+                            totalApi != null ? totalApi : Math.max(qtd * valor - descontoValor, 0);
                           return {
                             nome: it.nome_produto || it.nome_servico || it.nome || tipo,
                             detalhes: it.detalhes || "",
-                            qtd, valor, desconto, total, tipo,
+                            qtd, valor, desconto, tipoDesc, descontoValor, total, tipo,
                           };
                         };
                         const itens = [
@@ -380,8 +384,11 @@ export default function PortalOrcamentosPage() {
                           ...servicos.map((s: any) => mapItem(s, "Serviço")),
                         ];
                         const subtotal = itens.reduce((s, i) => s + i.qtd * i.valor, 0);
-                        const descontoItens = itens.reduce((s, i) => s + i.desconto, 0);
-                        const descontoOrc = Number(orc?.desconto || 0);
+                        const descontoItens = itens.reduce((s, i) => s + i.descontoValor, 0);
+                        const descontoOrcRaw = Number(orc?.desconto || 0);
+                        const tipoDescOrc = String(orc?.tipo_desconto || "$");
+                        const descontoOrc =
+                          tipoDescOrc === "%" ? (subtotal - descontoItens) * (descontoOrcRaw / 100) : descontoOrcRaw;
                         const totalCalc = itens.reduce((s, i) => s + i.total, 0) - descontoOrc;
                         const totalOrc = Number(orc?.valor_total ?? totalCalc);
                         return itens.length > 0 ? (
@@ -404,7 +411,9 @@ export default function PortalOrcamentosPage() {
                                   <div className="text-right text-sm whitespace-nowrap">
                                     <p>{brl(it.valor)} <span className="text-xs text-muted-foreground">un.</span></p>
                                     {it.desconto > 0 && (
-                                      <p className="text-xs text-destructive">- {brl(it.desconto)} desc.</p>
+                                      <p className="text-xs text-destructive">
+                                        - {it.tipoDesc === "%" ? `${it.desconto}%` : brl(it.desconto)} desc.
+                                      </p>
                                     )}
                                     <p className="text-xs font-semibold">
                                       Total {brl(it.total)}
