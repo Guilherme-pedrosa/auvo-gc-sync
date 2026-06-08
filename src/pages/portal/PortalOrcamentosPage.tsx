@@ -80,6 +80,8 @@ export default function PortalOrcamentosPage() {
   const detailQuery = useQuery({
     queryKey: ["portal-orcamento-detail", selected?.gc_orcamento_id],
     enabled: !!selected?.gc_orcamento_id,
+    staleTime: Infinity,
+    gcTime: 1000 * 60 * 60, // 1h em memória
     queryFn: async () => {
       const { data, error } = await supabase.functions.invoke("portal-orcamentos", {
         body: { action: "detail", gc_orcamento_id: selected!.gc_orcamento_id },
