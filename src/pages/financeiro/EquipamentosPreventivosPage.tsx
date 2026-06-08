@@ -789,6 +789,18 @@ export default function EquipamentosPreventivosPage() {
           <Table>
             <TableHeader>
               <TableRow>
+                <TableHead className="w-8">
+                  <Checkbox
+                    checked={paginatedItems.length > 0 && paginatedItems.every((e) => selectedIds.has(e.id))}
+                    onCheckedChange={(v) => {
+                      const next = new Set(selectedIds);
+                      if (v) paginatedItems.forEach((e) => next.add(e.id));
+                      else paginatedItems.forEach((e) => next.delete(e.id));
+                      setSelectedIds(next);
+                    }}
+                    aria-label="Selecionar página"
+                  />
+                </TableHead>
                 <TableHead className="w-10">Status</TableHead>
                 <TableHead><SortButton field="marca">Marca</SortButton></TableHead>
                 <TableHead><SortButton field="nome">Equipamento</SortButton></TableHead>
