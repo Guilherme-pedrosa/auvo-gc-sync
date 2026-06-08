@@ -283,6 +283,94 @@ export default function PortalOrcamentosPage() {
       </header>
 
       <main className="max-w-6xl mx-auto px-4 py-6 space-y-4">
+        {(data && data.length > 0) && (() => {
+          const total = data.length;
+          const totalValor = data.reduce((s, i) => s + Number(i.valor_total || 0), 0);
+          const ticket = total > 0 ? totalValor / total : 0;
+          const porCasa = new Map<string, { qtd: number; valor: number }>();
+          for (const i of data) {
+            const k = i.cliente || "—";
+            const cur = porCasa.get(k) || { qtd: 0, valor: 0 };
+            cur.qtd += 1;
+            cur.valor += Number(i.valor_total || 0);
+            porCasa.set(k, cur);
+          }
+          const ranking = Array.from(porCasa.entries())
+            .map(([cliente, v]) => ({ cliente, ...v }))
+            .sort((a, b) => b.valor - a.valor);
+          const maxValor = ranking[0]?.valor || 1;
+          return (
+            <div className="space-y-3">
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                <Card className="p-3 border-l-4 border-l-primary">
+                  <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                    <ListChecks className="h-4 w-4" /> Orçamentos pendentes
+                  </div>
+                  <p className="text-2xl font-semibold mt-1">{total}</p>
+                </Card>
+                <Card className="p-3 border-l-4 border-l-emerald-500">
+                  <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                    <DollarSign className="h-4 w-4" /> Valor total
+                  </div>
+                  <p className="text-2xl font-semibold mt-1">{brl(totalValor)}</p>
+                </Card>
+                <Card className="p-3 border-l-4 border-l-amber-500">
+                  <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                    <TrendingUp className="h-4 w-4" /> Ticket médio
+                  </div>
+                  <p className="text-2xl font-semibold mt-1">{brl(ticket)}</p>
+                </Card>
+                <Card className="p-3 border-l-4 border-l-sky-500">
+                  <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                    <Building2 className="h-4 w-4" /> Casas envolvidas
+                  </div>
+                  <p className="text-2xl font-semibold mt-1">{ranking.length}</p>
+                </Card>
+              </div>
+
+              <Card className="p-4">
+                <div className="flex items-center justify-between mb-3">
+                  <p className="text-sm font-semibold flex items-center gap-2">
+                    <Building2 className="h-4 w-4 text-primary" /> Pendência por casa
+                  </p>
+                  <span className="text-xs text-muted-foreground">
+                    Ordenado por valor
+                  </span>
+                </div>
+                <div className="space-y-2 max-h-60 overflow-auto pr-1">
+                  {ranking.map((r) => {
+                    const pct = (r.valor / maxValor) * 100;
+                    const active = casaFilter === r.cliente;
+                    return (
+                      <button
+                        key={r.cliente}
+                        type="button"
+                        onClick={() => setCasaFilter(active ? "all" : r.cliente)}
+                        className={`w-full text-left rounded-md border p-2 hover:bg-muted/40 transition-colors ${active ? "border-primary bg-primary/5" : ""}`}
+                      >
+                        <div className="flex items-center justify-between gap-2 text-sm">
+                          <span className="font-medium truncate">{r.cliente}</span>
+                          <span className="whitespace-nowrap font-semibold">{brl(r.valor)}</span>
+                        </div>
+                        <div className="flex items-center justify-between gap-2 text-xs text-muted-foreground mt-0.5">
+                          <span>{r.qtd} orçamento(s)</span>
+                          <span>Ticket {brl(r.valor / r.qtd)}</span>
+                        </div>
+                        <div className="h-1.5 rounded-full bg-muted mt-1.5 overflow-hidden">
+                          <div
+                            className="h-full bg-primary"
+                            style={{ width: `${Math.max(pct, 4)}%` }}
+                          />
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              </Card>
+            </div>
+          );
+        })()}
+
         <Card className="p-3 space-y-3">
           <Input
             placeholder="Buscar por código, casa, vendedor ou equipamento…"
