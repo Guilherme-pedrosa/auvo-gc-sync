@@ -598,11 +598,13 @@ export default function PortalOrcamentosPage() {
                         );
                       })()}
 
-                      {detailQuery.data.orcamento?.observacao && (
+                      {(detailQuery.data.orcamento?.observacoes ||
+                        detailQuery.data.orcamento?.observacao) && (
                         <div className="rounded-md border p-2 text-xs">
                           <p className="font-semibold mb-1">Observações:</p>
                           <p className="whitespace-pre-wrap text-muted-foreground">
-                            {detailQuery.data.orcamento.observacao}
+                            {detailQuery.data.orcamento.observacoes ||
+                              detailQuery.data.orcamento.observacao}
                           </p>
                         </div>
                       )}
