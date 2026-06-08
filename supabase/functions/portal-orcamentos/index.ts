@@ -100,22 +100,31 @@ Deno.serve(async (req) => {
         }
       }
       // Para os que não vieram pela tarefas_central, busca o hash no GC e monta /prop/{hash}
-      const missing = itens.filter((i: any) => !linkMap.has(String(i.gc_orcamento_id)));
+      const tipoMap = new Map<string, string>();
+      const missing = itens.filter(
+        (i: any) => !linkMap.has(String(i.gc_orcamento_id)) || !i.tipo,
+      );
       await Promise.all(
         missing.map(async (i: any) => {
           try {
             const r = await fetch(`${GC_BASE_URL}/api/orcamentos/${i.gc_orcamento_id}`, { headers: gcHeaders });
             const j: any = await r.json().catch(() => ({}));
-            const hash = String((j?.data ?? j)?.hash || "").trim();
+            const orc = j?.data ?? j;
+            const hash = String(orc?.hash || "").trim();
             if (hash) linkMap.set(String(i.gc_orcamento_id), `https://gestaoclick.com/prop/${hash}`);
+            const tipo = String(orc?.tipo || "").trim().toLowerCase();
+            if (tipo) tipoMap.set(String(i.gc_orcamento_id), tipo);
           } catch (_) { /* ignore */ }
         }),
       );
-      const enriched = itens.map((i: any) => ({
-        ...i,
-        equipamento: equipMap.get(String(i.gc_orcamento_id)) || "",
-        gc_orc_link: linkMap.get(String(i.gc_orcamento_id)) || null,
-      }));
+      const enriched = itens
+        .map((i: any) => ({
+          ...i,
+          tipo: String(i.tipo || tipoMap.get(String(i.gc_orcamento_id)) || "").toLowerCase(),
+          equipamento: equipMap.get(String(i.gc_orcamento_id)) || "",
+          gc_orc_link: linkMap.get(String(i.gc_orcamento_id)) || null,
+        }))
+        .filter((i: any) => i.tipo === "servico" || i.tipo === "serviço");
       return ok({ ok: true, itens: enriched });
     }
 
