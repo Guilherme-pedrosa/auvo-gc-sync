@@ -608,6 +608,23 @@ export default function PortalOrcamentosPage() {
                       )}
 
                       {(() => {
+                        const orc: any = detailQuery.data.orcamento || {};
+                        const interna =
+                          orc.observacoes_interna ||
+                          orc.observacao_interna ||
+                          orc.observacoes_internas ||
+                          orc.obs_interna ||
+                          "";
+                        if (!interna) return null;
+                        return (
+                          <div className="rounded-md border border-amber-300 bg-amber-50 p-2 text-xs">
+                            <p className="font-semibold mb-1 text-amber-900">Observações internas (GC):</p>
+                            <p className="whitespace-pre-wrap text-amber-900">{interna}</p>
+                          </div>
+                        );
+                      })()}
+
+                      {(() => {
                         const tarefas = (detailQuery.data.tarefas || []).filter(
                           (t: any) => t.auvo_task_url || t.auvo_link || t.auvo_survey_url,
                         );
