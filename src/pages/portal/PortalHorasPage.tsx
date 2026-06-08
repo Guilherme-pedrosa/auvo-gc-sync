@@ -21,25 +21,10 @@ const normalizeClient = (s: string) =>
     .replace(/\s+/g, " ")
     .trim();
 
-const normalizeTaskType = (s: string) =>
-  (s || "")
-    .trim()
-    .toLowerCase()
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .replace(/\s+/g, " ");
-
-const RAFAEL_SADO_BLOCKED_TASK_TYPES = [
-  "higienizacao de coifas",
-  "retirada de pecas fornecedor",
-  "visita comercial - entrega de vendas",
-];
-
 export default function PortalHorasPage() {
   const { user, profile, role, loading: authLoading, signOut } = useAuth();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const isRafaelSadoUser = normalizeTaskType(profile?.nome || profile?.email || "").includes("rafael sado");
 
   useEffect(() => {
     if (authLoading) return;
@@ -103,25 +88,9 @@ export default function PortalHorasPage() {
     },
     onSuccess: (result) => {
       queryClient.invalidateQueries({ queryKey: ["portal-horas"] });
-      queryClient.invalidateQueries({ queryKey: ["portal-revisao"] });
       toast.success(`Horas sincronizadas: ${result?.upserted || 0} atualizações.`);
     },
     onError: (err: Error) => toast.error(err.message),
-  });
-
-  // Internal review statuses are loaded only so the component can calculate totals;
-  // the portal hides the internal review UI through clientMode.
-  const { data: revisaoMap } = useQuery({
-    queryKey: ["portal-revisao"],
-    queryFn: async () => {
-      const { data } = await (supabase as any)
-        .from("os_revisao")
-        .select("auvo_task_id, status_revisao");
-      const map = new Map<string, string>();
-      for (const r of data || []) map.set(String(r.auvo_task_id), String(r.status_revisao));
-      return map;
-    },
-    staleTime: 60_000,
   });
 
   // Filter tasks: only this group's clients. Do not remove "em revisão" here:
@@ -136,13 +105,9 @@ export default function PortalHorasPage() {
       const cliAuvo = normalizeClient(t.cliente || "");
       const cliGc = normalizeClient(t.gc_os_cliente || "");
       if (!set.has(cliAuvo) && !set.has(cliGc)) return false;
-      if (isRafaelSadoUser) {
-        const taskType = normalizeTaskType(t.descricao || "");
-        if (RAFAEL_SADO_BLOCKED_TASK_TYPES.some((type) => taskType.includes(type))) return false;
-      }
       return true;
     });
-  }, [tasksRaw, grupoInfo, revisaoMap, isRafaelSadoUser]);
+  }, [tasksRaw, grupoInfo]);
 
   const allClientes = useMemo(() => {
     const seen = new Map<string, string>();
