@@ -546,27 +546,33 @@ Deno.serve(async (req) => {
         for (const t of orfas) {
           const p = sanitizeGcLinks(byExec.get(String(t.auvo_task_id)));
           if (!p) continue;
+          if (!String(p.gc_os_tarefa_os || "").trim()) {
+            p.gc_os_tarefa_os = String(p.auvo_task_id || "").trim() || null;
+          }
           // Herda apenas campos GC vazios — nunca sobrescreve dados existentes.
-          const fields = [
+          const osFields = [
             "gc_os_tarefa_os","gc_os_tarefa_exec",
             "gc_os_codigo","gc_os_id","gc_os_link","gc_os_link_cobranca","gc_os_situacao","gc_os_situacao_id",
             "gc_os_cor_situacao","gc_os_data","gc_os_data_saida","gc_os_valor_total",
             "gc_os_vendedor","gc_os_cliente",
+            "equipamento_nome","equipamento_id_serie",
+          ];
+          const inheritedOnlyIfBlankFields = [
             "gc_orcamento_codigo","gc_orcamento_id","gc_orc_link","gc_orc_situacao",
             "gc_orc_situacao_id","gc_orc_cor_situacao","gc_orc_data","gc_orc_valor_total",
             "gc_orc_vendedor","gc_orc_cliente",
-            "equipamento_nome","equipamento_id_serie",
           ];
+          const fields = [...osFields, ...inheritedOnlyIfBlankFields];
           let touched = false;
-          for (const f of fields) {
-            if (!t[f] && p[f]) { t[f] = p[f]; touched = true; }
+          const update: any = {};
+          for (const f of osFields) {
+            if (p[f] && t[f] !== p[f]) { t[f] = p[f]; update[f] = p[f]; touched = true; }
+          }
+          for (const f of inheritedOnlyIfBlankFields) {
+            if (!t[f] && p[f]) { t[f] = p[f]; update[f] = p[f]; touched = true; }
           }
           if (touched) {
             t.gc_inherited_from = p.auvo_task_id;
-            const update: any = {};
-            for (const f of fields) {
-              if (f.startsWith("gc_") && t[f]) update[f] = t[f];
-            }
             if (Object.keys(update).length > 0) {
               inheritedUpdates.push({ auvo_task_id: String(t.auvo_task_id), update });
             }
@@ -578,14 +584,10 @@ Deno.serve(async (req) => {
           for (let i = 0; i < inheritedUpdates.length; i += 8) {
             const batch = inheritedUpdates.slice(i, i + 8);
             await Promise.allSettled(batch.map(({ auvo_task_id, update }) =>
-              {
-                const blankConditions = Object.keys(update).map((f) => `${f}.is.null`).join(",");
-                return supabase
-                  .from("tarefas_central")
-                  .update(update)
-                  .eq("auvo_task_id", auvo_task_id)
-                  .or(blankConditions);
-              }
+              supabase
+                .from("tarefas_central")
+                .update(update)
+                .eq("auvo_task_id", auvo_task_id)
             ));
           }
         }
