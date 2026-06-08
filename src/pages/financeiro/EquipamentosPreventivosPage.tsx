@@ -82,6 +82,17 @@ type SyncWindow = {
 };
 
 // ── Helpers ──
+function normalizeClienteName(name: string | null | undefined): string {
+  return (name || "")
+    .toUpperCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/\s*(LTDA|ME|SA|EPP|EIRELI|S\/A|S\.A\.|LTDA\.?|MEI)\s*/g, "")
+    .replace(/[.\-\/]/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 function getStatusInfo(dias: number | null) {
   if (dias === null) return { label: "Sem registro", color: "text-muted-foreground", bg: "bg-muted", icon: Clock };
   if (dias <= 90) return { label: "Em dia", color: "text-emerald-700 dark:text-emerald-400", bg: "bg-emerald-50 dark:bg-emerald-950/30", icon: CheckCircle2 };
