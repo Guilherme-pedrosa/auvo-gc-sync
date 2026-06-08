@@ -345,6 +345,8 @@ export default function HorasTrabalhadasTab({
         .normalize("NFD")
         .replace(/[\u0300-\u036f]/g, "");
       if (descRaw.includes("ENTREGA DA VENDA")) return false;
+      // Higienização de coifa não é hora técnica — exclui de todos os totais.
+      if (descRaw.includes("HIGIENIZACAO DE COIFA")) return false;
 
       if (filterTecnico !== "todos" && t.tecnico !== filterTecnico) return false;
 
