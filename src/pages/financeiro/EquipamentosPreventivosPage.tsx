@@ -816,7 +816,7 @@ export default function EquipamentosPreventivosPage() {
             <TableBody>
               {filtered.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={10} className="text-center py-10 text-muted-foreground">
+                  <TableCell colSpan={11} className="text-center py-10 text-muted-foreground">
                     Nenhum equipamento encontrado
                   </TableCell>
                 </TableRow>
@@ -828,6 +828,17 @@ export default function EquipamentosPreventivosPage() {
 
                   return (
                     <TableRow key={eq.id} className={cn(info.bg)}>
+                      <TableCell>
+                        <Checkbox
+                          checked={selectedIds.has(eq.id)}
+                          onCheckedChange={(v) => {
+                            const next = new Set(selectedIds);
+                            if (v) next.add(eq.id); else next.delete(eq.id);
+                            setSelectedIds(next);
+                          }}
+                          aria-label="Selecionar"
+                        />
+                      </TableCell>
                       <TableCell>
                         <Tooltip>
                           <TooltipTrigger>
