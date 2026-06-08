@@ -2066,7 +2066,7 @@ export default function HorasTrabalhadasTab({
 
       {/* Modal: Detalhe de OS por Cliente */}
       <Dialog open={!!clienteModal} onOpenChange={(open) => !open && setClienteModal(null)}>
-        <DialogContent className="max-w-6xl max-h-[85vh] overflow-hidden flex flex-col">
+        <DialogContent className="max-w-6xl h-[85vh] overflow-hidden flex flex-col">
           <DialogHeader>
             <DialogTitle className="text-base">{clienteSelecionado?.cliente}</DialogTitle>
             <DialogDescription className="flex flex-wrap gap-3 text-xs">
@@ -2094,7 +2094,7 @@ export default function HorasTrabalhadasTab({
               </div>
             )}
           </DialogHeader>
-          <ScrollArea className="flex-1 -mx-6 px-6">
+          <div className="flex-1 min-h-0 overflow-auto -mx-6 px-6">
             <Table className="min-w-[1200px]">
               <TableHeader className="sticky top-0 bg-background z-10">
                 <TableRow>
@@ -2249,8 +2249,7 @@ export default function HorasTrabalhadasTab({
                 })}
               </TableBody>
             </Table>
-            <ScrollBar orientation="horizontal" />
-          </ScrollArea>
+          </div>
         </DialogContent>
       </Dialog>
 
