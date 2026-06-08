@@ -174,6 +174,22 @@ export default function PortalOrcamentosPage() {
     enabled: !!user && role === "cliente",
   });
 
+  const refreshMutation = useMutation({
+    mutationFn: async () => {
+      const { data, error } = await supabase.functions.invoke("portal-orcamentos", {
+        body: { action: "refresh" },
+      });
+      if (error) throw error;
+      if (!data?.ok) throw new Error(data?.error || "Falha ao atualizar orçamentos");
+      return (data?.itens || []) as OrcamentoItem[];
+    },
+    onSuccess: (itensAtualizados) => {
+      qc.setQueryData(["portal-orcamentos"], itensAtualizados);
+      toast.success("Orçamentos sincronizados com o GC.");
+    },
+    onError: (err: Error) => toast.error(err.message),
+  });
+
   const allCasas = useMemo(() => {
     const set = new Set<string>();
     (data || []).forEach((i) => i.cliente && set.add(i.cliente));
@@ -415,8 +431,8 @@ export default function PortalOrcamentosPage() {
           </div>
           <div className="flex items-center justify-between text-xs text-muted-foreground">
             <span>{itens.length} orçamento(s)</span>
-            <Button variant="outline" size="sm" onClick={() => refetch()} disabled={isFetching}>
-              {isFetching ? <Loader2 className="h-4 w-4 animate-spin" /> : "Atualizar"}
+            <Button variant="outline" size="sm" onClick={() => refreshMutation.mutate()} disabled={isFetching || refreshMutation.isPending}>
+              {isFetching || refreshMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : "Atualizar"}
             </Button>
           </div>
         </Card>
