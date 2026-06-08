@@ -257,7 +257,15 @@ Deno.serve(async (req) => {
       if (cached && cached.fingerprint === fingerprint) {
         const cli = normalize(String((cached.orcamento as any)?.nome_cliente || ""));
         if (!clientesNorm.has(cli)) return ok({ ok: false, error: "Orçamento fora do grupo do usuário" });
-        return ok({ ok: true, orcamento: cached.orcamento, tarefas: cached.tarefas || [], cached: true });
+        const { data: obsLogC } = await admin
+          .from("orcamento_aprovacao_log")
+          .select("observacao, user_nome, user_email, created_at")
+          .eq("gc_orcamento_id", gcOrcId)
+          .eq("acao", "observation")
+          .not("observacao", "is", null)
+          .order("created_at", { ascending: false })
+          .limit(20);
+        return ok({ ok: true, orcamento: cached.orcamento, tarefas: cached.tarefas || [], observacoes_cliente: obsLogC || [], cached: true });
       }
 
       const resp = await fetch(`${GC_BASE_URL}/api/orcamentos/${gcOrcId}`, { headers: gcHeaders });
