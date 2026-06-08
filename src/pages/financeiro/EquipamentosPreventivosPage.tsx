@@ -546,12 +546,12 @@ export default function EquipamentosPreventivosPage() {
   }
 
   const stats = useMemo(() => {
-    const emDia = equipments.filter((e) => e.dias_desde !== null && e.dias_desde <= 90).length;
-    const atencao = equipments.filter((e) => e.dias_desde !== null && e.dias_desde > 90 && e.dias_desde <= 120).length;
-    const vencido = equipments.filter((e) => e.dias_desde !== null && e.dias_desde > 120).length;
-    const semRegistro = equipments.filter((e) => e.dias_desde === null).length;
-    return { emDia, atencao, vencido, semRegistro, total: equipments.length };
-  }, [equipments]);
+    const emDia = filtered.filter((e) => e.dias_desde !== null && e.dias_desde <= 90).length;
+    const atencao = filtered.filter((e) => e.dias_desde !== null && e.dias_desde > 90 && e.dias_desde <= 120).length;
+    const vencido = filtered.filter((e) => e.dias_desde !== null && e.dias_desde > 120).length;
+    const semRegistro = filtered.filter((e) => e.dias_desde === null).length;
+    return { emDia, atencao, vencido, semRegistro, total: filtered.length };
+  }, [filtered]);
 
   const SortButton = ({ field, children }: { field: SortField; children: React.ReactNode }) => (
     <Button
@@ -609,6 +609,7 @@ export default function EquipamentosPreventivosPage() {
     clienteFilter.length > 0 && `Clientes: ${clienteFilter.length}`,
     tipoTarefaFilter.length > 0 && `Tipos tarefa: ${tipoTarefaFilter.length}`,
     grupoFilter !== "todos" && `Grupo: ${(gruposData?.grupos ?? []).find((g: any) => g.id === grupoFilter)?.nome || "—"}`,
+    (syncStartDate && syncEndDate) && `Período: ${format(parseISO(syncStartDate), "dd/MM/yyyy")} → ${format(parseISO(syncEndDate), "dd/MM/yyyy")}`,
   ].filter(Boolean);
 
   const handleGeneratePdf = useCallback(() => {
