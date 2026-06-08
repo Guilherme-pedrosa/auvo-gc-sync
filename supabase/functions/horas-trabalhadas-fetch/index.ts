@@ -612,7 +612,10 @@ Deno.serve(async (req) => {
         const perTask: { t: any; orc: string | null; os: string | null }[] = [];
         for (const t of orfas) {
           const text = `${t.orientacao || ""}\n${t.descricao || ""}`;
-          const orcMatch = text.match(/or[çc]amento[^0-9#]*#?\s*(\d{3,7})/i);
+          const orcMatch =
+            text.match(/or[çc]amento[^0-9#]*#?\s*(\d{3,7})/i) ||
+            // Forma abreviada: "OR Nº 5744", "ORC. #5744", "OR. N° 5744"
+            text.match(/\bORC?\.?\s*(?:n[º°o]\.?|#)\s*(\d{3,7})/i);
           const osMatch = text.match(/\bOS(?:\s*GC)?[^0-9#]*(?:n[º°o]\.?\s*|#\s*)?(\d{3,7})/i);
           const orc = orcMatch?.[1] || null;
           const os = osMatch?.[1] || null;
