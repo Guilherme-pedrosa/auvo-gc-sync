@@ -502,6 +502,15 @@ export default function EquipamentosPreventivosPage() {
       result = result.filter((e) => e.cliente && members.has(normalizeClienteName(e.cliente)));
     }
 
+    // Filtro por período (data da última intervenção)
+    if (syncStartDate && syncEndDate) {
+      result = result.filter((e) => {
+        if (!e.ultima_data) return false;
+        const d = e.ultima_data.slice(0, 10);
+        return d >= syncStartDate && d <= syncEndDate;
+      });
+    }
+
     result = [...result].sort((a, b) => {
       const dir = sortDir === "asc" ? 1 : -1;
       switch (sortField) {
@@ -521,7 +530,7 @@ export default function EquipamentosPreventivosPage() {
     });
 
     return result;
-  }, [equipments, search, statusFilter, marcaFilter, clienteFilter, grupoFilter, grupoClienteMap, sortField, sortDir]);
+  }, [equipments, search, statusFilter, marcaFilter, clienteFilter, grupoFilter, grupoClienteMap, sortField, sortDir, syncStartDate, syncEndDate]);
 
   // Pagination
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
@@ -529,7 +538,7 @@ export default function EquipamentosPreventivosPage() {
   const paginatedItems = filtered.slice((safeCurrentPage - 1) * PAGE_SIZE, safeCurrentPage * PAGE_SIZE);
 
   // Reset to page 1 when filters change
-  const filterKey = `${search}|${statusFilter.join(",")}|${marcaFilter.join(",")}|${clienteFilter.join(",")}|${grupoFilter}|${tipoTarefaFilter.join(",")}|${sortField}|${sortDir}`;
+  const filterKey = `${search}|${statusFilter.join(",")}|${marcaFilter.join(",")}|${clienteFilter.join(",")}|${grupoFilter}|${tipoTarefaFilter.join(",")}|${sortField}|${sortDir}|${syncStartDate}|${syncEndDate}`;
   const [prevFilterKey, setPrevFilterKey] = useState(filterKey);
   if (filterKey !== prevFilterKey) {
     setPrevFilterKey(filterKey);
@@ -537,12 +546,12 @@ export default function EquipamentosPreventivosPage() {
   }
 
   const stats = useMemo(() => {
-    const emDia = equipments.filter((e) => e.dias_desde !== null && e.dias_desde <= 90).length;
-    const atencao = equipments.filter((e) => e.dias_desde !== null && e.dias_desde > 90 && e.dias_desde <= 120).length;
-    const vencido = equipments.filter((e) => e.dias_desde !== null && e.dias_desde > 120).length;
-    const semRegistro = equipments.filter((e) => e.dias_desde === null).length;
-    return { emDia, atencao, vencido, semRegistro, total: equipments.length };
-  }, [equipments]);
+    const emDia = filtered.filter((e) => e.dias_desde !== null && e.dias_desde <= 90).length;
+    const atencao = filtered.filter((e) => e.dias_desde !== null && e.dias_desde > 90 && e.dias_desde <= 120).length;
+    const vencido = filtered.filter((e) => e.dias_desde !== null && e.dias_desde > 120).length;
+    const semRegistro = filtered.filter((e) => e.dias_desde === null).length;
+    return { emDia, atencao, vencido, semRegistro, total: filtered.length };
+  }, [filtered]);
 
   const SortButton = ({ field, children }: { field: SortField; children: React.ReactNode }) => (
     <Button
@@ -600,6 +609,7 @@ export default function EquipamentosPreventivosPage() {
     clienteFilter.length > 0 && `Clientes: ${clienteFilter.length}`,
     tipoTarefaFilter.length > 0 && `Tipos tarefa: ${tipoTarefaFilter.length}`,
     grupoFilter !== "todos" && `Grupo: ${(gruposData?.grupos ?? []).find((g: any) => g.id === grupoFilter)?.nome || "—"}`,
+    (syncStartDate && syncEndDate) && `Período: ${format(parseISO(syncStartDate), "dd/MM/yyyy")} → ${format(parseISO(syncEndDate), "dd/MM/yyyy")}`,
   ].filter(Boolean);
 
   const handleGeneratePdf = useCallback(() => {
