@@ -275,6 +275,16 @@ Deno.serve(async (req) => {
         .eq("gc_orcamento_id", gcOrcId)
         .limit(5);
 
+      // Histórico de observações enviadas pelo cliente neste orçamento
+      const { data: obsLog } = await admin
+        .from("orcamento_aprovacao_log")
+        .select("observacao, user_nome, user_email, created_at")
+        .eq("gc_orcamento_id", gcOrcId)
+        .eq("acao", "observation")
+        .not("observacao", "is", null)
+        .order("created_at", { ascending: false })
+        .limit(20);
+
       // Persiste no cache
       await admin.from("orcamento_detalhe_cache").upsert({
         gc_orcamento_id: gcOrcId,
@@ -284,7 +294,7 @@ Deno.serve(async (req) => {
         atualizado_em: new Date().toISOString(),
       }, { onConflict: "gc_orcamento_id" });
 
-      return ok({ ok: true, orcamento: orc, tarefas: tarefas || [], cached: false });
+      return ok({ ok: true, orcamento: orc, tarefas: tarefas || [], observacoes_cliente: obsLog || [], cached: false });
     }
 
     if (action === "approve" || action === "observation") {
