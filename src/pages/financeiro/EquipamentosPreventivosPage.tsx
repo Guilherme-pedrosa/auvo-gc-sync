@@ -656,28 +656,49 @@ export default function EquipamentosPreventivosPage() {
     doc.text(filterLine, 40, 74, { maxWidth: pageW - 80 });
     doc.setTextColor(0);
 
-    // Summary table
-    autoTable(doc, {
-      startY: 90,
-      head: [["Status", "Marca", "Equipamento", "Identificador", "Cliente", "Última", "Técnico", "Dias", "Tarefas"]],
-      body: target.map((e) => {
-        const info = getStatusInfo(e.dias_desde);
-        return [
-          info.label,
-          e.marca || "—",
-          e.nome,
-          e.identificador || "—",
-          e.cliente || "—",
-          e.ultima_data ? format(parseISO(e.ultima_data), "dd/MM/yyyy") : "—",
-          e.ultimo_tecnico || "—",
-          e.dias_desde !== null ? `${e.dias_desde}d` : "—",
-          String(e.total_tarefas),
-        ];
-      }),
-      styles: { fontSize: 8, cellPadding: 3 },
-      headStyles: { fillColor: [37, 99, 235], textColor: 255, fontStyle: "bold" },
-      columnStyles: { 7: { halign: "right" }, 8: { halign: "right" } },
-    });
+    // Summary grouped by client
+    const byCliente = new Map<string, EquipmentRow[]>();
+    for (const e of target) {
+      const key = e.cliente || "— Sem cliente —";
+      if (!byCliente.has(key)) byCliente.set(key, []);
+      byCliente.get(key)!.push(e);
+    }
+    const clientesOrdenados = Array.from(byCliente.keys()).sort((a, b) => a.localeCompare(b, "pt-BR"));
+
+    let cursorY = 90;
+    for (const cliente of clientesOrdenados) {
+      const rows = byCliente.get(cliente)!;
+      if (cursorY > pageH - 80) { doc.addPage(); cursorY = 40; }
+      doc.setFontSize(11);
+      doc.setFont("helvetica", "bold");
+      doc.setFillColor(37, 99, 235);
+      doc.setTextColor(255);
+      doc.rect(40, cursorY - 4, pageW - 80, 20, "F");
+      doc.text(`${cliente}  —  ${rows.length} equipamento(s)`, 50, cursorY + 10);
+      doc.setTextColor(0);
+      doc.setFont("helvetica", "normal");
+      autoTable(doc, {
+        startY: cursorY + 20,
+        head: [["Status", "Marca", "Equipamento", "Identificador", "Última", "Técnico", "Dias", "Tarefas"]],
+        body: rows.map((e) => {
+          const info = getStatusInfo(e.dias_desde);
+          return [
+            info.label,
+            e.marca || "—",
+            e.nome,
+            e.identificador || "—",
+            e.ultima_data ? format(parseISO(e.ultima_data), "dd/MM/yyyy") : "—",
+            e.ultimo_tecnico || "—",
+            e.dias_desde !== null ? `${e.dias_desde}d` : "—",
+            String(e.total_tarefas),
+          ];
+        }),
+        styles: { fontSize: 8, cellPadding: 3 },
+        headStyles: { fillColor: [240, 240, 245], textColor: 30, fontStyle: "bold" },
+        columnStyles: { 6: { halign: "right" }, 7: { halign: "right" } },
+      });
+      cursorY = (doc as any).lastAutoTable.finalY + 16;
+    }
 
     // Detail per equipment: tasks done
     const relByEq = new Map<string, EquipTaskRel[]>();
@@ -720,23 +741,23 @@ export default function EquipamentosPreventivosPage() {
 
       autoTable(doc, {
         startY: 78,
-        head: [["Data", "Tipo de tarefa", "Técnico", "Cliente (tarefa)", "Status", "Link"]],
+        head: [["Data", "Tipo de tarefa", "Técnico", "Cliente (tarefa)", "Status", "Relatório"]],
         body: tasks.map((t) => [
           (t.data_conclusao || t.data_tarefa) ? format(parseISO((t.data_conclusao || t.data_tarefa) as string), "dd/MM/yyyy") : "—",
           t.auvo_task_type_description || "—",
           t.tecnico || "—",
           t.cliente || "—",
           t.status_auvo || "—",
-          t.auvo_link ? "Abrir" : "—",
+          t.auvo_link ? "Abrir relatório" : "—",
         ]),
         styles: { fontSize: 8, cellPadding: 3 },
         headStyles: { fillColor: [240, 240, 245], textColor: 30, fontStyle: "bold" },
-        columnStyles: { 5: { halign: "center", textColor: [37, 99, 235] } },
+        columnStyles: { 0: { textColor: [37, 99, 235] }, 5: { halign: "center", textColor: [37, 99, 235], fontStyle: "bold" } },
         didDrawCell: (data: any) => {
           if (data.section !== "body") return;
           const t = tasks[data.row.index];
-          if (!t) return;
-          if (data.column.index === 5 && t.auvo_link) {
+          if (!t || !t.auvo_link) return;
+          if (data.column.index === 0 || data.column.index === 5) {
             doc.link(data.cell.x, data.cell.y, data.cell.width, data.cell.height, { url: t.auvo_link });
           }
         },
