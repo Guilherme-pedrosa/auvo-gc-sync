@@ -737,6 +737,19 @@ export default function EquipamentosPreventivosPage() {
         />
 
         <SearchableSelect
+          value={grupoFilter}
+          onValueChange={setGrupoFilter}
+          options={[
+            { value: "todos", label: "Todos os grupos" },
+            ...((gruposData?.grupos ?? []).map((g: any) => ({ value: g.id, label: g.nome }))),
+          ]}
+          placeholder="Grupo"
+          searchPlaceholder="Buscar grupo..."
+          className="w-[200px]"
+          icon={<Users className="h-4 w-4" />}
+        />
+
+        <SearchableSelect
           multiple
           value={tipoTarefaFilter}
           onValueChange={setTipoTarefaFilter}
@@ -756,7 +769,7 @@ export default function EquipamentosPreventivosPage() {
             Filtros ativos: <strong>{activeFilters.join(" · ")}</strong>
             — mostrando {filtered.length} de {equipments.length}
           </span>
-          <Button variant="ghost" size="sm" onClick={() => { setMarcaFilter([]); setClienteFilter([]); setTipoTarefaFilter([]); setStatusFilter([]); }} className="ml-auto text-xs">
+          <Button variant="ghost" size="sm" onClick={() => { setMarcaFilter([]); setClienteFilter([]); setTipoTarefaFilter([]); setStatusFilter([]); setGrupoFilter("todos"); }} className="ml-auto text-xs">
             Limpar filtros
           </Button>
         </div>
