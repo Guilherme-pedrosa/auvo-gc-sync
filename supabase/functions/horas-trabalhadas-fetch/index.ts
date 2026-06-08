@@ -633,6 +633,7 @@ Deno.serve(async (req) => {
         if (perTask.length > 0 && (orcCodes.size > 0 || osCodes.size > 0)) {
           const selectCols =
             "auvo_task_id, cliente, gc_os_cliente, " +
+            "gc_os_tarefa_os, gc_os_tarefa_exec, " +
             "gc_os_codigo, gc_os_id, gc_os_link, gc_os_link_cobranca, gc_os_situacao, " +
             "gc_os_situacao_id, gc_os_cor_situacao, gc_os_data, gc_os_data_saida, " +
             "gc_os_valor_total, gc_os_vendedor, " +
@@ -668,6 +669,7 @@ Deno.serve(async (req) => {
           }
 
           const fields = [
+            "gc_os_tarefa_os","gc_os_tarefa_exec",
             "gc_os_codigo","gc_os_id","gc_os_link","gc_os_link_cobranca","gc_os_situacao","gc_os_situacao_id",
             "gc_os_cor_situacao","gc_os_data","gc_os_data_saida","gc_os_valor_total",
             "gc_os_vendedor","gc_os_cliente",
@@ -701,11 +703,14 @@ Deno.serve(async (req) => {
             for (let i = 0; i < updates.length; i += 8) {
               const batch = updates.slice(i, i + 8);
               await Promise.allSettled(batch.map(({ auvo_task_id, update }) =>
-                supabase
-                  .from("tarefas_central")
-                  .update(update)
-                  .eq("auvo_task_id", auvo_task_id)
-                  .is("gc_os_id", null)
+                {
+                  const blankConditions = Object.keys(update).map((f) => `${f}.is.null`).join(",");
+                  return supabase
+                    .from("tarefas_central")
+                    .update(update)
+                    .eq("auvo_task_id", auvo_task_id)
+                    .or(blankConditions);
+                }
               ));
             }
           }
