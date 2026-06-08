@@ -37,6 +37,7 @@ interface OrcamentoItem {
   situacao: string;
   cor_situacao?: string;
   equipamento?: string;
+  gc_orc_link?: string;
 }
 
 const brl = (n: number) =>
@@ -337,6 +338,17 @@ export default function PortalOrcamentosPage() {
                     <div><span className="text-muted-foreground">Data:</span> {fmtData(selected.data)}</div>
                     <div><span className="text-muted-foreground">Equipamento:</span> {selected.equipamento || "—"}</div>
                     <div><span className="text-muted-foreground">Valor total:</span> <strong>{brl(selected.valor_total)}</strong></div>
+                    {selected.gc_orc_link && (
+                      <a
+                        href={selected.gc_orc_link}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-xs text-primary hover:underline inline-flex items-center gap-1 pt-1"
+                      >
+                        <ExternalLink className="h-3 w-3" />
+                        Abrir orçamento no GestãoClick
+                      </a>
+                    )}
                   </div>
 
                   {detailQuery.isLoading && (
@@ -351,22 +363,27 @@ export default function PortalOrcamentosPage() {
                         const orc = detailQuery.data.orcamento;
                         const produtos = Array.isArray(orc?.produtos) ? orc.produtos.map((p: any) => p.produto || p) : [];
                         const servicos = Array.isArray(orc?.servicos) ? orc.servicos.map((s: any) => s.servico || s) : [];
+                        const mapItem = (it: any, tipo: "Produto" | "Serviço") => {
+                          const qtd = Number(it.quantidade || 0);
+                          const valor = Number(it.valor_venda ?? it.valor ?? 0);
+                          const desconto = Number(it.desconto || 0);
+                          const totalApi = it.valor_total != null ? Number(it.valor_total) : null;
+                          const total = totalApi != null ? totalApi : Math.max(qtd * valor - desconto, 0);
+                          return {
+                            nome: it.nome_produto || it.nome_servico || it.nome || tipo,
+                            detalhes: it.detalhes || "",
+                            qtd, valor, desconto, total, tipo,
+                          };
+                        };
                         const itens = [
-                          ...produtos.map((p: any) => ({
-                            nome: p.nome_produto || p.nome || "Produto",
-                            detalhes: p.detalhes || "",
-                            qtd: Number(p.quantidade || 0),
-                            valor: Number(p.valor_venda || 0),
-                            tipo: "Produto",
-                          })),
-                          ...servicos.map((s: any) => ({
-                            nome: s.nome_servico || s.nome || "Serviço",
-                            detalhes: s.detalhes || "",
-                            qtd: Number(s.quantidade || 0),
-                            valor: Number(s.valor_venda || 0),
-                            tipo: "Serviço",
-                          })),
+                          ...produtos.map((p: any) => mapItem(p, "Produto")),
+                          ...servicos.map((s: any) => mapItem(s, "Serviço")),
                         ];
+                        const subtotal = itens.reduce((s, i) => s + i.qtd * i.valor, 0);
+                        const descontoItens = itens.reduce((s, i) => s + i.desconto, 0);
+                        const descontoOrc = Number(orc?.desconto || 0);
+                        const totalCalc = itens.reduce((s, i) => s + i.total, 0) - descontoOrc;
+                        const totalOrc = Number(orc?.valor_total ?? totalCalc);
                         return itens.length > 0 ? (
                           <div className="space-y-2">
                             <p className="text-xs font-semibold text-muted-foreground flex items-center gap-1">
@@ -385,13 +402,32 @@ export default function PortalOrcamentosPage() {
                                     </p>
                                   </div>
                                   <div className="text-right text-sm whitespace-nowrap">
-                                    <p>{brl(it.valor)}</p>
-                                    <p className="text-xs text-muted-foreground">
-                                      Total {brl(it.qtd * it.valor)}
+                                    <p>{brl(it.valor)} <span className="text-xs text-muted-foreground">un.</span></p>
+                                    {it.desconto > 0 && (
+                                      <p className="text-xs text-destructive">- {brl(it.desconto)} desc.</p>
+                                    )}
+                                    <p className="text-xs font-semibold">
+                                      Total {brl(it.total)}
                                     </p>
                                   </div>
                                 </div>
                               ))}
+                            </div>
+                            <div className="rounded-md border p-2 text-sm space-y-1 bg-muted/30">
+                              <div className="flex justify-between">
+                                <span className="text-muted-foreground">Subtotal</span>
+                                <span>{brl(subtotal)}</span>
+                              </div>
+                              {(descontoItens + descontoOrc) > 0 && (
+                                <div className="flex justify-between text-destructive">
+                                  <span>Descontos</span>
+                                  <span>- {brl(descontoItens + descontoOrc)}</span>
+                                </div>
+                              )}
+                              <div className="flex justify-between font-semibold text-base pt-1 border-t">
+                                <span>Total do orçamento</span>
+                                <span>{brl(totalOrc)}</span>
+                              </div>
                             </div>
                           </div>
                         ) : (

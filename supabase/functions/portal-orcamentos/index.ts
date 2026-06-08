@@ -99,6 +99,7 @@ Deno.serve(async (req) => {
       const enriched = itens.map((i: any) => ({
         ...i,
         equipamento: equipMap.get(String(i.gc_orcamento_id)) || "",
+        gc_orc_link: `https://gestaoclick.com/orcamentos_servicos/editar/${i.gc_orcamento_id}?retorno=%2Forcamentos_servicos`,
       }));
       return ok({ ok: true, itens: enriched });
     }
