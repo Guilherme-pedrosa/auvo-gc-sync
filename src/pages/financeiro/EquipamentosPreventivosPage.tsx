@@ -689,7 +689,7 @@ export default function EquipamentosPreventivosPage() {
       doc.setFont("helvetica", "normal");
       autoTable(doc, {
         startY: cursorY + 20,
-        head: [["Status", "Marca", "Equipamento", "Identificador", "Última", "Técnico", "Dias", "Tarefas"]],
+        head: [["Status", "Marca", "Equipamento", "Identificador", "Última", "Técnico", "Dias", "Tarefas", "Relatório"]],
         body: rows.map((e) => {
           const info = getStatusInfo(e.dias_desde);
           return [
@@ -701,11 +701,25 @@ export default function EquipamentosPreventivosPage() {
             e.ultimo_tecnico || "—",
             e.dias_desde !== null ? `${e.dias_desde}d` : "—",
             String(e.total_tarefas),
+            e.ultimo_link ? "Abrir" : "—",
           ];
         }),
         styles: { fontSize: 8, cellPadding: 3 },
         headStyles: { fillColor: [240, 240, 245], textColor: 30, fontStyle: "bold" },
-        columnStyles: { 6: { halign: "right" }, 7: { halign: "right" } },
+        columnStyles: {
+          4: { textColor: [37, 99, 235] },
+          6: { halign: "right" },
+          7: { halign: "right" },
+          8: { halign: "center", textColor: [37, 99, 235], fontStyle: "bold" },
+        },
+        didDrawCell: (data: any) => {
+          if (data.section !== "body") return;
+          const e = rows[data.row.index];
+          if (!e || !e.ultimo_link) return;
+          if (data.column.index === 4 || data.column.index === 8) {
+            doc.link(data.cell.x, data.cell.y, data.cell.width, data.cell.height, { url: e.ultimo_link });
+          }
+        },
       });
       cursorY = (doc as any).lastAutoTable.finalY + 16;
     }
