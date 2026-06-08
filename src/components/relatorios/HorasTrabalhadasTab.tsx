@@ -701,6 +701,7 @@ export default function HorasTrabalhadasTab({
         gc_os_link_cobranca: safeGcOsLink(t.gc_os_link_cobranca, null),
         gc_orcamento_codigo: t.gc_orcamento_codigo || "",
         gc_orc_link: safeGcOrcLink(t.gc_orc_link),
+        gc_link_from_text: Boolean((t as any).gc_link_from_text),
         cliente,
         statusRevisao: status,
         horasOriginais,
