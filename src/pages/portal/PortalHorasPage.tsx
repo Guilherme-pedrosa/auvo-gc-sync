@@ -5,7 +5,7 @@ import { startOfMonth, endOfMonth, format } from "date-fns";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { Button } from "@/components/ui/button";
-import { Loader2, LogOut } from "lucide-react";
+import { Loader2, LogOut, FileText } from "lucide-react";
 import HorasTrabalhadasTab from "@/components/relatorios/HorasTrabalhadasTab";
 
 const normalizeClient = (s: string) =>
@@ -193,6 +193,9 @@ export default function PortalHorasPage() {
           </div>
           <div className="flex items-center gap-3 text-sm">
             <span className="text-muted-foreground hidden sm:inline">{profile?.nome || profile?.email}</span>
+            <Button variant="outline" size="sm" onClick={() => navigate("/portal/orcamentos")}>
+              <FileText className="h-4 w-4 mr-1" /> Orçamentos
+            </Button>
             <Button variant="ghost" size="sm" onClick={() => signOut().then(() => navigate("/portal/login"))}>
               <LogOut className="h-4 w-4 mr-1" /> Sair
             </Button>
