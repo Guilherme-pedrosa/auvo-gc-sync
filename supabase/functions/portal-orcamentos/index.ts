@@ -94,7 +94,15 @@ Deno.serve(async (req) => {
       // valida cliente do orçamento
       const cli = normalize(String(orc.nome_cliente || ""));
       if (!clientesNorm.has(cli)) return ok({ ok: false, error: "Orçamento fora do grupo do usuário" });
-      return ok({ ok: true, orcamento: orc });
+
+      // Procura tarefa Auvo relacionada (via tarefas_central)
+      const { data: tarefas } = await admin
+        .from("tarefas_central")
+        .select("auvo_task_id, auvo_task_url, auvo_link, auvo_survey_url, gc_orc_link, gc_os_link, status_auvo")
+        .eq("gc_orcamento_id", gcOrcId)
+        .limit(5);
+
+      return ok({ ok: true, orcamento: orc, tarefas: tarefas || [] });
     }
 
     if (action === "approve" || action === "observation") {

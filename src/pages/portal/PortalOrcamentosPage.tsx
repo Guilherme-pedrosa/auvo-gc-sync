@@ -18,7 +18,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { toast } from "sonner";
-import { Loader2, LogOut, CheckCircle2, MessageSquare, FileText, Clock } from "lucide-react";
+import { Loader2, LogOut, CheckCircle2, MessageSquare, FileText, Clock, ExternalLink, Package } from "lucide-react";
 
 interface OrcamentoItem {
   gc_orcamento_id: string;
@@ -54,6 +54,19 @@ export default function PortalOrcamentosPage() {
   const [mode, setMode] = useState<"view" | "approve" | "observation">("view");
   const [termo, setTermo] = useState(false);
   const [obs, setObs] = useState("");
+
+  const detailQuery = useQuery({
+    queryKey: ["portal-orcamento-detail", selected?.gc_orcamento_id],
+    enabled: !!selected?.gc_orcamento_id,
+    queryFn: async () => {
+      const { data, error } = await supabase.functions.invoke("portal-orcamentos", {
+        body: { action: "detail", gc_orcamento_id: selected!.gc_orcamento_id },
+      });
+      if (error) throw error;
+      if (!data?.ok) throw new Error(data?.error || "Falha ao carregar detalhes");
+      return data as { orcamento: any; tarefas: any[] };
+    },
+  });
 
   useEffect(() => {
     if (authLoading) return;
@@ -211,7 +224,7 @@ export default function PortalOrcamentosPage() {
       </main>
 
       <Dialog open={!!selected} onOpenChange={(o) => !o && setSelected(null)}>
-        <DialogContent className="max-w-lg">
+        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
           {selected && (
             <>
               <DialogHeader>
@@ -228,6 +241,105 @@ export default function PortalOrcamentosPage() {
                     <div><span className="text-muted-foreground">Data:</span> {fmtData(selected.data)}</div>
                     <div><span className="text-muted-foreground">Valor total:</span> <strong>{brl(selected.valor_total)}</strong></div>
                   </div>
+
+                  {detailQuery.isLoading && (
+                    <div className="flex justify-center py-4">
+                      <Loader2 className="h-5 w-5 animate-spin text-primary" />
+                    </div>
+                  )}
+
+                  {detailQuery.data && (
+                    <>
+                      {(() => {
+                        const orc = detailQuery.data.orcamento;
+                        const produtos = Array.isArray(orc?.produtos) ? orc.produtos.map((p: any) => p.produto || p) : [];
+                        const servicos = Array.isArray(orc?.servicos) ? orc.servicos.map((s: any) => s.servico || s) : [];
+                        const itens = [
+                          ...produtos.map((p: any) => ({
+                            nome: p.nome_produto || p.nome || "Produto",
+                            detalhes: p.detalhes || "",
+                            qtd: Number(p.quantidade || 0),
+                            valor: Number(p.valor_venda || 0),
+                            tipo: "Produto",
+                          })),
+                          ...servicos.map((s: any) => ({
+                            nome: s.nome_servico || s.nome || "Serviço",
+                            detalhes: s.detalhes || "",
+                            qtd: Number(s.quantidade || 0),
+                            valor: Number(s.valor_venda || 0),
+                            tipo: "Serviço",
+                          })),
+                        ];
+                        return itens.length > 0 ? (
+                          <div className="space-y-2">
+                            <p className="text-xs font-semibold text-muted-foreground flex items-center gap-1">
+                              <Package className="h-3.5 w-3.5" /> Itens do orçamento
+                            </p>
+                            <div className="rounded-md border divide-y max-h-60 overflow-auto">
+                              {itens.map((it, i) => (
+                                <div key={i} className="p-2 text-sm flex items-start justify-between gap-2">
+                                  <div className="min-w-0">
+                                    <p className="font-medium truncate">{it.nome}</p>
+                                    {it.detalhes && (
+                                      <p className="text-xs text-muted-foreground line-clamp-2">{it.detalhes}</p>
+                                    )}
+                                    <p className="text-xs text-muted-foreground">
+                                      {it.tipo} · Qtd: {it.qtd}
+                                    </p>
+                                  </div>
+                                  <div className="text-right text-sm whitespace-nowrap">
+                                    <p>{brl(it.valor)}</p>
+                                    <p className="text-xs text-muted-foreground">
+                                      Total {brl(it.qtd * it.valor)}
+                                    </p>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        ) : (
+                          <p className="text-xs text-muted-foreground">Sem itens cadastrados no orçamento.</p>
+                        );
+                      })()}
+
+                      {detailQuery.data.orcamento?.observacao && (
+                        <div className="rounded-md border p-2 text-xs">
+                          <p className="font-semibold mb-1">Observações:</p>
+                          <p className="whitespace-pre-wrap text-muted-foreground">
+                            {detailQuery.data.orcamento.observacao}
+                          </p>
+                        </div>
+                      )}
+
+                      {(() => {
+                        const tarefas = (detailQuery.data.tarefas || []).filter(
+                          (t: any) => t.auvo_task_url || t.auvo_link || t.auvo_survey_url,
+                        );
+                        if (tarefas.length === 0) return null;
+                        return (
+                          <div className="space-y-1">
+                            <p className="text-xs font-semibold text-muted-foreground">Tarefas relacionadas</p>
+                            {tarefas.map((t: any, i: number) => {
+                              const url = t.auvo_task_url || t.auvo_link || t.auvo_survey_url;
+                              return (
+                                <a
+                                  key={i}
+                                  href={url}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="text-xs text-primary hover:underline flex items-center gap-1"
+                                >
+                                  <ExternalLink className="h-3 w-3" />
+                                  Tarefa #{t.auvo_task_id} {t.status_auvo ? `· ${t.status_auvo}` : ""}
+                                </a>
+                              );
+                            })}
+                          </div>
+                        );
+                      })()}
+                    </>
+                  )}
+
                   <p className="text-xs text-muted-foreground">
                     Após a aprovação a situação do orçamento será alterada para
                     <strong> APROVADO CLIENTE - VIA LINK</strong>. Toda ação é registrada com
