@@ -210,6 +210,7 @@ export default function PortalOrcamentosPage() {
       if (equipFilter !== "all" && (i.equipamento || "") !== equipFilter) return false;
       if (!q) return true;
       return (
+        String(i.gc_orcamento_id || "").toLowerCase().includes(q) ||
         i.gc_orcamento_codigo.toLowerCase().includes(q) ||
         i.cliente.toLowerCase().includes(q) ||
         (i.vendedor || "").toLowerCase().includes(q) ||
