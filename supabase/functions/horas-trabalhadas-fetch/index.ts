@@ -533,8 +533,10 @@ Deno.serve(async (req) => {
           const execIds = execStr.split(/[\/,;\s]+/).map((x) => x.trim()).filter(Boolean);
           for (const eid of execIds) {
             const cur = byExec.get(eid);
-            const score = (p.gc_os_codigo ? 2 : 0) + (p.gc_orcamento_codigo ? 1 : 0);
-            const curScore = cur ? (cur.gc_os_codigo ? 2 : 0) + (cur.gc_orcamento_codigo ? 1 : 0) : -1;
+            const score = (p.gc_os_codigo ? 2 : 0) + (p.gc_orcamento_codigo ? 1 : 0) +
+              (p.gc_os_tarefa_os ? 1 : 0) + (p.gc_os_tarefa_exec ? 1 : 0);
+            const curScore = cur ? (cur.gc_os_codigo ? 2 : 0) + (cur.gc_orcamento_codigo ? 1 : 0) +
+              (cur.gc_os_tarefa_os ? 1 : 0) + (cur.gc_os_tarefa_exec ? 1 : 0) : -1;
             if (!cur || score > curScore) byExec.set(eid, p);
           }
         }
