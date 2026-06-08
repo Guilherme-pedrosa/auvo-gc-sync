@@ -85,21 +85,36 @@ Deno.serve(async (req) => {
       // Enriquece com equipamento via tarefas_central
       const ids = itens.map((i: any) => String(i.gc_orcamento_id)).filter(Boolean);
       const equipMap = new Map<string, string>();
+      const linkMap = new Map<string, string>();
       if (ids.length > 0) {
         const { data: tarefas } = await admin
           .from("tarefas_central")
-          .select("gc_orcamento_id, equipamento_nome")
+          .select("gc_orcamento_id, equipamento_nome, gc_orc_link")
           .in("gc_orcamento_id", ids);
         for (const t of tarefas || []) {
           const k = String((t as any).gc_orcamento_id);
           const nome = String((t as any).equipamento_nome || "").trim();
           if (nome && !equipMap.has(k)) equipMap.set(k, nome);
+          const link = String((t as any).gc_orc_link || "").trim();
+          if (link && link.includes("/prop/") && !linkMap.has(k)) linkMap.set(k, link);
         }
       }
+      // Para os que não vieram pela tarefas_central, busca o hash no GC e monta /prop/{hash}
+      const missing = itens.filter((i: any) => !linkMap.has(String(i.gc_orcamento_id)));
+      await Promise.all(
+        missing.map(async (i: any) => {
+          try {
+            const r = await fetch(`${GC_BASE_URL}/api/orcamentos/${i.gc_orcamento_id}`, { headers: gcHeaders });
+            const j: any = await r.json().catch(() => ({}));
+            const hash = String((j?.data ?? j)?.hash || "").trim();
+            if (hash) linkMap.set(String(i.gc_orcamento_id), `https://gestaoclick.com/prop/${hash}`);
+          } catch (_) { /* ignore */ }
+        }),
+      );
       const enriched = itens.map((i: any) => ({
         ...i,
         equipamento: equipMap.get(String(i.gc_orcamento_id)) || "",
-        gc_orc_link: `https://gestaoclick.com/orcamentos_servicos/editar/${i.gc_orcamento_id}?retorno=%2Forcamentos_servicos`,
+        gc_orc_link: linkMap.get(String(i.gc_orcamento_id)) || null,
       }));
       return ok({ ok: true, itens: enriched });
     }
