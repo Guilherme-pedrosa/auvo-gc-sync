@@ -632,7 +632,9 @@ Deno.serve(async (req) => {
         cliente: String(row.gc_os_cliente || detail.nome_cliente || ""),
         data_saida: dataSaidaStr,
         valor_pecas, valor_servicos,
-        faturamento: faturamento_os,
+        // OS de retorno: faturamento não vai para ninguém (nem o técnico do retorno,
+        // nem o vendedor original). Apenas a comissão é paga ao técnico do retorno.
+        faturamento: tecnicoRetorno ? 0 : faturamento_os,
         comissao_pecas, comissao_servicos, comissao_total,
         pecas_count, servicos_count,
         situacao: String(detail.nome_situacao || ""),
