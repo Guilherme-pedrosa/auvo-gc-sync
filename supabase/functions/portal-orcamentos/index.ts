@@ -277,11 +277,44 @@ Deno.serve(async (req) => {
       if (!clientesNorm.has(cli)) return ok({ ok: false, error: "Orçamento fora do grupo do usuário" });
 
       // Procura tarefa Auvo relacionada (via tarefas_central)
-      const { data: tarefas } = await admin
+      const { data: tarefasPorOrc } = await admin
         .from("tarefas_central")
         .select("auvo_task_id, auvo_task_url, auvo_link, auvo_survey_url, gc_orc_link, gc_os_link, status_auvo")
         .eq("gc_orcamento_id", gcOrcId)
         .limit(5);
+
+      // Fallback: lê atributo 73341 (TAREFA OS) do próprio orçamento no GC
+      // e busca a tarefa por auvo_task_id (caso a tarefa do Auvo aponte pra outro
+      // orçamento mas o orçamento atual referencie a tarefa no campo extra).
+      const atribs: any[] = Array.isArray((orc as any).atributos) ? (orc as any).atributos : [];
+      const taskIdsFromOrc = new Set<string>();
+      for (const a of atribs) {
+        const node = a?.atributo || a;
+        const attrId = String(node?.atributo_id || "");
+        if (attrId !== "73341") continue;
+        const raw = String(node?.conteudo || "").trim();
+        if (!raw) continue;
+        // pode vir como "74403201" ou "74403201/74403202"
+        for (const part of raw.split(/[\/,;\s]+/)) {
+          const id = part.trim();
+          if (/^\d{6,}$/.test(id)) taskIdsFromOrc.add(id);
+        }
+      }
+      let tarefasPorAttr: any[] = [];
+      if (taskIdsFromOrc.size > 0) {
+        const { data: t2 } = await admin
+          .from("tarefas_central")
+          .select("auvo_task_id, auvo_task_url, auvo_link, auvo_survey_url, gc_orc_link, gc_os_link, status_auvo")
+          .in("auvo_task_id", Array.from(taskIdsFromOrc));
+        tarefasPorAttr = t2 || [];
+      }
+      // Merge dedup por auvo_task_id
+      const tarefasMap = new Map<string, any>();
+      for (const t of [...(tarefasPorOrc || []), ...tarefasPorAttr]) {
+        const k = String(t.auvo_task_id || "");
+        if (k && !tarefasMap.has(k)) tarefasMap.set(k, t);
+      }
+      const tarefas = Array.from(tarefasMap.values());
 
       // Histórico de observações enviadas pelo cliente neste orçamento
       const { data: obsLog } = await admin
