@@ -1,0 +1,1 @@
+ALTER TABLE public.contratos ADD COLUMN IF NOT EXISTS premiacao_preventiva_hora numeric NOT NULL DEFAULT 0;
