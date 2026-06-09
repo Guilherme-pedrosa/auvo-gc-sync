@@ -45,6 +45,7 @@ type OsRow = {
   retorno?: { tecnico: string } | null;
   tecnico_execucao?: string | null;
   divergente_execucao?: boolean;
+  compartilhada_com?: string | null;
 };
 type Tech = {
   tecnico: string;
