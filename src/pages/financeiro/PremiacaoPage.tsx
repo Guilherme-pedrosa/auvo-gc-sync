@@ -82,6 +82,7 @@ type Tech = {
       valor_hora: number;
       valor: number;
       auvo_link?: string | null;
+      pendencia?: string | null;
     }>;
   };
 };
@@ -485,7 +486,17 @@ export default function PremiacaoPage() {
                                     <div className="flex items-center gap-2">
                                       <span className="truncate">{a.cliente}</span>
                                       {a.contrato && <Badge variant="secondary" className="text-[10px] shrink-0">Contrato</Badge>}
+                                      {a.pendencia && (
+                                        <Badge variant="destructive" className="text-[10px] shrink-0" title={a.pendencia}>
+                                          Pendência
+                                        </Badge>
+                                      )}
                                     </div>
+                                    {a.pendencia && (
+                                      <p className="text-[10px] text-destructive mt-0.5 truncate" title={a.pendencia}>
+                                        {a.pendencia}
+                                      </p>
+                                    )}
                                   </TableCell>
                                   <TableCell className="text-right text-xs">{a.horas.toFixed(2)}</TableCell>
                                   <TableCell className="text-right text-xs">{a.valor_hora > 0 ? brl(a.valor_hora) : "—"}</TableCell>

@@ -662,7 +662,7 @@ Deno.serve(async (req) => {
       const PREVENTIVA_TASK_TYPES = ["180176", "180175"];
       const { data: prevRows, error: prevErr } = await supabase
         .from("tarefas_central")
-        .select("auvo_task_id, auvo_task_url, tecnico, tecnico_id, cliente, data_tarefa, data_conclusao, duracao_decimal, status_auvo")
+        .select("auvo_task_id, auvo_task_url, tecnico, tecnico_id, cliente, data_tarefa, data_conclusao, duracao_decimal, status_auvo, pendencia")
         .in("task_type_id", PREVENTIVA_TASK_TYPES)
         .gte("data_tarefa", startDate)
         .lte("data_tarefa", endDate);
@@ -703,10 +703,13 @@ Deno.serve(async (req) => {
         }
         // Apenas clientes com contrato geram preventiva na premiação.
         if (!contrato) continue;
+        // Pendência: se houver checklist/formulário pendente, não paga preventiva.
+        const pendRaw = String((r as any).pendencia || "").trim();
+        const pendNorm = normalize(pendRaw);
+        const temPendencia = !!pendRaw && pendNorm !== "nenhuma" && pendRaw !== "0";
         // Usa o valor R$/hora específico para preventiva configurado no contrato.
-        // Se não houver, a preventiva não gera premiação (0).
-        const valorHora = contrato ? toNum((contrato as any).premiacao_preventiva_hora) : 0;
-        const valor = horas * valorHora;
+        const valorHora = toNum((contrato as any).premiacao_preventiva_hora);
+        const valor = temPendencia ? 0 : horas * valorHora;
 
         const pn = normalize(tecRaw).split(/\s+/)[0] || normalize(tecRaw);
         const key = pn;
@@ -743,6 +746,7 @@ Deno.serve(async (req) => {
           contrato: contrato ? String(contrato.nome) : null,
           horas,
           valor_hora: valorHora,
+          pendencia: temPendencia ? pendRaw : null,
           valor,
           auvo_link: String(r.auvo_task_url || "").trim() || (r.auvo_task_id ? `https://app2.auvo.com.br/relatorioTarefas/DetalheTarefa/${r.auvo_task_id}` : null),
         });
