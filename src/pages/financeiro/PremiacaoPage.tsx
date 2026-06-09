@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Loader2, Trophy, Wrench, Package, Calculator, ChevronDown, ChevronRight, ExternalLink, FileText, RefreshCw, RotateCcw, Trash2 } from "lucide-react";
+import { Users2 } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
@@ -45,6 +46,7 @@ type OsRow = {
   retorno?: { tecnico: string } | null;
   tecnico_execucao?: string | null;
   divergente_execucao?: boolean;
+  compartilhada_com?: string | null;
 };
 type Tech = {
   tecnico: string;
@@ -552,6 +554,11 @@ export default function PremiacaoPage() {
                                     Exec: {o.tecnico_execucao.split(/\s+/)[0]}
                                   </Badge>
                                 )}
+                                {o.compartilhada_com && (
+                                  <Badge variant="secondary" className="text-[10px] shrink-0" title={`Compartilhada com ${o.compartilhada_com}`}>
+                                    <Users2 className="h-3 w-3 mr-0.5" /> 50% c/ {o.compartilhada_com.split(/\s+/)[0]}
+                                  </Badge>
+                                )}
                               </div>
                             </TableCell>
                             <TableCell className="text-xs">{o.data_saida}</TableCell>
@@ -596,6 +603,7 @@ function OsDetailDialog({
   const qc = useQueryClient();
   const [tecRetorno, setTecRetorno] = useState("");
   const [obsRetorno, setObsRetorno] = useState("");
+  const [tecCompart, setTecCompart] = useState("");
 
   const codigo = os?.gc_os_codigo || os?.gc_os_id || "";
 
@@ -642,6 +650,55 @@ function OsDetailDialog({
     onSuccess: () => {
       toast({ title: "Retorno removido" });
       qc.invalidateQueries({ queryKey: ["os_retorno", codigo] });
+      onChanged();
+      onClose();
+    },
+    onError: (e: Error) => toast({ title: "Erro", description: e.message, variant: "destructive" }),
+  });
+
+  const { data: compartAtual, isLoading: loadingCompart } = useQuery({
+    queryKey: ["os_compartilhada", codigo],
+    enabled: !!codigo,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("premiacao_os_compartilhada")
+        .select("id, tecnico_secundario, observacao")
+        .eq("gc_os_codigo", codigo)
+        .maybeSingle();
+      if (error) throw error;
+      return data as { id: string; tecnico_secundario: string; observacao: string | null } | null;
+    },
+  });
+
+  const saveCompartMut = useMutation({
+    mutationFn: async () => {
+      if (!codigo) throw new Error("OS inválida");
+      if (!tecCompart.trim()) throw new Error("Selecione o segundo técnico");
+      const { error } = await supabase.from("premiacao_os_compartilhada").upsert(
+        { gc_os_codigo: codigo, tecnico_secundario: tecCompart.trim() },
+        { onConflict: "gc_os_codigo" }
+      );
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      toast({ title: "OS compartilhada", description: "Valor dividido 50/50 entre os dois técnicos." });
+      setTecCompart("");
+      qc.invalidateQueries({ queryKey: ["os_compartilhada", codigo] });
+      onChanged();
+      onClose();
+    },
+    onError: (e: Error) => toast({ title: "Erro", description: e.message, variant: "destructive" }),
+  });
+
+  const delCompartMut = useMutation({
+    mutationFn: async () => {
+      if (!compartAtual?.id) return;
+      const { error } = await supabase.from("premiacao_os_compartilhada").delete().eq("id", compartAtual.id);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      toast({ title: "Compartilhamento removido" });
+      qc.invalidateQueries({ queryKey: ["os_compartilhada", codigo] });
       onChanged();
       onClose();
     },
@@ -779,6 +836,51 @@ function OsDetailDialog({
                     <Button onClick={() => saveMut.mutate()} disabled={saveMut.isPending || !tecRetorno}>
                       {saveMut.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <RotateCcw className="h-4 w-4" />}
                       Mover OS
+                    </Button>
+                  </div>
+                )}
+              </div>
+
+              <div className="border rounded-md p-3 bg-muted/30 space-y-2">
+                <div className="flex items-center gap-2 text-sm font-medium">
+                  <Users2 className="h-4 w-4" /> Compartilhar serviço (higienização de coifa)
+                  {compartAtual && (
+                    <Badge variant="outline" className="text-[10px]">
+                      50% com {compartAtual.tecnico_secundario}
+                    </Badge>
+                  )}
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Divide 50/50 todos os valores e a contagem desta OS com um segundo técnico.
+                  Use para coifas feitas por dupla.
+                </p>
+                {loadingCompart ? (
+                  <div className="text-xs text-muted-foreground flex items-center gap-2">
+                    <Loader2 className="h-3 w-3 animate-spin" /> Carregando…
+                  </div>
+                ) : compartAtual ? (
+                  <div className="flex items-center justify-end gap-2">
+                    <Button size="sm" variant="ghost" onClick={() => delCompartMut.mutate()} disabled={delCompartMut.isPending}>
+                      <Trash2 className="h-4 w-4 text-destructive mr-1" /> Remover divisão
+                    </Button>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 md:grid-cols-[1fr_auto] gap-2 items-end">
+                    <div>
+                      <label className="text-xs text-muted-foreground block mb-1">Segundo técnico</label>
+                      <SearchableSelect
+                        options={tecnicos}
+                        value={tecCompart}
+                        onValueChange={setTecCompart}
+                        placeholder="Selecionar técnico…"
+                        searchPlaceholder="Buscar técnico…"
+                        emptyText="Nenhum técnico encontrado."
+                        className="w-full"
+                      />
+                    </div>
+                    <Button onClick={() => saveCompartMut.mutate()} disabled={saveCompartMut.isPending || !tecCompart}>
+                      {saveCompartMut.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Users2 className="h-4 w-4" />}
+                      Dividir 50/50
                     </Button>
                   </div>
                 )}
