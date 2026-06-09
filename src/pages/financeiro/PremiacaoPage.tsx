@@ -82,6 +82,7 @@ type Tech = {
       valor_hora: number;
       valor: number;
       auvo_link?: string | null;
+      pendencia?: string | null;
     }>;
   };
 };
