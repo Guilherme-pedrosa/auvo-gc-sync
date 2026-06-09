@@ -603,6 +603,7 @@ function OsDetailDialog({
   const qc = useQueryClient();
   const [tecRetorno, setTecRetorno] = useState("");
   const [obsRetorno, setObsRetorno] = useState("");
+  const [tecCompart, setTecCompart] = useState("");
 
   const codigo = os?.gc_os_codigo || os?.gc_os_id || "";
 
@@ -649,6 +650,55 @@ function OsDetailDialog({
     onSuccess: () => {
       toast({ title: "Retorno removido" });
       qc.invalidateQueries({ queryKey: ["os_retorno", codigo] });
+      onChanged();
+      onClose();
+    },
+    onError: (e: Error) => toast({ title: "Erro", description: e.message, variant: "destructive" }),
+  });
+
+  const { data: compartAtual, isLoading: loadingCompart } = useQuery({
+    queryKey: ["os_compartilhada", codigo],
+    enabled: !!codigo,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("premiacao_os_compartilhada")
+        .select("id, tecnico_secundario, observacao")
+        .eq("gc_os_codigo", codigo)
+        .maybeSingle();
+      if (error) throw error;
+      return data as { id: string; tecnico_secundario: string; observacao: string | null } | null;
+    },
+  });
+
+  const saveCompartMut = useMutation({
+    mutationFn: async () => {
+      if (!codigo) throw new Error("OS inválida");
+      if (!tecCompart.trim()) throw new Error("Selecione o segundo técnico");
+      const { error } = await supabase.from("premiacao_os_compartilhada").upsert(
+        { gc_os_codigo: codigo, tecnico_secundario: tecCompart.trim() },
+        { onConflict: "gc_os_codigo" }
+      );
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      toast({ title: "OS compartilhada", description: "Valor dividido 50/50 entre os dois técnicos." });
+      setTecCompart("");
+      qc.invalidateQueries({ queryKey: ["os_compartilhada", codigo] });
+      onChanged();
+      onClose();
+    },
+    onError: (e: Error) => toast({ title: "Erro", description: e.message, variant: "destructive" }),
+  });
+
+  const delCompartMut = useMutation({
+    mutationFn: async () => {
+      if (!compartAtual?.id) return;
+      const { error } = await supabase.from("premiacao_os_compartilhada").delete().eq("id", compartAtual.id);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      toast({ title: "Compartilhamento removido" });
+      qc.invalidateQueries({ queryKey: ["os_compartilhada", codigo] });
       onChanged();
       onClose();
     },
