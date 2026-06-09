@@ -215,8 +215,20 @@ Deno.serve(async (req) => {
       .select("auvo_task_id, auvo_task_url, gc_os_id, gc_os_codigo, gc_os_cliente, gc_os_data_saida, gc_os_valor_total, gc_os_vendedor, gc_os_tarefa_exec, tecnico, tecnico_id, data_tarefa, status_auvo, data_conclusao, duracao_decimal")
       .not("gc_os_id", "is", null)
       .is("gc_os_data_saida", null);
-    const error = errA || errB;
-    const rows = [...(rowsA || []), ...(rowsB || [])];
+    // rowsC: OS cuja data_saida cacheada está FORA do mês, mas que foram
+    // concluídas no Auvo dentro do mês. A data_saida pode ter sido alterada
+    // no GC depois da última sincronização — re-validamos abaixo pelo
+    // detail real do GC.
+    const { data: rowsC, error: errC } = await supabase
+      .from("tarefas_central")
+      .select("auvo_task_id, auvo_task_url, gc_os_id, gc_os_codigo, gc_os_cliente, gc_os_data_saida, gc_os_valor_total, gc_os_vendedor, gc_os_tarefa_exec, tecnico, tecnico_id, data_tarefa, status_auvo, data_conclusao, duracao_decimal")
+      .not("gc_os_id", "is", null)
+      .not("gc_os_data_saida", "is", null)
+      .or(`gc_os_data_saida.lt.${startDate},gc_os_data_saida.gt.${endDate}`)
+      .gte("data_conclusao", startDate)
+      .lte("data_conclusao", endDate);
+    const error = errA || errB || errC;
+    const rows = [...(rowsA || []), ...(rowsB || []), ...(rowsC || [])];
 
     if (error) {
       return new Response(
