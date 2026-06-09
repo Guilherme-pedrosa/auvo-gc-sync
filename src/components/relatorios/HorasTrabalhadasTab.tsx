@@ -614,7 +614,7 @@ export default function HorasTrabalhadasTab({
       const cliente = resolveDisplayCliente(t);
       const taskId = String(t.auvo_task_id || "");
       const alertas = tasksWithAlertas.get(taskId) || [];
-      const revisao = clientMode ? null : revisoesMap?.get(taskId) || null;
+      const revisao = revisoesMap?.get(taskId) || null;
       const status = getStatusRevisao(alertas, revisao);
 
       // Horas faturáveis = duração da Auvo PRO-RATEADA pela janela do período
