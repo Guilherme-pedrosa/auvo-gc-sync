@@ -618,7 +618,11 @@ Deno.serve(async (req) => {
       agg.os_count += 1;
       agg.valor_pecas += valor_pecas;
       agg.valor_servicos += valor_servicos;
-      agg.faturamento += faturamento_os;
+      // OS de retorno: paga comissão ao técnico do retorno, mas o valor
+      // NÃO entra no faturamento dele (ele não vendeu/fez a OS original).
+      if (!tecnicoRetorno) {
+        agg.faturamento += faturamento_os;
+      }
       agg.comissao_pecas += comissao_pecas;
       agg.comissao_servicos += comissao_servicos;
       agg.comissao_total += comissao_total;
