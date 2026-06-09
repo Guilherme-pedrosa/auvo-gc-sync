@@ -654,16 +654,16 @@ Deno.serve(async (req) => {
     for (const t of tecnicos) t.ordens.sort((a, b) => b.comissao_total - a.comissao_total);
 
     // ============================================================
-    // VISITAS PREVENTIVAS DE CONTRATO (task type Auvo 180176)
+    // VISITAS PREVENTIVAS DE CONTRATO (task types Auvo 180176 e 180175)
     // Soma horas trabalhadas × valor/hora do contrato do cliente.
     // O valor entra na comissao_total e sofre redu\u00e7\u00f5es/b\u00f4nus normalmente.
     // ============================================================
     try {
-      const PREVENTIVA_TASK_TYPE = "180176";
+      const PREVENTIVA_TASK_TYPES = ["180176", "180175"];
       const { data: prevRows, error: prevErr } = await supabase
         .from("tarefas_central")
         .select("auvo_task_id, auvo_task_url, tecnico, tecnico_id, cliente, data_tarefa, data_conclusao, duracao_decimal, status_auvo")
-        .eq("task_type_id", PREVENTIVA_TASK_TYPE)
+        .in("task_type_id", PREVENTIVA_TASK_TYPES)
         .gte("data_tarefa", startDate)
         .lte("data_tarefa", endDate);
       console.log(`[premiacao] preventivas query: rows=${(prevRows||[]).length} err=${prevErr?.message || 'none'}`);
