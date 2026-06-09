@@ -1096,8 +1096,9 @@ Deno.serve(async (req) => {
       comissao_total: acc.comissao_total + t.comissao_total,
       reducao_valor: acc.reducao_valor + ((t as any).reducao_valor || 0),
       bonus_meta_valor: acc.bonus_meta_valor + ((t as any).bonus_meta_valor || 0),
+      bonus_telemetria_valor: acc.bonus_telemetria_valor + ((t as any).bonus_telemetria_valor || 0),
       comissao_final: acc.comissao_final + ((t as any).comissao_final ?? t.comissao_total),
-    }), { os_count: 0, valor_pecas: 0, valor_servicos: 0, faturamento: 0, comissao_pecas: 0, comissao_servicos: 0, comissao_total: 0, reducao_valor: 0, bonus_meta_valor: 0, comissao_final: 0 });
+    }), { os_count: 0, valor_pecas: 0, valor_servicos: 0, faturamento: 0, comissao_pecas: 0, comissao_servicos: 0, comissao_total: 0, reducao_valor: 0, bonus_meta_valor: 0, bonus_telemetria_valor: 0, comissao_final: 0 });
 
     return new Response(
       JSON.stringify({
