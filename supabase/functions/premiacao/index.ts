@@ -701,6 +701,8 @@ Deno.serve(async (req) => {
             }
           }
         }
+        // Apenas clientes com contrato geram preventiva na premiação.
+        if (!contrato) continue;
         // Usa o valor R$/hora específico para preventiva configurado no contrato.
         // Se não houver, a preventiva não gera premiação (0).
         const valorHora = contrato ? toNum((contrato as any).premiacao_preventiva_hora) : 0;
