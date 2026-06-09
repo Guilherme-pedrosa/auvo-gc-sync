@@ -687,7 +687,9 @@ Deno.serve(async (req) => {
         if (horas <= 0) continue;
         const cliente = String(r.cliente || "");
         const contrato = contratoByCliente.get(normalize(cliente));
-        const valorHora = contrato ? toNum(contrato.valor_hora) : 0;
+        // Usa o valor R$/hora específico para preventiva configurado no contrato.
+        // Se não houver, a preventiva não gera premiação (0).
+        const valorHora = contrato ? toNum((contrato as any).premiacao_preventiva_hora) : 0;
         const valor = horas * valorHora;
 
         const pn = normalize(tecRaw).split(/\s+/)[0] || normalize(tecRaw);
