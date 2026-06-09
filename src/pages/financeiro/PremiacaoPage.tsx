@@ -71,6 +71,8 @@ type Tech = {
   meta_atingida?: boolean;
   bonus_meta_pct?: number;
   bonus_meta_valor?: number;
+  bonus_telemetria_pct?: number;
+  bonus_telemetria_valor?: number;
   preventivas?: {
     count: number;
     horas: number;
@@ -436,6 +438,11 @@ export default function PremiacaoPage() {
                           {(t.bonus_meta_valor ?? 0) > 0 && (
                             <div className="text-[10px] text-emerald-600 mt-0.5">
                               +{brl(t.bonus_meta_valor || 0)} (bônus meta {formatBonusMetaPct(t)}%)
+                            </div>
+                          )}
+                          {(t.bonus_telemetria_valor ?? 0) > 0 && (
+                            <div className="text-[10px] text-emerald-600 mt-0.5">
+                              +{brl(t.bonus_telemetria_valor || 0)} (bônus telemetria {Math.round((t.bonus_telemetria_pct || 0) * 100)}%)
                             </div>
                           )}
                           {t.meta != null && t.meta > 0 && (

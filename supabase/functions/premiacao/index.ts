@@ -979,6 +979,21 @@ Deno.serve(async (req) => {
       (t as any).reducao_valor = reducao_valor;
       (t as any).reducoes = reducoes;
       (t as any).comissao_final = comissao_final;
+
+      // BÔNUS DE TELEMETRIA — só vale se rodou > 2000 km no mês
+      // > 200 km/telemetria → +5% sobre comissão bruta
+      // > 150 km/telemetria → +3% sobre comissão bruta
+      let bonus_telemetria_pct = 0;
+      if (km_total > 2000 && km_por_telemetria !== null) {
+        if (km_por_telemetria > 200) bonus_telemetria_pct = 0.05;
+        else if (km_por_telemetria > 150) bonus_telemetria_pct = 0.03;
+      }
+      const bonus_telemetria_valor = t.comissao_total * bonus_telemetria_pct;
+      (t as any).bonus_telemetria_pct = bonus_telemetria_pct;
+      (t as any).bonus_telemetria_valor = bonus_telemetria_valor;
+      if (bonus_telemetria_valor > 0) {
+        (t as any).comissao_final = ((t as any).comissao_final ?? t.comissao_total) + bonus_telemetria_valor;
+      }
     }
 
     // ============================================================
@@ -1081,8 +1096,9 @@ Deno.serve(async (req) => {
       comissao_total: acc.comissao_total + t.comissao_total,
       reducao_valor: acc.reducao_valor + ((t as any).reducao_valor || 0),
       bonus_meta_valor: acc.bonus_meta_valor + ((t as any).bonus_meta_valor || 0),
+      bonus_telemetria_valor: acc.bonus_telemetria_valor + ((t as any).bonus_telemetria_valor || 0),
       comissao_final: acc.comissao_final + ((t as any).comissao_final ?? t.comissao_total),
-    }), { os_count: 0, valor_pecas: 0, valor_servicos: 0, faturamento: 0, comissao_pecas: 0, comissao_servicos: 0, comissao_total: 0, reducao_valor: 0, bonus_meta_valor: 0, comissao_final: 0 });
+    }), { os_count: 0, valor_pecas: 0, valor_servicos: 0, faturamento: 0, comissao_pecas: 0, comissao_servicos: 0, comissao_total: 0, reducao_valor: 0, bonus_meta_valor: 0, bonus_telemetria_valor: 0, comissao_final: 0 });
 
     return new Response(
       JSON.stringify({
