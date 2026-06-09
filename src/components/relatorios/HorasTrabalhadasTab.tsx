@@ -205,7 +205,6 @@ export default function HorasTrabalhadasTab({
   // Decisões já tomadas por OS (auvo_task_id → registro de revisão)
   const { data: revisoesMap } = useQuery({
     queryKey: ["os-revisao"],
-    enabled: !clientMode,
     queryFn: async () => {
       const { data } = await (supabase as any).from("os_revisao").select("*");
       return new Map<string, any>((data || []).map((r: any) => [String(r.auvo_task_id), r]));
@@ -584,9 +583,9 @@ export default function HorasTrabalhadasTab({
 
   // ── Status de revisão (decisão humana ou regra automática) ────────
   const getStatusRevisao = (alertas: AlertaTipo[], revisao: any): StatusRevisao => {
-    if (clientMode) return "faturavel";
     if (revisao?.status_revisao === "aprovada" || revisao?.status_revisao === "ajustada") return "faturavel";
     if (revisao?.status_revisao === "rejeitada") return "rejeitada";
+    if (clientMode) return "faturavel";
     const exigeRevisao = alertas.some((a) => {
       if (a === "curto" && alertasConfig?.curta_requer_revisao) return true;
       if (a === "longo" && alertasConfig?.longa_requer_revisao) return true;
@@ -615,7 +614,7 @@ export default function HorasTrabalhadasTab({
       const cliente = resolveDisplayCliente(t);
       const taskId = String(t.auvo_task_id || "");
       const alertas = tasksWithAlertas.get(taskId) || [];
-      const revisao = clientMode ? null : revisoesMap?.get(taskId) || null;
+      const revisao = revisoesMap?.get(taskId) || null;
       const status = getStatusRevisao(alertas, revisao);
 
       // Horas faturáveis = duração da Auvo PRO-RATEADA pela janela do período
