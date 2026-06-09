@@ -440,6 +440,11 @@ export default function PremiacaoPage() {
                               +{brl(t.bonus_meta_valor || 0)} (bônus meta {formatBonusMetaPct(t)}%)
                             </div>
                           )}
+                          {(t.bonus_telemetria_valor ?? 0) > 0 && (
+                            <div className="text-[10px] text-emerald-600 mt-0.5">
+                              +{brl(t.bonus_telemetria_valor || 0)} (bônus telemetria {Math.round((t.bonus_telemetria_pct || 0) * 100)}%)
+                            </div>
+                          )}
                           {t.meta != null && t.meta > 0 && (
                             <div className="text-[10px] text-muted-foreground mt-0.5">
                               Meta: {brl(t.meta)} · {t.meta_atingida ? "✅ atingida" : `${Math.round(((t.faturamento ?? 0) / t.meta) * 100)}%`}
