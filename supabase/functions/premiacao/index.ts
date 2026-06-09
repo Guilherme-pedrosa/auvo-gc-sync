@@ -686,7 +686,21 @@ Deno.serve(async (req) => {
         const horas = Math.max(0, toNum(r.duracao_decimal));
         if (horas <= 0) continue;
         const cliente = String(r.cliente || "");
-        const contrato = contratoByCliente.get(normalize(cliente));
+        const clienteNorm = normalize(cliente);
+        let contrato = contratoByCliente.get(clienteNorm);
+        // Fallback para preventivas: o nome do cliente no Auvo (ex: "COCO BAMBU ANAPOLIS")
+        // pode diferir do cliente_nome do contrato no GC (ex: "CB ANAPOLIS COMERCIO..."),
+        // então tentamos casar pelo nome curto do contrato (ex: "COCO BAMBU") como prefixo/substring.
+        if (!contrato) {
+          for (const c of (contratosData || [])) {
+            const nomeNorm = normalize(String((c as any).nome || ""));
+            if (!nomeNorm) continue;
+            if (clienteNorm === nomeNorm || clienteNorm.startsWith(nomeNorm + " ") || clienteNorm.includes(" " + nomeNorm) || clienteNorm.startsWith(nomeNorm)) {
+              contrato = c;
+              break;
+            }
+          }
+        }
         // Usa o valor R$/hora específico para preventiva configurado no contrato.
         // Se não houver, a preventiva não gera premiação (0).
         const valorHora = contrato ? toNum((contrato as any).premiacao_preventiva_hora) : 0;
