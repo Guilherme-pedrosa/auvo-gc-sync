@@ -257,6 +257,36 @@ Deno.serve(async (req) => {
       if (cached && cached.fingerprint === fingerprint) {
         const cli = normalize(String((cached.orcamento as any)?.nome_cliente || ""));
         if (!clientesNorm.has(cli)) return ok({ ok: false, error: "Orçamento fora do grupo do usuário" });
+        // Aplica também o fallback por atributo 73341 (TAREFA OS) sobre o orçamento em cache,
+        // pra recuperar tarefas que apontam pra outro orcamento mas estão referenciadas aqui.
+        const cachedTarefas: any[] = Array.isArray(cached.tarefas) ? cached.tarefas : [];
+        const atribsC: any[] = Array.isArray((cached.orcamento as any)?.atributos)
+          ? (cached.orcamento as any).atributos
+          : [];
+        const idsC = new Set<string>();
+        for (const a of atribsC) {
+          const node = a?.atributo || a;
+          if (String(node?.atributo_id || "") !== "73341") continue;
+          const raw = String(node?.conteudo || "").trim();
+          for (const part of raw.split(/[\/,;\s]+/)) {
+            const id = part.trim();
+            if (/^\d{6,}$/.test(id)) idsC.add(id);
+          }
+        }
+        let extraC: any[] = [];
+        if (idsC.size > 0) {
+          const { data: t2c } = await admin
+            .from("tarefas_central")
+            .select("auvo_task_id, auvo_task_url, auvo_link, auvo_survey_url, gc_orc_link, gc_os_link, status_auvo")
+            .in("auvo_task_id", Array.from(idsC));
+          extraC = t2c || [];
+        }
+        const mapC = new Map<string, any>();
+        for (const t of [...cachedTarefas, ...extraC]) {
+          const k = String(t.auvo_task_id || "");
+          if (k && !mapC.has(k)) mapC.set(k, t);
+        }
+        const mergedTarefas = Array.from(mapC.values());
         const { data: obsLogC } = await admin
           .from("orcamento_aprovacao_log")
           .select("observacao, user_nome, user_email, created_at")
@@ -265,7 +295,7 @@ Deno.serve(async (req) => {
           .not("observacao", "is", null)
           .order("created_at", { ascending: false })
           .limit(20);
-        return ok({ ok: true, orcamento: cached.orcamento, tarefas: cached.tarefas || [], observacoes_cliente: obsLogC || [], cached: true });
+        return ok({ ok: true, orcamento: cached.orcamento, tarefas: mergedTarefas, observacoes_cliente: obsLogC || [], cached: true });
       }
 
       const resp = await fetch(`${GC_BASE_URL}/api/orcamentos/${gcOrcId}`, { headers: gcHeaders });
