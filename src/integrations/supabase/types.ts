@@ -872,6 +872,33 @@ export type Database = {
         }
         Relationships: []
       }
+      premiacao_os_compartilhada: {
+        Row: {
+          atualizado_em: string
+          criado_em: string
+          gc_os_codigo: string
+          id: string
+          observacao: string | null
+          tecnico_secundario: string
+        }
+        Insert: {
+          atualizado_em?: string
+          criado_em?: string
+          gc_os_codigo: string
+          id?: string
+          observacao?: string | null
+          tecnico_secundario: string
+        }
+        Update: {
+          atualizado_em?: string
+          criado_em?: string
+          gc_os_codigo?: string
+          id?: string
+          observacao?: string | null
+          tecnico_secundario?: string
+        }
+        Relationships: []
+      }
       profiles: {
         Row: {
           atualizado_em: string
