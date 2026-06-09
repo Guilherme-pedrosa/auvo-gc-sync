@@ -71,6 +71,8 @@ type Tech = {
   meta_atingida?: boolean;
   bonus_meta_pct?: number;
   bonus_meta_valor?: number;
+  bonus_telemetria_pct?: number;
+  bonus_telemetria_valor?: number;
   preventivas?: {
     count: number;
     horas: number;
