@@ -654,6 +654,99 @@ Deno.serve(async (req) => {
     for (const t of tecnicos) t.ordens.sort((a, b) => b.comissao_total - a.comissao_total);
 
     // ============================================================
+    // OS COMPARTILHADAS (higienização de coifa feita por 2 técnicos)
+    // Divide 50/50 todos os valores e a contagem da OS entre o
+    // técnico principal (vendedor/retorno) e um técnico secundário
+    // escolhido manualmente na tela de Premiação.
+    // ============================================================
+    try {
+      const { data: compartilhadas } = await sb
+        .from("premiacao_os_compartilhada")
+        .select("gc_os_codigo, tecnico_secundario");
+      const sharedMap = new Map<string, string>();
+      for (const r of (compartilhadas || [])) {
+        const cod = String((r as any).gc_os_codigo || "").trim();
+        const sec = String((r as any).tecnico_secundario || "").trim();
+        if (cod && sec) sharedMap.set(cod, sec);
+      }
+
+      if (sharedMap.size > 0) {
+        const halveOrdem = (o: any) => {
+          o.valor_pecas = (o.valor_pecas || 0) / 2;
+          o.valor_servicos = (o.valor_servicos || 0) / 2;
+          if (o.faturamento !== undefined) o.faturamento = (o.faturamento || 0) / 2;
+          o.comissao_pecas = (o.comissao_pecas || 0) / 2;
+          o.comissao_servicos = (o.comissao_servicos || 0) / 2;
+          o.comissao_total = (o.comissao_total || 0) / 2;
+        };
+
+        for (const t of tecnicos) {
+          for (let i = 0; i < t.ordens.length; i++) {
+            const o: any = t.ordens[i];
+            const secNome = sharedMap.get(String(o.gc_os_codigo || ""));
+            if (!secNome) continue;
+
+            // Se o secundário é o próprio principal, ignora (não duplica)
+            const mainKey = normalize(t.tecnico).split(/\s+/)[0];
+            const secKey = normalize(secNome).split(/\s+/)[0];
+            if (!secKey || secKey === mainKey) continue;
+
+            // Halve no principal
+            const beforeServ = o.comissao_servicos || 0;
+            const beforePec = o.comissao_pecas || 0;
+            const beforeTot = o.comissao_total || 0;
+            const beforeFat = o.faturamento ?? (o.valor_pecas + o.valor_servicos);
+            const beforeValPec = o.valor_pecas || 0;
+            const beforeValServ = o.valor_servicos || 0;
+
+            halveOrdem(o);
+            o.compartilhada_com = secNome;
+            t.os_count -= 0.5;
+            t.valor_pecas -= beforeValPec / 2;
+            t.valor_servicos -= beforeValServ / 2;
+            (t as any).faturamento = ((t as any).faturamento || 0) - beforeFat / 2;
+            t.comissao_pecas -= beforePec / 2;
+            t.comissao_servicos -= beforeServ / 2;
+            t.comissao_total -= beforeTot / 2;
+
+            // Localiza/cria agg secundário
+            let secAgg: any = tecnicos.find(
+              (x: any) => normalize(x.tecnico).split(/\s+/)[0] === secKey
+            );
+            if (!secAgg) {
+              secAgg = {
+                tecnico: secNome,
+                tecnico_id: "",
+                os_count: 0,
+                valor_pecas: 0,
+                valor_servicos: 0,
+                faturamento: 0,
+                comissao_pecas: 0,
+                comissao_servicos: 0,
+                comissao_total: 0,
+                ordens: [],
+              };
+              tecnicos.push(secAgg);
+            }
+            secAgg.os_count += 0.5;
+            secAgg.valor_pecas += beforeValPec / 2;
+            secAgg.valor_servicos += beforeValServ / 2;
+            secAgg.faturamento = (secAgg.faturamento || 0) + beforeFat / 2;
+            secAgg.comissao_pecas += beforePec / 2;
+            secAgg.comissao_servicos += beforeServ / 2;
+            secAgg.comissao_total += beforeTot / 2;
+            secAgg.ordens.push({ ...o, compartilhada_com: t.tecnico });
+          }
+        }
+
+        tecnicos.sort((a: any, b: any) => b.comissao_total - a.comissao_total);
+        for (const t of tecnicos) t.ordens.sort((a: any, b: any) => b.comissao_total - a.comissao_total);
+      }
+    } catch (err) {
+      console.error("[premiacao] shared OS error:", (err as Error).message);
+    }
+
+    // ============================================================
     // VISITAS PREVENTIVAS DE CONTRATO (task types Auvo 180176 e 180175)
     // Soma horas trabalhadas × valor/hora do contrato do cliente.
     // O valor entra na comissao_total e sofre redu\u00e7\u00f5es/b\u00f4nus normalmente.
