@@ -23,6 +23,7 @@ type Contrato = {
   valor_hora: number;
   taxa_comissao_servico: number;
   taxa_comissao_peca: number;
+  premiacao_preventiva_hora: number;
   vigencia_inicio: string | null;
   vigencia_fim: string | null;
   ativo: boolean;
@@ -276,6 +277,7 @@ function ContratoDialog({
   const [valorHora, setValorHora] = useState(String(c?.valor_hora ?? ""));
   const [taxa, setTaxa] = useState(String(((c?.taxa_comissao_servico ?? 0.15) * 100).toFixed(2)));
   const [taxaPeca, setTaxaPeca] = useState(String(((c?.taxa_comissao_peca ?? 0.02) * 100).toFixed(2)));
+  const [prevHora, setPrevHora] = useState(String(c?.premiacao_preventiva_hora ?? ""));
   const [vigIni, setVigIni] = useState(c?.vigencia_inicio || "");
   const [vigFim, setVigFim] = useState(c?.vigencia_fim || "");
   const [ativo, setAtivo] = useState(c?.ativo ?? true);
@@ -309,6 +311,7 @@ function ContratoDialog({
         valor_hora: parseFloat(valorHora.replace(",", ".")) || 0,
         taxa_comissao_servico: (parseFloat(taxa.replace(",", ".")) || 0) / 100,
         taxa_comissao_peca: (parseFloat(taxaPeca.replace(",", ".")) || 0) / 100,
+        premiacao_preventiva_hora: parseFloat(prevHora.replace(",", ".")) || 0,
         vigencia_inicio: vigIni || null,
         vigencia_fim: vigFim || null,
         ativo,
@@ -340,6 +343,7 @@ function ContratoDialog({
         setClienteNome(c?.cliente_nome || "");
         setValorHora(String(c?.valor_hora ?? "")); setTaxa(String(((c?.taxa_comissao_servico ?? 0.15) * 100).toFixed(2)));
         setTaxaPeca(String(((c?.taxa_comissao_peca ?? 0.02) * 100).toFixed(2)));
+        setPrevHora(String(c?.premiacao_preventiva_hora ?? ""));
         setVigIni(c?.vigencia_inicio || ""); setVigFim(c?.vigencia_fim || "");
         setAtivo(c?.ativo ?? true); setObs(c?.observacao || "");
       }
@@ -386,6 +390,10 @@ function ContratoDialog({
             <div><Label>Valor por hora (R$)</Label><Input value={valorHora} onChange={(e) => setValorHora(e.target.value)} placeholder="0,00" /></div>
             <div><Label>% Premiação serviços</Label><Input value={taxa} onChange={(e) => setTaxa(e.target.value)} placeholder="15" /></div>
             <div><Label>% Premiação peças</Label><Input value={taxaPeca} onChange={(e) => setTaxaPeca(e.target.value)} placeholder="2" /></div>
+          </div>
+          <div>
+            <Label>Premiação por hora de preventiva (R$)</Label>
+            <Input value={prevHora} onChange={(e) => setPrevHora(e.target.value)} placeholder="0,00" />
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div><Label>Vigência início</Label><Input type="date" value={vigIni} onChange={(e) => setVigIni(e.target.value)} /></div>

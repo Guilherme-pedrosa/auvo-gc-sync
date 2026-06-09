@@ -195,6 +195,7 @@ export type Database = {
           id: string
           nome: string
           observacao: string | null
+          premiacao_preventiva_hora: number
           taxa_comissao_peca: number
           taxa_comissao_servico: number
           valor_hora: number
@@ -210,6 +211,7 @@ export type Database = {
           id?: string
           nome: string
           observacao?: string | null
+          premiacao_preventiva_hora?: number
           taxa_comissao_peca?: number
           taxa_comissao_servico?: number
           valor_hora?: number
@@ -225,6 +227,7 @@ export type Database = {
           id?: string
           nome?: string
           observacao?: string | null
+          premiacao_preventiva_hora?: number
           taxa_comissao_peca?: number
           taxa_comissao_servico?: number
           valor_hora?: number
