@@ -840,6 +840,51 @@ function OsDetailDialog({
                   </div>
                 )}
               </div>
+
+              <div className="border rounded-md p-3 bg-muted/30 space-y-2">
+                <div className="flex items-center gap-2 text-sm font-medium">
+                  <Users2 className="h-4 w-4" /> Compartilhar serviço (higienização de coifa)
+                  {compartAtual && (
+                    <Badge variant="outline" className="text-[10px]">
+                      50% com {compartAtual.tecnico_secundario}
+                    </Badge>
+                  )}
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Divide 50/50 todos os valores e a contagem desta OS com um segundo técnico.
+                  Use para coifas feitas por dupla.
+                </p>
+                {loadingCompart ? (
+                  <div className="text-xs text-muted-foreground flex items-center gap-2">
+                    <Loader2 className="h-3 w-3 animate-spin" /> Carregando…
+                  </div>
+                ) : compartAtual ? (
+                  <div className="flex items-center justify-end gap-2">
+                    <Button size="sm" variant="ghost" onClick={() => delCompartMut.mutate()} disabled={delCompartMut.isPending}>
+                      <Trash2 className="h-4 w-4 text-destructive mr-1" /> Remover divisão
+                    </Button>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 md:grid-cols-[1fr_auto] gap-2 items-end">
+                    <div>
+                      <label className="text-xs text-muted-foreground block mb-1">Segundo técnico</label>
+                      <SearchableSelect
+                        options={tecnicos}
+                        value={tecCompart}
+                        onValueChange={setTecCompart}
+                        placeholder="Selecionar técnico…"
+                        searchPlaceholder="Buscar técnico…"
+                        emptyText="Nenhum técnico encontrado."
+                        className="w-full"
+                      />
+                    </div>
+                    <Button onClick={() => saveCompartMut.mutate()} disabled={saveCompartMut.isPending || !tecCompart}>
+                      {saveCompartMut.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Users2 className="h-4 w-4" />}
+                      Dividir 50/50
+                    </Button>
+                  </div>
+                )}
+              </div>
             </div>
           </>
         )}
