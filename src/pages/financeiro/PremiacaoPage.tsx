@@ -554,6 +554,11 @@ export default function PremiacaoPage() {
                                     Exec: {o.tecnico_execucao.split(/\s+/)[0]}
                                   </Badge>
                                 )}
+                                {o.compartilhada_com && (
+                                  <Badge variant="secondary" className="text-[10px] shrink-0" title={`Compartilhada com ${o.compartilhada_com}`}>
+                                    <Users2 className="h-3 w-3 mr-0.5" /> 50% c/ {o.compartilhada_com.split(/\s+/)[0]}
+                                  </Badge>
+                                )}
                               </div>
                             </TableCell>
                             <TableCell className="text-xs">{o.data_saida}</TableCell>
