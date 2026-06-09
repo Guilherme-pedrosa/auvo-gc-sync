@@ -167,7 +167,7 @@ Deno.serve(async (req) => {
     // Carrega contratos ativos e mapeia cliente_normalizado -> contrato
     const { data: contratosData } = await supabase
       .from("contratos")
-      .select("id, nome, grupo_id, cliente_nome, valor_hora, taxa_comissao_servico, taxa_comissao_peca, vigencia_inicio, vigencia_fim, ativo")
+      .select("id, nome, grupo_id, cliente_nome, valor_hora, taxa_comissao_servico, taxa_comissao_peca, premiacao_preventiva_hora, vigencia_inicio, vigencia_fim, ativo")
       .eq("ativo", true);
     const grupoIds = (contratosData || []).map((c: any) => c.grupo_id).filter(Boolean);
     const { data: membrosData } = grupoIds.length > 0
