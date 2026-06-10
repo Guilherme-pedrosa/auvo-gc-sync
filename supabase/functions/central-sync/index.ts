@@ -993,6 +993,34 @@ async function refreshGcOsFieldsForPeriod(sbClient: any, gcHeaders: Record<strin
 
 async function runReportsOnlySync(sbClient: any, bearerToken: string, gcHeaders: Record<string, string>, startDate: string, endDate: string) {
   console.log(`[central-sync] Reports-only: buscando Auvo ${startDate} → ${endDate}`);
+
+  // FIRST: pull GC OS in OPEN situations so they always appear in tarefas_central,
+  // even when the Auvo task wasn't returned in the date window (or doesn't exist yet).
+  // OS without Auvo link become "shell" rows flagged in the UI.
+  const OPEN_OS_SITUACAO_IDS = [
+    "7063579", // AGUARDANDO COMPRA DE PEÇAS
+    "7063580", // AGUARDANDO CHEGADA DE PEÇAS
+    "7659440", // AGUARDANDO FABRICAÇÃO
+    "7063581", // PEDIDO EM CONFERENCIA
+    "7063705", // PEDIDO CONFERIDO AGUARDANDO EXECUÇÃO
+    "7213493", // SERVICO AGUARDANDO EXECUCAO
+    "7684665", // RETIRADA PELO TECNICO
+    "7748831", // AGUARDANDO RETIRADA
+    "8219136", // EM ROTA
+    "7116099", // EXECUTADO – AG. NEGOCIAÇÃO
+    "8889036", // FECHADO CHAMADO
+  ];
+  let gcShellUpserted = 0;
+  let gcOsOpenCount = 0;
+  try {
+    const gcOsOpen = await fetchGcOs(gcHeaders, { situacaoIds: OPEN_OS_SITUACAO_IDS });
+    gcOsOpenCount = Object.keys(gcOsOpen.byCodigo || {}).length;
+    gcShellUpserted = await upsertGcOsShellRows(sbClient, gcOsOpen);
+    console.log(`[central-sync] Reports-only GC shells: ${gcShellUpserted}/${gcOsOpenCount} OS em situações abertas processadas`);
+  } catch (e) {
+    console.error(`[central-sync] Reports-only GC shell fetch falhou: ${(e as Error).message}`);
+  }
+
   const auvoTasks = await fetchAuvoTasks(bearerToken, startDate, endDate);
   console.log(`[central-sync] Reports-only Auvo: ${auvoTasks.length} tarefas`);
 
@@ -1123,6 +1151,8 @@ async function runReportsOnlySync(sbClient: any, bearerToken: string, gcHeaders:
     periodo: { inicio: startDate, fim: endDate },
     auvo_tarefas: auvoTasks.length,
     upserted,
+    gc_os_abertas: gcOsOpenCount,
+    gc_shells_upserted: gcShellUpserted,
     gc_os_status_checked: gcStatusRefresh.checked,
     gc_os_status_updated: gcStatusRefresh.updated,
     errors,

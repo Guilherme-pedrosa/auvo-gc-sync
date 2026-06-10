@@ -1045,19 +1045,34 @@ export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, o
                                   .sort((a: any, b: any) => (Number(b.gc_os_valor_total) || 0) - (Number(a.gc_os_valor_total) || 0))
                                   .map((item: any) => {
                                     const semTarefa = String(item.auvo_task_id || "").startsWith("gc-only::");
+                                    const pendenteVinculo = !semTarefa && item.status_auvo === "Pendente vínculo Auvo";
+                                    const semVinculoVisual = semTarefa || pendenteVinculo;
                                     return (
                                     <TableRow
                                       key={item.auvo_task_id}
-                                      className={`text-xs ${semTarefa ? "bg-destructive/10 hover:bg-destructive/20 text-destructive" : ""}`}
-                                      title={semTarefa ? "OS sem tarefa Auvo vinculada" : undefined}
+                                      className={`text-xs ${semVinculoVisual ? "bg-destructive/10 hover:bg-destructive/20 text-destructive" : ""}`}
+                                      title={
+                                        semTarefa
+                                          ? "OS no GC sem tarefa Auvo vinculada (atributo 73343 vazio)"
+                                          : pendenteVinculo
+                                            ? "Tarefa Auvo informada no GC mas ainda não sincronizada — aguarde o próximo ciclo"
+                                            : undefined
+                                      }
                                     >
                                       <TableCell>
-                                        <button
-                                          className="text-primary hover:underline font-medium"
-                                          onClick={() => setSelectedCard(item)}
-                                        >
-                                          {item.gc_os_codigo || `T#${item.auvo_task_id}`}
-                                        </button>
+                                        <div className="flex items-center gap-1.5">
+                                          <button
+                                            className="text-primary hover:underline font-medium"
+                                            onClick={() => setSelectedCard(item)}
+                                          >
+                                            {item.gc_os_codigo || `T#${item.auvo_task_id}`}
+                                          </button>
+                                          {semVinculoVisual && (
+                                            <Badge variant="destructive" className="text-[9px] px-1 py-0">
+                                              {semTarefa ? "Sem Auvo" : "Vínculo pendente"}
+                                            </Badge>
+                                          )}
+                                        </div>
                                       </TableCell>
                                       <TableCell>
                                         <Badge
