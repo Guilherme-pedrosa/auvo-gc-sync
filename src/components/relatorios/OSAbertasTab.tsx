@@ -1105,13 +1105,26 @@ export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, o
                                     const semTarefa = isPendingLinkItem(item);
                                     const pendenteVinculo = false;
                                     const semVinculoVisual = semTarefa;
+                                    // Se já existe tarefa de execução, não é problema — apenas alerta
+                                    // (OS criada e executada de uma vez só, sem tarefa de OS separada)
+                                    const temExec = !!(
+                                      parseExecIds(item.gc_os_tarefa_exec).length > 0 ||
+                                      liveExecMap.get(String(item.gc_os_id))?.execTaskId
+                                    );
+                                    const rowTone = semVinculoVisual
+                                      ? (temExec
+                                          ? "bg-amber-50 hover:bg-amber-100 text-amber-900 dark:bg-amber-950/30 dark:hover:bg-amber-950/50 dark:text-amber-200"
+                                          : "bg-destructive/10 hover:bg-destructive/20 text-destructive")
+                                      : "";
                                     return (
                                     <TableRow
                                       key={item.auvo_task_id}
-                                      className={`text-xs ${semVinculoVisual ? "bg-destructive/10 hover:bg-destructive/20 text-destructive" : ""}`}
+                                      className={`text-xs ${rowTone}`}
                                       title={
                                         semTarefa
-                                          ? "OS no GC sem tarefa Auvo vinculada (atributo 73343 vazio)"
+                                          ? (temExec
+                                              ? "Sem tarefa de OS no Auvo, mas possui tarefa de Execução — provavelmente criada e executada de uma vez só (apenas alerta)"
+                                              : "OS no GC sem tarefa Auvo vinculada (atributo 73343 vazio)")
                                           : pendenteVinculo
                                             ? "Tarefa Auvo informada no GC mas ainda não sincronizada — aguarde o próximo ciclo"
                                             : undefined
@@ -1126,8 +1139,11 @@ export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, o
                                             {item.gc_os_codigo || `T#${item.auvo_task_id}`}
                                           </button>
                                           {semVinculoVisual && (
-                                            <Badge variant="destructive" className="text-[9px] px-1 py-0">
-                                              {semTarefa ? "Sem Auvo" : "Vínculo pendente"}
+                                            <Badge
+                                              variant={temExec ? "outline" : "destructive"}
+                                              className={`text-[9px] px-1 py-0 ${temExec ? "border-amber-500 text-amber-700 dark:text-amber-300" : ""}`}
+                                            >
+                                              {semTarefa ? (temExec ? "Só Execução" : "Sem Auvo") : "Vínculo pendente"}
                                             </Badge>
                                           )}
                                         </div>
