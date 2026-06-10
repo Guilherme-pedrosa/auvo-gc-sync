@@ -373,7 +373,10 @@ export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, o
     const map = new Map<string, OSAbertasGroup>();
     const pendingLinkItems: any[] = [];
     for (const item of filteredItems) {
-      if (isPendingLinkItem(item)) {
+      // Se é órfão (sem tarefa OS) mas possui tarefa de execução, não é problema:
+      // mantém no grupo do cliente com badge "Só Execução"
+      const hasExec = (parseExecIds(item.gc_os_tarefa_exec).length > 0);
+      if (isPendingLinkItem(item) && !hasExec) {
         pendingLinkItems.push(item);
         continue;
       }
