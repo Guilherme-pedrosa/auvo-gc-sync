@@ -341,6 +341,16 @@ export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, o
       items = items.filter((t) => !excludedSituacoes.has(t.gc_os_situacao || ""));
     }
 
+    // Mantém apenas OS cujas situações estão na whitelist (SITUACOES_OPTIONS).
+    // Situações fora da whitelist (ex.: IMPORTADO API CIGAM, DESLOCAMENTO, CANCELADA)
+    // só apareciam por terem tarefa Auvo vinculada, mas não devem ser listadas aqui.
+    const allowedSituacoes = new Set(SITUACOES_OPTIONS.map((s) => s.label.toUpperCase()));
+    items = items.filter((t) => {
+      const s = String(t.gc_os_situacao || "").toUpperCase().trim();
+      if (!s) return true; // sem situação GC (ex.: shell pendente) mantém
+      return allowedSituacoes.has(s);
+    });
+
     // Apply exec status filter
     if (execStatusFilter !== "all") {
       items = items.filter((item) => {
