@@ -194,11 +194,30 @@ Deno.serve(async (req) => {
     // passa a receber o faturamento/premiação no lugar do técnico original.
     const { data: retornosData } = await supabase
       .from("os_retornos")
-      .select("gc_os_codigo, tecnico_retorno");
+      .select("gc_os_codigo, tecnico_retorno, mes_desconto, tecnico_original, valor_desconto, data_saida_original");
     const retornoByCodigo = new Map<string, string>();
+    // Retornos lançados sobre OS de mês passado → desconto no mês vigente
+    type ClawbackEntry = { codigo: string; tec_original: string; valor: number; data_saida: string | null };
+    const clawbacksThisMonth: ClawbackEntry[] = [];
     for (const r of retornosData || []) {
       const cod = String(r.gc_os_codigo || "").trim();
       const tec = String(r.tecnico_retorno || "").trim();
+      const mesDesc = String((r as any).mes_desconto || "").trim();
+      const tecOrig = String((r as any).tecnico_original || "").trim();
+      const valorDesc = toNum((r as any).valor_desconto);
+      // Se tem mes_desconto setado → é clawback (NÃO reatribui no mês da OS)
+      if (mesDesc) {
+        if (mesDesc === month && tecOrig && valorDesc > 0) {
+          clawbacksThisMonth.push({
+            codigo: cod,
+            tec_original: tecOrig,
+            valor: valorDesc,
+            data_saida: (r as any).data_saida_original || null,
+          });
+        }
+        continue;
+      }
+      // Comportamento legado (sem mes_desconto): reatribui premiação ao técnico do retorno
       if (cod && tec) retornoByCodigo.set(cod, tec);
     }
 
