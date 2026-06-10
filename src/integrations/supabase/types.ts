@@ -808,28 +808,43 @@ export type Database = {
       }
       os_retornos: {
         Row: {
+          cliente_original: string | null
           criado_em: string
           criado_por: string | null
+          data_saida_original: string | null
           gc_os_codigo: string
           id: string
+          mes_desconto: string | null
           observacao: string | null
+          tecnico_original: string | null
           tecnico_retorno: string
+          valor_desconto: number
         }
         Insert: {
+          cliente_original?: string | null
           criado_em?: string
           criado_por?: string | null
+          data_saida_original?: string | null
           gc_os_codigo: string
           id?: string
+          mes_desconto?: string | null
           observacao?: string | null
+          tecnico_original?: string | null
           tecnico_retorno: string
+          valor_desconto?: number
         }
         Update: {
+          cliente_original?: string | null
           criado_em?: string
           criado_por?: string | null
+          data_saida_original?: string | null
           gc_os_codigo?: string
           id?: string
+          mes_desconto?: string | null
           observacao?: string | null
+          tecnico_original?: string | null
           tecnico_retorno?: string
+          valor_desconto?: number
         }
         Relationships: []
       }
