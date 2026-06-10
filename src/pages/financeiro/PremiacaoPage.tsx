@@ -13,6 +13,7 @@ import { cn } from "@/lib/utils";
 import { SearchableSelect } from "@/components/ui/searchable-select";
 import { DemeritosManager } from "@/components/financeiro/DemeritosManager";
 import { MetasManager } from "@/components/financeiro/MetasManager";
+import { RetornoOsAntigaDialog } from "@/components/financeiro/RetornoOsAntigaDialog";
 import { gerarPdfsTelemetrias, gerarPdfTecnico } from "@/lib/pdf/telemetriaPdf";
 import { toast } from "@/hooks/use-toast";
 
@@ -323,6 +324,10 @@ export default function PremiacaoPage() {
             />
             <MetasManager
               tecnicos={tecnicos.map((t) => t.tecnico)}
+              onChanged={() => refetch()}
+            />
+            <RetornoOsAntigaDialog
+              month={activeMonth}
               onChanged={() => refetch()}
             />
             <Button
