@@ -432,6 +432,7 @@ export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, o
 
   const grandTotal = useMemo(() => filtered.reduce((sum, c) => sum + c.total, 0), [filtered]);
   const grandCount = useMemo(() => filtered.reduce((sum, c) => sum + c.count, 0), [filtered]);
+  const clientesCount = useMemo(() => filtered.filter((c) => !c.isPendingLinkGroup).length, [filtered]);
 
   const resolveAuvoTaskLive = useCallback(async (taskId: string): Promise<LiveTaskResolution | null> => {
     const { data: taskData, error } = await supabase.functions.invoke("auvo-task-update", {
@@ -914,7 +915,7 @@ export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, o
             <CardTitle className="text-sm font-medium text-muted-foreground">Clientes</CardTitle>
           </CardHeader>
           <CardContent className="px-4 pb-3">
-            <p className="text-2xl font-bold text-foreground">{filtered.length}</p>
+            <p className="text-2xl font-bold text-foreground">{clientesCount}</p>
           </CardContent>
         </Card>
       </div>
