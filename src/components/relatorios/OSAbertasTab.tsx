@@ -311,6 +311,29 @@ export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, o
   const filteredItems = useMemo(() => {
     let items = data.filter((t) => !movedOsIds.has(t.gc_os_id));
 
+    // Deduplica por gc_os_id: se houver linha "real" (Auvo) e "shell pendente" para a mesma OS,
+    // descarta a shell pendente. A shell GC-only (sem 73343) é preservada porque é a única fonte.
+    const byOsId = new Map<string, any[]>();
+    for (const it of items) {
+      const key = String(it.gc_os_id || "");
+      if (!key) continue;
+      const arr = byOsId.get(key) || [];
+      arr.push(it);
+      byOsId.set(key, arr);
+    }
+    const dropKeys = new Set<string>();
+    for (const [, arr] of byOsId) {
+      if (arr.length < 2) continue;
+      const hasReal = arr.some((r) => !String(r.auvo_task_id || "").startsWith("gc-only::") && r.status_auvo !== "Pendente vínculo Auvo");
+      if (!hasReal) continue;
+      for (const r of arr) {
+        if (r.status_auvo === "Pendente vínculo Auvo") dropKeys.add(String(r.auvo_task_id) + "::" + String(r.gc_os_id));
+      }
+    }
+    if (dropKeys.size) {
+      items = items.filter((t) => !dropKeys.has(String(t.auvo_task_id) + "::" + String(t.gc_os_id)));
+    }
+
     if (excludedSituacoes.size > 0) {
       items = items.filter((t) => !excludedSituacoes.has(t.gc_os_situacao || ""));
     }
@@ -1043,15 +1066,15 @@ export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, o
                               <TableBody>
                                 {row.items
                                   .sort((a: any, b: any) => {
-                                    const orphanA = String(a.auvo_task_id || "").startsWith("gc-only::") || a.status_auvo === "Pendente vínculo Auvo" ? 1 : 0;
-                                    const orphanB = String(b.auvo_task_id || "").startsWith("gc-only::") || b.status_auvo === "Pendente vínculo Auvo" ? 1 : 0;
+                                    const orphanA = String(a.auvo_task_id || "").startsWith("gc-only::") ? 1 : 0;
+                                    const orphanB = String(b.auvo_task_id || "").startsWith("gc-only::") ? 1 : 0;
                                     if (orphanA !== orphanB) return orphanB - orphanA; // órfãs primeiro
                                     return (Number(b.gc_os_valor_total) || 0) - (Number(a.gc_os_valor_total) || 0);
                                   })
                                   .map((item: any) => {
                                     const semTarefa = String(item.auvo_task_id || "").startsWith("gc-only::");
-                                    const pendenteVinculo = !semTarefa && item.status_auvo === "Pendente vínculo Auvo";
-                                    const semVinculoVisual = semTarefa || pendenteVinculo;
+                                    const pendenteVinculo = false;
+                                    const semVinculoVisual = semTarefa;
                                     return (
                                     <TableRow
                                       key={item.auvo_task_id}
