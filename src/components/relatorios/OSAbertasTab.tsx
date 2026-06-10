@@ -116,6 +116,9 @@ const extractEquipmentInfo = (raw: any): { nome: string; serie: string } => {
 };
 
 type LiveTaskResolution = { taskId: string; tecnico: string; tecnicoId: string; dataTarefa: string; status: string };
+type OSAbertasGroup = { cliente: string; count: number; total: number; items: any[]; isPendingLinkGroup?: boolean };
+
+const isPendingLinkItem = (item: any) => String(item?.auvo_task_id || "").startsWith("gc-only::");
 
 const extractLiveTaskResolution = (taskData: any, taskId: string): LiveTaskResolution | null => {
   const taskObj = taskData?.data?.result ?? taskData?.data ?? taskData?.result ?? taskData ?? null;
@@ -367,8 +370,14 @@ export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, o
         .replace(/\s+/g, " ")
         .replace(/(.)\1+/g, "$1"); // colapsa letras repetidas (CARGILL ≡ CARGIL)
     };
-    const map = new Map<string, { cliente: string; count: number; total: number; items: any[] }>();
+    const map = new Map<string, OSAbertasGroup>();
+    const pendingLinkItems: any[] = [];
     for (const item of filteredItems) {
+      if (isPendingLinkItem(item)) {
+        pendingLinkItems.push(item);
+        continue;
+      }
+
       const cliente = item.cliente || item.gc_os_cliente || "Sem cliente";
       const key = normalizeKey(cliente) || cliente;
       const entry = map.get(key) || { cliente, count: 0, total: 0, items: [] };
@@ -379,7 +388,18 @@ export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, o
       if (cliente.length > entry.cliente.length) entry.cliente = cliente;
       map.set(key, entry);
     }
-    return Array.from(map.values()).sort((a, b) => b.total - a.total);
+
+    const groups = Array.from(map.values()).sort((a, b) => b.total - a.total);
+    if (pendingLinkItems.length > 0) {
+      groups.unshift({
+        cliente: "Pendente de vínculo",
+        count: pendingLinkItems.length,
+        total: pendingLinkItems.reduce((sum, item) => sum + (Number(item.gc_os_valor_total) || 0), 0),
+        items: pendingLinkItems,
+        isPendingLinkGroup: true,
+      });
+    }
+    return groups;
   }, [filteredItems]);
 
   const filtered = useMemo(() => {
@@ -387,7 +407,7 @@ export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, o
     const s = search.toLowerCase();
 
     // Filter at item level, then rebuild client groups
-    const result: typeof clienteSummary = [];
+    const result: OSAbertasGroup[] = [];
     for (const c of clienteSummary) {
       if (c.cliente.toLowerCase().includes(s)) {
         result.push(c);
@@ -412,6 +432,7 @@ export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, o
 
   const grandTotal = useMemo(() => filtered.reduce((sum, c) => sum + c.total, 0), [filtered]);
   const grandCount = useMemo(() => filtered.reduce((sum, c) => sum + c.count, 0), [filtered]);
+  const clientesCount = useMemo(() => filtered.filter((c) => !c.isPendingLinkGroup).length, [filtered]);
 
   const resolveAuvoTaskLive = useCallback(async (taskId: string): Promise<LiveTaskResolution | null> => {
     const { data: taskData, error } = await supabase.functions.invoke("auvo-task-update", {
@@ -894,7 +915,7 @@ export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, o
             <CardTitle className="text-sm font-medium text-muted-foreground">Clientes</CardTitle>
           </CardHeader>
           <CardContent className="px-4 pb-3">
-            <p className="text-2xl font-bold text-foreground">{filtered.length}</p>
+            <p className="text-2xl font-bold text-foreground">{clientesCount}</p>
           </CardContent>
         </Card>
       </div>
@@ -1032,10 +1053,19 @@ export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, o
                   <>
                     <TableRow
                       key={row.cliente}
-                      className="cursor-pointer hover:bg-muted/50"
+                      className={cn(
+                        "cursor-pointer hover:bg-muted/50",
+                        row.isPendingLinkGroup && "bg-destructive/10 hover:bg-destructive/20 text-destructive"
+                      )}
                       onClick={() => setExpanded(expanded === row.cliente ? null : row.cliente)}
+                      title={row.isPendingLinkGroup ? "Clique para ver todas as OS sem tarefa Auvo vinculada" : undefined}
                     >
-                      <TableCell className="font-medium">{row.cliente}</TableCell>
+                      <TableCell className="font-medium">
+                        <div className="flex items-center gap-2">
+                          {row.isPendingLinkGroup && <AlertTriangle className="h-4 w-4" />}
+                          <span>{row.cliente}</span>
+                        </div>
+                      </TableCell>
                       <TableCell className="text-center">
                         <Badge variant="secondary">{row.count}</Badge>
                       </TableCell>
@@ -1066,13 +1096,13 @@ export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, o
                               <TableBody>
                                 {row.items
                                   .sort((a: any, b: any) => {
-                                    const orphanA = String(a.auvo_task_id || "").startsWith("gc-only::") ? 1 : 0;
-                                    const orphanB = String(b.auvo_task_id || "").startsWith("gc-only::") ? 1 : 0;
+                                    const orphanA = isPendingLinkItem(a) ? 1 : 0;
+                                    const orphanB = isPendingLinkItem(b) ? 1 : 0;
                                     if (orphanA !== orphanB) return orphanB - orphanA; // órfãs primeiro
                                     return (Number(b.gc_os_valor_total) || 0) - (Number(a.gc_os_valor_total) || 0);
                                   })
                                   .map((item: any) => {
-                                    const semTarefa = String(item.auvo_task_id || "").startsWith("gc-only::");
+                                    const semTarefa = isPendingLinkItem(item);
                                     const pendenteVinculo = false;
                                     const semVinculoVisual = semTarefa;
                                     return (
