@@ -1042,7 +1042,12 @@ export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, o
                               </TableHeader>
                               <TableBody>
                                 {row.items
-                                  .sort((a: any, b: any) => (Number(b.gc_os_valor_total) || 0) - (Number(a.gc_os_valor_total) || 0))
+                                  .sort((a: any, b: any) => {
+                                    const orphanA = String(a.auvo_task_id || "").startsWith("gc-only::") || a.status_auvo === "Pendente vínculo Auvo" ? 1 : 0;
+                                    const orphanB = String(b.auvo_task_id || "").startsWith("gc-only::") || b.status_auvo === "Pendente vínculo Auvo" ? 1 : 0;
+                                    if (orphanA !== orphanB) return orphanB - orphanA; // órfãs primeiro
+                                    return (Number(b.gc_os_valor_total) || 0) - (Number(a.gc_os_valor_total) || 0);
+                                  })
                                   .map((item: any) => {
                                     const semTarefa = String(item.auvo_task_id || "").startsWith("gc-only::");
                                     const pendenteVinculo = !semTarefa && item.status_auvo === "Pendente vínculo Auvo";
