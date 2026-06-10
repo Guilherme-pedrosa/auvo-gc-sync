@@ -216,7 +216,12 @@ export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, o
   }, [profile?.gc_user_id, onRefresh]);
 
   const allSituacoes = useMemo(() => {
-    const set = new Set(data.map((t) => t.gc_os_situacao || "").filter(Boolean));
+    const allowed = new Set(SITUACOES_OPTIONS.map((s) => s.label.toUpperCase()));
+    const set = new Set(
+      data
+        .map((t) => String(t.gc_os_situacao || "").trim())
+        .filter((s) => s && allowed.has(s.toUpperCase()))
+    );
     return Array.from(set).sort();
   }, [data]);
 
