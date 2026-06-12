@@ -63,9 +63,9 @@ Deno.serve(async (req) => {
     };
 
     // Busca OS pelo código (v2 retorna lista)
-    const listResp = await fetch(`${GC_BASE_URL}/v2/ordens_servicos?codigo=${encodeURIComponent(codigo)}`, { headers: gcHeaders });
+    const listResp = await fetch(`${GC_BASE_URL}/api/ordens_servicos?codigo=${encodeURIComponent(codigo)}&limite=1`, { headers: gcHeaders });
     if (!listResp.ok) {
-      return new Response(JSON.stringify({ ok: false, error: `Falha GC v2 (${listResp.status})` }),
+      return new Response(JSON.stringify({ ok: false, error: `Falha GC busca (${listResp.status})` }),
         { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
     const listJson = await listResp.json().catch(() => ({}));
