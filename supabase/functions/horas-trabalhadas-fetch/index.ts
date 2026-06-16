@@ -1153,7 +1153,8 @@ Deno.serve(async (req) => {
 
           // Resolver via GET por ID é caro. Pula a menos que explicitamente solicitado.
           if (!resolveLinks) {
-            return new Response(JSON.stringify({ tasks, avisos }), {
+            const responseTasks = tasks.map(normalizeTaskHoursForReport);
+            return new Response(JSON.stringify({ tasks: responseTasks, avisos }), {
               headers: { ...corsHeaders, "Content-Type": "application/json" },
             });
           }
@@ -1209,7 +1210,8 @@ Deno.serve(async (req) => {
       }
     }
 
-    return new Response(JSON.stringify({ tasks, avisos }), {
+    const responseTasks = tasks.map(normalizeTaskHoursForReport);
+    return new Response(JSON.stringify({ tasks: responseTasks, avisos }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (e: any) {
