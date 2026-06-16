@@ -1858,18 +1858,8 @@ async function runCentralSync(body: CentralSyncBody = {}) {
       const checkInIso = normalizeDateTime(checkInDateRaw);
       const checkOutIso = normalizeDateTime(checkOutDateRawFull);
 
-      // Calculate displacement duration (displacementStart → checkInDate) in decimal hours
-      let duracaoDeslocamento: number | null = null;
-      if (displacementStartRaw && checkInDateRaw) {
-        const dStart = new Date(displacementStartRaw);
-        const dEnd = new Date(checkInDateRaw);
-        if (!isNaN(dStart.getTime()) && !isNaN(dEnd.getTime())) {
-          const diffMs = dEnd.getTime() - dStart.getTime();
-          if (diffMs > 0 && diffMs < 24 * 60 * 60 * 1000) { // sanity: < 24h
-            duracaoDeslocamento = Math.round((diffMs / 3600000) * 100) / 100;
-          }
-        }
-      }
+      // Calculate displacement separately (displacementStart → checkInDate). It must not enter worked hours.
+      const duracaoDeslocamento = calculateDisplacementHours(displacementStartRaw, checkInDateRaw) || null;
 
       const startTimeResolved =
         extractTimeFromDateStr(checkInDateRaw) ||
@@ -1883,7 +1873,10 @@ async function runCentralSync(body: CentralSyncBody = {}) {
 
       const durationDecimalRaw = parseFloat(task.durationDecimal || "0") || 0;
       const estimatedDurationHours = parseDurationToHours(task.estimatedDuration || snapshot?.estimatedDuration || "");
-      const durationDecimalResolved = durationDecimalRaw > 0 ? durationDecimalRaw : estimatedDurationHours;
+      const durationDecimalResolved = subtractDisplacement(
+        durationDecimalRaw > 0 ? durationDecimalRaw : estimatedDurationHours,
+        duracaoDeslocamento || 0,
+      );
 
       if (!endTimeResolved && startTimeResolved && durationDecimalResolved > 0) {
         const startMinutes = parseClockToMinutes(startTimeResolved);
