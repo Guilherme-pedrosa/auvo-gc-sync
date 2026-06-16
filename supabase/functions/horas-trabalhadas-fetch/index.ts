@@ -208,6 +208,7 @@ function mapAuvoTask(t: any) {
   const checkOut = t?.checkOutDate || t?.CheckOutDate || null;
   const displacementStart = t?.displacementStart || t?.DisplacementStart || t?.displacement_start || null;
   let workedSeconds = 0;
+  let durationMayIncludeDisplacement = false;
   const dStr = String(t?.duration || t?.Duration || "").trim();
   const dMatch = dStr.match(/^(\d+):(\d{1,2}):(\d{1,2})$/);
   if (dMatch) {
@@ -215,6 +216,7 @@ function mapAuvoTask(t: any) {
       parseInt(dMatch[1], 10) * 3600 +
       parseInt(dMatch[2], 10) * 60 +
       parseInt(dMatch[3], 10);
+    durationMayIncludeDisplacement = true;
   } else if (checkIn) {
     // Calcula manualmente a partir dos eventos de monitoramento.
     const tc: any[] = Array.isArray(t?.timeControl) ? t.timeControl : [];
@@ -248,7 +250,9 @@ function mapAuvoTask(t: any) {
     }
   }
   const displacementHours = calculateDisplacementHours(displacementStart, checkIn);
-  const workedHours = subtractDisplacement(workedSeconds / 3600, displacementHours);
+  const workedHours = durationMayIncludeDisplacement
+    ? subtractDisplacement(workedSeconds / 3600, displacementHours)
+    : subtractDisplacement(workedSeconds / 3600, 0);
 
   return {
     auvo_task_id: taskId,
