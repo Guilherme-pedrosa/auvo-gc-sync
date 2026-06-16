@@ -148,6 +148,24 @@ function parseDurationToHours(durationLike: unknown): number {
   return Number.isFinite(numeric) && numeric > 0 ? numeric : 0;
 }
 
+function calculateDisplacementHours(displacementStart: unknown, checkIn: unknown): number {
+  const start = String(displacementStart || "").trim();
+  const end = String(checkIn || "").trim();
+  if (!start || !end) return 0;
+  const startMs = new Date(start).getTime();
+  const endMs = new Date(end).getTime();
+  if (!Number.isFinite(startMs) || !Number.isFinite(endMs)) return 0;
+  const diffMs = endMs - startMs;
+  if (diffMs <= 0 || diffMs >= 24 * 60 * 60 * 1000) return 0;
+  return Math.round((diffMs / 3600000) * 10000) / 10000;
+}
+
+function subtractDisplacement(hours: number, displacementHours: number): number {
+  if (!Number.isFinite(hours) || hours <= 0) return 0;
+  if (!Number.isFinite(displacementHours) || displacementHours <= 0) return Math.round(hours * 10000) / 10000;
+  return Math.round(Math.max(0, hours - displacementHours) * 10000) / 10000;
+}
+
 function resolveTaskType(task: any): string {
   const candidates = [
     task?.taskTypeDescription,
