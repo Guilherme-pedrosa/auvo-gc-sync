@@ -206,6 +206,7 @@ function mapAuvoTask(t: any) {
   // Sem check-in → 0 (não considerar janela planejada).
   const checkIn = t?.checkInDate || t?.CheckInDate || null;
   const checkOut = t?.checkOutDate || t?.CheckOutDate || null;
+  const displacementStart = t?.displacementStart || t?.DisplacementStart || t?.displacement_start || null;
   let workedSeconds = 0;
   const dStr = String(t?.duration || t?.Duration || "").trim();
   const dMatch = dStr.match(/^(\d+):(\d{1,2}):(\d{1,2})$/);
@@ -246,7 +247,8 @@ function mapAuvoTask(t: any) {
       workedSeconds = Math.max(0, totalSec - pauseSec);
     }
   }
-  const workedHours = Math.round((workedSeconds / 3600) * 10000) / 10000;
+  const displacementHours = calculateDisplacementHours(displacementStart, checkIn);
+  const workedHours = subtractDisplacement(workedSeconds / 3600, displacementHours);
 
   return {
     auvo_task_id: taskId,
@@ -260,6 +262,8 @@ function mapAuvoTask(t: any) {
     check_in_iso: isoTimestamp(t?.checkInDate || t?.CheckInDate),
     check_out_iso: isoTimestamp(t?.checkOutDate || t?.CheckOutDate),
     worked_hours: workedHours,
+    displacement_start: isoTimestamp(displacementStart),
+    displacement_hours: displacementHours,
     has_check_in: !!checkIn,
   };
 }
