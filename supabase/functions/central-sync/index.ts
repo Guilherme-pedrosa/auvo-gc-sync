@@ -1139,8 +1139,9 @@ async function runReportsOnlySync(sbClient: any, bearerToken: string, gcHeaders:
     let endTimeResolved =
       extractTimeFromDateStr(checkOutDateRaw) ||
       String(task.endTime || task.endHour || "").trim();
-    const durationDecimalRaw = parseFloat(task.durationDecimal || "0") || parseDurationToHours(task.estimatedDuration || "");
-    const durationDecimalResolved = subtractDisplacement(durationDecimalRaw, duracaoDeslocamento);
+    const workedHoursRaw = computeAuvoWorkedHours(task) || parseDurationToHours(task.estimatedDuration || "");
+    // workedHoursRaw já vem sem pausas. Subtrai apenas o deslocamento.
+    const durationDecimalResolved = subtractDisplacement(workedHoursRaw, duracaoDeslocamento);
 
     if (!endTimeResolved && startTimeResolved && durationDecimalResolved > 0) {
       const startMinutes = parseClockToMinutes(startTimeResolved);
@@ -1914,10 +1915,10 @@ async function runCentralSync(body: CentralSyncBody = {}) {
         String(task.endTime || task.endHour || snapshot?.endTime || "").trim() ||
         extractTimeFromDateStr(String(task.taskEndDate || task.taskEndDateTime || snapshot?.taskEndDate || ""));
 
-      const durationDecimalRaw = parseFloat(task.durationDecimal || "0") || 0;
+      const workedHoursRaw = computeAuvoWorkedHours(task);
       const estimatedDurationHours = parseDurationToHours(task.estimatedDuration || snapshot?.estimatedDuration || "");
       const durationDecimalResolved = subtractDisplacement(
-        durationDecimalRaw > 0 ? durationDecimalRaw : estimatedDurationHours,
+        workedHoursRaw > 0 ? workedHoursRaw : estimatedDurationHours,
         duracaoDeslocamento || 0,
       );
 
