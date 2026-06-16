@@ -338,6 +338,8 @@ Deno.serve(async (req) => {
           data_conclusao: m.auvo_check_out_date,
           check_in_iso: m.check_in_iso,
           check_out_iso: m.check_out_iso,
+          deslocamento_inicio: m.displacement_start,
+          duracao_deslocamento: m.displacement_hours,
           atualizado_em: m.auvo_date_last_update || new Date().toISOString(),
         };
         // Recalcula hora_inicio / hora_fim a partir do ISO quando disponível
@@ -499,6 +501,9 @@ Deno.serve(async (req) => {
         existing.task_type_description = m.task_type_description || existing.task_type_description || "";
         existing.check_in_iso = m.check_in_iso || existing.check_in_iso || null;
         existing.check_out_iso = m.check_out_iso || existing.check_out_iso || null;
+          existing.deslocamento_inicio = m.displacement_start || existing.deslocamento_inicio || null;
+          existing.duracao_deslocamento = m.displacement_hours || existing.duracao_deslocamento || null;
+          existing._hours_excludes_displacement = true;
         // Sobrescreve horários e duração com a verdade do Auvo (tempo trabalhado, sem pausas).
         if (m.has_check_in) {
           existing.duracao_decimal = m.worked_hours;
@@ -524,6 +529,9 @@ Deno.serve(async (req) => {
           atualizado_em: m.auvo_date_last_update,
           check_in_iso: m.check_in_iso,
           check_out_iso: m.check_out_iso,
+          deslocamento_inicio: m.displacement_start,
+          duracao_deslocamento: m.displacement_hours,
+          _hours_excludes_displacement: true,
           duracao_decimal: m.has_check_in ? m.worked_hours : 0,
           hora_inicio: m.check_in_iso ? String(m.check_in_iso).slice(11, 16) : null,
           hora_fim: m.check_out_iso ? String(m.check_out_iso).slice(11, 16) : null,
