@@ -148,6 +148,24 @@ function parseDurationToHours(durationLike: unknown): number {
   return Number.isFinite(numeric) && numeric > 0 ? numeric : 0;
 }
 
+function calculateDisplacementHours(displacementStart: unknown, checkIn: unknown): number {
+  const start = String(displacementStart || "").trim();
+  const end = String(checkIn || "").trim();
+  if (!start || !end) return 0;
+  const startMs = new Date(start).getTime();
+  const endMs = new Date(end).getTime();
+  if (!Number.isFinite(startMs) || !Number.isFinite(endMs)) return 0;
+  const diffMs = endMs - startMs;
+  if (diffMs <= 0 || diffMs >= 24 * 60 * 60 * 1000) return 0;
+  return Math.round((diffMs / 3600000) * 10000) / 10000;
+}
+
+function subtractDisplacement(hours: number, displacementHours: number): number {
+  if (!Number.isFinite(hours) || hours <= 0) return 0;
+  if (!Number.isFinite(displacementHours) || displacementHours <= 0) return Math.round(hours * 10000) / 10000;
+  return Math.round(Math.max(0, hours - displacementHours) * 10000) / 10000;
+}
+
 function resolveTaskType(task: any): string {
   const candidates = [
     task?.taskTypeDescription,
@@ -1065,6 +1083,8 @@ async function runReportsOnlySync(sbClient: any, bearerToken: string, gcHeaders:
     const checkInDateRaw = String(task.checkInDate || task.checkinDate || "").trim();
     const checkInIso = normalizeDateTime(checkInDateRaw);
     const checkOutIso = normalizeDateTime(checkOutDateRaw);
+    const displacementStartRaw = String(task.displacementStart || task.displacement_start || "").trim();
+    const duracaoDeslocamento = calculateDisplacementHours(displacementStartRaw, checkInDateRaw);
     const hasCheckOut = !!task.checkOut || !!checkOutDateRaw;
     // Preferimos sempre o horário REAL de check-in/check-out (Auvo monitoring)
     // sobre o horário AGENDADO (startTime/endTime). Isso evita falsos alertas
@@ -1076,7 +1096,8 @@ async function runReportsOnlySync(sbClient: any, bearerToken: string, gcHeaders:
     let endTimeResolved =
       extractTimeFromDateStr(checkOutDateRaw) ||
       String(task.endTime || task.endHour || "").trim();
-    const durationDecimalResolved = parseFloat(task.durationDecimal || "0") || parseDurationToHours(task.estimatedDuration || "");
+    const durationDecimalRaw = parseFloat(task.durationDecimal || "0") || parseDurationToHours(task.estimatedDuration || "");
+    const durationDecimalResolved = subtractDisplacement(durationDecimalRaw, duracaoDeslocamento);
 
     if (!endTimeResolved && startTimeResolved && durationDecimalResolved > 0) {
       const startMinutes = parseClockToMinutes(startTimeResolved);
@@ -1092,8 +1113,8 @@ async function runReportsOnlySync(sbClient: any, bearerToken: string, gcHeaders:
       data_conclusao: normalizeDate(checkOutDateRaw) || null,
       check_in_iso: checkInIso,
       check_out_iso: checkOutIso,
-      deslocamento_inicio: String(task.displacementStart || task.displacement_start || "").trim() || null,
-      duracao_deslocamento: null,
+      deslocamento_inicio: displacementStartRaw || null,
+      duracao_deslocamento: duracaoDeslocamento || null,
       task_type_id: (() => {
         const tt = task.taskType ?? task.TaskType;
         if (tt == null) return null;
@@ -1837,18 +1858,8 @@ async function runCentralSync(body: CentralSyncBody = {}) {
       const checkInIso = normalizeDateTime(checkInDateRaw);
       const checkOutIso = normalizeDateTime(checkOutDateRawFull);
 
-      // Calculate displacement duration (displacementStart → checkInDate) in decimal hours
-      let duracaoDeslocamento: number | null = null;
-      if (displacementStartRaw && checkInDateRaw) {
-        const dStart = new Date(displacementStartRaw);
-        const dEnd = new Date(checkInDateRaw);
-        if (!isNaN(dStart.getTime()) && !isNaN(dEnd.getTime())) {
-          const diffMs = dEnd.getTime() - dStart.getTime();
-          if (diffMs > 0 && diffMs < 24 * 60 * 60 * 1000) { // sanity: < 24h
-            duracaoDeslocamento = Math.round((diffMs / 3600000) * 100) / 100;
-          }
-        }
-      }
+      // Calculate displacement separately (displacementStart → checkInDate). It must not enter worked hours.
+      const duracaoDeslocamento = calculateDisplacementHours(displacementStartRaw, checkInDateRaw) || null;
 
       const startTimeResolved =
         extractTimeFromDateStr(checkInDateRaw) ||
@@ -1862,7 +1873,10 @@ async function runCentralSync(body: CentralSyncBody = {}) {
 
       const durationDecimalRaw = parseFloat(task.durationDecimal || "0") || 0;
       const estimatedDurationHours = parseDurationToHours(task.estimatedDuration || snapshot?.estimatedDuration || "");
-      const durationDecimalResolved = durationDecimalRaw > 0 ? durationDecimalRaw : estimatedDurationHours;
+      const durationDecimalResolved = subtractDisplacement(
+        durationDecimalRaw > 0 ? durationDecimalRaw : estimatedDurationHours,
+        duracaoDeslocamento || 0,
+      );
 
       if (!endTimeResolved && startTimeResolved && durationDecimalResolved > 0) {
         const startMinutes = parseClockToMinutes(startTimeResolved);

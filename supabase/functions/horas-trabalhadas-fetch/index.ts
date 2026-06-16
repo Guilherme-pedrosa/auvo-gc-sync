@@ -12,7 +12,7 @@ const DB_PAGE_SIZE = 1000;
 const REPORT_COLUMNS = [
   "auvo_task_id", "cliente", "tecnico", "tecnico_id", "data_tarefa", "data_conclusao", "status_auvo",
   "orientacao", "pendencia", "descricao", "duracao_decimal", "hora_inicio", "hora_fim", "check_in", "check_out",
-  "check_in_iso", "check_out_iso", "duracao_deslocamento", "equipamento_nome", "equipamento_id_serie",
+  "check_in_iso", "check_out_iso", "deslocamento_inicio", "duracao_deslocamento", "equipamento_nome", "equipamento_id_serie",
   "auvo_link", "auvo_task_url", "auvo_survey_url", "gc_os_id", "gc_os_codigo", "gc_os_cliente",
   "gc_os_situacao", "gc_os_situacao_id", "gc_os_cor_situacao", "gc_os_valor_total", "gc_os_vendedor",
   "gc_os_data", "gc_os_data_saida", "gc_os_link", "gc_os_link_cobranca", "gc_os_tarefa_exec", "gc_os_tarefa_os",
@@ -116,6 +116,39 @@ function isoTimestamp(s: string | null | undefined): string | null {
   return raw;
 }
 
+function calculateDisplacementHours(displacementStart: unknown, checkIn: unknown): number {
+  const start = String(displacementStart || "").trim();
+  const end = String(checkIn || "").trim();
+  if (!start || !end) return 0;
+  const startMs = new Date(start).getTime();
+  const endMs = new Date(end).getTime();
+  if (!Number.isFinite(startMs) || !Number.isFinite(endMs)) return 0;
+  const diffMs = endMs - startMs;
+  if (diffMs <= 0 || diffMs >= 24 * 60 * 60 * 1000) return 0;
+  return Math.round((diffMs / 3600000) * 10000) / 10000;
+}
+
+function subtractDisplacement(hours: number, displacementHours: number): number {
+  if (!Number.isFinite(hours) || hours <= 0) return 0;
+  if (!Number.isFinite(displacementHours) || displacementHours <= 0) return Math.round(hours * 10000) / 10000;
+  return Math.round(Math.max(0, hours - displacementHours) * 10000) / 10000;
+}
+
+function normalizeTaskHoursForReport(task: any) {
+  const displacementHours = Number(task?.duracao_deslocamento) || calculateDisplacementHours(task?.deslocamento_inicio, task?.check_in_iso);
+  const alreadyExcludesDisplacement = task?._hours_excludes_displacement === true;
+  if (displacementHours > 0) {
+    task.duracao_deslocamento = displacementHours;
+    task.duracao_decimal = alreadyExcludesDisplacement
+      ? subtractDisplacement(Number(task?.duracao_decimal) || 0, 0)
+      : subtractDisplacement(Number(task?.duracao_decimal) || 0, displacementHours);
+  } else if ((Number(task?.duracao_decimal) || 0) < 0) {
+    task.duracao_decimal = 0;
+  }
+  delete task._hours_excludes_displacement;
+  return task;
+}
+
 async function fetchWithRetry(url: string, token: string, attempts = 2): Promise<Response | null> {
   let delay = 400;
   for (let i = 0; i < attempts; i++) {
@@ -177,7 +210,9 @@ function mapAuvoTask(t: any) {
   // Sem check-in → 0 (não considerar janela planejada).
   const checkIn = t?.checkInDate || t?.CheckInDate || null;
   const checkOut = t?.checkOutDate || t?.CheckOutDate || null;
+  const displacementStart = t?.displacementStart || t?.DisplacementStart || t?.displacement_start || null;
   let workedSeconds = 0;
+  let durationMayIncludeDisplacement = false;
   const dStr = String(t?.duration || t?.Duration || "").trim();
   const dMatch = dStr.match(/^(\d+):(\d{1,2}):(\d{1,2})$/);
   if (dMatch) {
@@ -185,6 +220,7 @@ function mapAuvoTask(t: any) {
       parseInt(dMatch[1], 10) * 3600 +
       parseInt(dMatch[2], 10) * 60 +
       parseInt(dMatch[3], 10);
+    durationMayIncludeDisplacement = true;
   } else if (checkIn) {
     // Calcula manualmente a partir dos eventos de monitoramento.
     const tc: any[] = Array.isArray(t?.timeControl) ? t.timeControl : [];
@@ -217,7 +253,10 @@ function mapAuvoTask(t: any) {
       workedSeconds = Math.max(0, totalSec - pauseSec);
     }
   }
-  const workedHours = Math.round((workedSeconds / 3600) * 10000) / 10000;
+  const displacementHours = calculateDisplacementHours(displacementStart, checkIn);
+  const workedHours = durationMayIncludeDisplacement
+    ? subtractDisplacement(workedSeconds / 3600, displacementHours)
+    : subtractDisplacement(workedSeconds / 3600, 0);
 
   return {
     auvo_task_id: taskId,
@@ -231,6 +270,8 @@ function mapAuvoTask(t: any) {
     check_in_iso: isoTimestamp(t?.checkInDate || t?.CheckInDate),
     check_out_iso: isoTimestamp(t?.checkOutDate || t?.CheckOutDate),
     worked_hours: workedHours,
+    displacement_start: isoTimestamp(displacementStart),
+    displacement_hours: displacementHours,
     has_check_in: !!checkIn,
   };
 }
@@ -297,6 +338,8 @@ Deno.serve(async (req) => {
           data_conclusao: m.auvo_check_out_date,
           check_in_iso: m.check_in_iso,
           check_out_iso: m.check_out_iso,
+          deslocamento_inicio: m.displacement_start,
+          duracao_deslocamento: m.displacement_hours,
           atualizado_em: m.auvo_date_last_update || new Date().toISOString(),
         };
         // Recalcula hora_inicio / hora_fim a partir do ISO quando disponível
@@ -458,6 +501,9 @@ Deno.serve(async (req) => {
         existing.task_type_description = m.task_type_description || existing.task_type_description || "";
         existing.check_in_iso = m.check_in_iso || existing.check_in_iso || null;
         existing.check_out_iso = m.check_out_iso || existing.check_out_iso || null;
+          existing.deslocamento_inicio = m.displacement_start || existing.deslocamento_inicio || null;
+          existing.duracao_deslocamento = m.displacement_hours || existing.duracao_deslocamento || null;
+          existing._hours_excludes_displacement = true;
         // Sobrescreve horários e duração com a verdade do Auvo (tempo trabalhado, sem pausas).
         if (m.has_check_in) {
           existing.duracao_decimal = m.worked_hours;
@@ -483,6 +529,9 @@ Deno.serve(async (req) => {
           atualizado_em: m.auvo_date_last_update,
           check_in_iso: m.check_in_iso,
           check_out_iso: m.check_out_iso,
+          deslocamento_inicio: m.displacement_start,
+          duracao_deslocamento: m.displacement_hours,
+          _hours_excludes_displacement: true,
           duracao_decimal: m.has_check_in ? m.worked_hours : 0,
           hora_inicio: m.check_in_iso ? String(m.check_in_iso).slice(11, 16) : null,
           hora_fim: m.check_out_iso ? String(m.check_out_iso).slice(11, 16) : null,
@@ -1104,7 +1153,8 @@ Deno.serve(async (req) => {
 
           // Resolver via GET por ID é caro. Pula a menos que explicitamente solicitado.
           if (!resolveLinks) {
-            return new Response(JSON.stringify({ tasks, avisos }), {
+            const responseTasks = tasks.map(normalizeTaskHoursForReport);
+            return new Response(JSON.stringify({ tasks: responseTasks, avisos }), {
               headers: { ...corsHeaders, "Content-Type": "application/json" },
             });
           }
@@ -1160,7 +1210,8 @@ Deno.serve(async (req) => {
       }
     }
 
-    return new Response(JSON.stringify({ tasks, avisos }), {
+    const responseTasks = tasks.map(normalizeTaskHoursForReport);
+    return new Response(JSON.stringify({ tasks: responseTasks, avisos }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (e: any) {
