@@ -166,6 +166,49 @@ function subtractDisplacement(hours: number, displacementHours: number): number 
   return Math.round(Math.max(0, hours - displacementHours) * 10000) / 10000;
 }
 
+// Calcula horas EFETIVAMENTE trabalhadas (sem pausas e sem deslocamento),
+// replicando o que o Auvo mostra em "Tempo total de trabalho na tarefa".
+// Prioridade:
+//   1) task.duration "HH:MM:SS" — campo oficial do Auvo, JÁ desconta pausas
+//   2) (checkOut − checkIn) − Σ pausas (timeControl)
+//   3) task.durationDecimal (último recurso — pode incluir pausas em alguns retornos)
+function computeAuvoWorkedHours(task: any): number {
+  // Fonte 1: duration HH:MM:SS
+  const durStr = String(task?.duration || task?.Duration || "").trim();
+  const m = durStr.match(/^(\d+):(\d{1,2})(?::(\d{1,2}))?$/);
+  if (m) {
+    const h = parseInt(m[1], 10);
+    const mi = parseInt(m[2], 10);
+    const s = m[3] ? parseInt(m[3], 10) : 0;
+    const total = h + mi / 60 + s / 3600;
+    if (total > 0) return Math.round(total * 10000) / 10000;
+  }
+  // Fonte 2: checkIn/checkOut menos pausas
+  const checkIn = task?.checkInDate || task?.CheckInDate || task?.checkinDate || null;
+  const checkOut = task?.checkOutDate || task?.CheckOutDate || task?.checkoutDate || null;
+  if (checkIn && checkOut) {
+    const inMs = new Date(checkIn).getTime();
+    const outMs = new Date(checkOut).getTime();
+    if (Number.isFinite(inMs) && Number.isFinite(outMs) && outMs > inMs) {
+      const tc: any[] = Array.isArray(task?.timeControl) ? task.timeControl : [];
+      let pauseSec = 0;
+      for (const ev of tc) {
+        const ps = ev?.pauseStart || ev?.startPause || ev?.start;
+        const pe = ev?.pauseEnd || ev?.endPause || ev?.end || ev?.resumeDate;
+        if (ps && pe) {
+          const diff = new Date(pe).getTime() - new Date(ps).getTime();
+          if (Number.isFinite(diff) && diff > 0) pauseSec += Math.floor(diff / 1000);
+        }
+      }
+      const totalSec = Math.max(0, Math.floor((outMs - inMs) / 1000) - pauseSec);
+      return Math.round((totalSec / 3600) * 10000) / 10000;
+    }
+  }
+  // Fonte 3: durationDecimal (fallback)
+  const dec = parseFloat(String(task?.durationDecimal || "0").replace(",", "."));
+  return Number.isFinite(dec) && dec > 0 ? Math.round(dec * 10000) / 10000 : 0;
+}
+
 function resolveTaskType(task: any): string {
   const candidates = [
     task?.taskTypeDescription,
@@ -1096,8 +1139,9 @@ async function runReportsOnlySync(sbClient: any, bearerToken: string, gcHeaders:
     let endTimeResolved =
       extractTimeFromDateStr(checkOutDateRaw) ||
       String(task.endTime || task.endHour || "").trim();
-    const durationDecimalRaw = parseFloat(task.durationDecimal || "0") || parseDurationToHours(task.estimatedDuration || "");
-    const durationDecimalResolved = subtractDisplacement(durationDecimalRaw, duracaoDeslocamento);
+    const workedHoursRaw = computeAuvoWorkedHours(task) || parseDurationToHours(task.estimatedDuration || "");
+    // workedHoursRaw já vem sem pausas. Subtrai apenas o deslocamento.
+    const durationDecimalResolved = subtractDisplacement(workedHoursRaw, duracaoDeslocamento);
 
     if (!endTimeResolved && startTimeResolved && durationDecimalResolved > 0) {
       const startMinutes = parseClockToMinutes(startTimeResolved);
@@ -1871,10 +1915,10 @@ async function runCentralSync(body: CentralSyncBody = {}) {
         String(task.endTime || task.endHour || snapshot?.endTime || "").trim() ||
         extractTimeFromDateStr(String(task.taskEndDate || task.taskEndDateTime || snapshot?.taskEndDate || ""));
 
-      const durationDecimalRaw = parseFloat(task.durationDecimal || "0") || 0;
+      const workedHoursRaw = computeAuvoWorkedHours(task);
       const estimatedDurationHours = parseDurationToHours(task.estimatedDuration || snapshot?.estimatedDuration || "");
       const durationDecimalResolved = subtractDisplacement(
-        durationDecimalRaw > 0 ? durationDecimalRaw : estimatedDurationHours,
+        workedHoursRaw > 0 ? workedHoursRaw : estimatedDurationHours,
         duracaoDeslocamento || 0,
       );
 
