@@ -136,12 +136,9 @@ function subtractDisplacement(hours: number, displacementHours: number): number 
 
 function normalizeTaskHoursForReport(task: any) {
   const displacementHours = Number(task?.duracao_deslocamento) || calculateDisplacementHours(task?.deslocamento_inicio, task?.check_in_iso);
-  const alreadyExcludesDisplacement = task?._hours_excludes_displacement === true;
   if (displacementHours > 0) {
     task.duracao_deslocamento = displacementHours;
-    task.duracao_decimal = alreadyExcludesDisplacement
-      ? subtractDisplacement(Number(task?.duracao_decimal) || 0, 0)
-      : subtractDisplacement(Number(task?.duracao_decimal) || 0, displacementHours);
+    task.duracao_decimal = Math.round((Number(task?.duracao_decimal) || 0) * 10000) / 10000;
   } else if ((Number(task?.duracao_decimal) || 0) < 0) {
     task.duracao_decimal = 0;
   }
@@ -212,7 +209,6 @@ function mapAuvoTask(t: any) {
   const checkOut = t?.checkOutDate || t?.CheckOutDate || null;
   const displacementStart = t?.displacementStart || t?.DisplacementStart || t?.displacement_start || null;
   let workedSeconds = 0;
-  let durationMayIncludeDisplacement = false;
   const dStr = String(t?.duration || t?.Duration || "").trim();
   const dMatch = dStr.match(/^(\d+):(\d{1,2}):(\d{1,2})$/);
   if (dMatch) {
@@ -220,7 +216,6 @@ function mapAuvoTask(t: any) {
       parseInt(dMatch[1], 10) * 3600 +
       parseInt(dMatch[2], 10) * 60 +
       parseInt(dMatch[3], 10);
-    durationMayIncludeDisplacement = true;
   } else if (checkIn) {
     // Calcula manualmente a partir dos eventos de monitoramento.
     const tc: any[] = Array.isArray(t?.timeControl) ? t.timeControl : [];
@@ -254,9 +249,7 @@ function mapAuvoTask(t: any) {
     }
   }
   const displacementHours = calculateDisplacementHours(displacementStart, checkIn);
-  const workedHours = durationMayIncludeDisplacement
-    ? subtractDisplacement(workedSeconds / 3600, displacementHours)
-    : subtractDisplacement(workedSeconds / 3600, 0);
+  const workedHours = Math.round((workedSeconds / 3600) * 10000) / 10000;
 
   return {
     auvo_task_id: taskId,

@@ -308,6 +308,9 @@ type AuvoTaskSnapshot = {
   equipmentSerial: string;
   equipmentIds: string[];
   questionnaires: any[];
+  duration: string;
+  durationDecimal: unknown;
+  timeControl: any[];
 };
 
 async function fetchAuvoTaskSnapshot(bearerToken: string, taskId: string): Promise<AuvoTaskSnapshot | null> {
@@ -354,6 +357,9 @@ async function fetchAuvoTaskSnapshot(bearerToken: string, taskId: string): Promi
   const startTime = String(result?.startTime || result?.startHour || result?.scheduledStartTime || "").trim();
   const endTime = String(result?.endTime || result?.endHour || result?.scheduledEndTime || "").trim();
   const estimatedDuration = String(result?.estimatedDuration || result?.estimatedTime || "").trim();
+  const duration = String(result?.duration || result?.Duration || "").trim();
+  const durationDecimal = result?.durationDecimal ?? result?.DurationDecimal ?? null;
+  const timeControl = Array.isArray(result?.timeControl) ? result.timeControl : [];
 
   // Extract equipment info from snapshot
   let equipmentName = "";
@@ -371,7 +377,7 @@ async function fetchAuvoTaskSnapshot(bearerToken: string, taskId: string): Promi
   }
 
   const questionnaires = Array.isArray(result?.questionnaires) ? result.questionnaires : [];
-  return { address, orientation, technicianName, technicianId, taskDate, displacementStart, checkInDate, checkOutDate, taskEndDate, startTime, endTime, estimatedDuration, equipmentName, equipmentSerial, equipmentIds: equipIds, questionnaires };
+  return { address, orientation, technicianName, technicianId, taskDate, displacementStart, checkInDate, checkOutDate, taskEndDate, startTime, endTime, estimatedDuration, equipmentName, equipmentSerial, equipmentIds: equipIds, questionnaires, duration, durationDecimal, timeControl };
 }
 
 // Fetch Auvo tasks for a single month window
@@ -1106,9 +1112,37 @@ async function runReportsOnlySync(sbClient: any, bearerToken: string, gcHeaders:
     }
   }
 
+  const taskSnapshotById = new Map<string, AuvoTaskSnapshot>();
+  const detailIds = Array.from(new Set(taskIds));
+  if (detailIds.length > 0) {
+    console.log(`[central-sync] Reports-only: buscando detalhe Auvo para ${detailIds.length} tarefas`);
+    const PARALLEL = 10;
+    for (let i = 0; i < detailIds.length; i += PARALLEL) {
+      const batch = detailIds.slice(i, i + PARALLEL);
+      const results = await Promise.all(batch.map((id) => fetchAuvoTaskSnapshot(bearerToken, id)));
+      batch.forEach((id, idx) => {
+        if (results[idx]) taskSnapshotById.set(id, results[idx]!);
+      });
+    }
+    console.log(`[central-sync] Reports-only: detalhes obtidos ${taskSnapshotById.size}/${detailIds.length}`);
+  }
+
   const rows = auvoTasks.map((task: any) => {
     const taskId = String(task.taskID || "").trim();
     if (!taskId) return null;
+    const snapshot = taskSnapshotById.get(taskId) || null;
+    const taskWithDetail = snapshot
+      ? {
+          ...task,
+          duration: snapshot.duration || task.duration,
+          durationDecimal: snapshot.durationDecimal ?? task.durationDecimal,
+          timeControl: snapshot.timeControl?.length ? snapshot.timeControl : task.timeControl,
+          checkInDate: snapshot.checkInDate || task.checkInDate,
+          checkOutDate: snapshot.checkOutDate || task.checkOutDate,
+          displacementStart: snapshot.displacementStart || task.displacementStart,
+          estimatedDuration: snapshot.estimatedDuration || task.estimatedDuration,
+        }
+      : task;
 
     const questionnairesSource = Array.isArray(task.questionnaires) ? task.questionnaires : [];
     const targetQ = questionnairesSource.find((q: any) => String(q.questionnaireId) === QUESTIONNAIRE_ID);
@@ -1122,11 +1156,11 @@ async function runReportsOnlySync(sbClient: any, bearerToken: string, gcHeaders:
       : typeof task.taskStatus?.id === "number" ? task.taskStatus.id
       : typeof task.taskStatus === "object" ? Number(task.taskStatus?.id || task.taskStatus?.status || 0) : 0;
 
-    const checkOutDateRaw = String(task.checkOutDate || task.checkoutDate || task.taskEndDate || task.taskEndDateTime || "").trim();
-    const checkInDateRaw = String(task.checkInDate || task.checkinDate || "").trim();
+    const checkOutDateRaw = String(taskWithDetail.checkOutDate || taskWithDetail.checkoutDate || taskWithDetail.taskEndDate || taskWithDetail.taskEndDateTime || "").trim();
+    const checkInDateRaw = String(taskWithDetail.checkInDate || taskWithDetail.checkinDate || "").trim();
     const checkInIso = normalizeDateTime(checkInDateRaw);
     const checkOutIso = normalizeDateTime(checkOutDateRaw);
-    const displacementStartRaw = String(task.displacementStart || task.displacement_start || "").trim();
+    const displacementStartRaw = String(taskWithDetail.displacementStart || taskWithDetail.displacement_start || "").trim();
     const duracaoDeslocamento = calculateDisplacementHours(displacementStartRaw, checkInDateRaw);
     const hasCheckOut = !!task.checkOut || !!checkOutDateRaw;
     // Preferimos sempre o horário REAL de check-in/check-out (Auvo monitoring)
@@ -1134,14 +1168,12 @@ async function runReportsOnlySync(sbClient: any, bearerToken: string, gcHeaders:
     // de "Sem janela de trabalho" quando o técnico chegou bem antes/depois do agendado.
     const startTimeResolved =
       extractTimeFromDateStr(checkInDateRaw) ||
-      String(task.startTime || task.startHour || "").trim() ||
-      extractTimeFromDateStr(String(task.taskDate || ""));
+      String(taskWithDetail.startTime || taskWithDetail.startHour || snapshot?.startTime || "").trim() ||
+      extractTimeFromDateStr(String(taskWithDetail.taskDate || snapshot?.taskDate || ""));
     let endTimeResolved =
       extractTimeFromDateStr(checkOutDateRaw) ||
-      String(task.endTime || task.endHour || "").trim();
-    const workedHoursRaw = computeAuvoWorkedHours(task) || parseDurationToHours(task.estimatedDuration || "");
-    // workedHoursRaw já vem sem pausas. Subtrai apenas o deslocamento.
-    const durationDecimalResolved = subtractDisplacement(workedHoursRaw, duracaoDeslocamento);
+      String(taskWithDetail.endTime || taskWithDetail.endHour || snapshot?.endTime || "").trim();
+    const durationDecimalResolved = computeAuvoWorkedHours(taskWithDetail) || parseDurationToHours(taskWithDetail.estimatedDuration || snapshot?.estimatedDuration || "");
 
     if (!endTimeResolved && startTimeResolved && durationDecimalResolved > 0) {
       const startMinutes = parseClockToMinutes(startTimeResolved);
@@ -1887,6 +1919,18 @@ async function runCentralSync(body: CentralSyncBody = {}) {
 
       const baseAddress = resolveTaskAddress(task);
       const snapshot = taskSnapshotById.get(taskId);
+      const taskWithDetail = snapshot
+        ? {
+            ...task,
+            duration: snapshot.duration || task.duration,
+            durationDecimal: snapshot.durationDecimal ?? task.durationDecimal,
+            timeControl: snapshot.timeControl?.length ? snapshot.timeControl : task.timeControl,
+            checkInDate: snapshot.checkInDate || task.checkInDate,
+            checkOutDate: snapshot.checkOutDate || task.checkOutDate,
+            displacementStart: snapshot.displacementStart || task.displacementStart,
+            estimatedDuration: snapshot.estimatedDuration || task.estimatedDuration,
+          }
+        : task;
       // Always prefer snapshot (detail endpoint) - it's more reliable than list
       const snapshotAddr = snapshot?.address && snapshot.address.length > 5 ? snapshot.address : "";
       const resolvedAddress = snapshotAddr || baseAddress;
@@ -1915,12 +1959,9 @@ async function runCentralSync(body: CentralSyncBody = {}) {
         String(task.endTime || task.endHour || snapshot?.endTime || "").trim() ||
         extractTimeFromDateStr(String(task.taskEndDate || task.taskEndDateTime || snapshot?.taskEndDate || ""));
 
-      const workedHoursRaw = computeAuvoWorkedHours(task);
-      const estimatedDurationHours = parseDurationToHours(task.estimatedDuration || snapshot?.estimatedDuration || "");
-      const durationDecimalResolved = subtractDisplacement(
-        workedHoursRaw > 0 ? workedHoursRaw : estimatedDurationHours,
-        duracaoDeslocamento || 0,
-      );
+      const workedHoursRaw = computeAuvoWorkedHours(taskWithDetail);
+      const estimatedDurationHours = parseDurationToHours(taskWithDetail.estimatedDuration || snapshot?.estimatedDuration || "");
+      const durationDecimalResolved = workedHoursRaw > 0 ? workedHoursRaw : estimatedDurationHours;
 
       if (!endTimeResolved && startTimeResolved && durationDecimalResolved > 0) {
         const startMinutes = parseClockToMinutes(startTimeResolved);
