@@ -136,12 +136,16 @@ function subtractDisplacement(hours: number, displacementHours: number): number 
 
 function normalizeTaskHoursForReport(task: any) {
   const displacementHours = Number(task?.duracao_deslocamento) || calculateDisplacementHours(task?.deslocamento_inicio, task?.check_in_iso);
+  const alreadyExcludesDisplacement = task?._hours_excludes_displacement === true;
   if (displacementHours > 0) {
     task.duracao_deslocamento = displacementHours;
-    task.duracao_decimal = subtractDisplacement(Number(task?.duracao_decimal) || 0, displacementHours);
+    task.duracao_decimal = alreadyExcludesDisplacement
+      ? subtractDisplacement(Number(task?.duracao_decimal) || 0, 0)
+      : subtractDisplacement(Number(task?.duracao_decimal) || 0, displacementHours);
   } else if ((Number(task?.duracao_decimal) || 0) < 0) {
     task.duracao_decimal = 0;
   }
+  delete task._hours_excludes_displacement;
   return task;
 }
 
