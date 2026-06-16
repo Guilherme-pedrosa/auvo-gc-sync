@@ -12,7 +12,7 @@ const DB_PAGE_SIZE = 1000;
 const REPORT_COLUMNS = [
   "auvo_task_id", "cliente", "tecnico", "tecnico_id", "data_tarefa", "data_conclusao", "status_auvo",
   "orientacao", "pendencia", "descricao", "duracao_decimal", "hora_inicio", "hora_fim", "check_in", "check_out",
-  "check_in_iso", "check_out_iso", "duracao_deslocamento", "equipamento_nome", "equipamento_id_serie",
+  "check_in_iso", "check_out_iso", "deslocamento_inicio", "duracao_deslocamento", "equipamento_nome", "equipamento_id_serie",
   "auvo_link", "auvo_task_url", "auvo_survey_url", "gc_os_id", "gc_os_codigo", "gc_os_cliente",
   "gc_os_situacao", "gc_os_situacao_id", "gc_os_cor_situacao", "gc_os_valor_total", "gc_os_vendedor",
   "gc_os_data", "gc_os_data_saida", "gc_os_link", "gc_os_link_cobranca", "gc_os_tarefa_exec", "gc_os_tarefa_os",
@@ -114,6 +114,35 @@ function isoTimestamp(s: string | null | undefined): string | null {
   if (!raw) return null;
   if (raw.startsWith("0001-01-01")) return null;
   return raw;
+}
+
+function calculateDisplacementHours(displacementStart: unknown, checkIn: unknown): number {
+  const start = String(displacementStart || "").trim();
+  const end = String(checkIn || "").trim();
+  if (!start || !end) return 0;
+  const startMs = new Date(start).getTime();
+  const endMs = new Date(end).getTime();
+  if (!Number.isFinite(startMs) || !Number.isFinite(endMs)) return 0;
+  const diffMs = endMs - startMs;
+  if (diffMs <= 0 || diffMs >= 24 * 60 * 60 * 1000) return 0;
+  return Math.round((diffMs / 3600000) * 10000) / 10000;
+}
+
+function subtractDisplacement(hours: number, displacementHours: number): number {
+  if (!Number.isFinite(hours) || hours <= 0) return 0;
+  if (!Number.isFinite(displacementHours) || displacementHours <= 0) return Math.round(hours * 10000) / 10000;
+  return Math.round(Math.max(0, hours - displacementHours) * 10000) / 10000;
+}
+
+function normalizeTaskHoursForReport(task: any) {
+  const displacementHours = Number(task?.duracao_deslocamento) || calculateDisplacementHours(task?.deslocamento_inicio, task?.check_in_iso);
+  if (displacementHours > 0) {
+    task.duracao_deslocamento = displacementHours;
+    task.duracao_decimal = subtractDisplacement(Number(task?.duracao_decimal) || 0, displacementHours);
+  } else if ((Number(task?.duracao_decimal) || 0) < 0) {
+    task.duracao_decimal = 0;
+  }
+  return task;
 }
 
 async function fetchWithRetry(url: string, token: string, attempts = 2): Promise<Response | null> {
