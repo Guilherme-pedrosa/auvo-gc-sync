@@ -1083,6 +1083,8 @@ async function runReportsOnlySync(sbClient: any, bearerToken: string, gcHeaders:
     const checkInDateRaw = String(task.checkInDate || task.checkinDate || "").trim();
     const checkInIso = normalizeDateTime(checkInDateRaw);
     const checkOutIso = normalizeDateTime(checkOutDateRaw);
+    const displacementStartRaw = String(task.displacementStart || task.displacement_start || "").trim();
+    const duracaoDeslocamento = calculateDisplacementHours(displacementStartRaw, checkInDateRaw);
     const hasCheckOut = !!task.checkOut || !!checkOutDateRaw;
     // Preferimos sempre o horário REAL de check-in/check-out (Auvo monitoring)
     // sobre o horário AGENDADO (startTime/endTime). Isso evita falsos alertas
@@ -1094,7 +1096,8 @@ async function runReportsOnlySync(sbClient: any, bearerToken: string, gcHeaders:
     let endTimeResolved =
       extractTimeFromDateStr(checkOutDateRaw) ||
       String(task.endTime || task.endHour || "").trim();
-    const durationDecimalResolved = parseFloat(task.durationDecimal || "0") || parseDurationToHours(task.estimatedDuration || "");
+    const durationDecimalRaw = parseFloat(task.durationDecimal || "0") || parseDurationToHours(task.estimatedDuration || "");
+    const durationDecimalResolved = subtractDisplacement(durationDecimalRaw, duracaoDeslocamento);
 
     if (!endTimeResolved && startTimeResolved && durationDecimalResolved > 0) {
       const startMinutes = parseClockToMinutes(startTimeResolved);
@@ -1110,8 +1113,8 @@ async function runReportsOnlySync(sbClient: any, bearerToken: string, gcHeaders:
       data_conclusao: normalizeDate(checkOutDateRaw) || null,
       check_in_iso: checkInIso,
       check_out_iso: checkOutIso,
-      deslocamento_inicio: String(task.displacementStart || task.displacement_start || "").trim() || null,
-      duracao_deslocamento: null,
+      deslocamento_inicio: displacementStartRaw || null,
+      duracao_deslocamento: duracaoDeslocamento || null,
       task_type_id: (() => {
         const tt = task.taskType ?? task.TaskType;
         if (tt == null) return null;
