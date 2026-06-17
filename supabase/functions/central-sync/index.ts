@@ -209,6 +209,29 @@ function computeAuvoWorkedHours(task: any): number {
   return Number.isFinite(dec) && dec !== 0 ? Math.round(Math.abs(dec) * 10000) / 10000 : 0;
 }
 
+function taskRowQuality(row: any): number {
+  const status = String(row?.status_auvo || "").toLowerCase();
+  const hours = Number(row?.duracao_decimal) || 0;
+  let score = 0;
+  if (hours > 0) score += 1000;
+  if (row?.check_in || row?.check_out) score += 250;
+  if (row?.check_in_iso) score += 120;
+  if (row?.check_out_iso) score += 120;
+  if (String(row?.tecnico || "").trim()) score += 80;
+  if (String(row?.data_conclusao || "").trim()) score += 40;
+  if (status.includes("pendente vínculo") || status.includes("sem tarefa auvo")) score -= 500;
+  return score;
+}
+
+function chooseBestExistingMirror(current: any | undefined, candidate: any): string | null {
+  if (!candidate?.mirror_key) return current?.mirror_key || null;
+  if (!current?.mirror_key) return candidate.mirror_key;
+  const candScore = taskRowQuality(candidate);
+  const curScore = taskRowQuality(current);
+  if (candScore !== curScore) return candScore > curScore ? candidate.mirror_key : current.mirror_key;
+  return String(candidate?.atualizado_em || "") > String(current?.atualizado_em || "") ? candidate.mirror_key : current.mirror_key;
+}
+
 function resolveTaskType(task: any): string {
   const candidates = [
     task?.taskTypeDescription,
@@ -1095,19 +1118,20 @@ async function runReportsOnlySync(sbClient: any, bearerToken: string, gcHeaders:
     .map((task: any) => String(task.taskID || "").trim())
     .filter(Boolean);
 
-  const existingMirrorByTaskId = new Map<string, string>();
+  const existingBestByTaskId = new Map<string, any>();
   for (let i = 0; i < taskIds.length; i += 200) {
     const batch = taskIds.slice(i, i + 200);
     const { data: existingRows } = await sbClient
       .from("tarefas_central")
-      .select("auvo_task_id, mirror_key")
+      .select("auvo_task_id, mirror_key, status_auvo, duracao_decimal, check_in, check_out, check_in_iso, check_out_iso, tecnico, data_conclusao, atualizado_em")
       .in("auvo_task_id", batch);
 
     for (const row of existingRows || []) {
       const taskId = String(row.auvo_task_id || "").trim();
       const mirrorKey = String(row.mirror_key || "").trim();
-      if (taskId && mirrorKey && !existingMirrorByTaskId.has(taskId)) {
-        existingMirrorByTaskId.set(taskId, mirrorKey);
+      if (taskId && mirrorKey) {
+        const chosenMirror = chooseBestExistingMirror(existingBestByTaskId.get(taskId), { ...row, mirror_key: mirrorKey });
+        existingBestByTaskId.set(taskId, { ...row, mirror_key: chosenMirror });
       }
     }
   }
@@ -1220,7 +1244,7 @@ async function runReportsOnlySync(sbClient: any, bearerToken: string, gcHeaders:
       questionario_respostas: answers,
       questionario_preenchido: hasFilledQ,
       atualizado_em: new Date().toISOString(),
-      mirror_key: existingMirrorByTaskId.get(taskId) || `${taskId}::os:::orc:`,
+      mirror_key: existingBestByTaskId.get(taskId)?.mirror_key || `${taskId}::os:::orc:`,
     };
   }).filter(Boolean);
 

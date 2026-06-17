@@ -272,6 +272,28 @@ function mapAuvoTask(t: any) {
   };
 }
 
+function taskRowQuality(row: any): number {
+  const status = String(row?.status_auvo || "").toLowerCase();
+  const hours = Number(row?.duracao_decimal) || 0;
+  let score = 0;
+  if (hours > 0) score += 1000;
+  if (row?.check_in || row?.check_out) score += 250;
+  if (row?.check_in_iso) score += 120;
+  if (row?.check_out_iso) score += 120;
+  if (String(row?.tecnico || "").trim()) score += 80;
+  if (String(row?.data_conclusao || "").trim()) score += 40;
+  if (status.includes("pendente vínculo") || status.includes("sem tarefa auvo")) score -= 500;
+  return score;
+}
+
+function chooseBestTaskRow(current: any | undefined, candidate: any): any {
+  if (!current) return candidate;
+  const candScore = taskRowQuality(candidate);
+  const curScore = taskRowQuality(current);
+  if (candScore !== curScore) return candScore > curScore ? candidate : current;
+  return String(candidate?.atualizado_em || "") > String(current?.atualizado_em || "") ? candidate : current;
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
@@ -398,6 +420,9 @@ Deno.serve(async (req) => {
     }
 
     // 1) Read DB tasks within period (deterministic order to avoid pagination dupes).
+    // Inclui tarefas que começaram no período mas fecharam depois dele (caso comum no Excel de horas).
+    const periodStartIso = `${startDate}T00:00:00+00:00`;
+    const periodEndIso = `${endDate}T23:59:59+00:00`;
     const dbRows: any[] = [];
     let from = 0;
     while (true) {
@@ -406,7 +431,8 @@ Deno.serve(async (req) => {
         .select(REPORT_COLUMNS)
         .or(
           `and(data_conclusao.gte.${startDate},data_conclusao.lte.${endDate}),` +
-          `and(data_conclusao.is.null,data_tarefa.gte.${startDate},data_tarefa.lte.${endDate})`
+          `and(data_conclusao.is.null,data_tarefa.gte.${startDate},data_tarefa.lte.${endDate}),` +
+          `and(check_in_iso.gte.${periodStartIso},check_in_iso.lte.${periodEndIso})`
         )
         .order("data_tarefa", { ascending: false })
         .order("auvo_task_id", { ascending: false })
@@ -471,15 +497,13 @@ Deno.serve(async (req) => {
       auvoTasks = [];
     }
 
-    // 4) Index DB rows by id (most recent atualizado_em wins).
+    // 4) Index DB rows by id. A mesma tarefa pode ter uma linha real do Auvo
+    // e uma "casca" do GC; para relatório, a linha executada sempre vence.
     const dbById = new Map<string, any>();
     for (const r of dbRows) {
       const id = String(r.auvo_task_id || "");
       if (!id) continue;
-      const existing = dbById.get(id);
-      if (!existing || (r.atualizado_em || "") > (existing.atualizado_em || "")) {
-        dbById.set(id, r);
-      }
+      dbById.set(id, chooseBestTaskRow(dbById.get(id), r));
     }
 
     // 5) Merge: prefer DB columns, attach Auvo-only fields (task_type_id,
