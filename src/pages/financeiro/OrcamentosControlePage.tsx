@@ -121,8 +121,8 @@ export default function OrcamentosControlePage() {
   };
 
   const { data: rows, isLoading } = useQuery({
-    queryKey: ["orcamentos-controle"],
-    queryFn: fetchAllOrcamentos,
+    queryKey: ["orcamentos-controle", format(dateFrom, "yyyy-MM-dd"), format(dateTo, "yyyy-MM-dd")],
+    queryFn: () => fetchOrcamentosNoPeriodo(dateFrom, dateTo),
     staleTime: 60_000,
   });
 
