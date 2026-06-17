@@ -436,7 +436,7 @@ export default function OrcamentosControlePage() {
       {/* KPIs */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <Card>
-          <CardHeader className="py-3 px-4"><CardTitle className="text-sm font-medium text-muted-foreground">Orçamentos em aberto</CardTitle></CardHeader>
+          <CardHeader className="py-3 px-4"><CardTitle className="text-sm font-medium text-muted-foreground">Aguardando Aprovação</CardTitle></CardHeader>
           <CardContent className="px-4 pb-3"><p className="text-2xl font-bold">{grandCount}</p></CardContent>
         </Card>
         <Card>
@@ -509,7 +509,7 @@ export default function OrcamentosControlePage() {
             <TableHeader>
               <TableRow>
                 <TableHead>Cliente</TableHead>
-                <TableHead className="text-center">Orçamentos em aberto</TableHead>
+                <TableHead className="text-center">Aguardando Aprovação</TableHead>
                 <TableHead className="text-right">Valor Total</TableHead>
               </TableRow>
             </TableHeader>
@@ -517,7 +517,7 @@ export default function OrcamentosControlePage() {
               {filtered.length === 0 ? (
                 <TableRow>
                   <TableCell colSpan={3} className="text-center py-8 text-muted-foreground">
-                    Nenhum orçamento em aberto
+                    Nenhum orçamento aguardando aprovação
                   </TableCell>
                 </TableRow>
               ) : (
