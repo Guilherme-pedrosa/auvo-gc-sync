@@ -54,6 +54,13 @@ interface Props {
    * Used by the Client Portal page.
    */
   clientMode?: boolean;
+  /**
+   * Força o filtro de grupo internamente (usado pelo Portal do Cliente).
+   * Quando definido, o filtro de grupo NÃO é aplicado pelo pai antes do
+   * `data`; ele é aplicado aqui, APÓS a deduplicação por `auvo_task_id`,
+   * para usar o MESMO caminho do admin e garantir totais idênticos.
+   */
+  forcedGrupoId?: string;
 }
 
 const CHART_COLORS = [
