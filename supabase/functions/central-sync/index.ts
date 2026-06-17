@@ -175,7 +175,7 @@ function subtractDisplacement(hours: number, displacementHours: number): number 
 function computeAuvoWorkedHours(task: any): number {
   // Fonte 1: duration HH:MM:SS
   const durStr = String(task?.duration || task?.Duration || "").trim();
-  const m = durStr.match(/^(\d+):(\d{1,2})(?::(\d{1,2}))?$/);
+  const m = durStr.match(/^-?(\d+):-?(\d{1,2})(?::-?(\d{1,2}))?$/);
   if (m) {
     const h = parseInt(m[1], 10);
     const mi = parseInt(m[2], 10);
@@ -206,7 +206,7 @@ function computeAuvoWorkedHours(task: any): number {
   }
   // Fonte 3: durationDecimal (fallback)
   const dec = parseFloat(String(task?.durationDecimal || "0").replace(",", "."));
-  return Number.isFinite(dec) && dec > 0 ? Math.round(dec * 10000) / 10000 : 0;
+  return Number.isFinite(dec) && dec !== 0 ? Math.round(Math.abs(dec) * 10000) / 10000 : 0;
 }
 
 function resolveTaskType(task: any): string {

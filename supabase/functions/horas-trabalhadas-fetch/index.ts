@@ -210,7 +210,7 @@ function mapAuvoTask(t: any) {
   const displacementStart = t?.displacementStart || t?.DisplacementStart || t?.displacement_start || null;
   let workedSeconds = 0;
   const dStr = String(t?.duration || t?.Duration || "").trim();
-  const dMatch = dStr.match(/^(\d+):(\d{1,2}):(\d{1,2})$/);
+  const dMatch = dStr.match(/^-?(\d+):-?(\d{1,2}):-?(\d{1,2})$/);
   if (dMatch) {
     workedSeconds =
       parseInt(dMatch[1], 10) * 3600 +
@@ -249,7 +249,10 @@ function mapAuvoTask(t: any) {
     }
   }
   const displacementHours = calculateDisplacementHours(displacementStart, checkIn);
-  const workedHours = Math.round((workedSeconds / 3600) * 10000) / 10000;
+  const fallbackDecimal = parseFloat(String(t?.durationDecimal ?? t?.DurationDecimal ?? "0").replace(",", "."));
+  const workedHours = workedSeconds > 0
+    ? Math.round((workedSeconds / 3600) * 10000) / 10000
+    : (Number.isFinite(fallbackDecimal) && fallbackDecimal !== 0 ? Math.round(Math.abs(fallbackDecimal) * 10000) / 10000 : 0);
 
   return {
     auvo_task_id: taskId,
