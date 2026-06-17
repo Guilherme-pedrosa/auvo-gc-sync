@@ -119,11 +119,16 @@ export default function HorasTrabalhadasTab({
   dateFrom, dateTo, onDateFromChange, onDateToChange,
   equipamentoTaskMap = {},
   clientMode = false,
+  forcedGrupoId,
 }: Props) {
   const queryClient = useQueryClient();
   const [filterTecnico, setFilterTecnico] = useState("todos");
   const [filterCliente, setFilterCliente] = useState("todos");
-  const [filterGrupo, setFilterGrupo] = useState("todos");
+  const [filterGrupoState, setFilterGrupo] = useState("todos");
+  // Quando o pai força um grupo (Portal do Cliente), ele tem precedência
+  // absoluta sobre o filtro interno — assim o caminho de cálculo é idêntico
+  // ao do admin (dedup → filtro de grupo → totais).
+  const filterGrupo = forcedGrupoId ?? filterGrupoState;
   const [grupoOpen, setGrupoOpen] = useState(false);
   // Tipo de Tarefa (multi-select por task_type_id).
   // null = "todos marcados". Não persiste para não esconder OS em acessos futuros.
