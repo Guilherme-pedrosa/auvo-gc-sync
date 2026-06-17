@@ -1118,19 +1118,20 @@ async function runReportsOnlySync(sbClient: any, bearerToken: string, gcHeaders:
     .map((task: any) => String(task.taskID || "").trim())
     .filter(Boolean);
 
-  const existingMirrorByTaskId = new Map<string, string>();
+  const existingBestByTaskId = new Map<string, any>();
   for (let i = 0; i < taskIds.length; i += 200) {
     const batch = taskIds.slice(i, i + 200);
     const { data: existingRows } = await sbClient
       .from("tarefas_central")
-      .select("auvo_task_id, mirror_key")
+      .select("auvo_task_id, mirror_key, status_auvo, duracao_decimal, check_in, check_out, check_in_iso, check_out_iso, tecnico, data_conclusao, atualizado_em")
       .in("auvo_task_id", batch);
 
     for (const row of existingRows || []) {
       const taskId = String(row.auvo_task_id || "").trim();
       const mirrorKey = String(row.mirror_key || "").trim();
-      if (taskId && mirrorKey && !existingMirrorByTaskId.has(taskId)) {
-        existingMirrorByTaskId.set(taskId, mirrorKey);
+      if (taskId && mirrorKey) {
+        const chosenMirror = chooseBestExistingMirror(existingBestByTaskId.get(taskId), { ...row, mirror_key: mirrorKey });
+        existingBestByTaskId.set(taskId, { ...row, mirror_key: chosenMirror });
       }
     }
   }
@@ -1243,7 +1244,7 @@ async function runReportsOnlySync(sbClient: any, bearerToken: string, gcHeaders:
       questionario_respostas: answers,
       questionario_preenchido: hasFilledQ,
       atualizado_em: new Date().toISOString(),
-      mirror_key: existingMirrorByTaskId.get(taskId) || `${taskId}::os:::orc:`,
+      mirror_key: existingBestByTaskId.get(taskId)?.mirror_key || `${taskId}::os:::orc:`,
     };
   }).filter(Boolean);
 
