@@ -9,13 +9,14 @@ import { Loader2, LogOut, FileText, RefreshCw } from "lucide-react";
 import HorasTrabalhadasTab from "@/components/relatorios/HorasTrabalhadasTab";
 import { toast } from "sonner";
 
-// Mesma normalização usada no HorasTrabalhadasTab (admin) para garantir
-// que o portal conte exatamente as mesmas OS do relatório interno.
+// IMPORTANTE: precisa ser BYTE-A-BYTE igual a `normalizeName` em
+// `src/components/relatorios/HorasTrabalhadasTab.tsx` (linha ~286).
+// Qualquer divergência (ex.: remover acentos aqui mas não lá) faz o portal
+// contar OS que o login principal não conta, gerando totais diferentes
+// entre os dois ambientes para o mesmo grupo/mês.
 const normalizeClient = (s: string) =>
   (s || "")
     .toUpperCase()
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
     .replace(/\s*(LTDA|ME|SA|EPP|EIRELI|S\/A|S\.A\.|LTDA\.?|MEI)\s*/g, "")
     .replace(/[.\-\/]/g, "")
     .replace(/\s+/g, " ")
@@ -93,47 +94,56 @@ export default function PortalHorasPage() {
     onError: (err: Error) => toast.error(err.message),
   });
 
-  // Filter tasks: only this group's clients. Do not remove "em revisão" here:
-  // it must remain in the same total the internal report shows.
-  // Match BOTH t.cliente (Auvo) and t.gc_os_cliente (GC) independently, same
-  // as the admin HorasTrabalhadasTab — otherwise OS where only one side
-  // matches the group get dropped and totals diverge.
-  const visibleTasks = useMemo(() => {
-    if (!tasksRaw || !grupoInfo) return [];
-    const set = grupoInfo.clientesNorm;
-    return tasksRaw.filter((t) => {
-      const cliAuvo = normalizeClient(t.cliente || "");
-      const cliGc = normalizeClient(t.gc_os_cliente || "");
-      if (!set.has(cliAuvo) && !set.has(cliGc)) return false;
-      return true;
-    });
-  }, [tasksRaw, grupoInfo]);
+  // Passamos as tarefas BRUTAS para o HorasTrabalhadasTab e usamos
+  // `forcedGrupoId` para o filtro de grupo ser aplicado dentro do tab,
+  // APÓS a deduplicação por `auvo_task_id`. Pré-filtrar aqui faria com que
+  // versões diferentes de uma mesma OS (gerada por re-sincronizações) fossem
+  // mantidas no portal mas descartadas no admin (e vice-versa), causando
+  // totais divergentes entre os dois ambientes.
+  const visibleTasks = useMemo(() => tasksRaw || [], [tasksRaw]);
 
   const allClientes = useMemo(() => {
     const seen = new Map<string, string>();
+    if (!grupoInfo) return [];
+    const set = grupoInfo.clientesNorm;
     for (const t of visibleTasks) {
+      const cliAuvo = normalizeClient(t.cliente || "");
+      const cliGc = normalizeClient(t.gc_os_cliente || "");
+      if (!set.has(cliAuvo) && !set.has(cliGc)) continue;
       const raw = (t.cliente || t.gc_os_cliente || "").trim();
       if (!raw) continue;
       const k = normalizeClient(raw);
       if (!seen.has(k)) seen.set(k, raw);
     }
     return Array.from(seen.values()).sort();
-  }, [visibleTasks]);
+  }, [visibleTasks, grupoInfo]);
 
   const allTecnicos = useMemo(() => {
     const s = new Set<string>();
-    for (const t of visibleTasks) if (t.tecnico) s.add(t.tecnico);
+    if (!grupoInfo) return [];
+    const set = grupoInfo.clientesNorm;
+    for (const t of visibleTasks) {
+      const cliAuvo = normalizeClient(t.cliente || "");
+      const cliGc = normalizeClient(t.gc_os_cliente || "");
+      if (!set.has(cliAuvo) && !set.has(cliGc)) continue;
+      if (t.tecnico) s.add(t.tecnico);
+    }
     return Array.from(s).sort();
-  }, [visibleTasks]);
+  }, [visibleTasks, grupoInfo]);
 
   const allTiposTarefa = useMemo(() => {
     const s = new Set<string>();
+    if (!grupoInfo) return [];
+    const set = grupoInfo.clientesNorm;
     for (const t of visibleTasks) {
+      const cliAuvo = normalizeClient(t.cliente || "");
+      const cliGc = normalizeClient(t.gc_os_cliente || "");
+      if (!set.has(cliAuvo) && !set.has(cliGc)) continue;
       const tipo = (t.descricao || "").trim();
       s.add(tipo || "Sem tipo");
     }
     return Array.from(s).sort((a, b) => a.localeCompare(b, "pt-BR"));
-  }, [visibleTasks]);
+  }, [visibleTasks, grupoInfo]);
 
   const grupos = useMemo(
     () => (grupoInfo ? [{ id: grupoInfo.id, nome: grupoInfo.nome }] : []),
@@ -209,6 +219,7 @@ export default function PortalHorasPage() {
         </div>
         <HorasTrabalhadasTab
           clientMode
+          forcedGrupoId={grupoInfo?.id}
           data={visibleTasks}
           isLoading={isLoading || syncMutation.isPending || !grupoInfo}
           allClientes={allClientes}
