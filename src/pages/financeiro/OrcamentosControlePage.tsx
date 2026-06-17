@@ -32,7 +32,9 @@ const formatCurrency = (val: number) =>
 /** Apenas orçamentos aguardando aprovação devem aparecer aqui */
 const SITUACAO_ABERTA_REGEX = /aguardando\s*aprova/i;
 
-const fetchAllOrcamentos = async () => {
+const fetchOrcamentosNoPeriodo = async (fromDate: Date, toDate: Date) => {
+  const fromStr = format(fromDate, "yyyy-MM-dd");
+  const toStr = format(toDate, "yyyy-MM-dd");
   const rows: any[] = [];
   let from = 0;
   while (true) {
@@ -40,6 +42,8 @@ const fetchAllOrcamentos = async () => {
       .from("tarefas_central")
       .select("*")
       .not("gc_orcamento_id", "is", null)
+      .gte("gc_orc_data", fromStr)
+      .lte("gc_orc_data", toStr)
       .order("gc_orc_data", { ascending: false })
       .range(from, from + PAGE_SIZE - 1);
     if (error) throw error;
