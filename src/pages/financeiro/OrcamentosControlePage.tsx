@@ -29,15 +29,8 @@ const PAGE_SIZE = 1000;
 const formatCurrency = (val: number) =>
   (val || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 
-/** Situações “fechadas” que não devem aparecer em "abertos" */
-const SITUACOES_FECHADAS = [
-  "aprovado",
-  "reprovado",
-  "cancelado",
-  "não aprovado",
-  "nao aprovado",
-  "convertido",
-];
+/** Apenas orçamentos aguardando aprovação devem aparecer aqui */
+const SITUACAO_ABERTA_REGEX = /aguardando\s*aprova/i;
 
 const fetchAllOrcamentos = async () => {
   const rows: any[] = [];
@@ -217,8 +210,8 @@ export default function OrcamentosControlePage() {
     }
     // Filtra "fechados"
     return Array.from(byId.values()).filter((t) => {
-      const sit = (t.gc_orc_situacao || "").toLowerCase();
-      return !SITUACOES_FECHADAS.some((s) => sit.includes(s));
+      const sit = t.gc_orc_situacao || "";
+      return SITUACAO_ABERTA_REGEX.test(sit);
     });
   }, [rows]);
 
@@ -406,7 +399,7 @@ export default function OrcamentosControlePage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-foreground">Controle de Orçamentos</h1>
-          <p className="text-sm text-muted-foreground">Orçamentos em aberto agrupados por cliente</p>
+          <p className="text-sm text-muted-foreground">Orçamentos aguardando aprovação agrupados por cliente</p>
           <LastSyncBadge className="mt-0.5" />
         </div>
         <div className="flex items-center gap-2">
@@ -443,7 +436,7 @@ export default function OrcamentosControlePage() {
       {/* KPIs */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <Card>
-          <CardHeader className="py-3 px-4"><CardTitle className="text-sm font-medium text-muted-foreground">Orçamentos em aberto</CardTitle></CardHeader>
+          <CardHeader className="py-3 px-4"><CardTitle className="text-sm font-medium text-muted-foreground">Aguardando Aprovação</CardTitle></CardHeader>
           <CardContent className="px-4 pb-3"><p className="text-2xl font-bold">{grandCount}</p></CardContent>
         </Card>
         <Card>
@@ -516,7 +509,7 @@ export default function OrcamentosControlePage() {
             <TableHeader>
               <TableRow>
                 <TableHead>Cliente</TableHead>
-                <TableHead className="text-center">Orçamentos em aberto</TableHead>
+                <TableHead className="text-center">Aguardando Aprovação</TableHead>
                 <TableHead className="text-right">Valor Total</TableHead>
               </TableRow>
             </TableHeader>
@@ -524,7 +517,7 @@ export default function OrcamentosControlePage() {
               {filtered.length === 0 ? (
                 <TableRow>
                   <TableCell colSpan={3} className="text-center py-8 text-muted-foreground">
-                    Nenhum orçamento em aberto
+                    Nenhum orçamento aguardando aprovação
                   </TableCell>
                 </TableRow>
               ) : (
