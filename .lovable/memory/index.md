@@ -1,2 +1,3 @@
 - [WD não é Grupo IZ](mem://business-rules/wd-not-grupo-iz) — WD COMÉRCIO não pertence ao Grupo IZ; exibir cliente que casou com o grupo
 - [Retorno OS Antiga](mem://features/premiacao/retorno-os-antiga) — Clawback de retorno em OS de mês passado desconta do técnico original no mês vigente
+- [Portal/Admin Parity](mem://features/portal-cliente/parity-with-admin) — Regras para portal e admin baterem 100% em horas/faturamento por grupo
