@@ -420,6 +420,9 @@ Deno.serve(async (req) => {
     }
 
     // 1) Read DB tasks within period (deterministic order to avoid pagination dupes).
+    // Inclui tarefas que começaram no período mas fecharam depois dele (caso comum no Excel de horas).
+    const periodStartIso = `${startDate}T00:00:00+00:00`;
+    const periodEndIso = `${endDate}T23:59:59+00:00`;
     const dbRows: any[] = [];
     let from = 0;
     while (true) {
@@ -428,7 +431,8 @@ Deno.serve(async (req) => {
         .select(REPORT_COLUMNS)
         .or(
           `and(data_conclusao.gte.${startDate},data_conclusao.lte.${endDate}),` +
-          `and(data_conclusao.is.null,data_tarefa.gte.${startDate},data_tarefa.lte.${endDate})`
+          `and(data_conclusao.is.null,data_tarefa.gte.${startDate},data_tarefa.lte.${endDate}),` +
+          `and(check_in_iso.gte.${periodStartIso},check_in_iso.lte.${periodEndIso})`
         )
         .order("data_tarefa", { ascending: false })
         .order("auvo_task_id", { ascending: false })
