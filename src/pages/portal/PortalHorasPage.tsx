@@ -9,13 +9,14 @@ import { Loader2, LogOut, FileText, RefreshCw } from "lucide-react";
 import HorasTrabalhadasTab from "@/components/relatorios/HorasTrabalhadasTab";
 import { toast } from "sonner";
 
-// Mesma normalização usada no HorasTrabalhadasTab (admin) para garantir
-// que o portal conte exatamente as mesmas OS do relatório interno.
+// IMPORTANTE: precisa ser BYTE-A-BYTE igual a `normalizeName` em
+// `src/components/relatorios/HorasTrabalhadasTab.tsx` (linha ~286).
+// Qualquer divergência (ex.: remover acentos aqui mas não lá) faz o portal
+// contar OS que o login principal não conta, gerando totais diferentes
+// entre os dois ambientes para o mesmo grupo/mês.
 const normalizeClient = (s: string) =>
   (s || "")
     .toUpperCase()
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
     .replace(/\s*(LTDA|ME|SA|EPP|EIRELI|S\/A|S\.A\.|LTDA\.?|MEI)\s*/g, "")
     .replace(/[.\-\/]/g, "")
     .replace(/\s+/g, " ")
