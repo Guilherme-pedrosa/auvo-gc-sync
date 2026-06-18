@@ -2,3 +2,4 @@
 - [Retorno OS Antiga](mem://features/premiacao/retorno-os-antiga) — Clawback de retorno em OS de mês passado desconta do técnico original no mês vigente
 - [Portal/Admin Parity](mem://features/portal-cliente/parity-with-admin) — Regras para portal e admin baterem 100% em horas/faturamento por grupo
 - [Exec Task Fallback](mem://integration/auvo-gestaoclick/exec-task-fallback-linkage) — Fallback vincula GC OS via TAREFA EXECUÇÃO (73344) quando 73343 está errado/duplicado
+- [Premiação Technician Priority](mem://features/premiacao/technician-priority) — Premiação usa TAREFA EXECUÇÃO (73344) como fonte da verdade do técnico; 73343 é irrelevante
