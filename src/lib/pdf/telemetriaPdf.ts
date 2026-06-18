@@ -23,6 +23,8 @@ export type TelemetriaTech = {
   meta_atingida?: boolean;
   bonus_meta_pct?: number;
   bonus_meta_valor?: number;
+  bonus_telemetria_pct?: number;
+  bonus_telemetria_valor?: number;
   ordens?: Array<{
     gc_os_codigo?: string;
     gc_os_id?: string;
