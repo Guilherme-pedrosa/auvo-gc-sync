@@ -330,12 +330,13 @@ function buildPdfForTech(month: string, t: TelemetriaTech): jsPDF {
         styles: { fontSize: 8, cellPadding: 3 },
         headStyles: { fillColor: [240, 240, 245], textColor: 30, fontStyle: "bold" },
         columnStyles: {
-          3: { halign: "right" },
+          1: { halign: "right" },
           4: { halign: "right" },
           5: { halign: "right" },
           6: { halign: "right" },
-          7: { halign: "right", fontStyle: "bold" },
-          8: { halign: "center", textColor: [37, 99, 235] },
+          7: { halign: "right" },
+          8: { halign: "right", fontStyle: "bold" },
+          9: { halign: "center", textColor: [37, 99, 235] },
         },
         didDrawCell: (data: any) => {
           if (data.section !== "body") return;
@@ -344,7 +345,10 @@ function buildPdfForTech(month: string, t: TelemetriaTech): jsPDF {
           if (data.column.index === 0 && o.gc_link) {
             doc.link(data.cell.x, data.cell.y, data.cell.width, data.cell.height, { url: o.gc_link });
           }
-          if (data.column.index === 8 && o.auvo_link) {
+          if (data.column.index === 1 && o.auvo_link) {
+            doc.link(data.cell.x, data.cell.y, data.cell.width, data.cell.height, { url: o.auvo_link });
+          }
+          if (data.column.index === 9 && o.auvo_link) {
             doc.link(data.cell.x, data.cell.y, data.cell.width, data.cell.height, { url: o.auvo_link });
           }
         },
