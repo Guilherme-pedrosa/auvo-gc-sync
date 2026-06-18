@@ -42,6 +42,7 @@ type OsRow = {
   cor_situacao?: string;
   gc_link?: string;
   auvo_link?: string | null;
+  auvo_task_id?: string | null;
   itens_pecas?: ItemRow[];
   itens_servicos?: ItemRow[];
   contrato?: { nome: string; valor_hora: number; taxa: number; taxa_peca?: number; horas: number; base_servico: number } | null;
@@ -609,6 +610,7 @@ export default function PremiacaoPage() {
                       <TableHeader>
                         <TableRow>
                           <TableHead>OS</TableHead>
+                          <TableHead className="w-28">Tarefa Auvo</TableHead>
                           <TableHead>Cliente</TableHead>
                           <TableHead>Saída</TableHead>
                           <TableHead className="text-right">Peças</TableHead>

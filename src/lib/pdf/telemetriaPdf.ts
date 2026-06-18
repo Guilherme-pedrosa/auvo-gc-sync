@@ -29,6 +29,7 @@ export type TelemetriaTech = {
     gc_os_codigo?: string;
     gc_os_id?: string;
     auvo_link?: string | null;
+    auvo_task_id?: string | null;
     gc_link?: string | null;
     cliente?: string;
     data_saida?: string;
@@ -307,7 +308,7 @@ function buildPdfForTech(month: string, t: TelemetriaTech): jsPDF {
       doc.setFont("helvetica", "normal");
       autoTable(doc, {
         startY: y + 4,
-        head: [["OS", "Cliente", "Saída", "Peças", "Serviços", "Prem. peças", "Prem. serv.", "Total", "Relatório"]],
+        head: [["OS", "Tarefa Auvo", "Cliente", "Saída", "Peças", "Serviços", "Prem. peças", "Prem. serv.", "Total", "Relatório"]],
       body: ordens.map((o) => {
           const vp = o.valor_pecas ?? 0;
           const cp = o.comissao_pecas ?? 0;
@@ -315,6 +316,7 @@ function buildPdfForTech(month: string, t: TelemetriaTech): jsPDF {
           const taxaTxt = vp > 0 ? `${(taxa * 100).toLocaleString("pt-BR", { maximumFractionDigits: 1 })}%` : "—";
           return [
             o.gc_os_codigo || o.gc_os_id || "—",
+            o.auvo_task_id ? `#${o.auvo_task_id}` : "—",
             o.cliente || "—",
             o.data_saida || "—",
             brl(vp),
