@@ -587,18 +587,19 @@ Deno.serve(async (req) => {
       valor_servicos += valor_servicos_taxa10;
       const comissao_total = comissao_pecas + comissao_servicos;
 
-      // Técnico: prioriza VENDEDOR DA OS GC (responsável comercial/técnico),
-      // mas se o GC estiver sem vendedor, NÃO reaproveita vendedor antigo cacheado:
-      // cai para o técnico da OS no GC e depois para execução Auvo.
-      // Se houver retorno registrado, o técnico do retorno assume a OS.
+      // Técnico: para premiação, a TAREFA OS (73343) é IRRELEVANTE — quem
+      // executou de fato é o técnico da TAREFA EXECUÇÃO (73344). Por isso a
+      // prioridade é:
+      //   1) Retorno manual (override explícito)
+      //   2) Técnico da TAREFA EXECUÇÃO (73344) — fonte da verdade
+      //   3) Vendedor do GC — fallback quando o exec não tem técnico
+      //   4) "Sem vendedor" — revisão manual
       const gcCodigo = String(row.gc_os_codigo || detail.codigo || "").trim();
       const tecnicoRetorno = gcCodigo ? retornoByCodigo.get(gcCodigo) : undefined;
       // Técnico que executou (tarefa 73344) — usado pra detectar divergência com o vendedor do GC.
       const execTecInfo = execTaskIds
         .map((id) => tecnicoByExecTask.get(id))
         .find((x) => x && x.tecnico);
-      // Vendedor do GC é a fonte da verdade. Se não tiver, NÃO usa execução nem cache:
-      // vai pro bucket "Sem vendedor" para revisão manual.
       const vendedorGc = String(detail.nome_vendedor || "").trim();
       let tecnico: string;
       let tecnico_id: string;
@@ -607,6 +608,12 @@ Deno.serve(async (req) => {
       if (tecnicoRetorno) {
         tecnico = canonicalTecnico(tecnicoRetorno);
         tecnico_id = "";
+        const pn = normalize(tecnico).split(/\s+/)[0] || normalize(tecnico);
+        key = pn;
+        displayNome = pn ? pn.charAt(0).toUpperCase() + pn.slice(1) : tecnico;
+      } else if (execTecInfo?.tecnico) {
+        tecnico = canonicalTecnico(execTecInfo.tecnico);
+        tecnico_id = execTecInfo.tecnico_id || "";
         const pn = normalize(tecnico).split(/\s+/)[0] || normalize(tecnico);
         key = pn;
         displayNome = pn ? pn.charAt(0).toUpperCase() + pn.slice(1) : tecnico;
