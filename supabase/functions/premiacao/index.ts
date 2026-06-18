@@ -669,6 +669,7 @@ Deno.serve(async (req) => {
         auvo_link: execTaskId
           ? (urlByAuvoTask.get(execTaskId) || `https://app2.auvo.com.br/relatorioTarefas/DetalheTarefa/${execTaskId}`)
           : null,
+        auvo_task_id: execTaskId || null,
         itens_pecas,
         itens_servicos,
         contrato: contrato ? { nome: contrato.nome, valor_hora: toNum(contrato.valor_hora), taxa: toNum(contrato.taxa_comissao_servico), taxa_peca: toNum(contrato.taxa_comissao_peca ?? 0.02), horas, base_servico: base_servico_contrato } : null,
