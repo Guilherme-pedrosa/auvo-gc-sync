@@ -298,7 +298,8 @@ export default function PremiacaoPage() {
           const ordens = t.ordens.filter((o) => {
             const codigo = normalize(o.gc_os_codigo || o.gc_os_id || "");
             const cliente = normalize(o.cliente || "");
-            return codigo.includes(searchNorm) || cliente.includes(searchNorm);
+            const tid = normalize(o.auvo_task_id || "");
+            return codigo.includes(searchNorm) || cliente.includes(searchNorm) || tid.includes(searchNorm);
           });
           const prevAtivs = (t.preventivas?.atividades || []).filter((a) => {
             const cliente = normalize(a.cliente || "");
