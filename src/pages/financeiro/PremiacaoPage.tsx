@@ -630,6 +630,15 @@ export default function PremiacaoPage() {
                             <TableCell className="font-mono text-xs text-primary underline-offset-2 hover:underline">
                               {o.gc_os_codigo || o.gc_os_id}
                             </TableCell>
+                            <TableCell className="text-xs font-mono">
+                              {o.auvo_link ? (
+                                <a href={o.auvo_link} target="_blank" rel="noreferrer" className="text-primary hover:underline">
+                                  #{o.auvo_task_id || "—"}
+                                </a>
+                              ) : (
+                                <span>#{o.auvo_task_id || "—"}</span>
+                              )}
+                            </TableCell>
                             <TableCell className="text-sm truncate max-w-[220px]">
                               <div className="flex items-center gap-2">
                                 <span className="truncate">{o.cliente}</span>
