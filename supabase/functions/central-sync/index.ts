@@ -1078,6 +1078,59 @@ async function refreshGcOsFieldsForPeriod(sbClient: any, gcHeaders: Record<strin
     updated += counts.reduce((sum, count) => sum + count, 0);
   }
 
+  // ── FALLBACK: link GC OS to local rows via TAREFA EXECUÇÃO (73344) ──
+  // Para OS cuja TAREFA OS (73343) está errada/duplicada, vinculamos pela
+  // execução. Só preenche linhas locais sem gc_os_id (não sobrescreve).
+  let execLinked = 0;
+  try {
+    const gcOsList = await fetchGcOs(gcHeaders, { dataInicio: startDate, dataFim: endDate });
+    const execEntries: Array<[string, any]> = [];
+    for (const osPayload of Object.values(gcOsList.byCodigo || {}) as any[]) {
+      if (!osPayload?.gc_os_id) continue;
+      const execIds = String(osPayload.gc_os_tarefa_exec || "").split("/").filter(Boolean);
+      for (const execId of execIds) {
+        if (execId) execEntries.push([execId, osPayload]);
+      }
+    }
+    const PAR = 10;
+    for (let i = 0; i < execEntries.length; i += PAR) {
+      const slice = execEntries.slice(i, i + PAR);
+      const results = await Promise.all(slice.map(async ([execTaskId, osPayload]: any) => {
+        const updatePayload: any = {
+          gc_os_id: osPayload.gc_os_id,
+          gc_os_codigo: osPayload.gc_os_codigo,
+          gc_os_cliente: osPayload.gc_os_cliente,
+          gc_os_situacao: osPayload.gc_os_situacao,
+          gc_os_situacao_id: osPayload.gc_os_situacao_id,
+          gc_os_cor_situacao: osPayload.gc_os_cor_situacao,
+          gc_os_valor_total: osPayload.gc_os_valor_total,
+          gc_os_vendedor: osPayload.gc_os_vendedor,
+          gc_os_data: osPayload.gc_os_data,
+          gc_os_data_saida: osPayload.gc_os_data_saida,
+          gc_os_link: osPayload.gc_os_link,
+          gc_os_link_cobranca: osPayload.gc_os_link_cobranca || null,
+          gc_os_tarefa_exec: osPayload.gc_os_tarefa_exec || null,
+          gc_os_tarefa_os: osPayload.gc_os_tarefa_os || null,
+          os_realizada: true,
+          atualizado_em: new Date().toISOString(),
+        };
+        const { count } = await sbClient
+          .from("tarefas_central")
+          .update(updatePayload, { count: "exact" })
+          .eq("auvo_task_id", execTaskId)
+          .is("gc_os_id", null);
+        return count || 0;
+      }));
+      execLinked += results.reduce((s, c) => s + c, 0);
+    }
+    if (execLinked > 0) {
+      console.log(`[central-sync] gc_status_only exec-fallback: ${execLinked} OS vinculadas via 73344`);
+      updated += execLinked;
+    }
+  } catch (err) {
+    console.error("[central-sync] gc_status_only exec-fallback error:", (err as Error).message);
+  }
+
   return { checked: ids.length, updated };
 }
 
