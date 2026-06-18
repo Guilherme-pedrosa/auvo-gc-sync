@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Loader2, Trophy, Wrench, Package, Calculator, ChevronDown, ChevronRight, ExternalLink, FileText, RefreshCw, RotateCcw, Trash2 } from "lucide-react";
+import { Search } from "lucide-react";
 import { Users2 } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
@@ -175,6 +176,7 @@ export default function PremiacaoPage() {
   const [syncingTelemetry, setSyncingTelemetry] = useState(false);
   const [telemetryProgress, setTelemetryProgress] = useState<string | null>(null);
   const [syncingGc, setSyncingGc] = useState(false);
+  const [search, setSearch] = useState("");
 
   const { data, isFetching, refetch, error } = useQuery<Resp>({
     queryKey: ["premiacao", activeMonth],
@@ -281,6 +283,29 @@ export default function PremiacaoPage() {
 
   const tecnicos = data?.tecnicos || [];
   const totais = data?.totais;
+
+  const normalize = (s: string) =>
+    (s || "")
+      .toString()
+      .toLowerCase()
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "");
+  const searchNorm = normalize(search.trim());
+  const tecnicosFiltrados = searchNorm
+    ? tecnicos
+        .map((t) => {
+          const ordens = t.ordens.filter((o) => {
+            const codigo = normalize(o.gc_os_codigo || o.gc_os_id || "");
+            const cliente = normalize(o.cliente || "");
+            return codigo.includes(searchNorm) || cliente.includes(searchNorm);
+          });
+          return { ...t, ordens };
+        })
+        .filter((t) => t.ordens.length > 0)
+    : tecnicos;
+  const autoExpanded = searchNorm
+    ? new Set(tecnicosFiltrados.map((t) => t.tecnico_id || t.tecnico))
+    : expanded;
 
   return (
     <div className="h-full overflow-auto bg-background">
@@ -390,10 +415,27 @@ export default function PremiacaoPage() {
           </Card>
         )}
 
+        {tecnicos.length > 0 && (
+          <div className="relative max-w-md">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Input
+              placeholder="Buscar por nº da OS ou cliente neste mês…"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="pl-9"
+            />
+          </div>
+        )}
+        {searchNorm && (
+          <p className="text-xs text-muted-foreground -mt-2">
+            {tecnicosFiltrados.reduce((acc, t) => acc + t.ordens.length, 0)} OS encontrada(s) em {tecnicosFiltrados.length} técnico(s).
+          </p>
+        )}
+
         <div className="space-y-3">
-          {tecnicos.map((t) => {
+          {tecnicosFiltrados.map((t) => {
             const key = t.tecnico_id || t.tecnico;
-            const isOpen = expanded.has(key);
+            const isOpen = autoExpanded.has(key);
             return (
               <Card key={key}>
                 <CardHeader className="p-4 cursor-pointer" onClick={() => toggle(key)}>
