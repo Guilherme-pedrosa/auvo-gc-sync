@@ -551,6 +551,7 @@ export default function PremiacaoPage() {
                             <TableHeader>
                               <TableRow>
                                 <TableHead className="w-24">Data</TableHead>
+                                <TableHead className="w-28">Tarefa Auvo</TableHead>
                                 <TableHead>Cliente</TableHead>
                                 <TableHead className="text-right w-20">Horas</TableHead>
                                 <TableHead className="text-right w-28">R$/hora</TableHead>
@@ -562,6 +563,15 @@ export default function PremiacaoPage() {
                               {t.preventivas.atividades.map((a) => (
                                 <TableRow key={a.auvo_task_id}>
                                   <TableCell className="text-xs">{a.data}</TableCell>
+                                  <TableCell className="text-xs font-mono">
+                                    {a.auvo_link ? (
+                                      <a href={a.auvo_link} target="_blank" rel="noreferrer" className="text-primary hover:underline">
+                                        #{a.auvo_task_id || "—"}
+                                      </a>
+                                    ) : (
+                                      <span>#{a.auvo_task_id || "—"}</span>
+                                    )}
+                                  </TableCell>
                                   <TableCell className="text-sm truncate max-w-[260px]">
                                     <div className="flex items-center gap-2">
                                       <span className="truncate">{a.cliente}</span>
