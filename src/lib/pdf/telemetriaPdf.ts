@@ -258,10 +258,11 @@ function buildPdfForTech(month: string, t: TelemetriaTech): jsPDF {
       doc.setFont("helvetica", "normal");
       autoTable(doc, {
         startY: y + 4,
-        head: [["Data", "Cliente", "Contrato", "Horas", "R$/hora", "Valor"]],
+        head: [["Data", "Tarefa Auvo", "Cliente", "Contrato", "Horas", "R$/hora", "Valor"]],
         body: [
           ...t.preventivas.atividades.map((a) => [
             a.data || "—",
+            a.auvo_task_id ? `#${a.auvo_task_id}` : "—",
             a.cliente || "—",
             a.contrato || "—",
             (a.horas ?? 0).toFixed(2),
@@ -272,6 +273,7 @@ function buildPdfForTech(month: string, t: TelemetriaTech): jsPDF {
             { content: "TOTAL", styles: { fontStyle: "bold" } },
             { content: "", styles: {} },
             { content: "", styles: {} },
+            { content: "", styles: {} },
             { content: t.preventivas.horas.toFixed(2), styles: { fontStyle: "bold", halign: "right" } },
             { content: "", styles: {} },
             { content: brl(t.preventivas.valor), styles: { fontStyle: "bold", halign: "right", textColor: [37, 99, 235] } },
@@ -280,15 +282,15 @@ function buildPdfForTech(month: string, t: TelemetriaTech): jsPDF {
         styles: { fontSize: 8, cellPadding: 3 },
         headStyles: { fillColor: [240, 240, 245], textColor: 30, fontStyle: "bold" },
         columnStyles: {
-          3: { halign: "right" },
           4: { halign: "right" },
-          5: { halign: "right", fontStyle: "bold" },
+          5: { halign: "right" },
+          6: { halign: "right", fontStyle: "bold" },
         },
         didDrawCell: (data: any) => {
           if (data.section !== "body") return;
           const a = t.preventivas!.atividades[data.row.index];
           if (!a) return;
-          if (data.column.index === 0 && a.auvo_link) {
+          if ((data.column.index === 0 || data.column.index === 1) && a.auvo_link) {
             doc.link(data.cell.x, data.cell.y, data.cell.width, data.cell.height, { url: a.auvo_link });
           }
         },
