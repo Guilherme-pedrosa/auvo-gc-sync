@@ -195,6 +195,45 @@ function buildPdfForTech(month: string, t: TelemetriaTech): jsPDF {
       y = (doc as any).lastAutoTable.finalY;
     }
 
+    // Bônus por telemetria (km e km/telem.)
+    y += 14;
+    doc.setFontSize(10);
+    doc.setFont("helvetica", "bold");
+    doc.text("Bônus por telemetria", 40, y);
+    doc.setFont("helvetica", "normal");
+    {
+      const btPct = t.bonus_telemetria_pct || 0;
+      const btVal = t.bonus_telemetria_valor || 0;
+      const kmT = t.km_total ?? 0;
+      const kmpt = t.km_por_telemetria ?? null;
+      const faixaT =
+        btPct >= 0.05 ? "≥ 2.000 km e > 200 km/telem." :
+        btPct >= 0.03 ? "≥ 800 km e > 150 km/telem." :
+        (kmT < 800
+          ? "Sem bônus (KM total < 800)"
+          : (kmpt == null || kmpt <= 150)
+            ? "Sem bônus (KM/telem. ≤ 150)"
+            : "Sem bônus");
+      autoTable(doc, {
+        startY: y + 4,
+        head: [["KM total", "KM/telem.", "Faixa", "Bônus %", "Bônus R$"]],
+        body: [[
+          kmT.toLocaleString("pt-BR", { maximumFractionDigits: 1 }),
+          kmpt != null ? kmpt.toFixed(1) : "—",
+          faixaT,
+          btPct > 0 ? `+${(btPct * 100).toLocaleString("pt-BR", { maximumFractionDigits: 1 })}%` : "—",
+          btVal > 0 ? `+${brl(btVal)}` : brl(0),
+        ]],
+        styles: { fontSize: 9, cellPadding: 4 },
+        headStyles: { fillColor: [16, 185, 129], textColor: 255, fontStyle: "bold" },
+        columnStyles: {
+          0: { halign: "right" }, 1: { halign: "right" },
+          3: { halign: "right" }, 4: { halign: "right", fontStyle: "bold" },
+        },
+      });
+      y = (doc as any).lastAutoTable.finalY;
+    }
+
     // Resultado final
     y += 14;
     doc.setFontSize(11);
