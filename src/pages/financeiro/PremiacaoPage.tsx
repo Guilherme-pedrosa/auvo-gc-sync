@@ -506,6 +506,16 @@ export default function PremiacaoPage() {
                               +{brl(t.bonus_telemetria_valor || 0)} (bônus telemetria {Math.round((t.bonus_telemetria_pct || 0) * 100)}%)
                             </div>
                           )}
+                          {(t.bonus_telemetria_valor ?? 0) === 0 && (t.km_total != null || t.km_por_telemetria != null) && (
+                            <div className="text-[10px] text-amber-600 mt-0.5">
+                              Sem bônus telemetria —{" "}
+                              {(t.km_total ?? 0) < 800
+                                ? `KM total ${(t.km_total ?? 0).toLocaleString("pt-BR", { maximumFractionDigits: 1 })} < 800`
+                                : (t.km_por_telemetria == null || t.km_por_telemetria <= 150)
+                                  ? `KM/telem. ${t.km_por_telemetria != null ? t.km_por_telemetria.toFixed(1) : "—"} ≤ 150`
+                                  : "regra não atingida"}
+                            </div>
+                          )}
                           {t.meta != null && t.meta > 0 && (
                             <div className="text-[10px] text-muted-foreground mt-0.5">
                               Meta: {brl(t.meta)} · {t.meta_atingida ? "✅ atingida" : `${Math.round(((t.faturamento ?? 0) / t.meta) * 100)}%`}
@@ -513,7 +523,7 @@ export default function PremiacaoPage() {
                           )}
                           {t.km_por_telemetria != null && (
                             <div className="text-[10px] text-muted-foreground mt-0.5">
-                              KM/telem.: {t.km_por_telemetria.toFixed(1)} km
+                              KM total: {(t.km_total ?? 0).toLocaleString("pt-BR", { maximumFractionDigits: 1 })} km · KM/telem.: {t.km_por_telemetria.toFixed(1)} km
                               {t.km_por_telemetria < 120 && " ⚠ <120"}
                             </div>
                           )}
