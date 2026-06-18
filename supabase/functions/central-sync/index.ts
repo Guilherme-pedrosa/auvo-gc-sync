@@ -1564,6 +1564,58 @@ async function runCentralSync(body: CentralSyncBody = {}) {
       if (lateLinkOS > 0 || lateLinkOrc > 0) {
         console.log(`[central-sync] Late linkage: ${lateLinkOS} tarefas vinculadas a OS, ${lateLinkOrc} a orçamentos`);
       }
+
+      // ── FALLBACK: link GC OS to local rows via TAREFA EXECUÇÃO (73344) ──
+      // Quando a TAREFA OS (73343) está errada/duplicada/colide com outra OS, a OS
+      // nunca é vinculada e some da premiação. Para premiação o que importa é o
+      // 73344. Aqui ligamos pela execução APENAS quando a linha local ainda não
+      // tem gc_os_id, sem sobrescrever vínculos existentes feitos pelo 73343.
+      let lateLinkExec = 0;
+      const execLinkEntries: Array<[string, any]> = [];
+      for (const osPayload of Object.values(gcOsResult.byCodigo || {}) as any[]) {
+        if (!osPayload?.gc_os_id) continue;
+        const execIds = String(osPayload.gc_os_tarefa_exec || "").split("/").filter(Boolean);
+        for (const execId of execIds) {
+          if (execId) execLinkEntries.push([execId, osPayload]);
+        }
+      }
+      for (let i = 0; i < execLinkEntries.length; i += PARALLEL_LINK) {
+        const slice = execLinkEntries.slice(i, i + PARALLEL_LINK);
+        const results = await Promise.all(slice.map(async ([execTaskId, osPayload]: any) => {
+          const orcPayload = findOrcForOs(osPayload);
+          const updatePayload: any = {
+            gc_os_id: osPayload.gc_os_id,
+            gc_os_codigo: osPayload.gc_os_codigo,
+            gc_os_cliente: osPayload.gc_os_cliente,
+            gc_os_situacao: osPayload.gc_os_situacao,
+            gc_os_situacao_id: osPayload.gc_os_situacao_id,
+            gc_os_cor_situacao: osPayload.gc_os_cor_situacao,
+            gc_os_valor_total: osPayload.gc_os_valor_total,
+            gc_os_vendedor: osPayload.gc_os_vendedor,
+            gc_os_data: osPayload.gc_os_data,
+            gc_os_data_saida: osPayload.gc_os_data_saida,
+            gc_os_link: osPayload.gc_os_link,
+            gc_os_link_cobranca: osPayload.gc_os_link_cobranca || null,
+            gc_os_tarefa_exec: osPayload.gc_os_tarefa_exec || null,
+            gc_os_tarefa_os: osPayload.gc_os_tarefa_os || null,
+            os_realizada: true,
+            atualizado_em: new Date().toISOString(),
+          };
+          if (orcPayload?.gc_orcamento_id) {
+            applyOrcPayload(updatePayload, orcPayload);
+          }
+          const { count } = await sbClient
+            .from("tarefas_central")
+            .update(updatePayload, { count: "exact" })
+            .eq("auvo_task_id", execTaskId)
+            .is("gc_os_id", null);
+          return count || 0;
+        }));
+        lateLinkExec += results.reduce((s, c) => s + c, 0);
+      }
+      if (lateLinkExec > 0) {
+        console.log(`[central-sync] Late linkage (TAREFA EXECUÇÃO/73344 fallback): ${lateLinkExec} OS vinculadas`);
+      }
     }
 
     // ── PRIORITY: Global OS/ORC status refresh (runs FIRST, before heavy Auvo processing) ──
