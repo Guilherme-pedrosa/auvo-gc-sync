@@ -299,9 +299,23 @@ export default function PremiacaoPage() {
             const cliente = normalize(o.cliente || "");
             return codigo.includes(searchNorm) || cliente.includes(searchNorm);
           });
-          return { ...t, ordens };
+          const prevAtivs = (t.preventivas?.atividades || []).filter((a) => {
+            const cliente = normalize(a.cliente || "");
+            const tid = normalize(a.auvo_task_id || "");
+            return cliente.includes(searchNorm) || tid.includes(searchNorm);
+          });
+          const preventivas = t.preventivas
+            ? {
+                ...t.preventivas,
+                atividades: prevAtivs,
+                count: prevAtivs.length,
+                horas: prevAtivs.reduce((s, a) => s + (a.horas || 0), 0),
+                valor: prevAtivs.reduce((s, a) => s + (a.valor || 0), 0),
+              }
+            : t.preventivas;
+          return { ...t, ordens, preventivas };
         })
-        .filter((t) => t.ordens.length > 0)
+        .filter((t) => t.ordens.length > 0 || (t.preventivas?.count ?? 0) > 0)
     : tecnicos;
   const autoExpanded = searchNorm
     ? new Set(tecnicosFiltrados.map((t) => t.tecnico_id || t.tecnico))
