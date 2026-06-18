@@ -386,18 +386,21 @@ export async function gerarPdfsTelemetrias(month: string, tecnicos: TelemetriaTe
     acc.bruta += t.comissao_total || 0;
     acc.red += t.reducao_valor || 0;
     acc.bonus += t.bonus_meta_valor || 0;
+    acc.bonusTel += (t as any).bonus_telemetria_valor || 0;
     acc.final += t.comissao_final ?? t.comissao_total ?? 0;
     return acc;
-  }, { fat: 0, bruta: 0, red: 0, bonus: 0, final: 0 });
+  }, { fat: 0, bruta: 0, red: 0, bonus: 0, bonusTel: 0, final: 0 });
 
   autoTable(resumo, {
     startY: 76,
-    head: [["Técnico", "OS", "Faturamento", "Meta", "% Meta", "Prem. bruta", "Redução", "Bônus meta", "Premiação final"]],
+    head: [["Técnico", "OS", "Faturamento", "Meta", "% Meta", "Prem. bruta", "Redução", "Bônus meta", "Bônus telem.", "Premiação final"]],
     body: [
       ...sorted.map((t) => {
         const fat = t.faturamento ?? ((t.valor_pecas ?? 0) + (t.valor_servicos ?? 0));
         const meta = t.meta ?? null;
         const ratio = meta && meta > 0 ? fat / meta : null;
+        const btPct = (t as any).bonus_telemetria_pct || 0;
+        const btVal = (t as any).bonus_telemetria_valor || 0;
         return [
           t.tecnico,
           String(t.os_count ?? (t.ordens?.length ?? 0)),
@@ -407,6 +410,7 @@ export async function gerarPdfsTelemetrias(month: string, tecnicos: TelemetriaTe
           brl(t.comissao_total || 0),
           (t.reducao_valor || 0) > 0 ? `−${brl(t.reducao_valor || 0)}` : brl(0),
           (t.bonus_meta_valor || 0) > 0 ? `+${brl(t.bonus_meta_valor || 0)}` : brl(0),
+          btVal > 0 ? `+${brl(btVal)} (${Math.round(btPct * 100)}%)` : brl(0),
           brl(t.comissao_final ?? t.comissao_total ?? 0),
         ];
       }),
@@ -419,6 +423,7 @@ export async function gerarPdfsTelemetrias(month: string, tecnicos: TelemetriaTe
         { content: brl(totals.bruta), styles: { fontStyle: "bold", halign: "right" } },
         { content: `−${brl(totals.red)}`, styles: { fontStyle: "bold", halign: "right" } },
         { content: `+${brl(totals.bonus)}`, styles: { fontStyle: "bold", halign: "right" } },
+        { content: `+${brl(totals.bonusTel)}`, styles: { fontStyle: "bold", halign: "right" } },
         { content: brl(totals.final), styles: { fontStyle: "bold", halign: "right" } },
       ],
     ],
@@ -432,7 +437,8 @@ export async function gerarPdfsTelemetrias(month: string, tecnicos: TelemetriaTe
       5: { halign: "right" },
       6: { halign: "right" },
       7: { halign: "right" },
-      8: { halign: "right", fontStyle: "bold", textColor: [37, 99, 235] },
+      8: { halign: "right" },
+      9: { halign: "right", fontStyle: "bold", textColor: [37, 99, 235] },
     },
   });
 
