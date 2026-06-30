@@ -35,6 +35,7 @@ import { FileText, Users } from "lucide-react";
 import { Plus } from "lucide-react";
 import CriarTarefaAuvoDialog from "./CriarTarefaAuvoDialog";
 import ImportarPlanoExcelDialog from "./ImportarPlanoExcelDialog";
+import RevisarTiposIADialog from "./RevisarTiposIADialog";
 
 // ── Types ──
 type EquipmentRaw = {
