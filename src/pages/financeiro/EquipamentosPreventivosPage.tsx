@@ -457,6 +457,78 @@ export default function EquipamentosPreventivosPage() {
     }
   }, [queryClient]);
 
+  const handleSaveProxima = useCallback(async (eq: EquipmentRow, novaData: string | null) => {
+    const proximasKey = ["plano-proximas-by-eq"];
+    const prevMap = queryClient.getQueryData<Map<string, any>>(proximasKey);
+
+    // Optimistic cache update
+    if (prevMap) {
+      const next = new Map(prevMap);
+      const cur = next.get(eq.id) || {
+        proxima_data: null,
+        periodicidade_meses: null,
+        ultima_execucao_data: null,
+        ultima_execucao_task_id: null,
+      };
+      next.set(eq.id, { ...cur, proxima_data: novaData });
+      queryClient.setQueryData(proximasKey, next);
+    }
+
+    try {
+      // Try update first (covers existing items, possibly multiple anos)
+      const { data: updated, error: updErr } = await (supabase as any)
+        .from("plano_preventivo_item")
+        .update({ proxima_data: novaData })
+        .eq("equipamento_auvo_id", eq.id)
+        .eq("ativo", true)
+        .select("id");
+      if (updErr) throw updErr;
+
+      if (!updated || updated.length === 0) {
+        // No plano yet → create one. Need grupo_id from cliente.
+        const clienteNorm = normalizeClienteName(eq.cliente);
+        let grupoId: string | null = null;
+        for (const [gid, set] of grupoClienteMap.entries()) {
+          if (set.has(clienteNorm)) { grupoId = gid; break; }
+        }
+        if (!grupoId) {
+          throw new Error("Cliente sem grupo cadastrado — adicione o cliente a um grupo antes.");
+        }
+        const tipo = eq.tipo_id ? tipoById.get(eq.tipo_id) : null;
+        const per = eq.override_periodicidade ?? tipo?.periodicidade ?? "TRIMESTRAL";
+        const perMeses = periodicidadeToMeses(per);
+        const ht = Number(eq.override_horas_por_tecnico ?? tipo?.horas_por_tecnico ?? 0);
+        const qtd = Number(eq.override_qtd_tecnicos ?? tipo?.qtd_tecnicos ?? 1);
+        const horasTotal = ht * qtd;
+        const anoRef = novaData
+          ? new Date(novaData).getUTCFullYear()
+          : new Date().getUTCFullYear();
+        const { error: insErr } = await (supabase as any)
+          .from("plano_preventivo_item")
+          .insert({
+            grupo_id: grupoId,
+            ano_referencia: anoRef,
+            equipamento_nome: eq.nome,
+            equipamento_auvo_id: eq.id,
+            match_confianca: "manual",
+            periodicidade: per,
+            periodicidade_meses: perMeses,
+            horas_total: horasTotal,
+            meses_planejados: [],
+            proxima_data: novaData,
+            ativo: true,
+          });
+        if (insErr) throw insErr;
+      }
+
+      toast.success(novaData ? "Próxima preventiva definida" : "Próxima preventiva removida");
+    } catch (e: any) {
+      // Rollback cache
+      if (prevMap) queryClient.setQueryData(proximasKey, prevMap);
+      toast.error("Erro ao salvar: " + (e?.message || String(e)));
+    }
+  }, [queryClient, grupoClienteMap, tipoById]);
+
   const grupoClienteMap = useMemo(() => {
     const map = new Map<string, Set<string>>();
     const grupos = gruposData?.grupos ?? [];
