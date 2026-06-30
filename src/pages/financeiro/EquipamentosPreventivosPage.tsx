@@ -1844,6 +1844,14 @@ export default function EquipamentosPreventivosPage() {
           }}
         />
       )}
+      <ImportarPlanoExcelDialog
+        open={importOpen}
+        onOpenChange={setImportOpen}
+        grupos={gruposData?.grupos ?? []}
+        onImported={() => {
+          queryClient.invalidateQueries({ queryKey: ["preventiva-equipamentos"] });
+        }}
+      />
     </div>
   );
 }
