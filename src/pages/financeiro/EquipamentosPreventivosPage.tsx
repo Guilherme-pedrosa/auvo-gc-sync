@@ -1466,6 +1466,32 @@ export default function EquipamentosPreventivosPage() {
                         />
                       </TableCell>
                       <TableCell>
+                        {eq.ultima_intervencao_data ? (
+                          eq.ultima_intervencao_link ? (
+                            <a
+                              href={eq.ultima_intervencao_link}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-sm font-medium hover:underline text-foreground"
+                              title={eq.ultima_intervencao_tipo || ""}
+                            >
+                              {format(parseISO(eq.ultima_intervencao_data), "dd/MM/yyyy", { locale: ptBR })}
+                            </a>
+                          ) : (
+                            <span className="text-sm" title={eq.ultima_intervencao_tipo || ""}>
+                              {format(parseISO(eq.ultima_intervencao_data), "dd/MM/yyyy", { locale: ptBR })}
+                            </span>
+                          )
+                        ) : (
+                          <span className="text-xs text-muted-foreground">—</span>
+                        )}
+                        {eq.ultima_intervencao_tipo && (
+                          <div className="text-[10px] text-muted-foreground truncate max-w-[140px]" title={eq.ultima_intervencao_tipo}>
+                            {eq.ultima_intervencao_tipo}
+                          </div>
+                        )}
+                      </TableCell>
+                      <TableCell>
                         {eq.ultima_data ? (
                           eq.ultimo_link ? (
                             <a
