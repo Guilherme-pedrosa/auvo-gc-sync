@@ -28,6 +28,7 @@ import {
   Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import { FileText, Users } from "lucide-react";
@@ -45,6 +46,10 @@ type EquipmentRaw = {
   marca: string | null;
   marca_source: string | null;
   marca_manual_override: boolean | null;
+  tipo_id: string | null;
+  override_horas_por_tecnico: number | null;
+  override_qtd_tecnicos: number | null;
+  override_periodicidade: string | null;
 };
 
 type EquipTaskRel = {
@@ -77,6 +82,10 @@ type EquipmentRow = {
   dias_desde: number | null;
   tipo_tarefa: string | null;
   total_tarefas: number;
+  tipo_id: string | null;
+  override_horas_por_tecnico: number | null;
+  override_qtd_tecnicos: number | null;
+  override_periodicidade: string | null;
 };
 
 type SyncWindow = {
@@ -162,7 +171,7 @@ async function fetchRawData(): Promise<{ equipamentos: EquipmentRaw[]; relations
   while (true) {
     const { data, error } = await supabase
       .from("equipamentos_auvo")
-      .select("id, auvo_equipment_id, nome, identificador, cliente, status, categoria, descricao, marca, marca_source, marca_manual_override")
+      .select("id, auvo_equipment_id, nome, identificador, cliente, status, categoria, descricao, marca, marca_source, marca_manual_override, tipo_id, override_horas_por_tecnico, override_qtd_tecnicos, override_periodicidade")
       .eq("status", "Ativo")
       .order("nome")
       .range(eqFrom, eqFrom + EQ_PAGE - 1);
@@ -267,6 +276,10 @@ function buildEquipmentRows(
       dias_desde: dias,
       tipo_tarefa: lastTask?.auvo_task_type_description || null,
       total_tarefas: completedTasks.length,
+      tipo_id: eq.tipo_id,
+      override_horas_por_tecnico: eq.override_horas_por_tecnico,
+      override_qtd_tecnicos: eq.override_qtd_tecnicos,
+      override_periodicidade: eq.override_periodicidade,
     };
   }).sort((a, b) => {
     if (a.dias_desde === null && b.dias_desde === null) return 0;
@@ -324,6 +337,44 @@ export default function EquipamentosPreventivosPage() {
     },
     staleTime: 10 * 60 * 1000,
   });
+
+  const { data: tiposEquip = [] } = useQuery({
+    queryKey: ["tipos_equipamento_simple"],
+    queryFn: async () => {
+      const { data, error } = await (supabase as any)
+        .from("tipos_equipamento")
+        .select("id, nome, horas_por_tecnico, qtd_tecnicos, periodicidade")
+        .eq("ativo", true)
+        .order("nome");
+      if (error) throw error;
+      return data as Array<{ id: string; nome: string; horas_por_tecnico: number; qtd_tecnicos: number; periodicidade: string }>;
+    },
+    staleTime: 10 * 60 * 1000,
+  });
+
+  const tipoById = useMemo(() => {
+    const m = new Map<string, typeof tiposEquip[number]>();
+    for (const t of tiposEquip) m.set(t.id, t);
+    return m;
+  }, [tiposEquip]);
+
+  const handleSavePlano = useCallback(async (eqId: string, patch: {
+    tipo_id?: string | null;
+    override_horas_por_tecnico?: number | null;
+    override_qtd_tecnicos?: number | null;
+    override_periodicidade?: string | null;
+  }) => {
+    const { error } = await (supabase as any)
+      .from("equipamentos_auvo")
+      .update(patch)
+      .eq("id", eqId);
+    if (error) {
+      toast.error("Erro ao salvar plano: " + error.message);
+    } else {
+      toast.success("Plano atualizado");
+      queryClient.invalidateQueries({ queryKey: ["equipamentos-preventivos-raw"] });
+    }
+  }, [queryClient]);
 
   const grupoClienteMap = useMemo(() => {
     const map = new Map<string, Set<string>>();
@@ -1053,6 +1104,7 @@ export default function EquipamentosPreventivosPage() {
                 <TableHead><SortButton field="nome">Equipamento</SortButton></TableHead>
                 <TableHead>Identificador</TableHead>
                 <TableHead><SortButton field="cliente">Cliente</SortButton></TableHead>
+                <TableHead>Plano (tipo · HT · period.)</TableHead>
                 <TableHead>Última Intervenção</TableHead>
                 <TableHead>Técnico</TableHead>
                 <TableHead className="text-right"><SortButton field="dias">Dias</SortButton></TableHead>
@@ -1063,7 +1115,7 @@ export default function EquipamentosPreventivosPage() {
             <TableBody>
               {filtered.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={11} className="text-center py-10 text-muted-foreground">
+                  <TableCell colSpan={12} className="text-center py-10 text-muted-foreground">
                     Nenhum equipamento encontrado
                   </TableCell>
                 </TableRow>
@@ -1154,6 +1206,14 @@ export default function EquipamentosPreventivosPage() {
                       </TableCell>
                       <TableCell className="max-w-[200px] truncate" title={eq.cliente || ""}>
                         {eq.cliente || "—"}
+                      </TableCell>
+                      <TableCell className="min-w-[220px]">
+                        <PlanoCell
+                          eq={eq}
+                          tipos={tiposEquip}
+                          tipoById={tipoById}
+                          onSave={(patch) => handleSavePlano(eq.id, patch)}
+                        />
                       </TableCell>
                       <TableCell>
                         {eq.ultima_data ? (
@@ -1274,5 +1334,121 @@ export default function EquipamentosPreventivosPage() {
         </DialogContent>
       </Dialog>
     </div>
+  );
+}
+
+// ── PlanoCell: edição inline do tipo + overrides de HT/qtd/periodicidade ──
+const PERIODICIDADES = ["MENSAL", "BIMESTRAL", "TRIMESTRAL", "SEMESTRAL", "ANUAL", "FILA"];
+
+type PlanoCellProps = {
+  eq: EquipmentRow;
+  tipos: Array<{ id: string; nome: string; horas_por_tecnico: number; qtd_tecnicos: number; periodicidade: string }>;
+  tipoById: Map<string, { id: string; nome: string; horas_por_tecnico: number; qtd_tecnicos: number; periodicidade: string }>;
+  onSave: (patch: {
+    tipo_id?: string | null;
+    override_horas_por_tecnico?: number | null;
+    override_qtd_tecnicos?: number | null;
+    override_periodicidade?: string | null;
+  }) => Promise<void> | void;
+};
+
+function PlanoCell({ eq, tipos, tipoById, onSave }: PlanoCellProps) {
+  const [open, setOpen] = useState(false);
+  const tipo = eq.tipo_id ? tipoById.get(eq.tipo_id) : null;
+  const htResolved = eq.override_horas_por_tecnico ?? tipo?.horas_por_tecnico ?? null;
+  const qtdResolved = eq.override_qtd_tecnicos ?? tipo?.qtd_tecnicos ?? null;
+  const perResolved = eq.override_periodicidade ?? tipo?.periodicidade ?? null;
+
+  const [tipoSel, setTipoSel] = useState<string>(eq.tipo_id ?? "");
+  const [htStr, setHtStr] = useState<string>(eq.override_horas_por_tecnico != null ? String(eq.override_horas_por_tecnico) : "");
+  const [qtdStr, setQtdStr] = useState<string>(eq.override_qtd_tecnicos != null ? String(eq.override_qtd_tecnicos) : "");
+  const [perSel, setPerSel] = useState<string>(eq.override_periodicidade ?? "");
+  const [saving, setSaving] = useState(false);
+
+  const reset = () => {
+    setTipoSel(eq.tipo_id ?? "");
+    setHtStr(eq.override_horas_por_tecnico != null ? String(eq.override_horas_por_tecnico) : "");
+    setQtdStr(eq.override_qtd_tecnicos != null ? String(eq.override_qtd_tecnicos) : "");
+    setPerSel(eq.override_periodicidade ?? "");
+  };
+
+  const save = async () => {
+    setSaving(true);
+    try {
+      await onSave({
+        tipo_id: tipoSel || null,
+        override_horas_por_tecnico: htStr.trim() === "" ? null : Number(htStr),
+        override_qtd_tecnicos: qtdStr.trim() === "" ? null : Math.max(1, Number(qtdStr)),
+        override_periodicidade: perSel || null,
+      });
+      setOpen(false);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Popover open={open} onOpenChange={(o) => { setOpen(o); if (o) reset(); }}>
+      <PopoverTrigger asChild>
+        <button className="w-full text-left text-xs space-y-0.5 hover:bg-muted/50 rounded px-1.5 py-1 transition-colors">
+          {tipo ? (
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <Badge variant="secondary" className="text-[10px]">{tipo.nome}</Badge>
+              {eq.override_horas_por_tecnico != null && (
+                <Badge variant="outline" className="text-[9px] border-amber-400 text-amber-700">override</Badge>
+              )}
+            </div>
+          ) : (
+            <span className="text-muted-foreground italic">Sem tipo · clique para definir</span>
+          )}
+          {(htResolved != null || perResolved) && (
+            <div className="text-[10px] text-muted-foreground">
+              {htResolved != null && <span>{Number(htResolved).toFixed(2)}h × {qtdResolved ?? 1}</span>}
+              {perResolved && <span> · {perResolved}</span>}
+            </div>
+          )}
+        </button>
+      </PopoverTrigger>
+      <PopoverContent className="w-80 space-y-3" align="start">
+        <div>
+          <Label className="text-xs">Tipo</Label>
+          <Select value={tipoSel} onValueChange={setTipoSel}>
+            <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="— Selecionar tipo —" /></SelectTrigger>
+            <SelectContent className="max-h-72">
+              {tipos.map((t) => (
+                <SelectItem key={t.id} value={t.id} className="text-xs">{t.nome}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="text-[10px] text-muted-foreground">
+          Os campos abaixo são <strong>overrides</strong>. Deixe em branco para usar o padrão do tipo.
+        </div>
+        <div className="grid grid-cols-2 gap-2">
+          <div>
+            <Label className="text-xs">Horas/téc</Label>
+            <Input type="number" step="0.25" value={htStr} onChange={(e) => setHtStr(e.target.value)} className="h-8 text-xs" placeholder={tipo ? `${tipo.horas_por_tecnico}` : ""} />
+          </div>
+          <div>
+            <Label className="text-xs">Qtd téc</Label>
+            <Input type="number" min={1} value={qtdStr} onChange={(e) => setQtdStr(e.target.value)} className="h-8 text-xs" placeholder={tipo ? `${tipo.qtd_tecnicos}` : ""} />
+          </div>
+        </div>
+        <div>
+          <Label className="text-xs">Periodicidade</Label>
+          <Select value={perSel || "__none__"} onValueChange={(v) => setPerSel(v === "__none__" ? "" : v)}>
+            <SelectTrigger className="h-8 text-xs"><SelectValue placeholder={tipo ? tipo.periodicidade : "— padrão —"} /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="__none__" className="text-xs italic">— usar padrão do tipo —</SelectItem>
+              {PERIODICIDADES.map((p) => <SelectItem key={p} value={p} className="text-xs">{p}</SelectItem>)}
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="flex justify-end gap-2 pt-1">
+          <Button variant="outline" size="sm" onClick={() => setOpen(false)} disabled={saving}>Cancelar</Button>
+          <Button size="sm" onClick={save} disabled={saving}>{saving ? "Salvando..." : "Salvar"}</Button>
+        </div>
+      </PopoverContent>
+    </Popover>
   );
 }
