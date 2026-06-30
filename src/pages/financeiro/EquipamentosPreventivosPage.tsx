@@ -729,68 +729,17 @@ export default function EquipamentosPreventivosPage() {
 
       const monthlyWindows = buildMonthlySyncWindows(syncStartDate, syncEndDate);
       const totalMonths = monthlyWindows.length;
-      let totalRelUpserted = 0;
-      let totalWithEquipLinks = 0;
-      let windowsCovered = 0;
-      let monthIndex = 0;
+      setSyncProgress({ current: 1, total: 2, label: `Fase 2: processando ${totalMonths} mês(es) no servidor...` });
 
-      for (const monthWindow of monthlyWindows) {
-        monthIndex++;
-        const monthLabel = monthWindow.windowStart.substring(0, 7);
-        setSyncProgress({ current: monthIndex, total: totalMonths, label: `Fase 2: ${monthLabel} (${monthIndex}/${totalMonths})` });
-
-        const { data: previewData, error: previewError } = await supabase.functions.invoke("equipment-sync", {
-          body: { phase: "2-count", startDate: monthWindow.windowStart, endDate: monthWindow.windowEnd },
-        });
-
-        if (previewError) {
-          console.error(`Phase 2 count error for ${monthWindow.windowStart}:`, previewError);
-        }
-
-        const monthTaskCount = previewData?.phase2_equipment_tasks?.total_tasks_in_window || 0;
-        const windowsToProcess = !previewError && monthTaskCount > 150
-          ? splitSyncWindowByDay(monthWindow)
-          : [monthWindow];
-
-        if (!previewError && monthTaskCount > 150 && windowsToProcess.length > 1) {
-          setSyncProgress({ current: monthIndex, total: totalMonths, label: `Fase 2: ${monthLabel} — dividindo (${monthTaskCount} tarefas)` });
-        }
-
-        for (const syncWindow of windowsToProcess) {
-          const { data: d2, error: e2 } = await supabase.functions.invoke("equipment-sync", {
-            body: {
-              phase: "2",
-              startDate: syncWindow.windowStart,
-              endDate: syncWindow.windowEnd,
-              validEquipmentIds,
-            },
-          });
-
-          if (e2) {
-            console.error(`Phase 2 error for ${syncWindow.windowStart}:`, e2);
-          } else {
-            const p2 = d2?.phase2_equipment_tasks;
-            if (d2?.should_split) {
-              toast.warning(`Janela ${syncWindow.windowStart} → ${syncWindow.windowEnd} ainda está grande; será refeita em partes menores.`);
-              for (const tinyWindow of splitSyncWindowByDay(syncWindow)) {
-                const { data: tinyData, error: tinyError } = await supabase.functions.invoke("equipment-sync", {
-                  body: { phase: "2", startDate: tinyWindow.windowStart, endDate: tinyWindow.windowEnd, validEquipmentIds },
-                });
-                if (tinyError) console.error(`Phase 2 tiny error for ${tinyWindow.windowStart}:`, tinyError);
-                const tinyP2 = tinyData?.phase2_equipment_tasks;
-                totalRelUpserted += tinyP2?.relationship_rows_upserted || 0;
-                totalWithEquipLinks += tinyP2?.tasks_with_equipment_links || 0;
-              }
-            } else {
-              totalRelUpserted += p2?.relationship_rows_upserted || 0;
-              totalWithEquipLinks += p2?.tasks_with_equipment_links || 0;
-            }
-          }
-
-          windowsCovered++;
-        }
-      }
-
+      const windows = monthlyWindows.map((m) => ({ startDate: m.windowStart, endDate: m.windowEnd }));
+      const { data: dB, error: eB } = await supabase.functions.invoke("equipment-sync", {
+        body: { phase: "2-batch", windows, validEquipmentIds },
+      });
+      if (eB) throw eB;
+      const pB = dB?.phase2_equipment_tasks;
+      const totalRelUpserted = pB?.relationship_rows_upserted || 0;
+      const totalWithEquipLinks = pB?.tasks_with_equipment_links || 0;
+      const windowsCovered = pB?.windows_processed || 0;
       toast.success(`Vínculos: ${totalRelUpserted} relações em ${windowsCovered} janelas (${totalWithEquipLinks} tarefas com equipamento)`);
       refetch();
     } catch (err: any) {

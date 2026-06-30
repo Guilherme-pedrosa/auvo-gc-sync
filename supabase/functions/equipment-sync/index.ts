@@ -637,7 +637,7 @@ Deno.serve(async (req) => {
       const customerCache = new Map<number, string>();
       const customerIdList = Array.from(customerIds);
       console.log(`[equipment-sync] New customers to resolve: ${customerIdList.length}`);
-      const CUSTOMER_CONCURRENCY = 10;
+      const CUSTOMER_CONCURRENCY = 20;
       let resolved = 0;
       for (let i = 0; i < customerIdList.length; i += CUSTOMER_CONCURRENCY) {
         const batch = customerIdList.slice(i, i + CUSTOMER_CONCURRENCY);
@@ -763,6 +763,116 @@ Deno.serve(async (req) => {
         brands_protected: protectedIds.size,
         inactivated_missing: inactivated,
         errors: equipErrors.length > 0 ? equipErrors : undefined,
+      };
+    }
+
+    // ── Phase 2-batch: Process multiple windows in a single invocation ──
+    // Frontend passes windows: [{ startDate, endDate }, ...] (typically monthly).
+    // For each window we run count → (split by day if > MAX) → fetch tasks → upsert.
+    // This eliminates N round-trips and N Auvo logins from the client.
+    if (phase === "2-batch") {
+      const windowsParam = Array.isArray(body?.windows) ? body.windows : [];
+      if (windowsParam.length === 0) {
+        return new Response(JSON.stringify({ error: "Phase 2-batch requires windows: [{startDate,endDate}]" }), {
+          status: 400,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      if (!validEquipmentIds && providedValidEquipmentIds.length > 0) {
+        validEquipmentIds = new Set(providedValidEquipmentIds);
+      }
+      if (!validEquipmentIds && !skipEquipmentValidation) {
+        validEquipmentIds = await loadValidEquipmentIdsFromDb(sb);
+        console.log(`[equipment-sync] (batch) Valid equipment IDs loaded: ${validEquipmentIds.size}`);
+      }
+
+      // Expand windows: if a window > MAX, split into daily sub-windows.
+      const expanded: Array<{ startDate: string; endDate: string }> = [];
+      for (const w of windowsParam) {
+        const s = String(w?.startDate || "");
+        const e = String(w?.endDate || "");
+        if (!s || !e) continue;
+        const cnt = await fetchTaskCountForWindow(accessToken, s, e).catch(() => 0);
+        if (cnt > MAX_PHASE2_TASKS_PER_REQUEST) {
+          // split by day
+          const start = new Date(s + "T00:00:00Z");
+          const end = new Date(e + "T00:00:00Z");
+          for (let d = new Date(start); d <= end; d.setUTCDate(d.getUTCDate() + 1)) {
+            const iso = d.toISOString().slice(0, 10);
+            expanded.push({ startDate: iso, endDate: iso });
+          }
+          console.log(`[equipment-sync] (batch) ${s}→${e} has ${cnt} tasks; split into daily windows`);
+        } else {
+          expanded.push({ startDate: s, endDate: e });
+        }
+      }
+
+      let totalRelUpserted = 0;
+      let totalTasksAggregate = 0;
+      let totalWithEquip = 0;
+      let totalDiscarded = 0;
+      const perWindow: any[] = [];
+      const allErrors: string[] = [];
+
+      for (const w of expanded) {
+        const { results: tasksWithEquipments, totalTasks, tasksWithEquipments: withEquipCount } =
+          await fetchTasksWithEquipmentsForWindow(accessToken, w.startDate, w.endDate);
+
+        const relRows: any[] = [];
+        let discarded = 0;
+        for (const task of tasksWithEquipments) {
+          if (!task.taskId) continue;
+          for (const eqId of task.equipmentIds) {
+            if (validEquipmentIds && !validEquipmentIds.has(eqId)) { discarded++; continue; }
+            relRows.push({
+              auvo_equipment_id: eqId,
+              auvo_task_id: task.taskId,
+              auvo_task_type_id: task.taskType || null,
+              auvo_task_type_description: task.taskTypeDescription || null,
+              status_auvo: resolveStatus(task.statusCode, !!task.checkOutDate),
+              data_tarefa: task.taskDate || null,
+              data_conclusao: task.checkOutDate || null,
+              cliente: task.customerDescription || null,
+              tecnico: task.userToName || null,
+              auvo_link: `https://app2.auvo.com.br/relatorioTarefas/DetalheTarefa/${task.taskId}`,
+              source: "native_equipment_relation",
+              synced_at: new Date().toISOString(),
+            });
+          }
+        }
+
+        let upserted = 0;
+        for (let i = 0; i < relRows.length; i += UPSERT_BATCH_SIZE) {
+          const batch = relRows.slice(i, i + UPSERT_BATCH_SIZE);
+          const { error } = await sb
+            .from("equipamento_tarefas_auvo")
+            .upsert(batch, { onConflict: "auvo_equipment_id,auvo_task_id" });
+          if (error) {
+            allErrors.push(`${w.startDate}: ${error.message}`);
+            console.error(`[equipment-sync] (batch) upsert err ${w.startDate}: ${error.message}`);
+          } else {
+            upserted += batch.length;
+          }
+        }
+
+        totalRelUpserted += upserted;
+        totalTasksAggregate += totalTasks;
+        totalWithEquip += withEquipCount;
+        totalDiscarded += discarded;
+        perWindow.push({ window: `${w.startDate} → ${w.endDate}`, totalTasks, withEquip: withEquipCount, upserted, discarded });
+      }
+
+      phase2Result = {
+        mode: "batch",
+        windows_processed: expanded.length,
+        original_windows: windowsParam.length,
+        total_tasks_in_window: totalTasksAggregate,
+        tasks_with_equipment_links: totalWithEquip,
+        relationship_rows_upserted: totalRelUpserted,
+        discarded_invalid_links: totalDiscarded,
+        per_window: perWindow,
+        errors: allErrors.length > 0 ? allErrors : undefined,
       };
     }
 
