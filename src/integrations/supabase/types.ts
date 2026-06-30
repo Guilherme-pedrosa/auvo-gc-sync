@@ -192,6 +192,7 @@ export type Database = {
           cliente_nome: string | null
           criado_em: string
           grupo_id: string | null
+          horas_mes_contratadas: number | null
           id: string
           nome: string
           observacao: string | null
@@ -208,6 +209,7 @@ export type Database = {
           cliente_nome?: string | null
           criado_em?: string
           grupo_id?: string | null
+          horas_mes_contratadas?: number | null
           id?: string
           nome: string
           observacao?: string | null
@@ -224,6 +226,7 @@ export type Database = {
           cliente_nome?: string | null
           criado_em?: string
           grupo_id?: string | null
+          horas_mes_contratadas?: number | null
           id?: string
           nome?: string
           observacao?: string | null
@@ -314,6 +317,153 @@ export type Database = {
           percentual?: number
         }
         Relationships: []
+      }
+      equipamento_plano_adiamentos: {
+        Row: {
+          ano_referencia: number
+          criado_em: string
+          criado_por: string | null
+          id: string
+          justificativa: string | null
+          mes_destino: number
+          mes_origem: number
+          plano_id: string
+        }
+        Insert: {
+          ano_referencia: number
+          criado_em?: string
+          criado_por?: string | null
+          id?: string
+          justificativa?: string | null
+          mes_destino: number
+          mes_origem: number
+          plano_id: string
+        }
+        Update: {
+          ano_referencia?: number
+          criado_em?: string
+          criado_por?: string | null
+          id?: string
+          justificativa?: string | null
+          mes_destino?: number
+          mes_origem?: number
+          plano_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "equipamento_plano_adiamentos_plano_id_fkey"
+            columns: ["plano_id"]
+            isOneToOne: false
+            referencedRelation: "equipamento_plano_preventivo"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      equipamento_plano_excecoes: {
+        Row: {
+          criado_em: string
+          criado_por: string | null
+          id: string
+          mes: number
+          motivo: string | null
+          plano_id: string
+        }
+        Insert: {
+          criado_em?: string
+          criado_por?: string | null
+          id?: string
+          mes: number
+          motivo?: string | null
+          plano_id: string
+        }
+        Update: {
+          criado_em?: string
+          criado_por?: string | null
+          id?: string
+          mes?: number
+          motivo?: string | null
+          plano_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "equipamento_plano_excecoes_plano_id_fkey"
+            columns: ["plano_id"]
+            isOneToOne: false
+            referencedRelation: "equipamento_plano_preventivo"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      equipamento_plano_preventivo: {
+        Row: {
+          adiamentos_count: number
+          ano_referencia: number
+          ativo: boolean
+          atualizado_em: string
+          codigo_barras_auvo: string
+          criado_em: string
+          criado_por: string | null
+          criticidade: Database["public"]["Enums"]["preventiva_criticidade"]
+          data_inativacao: string | null
+          grupo_id: string
+          horas_estimadas_total: number
+          horas_por_tecnico: number
+          id: string
+          mes_inicio_ciclo: number
+          observacao: string | null
+          periodicidade: Database["public"]["Enums"]["preventiva_periodicidade"]
+          qtd_tecnicos: number
+          status: Database["public"]["Enums"]["preventiva_status"]
+        }
+        Insert: {
+          adiamentos_count?: number
+          ano_referencia: number
+          ativo?: boolean
+          atualizado_em?: string
+          codigo_barras_auvo: string
+          criado_em?: string
+          criado_por?: string | null
+          criticidade?: Database["public"]["Enums"]["preventiva_criticidade"]
+          data_inativacao?: string | null
+          grupo_id: string
+          horas_estimadas_total: number
+          horas_por_tecnico: number
+          id?: string
+          mes_inicio_ciclo?: number
+          observacao?: string | null
+          periodicidade: Database["public"]["Enums"]["preventiva_periodicidade"]
+          qtd_tecnicos?: number
+          status?: Database["public"]["Enums"]["preventiva_status"]
+        }
+        Update: {
+          adiamentos_count?: number
+          ano_referencia?: number
+          ativo?: boolean
+          atualizado_em?: string
+          codigo_barras_auvo?: string
+          criado_em?: string
+          criado_por?: string | null
+          criticidade?: Database["public"]["Enums"]["preventiva_criticidade"]
+          data_inativacao?: string | null
+          grupo_id?: string
+          horas_estimadas_total?: number
+          horas_por_tecnico?: number
+          id?: string
+          mes_inicio_ciclo?: number
+          observacao?: string | null
+          periodicidade?: Database["public"]["Enums"]["preventiva_periodicidade"]
+          qtd_tecnicos?: number
+          status?: Database["public"]["Enums"]["preventiva_status"]
+        }
+        Relationships: [
+          {
+            foreignKeyName: "equipamento_plano_preventivo_grupo_id_fkey"
+            columns: ["grupo_id"]
+            isOneToOne: false
+            referencedRelation: "grupos_clientes"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       equipamento_tarefas_auvo: {
         Row: {
@@ -1302,6 +1452,14 @@ export type Database = {
     }
     Enums: {
       app_role: "admin" | "user" | "cliente"
+      preventiva_criticidade: "CRITICA" | "ALTA" | "MEDIA" | "BAIXA"
+      preventiva_periodicidade:
+        | "MENSAL"
+        | "BIMESTRAL"
+        | "TRIMESTRAL"
+        | "SEMESTRAL"
+        | "ANUAL"
+      preventiva_status: "RASCUNHO" | "VIGENTE"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -1430,6 +1588,15 @@ export const Constants = {
   public: {
     Enums: {
       app_role: ["admin", "user", "cliente"],
+      preventiva_criticidade: ["CRITICA", "ALTA", "MEDIA", "BAIXA"],
+      preventiva_periodicidade: [
+        "MENSAL",
+        "BIMESTRAL",
+        "TRIMESTRAL",
+        "SEMESTRAL",
+        "ANUAL",
+      ],
+      preventiva_status: ["RASCUNHO", "VIGENTE"],
     },
   },
 } as const
