@@ -252,8 +252,8 @@ export default function ImportarPlanoExcelDialog({
                 {stats.orfaos_auvo > 0 && <Badge variant="outline">{stats.orfaos_auvo} Auvo fora do Excel</Badge>}
               </div>
 
-              <ScrollArea className="h-[45vh] border rounded">
-                <table className="w-full text-xs">
+              <div className="h-[45vh] border rounded overflow-auto">
+                <table className="min-w-[1200px] w-max text-xs">
                   <thead className="bg-muted sticky top-0">
                     <tr>
                       <th className="p-2 text-left">L</th>
@@ -329,7 +329,7 @@ export default function ImportarPlanoExcelDialog({
                     })}
                   </tbody>
                 </table>
-              </ScrollArea>
+              </div>
 
               {preview.orfaos_auvo.length > 0 && (
                 <details className="border rounded p-2 bg-muted/30">
