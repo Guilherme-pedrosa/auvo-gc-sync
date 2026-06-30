@@ -917,6 +917,13 @@ export default function EquipamentosPreventivosPage() {
       return s;
     };
 
+    // Força o Excel a tratar como texto (evita notação científica em IDs longos)
+    const escCsvText = (v: string | number | null | undefined): string => {
+      const s = String(v ?? "");
+      if (!s) return "";
+      return `="${s.replace(/"/g, '""')}"`;
+    };
+
     const sep = ";";
     // Mapa cliente normalizado -> nome do grupo
     const clienteGrupoNome = new Map<string, string>();
@@ -966,7 +973,7 @@ export default function EquipamentosPreventivosPage() {
         escCsv(eq.cliente),
         escCsv(eq.marca || "Não identificada"),
         escCsv(eq.nome),
-        escCsv(eq.identificador),
+        escCsvText(eq.identificador),
         escCsv(tipo?.nome || "Sem tipo"),
         escCsv(periodicidade),
         periodicidadeMeses != null ? String(periodicidadeMeses) : "",
