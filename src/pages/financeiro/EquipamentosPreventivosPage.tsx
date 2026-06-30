@@ -239,6 +239,9 @@ async function fetchRawData(): Promise<{ equipamentos: EquipmentRaw[]; relations
     eqFrom += EQ_PAGE;
   }
 
+  // Guarda defensiva: nunca incluir equipamento inativo na lista de preventivas
+  equipamentos = equipamentos.filter((e) => (e.status || "").toLowerCase() === "ativo");
+
   let relations: EquipTaskRel[] = [];
   let relFrom = 0;
   const REL_PAGE = 1000;
@@ -440,7 +443,7 @@ export default function EquipamentosPreventivosPage() {
   const [syncEndDate, setSyncEndDate] = useState(defaultSyncEnd);
 
   const { data: rawData, isLoading, refetch, isFetching } = useQuery({
-    queryKey: ["equipamentos-preventivos-raw"],
+    queryKey: ["equipamentos-preventivos-raw", "v2-only-ativos"],
     queryFn: fetchRawData,
     staleTime: 5 * 60 * 1000,
   });
@@ -491,7 +494,7 @@ export default function EquipamentosPreventivosPage() {
   }) => {
     // Optimistic update: patch only the edited equipment in the cache
     // (the raw query loads thousands of rows, so invalidate-and-refetch is slow).
-    const queryKey = ["equipamentos-preventivos-raw"];
+    const queryKey = ["equipamentos-preventivos-raw", "v2-only-ativos"];
     const prev = queryClient.getQueryData<any>(queryKey);
     if (prev?.equipamentos) {
       queryClient.setQueryData(queryKey, {
@@ -769,7 +772,7 @@ export default function EquipamentosPreventivosPage() {
       toast.error("Erro ao salvar marca: " + error.message);
     } else {
       toast.success("Marca atualizada");
-      queryClient.invalidateQueries({ queryKey: ["equipamentos-preventivos-raw"] });
+      queryClient.invalidateQueries({ queryKey: ["equipamentos-preventivos-raw", "v2-only-ativos"] });
     }
     setEditingMarcaId(null);
   }, [queryClient]);
