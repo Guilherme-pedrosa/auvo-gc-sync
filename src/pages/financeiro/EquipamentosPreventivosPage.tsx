@@ -32,6 +32,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import { FileText, Users } from "lucide-react";
+import { Plus } from "lucide-react";
+import CriarTarefaAuvoDialog from "./CriarTarefaAuvoDialog";
 
 // ── Types ──
 type EquipmentRaw = {
@@ -407,6 +409,7 @@ export default function EquipamentosPreventivosPage() {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [pdfDialogOpen, setPdfDialogOpen] = useState(false);
   const [pdfScope, setPdfScope] = useState<"selecionados" | "filtrados" | "feitos" | "atrasados" | "atencao_vencido" | "sem_registro">("filtrados");
+  const [criarTarefaEq, setCriarTarefaEq] = useState<EquipmentRow | null>(null);
 
   // Sync date range — defaults to last 1 month
   const defaultSyncStart = format(new Date(new Date().getFullYear(), new Date().getMonth() - 1, 1), "yyyy-MM-dd");
@@ -1531,6 +1534,21 @@ export default function EquipamentosPreventivosPage() {
                             <ExternalLink className="h-4 w-4 text-muted-foreground hover:text-primary" />
                           </a>
                         )}
+                        {eq.auvo_equipment_id && (
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-7 w-7 ml-1"
+                                onClick={() => setCriarTarefaEq(eq)}
+                              >
+                                <Plus className="h-4 w-4 text-primary" />
+                              </Button>
+                            </TooltipTrigger>
+                            <TooltipContent>Criar tarefa no Auvo</TooltipContent>
+                          </Tooltip>
+                        )}
                       </TableCell>
                     </TableRow>
                   );
@@ -1612,6 +1630,22 @@ export default function EquipamentosPreventivosPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      {criarTarefaEq && (
+        <CriarTarefaAuvoDialog
+          open={!!criarTarefaEq}
+          onOpenChange={(v) => { if (!v) setCriarTarefaEq(null); }}
+          equipamento={{
+            id: criarTarefaEq.id,
+            nome: criarTarefaEq.nome,
+            cliente: criarTarefaEq.cliente,
+            auvo_equipment_id: criarTarefaEq.auvo_equipment_id,
+            proxima_data: criarTarefaEq.proxima_data,
+          }}
+          onCreated={() => {
+            // Sincronização posterior puxa a tarefa para o banco; nada a fazer agora
+          }}
+        />
+      )}
     </div>
   );
 }
