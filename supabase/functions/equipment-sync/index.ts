@@ -729,11 +729,26 @@ Deno.serve(async (req) => {
       // Mark equipments that no longer exist (or are inactive) in Auvo as Inativo
       let inactivated = 0;
       try {
-        const validArr = Array.from(validEquipmentIds);
-        const { data: allDb } = await sb
-          .from("equipamentos_auvo")
-          .select("auvo_equipment_id, status");
-        const missing = (allDb || [])
+        // Paginate to bypass PostgREST 1000-row default limit
+        const allDb: { auvo_equipment_id: string; status: string }[] = [];
+        const PAGE = 1000;
+        let offset = 0;
+        while (true) {
+          const { data: pageRows, error: pageErr } = await sb
+            .from("equipamentos_auvo")
+            .select("auvo_equipment_id, status")
+            .range(offset, offset + PAGE - 1);
+          if (pageErr) {
+            console.error("[equipment-sync] paging allDb failed", pageErr.message);
+            break;
+          }
+          if (!pageRows || pageRows.length === 0) break;
+          allDb.push(...(pageRows as any));
+          if (pageRows.length < PAGE) break;
+          offset += PAGE;
+        }
+        console.log(`[equipment-sync] Loaded ${allDb.length} DB rows for inactivation check (validIds=${validEquipmentIds!.size})`);
+        const missing = allDb
           .filter((r: any) => r.auvo_equipment_id && r.status === "Ativo" && !validEquipmentIds!.has(r.auvo_equipment_id))
           .map((r: any) => r.auvo_equipment_id);
         if (missing.length > 0) {
