@@ -722,6 +722,33 @@ Deno.serve(async (req) => {
       console.log(`[equipment-sync] Phase 1 done: ${totalEquipUpserted} equipment rows upserted`);
 
       validEquipmentIds = new Set(activeEquipments.map((eq) => String(eq.id)));
+
+      // Mark equipments that no longer exist (or are inactive) in Auvo as Inativo
+      let inactivated = 0;
+      try {
+        const validArr = Array.from(validEquipmentIds);
+        const { data: allDb } = await sb
+          .from("equipamentos_auvo")
+          .select("auvo_equipment_id, status");
+        const missing = (allDb || [])
+          .filter((r: any) => r.auvo_equipment_id && r.status === "Ativo" && !validEquipmentIds!.has(r.auvo_equipment_id))
+          .map((r: any) => r.auvo_equipment_id);
+        if (missing.length > 0) {
+          for (let i = 0; i < missing.length; i += 500) {
+            const chunk = missing.slice(i, i + 500);
+            const { error: upErr } = await sb
+              .from("equipamentos_auvo")
+              .update({ status: "Inativo", atualizado_em: new Date().toISOString() })
+              .in("auvo_equipment_id", chunk);
+            if (!upErr) inactivated += chunk.length;
+            else console.error("[equipment-sync] inactivate err", upErr.message);
+          }
+        }
+        console.log(`[equipment-sync] Inactivated (no longer in Auvo): ${inactivated}`);
+      } catch (e) {
+        console.error("[equipment-sync] inactivation step failed", e);
+      }
+
       phase1Result = {
         total_auvo: auvoEquipments.length,
         upserted: totalEquipUpserted,
@@ -731,6 +758,7 @@ Deno.serve(async (req) => {
         brands_detected: withBrand,
         brands_missing: withoutBrand,
         brands_protected: protectedIds.size,
+        inactivated_missing: inactivated,
         errors: equipErrors.length > 0 ? equipErrors : undefined,
       };
     }
