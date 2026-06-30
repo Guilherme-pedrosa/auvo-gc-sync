@@ -556,7 +556,7 @@ export default function EquipamentosPreventivosPage() {
     if (rels.length === 0) return [];
     const map = new Map<string, string>();
     for (const r of rels) {
-      if (r.auvo_task_type_id && r.auvo_task_type_description) {
+      if (isPreventivaTaskType(r.auvo_task_type_id) && r.auvo_task_type_description) {
         map.set(r.auvo_task_type_id, r.auvo_task_type_description);
       }
     }
@@ -580,8 +580,9 @@ export default function EquipamentosPreventivosPage() {
           r.periodicidade_meses_plano = p.periodicidade_meses;
           r.ultima_execucao_task_id = p.ultima_execucao_task_id;
 
-          if (p.ultima_execucao_data && (!p.ultima_execucao_task_id || isPreventivaTaskType(taskById.get(String(p.ultima_execucao_task_id))?.auvo_task_type_id))) {
-            const task = p.ultima_execucao_task_id ? taskById.get(String(p.ultima_execucao_task_id)) : null;
+          const planoLastTask = p.ultima_execucao_task_id ? taskById.get(String(p.ultima_execucao_task_id)) : null;
+          if (p.ultima_execucao_data && planoLastTask && isPreventivaTaskType(planoLastTask.auvo_task_type_id)) {
+            const task = planoLastTask;
             r.ultima_data = p.ultima_execucao_data;
             r.dias_desde = differenceInDays(new Date(), parseISO(p.ultima_execucao_data));
             r.ultimo_tecnico = task?.tecnico || r.ultimo_tecnico;
@@ -851,7 +852,7 @@ export default function EquipamentosPreventivosPage() {
     };
 
     const sep = ";";
-    const headers = ["Status", "Marca", "Equipamento", "Identificador", "Cliente", "Última Intervenção", "Técnico", "Dias desde última", "Tipo Tarefa", "Total Tarefas"];
+    const headers = ["Status", "Marca", "Equipamento", "Identificador", "Cliente", "Última Preventiva", "Técnico", "Dias desde última", "Tipo Tarefa", "Total Tarefas"];
     const lines: string[] = [headers.join(sep)];
 
     for (const eq of filtered) {
