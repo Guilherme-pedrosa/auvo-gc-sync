@@ -316,12 +316,24 @@ function buildEquipmentRows(
 
   return equipamentos.map((eq) => {
     const eqId = eq.auvo_equipment_id || "";
-    let eqTasks = relByEquipment.get(eqId) || [];
+    const allEqTasks = relByEquipment.get(eqId) || [];
 
+    // Última intervenção: qualquer tipo de tarefa concluída
+    const allCompleted = allEqTasks.filter(t =>
+      t.status_auvo === "Finalizada" && (t.data_conclusao || t.data_tarefa)
+    ).sort((a, b) => {
+      const dateA = a.data_conclusao || a.data_tarefa || "";
+      const dateB = b.data_conclusao || b.data_tarefa || "";
+      return dateB.localeCompare(dateA);
+    });
+    const lastAnyTask = allCompleted[0] || null;
+    const ultimaIntervencaoData = lastAnyTask ? (lastAnyTask.data_conclusao || lastAnyTask.data_tarefa) : null;
+
+    // Última preventiva: filtra estritamente pelos tipos de preventiva
     const taskTypeIds = getPreventivaTaskTypeIds(tipoTarefaFilter);
-    eqTasks = eqTasks.filter(t => t.auvo_task_type_id && taskTypeIds.includes(String(t.auvo_task_type_id)));
+    const preventiveTasks = allEqTasks.filter(t => t.auvo_task_type_id && taskTypeIds.includes(String(t.auvo_task_type_id)));
 
-    const completedTasks = eqTasks.filter(t =>
+    const completedTasks = preventiveTasks.filter(t =>
       t.status_auvo === "Finalizada" && (t.data_conclusao || t.data_tarefa)
     );
 
@@ -350,6 +362,10 @@ function buildEquipmentRows(
       dias_desde: dias,
       tipo_tarefa: lastTask?.auvo_task_type_description || null,
       total_tarefas: completedTasks.length,
+      ultima_intervencao_data: ultimaIntervencaoData,
+      ultima_intervencao_tecnico: lastAnyTask?.tecnico || null,
+      ultima_intervencao_link: getTaskDigitalLink(lastAnyTask),
+      ultima_intervencao_tipo: lastAnyTask?.auvo_task_type_description || null,
       tipo_id: eq.tipo_id,
       override_horas_por_tecnico: eq.override_horas_por_tecnico,
       override_qtd_tecnicos: eq.override_qtd_tecnicos,
