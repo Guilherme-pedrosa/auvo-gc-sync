@@ -1057,6 +1057,134 @@ export type Database = {
         }
         Relationships: []
       }
+      plano_preventivo_execucao: {
+        Row: {
+          created_at: string
+          data_planejada: string | null
+          data_realizada: string
+          horas_decimal: number | null
+          id: string
+          item_id: string
+          mes_planejado: number | null
+          origem: string
+          task_id: string | null
+          task_type_id: string | null
+        }
+        Insert: {
+          created_at?: string
+          data_planejada?: string | null
+          data_realizada: string
+          horas_decimal?: number | null
+          id?: string
+          item_id: string
+          mes_planejado?: number | null
+          origem?: string
+          task_id?: string | null
+          task_type_id?: string | null
+        }
+        Update: {
+          created_at?: string
+          data_planejada?: string | null
+          data_realizada?: string
+          horas_decimal?: number | null
+          id?: string
+          item_id?: string
+          mes_planejado?: number | null
+          origem?: string
+          task_id?: string | null
+          task_type_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "plano_preventivo_execucao_item_id_fkey"
+            columns: ["item_id"]
+            isOneToOne: false
+            referencedRelation: "plano_preventivo_item"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      plano_preventivo_item: {
+        Row: {
+          ano_referencia: number
+          ativo: boolean
+          categoria: string | null
+          created_at: string
+          criticidade: string | null
+          equipamento_auvo_id: string | null
+          equipamento_nome: string
+          grupo_id: string
+          horas_total: number
+          id: string
+          match_confianca: string | null
+          meses_planejados: number[]
+          observacao: string | null
+          periodicidade: string
+          periodicidade_meses: number
+          proxima_data: string | null
+          ultima_execucao_data: string | null
+          ultima_execucao_task_id: string | null
+          updated_at: string
+        }
+        Insert: {
+          ano_referencia?: number
+          ativo?: boolean
+          categoria?: string | null
+          created_at?: string
+          criticidade?: string | null
+          equipamento_auvo_id?: string | null
+          equipamento_nome: string
+          grupo_id: string
+          horas_total?: number
+          id?: string
+          match_confianca?: string | null
+          meses_planejados?: number[]
+          observacao?: string | null
+          periodicidade: string
+          periodicidade_meses: number
+          proxima_data?: string | null
+          ultima_execucao_data?: string | null
+          ultima_execucao_task_id?: string | null
+          updated_at?: string
+        }
+        Update: {
+          ano_referencia?: number
+          ativo?: boolean
+          categoria?: string | null
+          created_at?: string
+          criticidade?: string | null
+          equipamento_auvo_id?: string | null
+          equipamento_nome?: string
+          grupo_id?: string
+          horas_total?: number
+          id?: string
+          match_confianca?: string | null
+          meses_planejados?: number[]
+          observacao?: string | null
+          periodicidade?: string
+          periodicidade_meses?: number
+          proxima_data?: string | null
+          ultima_execucao_data?: string | null
+          ultima_execucao_task_id?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "plano_preventivo_item_equipamento_auvo_id_fkey"
+            columns: ["equipamento_auvo_id"]
+            isOneToOne: false
+            referencedRelation: "equipamentos_auvo"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "plano_preventivo_item_grupo_id_fkey"
+            columns: ["grupo_id"]
+            isOneToOne: false
+            referencedRelation: "grupos_clientes"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       premiacao_os_compartilhada: {
         Row: {
           atualizado_em: string
