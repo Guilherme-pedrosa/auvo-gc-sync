@@ -21,6 +21,7 @@ type Props = {
     cliente: string | null;
     auvo_equipment_id: string | null;
     proxima_data?: string | null;
+    htHoras?: number | null;
   };
   onCreated?: (taskId: string | null) => void;
 };
@@ -39,7 +40,12 @@ export default function CriarTarefaAuvoDialog({ open, onOpenChange, equipamento,
     return base;
   });
   const [startTime, setStartTime] = useState<string>("08:00");
-  const [durationMinutes, setDurationMinutes] = useState<number>(120);
+  const defaultDuration = (() => {
+    const h = Number(equipamento.htHoras);
+    if (Number.isFinite(h) && h > 0) return Math.round(h * 60);
+    return 120;
+  })();
+  const [durationMinutes, setDurationMinutes] = useState<number>(defaultDuration);
   const [orientation, setOrientation] = useState<string>(
     `Preventiva — ${equipamento.nome}${equipamento.cliente ? ` (${equipamento.cliente})` : ""}`
   );
@@ -50,8 +56,10 @@ export default function CriarTarefaAuvoDialog({ open, onOpenChange, equipamento,
       const base = equipamento.proxima_data?.slice(0, 10) || new Date().toISOString().slice(0, 10);
       setDateISO(base);
       setOrientation(`Preventiva — ${equipamento.nome}${equipamento.cliente ? ` (${equipamento.cliente})` : ""}`);
+      const h = Number(equipamento.htHoras);
+      setDurationMinutes(Number.isFinite(h) && h > 0 ? Math.round(h * 60) : 120);
     }
-  }, [open, equipamento.id]);
+  }, [open, equipamento.id, equipamento.htHoras]);
 
   const { data: taskTypes = [], isLoading: loadingTypes } = useQuery({
     queryKey: ["auvo-task-types", "preventiva-v2"],
