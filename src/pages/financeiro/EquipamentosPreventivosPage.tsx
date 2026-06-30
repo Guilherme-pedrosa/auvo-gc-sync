@@ -88,6 +88,8 @@ type EquipmentRow = {
   override_horas_por_tecnico: number | null;
   override_qtd_tecnicos: number | null;
   override_periodicidade: string | null;
+  proxima_data?: string | null;
+  periodicidade_meses_plano?: number | null;
 };
 
 type SyncWindow = {
