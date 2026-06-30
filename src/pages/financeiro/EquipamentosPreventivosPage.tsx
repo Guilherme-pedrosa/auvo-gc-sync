@@ -2018,6 +2018,12 @@ export default function EquipamentosPreventivosPage() {
           queryClient.invalidateQueries({ queryKey: ["preventiva-equipamentos"] });
         }}
       />
+      <GerarPlanoPreventivasDialog
+        open={gerarOpen}
+        onOpenChange={setGerarOpen}
+        grupos={gruposData?.grupos ?? []}
+        clientes={Array.from(new Set(equipments.map((e) => e.cliente).filter(Boolean))).sort() as string[]}
+      />
     </div>
   );
 }
