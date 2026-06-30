@@ -329,41 +329,61 @@ Deno.serve(async (req) => {
       (b.freq - a.freq),
     );
     const monthly: number[] = Array(13).fill(0); // 1..12
+    // capacidade contratual disponível por mês (descontando corretivas)
+    const respeitarContrato = htContratoMes > 0;
+    const capacityMes: number[] = Array(13).fill(0);
+    for (let m = 1; m <= 12; m++) {
+      capacityMes[m] = Math.max(0, htContratoMes - corretivasMes[m]);
+    }
+    const naoEncaixados: string[] = [];
     const itemsScheduled: Array<RowItem & { mes_inicio: number; meses: number[]; start_source: string; ultima_preventiva: string | null }> = [];
     for (const it of ordered) {
-      // 1) preservar plano anterior; 2) calcular a partir da última preventiva; 3) bin-packing
       const prev = startByCb.get(it.codigo_barras_auvo);
       // @ts-ignore
       const ultimaPrev: string | null = (it as any).ultima_preventiva ?? null;
-      let bestStart = 1;
-      let bestScore = Infinity;
-      let startSource = "leveling";
+      // Monta candidatos ordenados por preferência: plano anterior > última preventiva > nivelamento
+      const candidates: Array<{ start: number; source: string }> = [];
       if (prev && prev.per === it.periodicidade && prev.mes >= 1 && prev.mes <= it.step) {
-        bestStart = prev.mes;
-        startSource = "plano_anterior";
-      } else if (ultimaPrev) {
-        // próxima ocorrência = ultima + step meses; alinhar dentro do ano de referência
+        candidates.push({ start: prev.mes, source: "plano_anterior" });
+      }
+      if (ultimaPrev) {
         const y = Number(ultimaPrev.slice(0, 4));
         const m = Number(ultimaPrev.slice(5, 7));
-        // total de meses desde jan/ano_ref até a última preventiva (pode ser negativo se já no ano)
-        let nextAbs = y * 12 + (m - 1) + it.step; // 0-based absolute month index for next due
-        const refStartAbs = ano_referencia * 12; // janeiro do ano de referência
+        let nextAbs = y * 12 + (m - 1) + it.step;
+        const refStartAbs = ano_referencia * 12;
         const refEndAbs = refStartAbs + 11;
-        // avançar/retroceder em múltiplos de step até cair no ano de referência (ou o mais próximo)
         while (nextAbs < refStartAbs) nextAbs += it.step;
         while (nextAbs > refEndAbs) nextAbs -= it.step;
-        if (nextAbs < refStartAbs) nextAbs += it.step; // safety
-        const firstMonthInYear = (nextAbs % 12) + 1; // 1..12
-        // start é o primeiro mês do ciclo dentro de 1..step que gera ocorrência em firstMonthInYear
-        bestStart = ((firstMonthInYear - 1) % it.step) + 1;
-        startSource = "ultima_preventiva";
-      } else {
+        if (nextAbs < refStartAbs) nextAbs += it.step;
+        const firstMonthInYear = (nextAbs % 12) + 1;
+        const s = ((firstMonthInYear - 1) % it.step) + 1;
+        if (!candidates.some((c) => c.start === s)) candidates.push({ start: s, source: "ultima_preventiva" });
+      }
+      for (let s = 1; s <= it.step; s++) {
+        if (!candidates.some((c) => c.start === s)) candidates.push({ start: s, source: "leveling" });
+      }
+
+      // 1) Tentar candidatos preferidos (prev / ultima) — usar se couber na capacidade
+      let chosen: { start: number; source: string } | null = null;
+      const fitsCapacity = (start: number) => {
+        if (!respeitarContrato) return true;
+        const meses = monthsForPlan(it.step, start);
+        return meses.every((m) => monthly[m] + it.ht_por_ocorrencia <= capacityMes[m] + 1e-6);
+      };
+      for (const c of candidates.filter((c) => c.source !== "leveling")) {
+        const meses = monthsForPlan(it.step, c.start);
+        if (meses.length !== it.freq) continue;
+        if (fitsCapacity(c.start)) { chosen = c; break; }
+      }
+      // 2) Entre os starts de nivelamento, escolher o melhor que COUBER na capacidade
+      if (!chosen) {
+        let bestStart = -1;
+        let bestScore = Infinity;
         for (let s = 1; s <= it.step; s++) {
           const meses = monthsForPlan(it.step, s);
-          // sanity: must match expected freq
           if (meses.length !== it.freq) continue;
-          let maxLoad = 0;
-          let sumSq = 0;
+          if (!fitsCapacity(s)) continue;
+          let maxLoad = 0, sumSq = 0;
           for (let m = 1; m <= 12; m++) {
             const add = meses.includes(m) ? it.ht_por_ocorrencia : 0;
             const load = monthly[m] + add;
@@ -373,10 +393,36 @@ Deno.serve(async (req) => {
           const score = maxLoad * 1000 + sumSq * 0.001;
           if (score < bestScore) { bestScore = score; bestStart = s; }
         }
+        if (bestStart > 0) chosen = { start: bestStart, source: "leveling" };
       }
-      const meses = monthsForPlan(it.step, bestStart);
+      // 3) Sem contrato definido — fallback puro de nivelamento (sem cap)
+      if (!chosen && !respeitarContrato) {
+        let bestStart = 1, bestScore = Infinity;
+        for (let s = 1; s <= it.step; s++) {
+          const meses = monthsForPlan(it.step, s);
+          if (meses.length !== it.freq) continue;
+          let maxLoad = 0, sumSq = 0;
+          for (let m = 1; m <= 12; m++) {
+            const add = meses.includes(m) ? it.ht_por_ocorrencia : 0;
+            const load = monthly[m] + add;
+            if (load > maxLoad) maxLoad = load;
+            sumSq += load * load;
+          }
+          const score = maxLoad * 1000 + sumSq * 0.001;
+          if (score < bestScore) { bestScore = score; bestStart = s; }
+        }
+        chosen = { start: bestStart, source: "leveling" };
+      }
+
+      if (!chosen) {
+        // Não cabe no contrato — não agenda, registra como excedente
+        naoEncaixados.push(it.codigo_barras_auvo);
+        itemsScheduled.push({ ...it, mes_inicio: 0, meses: [], start_source: "nao_encaixado", ultima_preventiva: ultimaPrev });
+        continue;
+      }
+      const meses = monthsForPlan(it.step, chosen.start);
       for (const m of meses) monthly[m] += it.ht_por_ocorrencia;
-      itemsScheduled.push({ ...it, mes_inicio: bestStart, meses, start_source: startSource, ultima_preventiva: ultimaPrev });
+      itemsScheduled.push({ ...it, mes_inicio: chosen.start, meses, start_source: chosen.source, ultima_preventiva: ultimaPrev });
     }
 
     // ── balances ──────────────────────────────────────────────────────────
@@ -410,6 +456,8 @@ Deno.serve(async (req) => {
       saldo_ano: Number((htContratoAno - htAgendaAno - corretivasAno).toFixed(2)),
       pico_mes: Math.max(...monthly.slice(1)),
       vale_mes: Math.min(...monthly.slice(1)),
+      respeita_contrato: respeitarContrato,
+      nao_encaixados: naoEncaixados.length,
     };
 
     // ── modes ──────────────────────────────────────────────────────────────
