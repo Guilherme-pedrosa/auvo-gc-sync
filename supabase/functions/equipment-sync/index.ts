@@ -635,13 +635,16 @@ Deno.serve(async (req) => {
       }
 
       const customerCache = new Map<number, string>();
+      const customerIdList = Array.from(customerIds);
+      console.log(`[equipment-sync] New customers to resolve: ${customerIdList.length}`);
+      const CUSTOMER_CONCURRENCY = 10;
       let resolved = 0;
-      console.log(`[equipment-sync] New customers to resolve: ${customerIds.size}`);
-      for (const cid of customerIds) {
-        await fetchCustomerName(cid, accessToken, customerCache);
-        resolved++;
-        if (resolved % 100 === 0) {
-          console.log(`[equipment-sync] Resolved ${resolved}/${customerIds.size} customers`);
+      for (let i = 0; i < customerIdList.length; i += CUSTOMER_CONCURRENCY) {
+        const batch = customerIdList.slice(i, i + CUSTOMER_CONCURRENCY);
+        await Promise.all(batch.map((cid) => fetchCustomerName(cid, accessToken, customerCache)));
+        resolved += batch.length;
+        if (resolved % 100 < CUSTOMER_CONCURRENCY) {
+          console.log(`[equipment-sync] Resolved ${resolved}/${customerIdList.length} customers`);
         }
       }
 
