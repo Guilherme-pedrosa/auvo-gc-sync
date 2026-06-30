@@ -151,6 +151,17 @@ function buildMonthlySyncWindows(startDate: string, endDate: string): SyncWindow
 
 const PREVENTIVA_TASK_TYPE_IDS = new Set(["180175", "180176"]);
 
+function isPreventivaTaskType(id: string | null | undefined): boolean {
+  return !!id && PREVENTIVA_TASK_TYPE_IDS.has(String(id));
+}
+
+function getPreventivaTaskTypeIds(tipoTarefaFilter: string[]): string[] {
+  const selectedPreventiveTypes = tipoTarefaFilter.filter(isPreventivaTaskType);
+  return selectedPreventiveTypes.length > 0
+    ? selectedPreventiveTypes
+    : Array.from(PREVENTIVA_TASK_TYPE_IDS);
+}
+
 function splitSyncWindowByFortnight(window: SyncWindow): SyncWindow[] {
   const start = new Date(`${window.windowStart}T00:00:00`);
   const end = new Date(`${window.windowEnd}T00:00:00`);
@@ -302,8 +313,8 @@ function buildEquipmentRows(
     const eqId = eq.auvo_equipment_id || "";
     let eqTasks = relByEquipment.get(eqId) || [];
 
-    const taskTypeIds = tipoTarefaFilter.length > 0 ? tipoTarefaFilter : Array.from(PREVENTIVA_TASK_TYPE_IDS);
-    eqTasks = eqTasks.filter(t => t.auvo_task_type_id && taskTypeIds.includes(t.auvo_task_type_id));
+    const taskTypeIds = getPreventivaTaskTypeIds(tipoTarefaFilter);
+    eqTasks = eqTasks.filter(t => t.auvo_task_type_id && taskTypeIds.includes(String(t.auvo_task_type_id)));
 
     const completedTasks = eqTasks.filter(t =>
       t.status_auvo === "Finalizada" && (t.data_conclusao || t.data_tarefa)
