@@ -50,6 +50,8 @@ type EquipmentRaw = {
   override_horas_por_tecnico: number | null;
   override_qtd_tecnicos: number | null;
   override_periodicidade: string | null;
+  proxima_data: string | null;
+  periodicidade_meses_plano: number | null;
 };
 
 type EquipTaskRel = {
@@ -86,6 +88,8 @@ type EquipmentRow = {
   override_horas_por_tecnico: number | null;
   override_qtd_tecnicos: number | null;
   override_periodicidade: string | null;
+  proxima_data?: string | null;
+  periodicidade_meses_plano?: number | null;
 };
 
 type SyncWindow = {
@@ -222,6 +226,33 @@ async function fetchRawData(): Promise<{ equipamentos: EquipmentRaw[]; relations
   return { equipamentos, relations };
 }
 
+async function fetchPlanoProximas(): Promise<Map<string, { proxima_data: string | null; periodicidade_meses: number | null }>> {
+  const map = new Map<string, { proxima_data: string | null; periodicidade_meses: number | null }>();
+  let from = 0;
+  const PAGE = 1000;
+  while (true) {
+    const { data, error } = await (supabase as any)
+      .from("plano_preventivo_item")
+      .select("equipamento_auvo_id, proxima_data, periodicidade_meses, ativo")
+      .eq("ativo", true)
+      .not("equipamento_auvo_id", "is", null)
+      .range(from, from + PAGE - 1);
+    if (error) throw error;
+    if (!data || data.length === 0) break;
+    for (const row of data as any[]) {
+      const key = String(row.equipamento_auvo_id);
+      const prev = map.get(key);
+      // Keep earliest proxima_data per equipment
+      if (!prev || (row.proxima_data && (!prev.proxima_data || row.proxima_data < prev.proxima_data))) {
+        map.set(key, { proxima_data: row.proxima_data, periodicidade_meses: row.periodicidade_meses });
+      }
+    }
+    if (data.length < PAGE) break;
+    from += PAGE;
+  }
+  return map;
+}
+
 function getTaskDigitalLink(task: Pick<EquipTaskRel, "auvo_task_url" | "auvo_link"> | null | undefined): string | null {
   return task?.auvo_task_url || task?.auvo_link || null;
 }
@@ -280,6 +311,8 @@ function buildEquipmentRows(
       override_horas_por_tecnico: eq.override_horas_por_tecnico,
       override_qtd_tecnicos: eq.override_qtd_tecnicos,
       override_periodicidade: eq.override_periodicidade,
+      proxima_data: null,
+      periodicidade_meses_plano: null,
     };
   }).sort((a, b) => {
     if (a.dias_desde === null && b.dias_desde === null) return 0;
@@ -352,6 +385,12 @@ export default function EquipamentosPreventivosPage() {
     staleTime: 10 * 60 * 1000,
   });
 
+  const { data: planoProximas } = useQuery({
+    queryKey: ["plano-proximas-by-eq"],
+    queryFn: fetchPlanoProximas,
+    staleTime: 5 * 60 * 1000,
+  });
+
   const tipoById = useMemo(() => {
     const m = new Map<string, typeof tiposEquip[number]>();
     for (const t of tiposEquip) m.set(t.id, t);
@@ -420,8 +459,18 @@ export default function EquipamentosPreventivosPage() {
 
   const equipments = useMemo(() => {
     if (!rawData) return [];
-    return buildEquipmentRows(rawData.equipamentos, rawData.relations ?? [], tipoTarefaFilter);
-  }, [rawData, tipoTarefaFilter]);
+    const rows = buildEquipmentRows(rawData.equipamentos, rawData.relations ?? [], tipoTarefaFilter);
+    if (planoProximas && planoProximas.size > 0) {
+      for (const r of rows) {
+        const p = r.auvo_equipment_id ? planoProximas.get(r.auvo_equipment_id) : null;
+        if (p) {
+          r.proxima_data = p.proxima_data;
+          r.periodicidade_meses_plano = p.periodicidade_meses;
+        }
+      }
+    }
+    return rows;
+  }, [rawData, tipoTarefaFilter, planoProximas]);
 
   const marcasUnicas = useMemo(() => {
     const set = new Set<string>();
@@ -1119,6 +1168,7 @@ export default function EquipamentosPreventivosPage() {
                 <TableHead><SortButton field="cliente">Cliente</SortButton></TableHead>
                 <TableHead>Plano (tipo · HT · period.)</TableHead>
                 <TableHead>Última Intervenção</TableHead>
+                <TableHead>Próxima Preventiva</TableHead>
                 <TableHead>Técnico</TableHead>
                 <TableHead className="text-right"><SortButton field="dias">Dias</SortButton></TableHead>
                 <TableHead className="text-center">Tarefas</TableHead>
@@ -1128,7 +1178,7 @@ export default function EquipamentosPreventivosPage() {
             <TableBody>
               {filtered.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={12} className="text-center py-10 text-muted-foreground">
+                  <TableCell colSpan={13} className="text-center py-10 text-muted-foreground">
                     Nenhum equipamento encontrado
                   </TableCell>
                 </TableRow>
@@ -1246,6 +1296,30 @@ export default function EquipamentosPreventivosPage() {
                           )
                         ) : (
                           <span className="text-xs text-muted-foreground">Sem histórico</span>
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        {eq.proxima_data ? (() => {
+                          const dt = parseISO(eq.proxima_data);
+                          const diasAte = differenceInDays(dt, new Date());
+                          const cls = diasAte < 0
+                            ? "text-red-700 dark:text-red-400 font-semibold"
+                            : diasAte <= 30
+                              ? "text-amber-700 dark:text-amber-400 font-medium"
+                              : "text-emerald-700 dark:text-emerald-400";
+                          return (
+                            <div className="flex flex-col">
+                              <span className={cn("text-sm", cls)}>
+                                {format(dt, "dd/MM/yyyy", { locale: ptBR })}
+                              </span>
+                              <span className="text-[10px] text-muted-foreground">
+                                {diasAte < 0 ? `${Math.abs(diasAte)}d atrasada` : `em ${diasAte}d`}
+                                {eq.periodicidade_meses_plano ? ` · a cada ${eq.periodicidade_meses_plano}m` : ""}
+                              </span>
+                            </div>
+                          );
+                        })() : (
+                          <span className="text-xs text-muted-foreground italic">Sem plano</span>
                         )}
                       </TableCell>
                       <TableCell className="text-sm">{eq.ultimo_tecnico || "—"}</TableCell>
