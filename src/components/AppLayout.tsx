@@ -53,6 +53,7 @@ const navGroups: NavGroup[] = [
     label: "Configurações",
     items: [
       { label: "Contratos", icon: Settings, path: "/configuracoes/contratos" },
+      { label: "Tipos de Equipamento", icon: Thermometer, path: "/configuracoes/tipos-equipamento" },
     ],
   },
 ];
