@@ -364,15 +364,28 @@ export default function EquipamentosPreventivosPage() {
     override_qtd_tecnicos?: number | null;
     override_periodicidade?: string | null;
   }) => {
+    // Optimistic update: patch only the edited equipment in the cache
+    // (the raw query loads thousands of rows, so invalidate-and-refetch is slow).
+    const queryKey = ["equipamentos-preventivos-raw"];
+    const prev = queryClient.getQueryData<any>(queryKey);
+    if (prev?.equipamentos) {
+      queryClient.setQueryData(queryKey, {
+        ...prev,
+        equipamentos: prev.equipamentos.map((e: any) =>
+          e.id === eqId ? { ...e, ...patch } : e
+        ),
+      });
+    }
     const { error } = await (supabase as any)
       .from("equipamentos_auvo")
       .update(patch)
       .eq("id", eqId);
     if (error) {
+      // Roll back on failure
+      if (prev) queryClient.setQueryData(queryKey, prev);
       toast.error("Erro ao salvar plano: " + error.message);
     } else {
       toast.success("Plano atualizado");
-      queryClient.invalidateQueries({ queryKey: ["equipamentos-preventivos-raw"] });
     }
   }, [queryClient]);
 
