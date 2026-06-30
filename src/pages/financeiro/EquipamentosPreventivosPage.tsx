@@ -151,6 +151,17 @@ function buildMonthlySyncWindows(startDate: string, endDate: string): SyncWindow
 
 const PREVENTIVA_TASK_TYPE_IDS = new Set(["180175", "180176"]);
 
+function isPreventivaTaskType(id: string | null | undefined): id is string {
+  return !!id && PREVENTIVA_TASK_TYPE_IDS.has(String(id));
+}
+
+function getPreventivaTaskTypeIds(tipoTarefaFilter: string[]): string[] {
+  const selectedPreventiveTypes = tipoTarefaFilter.filter(isPreventivaTaskType);
+  return selectedPreventiveTypes.length > 0
+    ? selectedPreventiveTypes
+    : Array.from(PREVENTIVA_TASK_TYPE_IDS);
+}
+
 function splitSyncWindowByFortnight(window: SyncWindow): SyncWindow[] {
   const start = new Date(`${window.windowStart}T00:00:00`);
   const end = new Date(`${window.windowEnd}T00:00:00`);
@@ -302,8 +313,8 @@ function buildEquipmentRows(
     const eqId = eq.auvo_equipment_id || "";
     let eqTasks = relByEquipment.get(eqId) || [];
 
-    const taskTypeIds = tipoTarefaFilter.length > 0 ? tipoTarefaFilter : Array.from(PREVENTIVA_TASK_TYPE_IDS);
-    eqTasks = eqTasks.filter(t => t.auvo_task_type_id && taskTypeIds.includes(t.auvo_task_type_id));
+    const taskTypeIds = getPreventivaTaskTypeIds(tipoTarefaFilter);
+    eqTasks = eqTasks.filter(t => t.auvo_task_type_id && taskTypeIds.includes(String(t.auvo_task_type_id)));
 
     const completedTasks = eqTasks.filter(t =>
       t.status_auvo === "Finalizada" && (t.data_conclusao || t.data_tarefa)
@@ -545,7 +556,7 @@ export default function EquipamentosPreventivosPage() {
     if (rels.length === 0) return [];
     const map = new Map<string, string>();
     for (const r of rels) {
-      if (r.auvo_task_type_id && r.auvo_task_type_description) {
+      if (isPreventivaTaskType(r.auvo_task_type_id) && r.auvo_task_type_description) {
         map.set(r.auvo_task_type_id, r.auvo_task_type_description);
       }
     }
@@ -569,8 +580,9 @@ export default function EquipamentosPreventivosPage() {
           r.periodicidade_meses_plano = p.periodicidade_meses;
           r.ultima_execucao_task_id = p.ultima_execucao_task_id;
 
-          if (p.ultima_execucao_data) {
-            const task = p.ultima_execucao_task_id ? taskById.get(String(p.ultima_execucao_task_id)) : null;
+          const planoLastTask = p.ultima_execucao_task_id ? taskById.get(String(p.ultima_execucao_task_id)) : null;
+          if (p.ultima_execucao_data && planoLastTask && isPreventivaTaskType(planoLastTask.auvo_task_type_id)) {
+            const task = planoLastTask;
             r.ultima_data = p.ultima_execucao_data;
             r.dias_desde = differenceInDays(new Date(), parseISO(p.ultima_execucao_data));
             r.ultimo_tecnico = task?.tecnico || r.ultimo_tecnico;
@@ -840,7 +852,7 @@ export default function EquipamentosPreventivosPage() {
     };
 
     const sep = ";";
-    const headers = ["Status", "Marca", "Equipamento", "Identificador", "Cliente", "Última Intervenção", "Técnico", "Dias desde última", "Tipo Tarefa", "Total Tarefas"];
+    const headers = ["Status", "Marca", "Equipamento", "Identificador", "Cliente", "Última Preventiva", "Técnico", "Dias desde última", "Tipo Tarefa", "Total Tarefas"];
     const lines: string[] = [headers.join(sep)];
 
     for (const eq of filtered) {
@@ -1014,9 +1026,8 @@ export default function EquipamentosPreventivosPage() {
 
       let tasks = (relByEq.get(eq.auvo_equipment_id || "") || [])
         .filter((t) => t.status_auvo === "Finalizada" && (t.data_conclusao || t.data_tarefa));
-      if (tipoTarefaFilter.length > 0) {
-        tasks = tasks.filter((t) => t.auvo_task_type_id && tipoTarefaFilter.includes(t.auvo_task_type_id));
-      }
+      const preventiveTypeIds = getPreventivaTaskTypeIds(tipoTarefaFilter);
+      tasks = tasks.filter((t) => t.auvo_task_type_id && preventiveTypeIds.includes(String(t.auvo_task_type_id)));
       tasks.sort((a, b) => {
         const da = a.data_conclusao || a.data_tarefa || "";
         const db = b.data_conclusao || b.data_tarefa || "";
@@ -1321,7 +1332,7 @@ export default function EquipamentosPreventivosPage() {
                 <TableHead>Identificador</TableHead>
                 <TableHead><SortButton field="cliente">Cliente</SortButton></TableHead>
                 <TableHead>Plano (tipo · HT · period.)</TableHead>
-                <TableHead>Última Intervenção</TableHead>
+                <TableHead>Última Preventiva</TableHead>
                 <TableHead>Próxima Preventiva</TableHead>
                 <TableHead>Técnico</TableHead>
                 <TableHead className="text-right"><SortButton field="dias">Dias</SortButton></TableHead>
