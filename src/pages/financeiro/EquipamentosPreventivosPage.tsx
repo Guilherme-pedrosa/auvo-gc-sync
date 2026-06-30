@@ -462,7 +462,7 @@ export default function EquipamentosPreventivosPage() {
     const rows = buildEquipmentRows(rawData.equipamentos, rawData.relations ?? [], tipoTarefaFilter);
     if (planoProximas && planoProximas.size > 0) {
       for (const r of rows) {
-        const p = r.auvo_equipment_id ? planoProximas.get(r.auvo_equipment_id) : null;
+        const p = planoProximas.get(r.id);
         if (p) {
           r.proxima_data = p.proxima_data;
           r.periodicidade_meses_plano = p.periodicidade_meses;
