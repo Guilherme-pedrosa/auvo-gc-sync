@@ -1698,3 +1698,84 @@ function PlanoCell({ eq, tipos, tipoById, onSave }: PlanoCellProps) {
     </Popover>
   );
 }
+
+// ── ProximaCell: edição inline da próxima preventiva (sem precisar de histórico) ──
+function ProximaCell({ eq, onSave }: { eq: EquipmentRow; onSave: (d: string | null) => Promise<void> | void }) {
+  const [open, setOpen] = useState(false);
+  const [val, setVal] = useState<string>(eq.proxima_data ? eq.proxima_data.slice(0, 10) : "");
+  const [saving, setSaving] = useState(false);
+
+  const reset = () => setVal(eq.proxima_data ? eq.proxima_data.slice(0, 10) : "");
+
+  const handleSave = async (novo: string | null) => {
+    setSaving(true);
+    try {
+      await onSave(novo);
+      setOpen(false);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const trigger = eq.proxima_data ? (() => {
+    const dt = parseISO(eq.proxima_data!);
+    const diasAte = differenceInDays(dt, new Date());
+    const cls = diasAte < 0
+      ? "text-red-700 dark:text-red-400 font-semibold"
+      : diasAte <= 30
+        ? "text-amber-700 dark:text-amber-400 font-medium"
+        : "text-emerald-700 dark:text-emerald-400";
+    return (
+      <div className="flex flex-col text-left">
+        <span className={cn("text-sm", cls)}>{format(dt, "dd/MM/yyyy", { locale: ptBR })}</span>
+        <span className="text-[10px] text-muted-foreground">
+          {diasAte < 0 ? `${Math.abs(diasAte)}d atrasada` : `em ${diasAte}d`}
+          {eq.periodicidade_meses_plano ? ` · a cada ${eq.periodicidade_meses_plano}m` : ""}
+        </span>
+      </div>
+    );
+  })() : (
+    <span className="text-xs text-muted-foreground italic">Definir data</span>
+  );
+
+  return (
+    <Popover open={open} onOpenChange={(o) => { setOpen(o); if (o) reset(); }}>
+      <PopoverTrigger asChild>
+        <button className="w-full text-left hover:bg-muted/50 rounded px-1.5 py-1 transition-colors">
+          {trigger}
+        </button>
+      </PopoverTrigger>
+      <PopoverContent className="w-64 space-y-3" align="start">
+        <div>
+          <Label className="text-xs">Próxima preventiva</Label>
+          <Input
+            type="date"
+            value={val}
+            onChange={(e) => setVal(e.target.value)}
+            className="h-8 text-xs"
+          />
+          <p className="text-[10px] text-muted-foreground mt-1">
+            Se ainda não houver plano para este equipamento, ele será criado automaticamente.
+          </p>
+        </div>
+        <div className="flex justify-between gap-2 pt-1">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => handleSave(null)}
+            disabled={saving || !eq.proxima_data}
+            className="text-xs text-muted-foreground"
+          >
+            Limpar
+          </Button>
+          <div className="flex gap-2">
+            <Button variant="outline" size="sm" onClick={() => setOpen(false)} disabled={saving}>Cancelar</Button>
+            <Button size="sm" onClick={() => handleSave(val || null)} disabled={saving || !val}>
+              {saving ? "Salvando..." : "Salvar"}
+            </Button>
+          </div>
+        </div>
+      </PopoverContent>
+    </Popover>
+  );
+}
