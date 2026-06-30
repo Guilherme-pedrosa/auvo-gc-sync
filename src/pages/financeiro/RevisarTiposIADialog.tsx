@@ -12,6 +12,23 @@ import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 
 type Grupo = { id: string; nome: string };
+
+function FilterBadge({
+  active, onClick, children, variant, className,
+}: {
+  active: boolean;
+  onClick: () => void;
+  children: React.ReactNode;
+  variant?: "outline" | "secondary" | "destructive" | "default";
+  className?: string;
+}) {
+  return (
+    <button type="button" onClick={onClick} className={active ? "ring-2 ring-offset-1 ring-primary rounded-full" : ""}>
+      <Badge variant={variant} className={className + " cursor-pointer hover:opacity-80"}>{children}</Badge>
+    </button>
+  );
+}
+
 type Sugestao = {
   equip_id: string;
   identificador: string;
@@ -43,9 +60,10 @@ export default function RevisarTiposIADialog({
   const [applying, setApplying] = useState(false);
   const [sugestoes, setSugestoes] = useState<Sugestao[] | null>(null);
   const [sel, setSel] = useState<Record<string, boolean>>({});
+  const [filtro, setFiltro] = useState<"todos" | "mudam" | "alta" | "media" | "baixa" | "sem_sugestao" | "selecionados">("todos");
 
   const reset = () => {
-    setSugestoes(null); setSel({});
+    setSugestoes(null); setSel({}); setFiltro("todos");
   };
 
   const analisar = async () => {
@@ -127,6 +145,19 @@ export default function RevisarTiposIADialog({
     setSel(m);
   };
 
+  const sugestoesFiltradas = useMemo(() => {
+    if (!sugestoes) return [];
+    switch (filtro) {
+      case "mudam": return sugestoes.filter((s) => s.mudou);
+      case "alta": return sugestoes.filter((s) => s.mudou && s.confianca >= 80);
+      case "media": return sugestoes.filter((s) => s.mudou && s.confianca >= 50 && s.confianca < 80);
+      case "baixa": return sugestoes.filter((s) => s.mudou && s.confianca < 50);
+      case "sem_sugestao": return sugestoes.filter((s) => !s.tipo_sugerido_id);
+      case "selecionados": return sugestoes.filter((s) => sel[s.equip_id]);
+      default: return sugestoes;
+    }
+  }, [sugestoes, filtro, sel]);
+
   return (
     <Dialog open={open} onOpenChange={(v) => { onOpenChange(v); if (!v) reset(); }}>
       <DialogContent className="max-w-5xl max-h-[90vh] overflow-hidden flex flex-col">
@@ -187,13 +218,16 @@ export default function RevisarTiposIADialog({
           {stats && (
             <div className="space-y-2 border-t pt-3">
               <div className="flex flex-wrap gap-2 text-xs">
-                <Badge variant="outline">{stats.total} analisados</Badge>
-                <Badge className="bg-amber-500">{stats.mudam} sugerem mudança</Badge>
-                {stats.alta > 0 && <Badge className="bg-emerald-600">{stats.alta} alta conf.</Badge>}
-                {stats.media > 0 && <Badge className="bg-blue-500">{stats.media} média conf.</Badge>}
-                {stats.baixa > 0 && <Badge variant="destructive">{stats.baixa} baixa conf.</Badge>}
-                {stats.sem_sugestao > 0 && <Badge variant="secondary">{stats.sem_sugestao} sem sugestão</Badge>}
-                <Badge variant="default">{stats.selecionados} selecionados</Badge>
+                <FilterBadge active={filtro === "todos"} onClick={() => setFiltro("todos")} variant="outline">{stats.total} analisados</FilterBadge>
+                <FilterBadge active={filtro === "mudam"} onClick={() => setFiltro("mudam")} className="bg-amber-500">{stats.mudam} sugerem mudança</FilterBadge>
+                {stats.alta > 0 && <FilterBadge active={filtro === "alta"} onClick={() => setFiltro("alta")} className="bg-emerald-600">{stats.alta} alta conf.</FilterBadge>}
+                {stats.media > 0 && <FilterBadge active={filtro === "media"} onClick={() => setFiltro("media")} className="bg-blue-500">{stats.media} média conf.</FilterBadge>}
+                {stats.baixa > 0 && <FilterBadge active={filtro === "baixa"} onClick={() => setFiltro("baixa")} variant="destructive">{stats.baixa} baixa conf.</FilterBadge>}
+                {stats.sem_sugestao > 0 && <FilterBadge active={filtro === "sem_sugestao"} onClick={() => setFiltro("sem_sugestao")} variant="secondary">{stats.sem_sugestao} sem sugestão</FilterBadge>}
+                <FilterBadge active={filtro === "selecionados"} onClick={() => setFiltro("selecionados")}>{stats.selecionados} selecionados</FilterBadge>
+                {filtro !== "todos" && (
+                  <button className="text-xs underline text-muted-foreground" onClick={() => setFiltro("todos")}>limpar filtro</button>
+                )}
               </div>
               <div className="flex flex-wrap gap-2 text-xs">
                 <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => selecionarTodos(true)}>Marcar todos que mudam</Button>
@@ -217,7 +251,10 @@ export default function RevisarTiposIADialog({
                     </tr>
                   </thead>
                   <tbody>
-                    {sugestoes!.map((s) => (
+                    {sugestoesFiltradas.length === 0 && (
+                      <tr><td colSpan={8} className="p-6 text-center text-muted-foreground">Nenhum item nesse filtro.</td></tr>
+                    )}
+                    {sugestoesFiltradas.map((s) => (
                       <tr key={s.equip_id} className={
                         !s.mudou ? "opacity-50" :
                         s.confianca >= 80 ? "bg-emerald-50 dark:bg-emerald-950/20" :
