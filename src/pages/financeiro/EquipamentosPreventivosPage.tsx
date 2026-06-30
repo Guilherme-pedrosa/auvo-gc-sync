@@ -1365,7 +1365,7 @@ export default function EquipamentosPreventivosPage() {
             Filtros ativos: <strong>{activeFilters.join(" · ")}</strong>
             — mostrando {filtered.length} de {equipments.length}
           </span>
-          <Button variant="ghost" size="sm" onClick={() => { setMarcaFilter([]); setClienteFilter([]); setTipoTarefaFilter([]); setStatusFilter([]); setGrupoFilter("todos"); setProximaMesFilter("todos"); }} className="ml-auto text-xs">
+          <Button variant="ghost" size="sm" onClick={() => { setMarcaFilter([]); setClienteFilter([]); setTipoTarefaFilter([]); setStatusFilter([]); setGrupoFilter("todos"); setProximaMesFilter([]); }} className="ml-auto text-xs">
             Limpar filtros
           </Button>
         </div>
