@@ -122,7 +122,7 @@ Deno.serve(async (req) => {
       while (true) {
         const { data, error } = await supabase
           .from("equipamentos_auvo")
-          .select("id, identificador, nome, descricao, categoria, cliente, status, tipo_id, override_horas_por_tecnico, override_qtd_tecnicos, override_periodicidade")
+          .select("id, identificador, auvo_equipment_id, nome, descricao, categoria, cliente, status, tipo_id, override_horas_por_tecnico, override_qtd_tecnicos, override_periodicidade")
           .order("id", { ascending: true })
           .range(from, from + PAGE - 1);
         if (error) throw error;
