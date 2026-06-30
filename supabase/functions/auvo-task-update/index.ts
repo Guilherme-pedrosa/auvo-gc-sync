@@ -369,26 +369,41 @@ Deno.serve(async (req) => {
 
     if (action === "list-task-types") {
       // List task types (used for Auvo dropdowns)
-      let page = 1;
+      // Auvo v2 expects /taskTypes/ with mandatory paramFilter query.
+      const candidates = ["taskTypes", "tasksType", "taskType"];
       const all: any[] = [];
-      const MAX_PAGES = 10;
-      while (page <= MAX_PAGES) {
-        const url = `${AUVO_BASE_URL}/tasksType/?page=${page}&pageSize=100`;
-        const response = await fetch(url, { headers });
-        if (response.status === 404) break;
-        if (!response.ok) {
-          const text = await response.text();
-          console.error(`[auvo-task-update] tasksType page ${page} error: ${text.substring(0, 200)}`);
-          break;
+      let lastErr = "";
+      let usedPath = "";
+      for (const path of candidates) {
+        let page = 1;
+        const MAX_PAGES = 10;
+        let gotAny = false;
+        let failedPath = false;
+        while (page <= MAX_PAGES) {
+          const url = `${AUVO_BASE_URL}/${path}/?paramFilter=${encodeURIComponent(JSON.stringify({}))}&page=${page}&pageSize=100`;
+          const response = await fetch(url, { headers });
+          if (response.status === 404) { failedPath = true; break; }
+          if (!response.ok) {
+            const text = await response.text();
+            lastErr = `${path} p${page} HTTP ${response.status}: ${text.substring(0, 200)}`;
+            console.error(`[auvo-task-update] ${lastErr}`);
+            failedPath = true;
+            break;
+          }
+          const json = await response.json();
+          const items = json?.result?.entityList || json?.result || json?.data || [];
+          if (!Array.isArray(items) || items.length === 0) break;
+          all.push(...items);
+          gotAny = true;
+          if (items.length < 100) break;
+          page++;
         }
-        const json = await response.json();
-        const items = json?.result?.entityList || json?.result || [];
-        if (!Array.isArray(items) || items.length === 0) break;
-        all.push(...items);
-        page++;
+        if (gotAny) { usedPath = path; break; }
+        if (!failedPath) { usedPath = path; break; }
       }
+      console.log(`[auvo-task-update] list-task-types: path=${usedPath} count=${all.length} lastErr=${lastErr}`);
       return new Response(
-        JSON.stringify({ data: all, status: 200 }),
+        JSON.stringify({ data: all, status: 200, _debug: { path: usedPath, count: all.length, lastErr } }),
         { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
