@@ -1994,6 +1994,106 @@ function PlanoCell({ eq, tipos, tipoById, onSave }: PlanoCellProps) {
   );
 }
 
+// ── HtCell: edição inline do tempo de preventiva (horas por técnico) ──
+function HtCell({
+  eq,
+  tipoById,
+  onSave,
+}: {
+  eq: EquipmentRow;
+  tipoById: Map<string, { id: string; nome: string; horas_por_tecnico: number; qtd_tecnicos: number; periodicidade: string }>;
+  onSave: (htOverride: number | null) => Promise<void> | void;
+}) {
+  const tipo = eq.tipo_id ? tipoById.get(eq.tipo_id) : null;
+  const tipoHt = tipo?.horas_por_tecnico != null ? Number(tipo.horas_por_tecnico) : null;
+  const resolved = eq.override_horas_por_tecnico != null
+    ? Number(eq.override_horas_por_tecnico)
+    : tipoHt;
+  const isOverride = eq.override_horas_por_tecnico != null;
+
+  const [open, setOpen] = useState(false);
+  const [val, setVal] = useState<string>(resolved != null ? String(resolved) : "");
+  const [saving, setSaving] = useState(false);
+
+  const reset = () => setVal(resolved != null ? String(resolved) : "");
+
+  const fmt = (h: number | null) => {
+    if (h == null || !Number.isFinite(h)) return "—";
+    const mins = Math.round(h * 60);
+    const hh = Math.floor(mins / 60);
+    const mm = mins % 60;
+    if (hh > 0 && mm > 0) return `${hh}h${String(mm).padStart(2, "0")}`;
+    if (hh > 0) return `${hh}h`;
+    return `${mm}min`;
+  };
+
+  const save = async () => {
+    const num = val.trim() === "" ? null : Number(val.replace(",", "."));
+    if (num != null && (!Number.isFinite(num) || num <= 0)) {
+      toast.error("Informe um valor em horas maior que zero");
+      return;
+    }
+    // If equals tipo default, clear override
+    const override = num != null && tipoHt != null && Math.abs(num - tipoHt) < 0.001 ? null : num;
+    setSaving(true);
+    try {
+      await onSave(override);
+      setOpen(false);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Popover open={open} onOpenChange={(o) => { setOpen(o); if (o) reset(); }}>
+      <PopoverTrigger asChild>
+        <button className="w-full hover:bg-muted/50 rounded px-1.5 py-1 transition-colors text-center">
+          <span className={cn("text-xs font-medium", isOverride && "text-amber-700 dark:text-amber-400")}>
+            {fmt(resolved)}
+          </span>
+          {isOverride && <div className="text-[9px] text-muted-foreground">manual</div>}
+        </button>
+      </PopoverTrigger>
+      <PopoverContent className="w-60 space-y-3" align="start">
+        <div>
+          <Label className="text-xs">Tempo de preventiva (horas)</Label>
+          <Input
+            type="number"
+            step="0.25"
+            min="0"
+            value={val}
+            onChange={(e) => setVal(e.target.value)}
+            placeholder={tipoHt != null ? String(tipoHt) : "ex.: 2.5"}
+            className="h-8 text-xs"
+          />
+          <p className="text-[10px] text-muted-foreground mt-1">
+            Equivalente: {fmt(val.trim() === "" ? null : Number(val.replace(",", ".")))}
+            {tipoHt != null && <> · padrão do tipo: {fmt(tipoHt)}</>}
+          </p>
+        </div>
+        <div className="flex justify-between gap-2 pt-1">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={async () => {
+              setSaving(true);
+              try { await onSave(null); setOpen(false); } finally { setSaving(false); }
+            }}
+            disabled={saving || !isOverride}
+            className="text-xs text-muted-foreground"
+          >
+            Usar padrão
+          </Button>
+          <div className="flex gap-2">
+            <Button variant="outline" size="sm" onClick={() => setOpen(false)} disabled={saving}>Cancelar</Button>
+            <Button size="sm" onClick={save} disabled={saving}>{saving ? "Salvando..." : "Salvar"}</Button>
+          </div>
+        </div>
+      </PopoverContent>
+    </Popover>
+  );
+}
+
 // ── ProximaCell: edição inline da próxima preventiva (sem precisar de histórico) ──
 function ProximaCell({ eq, onSave }: { eq: EquipmentRow; onSave: (d: string | null) => Promise<void> | void }) {
   const [open, setOpen] = useState(false);
