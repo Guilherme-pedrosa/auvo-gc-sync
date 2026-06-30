@@ -9,6 +9,22 @@ const corsHeaders = {
 
 const VALID_PER = new Set(["MENSAL", "BIMESTRAL", "TRIMESTRAL", "SEMESTRAL", "ANUAL"]);
 
+// Mapeia o nome da ABA do Excel para o cliente correspondente no Auvo.
+// O match e o cálculo de órfãos devem ser feitos SOMENTE contra a casa da aba.
+const ABA_PARA_CLIENTE: Record<string, string> = {
+  "gra bistro": "GRA BISTRO",
+  "nip napoli": "NIP NAPOLI - REDE IZ",
+  "fulles kitchen": "FULLES KITCHEN LTDA",
+  "1929 trattoria": "1929 TRATTORIA MODERNA",
+  "famu": "FAMU RESTAURANTE",
+  "iz restaurante": "IZ RESTAURANTE",
+};
+function clienteDaAba(sheetName: string): string | null {
+  const k = String(sheetName || "").trim().toLowerCase()
+    .normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+  return ABA_PARA_CLIENTE[k] ?? null;
+}
+
 function normalizePeriodicidade(raw: any): string {
   const s = String(raw || "").trim().toUpperCase();
   if (VALID_PER.has(s)) return s;
@@ -36,11 +52,21 @@ function cleanId(raw: any): string | null {
   s = s.replace(/^=\{?"?/, "").replace(/"?\}?$/, "");
   s = s.replace(/[="{}]/g, "").trim();
   if (!s) return null;
-  // If numeric, pad to 16 (zeros à esquerda)
-  if (/^\d+$/.test(s) && s.length < 16) {
-    // Don't pad — we don't know intended length. Just return as-is.
-  }
   return s;
+}
+
+// Gera as chaves candidatas para um ID: como veio, sem zeros à esquerda,
+// e padronizado em 16 dígitos. Resolve divergência de zeros à esquerda
+// entre Excel (texto) e banco (pode ter sido salvo como número).
+function idVariants(s: string | null): string[] {
+  if (!s) return [];
+  const v = new Set<string>();
+  v.add(s);
+  if (/^\d+$/.test(s)) {
+    v.add(s.replace(/^0+/, "") || "0");   // sem zeros à esquerda
+    v.add(s.padStart(16, "0"));           // 16 dígitos
+  }
+  return [...v];
 }
 
 function normalizeKey(s: string): string {
@@ -154,7 +180,19 @@ Deno.serve(async (req) => {
       .select("id, identificador, nome, cliente, status, tipo_id")
       .not("identificador", "is", null);
     const equipsGrupo = (equipsAll || []).filter((e: any) => clientesGrupo.size === 0 || clientesGrupo.has(normalizeKey(e.cliente)));
-    const byId = new Map<string, any>(equipsGrupo.map((e: any) => [String(e.identificador).trim(), e]));
+    const byId = new Map<string, any>();
+    for (const e of equipsGrupo) {
+      const base = String(e.identificador ?? "").trim();
+      for (const k of idVariants(base)) byId.set(k, e);
+    }
+    // lookup que tenta todas as variantes do ID do Excel
+    const findEquip = (excelId: string | null): any => {
+      for (const k of idVariants(excelId)) {
+        const hit = byId.get(k);
+        if (hit) return hit;
+      }
+      return null;
+    };
 
     // Tipos catálogo
     const { data: tiposAll } = await supabase.from("tipos_equipamento").select("id, nome, categoria, periodicidade, criticidade, horas_por_tecnico");
@@ -180,11 +218,26 @@ Deno.serve(async (req) => {
         return new Response(JSON.stringify({ ok: false, error: `Aba "${sheet}" não tem cabeçalho ID|Equipamento|...|Period. na linha 4` }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
       }
 
+      // ESCOPO POR CASA: restringe o universo de equipamentos à casa da aba.
+      const clienteAba = clienteDaAba(sheet);
+      const equipsCasa = clienteAba
+        ? equipsGrupo.filter((e: any) => normalizeKey(e.cliente) === normalizeKey(clienteAba))
+        : equipsGrupo;
+      // índice por variantes restrito à casa
+      const byIdCasa = new Map<string, any>();
+      for (const e of equipsCasa) {
+        for (const k of idVariants(String(e.identificador ?? "").trim())) byIdCasa.set(k, e);
+      }
+      const findEquipCasa = (excelId: string | null): any => {
+        for (const k of idVariants(excelId)) { const h = byIdCasa.get(k); if (h) return h; }
+        return null;
+      };
+
       const previewRows: any[] = [];
       const idsEncontrados = new Set<string>();
       for (const r of parsed.rows) {
-        const matched = r.excel_id ? byId.get(r.excel_id) : null;
-        if (matched) idsEncontrados.add(r.excel_id!);
+        const matched = r.excel_id ? findEquipCasa(r.excel_id) : null;
+        if (matched) { for (const k of idVariants(r.excel_id)) idsEncontrados.add(k); }
         let erro: string | null = null;
         if (!r.excel_id) erro = "sem_id";
         else if (!matched) erro = "nao_encontrado";
@@ -234,9 +287,13 @@ Deno.serve(async (req) => {
         });
       }
 
-      // Equipamentos do Auvo (ativos) do grupo fora do Excel
-      const orfaosAuvo = equipsGrupo
-        .filter((e: any) => e.status === "Ativo" && !idsEncontrados.has(String(e.identificador).trim()))
+      // Equipamentos do Auvo (ativos) DESTA CASA fora do Excel.
+      // Considera todas as variantes de ID ao verificar se foi encontrado.
+      const orfaosAuvo = equipsCasa
+        .filter((e: any) => {
+          if (e.status !== "Ativo") return false;
+          return !idVariants(String(e.identificador ?? "").trim()).some((k) => idsEncontrados.has(k));
+        })
         .map((e: any) => ({ id: e.id, identificador: e.identificador, nome: e.nome, cliente: e.cliente }));
 
       const stats = {
