@@ -12,6 +12,23 @@ import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 
 type Grupo = { id: string; nome: string };
+
+function FilterBadge({
+  active, onClick, children, variant, className,
+}: {
+  active: boolean;
+  onClick: () => void;
+  children: React.ReactNode;
+  variant?: "outline" | "secondary" | "destructive" | "default";
+  className?: string;
+}) {
+  return (
+    <button type="button" onClick={onClick} className={active ? "ring-2 ring-offset-1 ring-primary rounded-full" : ""}>
+      <Badge variant={variant} className={className + " cursor-pointer hover:opacity-80"}>{children}</Badge>
+    </button>
+  );
+}
+
 type Sugestao = {
   equip_id: string;
   identificador: string;
