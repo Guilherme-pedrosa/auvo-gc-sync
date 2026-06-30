@@ -252,6 +252,60 @@ export default function ImportarPlanoExcelDialog({
                 {stats.orfaos_auvo > 0 && <Badge variant="outline">{stats.orfaos_auvo} Auvo fora do Excel</Badge>}
               </div>
 
+              {/* Seleção rápida */}
+              <div className="flex flex-wrap items-center gap-2 text-xs border rounded p-2 bg-muted/30">
+                <span className="font-medium mr-1">Seleção rápida:</span>
+                <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => {
+                  // Gravar apenas equipamentos SEM plano atual
+                  const newSkip: Record<number, boolean> = {};
+                  for (const r of preview.rows) {
+                    if (!r.auvo_match) continue;
+                    newSkip[r.linha] = !!r.plano_atual; // pula quem já tem plano
+                  }
+                  setSkip(newSkip);
+                }}>Só sem plano</Button>
+                <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => {
+                  // Gravar apenas linhas com conflito
+                  const newSkip: Record<number, boolean> = {};
+                  const newOv: Record<number, boolean> = {};
+                  for (const r of preview.rows) {
+                    if (!r.auvo_match) continue;
+                    const hasConf = r.conflitos.length > 0;
+                    newSkip[r.linha] = !hasConf;
+                    if (hasConf) newOv[r.linha] = true;
+                  }
+                  setSkip(newSkip);
+                  setOverwriteConflict(newOv);
+                }}>Só conflitos (sobrescrever)</Button>
+                <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => {
+                  // Gravar todos (limpa skip), sobrescreve conflitos
+                  setSkip({});
+                  const ov: Record<number, boolean> = {};
+                  for (const r of preview.rows) if (r.conflitos.length > 0) ov[r.linha] = true;
+                  setOverwriteConflict(ov);
+                }}>Todos (sobrescrever conflitos)</Button>
+                <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => {
+                  // Marca skip em tudo
+                  const newSkip: Record<number, boolean> = {};
+                  for (const r of preview.rows) if (r.auvo_match) newSkip[r.linha] = true;
+                  setSkip(newSkip);
+                }}>Pular todos</Button>
+                <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => setSkip({})}>Limpar "pular"</Button>
+                <span className="mx-2 text-muted-foreground">|</span>
+                <span className="font-medium mr-1">Tipo:</span>
+                <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => {
+                  const at: Record<number, boolean> = {};
+                  for (const r of preview.rows) if (r.auvo_match) at[r.linha] = true;
+                  setApplyTipo(at);
+                }}>Aplicar em todos</Button>
+                <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => {
+                  const at: Record<number, boolean> = {};
+                  for (const r of preview.rows) if (r.auvo_match) at[r.linha] = !r.auvo_match.tipo_nome_atual;
+                  setApplyTipo(at);
+                }}>Só onde está vazio</Button>
+                <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => setApplyTipo({})}>Não aplicar</Button>
+              </div>
+
               <div className="h-[45vh] border rounded overflow-auto">
                 <table className="min-w-[1200px] w-max text-xs">
                   <thead className="bg-muted sticky top-0">
