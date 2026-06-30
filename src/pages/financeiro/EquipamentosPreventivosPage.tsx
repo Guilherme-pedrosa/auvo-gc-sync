@@ -45,6 +45,10 @@ type EquipmentRaw = {
   marca: string | null;
   marca_source: string | null;
   marca_manual_override: boolean | null;
+  tipo_id: string | null;
+  override_horas_por_tecnico: number | null;
+  override_qtd_tecnicos: number | null;
+  override_periodicidade: string | null;
 };
 
 type EquipTaskRel = {
@@ -77,6 +81,10 @@ type EquipmentRow = {
   dias_desde: number | null;
   tipo_tarefa: string | null;
   total_tarefas: number;
+  tipo_id: string | null;
+  override_horas_por_tecnico: number | null;
+  override_qtd_tecnicos: number | null;
+  override_periodicidade: string | null;
 };
 
 type SyncWindow = {
