@@ -1360,26 +1360,49 @@ function PlanoCell({ eq, tipos, tipoById, onSave }: PlanoCellProps) {
   const perResolved = eq.override_periodicidade ?? tipo?.periodicidade ?? null;
 
   const [tipoSel, setTipoSel] = useState<string>(eq.tipo_id ?? "");
-  const [htStr, setHtStr] = useState<string>(eq.override_horas_por_tecnico != null ? String(eq.override_horas_por_tecnico) : "");
-  const [qtdStr, setQtdStr] = useState<string>(eq.override_qtd_tecnicos != null ? String(eq.override_qtd_tecnicos) : "");
-  const [perSel, setPerSel] = useState<string>(eq.override_periodicidade ?? "");
+  const [htStr, setHtStr] = useState<string>(htResolved != null ? String(htResolved) : "");
+  const [qtdStr, setQtdStr] = useState<string>(qtdResolved != null ? String(qtdResolved) : "");
+  const [perSel, setPerSel] = useState<string>(perResolved ?? "");
   const [saving, setSaving] = useState(false);
 
   const reset = () => {
+    const t = eq.tipo_id ? tipoById.get(eq.tipo_id) : null;
     setTipoSel(eq.tipo_id ?? "");
-    setHtStr(eq.override_horas_por_tecnico != null ? String(eq.override_horas_por_tecnico) : "");
-    setQtdStr(eq.override_qtd_tecnicos != null ? String(eq.override_qtd_tecnicos) : "");
-    setPerSel(eq.override_periodicidade ?? "");
+    setHtStr(String(eq.override_horas_por_tecnico ?? t?.horas_por_tecnico ?? ""));
+    setQtdStr(String(eq.override_qtd_tecnicos ?? t?.qtd_tecnicos ?? ""));
+    setPerSel(eq.override_periodicidade ?? t?.periodicidade ?? "");
+  };
+
+  // Quando o usuário troca o Tipo, preenche os campos com os padrões do tipo (editáveis depois).
+  const handleTipoChange = (newTipoId: string) => {
+    setTipoSel(newTipoId);
+    if (!newTipoId) {
+      setHtStr(""); setQtdStr(""); setPerSel("");
+      return;
+    }
+    const t = tipoById.get(newTipoId);
+    if (t) {
+      setHtStr(String(t.horas_por_tecnico ?? ""));
+      setQtdStr(String(t.qtd_tecnicos ?? ""));
+      setPerSel(t.periodicidade ?? "");
+    }
   };
 
   const save = async () => {
     setSaving(true);
     try {
+      const t = tipoSel ? tipoById.get(tipoSel) : null;
+      const htNum = htStr.trim() === "" ? null : Number(htStr);
+      const qtdNum = qtdStr.trim() === "" ? null : Math.max(1, Number(qtdStr));
+      // Se o valor bate com o padrão do tipo, grava null (= usa o padrão); caso contrário, vira override.
+      const htOverride = t && htNum != null && Number(t.horas_por_tecnico) === htNum ? null : htNum;
+      const qtdOverride = t && qtdNum != null && Number(t.qtd_tecnicos) === qtdNum ? null : qtdNum;
+      const perOverride = t && perSel && t.periodicidade === perSel ? null : (perSel || null);
       await onSave({
         tipo_id: tipoSel || null,
-        override_horas_por_tecnico: htStr.trim() === "" ? null : Number(htStr),
-        override_qtd_tecnicos: qtdStr.trim() === "" ? null : Math.max(1, Number(qtdStr)),
-        override_periodicidade: perSel || null,
+        override_horas_por_tecnico: htOverride,
+        override_qtd_tecnicos: qtdOverride,
+        override_periodicidade: perOverride,
       });
       setOpen(false);
     } finally {
@@ -1412,7 +1435,7 @@ function PlanoCell({ eq, tipos, tipoById, onSave }: PlanoCellProps) {
       <PopoverContent className="w-80 space-y-3" align="start">
         <div>
           <Label className="text-xs">Tipo ({tipos.length} cadastrados)</Label>
-          <Select value={tipoSel || "__none__"} onValueChange={(v) => setTipoSel(v === "__none__" ? "" : v)}>
+          <Select value={tipoSel || "__none__"} onValueChange={(v) => handleTipoChange(v === "__none__" ? "" : v)}>
             <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="— Selecionar tipo —" /></SelectTrigger>
             <SelectContent className="max-h-72 z-[200]">
               <SelectItem value="__none__" className="text-xs italic">— Sem tipo —</SelectItem>
@@ -1425,7 +1448,7 @@ function PlanoCell({ eq, tipos, tipoById, onSave }: PlanoCellProps) {
           </Select>
         </div>
         <div className="text-[10px] text-muted-foreground">
-          Os campos abaixo são <strong>overrides</strong>. Deixe em branco para usar o padrão do tipo.
+          Os campos abaixo vêm do tipo. Edite só se este equipamento for exceção (vira <strong>override</strong> automaticamente).
         </div>
         <div className="grid grid-cols-2 gap-2">
           <div>
