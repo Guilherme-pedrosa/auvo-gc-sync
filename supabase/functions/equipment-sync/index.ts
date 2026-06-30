@@ -716,7 +716,7 @@ Deno.serve(async (req) => {
         const batch = equipRows.slice(i, i + UPSERT_BATCH_SIZE);
         const { error } = await sb
           .from("equipamentos_auvo")
-          .upsert(batch, { onConflict: "auvo_equipment_id" });
+          .upsert(batch, { onConflict: "auvo_equipment_id", defaultToNull: false });
 
         if (error) equipErrors.push(error.message);
         else totalEquipUpserted += batch.length;
