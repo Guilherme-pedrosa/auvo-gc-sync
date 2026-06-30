@@ -638,15 +638,13 @@ export default function EquipamentosPreventivosPage() {
       }
 
       const tipo = r.tipo_id ? tipoById.get(r.tipo_id) : null;
-      const mesesPorPlano = r.periodicidade_meses_plano ?? periodicidadeToMesesOrNull(r.override_periodicidade ?? tipo?.periodicidade);
+      const mesesPorPlano = periodicidadeToMesesOrNull(r.override_periodicidade ?? tipo?.periodicidade) ?? r.periodicidade_meses_plano;
       if (mesesPorPlano) r.periodicidade_meses_plano = mesesPorPlano;
 
-      if (!r.proxima_data) {
-        const calculada = calcularProximaPreventiva(r.ultima_data, mesesPorPlano);
-        if (calculada) {
-          r.proxima_data = calculada;
-          r.proxima_data_calculada = true;
-        }
+      const calculada = calcularProximaPreventiva(r.ultima_data, mesesPorPlano);
+      if (calculada) {
+        r.proxima_data = calculada;
+        r.proxima_data_calculada = true;
       }
     }
     return rows;
