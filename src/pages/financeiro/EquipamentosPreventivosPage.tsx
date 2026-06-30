@@ -1630,6 +1630,22 @@ export default function EquipamentosPreventivosPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      {criarTarefaEq && (
+        <CriarTarefaAuvoDialog
+          open={!!criarTarefaEq}
+          onOpenChange={(v) => { if (!v) setCriarTarefaEq(null); }}
+          equipamento={{
+            id: criarTarefaEq.id,
+            nome: criarTarefaEq.nome,
+            cliente: criarTarefaEq.cliente,
+            auvo_equipment_id: criarTarefaEq.auvo_equipment_id,
+            proxima_data: criarTarefaEq.proxima_data,
+          }}
+          onCreated={() => {
+            // Sincronização posterior puxa a tarefa para o banco; nada a fazer agora
+          }}
+        />
+      )}
     </div>
   );
 }
