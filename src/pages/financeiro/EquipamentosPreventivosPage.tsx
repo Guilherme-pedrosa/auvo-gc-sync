@@ -110,6 +110,17 @@ function normalizeClienteName(name: string | null | undefined): string {
     .trim();
 }
 
+function periodicidadeToMeses(per: string | null | undefined): number {
+  switch ((per || "").toUpperCase()) {
+    case "MENSAL": return 1;
+    case "BIMESTRAL": return 2;
+    case "TRIMESTRAL": return 3;
+    case "SEMESTRAL": return 6;
+    case "ANUAL": return 12;
+    default: return 3;
+  }
+}
+
 function getStatusInfo(dias: number | null) {
   if (dias === null) return { label: "Sem registro", color: "text-muted-foreground", bg: "bg-muted", icon: Clock };
   if (dias <= 90) return { label: "Em dia", color: "text-emerald-700 dark:text-emerald-400", bg: "bg-emerald-50 dark:bg-emerald-950/30", icon: CheckCircle2 };
