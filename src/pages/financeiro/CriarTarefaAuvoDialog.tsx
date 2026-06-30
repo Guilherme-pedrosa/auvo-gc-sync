@@ -26,6 +26,10 @@ type Props = {
 };
 
 const PREFERRED_TASK_TYPE_IDS = new Set(["180175", "180176"]);
+const FALLBACK_PREVENTIVE_TASK_TYPES = [
+  { id: 180176, description: "Visita Preventiva Contrato", active: true },
+  { id: 180175, description: "Visita Preventiva + OS", active: true },
+];
 
 export default function CriarTarefaAuvoDialog({ open, onOpenChange, equipamento, onCreated }: Props) {
   const [taskTypeId, setTaskTypeId] = useState<string>("");
@@ -50,15 +54,20 @@ export default function CriarTarefaAuvoDialog({ open, onOpenChange, equipamento,
   }, [open, equipamento.id]);
 
   const { data: taskTypes = [], isLoading: loadingTypes } = useQuery({
-    queryKey: ["auvo-task-types"],
+    queryKey: ["auvo-task-types", "preventiva-v2"],
     enabled: open,
-    staleTime: 30 * 60 * 1000,
+    staleTime: 0,
+    refetchOnMount: "always",
     queryFn: async () => {
       const { data, error } = await supabase.functions.invoke("auvo-task-update", {
         body: { action: "list-task-types" },
       });
-      if (error) throw error;
-      return (data?.data || []) as any[];
+      if (error) {
+        console.error("[list-task-types] erro:", error);
+        return FALLBACK_PREVENTIVE_TASK_TYPES;
+      }
+      const list = Array.isArray(data?.data) ? data.data : [];
+      return list.length > 0 ? list : FALLBACK_PREVENTIVE_TASK_TYPES;
     },
   });
 
@@ -76,10 +85,16 @@ export default function CriarTarefaAuvoDialog({ open, onOpenChange, equipamento,
   });
 
   const taskTypeOptions = useMemo(() => {
-    const list = taskTypes.map((t: any) => ({
-      value: String(t.id ?? t.taskTypeId ?? t.taskTypeID ?? ""),
-      label: String(t.description ?? t.name ?? t.taskTypeDescription ?? `Tipo ${t.id ?? "?"}`),
-    })).filter(o => o.value);
+    const byId = new Map<string, { value: string; label: string }>();
+    [...FALLBACK_PREVENTIVE_TASK_TYPES, ...taskTypes].forEach((t: any) => {
+      const value = String(t.id ?? t.taskTypeId ?? t.taskTypeID ?? "").trim();
+      if (!value) return;
+      byId.set(value, {
+        value,
+        label: String(t.description ?? t.name ?? t.taskTypeDescription ?? `Tipo ${value}`),
+      });
+    });
+    const list = Array.from(byId.values()).filter(o => o.value);
     // Preventivas primeiro
     list.sort((a, b) => {
       const ap = PREFERRED_TASK_TYPE_IDS.has(a.value) ? 0 : 1;
