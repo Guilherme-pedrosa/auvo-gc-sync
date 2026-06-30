@@ -772,7 +772,7 @@ export default function EquipamentosPreventivosPage() {
       toast.error("Erro ao salvar marca: " + error.message);
     } else {
       toast.success("Marca atualizada");
-      queryClient.invalidateQueries({ queryKey: ["equipamentos-preventivos-raw"] });
+      queryClient.invalidateQueries({ queryKey: ["equipamentos-preventivos-raw", "v2-only-ativos"] });
     }
     setEditingMarcaId(null);
   }, [queryClient]);
