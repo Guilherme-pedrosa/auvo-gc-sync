@@ -32,6 +32,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import { FileText, Users } from "lucide-react";
+import { Plus } from "lucide-react";
+import CriarTarefaAuvoDialog from "./CriarTarefaAuvoDialog";
 
 // ── Types ──
 type EquipmentRaw = {
