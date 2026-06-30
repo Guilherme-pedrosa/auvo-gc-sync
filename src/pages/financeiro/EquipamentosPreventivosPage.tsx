@@ -151,7 +151,7 @@ function buildMonthlySyncWindows(startDate: string, endDate: string): SyncWindow
 
 const PREVENTIVA_TASK_TYPE_IDS = new Set(["180175", "180176"]);
 
-function isPreventivaTaskType(id: string | null | undefined): boolean {
+function isPreventivaTaskType(id: string | null | undefined): id is string {
   return !!id && PREVENTIVA_TASK_TYPE_IDS.has(String(id));
 }
 
