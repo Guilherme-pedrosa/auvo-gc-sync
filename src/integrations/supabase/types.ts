@@ -527,7 +527,11 @@ export type Database = {
           marca_manual_override: boolean | null
           marca_source: string | null
           nome: string
+          override_horas_por_tecnico: number | null
+          override_periodicidade: string | null
+          override_qtd_tecnicos: number | null
           status: string | null
+          tipo_id: string | null
         }
         Insert: {
           atualizado_em?: string | null
@@ -542,7 +546,11 @@ export type Database = {
           marca_manual_override?: boolean | null
           marca_source?: string | null
           nome: string
+          override_horas_por_tecnico?: number | null
+          override_periodicidade?: string | null
+          override_qtd_tecnicos?: number | null
           status?: string | null
+          tipo_id?: string | null
         }
         Update: {
           atualizado_em?: string | null
@@ -557,9 +565,21 @@ export type Database = {
           marca_manual_override?: boolean | null
           marca_source?: string | null
           nome?: string
+          override_horas_por_tecnico?: number | null
+          override_periodicidade?: string | null
+          override_qtd_tecnicos?: number | null
           status?: string | null
+          tipo_id?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "equipamentos_auvo_tipo_id_fkey"
+            columns: ["tipo_id"]
+            isOneToOne: false
+            referencedRelation: "tipos_equipamento"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       followup_kanban_cache: {
         Row: {
@@ -1288,6 +1308,51 @@ export type Database = {
           task_type_id?: string | null
           tecnico?: string | null
           tecnico_id?: string | null
+        }
+        Relationships: []
+      }
+      tipos_equipamento: {
+        Row: {
+          ativo: boolean
+          categoria: string | null
+          created_at: string
+          criticidade: string
+          horas_por_tecnico: number
+          id: string
+          nome: string
+          observacoes: string | null
+          palavras_chave: string[]
+          periodicidade: string
+          qtd_tecnicos: number
+          updated_at: string
+        }
+        Insert: {
+          ativo?: boolean
+          categoria?: string | null
+          created_at?: string
+          criticidade?: string
+          horas_por_tecnico?: number
+          id?: string
+          nome: string
+          observacoes?: string | null
+          palavras_chave?: string[]
+          periodicidade?: string
+          qtd_tecnicos?: number
+          updated_at?: string
+        }
+        Update: {
+          ativo?: boolean
+          categoria?: string | null
+          created_at?: string
+          criticidade?: string
+          horas_por_tecnico?: number
+          id?: string
+          nome?: string
+          observacoes?: string | null
+          palavras_chave?: string[]
+          periodicidade?: string
+          qtd_tecnicos?: number
+          updated_at?: string
         }
         Relationships: []
       }

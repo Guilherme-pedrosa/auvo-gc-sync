@@ -24,6 +24,7 @@ import EquipamentosPreventivosPage from "./pages/financeiro/EquipamentosPreventi
 import FollowUpKanbanPage from "./pages/financeiro/FollowUpKanbanPage.tsx";
 import PremiacaoPage from "./pages/financeiro/PremiacaoPage.tsx";
 import ContratosPage from "./pages/configuracoes/ContratosPage.tsx";
+import TiposEquipamentoPage from "./pages/configuracoes/TiposEquipamentoPage.tsx";
 import PortalLoginPage from "./pages/portal/PortalLoginPage.tsx";
 import PortalHorasPage from "./pages/portal/PortalHorasPage.tsx";
 import PortalOrcamentosPage from "./pages/portal/PortalOrcamentosPage.tsx";
@@ -95,6 +96,7 @@ const AppRoutes = () => {
                 <Route path="/financeiro/kanban-followup" element={<FollowUpKanbanPage />} />
                 <Route path="/financeiro/premiacao" element={<PremiacaoPage />} />
                 <Route path="/configuracoes/contratos" element={<ContratosPage />} />
+                <Route path="/configuracoes/tipos-equipamento" element={<TiposEquipamentoPage />} />
                 <Route path="/admin/usuarios" element={<UsersPage />} />
                 <Route path="*" element={<NotFound />} />
               </Routes>
