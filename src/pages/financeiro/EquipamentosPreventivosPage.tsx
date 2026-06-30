@@ -441,6 +441,7 @@ export default function EquipamentosPreventivosPage() {
   const [pdfDialogOpen, setPdfDialogOpen] = useState(false);
   const [pdfScope, setPdfScope] = useState<"selecionados" | "filtrados" | "feitos" | "atrasados" | "atencao_vencido" | "sem_registro">("filtrados");
   const [criarTarefaEq, setCriarTarefaEq] = useState<EquipmentRow | null>(null);
+  const [importOpen, setImportOpen] = useState(false);
 
   // Sync date range — defaults to last 1 month
   const defaultSyncStart = format(new Date(new Date().getFullYear(), new Date().getMonth() - 1, 1), "yyyy-MM-dd");
@@ -1224,6 +1225,9 @@ export default function EquipamentosPreventivosPage() {
           </Button>
           <Button variant="outline" size="sm" onClick={() => setPdfDialogOpen(true)} disabled={equipments.length === 0}>
             <FileText className="h-4 w-4 mr-1" /> Laudo PDF
+          </Button>
+          <Button variant="outline" size="sm" onClick={() => setImportOpen(true)}>
+            <Download className="h-4 w-4 mr-1 rotate-180" /> Importar plano (Excel)
           </Button>
           <div className="flex items-center gap-2 bg-muted/50 border rounded-lg px-3 py-1.5">
             <CalendarDays className="h-4 w-4 text-muted-foreground" />
