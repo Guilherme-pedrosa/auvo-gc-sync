@@ -1649,6 +1649,13 @@ export default function EquipamentosPreventivosPage() {
                           onSave={(patch) => handleSavePlano(eq.id, patch)}
                         />
                       </TableCell>
+                      <TableCell className="text-center">
+                        <HtCell
+                          eq={eq}
+                          tipoById={tipoById}
+                          onSave={(htOverride) => handleSavePlano(eq.id, { override_horas_por_tecnico: htOverride })}
+                        />
+                      </TableCell>
                       <TableCell>
                         {eq.ultima_intervencao_data ? (
                           eq.ultima_intervencao_link ? (
