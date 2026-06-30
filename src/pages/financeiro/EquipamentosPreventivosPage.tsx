@@ -521,6 +521,45 @@ export default function EquipamentosPreventivosPage() {
     }
   }, [queryClient]);
 
+  // ── Edição em massa do tipo de equipamento ──
+  const [bulkTipoOpen, setBulkTipoOpen] = useState(false);
+  const [bulkTipoValue, setBulkTipoValue] = useState<string>("");
+  const [bulkSaving, setBulkSaving] = useState(false);
+
+  const handleBulkSaveTipo = useCallback(async (tipoId: string) => {
+    const ids = Array.from(selectedIds);
+    if (ids.length === 0) return;
+    setBulkSaving(true);
+
+    const queryKey = ["equipamentos-preventivos-raw", "v2-only-ativos"];
+    const prev = queryClient.getQueryData<any>(queryKey);
+    if (prev?.equipamentos) {
+      const idSet = new Set(ids);
+      queryClient.setQueryData(queryKey, {
+        ...prev,
+        equipamentos: prev.equipamentos.map((e: any) =>
+          idSet.has(e.id) ? { ...e, tipo_id: tipoId } : e
+        ),
+      });
+    }
+
+    const { error } = await (supabase as any)
+      .from("equipamentos_auvo")
+      .update({ tipo_id: tipoId })
+      .in("id", ids);
+
+    setBulkSaving(false);
+    if (error) {
+      if (prev) queryClient.setQueryData(queryKey, prev);
+      toast.error("Erro ao atualizar tipo em massa: " + error.message);
+      return;
+    }
+    toast.success(`Tipo atualizado em ${ids.length} equipamento(s)`);
+    setBulkTipoOpen(false);
+    setBulkTipoValue("");
+    setSelectedIds(new Set());
+  }, [queryClient, selectedIds]);
+
   const grupoClienteMap = useMemo(() => {
     const map = new Map<string, Set<string>>();
     const grupos = gruposData?.grupos ?? [];
