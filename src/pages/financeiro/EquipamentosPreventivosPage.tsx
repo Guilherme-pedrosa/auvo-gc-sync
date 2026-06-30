@@ -239,6 +239,9 @@ async function fetchRawData(): Promise<{ equipamentos: EquipmentRaw[]; relations
     eqFrom += EQ_PAGE;
   }
 
+  // Guarda defensiva: nunca incluir equipamento inativo na lista de preventivas
+  equipamentos = equipamentos.filter((e) => (e.status || "").toLowerCase() === "ativo");
+
   let relations: EquipTaskRel[] = [];
   let relFrom = 0;
   const REL_PAGE = 1000;
