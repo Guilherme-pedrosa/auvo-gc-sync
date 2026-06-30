@@ -90,6 +90,7 @@ type EquipmentRow = {
   override_periodicidade: string | null;
   proxima_data?: string | null;
   periodicidade_meses_plano?: number | null;
+  ultima_execucao_task_id?: string | null;
 };
 
 type SyncWindow = {
@@ -136,6 +137,8 @@ function buildMonthlySyncWindows(startDate: string, endDate: string): SyncWindow
 
   return months.reverse();
 }
+
+const PREVENTIVA_TASK_TYPE_IDS = new Set(["180175", "180176"]);
 
 function splitSyncWindowByFortnight(window: SyncWindow): SyncWindow[] {
   const start = new Date(`${window.windowStart}T00:00:00`);
@@ -226,14 +229,24 @@ async function fetchRawData(): Promise<{ equipamentos: EquipmentRaw[]; relations
   return { equipamentos, relations };
 }
 
-async function fetchPlanoProximas(): Promise<Map<string, { proxima_data: string | null; periodicidade_meses: number | null }>> {
-  const map = new Map<string, { proxima_data: string | null; periodicidade_meses: number | null }>();
+async function fetchPlanoProximas(): Promise<Map<string, {
+  proxima_data: string | null;
+  periodicidade_meses: number | null;
+  ultima_execucao_data: string | null;
+  ultima_execucao_task_id: string | null;
+}>> {
+  const map = new Map<string, {
+    proxima_data: string | null;
+    periodicidade_meses: number | null;
+    ultima_execucao_data: string | null;
+    ultima_execucao_task_id: string | null;
+  }>();
   let from = 0;
   const PAGE = 1000;
   while (true) {
     const { data, error } = await (supabase as any)
       .from("plano_preventivo_item")
-      .select("equipamento_auvo_id, proxima_data, periodicidade_meses, ativo")
+      .select("equipamento_auvo_id, proxima_data, periodicidade_meses, ultima_execucao_data, ultima_execucao_task_id, ativo")
       .eq("ativo", true)
       .not("equipamento_auvo_id", "is", null)
       .range(from, from + PAGE - 1);
@@ -242,10 +255,14 @@ async function fetchPlanoProximas(): Promise<Map<string, { proxima_data: string 
     for (const row of data as any[]) {
       const key = String(row.equipamento_auvo_id);
       const prev = map.get(key);
-      // Keep earliest proxima_data per equipment
-      if (!prev || (row.proxima_data && (!prev.proxima_data || row.proxima_data < prev.proxima_data))) {
-        map.set(key, { proxima_data: row.proxima_data, periodicidade_meses: row.periodicidade_meses });
-      }
+      const shouldUseNext = !prev || (row.proxima_data && (!prev.proxima_data || row.proxima_data < prev.proxima_data));
+      const shouldUseLast = !prev || (row.ultima_execucao_data && (!prev.ultima_execucao_data || row.ultima_execucao_data > prev.ultima_execucao_data));
+      map.set(key, {
+        proxima_data: shouldUseNext ? row.proxima_data : prev.proxima_data,
+        periodicidade_meses: shouldUseNext ? row.periodicidade_meses : prev.periodicidade_meses,
+        ultima_execucao_data: shouldUseLast ? row.ultima_execucao_data : prev.ultima_execucao_data,
+        ultima_execucao_task_id: shouldUseLast ? row.ultima_execucao_task_id : prev.ultima_execucao_task_id,
+      });
     }
     if (data.length < PAGE) break;
     from += PAGE;
@@ -274,9 +291,8 @@ function buildEquipmentRows(
     const eqId = eq.auvo_equipment_id || "";
     let eqTasks = relByEquipment.get(eqId) || [];
 
-    if (tipoTarefaFilter.length > 0) {
-      eqTasks = eqTasks.filter(t => t.auvo_task_type_id && tipoTarefaFilter.includes(t.auvo_task_type_id));
-    }
+    const taskTypeIds = tipoTarefaFilter.length > 0 ? tipoTarefaFilter : Array.from(PREVENTIVA_TASK_TYPE_IDS);
+    eqTasks = eqTasks.filter(t => t.auvo_task_type_id && taskTypeIds.includes(t.auvo_task_type_id));
 
     const completedTasks = eqTasks.filter(t =>
       t.status_auvo === "Finalizada" && (t.data_conclusao || t.data_tarefa)
@@ -313,6 +329,7 @@ function buildEquipmentRows(
       override_periodicidade: eq.override_periodicidade,
       proxima_data: null,
       periodicidade_meses_plano: null,
+      ultima_execucao_task_id: null,
     };
   }).sort((a, b) => {
     if (a.dias_desde === null && b.dias_desde === null) return 0;
@@ -461,12 +478,26 @@ export default function EquipamentosPreventivosPage() {
   const equipments = useMemo(() => {
     if (!rawData) return [];
     const rows = buildEquipmentRows(rawData.equipamentos, rawData.relations ?? [], tipoTarefaFilter);
+    const taskById = new Map<string, EquipTaskRel>();
+    for (const task of rawData.relations ?? []) {
+      if (task.auvo_task_id) taskById.set(String(task.auvo_task_id), task);
+    }
     if (planoProximas && planoProximas.size > 0) {
       for (const r of rows) {
         const p = planoProximas.get(r.id);
         if (p) {
           r.proxima_data = p.proxima_data;
           r.periodicidade_meses_plano = p.periodicidade_meses;
+          r.ultima_execucao_task_id = p.ultima_execucao_task_id;
+
+          if (p.ultima_execucao_data) {
+            const task = p.ultima_execucao_task_id ? taskById.get(String(p.ultima_execucao_task_id)) : null;
+            r.ultima_data = p.ultima_execucao_data;
+            r.dias_desde = differenceInDays(new Date(), parseISO(p.ultima_execucao_data));
+            r.ultimo_tecnico = task?.tecnico || r.ultimo_tecnico;
+            r.ultimo_link = getTaskDigitalLink(task) || r.ultimo_link;
+            r.tipo_tarefa = task?.auvo_task_type_description || r.tipo_tarefa || "Preventiva";
+          }
         }
       }
     }
