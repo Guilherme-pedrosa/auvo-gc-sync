@@ -344,8 +344,12 @@ function buildEquipmentRows(
     const eqId = eq.auvo_equipment_id || "";
     const allEqTasks = relByEquipment.get(eqId) || [];
 
-    // Última intervenção: qualquer tipo de tarefa concluída
-    const allCompleted = allEqTasks.filter(t =>
+    // Última intervenção: respeita o filtro de Tipo de Tarefa (qualquer tipo se vazio)
+    const filterSet = new Set(tipoTarefaFilter.map(String));
+    const intervTasks = filterSet.size > 0
+      ? allEqTasks.filter(t => t.auvo_task_type_id && filterSet.has(String(t.auvo_task_type_id)))
+      : allEqTasks;
+    const allCompleted = intervTasks.filter(t =>
       t.status_auvo === "Finalizada" && (t.data_conclusao || t.data_tarefa)
     ).sort((a, b) => {
       const dateA = a.data_conclusao || a.data_tarefa || "";
@@ -355,8 +359,8 @@ function buildEquipmentRows(
     const lastAnyTask = allCompleted[0] || null;
     const ultimaIntervencaoData = lastAnyTask ? (lastAnyTask.data_conclusao || lastAnyTask.data_tarefa) : null;
 
-    // Última preventiva: filtra estritamente pelos tipos de preventiva
-    const taskTypeIds = getPreventivaTaskTypeIds(tipoTarefaFilter);
+    // Última preventiva: estritamente os tipos de preventiva (independente do filtro)
+    const taskTypeIds = Array.from(PREVENTIVA_TASK_TYPE_IDS);
     const preventiveTasks = allEqTasks.filter(t => t.auvo_task_type_id && taskTypeIds.includes(String(t.auvo_task_type_id)));
 
     const completedTasks = preventiveTasks.filter(t =>
@@ -605,7 +609,7 @@ export default function EquipamentosPreventivosPage() {
     if (rels.length === 0) return [];
     const map = new Map<string, string>();
     for (const r of rels) {
-      if (isPreventivaTaskType(r.auvo_task_type_id) && r.auvo_task_type_description) {
+      if (r.auvo_task_type_id && r.auvo_task_type_description) {
         map.set(r.auvo_task_type_id, r.auvo_task_type_description);
       }
     }
