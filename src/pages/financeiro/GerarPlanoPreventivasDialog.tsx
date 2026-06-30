@@ -169,7 +169,7 @@ export default function GerarPlanoPreventivasDialog({
               <Label className="text-xs">Grupo</Label>
               <SearchableSelect
                 value={grupoId}
-                onChange={(v) => setGrupoId(v)}
+                onValueChange={(v) => setGrupoId(v)}
                 options={grupos.map((g) => ({ value: g.id, label: g.nome }))}
                 placeholder="Selecione um grupo"
               />
@@ -179,7 +179,7 @@ export default function GerarPlanoPreventivasDialog({
               <Label className="text-xs">Cliente</Label>
               <SearchableSelect
                 value={clienteNome}
-                onChange={(v) => setClienteNome(v)}
+                onValueChange={(v) => setClienteNome(v)}
                 options={clientes.map((c) => ({ value: c, label: c }))}
                 placeholder="Selecione um cliente"
               />
