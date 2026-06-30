@@ -457,11 +457,25 @@ export default function EquipamentosPreventivosPage() {
     }
   }, [queryClient]);
 
+  const grupoClienteMap = useMemo(() => {
+    const map = new Map<string, Set<string>>();
+    const grupos = gruposData?.grupos ?? [];
+    const membros = gruposData?.membros ?? [];
+    for (const g of grupos) {
+      const set = new Set<string>(
+        membros
+          .filter((m: any) => m.grupo_id === g.id)
+          .map((m: any) => normalizeClienteName(m.cliente_nome))
+      );
+      map.set(g.id, set);
+    }
+    return map;
+  }, [gruposData]);
+
   const handleSaveProxima = useCallback(async (eq: EquipmentRow, novaData: string | null) => {
     const proximasKey = ["plano-proximas-by-eq"];
     const prevMap = queryClient.getQueryData<Map<string, any>>(proximasKey);
 
-    // Optimistic cache update
     if (prevMap) {
       const next = new Map(prevMap);
       const cur = next.get(eq.id) || {
@@ -475,7 +489,6 @@ export default function EquipamentosPreventivosPage() {
     }
 
     try {
-      // Try update first (covers existing items, possibly multiple anos)
       const { data: updated, error: updErr } = await (supabase as any)
         .from("plano_preventivo_item")
         .update({ proxima_data: novaData })
@@ -485,7 +498,6 @@ export default function EquipamentosPreventivosPage() {
       if (updErr) throw updErr;
 
       if (!updated || updated.length === 0) {
-        // No plano yet → create one. Need grupo_id from cliente.
         const clienteNorm = normalizeClienteName(eq.cliente);
         let grupoId: string | null = null;
         for (const [gid, set] of grupoClienteMap.entries()) {
@@ -523,26 +535,10 @@ export default function EquipamentosPreventivosPage() {
 
       toast.success(novaData ? "Próxima preventiva definida" : "Próxima preventiva removida");
     } catch (e: any) {
-      // Rollback cache
       if (prevMap) queryClient.setQueryData(proximasKey, prevMap);
       toast.error("Erro ao salvar: " + (e?.message || String(e)));
     }
   }, [queryClient, grupoClienteMap, tipoById]);
-
-  const grupoClienteMap = useMemo(() => {
-    const map = new Map<string, Set<string>>();
-    const grupos = gruposData?.grupos ?? [];
-    const membros = gruposData?.membros ?? [];
-    for (const g of grupos) {
-      const set = new Set<string>(
-        membros
-          .filter((m: any) => m.grupo_id === g.id)
-          .map((m: any) => normalizeClienteName(m.cliente_nome))
-      );
-      map.set(g.id, set);
-    }
-    return map;
-  }, [gruposData]);
 
   const tiposTarefa = useMemo(() => {
     const rels = rawData?.relations ?? [];
