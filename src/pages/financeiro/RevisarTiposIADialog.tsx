@@ -109,9 +109,21 @@ export default function RevisarTiposIADialog({
       if (error) throw error;
       if (!data?.ok) throw new Error(data?.error || "Falha");
       toast.success(`${data.aplicados} tipos atualizados` + (data.falhas ? ` (${data.falhas} falhas)` : ""));
-      onApplied();
-      onOpenChange(false);
-      reset();
+      // Atualiza a análise em memória: itens aplicados viram "tipo atual = sugerido" e saem da lista de mudanças
+      const aplicadosIds = new Set(updates.map((u) => u.equip_id));
+      setSugestoes((prev) => prev ? prev.map((s) => aplicadosIds.has(s.equip_id) ? {
+        ...s,
+        tipo_atual_id: s.tipo_sugerido_id,
+        tipo_atual_nome: s.tipo_sugerido_nome,
+        mudou: false,
+        motivo: "✓ Aplicado",
+      } : s) : prev);
+      setSel((prev) => {
+        const next = { ...prev };
+        for (const id of aplicadosIds) delete next[id];
+        return next;
+      });
+      onApplied(); // refresca a lista da página por trás, mas NÃO fecha o diálogo
     } catch (e: any) {
       toast.error(e.message);
     } finally {
