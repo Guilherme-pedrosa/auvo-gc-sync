@@ -1025,9 +1025,8 @@ export default function EquipamentosPreventivosPage() {
 
       let tasks = (relByEq.get(eq.auvo_equipment_id || "") || [])
         .filter((t) => t.status_auvo === "Finalizada" && (t.data_conclusao || t.data_tarefa));
-      if (tipoTarefaFilter.length > 0) {
-        tasks = tasks.filter((t) => t.auvo_task_type_id && tipoTarefaFilter.includes(t.auvo_task_type_id));
-      }
+      const preventiveTypeIds = getPreventivaTaskTypeIds(tipoTarefaFilter);
+      tasks = tasks.filter((t) => t.auvo_task_type_id && preventiveTypeIds.includes(String(t.auvo_task_type_id)));
       tasks.sort((a, b) => {
         const da = a.data_conclusao || a.data_tarefa || "";
         const db = b.data_conclusao || b.data_tarefa || "";
