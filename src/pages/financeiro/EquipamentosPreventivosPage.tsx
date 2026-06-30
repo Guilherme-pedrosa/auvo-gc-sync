@@ -309,6 +309,8 @@ function buildEquipmentRows(
       override_horas_por_tecnico: eq.override_horas_por_tecnico,
       override_qtd_tecnicos: eq.override_qtd_tecnicos,
       override_periodicidade: eq.override_periodicidade,
+      proxima_data: null,
+      periodicidade_meses_plano: null,
     };
   }).sort((a, b) => {
     if (a.dias_desde === null && b.dias_desde === null) return 0;
