@@ -338,6 +338,44 @@ export default function EquipamentosPreventivosPage() {
     staleTime: 10 * 60 * 1000,
   });
 
+  const { data: tiposEquip = [] } = useQuery({
+    queryKey: ["tipos_equipamento_simple"],
+    queryFn: async () => {
+      const { data, error } = await (supabase as any)
+        .from("tipos_equipamento")
+        .select("id, nome, horas_por_tecnico, qtd_tecnicos, periodicidade")
+        .eq("ativo", true)
+        .order("nome");
+      if (error) throw error;
+      return data as Array<{ id: string; nome: string; horas_por_tecnico: number; qtd_tecnicos: number; periodicidade: string }>;
+    },
+    staleTime: 10 * 60 * 1000,
+  });
+
+  const tipoById = useMemo(() => {
+    const m = new Map<string, typeof tiposEquip[number]>();
+    for (const t of tiposEquip) m.set(t.id, t);
+    return m;
+  }, [tiposEquip]);
+
+  const handleSavePlano = useCallback(async (eqId: string, patch: {
+    tipo_id?: string | null;
+    override_horas_por_tecnico?: number | null;
+    override_qtd_tecnicos?: number | null;
+    override_periodicidade?: string | null;
+  }) => {
+    const { error } = await (supabase as any)
+      .from("equipamentos_auvo")
+      .update(patch)
+      .eq("id", eqId);
+    if (error) {
+      toast.error("Erro ao salvar plano: " + error.message);
+    } else {
+      toast.success("Plano atualizado");
+      queryClient.invalidateQueries({ queryKey: ["equipamentos-preventivos-raw"] });
+    }
+  }, [queryClient]);
+
   const grupoClienteMap = useMemo(() => {
     const map = new Map<string, Set<string>>();
     const grupos = gruposData?.grupos ?? [];
