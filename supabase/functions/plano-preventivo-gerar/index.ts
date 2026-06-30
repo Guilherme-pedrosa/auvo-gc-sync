@@ -149,12 +149,43 @@ Deno.serve(async (req) => {
 
     // ── contratos vigentes ─────────────────────────────────────────────────
     let htContratoMes = 0;
-    if (grupo_id) {
-      const { data: contratos } = await supabase
-        .from("contratos")
-        .select("horas_mes_contratadas, ativo, vigencia_inicio, vigencia_fim")
-        .eq("grupo_id", grupo_id).eq("ativo", true);
-      htContratoMes = (contratos || []).reduce((acc: number, c: any) => acc + (Number(c.horas_mes_contratadas) || 0), 0);
+    {
+      // Resolve grupos que abrangem o escopo (grupo direto ou grupos do cliente selecionado)
+      const grupoIds = new Set<string>();
+      if (grupo_id) grupoIds.add(grupo_id);
+      if (cliente_nome) {
+        const { data: memb } = await supabase
+          .from("grupo_cliente_membros")
+          .select("grupo_id")
+          .eq("cliente_nome", cliente_nome);
+        for (const m of (memb || [])) grupoIds.add((m as any).grupo_id);
+      }
+
+      const acc: any[] = [];
+      if (grupoIds.size > 0) {
+        const { data } = await supabase
+          .from("contratos")
+          .select("horas_mes_contratadas, ativo, cliente_nome, grupo_id")
+          .in("grupo_id", Array.from(grupoIds))
+          .eq("ativo", true);
+        acc.push(...(data || []));
+      }
+      if (cliente_nome) {
+        const { data } = await supabase
+          .from("contratos")
+          .select("horas_mes_contratadas, ativo, cliente_nome, grupo_id")
+          .eq("cliente_nome", cliente_nome)
+          .eq("ativo", true);
+        acc.push(...(data || []));
+      }
+      // dedupe (mesmo contrato pode aparecer 2x se bate por grupo e cliente)
+      const seen = new Set<string>();
+      htContratoMes = acc.reduce((sum: number, c: any) => {
+        const key = `${c.grupo_id || ""}|${c.cliente_nome || ""}|${c.horas_mes_contratadas || 0}`;
+        if (seen.has(key)) return sum;
+        seen.add(key);
+        return sum + (Number(c.horas_mes_contratadas) || 0);
+      }, 0);
     }
 
     // ── horas corretivas realizadas (ano) ──────────────────────────────────
