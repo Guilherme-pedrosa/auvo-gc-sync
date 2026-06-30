@@ -637,7 +637,7 @@ Deno.serve(async (req) => {
       const customerCache = new Map<number, string>();
       const customerIdList = Array.from(customerIds);
       console.log(`[equipment-sync] New customers to resolve: ${customerIdList.length}`);
-      const CUSTOMER_CONCURRENCY = 10;
+      const CUSTOMER_CONCURRENCY = 20;
       let resolved = 0;
       for (let i = 0; i < customerIdList.length; i += CUSTOMER_CONCURRENCY) {
         const batch = customerIdList.slice(i, i + CUSTOMER_CONCURRENCY);
