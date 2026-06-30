@@ -451,8 +451,18 @@ export default function EquipamentosPreventivosPage() {
 
   const equipments = useMemo(() => {
     if (!rawData) return [];
-    return buildEquipmentRows(rawData.equipamentos, rawData.relations ?? [], tipoTarefaFilter);
-  }, [rawData, tipoTarefaFilter]);
+    const rows = buildEquipmentRows(rawData.equipamentos, rawData.relations ?? [], tipoTarefaFilter);
+    if (planoProximas && planoProximas.size > 0) {
+      for (const r of rows) {
+        const p = r.auvo_equipment_id ? planoProximas.get(r.auvo_equipment_id) : null;
+        if (p) {
+          r.proxima_data = p.proxima_data;
+          r.periodicidade_meses_plano = p.periodicidade_meses;
+        }
+      }
+    }
+    return rows;
+  }, [rawData, tipoTarefaFilter, planoProximas]);
 
   const marcasUnicas = useMemo(() => {
     const set = new Set<string>();
