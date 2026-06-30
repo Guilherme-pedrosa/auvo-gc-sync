@@ -1168,6 +1168,7 @@ export default function EquipamentosPreventivosPage() {
                 <TableHead><SortButton field="cliente">Cliente</SortButton></TableHead>
                 <TableHead>Plano (tipo · HT · period.)</TableHead>
                 <TableHead>Última Intervenção</TableHead>
+                <TableHead>Próxima Preventiva</TableHead>
                 <TableHead>Técnico</TableHead>
                 <TableHead className="text-right"><SortButton field="dias">Dias</SortButton></TableHead>
                 <TableHead className="text-center">Tarefas</TableHead>
