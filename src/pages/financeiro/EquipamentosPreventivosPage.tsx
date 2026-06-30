@@ -471,7 +471,7 @@ export default function EquipamentosPreventivosPage() {
       if (error) throw error;
       return data as Array<{ id: string; nome: string; horas_por_tecnico: number; qtd_tecnicos: number; periodicidade: string }>;
     },
-    staleTime: 10 * 60 * 1000,
+    staleTime: 30 * 1000,
   });
 
   const { data: planoProximas } = useQuery({
