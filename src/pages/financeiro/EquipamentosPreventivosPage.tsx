@@ -84,6 +84,11 @@ type EquipmentRow = {
   dias_desde: number | null;
   tipo_tarefa: string | null;
   total_tarefas: number;
+  // Última intervenção de qualquer tipo (não filtrada por preventiva)
+  ultima_intervencao_data: string | null;
+  ultima_intervencao_tecnico: string | null;
+  ultima_intervencao_link: string | null;
+  ultima_intervencao_tipo: string | null;
   tipo_id: string | null;
   override_horas_por_tecnico: number | null;
   override_qtd_tecnicos: number | null;
@@ -311,12 +316,24 @@ function buildEquipmentRows(
 
   return equipamentos.map((eq) => {
     const eqId = eq.auvo_equipment_id || "";
-    let eqTasks = relByEquipment.get(eqId) || [];
+    const allEqTasks = relByEquipment.get(eqId) || [];
 
+    // Última intervenção: qualquer tipo de tarefa concluída
+    const allCompleted = allEqTasks.filter(t =>
+      t.status_auvo === "Finalizada" && (t.data_conclusao || t.data_tarefa)
+    ).sort((a, b) => {
+      const dateA = a.data_conclusao || a.data_tarefa || "";
+      const dateB = b.data_conclusao || b.data_tarefa || "";
+      return dateB.localeCompare(dateA);
+    });
+    const lastAnyTask = allCompleted[0] || null;
+    const ultimaIntervencaoData = lastAnyTask ? (lastAnyTask.data_conclusao || lastAnyTask.data_tarefa) : null;
+
+    // Última preventiva: filtra estritamente pelos tipos de preventiva
     const taskTypeIds = getPreventivaTaskTypeIds(tipoTarefaFilter);
-    eqTasks = eqTasks.filter(t => t.auvo_task_type_id && taskTypeIds.includes(String(t.auvo_task_type_id)));
+    const preventiveTasks = allEqTasks.filter(t => t.auvo_task_type_id && taskTypeIds.includes(String(t.auvo_task_type_id)));
 
-    const completedTasks = eqTasks.filter(t =>
+    const completedTasks = preventiveTasks.filter(t =>
       t.status_auvo === "Finalizada" && (t.data_conclusao || t.data_tarefa)
     );
 
@@ -345,6 +362,10 @@ function buildEquipmentRows(
       dias_desde: dias,
       tipo_tarefa: lastTask?.auvo_task_type_description || null,
       total_tarefas: completedTasks.length,
+      ultima_intervencao_data: ultimaIntervencaoData,
+      ultima_intervencao_tecnico: lastAnyTask?.tecnico || null,
+      ultima_intervencao_link: getTaskDigitalLink(lastAnyTask),
+      ultima_intervencao_tipo: lastAnyTask?.auvo_task_type_description || null,
       tipo_id: eq.tipo_id,
       override_horas_por_tecnico: eq.override_horas_por_tecnico,
       override_qtd_tecnicos: eq.override_qtd_tecnicos,
@@ -1332,6 +1353,7 @@ export default function EquipamentosPreventivosPage() {
                 <TableHead>Identificador</TableHead>
                 <TableHead><SortButton field="cliente">Cliente</SortButton></TableHead>
                 <TableHead>Plano (tipo · HT · period.)</TableHead>
+                <TableHead>Última Intervenção</TableHead>
                 <TableHead>Última Preventiva</TableHead>
                 <TableHead>Próxima Preventiva</TableHead>
                 <TableHead>Técnico</TableHead>
@@ -1343,7 +1365,7 @@ export default function EquipamentosPreventivosPage() {
             <TableBody>
               {filtered.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={13} className="text-center py-10 text-muted-foreground">
+                  <TableCell colSpan={14} className="text-center py-10 text-muted-foreground">
                     Nenhum equipamento encontrado
                   </TableCell>
                 </TableRow>
@@ -1442,6 +1464,32 @@ export default function EquipamentosPreventivosPage() {
                           tipoById={tipoById}
                           onSave={(patch) => handleSavePlano(eq.id, patch)}
                         />
+                      </TableCell>
+                      <TableCell>
+                        {eq.ultima_intervencao_data ? (
+                          eq.ultima_intervencao_link ? (
+                            <a
+                              href={eq.ultima_intervencao_link}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-sm font-medium hover:underline text-foreground"
+                              title={eq.ultima_intervencao_tipo || ""}
+                            >
+                              {format(parseISO(eq.ultima_intervencao_data), "dd/MM/yyyy", { locale: ptBR })}
+                            </a>
+                          ) : (
+                            <span className="text-sm" title={eq.ultima_intervencao_tipo || ""}>
+                              {format(parseISO(eq.ultima_intervencao_data), "dd/MM/yyyy", { locale: ptBR })}
+                            </span>
+                          )
+                        ) : (
+                          <span className="text-xs text-muted-foreground">—</span>
+                        )}
+                        {eq.ultima_intervencao_tipo && (
+                          <div className="text-[10px] text-muted-foreground truncate max-w-[140px]" title={eq.ultima_intervencao_tipo}>
+                            {eq.ultima_intervencao_tipo}
+                          </div>
+                        )}
                       </TableCell>
                       <TableCell>
                         {eq.ultima_data ? (
