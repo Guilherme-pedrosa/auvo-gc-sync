@@ -1207,6 +1207,14 @@ export default function EquipamentosPreventivosPage() {
                       <TableCell className="max-w-[200px] truncate" title={eq.cliente || ""}>
                         {eq.cliente || "—"}
                       </TableCell>
+                      <TableCell className="min-w-[220px]">
+                        <PlanoCell
+                          eq={eq}
+                          tipos={tiposEquip}
+                          tipoById={tipoById}
+                          onSave={(patch) => handleSavePlano(eq.id, patch)}
+                        />
+                      </TableCell>
                       <TableCell>
                         {eq.ultima_data ? (
                           eq.ultimo_link ? (
