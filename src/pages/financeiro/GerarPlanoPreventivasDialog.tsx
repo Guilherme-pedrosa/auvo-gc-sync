@@ -273,6 +273,8 @@ export default function GerarPlanoPreventivasDialog({
                     <TableHead className="text-right">Freq</TableHead>
                     <TableHead className="text-right">HT/ano</TableHead>
                     <TableHead>Meses</TableHead>
+                    <TableHead>Última prev.</TableHead>
+                    <TableHead>Base</TableHead>
                     <TableHead>Origem</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -288,6 +290,16 @@ export default function GerarPlanoPreventivasDialog({
                       <TableCell className="text-right">{i.freq}</TableCell>
                       <TableCell className="text-right">{i.ht_total_ano}</TableCell>
                       <TableCell className="text-xs">{i.meses_planejados.map((n: number) => MES_LABEL[n - 1]).join(", ")}</TableCell>
+                      <TableCell className="text-xs">
+                        {i.ultima_preventiva
+                          ? new Date(i.ultima_preventiva + "T00:00:00").toLocaleDateString("pt-BR")
+                          : <span className="text-muted-foreground">—</span>}
+                      </TableCell>
+                      <TableCell className="text-xs">
+                        {i.start_source === "ultima_preventiva" && <Badge className="bg-emerald-100 text-emerald-800 hover:bg-emerald-100">Última prev.</Badge>}
+                        {i.start_source === "plano_anterior" && <Badge variant="outline">Plano anterior</Badge>}
+                        {i.start_source === "leveling" && <Badge variant="secondary">Nivelamento</Badge>}
+                      </TableCell>
                       <TableCell className="text-xs">
                         {i.tipo_source === "override_manual" && <Badge variant="secondary">Override</Badge>}
                         {i.tipo_source === "tipo_atual" && <Badge variant="outline">Definido</Badge>}
