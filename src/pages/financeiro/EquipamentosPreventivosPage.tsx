@@ -31,10 +31,11 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
-import { FileText, Users } from "lucide-react";
+import { FileText, Users, Sparkles } from "lucide-react";
 import { Plus } from "lucide-react";
 import CriarTarefaAuvoDialog from "./CriarTarefaAuvoDialog";
 import ImportarPlanoExcelDialog from "./ImportarPlanoExcelDialog";
+import RevisarTiposIADialog from "./RevisarTiposIADialog";
 
 // ── Types ──
 type EquipmentRaw = {
@@ -442,6 +443,7 @@ export default function EquipamentosPreventivosPage() {
   const [pdfScope, setPdfScope] = useState<"selecionados" | "filtrados" | "feitos" | "atrasados" | "atencao_vencido" | "sem_registro">("filtrados");
   const [criarTarefaEq, setCriarTarefaEq] = useState<EquipmentRow | null>(null);
   const [importOpen, setImportOpen] = useState(false);
+  const [revisarIaOpen, setRevisarIaOpen] = useState(false);
 
   // Sync date range — defaults to last 1 month
   const defaultSyncStart = format(new Date(new Date().getFullYear(), new Date().getMonth() - 1, 1), "yyyy-MM-dd");
@@ -1358,6 +1360,9 @@ export default function EquipamentosPreventivosPage() {
           <Button variant="outline" size="sm" onClick={() => setImportOpen(true)}>
             <Download className="h-4 w-4 mr-1 rotate-180" /> Importar plano (Excel)
           </Button>
+          <Button variant="outline" size="sm" onClick={() => setRevisarIaOpen(true)} className="border-violet-300 text-violet-700 hover:bg-violet-50">
+            <Sparkles className="h-4 w-4 mr-1" /> Revisar tipos (IA)
+          </Button>
           <div className="flex items-center gap-2 bg-muted/50 border rounded-lg px-3 py-1.5">
             <CalendarDays className="h-4 w-4 text-muted-foreground" />
             <Popover>
@@ -1996,6 +2001,15 @@ export default function EquipamentosPreventivosPage() {
         onOpenChange={setImportOpen}
         grupos={gruposData?.grupos ?? []}
         onImported={() => {
+          queryClient.invalidateQueries({ queryKey: ["preventiva-equipamentos"] });
+        }}
+      />
+      <RevisarTiposIADialog
+        open={revisarIaOpen}
+        onOpenChange={setRevisarIaOpen}
+        grupos={gruposData?.grupos ?? []}
+        clientes={Array.from(new Set(equipments.map((e) => e.cliente).filter(Boolean))).sort()}
+        onApplied={() => {
           queryClient.invalidateQueries({ queryKey: ["preventiva-equipamentos"] });
         }}
       />
