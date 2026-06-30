@@ -279,6 +279,7 @@ function ContratoDialog({
   const [taxa, setTaxa] = useState(String(((c?.taxa_comissao_servico ?? 0.15) * 100).toFixed(2)));
   const [taxaPeca, setTaxaPeca] = useState(String(((c?.taxa_comissao_peca ?? 0.02) * 100).toFixed(2)));
   const [prevHora, setPrevHora] = useState(String(c?.premiacao_preventiva_hora ?? ""));
+  const [horasMes, setHorasMes] = useState(String(c?.horas_mes_contratadas ?? ""));
   const [vigIni, setVigIni] = useState(c?.vigencia_inicio || "");
   const [vigFim, setVigFim] = useState(c?.vigencia_fim || "");
   const [ativo, setAtivo] = useState(c?.ativo ?? true);
@@ -313,6 +314,7 @@ function ContratoDialog({
         taxa_comissao_servico: (parseFloat(taxa.replace(",", ".")) || 0) / 100,
         taxa_comissao_peca: (parseFloat(taxaPeca.replace(",", ".")) || 0) / 100,
         premiacao_preventiva_hora: parseFloat(prevHora.replace(",", ".")) || 0,
+        horas_mes_contratadas: horasMes ? (parseFloat(horasMes.replace(",", ".")) || null) : null,
         vigencia_inicio: vigIni || null,
         vigencia_fim: vigFim || null,
         ativo,
@@ -345,6 +347,7 @@ function ContratoDialog({
         setValorHora(String(c?.valor_hora ?? "")); setTaxa(String(((c?.taxa_comissao_servico ?? 0.15) * 100).toFixed(2)));
         setTaxaPeca(String(((c?.taxa_comissao_peca ?? 0.02) * 100).toFixed(2)));
         setPrevHora(String(c?.premiacao_preventiva_hora ?? ""));
+        setHorasMes(String(c?.horas_mes_contratadas ?? ""));
         setVigIni(c?.vigencia_inicio || ""); setVigFim(c?.vigencia_fim || "");
         setAtivo(c?.ativo ?? true); setObs(c?.observacao || "");
       }
@@ -395,6 +398,11 @@ function ContratoDialog({
           <div>
             <Label>Premiação por hora de preventiva (R$)</Label>
             <Input value={prevHora} onChange={(e) => setPrevHora(e.target.value)} placeholder="0,00" />
+          </div>
+          <div>
+            <Label>Banco de horas mensal contratado (h)</Label>
+            <Input value={horasMes} onChange={(e) => setHorasMes(e.target.value)} placeholder="Ex: 60" />
+            <p className="text-xs text-muted-foreground mt-1">Usado como teto para calcular saldo do mês no Plano Preventivo.</p>
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div><Label>Vigência início</Label><Input type="date" value={vigIni} onChange={(e) => setVigIni(e.target.value)} /></div>
