@@ -36,6 +36,7 @@ import { Plus } from "lucide-react";
 import CriarTarefaAuvoDialog from "./CriarTarefaAuvoDialog";
 import ImportarPlanoExcelDialog from "./ImportarPlanoExcelDialog";
 import RevisarTiposIADialog from "./RevisarTiposIADialog";
+import GerarPlanoPreventivasDialog from "./GerarPlanoPreventivasDialog";
 
 // ── Types ──
 type EquipmentRaw = {
@@ -444,6 +445,7 @@ export default function EquipamentosPreventivosPage() {
   const [criarTarefaEq, setCriarTarefaEq] = useState<EquipmentRow | null>(null);
   const [importOpen, setImportOpen] = useState(false);
   const [revisarIaOpen, setRevisarIaOpen] = useState(false);
+  const [gerarOpen, setGerarOpen] = useState(false);
 
   // Sync date range — defaults to last 1 month
   const defaultSyncStart = format(new Date(new Date().getFullYear(), new Date().getMonth() - 1, 1), "yyyy-MM-dd");
