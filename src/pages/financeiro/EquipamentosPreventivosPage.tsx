@@ -1331,7 +1331,7 @@ export default function EquipamentosPreventivosPage() {
                 <TableHead>Identificador</TableHead>
                 <TableHead><SortButton field="cliente">Cliente</SortButton></TableHead>
                 <TableHead>Plano (tipo · HT · period.)</TableHead>
-                <TableHead>Última Intervenção</TableHead>
+                <TableHead>Última Preventiva</TableHead>
                 <TableHead>Próxima Preventiva</TableHead>
                 <TableHead>Técnico</TableHead>
                 <TableHead className="text-right"><SortButton field="dias">Dias</SortButton></TableHead>
