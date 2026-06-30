@@ -2004,6 +2004,15 @@ export default function EquipamentosPreventivosPage() {
           queryClient.invalidateQueries({ queryKey: ["preventiva-equipamentos"] });
         }}
       />
+      <RevisarTiposIADialog
+        open={revisarIaOpen}
+        onOpenChange={setRevisarIaOpen}
+        grupos={gruposData?.grupos ?? []}
+        clientes={Array.from(new Set(equipments.map((e) => e.cliente).filter(Boolean))).sort()}
+        onApplied={() => {
+          queryClient.invalidateQueries({ queryKey: ["preventiva-equipamentos"] });
+        }}
+      />
     </div>
   );
 }
