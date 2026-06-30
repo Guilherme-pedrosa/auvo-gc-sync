@@ -170,7 +170,7 @@ async function fetchRawData(): Promise<{ equipamentos: EquipmentRaw[]; relations
   while (true) {
     const { data, error } = await supabase
       .from("equipamentos_auvo")
-      .select("id, auvo_equipment_id, nome, identificador, cliente, status, categoria, descricao, marca, marca_source, marca_manual_override")
+      .select("id, auvo_equipment_id, nome, identificador, cliente, status, categoria, descricao, marca, marca_source, marca_manual_override, tipo_id, override_horas_por_tecnico, override_qtd_tecnicos, override_periodicidade")
       .eq("status", "Ativo")
       .order("nome")
       .range(eqFrom, eqFrom + EQ_PAGE - 1);
@@ -275,6 +275,10 @@ function buildEquipmentRows(
       dias_desde: dias,
       tipo_tarefa: lastTask?.auvo_task_type_description || null,
       total_tarefas: completedTasks.length,
+      tipo_id: eq.tipo_id,
+      override_horas_por_tecnico: eq.override_horas_por_tecnico,
+      override_qtd_tecnicos: eq.override_qtd_tecnicos,
+      override_periodicidade: eq.override_periodicidade,
     };
   }).sort((a, b) => {
     if (a.dias_desde === null && b.dias_desde === null) return 0;
