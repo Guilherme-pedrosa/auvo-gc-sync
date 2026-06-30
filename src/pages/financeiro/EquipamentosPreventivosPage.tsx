@@ -36,6 +36,7 @@ import { Plus } from "lucide-react";
 import CriarTarefaAuvoDialog from "./CriarTarefaAuvoDialog";
 import ImportarPlanoExcelDialog from "./ImportarPlanoExcelDialog";
 import RevisarTiposIADialog from "./RevisarTiposIADialog";
+import GerarPlanoPreventivasDialog from "./GerarPlanoPreventivasDialog";
 
 // ── Types ──
 type EquipmentRaw = {
@@ -444,6 +445,7 @@ export default function EquipamentosPreventivosPage() {
   const [criarTarefaEq, setCriarTarefaEq] = useState<EquipmentRow | null>(null);
   const [importOpen, setImportOpen] = useState(false);
   const [revisarIaOpen, setRevisarIaOpen] = useState(false);
+  const [gerarOpen, setGerarOpen] = useState(false);
 
   // Sync date range — defaults to last 1 month
   const defaultSyncStart = format(new Date(new Date().getFullYear(), new Date().getMonth() - 1, 1), "yyyy-MM-dd");
@@ -1363,6 +1365,9 @@ export default function EquipamentosPreventivosPage() {
           <Button variant="outline" size="sm" onClick={() => setRevisarIaOpen(true)} className="border-violet-300 text-violet-700 hover:bg-violet-50">
             <Sparkles className="h-4 w-4 mr-1" /> Revisar tipos (IA)
           </Button>
+          <Button variant="outline" size="sm" onClick={() => setGerarOpen(true)} className="border-emerald-300 text-emerald-700 hover:bg-emerald-50">
+            <Sparkles className="h-4 w-4 mr-1" /> Gerar plano de preventivas
+          </Button>
           <div className="flex items-center gap-2 bg-muted/50 border rounded-lg px-3 py-1.5">
             <CalendarDays className="h-4 w-4 text-muted-foreground" />
             <Popover>
@@ -2012,6 +2017,12 @@ export default function EquipamentosPreventivosPage() {
         onApplied={() => {
           queryClient.invalidateQueries({ queryKey: ["preventiva-equipamentos"] });
         }}
+      />
+      <GerarPlanoPreventivasDialog
+        open={gerarOpen}
+        onOpenChange={setGerarOpen}
+        grupos={gruposData?.grupos ?? []}
+        clientes={Array.from(new Set(equipments.map((e) => e.cliente).filter(Boolean))).sort() as string[]}
       />
     </div>
   );
