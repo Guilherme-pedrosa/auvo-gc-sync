@@ -1463,7 +1463,7 @@ export default function EquipamentosPreventivosPage() {
             { value: "atenção", label: "🟡 Atenção" },
             { value: "vencido", label: "🔴 Vencido" },
             { value: "sem registro", label: "⏳ Sem histórico" },
-          ]}
+          ].filter((o) => statusFilter.includes(o.value) || statusDisponiveis.has(o.value))}
           placeholder="Status"
           searchPlaceholder="Buscar status..."
           className="w-[150px]"
@@ -1475,8 +1475,11 @@ export default function EquipamentosPreventivosPage() {
           value={marcaFilter}
           onValueChange={setMarcaFilter}
           options={[
-            { value: "__sem_marca__", label: "⚠️ Não identificada" },
+            ...(marcaFilter.includes("__sem_marca__") || equipments.some((e) => !e.marca && passesFilters(e, new Set(["marca"])))
+              ? [{ value: "__sem_marca__", label: "⚠️ Não identificada" }]
+              : []),
             ...marcasUnicas.map((m) => ({ value: m, label: m })),
+            ...marcaFilter.filter((v) => v !== "__sem_marca__" && !marcasUnicas.includes(v)).map((v) => ({ value: v, label: v })),
           ]}
           placeholder="Marca"
           searchPlaceholder="Buscar marca..."
@@ -1487,7 +1490,7 @@ export default function EquipamentosPreventivosPage() {
           multiple
           value={clienteFilter}
           onValueChange={setClienteFilter}
-          options={clientes.map((c) => ({ value: c, label: c }))}
+          options={Array.from(new Set([...clientes, ...clienteFilter])).sort().map((c) => ({ value: c, label: c }))}
           placeholder="Cliente"
           searchPlaceholder="Buscar cliente..."
           className="w-[200px]"
@@ -1498,7 +1501,9 @@ export default function EquipamentosPreventivosPage() {
           onValueChange={setGrupoFilter}
           options={[
             { value: "todos", label: "Todos os grupos" },
-            ...((gruposData?.grupos ?? []).map((g: any) => ({ value: g.id, label: g.nome }))),
+            ...((gruposData?.grupos ?? [])
+              .filter((g: any) => g.id === grupoFilter || gruposDisponiveis.has(g.id))
+              .map((g: any) => ({ value: g.id, label: g.nome }))),
           ]}
           placeholder="Grupo"
           searchPlaceholder="Buscar grupo..."
@@ -1522,8 +1527,12 @@ export default function EquipamentosPreventivosPage() {
           value={tipoEquipFilter}
           onValueChange={setTipoEquipFilter}
           options={[
-            { value: "__sem_tipo__", label: "⏳ Sem tipo" },
-            ...tiposEquip.map((t) => ({ value: t.id, label: t.nome })),
+            ...(tipoEquipFilter.includes("__sem_tipo__") || tiposEquipDisponiveis.hasSemTipo
+              ? [{ value: "__sem_tipo__", label: "⏳ Sem tipo" }]
+              : []),
+            ...tiposEquip
+              .filter((t) => tipoEquipFilter.includes(t.id) || tiposEquipDisponiveis.ids.has(t.id))
+              .map((t) => ({ value: t.id, label: t.nome })),
           ]}
           placeholder="Tipo de Equipamento"
           searchPlaceholder="Buscar tipo..."
@@ -1545,11 +1554,20 @@ export default function EquipamentosPreventivosPage() {
               const label = format(d, "MMM/yyyy", { locale: ptBR });
               months.push({ value, label: label.charAt(0).toUpperCase() + label.slice(1) });
             }
-            return [
-              { value: "atrasado", label: "🔴 Atrasadas" },
-              { value: "sem_plano", label: "⏳ Sem plano" },
-              ...months,
-            ];
+            const base: { value: string; label: string }[] = [];
+            if (proximaMesFilter.includes("atrasado") || proxMesDisponiveis.hasAtrasado)
+              base.push({ value: "atrasado", label: "🔴 Atrasadas" });
+            if (proximaMesFilter.includes("sem_plano") || proxMesDisponiveis.hasSemPlano)
+              base.push({ value: "sem_plano", label: "⏳ Sem plano" });
+            const mesesFiltered = months.filter(
+              (m) => proximaMesFilter.includes(m.value) || proxMesDisponiveis.meses.has(m.value)
+            );
+            // inclui meses fora da janela padrão mas que estão presentes nos dados/seleção
+            const extras = Array.from(proxMesDisponiveis.meses)
+              .filter((v) => !months.some((m) => m.value === v))
+              .sort()
+              .map((v) => ({ value: v, label: v }));
+            return [...base, ...mesesFiltered, ...extras];
           })()}
           placeholder="Próx. preventiva (mês)"
           searchPlaceholder="Buscar mês..."
