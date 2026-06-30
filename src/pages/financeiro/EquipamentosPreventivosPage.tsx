@@ -1365,8 +1365,7 @@ export default function EquipamentosPreventivosPage() {
             <TableBody>
               {filtered.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={13} className="text-center py-10 text-muted-foreground">
-                    {/* colSpan ajustado abaixo */}
+                  <TableCell colSpan={14} className="text-center py-10 text-muted-foreground">
                     Nenhum equipamento encontrado
                   </TableCell>
                 </TableRow>
