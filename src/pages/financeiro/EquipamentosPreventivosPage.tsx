@@ -1298,6 +1298,30 @@ export default function EquipamentosPreventivosPage() {
                           <span className="text-xs text-muted-foreground">Sem histórico</span>
                         )}
                       </TableCell>
+                      <TableCell>
+                        {eq.proxima_data ? (() => {
+                          const dt = parseISO(eq.proxima_data);
+                          const diasAte = differenceInDays(dt, new Date());
+                          const cls = diasAte < 0
+                            ? "text-red-700 dark:text-red-400 font-semibold"
+                            : diasAte <= 30
+                              ? "text-amber-700 dark:text-amber-400 font-medium"
+                              : "text-emerald-700 dark:text-emerald-400";
+                          return (
+                            <div className="flex flex-col">
+                              <span className={cn("text-sm", cls)}>
+                                {format(dt, "dd/MM/yyyy", { locale: ptBR })}
+                              </span>
+                              <span className="text-[10px] text-muted-foreground">
+                                {diasAte < 0 ? `${Math.abs(diasAte)}d atrasada` : `em ${diasAte}d`}
+                                {eq.periodicidade_meses_plano ? ` · a cada ${eq.periodicidade_meses_plano}m` : ""}
+                              </span>
+                            </div>
+                          );
+                        })() : (
+                          <span className="text-xs text-muted-foreground italic">Sem plano</span>
+                        )}
+                      </TableCell>
                       <TableCell className="text-sm">{eq.ultimo_tecnico || "—"}</TableCell>
                       <TableCell className="text-right">
                         {eq.dias_desde !== null ? (
