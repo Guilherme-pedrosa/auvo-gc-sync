@@ -1534,6 +1534,21 @@ export default function EquipamentosPreventivosPage() {
                             <ExternalLink className="h-4 w-4 text-muted-foreground hover:text-primary" />
                           </a>
                         )}
+                        {eq.auvo_equipment_id && (
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-7 w-7 ml-1"
+                                onClick={() => setCriarTarefaEq(eq)}
+                              >
+                                <Plus className="h-4 w-4 text-primary" />
+                              </Button>
+                            </TooltipTrigger>
+                            <TooltipContent>Criar tarefa no Auvo</TooltipContent>
+                          </Tooltip>
+                        )}
                       </TableCell>
                     </TableRow>
                   );
