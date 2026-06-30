@@ -918,21 +918,69 @@ export default function EquipamentosPreventivosPage() {
     };
 
     const sep = ";";
-    const headers = ["Status", "Marca", "Equipamento", "Identificador", "Cliente", "Última Preventiva", "Técnico", "Dias desde última", "Tipo Tarefa", "Total Tarefas"];
+    // Mapa cliente normalizado -> nome do grupo
+    const clienteGrupoNome = new Map<string, string>();
+    for (const g of (gruposData?.grupos ?? []) as Array<{ id: string; nome: string }>) {
+      const members = grupoClienteMap.get(g.id);
+      if (!members) continue;
+      for (const c of members) clienteGrupoNome.set(c, g.nome);
+    }
+
+    const headers = [
+      "Status",
+      "Grupo",
+      "Cliente",
+      "Marca",
+      "Equipamento",
+      "Identificador",
+      "Tipo de Equipamento",
+      "Periodicidade (plano)",
+      "Periodicidade (meses)",
+      "HT por Técnico (plano)",
+      "Qtd Técnicos (plano)",
+      "Última Preventiva",
+      "Técnico Última Preventiva",
+      "Tipo Tarefa Preventiva",
+      "Dias desde última preventiva",
+      "Última Intervenção (qualquer tipo)",
+      "Técnico Última Intervenção",
+      "Tipo Última Intervenção",
+      "Próxima Preventiva",
+      "Próxima Calculada?",
+      "Total Tarefas",
+    ];
     const lines: string[] = [headers.join(sep)];
 
     for (const eq of filtered) {
       const info = getStatusInfo(eq.dias_desde);
+      const tipo = eq.tipo_id ? tipoById.get(eq.tipo_id) : null;
+      const periodicidade = eq.override_periodicidade ?? tipo?.periodicidade ?? "";
+      const periodicidadeMeses = eq.periodicidade_meses_plano ?? (periodicidade ? periodicidadeToMesesOrNull(periodicidade) : null);
+      const ht = eq.override_horas_por_tecnico ?? tipo?.horas_por_tecnico ?? null;
+      const qtd = eq.override_qtd_tecnicos ?? tipo?.qtd_tecnicos ?? null;
+      const grupoNome = eq.cliente ? (clienteGrupoNome.get(normalizeClienteName(eq.cliente)) || "") : "";
+
       lines.push([
         escCsv(info.label),
+        escCsv(grupoNome),
+        escCsv(eq.cliente),
         escCsv(eq.marca || "Não identificada"),
         escCsv(eq.nome),
         escCsv(eq.identificador),
-        escCsv(eq.cliente),
+        escCsv(tipo?.nome || "Sem tipo"),
+        escCsv(periodicidade),
+        periodicidadeMeses != null ? String(periodicidadeMeses) : "",
+        ht != null ? String(ht) : "",
+        qtd != null ? String(qtd) : "",
         eq.ultima_data ? format(parseISO(eq.ultima_data), "dd/MM/yyyy") : "",
         escCsv(eq.ultimo_tecnico),
-        eq.dias_desde != null ? String(eq.dias_desde) : "",
         escCsv(eq.tipo_tarefa),
+        eq.dias_desde != null ? String(eq.dias_desde) : "",
+        eq.ultima_intervencao_data ? format(parseISO(eq.ultima_intervencao_data), "dd/MM/yyyy") : "",
+        escCsv(eq.ultima_intervencao_tecnico),
+        escCsv(eq.ultima_intervencao_tipo),
+        eq.proxima_data ? format(parseISO(eq.proxima_data), "dd/MM/yyyy") : "",
+        eq.proxima_data ? (eq.proxima_data_calculada ? "Sim" : "Não") : "",
         String(eq.total_tarefas ?? 0),
       ].join(sep));
     }
