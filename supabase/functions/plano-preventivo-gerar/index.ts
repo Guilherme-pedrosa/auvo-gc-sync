@@ -386,14 +386,25 @@ Deno.serve(async (req) => {
 
     const tabela_meses = Array.from({ length: 12 }, (_, i) => {
       const m = i + 1;
+      const prev = monthly[m];
+      const corrReal = corretivasMes[m];
+      // Nunca deixar saldo negativo: se faltar hora, desconta da corretiva exibida
+      const espacoAposPrev = Math.max(0, htContratoMes - prev);
+      const corrEfetiva = Math.min(corrReal, espacoAposPrev);
       return {
         mes: m,
-        ht_preventiva: Number(monthly[m].toFixed(2)),
-        ht_corretiva: Number(corretivasMes[m].toFixed(2)),
+        ht_preventiva: Number(prev.toFixed(2)),
+        ht_corretiva: Number(corrEfetiva.toFixed(2)),
+        ht_corretiva_realizada: Number(corrReal.toFixed(2)),
+        ht_corretiva_excedente: Number(Math.max(0, corrReal - corrEfetiva).toFixed(2)),
         ht_contrato: htContratoMes,
-        saldo: Number((htContratoMes - monthly[m] - corretivasMes[m]).toFixed(2)),
+        saldo: Number(Math.max(0, htContratoMes - prev - corrEfetiva).toFixed(2)),
       };
     });
+
+    const corretivasEfetivasAno = tabela_meses.reduce((a, b) => a + b.ht_corretiva, 0);
+    const corretivasExcedenteAno = tabela_meses.reduce((a, b) => a + b.ht_corretiva_excedente, 0);
+    const saldoAno = tabela_meses.reduce((a, b) => a + b.saldo, 0);
 
     const resumo = {
       total_equipamentos: items.length,
@@ -406,8 +417,10 @@ Deno.serve(async (req) => {
       ht_contrato_mes: htContratoMes,
       ht_contrato_ano: htContratoAno,
       ht_agenda_ano: Number(htAgendaAno.toFixed(2)),
-      ht_corretiva_ano: Number(corretivasAno.toFixed(2)),
-      saldo_ano: Number((htContratoAno - htAgendaAno - corretivasAno).toFixed(2)),
+      ht_corretiva_ano: Number(corretivasEfetivasAno.toFixed(2)),
+      ht_corretiva_realizada_ano: Number(corretivasAno.toFixed(2)),
+      ht_corretiva_excedente_ano: Number(corretivasExcedenteAno.toFixed(2)),
+      saldo_ano: Number(saldoAno.toFixed(2)),
       pico_mes: Math.max(...monthly.slice(1)),
       vale_mes: Math.min(...monthly.slice(1)),
     };
