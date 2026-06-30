@@ -1436,6 +1436,20 @@ export default function EquipamentosPreventivosPage() {
 
         <SearchableSelect
           multiple
+          value={tipoEquipFilter}
+          onValueChange={setTipoEquipFilter}
+          options={[
+            { value: "__sem_tipo__", label: "⏳ Sem tipo" },
+            ...tiposEquip.map((t) => ({ value: t.id, label: t.nome })),
+          ]}
+          placeholder="Tipo de Equipamento"
+          searchPlaceholder="Buscar tipo..."
+          className="w-[240px]"
+          icon={<ListFilter className="h-4 w-4" />}
+        />
+
+        <SearchableSelect
+          multiple
           value={proximaMesFilter}
           onValueChange={setProximaMesFilter}
           options={(() => {
