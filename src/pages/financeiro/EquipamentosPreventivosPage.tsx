@@ -1365,6 +1365,9 @@ export default function EquipamentosPreventivosPage() {
           <Button variant="outline" size="sm" onClick={() => setRevisarIaOpen(true)} className="border-violet-300 text-violet-700 hover:bg-violet-50">
             <Sparkles className="h-4 w-4 mr-1" /> Revisar tipos (IA)
           </Button>
+          <Button variant="outline" size="sm" onClick={() => setGerarOpen(true)} className="border-emerald-300 text-emerald-700 hover:bg-emerald-50">
+            <Sparkles className="h-4 w-4 mr-1" /> Gerar plano de preventivas
+          </Button>
           <div className="flex items-center gap-2 bg-muted/50 border rounded-lg px-3 py-1.5">
             <CalendarDays className="h-4 w-4 text-muted-foreground" />
             <Popover>
