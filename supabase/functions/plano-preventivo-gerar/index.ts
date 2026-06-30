@@ -193,25 +193,40 @@ Deno.serve(async (req) => {
     const yearEnd = `${ano_referencia}-12-31`;
     const PREV_TYPES = new Set(["180175", "180176"]);
     const corretivasMes: number[] = Array(13).fill(0);
+    // Última preventiva por equipamento (auvo_equipment_id → último ISO date)
+    const lastPrevByAuvoId = new Map<string, string>();
     {
       const PAGE = 1000;
       let from = 0;
+      // janela: últimos 24 meses até o fim do ano de referência (para pegar última prev mesmo antiga)
+      const histStart = `${ano_referencia - 2}-01-01`;
       while (true) {
         const { data, error } = await supabase
           .from("equipamento_tarefas_auvo")
-          .select("auvo_task_type_id, data_tarefa, data_conclusao, cliente")
-          .gte("data_tarefa", yearStart).lte("data_tarefa", yearEnd)
+          .select("auvo_task_type_id, data_tarefa, data_conclusao, cliente, auvo_equipment_id")
+          .gte("data_tarefa", histStart).lte("data_tarefa", yearEnd)
           .order("data_tarefa", { ascending: true })
           .range(from, from + PAGE - 1);
         if (error) throw error;
         const batch = data || [];
         for (const t of batch) {
-          if (PREV_TYPES.has(String(t.auvo_task_type_id ?? ""))) continue;
           if (clientesNorm.size > 0 && !clientesNorm.has(normalizeKey(t.cliente))) continue;
           const d = t.data_conclusao || t.data_tarefa;
           if (!d) continue;
-          const m = Number(String(d).slice(5, 7));
-          if (m >= 1 && m <= 12) corretivasMes[m] += 2; // estimativa: 2h por corretiva
+          const isPrev = PREV_TYPES.has(String(t.auvo_task_type_id ?? ""));
+          if (isPrev) {
+            const eq = String(t.auvo_equipment_id ?? "");
+            if (eq) {
+              const cur = lastPrevByAuvoId.get(eq);
+              if (!cur || String(d) > cur) lastPrevByAuvoId.set(eq, String(d));
+            }
+          } else {
+            // corretiva: só conta dentro do ano de referência
+            if (String(d) >= yearStart && String(d) <= yearEnd) {
+              const m = Number(String(d).slice(5, 7));
+              if (m >= 1 && m <= 12) corretivasMes[m] += 2; // estimativa: 2h por corretiva
+            }
+          }
         }
         if (batch.length < PAGE) break;
         from += PAGE;
@@ -288,6 +303,10 @@ Deno.serve(async (req) => {
         freq,
         ht_total_ano: ht_ocor * freq,
         keyword_match: keywordMatch,
+        // @ts-ignore – campos adicionais
+        auvo_equipment_id: e.auvo_equipment_id ?? null,
+        // @ts-ignore
+        ultima_preventiva: lastPrevByAuvoId.get(String(e.auvo_equipment_id ?? "")) ?? null,
       });
     }
 
@@ -310,14 +329,34 @@ Deno.serve(async (req) => {
       (b.freq - a.freq),
     );
     const monthly: number[] = Array(13).fill(0); // 1..12
-    const itemsScheduled: Array<RowItem & { mes_inicio: number; meses: number[] }> = [];
+    const itemsScheduled: Array<RowItem & { mes_inicio: number; meses: number[]; start_source: string; ultima_preventiva: string | null }> = [];
     for (const it of ordered) {
-      // preserve previous start if periodicidade matches
+      // 1) preservar plano anterior; 2) calcular a partir da última preventiva; 3) bin-packing
       const prev = startByCb.get(it.codigo_barras_auvo);
+      // @ts-ignore
+      const ultimaPrev: string | null = (it as any).ultima_preventiva ?? null;
       let bestStart = 1;
       let bestScore = Infinity;
+      let startSource = "leveling";
       if (prev && prev.per === it.periodicidade && prev.mes >= 1 && prev.mes <= it.step) {
         bestStart = prev.mes;
+        startSource = "plano_anterior";
+      } else if (ultimaPrev) {
+        // próxima ocorrência = ultima + step meses; alinhar dentro do ano de referência
+        const y = Number(ultimaPrev.slice(0, 4));
+        const m = Number(ultimaPrev.slice(5, 7));
+        // total de meses desde jan/ano_ref até a última preventiva (pode ser negativo se já no ano)
+        let nextAbs = y * 12 + (m - 1) + it.step; // 0-based absolute month index for next due
+        const refStartAbs = ano_referencia * 12; // janeiro do ano de referência
+        const refEndAbs = refStartAbs + 11;
+        // avançar/retroceder em múltiplos de step até cair no ano de referência (ou o mais próximo)
+        while (nextAbs < refStartAbs) nextAbs += it.step;
+        while (nextAbs > refEndAbs) nextAbs -= it.step;
+        if (nextAbs < refStartAbs) nextAbs += it.step; // safety
+        const firstMonthInYear = (nextAbs % 12) + 1; // 1..12
+        // start é o primeiro mês do ciclo dentro de 1..step que gera ocorrência em firstMonthInYear
+        bestStart = ((firstMonthInYear - 1) % it.step) + 1;
+        startSource = "ultima_preventiva";
       } else {
         for (let s = 1; s <= it.step; s++) {
           const meses = monthsForPlan(it.step, s);
@@ -337,7 +376,7 @@ Deno.serve(async (req) => {
       }
       const meses = monthsForPlan(it.step, bestStart);
       for (const m of meses) monthly[m] += it.ht_por_ocorrencia;
-      itemsScheduled.push({ ...it, mes_inicio: bestStart, meses });
+      itemsScheduled.push({ ...it, mes_inicio: bestStart, meses, start_source: startSource, ultima_preventiva: ultimaPrev });
     }
 
     // ── balances ──────────────────────────────────────────────────────────
@@ -393,6 +432,8 @@ Deno.serve(async (req) => {
         ht_total_ano: Number(it.ht_total_ano.toFixed(2)),
         mes_inicio_ciclo: it.mes_inicio,
         meses_planejados: it.meses,
+        ultima_preventiva: it.ultima_preventiva,
+        start_source: it.start_source,
       }));
 
       if (mode === "export") {
