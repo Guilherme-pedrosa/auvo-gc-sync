@@ -1711,6 +1711,15 @@ function PlanoCell({ eq, tipos, tipoById, onSave }: PlanoCellProps) {
   const [qtdStr, setQtdStr] = useState<string>(qtdResolved != null ? String(qtdResolved) : "");
   const [perSel, setPerSel] = useState<string>(perResolved ?? "");
   const [saving, setSaving] = useState(false);
+  const [tipoSearch, setTipoSearch] = useState<string>("");
+
+  const norm = (s: string) => (s || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+  const tiposFiltrados = tipoSearch.trim()
+    ? tipos.filter((t) => {
+        const q = norm(tipoSearch);
+        return norm(t.nome).includes(q) || norm(t.periodicidade || "").includes(q);
+      })
+    : tipos;
 
   const reset = () => {
     const t = eq.tipo_id ? tipoById.get(eq.tipo_id) : null;
@@ -1782,11 +1791,20 @@ function PlanoCell({ eq, tipos, tipoById, onSave }: PlanoCellProps) {
       <PopoverContent className="w-80 space-y-3" align="start">
         <div>
           <Label className="text-xs">Tipo ({tipos.length} cadastrados)</Label>
+          <Input
+            value={tipoSearch}
+            onChange={(e) => setTipoSearch(e.target.value)}
+            placeholder="Pesquisar tipo..."
+            className="h-8 text-xs mb-1"
+          />
           <Select value={tipoSel || "__none__"} onValueChange={(v) => handleTipoChange(v === "__none__" ? "" : v)}>
             <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="— Selecionar tipo —" /></SelectTrigger>
             <SelectContent className="max-h-72 z-[200]">
               <SelectItem value="__none__" className="text-xs italic">— Sem tipo —</SelectItem>
-              {tipos.map((t) => (
+              {tiposFiltrados.length === 0 && (
+                <div className="px-2 py-1.5 text-[11px] text-muted-foreground italic">Nenhum tipo encontrado</div>
+              )}
+              {tiposFiltrados.map((t) => (
                 <SelectItem key={t.id} value={t.id} className="text-xs">
                   {t.nome} <span className="text-muted-foreground">· {Number(t.horas_por_tecnico).toFixed(2)}h × {t.qtd_tecnicos} · {t.periodicidade}</span>
                 </SelectItem>
