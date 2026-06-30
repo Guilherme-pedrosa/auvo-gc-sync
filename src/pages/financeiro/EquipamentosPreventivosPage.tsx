@@ -2,7 +2,7 @@ import { useState, useMemo, useCallback } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useNavigate } from "react-router-dom";
-import { format, differenceInDays, parseISO } from "date-fns";
+import { addMonths, format, differenceInDays, parseISO } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
@@ -96,6 +96,7 @@ type EquipmentRow = {
   override_qtd_tecnicos: number | null;
   override_periodicidade: string | null;
   proxima_data?: string | null;
+  proxima_data_calculada?: boolean;
   periodicidade_meses_plano?: number | null;
   ultima_execucao_task_id?: string | null;
 };
@@ -125,6 +126,26 @@ function periodicidadeToMeses(per: string | null | undefined): number {
     case "SEMESTRAL": return 6;
     case "ANUAL": return 12;
     default: return 3;
+  }
+}
+
+function periodicidadeToMesesOrNull(per: string | null | undefined): number | null {
+  const normalized = (per || "").toUpperCase().trim();
+  if (!normalized || normalized === "FILA") return null;
+  return periodicidadeToMeses(normalized);
+}
+
+function toPositiveMonthCount(value: unknown): number | null {
+  const n = Number(value);
+  return Number.isFinite(n) && n > 0 ? n : null;
+}
+
+function calcularProximaPreventiva(ultimaData: string | null | undefined, meses: number | null): string | null {
+  if (!ultimaData || !meses) return null;
+  try {
+    return format(addMonths(parseISO(ultimaData), meses), "yyyy-MM-dd");
+  } catch {
+    return null;
   }
 }
 
@@ -373,6 +394,7 @@ function buildEquipmentRows(
       override_qtd_tecnicos: eq.override_qtd_tecnicos,
       override_periodicidade: eq.override_periodicidade,
       proxima_data: null,
+      proxima_data_calculada: false,
       periodicidade_meses_plano: null,
       ultima_execucao_task_id: null,
     };
@@ -596,28 +618,39 @@ export default function EquipamentosPreventivosPage() {
     for (const task of rawData.relations ?? []) {
       if (task.auvo_task_id) taskById.set(String(task.auvo_task_id), task);
     }
-    if (planoProximas && planoProximas.size > 0) {
-      for (const r of rows) {
-        const p = planoProximas.get(r.id);
-        if (p) {
-          r.proxima_data = p.proxima_data;
-          r.periodicidade_meses_plano = p.periodicidade_meses;
-          r.ultima_execucao_task_id = p.ultima_execucao_task_id;
+    for (const r of rows) {
+      const p = planoProximas?.get(r.id);
+      if (p) {
+        r.proxima_data = p.proxima_data;
+        r.proxima_data_calculada = false;
+        r.periodicidade_meses_plano = toPositiveMonthCount(p.periodicidade_meses);
+        r.ultima_execucao_task_id = p.ultima_execucao_task_id;
 
-          const planoLastTask = p.ultima_execucao_task_id ? taskById.get(String(p.ultima_execucao_task_id)) : null;
-          if (p.ultima_execucao_data && planoLastTask && isPreventivaTaskType(planoLastTask.auvo_task_type_id)) {
-            const task = planoLastTask;
-            r.ultima_data = p.ultima_execucao_data;
-            r.dias_desde = differenceInDays(new Date(), parseISO(p.ultima_execucao_data));
-            r.ultimo_tecnico = task?.tecnico || r.ultimo_tecnico;
-            r.ultimo_link = getTaskDigitalLink(task) || r.ultimo_link;
-            r.tipo_tarefa = task?.auvo_task_type_description || r.tipo_tarefa || "Preventiva";
-          }
+        const planoLastTask = p.ultima_execucao_task_id ? taskById.get(String(p.ultima_execucao_task_id)) : null;
+        if (p.ultima_execucao_data && planoLastTask && isPreventivaTaskType(planoLastTask.auvo_task_type_id)) {
+          const task = planoLastTask;
+          r.ultima_data = p.ultima_execucao_data;
+          r.dias_desde = differenceInDays(new Date(), parseISO(p.ultima_execucao_data));
+          r.ultimo_tecnico = task?.tecnico || r.ultimo_tecnico;
+          r.ultimo_link = getTaskDigitalLink(task) || r.ultimo_link;
+          r.tipo_tarefa = task?.auvo_task_type_description || r.tipo_tarefa || "Preventiva";
+        }
+      }
+
+      const tipo = r.tipo_id ? tipoById.get(r.tipo_id) : null;
+      const mesesPorPlano = r.periodicidade_meses_plano ?? periodicidadeToMesesOrNull(r.override_periodicidade ?? tipo?.periodicidade);
+      if (mesesPorPlano) r.periodicidade_meses_plano = mesesPorPlano;
+
+      if (!r.proxima_data) {
+        const calculada = calcularProximaPreventiva(r.ultima_data, mesesPorPlano);
+        if (calculada) {
+          r.proxima_data = calculada;
+          r.proxima_data_calculada = true;
         }
       }
     }
     return rows;
-  }, [rawData, tipoTarefaFilter, planoProximas]);
+  }, [rawData, tipoTarefaFilter, planoProximas, tipoById]);
 
   const marcasUnicas = useMemo(() => {
     const set = new Set<string>();
@@ -1822,6 +1855,7 @@ function ProximaCell({ eq, onSave }: { eq: EquipmentRow; onSave: (d: string | nu
       <div className="flex flex-col text-left">
         <span className={cn("text-sm", cls)}>{format(dt, "dd/MM/yyyy", { locale: ptBR })}</span>
         <span className="text-[10px] text-muted-foreground">
+          {eq.proxima_data_calculada ? "calculada · " : ""}
           {diasAte < 0 ? `${Math.abs(diasAte)}d atrasada` : `em ${diasAte}d`}
           {eq.periodicidade_meses_plano ? ` · a cada ${eq.periodicidade_meses_plano}m` : ""}
         </span>
