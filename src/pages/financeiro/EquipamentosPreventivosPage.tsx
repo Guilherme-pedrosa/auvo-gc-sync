@@ -1140,6 +1140,32 @@ export default function EquipamentosPreventivosPage() {
           className="w-[220px]"
           icon={<ListFilter className="h-4 w-4" />}
         />
+
+        <SearchableSelect
+          value={proximaMesFilter}
+          onValueChange={setProximaMesFilter}
+          options={(() => {
+            const now = new Date();
+            const months: { value: string; label: string }[] = [];
+            // 2 months back through 12 months ahead
+            for (let i = -2; i <= 12; i++) {
+              const d = new Date(now.getFullYear(), now.getMonth() + i, 1);
+              const value = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+              const label = format(d, "MMM/yyyy", { locale: ptBR });
+              months.push({ value, label: label.charAt(0).toUpperCase() + label.slice(1) });
+            }
+            return [
+              { value: "todos", label: "Todos os meses" },
+              { value: "atrasado", label: "🔴 Atrasadas" },
+              { value: "sem_plano", label: "⏳ Sem plano" },
+              ...months,
+            ];
+          })()}
+          placeholder="Próx. preventiva (mês)"
+          searchPlaceholder="Buscar mês..."
+          className="w-[200px]"
+          icon={<CalendarDays className="h-4 w-4" />}
+        />
       </div>
 
       {/* Active filters banner */}
@@ -1150,7 +1176,7 @@ export default function EquipamentosPreventivosPage() {
             Filtros ativos: <strong>{activeFilters.join(" · ")}</strong>
             — mostrando {filtered.length} de {equipments.length}
           </span>
-          <Button variant="ghost" size="sm" onClick={() => { setMarcaFilter([]); setClienteFilter([]); setTipoTarefaFilter([]); setStatusFilter([]); setGrupoFilter("todos"); }} className="ml-auto text-xs">
+          <Button variant="ghost" size="sm" onClick={() => { setMarcaFilter([]); setClienteFilter([]); setTipoTarefaFilter([]); setStatusFilter([]); setGrupoFilter("todos"); setProximaMesFilter("todos"); }} className="ml-auto text-xs">
             Limpar filtros
           </Button>
         </div>
