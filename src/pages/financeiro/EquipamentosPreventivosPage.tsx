@@ -425,6 +425,7 @@ export default function EquipamentosPreventivosPage() {
   const [marcaFilter, setMarcaFilter] = useState<string[]>([]);
   const [clienteFilter, setClienteFilter] = useState<string[]>([]);
   const [tipoTarefaFilter, setTipoTarefaFilter] = useState<string[]>([]);
+  const [tipoEquipFilter, setTipoEquipFilter] = useState<string[]>([]);
   const [sortField, setSortField] = useState<SortField>("dias");
   const [sortDir, setSortDir] = useState<SortDir>("desc");
   const [syncing, setSyncing] = useState(false);
