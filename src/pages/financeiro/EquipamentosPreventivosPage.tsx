@@ -1411,12 +1411,15 @@ function PlanoCell({ eq, tipos, tipoById, onSave }: PlanoCellProps) {
       </PopoverTrigger>
       <PopoverContent className="w-80 space-y-3" align="start">
         <div>
-          <Label className="text-xs">Tipo</Label>
-          <Select value={tipoSel} onValueChange={setTipoSel}>
+          <Label className="text-xs">Tipo ({tipos.length} cadastrados)</Label>
+          <Select value={tipoSel || "__none__"} onValueChange={(v) => setTipoSel(v === "__none__" ? "" : v)}>
             <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="— Selecionar tipo —" /></SelectTrigger>
-            <SelectContent className="max-h-72">
+            <SelectContent className="max-h-72 z-[200]">
+              <SelectItem value="__none__" className="text-xs italic">— Sem tipo —</SelectItem>
               {tipos.map((t) => (
-                <SelectItem key={t.id} value={t.id} className="text-xs">{t.nome}</SelectItem>
+                <SelectItem key={t.id} value={t.id} className="text-xs">
+                  {t.nome} <span className="text-muted-foreground">· {Number(t.horas_por_tecnico).toFixed(2)}h × {t.qtd_tecnicos} · {t.periodicidade}</span>
+                </SelectItem>
               ))}
             </SelectContent>
           </Select>
