@@ -580,7 +580,7 @@ export default function EquipamentosPreventivosPage() {
           r.periodicidade_meses_plano = p.periodicidade_meses;
           r.ultima_execucao_task_id = p.ultima_execucao_task_id;
 
-          if (p.ultima_execucao_data) {
+          if (p.ultima_execucao_data && (!p.ultima_execucao_task_id || isPreventivaTaskType(taskById.get(String(p.ultima_execucao_task_id))?.auvo_task_type_id))) {
             const task = p.ultima_execucao_task_id ? taskById.get(String(p.ultima_execucao_task_id)) : null;
             r.ultima_data = p.ultima_execucao_data;
             r.dias_desde = differenceInDays(new Date(), parseISO(p.ultima_execucao_data));
