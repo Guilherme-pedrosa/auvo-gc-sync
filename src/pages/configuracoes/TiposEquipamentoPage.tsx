@@ -78,6 +78,7 @@ export default function TiposEquipamentoPage() {
     onSuccess: () => {
       toast.success("Tipo salvo");
       qc.invalidateQueries({ queryKey: ["tipos_equipamento"] });
+      qc.invalidateQueries({ queryKey: ["tipos_equipamento_simple"] });
       setOpen(false);
       setEditing(null);
     },
@@ -92,6 +93,7 @@ export default function TiposEquipamentoPage() {
     onSuccess: () => {
       toast.success("Tipo removido");
       qc.invalidateQueries({ queryKey: ["tipos_equipamento"] });
+      qc.invalidateQueries({ queryKey: ["tipos_equipamento_simple"] });
     },
     onError: (e: any) => toast.error(e.message || "Erro ao remover"),
   });
