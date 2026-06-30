@@ -50,6 +50,8 @@ type EquipmentRaw = {
   override_horas_por_tecnico: number | null;
   override_qtd_tecnicos: number | null;
   override_periodicidade: string | null;
+  proxima_data: string | null;
+  periodicidade_meses_plano: number | null;
 };
 
 type EquipTaskRel = {
@@ -220,6 +222,33 @@ async function fetchRawData(): Promise<{ equipamentos: EquipmentRaw[]; relations
   }
 
   return { equipamentos, relations };
+}
+
+async function fetchPlanoProximas(): Promise<Map<string, { proxima_data: string | null; periodicidade_meses: number | null }>> {
+  const map = new Map<string, { proxima_data: string | null; periodicidade_meses: number | null }>();
+  let from = 0;
+  const PAGE = 1000;
+  while (true) {
+    const { data, error } = await (supabase as any)
+      .from("plano_preventivo_item")
+      .select("equipamento_auvo_id, proxima_data, periodicidade_meses, ativo")
+      .eq("ativo", true)
+      .not("equipamento_auvo_id", "is", null)
+      .range(from, from + PAGE - 1);
+    if (error) throw error;
+    if (!data || data.length === 0) break;
+    for (const row of data as any[]) {
+      const key = String(row.equipamento_auvo_id);
+      const prev = map.get(key);
+      // Keep earliest proxima_data per equipment
+      if (!prev || (row.proxima_data && (!prev.proxima_data || row.proxima_data < prev.proxima_data))) {
+        map.set(key, { proxima_data: row.proxima_data, periodicidade_meses: row.periodicidade_meses });
+      }
+    }
+    if (data.length < PAGE) break;
+    from += PAGE;
+  }
+  return map;
 }
 
 function getTaskDigitalLink(task: Pick<EquipTaskRel, "auvo_task_url" | "auvo_link"> | null | undefined): string | null {
