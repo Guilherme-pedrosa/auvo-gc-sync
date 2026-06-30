@@ -443,6 +443,7 @@ export default function EquipamentosPreventivosPage() {
   const [pdfScope, setPdfScope] = useState<"selecionados" | "filtrados" | "feitos" | "atrasados" | "atencao_vencido" | "sem_registro">("filtrados");
   const [criarTarefaEq, setCriarTarefaEq] = useState<EquipmentRow | null>(null);
   const [importOpen, setImportOpen] = useState(false);
+  const [revisarIaOpen, setRevisarIaOpen] = useState(false);
 
   // Sync date range — defaults to last 1 month
   const defaultSyncStart = format(new Date(new Date().getFullYear(), new Date().getMonth() - 1, 1), "yyyy-MM-dd");
