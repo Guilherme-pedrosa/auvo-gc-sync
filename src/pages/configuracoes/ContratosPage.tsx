@@ -24,6 +24,7 @@ type Contrato = {
   taxa_comissao_servico: number;
   taxa_comissao_peca: number;
   premiacao_preventiva_hora: number;
+  horas_mes_contratadas: number | null;
   vigencia_inicio: string | null;
   vigencia_fim: string | null;
   ativo: boolean;
