@@ -343,6 +343,7 @@ export default function EquipamentosPreventivosPage() {
   const [currentPage, setCurrentPage] = useState(1);
   const PAGE_SIZE = 100;
   const [grupoFilter, setGrupoFilter] = useState<string>("todos");
+  const [proximaMesFilter, setProximaMesFilter] = useState<string>("todos"); // "todos" | "YYYY-MM" | "atrasado" | "sem_plano"
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [pdfDialogOpen, setPdfDialogOpen] = useState(false);
   const [pdfScope, setPdfScope] = useState<"selecionados" | "filtrados" | "feitos" | "atrasados" | "atencao_vencido" | "sem_registro">("filtrados");
@@ -643,6 +644,18 @@ export default function EquipamentosPreventivosPage() {
       result = result.filter((e) => e.cliente && members.has(normalizeClienteName(e.cliente)));
     }
 
+    // Filtro por mês da próxima preventiva (plano)
+    if (proximaMesFilter !== "todos") {
+      const todayStr = new Date().toISOString().slice(0, 10);
+      result = result.filter((e) => {
+        if (proximaMesFilter === "sem_plano") return !e.proxima_data;
+        if (!e.proxima_data) return false;
+        const d = e.proxima_data.slice(0, 10);
+        if (proximaMesFilter === "atrasado") return d < todayStr;
+        return d.slice(0, 7) === proximaMesFilter;
+      });
+    }
+
     // Filtro por período (data da última intervenção)
     if (syncStartDate && syncEndDate) {
       result = result.filter((e) => {
@@ -672,7 +685,7 @@ export default function EquipamentosPreventivosPage() {
     });
 
     return result;
-  }, [equipments, search, statusFilter, marcaFilter, clienteFilter, grupoFilter, grupoClienteMap, sortField, sortDir, syncStartDate, syncEndDate]);
+  }, [equipments, search, statusFilter, marcaFilter, clienteFilter, grupoFilter, grupoClienteMap, sortField, sortDir, syncStartDate, syncEndDate, proximaMesFilter]);
 
   // Pagination
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
@@ -680,7 +693,7 @@ export default function EquipamentosPreventivosPage() {
   const paginatedItems = filtered.slice((safeCurrentPage - 1) * PAGE_SIZE, safeCurrentPage * PAGE_SIZE);
 
   // Reset to page 1 when filters change
-  const filterKey = `${search}|${statusFilter.join(",")}|${marcaFilter.join(",")}|${clienteFilter.join(",")}|${grupoFilter}|${tipoTarefaFilter.join(",")}|${sortField}|${sortDir}|${syncStartDate}|${syncEndDate}`;
+  const filterKey = `${search}|${statusFilter.join(",")}|${marcaFilter.join(",")}|${clienteFilter.join(",")}|${grupoFilter}|${tipoTarefaFilter.join(",")}|${sortField}|${sortDir}|${syncStartDate}|${syncEndDate}|${proximaMesFilter}`;
   const [prevFilterKey, setPrevFilterKey] = useState(filterKey);
   if (filterKey !== prevFilterKey) {
     setPrevFilterKey(filterKey);
