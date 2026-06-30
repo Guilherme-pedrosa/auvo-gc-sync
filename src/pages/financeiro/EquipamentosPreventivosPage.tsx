@@ -440,7 +440,7 @@ export default function EquipamentosPreventivosPage() {
   const [syncEndDate, setSyncEndDate] = useState(defaultSyncEnd);
 
   const { data: rawData, isLoading, refetch, isFetching } = useQuery({
-    queryKey: ["equipamentos-preventivos-raw"],
+    queryKey: ["equipamentos-preventivos-raw", "v2-only-ativos"],
     queryFn: fetchRawData,
     staleTime: 5 * 60 * 1000,
   });
