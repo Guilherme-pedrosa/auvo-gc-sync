@@ -9,8 +9,6 @@ const corsHeaders = {
 
 const VALID_PER = new Set(["MENSAL", "BIMESTRAL", "TRIMESTRAL", "SEMESTRAL", "ANUAL"]);
 
-// Mapeia o nome da ABA do Excel para o cliente correspondente no Auvo.
-// O match e o cálculo de órfãos devem ser feitos SOMENTE contra a casa da aba.
 const ABA_PARA_CLIENTE: Record<string, string> = {
   "gra bistro": "GRA BISTRO",
   "nip napoli": "NIP NAPOLI - REDE IZ",
@@ -48,23 +46,19 @@ function normalizeCriticidade(raw: any): "CRITICA" | "ALTA" | "MEDIA" | "BAIXA" 
 function cleanId(raw: any): string | null {
   if (raw == null) return null;
   let s = String(raw);
-  // Remove formula prefix ={"..."} or ="..." constructs
   s = s.replace(/^=\{?"?/, "").replace(/"?\}?$/, "");
   s = s.replace(/[="{}]/g, "").trim();
   if (!s) return null;
   return s;
 }
 
-// Gera as chaves candidatas para um ID: como veio, sem zeros à esquerda,
-// e padronizado em 16 dígitos. Resolve divergência de zeros à esquerda
-// entre Excel (texto) e banco (pode ter sido salvo como número).
 function idVariants(s: string | null): string[] {
   if (!s) return [];
   const v = new Set<string>();
   v.add(s);
   if (/^\d+$/.test(s)) {
-    v.add(s.replace(/^0+/, "") || "0");   // sem zeros à esquerda
-    v.add(s.padStart(16, "0"));           // 16 dígitos
+    v.add(s.replace(/^0+/, "") || "0");
+    v.add(s.padStart(16, "0"));
   }
   return [...v];
 }
@@ -74,7 +68,6 @@ function normalizeKey(s: string): string {
     .normalize("NFD").replace(/[\u0300-\u036f]/g, "");
 }
 
-// ----- Sheet parsing -----
 function parseHouseSheet(sheet: any): {
   rows: Array<{
     linha: number;
@@ -90,7 +83,6 @@ function parseHouseSheet(sheet: any): {
   header_ok: boolean;
 } {
   const json: any[][] = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: null, raw: true });
-  // Find header row: contains "ID" and "Equipamento" and "Period."
   let headerIdx = -1;
   for (let i = 0; i < Math.min(json.length, 10); i++) {
     const r = (json[i] || []).map((v: any) => String(v ?? "").trim().toLowerCase());
@@ -106,7 +98,6 @@ function parseHouseSheet(sheet: any): {
     const row = json[i] || [];
     const firstCell = String(row[0] ?? "").trim();
     const firstLow = firstCell.toLowerCase();
-    // Stop at totals
     if (firstLow.startsWith("total do m") || firstLow.startsWith("meta contratada") ||
         firstLow.startsWith("saldo") || firstLow.startsWith("fila")) break;
     const id = cleanId(row[0]);
@@ -116,7 +107,6 @@ function parseHouseSheet(sheet: any): {
     const criticidade = normalizeCriticidade(row[3]);
     const periodicidade = normalizePeriodicidade(row[4]);
     const ht = Number(row[5] ?? 0) || 0;
-    // Months at indexes 6..17
     const meses: number[] = [];
     for (let m = 0; m < 12; m++) {
       const v = row[6 + m];
@@ -155,7 +145,6 @@ Deno.serve(async (req) => {
       return new Response(JSON.stringify({ ok: false, error: "mode obrigatório" }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
-    // ============ LIST SHEETS ============
     if (mode === "list_sheets") {
       if (!xlsx_base64) return new Response(JSON.stringify({ ok: false, error: "xlsx_base64 obrigatório" }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
       const bin = Uint8Array.from(atob(xlsx_base64), (c) => c.charCodeAt(0));
@@ -173,19 +162,32 @@ Deno.serve(async (req) => {
       return new Response(JSON.stringify({ ok: false, error: "grupo_id e ano_referencia obrigatórios" }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
-    // Carrega catálogo Auvo do grupo
     const { data: membros } = await supabase.from("grupo_cliente_membros").select("cliente_nome").eq("grupo_id", grupo_id);
     const clientesGrupo = new Set((membros || []).map((m: any) => normalizeKey(m.cliente_nome)));
-    const { data: equipsAll } = await supabase.from("equipamentos_auvo")
-      .select("id, identificador, nome, cliente, status, tipo_id")
-      .not("identificador", "is", null);
-    const equipsGrupo = (equipsAll || []).filter((e: any) => clientesGrupo.size === 0 || clientesGrupo.has(normalizeKey(e.cliente)));
+    const equipsAll: any[] = [];
+    {
+      const PAGE = 1000;
+      let from = 0;
+      while (true) {
+        const { data, error } = await supabase.from("equipamentos_auvo")
+          .select("id, identificador, nome, cliente, status, tipo_id")
+          .not("identificador", "is", null)
+          .order("id", { ascending: true })
+          .range(from, from + PAGE - 1);
+        if (error) throw error;
+        const batch = data || [];
+        equipsAll.push(...batch);
+        if (batch.length < PAGE) break;
+        from += PAGE;
+        if (from > 100000) break;
+      }
+    }
+    const equipsGrupo = equipsAll.filter((e: any) => clientesGrupo.size === 0 || clientesGrupo.has(normalizeKey(e.cliente)));
     const byId = new Map<string, any>();
     for (const e of equipsGrupo) {
       const base = String(e.identificador ?? "").trim();
       for (const k of idVariants(base)) byId.set(k, e);
     }
-    // lookup que tenta todas as variantes do ID do Excel
     const findEquip = (excelId: string | null): any => {
       for (const k of idVariants(excelId)) {
         const hit = byId.get(k);
@@ -194,18 +196,15 @@ Deno.serve(async (req) => {
       return null;
     };
 
-    // Tipos catálogo
     const { data: tiposAll } = await supabase.from("tipos_equipamento").select("id, nome, categoria, periodicidade, criticidade, horas_por_tecnico");
     const tipoByNome = new Map<string, any>((tiposAll || []).map((t: any) => [normalizeKey(t.nome), t]));
     const tipoById = new Map<string, any>((tiposAll || []).map((t: any) => [t.id, t]));
 
-    // Planos atuais do grupo no ano
     const { data: planosAtuais } = await supabase.from("equipamento_plano_preventivo")
       .select("codigo_barras_auvo, periodicidade, criticidade, horas_estimadas_total, horas_por_tecnico, qtd_tecnicos, mes_inicio_ciclo")
       .eq("grupo_id", grupo_id).eq("ano_referencia", ano_referencia);
     const planoByCb = new Map<string, any>((planosAtuais || []).map((p: any) => [String(p.codigo_barras_auvo), p]));
 
-    // ============ PREVIEW ============
     if (mode === "preview") {
       if (!xlsx_base64 || !sheet) return new Response(JSON.stringify({ ok: false, error: "xlsx_base64 e sheet obrigatórios" }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
       const bin = Uint8Array.from(atob(xlsx_base64), (c) => c.charCodeAt(0));
@@ -218,12 +217,10 @@ Deno.serve(async (req) => {
         return new Response(JSON.stringify({ ok: false, error: `Aba "${sheet}" não tem cabeçalho ID|Equipamento|...|Period. na linha 4` }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
       }
 
-      // ESCOPO POR CASA: restringe o universo de equipamentos à casa da aba.
       const clienteAba = clienteDaAba(sheet);
       const equipsCasa = clienteAba
         ? equipsGrupo.filter((e: any) => normalizeKey(e.cliente) === normalizeKey(clienteAba))
         : equipsGrupo;
-      // índice por variantes restrito à casa
       const byIdCasa = new Map<string, any>();
       for (const e of equipsCasa) {
         for (const k of idVariants(String(e.identificador ?? "").trim())) byIdCasa.set(k, e);
@@ -287,8 +284,6 @@ Deno.serve(async (req) => {
         });
       }
 
-      // Equipamentos do Auvo (ativos) DESTA CASA fora do Excel.
-      // Considera todas as variantes de ID ao verificar se foi encontrado.
       const orfaosAuvo = equipsCasa
         .filter((e: any) => {
           if (e.status !== "Ativo") return false;
@@ -309,12 +304,10 @@ Deno.serve(async (req) => {
       return new Response(JSON.stringify({ ok: true, sheet, ano_referencia, stats, rows: previewRows, orfaos_auvo: orfaosAuvo }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
-    // ============ COMMIT ============
     if (!Array.isArray(rows)) {
       return new Response(JSON.stringify({ ok: false, error: "rows obrigatório para commit" }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
-    // 1) Garante tipos_equipamento existentes (cria os faltantes a partir do Excel)
     const categoriasNecessarias = new Set<string>();
     for (const r of rows as any[]) {
       if (r.apply_tipo && r.categoria) categoriasNecessarias.add(String(r.categoria).trim());
@@ -323,7 +316,6 @@ Deno.serve(async (req) => {
     for (const cat of categoriasNecessarias) {
       const existing = tipoByNome.get(normalizeKey(cat));
       if (existing) { tipoNomeToId.set(cat, existing.id); continue; }
-      // Cria com periodicidade/criticidade/horas média do Excel para esse tipo
       const sample = (rows as any[]).find((r: any) => r.categoria === cat) || {};
       const ins = await supabase.from("tipos_equipamento").insert({
         nome: cat,
@@ -337,7 +329,6 @@ Deno.serve(async (req) => {
       tipoNomeToId.set(cat, ins.data.id);
     }
 
-    // 2) Upsert dos planos (filtra conflitos não confirmados)
     let planosGravados = 0;
     let tiposAplicados = 0;
     let puladosConflito = 0;
@@ -353,7 +344,6 @@ Deno.serve(async (req) => {
         continue;
       }
 
-      // Status equipamento Auvo
       if (r.auvo_equip_id) {
         const equipRow = equipsGrupo.find((e: any) => e.id === r.auvo_equip_id);
         if (equipRow && equipRow.status && equipRow.status !== "Ativo") {
@@ -384,7 +374,6 @@ Deno.serve(async (req) => {
       if (upErr) throw upErr;
       planosGravados++;
 
-      // Aplica tipo no equipamento
       if (r.apply_tipo && r.auvo_equip_id && r.categoria) {
         const tipoId = tipoNomeToId.get(String(r.categoria).trim());
         if (tipoId) {
