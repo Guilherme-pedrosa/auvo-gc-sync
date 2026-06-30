@@ -343,6 +343,7 @@ export default function EquipamentosPreventivosPage() {
   const [currentPage, setCurrentPage] = useState(1);
   const PAGE_SIZE = 100;
   const [grupoFilter, setGrupoFilter] = useState<string>("todos");
+  const [proximaMesFilter, setProximaMesFilter] = useState<string>("todos"); // "todos" | "YYYY-MM" | "atrasado" | "sem_plano"
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [pdfDialogOpen, setPdfDialogOpen] = useState(false);
   const [pdfScope, setPdfScope] = useState<"selecionados" | "filtrados" | "feitos" | "atrasados" | "atencao_vencido" | "sem_registro">("filtrados");
@@ -643,6 +644,18 @@ export default function EquipamentosPreventivosPage() {
       result = result.filter((e) => e.cliente && members.has(normalizeClienteName(e.cliente)));
     }
 
+    // Filtro por mês da próxima preventiva (plano)
+    if (proximaMesFilter !== "todos") {
+      const todayStr = new Date().toISOString().slice(0, 10);
+      result = result.filter((e) => {
+        if (proximaMesFilter === "sem_plano") return !e.proxima_data;
+        if (!e.proxima_data) return false;
+        const d = e.proxima_data.slice(0, 10);
+        if (proximaMesFilter === "atrasado") return d < todayStr;
+        return d.slice(0, 7) === proximaMesFilter;
+      });
+    }
+
     // Filtro por período (data da última intervenção)
     if (syncStartDate && syncEndDate) {
       result = result.filter((e) => {
@@ -672,7 +685,7 @@ export default function EquipamentosPreventivosPage() {
     });
 
     return result;
-  }, [equipments, search, statusFilter, marcaFilter, clienteFilter, grupoFilter, grupoClienteMap, sortField, sortDir, syncStartDate, syncEndDate]);
+  }, [equipments, search, statusFilter, marcaFilter, clienteFilter, grupoFilter, grupoClienteMap, sortField, sortDir, syncStartDate, syncEndDate, proximaMesFilter]);
 
   // Pagination
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
@@ -680,7 +693,7 @@ export default function EquipamentosPreventivosPage() {
   const paginatedItems = filtered.slice((safeCurrentPage - 1) * PAGE_SIZE, safeCurrentPage * PAGE_SIZE);
 
   // Reset to page 1 when filters change
-  const filterKey = `${search}|${statusFilter.join(",")}|${marcaFilter.join(",")}|${clienteFilter.join(",")}|${grupoFilter}|${tipoTarefaFilter.join(",")}|${sortField}|${sortDir}|${syncStartDate}|${syncEndDate}`;
+  const filterKey = `${search}|${statusFilter.join(",")}|${marcaFilter.join(",")}|${clienteFilter.join(",")}|${grupoFilter}|${tipoTarefaFilter.join(",")}|${sortField}|${sortDir}|${syncStartDate}|${syncEndDate}|${proximaMesFilter}`;
   const [prevFilterKey, setPrevFilterKey] = useState(filterKey);
   if (filterKey !== prevFilterKey) {
     setPrevFilterKey(filterKey);
@@ -752,6 +765,11 @@ export default function EquipamentosPreventivosPage() {
     tipoTarefaFilter.length > 0 && `Tipos tarefa: ${tipoTarefaFilter.length}`,
     grupoFilter !== "todos" && `Grupo: ${(gruposData?.grupos ?? []).find((g: any) => g.id === grupoFilter)?.nome || "—"}`,
     (syncStartDate && syncEndDate) && `Período: ${format(parseISO(syncStartDate), "dd/MM/yyyy")} → ${format(parseISO(syncEndDate), "dd/MM/yyyy")}`,
+    proximaMesFilter !== "todos" && `Próx. preventiva: ${
+      proximaMesFilter === "atrasado" ? "Atrasadas"
+      : proximaMesFilter === "sem_plano" ? "Sem plano"
+      : format(parseISO(`${proximaMesFilter}-01`), "MMM/yyyy", { locale: ptBR })
+    }`,
   ].filter(Boolean);
 
   const handleGeneratePdf = useCallback(() => {
@@ -1122,6 +1140,32 @@ export default function EquipamentosPreventivosPage() {
           className="w-[220px]"
           icon={<ListFilter className="h-4 w-4" />}
         />
+
+        <SearchableSelect
+          value={proximaMesFilter}
+          onValueChange={setProximaMesFilter}
+          options={(() => {
+            const now = new Date();
+            const months: { value: string; label: string }[] = [];
+            // 2 months back through 12 months ahead
+            for (let i = -2; i <= 12; i++) {
+              const d = new Date(now.getFullYear(), now.getMonth() + i, 1);
+              const value = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+              const label = format(d, "MMM/yyyy", { locale: ptBR });
+              months.push({ value, label: label.charAt(0).toUpperCase() + label.slice(1) });
+            }
+            return [
+              { value: "todos", label: "Todos os meses" },
+              { value: "atrasado", label: "🔴 Atrasadas" },
+              { value: "sem_plano", label: "⏳ Sem plano" },
+              ...months,
+            ];
+          })()}
+          placeholder="Próx. preventiva (mês)"
+          searchPlaceholder="Buscar mês..."
+          className="w-[200px]"
+          icon={<CalendarDays className="h-4 w-4" />}
+        />
       </div>
 
       {/* Active filters banner */}
@@ -1132,7 +1176,7 @@ export default function EquipamentosPreventivosPage() {
             Filtros ativos: <strong>{activeFilters.join(" · ")}</strong>
             — mostrando {filtered.length} de {equipments.length}
           </span>
-          <Button variant="ghost" size="sm" onClick={() => { setMarcaFilter([]); setClienteFilter([]); setTipoTarefaFilter([]); setStatusFilter([]); setGrupoFilter("todos"); }} className="ml-auto text-xs">
+          <Button variant="ghost" size="sm" onClick={() => { setMarcaFilter([]); setClienteFilter([]); setTipoTarefaFilter([]); setStatusFilter([]); setGrupoFilter("todos"); setProximaMesFilter("todos"); }} className="ml-auto text-xs">
             Limpar filtros
           </Button>
         </div>
