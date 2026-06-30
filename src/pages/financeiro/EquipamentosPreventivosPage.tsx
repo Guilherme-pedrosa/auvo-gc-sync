@@ -494,7 +494,7 @@ export default function EquipamentosPreventivosPage() {
   }) => {
     // Optimistic update: patch only the edited equipment in the cache
     // (the raw query loads thousands of rows, so invalidate-and-refetch is slow).
-    const queryKey = ["equipamentos-preventivos-raw"];
+    const queryKey = ["equipamentos-preventivos-raw", "v2-only-ativos"];
     const prev = queryClient.getQueryData<any>(queryKey);
     if (prev?.equipamentos) {
       queryClient.setQueryData(queryKey, {
