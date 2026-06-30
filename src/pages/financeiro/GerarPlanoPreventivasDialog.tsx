@@ -111,8 +111,12 @@ export default function GerarPlanoPreventivasDialog({
 
   const onApply = async () => {
     if (!preview) return;
-    if (escopo !== "grupo" || !grupoId) {
-      toast.error("Salvar plano só é possível ao escolher um grupo");
+    if (escopo === "grupo" && !grupoId) {
+      toast.error("Selecione um grupo");
+      return;
+    }
+    if (escopo === "cliente" && !clienteNome) {
+      toast.error("Selecione um cliente");
       return;
     }
     if (!confirm(`Gravar plano para ${preview.itens.length} equipamentos (ano ${ano})? Isso substitui o plano atual desses equipamentos.`)) return;
@@ -198,9 +202,9 @@ export default function GerarPlanoPreventivasDialog({
               {exporting ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Download className="h-4 w-4 mr-1" />}
               Baixar Excel
             </Button>
-            <Button variant="secondary" onClick={onApply} disabled={saving || !preview || escopo !== "grupo"}>
+            <Button variant="secondary" onClick={onApply} disabled={saving || !preview}>
               {saving ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Save className="h-4 w-4 mr-1" />}
-              Salvar plano (grupo)
+              Implementar plano
             </Button>
           </div>
         </div>

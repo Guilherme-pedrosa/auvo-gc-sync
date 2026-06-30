@@ -521,15 +521,30 @@ Deno.serve(async (req) => {
 
     // ── apply: persist into equipamento_plano_preventivo ───────────────────
     if (mode === "apply") {
-      if (!grupo_id) return json({ ok: false, error: "apply requer grupo_id" });
       if (!Array.isArray(apply_rows) || apply_rows.length === 0) {
         return json({ ok: false, error: "apply_rows obrigatório" });
+      }
+      // Resolver grupo_id de destino: usa o informado; senão, tenta achar via cliente_nome
+      let grupoDestino: string | null = grupo_id ?? null;
+      if (!grupoDestino && cliente_nome) {
+        const { data: memb } = await supabase
+          .from("grupo_cliente_membros")
+          .select("grupo_id")
+          .eq("cliente_nome", cliente_nome)
+          .limit(1);
+        grupoDestino = (memb?.[0] as any)?.grupo_id ?? null;
+      }
+      if (!grupoDestino) {
+        return json({
+          ok: false,
+          error: "Nenhum grupo encontrado para gravar o plano. Adicione o cliente a um grupo (Grupos de Clientes) ou selecione o escopo Grupo.",
+        });
       }
       let gravados = 0;
       for (const r of apply_rows) {
         if (!r.codigo_barras_auvo) continue;
         const { error } = await supabase.from("equipamento_plano_preventivo").upsert({
-          grupo_id,
+          grupo_id: grupoDestino,
           codigo_barras_auvo: String(r.codigo_barras_auvo),
           ano_referencia,
           horas_estimadas_total: Number(r.horas_estimadas_total) || 0,
@@ -543,7 +558,7 @@ Deno.serve(async (req) => {
         }, { onConflict: "grupo_id,codigo_barras_auvo,ano_referencia" });
         if (!error) gravados++;
       }
-      return json({ ok: true, gravados });
+      return json({ ok: true, gravados, grupo_id: grupoDestino });
     }
 
     return json({ ok: false, error: `mode inválido: ${mode}` });
