@@ -1820,6 +1820,11 @@ export default function EquipamentosPreventivosPage() {
             cliente: criarTarefaEq.cliente,
             auvo_equipment_id: criarTarefaEq.auvo_equipment_id,
             proxima_data: criarTarefaEq.proxima_data,
+            htHoras: (() => {
+              const tipo = criarTarefaEq.tipo_id ? tipoById.get(criarTarefaEq.tipo_id) : null;
+              const h = criarTarefaEq.override_horas_por_tecnico ?? tipo?.horas_por_tecnico ?? null;
+              return h != null ? Number(h) : null;
+            })(),
           }}
           onCreated={() => {
             // Sincronização posterior puxa a tarefa para o banco; nada a fazer agora
