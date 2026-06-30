@@ -699,16 +699,145 @@ export default function EquipamentosPreventivosPage() {
     return rows;
   }, [rawData, tipoTarefaFilter, planoProximas, tipoById]);
 
+  // Predicate aplicado pelos filtros, permitindo excluir um filtro específico
+  // (usado para opções em cascata estilo Excel: cada dropdown mostra apenas
+  // valores presentes no resultado dos demais filtros)
+  type FilterKey =
+    | "search"
+    | "status"
+    | "marca"
+    | "cliente"
+    | "tipoEquip"
+    | "grupo"
+    | "proximaMes"
+    | "periodo";
+  const passesFilters = useCallback(
+    (e: typeof equipments[number], exclude: Set<FilterKey> = new Set()) => {
+      if (!exclude.has("search") && search.trim()) {
+        const q = search.toLowerCase();
+        const ok =
+          e.nome.toLowerCase().includes(q) ||
+          (e.cliente || "").toLowerCase().includes(q) ||
+          (e.identificador || "").toLowerCase().includes(q) ||
+          (e.ultimo_tecnico || "").toLowerCase().includes(q) ||
+          (e.marca || "").toLowerCase().includes(q);
+        if (!ok) return false;
+      }
+      if (!exclude.has("status") && statusFilter.length > 0) {
+        const info = getStatusInfo(e.dias_desde);
+        if (!statusFilter.includes(info.label.toLowerCase())) return false;
+      }
+      if (!exclude.has("marca") && marcaFilter.length > 0) {
+        if (marcaFilter.includes("__sem_marca__") && !e.marca) {
+          // ok
+        } else if (!(e.marca && marcaFilter.includes(e.marca))) {
+          return false;
+        }
+      }
+      if (!exclude.has("cliente") && clienteFilter.length > 0) {
+        if (!e.cliente || !clienteFilter.includes(e.cliente)) return false;
+      }
+      if (!exclude.has("tipoEquip") && tipoEquipFilter.length > 0) {
+        const wantSemTipo = tipoEquipFilter.includes("__sem_tipo__");
+        if (wantSemTipo && !e.tipo_id) {
+          // ok
+        } else if (!(e.tipo_id && tipoEquipFilter.includes(e.tipo_id))) {
+          return false;
+        }
+      }
+      if (!exclude.has("grupo") && grupoFilter !== "todos") {
+        const members = grupoClienteMap.get(grupoFilter) || new Set<string>();
+        if (!e.cliente || !members.has(normalizeClienteName(e.cliente))) return false;
+      }
+      if (!exclude.has("proximaMes") && proximaMesFilter.length > 0) {
+        const todayStr = new Date().toISOString().slice(0, 10);
+        const wantSemPlano = proximaMesFilter.includes("sem_plano");
+        const wantAtrasado = proximaMesFilter.includes("atrasado");
+        const meses = proximaMesFilter.filter((v) => v !== "sem_plano" && v !== "atrasado");
+        let ok = false;
+        if (wantSemPlano && !e.proxima_data) ok = true;
+        if (!ok && e.proxima_data) {
+          const d = e.proxima_data.slice(0, 10);
+          if (wantAtrasado && d < todayStr) ok = true;
+          if (!ok && meses.includes(d.slice(0, 7))) ok = true;
+        }
+        if (!ok) return false;
+      }
+      if (!exclude.has("periodo") && syncStartDate && syncEndDate) {
+        if (e.ultima_data) {
+          const d = e.ultima_data.slice(0, 10);
+          if (!(d >= syncStartDate && d <= syncEndDate)) return false;
+        }
+      }
+      return true;
+    },
+    [search, statusFilter, marcaFilter, clienteFilter, tipoEquipFilter, grupoFilter, grupoClienteMap, proximaMesFilter, syncStartDate, syncEndDate]
+  );
+
+  // Opções em cascata: para cada filtro, considera o universo já reduzido pelos OUTROS filtros
   const marcasUnicas = useMemo(() => {
     const set = new Set<string>();
-    equipments.forEach(eq => { if (eq.marca) set.add(eq.marca); });
+    equipments.forEach((eq) => {
+      if (eq.marca && passesFilters(eq, new Set(["marca"]))) set.add(eq.marca);
+    });
     return Array.from(set).sort();
-  }, [equipments]);
+  }, [equipments, passesFilters]);
 
   const clientes = useMemo(() => {
-    const s = new Set(equipments.map((e) => e.cliente).filter(Boolean) as string[]);
+    const s = new Set<string>();
+    equipments.forEach((eq) => {
+      if (eq.cliente && passesFilters(eq, new Set(["cliente"]))) s.add(eq.cliente);
+    });
     return Array.from(s).sort();
-  }, [equipments]);
+  }, [equipments, passesFilters]);
+
+  const tiposEquipDisponiveis = useMemo(() => {
+    const ids = new Set<string>();
+    let hasSemTipo = false;
+    equipments.forEach((eq) => {
+      if (!passesFilters(eq, new Set(["tipoEquip"]))) return;
+      if (eq.tipo_id) ids.add(eq.tipo_id);
+      else hasSemTipo = true;
+    });
+    return { ids, hasSemTipo };
+  }, [equipments, passesFilters]);
+
+  const gruposDisponiveis = useMemo(() => {
+    const ids = new Set<string>();
+    equipments.forEach((eq) => {
+      if (!passesFilters(eq, new Set(["grupo"]))) return;
+      if (!eq.cliente) return;
+      const norm = normalizeClienteName(eq.cliente);
+      for (const [gid, set] of grupoClienteMap.entries()) {
+        if (set.has(norm)) ids.add(gid);
+      }
+    });
+    return ids;
+  }, [equipments, passesFilters, grupoClienteMap]);
+
+  const statusDisponiveis = useMemo(() => {
+    const set = new Set<string>();
+    equipments.forEach((eq) => {
+      if (!passesFilters(eq, new Set(["status"]))) return;
+      set.add(getStatusInfo(eq.dias_desde).label.toLowerCase());
+    });
+    return set;
+  }, [equipments, passesFilters]);
+
+  const proxMesDisponiveis = useMemo(() => {
+    const meses = new Set<string>();
+    let hasSemPlano = false;
+    let hasAtrasado = false;
+    const todayStr = new Date().toISOString().slice(0, 10);
+    equipments.forEach((eq) => {
+      if (!passesFilters(eq, new Set(["proximaMes"]))) return;
+      if (!eq.proxima_data) { hasSemPlano = true; return; }
+      const d = eq.proxima_data.slice(0, 10);
+      if (d < todayStr) hasAtrasado = true;
+      meses.add(d.slice(0, 7));
+    });
+    return { meses, hasSemPlano, hasAtrasado };
+  }, [equipments, passesFilters]);
 
   const handleSync = useCallback(async () => {
     setSyncing(true);
@@ -1334,7 +1463,7 @@ export default function EquipamentosPreventivosPage() {
             { value: "atenção", label: "🟡 Atenção" },
             { value: "vencido", label: "🔴 Vencido" },
             { value: "sem registro", label: "⏳ Sem histórico" },
-          ]}
+          ].filter((o) => statusFilter.includes(o.value) || statusDisponiveis.has(o.value))}
           placeholder="Status"
           searchPlaceholder="Buscar status..."
           className="w-[150px]"
@@ -1346,8 +1475,11 @@ export default function EquipamentosPreventivosPage() {
           value={marcaFilter}
           onValueChange={setMarcaFilter}
           options={[
-            { value: "__sem_marca__", label: "⚠️ Não identificada" },
+            ...(marcaFilter.includes("__sem_marca__") || equipments.some((e) => !e.marca && passesFilters(e, new Set(["marca"])))
+              ? [{ value: "__sem_marca__", label: "⚠️ Não identificada" }]
+              : []),
             ...marcasUnicas.map((m) => ({ value: m, label: m })),
+            ...marcaFilter.filter((v) => v !== "__sem_marca__" && !marcasUnicas.includes(v)).map((v) => ({ value: v, label: v })),
           ]}
           placeholder="Marca"
           searchPlaceholder="Buscar marca..."
@@ -1358,7 +1490,7 @@ export default function EquipamentosPreventivosPage() {
           multiple
           value={clienteFilter}
           onValueChange={setClienteFilter}
-          options={clientes.map((c) => ({ value: c, label: c }))}
+          options={Array.from(new Set([...clientes, ...clienteFilter])).sort().map((c) => ({ value: c, label: c }))}
           placeholder="Cliente"
           searchPlaceholder="Buscar cliente..."
           className="w-[200px]"
@@ -1369,7 +1501,9 @@ export default function EquipamentosPreventivosPage() {
           onValueChange={setGrupoFilter}
           options={[
             { value: "todos", label: "Todos os grupos" },
-            ...((gruposData?.grupos ?? []).map((g: any) => ({ value: g.id, label: g.nome }))),
+            ...((gruposData?.grupos ?? [])
+              .filter((g: any) => g.id === grupoFilter || gruposDisponiveis.has(g.id))
+              .map((g: any) => ({ value: g.id, label: g.nome }))),
           ]}
           placeholder="Grupo"
           searchPlaceholder="Buscar grupo..."
@@ -1393,8 +1527,12 @@ export default function EquipamentosPreventivosPage() {
           value={tipoEquipFilter}
           onValueChange={setTipoEquipFilter}
           options={[
-            { value: "__sem_tipo__", label: "⏳ Sem tipo" },
-            ...tiposEquip.map((t) => ({ value: t.id, label: t.nome })),
+            ...(tipoEquipFilter.includes("__sem_tipo__") || tiposEquipDisponiveis.hasSemTipo
+              ? [{ value: "__sem_tipo__", label: "⏳ Sem tipo" }]
+              : []),
+            ...tiposEquip
+              .filter((t) => tipoEquipFilter.includes(t.id) || tiposEquipDisponiveis.ids.has(t.id))
+              .map((t) => ({ value: t.id, label: t.nome })),
           ]}
           placeholder="Tipo de Equipamento"
           searchPlaceholder="Buscar tipo..."
@@ -1416,11 +1554,20 @@ export default function EquipamentosPreventivosPage() {
               const label = format(d, "MMM/yyyy", { locale: ptBR });
               months.push({ value, label: label.charAt(0).toUpperCase() + label.slice(1) });
             }
-            return [
-              { value: "atrasado", label: "🔴 Atrasadas" },
-              { value: "sem_plano", label: "⏳ Sem plano" },
-              ...months,
-            ];
+            const base: { value: string; label: string }[] = [];
+            if (proximaMesFilter.includes("atrasado") || proxMesDisponiveis.hasAtrasado)
+              base.push({ value: "atrasado", label: "🔴 Atrasadas" });
+            if (proximaMesFilter.includes("sem_plano") || proxMesDisponiveis.hasSemPlano)
+              base.push({ value: "sem_plano", label: "⏳ Sem plano" });
+            const mesesFiltered = months.filter(
+              (m) => proximaMesFilter.includes(m.value) || proxMesDisponiveis.meses.has(m.value)
+            );
+            // inclui meses fora da janela padrão mas que estão presentes nos dados/seleção
+            const extras = Array.from(proxMesDisponiveis.meses)
+              .filter((v) => !months.some((m) => m.value === v))
+              .sort()
+              .map((v) => ({ value: v, label: v }));
+            return [...base, ...mesesFiltered, ...extras];
           })()}
           placeholder="Próx. preventiva (mês)"
           searchPlaceholder="Buscar mês..."
