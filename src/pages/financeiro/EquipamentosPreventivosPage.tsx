@@ -765,6 +765,11 @@ export default function EquipamentosPreventivosPage() {
     tipoTarefaFilter.length > 0 && `Tipos tarefa: ${tipoTarefaFilter.length}`,
     grupoFilter !== "todos" && `Grupo: ${(gruposData?.grupos ?? []).find((g: any) => g.id === grupoFilter)?.nome || "—"}`,
     (syncStartDate && syncEndDate) && `Período: ${format(parseISO(syncStartDate), "dd/MM/yyyy")} → ${format(parseISO(syncEndDate), "dd/MM/yyyy")}`,
+    proximaMesFilter !== "todos" && `Próx. preventiva: ${
+      proximaMesFilter === "atrasado" ? "Atrasadas"
+      : proximaMesFilter === "sem_plano" ? "Sem plano"
+      : format(parseISO(`${proximaMesFilter}-01`), "MMM/yyyy", { locale: ptBR })
+    }`,
   ].filter(Boolean);
 
   const handleGeneratePdf = useCallback(() => {
