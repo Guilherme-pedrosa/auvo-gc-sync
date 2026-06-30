@@ -110,6 +110,17 @@ function normalizeClienteName(name: string | null | undefined): string {
     .trim();
 }
 
+function periodicidadeToMeses(per: string | null | undefined): number {
+  switch ((per || "").toUpperCase()) {
+    case "MENSAL": return 1;
+    case "BIMESTRAL": return 2;
+    case "TRIMESTRAL": return 3;
+    case "SEMESTRAL": return 6;
+    case "ANUAL": return 12;
+    default: return 3;
+  }
+}
+
 function getStatusInfo(dias: number | null) {
   if (dias === null) return { label: "Sem registro", color: "text-muted-foreground", bg: "bg-muted", icon: Clock };
   if (dias <= 90) return { label: "Em dia", color: "text-emerald-700 dark:text-emerald-400", bg: "bg-emerald-50 dark:bg-emerald-950/30", icon: CheckCircle2 };
@@ -460,6 +471,74 @@ export default function EquipamentosPreventivosPage() {
     }
     return map;
   }, [gruposData]);
+
+  const handleSaveProxima = useCallback(async (eq: EquipmentRow, novaData: string | null) => {
+    const proximasKey = ["plano-proximas-by-eq"];
+    const prevMap = queryClient.getQueryData<Map<string, any>>(proximasKey);
+
+    if (prevMap) {
+      const next = new Map(prevMap);
+      const cur = next.get(eq.id) || {
+        proxima_data: null,
+        periodicidade_meses: null,
+        ultima_execucao_data: null,
+        ultima_execucao_task_id: null,
+      };
+      next.set(eq.id, { ...cur, proxima_data: novaData });
+      queryClient.setQueryData(proximasKey, next);
+    }
+
+    try {
+      const { data: updated, error: updErr } = await (supabase as any)
+        .from("plano_preventivo_item")
+        .update({ proxima_data: novaData })
+        .eq("equipamento_auvo_id", eq.id)
+        .eq("ativo", true)
+        .select("id");
+      if (updErr) throw updErr;
+
+      if (!updated || updated.length === 0) {
+        const clienteNorm = normalizeClienteName(eq.cliente);
+        let grupoId: string | null = null;
+        for (const [gid, set] of grupoClienteMap.entries()) {
+          if (set.has(clienteNorm)) { grupoId = gid; break; }
+        }
+        if (!grupoId) {
+          throw new Error("Cliente sem grupo cadastrado — adicione o cliente a um grupo antes.");
+        }
+        const tipo = eq.tipo_id ? tipoById.get(eq.tipo_id) : null;
+        const per = eq.override_periodicidade ?? tipo?.periodicidade ?? "TRIMESTRAL";
+        const perMeses = periodicidadeToMeses(per);
+        const ht = Number(eq.override_horas_por_tecnico ?? tipo?.horas_por_tecnico ?? 0);
+        const qtd = Number(eq.override_qtd_tecnicos ?? tipo?.qtd_tecnicos ?? 1);
+        const horasTotal = ht * qtd;
+        const anoRef = novaData
+          ? new Date(novaData).getUTCFullYear()
+          : new Date().getUTCFullYear();
+        const { error: insErr } = await (supabase as any)
+          .from("plano_preventivo_item")
+          .insert({
+            grupo_id: grupoId,
+            ano_referencia: anoRef,
+            equipamento_nome: eq.nome,
+            equipamento_auvo_id: eq.id,
+            match_confianca: "manual",
+            periodicidade: per,
+            periodicidade_meses: perMeses,
+            horas_total: horasTotal,
+            meses_planejados: [],
+            proxima_data: novaData,
+            ativo: true,
+          });
+        if (insErr) throw insErr;
+      }
+
+      toast.success(novaData ? "Próxima preventiva definida" : "Próxima preventiva removida");
+    } catch (e: any) {
+      if (prevMap) queryClient.setQueryData(proximasKey, prevMap);
+      toast.error("Erro ao salvar: " + (e?.message || String(e)));
+    }
+  }, [queryClient, grupoClienteMap, tipoById]);
 
   const tiposTarefa = useMemo(() => {
     const rels = rawData?.relations ?? [];
@@ -1374,28 +1453,7 @@ export default function EquipamentosPreventivosPage() {
                         )}
                       </TableCell>
                       <TableCell>
-                        {eq.proxima_data ? (() => {
-                          const dt = parseISO(eq.proxima_data);
-                          const diasAte = differenceInDays(dt, new Date());
-                          const cls = diasAte < 0
-                            ? "text-red-700 dark:text-red-400 font-semibold"
-                            : diasAte <= 30
-                              ? "text-amber-700 dark:text-amber-400 font-medium"
-                              : "text-emerald-700 dark:text-emerald-400";
-                          return (
-                            <div className="flex flex-col">
-                              <span className={cn("text-sm", cls)}>
-                                {format(dt, "dd/MM/yyyy", { locale: ptBR })}
-                              </span>
-                              <span className="text-[10px] text-muted-foreground">
-                                {diasAte < 0 ? `${Math.abs(diasAte)}d atrasada` : `em ${diasAte}d`}
-                                {eq.periodicidade_meses_plano ? ` · a cada ${eq.periodicidade_meses_plano}m` : ""}
-                              </span>
-                            </div>
-                          );
-                        })() : (
-                          <span className="text-xs text-muted-foreground italic">Sem plano</span>
-                        )}
+                        <ProximaCell eq={eq} onSave={(d) => handleSaveProxima(eq, d)} />
                       </TableCell>
                       <TableCell className="text-sm">{eq.ultimo_tecnico || "—"}</TableCell>
                       <TableCell className="text-right">
@@ -1635,6 +1693,87 @@ function PlanoCell({ eq, tipos, tipoById, onSave }: PlanoCellProps) {
         <div className="flex justify-end gap-2 pt-1">
           <Button variant="outline" size="sm" onClick={() => setOpen(false)} disabled={saving}>Cancelar</Button>
           <Button size="sm" onClick={save} disabled={saving}>{saving ? "Salvando..." : "Salvar"}</Button>
+        </div>
+      </PopoverContent>
+    </Popover>
+  );
+}
+
+// ── ProximaCell: edição inline da próxima preventiva (sem precisar de histórico) ──
+function ProximaCell({ eq, onSave }: { eq: EquipmentRow; onSave: (d: string | null) => Promise<void> | void }) {
+  const [open, setOpen] = useState(false);
+  const [val, setVal] = useState<string>(eq.proxima_data ? eq.proxima_data.slice(0, 10) : "");
+  const [saving, setSaving] = useState(false);
+
+  const reset = () => setVal(eq.proxima_data ? eq.proxima_data.slice(0, 10) : "");
+
+  const handleSave = async (novo: string | null) => {
+    setSaving(true);
+    try {
+      await onSave(novo);
+      setOpen(false);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const trigger = eq.proxima_data ? (() => {
+    const dt = parseISO(eq.proxima_data!);
+    const diasAte = differenceInDays(dt, new Date());
+    const cls = diasAte < 0
+      ? "text-red-700 dark:text-red-400 font-semibold"
+      : diasAte <= 30
+        ? "text-amber-700 dark:text-amber-400 font-medium"
+        : "text-emerald-700 dark:text-emerald-400";
+    return (
+      <div className="flex flex-col text-left">
+        <span className={cn("text-sm", cls)}>{format(dt, "dd/MM/yyyy", { locale: ptBR })}</span>
+        <span className="text-[10px] text-muted-foreground">
+          {diasAte < 0 ? `${Math.abs(diasAte)}d atrasada` : `em ${diasAte}d`}
+          {eq.periodicidade_meses_plano ? ` · a cada ${eq.periodicidade_meses_plano}m` : ""}
+        </span>
+      </div>
+    );
+  })() : (
+    <span className="text-xs text-muted-foreground italic">Definir data</span>
+  );
+
+  return (
+    <Popover open={open} onOpenChange={(o) => { setOpen(o); if (o) reset(); }}>
+      <PopoverTrigger asChild>
+        <button className="w-full text-left hover:bg-muted/50 rounded px-1.5 py-1 transition-colors">
+          {trigger}
+        </button>
+      </PopoverTrigger>
+      <PopoverContent className="w-64 space-y-3" align="start">
+        <div>
+          <Label className="text-xs">Próxima preventiva</Label>
+          <Input
+            type="date"
+            value={val}
+            onChange={(e) => setVal(e.target.value)}
+            className="h-8 text-xs"
+          />
+          <p className="text-[10px] text-muted-foreground mt-1">
+            Se ainda não houver plano para este equipamento, ele será criado automaticamente.
+          </p>
+        </div>
+        <div className="flex justify-between gap-2 pt-1">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => handleSave(null)}
+            disabled={saving || !eq.proxima_data}
+            className="text-xs text-muted-foreground"
+          >
+            Limpar
+          </Button>
+          <div className="flex gap-2">
+            <Button variant="outline" size="sm" onClick={() => setOpen(false)} disabled={saving}>Cancelar</Button>
+            <Button size="sm" onClick={() => handleSave(val || null)} disabled={saving || !val}>
+              {saving ? "Salvando..." : "Salvar"}
+            </Button>
+          </div>
         </div>
       </PopoverContent>
     </Popover>
