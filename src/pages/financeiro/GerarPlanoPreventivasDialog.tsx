@@ -29,6 +29,8 @@ type PreviewResp = {
     ht_contrato_mes: number; ht_contrato_ano: number;
     ht_agenda_ano: number; ht_corretiva_ano: number; saldo_ano: number;
     pico_mes: number; vale_mes: number;
+    respeita_contrato?: boolean;
+    nao_encaixados?: number;
   };
   tabela_meses: Array<{ mes: number; ht_preventiva: number; ht_corretiva: number; ht_contrato: number; saldo: number }>;
   itens: Array<any>;
@@ -220,6 +222,13 @@ export default function GerarPlanoPreventivasDialog({
                 tone={preview.resumo.saldo_ano < 0 ? "danger" : "ok"} />
               <StatCard label="Pico mensal" value={preview.resumo.pico_mes.toFixed(1)} />
             </div>
+            {(preview.resumo.nao_encaixados ?? 0) > 0 && (
+              <div className="rounded-md border border-amber-300 bg-amber-50 p-2 text-sm text-amber-900">
+                <strong>{preview.resumo.nao_encaixados}</strong> equipamento(s) não encaixaram na carga contratual
+                ({preview.resumo.ht_contrato_mes.toFixed(1)}h/mês). Foram deixados de fora do agendamento por prioridade
+                (Crítica → Alta → Média → Baixa). Marcados como "Não encaixado" abaixo — revise contrato ou periodicidade.
+              </div>
+            )}
 
             <div className="border rounded-md overflow-hidden">
               <Table>
@@ -303,6 +312,7 @@ export default function GerarPlanoPreventivasDialog({
                         {i.start_source === "ultima_preventiva" && <Badge className="bg-emerald-100 text-emerald-800 hover:bg-emerald-100">Última prev.</Badge>}
                         {i.start_source === "plano_anterior" && <Badge variant="outline">Plano anterior</Badge>}
                         {i.start_source === "leveling" && <Badge variant="secondary">Nivelamento</Badge>}
+                        {i.start_source === "nao_encaixado" && <Badge variant="destructive">Não encaixado</Badge>}
                       </TableCell>
                       <TableCell className="text-xs">
                         {i.tipo_source === "override_manual" && <Badge variant="secondary">Override</Badge>}
