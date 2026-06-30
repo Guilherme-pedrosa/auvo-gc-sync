@@ -1451,6 +1451,7 @@ export type Database = {
           observacoes: string | null
           palavras_chave: string[]
           periodicidade: string
+          prioridade: number | null
           qtd_tecnicos: number
           updated_at: string
         }
@@ -1465,6 +1466,7 @@ export type Database = {
           observacoes?: string | null
           palavras_chave?: string[]
           periodicidade?: string
+          prioridade?: number | null
           qtd_tecnicos?: number
           updated_at?: string
         }
@@ -1479,6 +1481,7 @@ export type Database = {
           observacoes?: string | null
           palavras_chave?: string[]
           periodicidade?: string
+          prioridade?: number | null
           qtd_tecnicos?: number
           updated_at?: string
         }
