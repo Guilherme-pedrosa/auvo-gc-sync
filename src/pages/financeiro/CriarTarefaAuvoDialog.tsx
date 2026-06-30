@@ -172,7 +172,7 @@ export default function CriarTarefaAuvoDialog({ open, onOpenChange, equipamento,
             <SearchableSelect
               options={taskTypeOptions}
               value={taskTypeId}
-              onChange={setTaskTypeId}
+              onValueChange={(v) => setTaskTypeId(v as string)}
               placeholder={loadingTypes ? "Carregando..." : "Selecione o tipo"}
               searchPlaceholder="Buscar tipo..."
             />
@@ -183,7 +183,7 @@ export default function CriarTarefaAuvoDialog({ open, onOpenChange, equipamento,
             <SearchableSelect
               options={userOptions}
               value={idUserTo}
-              onChange={setIdUserTo}
+              onValueChange={(v) => setIdUserTo(v as string)}
               placeholder={loadingUsers ? "Carregando..." : "Selecione o técnico"}
               searchPlaceholder="Buscar técnico..."
             />
