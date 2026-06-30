@@ -385,6 +385,12 @@ export default function EquipamentosPreventivosPage() {
     staleTime: 10 * 60 * 1000,
   });
 
+  const { data: planoProximas } = useQuery({
+    queryKey: ["plano-proximas-by-eq"],
+    queryFn: fetchPlanoProximas,
+    staleTime: 5 * 60 * 1000,
+  });
+
   const tipoById = useMemo(() => {
     const m = new Map<string, typeof tiposEquip[number]>();
     for (const t of tiposEquip) m.set(t.id, t);
