@@ -521,6 +521,45 @@ export default function EquipamentosPreventivosPage() {
     }
   }, [queryClient]);
 
+  // ── Edição em massa do tipo de equipamento ──
+  const [bulkTipoOpen, setBulkTipoOpen] = useState(false);
+  const [bulkTipoValue, setBulkTipoValue] = useState<string>("");
+  const [bulkSaving, setBulkSaving] = useState(false);
+
+  const handleBulkSaveTipo = useCallback(async (tipoId: string) => {
+    const ids = Array.from(selectedIds);
+    if (ids.length === 0) return;
+    setBulkSaving(true);
+
+    const queryKey = ["equipamentos-preventivos-raw", "v2-only-ativos"];
+    const prev = queryClient.getQueryData<any>(queryKey);
+    if (prev?.equipamentos) {
+      const idSet = new Set(ids);
+      queryClient.setQueryData(queryKey, {
+        ...prev,
+        equipamentos: prev.equipamentos.map((e: any) =>
+          idSet.has(e.id) ? { ...e, tipo_id: tipoId } : e
+        ),
+      });
+    }
+
+    const { error } = await (supabase as any)
+      .from("equipamentos_auvo")
+      .update({ tipo_id: tipoId })
+      .in("id", ids);
+
+    setBulkSaving(false);
+    if (error) {
+      if (prev) queryClient.setQueryData(queryKey, prev);
+      toast.error("Erro ao atualizar tipo em massa: " + error.message);
+      return;
+    }
+    toast.success(`Tipo atualizado em ${ids.length} equipamento(s)`);
+    setBulkTipoOpen(false);
+    setBulkTipoValue("");
+    setSelectedIds(new Set());
+  }, [queryClient, selectedIds]);
+
   const grupoClienteMap = useMemo(() => {
     const map = new Map<string, Set<string>>();
     const grupos = gruposData?.grupos ?? [];
@@ -1425,6 +1464,75 @@ export default function EquipamentosPreventivosPage() {
           </Button>
         </div>
       )}
+
+      {/* Bulk action bar */}
+      {selectedIds.size > 0 && (
+        <div className="bg-amber-50 dark:bg-amber-950/30 border border-amber-300 dark:border-amber-800 rounded-lg p-3 flex items-center gap-3 flex-wrap">
+          <Checkbox checked aria-label="Selecionados" />
+          <span className="text-sm text-amber-900 dark:text-amber-200">
+            <strong>{selectedIds.size}</strong> equipamento(s) selecionado(s)
+          </span>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => {
+              const allFiltered = new Set(filtered.map((e) => e.id));
+              setSelectedIds(allFiltered);
+            }}
+          >
+            Selecionar todos ({filtered.length})
+          </Button>
+          <Button
+            variant="default"
+            size="sm"
+            onClick={() => { setBulkTipoValue(""); setBulkTipoOpen(true); }}
+          >
+            <Pencil className="h-4 w-4 mr-1" /> Alterar tipo em massa
+          </Button>
+          <Button variant="ghost" size="sm" className="ml-auto" onClick={() => setSelectedIds(new Set())}>
+            Limpar seleção
+          </Button>
+        </div>
+      )}
+
+      {/* Dialog: alterar tipo em massa */}
+      <Dialog open={bulkTipoOpen} onOpenChange={setBulkTipoOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Alterar tipo de {selectedIds.size} equipamento(s)</DialogTitle>
+            <DialogDescription>
+              O tipo selecionado será aplicado a todos os equipamentos marcados.
+              Os valores de HT, qtd. de técnicos e periodicidade passam a vir do tipo
+              (overrides individuais permanecem).
+            </DialogDescription>
+          </DialogHeader>
+          <div className="py-2">
+            <Label className="text-xs mb-2 block">Tipo de equipamento</Label>
+            <SearchableSelect
+              value={bulkTipoValue}
+              onValueChange={setBulkTipoValue}
+              options={tiposEquip.map((t) => ({
+                value: t.id,
+                label: `${t.nome} · ${t.periodicidade}`,
+              }))}
+              placeholder="Selecione o tipo..."
+              searchPlaceholder="Buscar tipo..."
+              className="w-full"
+            />
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setBulkTipoOpen(false)} disabled={bulkSaving}>
+              Cancelar
+            </Button>
+            <Button
+              onClick={() => handleBulkSaveTipo(bulkTipoValue)}
+              disabled={!bulkTipoValue || bulkSaving}
+            >
+              {bulkSaving ? (<><Loader2 className="h-4 w-4 mr-1 animate-spin" /> Aplicando...</>) : "Aplicar a todos"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Table */}
       {isLoading ? (
