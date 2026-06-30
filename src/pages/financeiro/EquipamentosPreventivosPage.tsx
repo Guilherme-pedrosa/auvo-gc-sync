@@ -533,7 +533,8 @@ export default function EquipamentosPreventivosPage() {
     // Filtro por período (data da última intervenção)
     if (syncStartDate && syncEndDate) {
       result = result.filter((e) => {
-        if (!e.ultima_data) return false;
+        // Mantém equipamentos sem registro de preventiva visíveis
+        if (!e.ultima_data) return true;
         const d = e.ultima_data.slice(0, 10);
         return d >= syncStartDate && d <= syncEndDate;
       });
