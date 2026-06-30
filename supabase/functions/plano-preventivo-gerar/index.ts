@@ -591,6 +591,8 @@ Deno.serve(async (req) => {
       let gravados = 0;
       for (const r of apply_rows) {
         if (!r.codigo_barras_auvo) continue;
+        // pula itens não encaixados (sem mês de início)
+        if (!Number(r.mes_inicio_ciclo) || Number(r.mes_inicio_ciclo) < 1) continue;
         const { error } = await supabase.from("equipamento_plano_preventivo").upsert({
           grupo_id: grupoDestino,
           codigo_barras_auvo: String(r.codigo_barras_auvo),
