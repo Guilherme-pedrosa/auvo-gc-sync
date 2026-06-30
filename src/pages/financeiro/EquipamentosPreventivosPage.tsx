@@ -84,6 +84,11 @@ type EquipmentRow = {
   dias_desde: number | null;
   tipo_tarefa: string | null;
   total_tarefas: number;
+  // Última intervenção de qualquer tipo (não filtrada por preventiva)
+  ultima_intervencao_data: string | null;
+  ultima_intervencao_tecnico: string | null;
+  ultima_intervencao_link: string | null;
+  ultima_intervencao_tipo: string | null;
   tipo_id: string | null;
   override_horas_por_tecnico: number | null;
   override_qtd_tecnicos: number | null;
