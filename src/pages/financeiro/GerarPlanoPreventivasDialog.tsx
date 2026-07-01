@@ -113,6 +113,7 @@ export default function GerarPlanoPreventivasDialog({
   const [busca, setBusca] = useState("");
   const [selecionados, setSelecionados] = useState<Set<string>>(new Set());
   const suppressCellClickUntilRef = useRef(0);
+  const manualOverridesRef = useRef<Map<string, Override>>(new Map());
 
   useEffect(() => {
     if (!open) {
@@ -122,6 +123,7 @@ export default function GerarPlanoPreventivasDialog({
       setRemovidos(new Set());
       setBusca("");
       setSelecionados(new Set());
+      manualOverridesRef.current.clear();
     }
   }, [open]);
 
@@ -148,7 +150,7 @@ export default function GerarPlanoPreventivasDialog({
       if (ov && ov.size) {
         let aplicados = 0;
         const itens = resp.itens.map((it) => {
-          const o = ov.get(it.equip_id);
+          const o = ov.get(it.equip_id) ?? ov.get(it.codigo_barras_auvo);
           if (!o) return it;
           aplicados++;
           const periodicidade = o.periodicidade ?? it.periodicidade;
@@ -174,7 +176,10 @@ export default function GerarPlanoPreventivasDialog({
         if (aplicados > 0) toast.info(`${aplicados} edição(ões) manual(is) preservada(s) (HT/periodicidade)`);
       }
       setPreview(resp);
-      if (!opts?.keepRemovidos) setRemovidos(new Set());
+      if (!opts?.keepRemovidos) {
+        setRemovidos(new Set());
+        manualOverridesRef.current.clear();
+      }
       toast.success(
         `${data.resumo.total} equipamentos processados${excluir.length ? ` (${excluir.length} excluídos)` : ""}`,
       );
@@ -187,16 +192,19 @@ export default function GerarPlanoPreventivasDialog({
 
   const onRefazer = () => {
     if (!preview) return;
-    // Captura edições manuais do usuário (HT e periodicidade) para reaplicar após o refazer.
-    const overrides = new Map<string, Override>();
-    for (const it of preview.itens) {
-      overrides.set(it.equip_id, {
-        periodicidade: it.periodicidade,
-        ht_por_ocorrencia: it.ht_por_ocorrencia,
-        horas_por_tecnico: it.horas_por_tecnico,
-      });
-    }
+    // Usa um ref atualizado no próprio onChange; assim, mesmo clicando em "Refazer"
+    // logo após alterar o select/input, a edição manual não volta para o padrão.
+    const overrides = new Map(manualOverridesRef.current);
     onPreview({ keepRemovidos: true, overrides });
+  };
+
+  const saveManualOverride = (it: Item, override: Override) => {
+    const current = manualOverridesRef.current.get(it.equip_id)
+      ?? manualOverridesRef.current.get(it.codigo_barras_auvo)
+      ?? {};
+    const next = { ...current, ...override };
+    manualOverridesRef.current.set(it.equip_id, next);
+    manualOverridesRef.current.set(it.codigo_barras_auvo, next);
   };
 
   // Recalcula tabela_meses e resumo a partir dos itens atuais
@@ -312,6 +320,7 @@ export default function GerarPlanoPreventivasDialog({
     const ht = Math.max(0, Number(novaHT) || 0);
     const itens = preview.itens.map((it) => {
       if (it.equip_id !== equipId) return it;
+      saveManualOverride(it, { ht_por_ocorrencia: ht });
       return {
         ...it,
         ht_por_ocorrencia: ht,
@@ -325,6 +334,7 @@ export default function GerarPlanoPreventivasDialog({
     if (!preview) return;
     const itens = preview.itens.map((it) => {
       if (it.equip_id !== equipId) return it;
+      saveManualOverride(it, { periodicidade: novaPer });
       const inicio = it.meses_planejados[0] ?? it.mes_inicio_ciclo ?? 1;
       const meses = chainFrom(inicio, novaPer);
       return {
