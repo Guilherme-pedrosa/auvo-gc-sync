@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
+import { useQueryClient } from "@tanstack/react-query";
 import { Loader2, Save, Wand2, AlertTriangle, Sparkles } from "lucide-react";
 import { Trash2 } from "lucide-react";
 import {
@@ -89,6 +90,7 @@ export default function GerarPlanoPreventivasDialog({
   clientes: string[];
 }) {
   const anoAtual = new Date().getFullYear();
+  const queryClient = useQueryClient();
   const [clienteNome, setClienteNome] = useState("");
   const [ano, setAno] = useState(anoAtual);
   const [loading, setLoading] = useState(false);
@@ -252,6 +254,11 @@ export default function GerarPlanoPreventivasDialog({
       if (error) throw error;
       if (!data?.ok) throw new Error(data?.error || "Falha");
       toast.success(`${data.gravados} planos gravados`);
+      // força atualização das próximas preventivas na lista de equipamentos
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["plano-proximas-by-eq"] }),
+        queryClient.invalidateQueries({ queryKey: ["equipamentos-preventivos"] }),
+      ]);
       onOpenChange(false);
     } catch (e: any) {
       toast.error(e?.message || "Erro ao salvar");
