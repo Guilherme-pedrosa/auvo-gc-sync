@@ -511,9 +511,13 @@ Deno.serve(async (req) => {
       const scheduledItems = sched.filter(
         (it) => (it.meses_planejados?.length ?? 0) > 0 && (it.mes_inicio_ciclo ?? 0) >= mesInicio,
       );
-      const MAX_PASSES = 4;
+      const MAX_PASSES = 12;
       for (let pass = 0; pass < MAX_PASSES; pass++) {
         let improved = false;
+        // pico atual: permitimos mover carga para meses cujo total resultante
+        // não ultrapasse o pico corrente (assim, meses estourados escoam para
+        // meses abaixo do teto sem piorar o pico).
+        const curPeak = Math.max(...reservado.slice(mesInicio, 13));
         // ordena por HT desc: movimentar os pesados primeiro ajuda mais
         const ordered = scheduledItems
           .slice()
@@ -541,15 +545,14 @@ Deno.serve(async (req) => {
             const trial = reservado.slice();
             for (const m of it.meses_planejados!) trial[m] -= ht;
             for (const m of newMeses) trial[m] += ht;
-            // não pode criar novo estouro em mês que não estourava antes
-            let violates = false;
+            // Só rejeita se elevar o pico global acima do pico atual.
+            // Isso permite escoar meses super-carregados (ex.: 162h) para meses
+            // ociosos (32h) mesmo quando o teto contratual já foi estourado.
+            let trialPeak = 0;
             for (let m = mesInicio; m <= 12; m++) {
-              if (trial[m] > htContratoMes && trial[m] > reservado[m]) {
-                violates = true;
-                break;
-              }
+              if (trial[m] > trialPeak) trialPeak = trial[m];
             }
-            if (violates) continue;
+            if (trialPeak > curPeak + 1e-6) continue;
             const v = variance(trial);
             if (v < bestVar - 1e-6) {
               bestVar = v;
