@@ -151,13 +151,26 @@ Deno.serve(async (req) => {
 
     if (mode === "apply") {
       const updates = (body.updates ?? []) as Array<{ equip_id: string; tipo_id: string | null }>;
-      let ok_count = 0, fail = 0;
+      // Agrupa por tipo_id para fazer 1 UPDATE por grupo (in-list) em vez de N updates seriais
+      const byTipo = new Map<string, string[]>();
       for (const u of updates) {
-        const { error } = await sb
-          .from("equipamentos_auvo")
-          .update({ tipo_id: u.tipo_id })
-          .eq("id", u.equip_id);
-        if (error) fail++; else ok_count++;
+        const key = u.tipo_id ?? "__null__";
+        if (!byTipo.has(key)) byTipo.set(key, []);
+        byTipo.get(key)!.push(u.equip_id);
+      }
+      const results = await Promise.all(
+        Array.from(byTipo.entries()).map(async ([key, ids]) => {
+          const tipo_id = key === "__null__" ? null : key;
+          const { error } = await sb
+            .from("equipamentos_auvo")
+            .update({ tipo_id })
+            .in("id", ids);
+          return { ids, error };
+        })
+      );
+      let ok_count = 0, fail = 0;
+      for (const r of results) {
+        if (r.error) fail += r.ids.length; else ok_count += r.ids.length;
       }
       return ok({ ok: true, aplicados: ok_count, falhas: fail });
     }
