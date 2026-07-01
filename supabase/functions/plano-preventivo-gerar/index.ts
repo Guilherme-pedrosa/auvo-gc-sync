@@ -358,6 +358,27 @@ Deno.serve(async (req) => {
         vigenciaInicio = cliValid[0].vigencia_inicio ?? null;
         contratoFonte = "cliente";
       } else {
+        // Fallback: match por razão social normalizada (ignora " - FILIAL", LTDA, S.A., pontuação)
+        const alvo = normalizeCliente(cliente_nome);
+        if (alvo) {
+          const { data: todos } = await supabase
+            .from("contratos")
+            .select("cliente_nome, horas_mes_contratadas, vigencia_inicio, ativo")
+            .eq("ativo", true)
+            .not("cliente_nome", "is", null);
+          const fuzzy = (todos || []).filter((c: any) => {
+            if (!c.cliente_nome || !(Number(c.horas_mes_contratadas) > 0)) return false;
+            const n = normalizeCliente(c.cliente_nome);
+            return n === alvo || n.startsWith(alvo) || alvo.startsWith(n);
+          });
+          if (fuzzy.length > 0) {
+            htContratoMes = fuzzy.reduce((s: number, c: any) => s + Number(c.horas_mes_contratadas || 0), 0);
+            vigenciaInicio = fuzzy[0].vigencia_inicio ?? null;
+            contratoFonte = "cliente";
+          }
+        }
+      }
+      if (!htContratoMes || htContratoMes <= 0) {
         const { data: memb } = await supabase
           .from("grupo_cliente_membros")
           .select("grupo_id")
