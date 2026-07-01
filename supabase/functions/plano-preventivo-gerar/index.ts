@@ -237,28 +237,30 @@ Deno.serve(async (req) => {
     type RowItem = {
       equip_id: string;
       codigo_barras_auvo: string;
+      auvo_equipment_id: string | null;
       nome: string;
       cliente: string | null;
       tipo_id_atual: string | null;
       tipo_nome_resolvido: string | null;
-      tipo_source: "override_manual" | "tipo_atual" | "ia_keywords" | "fallback_padrao";
+      tipo_source: "override_manual" | "tipo_atual" | "ia_keywords";
       categoria: string;
       periodicidade: string;
       step: number;
-      criticidade: string;
+      criticidade: "CRITICA" | "ALTA" | "MEDIA" | "BAIXA";
       horas_por_tecnico: number;
       qtd_tecnicos: number;
       ht_por_ocorrencia: number;
       freq: number;
       ht_total_ano: number;
-      score?: number;
-      keyword_match?: string | null;
+      keyword_match: string | null;
+      ultima_preventiva: string | null;
     };
 
     const items: RowItem[] = [];
+    const semTipo: Array<{ equip_id: string; nome: string; cliente: string | null }> = [];
     for (const e of equipsScope) {
       let tipo: any = null;
-      let source: RowItem["tipo_source"] = "fallback_padrao";
+      let source: RowItem["tipo_source"] | null = null;
       let keywordMatch: string | null = null;
       if (e.tipo_id && tiposById.has(e.tipo_id)) {
         tipo = tiposById.get(e.tipo_id);
@@ -271,6 +273,16 @@ Deno.serve(async (req) => {
           keywordMatch = hit.nome;
         }
       }
+      const hasOverride =
+        e.override_horas_por_tecnico != null ||
+        e.override_qtd_tecnicos != null ||
+        e.override_periodicidade;
+
+      if (!tipo && !hasOverride) {
+        semTipo.push({ equip_id: e.id, nome: e.nome, cliente: e.cliente });
+        continue;
+      }
+      if (hasOverride) source = "override_manual";
 
       const periodicidade = normalizePer(e.override_periodicidade ?? tipo?.periodicidade ?? "BIMESTRAL");
       const step = PER_TO_STEP[periodicidade] || 2;
@@ -280,18 +292,15 @@ Deno.serve(async (req) => {
       const freq = expectedFreq(step);
       const criticidade = normalizeCrit(tipo?.criticidade ?? "MEDIA");
 
-      if (e.override_horas_por_tecnico != null || e.override_qtd_tecnicos != null || e.override_periodicidade) {
-        source = "override_manual";
-      }
-
       items.push({
         equip_id: e.id,
         codigo_barras_auvo: String(e.identificador),
+        auvo_equipment_id: e.auvo_equipment_id ?? null,
         nome: e.nome,
         cliente: e.cliente,
         tipo_id_atual: e.tipo_id,
         tipo_nome_resolvido: tipo?.nome ?? null,
-        tipo_source: source,
+        tipo_source: source!,
         categoria: tipo?.categoria ?? tipo?.nome ?? "SEM CATEGORIA",
         periodicidade,
         step,
@@ -302,286 +311,261 @@ Deno.serve(async (req) => {
         freq,
         ht_total_ano: ht_ocor * freq,
         keyword_match: keywordMatch,
-        // @ts-ignore – campos adicionais
-        auvo_equipment_id: e.auvo_equipment_id ?? null,
-        // @ts-ignore
         ultima_preventiva: lastPrevByAuvoId.get(String(e.auvo_equipment_id ?? "")) ?? null,
       });
     }
 
-    // ── existing plans (preserve start month) ──────────────────────────────
-    const { data: planosExistentes } = await supabase
-      .from("equipamento_plano_preventivo")
-      .select("codigo_barras_auvo, mes_inicio_ciclo, periodicidade")
-      .eq("ano_referencia", ano_referencia)
-      .eq(grupo_id ? "grupo_id" : "ano_referencia", grupo_id ?? ano_referencia);
-    const startByCb = new Map<string, { mes: number; per: string }>();
-    for (const p of (planosExistentes || [])) {
-      startByCb.set(String(p.codigo_barras_auvo), { mes: Number(p.mes_inicio_ciclo), per: String(p.periodicidade) });
-    }
+    // ── scheduler v5: fila única por atraso, sem trava de exclusão ─────────
+    const hoje = new Date();
+    const anoAtual = hoje.getFullYear();
+    const mesAtual = hoje.getMonth() + 1;
+    const mesInicio = ano_referencia === anoAtual ? mesAtual : 1;
 
-    // ── leveling (greedy bin-packing) ──────────────────────────────────────
-    // Sort by criticality desc, then ht_por_ocorrencia desc, then freq desc
-    const ordered = items.slice().sort((a, b) =>
-      (critRank[b.criticidade] - critRank[a.criticidade]) ||
-      (b.ht_por_ocorrencia - a.ht_por_ocorrencia) ||
-      (b.freq - a.freq),
-    );
-    const monthly: number[] = Array(13).fill(0); // 1..12
-    const itemsScheduled: Array<RowItem & { mes_inicio: number; meses: number[]; start_source: string; ultima_preventiva: string | null }> = [];
-    for (const it of ordered) {
-      // 1) preservar plano anterior; 2) calcular a partir da última preventiva; 3) bin-packing
-      const prev = startByCb.get(it.codigo_barras_auvo);
-      // @ts-ignore
-      const ultimaPrev: string | null = (it as any).ultima_preventiva ?? null;
-      let bestStart = 1;
-      let bestScore = Infinity;
-      let startSource = "leveling";
-      if (prev && prev.per === it.periodicidade && prev.mes >= 1 && prev.mes <= it.step) {
-        bestStart = prev.mes;
-        startSource = "plano_anterior";
-      } else if (ultimaPrev) {
-        // próxima ocorrência = ultima + step meses; alinhar dentro do ano de referência
-        const y = Number(ultimaPrev.slice(0, 4));
-        const m = Number(ultimaPrev.slice(5, 7));
-        // total de meses desde jan/ano_ref até a última preventiva (pode ser negativo se já no ano)
-        let nextAbs = y * 12 + (m - 1) + it.step; // 0-based absolute month index for next due
-        const refStartAbs = ano_referencia * 12; // janeiro do ano de referência
-        const refEndAbs = refStartAbs + 11;
-        // avançar/retroceder em múltiplos de step até cair no ano de referência (ou o mais próximo)
-        while (nextAbs < refStartAbs) nextAbs += it.step;
-        while (nextAbs > refEndAbs) nextAbs -= it.step;
-        if (nextAbs < refStartAbs) nextAbs += it.step; // safety
-        const firstMonthInYear = (nextAbs % 12) + 1; // 1..12
-        // start é o primeiro mês do ciclo dentro de 1..step que gera ocorrência em firstMonthInYear
-        bestStart = ((firstMonthInYear - 1) % it.step) + 1;
-        startSource = "ultima_preventiva";
+    // origem inicial
+    type SchedItem = RowItem & {
+      origem: "nunca" | "vencido" | "em_dia";
+      proxima_original_abs: number | null; // ano*12 + (mes-1)
+      proxima_original_mes: number | null; // 1..12 dentro do ano_ref (pode ser <1 se antes)
+      atraso_base: number; // meses no mesInicio
+      status_final?: "nunca" | "vencido" | "em_dia";
+      atraso_meses?: number;
+      meses_planejados?: number[];
+      mes_inicio_ciclo?: number;
+    };
+
+    const vigenciaInicioDate = vigenciaInicio ? new Date(vigenciaInicio + "T00:00:00") : null;
+    const idadeContratoMeses = vigenciaInicioDate
+      ? Math.max(0, Math.floor((hoje.getTime() - vigenciaInicioDate.getTime()) / (30 * 86400 * 1000)))
+      : 0;
+
+    const refStartAbs = ano_referencia * 12; // 0-based
+    const mesInicioAbs = ano_referencia * 12 + (mesInicio - 1);
+
+    const sched: SchedItem[] = items.map((it) => {
+      let origem: "nunca" | "vencido" | "em_dia";
+      let proxAbs: number | null = null;
+      let proxMes: number | null = null;
+      let atrasoBase = 0;
+      if (!it.ultima_preventiva) {
+        origem = "nunca";
+        atrasoBase = idadeContratoMeses;
       } else {
-        for (let s = 1; s <= it.step; s++) {
-          const meses = monthsForPlan(it.step, s);
-          // sanity: must match expected freq
-          if (meses.length !== it.freq) continue;
-          let maxLoad = 0;
-          let sumSq = 0;
-          for (let m = 1; m <= 12; m++) {
-            const add = meses.includes(m) ? it.ht_por_ocorrencia : 0;
-            const load = monthly[m] + add;
-            if (load > maxLoad) maxLoad = load;
-            sumSq += load * load;
-          }
-          const score = maxLoad * 1000 + sumSq * 0.001;
-          if (score < bestScore) { bestScore = score; bestStart = s; }
+        const y = Number(it.ultima_preventiva.slice(0, 4));
+        const m = Number(it.ultima_preventiva.slice(5, 7));
+        proxAbs = y * 12 + (m - 1) + it.step;
+        proxMes = (proxAbs % 12) + 1;
+        // status: vencido se proxAbs < mesInicioAbs; em_dia caso contrário
+        if (proxAbs < mesInicioAbs) {
+          origem = "vencido";
+          atrasoBase = mesInicioAbs - proxAbs;
+        } else {
+          origem = "em_dia";
+          atrasoBase = -(proxAbs - mesInicioAbs);
         }
       }
-      const meses = monthsForPlan(it.step, bestStart);
-      for (const m of meses) monthly[m] += it.ht_por_ocorrencia;
-      itemsScheduled.push({ ...it, mes_inicio: bestStart, meses, start_source: startSource, ultima_preventiva: ultimaPrev });
-    }
-
-    // ── balances ──────────────────────────────────────────────────────────
-    const htContratoAno = htContratoMes * 12;
-    const htAgendaAno = monthly.slice(1).reduce((a, b) => a + b, 0);
-    const corretivasAno = corretivasMes.slice(1).reduce((a, b) => a + b, 0);
-
-    const tabela_meses = Array.from({ length: 12 }, (_, i) => {
-      const m = i + 1;
-      const prev = monthly[m];
-      const corrReal = corretivasMes[m];
-      // Regra: contrato = preventiva + corretiva (sempre).
-      // O que faltar → tira da preventiva (cap no contrato).
-      // O que sobrar → vai pra corretiva.
-      const prevEfetiva = Math.min(prev, htContratoMes);
-      const corrEfetiva = Math.max(0, htContratoMes - prevEfetiva);
       return {
-        mes: m,
-        ht_preventiva: Number(prevEfetiva.toFixed(2)),
-        ht_corretiva: Number(corrEfetiva.toFixed(2)),
-        ht_preventiva_planejada: Number(prev.toFixed(2)),
-        ht_preventiva_cortada: Number(Math.max(0, prev - prevEfetiva).toFixed(2)),
-        ht_corretiva_realizada: Number(corrReal.toFixed(2)),
-        ht_contrato: htContratoMes,
-        saldo: 0,
+        ...it,
+        origem,
+        proxima_original_abs: proxAbs,
+        proxima_original_mes: proxMes,
+        atraso_base: atrasoBase,
       };
     });
 
-    const preventivaEfetivaAno = tabela_meses.reduce((a, b) => a + b.ht_preventiva, 0);
-    const preventivaCortadaAno = tabela_meses.reduce((a, b) => a + b.ht_preventiva_cortada, 0);
-    const corretivasEfetivasAno = tabela_meses.reduce((a, b) => a + b.ht_corretiva, 0);
+    // reservado por mês (agenda de preventiva)
+    const reservado: number[] = Array(13).fill(0);
+    const primeiraVisita = new Map<string, number>();
 
-    const resumo = {
-      total_equipamentos: items.length,
-      por_origem: {
-        override_manual: items.filter((i) => i.tipo_source === "override_manual").length,
-        tipo_atual: items.filter((i) => i.tipo_source === "tipo_atual").length,
-        ia_keywords: items.filter((i) => i.tipo_source === "ia_keywords").length,
-        fallback_padrao: items.filter((i) => i.tipo_source === "fallback_padrao").length,
-      },
-      ht_contrato_mes: htContratoMes,
-      ht_contrato_ano: htContratoAno,
-      ht_agenda_ano: Number(preventivaEfetivaAno.toFixed(2)),
-      ht_agenda_planejada_ano: Number(htAgendaAno.toFixed(2)),
-      ht_preventiva_cortada_ano: Number(preventivaCortadaAno.toFixed(2)),
-      ht_corretiva_ano: Number(corretivasEfetivasAno.toFixed(2)),
-      ht_corretiva_realizada_ano: Number(corretivasAno.toFixed(2)),
-      saldo_ano: 0,
-      pico_mes: Math.max(...monthly.slice(1)),
-      vale_mes: Math.min(...monthly.slice(1)),
+    // agenda subsequentes de um item a partir de m
+    const agendaCiclo = (it: SchedItem, m: number) => {
+      const meses: number[] = [m];
+      reservado[m] += it.ht_por_ocorrencia;
+      let m2 = m + it.step;
+      while (m2 <= 12) {
+        meses.push(m2);
+        reservado[m2] += it.ht_por_ocorrencia;
+        m2 += it.step;
+      }
+      it.meses_planejados = meses;
+      it.mes_inicio_ciclo = m;
+      primeiraVisita.set(it.equip_id, m);
     };
 
-    // ── modes ──────────────────────────────────────────────────────────────
-    if (mode === "preview" || mode === "export") {
-      const itensOut = itemsScheduled.map((it) => ({
-        equip_id: it.equip_id,
-        codigo_barras_auvo: it.codigo_barras_auvo,
-        nome: it.nome,
-        cliente: it.cliente,
-        categoria: it.categoria,
-        tipo_nome: it.tipo_nome_resolvido,
-        tipo_source: it.tipo_source,
-        keyword_match: it.keyword_match,
-        periodicidade: it.periodicidade,
-        criticidade: it.criticidade,
-        horas_por_tecnico: it.horas_por_tecnico,
-        qtd_tecnicos: it.qtd_tecnicos,
-        ht_por_ocorrencia: Number(it.ht_por_ocorrencia.toFixed(2)),
-        freq: it.freq,
-        ht_total_ano: Number(it.ht_total_ano.toFixed(2)),
-        mes_inicio_ciclo: it.mes_inicio,
-        meses_planejados: it.meses,
-        ultima_preventiva: it.ultima_preventiva,
-        start_source: it.start_source,
-      }));
-
-      if (mode === "export") {
-        const wb = XLSX.utils.book_new();
-        // Resumo sheet
-        const resumoSheet = XLSX.utils.aoa_to_sheet([
-          ["RESUMO PLANO DE PREVENTIVAS"],
-          ["Ano de referência", ano_referencia],
-          ["Grupo / Cliente", grupo_id ? `grupo:${grupo_id}` : (cliente_nome ?? "")],
-          [],
-          ["Total equipamentos", resumo.total_equipamentos],
-          ["HT contrato/mês", resumo.ht_contrato_mes],
-          ["HT contrato/ano", resumo.ht_contrato_ano],
-          ["HT agenda/ano (preventivas)", resumo.ht_agenda_ano],
-          ["HT corretiva/ano (realizadas)", resumo.ht_corretiva_ano],
-          ["Saldo/ano", resumo.saldo_ano],
-          ["Pico mensal (h)", resumo.pico_mes],
-          ["Vale mensal (h)", resumo.vale_mes],
-          [],
-          ["Origem do tipo", "Qtd"],
-          ["Override manual", resumo.por_origem.override_manual],
-          ["Tipo já definido", resumo.por_origem.tipo_atual],
-          ["IA por palavras-chave", resumo.por_origem.ia_keywords],
-          ["Fallback padrão", resumo.por_origem.fallback_padrao],
-        ]);
-        XLSX.utils.book_append_sheet(wb, resumoSheet, "Resumo");
-
-        // Tabela HT mensal
-        const tabelaHtRows = [
-          ["Mês", "HT Preventiva", "HT Corretiva", "HT Contrato", "Saldo"],
-          ...tabela_meses.map((m) => [m.mes, m.ht_preventiva, m.ht_corretiva, m.ht_contrato, m.saldo]),
-        ];
-        XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(tabelaHtRows), "Tabela HT");
-
-        // Aba por casa
-        const clientesUnicos = Array.from(new Set(itensOut.map((i) => i.cliente || "Sem cliente")));
-        for (const cli of clientesUnicos) {
-          const linhas = itensOut.filter((i) => (i.cliente || "Sem cliente") === cli);
-          const header = [
-            "ID", "Equipamento", "Categoria", "Criticidade", "Periodicidade",
-            "HT/Téc", "Qtd Téc", "HT/Ocorrência", "Freq/Ano", "HT Total/Ano",
-            "Mês início", "Jan", "Fev", "Mar", "Abr", "Mai", "Jun",
-            "Jul", "Ago", "Set", "Out", "Nov", "Dez", "Origem", "Match IA",
-          ];
-          const rows: any[][] = [header];
-          for (const l of linhas) {
-            const meses = Array(12).fill("");
-            for (const m of l.meses_planejados) meses[m - 1] = l.ht_por_ocorrencia;
-            rows.push([
-              { t: "s", v: l.codigo_barras_auvo },
-              l.nome,
-              l.categoria,
-              l.criticidade,
-              l.periodicidade,
-              l.horas_por_tecnico,
-              l.qtd_tecnicos,
-              l.ht_por_ocorrencia,
-              l.freq,
-              l.ht_total_ano,
-              l.mes_inicio_ciclo,
-              ...meses,
-              l.tipo_source,
-              l.keyword_match ?? "",
-            ]);
-          }
-          // totals row
-          const totHt = linhas.reduce((a, b) => a + b.ht_total_ano, 0);
-          rows.push(["", "TOTAL", "", "", "", "", "", "", "", totHt, "", ...Array(12).fill(""), "", ""]);
-          const sheetName = String(cli).slice(0, 28).replace(/[\\/?*[\]:]/g, "_") || "Casa";
-          XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(rows), sheetName);
+    for (let m = mesInicio; m <= 12; m++) {
+      const mAbs = ano_referencia * 12 + (m - 1);
+      // elegíveis neste mês: sem primeira visita e "chegaram a vez"
+      const fila = sched.filter((it) => {
+        if (primeiraVisita.has(it.equip_id)) return false;
+        if (it.origem === "em_dia") {
+          // em-dia entra desde seu proximaOriginal (mesmo se agora já virou vencido)
+          return (it.proxima_original_abs ?? Infinity) <= mAbs || mAbs >= mesInicioAbs;
         }
-        const buf = XLSX.write(wb, { type: "array", bookType: "xlsx" });
-        const u8 = new Uint8Array(buf);
-        let bin = "";
-        for (let i = 0; i < u8.length; i++) bin += String.fromCharCode(u8[i]);
-        const b64 = btoa(bin);
-        return json({ ok: true, xlsx_base64: b64, filename: `plano-preventivas-${ano_referencia}.xlsx`, resumo });
+        return true;
+      }).map((it) => {
+        // status vivo + atraso vivo
+        let statusVivo: "nunca" | "vencido" | "em_dia";
+        let atrasoVivo: number;
+        if (it.origem === "em_dia") {
+          const po = it.proxima_original_abs!;
+          if (mAbs > po) {
+            statusVivo = "vencido";
+            atrasoVivo = mAbs - po;
+          } else {
+            statusVivo = "em_dia";
+            atrasoVivo = -(po - mAbs);
+          }
+        } else {
+          statusVivo = it.origem;
+          atrasoVivo = it.atraso_base + (m - mesInicio);
+        }
+        return { it, statusVivo, atrasoVivo };
+      });
+
+      // só entram em disputa neste mês quem "chegou a vez"
+      const disputantes = fila.filter(({ it, statusVivo }) => {
+        if (it.origem === "em_dia") {
+          // só entra se mAbs >= proximaOriginal_abs
+          return (it.proxima_original_abs ?? Infinity) <= mAbs;
+        }
+        // nunca/vencido: entra desde mesInicio (sempre)
+        return true;
+      });
+
+      disputantes.sort((a, b) => {
+        if (b.atrasoVivo !== a.atrasoVivo) return b.atrasoVivo - a.atrasoVivo;
+        return critRank[b.it.criticidade] - critRank[a.it.criticidade];
+      });
+
+      for (const { it, statusVivo, atrasoVivo } of disputantes) {
+        const cabe = reservado[m] + it.ht_por_ocorrencia <= htContratoMes;
+        const vencidoVivo = (statusVivo === "vencido" || statusVivo === "nunca") && atrasoVivo > 0;
+        if (cabe) {
+          it.status_final = statusVivo;
+          it.atraso_meses = Math.max(0, atrasoVivo);
+          agendaCiclo(it, m);
+        } else if (vencidoVivo) {
+          // força encaixe, saldo estoura visivelmente
+          it.status_final = statusVivo;
+          it.atraso_meses = atrasoVivo;
+          agendaCiclo(it, m);
+        }
+        // senão: escorrega pro próximo mês
       }
+    }
+
+    // itens que sobraram sem visita (em-dia cuja próxima cai depois de dez do ano ref)
+    for (const it of sched) {
+      if (!primeiraVisita.has(it.equip_id)) {
+        it.status_final = it.origem === "em_dia" ? "em_dia" : it.origem;
+        it.atraso_meses = Math.max(0, it.atraso_base);
+        it.meses_planejados = [];
+        it.mes_inicio_ciclo = 0;
+      }
+    }
+
+    // ── tabela mensal ──────────────────────────────────────────────────────
+    const tabela_meses = Array.from({ length: 12 }, (_, i) => {
+      const m = i + 1;
+      const agendada = reservado[m];
+      return {
+        mes: m,
+        ht_agendada: Number(agendada.toFixed(2)),
+        teto: htContratoMes,
+        saldo: Number((htContratoMes - agendada).toFixed(2)),
+      };
+    });
+
+    const htAno = tabela_meses.reduce((a, b) => a + b.ht_agendada, 0);
+    const contadores = {
+      total: items.length,
+      nunca: sched.filter((s) => s.status_final === "nunca").length,
+      vencidos: sched.filter((s) => s.status_final === "vencido").length,
+      em_dia: sched.filter((s) => s.status_final === "em_dia").length,
+      sem_tipo_count: semTipo.length,
+      ht_ano: Number(htAno.toFixed(2)),
+      ht_contrato_ano: htContratoMes * 12,
+      saldo_ano: Number((htContratoMes * 12 - htAno).toFixed(2)),
+      meses_negativos: tabela_meses.filter((m) => m.saldo < 0).length,
+    };
+
+    if (mode === "preview") {
+      const itensOut = sched
+        .slice()
+        .sort((a, b) => {
+          const da = b.atraso_meses ?? 0;
+          const dc = a.atraso_meses ?? 0;
+          if (da !== dc) return da - dc;
+          return critRank[b.criticidade] - critRank[a.criticidade];
+        })
+        .map((it) => ({
+          equip_id: it.equip_id,
+          codigo_barras_auvo: it.codigo_barras_auvo,
+          nome: it.nome,
+          cliente: it.cliente,
+          categoria: it.categoria,
+          tipo_nome: it.tipo_nome_resolvido,
+          tipo_source: it.tipo_source,
+          keyword_match: it.keyword_match,
+          periodicidade: it.periodicidade,
+          criticidade: it.criticidade,
+          horas_por_tecnico: it.horas_por_tecnico,
+          qtd_tecnicos: it.qtd_tecnicos,
+          ht_por_ocorrencia: Number(it.ht_por_ocorrencia.toFixed(2)),
+          freq: it.freq,
+          ht_total_ano: Number(((it.meses_planejados?.length ?? 0) * it.ht_por_ocorrencia).toFixed(2)),
+          mes_inicio_ciclo: it.mes_inicio_ciclo ?? 0,
+          meses_planejados: it.meses_planejados ?? [],
+          ultima_preventiva: it.ultima_preventiva,
+          proxima_original_mes: it.proxima_original_mes,
+          status: it.status_final ?? it.origem,
+          atraso_meses: it.atraso_meses ?? 0,
+        }));
 
       return json({
-        ok: true, ano_referencia, grupo_id: grupo_id ?? null, cliente_nome: cliente_nome ?? null,
-        resumo, tabela_meses, itens: itensOut,
+        ok: true,
+        ano_referencia,
+        cliente_nome,
+        contrato: {
+          horas_mes_contratadas: htContratoMes,
+          vigencia_inicio: vigenciaInicio,
+          fonte: contratoFonte,
+        },
+        resumo: contadores,
+        sem_tipo: semTipo,
+        tabela_meses,
+        itens: itensOut,
       });
     }
 
-    // ── apply: persist into equipamento_plano_preventivo ───────────────────
+    // ── apply ──────────────────────────────────────────────────────────────
     if (mode === "apply") {
       if (!Array.isArray(apply_rows) || apply_rows.length === 0) {
         return json({ ok: false, error: "apply_rows obrigatório" });
       }
-      // Resolver grupo_id de destino: usa o informado; senão, tenta achar via cliente_nome
-      let grupoDestino: string | null = grupo_id ?? null;
-      if (!grupoDestino && cliente_nome) {
-        const { data: memb } = await supabase
-          .from("grupo_cliente_membros")
-          .select("grupo_id")
-          .eq("cliente_nome", cliente_nome)
-          .limit(1);
-        grupoDestino = (memb?.[0] as any)?.grupo_id ?? null;
-      }
-      // Fallback: sem grupo, mas existe contrato pro cliente → cria grupo automático (1 membro)
-      if (!grupoDestino && cliente_nome) {
-        const { data: contr } = await supabase
-          .from("contratos")
-          .select("id, cliente_nome")
-          .eq("cliente_nome", cliente_nome)
-          .eq("ativo", true)
-          .limit(1);
-        if (contr && contr.length > 0) {
-          const nomeGrupo = `[Auto] ${cliente_nome}`;
-          const { data: novoGrupo, error: errGrupo } = await supabase
-            .from("grupos_clientes")
-            .insert({ nome: nomeGrupo })
-            .select("id")
-            .single();
-          if (errGrupo) {
-            return json({ ok: false, error: `Falha ao criar grupo automático: ${errGrupo.message}` });
-          }
-          grupoDestino = (novoGrupo as any).id;
-          await supabase
-            .from("grupo_cliente_membros")
-            .insert({ grupo_id: grupoDestino, cliente_nome });
-        }
-      }
+      // resolve grupo destino (via cliente_nome)
+      let grupoDestino: string | null = null;
+      const { data: memb } = await supabase
+        .from("grupo_cliente_membros")
+        .select("grupo_id")
+        .eq("cliente_nome", cliente_nome)
+        .limit(1);
+      grupoDestino = (memb?.[0] as any)?.grupo_id ?? null;
       if (!grupoDestino) {
-        return json({
-          ok: false,
-          error: "Sem grupo e sem contrato ativo para este cliente. Cadastre um contrato (Contratos) ou adicione o cliente a um grupo.",
-        });
+        const nomeGrupo = `[Auto] ${cliente_nome}`;
+        const { data: novoGrupo, error: errGrupo } = await supabase
+          .from("grupos_clientes")
+          .insert({ nome: nomeGrupo })
+          .select("id")
+          .single();
+        if (errGrupo) return json({ ok: false, error: `Falha ao criar grupo automático: ${errGrupo.message}` });
+        grupoDestino = (novoGrupo as any).id;
+        await supabase.from("grupo_cliente_membros").insert({ grupo_id: grupoDestino, cliente_nome });
       }
-      let gravados = 0;
-      // Mapa codigo_barras → { id, nome } dos equipamentos, pra popular plano_preventivo_item
+
+      const perMeses = (p: string) => {
+        const n = normalizePer(p);
+        return n === "MENSAL" ? 1 : n === "BIMESTRAL" ? 2 : n === "TRIMESTRAL" ? 3 : n === "SEMESTRAL" ? 6 : 12;
+      };
       const codigos = apply_rows.map((r) => String(r.codigo_barras_auvo)).filter(Boolean);
       const { data: eqRows } = await supabase
         .from("equipamentos_auvo")
@@ -591,21 +575,17 @@ Deno.serve(async (req) => {
       for (const e of eqRows || []) {
         eqByCod.set(String((e as any).codigo_barras_auvo), { id: (e as any).id, nome: (e as any).nome });
       }
-      const perMeses = (p: string) => {
-        const n = normalizePer(p);
-        return n === "MENSAL" ? 1 : n === "BIMESTRAL" ? 2 : n === "TRIMESTRAL" ? 3 : n === "QUADRIMESTRAL" ? 4 : n === "SEMESTRAL" ? 6 : 12;
-      };
+      let gravados = 0;
       for (const r of apply_rows) {
         if (!r.codigo_barras_auvo) continue;
         const eq = eqByCod.get(String(r.codigo_barras_auvo));
-        if (!eq) continue; // sem equipamento local não dá pra vincular
-        const mesInicio = Math.min(12, Math.max(1, Number(r.mes_inicio_ciclo) || 1));
-        const proxima = `${ano_referencia}-${String(mesInicio).padStart(2, "0")}-01`;
+        if (!eq) continue;
+        const mesInicioR = Math.min(12, Math.max(1, Number(r.mes_inicio_ciclo) || 1));
+        const proxima = `${ano_referencia}-${String(mesInicioR).padStart(2, "0")}-01`;
         const meses = Array.isArray(r.meses_planejados) && r.meses_planejados.length
           ? r.meses_planejados
-          : [mesInicio];
+          : [mesInicioR];
         const periodNorm = normalizePer(r.periodicidade);
-        // 1) plano_preventivo_item (tabela usada pela tela de Preventivas)
         const { error: e1 } = await supabase.from("plano_preventivo_item").upsert({
           grupo_id: grupoDestino,
           ano_referencia,
@@ -618,7 +598,6 @@ Deno.serve(async (req) => {
           proxima_data: proxima,
           ativo: true,
         }, { onConflict: "grupo_id,ano_referencia,equipamento_nome" });
-        // 2) equipamento_plano_preventivo (mantém compatibilidade)
         const { error: e2 } = await supabase.from("equipamento_plano_preventivo").upsert({
           grupo_id: grupoDestino,
           codigo_barras_auvo: String(r.codigo_barras_auvo),
@@ -628,7 +607,7 @@ Deno.serve(async (req) => {
           qtd_tecnicos: Math.max(1, Number(r.qtd_tecnicos) || 1),
           periodicidade: periodNorm,
           criticidade: normalizeCrit(r.criticidade),
-          mes_inicio_ciclo: mesInicio,
+          mes_inicio_ciclo: mesInicioR,
           ativo: true,
           status: "RASCUNHO",
         }, { onConflict: "grupo_id,codigo_barras_auvo,ano_referencia" });
