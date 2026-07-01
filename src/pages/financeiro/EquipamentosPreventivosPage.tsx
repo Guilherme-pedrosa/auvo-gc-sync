@@ -513,6 +513,7 @@ export default function EquipamentosPreventivosPage() {
   const PAGE_SIZE = 100;
   const [grupoFilter, setGrupoFilter] = useState<string>("todos");
   const [proximaMesFilter, setProximaMesFilter] = useState<string[]>([]); // [] = todos; valores: "YYYY-MM" | "atrasado" | "sem_plano"
+  const [intervencaoFilter, setIntervencaoFilter] = useState<string>(""); // "" | "3m" | "6m" | "12m" | "none"
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [pdfDialogOpen, setPdfDialogOpen] = useState(false);
   const [pdfScope, setPdfScope] = useState<"selecionados" | "filtrados" | "feitos" | "atrasados" | "atencao_vencido" | "sem_registro">("filtrados");
