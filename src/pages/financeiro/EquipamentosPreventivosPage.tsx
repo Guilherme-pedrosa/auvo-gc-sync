@@ -1624,6 +1624,13 @@ export default function EquipamentosPreventivosPage() {
           >
             <Pencil className="h-4 w-4 mr-1" /> Alterar tipo em massa
           </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setRevisarIaOpen(true)}
+          >
+            <Sparkles className="h-4 w-4 mr-1" /> Revisar tipos com IA (selecionados)
+          </Button>
           <Button variant="ghost" size="sm" className="ml-auto" onClick={() => setSelectedIds(new Set())}>
             Limpar seleção
           </Button>
