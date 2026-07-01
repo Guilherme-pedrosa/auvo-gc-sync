@@ -581,7 +581,7 @@ export default function EquipamentosPreventivosPage() {
   }) => {
     // Optimistic update: patch only the edited equipment in the cache
     // (the raw query loads thousands of rows, so invalidate-and-refetch is slow).
-    const queryKey = ["equipamentos-preventivos-raw", "v2-only-ativos"];
+    const queryKey = ["equipamentos-preventivos-raw", "v3-consolidado"];
     const prev = queryClient.getQueryData<any>(queryKey);
     if (prev?.equipamentos) {
       queryClient.setQueryData(queryKey, {
@@ -614,7 +614,7 @@ export default function EquipamentosPreventivosPage() {
     if (ids.length === 0) return;
     setBulkSaving(true);
 
-    const queryKey = ["equipamentos-preventivos-raw", "v2-only-ativos"];
+    const queryKey = ["equipamentos-preventivos-raw", "v3-consolidado"];
     const prev = queryClient.getQueryData<any>(queryKey);
     if (prev?.equipamentos) {
       const idSet = new Set(ids);
@@ -1027,7 +1027,7 @@ export default function EquipamentosPreventivosPage() {
       toast.error("Erro ao salvar marca: " + error.message);
     } else {
       toast.success("Marca atualizada");
-      queryClient.invalidateQueries({ queryKey: ["equipamentos-preventivos-raw", "v2-only-ativos"] });
+      queryClient.invalidateQueries({ queryKey: ["equipamentos-preventivos-raw", "v3-consolidado"] });
     }
     setEditingMarcaId(null);
   }, [queryClient]);
