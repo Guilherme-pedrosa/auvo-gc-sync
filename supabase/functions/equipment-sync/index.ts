@@ -14,7 +14,7 @@ const MAX_PHASE2_TASKS_PER_REQUEST = 180;
 const TASK_PAGE_CONCURRENCY = 8;
 // Campos mínimos necessários no /tasks para montar o mapa equip→tarefa.
 const TASK_SELECT_FIELDS =
-  "taskID,taskDate,checkOutDate,checkoutDate,equipmentsId,taskType,taskTypeDescription,taskStatus,finished,customerDescription,customerName,userToName";
+  "taskID,taskDate,checkOutDate,checkoutDate,deliveredDate,deliveredOnDate,finishedDate,finishedOn,equipmentsId,taskType,taskTypeDescription,taskStatus,finished,customerDescription,customerName,userToName";
 const EQUIPMENT_SELECT_FIELDS =
   "id,name,identifier,description,associatedCustomerId,active,categoryId";
 
@@ -274,6 +274,8 @@ type EquipmentTaskLink = {
   statusCode: number;
   taskDate: string | null;
   checkOutDate: string | null;
+  deliveredDate: string | null;
+  finishedDate: string | null;
   customerDescription: string;
   userToName: string;
 };
@@ -498,6 +500,8 @@ function parseTaskRow(task: any): EquipmentTaskLink | null {
     statusCode,
     taskDate: normalizeDate(task.taskDate),
     checkOutDate: normalizeDate(task.checkOutDate || task.checkoutDate),
+    deliveredDate: normalizeDate(task.deliveredDate || task.deliveredOnDate),
+    finishedDate: normalizeDate(task.finishedDate || task.finishedOn),
     customerDescription: String(task.customerDescription || task.customerName || ""),
     userToName: String(task.userToName || ""),
     // @ts-ignore - carry-through para o filtro finalizedOnly no phase 2-batch
@@ -936,9 +940,11 @@ Deno.serve(async (req) => {
               auvo_task_id: task.taskId,
               auvo_task_type_id: task.taskType || null,
               auvo_task_type_description: task.taskTypeDescription || null,
-              status_auvo: resolveStatus(task.statusCode, !!task.checkOutDate),
+              status_auvo: resolveStatus(task.statusCode, !!(task.checkOutDate || task.deliveredDate || task.finishedDate)),
               data_tarefa: task.taskDate || null,
-              data_conclusao: task.checkOutDate || null,
+              // Precedência de execução: checkOut → delivered → finished (nunca taskDate,
+              // que é agendamento e vai em `data_tarefa`).
+              data_conclusao: task.checkOutDate || task.deliveredDate || task.finishedDate || null,
               cliente: task.customerDescription || null,
               tecnico: task.userToName || null,
               auvo_link: `https://app2.auvo.com.br/relatorioTarefas/DetalheTarefa/${task.taskId}`,
@@ -966,9 +972,18 @@ Deno.serve(async (req) => {
         totalTasksAggregate += totalTasks;
         totalWithEquip += withEquipCount;
         totalDiscarded += discarded;
-        // Consolida última data por equipamento (MAX), usando checkOut > taskDate.
+        // Consolida última data por equipamento (MAX).
+        // Precedência da data de execução (NÃO empate):
+        //   1º checkOutDate  (execução real no local — fonte de verdade)
+        //   2º deliveredDate (entrega/conclusão registrada pela API)
+        //   3º finishedDate  (quando `finished` virou true)
+        //   4º taskDate      (apenas agendamento — último recurso)
+        // A próxima preventiva = última + periodicidade; se pegarmos taskDate
+        // no lugar da execução real, a próxima sai deslocada.
+        const pickExecDate = (t: EquipmentTaskLink): string | null =>
+          t.checkOutDate || t.deliveredDate || t.finishedDate || t.taskDate;
         for (const task of tasksWithEquipments) {
-          const d = task.checkOutDate || task.taskDate;
+          const d = pickExecDate(task);
           if (!d) continue;
           for (const eqId of task.equipmentIds) {
             if (validEquipmentIds && !validEquipmentIds.has(eqId)) continue;
