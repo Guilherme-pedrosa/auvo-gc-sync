@@ -413,6 +413,27 @@ export default function GerarPlanoPreventivasDialog({
               </div>
             )}
 
+            {(preview.warnings?.length ?? 0) > 0 && (
+              <div className="border border-orange-300 bg-orange-50 rounded-md p-3 text-sm">
+                <div className="flex items-center gap-2 font-semibold text-orange-900">
+                  <AlertTriangle className="h-4 w-4" />
+                  {preview.warnings!.length} avisos de periodicidade — tratados como ANUAL
+                </div>
+                <div className="text-xs text-orange-800 mt-1 max-h-24 overflow-auto">
+                  {preview.warnings!.slice(0, 20).map((w) => (
+                    <div key={w.equip_id}>• <b>{w.nome}</b> — {w.motivo}</div>
+                  ))}
+                  {preview.warnings!.length > 20 && <div>… +{preview.warnings!.length - 20}</div>}
+                </div>
+              </div>
+            )}
+
+            {preview.fonte_ultima_preventiva && (
+              <div className="text-[11px] text-muted-foreground">
+                Fonte "última preventiva": <b>{preview.fonte_ultima_preventiva === "consolidado" ? "tabela consolidada (fonte única)" : "scan histórico (fallback)"}</b>
+              </div>
+            )}
+
             <div className="border rounded-md max-h-[62vh] overflow-auto relative">
               <table className="w-full caption-bottom text-sm">
                 <TableHeader>
