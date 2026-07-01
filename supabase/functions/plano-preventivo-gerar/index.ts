@@ -191,15 +191,48 @@ Deno.serve(async (req) => {
     // ── horas corretivas realizadas (ano) ──────────────────────────────────
     const yearStart = `${ano_referencia}-01-01`;
     const yearEnd = `${ano_referencia}-12-31`;
-    // Tipos de tarefa considerados como preventiva
-    // 180175 Visita Preventiva + OS
-    // 180176 Visita Preventiva Contrato
-    // 202616 MANUTENÇÃO PREVENTIVA IVARIO
-    // 235724 MANUTENÇÃO PREVENTIVA - FROTA
-    const PREV_TYPES = new Set(["180175", "180176", "202616", "235724"]);
+    // Tipos de tarefa considerados como preventiva — lidos de tipos_tarefa_preventiva (Item 4).
+    // Fallback para os 4 IDs históricos se a tabela estiver vazia (ex.: pré-seed).
+    const { data: prevTiposRows } = await supabase
+      .from("tipos_tarefa_preventiva")
+      .select("auvo_task_type_id")
+      .eq("ativo", true)
+      .is("aplica_a_categoria", null);
+    const PREV_TYPES = new Set<string>(
+      (prevTiposRows ?? []).map((r: any) => String(r.auvo_task_type_id)),
+    );
+    if (PREV_TYPES.size === 0) {
+      ["180175", "180176", "202616", "235724"].forEach((t) => PREV_TYPES.add(t));
+    }
     const corretivasMes: number[] = Array(13).fill(0);
     // Última preventiva por equipamento (auvo_equipment_id → último ISO date)
     const lastPrevByAuvoId = new Map<string, string>();
+    // ── Item 3: fonte única — lê ultima_preventiva do consolidado ─────────
+    // Fallback: se consolidado vazio, cai no scan histórico antigo.
+    let usouConsolidado = false;
+    try {
+      const equipUuidsScope = equipsScope.map((e: any) => e.id);
+      if (equipUuidsScope.length > 0) {
+        const CHUNK = 500;
+        for (let i = 0; i < equipUuidsScope.length; i += CHUNK) {
+          const slice = equipUuidsScope.slice(i, i + CHUNK);
+          const { data: consRows, error: consErr } = await supabase
+            .from("equipamento_preventiva_consolidado")
+            .select("auvo_equipment_id, ultima_preventiva")
+            .in("equip_id", slice);
+          if (consErr) throw consErr;
+          for (const r of (consRows ?? []) as any[]) {
+            if (r.auvo_equipment_id && r.ultima_preventiva) {
+              lastPrevByAuvoId.set(String(r.auvo_equipment_id), String(r.ultima_preventiva));
+              usouConsolidado = true;
+            }
+          }
+        }
+      }
+    } catch (e) {
+      console.warn("[plano-preventivo-gerar] consolidado indisponível, fallback:", e);
+    }
+    // Corretivas ainda precisam do scan (consolidado só armazena preventiva)
     {
       const PAGE = 1000;
       let from = 0;
@@ -220,8 +253,9 @@ Deno.serve(async (req) => {
           if (!d) continue;
           const isPrev = PREV_TYPES.has(String(t.auvo_task_type_id ?? ""));
           if (isPrev) {
+            // Só popula se consolidado NÃO tiver esse equip (Item 3: consolidado é fonte única).
             const eq = String(t.auvo_equipment_id ?? "");
-            if (eq) {
+            if (eq && !usouConsolidado) {
               const cur = lastPrevByAuvoId.get(eq);
               if (!cur || String(d) > cur) lastPrevByAuvoId.set(eq, String(d));
             }
