@@ -442,7 +442,24 @@ export default function GerarPlanoPreventivasDialog({
                         </TableCell>
                         <TableCell className="text-xs">{it.categoria}</TableCell>
                         <TableCell><Badge variant="outline" className="text-[10px]">{it.criticidade}</Badge></TableCell>
-                        <TableCell><Badge variant="outline" className="text-[10px]">{it.periodicidade}</Badge></TableCell>
+                        <TableCell>
+                          <Select
+                            value={it.periodicidade}
+                            onValueChange={(v) => alterarPeriodicidade(it.equip_id, v)}
+                          >
+                            <SelectTrigger className="h-7 w-[120px] text-[11px] px-2">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="MENSAL">MENSAL</SelectItem>
+                              <SelectItem value="BIMESTRAL">BIMESTRAL</SelectItem>
+                              <SelectItem value="TRIMESTRAL">TRIMESTRAL</SelectItem>
+                              <SelectItem value="QUADRIMESTRAL">QUADRIMESTRAL</SelectItem>
+                              <SelectItem value="SEMESTRAL">SEMESTRAL</SelectItem>
+                              <SelectItem value="ANUAL">ANUAL</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </TableCell>
                         <TableCell className="text-right text-xs">
                           <Input
                             type="number"
