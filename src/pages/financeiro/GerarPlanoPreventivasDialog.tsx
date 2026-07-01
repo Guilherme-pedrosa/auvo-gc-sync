@@ -125,7 +125,8 @@ export default function GerarPlanoPreventivasDialog({
     }
   }, [open]);
 
-  const onPreview = async (opts?: { keepRemovidos?: boolean; excluir?: string[] }) => {
+  type Override = { periodicidade?: string; ht_por_ocorrencia?: number; horas_por_tecnico?: number };
+  const onPreview = async (opts?: { keepRemovidos?: boolean; excluir?: string[]; overrides?: Map<string, Override> }) => {
     if (!clienteNome) return toast.error("Selecione um cliente");
     setLoading(true);
     setErrCode(null);
@@ -142,7 +143,37 @@ export default function GerarPlanoPreventivasDialog({
         setPreview(null);
         return;
       }
-      setPreview(data as PreviewResp);
+      let resp = data as PreviewResp;
+      const ov = opts?.overrides;
+      if (ov && ov.size) {
+        let aplicados = 0;
+        const itens = resp.itens.map((it) => {
+          const o = ov.get(it.equip_id);
+          if (!o) return it;
+          aplicados++;
+          const periodicidade = o.periodicidade ?? it.periodicidade;
+          const ht_por_ocorrencia = o.ht_por_ocorrencia ?? it.ht_por_ocorrencia;
+          const horas_por_tecnico = o.horas_por_tecnico ?? it.horas_por_tecnico;
+          // Se periodicidade mudou, regenera a cadeia a partir do primeiro mês agendado
+          let meses = it.meses_planejados;
+          if (o.periodicidade && o.periodicidade !== it.periodicidade) {
+            const inicio = it.meses_planejados[0] ?? it.mes_inicio_ciclo ?? 1;
+            meses = chainFrom(inicio, periodicidade);
+          }
+          return {
+            ...it,
+            periodicidade,
+            ht_por_ocorrencia,
+            horas_por_tecnico,
+            meses_planejados: meses,
+            mes_inicio_ciclo: meses[0] ?? it.mes_inicio_ciclo,
+            ht_total_ano: meses.length * ht_por_ocorrencia,
+          };
+        });
+        resp = recalcAggregates(itens, resp);
+        if (aplicados > 0) toast.info(`${aplicados} edição(ões) manual(is) preservada(s) (HT/periodicidade)`);
+      }
+      setPreview(resp);
       if (!opts?.keepRemovidos) setRemovidos(new Set());
       toast.success(
         `${data.resumo.total} equipamentos processados${excluir.length ? ` (${excluir.length} excluídos)` : ""}`,
@@ -155,11 +186,17 @@ export default function GerarPlanoPreventivasDialog({
   };
 
   const onRefazer = () => {
-    if (removidos.size === 0) {
-      toast.info("Nenhum equipamento removido — o plano continua o mesmo.");
-      return;
+    if (!preview) return;
+    // Captura edições manuais do usuário (HT e periodicidade) para reaplicar após o refazer.
+    const overrides = new Map<string, Override>();
+    for (const it of preview.itens) {
+      overrides.set(it.equip_id, {
+        periodicidade: it.periodicidade,
+        ht_por_ocorrencia: it.ht_por_ocorrencia,
+        horas_por_tecnico: it.horas_por_tecnico,
+      });
     }
-    onPreview({ keepRemovidos: true });
+    onPreview({ keepRemovidos: true, overrides });
   };
 
   // Recalcula tabela_meses e resumo a partir dos itens atuais
