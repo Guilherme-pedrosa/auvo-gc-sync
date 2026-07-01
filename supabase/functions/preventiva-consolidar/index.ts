@@ -260,9 +260,11 @@ Deno.serve(async (req) => {
       if (planos && planos.length > 0) {
         const todas = planos.flatMap((p) => p.datas).sort();
         const ult = porEquip.get(eq.id)?.data ?? null;
-        // próxima > última (ou > hoje se nunca)
-        const referencia = ult || hoje;
-        const futura = todas.find((d) => d > referencia);
+        // próxima > última (a preventiva daquela data já foi feita).
+        // Se nunca teve, próxima >= hoje.
+        const futura = ult
+          ? todas.find((d) => d > ult)
+          : todas.find((d) => d >= hoje);
         if (futura) {
           proxima = futura;
           proximaSource = "plano";

@@ -784,7 +784,7 @@ export default function EquipamentosPreventivosPage() {
         try {
           const prox = parseISO(r.proxima_data);
           const ult = parseISO(r.ultima_data);
-          if (prox.getTime() < ult.getTime() && calculada) {
+          if (prox.getTime() <= ult.getTime() && calculada) {
             r.proxima_data = calculada;
             r.proxima_data_calculada = true;
           }
