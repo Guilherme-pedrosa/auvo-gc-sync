@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { SearchableSelect } from "@/components/ui/searchable-select";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
@@ -109,6 +110,8 @@ export default function GerarPlanoPreventivasDialog({
   const [errCode, setErrCode] = useState<string | null>(null);
   const [errMsg, setErrMsg] = useState<string | null>(null);
   const [removidos, setRemovidos] = useState<Set<string>>(new Set());
+  const [busca, setBusca] = useState("");
+  const [selecionados, setSelecionados] = useState<Set<string>>(new Set());
   const suppressCellClickUntilRef = useRef(0);
 
   useEffect(() => {
@@ -117,6 +120,8 @@ export default function GerarPlanoPreventivasDialog({
       setErrCode(null);
       setErrMsg(null);
       setRemovidos(new Set());
+      setBusca("");
+      setSelecionados(new Set());
     }
   }, [open]);
 
@@ -237,13 +242,31 @@ export default function GerarPlanoPreventivasDialog({
 
   const removerEquip = (equipId: string) => {
     if (!preview) return;
-    if (!confirm("Remover este equipamento do plano?")) return;
     const itens = preview.itens.filter((it) => it.equip_id !== equipId);
     setRemovidos((prev) => {
       const next = new Set(prev);
       next.add(equipId);
       return next;
     });
+    setSelecionados((prev) => {
+      const next = new Set(prev);
+      next.delete(equipId);
+      return next;
+    });
+    setPreview(recalcAggregates(itens, preview));
+  };
+
+  const removerSelecionados = () => {
+    if (!preview || selecionados.size === 0) return;
+    if (!confirm(`Remover ${selecionados.size} equipamento(s) do plano?`)) return;
+    const ids = new Set(selecionados);
+    const itens = preview.itens.filter((it) => !ids.has(it.equip_id));
+    setRemovidos((prev) => {
+      const next = new Set(prev);
+      for (const id of ids) next.add(id);
+      return next;
+    });
+    setSelecionados(new Set());
     setPreview(recalcAggregates(itens, preview));
   };
 
@@ -435,9 +458,78 @@ export default function GerarPlanoPreventivasDialog({
             )}
 
             <div className="border rounded-md max-h-[62vh] overflow-auto relative">
+              <div className="sticky top-0 z-30 flex flex-wrap items-center gap-2 p-2 border-b bg-background">
+                <Input
+                  value={busca}
+                  onChange={(e) => setBusca(e.target.value)}
+                  placeholder="Buscar por ID, nome ou categoria…"
+                  className="h-8 w-72 text-xs"
+                />
+                <div className="text-xs text-muted-foreground">
+                  {(() => {
+                    const q = busca.trim().toLowerCase();
+                    const total = preview.itens.length;
+                    const vis = q
+                      ? preview.itens.filter((it) =>
+                          `${it.codigo_barras_auvo} ${it.nome} ${it.categoria}`.toLowerCase().includes(q),
+                        ).length
+                      : total;
+                    return `${vis} de ${total}`;
+                  })()}
+                </div>
+                <div className="ml-auto flex items-center gap-2">
+                  <span className="text-xs text-muted-foreground">
+                    {selecionados.size > 0 ? `${selecionados.size} selecionado(s)` : ""}
+                  </span>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-8"
+                    disabled={selecionados.size === 0}
+                    onClick={() => setSelecionados(new Set())}
+                  >
+                    Limpar
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="destructive"
+                    className="h-8"
+                    disabled={selecionados.size === 0}
+                    onClick={removerSelecionados}
+                  >
+                    <Trash2 className="h-3.5 w-3.5 mr-1" />
+                    Remover selecionados
+                  </Button>
+                </div>
+              </div>
               <table className="w-full caption-bottom text-sm">
                 <TableHeader>
-                  <TableRow className="[&>th]:sticky [&>th]:top-0 [&>th]:bg-background [&>th]:z-20 [&>th]:shadow-[0_1px_0_hsl(var(--border))]">
+                  <TableRow className="[&>th]:sticky [&>th]:top-[49px] [&>th]:bg-background [&>th]:z-20 [&>th]:shadow-[0_1px_0_hsl(var(--border))]">
+                    <TableHead className="w-8">
+                      {(() => {
+                        const q = busca.trim().toLowerCase();
+                        const visiveis = q
+                          ? preview.itens.filter((it) =>
+                              `${it.codigo_barras_auvo} ${it.nome} ${it.categoria}`.toLowerCase().includes(q),
+                            )
+                          : preview.itens;
+                        const allSel = visiveis.length > 0 && visiveis.every((it) => selecionados.has(it.equip_id));
+                        return (
+                          <Checkbox
+                            checked={allSel}
+                            onCheckedChange={(c) => {
+                              setSelecionados((prev) => {
+                                const next = new Set(prev);
+                                if (c) for (const it of visiveis) next.add(it.equip_id);
+                                else for (const it of visiveis) next.delete(it.equip_id);
+                                return next;
+                              });
+                            }}
+                            aria-label="Selecionar todos visíveis"
+                          />
+                        );
+                      })()}
+                    </TableHead>
                     <TableHead className="min-w-[110px]">ID</TableHead>
                     <TableHead className="min-w-[220px]">Equipamento</TableHead>
                     <TableHead>Categoria</TableHead>
@@ -450,12 +542,32 @@ export default function GerarPlanoPreventivasDialog({
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {preview.itens.map((it) => {
+                  {preview.itens
+                    .filter((it) => {
+                      const q = busca.trim().toLowerCase();
+                      if (!q) return true;
+                      return `${it.codigo_barras_auvo} ${it.nome} ${it.categoria}`.toLowerCase().includes(q);
+                    })
+                    .map((it) => {
                     const setMes = new Set(it.meses_planejados);
                     const setForcados = new Set(it.meses_forcados ?? []);
                     const totalLinha = it.meses_planejados.length * it.ht_por_ocorrencia;
                     return (
-                      <TableRow key={it.equip_id}>
+                      <TableRow key={it.equip_id} className={selecionados.has(it.equip_id) ? "bg-primary/5" : ""}>
+                        <TableCell className="w-8">
+                          <Checkbox
+                            checked={selecionados.has(it.equip_id)}
+                            onCheckedChange={(c) => {
+                              setSelecionados((prev) => {
+                                const next = new Set(prev);
+                                if (c) next.add(it.equip_id);
+                                else next.delete(it.equip_id);
+                                return next;
+                              });
+                            }}
+                            aria-label="Selecionar"
+                          />
+                        </TableCell>
                         <TableCell className="text-xs font-mono">{it.codigo_barras_auvo}</TableCell>
                         <TableCell>
                           <div className="font-medium text-sm">{it.nome}</div>
@@ -568,7 +680,7 @@ export default function GerarPlanoPreventivasDialog({
                 </TableBody>
                 <tfoot className="sticky bottom-0 bg-background border-t-2">
                   <tr className="border-t">
-                    <td colSpan={6} className="p-2 text-right text-xs font-semibold">TOTAL MÊS (h)</td>
+                    <td colSpan={7} className="p-2 text-right text-xs font-semibold">TOTAL MÊS (h)</td>
                     {totMes.map((m) => (
                       <td key={m.mes} className="p-2 text-center text-xs font-semibold">{m.ht_agendada.toFixed(1)}</td>
                     ))}
@@ -578,7 +690,7 @@ export default function GerarPlanoPreventivasDialog({
                     <td></td>
                   </tr>
                   <tr>
-                    <td colSpan={6} className="p-2 text-right text-xs text-muted-foreground">META (h)</td>
+                    <td colSpan={7} className="p-2 text-right text-xs text-muted-foreground">META (h)</td>
                     {totMes.map((m) => (
                       <td key={m.mes} className="p-2 text-center text-xs text-muted-foreground">{m.teto.toFixed(1)}</td>
                     ))}
@@ -588,7 +700,7 @@ export default function GerarPlanoPreventivasDialog({
                     <td></td>
                   </tr>
                   <tr>
-                    <td colSpan={6} className="p-2 text-right text-xs font-semibold">SALDO (h)</td>
+                    <td colSpan={7} className="p-2 text-right text-xs font-semibold">SALDO (h)</td>
                     {totMes.map((m) => (
                       <td key={m.mes} className={cn(
                         "p-2 text-center text-xs font-semibold",
