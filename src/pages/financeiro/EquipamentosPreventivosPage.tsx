@@ -32,7 +32,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import { FileText, Users, Sparkles } from "lucide-react";
-import { Plus } from "lucide-react";
+import { Plus, Filter } from "lucide-react";
 import CriarTarefaAuvoDialog from "./CriarTarefaAuvoDialog";
 import ImportarPlanoExcelDialog from "./ImportarPlanoExcelDialog";
 import RevisarTiposIADialog from "./RevisarTiposIADialog";
@@ -464,6 +464,9 @@ export default function EquipamentosPreventivosPage() {
   const defaultSyncEnd = format(new Date(), "yyyy-MM-dd");
   const [syncStartDate, setSyncStartDate] = useState(defaultSyncStart);
   const [syncEndDate, setSyncEndDate] = useState(defaultSyncEnd);
+  // Quando true, o range de datas ao lado do "Sincronizar" também é aplicado
+  // como filtro de linhas (janela da última intervenção). Desligado por padrão.
+  const [applyDateFilter, setApplyDateFilter] = useState(false);
 
   const { data: rawData, isLoading, refetch, isFetching } = useQuery({
     queryKey: ["equipamentos-preventivos-raw", "v2-only-ativos"],
@@ -789,12 +792,16 @@ export default function EquipamentosPreventivosPage() {
         }
         if (!ok) return false;
       }
-      // Período (syncStartDate/syncEndDate) NÃO é filtro de linhas —
-      // é apenas a janela usada pelo botão "Sincronizar" para buscar
-      // o histórico de tarefas. Não filtra a listagem.
+      // Período (syncStartDate/syncEndDate) só filtra linhas quando o usuário
+      // ativa explicitamente o toggle "Aplicar como filtro" ao lado das datas.
+      if (!exclude.has("periodo") && applyDateFilter && syncStartDate && syncEndDate) {
+        const ref = (e.ultima_data || "").slice(0, 10);
+        if (!ref) return false;
+        if (ref < syncStartDate || ref > syncEndDate) return false;
+      }
       return true;
     },
-    [search, statusFilter, marcaFilter, clienteFilter, tipoEquipFilter, grupoFilter, grupoClienteMap, proximaMesFilter, syncStartDate, syncEndDate]
+    [search, statusFilter, marcaFilter, clienteFilter, tipoEquipFilter, grupoFilter, grupoClienteMap, proximaMesFilter, syncStartDate, syncEndDate, applyDateFilter]
   );
 
   // Opções em cascata: para cada filtro, considera o universo já reduzido pelos OUTROS filtros
@@ -1152,7 +1159,8 @@ export default function EquipamentosPreventivosPage() {
     tipoTarefaFilter.length > 0 && `Tipos tarefa: ${tipoTarefaFilter.length}`,
     tipoEquipFilter.length > 0 && `Tipos equip.: ${tipoEquipFilter.length}`,
     grupoFilter !== "todos" && `Grupo: ${(gruposData?.grupos ?? []).find((g: any) => g.id === grupoFilter)?.nome || "—"}`,
-    // Período de sincronização não conta como filtro ativo.
+    // Período de sincronização só conta como filtro ativo quando o toggle está ligado.
+    applyDateFilter && syncStartDate && syncEndDate && `Período: ${format(parseISO(syncStartDate), "dd/MM/yy")} → ${format(parseISO(syncEndDate), "dd/MM/yy")}`,
     proximaMesFilter.length > 0 && `Próx. preventiva: ${
       proximaMesFilter.map((v) =>
         v === "atrasado" ? "Atrasadas"
@@ -1418,6 +1426,16 @@ export default function EquipamentosPreventivosPage() {
               </PopoverContent>
             </Popover>
           </div>
+          <Button
+            variant={applyDateFilter ? "default" : "outline"}
+            size="sm"
+            onClick={() => setApplyDateFilter((v) => !v)}
+            title={applyDateFilter ? "Filtro de data ativo — clique para desativar" : "Aplicar o intervalo de datas como filtro da lista"}
+            className={applyDateFilter ? "" : "text-muted-foreground"}
+          >
+            <Filter className="h-4 w-4 mr-1" />
+            {applyDateFilter ? "Filtro data: ON" : "Filtro data: OFF"}
+          </Button>
           <Button onClick={handleSync} disabled={syncing || isFetching} size="sm">
             {syncing ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <RefreshCw className="h-4 w-4 mr-1" />}
             Sincronizar
