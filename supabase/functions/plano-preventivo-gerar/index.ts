@@ -431,7 +431,9 @@ Deno.serve(async (req) => {
     const hoje = new Date();
     const anoAtual = hoje.getFullYear();
     const mesAtual = hoje.getMonth() + 1;
-    const mesInicio = ano_referencia === anoAtual ? mesAtual : 1;
+    // Sempre começa em janeiro — permite visualizar o encaixe do contrato
+    // no ano inteiro, mesmo quando gerando o plano no meio do ano vigente.
+    const mesInicio = 1;
 
     // origem inicial
     type SchedItem = RowItem & {
