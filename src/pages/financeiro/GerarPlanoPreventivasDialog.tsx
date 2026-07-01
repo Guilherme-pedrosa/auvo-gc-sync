@@ -16,6 +16,13 @@ import {
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 type Item = {
   equip_id: string;
@@ -251,6 +258,23 @@ export default function GerarPlanoPreventivasDialog({
     setPreview(recalcAggregates(itens, preview));
   };
 
+  const alterarPeriodicidade = (equipId: string, novaPer: string) => {
+    if (!preview) return;
+    const itens = preview.itens.map((it) => {
+      if (it.equip_id !== equipId) return it;
+      const inicio = it.meses_planejados[0] ?? it.mes_inicio_ciclo ?? 1;
+      const meses = chainFrom(inicio, novaPer);
+      return {
+        ...it,
+        periodicidade: novaPer,
+        meses_planejados: meses,
+        mes_inicio_ciclo: meses[0] ?? inicio,
+        ht_total_ano: meses.length * it.ht_por_ocorrencia,
+      };
+    });
+    setPreview(recalcAggregates(itens, preview));
+  };
+
   const onApply = async () => {
     if (!preview) return;
     const agendaveis = preview.itens.filter((i) => i.meses_planejados.length > 0);
@@ -418,7 +442,24 @@ export default function GerarPlanoPreventivasDialog({
                         </TableCell>
                         <TableCell className="text-xs">{it.categoria}</TableCell>
                         <TableCell><Badge variant="outline" className="text-[10px]">{it.criticidade}</Badge></TableCell>
-                        <TableCell><Badge variant="outline" className="text-[10px]">{it.periodicidade}</Badge></TableCell>
+                        <TableCell>
+                          <Select
+                            value={it.periodicidade}
+                            onValueChange={(v) => alterarPeriodicidade(it.equip_id, v)}
+                          >
+                            <SelectTrigger className="h-7 w-[120px] text-[11px] px-2">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="MENSAL">MENSAL</SelectItem>
+                              <SelectItem value="BIMESTRAL">BIMESTRAL</SelectItem>
+                              <SelectItem value="TRIMESTRAL">TRIMESTRAL</SelectItem>
+                              <SelectItem value="QUADRIMESTRAL">QUADRIMESTRAL</SelectItem>
+                              <SelectItem value="SEMESTRAL">SEMESTRAL</SelectItem>
+                              <SelectItem value="ANUAL">ANUAL</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </TableCell>
                         <TableCell className="text-right text-xs">
                           <Input
                             type="number"
