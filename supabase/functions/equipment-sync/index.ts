@@ -500,6 +500,8 @@ function parseTaskRow(task: any): EquipmentTaskLink | null {
     statusCode,
     taskDate: normalizeDate(task.taskDate),
     checkOutDate: normalizeDate(task.checkOutDate || task.checkoutDate),
+    deliveredDate: normalizeDate(task.deliveredDate || task.deliveredOnDate),
+    finishedDate: normalizeDate(task.finishedDate || task.finishedOn),
     customerDescription: String(task.customerDescription || task.customerName || ""),
     userToName: String(task.userToName || ""),
     // @ts-ignore - carry-through para o filtro finalizedOnly no phase 2-batch
