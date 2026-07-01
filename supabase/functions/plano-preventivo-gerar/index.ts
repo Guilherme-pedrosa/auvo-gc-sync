@@ -17,7 +17,7 @@ const normalizeKey = (s: any) =>
   String(s ?? "").trim().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
 
 const PER_TO_STEP: Record<string, number> = {
-  MENSAL: 1, BIMESTRAL: 2, TRIMESTRAL: 3, SEMESTRAL: 6, ANUAL: 12,
+  MENSAL: 1, BIMESTRAL: 2, TRIMESTRAL: 3, QUADRIMESTRAL: 4, SEMESTRAL: 6, ANUAL: 12,
 };
 const normalizePer = (raw: any): string => {
   const s = String(raw ?? "").trim().toUpperCase();
@@ -25,6 +25,7 @@ const normalizePer = (raw: any): string => {
   if (s.startsWith("MENS")) return "MENSAL";
   if (s.startsWith("BIM")) return "BIMESTRAL";
   if (s.startsWith("TRI")) return "TRIMESTRAL";
+  if (s.startsWith("QUAD")) return "QUADRIMESTRAL";
   if (s.startsWith("SEM")) return "SEMESTRAL";
   if (s.startsWith("ANU")) return "ANUAL";
   return "BIMESTRAL";
