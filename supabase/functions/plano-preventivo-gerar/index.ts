@@ -583,9 +583,11 @@ Deno.serve(async (req) => {
     }
 
     // ── rebalanceamento: reduz variância entre meses ───────────────────────
-    // Só move itens já agendados; só desloca a cadeia inteira por ±k meses
-    // (k < step) respeitando mesInicio e teto. Aceita se o desvio-padrão
-    // dos meses [mesInicio..12] diminuir.
+    // Move itens já agendados deslocando a cadeia inteira por ±k meses
+    // (qualquer k que mantenha newStart em [mesInicio..12]) respeitando
+    // periodicidade. Aceita se (a) o pico não piora e (b) a variância cai —
+    // mesmo que o número de ocorrências mude, desde que o total do ano
+    // continue dentro do teto contratual (12 * htContratoMes).
     {
       const variance = (arr: number[]) => {
         const slice = arr.slice(mesInicio, 13);
@@ -593,16 +595,20 @@ Deno.serve(async (req) => {
         const mean = slice.reduce((a, b) => a + b, 0) / n;
         return slice.reduce((a, b) => a + (b - mean) ** 2, 0) / n;
       };
+      const totalAno = (arr: number[]) => {
+        let s = 0;
+        for (let m = mesInicio; m <= 12; m++) s += arr[m];
+        return s;
+      };
+      const tetoAnual = htContratoMes * 12;
       const scheduledItems = sched.filter(
         (it) => (it.meses_planejados?.length ?? 0) > 0 && (it.mes_inicio_ciclo ?? 0) >= mesInicio,
       );
-      const MAX_PASSES = 12;
+      const MAX_PASSES = 30;
       for (let pass = 0; pass < MAX_PASSES; pass++) {
         let improved = false;
-        // pico atual: permitimos mover carga para meses cujo total resultante
-        // não ultrapasse o pico corrente (assim, meses estourados escoam para
-        // meses abaixo do teto sem piorar o pico).
         const curPeak = Math.max(...reservado.slice(mesInicio, 13));
+        const curTotal = totalAno(reservado);
         // ordena por HT desc: movimentar os pesados primeiro ajuda mais
         const ordered = scheduledItems
           .slice()
@@ -611,9 +617,9 @@ Deno.serve(async (req) => {
           const curStart = it.mes_inicio_ciclo!;
           const step = it.step;
           const ht = it.ht_por_ocorrencia;
-          // só considera deslocamentos que não pulam ciclo
+          // considera qualquer deslocamento que mantenha newStart em janela
           const deltas: number[] = [];
-          for (let d = 1; d < step; d++) {
+          for (let d = 1; d <= 11; d++) {
             deltas.push(d);
             deltas.push(-d);
           }
@@ -625,19 +631,22 @@ Deno.serve(async (req) => {
             // gera nova cadeia
             const newMeses: number[] = [];
             for (let m = newStart; m <= 12; m += step) newMeses.push(m);
-            if (newMeses.length !== (it.meses_planejados?.length ?? 0)) continue;
+            if (newMeses.length === 0) continue;
             // simula
             const trial = reservado.slice();
             for (const m of it.meses_planejados!) trial[m] -= ht;
             for (const m of newMeses) trial[m] += ht;
-            // Só rejeita se elevar o pico global acima do pico atual.
-            // Isso permite escoar meses super-carregados (ex.: 162h) para meses
-            // ociosos (32h) mesmo quando o teto contratual já foi estourado.
+            // Rejeita se elevar o pico acima do atual.
             let trialPeak = 0;
             for (let m = mesInicio; m <= 12; m++) {
               if (trial[m] > trialPeak) trialPeak = trial[m];
             }
             if (trialPeak > curPeak + 1e-6) continue;
+            // Se muda o nº de ocorrências, o total do ano muda também.
+            // Só aceita se o novo total continuar dentro do teto anual
+            // (ou, se já estava estourado, se não piorar o estouro).
+            const trialTotal = totalAno(trial);
+            if (trialTotal > tetoAnual + 1e-6 && trialTotal > curTotal + 1e-6) continue;
             const v = variance(trial);
             if (v < bestVar - 1e-6) {
               bestVar = v;
