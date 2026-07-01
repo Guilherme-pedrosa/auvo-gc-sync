@@ -497,6 +497,80 @@ Deno.serve(async (req) => {
       }
     }
 
+    // ── rebalanceamento: reduz variância entre meses ───────────────────────
+    // Só move itens já agendados; só desloca a cadeia inteira por ±k meses
+    // (k < step) respeitando mesInicio e teto. Aceita se o desvio-padrão
+    // dos meses [mesInicio..12] diminuir.
+    {
+      const variance = (arr: number[]) => {
+        const slice = arr.slice(mesInicio, 13);
+        const n = slice.length || 1;
+        const mean = slice.reduce((a, b) => a + b, 0) / n;
+        return slice.reduce((a, b) => a + (b - mean) ** 2, 0) / n;
+      };
+      const scheduledItems = sched.filter(
+        (it) => (it.meses_planejados?.length ?? 0) > 0 && (it.mes_inicio_ciclo ?? 0) >= mesInicio,
+      );
+      const MAX_PASSES = 4;
+      for (let pass = 0; pass < MAX_PASSES; pass++) {
+        let improved = false;
+        // ordena por HT desc: movimentar os pesados primeiro ajuda mais
+        const ordered = scheduledItems
+          .slice()
+          .sort((a, b) => b.ht_por_ocorrencia - a.ht_por_ocorrencia);
+        for (const it of ordered) {
+          const curStart = it.mes_inicio_ciclo!;
+          const step = it.step;
+          const ht = it.ht_por_ocorrencia;
+          // só considera deslocamentos que não pulam ciclo
+          const deltas: number[] = [];
+          for (let d = 1; d < step; d++) {
+            deltas.push(d);
+            deltas.push(-d);
+          }
+          let bestDelta = 0;
+          let bestVar = variance(reservado);
+          for (const d of deltas) {
+            const newStart = curStart + d;
+            if (newStart < mesInicio || newStart > 12) continue;
+            // gera nova cadeia
+            const newMeses: number[] = [];
+            for (let m = newStart; m <= 12; m += step) newMeses.push(m);
+            if (newMeses.length !== (it.meses_planejados?.length ?? 0)) continue;
+            // simula
+            const trial = reservado.slice();
+            for (const m of it.meses_planejados!) trial[m] -= ht;
+            for (const m of newMeses) trial[m] += ht;
+            // não pode criar novo estouro em mês que não estourava antes
+            let violates = false;
+            for (let m = mesInicio; m <= 12; m++) {
+              if (trial[m] > htContratoMes && trial[m] > reservado[m]) {
+                violates = true;
+                break;
+              }
+            }
+            if (violates) continue;
+            const v = variance(trial);
+            if (v < bestVar - 1e-6) {
+              bestVar = v;
+              bestDelta = d;
+            }
+          }
+          if (bestDelta !== 0) {
+            const newStart = curStart + bestDelta;
+            const newMeses: number[] = [];
+            for (let m = newStart; m <= 12; m += step) newMeses.push(m);
+            for (const m of it.meses_planejados!) reservado[m] -= ht;
+            for (const m of newMeses) reservado[m] += ht;
+            it.meses_planejados = newMeses;
+            it.mes_inicio_ciclo = newStart;
+            improved = true;
+          }
+        }
+        if (!improved) break;
+      }
+    }
+
     // ── tabela mensal ──────────────────────────────────────────────────────
     const tabela_meses = Array.from({ length: 12 }, (_, i) => {
       const m = i + 1;
