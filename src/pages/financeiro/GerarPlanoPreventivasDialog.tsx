@@ -80,6 +80,27 @@ const chainFrom = (inicio: number, p: string): number[] => {
   return out;
 };
 
+// Gera cadeia bidirecional (pra frente E pra trás) a partir de um mês âncora
+const chainAround = (anchor: number, p: string): number[] => {
+  const step = periodMeses(p);
+  const set = new Set<number>();
+  for (let m = anchor; m >= 1; m -= step) set.add(m);
+  for (let m = anchor; m <= 12; m += step) set.add(m);
+  return Array.from(set).sort((a, b) => a - b);
+};
+
+// Retorna o mês (1-12) da última preventiva executada, se estiver dentro do ano de referência
+const executedMonthOf = (ultima: string | null, ano: number): number | null => {
+  if (!ultima) return null;
+  const s = String(ultima).slice(0, 10);
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(s);
+  if (!m) return null;
+  const y = Number(m[1]);
+  const mo = Number(m[2]);
+  if (y !== ano || mo < 1 || mo > 12) return null;
+  return mo;
+};
+
 const statusBg: Record<string, string> = {
   nunca: "bg-red-100 text-red-900",
   vencido: "bg-amber-100 text-amber-900",
@@ -174,6 +195,22 @@ export default function GerarPlanoPreventivasDialog({
         });
         resp = recalcAggregates(itens, resp);
         if (aplicados > 0) toast.info(`${aplicados} edição(ões) manual(is) preservada(s) (HT/periodicidade)`);
+      }
+      // Ancora a cadeia no mês da última execução (quando ocorreu no ano de referência),
+      // gerando a distribuição pra frente E pra trás a partir dela.
+      {
+        const itensAnc = resp.itens.map((it) => {
+          const em = executedMonthOf(it.ultima_preventiva, resp.ano_referencia);
+          if (em == null) return it;
+          const meses = chainAround(em, it.periodicidade);
+          return {
+            ...it,
+            meses_planejados: meses,
+            mes_inicio_ciclo: meses[0] ?? em,
+            ht_total_ano: meses.length * it.ht_por_ocorrencia,
+          };
+        });
+        resp = recalcAggregates(itensAnc, resp);
       }
       setPreview(resp);
       if (!opts?.keepRemovidos) {
@@ -599,6 +636,7 @@ export default function GerarPlanoPreventivasDialog({
                     const setMes = new Set(it.meses_planejados);
                     const setForcados = new Set(it.meses_forcados ?? []);
                     const totalLinha = it.meses_planejados.length * it.ht_por_ocorrencia;
+                    const executedMonth = executedMonthOf(it.ultima_preventiva, preview.ano_referencia);
                     return (
                       <TableRow key={it.equip_id} className={selecionados.has(it.equip_id) ? "bg-primary/5" : ""}>
                         <TableCell className="w-8">
@@ -659,14 +697,16 @@ export default function GerarPlanoPreventivasDialog({
                           const m = i + 1;
                           const on = setMes.has(m);
                           const forced = setForcados.has(m);
+                          const executed = executedMonth === m;
                           return (
                             <TableCell key={m} className={cn(
                               "text-center text-xs font-medium hover:ring-2 hover:ring-primary/40 transition select-none",
                               on ? "cursor-grab active:cursor-grabbing" : "cursor-pointer",
                               on && statusBg[it.status],
                               forced && "ring-2 ring-red-500 ring-inset bg-red-100 text-red-900",
+                              executed && "bg-emerald-700 text-white hover:bg-emerald-800 ring-2 ring-emerald-900 ring-inset",
                             )}
-                              draggable={on}
+                              draggable={on && !executed}
                               onDragStart={(e) => {
                                 if (!on) return;
                                 suppressCellClickUntilRef.current = Date.now() + 800;
@@ -698,14 +738,16 @@ export default function GerarPlanoPreventivasDialog({
                                 else adicionarMes(it.equip_id, m);
                               }}
                               title={
-                                on
+                                executed
+                                  ? `✓ Executado neste mês (última preventiva: ${it.ultima_preventiva})`
+                                  : on
                                   ? (forced
                                       ? "⚠ Encaixe forçado — este mês estourou o teto de HT"
                                       : "Arraste para mover (regenera a cadeia) · clique para remover")
                                   : "Clique para adicionar preventiva neste mês"
                               }
                             >
-                              {on ? (forced ? `⚠${it.ht_por_ocorrencia}` : it.ht_por_ocorrencia) : ""}
+                              {executed ? `✓${it.ht_por_ocorrencia}` : on ? (forced ? `⚠${it.ht_por_ocorrencia}` : it.ht_por_ocorrencia) : ""}
                             </TableCell>
                           );
                         })}
