@@ -766,7 +766,11 @@ export default function EquipamentosPreventivosPage() {
       // não têm última intervenção nem plano definido e ficariam ocultos.
       const bypassDateFilters =
         (search.trim().length > 0) ||
-        (tipoEquipFilter.includes("__sem_tipo__") && !e.tipo_id);
+        (tipoEquipFilter.includes("__sem_tipo__") && !e.tipo_id) ||
+        // Ao filtrar por cliente(s), mostrar todos os equipamentos da unidade
+        // (a base já é filtrada para "Ativo"), independentemente da última
+        // intervenção ou próxima preventiva.
+        clienteFilter.length > 0;
       if (!exclude.has("grupo") && grupoFilter !== "todos") {
         const members = grupoClienteMap.get(grupoFilter) || new Set<string>();
         if (!e.cliente || !members.has(normalizeClienteName(e.cliente))) return false;
