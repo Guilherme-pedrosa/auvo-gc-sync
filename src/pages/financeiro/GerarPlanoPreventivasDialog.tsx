@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { SearchableSelect } from "@/components/ui/searchable-select";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
@@ -109,6 +110,8 @@ export default function GerarPlanoPreventivasDialog({
   const [errCode, setErrCode] = useState<string | null>(null);
   const [errMsg, setErrMsg] = useState<string | null>(null);
   const [removidos, setRemovidos] = useState<Set<string>>(new Set());
+  const [busca, setBusca] = useState("");
+  const [selecionados, setSelecionados] = useState<Set<string>>(new Set());
   const suppressCellClickUntilRef = useRef(0);
 
   useEffect(() => {
@@ -117,6 +120,8 @@ export default function GerarPlanoPreventivasDialog({
       setErrCode(null);
       setErrMsg(null);
       setRemovidos(new Set());
+      setBusca("");
+      setSelecionados(new Set());
     }
   }, [open]);
 
@@ -237,13 +242,31 @@ export default function GerarPlanoPreventivasDialog({
 
   const removerEquip = (equipId: string) => {
     if (!preview) return;
-    if (!confirm("Remover este equipamento do plano?")) return;
     const itens = preview.itens.filter((it) => it.equip_id !== equipId);
     setRemovidos((prev) => {
       const next = new Set(prev);
       next.add(equipId);
       return next;
     });
+    setSelecionados((prev) => {
+      const next = new Set(prev);
+      next.delete(equipId);
+      return next;
+    });
+    setPreview(recalcAggregates(itens, preview));
+  };
+
+  const removerSelecionados = () => {
+    if (!preview || selecionados.size === 0) return;
+    if (!confirm(`Remover ${selecionados.size} equipamento(s) do plano?`)) return;
+    const ids = new Set(selecionados);
+    const itens = preview.itens.filter((it) => !ids.has(it.equip_id));
+    setRemovidos((prev) => {
+      const next = new Set(prev);
+      for (const id of ids) next.add(id);
+      return next;
+    });
+    setSelecionados(new Set());
     setPreview(recalcAggregates(itens, preview));
   };
 
