@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { Loader2, Save, Wand2, AlertTriangle, Sparkles } from "lucide-react";
@@ -96,6 +96,7 @@ export default function GerarPlanoPreventivasDialog({
   const [preview, setPreview] = useState<PreviewResp | null>(null);
   const [errCode, setErrCode] = useState<string | null>(null);
   const [errMsg, setErrMsg] = useState<string | null>(null);
+  const suppressCellClickUntilRef = useRef(0);
 
   useEffect(() => {
     if (!open) {
@@ -181,8 +182,9 @@ export default function GerarPlanoPreventivasDialog({
     const itens = preview.itens.map((it) => {
       if (it.equip_id !== equipId) return it;
       if (!it.meses_planejados.includes(de)) return it;
-      // Mantém os agendamentos ANTERIORES ao mês arrastado, regenera cadeia a partir de `para`
-      const anteriores = it.meses_planejados.filter((m) => m < de && m < para);
+      // Mantém apenas os agendamentos anteriores ao mês arrastado e regenera a cadeia futura.
+      // Ex.: Ago -> Set em trimestral: [Ago, Nov] vira [Set, Dez], sem apagar a próxima.
+      const anteriores = it.meses_planejados.filter((m) => m < de);
       const nova = chainFrom(para, it.periodicidade);
       const merged = Array.from(new Set([...anteriores, ...nova])).sort((a, b) => a - b);
       return {
@@ -374,8 +376,12 @@ export default function GerarPlanoPreventivasDialog({
                               draggable={on}
                               onDragStart={(e) => {
                                 if (!on) return;
+                                suppressCellClickUntilRef.current = Date.now() + 800;
                                 e.dataTransfer.effectAllowed = "move";
                                 e.dataTransfer.setData("text/plain", JSON.stringify({ equipId: it.equip_id, from: m }));
+                              }}
+                              onDragEnd={() => {
+                                suppressCellClickUntilRef.current = Date.now() + 800;
                               }}
                               onDragOver={(e) => {
                                 e.preventDefault();
@@ -383,6 +389,7 @@ export default function GerarPlanoPreventivasDialog({
                               }}
                               onDrop={(e) => {
                                 e.preventDefault();
+                                suppressCellClickUntilRef.current = Date.now() + 800;
                                 try {
                                   const raw = e.dataTransfer.getData("text/plain");
                                   if (!raw) return;
@@ -393,6 +400,7 @@ export default function GerarPlanoPreventivasDialog({
                                 } catch {}
                               }}
                               onClick={() => {
+                                if (Date.now() < suppressCellClickUntilRef.current) return;
                                 if (on) toggleMes(it.equip_id, m);
                                 else adicionarMes(it.equip_id, m);
                               }}
