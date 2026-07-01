@@ -551,10 +551,34 @@ Deno.serve(async (req) => {
           .limit(1);
         grupoDestino = (memb?.[0] as any)?.grupo_id ?? null;
       }
+      // Fallback: sem grupo, mas existe contrato pro cliente → cria grupo automático (1 membro)
+      if (!grupoDestino && cliente_nome) {
+        const { data: contr } = await supabase
+          .from("contratos")
+          .select("id, cliente_nome")
+          .eq("cliente_nome", cliente_nome)
+          .eq("ativo", true)
+          .limit(1);
+        if (contr && contr.length > 0) {
+          const nomeGrupo = `[Auto] ${cliente_nome}`;
+          const { data: novoGrupo, error: errGrupo } = await supabase
+            .from("grupos_clientes")
+            .insert({ nome: nomeGrupo })
+            .select("id")
+            .single();
+          if (errGrupo) {
+            return json({ ok: false, error: `Falha ao criar grupo automático: ${errGrupo.message}` });
+          }
+          grupoDestino = (novoGrupo as any).id;
+          await supabase
+            .from("grupo_cliente_membros")
+            .insert({ grupo_id: grupoDestino, cliente_nome });
+        }
+      }
       if (!grupoDestino) {
         return json({
           ok: false,
-          error: "Nenhum grupo encontrado para gravar o plano. Adicione o cliente a um grupo (Grupos de Clientes) ou selecione o escopo Grupo.",
+          error: "Sem grupo e sem contrato ativo para este cliente. Cadastre um contrato (Contratos) ou adicione o cliente a um grupo.",
         });
       }
       let gravados = 0;
