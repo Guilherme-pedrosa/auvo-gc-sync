@@ -789,12 +789,9 @@ export default function EquipamentosPreventivosPage() {
         }
         if (!ok) return false;
       }
-      if (!bypassDateFilters && !exclude.has("periodo") && syncStartDate && syncEndDate) {
-        if (e.ultima_data) {
-          const d = e.ultima_data.slice(0, 10);
-          if (!(d >= syncStartDate && d <= syncEndDate)) return false;
-        }
-      }
+      // Período (syncStartDate/syncEndDate) NÃO é filtro de linhas —
+      // é apenas a janela usada pelo botão "Sincronizar" para buscar
+      // o histórico de tarefas. Não filtra a listagem.
       return true;
     },
     [search, statusFilter, marcaFilter, clienteFilter, tipoEquipFilter, grupoFilter, grupoClienteMap, proximaMesFilter, syncStartDate, syncEndDate]
@@ -998,15 +995,8 @@ export default function EquipamentosPreventivosPage() {
       });
     }
 
-    // Filtro por período (data da última intervenção)
-    if (syncStartDate && syncEndDate && !search.trim()) {
-      result = result.filter((e) => {
-        // Mantém equipamentos sem registro de preventiva visíveis
-        if (!e.ultima_data) return true;
-        const d = e.ultima_data.slice(0, 10);
-        return d >= syncStartDate && d <= syncEndDate;
-      });
-    }
+    // (o range de datas ao lado de "Sincronizar" controla APENAS a
+    // janela de sincronização, não a filtragem da lista.)
 
     result = [...result].sort((a, b) => {
       const dir = sortDir === "asc" ? 1 : -1;
@@ -1162,7 +1152,7 @@ export default function EquipamentosPreventivosPage() {
     tipoTarefaFilter.length > 0 && `Tipos tarefa: ${tipoTarefaFilter.length}`,
     tipoEquipFilter.length > 0 && `Tipos equip.: ${tipoEquipFilter.length}`,
     grupoFilter !== "todos" && `Grupo: ${(gruposData?.grupos ?? []).find((g: any) => g.id === grupoFilter)?.nome || "—"}`,
-    (syncStartDate && syncEndDate) && `Período: ${format(parseISO(syncStartDate), "dd/MM/yyyy")} → ${format(parseISO(syncEndDate), "dd/MM/yyyy")}`,
+    // Período de sincronização não conta como filtro ativo.
     proximaMesFilter.length > 0 && `Próx. preventiva: ${
       proximaMesFilter.map((v) =>
         v === "atrasado" ? "Atrasadas"
