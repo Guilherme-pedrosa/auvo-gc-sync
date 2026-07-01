@@ -84,11 +84,12 @@ Deno.serve(async (req) => {
     const body = await req.json();
     const {
       cliente_nome, ano_referencia, mode = "preview",
-      apply_rows,
+      apply_rows, excluir_equip_ids,
     } = body as {
       cliente_nome?: string | null;
       ano_referencia: number;
       mode?: "preview" | "apply";
+      excluir_equip_ids?: string[];
       apply_rows?: Array<{
         codigo_barras_auvo: string;
         periodicidade: string;
@@ -174,6 +175,10 @@ Deno.serve(async (req) => {
       e.identificador &&
       (clientesNorm.size === 0 || clientesNorm.has(normalizeKey(e.cliente))),
     );
+    const excluirSet = new Set((excluir_equip_ids || []).map((x) => String(x)));
+    const equipsScopeFiltered = excluirSet.size > 0
+      ? equipsScope.filter((e: any) => !excluirSet.has(String(e.id)))
+      : equipsScope;
 
     // ── tipos catálogo ─────────────────────────────────────────────────────
     const { data: tipos } = await supabase
