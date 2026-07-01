@@ -140,6 +140,29 @@ Deno.serve(async (req) => {
             vigenciaInicio = gcValid[0].vigencia_inicio ?? null;
             contratoFonte = "grupo";
           }
+          // Fallback: contrato de um cliente-irmão do mesmo grupo
+          // (contratos legados amarrados por cliente_nome, sem grupo_id preenchido)
+          if (!htContratoMes || htContratoMes <= 0) {
+            const { data: irmaos } = await supabase
+              .from("grupo_cliente_membros")
+              .select("cliente_nome")
+              .in("grupo_id", grupoIds);
+            const irmaosNomes = Array.from(new Set((irmaos || []).map((m: any) => m.cliente_nome).filter(Boolean)))
+              .filter((n: string) => n !== cliente_nome);
+            if (irmaosNomes.length > 0) {
+              const { data: irmContratos } = await supabase
+                .from("contratos")
+                .select("horas_mes_contratadas, vigencia_inicio, ativo, cliente_nome")
+                .in("cliente_nome", irmaosNomes)
+                .eq("ativo", true);
+              const irmValid = (irmContratos || []).filter((c: any) => Number(c.horas_mes_contratadas) > 0);
+              if (irmValid.length > 0) {
+                htContratoMes = irmValid.reduce((s: number, c: any) => s + Number(c.horas_mes_contratadas || 0), 0);
+                vigenciaInicio = irmValid[0].vigencia_inicio ?? null;
+                contratoFonte = "grupo";
+              }
+            }
+          }
         }
       }
       if (!htContratoMes || htContratoMes <= 0) {
