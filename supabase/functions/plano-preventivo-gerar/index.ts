@@ -82,13 +82,12 @@ Deno.serve(async (req) => {
     );
     const body = await req.json();
     const {
-      grupo_id, cliente_nome, ano_referencia, mode = "preview",
+      cliente_nome, ano_referencia, mode = "preview",
       apply_rows,
     } = body as {
-      grupo_id?: string;
       cliente_nome?: string | null;
       ano_referencia: number;
-      mode?: "preview" | "apply" | "export";
+      mode?: "preview" | "apply";
       apply_rows?: Array<{
         codigo_barras_auvo: string;
         periodicidade: string;
@@ -101,17 +100,54 @@ Deno.serve(async (req) => {
       }>;
     };
     if (!ano_referencia) return json({ ok: false, error: "ano_referencia obrigatório" });
-    if (!grupo_id && !cliente_nome) return json({ ok: false, error: "grupo_id ou cliente_nome obrigatório" });
+    if (!cliente_nome) return json({ ok: false, error: "cliente_nome obrigatório" });
 
-    // ── resolve client list ────────────────────────────────────────────────
-    let clientes: string[] = [];
-    if (grupo_id) {
-      const { data } = await supabase.from("grupo_cliente_membros").select("cliente_nome").eq("grupo_id", grupo_id);
-      clientes = (data || []).map((m: any) => m.cliente_nome);
-    } else if (cliente_nome) {
-      clientes = [cliente_nome];
-    }
+    const clientes: string[] = [cliente_nome];
     const clientesNorm = new Set(clientes.map(normalizeKey));
+
+    // ── contrato — precedência: cliente direto > grupo ─────────────────────
+    let htContratoMes = 0;
+    let vigenciaInicio: string | null = null;
+    let contratoFonte: "cliente" | "grupo" | null = null;
+    {
+      const { data: cli } = await supabase
+        .from("contratos")
+        .select("horas_mes_contratadas, vigencia_inicio, ativo")
+        .eq("cliente_nome", cliente_nome)
+        .eq("ativo", true);
+      const cliValid = (cli || []).filter((c: any) => Number(c.horas_mes_contratadas) > 0);
+      if (cliValid.length > 0) {
+        htContratoMes = cliValid.reduce((s: number, c: any) => s + Number(c.horas_mes_contratadas || 0), 0);
+        vigenciaInicio = cliValid[0].vigencia_inicio ?? null;
+        contratoFonte = "cliente";
+      } else {
+        const { data: memb } = await supabase
+          .from("grupo_cliente_membros")
+          .select("grupo_id")
+          .eq("cliente_nome", cliente_nome);
+        const grupoIds = Array.from(new Set((memb || []).map((m: any) => m.grupo_id).filter(Boolean)));
+        if (grupoIds.length > 0) {
+          const { data: gc } = await supabase
+            .from("contratos")
+            .select("horas_mes_contratadas, vigencia_inicio, ativo")
+            .in("grupo_id", grupoIds)
+            .eq("ativo", true);
+          const gcValid = (gc || []).filter((c: any) => Number(c.horas_mes_contratadas) > 0);
+          if (gcValid.length > 0) {
+            htContratoMes = gcValid.reduce((s: number, c: any) => s + Number(c.horas_mes_contratadas || 0), 0);
+            vigenciaInicio = gcValid[0].vigencia_inicio ?? null;
+            contratoFonte = "grupo";
+          }
+        }
+      }
+      if (!htContratoMes || htContratoMes <= 0) {
+        return json({
+          ok: false,
+          code: "SEM_CONTRATO",
+          error: "Sem contrato ativo com horas contratadas para este cliente (nem no grupo).",
+        });
+      }
+    }
 
     // ── load equipamentos (paginated) ──────────────────────────────────────
     const equips: any[] = [];
@@ -145,47 +181,6 @@ Deno.serve(async (req) => {
       .eq("ativo", true);
     const tiposById = new Map<string, any>((tipos || []).map((t: any) => [t.id, t]));
     const tiposCatalog = (tipos || []).slice().sort((a: any, b: any) => (a.prioridade ?? 999) - (b.prioridade ?? 999));
-
-    // ── contratos vigentes ─────────────────────────────────────────────────
-    let htContratoMes = 0;
-    {
-      // Resolve grupos que abrangem o escopo (grupo direto ou grupos do cliente selecionado)
-      const grupoIds = new Set<string>();
-      if (grupo_id) grupoIds.add(grupo_id);
-      if (cliente_nome) {
-        const { data: memb } = await supabase
-          .from("grupo_cliente_membros")
-          .select("grupo_id")
-          .eq("cliente_nome", cliente_nome);
-        for (const m of (memb || [])) grupoIds.add((m as any).grupo_id);
-      }
-
-      const acc: any[] = [];
-      if (grupoIds.size > 0) {
-        const { data } = await supabase
-          .from("contratos")
-          .select("horas_mes_contratadas, ativo, cliente_nome, grupo_id")
-          .in("grupo_id", Array.from(grupoIds))
-          .eq("ativo", true);
-        acc.push(...(data || []));
-      }
-      if (cliente_nome) {
-        const { data } = await supabase
-          .from("contratos")
-          .select("horas_mes_contratadas, ativo, cliente_nome, grupo_id")
-          .eq("cliente_nome", cliente_nome)
-          .eq("ativo", true);
-        acc.push(...(data || []));
-      }
-      // dedupe (mesmo contrato pode aparecer 2x se bate por grupo e cliente)
-      const seen = new Set<string>();
-      htContratoMes = acc.reduce((sum: number, c: any) => {
-        const key = `${c.grupo_id || ""}|${c.cliente_nome || ""}|${c.horas_mes_contratadas || 0}`;
-        if (seen.has(key)) return sum;
-        seen.add(key);
-        return sum + (Number(c.horas_mes_contratadas) || 0);
-      }, 0);
-    }
 
     // ── horas corretivas realizadas (ano) ──────────────────────────────────
     const yearStart = `${ano_referencia}-01-01`;
