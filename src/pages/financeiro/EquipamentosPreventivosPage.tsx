@@ -2014,6 +2014,7 @@ export default function EquipamentosPreventivosPage() {
         onOpenChange={setRevisarIaOpen}
         grupos={gruposData?.grupos ?? []}
         clientes={Array.from(new Set(equipments.map((e) => e.cliente).filter(Boolean))).sort()}
+        selectedIds={Array.from(selectedIds)}
         onApplied={() => {
           queryClient.invalidateQueries({ queryKey: ["preventiva-equipamentos"] });
         }}
