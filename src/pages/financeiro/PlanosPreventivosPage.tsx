@@ -463,7 +463,10 @@ function EditarPlanoDialog({
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
     if (!q) return itens;
-    return itens.filter(it => it.equipamento_nome.toLowerCase().includes(q));
+    return itens.filter(it => {
+      const ident = it.equipamento_auvo_id ? agg.identificadorPorEquip.get(it.equipamento_auvo_id) ?? "" : "";
+      return it.equipamento_nome.toLowerCase().includes(q) || ident.toLowerCase().includes(q);
+    });
   }, [itens, search]);
 
   const salvar = async () => {
@@ -564,6 +567,12 @@ function EditarPlanoDialog({
                   <tr key={it.id} className="border-t">
                     <td className="px-2 py-1">
                       <div className="text-sm">{it.equipamento_nome}</div>
+                      {(() => {
+                        const ident = it.equipamento_auvo_id ? agg.identificadorPorEquip.get(it.equipamento_auvo_id) : null;
+                        return ident ? (
+                          <div className="text-[10px] text-muted-foreground font-mono">ID: {ident}</div>
+                        ) : null;
+                      })()}
                       {it.ultima_execucao_data && (
                         <div className="text-[10px] text-muted-foreground">
                           Última: {format(parseISO(it.ultima_execucao_data), "dd/MM/yyyy")}
