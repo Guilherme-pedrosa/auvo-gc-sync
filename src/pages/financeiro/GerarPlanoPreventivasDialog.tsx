@@ -11,7 +11,7 @@ import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { SearchableSelect } from "@/components/ui/searchable-select";
 import {
-  Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
+  TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
@@ -344,8 +344,8 @@ export default function GerarPlanoPreventivasDialog({
               </div>
             )}
 
-            <div className="border rounded-md max-h-[62vh] overflow-auto">
-              <Table>
+            <div className="border rounded-md max-h-[62vh] overflow-auto relative">
+              <table className="w-full caption-bottom text-sm">
                 <TableHeader>
                   <TableRow className="[&>th]:sticky [&>th]:top-0 [&>th]:bg-background [&>th]:z-20 [&>th]:shadow-[0_1px_0_hsl(var(--border))]">
                     <TableHead className="min-w-[110px]">ID</TableHead>
@@ -492,7 +492,7 @@ export default function GerarPlanoPreventivasDialog({
                     <td></td>
                   </tr>
                 </tfoot>
-              </Table>
+              </table>
             </div>
 
             <div className="text-xs text-muted-foreground">
