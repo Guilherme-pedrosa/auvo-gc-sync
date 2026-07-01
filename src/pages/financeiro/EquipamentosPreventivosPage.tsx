@@ -513,6 +513,7 @@ export default function EquipamentosPreventivosPage() {
   const PAGE_SIZE = 100;
   const [grupoFilter, setGrupoFilter] = useState<string>("todos");
   const [proximaMesFilter, setProximaMesFilter] = useState<string[]>([]); // [] = todos; valores: "YYYY-MM" | "atrasado" | "sem_plano"
+  const [intervencaoFilter, setIntervencaoFilter] = useState<string>(""); // "" | "3m" | "6m" | "12m" | "none"
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [pdfDialogOpen, setPdfDialogOpen] = useState(false);
   const [pdfScope, setPdfScope] = useState<"selecionados" | "filtrados" | "feitos" | "atrasados" | "atencao_vencido" | "sem_registro">("filtrados");
@@ -803,7 +804,8 @@ export default function EquipamentosPreventivosPage() {
     | "tipoEquip"
     | "grupo"
     | "proximaMes"
-    | "periodo";
+    | "periodo"
+    | "intervencao";
   const passesFilters = useCallback(
     (e: typeof equipments[number], exclude: Set<FilterKey> = new Set()) => {
       if (!exclude.has("search") && search.trim()) {
@@ -873,9 +875,22 @@ export default function EquipamentosPreventivosPage() {
         if (!ref) return false;
         if (ref < syncStartDate || ref > syncEndDate) return false;
       }
+      if (!exclude.has("intervencao") && intervencaoFilter) {
+        const ref = (e.ultima_intervencao_data || "").slice(0, 10);
+        if (intervencaoFilter === "none") {
+          if (ref) return false;
+        } else {
+          if (!ref) return false;
+          const months = intervencaoFilter === "3m" ? 3 : intervencaoFilter === "6m" ? 6 : 12;
+          const cutoff = new Date();
+          cutoff.setMonth(cutoff.getMonth() - months);
+          const cutoffStr = cutoff.toISOString().slice(0, 10);
+          if (ref >= cutoffStr) return false;
+        }
+      }
       return true;
     },
-    [search, statusFilter, marcaFilter, clienteFilter, tipoEquipFilter, grupoFilter, grupoClienteMap, proximaMesFilter, syncStartDate, syncEndDate, applyDateFilter]
+    [search, statusFilter, marcaFilter, clienteFilter, tipoEquipFilter, grupoFilter, grupoClienteMap, proximaMesFilter, syncStartDate, syncEndDate, applyDateFilter, intervencaoFilter]
   );
 
   // Opções em cascata: para cada filtro, considera o universo já reduzido pelos OUTROS filtros
@@ -1637,6 +1652,20 @@ export default function EquipamentosPreventivosPage() {
           searchPlaceholder="Buscar status..."
           className="w-[150px]"
           icon={<SlidersHorizontal className="h-4 w-4" />}
+        />
+
+        <SearchableSelect
+          value={intervencaoFilter}
+          onValueChange={(v) => setIntervencaoFilter(v === intervencaoFilter ? "" : v)}
+          options={[
+            { value: "3m", label: "⚠️ + de 3 meses sem atendimento" },
+            { value: "6m", label: "⚠️ + de 6 meses sem atendimento" },
+            { value: "12m", label: "⚠️ + de 12 meses sem atendimento" },
+            { value: "none", label: "⛔ Nunca atendido" },
+          ]}
+          placeholder="Última intervenção"
+          searchPlaceholder="Filtrar..."
+          className="w-[220px]"
         />
 
         <SearchableSelect
