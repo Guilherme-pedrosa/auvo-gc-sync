@@ -820,6 +820,12 @@ Deno.serve(async (req) => {
     // This eliminates N round-trips and N Auvo logins from the client.
     if (phase === "2-batch") {
       const windowsParam = Array.isArray(body?.windows) ? body.windows : [];
+      // Se `preventiveTaskTypes` vier no body, filtramos server-side por cada
+      // tipo (ex.: 180175/180176/202616/235724). Isso evita baixar toda a base.
+      const preventiveTaskTypes: string[] = Array.isArray(body?.preventiveTaskTypes)
+        ? body.preventiveTaskTypes.map((v: unknown) => String(v || "").trim()).filter(Boolean)
+        : [];
+      const finalizedOnly = body?.finalizedOnly === true;
       if (windowsParam.length === 0) {
         return new Response(JSON.stringify({ error: "Phase 2-batch requires windows: [{startDate,endDate}]" }), {
           status: 400,
@@ -835,24 +841,33 @@ Deno.serve(async (req) => {
         console.log(`[equipment-sync] (batch) Valid equipment IDs loaded: ${validEquipmentIds.size}`);
       }
 
-      // Expand windows: if a window > MAX, split into daily sub-windows.
+      // Expand windows: se filtrarmos por tipo preventivo server-side, o volume
+      // já cai drasticamente (só ~4 tipos), então não precisa split diário.
+      // Sem filtro por tipo, mantemos o split por contagem para não estourar timeout.
       const expanded: Array<{ startDate: string; endDate: string }> = [];
-      for (const w of windowsParam) {
-        const s = String(w?.startDate || "");
-        const e = String(w?.endDate || "");
-        if (!s || !e) continue;
-        const cnt = await fetchTaskCountForWindow(accessToken, s, e).catch(() => 0);
-        if (cnt > MAX_PHASE2_TASKS_PER_REQUEST) {
-          // split by day
-          const start = new Date(s + "T00:00:00Z");
-          const end = new Date(e + "T00:00:00Z");
-          for (let d = new Date(start); d <= end; d.setUTCDate(d.getUTCDate() + 1)) {
-            const iso = d.toISOString().slice(0, 10);
-            expanded.push({ startDate: iso, endDate: iso });
+      if (preventiveTaskTypes.length > 0) {
+        for (const w of windowsParam) {
+          const s = String(w?.startDate || "");
+          const e = String(w?.endDate || "");
+          if (s && e) expanded.push({ startDate: s, endDate: e });
+        }
+      } else {
+        for (const w of windowsParam) {
+          const s = String(w?.startDate || "");
+          const e = String(w?.endDate || "");
+          if (!s || !e) continue;
+          const cnt = await fetchTaskCountForWindow(accessToken, s, e).catch(() => 0);
+          if (cnt > MAX_PHASE2_TASKS_PER_REQUEST) {
+            const start = new Date(s + "T00:00:00Z");
+            const end = new Date(e + "T00:00:00Z");
+            for (let d = new Date(start); d <= end; d.setUTCDate(d.getUTCDate() + 1)) {
+              const iso = d.toISOString().slice(0, 10);
+              expanded.push({ startDate: iso, endDate: iso });
+            }
+            console.log(`[equipment-sync] (batch) ${s}→${e} has ${cnt} tasks; split into daily windows`);
+          } else {
+            expanded.push({ startDate: s, endDate: e });
           }
-          console.log(`[equipment-sync] (batch) ${s}→${e} has ${cnt} tasks; split into daily windows`);
-        } else {
-          expanded.push({ startDate: s, endDate: e });
         }
       }
 
@@ -864,8 +879,35 @@ Deno.serve(async (req) => {
       const allErrors: string[] = [];
 
       for (const w of expanded) {
-        const { results: tasksWithEquipments, totalTasks, tasksWithEquipments: withEquipCount } =
-          await fetchTasksWithEquipmentsForWindow(accessToken, w.startDate, w.endDate);
+        let tasksWithEquipments: EquipmentTaskLink[] = [];
+        let totalTasks = 0;
+        let withEquipCount = 0;
+        if (preventiveTaskTypes.length > 0) {
+          // Uma chamada por tipo preventivo — server-side.
+          const perTypeResults = await Promise.all(
+            preventiveTaskTypes.map((tt) =>
+              fetchTasksWithEquipmentsForWindow(accessToken, w.startDate, w.endDate, {
+                taskType: tt,
+                status: finalizedOnly ? 3 : undefined,
+              }),
+            ),
+          );
+          const seen = new Set<string>();
+          for (const r of perTypeResults) {
+            totalTasks += r.totalTasks;
+            withEquipCount += r.tasksWithEquipments;
+            for (const link of r.results) {
+              if (seen.has(link.taskId)) continue;
+              seen.add(link.taskId);
+              tasksWithEquipments.push(link);
+            }
+          }
+        } else {
+          const r = await fetchTasksWithEquipmentsForWindow(accessToken, w.startDate, w.endDate);
+          tasksWithEquipments = r.results;
+          totalTasks = r.totalTasks;
+          withEquipCount = r.tasksWithEquipments;
+        }
 
         const relRows: any[] = [];
         let discarded = 0;
