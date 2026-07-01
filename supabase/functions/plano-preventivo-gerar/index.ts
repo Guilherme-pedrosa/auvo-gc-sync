@@ -759,6 +759,7 @@ Deno.serve(async (req) => {
         }, { onConflict: "grupo_id,ano_referencia,equipamento_auvo_id" });
         const { error: e2 } = await supabase.from("equipamento_plano_preventivo").upsert({
           grupo_id: grupoDestino,
+          cliente_nome,
           codigo_barras_auvo: String(r.codigo_barras_auvo),
           ano_referencia,
           horas_estimadas_total: Number(r.horas_estimadas_total) || 0,
@@ -769,7 +770,7 @@ Deno.serve(async (req) => {
           mes_inicio_ciclo: mesInicioR,
           ativo: true,
           status: "RASCUNHO",
-        }, { onConflict: "grupo_id,codigo_barras_auvo,ano_referencia" });
+        }, { onConflict: "cliente_nome,codigo_barras_auvo,ano_referencia" });
         if (!e1 && !e2) gravados++;
         else {
           const erro = [e1?.message, e2?.message].filter(Boolean).join(" | ");
