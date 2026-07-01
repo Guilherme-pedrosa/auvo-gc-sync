@@ -650,34 +650,43 @@ Deno.serve(async (req) => {
       if (!Array.isArray(apply_rows) || apply_rows.length === 0) {
         return json({ ok: false, error: "apply_rows obrigatório" });
       }
-      // resolve grupo destino (via cliente_nome)
+      // Cada plano é ISOLADO por cliente. Sempre usa (ou cria) um grupo
+      // "[Auto] {cliente_nome}" — nunca reaproveita um grupo real que agrupa
+      // vários clientes distintos (ex.: "Grupo IZ", "SODEXO"), senão os planos
+      // de horas de clientes diferentes ficariam misturados no mesmo agregado.
       let grupoDestino: string | null = null;
-      const { data: memb } = await supabase
-        .from("grupo_cliente_membros")
-        .select("grupo_id")
-        .eq("cliente_nome", cliente_nome)
+      const nomeGrupoAuto = `[Auto] ${cliente_nome}`;
+      const { data: existente } = await supabase
+        .from("grupos_clientes")
+        .select("id")
+        .eq("nome", nomeGrupoAuto)
         .limit(1);
-      grupoDestino = (memb?.[0] as any)?.grupo_id ?? null;
+      grupoDestino = (existente?.[0] as any)?.id ?? null;
       if (!grupoDestino) {
-        const nomeGrupo = `[Auto] ${cliente_nome}`;
         const { data: novoGrupo, error: errGrupo } = await supabase
           .from("grupos_clientes")
-          .insert({ nome: nomeGrupo })
+          .insert({ nome: nomeGrupoAuto })
           .select("id")
           .single();
         if (errGrupo) return json({ ok: false, error: `Falha ao criar grupo automático: ${errGrupo.message}` });
         grupoDestino = (novoGrupo as any).id;
-        await supabase.from("grupo_cliente_membros").insert({ grupo_id: grupoDestino, cliente_nome });
       }
+      // garante membership do cliente no [Auto] (idempotente)
+      await supabase
+        .from("grupo_cliente_membros")
+        .upsert({ grupo_id: grupoDestino, cliente_nome }, { onConflict: "grupo_id,cliente_nome" });
 
       const perMeses = (p: string) => {
         const n = normalizePer(p);
         return n === "MENSAL" ? 1 : n === "BIMESTRAL" ? 2 : n === "TRIMESTRAL" ? 3 : n === "SEMESTRAL" ? 6 : 12;
       };
       const codigos = apply_rows.map((r) => String(r.codigo_barras_auvo)).filter(Boolean);
+      // Restringe a busca aos equipamentos DO cliente — evita colisão de
+      // identificador entre clientes diferentes.
       const { data: eqRows, error: eqErr } = await supabase
         .from("equipamentos_auvo")
-        .select("id, nome, identificador")
+        .select("id, nome, identificador, cliente")
+        .eq("cliente", cliente_nome)
         .in("identificador", codigos);
       if (eqErr) return json({ ok: false, code: "EQUIPAMENTOS_LOOKUP_FALHOU", error: eqErr.message });
 
