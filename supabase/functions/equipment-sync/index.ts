@@ -970,9 +970,18 @@ Deno.serve(async (req) => {
         totalTasksAggregate += totalTasks;
         totalWithEquip += withEquipCount;
         totalDiscarded += discarded;
-        // Consolida última data por equipamento (MAX), usando checkOut > taskDate.
+        // Consolida última data por equipamento (MAX).
+        // Precedência da data de execução (NÃO empate):
+        //   1º checkOutDate  (execução real no local — fonte de verdade)
+        //   2º deliveredDate (entrega/conclusão registrada pela API)
+        //   3º finishedDate  (quando `finished` virou true)
+        //   4º taskDate      (apenas agendamento — último recurso)
+        // A próxima preventiva = última + periodicidade; se pegarmos taskDate
+        // no lugar da execução real, a próxima sai deslocada.
+        const pickExecDate = (t: EquipmentTaskLink): string | null =>
+          t.checkOutDate || t.deliveredDate || t.finishedDate || t.taskDate;
         for (const task of tasksWithEquipments) {
-          const d = task.checkOutDate || task.taskDate;
+          const d = pickExecDate(task);
           if (!d) continue;
           for (const eqId of task.equipmentIds) {
             if (validEquipmentIds && !validEquipmentIds.has(eqId)) continue;
