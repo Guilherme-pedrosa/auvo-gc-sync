@@ -144,6 +144,7 @@ function periodicidadeToMeses(per: string | null | undefined): number {
     case "MENSAL": return 1;
     case "BIMESTRAL": return 2;
     case "TRIMESTRAL": return 3;
+    case "QUADRIMESTRAL": return 4;
     case "SEMESTRAL": return 6;
     case "ANUAL": return 12;
     default: return 3;
@@ -2225,7 +2226,7 @@ export default function EquipamentosPreventivosPage() {
 }
 
 // ── PlanoCell: edição inline do tipo + overrides de HT/qtd/periodicidade ──
-const PERIODICIDADES = ["MENSAL", "BIMESTRAL", "TRIMESTRAL", "SEMESTRAL", "ANUAL", "FILA"];
+const PERIODICIDADES = ["MENSAL", "BIMESTRAL", "TRIMESTRAL", "QUADRIMESTRAL", "SEMESTRAL", "ANUAL", "FILA"];
 
 type PlanoCellProps = {
   eq: EquipmentRow;
