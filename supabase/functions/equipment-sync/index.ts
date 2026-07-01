@@ -940,9 +940,11 @@ Deno.serve(async (req) => {
               auvo_task_id: task.taskId,
               auvo_task_type_id: task.taskType || null,
               auvo_task_type_description: task.taskTypeDescription || null,
-              status_auvo: resolveStatus(task.statusCode, !!task.checkOutDate),
+              status_auvo: resolveStatus(task.statusCode, !!(task.checkOutDate || task.deliveredDate || task.finishedDate)),
               data_tarefa: task.taskDate || null,
-              data_conclusao: task.checkOutDate || null,
+              // Precedência de execução: checkOut → delivered → finished (nunca taskDate,
+              // que é agendamento e vai em `data_tarefa`).
+              data_conclusao: task.checkOutDate || task.deliveredDate || task.finishedDate || null,
               cliente: task.customerDescription || null,
               tecnico: task.userToName || null,
               auvo_link: `https://app2.auvo.com.br/relatorioTarefas/DetalheTarefa/${task.taskId}`,
