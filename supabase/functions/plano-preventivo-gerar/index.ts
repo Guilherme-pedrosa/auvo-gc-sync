@@ -419,6 +419,7 @@ Deno.serve(async (req) => {
       status_final?: "nunca" | "vencido" | "em_dia";
       atraso_meses?: number;
       meses_planejados?: number[];
+      meses_forcados?: number[];
       mes_inicio_ciclo?: number;
     };
 
@@ -685,6 +686,7 @@ Deno.serve(async (req) => {
           ht_total_ano: Number(((it.meses_planejados?.length ?? 0) * it.ht_por_ocorrencia).toFixed(2)),
           mes_inicio_ciclo: it.mes_inicio_ciclo ?? 0,
           meses_planejados: it.meses_planejados ?? [],
+          meses_forcados: it.meses_forcados ?? [],
           ultima_preventiva: it.ultima_preventiva,
           proxima_original_mes: it.proxima_original_mes,
           status: it.status_final ?? it.origem,
@@ -702,6 +704,8 @@ Deno.serve(async (req) => {
         },
         resumo: contadores,
         sem_tipo: semTipo,
+        warnings,
+        fonte_ultima_preventiva: usouConsolidado ? "consolidado" : "scan",
         tabela_meses,
         itens: itensOut,
       });
