@@ -170,6 +170,12 @@ export default function RevisarTiposIADialog({
     for (const s of sugestoes) m[s.equip_id] = s.mudou && s.confianca >= min;
     setSel(m);
   };
+  const selecionarSemTipo = () => {
+    if (!sugestoes) return;
+    const m: Record<string, boolean> = {};
+    for (const s of sugestoes) m[s.equip_id] = !s.tipo_atual_id && !!s.tipo_sugerido_id;
+    setSel(m);
+  };
 
   const sugestoesFiltradas = useMemo(() => {
     if (!sugestoes) return [];
@@ -267,6 +273,7 @@ export default function RevisarTiposIADialog({
                 <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => selecionarTodos(false)}>Desmarcar todos</Button>
                 <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => selecionarPorConfianca(80)}>≥ 80% confiança</Button>
                 <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => selecionarPorConfianca(50)}>≥ 50% confiança</Button>
+                <Button size="sm" variant="outline" className="h-7 text-xs" onClick={selecionarSemTipo}>Todos sem tipo (com sugestão)</Button>
               </div>
 
               <div className="h-[50vh] border rounded overflow-auto">
