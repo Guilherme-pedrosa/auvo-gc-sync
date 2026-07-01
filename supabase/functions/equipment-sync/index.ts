@@ -14,7 +14,7 @@ const MAX_PHASE2_TASKS_PER_REQUEST = 180;
 const TASK_PAGE_CONCURRENCY = 8;
 // Campos mínimos necessários no /tasks para montar o mapa equip→tarefa.
 const TASK_SELECT_FIELDS =
-  "taskID,taskDate,checkOutDate,checkoutDate,equipmentsId,taskType,taskTypeDescription,taskStatus,customerDescription,customerName,userToName";
+  "taskID,taskDate,checkOutDate,checkoutDate,equipmentsId,taskType,taskTypeDescription,taskStatus,finished,customerDescription,customerName,userToName";
 const EQUIPMENT_SELECT_FIELDS =
   "id,name,identifier,description,associatedCustomerId,active,categoryId";
 
