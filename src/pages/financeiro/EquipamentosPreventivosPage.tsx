@@ -943,6 +943,23 @@ export default function EquipamentosPreventivosPage() {
     return { meses, hasSemPlano, hasAtrasado };
   }, [equipments, passesFilters]);
 
+  const handleRecalcConsolidado = useCallback(async () => {
+    setRecalcSyncing(true);
+    const t0 = performance.now();
+    try {
+      const { data, error } = await supabase.functions.invoke("preventiva-consolidar", { body: {} });
+      if (error) throw error;
+      if (data && data.ok === false) throw new Error(data.error || "Falha ao recalcular");
+      const elapsed = ((performance.now() - t0) / 1000).toFixed(1);
+      toast.success(`Consolidado atualizado em ${elapsed}s — ${data?.linhas_gravadas ?? "?"} linhas`);
+      await queryClient.invalidateQueries({ queryKey: ["equipamentos-preventivos-raw", "v3-consolidado"] });
+    } catch (err: any) {
+      toast.error("Erro ao recalcular consolidado: " + (err?.message || String(err)));
+    } finally {
+      setRecalcSyncing(false);
+    }
+  }, [queryClient]);
+
   const handleSync = useCallback(async () => {
     setSyncing(true);
     setSyncProgress({ current: 0, total: 1, label: "Fase 1: Catálogo + marcas..." });
