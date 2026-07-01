@@ -264,7 +264,7 @@ export default function GerarPlanoPreventivasDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-[95vw] max-h-[95vh] overflow-hidden flex flex-col">
+      <DialogContent className="max-w-[95vw] max-h-[95vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Wand2 className="h-5 w-5 text-violet-600" /> Gerar plano de preventivas
@@ -344,7 +344,7 @@ export default function GerarPlanoPreventivasDialog({
               </div>
             )}
 
-            <div className="border rounded-md overflow-auto max-h-[65vh]">
+            <div className="border rounded-md overflow-x-auto">
               <Table>
                 <TableHeader className="sticky top-0 bg-background z-10">
                   <TableRow>
