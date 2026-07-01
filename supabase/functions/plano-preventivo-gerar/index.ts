@@ -16,6 +16,18 @@ const json = (body: unknown, status = 200) =>
 const normalizeKey = (s: any) =>
   String(s ?? "").trim().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
 
+// normaliza p/ comparação de razão social: remove sufixos, pontuação e sufixo de filial após " - "
+const normalizeCliente = (s: any) => {
+  let x = normalizeKey(s).replace(/[.\-\/]/g, " ").replace(/\s+/g, " ").trim();
+  // corta sufixo de filial: "cliente x - goiania" → "cliente x"
+  const dash = x.indexOf(" - ");
+  if (dash > 0) x = x.slice(0, dash);
+  x = " " + x + " ";
+  const suf = [" ltda ", " me ", " mei ", " sa ", " s a ", " epp ", " eireli "];
+  for (const s2 of suf) while (x.includes(s2)) x = x.replace(s2, " ");
+  return x.replace(/\s+/g, " ").trim();
+};
+
 const PER_TO_STEP: Record<string, number> = {
   MENSAL: 1, BIMESTRAL: 2, TRIMESTRAL: 3, QUADRIMESTRAL: 4, SEMESTRAL: 6, ANUAL: 12,
 };
@@ -346,6 +358,27 @@ Deno.serve(async (req) => {
         vigenciaInicio = cliValid[0].vigencia_inicio ?? null;
         contratoFonte = "cliente";
       } else {
+        // Fallback: match por razão social normalizada (ignora " - FILIAL", LTDA, S.A., pontuação)
+        const alvo = normalizeCliente(cliente_nome);
+        if (alvo) {
+          const { data: todos } = await supabase
+            .from("contratos")
+            .select("cliente_nome, horas_mes_contratadas, vigencia_inicio, ativo")
+            .eq("ativo", true)
+            .not("cliente_nome", "is", null);
+          const fuzzy = (todos || []).filter((c: any) => {
+            if (!c.cliente_nome || !(Number(c.horas_mes_contratadas) > 0)) return false;
+            const n = normalizeCliente(c.cliente_nome);
+            return n === alvo || n.startsWith(alvo) || alvo.startsWith(n);
+          });
+          if (fuzzy.length > 0) {
+            htContratoMes = fuzzy.reduce((s: number, c: any) => s + Number(c.horas_mes_contratadas || 0), 0);
+            vigenciaInicio = fuzzy[0].vigencia_inicio ?? null;
+            contratoFonte = "cliente";
+          }
+        }
+      }
+      if (!htContratoMes || htContratoMes <= 0) {
         const { data: memb } = await supabase
           .from("grupo_cliente_membros")
           .select("grupo_id")
