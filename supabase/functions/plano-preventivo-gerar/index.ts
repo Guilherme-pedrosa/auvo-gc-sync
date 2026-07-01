@@ -582,22 +582,59 @@ Deno.serve(async (req) => {
         });
       }
       let gravados = 0;
+      // Mapa codigo_barras → { id, nome } dos equipamentos, pra popular plano_preventivo_item
+      const codigos = apply_rows.map((r) => String(r.codigo_barras_auvo)).filter(Boolean);
+      const { data: eqRows } = await supabase
+        .from("equipamentos_auvo")
+        .select("id, nome, codigo_barras_auvo")
+        .in("codigo_barras_auvo", codigos);
+      const eqByCod = new Map<string, { id: string; nome: string }>();
+      for (const e of eqRows || []) {
+        eqByCod.set(String((e as any).codigo_barras_auvo), { id: (e as any).id, nome: (e as any).nome });
+      }
+      const perMeses = (p: string) => {
+        const n = normalizePer(p);
+        return n === "MENSAL" ? 1 : n === "BIMESTRAL" ? 2 : n === "TRIMESTRAL" ? 3 : n === "QUADRIMESTRAL" ? 4 : n === "SEMESTRAL" ? 6 : 12;
+      };
       for (const r of apply_rows) {
         if (!r.codigo_barras_auvo) continue;
-        const { error } = await supabase.from("equipamento_plano_preventivo").upsert({
+        const eq = eqByCod.get(String(r.codigo_barras_auvo));
+        if (!eq) continue; // sem equipamento local não dá pra vincular
+        const mesInicio = Math.min(12, Math.max(1, Number(r.mes_inicio_ciclo) || 1));
+        const proxima = `${ano_referencia}-${String(mesInicio).padStart(2, "0")}-01`;
+        const meses = Array.isArray(r.meses_planejados) && r.meses_planejados.length
+          ? r.meses_planejados
+          : [mesInicio];
+        const periodNorm = normalizePer(r.periodicidade);
+        // 1) plano_preventivo_item (tabela usada pela tela de Preventivas)
+        const { error: e1 } = await supabase.from("plano_preventivo_item").upsert({
+          grupo_id: grupoDestino,
+          ano_referencia,
+          equipamento_nome: eq.nome,
+          equipamento_auvo_id: eq.id,
+          periodicidade: periodNorm,
+          periodicidade_meses: perMeses(r.periodicidade),
+          horas_total: Number(r.horas_estimadas_total) || 0,
+          meses_planejados: meses,
+          proxima_data: proxima,
+          ativo: true,
+        }, { onConflict: "grupo_id,ano_referencia,equipamento_nome" });
+        // 2) equipamento_plano_preventivo (mantém compatibilidade)
+        const { error: e2 } = await supabase.from("equipamento_plano_preventivo").upsert({
           grupo_id: grupoDestino,
           codigo_barras_auvo: String(r.codigo_barras_auvo),
           ano_referencia,
           horas_estimadas_total: Number(r.horas_estimadas_total) || 0,
           horas_por_tecnico: Number(r.horas_por_tecnico) || 2,
           qtd_tecnicos: Math.max(1, Number(r.qtd_tecnicos) || 1),
-          periodicidade: normalizePer(r.periodicidade),
+          periodicidade: periodNorm,
           criticidade: normalizeCrit(r.criticidade),
-          mes_inicio_ciclo: Number(r.mes_inicio_ciclo) || 1,
+          mes_inicio_ciclo: mesInicio,
           ativo: true,
           status: "RASCUNHO",
         }, { onConflict: "grupo_id,codigo_barras_auvo,ano_referencia" });
-        if (!error) gravados++;
+        if (!e1 && !e2) gravados++;
+        else console.error("[apply] upsert error", { e1: e1?.message, e2: e2?.message });
       }
       return json({ ok: true, gravados, grupo_id: grupoDestino });
     }
