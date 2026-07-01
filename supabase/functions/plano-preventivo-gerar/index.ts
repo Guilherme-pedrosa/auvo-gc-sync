@@ -194,10 +194,9 @@ Deno.serve(async (req) => {
     // Tipos de tarefa considerados como preventiva
     // 180175 Visita Preventiva + OS
     // 180176 Visita Preventiva Contrato
-    // 180795 HIGIENIZAÇÃO DE COIFAS
     // 202616 MANUTENÇÃO PREVENTIVA IVARIO
     // 235724 MANUTENÇÃO PREVENTIVA - FROTA
-    const PREV_TYPES = new Set(["180175", "180176", "180795", "202616", "235724"]);
+    const PREV_TYPES = new Set(["180175", "180176", "202616", "235724"]);
     const corretivasMes: number[] = Array(13).fill(0);
     // Última preventiva por equipamento (auvo_equipment_id → último ISO date)
     const lastPrevByAuvoId = new Map<string, string>();
