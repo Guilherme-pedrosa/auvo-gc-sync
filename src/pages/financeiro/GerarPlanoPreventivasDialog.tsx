@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { Loader2, Save, Wand2, AlertTriangle, Sparkles } from "lucide-react";
+import { Trash2 } from "lucide-react";
 import {
   Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog";
@@ -114,6 +115,58 @@ export default function GerarPlanoPreventivasDialog({
     } finally {
       setLoading(false);
     }
+  };
+
+  // Recalcula tabela_meses e resumo a partir dos itens atuais
+  const recalcAggregates = (itens: Item[], base: PreviewResp): PreviewResp => {
+    const teto = base.contrato.horas_mes_contratadas;
+    const tabela = Array.from({ length: 12 }, (_, i) => {
+      const mes = i + 1;
+      const ht = itens.reduce(
+        (a, it) => a + (it.meses_planejados.includes(mes) ? it.ht_por_ocorrencia : 0),
+        0,
+      );
+      return { mes, ht_agendada: ht, teto, saldo: teto - ht };
+    });
+    const ht_ano = tabela.reduce((a, b) => a + b.ht_agendada, 0);
+    const ht_contrato_ano = teto * 12;
+    return {
+      ...base,
+      itens,
+      tabela_meses: tabela,
+      resumo: {
+        ...base.resumo,
+        total: itens.length,
+        ht_ano,
+        ht_contrato_ano,
+        saldo_ano: ht_contrato_ano - ht_ano,
+        meses_negativos: tabela.filter((m) => m.saldo < 0).length,
+      },
+    };
+  };
+
+  const toggleMes = (equipId: string, mes: number) => {
+    if (!preview) return;
+    const itens = preview.itens.map((it) => {
+      if (it.equip_id !== equipId) return it;
+      const has = it.meses_planejados.includes(mes);
+      const meses = has
+        ? it.meses_planejados.filter((m) => m !== mes)
+        : [...it.meses_planejados, mes].sort((a, b) => a - b);
+      return {
+        ...it,
+        meses_planejados: meses,
+        ht_total_ano: meses.length * it.ht_por_ocorrencia,
+      };
+    });
+    setPreview(recalcAggregates(itens, preview));
+  };
+
+  const removerEquip = (equipId: string) => {
+    if (!preview) return;
+    if (!confirm("Remover este equipamento do plano?")) return;
+    const itens = preview.itens.filter((it) => it.equip_id !== equipId);
+    setPreview(recalcAggregates(itens, preview));
   };
 
   const onApply = async () => {
@@ -242,6 +295,7 @@ export default function GerarPlanoPreventivasDialog({
                     <TableHead className="text-right">HT</TableHead>
                     {MES_LABEL.map((m) => <TableHead key={m} className="text-center w-14">{m}</TableHead>)}
                     <TableHead className="text-right">Total</TableHead>
+                    <TableHead className="w-10"></TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -268,14 +322,28 @@ export default function GerarPlanoPreventivasDialog({
                           const on = setMes.has(m);
                           return (
                             <TableCell key={m} className={cn(
-                              "text-center text-xs font-medium",
+                              "text-center text-xs font-medium cursor-pointer hover:ring-2 hover:ring-primary/40 transition",
                               on && statusBg[it.status],
-                            )}>
+                            )}
+                              onClick={() => toggleMes(it.equip_id, m)}
+                              title={on ? "Clique para remover deste mês" : "Clique para agendar neste mês"}
+                            >
                               {on ? it.ht_por_ocorrencia : ""}
                             </TableCell>
                           );
                         })}
                         <TableCell className="text-right text-sm font-semibold">{totalLinha.toFixed(1)}</TableCell>
+                        <TableCell>
+                          <Button
+                            size="icon"
+                            variant="ghost"
+                            className="h-7 w-7 text-red-600 hover:text-red-700 hover:bg-red-50"
+                            onClick={() => removerEquip(it.equip_id)}
+                            title="Remover do plano"
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </Button>
+                        </TableCell>
                       </TableRow>
                     );
                   })}
@@ -289,6 +357,7 @@ export default function GerarPlanoPreventivasDialog({
                     <td className="p-2 text-right text-xs font-semibold">
                       {totMes.reduce((a, b) => a + b.ht_agendada, 0).toFixed(1)}
                     </td>
+                    <td></td>
                   </tr>
                   <tr>
                     <td colSpan={6} className="p-2 text-right text-xs text-muted-foreground">META (h)</td>
@@ -298,6 +367,7 @@ export default function GerarPlanoPreventivasDialog({
                     <td className="p-2 text-right text-xs text-muted-foreground">
                       {(preview.contrato.horas_mes_contratadas * 12).toFixed(1)}
                     </td>
+                    <td></td>
                   </tr>
                   <tr>
                     <td colSpan={6} className="p-2 text-right text-xs font-semibold">SALDO (h)</td>
@@ -313,6 +383,7 @@ export default function GerarPlanoPreventivasDialog({
                     )}>
                       {preview.resumo.saldo_ano.toFixed(1)}
                     </td>
+                    <td></td>
                   </tr>
                 </tfoot>
               </Table>
