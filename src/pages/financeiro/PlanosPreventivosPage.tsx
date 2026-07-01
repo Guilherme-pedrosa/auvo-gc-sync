@@ -694,13 +694,26 @@ function AdicionarEquipamentoDialog({
         .order("nome", { ascending: true })
         .limit(5000);
       if (error) throw error;
-      return (data ?? []) as any[];
+      // IDs de equipamentos já contemplados em QUALQUER plano ativo do grupo
+      // (qualquer ano) — para não sugerir equipamentos que já têm plano.
+      const { data: planosDoGrupo } = await (supabase as any)
+        .from("plano_preventivo_item")
+        .select("equipamento_auvo_id")
+        .eq("grupo_id", grupoId)
+        .eq("ativo", true);
+      const jaEmAlgumPlano = new Set<string>(
+        (planosDoGrupo ?? [])
+          .map((r: any) => r.equipamento_auvo_id)
+          .filter(Boolean),
+      );
+      return { rows: (data ?? []) as any[], jaEmAlgumPlano };
     },
   });
 
   const disponiveis = useMemo(() => {
-    const rows = (data ?? []).filter((r: any) => {
+    const rows = (data?.rows ?? []).filter((r: any) => {
       if (jaNoPlano.has(r.equip_id)) return false;
+      if (data?.jaEmAlgumPlano?.has(r.equip_id)) return false;
       const s = String(r.equip_status ?? "").toLowerCase();
       if (s && s.includes("inativ")) return false;
       return true;
