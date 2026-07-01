@@ -5,7 +5,7 @@ import { startOfMonth, endOfMonth, format } from "date-fns";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { Button } from "@/components/ui/button";
-import { Loader2, LogOut, FileText, RefreshCw } from "lucide-react";
+import { Loader2, LogOut, FileText, RefreshCw, CalendarCheck } from "lucide-react";
 import HorasTrabalhadasTab from "@/components/relatorios/HorasTrabalhadasTab";
 import { toast } from "sonner";
 
@@ -202,6 +202,9 @@ export default function PortalHorasPage() {
             </Button>
             <Button variant="outline" size="sm" onClick={() => navigate("/portal/orcamentos")}>
               <FileText className="h-4 w-4 mr-1" /> Orçamentos
+            </Button>
+            <Button variant="outline" size="sm" onClick={() => navigate("/portal/planos-preventivos")}>
+              <CalendarCheck className="h-4 w-4 mr-1" /> Preventivas
             </Button>
             <Button variant="ghost" size="sm" onClick={() => signOut().then(() => navigate("/portal/login"))}>
               <LogOut className="h-4 w-4 mr-1" /> Sair
