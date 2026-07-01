@@ -52,11 +52,14 @@ Deno.serve(async (req) => {
       const equipIds: string[] | null = Array.isArray(body.equip_ids) && body.equip_ids.length
         ? body.equip_ids.map((x: any) => String(x))
         : null;
+      const todos: boolean = !!body.todos;
 
       // Resolve escopo de clientes (ignorado se equip_ids for informado)
       let clientes: string[] | null = null;
       if (equipIds) {
         // escopo direto por IDs
+      } else if (todos) {
+        // escopo global — nenhum filtro de cliente
       } else if (grupoId) {
         const { data: m } = await sb
           .from("grupo_cliente_membros")
@@ -67,7 +70,7 @@ Deno.serve(async (req) => {
       } else if (cliente) {
         clientes = [cliente];
       } else {
-        return ok({ ok: false, error: "Informe grupo_id, cliente ou equip_ids" }, 400);
+        return ok({ ok: false, error: "Informe grupo_id, cliente, equip_ids ou todos" }, 400);
       }
 
       let q = sb
@@ -76,7 +79,7 @@ Deno.serve(async (req) => {
         .eq("status", "Ativo");
       if (equipIds) q = q.in("id", equipIds);
       else if (clientes && clientes.length) q = q.in("cliente", clientes);
-      const { data: equips, error } = await q.limit(2000);
+      const { data: equips, error } = await q.limit(5000);
       if (error) return ok({ ok: false, error: error.message }, 500);
 
       const filtered = (equips ?? []).filter((e: any) => !apenasSemTipo || !e.tipo_id);
