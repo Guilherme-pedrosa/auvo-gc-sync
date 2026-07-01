@@ -158,14 +158,27 @@ Deno.serve(async (req) => {
         if (!byTipo.has(key)) byTipo.set(key, []);
         byTipo.get(key)!.push(u.equip_id);
       }
+      // Pré-carrega nomes dos tipos para propagar no consolidado
+      const tipoNomeMap = new Map<string, string | null>();
+      for (const t of tiposList as any[]) tipoNomeMap.set(t.id, t.nome);
       const results = await Promise.all(
         Array.from(byTipo.entries()).map(async ([key, ids]) => {
           const tipo_id = key === "__null__" ? null : key;
+          const tipo_nome = tipo_id ? (tipoNomeMap.get(tipo_id) ?? null) : null;
           const { error } = await sb
             .from("equipamentos_auvo")
             .update({ tipo_id })
             .in("id", ids);
-          return { ids, error };
+          // Espelha no consolidado (fonte de leitura da tela)
+          let consErr: any = null;
+          if (!error) {
+            const { error: e2 } = await sb
+              .from("equipamento_preventiva_consolidado")
+              .update({ tipo_id, tipo_nome })
+              .in("equipamento_auvo_id", ids);
+            consErr = e2;
+          }
+          return { ids, error: error || consErr };
         })
       );
       let ok_count = 0, fail = 0;
