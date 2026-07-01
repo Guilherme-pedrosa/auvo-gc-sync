@@ -44,15 +44,18 @@ type Sugestao = {
 };
 
 export default function RevisarTiposIADialog({
-  open, onOpenChange, grupos, clientes, onApplied,
+  open, onOpenChange, grupos, clientes, onApplied, selectedIds,
 }: {
   open: boolean;
   onOpenChange: (v: boolean) => void;
   grupos: Grupo[];
   clientes: string[];
   onApplied: () => void;
+  selectedIds?: string[];
 }) {
-  const [escopo, setEscopo] = useState<"grupo" | "cliente">("grupo");
+  const [escopo, setEscopo] = useState<"grupo" | "cliente" | "selecionados">(
+    (selectedIds && selectedIds.length) ? "selecionados" : "grupo"
+  );
   const [grupoId, setGrupoId] = useState<string>("");
   const [cliente, setCliente] = useState<string>("");
   const [apenasSemTipo, setApenasSemTipo] = useState(false);
@@ -69,6 +72,9 @@ export default function RevisarTiposIADialog({
   const analisar = async () => {
     if (escopo === "grupo" && !grupoId) { toast.error("Selecione um grupo"); return; }
     if (escopo === "cliente" && !cliente) { toast.error("Selecione um cliente"); return; }
+    if (escopo === "selecionados" && !(selectedIds && selectedIds.length)) {
+      toast.error("Nenhum equipamento selecionado na lista"); return;
+    }
     setLoading(true);
     try {
       const { data, error } = await supabase.functions.invoke("equipamentos-revisar-tipos", {
@@ -76,6 +82,7 @@ export default function RevisarTiposIADialog({
           mode: "analyze",
           grupo_id: escopo === "grupo" ? grupoId : null,
           cliente: escopo === "cliente" ? cliente : null,
+          equip_ids: escopo === "selecionados" ? selectedIds : null,
           apenas_sem_tipo: apenasSemTipo,
         },
       });
@@ -190,12 +197,19 @@ export default function RevisarTiposIADialog({
               <Select value={escopo} onValueChange={(v) => setEscopo(v as any)}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
+                  {selectedIds && selectedIds.length > 0 && (
+                    <SelectItem value="selecionados">Selecionados na lista ({selectedIds.length})</SelectItem>
+                  )}
                   <SelectItem value="grupo">Por grupo</SelectItem>
                   <SelectItem value="cliente">Por cliente</SelectItem>
                 </SelectContent>
               </Select>
             </div>
-            {escopo === "grupo" ? (
+            {escopo === "selecionados" ? (
+              <div className="md:col-span-2 text-sm text-muted-foreground pb-2">
+                A IA irá analisar os <strong>{selectedIds?.length ?? 0}</strong> equipamento(s) marcados na lista.
+              </div>
+            ) : escopo === "grupo" ? (
               <div className="md:col-span-2">
                 <Label>Grupo</Label>
                 <Select value={grupoId} onValueChange={setGrupoId}>
