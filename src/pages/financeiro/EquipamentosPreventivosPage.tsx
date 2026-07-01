@@ -297,6 +297,18 @@ async function fetchPlanoProximas(): Promise<Map<string, {
     ultima_execucao_data: string | null;
     ultima_execucao_task_id: string | null;
   }>();
+  const todayStr = new Date().toISOString().slice(0, 10);
+  const shouldUsePlanoDate = (current: string | null | undefined, candidate: string | null | undefined) => {
+    if (!candidate) return false;
+    if (!current) return true;
+    const candidateDate = candidate.slice(0, 10);
+    const currentDate = current.slice(0, 10);
+    const candidateFuture = candidateDate >= todayStr;
+    const currentFuture = currentDate >= todayStr;
+    if (candidateFuture && !currentFuture) return true;
+    if (!candidateFuture && currentFuture) return false;
+    return candidateFuture ? candidateDate < currentDate : candidateDate > currentDate;
+  };
   let from = 0;
   const PAGE = 1000;
   while (true) {
@@ -311,7 +323,7 @@ async function fetchPlanoProximas(): Promise<Map<string, {
     for (const row of data as any[]) {
       const key = String(row.equipamento_auvo_id);
       const prev = map.get(key);
-      const shouldUseNext = !prev || (row.proxima_data && (!prev.proxima_data || row.proxima_data < prev.proxima_data));
+      const shouldUseNext = !prev || shouldUsePlanoDate(prev.proxima_data, row.proxima_data);
       const shouldUseLast = !prev || (row.ultima_execucao_data && (!prev.ultima_execucao_data || row.ultima_execucao_data > prev.ultima_execucao_data));
       map.set(key, {
         proxima_data: shouldUseNext ? row.proxima_data : prev.proxima_data,
@@ -695,7 +707,7 @@ export default function EquipamentosPreventivosPage() {
       if (mesesPorPlano) r.periodicidade_meses_plano = mesesPorPlano;
 
       const calculada = calcularProximaPreventiva(r.ultima_data, mesesPorPlano);
-      if (calculada) {
+      if (!p?.proxima_data && calculada) {
         r.proxima_data = calculada;
         r.proxima_data_calculada = true;
       }

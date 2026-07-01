@@ -252,12 +252,19 @@ export default function GerarPlanoPreventivasDialog({
         body: { mode: "apply", cliente_nome: clienteNome, ano_referencia: ano, apply_rows },
       });
       if (error) throw error;
-      if (!data?.ok) throw new Error(data?.error || "Falha");
+      if (!data?.ok) {
+        const detalhes = Array.isArray(data?.erros) && data.erros.length > 0
+          ? `\nPrimeiros erros: ${data.erros.slice(0, 5).map((e: any) => `${e.codigo_barras_auvo}: ${e.erro}`).join(" | ")}`
+          : "";
+        throw new Error(`${data?.error || "Falha ao gravar plano"}${detalhes}`);
+      }
       toast.success(`${data.gravados} planos gravados`);
       // força atualização das próximas preventivas na lista de equipamentos
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["plano-proximas-by-eq"] }),
         queryClient.invalidateQueries({ queryKey: ["equipamentos-preventivos"] }),
+        queryClient.invalidateQueries({ queryKey: ["equipamentos-preventivos-raw"] }),
+        queryClient.invalidateQueries({ queryKey: ["planos-preventivos-all"] }),
       ]);
       onOpenChange(false);
     } catch (e: any) {

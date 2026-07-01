@@ -17,7 +17,7 @@ const normalizeKey = (s: any) =>
   String(s ?? "").trim().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
 
 const PER_TO_STEP: Record<string, number> = {
-  MENSAL: 1, BIMESTRAL: 2, TRIMESTRAL: 3, SEMESTRAL: 6, ANUAL: 12,
+  MENSAL: 1, BIMESTRAL: 2, TRIMESTRAL: 3, QUADRIMESTRAL: 4, SEMESTRAL: 6, ANUAL: 12,
 };
 const normalizePer = (raw: any): string => {
   const s = String(raw ?? "").trim().toUpperCase();
@@ -25,6 +25,7 @@ const normalizePer = (raw: any): string => {
   if (s.startsWith("MENS")) return "MENSAL";
   if (s.startsWith("BIM")) return "BIMESTRAL";
   if (s.startsWith("TRI")) return "TRIMESTRAL";
+  if (s.startsWith("QUAD")) return "QUADRIMESTRAL";
   if (s.startsWith("SEM")) return "SEMESTRAL";
   if (s.startsWith("ANU")) return "ANUAL";
   return "BIMESTRAL";
@@ -567,15 +568,43 @@ Deno.serve(async (req) => {
         return n === "MENSAL" ? 1 : n === "BIMESTRAL" ? 2 : n === "TRIMESTRAL" ? 3 : n === "SEMESTRAL" ? 6 : 12;
       };
       const codigos = apply_rows.map((r) => String(r.codigo_barras_auvo)).filter(Boolean);
-      const { data: eqRows } = await supabase
+      const { data: eqRows, error: eqErr } = await supabase
         .from("equipamentos_auvo")
-        .select("id, nome, codigo_barras_auvo")
-        .in("codigo_barras_auvo", codigos);
+        .select("id, nome, identificador")
+        .in("identificador", codigos);
+      if (eqErr) return json({ ok: false, code: "EQUIPAMENTOS_LOOKUP_FALHOU", error: eqErr.message });
+
       const eqByCod = new Map<string, { id: string; nome: string }>();
       for (const e of eqRows || []) {
-        eqByCod.set(String((e as any).codigo_barras_auvo), { id: (e as any).id, nome: (e as any).nome });
+        eqByCod.set(String((e as any).identificador), { id: (e as any).id, nome: (e as any).nome });
       }
+
+      if (eqByCod.size === 0) {
+        return json({
+          ok: false,
+          code: "NENHUM_EQUIPAMENTO_ENCONTRADO",
+          error: "Nenhum equipamento do plano foi encontrado pelo identificador. O plano não foi gravado.",
+          codigos_recebidos: codigos.length,
+        });
+      }
+
+      const codigosNaoEncontrados = codigos.filter((codigo) => !eqByCod.has(codigo));
+      if (codigosNaoEncontrados.length > 0) {
+        return json({
+          ok: false,
+          code: "EQUIPAMENTOS_NAO_ENCONTRADOS",
+          error: `${codigosNaoEncontrados.length} equipamento(s) do plano não foram encontrados pelo identificador. Nada foi gravado para evitar plano incompleto.`,
+          gravados: 0,
+          grupo_id: grupoDestino,
+          erros: codigosNaoEncontrados.slice(0, 50).map((codigo) => ({
+            codigo_barras_auvo: codigo,
+            erro: "Equipamento não encontrado no cadastro ativo pelo identificador.",
+          })),
+        });
+      }
+
       let gravados = 0;
+      const erros: Array<{ codigo_barras_auvo: string; equipamento_nome?: string; erro: string }> = [];
       for (const r of apply_rows) {
         if (!r.codigo_barras_auvo) continue;
         const eq = eqByCod.get(String(r.codigo_barras_auvo));
@@ -600,13 +629,15 @@ Deno.serve(async (req) => {
           ano_referencia,
           equipamento_nome: eq.nome,
           equipamento_auvo_id: eq.id,
+          match_confianca: "identificador",
+          criticidade: normalizeCrit(r.criticidade),
           periodicidade: periodNorm,
           periodicidade_meses: perMeses(r.periodicidade),
           horas_total: Number(r.horas_estimadas_total) || 0,
           meses_planejados: meses,
           proxima_data: proxima,
           ativo: true,
-        }, { onConflict: "grupo_id,ano_referencia,equipamento_nome" });
+        }, { onConflict: "grupo_id,ano_referencia,equipamento_auvo_id" });
         const { error: e2 } = await supabase.from("equipamento_plano_preventivo").upsert({
           grupo_id: grupoDestino,
           codigo_barras_auvo: String(r.codigo_barras_auvo),
@@ -621,8 +652,24 @@ Deno.serve(async (req) => {
           status: "RASCUNHO",
         }, { onConflict: "grupo_id,codigo_barras_auvo,ano_referencia" });
         if (!e1 && !e2) gravados++;
-        else console.error("[apply] upsert error", { e1: e1?.message, e2: e2?.message });
+        else {
+          const erro = [e1?.message, e2?.message].filter(Boolean).join(" | ");
+          erros.push({ codigo_barras_auvo: String(r.codigo_barras_auvo), equipamento_nome: eq.nome, erro });
+          console.error("[apply] upsert error", { codigo: r.codigo_barras_auvo, equipamento: eq.nome, e1: e1?.message, e2: e2?.message });
+        }
       }
+
+      if (gravados === 0 || erros.length > 0) {
+        return json({
+          ok: false,
+          code: "PLANO_APPLY_INCOMPLETO",
+          error: `Plano não foi gravado completamente: ${gravados}/${apply_rows.length} itens salvos.`,
+          gravados,
+          grupo_id: grupoDestino,
+          erros: erros.slice(0, 50),
+        });
+      }
+
       return json({ ok: true, gravados, grupo_id: grupoDestino });
     }
 
