@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { useQueryClient } from "@tanstack/react-query";
-import { Loader2, Save, Wand2, AlertTriangle, Sparkles } from "lucide-react";
+import { Loader2, Save, Wand2, AlertTriangle, Sparkles, RefreshCw } from "lucide-react";
 import { Trash2 } from "lucide-react";
 import {
   Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
@@ -98,6 +98,7 @@ export default function GerarPlanoPreventivasDialog({
   const [preview, setPreview] = useState<PreviewResp | null>(null);
   const [errCode, setErrCode] = useState<string | null>(null);
   const [errMsg, setErrMsg] = useState<string | null>(null);
+  const [removidos, setRemovidos] = useState<Set<string>>(new Set());
   const suppressCellClickUntilRef = useRef(0);
 
   useEffect(() => {
@@ -105,17 +106,19 @@ export default function GerarPlanoPreventivasDialog({
       setPreview(null);
       setErrCode(null);
       setErrMsg(null);
+      setRemovidos(new Set());
     }
   }, [open]);
 
-  const onPreview = async () => {
+  const onPreview = async (opts?: { keepRemovidos?: boolean; excluir?: string[] }) => {
     if (!clienteNome) return toast.error("Selecione um cliente");
     setLoading(true);
     setErrCode(null);
     setErrMsg(null);
     try {
+      const excluir = opts?.excluir ?? (opts?.keepRemovidos ? Array.from(removidos) : []);
       const { data, error } = await supabase.functions.invoke("plano-preventivo-gerar", {
-        body: { mode: "preview", cliente_nome: clienteNome, ano_referencia: ano },
+        body: { mode: "preview", cliente_nome: clienteNome, ano_referencia: ano, excluir_equip_ids: excluir },
       });
       if (error) throw error;
       if (!data?.ok) {
@@ -125,12 +128,23 @@ export default function GerarPlanoPreventivasDialog({
         return;
       }
       setPreview(data as PreviewResp);
-      toast.success(`${data.resumo.total} equipamentos processados`);
+      if (!opts?.keepRemovidos) setRemovidos(new Set());
+      toast.success(
+        `${data.resumo.total} equipamentos processados${excluir.length ? ` (${excluir.length} excluídos)` : ""}`,
+      );
     } catch (e: any) {
       toast.error(e?.message || "Erro");
     } finally {
       setLoading(false);
     }
+  };
+
+  const onRefazer = () => {
+    if (removidos.size === 0) {
+      toast.info("Nenhum equipamento removido — o plano continua o mesmo.");
+      return;
+    }
+    onPreview({ keepRemovidos: true });
   };
 
   // Recalcula tabela_meses e resumo a partir dos itens atuais
@@ -215,6 +229,11 @@ export default function GerarPlanoPreventivasDialog({
     if (!preview) return;
     if (!confirm("Remover este equipamento do plano?")) return;
     const itens = preview.itens.filter((it) => it.equip_id !== equipId);
+    setRemovidos((prev) => {
+      const next = new Set(prev);
+      next.add(equipId);
+      return next;
+    });
     setPreview(recalcAggregates(itens, preview));
   };
 
