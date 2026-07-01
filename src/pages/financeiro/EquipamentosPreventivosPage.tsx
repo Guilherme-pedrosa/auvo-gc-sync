@@ -74,6 +74,24 @@ type EquipTaskRel = {
   source: string | null;
 };
 
+// Linha do equipamento_preventiva_consolidado — fonte pré-computada de
+// última/próxima preventiva. Item 2.b: usado como hidratador principal
+// da tela, evitando o compute client-side sobre equipamento_tarefas_auvo.
+type ConsolidadoRow = {
+  equip_id: string;
+  auvo_equipment_id: string | null;
+  ultima_preventiva: string | null;
+  ultima_preventiva_task_id: string | null;
+  ultima_preventiva_tecnico: string | null;
+  ultima_preventiva_link: string | null;
+  proxima_preventiva: string | null;
+  proxima_source: string | null;
+  status_preventiva: string | null;
+  total_tarefas: number | null;
+  tipo_nome: string | null;
+  atualizado_em: string | null;
+};
+
 type EquipmentRow = {
   id: string;
   auvo_equipment_id: string | null;
@@ -224,65 +242,89 @@ function splitSyncWindowByDay(window: SyncWindow): SyncWindow[] {
 }
 
 // ── Data fetching ──
-async function fetchRawData(): Promise<{ equipamentos: EquipmentRaw[]; relations: EquipTaskRel[] }> {
-  let equipamentos: EquipmentRaw[] = [];
-  let eqFrom = 0;
-  const EQ_PAGE = 1000;
+// Item 2.b — fonte principal = equipamento_preventiva_consolidado.
+// Estratégia:
+//   1) Consolidado (rápido, pré-computado pelo cron/edge preventiva-consolidar)
+//      hidrata as colunas de última/próxima preventiva sem varredura O(n²).
+//   2) equipamentos_auvo continua carregando em paralelo (overrides + fallback
+//      para equipamento cadastrado depois do último cron — aparece na tela
+//      como "Sem registro" até o próximo consolidar).
+//   3) Relations é reduzido: sem enriquecimento contra tarefas_central (aquele
+//      loop de 16 chunks era o gargalo). Serve só para tipoTarefaOptions e
+//      "última intervenção de qualquer tipo".
+async function fetchRawDataPaginated<T>(
+  table: string,
+  selectStr: string,
+  filter?: (q: any) => any,
+): Promise<T[]> {
+  const out: T[] = [];
+  let from = 0;
+  const PAGE = 1000;
   while (true) {
-    const { data, error } = await supabase
-      .from("equipamentos_auvo")
-      .select("id, auvo_equipment_id, nome, identificador, cliente, status, categoria, descricao, marca, marca_source, marca_manual_override, tipo_id, override_horas_por_tecnico, override_qtd_tecnicos, override_periodicidade")
-      .eq("status", "Ativo")
-      .order("nome")
-      .range(eqFrom, eqFrom + EQ_PAGE - 1);
+    let q = (supabase as any).from(table).select(selectStr).range(from, from + PAGE - 1);
+    if (filter) q = filter(q);
+    const { data, error } = await q;
     if (error) throw error;
     if (!data || data.length === 0) break;
-    equipamentos.push(...(data as EquipmentRaw[]));
-    if (data.length < EQ_PAGE) break;
-    eqFrom += EQ_PAGE;
+    out.push(...(data as T[]));
+    if (data.length < PAGE) break;
+    from += PAGE;
   }
+  return out;
+}
 
-  // Guarda defensiva: nunca incluir equipamento inativo na lista de preventivas
-  equipamentos = equipamentos.filter((e) => (e.status || "").toLowerCase() === "ativo");
+async function fetchRawData(): Promise<{
+  equipamentos: EquipmentRaw[];
+  relations: EquipTaskRel[];
+  consolidated: Map<string, ConsolidadoRow>;
+  consolidadoAtualizadoEm: string | null;
+}> {
+  const t0 = performance.now();
 
-  let relations: EquipTaskRel[] = [];
-  let relFrom = 0;
-  const REL_PAGE = 1000;
-  while (true) {
-    const { data, error } = await supabase
-      .from("equipamento_tarefas_auvo")
-      .select("auvo_equipment_id, auvo_task_id, auvo_task_type_id, auvo_task_type_description, status_auvo, data_tarefa, data_conclusao, cliente, tecnico, auvo_link, source")
-      .order("data_conclusao", { ascending: false, nullsFirst: false })
-      .range(relFrom, relFrom + REL_PAGE - 1);
-    if (error) throw error;
-    if (!data || data.length === 0) break;
-    relations.push(...(data as EquipTaskRel[]));
-    if (data.length < REL_PAGE) break;
-    relFrom += REL_PAGE;
-  }
+  const equipamentosPromise = fetchRawDataPaginated<EquipmentRaw>(
+    "equipamentos_auvo",
+    "id, auvo_equipment_id, nome, identificador, cliente, status, categoria, descricao, marca, marca_source, marca_manual_override, tipo_id, override_horas_por_tecnico, override_qtd_tecnicos, override_periodicidade",
+    (q) => q.eq("status", "Ativo").order("nome"),
+  );
 
-  const taskIds = Array.from(new Set(relations.map((r) => r.auvo_task_id).filter(Boolean)));
-  if (taskIds.length > 0) {
-    const urlByTaskId = new Map<string, string>();
-    for (let i = 0; i < taskIds.length; i += 500) {
-      const chunk = taskIds.slice(i, i + 500);
-      const { data, error } = await supabase
-        .from("tarefas_central")
-        .select("auvo_task_id, auvo_task_url")
-        .in("auvo_task_id", chunk);
-      if (error) throw error;
-      for (const row of data || []) {
-        const url = String(row.auvo_task_url || "").trim();
-        if (url) urlByTaskId.set(String(row.auvo_task_id), url);
-      }
+  const relationsPromise = fetchRawDataPaginated<EquipTaskRel>(
+    "equipamento_tarefas_auvo",
+    "auvo_equipment_id, auvo_task_id, auvo_task_type_id, auvo_task_type_description, status_auvo, data_tarefa, data_conclusao, cliente, tecnico, auvo_link, source",
+    (q) => q.order("data_conclusao", { ascending: false, nullsFirst: false }),
+  );
+
+  const consolidadoPromise = fetchRawDataPaginated<ConsolidadoRow>(
+    "equipamento_preventiva_consolidado",
+    "equip_id, auvo_equipment_id, ultima_preventiva, ultima_preventiva_task_id, ultima_preventiva_tecnico, ultima_preventiva_link, proxima_preventiva, proxima_source, status_preventiva, total_tarefas, tipo_nome, atualizado_em",
+  );
+
+  const [equipamentosRaw, relations, consolidadoRows] = await Promise.all([
+    equipamentosPromise,
+    relationsPromise,
+    consolidadoPromise,
+  ]);
+
+  // Guarda defensiva: nunca incluir equipamento inativo na lista
+  const equipamentos = equipamentosRaw.filter(
+    (e) => (e.status || "").toLowerCase() === "ativo",
+  );
+
+  const consolidated = new Map<string, ConsolidadoRow>();
+  let latest: string | null = null;
+  for (const row of consolidadoRows) {
+    consolidated.set(row.equip_id, row);
+    if (row.atualizado_em && (!latest || row.atualizado_em > latest)) {
+      latest = row.atualizado_em;
     }
-    relations = relations.map((rel) => ({
-      ...rel,
-      auvo_task_url: urlByTaskId.get(String(rel.auvo_task_id)) || null,
-    }));
   }
 
-  return { equipamentos, relations };
+  const elapsed = performance.now() - t0;
+  const semConsolidado = equipamentos.filter((e) => !consolidated.has(e.id)).length;
+  console.info(
+    `[EquipamentosPreventivos] fetchRawData ${elapsed.toFixed(0)}ms — eq=${equipamentos.length} rel=${relations.length} consolidado=${consolidadoRows.length} sem_consolidado=${semConsolidado}`,
+  );
+
+  return { equipamentos, relations, consolidated, consolidadoAtualizadoEm: latest };
 }
 
 async function fetchPlanoProximas(): Promise<Map<string, {
@@ -345,7 +387,8 @@ function getTaskDigitalLink(task: Pick<EquipTaskRel, "auvo_task_url" | "auvo_lin
 function buildEquipmentRows(
   equipamentos: EquipmentRaw[],
   relations: EquipTaskRel[],
-  tipoTarefaFilter: string[]
+  tipoTarefaFilter: string[],
+  consolidated?: Map<string, ConsolidadoRow>,
 ): EquipmentRow[] {
   const relByEquipment = new Map<string, EquipTaskRel[]>();
   for (const rel of relations) {
@@ -374,22 +417,40 @@ function buildEquipmentRows(
     const lastAnyTask = allCompleted[0] || null;
     const ultimaIntervencaoData = lastAnyTask ? (lastAnyTask.data_conclusao || lastAnyTask.data_tarefa) : null;
 
-    // Última preventiva: estritamente os tipos de preventiva (independente do filtro)
-    const taskTypeIds = Array.from(PREVENTIVA_TASK_TYPE_IDS);
-    const preventiveTasks = allEqTasks.filter(t => t.auvo_task_type_id && taskTypeIds.includes(String(t.auvo_task_type_id)));
-
-    const completedTasks = preventiveTasks.filter(t =>
-      t.status_auvo === "Finalizada" && (t.data_conclusao || t.data_tarefa)
-    );
-
-    completedTasks.sort((a, b) => {
-      const dateA = a.data_conclusao || a.data_tarefa || "";
-      const dateB = b.data_conclusao || b.data_tarefa || "";
-      return dateB.localeCompare(dateA);
-    });
-
-    const lastTask = completedTasks[0] || null;
-    const ultimaData = lastTask ? (lastTask.data_conclusao || lastTask.data_tarefa) : null;
+    // Última preventiva: prefere consolidado (Item 2.b — fonte única).
+    // Fallback = compute on-the-fly a partir de relations, garantindo que
+    // equipamento novo (ainda sem linha no consolidado) não suma da tela.
+    const cons = consolidated?.get(eq.id) || null;
+    let ultimaData: string | null = null;
+    let lastTask: EquipTaskRel | null = null;
+    let totalPreventivas = 0;
+    let tipoTarefaLabel: string | null = null;
+    let ultimoTecnico: string | null = null;
+    let ultimoLink: string | null = null;
+    if (cons && cons.ultima_preventiva) {
+      ultimaData = cons.ultima_preventiva;
+      totalPreventivas = cons.total_tarefas ?? 0;
+      tipoTarefaLabel = cons.tipo_nome || "Preventiva";
+      ultimoTecnico = cons.ultima_preventiva_tecnico;
+      ultimoLink = cons.ultima_preventiva_link;
+    } else {
+      const preventiveTasks = allEqTasks.filter(
+        (t) => t.auvo_task_type_id && PREVENTIVA_TASK_TYPE_IDS.has(String(t.auvo_task_type_id)),
+      );
+      const completedTasks = preventiveTasks
+        .filter((t) => t.status_auvo === "Finalizada" && (t.data_conclusao || t.data_tarefa))
+        .sort((a, b) => {
+          const dateA = a.data_conclusao || a.data_tarefa || "";
+          const dateB = b.data_conclusao || b.data_tarefa || "";
+          return dateB.localeCompare(dateA);
+        });
+      lastTask = completedTasks[0] || null;
+      ultimaData = lastTask ? (lastTask.data_conclusao || lastTask.data_tarefa) : null;
+      totalPreventivas = completedTasks.length;
+      tipoTarefaLabel = lastTask?.auvo_task_type_description || null;
+      ultimoTecnico = lastTask?.tecnico || null;
+      ultimoLink = getTaskDigitalLink(lastTask);
+    }
     const dias = ultimaData ? differenceInDays(new Date(), parseISO(ultimaData)) : null;
 
     return {
@@ -402,11 +463,11 @@ function buildEquipmentRows(
       marca: eq.marca,
       marca_source: eq.marca_source,
       ultima_data: ultimaData,
-      ultimo_tecnico: lastTask?.tecnico || null,
-      ultimo_link: getTaskDigitalLink(lastTask),
+      ultimo_tecnico: ultimoTecnico,
+      ultimo_link: ultimoLink,
       dias_desde: dias,
-      tipo_tarefa: lastTask?.auvo_task_type_description || null,
-      total_tarefas: completedTasks.length,
+      tipo_tarefa: tipoTarefaLabel,
+      total_tarefas: totalPreventivas,
       ultima_intervencao_data: ultimaIntervencaoData,
       ultima_intervencao_tecnico: lastAnyTask?.tecnico || null,
       ultima_intervencao_link: getTaskDigitalLink(lastAnyTask),
