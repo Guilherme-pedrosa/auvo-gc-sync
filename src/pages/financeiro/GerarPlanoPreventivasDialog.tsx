@@ -61,6 +61,7 @@ type PreviewResp = {
   sem_tipo: Array<{ equip_id: string; nome: string; cliente: string | null }>;
   warnings?: Array<{ equip_id: string; nome: string; motivo: string }>;
   fonte_ultima_preventiva?: "consolidado" | "scan";
+  otimizacao_ia?: { usada: boolean; aplicada: boolean; alteracoes: number; mensagem: string } | null;
   tabela_meses: Array<{ mes: number; ht_agendada: number; teto: number; saldo: number }>;
   itens: Item[];
 };
@@ -149,15 +150,28 @@ export default function GerarPlanoPreventivasDialog({
   }, [open]);
 
   type Override = { periodicidade?: string; ht_por_ocorrencia?: number; horas_por_tecnico?: number };
-  const onPreview = async (opts?: { keepRemovidos?: boolean; excluir?: string[]; overrides?: Map<string, Override> }) => {
+  const onPreview = async (opts?: { keepRemovidos?: boolean; excluir?: string[]; overrides?: Map<string, Override>; usarIA?: boolean }) => {
     if (!clienteNome) return toast.error("Selecione um cliente");
     setLoading(true);
     setErrCode(null);
     setErrMsg(null);
     try {
       const excluir = opts?.excluir ?? (opts?.keepRemovidos ? Array.from(removidos) : []);
+      const manual_overrides = opts?.overrides && preview
+        ? preview.itens.flatMap((it) => {
+            const o = opts.overrides!.get(it.equip_id) ?? opts.overrides!.get(it.codigo_barras_auvo);
+            return o ? [{ equip_id: it.equip_id, codigo_barras_auvo: it.codigo_barras_auvo, ...o }] : [];
+          })
+        : [];
       const { data, error } = await supabase.functions.invoke("plano-preventivo-gerar", {
-        body: { mode: "preview", cliente_nome: clienteNome, ano_referencia: ano, excluir_equip_ids: excluir },
+        body: {
+          mode: "preview",
+          cliente_nome: clienteNome,
+          ano_referencia: ano,
+          excluir_equip_ids: excluir,
+          usar_ia: !!opts?.usarIA,
+          manual_overrides,
+        },
       });
       if (error) throw error;
       if (!data?.ok) {
@@ -167,35 +181,7 @@ export default function GerarPlanoPreventivasDialog({
         return;
       }
       let resp = data as PreviewResp;
-      const ov = opts?.overrides;
-      if (ov && ov.size) {
-        let aplicados = 0;
-        const itens = resp.itens.map((it) => {
-          const o = ov.get(it.equip_id) ?? ov.get(it.codigo_barras_auvo);
-          if (!o) return it;
-          aplicados++;
-          const periodicidade = o.periodicidade ?? it.periodicidade;
-          const ht_por_ocorrencia = o.ht_por_ocorrencia ?? it.ht_por_ocorrencia;
-          const horas_por_tecnico = o.horas_por_tecnico ?? it.horas_por_tecnico;
-          // Se periodicidade mudou, regenera a cadeia a partir do primeiro mês agendado
-          let meses = it.meses_planejados;
-          if (o.periodicidade && o.periodicidade !== it.periodicidade) {
-            const inicio = it.meses_planejados[0] ?? it.mes_inicio_ciclo ?? 1;
-            meses = chainFrom(inicio, periodicidade);
-          }
-          return {
-            ...it,
-            periodicidade,
-            ht_por_ocorrencia,
-            horas_por_tecnico,
-            meses_planejados: meses,
-            mes_inicio_ciclo: meses[0] ?? it.mes_inicio_ciclo,
-            ht_total_ano: meses.length * ht_por_ocorrencia,
-          };
-        });
-        resp = recalcAggregates(itens, resp);
-        if (aplicados > 0) toast.info(`${aplicados} edição(ões) manual(is) preservada(s) (HT/periodicidade)`);
-      }
+      if (manual_overrides.length > 0) toast.info(`${manual_overrides.length} edição(ões) manual(is) preservada(s) (HT/periodicidade)`);
       // Ancora a cadeia no mês da última execução (quando ocorreu no ano de referência),
       // gerando a distribuição pra frente E pra trás a partir dela.
       {
@@ -218,7 +204,7 @@ export default function GerarPlanoPreventivasDialog({
         manualOverridesRef.current.clear();
       }
       toast.success(
-        `${data.resumo.total} equipamentos processados${excluir.length ? ` (${excluir.length} excluídos)` : ""}`,
+        `${data.resumo.total} equipamentos processados${excluir.length ? ` (${excluir.length} excluídos)` : ""}${data.otimizacao_ia?.usada ? ` · IA: ${data.otimizacao_ia.alteracoes} ajuste(s)` : ""}`,
       );
     } catch (e: any) {
       toast.error(e?.message || "Erro");
@@ -232,7 +218,7 @@ export default function GerarPlanoPreventivasDialog({
     // Usa um ref atualizado no próprio onChange; assim, mesmo clicando em "Refazer"
     // logo após alterar o select/input, a edição manual não volta para o padrão.
     const overrides = new Map(manualOverridesRef.current);
-    onPreview({ keepRemovidos: true, overrides });
+    onPreview({ keepRemovidos: true, overrides, usarIA: true });
   };
 
   const saveManualOverride = (it: Item, override: Override) => {
@@ -463,11 +449,11 @@ export default function GerarPlanoPreventivasDialog({
             <Button
               variant="outline"
               onClick={onRefazer}
-              disabled={loading || !preview || removidos.size === 0}
-              title="Reprocessa distribuição de meses ignorando os equipamentos removidos"
+              disabled={loading || !preview}
+              title="Reprocessa com IA, preservando removidos e edições manuais de HT/periodicidade"
             >
               {loading ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <RefreshCw className="h-4 w-4 mr-1" />}
-              Refazer plano{removidos.size > 0 ? ` (−${removidos.size})` : ""}
+              Refazer com IA{removidos.size > 0 ? ` (−${removidos.size})` : ""}
             </Button>
             <Button variant="secondary" onClick={onApply} disabled={saving || !preview}>
               {saving ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Save className="h-4 w-4 mr-1" />}
@@ -538,6 +524,9 @@ export default function GerarPlanoPreventivasDialog({
             {preview.fonte_ultima_preventiva && (
               <div className="text-[11px] text-muted-foreground">
                 Fonte "última preventiva": <b>{preview.fonte_ultima_preventiva === "consolidado" ? "tabela consolidada (fonte única)" : "scan histórico (fallback)"}</b>
+                {preview.otimizacao_ia?.usada && (
+                  <> · IA: <b>{preview.otimizacao_ia.mensagem}</b> ({preview.otimizacao_ia.alteracoes} ajuste(s))</>
+                )}
               </div>
             )}
 
