@@ -714,6 +714,18 @@ export default function EquipamentosPreventivosPage() {
         r.proxima_data = calculada;
         r.proxima_data_calculada = true;
       }
+      // Se o plano tem próxima_data antiga (anterior à última execução real),
+      // considera a preventiva já feita e recalcula a partir da última data.
+      if (r.proxima_data && r.ultima_data) {
+        try {
+          const prox = parseISO(r.proxima_data);
+          const ult = parseISO(r.ultima_data);
+          if (prox.getTime() < ult.getTime() && calculada) {
+            r.proxima_data = calculada;
+            r.proxima_data_calculada = true;
+          }
+        } catch { /* ignore */ }
+      }
     }
     return rows;
   }, [rawData, tipoTarefaFilter, planoProximas, tipoById]);
