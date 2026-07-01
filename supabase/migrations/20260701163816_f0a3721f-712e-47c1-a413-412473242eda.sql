@@ -1,0 +1,1 @@
+ALTER TYPE preventiva_periodicidade ADD VALUE IF NOT EXISTS 'QUADRIMESTRAL';

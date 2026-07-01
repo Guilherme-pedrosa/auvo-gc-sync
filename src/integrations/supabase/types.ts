@@ -1783,6 +1783,7 @@ export type Database = {
         | "TRIMESTRAL"
         | "SEMESTRAL"
         | "ANUAL"
+        | "QUADRIMESTRAL"
       preventiva_status: "RASCUNHO" | "VIGENTE"
     }
     CompositeTypes: {
@@ -1919,6 +1920,7 @@ export const Constants = {
         "TRIMESTRAL",
         "SEMESTRAL",
         "ANUAL",
+        "QUADRIMESTRAL",
       ],
       preventiva_status: ["RASCUNHO", "VIGENTE"],
     },
