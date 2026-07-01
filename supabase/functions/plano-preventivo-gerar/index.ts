@@ -587,18 +587,27 @@ Deno.serve(async (req) => {
         });
       }
 
+      const codigosNaoEncontrados = codigos.filter((codigo) => !eqByCod.has(codigo));
+      if (codigosNaoEncontrados.length > 0) {
+        return json({
+          ok: false,
+          code: "EQUIPAMENTOS_NAO_ENCONTRADOS",
+          error: `${codigosNaoEncontrados.length} equipamento(s) do plano não foram encontrados pelo identificador. Nada foi gravado para evitar plano incompleto.`,
+          gravados: 0,
+          grupo_id: grupoDestino,
+          erros: codigosNaoEncontrados.slice(0, 50).map((codigo) => ({
+            codigo_barras_auvo: codigo,
+            erro: "Equipamento não encontrado no cadastro ativo pelo identificador.",
+          })),
+        });
+      }
+
       let gravados = 0;
       const erros: Array<{ codigo_barras_auvo: string; equipamento_nome?: string; erro: string }> = [];
       for (const r of apply_rows) {
         if (!r.codigo_barras_auvo) continue;
         const eq = eqByCod.get(String(r.codigo_barras_auvo));
-        if (!eq) {
-          erros.push({
-            codigo_barras_auvo: String(r.codigo_barras_auvo),
-            erro: "Equipamento não encontrado no cadastro ativo pelo identificador.",
-          });
-          continue;
-        }
+        if (!eq) continue;
         const mesInicioR = Math.min(12, Math.max(1, Number(r.mes_inicio_ciclo) || 1));
         const meses = Array.isArray(r.meses_planejados) && r.meses_planejados.length
           ? r.meses_planejados
