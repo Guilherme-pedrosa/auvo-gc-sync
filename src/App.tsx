@@ -21,6 +21,7 @@ import RelatoriosPage from "./pages/financeiro/RelatoriosPage.tsx";
 import OSCruzadasPage from "./pages/financeiro/OSCruzadasPage.tsx";
 import OficinaKanbanPage from "./pages/financeiro/OficinaKanbanPage.tsx";
 import EquipamentosPreventivosPage from "./pages/financeiro/EquipamentosPreventivosPage.tsx";
+import PlanosPreventivosPage from "./pages/financeiro/PlanosPreventivosPage.tsx";
 import FollowUpKanbanPage from "./pages/financeiro/FollowUpKanbanPage.tsx";
 import PremiacaoPage from "./pages/financeiro/PremiacaoPage.tsx";
 import ContratosPage from "./pages/configuracoes/ContratosPage.tsx";
@@ -93,6 +94,7 @@ const AppRoutes = () => {
                 <Route path="/financeiro/os-cruzadas" element={<OSCruzadasPage />} />
                 <Route path="/financeiro/kanban-oficina" element={<OficinaKanbanPage />} />
                 <Route path="/financeiro/equipamentos-preventivos" element={<EquipamentosPreventivosPage />} />
+                <Route path="/financeiro/planos-preventivos" element={<PlanosPreventivosPage />} />
                 <Route path="/financeiro/kanban-followup" element={<FollowUpKanbanPage />} />
                 <Route path="/financeiro/premiacao" element={<PremiacaoPage />} />
                 <Route path="/configuracoes/contratos" element={<ContratosPage />} />
