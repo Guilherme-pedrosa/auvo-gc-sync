@@ -34,6 +34,9 @@ type PlanoItem = {
   proxima_data: string | null;
   ultima_execucao_data: string | null;
   ativo: boolean;
+  _new?: boolean;
+  categoria?: string | null;
+  criticidade?: string | null;
 };
 
 type Grupo = { id: string; nome: string };
