@@ -879,6 +879,9 @@ Deno.serve(async (req) => {
       let totalDiscarded = 0;
       const perWindow: any[] = [];
       const allErrors: string[] = [];
+      // Map global equipamento → última preventiva (MAX por equipmentId).
+      // Consolida ao longo de todas as janelas processadas nesta invocação.
+      const ultimaPorEquipamento = new Map<string, { data: string; taskId: string }>();
 
       for (const w of expanded) {
         let tasksWithEquipments: EquipmentTaskLink[] = [];
@@ -963,6 +966,18 @@ Deno.serve(async (req) => {
         totalTasksAggregate += totalTasks;
         totalWithEquip += withEquipCount;
         totalDiscarded += discarded;
+        // Consolida última data por equipamento (MAX), usando checkOut > taskDate.
+        for (const task of tasksWithEquipments) {
+          const d = task.checkOutDate || task.taskDate;
+          if (!d) continue;
+          for (const eqId of task.equipmentIds) {
+            if (validEquipmentIds && !validEquipmentIds.has(eqId)) continue;
+            const cur = ultimaPorEquipamento.get(eqId);
+            if (!cur || d > cur.data) {
+              ultimaPorEquipamento.set(eqId, { data: d, taskId: task.taskId });
+            }
+          }
+        }
         perWindow.push({ window: `${w.startDate} → ${w.endDate}`, totalTasks, withEquip: withEquipCount, upserted, discarded });
       }
 
@@ -975,6 +990,10 @@ Deno.serve(async (req) => {
         relationship_rows_upserted: totalRelUpserted,
         discarded_invalid_links: totalDiscarded,
         per_window: perWindow,
+        // MAX(data) por equipamento — verificação de "última preventiva".
+        // Downstream (leitura) deve computar MAX pela tabela; este map é para
+        // logging/observabilidade da rodada atual.
+        ultima_por_equipamento_count: ultimaPorEquipamento.size,
         errors: allErrors.length > 0 ? allErrors : undefined,
       };
     }
