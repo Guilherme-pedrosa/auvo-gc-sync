@@ -14,7 +14,7 @@ import {
 } from "@/components/ui/dialog";
 import {
   ArrowLeft, LogOut, Loader2, Search, Download, FileText, Clock,
-  ChevronRight,
+  ChevronRight, ExternalLink,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { format, parseISO } from "date-fns";
@@ -28,6 +28,7 @@ type PlanoItem = {
   grupo_id: string;
   ano_referencia: number;
   equipamento_nome: string;
+  equipamento_auvo_id: string | null;
   periodicidade: string | null;
   periodicidade_meses: number | null;
   horas_total: number | null;
@@ -35,6 +36,12 @@ type PlanoItem = {
   proxima_data: string | null;
   ultima_execucao_data: string | null;
   ativo: boolean;
+};
+
+type UltimaInfo = {
+  data: string | null;
+  link: string | null;
+  task_id: string | null;
 };
 
 type Grupo = { id: string; nome: string };
@@ -48,6 +55,7 @@ type Aggregate = {
   cliente_nome: string; // nome "amigável" (sem prefixo [Auto])
   ano_referencia: number;
   itens: PlanoItem[];
+  ultimaByAuvoId: Map<string, UltimaInfo>;
   ht_ano: number;
   ht_contrato_mes: number;
   ht_contrato_ano: number;
@@ -118,7 +126,7 @@ export default function PortalPlanosPreventivosPage() {
         while (true) {
           const { data: page, error } = await (supabase as any)
             .from("plano_preventivo_item")
-            .select("id, grupo_id, ano_referencia, equipamento_nome, periodicidade, periodicidade_meses, horas_total, meses_planejados, proxima_data, ultima_execucao_data, ativo")
+            .select("id, grupo_id, ano_referencia, equipamento_nome, equipamento_auvo_id, periodicidade, periodicidade_meses, horas_total, meses_planejados, proxima_data, ultima_execucao_data, ativo")
             .eq("ativo", true)
             .in("grupo_id", ids)
             .order("ano_referencia", { ascending: false })
@@ -137,12 +145,37 @@ export default function PortalPlanosPreventivosPage() {
         .select("grupo_id, cliente_nome, horas_mes_contratadas, ativo")
         .eq("ativo", true);
 
+      // 5) consolidado (última preventiva + link do relatório no Auvo)
+      const auvoIds = Array.from(new Set(
+        itens.map(i => i.equipamento_auvo_id).filter(Boolean) as string[],
+      ));
+      const ultimaByAuvoId = new Map<string, UltimaInfo>();
+      if (auvoIds.length) {
+        const CHUNK = 500;
+        for (let i = 0; i < auvoIds.length; i += CHUNK) {
+          const slice = auvoIds.slice(i, i + CHUNK);
+          const { data: cons } = await (supabase as any)
+            .from("equipamento_preventiva_consolidado")
+            .select("auvo_equipment_id, ultima_preventiva, ultima_preventiva_link, ultima_preventiva_task_id")
+            .in("auvo_equipment_id", slice);
+          for (const r of (cons ?? []) as any[]) {
+            if (!r.auvo_equipment_id) continue;
+            ultimaByAuvoId.set(String(r.auvo_equipment_id), {
+              data: r.ultima_preventiva ?? null,
+              link: r.ultima_preventiva_link ?? null,
+              task_id: r.ultima_preventiva_task_id ?? null,
+            });
+          }
+        }
+      }
+
       return {
         grupoPrincipal: grupoPrinc as Grupo | null,
         memberNames,
         grupos: autoGrupos,
         itens,
         contratos: (contratos ?? []) as Contrato[],
+        ultimaByAuvoId,
       };
     },
     staleTime: 60_000,
@@ -183,6 +216,7 @@ export default function PortalPlanosPreventivosPage() {
           cliente_nome: clienteNome,
           ano_referencia: it.ano_referencia,
           itens: [],
+          ultimaByAuvoId: data.ultimaByAuvoId,
           ht_ano: 0,
           ht_contrato_mes,
           ht_contrato_ano: ht_contrato_mes * 12,
@@ -511,11 +545,27 @@ function PlanoViewDialog({
                   <tr key={it.id} className="border-t">
                     <td className="px-2 py-1">
                       <div className="text-sm">{it.equipamento_nome}</div>
-                      {it.ultima_execucao_data && (
-                        <div className="text-[10px] text-muted-foreground">
-                          Última: {format(parseISO(it.ultima_execucao_data), "dd/MM/yyyy")}
-                        </div>
-                      )}
+                      {(() => {
+                        const info = it.equipamento_auvo_id ? agg.ultimaByAuvoId.get(it.equipamento_auvo_id) : null;
+                        const ultimaISO = info?.data ?? it.ultima_execucao_data;
+                        if (!ultimaISO && !info?.link) return null;
+                        return (
+                          <div className="text-[10px] text-muted-foreground flex items-center gap-1.5">
+                            {ultimaISO && <span>Última: {format(parseISO(ultimaISO), "dd/MM/yyyy")}</span>}
+                            {info?.link && (
+                              <a
+                                href={info.link}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="inline-flex items-center gap-0.5 text-primary hover:underline"
+                                title="Abrir relatório da última preventiva"
+                              >
+                                <ExternalLink className="h-3 w-3" /> relatório
+                              </a>
+                            )}
+                          </div>
+                        );
+                      })()}
                     </td>
                     <td className="px-2 py-1">
                       <Badge variant="outline" className="text-[10px]">{it.periodicidade ?? "—"}</Badge>
