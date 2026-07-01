@@ -280,7 +280,35 @@ Deno.serve(async (req) => {
         e.override_periodicidade;
 
       if (!tipo && !hasOverride) {
+        // Não descartar: incluir com defaults conservadores para que
+        // TODOS os equipamentos ativos da unidade apareçam no plano.
+        // O usuário pode ajustar HT / mover meses / remover manualmente.
         semTipo.push({ equip_id: e.id, nome: e.nome, cliente: e.cliente });
+        const periodicidadeDef = "ANUAL";
+        const stepDef = PER_TO_STEP[periodicidadeDef] || 12;
+        const htDef = 1;
+        const qtdDef = 1;
+        items.push({
+          equip_id: e.id,
+          codigo_barras_auvo: String(e.identificador),
+          auvo_equipment_id: e.auvo_equipment_id ?? null,
+          nome: e.nome,
+          cliente: e.cliente,
+          tipo_id_atual: e.tipo_id,
+          tipo_nome_resolvido: null,
+          tipo_source: "ia_keywords",
+          categoria: "SEM TIPO",
+          periodicidade: periodicidadeDef,
+          step: stepDef,
+          criticidade: "MEDIA",
+          horas_por_tecnico: htDef,
+          qtd_tecnicos: qtdDef,
+          ht_por_ocorrencia: htDef * qtdDef,
+          freq: expectedFreq(stepDef),
+          ht_total_ano: htDef * qtdDef * expectedFreq(stepDef),
+          keyword_match: null,
+          ultima_preventiva: lastPrevByAuvoId.get(String(e.auvo_equipment_id ?? "")) ?? null,
+        });
         continue;
       }
       if (hasOverride) source = "override_manual";
