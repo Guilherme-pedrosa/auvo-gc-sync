@@ -874,9 +874,22 @@ export default function EquipamentosPreventivosPage() {
         if (!ref) return false;
         if (ref < syncStartDate || ref > syncEndDate) return false;
       }
+      if (!exclude.has("intervencao") && intervencaoFilter) {
+        const ref = (e.ultima_intervencao_data || "").slice(0, 10);
+        if (intervencaoFilter === "none") {
+          if (ref) return false;
+        } else {
+          if (!ref) return false;
+          const months = intervencaoFilter === "3m" ? 3 : intervencaoFilter === "6m" ? 6 : 12;
+          const cutoff = new Date();
+          cutoff.setMonth(cutoff.getMonth() - months);
+          const cutoffStr = cutoff.toISOString().slice(0, 10);
+          if (ref >= cutoffStr) return false;
+        }
+      }
       return true;
     },
-    [search, statusFilter, marcaFilter, clienteFilter, tipoEquipFilter, grupoFilter, grupoClienteMap, proximaMesFilter, syncStartDate, syncEndDate, applyDateFilter]
+    [search, statusFilter, marcaFilter, clienteFilter, tipoEquipFilter, grupoFilter, grupoClienteMap, proximaMesFilter, syncStartDate, syncEndDate, applyDateFilter, intervencaoFilter]
   );
 
   // Opções em cascata: para cada filtro, considera o universo já reduzido pelos OUTROS filtros
