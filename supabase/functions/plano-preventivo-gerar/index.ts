@@ -16,6 +16,18 @@ const json = (body: unknown, status = 200) =>
 const normalizeKey = (s: any) =>
   String(s ?? "").trim().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
 
+// normaliza p/ comparação de razão social: remove sufixos, pontuação e sufixo de filial após " - "
+const normalizeCliente = (s: any) => {
+  let x = normalizeKey(s).replace(/[.\-\/]/g, " ").replace(/\s+/g, " ").trim();
+  // corta sufixo de filial: "cliente x - goiania" → "cliente x"
+  const dash = x.indexOf(" - ");
+  if (dash > 0) x = x.slice(0, dash);
+  x = " " + x + " ";
+  const suf = [" ltda ", " me ", " mei ", " sa ", " s a ", " epp ", " eireli "];
+  for (const s2 of suf) while (x.includes(s2)) x = x.replace(s2, " ");
+  return x.replace(/\s+/g, " ").trim();
+};
+
 const PER_TO_STEP: Record<string, number> = {
   MENSAL: 1, BIMESTRAL: 2, TRIMESTRAL: 3, QUADRIMESTRAL: 4, SEMESTRAL: 6, ANUAL: 12,
 };
