@@ -346,8 +346,8 @@ export default function GerarPlanoPreventivasDialog({
 
             <div className="border rounded-md max-h-[62vh] overflow-auto">
               <Table>
-                <TableHeader className="sticky top-0 bg-background z-20 shadow-sm">
-                  <TableRow>
+                <TableHeader>
+                  <TableRow className="[&>th]:sticky [&>th]:top-0 [&>th]:bg-background [&>th]:z-20 [&>th]:shadow-[0_1px_0_hsl(var(--border))]">
                     <TableHead className="min-w-[110px]">ID</TableHead>
                     <TableHead className="min-w-[220px]">Equipamento</TableHead>
                     <TableHead>Categoria</TableHead>
