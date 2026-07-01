@@ -196,6 +196,22 @@ export default function GerarPlanoPreventivasDialog({
         resp = recalcAggregates(itens, resp);
         if (aplicados > 0) toast.info(`${aplicados} edição(ões) manual(is) preservada(s) (HT/periodicidade)`);
       }
+      // Ancora a cadeia no mês da última execução (quando ocorreu no ano de referência),
+      // gerando a distribuição pra frente E pra trás a partir dela.
+      {
+        const itensAnc = resp.itens.map((it) => {
+          const em = executedMonthOf(it.ultima_preventiva, resp.ano_referencia);
+          if (em == null) return it;
+          const meses = chainAround(em, it.periodicidade);
+          return {
+            ...it,
+            meses_planejados: meses,
+            mes_inicio_ciclo: meses[0] ?? em,
+            ht_total_ano: meses.length * it.ht_por_ocorrencia,
+          };
+        });
+        resp = recalcAggregates(itensAnc, resp);
+      }
       setPreview(resp);
       if (!opts?.keepRemovidos) {
         setRemovidos(new Set());
