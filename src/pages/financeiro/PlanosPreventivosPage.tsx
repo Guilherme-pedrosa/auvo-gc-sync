@@ -55,6 +55,7 @@ type Aggregate = {
   saldo_ano: number;
   ht_por_mes: number[];
   meses_estourados: number;
+  identificadorPorEquip: Map<string, string>;
 };
 
 function htPorOcorrencia(it: PlanoItem): number {
@@ -103,11 +104,23 @@ export default function PlanosPreventivosPage() {
         supabase.from("contratos").select("grupo_id, cliente_nome, horas_mes_contratadas, ativo").eq("ativo", true),
         supabase.from("grupo_cliente_membros").select("grupo_id, cliente_nome"),
       ]);
+      // identificadores dos equipamentos (para exibir "ID" no plano)
+      const equipIds = Array.from(new Set(itens.map(i => i.equipamento_auvo_id).filter(Boolean))) as string[];
+      const identMap = new Map<string, string>();
+      for (let i = 0; i < equipIds.length; i += 500) {
+        const slice = equipIds.slice(i, i + 500);
+        const { data: eqs } = await (supabase as any)
+          .from("equipamentos_auvo")
+          .select("id, identificador")
+          .in("id", slice);
+        for (const e of (eqs ?? [])) if (e.identificador) identMap.set(e.id, e.identificador);
+      }
       return {
         itens,
         grupos: (grupos ?? []) as Grupo[],
         contratos: (contratos ?? []) as Contrato[],
         membros: (membros ?? []) as { grupo_id: string; cliente_nome: string }[],
+        identMap,
       };
     },
     staleTime: 30_000,
@@ -151,6 +164,7 @@ export default function PlanosPreventivosPage() {
           saldo_ano: 0,
           ht_por_mes: Array(12).fill(0),
           meses_estourados: 0,
+          identificadorPorEquip: data.identMap,
         });
       }
       const agg = map.get(k)!;
