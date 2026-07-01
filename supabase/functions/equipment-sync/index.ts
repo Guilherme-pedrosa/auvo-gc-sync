@@ -6,11 +6,17 @@ const corsHeaders = {
 };
 
 const AUVO_BASE_URL = "https://api.auvo.com.br/v2";
-const TASK_PAGE_SIZE = 50;
+const TASK_PAGE_SIZE = 100;
 const TASK_COUNT_PAGE_SIZE = 10;
 const UPSERT_BATCH_SIZE = 500;
 const RATE_LIMIT_DELAY_MS = 50;
 const MAX_PHASE2_TASKS_PER_REQUEST = 180;
+const TASK_PAGE_CONCURRENCY = 8;
+// Campos mínimos necessários no /tasks para montar o mapa equip→tarefa.
+const TASK_SELECT_FIELDS =
+  "taskID,taskDate,checkOutDate,checkoutDate,equipmentsId,taskType,taskTypeDescription,taskStatus,customerDescription,customerName,userToName";
+const EQUIPMENT_SELECT_FIELDS =
+  "id,name,identifier,description,associatedCustomerId,active,categoryId";
 
 // ══════════════════════════════════════════════════════════
 // Brand extraction: pure dictionary + regex, no AI
@@ -333,7 +339,7 @@ async function fetchAllEquipments(token: string): Promise<any[]> {
   let failedPages = 0;
 
   while (page <= MAX_PAGES) {
-    const url = `${AUVO_BASE_URL}/equipments/?paramFilter=${encodeURIComponent("{}")}&page=${page}&pageSize=${pageSize}&order=asc`;
+    const url = `${AUVO_BASE_URL}/equipments/?paramFilter=${encodeURIComponent("{}")}&page=${page}&pageSize=${pageSize}&order=asc&selectFields=${encodeURIComponent(EQUIPMENT_SELECT_FIELDS)}`;
     try {
       const res = await rateLimitedFetch(url, { method: "GET", headers });
       if (!res.ok) throw new Error(`Auvo equipments fetch failed (${res.status})`);
@@ -419,18 +425,35 @@ async function fetchCustomerName(customerId: number, token: string, cache: Map<n
   }
 }
 
-function buildTasksListUrl(windowStart: string, windowEnd: string, page: number, pageSize: number): string {
-  const filterObj = {
+function buildTasksListUrl(
+  windowStart: string,
+  windowEnd: string,
+  page: number,
+  pageSize: number,
+  opts?: { taskType?: string | number; status?: number; selectFields?: string },
+): string {
+  const filterObj: Record<string, unknown> = {
     startDate: `${windowStart}T00:00:00`,
     endDate: `${windowEnd}T23:59:59`,
   };
+  if (opts?.taskType !== undefined && opts.taskType !== null && String(opts.taskType) !== "") {
+    // Filtro server-side por tipo de tarefa (ex.: preventivas 180175/180176/202616/235724).
+    filterObj.taskType = opts.taskType;
+    filterObj.type = opts.taskType; // fallback caso o endpoint aceite `type`
+  }
+  if (typeof opts?.status === "number") {
+    filterObj.status = opts.status;
+  }
   const paramFilter = encodeURIComponent(JSON.stringify(filterObj));
-  return `${AUVO_BASE_URL}/tasks/?page=${page}&pageSize=${pageSize}&order=desc&paramFilter=${paramFilter}`;
+  const sf = opts?.selectFields
+    ? `&selectFields=${encodeURIComponent(opts.selectFields)}`
+    : "";
+  return `${AUVO_BASE_URL}/tasks/?page=${page}&pageSize=${pageSize}&order=desc&paramFilter=${paramFilter}${sf}`;
 }
 
 async function fetchTaskCountForWindow(token: string, windowStart: string, windowEnd: string): Promise<number> {
   const headers = auvoHeaders(token);
-  const url = buildTasksListUrl(windowStart, windowEnd, 1, TASK_COUNT_PAGE_SIZE);
+  const url = buildTasksListUrl(windowStart, windowEnd, 1, TASK_COUNT_PAGE_SIZE, { selectFields: "taskID" });
   const res = await rateLimitedFetch(url, { method: "GET", headers });
 
   if (!res.ok) {
@@ -451,89 +474,108 @@ async function fetchTaskCountForWindow(token: string, windowStart: string, windo
   return totalItems;
 }
 
+function parseTaskRow(task: any): EquipmentTaskLink | null {
+  const taskId = String(task.taskID || task.id || "");
+  if (!taskId) return null;
+  const equipIds: number[] = Array.isArray(task.equipmentsId)
+    ? task.equipmentsId
+    : Array.isArray(task.equipmentsID)
+      ? task.equipmentsID
+      : Array.isArray(task.equipmentIds)
+        ? task.equipmentIds
+        : [];
+  if (equipIds.length === 0) return null;
+  const statusCode = typeof task.taskStatus === "number"
+    ? task.taskStatus
+    : typeof task.taskStatus?.id === "number"
+      ? task.taskStatus.id
+      : 0;
+  return {
+    taskId,
+    equipmentIds: equipIds.map(String),
+    taskType: String(task.taskType || ""),
+    taskTypeDescription: String(task.taskTypeDescription || ""),
+    statusCode,
+    taskDate: normalizeDate(task.taskDate),
+    checkOutDate: normalizeDate(task.checkOutDate || task.checkoutDate),
+    customerDescription: String(task.customerDescription || task.customerName || ""),
+    userToName: String(task.userToName || ""),
+  };
+}
+
 async function fetchTasksWithEquipmentsForWindow(
   token: string,
   windowStart: string,
   windowEnd: string,
+  opts?: { taskType?: string | number; status?: number },
 ): Promise<{ results: EquipmentTaskLink[]; totalTasks: number; tasksWithEquipments: number }> {
   const headers = auvoHeaders(token);
   const results: EquipmentTaskLink[] = [];
   let totalTasks = 0;
   let tasksWithEquipments = 0;
+  const urlOpts = { ...(opts || {}), selectFields: TASK_SELECT_FIELDS };
 
-  console.log(`[equipment-sync] Fetching tasks ${windowStart} → ${windowEnd}...`);
+  console.log(`[equipment-sync] Fetching tasks ${windowStart} → ${windowEnd}${opts?.taskType ? ` type=${opts.taskType}` : ""}...`);
 
-  let page = 1;
-  const maxPages = 100;
-
-  while (page <= maxPages) {
-    const url = buildTasksListUrl(windowStart, windowEnd, page, TASK_PAGE_SIZE);
-
-    let res: Response;
-    try {
-      res = await rateLimitedFetch(url, { method: "GET", headers });
-    } catch (err) {
-      console.error(`[equipment-sync] Falha em tasks page ${page} (${windowStart}):`, err);
-      break;
-    }
-    if (!res.ok) {
-      if (res.status === 404) break;
+  // 1) Baixa a página 1 sequencialmente (precisamos do totalItems).
+  const firstUrl = buildTasksListUrl(windowStart, windowEnd, 1, TASK_PAGE_SIZE, urlOpts);
+  let firstJson: any = null;
+  try {
+    const res = await rateLimitedFetch(firstUrl, { method: "GET", headers });
+    if (res.ok) firstJson = await res.json();
+    else if (res.status !== 404) {
       const errBody = await res.text().catch(() => "");
-      console.error(`[equipment-sync] Tasks listing HTTP ${res.status} page ${page}: ${errBody.substring(0, 300)}`);
-      break;
+      console.error(`[equipment-sync] Tasks listing HTTP ${res.status} page 1: ${errBody.substring(0, 300)}`);
     }
-
-    const json = await res.json();
-    const tasks = json?.result?.entityList || json?.result?.Entities || [];
-    if (!Array.isArray(tasks) || tasks.length === 0) break;
-
-    totalTasks += tasks.length;
-
-    if (page === 1) {
-      const totalItems = json?.result?.pagedSearchReturnData?.totalItems || 0;
-      console.log(`[equipment-sync] ${windowStart}: ${totalItems} tasks total`);
-    }
-
-    for (const task of tasks) {
-      const taskId = String(task.taskID || task.id || "");
-      if (!taskId) continue;
-
-      const equipIds: number[] = Array.isArray(task.equipmentsId)
-        ? task.equipmentsId
-        : Array.isArray(task.equipmentsID)
-          ? task.equipmentsID
-          : Array.isArray(task.equipmentIds)
-            ? task.equipmentIds
-            : [];
-
-      if (equipIds.length === 0) continue;
-      tasksWithEquipments++;
-
-      const statusCode = typeof task.taskStatus === "number"
-        ? task.taskStatus
-        : typeof task.taskStatus?.id === "number"
-          ? task.taskStatus.id
-          : 0;
-
-      results.push({
-        taskId,
-        equipmentIds: equipIds.map(String),
-        taskType: String(task.taskType || ""),
-        taskTypeDescription: String(task.taskTypeDescription || ""),
-        statusCode,
-        taskDate: normalizeDate(task.taskDate),
-        checkOutDate: normalizeDate(task.checkOutDate || task.checkoutDate),
-        customerDescription: String(task.customerDescription || task.customerName || ""),
-        userToName: String(task.userToName || ""),
-      });
-    }
-
-    if (tasks.length < TASK_PAGE_SIZE) break;
-    page++;
+  } catch (err) {
+    console.error(`[equipment-sync] Falha em tasks page 1 (${windowStart}):`, err);
   }
 
-  if (page > maxPages) {
-    console.warn(`[equipment-sync] TRUNCAMENTO: maxPages=${maxPages} atingido em /tasks (${windowStart} → ${windowEnd})`);
+  const firstTasks = firstJson?.result?.entityList || firstJson?.result?.Entities || [];
+  if (!Array.isArray(firstTasks) || firstTasks.length === 0) {
+    return { results, totalTasks: 0, tasksWithEquipments: 0 };
+  }
+  const totalItems = Number(firstJson?.result?.pagedSearchReturnData?.totalItems || firstTasks.length);
+  const totalPages = Math.max(1, Math.ceil(totalItems / TASK_PAGE_SIZE));
+  console.log(`[equipment-sync] ${windowStart}: ${totalItems} tasks total → ${totalPages} page(s)`);
+
+  const ingest = (tasks: any[]) => {
+    totalTasks += tasks.length;
+    for (const t of tasks) {
+      const row = parseTaskRow(t);
+      if (!row) continue;
+      tasksWithEquipments++;
+      results.push(row);
+    }
+  };
+  ingest(firstTasks);
+
+  // 2) Páginas 2..N em paralelo, em lotes de TASK_PAGE_CONCURRENCY.
+  if (totalPages > 1) {
+    const pages: number[] = [];
+    for (let p = 2; p <= totalPages; p++) pages.push(p);
+    for (let i = 0; i < pages.length; i += TASK_PAGE_CONCURRENCY) {
+      const batch = pages.slice(i, i + TASK_PAGE_CONCURRENCY);
+      const responses = await Promise.all(batch.map(async (p) => {
+        const url = buildTasksListUrl(windowStart, windowEnd, p, TASK_PAGE_SIZE, urlOpts);
+        try {
+          const res = await rateLimitedFetch(url, { method: "GET", headers });
+          if (!res.ok) {
+            if (res.status !== 404) {
+              const errBody = await res.text().catch(() => "");
+              console.error(`[equipment-sync] Tasks HTTP ${res.status} page ${p}: ${errBody.substring(0, 200)}`);
+            }
+            return [] as any[];
+          }
+          const j = await res.json();
+          return (j?.result?.entityList || j?.result?.Entities || []) as any[];
+        } catch (err) {
+          console.error(`[equipment-sync] Falha em tasks page ${p} (${windowStart}):`, err);
+          return [] as any[];
+        }
+      }));
+      for (const pageTasks of responses) if (Array.isArray(pageTasks)) ingest(pageTasks);
+    }
   }
 
   console.log(`[equipment-sync] Total tasks from listing: ${totalTasks}`);
