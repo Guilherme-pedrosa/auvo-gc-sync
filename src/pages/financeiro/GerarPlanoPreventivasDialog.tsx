@@ -431,6 +431,7 @@ export default function GerarPlanoPreventivasDialog({
                 <TableBody>
                   {preview.itens.map((it) => {
                     const setMes = new Set(it.meses_planejados);
+                    const setForcados = new Set(it.meses_forcados ?? []);
                     const totalLinha = it.meses_planejados.length * it.ht_por_ocorrencia;
                     return (
                       <TableRow key={it.equip_id}>
@@ -477,11 +478,13 @@ export default function GerarPlanoPreventivasDialog({
                         {MES_LABEL.map((_, i) => {
                           const m = i + 1;
                           const on = setMes.has(m);
+                          const forced = setForcados.has(m);
                           return (
                             <TableCell key={m} className={cn(
                               "text-center text-xs font-medium hover:ring-2 hover:ring-primary/40 transition select-none",
                               on ? "cursor-grab active:cursor-grabbing" : "cursor-pointer",
                               on && statusBg[it.status],
+                              forced && "ring-2 ring-red-500 ring-inset bg-red-100 text-red-900",
                             )}
                               draggable={on}
                               onDragStart={(e) => {
@@ -516,11 +519,13 @@ export default function GerarPlanoPreventivasDialog({
                               }}
                               title={
                                 on
-                                  ? "Arraste para mover (regenera a cadeia) · clique para remover"
+                                  ? (forced
+                                      ? "⚠ Encaixe forçado — este mês estourou o teto de HT"
+                                      : "Arraste para mover (regenera a cadeia) · clique para remover")
                                   : "Clique para adicionar preventiva neste mês"
                               }
                             >
-                              {on ? it.ht_por_ocorrencia : ""}
+                              {on ? (forced ? `⚠${it.ht_por_ocorrencia}` : it.ht_por_ocorrencia) : ""}
                             </TableCell>
                           );
                         })}
