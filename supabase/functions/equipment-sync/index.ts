@@ -888,7 +888,12 @@ Deno.serve(async (req) => {
             preventiveTaskTypes.map((tt) =>
               fetchTasksWithEquipmentsForWindow(accessToken, w.startDate, w.endDate, {
                 taskType: tt,
-                status: finalizedOnly ? 3 : undefined,
+                // Auvo listing status: 0=unfinished, 3=finalized, 4=all.
+                // Usamos 4 (all) mesmo quando `finalizedOnly` = true, e depois
+                // filtramos `task.finished === true` (ou presença de checkOut)
+                // no retorno — evita perder preventiva executada por status mal
+                // fechado no Auvo.
+                status: finalizedOnly ? 4 : undefined,
               }),
             ),
           );
@@ -899,6 +904,12 @@ Deno.serve(async (req) => {
             for (const link of r.results) {
               if (seen.has(link.taskId)) continue;
               seen.add(link.taskId);
+              if (finalizedOnly) {
+                const isFinished = (link as any).finished === true
+                  || !!link.checkOutDate
+                  || link.statusCode === 3;
+                if (!isFinished) continue;
+              }
               tasksWithEquipments.push(link);
             }
           }
