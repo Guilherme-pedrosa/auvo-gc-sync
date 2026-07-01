@@ -900,13 +900,30 @@ export default function EquipamentosPreventivosPage() {
               .filter((id): id is string => Boolean(id))
       ));
 
-      const monthlyWindows = buildMonthlySyncWindows(syncStartDate, syncEndDate);
-      const totalMonths = monthlyWindows.length;
-      setSyncProgress({ current: 1, total: 2, label: `Fase 2: processando ${totalMonths} mês(es) no servidor...` });
+      // Janela deslizante: sempre relativa a "agora" (hoje − 18 meses → hoje).
+      // Não usamos datas fixas para evitar cortar histórico recente ou perder
+      // preventivas novas com o passar do tempo.
+      const today = new Date();
+      const endDate = today.toISOString().slice(0, 10);
+      const startRef = new Date(today);
+      startRef.setMonth(startRef.getMonth() - 18);
+      const startDate = startRef.toISOString().slice(0, 10);
 
-      const windows = monthlyWindows.map((m) => ({ startDate: m.windowStart, endDate: m.windowEnd }));
+      const windows = [{ startDate, endDate }];
+      // Tipos de tarefa preventiva no Auvo (filtro server-side).
+      const preventiveTaskTypes = ["180175", "180176", "202616", "235724"];
+      setSyncProgress({ current: 1, total: 2, label: `Fase 2: preventivas ${startDate} → ${endDate}...` });
+
       const { data: dB, error: eB } = await supabase.functions.invoke("equipment-sync", {
-        body: { phase: "2-batch", windows, validEquipmentIds },
+        body: {
+          phase: "2-batch",
+          windows,
+          validEquipmentIds,
+          preventiveTaskTypes,
+          // status=4 (all) no Auvo + filtro `finished` no retorno — evita perder
+          // execução real por status mal fechado. Ver equipment-sync.
+          finalizedOnly: true,
+        },
       });
       if (eB) throw eB;
       const pB = dB?.phase2_equipment_tasks;

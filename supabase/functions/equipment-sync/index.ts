@@ -14,7 +14,7 @@ const MAX_PHASE2_TASKS_PER_REQUEST = 180;
 const TASK_PAGE_CONCURRENCY = 8;
 // Campos mínimos necessários no /tasks para montar o mapa equip→tarefa.
 const TASK_SELECT_FIELDS =
-  "taskID,taskDate,checkOutDate,checkoutDate,equipmentsId,taskType,taskTypeDescription,taskStatus,customerDescription,customerName,userToName";
+  "taskID,taskDate,checkOutDate,checkoutDate,equipmentsId,taskType,taskTypeDescription,taskStatus,finished,customerDescription,customerName,userToName";
 const EQUIPMENT_SELECT_FIELDS =
   "id,name,identifier,description,associatedCustomerId,active,categoryId";
 
@@ -500,6 +500,8 @@ function parseTaskRow(task: any): EquipmentTaskLink | null {
     checkOutDate: normalizeDate(task.checkOutDate || task.checkoutDate),
     customerDescription: String(task.customerDescription || task.customerName || ""),
     userToName: String(task.userToName || ""),
+    // @ts-ignore - carry-through para o filtro finalizedOnly no phase 2-batch
+    finished: task.finished === true,
   };
 }
 
@@ -877,6 +879,9 @@ Deno.serve(async (req) => {
       let totalDiscarded = 0;
       const perWindow: any[] = [];
       const allErrors: string[] = [];
+      // Map global equipamento → última preventiva (MAX por equipmentId).
+      // Consolida ao longo de todas as janelas processadas nesta invocação.
+      const ultimaPorEquipamento = new Map<string, { data: string; taskId: string }>();
 
       for (const w of expanded) {
         let tasksWithEquipments: EquipmentTaskLink[] = [];
@@ -888,7 +893,12 @@ Deno.serve(async (req) => {
             preventiveTaskTypes.map((tt) =>
               fetchTasksWithEquipmentsForWindow(accessToken, w.startDate, w.endDate, {
                 taskType: tt,
-                status: finalizedOnly ? 3 : undefined,
+                // Auvo listing status: 0=unfinished, 3=finalized, 4=all.
+                // Usamos 4 (all) mesmo quando `finalizedOnly` = true, e depois
+                // filtramos `task.finished === true` (ou presença de checkOut)
+                // no retorno — evita perder preventiva executada por status mal
+                // fechado no Auvo.
+                status: finalizedOnly ? 4 : undefined,
               }),
             ),
           );
@@ -899,6 +909,12 @@ Deno.serve(async (req) => {
             for (const link of r.results) {
               if (seen.has(link.taskId)) continue;
               seen.add(link.taskId);
+              if (finalizedOnly) {
+                const isFinished = (link as any).finished === true
+                  || !!link.checkOutDate
+                  || link.statusCode === 3;
+                if (!isFinished) continue;
+              }
               tasksWithEquipments.push(link);
             }
           }
@@ -950,6 +966,18 @@ Deno.serve(async (req) => {
         totalTasksAggregate += totalTasks;
         totalWithEquip += withEquipCount;
         totalDiscarded += discarded;
+        // Consolida última data por equipamento (MAX), usando checkOut > taskDate.
+        for (const task of tasksWithEquipments) {
+          const d = task.checkOutDate || task.taskDate;
+          if (!d) continue;
+          for (const eqId of task.equipmentIds) {
+            if (validEquipmentIds && !validEquipmentIds.has(eqId)) continue;
+            const cur = ultimaPorEquipamento.get(eqId);
+            if (!cur || d > cur.data) {
+              ultimaPorEquipamento.set(eqId, { data: d, taskId: task.taskId });
+            }
+          }
+        }
         perWindow.push({ window: `${w.startDate} → ${w.endDate}`, totalTasks, withEquip: withEquipCount, upserted, discarded });
       }
 
@@ -962,6 +990,10 @@ Deno.serve(async (req) => {
         relationship_rows_upserted: totalRelUpserted,
         discarded_invalid_links: totalDiscarded,
         per_window: perWindow,
+        // MAX(data) por equipamento — verificação de "última preventiva".
+        // Downstream (leitura) deve computar MAX pela tabela; este map é para
+        // logging/observabilidade da rodada atual.
+        ultima_por_equipamento_count: ultimaPorEquipamento.size,
         errors: allErrors.length > 0 ? allErrors : undefined,
       };
     }
