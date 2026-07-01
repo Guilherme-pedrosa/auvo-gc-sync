@@ -262,8 +262,7 @@ export default function GerarPlanoPreventivasDialog({
     if (!preview) return;
     const itens = preview.itens.map((it) => {
       if (it.equip_id !== equipId) return it;
-      const inicio =
-        it.meses_planejados[0] ?? it.mes_inicio_ciclo ?? preview.mes_inicio ?? 1;
+      const inicio = it.meses_planejados[0] ?? it.mes_inicio_ciclo ?? 1;
       const meses = chainFrom(inicio, novaPer);
       return {
         ...it,
