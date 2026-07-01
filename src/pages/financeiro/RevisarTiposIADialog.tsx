@@ -53,7 +53,7 @@ export default function RevisarTiposIADialog({
   onApplied: () => void;
   selectedIds?: string[];
 }) {
-  const [escopo, setEscopo] = useState<"grupo" | "cliente" | "selecionados">(
+  const [escopo, setEscopo] = useState<"grupo" | "cliente" | "selecionados" | "todos">(
     (selectedIds && selectedIds.length) ? "selecionados" : "grupo"
   );
   const [grupoId, setGrupoId] = useState<string>("");
@@ -82,6 +82,10 @@ export default function RevisarTiposIADialog({
     if (escopo === "selecionados" && !(selectedIds && selectedIds.length)) {
       toast.error("Nenhum equipamento selecionado na lista"); return;
     }
+    if (escopo === "todos") {
+      const ok = confirm("Isso vai analisar TODOS os equipamentos ativos. Pode demorar e consumir mais créditos de IA. Continuar?");
+      if (!ok) return;
+    }
     setLoading(true);
     try {
       const { data, error } = await supabase.functions.invoke("equipamentos-revisar-tipos", {
@@ -90,6 +94,7 @@ export default function RevisarTiposIADialog({
           grupo_id: escopo === "grupo" ? grupoId : null,
           cliente: escopo === "cliente" ? cliente : null,
           equip_ids: escopo === "selecionados" ? selectedIds : null,
+          todos: escopo === "todos",
           apenas_sem_tipo: apenasSemTipo,
         },
       });
@@ -215,12 +220,17 @@ export default function RevisarTiposIADialog({
                   )}
                   <SelectItem value="grupo">Por grupo</SelectItem>
                   <SelectItem value="cliente">Por cliente</SelectItem>
+                  <SelectItem value="todos">Todos os equipamentos ativos</SelectItem>
                 </SelectContent>
               </Select>
             </div>
             {escopo === "selecionados" ? (
               <div className="md:col-span-2 text-sm text-muted-foreground pb-2">
                 A IA irá analisar os <strong>{selectedIds?.length ?? 0}</strong> equipamento(s) marcados na lista.
+              </div>
+            ) : escopo === "todos" ? (
+              <div className="md:col-span-2 text-sm text-muted-foreground pb-2">
+                A IA irá analisar <strong>todos os equipamentos ativos</strong> (pode demorar).
               </div>
             ) : escopo === "grupo" ? (
               <div className="md:col-span-2">
