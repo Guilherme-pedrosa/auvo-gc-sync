@@ -804,7 +804,8 @@ export default function EquipamentosPreventivosPage() {
     | "tipoEquip"
     | "grupo"
     | "proximaMes"
-    | "periodo";
+    | "periodo"
+    | "intervencao";
   const passesFilters = useCallback(
     (e: typeof equipments[number], exclude: Set<FilterKey> = new Set()) => {
       if (!exclude.has("search") && search.trim()) {
