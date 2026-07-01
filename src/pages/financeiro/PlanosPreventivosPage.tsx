@@ -196,7 +196,9 @@ export default function PlanosPreventivosPage() {
     const wb = XLSX.utils.book_new();
     const rows = agg.itens.map(it => {
       const mesesSet = new Set(it.meses_planejados ?? []);
+      const ident = it.equipamento_auvo_id ? agg.identificadorPorEquip.get(it.equipamento_auvo_id) ?? "" : "";
       const linha: any = {
+        ID: ident,
         Equipamento: it.equipamento_nome,
         Periodicidade: it.periodicidade ?? "",
         "HT/ocorrência": Number(htPorOcorrencia(it).toFixed(2)),
@@ -231,11 +233,13 @@ export default function PlanosPreventivosPage() {
       `Contrato: ${agg.ht_contrato_mes.toFixed(1)}h/mês (${agg.ht_contrato_ano.toFixed(0)}h/ano) · Plano: ${agg.ht_ano.toFixed(0)}h · Saldo: ${agg.saldo_ano.toFixed(0)}h · Meses estourados: ${agg.meses_estourados}`,
       40, 58,
     );
-    const head = [["Equipamento", "Period.", "HT", ...MES_LABEL, "Total", "Próxima"]];
+    const head = [["ID", "Equipamento", "Period.", "HT", ...MES_LABEL, "Total", "Próxima"]];
     const body: any[] = agg.itens.map(it => {
       const set = new Set(it.meses_planejados ?? []);
       const ht = htPorOcorrencia(it);
+      const ident = it.equipamento_auvo_id ? agg.identificadorPorEquip.get(it.equipamento_auvo_id) ?? "" : "";
       return [
+        ident,
         it.equipamento_nome,
         it.periodicidade ?? "",
         ht.toFixed(1),
@@ -244,13 +248,13 @@ export default function PlanosPreventivosPage() {
         it.proxima_data ? format(parseISO(it.proxima_data), "dd/MM/yyyy") : "—",
       ];
     });
-    body.push(["TOTAL MÊS", "", "", ...agg.ht_por_mes.map(v => v.toFixed(1)), agg.ht_ano.toFixed(1), ""]);
-    body.push(["SALDO (Meta − Plano)", "", "", ...agg.ht_por_mes.map(v => (agg.ht_contrato_mes - v).toFixed(1)), agg.saldo_ano.toFixed(1), ""]);
+    body.push(["", "TOTAL MÊS", "", "", ...agg.ht_por_mes.map(v => v.toFixed(1)), agg.ht_ano.toFixed(1), ""]);
+    body.push(["", "SALDO (Meta − Plano)", "", "", ...agg.ht_por_mes.map(v => (agg.ht_contrato_mes - v).toFixed(1)), agg.saldo_ano.toFixed(1), ""]);
     autoTable(doc, {
       startY: 74, head, body,
       styles: { fontSize: 7, cellPadding: 2 },
       headStyles: { fillColor: [30, 41, 59], textColor: 255 },
-      columnStyles: { 0: { cellWidth: 160 } },
+      columnStyles: { 0: { cellWidth: 70 }, 1: { cellWidth: 160 } },
       didParseCell: (d: any) => {
         if (d.section !== "body") return;
         const isTotal = d.row.index >= agg.itens.length;
@@ -258,7 +262,7 @@ export default function PlanosPreventivosPage() {
           d.cell.styles.fontStyle = "bold";
           d.cell.styles.fillColor = [241, 245, 249];
         }
-        if (isTotal && d.row.index === agg.itens.length + 1 && d.column.index >= 3 && d.column.index <= 14) {
+        if (isTotal && d.row.index === agg.itens.length + 1 && d.column.index >= 4 && d.column.index <= 15) {
           const v = parseFloat(String(d.cell.raw));
           if (!Number.isNaN(v) && v < 0) d.cell.styles.textColor = [185, 28, 28];
         }
