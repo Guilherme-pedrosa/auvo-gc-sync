@@ -583,11 +583,12 @@ Deno.serve(async (req) => {
     }
 
     // ── rebalanceamento: reduz variância entre meses ───────────────────────
-    // Move itens já agendados deslocando a cadeia inteira por ±k meses
-    // (qualquer k que mantenha newStart em [mesInicio..12]) respeitando
-    // periodicidade. Aceita se (a) o pico não piora e (b) a variância cai —
-    // mesmo que o número de ocorrências mude, desde que o total do ano
-    // continue dentro do teto contratual (12 * htContratoMes).
+    // Move itens já agendados deslocando a cadeia inteira. REGRA DURA:
+    // o número de ocorrências no ano NÃO pode mudar — a quantidade é
+    // ditada pela periodicidade. Por isso newStart é restrito a [1..step],
+    // o único intervalo que preserva expectedFreq(step) ocorrências ≤ 12.
+    // Isso evita perder preventiva ao longo do rebalanceio (bug que deixava
+    // um mês -19h e outro +9h porque itens caíam da conta).
     {
       const variance = (arr: number[]) => {
         const slice = arr.slice(mesInicio, 13);
@@ -595,20 +596,13 @@ Deno.serve(async (req) => {
         const mean = slice.reduce((a, b) => a + b, 0) / n;
         return slice.reduce((a, b) => a + (b - mean) ** 2, 0) / n;
       };
-      const totalAno = (arr: number[]) => {
-        let s = 0;
-        for (let m = mesInicio; m <= 12; m++) s += arr[m];
-        return s;
-      };
-      const tetoAnual = htContratoMes * 12;
       const scheduledItems = sched.filter(
         (it) => (it.meses_planejados?.length ?? 0) > 0 && (it.mes_inicio_ciclo ?? 0) >= mesInicio,
       );
-      const MAX_PASSES = 30;
+      const MAX_PASSES = 60;
       for (let pass = 0; pass < MAX_PASSES; pass++) {
         let improved = false;
         const curPeak = Math.max(...reservado.slice(mesInicio, 13));
-        const curTotal = totalAno(reservado);
         // ordena por HT desc: movimentar os pesados primeiro ajuda mais
         const ordered = scheduledItems
           .slice()
@@ -617,40 +611,35 @@ Deno.serve(async (req) => {
           const curStart = it.mes_inicio_ciclo!;
           const step = it.step;
           const ht = it.ht_por_ocorrencia;
-          // considera qualquer deslocamento que mantenha newStart em janela
-          const deltas: number[] = [];
-          for (let d = 1; d <= 11; d++) {
-            deltas.push(d);
-            deltas.push(-d);
+          // starts válidos que PRESERVAM nº de ocorrências: [1..step]
+          const validStarts: number[] = [];
+          for (let s = Math.max(1, mesInicio); s <= Math.min(12, step); s++) {
+            if (s !== curStart) validStarts.push(s);
           }
+          if (validStarts.length === 0) continue;
+          const expectedOcc = it.meses_planejados!.length;
           let bestDelta = 0;
           let bestVar = variance(reservado);
-          for (const d of deltas) {
-            const newStart = curStart + d;
-            if (newStart < mesInicio || newStart > 12) continue;
+          for (const newStart of validStarts) {
             // gera nova cadeia
             const newMeses: number[] = [];
             for (let m = newStart; m <= 12; m += step) newMeses.push(m);
-            if (newMeses.length === 0) continue;
+            // TRAVA: só aceita se o nº de ocorrências for exatamente o mesmo
+            if (newMeses.length !== expectedOcc) continue;
             // simula
             const trial = reservado.slice();
             for (const m of it.meses_planejados!) trial[m] -= ht;
             for (const m of newMeses) trial[m] += ht;
-            // Rejeita se elevar o pico acima do atual.
+            // Rejeita se elevar o pico acima do atual (só piora saldo).
             let trialPeak = 0;
             for (let m = mesInicio; m <= 12; m++) {
               if (trial[m] > trialPeak) trialPeak = trial[m];
             }
             if (trialPeak > curPeak + 1e-6) continue;
-            // Se muda o nº de ocorrências, o total do ano muda também.
-            // Só aceita se o novo total continuar dentro do teto anual
-            // (ou, se já estava estourado, se não piorar o estouro).
-            const trialTotal = totalAno(trial);
-            if (trialTotal > tetoAnual + 1e-6 && trialTotal > curTotal + 1e-6) continue;
             const v = variance(trial);
             if (v < bestVar - 1e-6) {
               bestVar = v;
-              bestDelta = d;
+              bestDelta = newStart - curStart;
             }
           }
           if (bestDelta !== 0) {
