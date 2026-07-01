@@ -636,6 +636,7 @@ export default function GerarPlanoPreventivasDialog({
                     const setMes = new Set(it.meses_planejados);
                     const setForcados = new Set(it.meses_forcados ?? []);
                     const totalLinha = it.meses_planejados.length * it.ht_por_ocorrencia;
+                    const executedMonth = executedMonthOf(it.ultima_preventiva, preview.ano_referencia);
                     return (
                       <TableRow key={it.equip_id} className={selecionados.has(it.equip_id) ? "bg-primary/5" : ""}>
                         <TableCell className="w-8">
@@ -696,14 +697,16 @@ export default function GerarPlanoPreventivasDialog({
                           const m = i + 1;
                           const on = setMes.has(m);
                           const forced = setForcados.has(m);
+                          const executed = executedMonth === m;
                           return (
                             <TableCell key={m} className={cn(
                               "text-center text-xs font-medium hover:ring-2 hover:ring-primary/40 transition select-none",
                               on ? "cursor-grab active:cursor-grabbing" : "cursor-pointer",
                               on && statusBg[it.status],
                               forced && "ring-2 ring-red-500 ring-inset bg-red-100 text-red-900",
+                              executed && "bg-emerald-700 text-white hover:bg-emerald-800 ring-2 ring-emerald-900 ring-inset",
                             )}
-                              draggable={on}
+                              draggable={on && !executed}
                               onDragStart={(e) => {
                                 if (!on) return;
                                 suppressCellClickUntilRef.current = Date.now() + 800;
@@ -735,14 +738,16 @@ export default function GerarPlanoPreventivasDialog({
                                 else adicionarMes(it.equip_id, m);
                               }}
                               title={
-                                on
+                                executed
+                                  ? `✓ Executado neste mês (última preventiva: ${it.ultima_preventiva})`
+                                  : on
                                   ? (forced
                                       ? "⚠ Encaixe forçado — este mês estourou o teto de HT"
                                       : "Arraste para mover (regenera a cadeia) · clique para remover")
                                   : "Clique para adicionar preventiva neste mês"
                               }
                             >
-                              {on ? (forced ? `⚠${it.ht_por_ocorrencia}` : it.ht_por_ocorrencia) : ""}
+                              {executed ? `✓${it.ht_por_ocorrencia}` : on ? (forced ? `⚠${it.ht_por_ocorrencia}` : it.ht_por_ocorrencia) : ""}
                             </TableCell>
                           );
                         })}
