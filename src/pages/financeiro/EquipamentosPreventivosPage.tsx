@@ -911,7 +911,18 @@ export default function EquipamentosPreventivosPage() {
 
       const windows = [{ startDate, endDate }];
       // Tipos de tarefa preventiva no Auvo (filtro server-side).
-      const preventiveTaskTypes = ["180175", "180176", "202616", "235724"];
+      // Item 4: agora vem da tabela tipos_tarefa_preventiva (configurável em Configurações).
+      const { data: prevTiposRows } = await supabase
+        .from("tipos_tarefa_preventiva")
+        .select("auvo_task_type_id")
+        .eq("ativo", true);
+      const preventiveTaskTypes = (prevTiposRows ?? [])
+        .map((r: any) => String(r.auvo_task_type_id))
+        .filter(Boolean);
+      if (preventiveTaskTypes.length === 0) {
+        // fallback defensivo caso o seed não esteja disponível
+        preventiveTaskTypes.push("180175", "180176", "202616", "235724");
+      }
       setSyncProgress({ current: 1, total: 2, label: `Fase 2: preventivas ${startDate} → ${endDate}...` });
 
       const { data: dB, error: eB } = await supabase.functions.invoke("equipment-sync", {

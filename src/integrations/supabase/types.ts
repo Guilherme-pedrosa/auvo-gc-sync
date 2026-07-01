@@ -468,6 +468,101 @@ export type Database = {
           },
         ]
       }
+      equipamento_preventiva_consolidado: {
+        Row: {
+          atualizado_em: string
+          auvo_equipment_id: string | null
+          categoria: string | null
+          cliente: string | null
+          criticidade: string | null
+          equip_id: string
+          equip_status: string | null
+          grupo_id: string | null
+          horas_por_tecnico: number | null
+          ht_por_ocorrencia: number | null
+          identificador: string | null
+          marca: string | null
+          nome: string | null
+          periodicidade: string | null
+          periodicidade_meses: number | null
+          proxima_preventiva: string | null
+          proxima_source: string | null
+          qtd_tecnicos: number | null
+          status_preventiva: string | null
+          tipo_id: string | null
+          tipo_nome: string | null
+          total_tarefas: number
+          ultima_preventiva: string | null
+          ultima_preventiva_link: string | null
+          ultima_preventiva_task_id: string | null
+          ultima_preventiva_tecnico: string | null
+        }
+        Insert: {
+          atualizado_em?: string
+          auvo_equipment_id?: string | null
+          categoria?: string | null
+          cliente?: string | null
+          criticidade?: string | null
+          equip_id: string
+          equip_status?: string | null
+          grupo_id?: string | null
+          horas_por_tecnico?: number | null
+          ht_por_ocorrencia?: number | null
+          identificador?: string | null
+          marca?: string | null
+          nome?: string | null
+          periodicidade?: string | null
+          periodicidade_meses?: number | null
+          proxima_preventiva?: string | null
+          proxima_source?: string | null
+          qtd_tecnicos?: number | null
+          status_preventiva?: string | null
+          tipo_id?: string | null
+          tipo_nome?: string | null
+          total_tarefas?: number
+          ultima_preventiva?: string | null
+          ultima_preventiva_link?: string | null
+          ultima_preventiva_task_id?: string | null
+          ultima_preventiva_tecnico?: string | null
+        }
+        Update: {
+          atualizado_em?: string
+          auvo_equipment_id?: string | null
+          categoria?: string | null
+          cliente?: string | null
+          criticidade?: string | null
+          equip_id?: string
+          equip_status?: string | null
+          grupo_id?: string | null
+          horas_por_tecnico?: number | null
+          ht_por_ocorrencia?: number | null
+          identificador?: string | null
+          marca?: string | null
+          nome?: string | null
+          periodicidade?: string | null
+          periodicidade_meses?: number | null
+          proxima_preventiva?: string | null
+          proxima_source?: string | null
+          qtd_tecnicos?: number | null
+          status_preventiva?: string | null
+          tipo_id?: string | null
+          tipo_nome?: string | null
+          total_tarefas?: number
+          ultima_preventiva?: string | null
+          ultima_preventiva_link?: string | null
+          ultima_preventiva_task_id?: string | null
+          ultima_preventiva_tecnico?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "equipamento_preventiva_consolidado_equip_id_fkey"
+            columns: ["equip_id"]
+            isOneToOne: true
+            referencedRelation: "equipamentos_auvo"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       equipamento_tarefas_auvo: {
         Row: {
           auvo_equipment_id: string
@@ -1487,6 +1582,36 @@ export type Database = {
           prioridade?: number | null
           qtd_tecnicos?: number
           updated_at?: string
+        }
+        Relationships: []
+      }
+      tipos_tarefa_preventiva: {
+        Row: {
+          aplica_a_categoria: string | null
+          ativo: boolean
+          atualizado_em: string
+          auvo_task_type_id: string
+          criado_em: string
+          descricao: string
+          id: string
+        }
+        Insert: {
+          aplica_a_categoria?: string | null
+          ativo?: boolean
+          atualizado_em?: string
+          auvo_task_type_id: string
+          criado_em?: string
+          descricao: string
+          id?: string
+        }
+        Update: {
+          aplica_a_categoria?: string | null
+          ativo?: boolean
+          atualizado_em?: string
+          auvo_task_type_id?: string
+          criado_em?: string
+          descricao?: string
+          id?: string
         }
         Relationships: []
       }

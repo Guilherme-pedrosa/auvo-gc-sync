@@ -39,6 +39,7 @@ type Item = {
   ht_total_ano: number;
   mes_inicio_ciclo: number;
   meses_planejados: number[];
+  meses_forcados?: number[];
   ultima_preventiva: string | null;
   status: "nunca" | "vencido" | "em_dia";
   atraso_meses: number;
@@ -57,6 +58,8 @@ type PreviewResp = {
     saldo_ano: number; meses_negativos: number;
   };
   sem_tipo: Array<{ equip_id: string; nome: string; cliente: string | null }>;
+  warnings?: Array<{ equip_id: string; nome: string; motivo: string }>;
+  fonte_ultima_preventiva?: "consolidado" | "scan";
   tabela_meses: Array<{ mes: number; ht_agendada: number; teto: number; saldo: number }>;
   itens: Item[];
 };
@@ -410,6 +413,27 @@ export default function GerarPlanoPreventivasDialog({
               </div>
             )}
 
+            {(preview.warnings?.length ?? 0) > 0 && (
+              <div className="border border-orange-300 bg-orange-50 rounded-md p-3 text-sm">
+                <div className="flex items-center gap-2 font-semibold text-orange-900">
+                  <AlertTriangle className="h-4 w-4" />
+                  {preview.warnings!.length} avisos de periodicidade — tratados como ANUAL
+                </div>
+                <div className="text-xs text-orange-800 mt-1 max-h-24 overflow-auto">
+                  {preview.warnings!.slice(0, 20).map((w) => (
+                    <div key={w.equip_id}>• <b>{w.nome}</b> — {w.motivo}</div>
+                  ))}
+                  {preview.warnings!.length > 20 && <div>… +{preview.warnings!.length - 20}</div>}
+                </div>
+              </div>
+            )}
+
+            {preview.fonte_ultima_preventiva && (
+              <div className="text-[11px] text-muted-foreground">
+                Fonte "última preventiva": <b>{preview.fonte_ultima_preventiva === "consolidado" ? "tabela consolidada (fonte única)" : "scan histórico (fallback)"}</b>
+              </div>
+            )}
+
             <div className="border rounded-md max-h-[62vh] overflow-auto relative">
               <table className="w-full caption-bottom text-sm">
                 <TableHeader>
@@ -428,6 +452,7 @@ export default function GerarPlanoPreventivasDialog({
                 <TableBody>
                   {preview.itens.map((it) => {
                     const setMes = new Set(it.meses_planejados);
+                    const setForcados = new Set(it.meses_forcados ?? []);
                     const totalLinha = it.meses_planejados.length * it.ht_por_ocorrencia;
                     return (
                       <TableRow key={it.equip_id}>
@@ -474,11 +499,13 @@ export default function GerarPlanoPreventivasDialog({
                         {MES_LABEL.map((_, i) => {
                           const m = i + 1;
                           const on = setMes.has(m);
+                          const forced = setForcados.has(m);
                           return (
                             <TableCell key={m} className={cn(
                               "text-center text-xs font-medium hover:ring-2 hover:ring-primary/40 transition select-none",
                               on ? "cursor-grab active:cursor-grabbing" : "cursor-pointer",
                               on && statusBg[it.status],
+                              forced && "ring-2 ring-red-500 ring-inset bg-red-100 text-red-900",
                             )}
                               draggable={on}
                               onDragStart={(e) => {
@@ -513,11 +540,13 @@ export default function GerarPlanoPreventivasDialog({
                               }}
                               title={
                                 on
-                                  ? "Arraste para mover (regenera a cadeia) · clique para remover"
+                                  ? (forced
+                                      ? "⚠ Encaixe forçado — este mês estourou o teto de HT"
+                                      : "Arraste para mover (regenera a cadeia) · clique para remover")
                                   : "Clique para adicionar preventiva neste mês"
                               }
                             >
-                              {on ? it.ht_por_ocorrencia : ""}
+                              {on ? (forced ? `⚠${it.ht_por_ocorrencia}` : it.ht_por_ocorrencia) : ""}
                             </TableCell>
                           );
                         })}

@@ -191,15 +191,48 @@ Deno.serve(async (req) => {
     // ── horas corretivas realizadas (ano) ──────────────────────────────────
     const yearStart = `${ano_referencia}-01-01`;
     const yearEnd = `${ano_referencia}-12-31`;
-    // Tipos de tarefa considerados como preventiva
-    // 180175 Visita Preventiva + OS
-    // 180176 Visita Preventiva Contrato
-    // 202616 MANUTENÇÃO PREVENTIVA IVARIO
-    // 235724 MANUTENÇÃO PREVENTIVA - FROTA
-    const PREV_TYPES = new Set(["180175", "180176", "202616", "235724"]);
+    // Tipos de tarefa considerados como preventiva — lidos de tipos_tarefa_preventiva (Item 4).
+    // Fallback para os 4 IDs históricos se a tabela estiver vazia (ex.: pré-seed).
+    const { data: prevTiposRows } = await supabase
+      .from("tipos_tarefa_preventiva")
+      .select("auvo_task_type_id")
+      .eq("ativo", true)
+      .is("aplica_a_categoria", null);
+    const PREV_TYPES = new Set<string>(
+      (prevTiposRows ?? []).map((r: any) => String(r.auvo_task_type_id)),
+    );
+    if (PREV_TYPES.size === 0) {
+      ["180175", "180176", "202616", "235724"].forEach((t) => PREV_TYPES.add(t));
+    }
     const corretivasMes: number[] = Array(13).fill(0);
     // Última preventiva por equipamento (auvo_equipment_id → último ISO date)
     const lastPrevByAuvoId = new Map<string, string>();
+    // ── Item 3: fonte única — lê ultima_preventiva do consolidado ─────────
+    // Fallback: se consolidado vazio, cai no scan histórico antigo.
+    let usouConsolidado = false;
+    try {
+      const equipUuidsScope = equipsScope.map((e: any) => e.id);
+      if (equipUuidsScope.length > 0) {
+        const CHUNK = 500;
+        for (let i = 0; i < equipUuidsScope.length; i += CHUNK) {
+          const slice = equipUuidsScope.slice(i, i + CHUNK);
+          const { data: consRows, error: consErr } = await supabase
+            .from("equipamento_preventiva_consolidado")
+            .select("auvo_equipment_id, ultima_preventiva")
+            .in("equip_id", slice);
+          if (consErr) throw consErr;
+          for (const r of (consRows ?? []) as any[]) {
+            if (r.auvo_equipment_id && r.ultima_preventiva) {
+              lastPrevByAuvoId.set(String(r.auvo_equipment_id), String(r.ultima_preventiva));
+              usouConsolidado = true;
+            }
+          }
+        }
+      }
+    } catch (e) {
+      console.warn("[plano-preventivo-gerar] consolidado indisponível, fallback:", e);
+    }
+    // Corretivas ainda precisam do scan (consolidado só armazena preventiva)
     {
       const PAGE = 1000;
       let from = 0;
@@ -220,8 +253,9 @@ Deno.serve(async (req) => {
           if (!d) continue;
           const isPrev = PREV_TYPES.has(String(t.auvo_task_type_id ?? ""));
           if (isPrev) {
+            // Só popula se consolidado NÃO tiver esse equip (Item 3: consolidado é fonte única).
             const eq = String(t.auvo_equipment_id ?? "");
-            if (eq) {
+            if (eq && !usouConsolidado) {
               const cur = lastPrevByAuvoId.get(eq);
               if (!cur || String(d) > cur) lastPrevByAuvoId.set(eq, String(d));
             }
@@ -264,6 +298,8 @@ Deno.serve(async (req) => {
 
     const items: RowItem[] = [];
     const semTipo: Array<{ equip_id: string; nome: string; cliente: string | null }> = [];
+    // Item 5b: warnings de periodicidade inválida
+    const warnings: Array<{ equip_id: string; nome: string; motivo: string }> = [];
     for (const e of equipsScopeFiltered) {
       let tipo: any = null;
       let source: RowItem["tipo_source"] | null = null;
@@ -318,8 +354,27 @@ Deno.serve(async (req) => {
       }
       if (hasOverride) source = "override_manual";
 
-      const periodicidade = normalizePer(e.override_periodicidade ?? tipo?.periodicidade ?? "BIMESTRAL");
-      const step = PER_TO_STEP[periodicidade] || 2;
+      // Item 5b: se periodicidade for inválida/nula → ANUAL (não bimestral silencioso) + warning
+      const perRaw = e.override_periodicidade ?? tipo?.periodicidade ?? null;
+      let periodicidade = normalizePer(perRaw ?? "ANUAL");
+      let step = PER_TO_STEP[periodicidade];
+      if (!perRaw || !step) {
+        periodicidade = "ANUAL";
+        step = 12;
+        warnings.push({
+          equip_id: e.id,
+          nome: e.nome,
+          motivo: "periodicidade inválida ou ausente, tratada como ANUAL",
+        });
+      } else if (12 % step !== 0) {
+        warnings.push({
+          equip_id: e.id,
+          nome: e.nome,
+          motivo: `periodicidade '${periodicidade}' (step=${step}) não divide 12 exato — tratada como ANUAL`,
+        });
+        periodicidade = "ANUAL";
+        step = 12;
+      }
       const ht_por_tec = Number(e.override_horas_por_tecnico ?? tipo?.horas_por_tecnico ?? 2);
       const qtd = Math.max(1, Number(e.override_qtd_tecnicos ?? tipo?.qtd_tecnicos ?? 1));
       const ht_ocor = ht_por_tec * qtd;
@@ -364,6 +419,7 @@ Deno.serve(async (req) => {
       status_final?: "nunca" | "vencido" | "em_dia";
       atraso_meses?: number;
       meses_planejados?: number[];
+      meses_forcados?: number[];
       mes_inicio_ciclo?: number;
     };
 
@@ -411,9 +467,13 @@ Deno.serve(async (req) => {
     const primeiraVisita = new Map<string, number>();
 
     // agenda subsequentes de um item a partir de m
-    const agendaCiclo = (it: SchedItem, m: number) => {
+    const agendaCiclo = (it: SchedItem, m: number, forcedFirst: boolean = false) => {
       const meses: number[] = [m];
       reservado[m] += it.ht_por_ocorrencia;
+      if (forcedFirst) {
+        if (!it.meses_forcados) it.meses_forcados = [];
+        it.meses_forcados.push(m);
+      }
       let m2 = m + it.step;
       while (m2 <= 12) {
         meses.push(m2);
@@ -481,7 +541,7 @@ Deno.serve(async (req) => {
           // força encaixe, saldo estoura visivelmente
           it.status_final = statusVivo;
           it.atraso_meses = atrasoVivo;
-          agendaCiclo(it, m);
+          agendaCiclo(it, m, /* forcedFirst */ true);
         }
         // senão: escorrega pro próximo mês
       }
@@ -626,6 +686,7 @@ Deno.serve(async (req) => {
           ht_total_ano: Number(((it.meses_planejados?.length ?? 0) * it.ht_por_ocorrencia).toFixed(2)),
           mes_inicio_ciclo: it.mes_inicio_ciclo ?? 0,
           meses_planejados: it.meses_planejados ?? [],
+          meses_forcados: it.meses_forcados ?? [],
           ultima_preventiva: it.ultima_preventiva,
           proxima_original_mes: it.proxima_original_mes,
           status: it.status_final ?? it.origem,
@@ -643,6 +704,8 @@ Deno.serve(async (req) => {
         },
         resumo: contadores,
         sem_tipo: semTipo,
+        warnings,
+        fonte_ultima_preventiva: usouConsolidado ? "consolidado" : "scan",
         tabela_meses,
         itens: itensOut,
       });
