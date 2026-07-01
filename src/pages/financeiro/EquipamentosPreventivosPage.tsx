@@ -1655,6 +1655,20 @@ export default function EquipamentosPreventivosPage() {
         />
 
         <SearchableSelect
+          value={intervencaoFilter ? [intervencaoFilter] : []}
+          onValueChange={(vals) => setIntervencaoFilter(vals[0] || "")}
+          options={[
+            { value: "3m", label: "⚠️ + de 3 meses" },
+            { value: "6m", label: "⚠️ + de 6 meses" },
+            { value: "12m", label: "⚠️ + de 12 meses" },
+            { value: "none", label: "⛔ Nunca atendido" },
+          ]}
+          placeholder="Última intervenção"
+          searchPlaceholder="Filtrar por última intervenção..."
+          className="w-[190px]"
+        />
+
+        <SearchableSelect
           multiple
           value={marcaFilter}
           onValueChange={setMarcaFilter}
