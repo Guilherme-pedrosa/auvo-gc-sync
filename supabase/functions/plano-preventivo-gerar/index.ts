@@ -567,19 +567,38 @@ Deno.serve(async (req) => {
         return n === "MENSAL" ? 1 : n === "BIMESTRAL" ? 2 : n === "TRIMESTRAL" ? 3 : n === "SEMESTRAL" ? 6 : 12;
       };
       const codigos = apply_rows.map((r) => String(r.codigo_barras_auvo)).filter(Boolean);
-      const { data: eqRows } = await supabase
+      const { data: eqRows, error: eqErr } = await supabase
         .from("equipamentos_auvo")
-        .select("id, nome, codigo_barras_auvo")
-        .in("codigo_barras_auvo", codigos);
+        .select("id, nome, identificador")
+        .in("identificador", codigos);
+      if (eqErr) return json({ ok: false, code: "EQUIPAMENTOS_LOOKUP_FALHOU", error: eqErr.message });
+
       const eqByCod = new Map<string, { id: string; nome: string }>();
       for (const e of eqRows || []) {
-        eqByCod.set(String((e as any).codigo_barras_auvo), { id: (e as any).id, nome: (e as any).nome });
+        eqByCod.set(String((e as any).identificador), { id: (e as any).id, nome: (e as any).nome });
       }
+
+      if (eqByCod.size === 0) {
+        return json({
+          ok: false,
+          code: "NENHUM_EQUIPAMENTO_ENCONTRADO",
+          error: "Nenhum equipamento do plano foi encontrado pelo identificador. O plano não foi gravado.",
+          codigos_recebidos: codigos.length,
+        });
+      }
+
       let gravados = 0;
+      const erros: Array<{ codigo_barras_auvo: string; equipamento_nome?: string; erro: string }> = [];
       for (const r of apply_rows) {
         if (!r.codigo_barras_auvo) continue;
         const eq = eqByCod.get(String(r.codigo_barras_auvo));
-        if (!eq) continue;
+        if (!eq) {
+          erros.push({
+            codigo_barras_auvo: String(r.codigo_barras_auvo),
+            erro: "Equipamento não encontrado no cadastro ativo pelo identificador.",
+          });
+          continue;
+        }
         const mesInicioR = Math.min(12, Math.max(1, Number(r.mes_inicio_ciclo) || 1));
         const meses = Array.isArray(r.meses_planejados) && r.meses_planejados.length
           ? r.meses_planejados
@@ -600,13 +619,15 @@ Deno.serve(async (req) => {
           ano_referencia,
           equipamento_nome: eq.nome,
           equipamento_auvo_id: eq.id,
+          match_confianca: "identificador",
+          criticidade: normalizeCrit(r.criticidade),
           periodicidade: periodNorm,
           periodicidade_meses: perMeses(r.periodicidade),
           horas_total: Number(r.horas_estimadas_total) || 0,
           meses_planejados: meses,
           proxima_data: proxima,
           ativo: true,
-        }, { onConflict: "grupo_id,ano_referencia,equipamento_nome" });
+        }, { onConflict: "grupo_id,ano_referencia,equipamento_auvo_id" });
         const { error: e2 } = await supabase.from("equipamento_plano_preventivo").upsert({
           grupo_id: grupoDestino,
           codigo_barras_auvo: String(r.codigo_barras_auvo),
@@ -621,8 +642,24 @@ Deno.serve(async (req) => {
           status: "RASCUNHO",
         }, { onConflict: "grupo_id,codigo_barras_auvo,ano_referencia" });
         if (!e1 && !e2) gravados++;
-        else console.error("[apply] upsert error", { e1: e1?.message, e2: e2?.message });
+        else {
+          const erro = [e1?.message, e2?.message].filter(Boolean).join(" | ");
+          erros.push({ codigo_barras_auvo: String(r.codigo_barras_auvo), equipamento_nome: eq.nome, erro });
+          console.error("[apply] upsert error", { codigo: r.codigo_barras_auvo, equipamento: eq.nome, e1: e1?.message, e2: e2?.message });
+        }
       }
+
+      if (gravados === 0 || erros.length > 0) {
+        return json({
+          ok: false,
+          code: "PLANO_APPLY_INCOMPLETO",
+          error: `Plano não foi gravado completamente: ${gravados}/${apply_rows.length} itens salvos.`,
+          gravados,
+          grupo_id: grupoDestino,
+          erros: erros.slice(0, 50),
+        });
+      }
+
       return json({ ok: true, gravados, grupo_id: grupoDestino });
     }
 
