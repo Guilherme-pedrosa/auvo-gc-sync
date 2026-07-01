@@ -500,6 +500,8 @@ function parseTaskRow(task: any): EquipmentTaskLink | null {
     checkOutDate: normalizeDate(task.checkOutDate || task.checkoutDate),
     customerDescription: String(task.customerDescription || task.customerName || ""),
     userToName: String(task.userToName || ""),
+    // @ts-ignore - carry-through para o filtro finalizedOnly no phase 2-batch
+    finished: task.finished === true,
   };
 }
 
