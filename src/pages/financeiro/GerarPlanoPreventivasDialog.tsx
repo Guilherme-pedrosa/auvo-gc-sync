@@ -216,6 +216,20 @@ export default function GerarPlanoPreventivasDialog({
     setPreview(recalcAggregates(itens, preview));
   };
 
+  const alterarHT = (equipId: string, novaHT: number) => {
+    if (!preview) return;
+    const ht = Math.max(0, Number(novaHT) || 0);
+    const itens = preview.itens.map((it) => {
+      if (it.equip_id !== equipId) return it;
+      return {
+        ...it,
+        ht_por_ocorrencia: ht,
+        ht_total_ano: it.meses_planejados.length * ht,
+      };
+    });
+    setPreview(recalcAggregates(itens, preview));
+  };
+
   const onApply = async () => {
     if (!preview) return;
     const agendaveis = preview.itens.filter((i) => i.meses_planejados.length > 0);
@@ -363,7 +377,17 @@ export default function GerarPlanoPreventivasDialog({
                         <TableCell className="text-xs">{it.categoria}</TableCell>
                         <TableCell><Badge variant="outline" className="text-[10px]">{it.criticidade}</Badge></TableCell>
                         <TableCell><Badge variant="outline" className="text-[10px]">{it.periodicidade}</Badge></TableCell>
-                        <TableCell className="text-right text-xs">{it.ht_por_ocorrencia}</TableCell>
+                        <TableCell className="text-right text-xs">
+                          <Input
+                            type="number"
+                            step="0.5"
+                            min="0"
+                            value={it.ht_por_ocorrencia}
+                            onChange={(e) => alterarHT(it.equip_id, Number(e.target.value))}
+                            className="h-7 w-16 text-right text-xs px-1"
+                            title="Horas técnicas por ocorrência"
+                          />
+                        </TableCell>
                         {MES_LABEL.map((_, i) => {
                           const m = i + 1;
                           const on = setMes.has(m);
