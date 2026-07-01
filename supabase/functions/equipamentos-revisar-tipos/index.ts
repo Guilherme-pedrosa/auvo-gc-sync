@@ -49,10 +49,15 @@ Deno.serve(async (req) => {
       const grupoId: string | null = body.grupo_id ?? null;
       const cliente: string | null = body.cliente ?? null;
       const apenasSemTipo: boolean = !!body.apenas_sem_tipo;
+      const equipIds: string[] | null = Array.isArray(body.equip_ids) && body.equip_ids.length
+        ? body.equip_ids.map((x: any) => String(x))
+        : null;
 
-      // Resolve escopo de clientes
+      // Resolve escopo de clientes (ignorado se equip_ids for informado)
       let clientes: string[] | null = null;
-      if (grupoId) {
+      if (equipIds) {
+        // escopo direto por IDs
+      } else if (grupoId) {
         const { data: m } = await sb
           .from("grupo_cliente_membros")
           .select("cliente_nome")
@@ -62,14 +67,15 @@ Deno.serve(async (req) => {
       } else if (cliente) {
         clientes = [cliente];
       } else {
-        return ok({ ok: false, error: "Informe grupo_id ou cliente" }, 400);
+        return ok({ ok: false, error: "Informe grupo_id, cliente ou equip_ids" }, 400);
       }
 
       let q = sb
         .from("equipamentos_auvo")
         .select("id, identificador, nome, cliente, tipo_id, status")
         .eq("status", "Ativo");
-      if (clientes && clientes.length) q = q.in("cliente", clientes);
+      if (equipIds) q = q.in("id", equipIds);
+      else if (clientes && clientes.length) q = q.in("cliente", clientes);
       const { data: equips, error } = await q.limit(2000);
       if (error) return ok({ ok: false, error: error.message }, 500);
 
