@@ -80,6 +80,27 @@ const chainFrom = (inicio: number, p: string): number[] => {
   return out;
 };
 
+// Gera cadeia bidirecional (pra frente E pra trás) a partir de um mês âncora
+const chainAround = (anchor: number, p: string): number[] => {
+  const step = periodMeses(p);
+  const set = new Set<number>();
+  for (let m = anchor; m >= 1; m -= step) set.add(m);
+  for (let m = anchor; m <= 12; m += step) set.add(m);
+  return Array.from(set).sort((a, b) => a - b);
+};
+
+// Retorna o mês (1-12) da última preventiva executada, se estiver dentro do ano de referência
+const executedMonthOf = (ultima: string | null, ano: number): number | null => {
+  if (!ultima) return null;
+  const s = String(ultima).slice(0, 10);
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(s);
+  if (!m) return null;
+  const y = Number(m[1]);
+  const mo = Number(m[2]);
+  if (y !== ano || mo < 1 || mo > 12) return null;
+  return mo;
+};
+
 const statusBg: Record<string, string> = {
   nunca: "bg-red-100 text-red-900",
   vencido: "bg-amber-100 text-amber-900",
