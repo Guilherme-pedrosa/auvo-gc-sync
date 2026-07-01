@@ -396,6 +396,7 @@ function EditarPlanoDialog({
   const [itens, setItens] = useState<PlanoItem[]>(() => agg.itens.map(i => ({ ...i, meses_planejados: [...(i.meses_planejados ?? [])] })));
   const [saving, setSaving] = useState(false);
   const [search, setSearch] = useState("");
+  const [addOpen, setAddOpen] = useState(false);
 
   const setItem = (id: string, patch: Partial<PlanoItem>) => {
     setItens(prev => prev.map(it => it.id === id ? { ...it, ...patch } : it));
@@ -425,7 +426,6 @@ function EditarPlanoDialog({
   const setProxima = (id: string, iso: string) => setItem(id, { proxima_data: iso || null });
 
   const remover = (id: string) => {
-    if (!confirm("Remover este equipamento do plano?")) return;
     setItens(prev => prev.filter(it => it.id !== id));
   };
 
@@ -452,13 +452,35 @@ function EditarPlanoDialog({
     setSaving(true);
     try {
       const originalIds = new Set(agg.itens.map(i => i.id));
-      const keptIds = new Set(itens.map(i => i.id));
+      const keptIds = new Set(itens.filter(i => !i._new).map(i => i.id));
       const removed = [...originalIds].filter(id => !keptIds.has(id));
       if (removed.length) {
         const { error } = await (supabase as any).from("plano_preventivo_item").update({ ativo: false }).in("id", removed);
         if (error) throw error;
       }
-      for (const it of itens) {
+      const novos = itens.filter(i => i._new);
+      if (novos.length) {
+        const inserts = novos.map(it => ({
+          grupo_id: agg.grupo_id,
+          ano_referencia: agg.ano_referencia,
+          equipamento_nome: it.equipamento_nome,
+          equipamento_auvo_id: it.equipamento_auvo_id,
+          categoria: it.categoria ?? null,
+          criticidade: it.criticidade ?? null,
+          periodicidade: it.periodicidade ?? "Semestral",
+          periodicidade_meses: it.periodicidade_meses ?? 6,
+          horas_total: Number(it.horas_total) || 0,
+          meses_planejados: it.meses_planejados ?? [],
+          proxima_data: it.proxima_data,
+          ultima_execucao_data: it.ultima_execucao_data,
+          ativo: true,
+        }));
+        const { error } = await (supabase as any)
+          .from("plano_preventivo_item")
+          .upsert(inserts, { onConflict: "grupo_id,ano_referencia,equipamento_auvo_id" });
+        if (error) throw error;
+      }
+      for (const it of itens.filter(i => !i._new)) {
         const payload = {
           meses_planejados: it.meses_planejados ?? [],
           horas_total: Number(it.horas_total) || 0,
@@ -493,6 +515,9 @@ function EditarPlanoDialog({
           <div>Equipamentos: <strong>{itens.length}</strong></div>
           <div>HT plano: <strong>{ht_ano.toFixed(0)}h</strong></div>
           <div>Saldo: <strong className={cn(saldo_ano < 0 ? "text-red-700" : "text-emerald-700")}>{saldo_ano.toFixed(0)}h</strong></div>
+          <Button size="sm" variant="outline" onClick={() => setAddOpen(true)}>
+            <Plus className="h-4 w-4 mr-1" /> Adicionar equipamento
+          </Button>
           <div className="ml-auto relative">
             <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
             <Input placeholder="Buscar equipamento..." value={search} onChange={(e) => setSearch(e.target.value)} className="pl-7 h-8 w-64" />
@@ -598,6 +623,180 @@ function EditarPlanoDialog({
           <Button onClick={salvar} disabled={saving}>
             {saving ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Save className="h-4 w-4 mr-1" />}
             Salvar plano
+          </Button>
+        </DialogFooter>
+
+        {addOpen && (
+          <AdicionarEquipamentoDialog
+            grupoId={agg.grupo_id}
+            anoReferencia={agg.ano_referencia}
+            jaNoPlano={new Set(itens.map(i => i.equipamento_auvo_id).filter(Boolean) as string[])}
+            onClose={() => setAddOpen(false)}
+            onAdd={(novos) => {
+              setItens(prev => [...prev, ...novos]);
+              setAddOpen(false);
+              toast.success(`${novos.length} equipamento(s) adicionado(s). Ajuste meses e clique em "Salvar plano".`);
+            }}
+          />
+        )}
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function AdicionarEquipamentoDialog({
+  grupoId, anoReferencia, jaNoPlano, onClose, onAdd,
+}: {
+  grupoId: string;
+  anoReferencia: number;
+  jaNoPlano: Set<string>;
+  onClose: () => void;
+  onAdd: (novos: PlanoItem[]) => void;
+}) {
+  const [q, setQ] = useState("");
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+
+  const { data, isLoading } = useQuery({
+    queryKey: ["consolidado-por-grupo", grupoId],
+    queryFn: async () => {
+      const { data, error } = await (supabase as any)
+        .from("equipamento_preventiva_consolidado")
+        .select("equip_id, nome, identificador, cliente, categoria, tipo_nome, criticidade, periodicidade, periodicidade_meses, ht_por_ocorrencia, ultima_preventiva, equip_status")
+        .eq("grupo_id", grupoId)
+        .order("cliente", { ascending: true })
+        .order("nome", { ascending: true })
+        .limit(5000);
+      if (error) throw error;
+      return (data ?? []) as any[];
+    },
+  });
+
+  const disponiveis = useMemo(() => {
+    const rows = (data ?? []).filter((r: any) => {
+      if (jaNoPlano.has(r.equip_id)) return false;
+      const s = String(r.equip_status ?? "").toLowerCase();
+      if (s && s.includes("inativ")) return false;
+      return true;
+    });
+    const term = q.trim().toLowerCase();
+    if (!term) return rows;
+    return rows.filter((r: any) =>
+      (r.nome ?? "").toLowerCase().includes(term) ||
+      (r.identificador ?? "").toLowerCase().includes(term) ||
+      (r.cliente ?? "").toLowerCase().includes(term) ||
+      (r.tipo_nome ?? "").toLowerCase().includes(term) ||
+      (r.categoria ?? "").toLowerCase().includes(term)
+    );
+  }, [data, jaNoPlano, q]);
+
+  const toggle = (id: string) => {
+    setSelected(prev => {
+      const n = new Set(prev);
+      if (n.has(id)) n.delete(id); else n.add(id);
+      return n;
+    });
+  };
+
+  const toggleAll = () => {
+    if (selected.size === disponiveis.length) setSelected(new Set());
+    else setSelected(new Set(disponiveis.map((r: any) => r.equip_id)));
+  };
+
+  const confirmar = () => {
+    const novos: PlanoItem[] = disponiveis
+      .filter((r: any) => selected.has(r.equip_id))
+      .map((r: any) => {
+        const periodMeses = Number(r.periodicidade_meses) || 6;
+        const period = r.periodicidade ?? (periodMeses === 12 ? "Anual" : periodMeses === 6 ? "Semestral" : periodMeses === 3 ? "Trimestral" : periodMeses === 1 ? "Mensal" : "Semestral");
+        const htOc = Number(r.ht_por_ocorrencia) || 0;
+        return {
+          id: `new-${crypto.randomUUID()}`,
+          grupo_id: grupoId,
+          ano_referencia: anoReferencia,
+          equipamento_nome: `${r.identificador ? r.identificador + " - " : ""}${r.nome ?? ""} (${r.cliente ?? ""})`.trim(),
+          equipamento_auvo_id: r.equip_id,
+          periodicidade: period,
+          periodicidade_meses: periodMeses,
+          horas_total: htOc,
+          meses_planejados: [],
+          proxima_data: null,
+          ultima_execucao_data: r.ultima_preventiva ?? null,
+          ativo: true,
+          categoria: r.tipo_nome ?? r.categoria ?? null,
+          criticidade: r.criticidade ?? null,
+          _new: true,
+        };
+      });
+    if (!novos.length) { toast.error("Selecione ao menos 1 equipamento"); return; }
+    onAdd(novos);
+  };
+
+  return (
+    <Dialog open onOpenChange={(v) => { if (!v) onClose(); }}>
+      <DialogContent className="max-w-3xl max-h-[85vh] overflow-hidden flex flex-col">
+        <DialogHeader>
+          <DialogTitle>Adicionar equipamentos ao plano</DialogTitle>
+          <DialogDescription>
+            Equipamentos ativos do grupo que ainda não estão neste plano. Marque os que quer adicionar.
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="flex items-center gap-2">
+          <div className="relative flex-1">
+            <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Input placeholder="Buscar por nome, ID, cliente, tipo..." value={q} onChange={(e) => setQ(e.target.value)} className="pl-8" />
+          </div>
+          <Button variant="outline" size="sm" onClick={toggleAll} disabled={!disponiveis.length}>
+            {selected.size === disponiveis.length && disponiveis.length > 0 ? "Desmarcar todos" : "Marcar todos"}
+          </Button>
+        </div>
+
+        <div className="border rounded-md flex-1 overflow-auto">
+          <table className="w-full text-sm">
+            <thead className="sticky top-0 bg-background shadow-[0_1px_0_hsl(var(--border))]">
+              <tr className="text-left text-xs [&>th]:px-2 [&>th]:py-2">
+                <th className="w-8"></th>
+                <th>Equipamento</th>
+                <th>Cliente</th>
+                <th>Tipo</th>
+                <th>Period.</th>
+                <th className="text-right">HT/oc</th>
+              </tr>
+            </thead>
+            <tbody>
+              {isLoading ? (
+                <tr><td colSpan={6} className="text-center py-6 text-muted-foreground">Carregando...</td></tr>
+              ) : disponiveis.length === 0 ? (
+                <tr><td colSpan={6} className="text-center py-6 text-muted-foreground">Nenhum equipamento disponível.</td></tr>
+              ) : disponiveis.map((r: any) => (
+                <tr key={r.equip_id}
+                    className={cn("border-t cursor-pointer hover:bg-muted/50", selected.has(r.equip_id) && "bg-primary/5")}
+                    onClick={() => toggle(r.equip_id)}>
+                  <td className="px-2 py-1">
+                    <input type="checkbox" checked={selected.has(r.equip_id)} onChange={() => toggle(r.equip_id)} onClick={(e) => e.stopPropagation()} />
+                  </td>
+                  <td className="px-2 py-1">
+                    <div>{r.nome}</div>
+                    {r.identificador && <div className="text-[10px] text-muted-foreground">ID: {r.identificador}</div>}
+                  </td>
+                  <td className="px-2 py-1 text-xs">{r.cliente ?? "—"}</td>
+                  <td className="px-2 py-1 text-xs">{r.tipo_nome ?? "—"}</td>
+                  <td className="px-2 py-1 text-xs">{r.periodicidade ?? "—"}</td>
+                  <td className="px-2 py-1 text-right text-xs tabular-nums">{Number(r.ht_por_ocorrencia ?? 0).toFixed(1)}h</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+
+        <div className="text-xs text-muted-foreground">
+          {selected.size} selecionado(s) · {disponiveis.length} disponível(is)
+        </div>
+
+        <DialogFooter>
+          <Button variant="ghost" onClick={onClose}>Cancelar</Button>
+          <Button onClick={confirmar} disabled={!selected.size}>
+            <Plus className="h-4 w-4 mr-1" /> Adicionar {selected.size ? `(${selected.size})` : ""}
           </Button>
         </DialogFooter>
       </DialogContent>
