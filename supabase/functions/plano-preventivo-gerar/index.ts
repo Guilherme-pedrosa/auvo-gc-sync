@@ -298,6 +298,8 @@ Deno.serve(async (req) => {
 
     const items: RowItem[] = [];
     const semTipo: Array<{ equip_id: string; nome: string; cliente: string | null }> = [];
+    // Item 5b: warnings de periodicidade inválida
+    const warnings: Array<{ equip_id: string; nome: string; motivo: string }> = [];
     for (const e of equipsScopeFiltered) {
       let tipo: any = null;
       let source: RowItem["tipo_source"] | null = null;
@@ -352,8 +354,27 @@ Deno.serve(async (req) => {
       }
       if (hasOverride) source = "override_manual";
 
-      const periodicidade = normalizePer(e.override_periodicidade ?? tipo?.periodicidade ?? "BIMESTRAL");
-      const step = PER_TO_STEP[periodicidade] || 2;
+      // Item 5b: se periodicidade for inválida/nula → ANUAL (não bimestral silencioso) + warning
+      const perRaw = e.override_periodicidade ?? tipo?.periodicidade ?? null;
+      let periodicidade = normalizePer(perRaw ?? "ANUAL");
+      let step = PER_TO_STEP[periodicidade];
+      if (!perRaw || !step) {
+        periodicidade = "ANUAL";
+        step = 12;
+        warnings.push({
+          equip_id: e.id,
+          nome: e.nome,
+          motivo: "periodicidade inválida ou ausente, tratada como ANUAL",
+        });
+      } else if (12 % step !== 0) {
+        warnings.push({
+          equip_id: e.id,
+          nome: e.nome,
+          motivo: `periodicidade '${periodicidade}' (step=${step}) não divide 12 exato — tratada como ANUAL`,
+        });
+        periodicidade = "ANUAL";
+        step = 12;
+      }
       const ht_por_tec = Number(e.override_horas_por_tecnico ?? tipo?.horas_por_tecnico ?? 2);
       const qtd = Math.max(1, Number(e.override_qtd_tecnicos ?? tipo?.qtd_tecnicos ?? 1));
       const ht_ocor = ht_por_tec * qtd;
@@ -445,9 +466,13 @@ Deno.serve(async (req) => {
     const primeiraVisita = new Map<string, number>();
 
     // agenda subsequentes de um item a partir de m
-    const agendaCiclo = (it: SchedItem, m: number) => {
+    const agendaCiclo = (it: SchedItem, m: number, forcedFirst: boolean = false) => {
       const meses: number[] = [m];
       reservado[m] += it.ht_por_ocorrencia;
+      if (forcedFirst) {
+        if (!it.meses_forcados) it.meses_forcados = [];
+        it.meses_forcados.push(m);
+      }
       let m2 = m + it.step;
       while (m2 <= 12) {
         meses.push(m2);
@@ -515,7 +540,7 @@ Deno.serve(async (req) => {
           // força encaixe, saldo estoura visivelmente
           it.status_final = statusVivo;
           it.atraso_meses = atrasoVivo;
-          agendaCiclo(it, m);
+          agendaCiclo(it, m, /* forcedFirst */ true);
         }
         // senão: escorrega pro próximo mês
       }
