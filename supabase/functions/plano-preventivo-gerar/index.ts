@@ -264,7 +264,7 @@ Deno.serve(async (req) => {
 
     const items: RowItem[] = [];
     const semTipo: Array<{ equip_id: string; nome: string; cliente: string | null }> = [];
-    for (const e of equipsScope) {
+    for (const e of equipsScopeFiltered) {
       let tipo: any = null;
       let source: RowItem["tipo_source"] | null = null;
       let keywordMatch: string | null = null;
