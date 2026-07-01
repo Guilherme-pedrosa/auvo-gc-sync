@@ -1426,6 +1426,16 @@ export default function EquipamentosPreventivosPage() {
               </PopoverContent>
             </Popover>
           </div>
+          <Button
+            variant={applyDateFilter ? "default" : "outline"}
+            size="sm"
+            onClick={() => setApplyDateFilter((v) => !v)}
+            title={applyDateFilter ? "Filtro de data ativo — clique para desativar" : "Aplicar o intervalo de datas como filtro da lista"}
+            className={applyDateFilter ? "" : "text-muted-foreground"}
+          >
+            <Filter className="h-4 w-4 mr-1" />
+            {applyDateFilter ? "Filtro data: ON" : "Filtro data: OFF"}
+          </Button>
           <Button onClick={handleSync} disabled={syncing || isFetching} size="sm">
             {syncing ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <RefreshCw className="h-4 w-4 mr-1" />}
             Sincronizar
