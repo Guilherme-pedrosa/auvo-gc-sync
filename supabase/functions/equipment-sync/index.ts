@@ -274,6 +274,8 @@ type EquipmentTaskLink = {
   statusCode: number;
   taskDate: string | null;
   checkOutDate: string | null;
+  deliveredDate: string | null;
+  finishedDate: string | null;
   customerDescription: string;
   userToName: string;
 };
