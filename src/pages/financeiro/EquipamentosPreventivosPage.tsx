@@ -530,7 +530,7 @@ export default function EquipamentosPreventivosPage() {
   const [applyDateFilter, setApplyDateFilter] = useState(false);
 
   const { data: rawData, isLoading, refetch, isFetching } = useQuery({
-    queryKey: ["equipamentos-preventivos-raw", "v2-only-ativos"],
+    queryKey: ["equipamentos-preventivos-raw", "v3-consolidado"],
     queryFn: fetchRawData,
     staleTime: 5 * 60 * 1000,
   });
@@ -742,7 +742,7 @@ export default function EquipamentosPreventivosPage() {
 
   const equipments = useMemo(() => {
     if (!rawData) return [];
-    const rows = buildEquipmentRows(rawData.equipamentos, rawData.relations ?? [], tipoTarefaFilter);
+    const rows = buildEquipmentRows(rawData.equipamentos, rawData.relations ?? [], tipoTarefaFilter, rawData.consolidated);
     const taskById = new Map<string, EquipTaskRel>();
     for (const task of rawData.relations ?? []) {
       if (task.auvo_task_id) taskById.set(String(task.auvo_task_id), task);
