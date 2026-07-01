@@ -695,7 +695,7 @@ export default function EquipamentosPreventivosPage() {
       if (mesesPorPlano) r.periodicidade_meses_plano = mesesPorPlano;
 
       const calculada = calcularProximaPreventiva(r.ultima_data, mesesPorPlano);
-      if (calculada) {
+      if (!p?.proxima_data && calculada) {
         r.proxima_data = calculada;
         r.proxima_data_calculada = true;
       }
