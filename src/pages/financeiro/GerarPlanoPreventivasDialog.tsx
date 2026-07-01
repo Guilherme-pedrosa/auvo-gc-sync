@@ -322,9 +322,18 @@ export default function GerarPlanoPreventivasDialog({
             <Input type="number" value={ano} onChange={(e) => setAno(Number(e.target.value) || anoAtual)} />
           </div>
           <div className="flex flex-wrap gap-2">
-            <Button onClick={onPreview} disabled={loading}>
+            <Button onClick={() => onPreview()} disabled={loading}>
               {loading ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Wand2 className="h-4 w-4 mr-1" />}
               Gerar plano
+            </Button>
+            <Button
+              variant="outline"
+              onClick={onRefazer}
+              disabled={loading || !preview || removidos.size === 0}
+              title="Reprocessa distribuição de meses ignorando os equipamentos removidos"
+            >
+              {loading ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <RefreshCw className="h-4 w-4 mr-1" />}
+              Refazer plano{removidos.size > 0 ? ` (−${removidos.size})` : ""}
             </Button>
             <Button variant="secondary" onClick={onApply} disabled={saving || !preview}>
               {saving ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Save className="h-4 w-4 mr-1" />}
