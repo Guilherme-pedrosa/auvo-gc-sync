@@ -973,7 +973,7 @@ export default function EquipamentosPreventivosPage() {
     }
 
     // Filtro por mês(es) da próxima preventiva (plano) - multi-seleção
-    if (proximaMesFilter.length > 0) {
+    if (proximaMesFilter.length > 0 && !search.trim()) {
       const todayStr = new Date().toISOString().slice(0, 10);
       const wantSemPlano = proximaMesFilter.includes("sem_plano");
       const wantAtrasado = proximaMesFilter.includes("atrasado");
@@ -989,7 +989,7 @@ export default function EquipamentosPreventivosPage() {
     }
 
     // Filtro por período (data da última intervenção)
-    if (syncStartDate && syncEndDate) {
+    if (syncStartDate && syncEndDate && !search.trim()) {
       result = result.filter((e) => {
         // Mantém equipamentos sem registro de preventiva visíveis
         if (!e.ultima_data) return true;
