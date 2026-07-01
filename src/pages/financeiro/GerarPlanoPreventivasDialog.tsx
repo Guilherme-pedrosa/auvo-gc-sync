@@ -16,6 +16,13 @@ import {
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 type Item = {
   equip_id: string;
@@ -246,6 +253,24 @@ export default function GerarPlanoPreventivasDialog({
         ...it,
         ht_por_ocorrencia: ht,
         ht_total_ano: it.meses_planejados.length * ht,
+      };
+    });
+    setPreview(recalcAggregates(itens, preview));
+  };
+
+  const alterarPeriodicidade = (equipId: string, novaPer: string) => {
+    if (!preview) return;
+    const itens = preview.itens.map((it) => {
+      if (it.equip_id !== equipId) return it;
+      const inicio =
+        it.meses_planejados[0] ?? it.mes_inicio_ciclo ?? preview.mes_inicio ?? 1;
+      const meses = chainFrom(inicio, novaPer);
+      return {
+        ...it,
+        periodicidade: novaPer,
+        meses_planejados: meses,
+        mes_inicio_ciclo: meses[0] ?? inicio,
+        ht_total_ano: meses.length * it.ht_por_ocorrencia,
       };
     });
     setPreview(recalcAggregates(itens, preview));
