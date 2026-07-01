@@ -761,11 +761,17 @@ export default function EquipamentosPreventivosPage() {
           return false;
         }
       }
+      // Quando o usuário está buscando "Sem tipo", ignoramos filtros de data
+      // (Período e Próxima Preventiva), pois esses equipamentos normalmente
+      // não têm última intervenção nem plano definido e ficariam ocultos.
+      const bypassDateFilters =
+        (search.trim().length > 0) ||
+        (tipoEquipFilter.includes("__sem_tipo__") && !e.tipo_id);
       if (!exclude.has("grupo") && grupoFilter !== "todos") {
         const members = grupoClienteMap.get(grupoFilter) || new Set<string>();
         if (!e.cliente || !members.has(normalizeClienteName(e.cliente))) return false;
       }
-      if (!exclude.has("proximaMes") && proximaMesFilter.length > 0) {
+      if (!bypassDateFilters && !exclude.has("proximaMes") && proximaMesFilter.length > 0) {
         const todayStr = new Date().toISOString().slice(0, 10);
         const wantSemPlano = proximaMesFilter.includes("sem_plano");
         const wantAtrasado = proximaMesFilter.includes("atrasado");
@@ -779,7 +785,7 @@ export default function EquipamentosPreventivosPage() {
         }
         if (!ok) return false;
       }
-      if (!exclude.has("periodo") && syncStartDate && syncEndDate) {
+      if (!bypassDateFilters && !exclude.has("periodo") && syncStartDate && syncEndDate) {
         if (e.ultima_data) {
           const d = e.ultima_data.slice(0, 10);
           if (!(d >= syncStartDate && d <= syncEndDate)) return false;
