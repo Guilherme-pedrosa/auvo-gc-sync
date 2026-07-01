@@ -72,6 +72,221 @@ function monthsForPlan(step: number, start: number): number[] {
 }
 function expectedFreq(step: number) { return Math.floor(12 / step); }
 
+function monthOfDateInYear(raw: string | null | undefined, year: number): number | null {
+  if (!raw) return null;
+  const s = String(raw).slice(0, 10);
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(s);
+  if (!m) return null;
+  const y = Number(m[1]);
+  const mo = Number(m[2]);
+  return y === year && mo >= 1 && mo <= 12 ? mo : null;
+}
+
+function monthsAround(anchor: number, step: number): number[] {
+  const set = new Set<number>();
+  for (let m = anchor; m >= 1; m -= step) set.add(m);
+  for (let m = anchor; m <= 12; m += step) set.add(m);
+  return Array.from(set).sort((a, b) => a - b);
+}
+
+function rebuildReservado(sched: any[], reservado: number[]) {
+  reservado.fill(0);
+  for (const it of sched) {
+    for (const m of it.meses_planejados ?? []) {
+      if (m >= 1 && m <= 12) reservado[m] += Number(it.ht_por_ocorrencia || 0);
+    }
+  }
+}
+
+function scoreSchedule(arr: number[], mesInicio: number, teto: number) {
+  const slice = arr.slice(mesInicio, 13);
+  const n = slice.length || 1;
+  const mean = slice.reduce((a, b) => a + b, 0) / n;
+  const variance = slice.reduce((a, b) => a + (b - mean) ** 2, 0) / n;
+  const max = Math.max(...slice, 0);
+  const min = Math.min(...slice, 0);
+  const maxOver = Math.max(0, max - teto);
+  const totalOver = slice.reduce((a, b) => a + Math.max(0, b - teto), 0);
+  return { maxOver, totalOver, variance, spread: max - min };
+}
+
+function isBetterScore(a: ReturnType<typeof scoreSchedule>, b: ReturnType<typeof scoreSchedule>) {
+  if (a.maxOver < b.maxOver - 1e-6) return true;
+  if (a.maxOver > b.maxOver + 1e-6) return false;
+  if (a.totalOver < b.totalOver - 1e-6) return true;
+  if (a.totalOver > b.totalOver + 1e-6) return false;
+  if (a.variance < b.variance - 1e-6) return true;
+  if (a.variance > b.variance + 1e-6) return false;
+  return a.spread < b.spread - 1e-6;
+}
+
+async function optimizeScheduleWithAi(params: {
+  sched: any[];
+  reservado: number[];
+  mesInicio: number;
+  htContratoMes: number;
+  anoReferencia: number;
+}) {
+  const { sched, reservado, mesInicio, htContratoMes, anoReferencia } = params;
+  const key = Deno.env.get("LOVABLE_API_KEY") ?? "";
+  if (!key) return { usada: false, aplicada: false, alteracoes: 0, mensagem: "LOVABLE_API_KEY ausente" };
+
+  const fixedEquipIds = new Set<string>();
+  for (const it of sched) {
+    const executedMonth = monthOfDateInYear(it.ultima_preventiva, anoReferencia);
+    if (executedMonth != null && (it.meses_planejados?.length ?? 0) > 0) {
+      const meses = monthsAround(executedMonth, it.step);
+      it.meses_planejados = meses;
+      it.mes_inicio_ciclo = meses[0] ?? executedMonth;
+      fixedEquipIds.add(String(it.equip_id));
+    }
+  }
+  rebuildReservado(sched, reservado);
+
+  const candidates = sched
+    .filter((it) => {
+      const cur = it.meses_planejados ?? [];
+      if (cur.length === 0) return false;
+      if (fixedEquipIds.has(String(it.equip_id))) return false;
+      if (Number(it.step) <= 1) return false;
+      return true;
+    })
+    .map((it) => {
+      const cur = it.meses_planejados ?? [];
+      const allowed: number[] = [];
+      for (let s = Math.max(1, mesInicio); s <= Math.min(12, Number(it.step)); s++) {
+        const meses = monthsForPlan(Number(it.step), s);
+        if (meses.length === cur.length) allowed.push(s);
+      }
+      return { it, allowed };
+    })
+    .filter((c) => c.allowed.length > 1)
+    .sort((a, b) => Number(b.it.ht_por_ocorrencia || 0) - Number(a.it.ht_por_ocorrencia || 0))
+    .slice(0, 180);
+
+  if (candidates.length === 0) {
+    return { usada: true, aplicada: false, alteracoes: 0, mensagem: "Sem itens móveis para IA" };
+  }
+
+  const idToCandidate = new Map<string, { it: any; allowed: number[] }>();
+  const itens = candidates.map((c, idx) => {
+    const id = String(idx + 1);
+    idToCandidate.set(id, c);
+    return {
+      id,
+      h: Number(Number(c.it.ht_por_ocorrencia || 0).toFixed(2)),
+      step: Number(c.it.step),
+      cur: c.it.meses_planejados ?? [],
+      a: c.allowed,
+    };
+  });
+
+  const meses = Array.from({ length: 12 }, (_, i) => ({
+    m: i + 1,
+    h: Number(Number(reservado[i + 1] || 0).toFixed(2)),
+    saldo: Number((htContratoMes - Number(reservado[i + 1] || 0)).toFixed(2)),
+  }));
+
+  const system = [
+    "Você é uma IA especialista em planejamento anual de manutenção preventiva.",
+    "Sua tarefa é REORGANIZAR os meses para nivelar horas mensais sem alterar quantidade anual.",
+    "Regras duras: use somente um start permitido em 'a'; não altere h, step, nem quantidade de ocorrências; não crie nem remova preventivas.",
+    "Objetivo em ordem: 1) reduzir maior estouro acima do teto; 2) reduzir horas totais estouradas; 3) reduzir variância/amplitude entre meses.",
+    "Responda apenas JSON válido no formato {\"alteracoes\":[{\"id\":\"1\",\"start\":2}]} e inclua só itens alterados.",
+  ].join("\n");
+  const user = JSON.stringify({
+    teto_mensal: htContratoMes,
+    ano: anoReferencia,
+    meses_atuais: meses,
+    itens_moveis: itens,
+    legenda: "m=mes, h=horas do item, cur=meses atuais, a=starts permitidos. Meses gerados por start: start,start+step...<=12.",
+  });
+
+  try {
+    const aiRes = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${key}`,
+      },
+      body: JSON.stringify({
+        model: "google/gemini-3-flash-preview",
+        messages: [
+          { role: "system", content: system },
+          { role: "user", content: user },
+        ],
+        temperature: 0.1,
+        response_format: { type: "json_object" },
+      }),
+    });
+    if (!aiRes.ok) {
+      const txt = await aiRes.text();
+      return { usada: true, aplicada: false, alteracoes: 0, mensagem: `IA falhou (${aiRes.status}): ${txt.slice(0, 180)}` };
+    }
+    const aiJson = await aiRes.json();
+    const content = aiJson?.choices?.[0]?.message?.content ?? "{}";
+    let parsed: any = {};
+    try { parsed = JSON.parse(content); } catch { parsed = {}; }
+    const rawMoves = Array.isArray(parsed?.alteracoes) ? parsed.alteracoes : [];
+    const seen = new Set<string>();
+    const moves: Array<{ it: any; start: number; meses: number[] }> = [];
+    for (const mv of rawMoves) {
+      const id = String(mv?.id ?? "");
+      if (!id || seen.has(id)) continue;
+      seen.add(id);
+      const c = idToCandidate.get(id);
+      if (!c) continue;
+      const start = Math.min(12, Math.max(1, Number(mv?.start) || 0));
+      if (!c.allowed.includes(start)) continue;
+      if (start === c.it.mes_inicio_ciclo) continue;
+      const mesesNovo = monthsForPlan(Number(c.it.step), start);
+      if (mesesNovo.length !== (c.it.meses_planejados?.length ?? 0)) continue;
+      moves.push({ it: c.it, start, meses: mesesNovo });
+    }
+    if (moves.length === 0) {
+      return { usada: true, aplicada: false, alteracoes: 0, mensagem: "IA não retornou movimentos válidos" };
+    }
+
+    const currentScore = scoreSchedule(reservado, mesInicio, htContratoMes);
+    const trial = reservado.slice();
+    for (const mv of moves) {
+      const ht = Number(mv.it.ht_por_ocorrencia || 0);
+      for (const m of mv.it.meses_planejados ?? []) trial[m] -= ht;
+      for (const m of mv.meses) trial[m] += ht;
+    }
+    if (isBetterScore(scoreSchedule(trial, mesInicio, htContratoMes), currentScore)) {
+      for (const mv of moves) {
+        mv.it.meses_planejados = mv.meses;
+        mv.it.mes_inicio_ciclo = mv.start;
+      }
+      rebuildReservado(sched, reservado);
+      return { usada: true, aplicada: true, alteracoes: moves.length, mensagem: "IA aplicada em lote" };
+    }
+
+    let applied = 0;
+    for (const mv of moves) {
+      const before = scoreSchedule(reservado, mesInicio, htContratoMes);
+      const trialOne = reservado.slice();
+      const ht = Number(mv.it.ht_por_ocorrencia || 0);
+      for (const m of mv.it.meses_planejados ?? []) trialOne[m] -= ht;
+      for (const m of mv.meses) trialOne[m] += ht;
+      if (!isBetterScore(scoreSchedule(trialOne, mesInicio, htContratoMes), before)) continue;
+      mv.it.meses_planejados = mv.meses;
+      mv.it.mes_inicio_ciclo = mv.start;
+      rebuildReservado(sched, reservado);
+      applied++;
+    }
+    return {
+      usada: true,
+      aplicada: applied > 0,
+      alteracoes: applied,
+      mensagem: applied > 0 ? "IA aplicada parcialmente" : "IA não melhorou o score do plano",
+    };
+  } catch (e: any) {
+    return { usada: true, aplicada: false, alteracoes: 0, mensagem: `IA indisponível: ${e?.message || String(e)}` };
+  }
+}
+
 // ── handler ────────────────────────────────────────────────────────────────
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
@@ -84,12 +299,20 @@ Deno.serve(async (req) => {
     const body = await req.json();
     const {
       cliente_nome, ano_referencia, mode = "preview",
-      apply_rows, excluir_equip_ids,
+      apply_rows, excluir_equip_ids, usar_ia = false, manual_overrides,
     } = body as {
       cliente_nome?: string | null;
       ano_referencia: number;
       mode?: "preview" | "apply";
       excluir_equip_ids?: string[];
+      usar_ia?: boolean;
+      manual_overrides?: Array<{
+        equip_id?: string;
+        codigo_barras_auvo?: string;
+        periodicidade?: string;
+        ht_por_ocorrencia?: number;
+        horas_por_tecnico?: number;
+      }>;
       apply_rows?: Array<{
         codigo_barras_auvo: string;
         periodicidade: string;
@@ -321,6 +544,12 @@ Deno.serve(async (req) => {
 
     const items: RowItem[] = [];
     const semTipo: Array<{ equip_id: string; nome: string; cliente: string | null }> = [];
+    const manualByEquip = new Map<string, NonNullable<typeof manual_overrides>[number]>();
+    const manualByCodigo = new Map<string, NonNullable<typeof manual_overrides>[number]>();
+    for (const ov of manual_overrides ?? []) {
+      if (ov.equip_id) manualByEquip.set(String(ov.equip_id), ov);
+      if (ov.codigo_barras_auvo) manualByCodigo.set(String(ov.codigo_barras_auvo), ov);
+    }
     // Item 5b: warnings de periodicidade inválida
     const warnings: Array<{ equip_id: string; nome: string; motivo: string }> = [];
     for (const e of equipsScopeFiltered) {
@@ -425,6 +654,24 @@ Deno.serve(async (req) => {
         keyword_match: keywordMatch,
         ultima_preventiva: lastPrevByAuvoId.get(String(e.auvo_equipment_id ?? "")) ?? null,
       });
+    }
+
+    // Overrides vindos do editor/refazer: preserva alterações manuais de
+    // periodicidade e HT antes do scheduler/IA calcular a distribuição.
+    for (const it of items) {
+      const ov = manualByEquip.get(it.equip_id) ?? manualByCodigo.get(it.codigo_barras_auvo);
+      if (!ov) continue;
+      if (ov.periodicidade) {
+        it.periodicidade = normalizePer(ov.periodicidade);
+        it.step = PER_TO_STEP[it.periodicidade] || it.step;
+        it.freq = expectedFreq(it.step);
+      }
+      if (ov.ht_por_ocorrencia != null || ov.horas_por_tecnico != null) {
+        const ht = Math.max(0, Number(ov.ht_por_ocorrencia ?? (Number(ov.horas_por_tecnico) * it.qtd_tecnicos)) || 0);
+        it.ht_por_ocorrencia = ht;
+        it.horas_por_tecnico = it.qtd_tecnicos > 0 ? ht / it.qtd_tecnicos : ht;
+      }
+      it.ht_total_ano = it.ht_por_ocorrencia * it.freq;
     }
 
     // ── scheduler v5: fila única por atraso, sem trava de exclusão ─────────
@@ -657,6 +904,29 @@ Deno.serve(async (req) => {
       }
     }
 
+    let otimizacaoIa: { usada: boolean; aplicada: boolean; alteracoes: number; mensagem: string } | null = null;
+    if (mode === "preview" && usar_ia) {
+      otimizacaoIa = await optimizeScheduleWithAi({
+        sched,
+        reservado,
+        mesInicio,
+        htContratoMes,
+        anoReferencia: ano_referencia,
+      });
+    } else {
+      // Mesmo sem IA, respeita execução real no ano como âncora do ciclo.
+      let touched = false;
+      for (const it of sched) {
+        const executedMonth = monthOfDateInYear(it.ultima_preventiva, ano_referencia);
+        if (executedMonth == null || (it.meses_planejados?.length ?? 0) === 0) continue;
+        const meses = monthsAround(executedMonth, it.step);
+        it.meses_planejados = meses;
+        it.mes_inicio_ciclo = meses[0] ?? executedMonth;
+        touched = true;
+      }
+      if (touched) rebuildReservado(sched, reservado);
+    }
+
     // ── tabela mensal ──────────────────────────────────────────────────────
     const tabela_meses = Array.from({ length: 12 }, (_, i) => {
       const m = i + 1;
@@ -729,6 +999,7 @@ Deno.serve(async (req) => {
         sem_tipo: semTipo,
         warnings,
         fonte_ultima_preventiva: usouConsolidado ? "consolidado" : "scan",
+        otimizacao_ia: otimizacaoIa,
         tabela_meses,
         itens: itensOut,
       });
@@ -767,7 +1038,7 @@ Deno.serve(async (req) => {
 
       const perMeses = (p: string) => {
         const n = normalizePer(p);
-        return n === "MENSAL" ? 1 : n === "BIMESTRAL" ? 2 : n === "TRIMESTRAL" ? 3 : n === "SEMESTRAL" ? 6 : 12;
+        return n === "MENSAL" ? 1 : n === "BIMESTRAL" ? 2 : n === "TRIMESTRAL" ? 3 : n === "QUADRIMESTRAL" ? 4 : n === "SEMESTRAL" ? 6 : 12;
       };
       const codigos = apply_rows.map((r) => String(r.codigo_barras_auvo)).filter(Boolean);
       // Restringe a busca aos equipamentos DO cliente — evita colisão de
