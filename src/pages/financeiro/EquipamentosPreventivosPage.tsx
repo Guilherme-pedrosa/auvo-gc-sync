@@ -792,12 +792,16 @@ export default function EquipamentosPreventivosPage() {
         }
         if (!ok) return false;
       }
-      // Período (syncStartDate/syncEndDate) NÃO é filtro de linhas —
-      // é apenas a janela usada pelo botão "Sincronizar" para buscar
-      // o histórico de tarefas. Não filtra a listagem.
+      // Período (syncStartDate/syncEndDate) só filtra linhas quando o usuário
+      // ativa explicitamente o toggle "Aplicar como filtro" ao lado das datas.
+      if (!exclude.has("periodo") && applyDateFilter && syncStartDate && syncEndDate) {
+        const ref = (e.ultima_data || "").slice(0, 10);
+        if (!ref) return false;
+        if (ref < syncStartDate || ref > syncEndDate) return false;
+      }
       return true;
     },
-    [search, statusFilter, marcaFilter, clienteFilter, tipoEquipFilter, grupoFilter, grupoClienteMap, proximaMesFilter, syncStartDate, syncEndDate]
+    [search, statusFilter, marcaFilter, clienteFilter, tipoEquipFilter, grupoFilter, grupoClienteMap, proximaMesFilter, syncStartDate, syncEndDate, applyDateFilter]
   );
 
   // Opções em cascata: para cada filtro, considera o universo já reduzido pelos OUTROS filtros
