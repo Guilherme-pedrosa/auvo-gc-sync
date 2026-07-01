@@ -39,6 +39,7 @@ type Item = {
   ht_total_ano: number;
   mes_inicio_ciclo: number;
   meses_planejados: number[];
+  meses_forcados?: number[];
   ultima_preventiva: string | null;
   status: "nunca" | "vencido" | "em_dia";
   atraso_meses: number;
@@ -57,6 +58,8 @@ type PreviewResp = {
     saldo_ano: number; meses_negativos: number;
   };
   sem_tipo: Array<{ equip_id: string; nome: string; cliente: string | null }>;
+  warnings?: Array<{ equip_id: string; nome: string; motivo: string }>;
+  fonte_ultima_preventiva?: "consolidado" | "scan";
   tabela_meses: Array<{ mes: number; ht_agendada: number; teto: number; saldo: number }>;
   itens: Item[];
 };
