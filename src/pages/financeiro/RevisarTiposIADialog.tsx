@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
@@ -64,6 +64,13 @@ export default function RevisarTiposIADialog({
   const [sugestoes, setSugestoes] = useState<Sugestao[] | null>(null);
   const [sel, setSel] = useState<Record<string, boolean>>({});
   const [filtro, setFiltro] = useState<"todos" | "mudam" | "alta" | "media" | "baixa" | "sem_sugestao" | "selecionados">("todos");
+
+  // Sempre que o diálogo abrir com equipamentos selecionados, força escopo "selecionados"
+  useEffect(() => {
+    if (open && selectedIds && selectedIds.length > 0) {
+      setEscopo("selecionados");
+    }
+  }, [open, selectedIds]);
 
   const reset = () => {
     setSugestoes(null); setSel({}); setFiltro("todos");
