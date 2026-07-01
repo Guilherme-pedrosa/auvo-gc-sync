@@ -172,10 +172,8 @@ export default function GerarPlanoPreventivasDialog({
         });
         resp = recalcAggregates(itens, resp);
         if (aplicados > 0) toast.info(`${aplicados} edição(ões) manual(is) preservada(s) (HT/periodicidade)`);
-      } else {
-        setPreview(resp);
       }
-      if (ov && ov.size) setPreview(resp);
+      setPreview(resp);
       if (!opts?.keepRemovidos) setRemovidos(new Set());
       toast.success(
         `${data.resumo.total} equipamentos processados${excluir.length ? ` (${excluir.length} excluídos)` : ""}`,
