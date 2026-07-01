@@ -55,6 +55,19 @@ type PreviewResp = {
 
 const MES_LABEL = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"];
 
+const PERIOD_MESES: Record<string, number> = {
+  MENSAL: 1, BIMESTRAL: 2, TRIMESTRAL: 3, QUADRIMESTRAL: 4, SEMESTRAL: 6, ANUAL: 12,
+};
+const periodMeses = (p: string) => PERIOD_MESES[(p || "").toUpperCase()] ?? 6;
+
+// Regenera cadeia a partir de um mês inicial usando a periodicidade
+const chainFrom = (inicio: number, p: string): number[] => {
+  const step = periodMeses(p);
+  const out: number[] = [];
+  for (let m = inicio; m >= 1 && m <= 12; m += step) out.push(m);
+  return out;
+};
+
 const statusBg: Record<string, string> = {
   nunca: "bg-red-100 text-red-900",
   vencido: "bg-amber-100 text-amber-900",
@@ -158,6 +171,38 @@ export default function GerarPlanoPreventivasDialog({
         meses_planejados: meses,
         ht_total_ano: meses.length * it.ht_por_ocorrencia,
       };
+    });
+    setPreview(recalcAggregates(itens, preview));
+  };
+
+  // Move um mês agendado para outro, regenerando a cadeia a partir dali
+  const moverMes = (equipId: string, de: number, para: number) => {
+    if (!preview || de === para) return;
+    const itens = preview.itens.map((it) => {
+      if (it.equip_id !== equipId) return it;
+      if (!it.meses_planejados.includes(de)) return it;
+      // Mantém os agendamentos ANTERIORES ao mês arrastado, regenera cadeia a partir de `para`
+      const anteriores = it.meses_planejados.filter((m) => m < de && m < para);
+      const nova = chainFrom(para, it.periodicidade);
+      const merged = Array.from(new Set([...anteriores, ...nova])).sort((a, b) => a - b);
+      return {
+        ...it,
+        meses_planejados: merged,
+        mes_inicio_ciclo: merged[0] ?? it.mes_inicio_ciclo,
+        ht_total_ano: merged.length * it.ht_por_ocorrencia,
+      };
+    });
+    setPreview(recalcAggregates(itens, preview));
+  };
+
+  // Adiciona uma nova ocorrência isolada (sem regenerar cadeia)
+  const adicionarMes = (equipId: string, mes: number) => {
+    if (!preview) return;
+    const itens = preview.itens.map((it) => {
+      if (it.equip_id !== equipId) return it;
+      if (it.meses_planejados.includes(mes)) return it;
+      const meses = [...it.meses_planejados, mes].sort((a, b) => a - b);
+      return { ...it, meses_planejados: meses, ht_total_ano: meses.length * it.ht_por_ocorrencia };
     });
     setPreview(recalcAggregates(itens, preview));
   };
@@ -322,11 +367,40 @@ export default function GerarPlanoPreventivasDialog({
                           const on = setMes.has(m);
                           return (
                             <TableCell key={m} className={cn(
-                              "text-center text-xs font-medium cursor-pointer hover:ring-2 hover:ring-primary/40 transition",
+                              "text-center text-xs font-medium hover:ring-2 hover:ring-primary/40 transition select-none",
+                              on ? "cursor-grab active:cursor-grabbing" : "cursor-pointer",
                               on && statusBg[it.status],
                             )}
-                              onClick={() => toggleMes(it.equip_id, m)}
-                              title={on ? "Clique para remover deste mês" : "Clique para agendar neste mês"}
+                              draggable={on}
+                              onDragStart={(e) => {
+                                if (!on) return;
+                                e.dataTransfer.effectAllowed = "move";
+                                e.dataTransfer.setData("text/plain", JSON.stringify({ equipId: it.equip_id, from: m }));
+                              }}
+                              onDragOver={(e) => {
+                                e.preventDefault();
+                                e.dataTransfer.dropEffect = "move";
+                              }}
+                              onDrop={(e) => {
+                                e.preventDefault();
+                                try {
+                                  const raw = e.dataTransfer.getData("text/plain");
+                                  if (!raw) return;
+                                  const { equipId, from } = JSON.parse(raw);
+                                  if (equipId === it.equip_id && typeof from === "number") {
+                                    moverMes(it.equip_id, from, m);
+                                  }
+                                } catch {}
+                              }}
+                              onClick={() => {
+                                if (on) toggleMes(it.equip_id, m);
+                                else adicionarMes(it.equip_id, m);
+                              }}
+                              title={
+                                on
+                                  ? "Arraste para mover (regenera a cadeia) · clique para remover"
+                                  : "Clique para adicionar preventiva neste mês"
+                              }
                             >
                               {on ? it.ht_por_ocorrencia : ""}
                             </TableCell>
