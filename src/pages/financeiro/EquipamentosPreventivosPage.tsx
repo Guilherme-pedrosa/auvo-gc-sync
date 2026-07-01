@@ -1542,6 +1542,16 @@ export default function EquipamentosPreventivosPage() {
             {syncing ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <RefreshCw className="h-4 w-4 mr-1" />}
             Sincronizar
           </Button>
+          <Button
+            onClick={handleRecalcConsolidado}
+            disabled={recalcSyncing || isFetching}
+            size="sm"
+            variant="outline"
+            title={rawData?.consolidadoAtualizadoEm ? `Consolidado atualizado em ${format(parseISO(rawData.consolidadoAtualizadoEm), "dd/MM HH:mm", { locale: ptBR })}` : "Recalcular tabela consolidada agora (não espera o cron 06:05)"}
+          >
+            {recalcSyncing ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Sparkles className="h-4 w-4 mr-1" />}
+            Recalcular consolidado
+          </Button>
         </div>
       </div>
 
