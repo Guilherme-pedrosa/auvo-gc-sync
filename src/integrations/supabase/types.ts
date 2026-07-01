@@ -400,6 +400,7 @@ export type Database = {
           ano_referencia: number
           ativo: boolean
           atualizado_em: string
+          cliente_nome: string
           codigo_barras_auvo: string
           criado_em: string
           criado_por: string | null
@@ -420,6 +421,7 @@ export type Database = {
           ano_referencia: number
           ativo?: boolean
           atualizado_em?: string
+          cliente_nome: string
           codigo_barras_auvo: string
           criado_em?: string
           criado_por?: string | null
@@ -440,6 +442,7 @@ export type Database = {
           ano_referencia?: number
           ativo?: boolean
           atualizado_em?: string
+          cliente_nome?: string
           codigo_barras_auvo?: string
           criado_em?: string
           criado_por?: string | null
