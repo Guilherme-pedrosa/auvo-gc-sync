@@ -464,6 +464,9 @@ export default function EquipamentosPreventivosPage() {
   const defaultSyncEnd = format(new Date(), "yyyy-MM-dd");
   const [syncStartDate, setSyncStartDate] = useState(defaultSyncStart);
   const [syncEndDate, setSyncEndDate] = useState(defaultSyncEnd);
+  // Quando true, o range de datas ao lado do "Sincronizar" também é aplicado
+  // como filtro de linhas (janela da última intervenção). Desligado por padrão.
+  const [applyDateFilter, setApplyDateFilter] = useState(false);
 
   const { data: rawData, isLoading, refetch, isFetching } = useQuery({
     queryKey: ["equipamentos-preventivos-raw", "v2-only-ativos"],
