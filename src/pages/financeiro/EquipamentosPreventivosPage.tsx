@@ -1159,7 +1159,8 @@ export default function EquipamentosPreventivosPage() {
     tipoTarefaFilter.length > 0 && `Tipos tarefa: ${tipoTarefaFilter.length}`,
     tipoEquipFilter.length > 0 && `Tipos equip.: ${tipoEquipFilter.length}`,
     grupoFilter !== "todos" && `Grupo: ${(gruposData?.grupos ?? []).find((g: any) => g.id === grupoFilter)?.nome || "—"}`,
-    // Período de sincronização não conta como filtro ativo.
+    // Período de sincronização só conta como filtro ativo quando o toggle está ligado.
+    applyDateFilter && syncStartDate && syncEndDate && `Período: ${format(parseISO(syncStartDate), "dd/MM/yy")} → ${format(parseISO(syncEndDate), "dd/MM/yy")}`,
     proximaMesFilter.length > 0 && `Próx. preventiva: ${
       proximaMesFilter.map((v) =>
         v === "atrasado" ? "Atrasadas"
