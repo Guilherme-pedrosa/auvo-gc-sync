@@ -680,7 +680,7 @@ export default function GerarPlanoPreventivasDialog({
                 </TableBody>
                 <tfoot className="sticky bottom-0 bg-background border-t-2">
                   <tr className="border-t">
-                    <td colSpan={6} className="p-2 text-right text-xs font-semibold">TOTAL MÊS (h)</td>
+                    <td colSpan={7} className="p-2 text-right text-xs font-semibold">TOTAL MÊS (h)</td>
                     {totMes.map((m) => (
                       <td key={m.mes} className="p-2 text-center text-xs font-semibold">{m.ht_agendada.toFixed(1)}</td>
                     ))}
@@ -690,7 +690,7 @@ export default function GerarPlanoPreventivasDialog({
                     <td></td>
                   </tr>
                   <tr>
-                    <td colSpan={6} className="p-2 text-right text-xs text-muted-foreground">META (h)</td>
+                    <td colSpan={7} className="p-2 text-right text-xs text-muted-foreground">META (h)</td>
                     {totMes.map((m) => (
                       <td key={m.mes} className="p-2 text-center text-xs text-muted-foreground">{m.teto.toFixed(1)}</td>
                     ))}
@@ -700,7 +700,7 @@ export default function GerarPlanoPreventivasDialog({
                     <td></td>
                   </tr>
                   <tr>
-                    <td colSpan={6} className="p-2 text-right text-xs font-semibold">SALDO (h)</td>
+                    <td colSpan={7} className="p-2 text-right text-xs font-semibold">SALDO (h)</td>
                     {totMes.map((m) => (
                       <td key={m.mes} className={cn(
                         "p-2 text-center text-xs font-semibold",
