@@ -581,10 +581,19 @@ Deno.serve(async (req) => {
         const eq = eqByCod.get(String(r.codigo_barras_auvo));
         if (!eq) continue;
         const mesInicioR = Math.min(12, Math.max(1, Number(r.mes_inicio_ciclo) || 1));
-        const proxima = `${ano_referencia}-${String(mesInicioR).padStart(2, "0")}-01`;
         const meses = Array.isArray(r.meses_planejados) && r.meses_planejados.length
           ? r.meses_planejados
           : [mesInicioR];
+        // "próxima" = primeiro mês planejado >= mês atual (se o ano é o atual); senão, o primeiro planejado do ano.
+        const hoje = new Date();
+        const anoRefN = Number(ano_referencia);
+        const mesAtual = hoje.getMonth() + 1;
+        const mesesOrdenados = [...meses].map((m: any) => Math.min(12, Math.max(1, Number(m) || 1))).sort((a, b) => a - b);
+        let mesProx: number;
+        if (anoRefN > hoje.getFullYear()) mesProx = mesesOrdenados[0];
+        else if (anoRefN < hoje.getFullYear()) mesProx = mesesOrdenados[mesesOrdenados.length - 1];
+        else mesProx = mesesOrdenados.find((m) => m >= mesAtual) ?? mesesOrdenados[0];
+        const proxima = `${ano_referencia}-${String(mesProx).padStart(2, "0")}-01`;
         const periodNorm = normalizePer(r.periodicidade);
         const { error: e1 } = await supabase.from("plano_preventivo_item").upsert({
           grupo_id: grupoDestino,
