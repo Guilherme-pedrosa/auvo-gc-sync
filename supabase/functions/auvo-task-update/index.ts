@@ -464,6 +464,7 @@ Deno.serve(async (req) => {
 
       // 4) Payload Auvo (PUT /tasks)
       const taskPayload: any = {
+        idUserFrom: Number(idUserTo),
         idUserTo: Number(idUserTo),
         customerId: Number(customerId),
         taskType: Number(taskTypeId),
@@ -472,11 +473,9 @@ Deno.serve(async (req) => {
         priority: Number(priority),
         orientation: String(orientation || "Preventiva programada").substring(0, 500),
         equipmentsId: [String(auvoEquipmentId)],
-        address: {
-          address: cust?.address || "",
-          latitude: cust?.latitude ?? 0,
-          longitude: cust?.longitude ?? 0,
-        },
+        address: cust?.address || eq?.address || "Endereço não informado",
+        latitude: Number(cust?.latitude ?? eq?.latitude ?? 0),
+        longitude: Number(cust?.longitude ?? eq?.longitude ?? 0),
         sendSatisfactionSurvey: false,
       };
 
@@ -499,6 +498,10 @@ Deno.serve(async (req) => {
       const respText = await response.text();
       let data: any;
       try { data = JSON.parse(respText); } catch { data = { raw: respText }; }
+
+      if (!response.ok) {
+        console.error(`[auvo-task-update][reqId=${reqId}] create-preventive-task Auvo ${response.status}:`, respText);
+      }
 
       // Auvo costuma devolver taskId em result.taskID (sucesso = 200/201)
       const newTaskId =
