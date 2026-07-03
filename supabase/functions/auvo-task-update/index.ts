@@ -504,8 +504,13 @@ Deno.serve(async (req) => {
       }
 
       // Auvo costuma devolver taskId em result.taskID (sucesso = 200/201)
+      const r = data?.result ?? {};
       const newTaskId =
-        data?.result?.taskID ?? data?.result?.taskId ?? data?.result?.id ?? null;
+        r?.taskID ?? r?.taskId ?? r?.id ??
+        r?.entity?.taskID ?? r?.entity?.taskId ?? r?.entity?.id ??
+        r?.task?.taskID ?? r?.task?.taskId ?? r?.task?.id ??
+        data?.taskID ?? data?.taskId ?? data?.id ?? null;
+      console.log(`[auvo-task-update][reqId=${reqId}] create-preventive-task status=${response.status} taskId=${newTaskId} body=`, respText.substring(0, 800));
 
       return new Response(
         JSON.stringify({

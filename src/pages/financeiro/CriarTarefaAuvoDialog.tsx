@@ -157,14 +157,18 @@ export default function CriarTarefaAuvoDialog({ open, onOpenChange, equipamento,
         },
       });
       if (error) throw error;
-      if (data?.success && data?.taskId) {
-        toast.success(`Tarefa criada no Auvo (#${data.taskId})`, {
-          action: {
-            label: "Abrir",
-            onClick: () => window.open(`https://app2.auvo.com.br/gerenciarTarefas/tarefa/${data.taskId}`, "_blank"),
-          },
+      const okStatus = data?.status === 200 || data?.status === 201;
+      if (data?.success || okStatus) {
+        const tid = data?.taskId ? String(data.taskId) : null;
+        toast.success(tid ? `Tarefa criada no Auvo (#${tid})` : "Tarefa criada no Auvo", {
+          action: tid
+            ? {
+                label: "Abrir",
+                onClick: () => window.open(`https://app2.auvo.com.br/gerenciarTarefas/tarefa/${tid}`, "_blank"),
+              }
+            : undefined,
         });
-        onCreated?.(String(data.taskId));
+        onCreated?.(tid);
         onOpenChange(false);
       } else {
         const msg = data?.error || data?.data?.errorMessage || data?.data?.error || `Status ${data?.status}`;
