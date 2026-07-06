@@ -1121,6 +1121,147 @@ Deno.serve(async (req) => {
         status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
+
+    // ─── Action: bump_situacao_recalc ───
+    // Força o GC a recalcular valor_total de OS zeradas trocando a situação para a
+    // TRANSITÓRIA (8896431) e devolvendo à situação original. Bloqueia OS com
+    // qualquer pagamento já quitado (data_pagamento preenchida ou situacao="pago"),
+    // pois mexer em situação nesse caso quebra o financeiro no GC.
+    if (body?.action === "bump_situacao_recalc") {
+      const codigos: string[] = Array.isArray(body.gc_os_codigos) ? body.gc_os_codigos.map(String) : [];
+      const dryRun: boolean = body.dry_run !== false;
+
+      if (!codigos.length) {
+        return new Response(JSON.stringify({ error: "gc_os_codigos é obrigatório (array de códigos)" }), {
+          status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      const isPagamentoQuitado = (pag: Record<string, unknown>): boolean => {
+        const situacao = String(pag.situacao ?? pag.status ?? "").toLowerCase().trim();
+        if (situacao === "pago" || situacao === "quitado" || situacao === "recebido") return true;
+        const dtPag = String(pag.data_pagamento ?? pag.data_baixa ?? "").trim();
+        if (dtPag && !/^0{4}-0{2}-0{2}/.test(dtPag) && !/^1900-/.test(dtPag)) return true;
+        const pagoFlag = pag.pago ?? pag.quitado ?? pag.recebido;
+        if (pagoFlag === true || pagoFlag === 1 || String(pagoFlag).toLowerCase() === "true" || String(pagoFlag) === "1") return true;
+        const valorPago = parseCurrency(pag.valor_pago ?? pag.valor_recebido ?? 0);
+        if (valorPago > 0) return true;
+        return false;
+      };
+
+      const results: any[] = [];
+      for (const codigo of codigos) {
+        const os = await fetchOsByCodigo(codigo, gcHeaders);
+        if (!os) {
+          results.push({ gc_os_codigo: codigo, resultado: "nao_encontrada" });
+          continue;
+        }
+        const gcOsId = String(os.id || "");
+        const gcOsCodigo = String(os.codigo || codigo);
+        const situacaoOriginal = String((os as any).situacao_id ?? (os as any)?.situacao?.id ?? "");
+        const nomeSituacaoOriginal = String((os as any).nome_situacao ?? "");
+        const before = getOsFinancialSnapshot(os);
+
+        if (before.valorOriginal > 0) {
+          results.push({ gc_os_id: gcOsId, gc_os_codigo: gcOsCodigo, resultado: "sem_correcao_valor_ja_ok", valor_atual: formatCurrency(before.valorOriginal) });
+          continue;
+        }
+
+        const pagamentos = before.pagamentos;
+        const pagQuitados = pagamentos.filter(isPagamentoQuitado);
+        if (pagQuitados.length > 0) {
+          results.push({
+            gc_os_id: gcOsId, gc_os_codigo: gcOsCodigo,
+            resultado: "bloqueado_financeiro_quitado",
+            situacao_original: situacaoOriginal,
+            nome_situacao: nomeSituacaoOriginal,
+            total_pagamentos: formatCurrency(before.totalPagamentos),
+            pagamentos_quitados: pagQuitados.length,
+            de_total_pagamentos: pagamentos.length,
+          });
+          continue;
+        }
+
+        if (!situacaoOriginal) {
+          results.push({ gc_os_id: gcOsId, gc_os_codigo: gcOsCodigo, resultado: "sem_situacao_original" });
+          continue;
+        }
+
+        if (dryRun) {
+          results.push({
+            gc_os_id: gcOsId, gc_os_codigo: gcOsCodigo,
+            resultado: "dry_run_ok",
+            situacao_original: situacaoOriginal,
+            nome_situacao: nomeSituacaoOriginal,
+            valor_atual: formatCurrency(before.valorOriginal),
+            total_itens: formatCurrency(before.totalItens),
+            total_pagamentos: formatCurrency(before.totalPagamentos),
+            pagamentos: pagamentos.length,
+            plano: `PUT situacao_id=${SITUACAO_TRANSITORIA} → PUT situacao_id=${situacaoOriginal}`,
+          });
+          continue;
+        }
+
+        // ── STEP 1: PUT para situação TRANSITÓRIA ──
+        const payloadTransit: Record<string, unknown> = { ...os, situacao_id: SITUACAO_TRANSITORIA };
+        if (body?.gc_usuario_id) payloadTransit.usuario_id = String(body.gc_usuario_id);
+        const putTransit = await executarPutOs(gcOsId, payloadTransit, gcHeaders, "BUMP_RECALC_TRANSITORIA");
+        if (!putTransit.success) {
+          results.push({
+            gc_os_id: gcOsId, gc_os_codigo: gcOsCodigo, resultado: "erro_gc_transitoria",
+            situacao_original: situacaoOriginal, http_status: putTransit.status, erro: putTransit.body,
+          });
+          continue;
+        }
+        await new Promise((r) => setTimeout(r, 800));
+
+        // ── STEP 2: GET novamente e devolver à situação original ──
+        const osTransit = await buscarOsAtual(gcOsId, gcHeaders);
+        if (!osTransit) {
+          results.push({
+            gc_os_id: gcOsId, gc_os_codigo: gcOsCodigo, resultado: "erro_get_pos_transitoria",
+            situacao_original: situacaoOriginal, http_status: 500,
+            aviso: "OS foi movida para transitória mas GET falhou — reverta manualmente no GC",
+          });
+          continue;
+        }
+        const payloadRevert: Record<string, unknown> = { ...osTransit, situacao_id: situacaoOriginal };
+        if (body?.gc_usuario_id) payloadRevert.usuario_id = String(body.gc_usuario_id);
+        const putRevert = await executarPutOs(gcOsId, payloadRevert, gcHeaders, "BUMP_RECALC_REVERT");
+        if (!putRevert.success) {
+          results.push({
+            gc_os_id: gcOsId, gc_os_codigo: gcOsCodigo, resultado: "erro_gc_revert",
+            situacao_original: situacaoOriginal, http_status: putRevert.status, erro: putRevert.body,
+            aviso: "OS ficou em TRANSITÓRIA — reverta manualmente para " + situacaoOriginal,
+          });
+          continue;
+        }
+        await new Promise((r) => setTimeout(r, 500));
+
+        // ── STEP 3: GET final para verificar valor_total ──
+        const osDepois = await buscarOsAtual(gcOsId, gcHeaders);
+        const valorDepois = parseCurrency((osDepois as any)?.valor_total ?? (osDepois as any)?.valor);
+        const corrigiu = valorDepois > 0;
+        results.push({
+          gc_os_id: gcOsId, gc_os_codigo: gcOsCodigo,
+          resultado: corrigiu ? "corrigida" : "gc_aceitou_mas_manteve_zero",
+          situacao_original: situacaoOriginal,
+          nome_situacao: nomeSituacaoOriginal,
+          valor_antes: formatCurrency(before.valorOriginal),
+          valor_depois: formatCurrency(valorDepois),
+        });
+      }
+
+      return new Response(JSON.stringify({
+        success: true, dry_run: dryRun, total: results.length,
+        corrigidas: results.filter(r => r.resultado === "corrigida").length,
+        bloqueadas_quitado: results.filter(r => r.resultado === "bloqueado_financeiro_quitado").length,
+        erros: results.filter(r => String(r.resultado).startsWith("erro_")).length,
+        results,
+      }), {
+        status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
     
     // ─── Action: batch_scan — listar OS na situação 7116099 modificadas após uma data ───
     // (action fix_data_saida adicionado mais abaixo, antes de batch_scan via early-return acima)
