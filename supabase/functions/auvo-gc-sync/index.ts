@@ -1086,7 +1086,19 @@ Deno.serve(async (req) => {
         const before = getOsFinancialSnapshot(os);
         const payload: Record<string, unknown> = { ...os };
         const after = normalizeOsFinancialTotals(payload);
-        payload.__force_recalculate_totals = true;
+        // NÃO usar __force_recalculate_totals aqui: o GC não recalcula sozinho a partir dos itens.
+        // Precisamos enviar valor_total / valor_produtos / valor_servicos explicitamente
+        // (já preenchidos por normalizeOsFinancialTotals acima).
+        if (parseCurrency(payload.valor_produtos) <= 0 && after.totalProdutos > 0) {
+          payload.valor_produtos = formatCurrency(after.totalProdutos);
+        }
+        if (parseCurrency(payload.valor_servicos) <= 0 && after.totalServicos > 0) {
+          payload.valor_servicos = formatCurrency(after.totalServicos);
+        }
+        if (parseCurrency(payload.valor_total) <= 0 && after.targetTotal > 0) {
+          payload.valor_total = formatCurrency(after.targetTotal);
+          if (payload.valor !== undefined) payload.valor = formatCurrency(after.targetTotal);
+        }
         const precisaCorrigir = before.valorOriginal <= 0 && Math.round(after.targetTotal * 100) > 0;
 
         if (!precisaCorrigir) {
