@@ -114,6 +114,113 @@ function formatCurrency(value: number): string {
   return Math.max(0, value).toFixed(2);
 }
 
+function collectPaymentRefs(root: unknown): Array<Record<string, unknown>> {
+  const refs: Array<Record<string, unknown>> = [];
+  const visitados = new Set<object>();
+
+  const visitar = (node: unknown, depth: number) => {
+    if (!node || depth > 6) return;
+    if (Array.isArray(node)) {
+      for (const item of node) visitar(item, depth + 1);
+      return;
+    }
+    if (typeof node !== "object") return;
+    if (visitados.has(node as object)) return;
+    visitados.add(node as object);
+
+    const obj = node as Record<string, unknown>;
+    for (const [key, value] of Object.entries(obj)) {
+      if ((key === "parcelas" || key === "pagamentos") && Array.isArray(value)) {
+        for (const item of value) {
+          if (!item || typeof item !== "object") continue;
+          const itemObj = item as Record<string, unknown>;
+          const inner = itemObj.parcela ?? itemObj.pagamento;
+          if (inner && typeof inner === "object") refs.push(inner as Record<string, unknown>);
+          else refs.push(itemObj);
+        }
+        continue;
+      }
+      visitar(value, depth + 1);
+    }
+  };
+
+  visitar(root, 0);
+  return refs;
+}
+
+function getOsFinancialSnapshot(payload: Record<string, unknown>) {
+  const totalServicos = sumWrappedItems(payload.servicos, "servico");
+  const totalProdutos = sumWrappedItems(payload.produtos, "produto");
+  const desconto = parseCurrency(payload.desconto_valor);
+  const frete = parseCurrency(payload.valor_frete);
+  const totalItens = Math.max(0, totalServicos + totalProdutos + frete - desconto);
+  const valorOriginal = parseCurrency(payload.valor_total ?? payload.valor);
+  const pagamentos = collectPaymentRefs(payload);
+  const totalPagamentos = pagamentos.reduce((sum, pagamento) => {
+    return sum + parseCurrency(pagamento.valor ?? pagamento.valor_parcela ?? 0);
+  }, 0);
+
+  return { totalServicos, totalProdutos, totalItens, valorOriginal, totalPagamentos, pagamentos };
+}
+
+function normalizeOsFinancialTotals(payload: Record<string, unknown>) {
+  const snap = getOsFinancialSnapshot(payload);
+  const targetTotal = snap.valorOriginal > 0
+    ? snap.valorOriginal
+    : (snap.totalPagamentos > 0 ? snap.totalPagamentos : snap.totalItens);
+
+  const itensBatemComTotal = Math.abs(Math.round((snap.totalItens - targetTotal) * 100)) <= 1;
+
+  if (itensBatemComTotal && snap.totalProdutos > 0 && parseCurrency(payload.valor_produtos) <= 0) {
+    payload.valor_produtos = formatCurrency(snap.totalProdutos);
+  }
+
+  if (itensBatemComTotal && snap.totalServicos > 0 && parseCurrency(payload.valor_servicos) <= 0) {
+    payload.valor_servicos = formatCurrency(snap.totalServicos);
+  }
+
+  if (targetTotal > 0 && snap.valorOriginal <= 0) {
+    payload.valor_total = formatCurrency(targetTotal);
+    if (payload.valor !== undefined) payload.valor = formatCurrency(targetTotal);
+  }
+
+  return { ...snap, targetTotal };
+}
+
+function forceGcRecalculateFromItems(payload: Record<string, unknown>) {
+  delete payload.valor_total;
+  delete payload.valor_produtos;
+  delete payload.valor_servicos;
+  delete payload.valor;
+
+  const normalizeItems = (items: unknown, key: "produto" | "servico") => {
+    if (!Array.isArray(items)) return;
+    for (const item of items) {
+      const inner = item && typeof item === "object"
+        ? ((item as Record<string, unknown>)[key] ?? item)
+        : null;
+      if (!inner || typeof inner !== "object") continue;
+      const obj = inner as Record<string, unknown>;
+      delete obj.valor_total;
+      if (!obj.tipo_desconto) obj.tipo_desconto = "R$";
+      if (obj.desconto_valor === "" || obj.desconto_valor == null) obj.desconto_valor = "0.0000";
+      if (obj.desconto_porcentagem === "" || obj.desconto_porcentagem == null) obj.desconto_porcentagem = "0.0000";
+    }
+  };
+
+  normalizeItems(payload.produtos, "produto");
+  normalizeItems(payload.servicos, "servico");
+}
+
+async function fetchOsByCodigo(codigo: string, gcHeaders: Record<string, string>): Promise<Record<string, unknown> | null> {
+  const url = `${GC_BASE_URL}/api/ordens_servicos?codigo=${encodeURIComponent(codigo)}&limite=1`;
+  const resp = await rateLimitedFetch(url, { headers: gcHeaders }, "gc");
+  if (!resp.ok) return null;
+  const data = await resp.json().catch(() => ({}));
+  const list = Array.isArray(data?.data) ? data.data : [];
+  return list[0] && typeof list[0] === "object" ? list[0] as Record<string, unknown> : null;
+}
+
 function parseAuvoTaskIds(raw: unknown): string[] {
   return String(raw ?? "")
     .split("/")
@@ -569,70 +676,32 @@ async function executarPutOs(
   const url = `${GC_BASE_URL}/api/ordens_servicos/${gcOsId}`;
 
   // Campos de leitura que podem causar rejeição/efeito colateral no PUT
-  const camposRemover = ["id", "codigo", "nome_situacao", "cor_situacao", "hash", "cadastrado_em", "modificado_em"];
+  const camposRemover = ["id", "nome_situacao", "cor_situacao", "hash", "cadastrado_em", "modificado_em"];
   for (const campo of camposRemover) delete payload[campo];
+
+  if (!payload.data && payload.data_entrada) payload.data = payload.data_entrada;
+  if (!payload.tipo) payload.tipo = Array.isArray(payload.servicos) && !Array.isArray(payload.produtos) ? "servico" : "produto";
+  if (!payload.tipo_desconto) payload.tipo_desconto = "R$";
+  const shouldForceRecalculate = payload.__force_recalculate_totals === true;
+  delete payload.__force_recalculate_totals;
 
   // data_saida: se fornecida via options, usar; caso contrário manter vazio
   // NÃO sobrescrever aqui — será definida em atualizarSituacaoOsGC
 
-  // Recalcula totais apenas como fallback (sem sobrescrever financeiro original da OS)
-  const totalServicos = sumWrappedItems(payload.servicos, "servico");
-  const totalProdutos = sumWrappedItems(payload.produtos, "produto");
-  const desconto = parseCurrency(payload.desconto_valor);
-  const frete = parseCurrency(payload.valor_frete);
-  const totalCalculado = totalServicos + totalProdutos + frete - desconto;
-
-  // Preserva valor total original quando existir; só define fallback quando vier zerado/ausente
-  const valorTotalOriginal = parseCurrency(payload.valor_total ?? payload.valor);
-  const valorTotalFinal = valorTotalOriginal > 0 ? valorTotalOriginal : totalCalculado;
-
-  if (valorTotalOriginal <= 0 && valorTotalFinal > 0) {
-    payload.valor_total = formatCurrency(valorTotalFinal);
-    if (payload.valor !== undefined) payload.valor = formatCurrency(valorTotalFinal);
-  }
+  // Preserva financeiro quando válido, mas NUNCA envia cabeçalho zerado se itens/pagamentos têm valor.
+  // O GC aceita PUT destrutivo: se valor_total/valor_produtos/valor_servicos forem reenviados como 0,
+  // a listagem da OS fica zerada mesmo mantendo itens e parcelas com valor.
+  const financial = normalizeOsFinancialTotals(payload);
+  if (shouldForceRecalculate) forceGcRecalculateFromItems(payload);
 
   // Ajuste resiliente: percorre qualquer coleção de parcelas no payload e corrige diff de centavos no total agregado
-  const coletarParcelas = (root: unknown): Array<Record<string, unknown>> => {
-    const refs: Array<Record<string, unknown>> = [];
-    const visitados = new Set<object>();
-
-    const visitar = (node: unknown, depth: number) => {
-      if (!node || depth > 6) return;
-      if (Array.isArray(node)) {
-        for (const item of node) visitar(item, depth + 1);
-        return;
-      }
-      if (typeof node !== "object") return;
-      if (visitados.has(node as object)) return;
-      visitados.add(node as object);
-
-      const obj = node as Record<string, unknown>;
-      for (const [key, value] of Object.entries(obj)) {
-        if ((key === "parcelas" || key === "pagamentos") && Array.isArray(value)) {
-          for (const item of value) {
-            if (!item || typeof item !== "object") continue;
-            const itemObj = item as Record<string, unknown>;
-            const inner = itemObj.parcela ?? itemObj.pagamento;
-            if (inner && typeof inner === "object") refs.push(inner as Record<string, unknown>);
-            else refs.push(itemObj);
-          }
-          continue;
-        }
-        visitar(value, depth + 1);
-      }
-    };
-
-    visitar(root, 0);
-    return refs;
-  };
-
-  const parcelasRefs = coletarParcelas(payload);
-  if (parcelasRefs.length > 0 && valorTotalFinal > 0) {
+  const parcelasRefs = financial.pagamentos;
+  if (parcelasRefs.length > 0 && financial.targetTotal > 0) {
     const totalParcelasCents = parcelasRefs.reduce((sum, parcela) => {
       return sum + Math.round(parseCurrency(parcela.valor ?? parcela.valor_parcela ?? 0) * 100);
     }, 0);
 
-    const targetCents = Math.round(valorTotalFinal * 100);
+    const targetCents = Math.round(financial.targetTotal * 100);
     const diffCents = targetCents - totalParcelasCents;
 
     // Ajusta apenas divergências pequenas (até R$ 1,00)
@@ -721,7 +790,7 @@ async function executarPutOs(
         : (sobrandoMatch ? -parseCurrency(sobrandoMatch[1]) : 0);
 
       if (Math.abs(diffForcado) > 0 && Math.abs(diffForcado) <= 1) {
-        const refsRetry = coletarParcelas(payload);
+        const refsRetry = collectPaymentRefs(payload);
         if (refsRetry.length > 0) {
           const ultimaParcela = refsRetry[refsRetry.length - 1];
           const atual = parseCurrency(ultimaParcela.valor ?? ultimaParcela.valor_parcela ?? 0);
@@ -967,6 +1036,90 @@ Deno.serve(async (req) => {
     }
 
     // ─── Actions that only need GC (no Auvo login required) ───
+
+    if (body?.action === "fix_zero_totals") {
+      const codigos: string[] = Array.isArray(body.gc_os_codigos) ? body.gc_os_codigos.map(String) : [];
+      const dryRun: boolean = body.dry_run !== false;
+      const scanAll: boolean = body.scan_all === true;
+      const startPage = Math.max(1, Number(body.start_page || 1));
+      const maxPages = Math.max(1, Math.min(Number(body.max_pages || 10), 100));
+
+      const osList: Record<string, unknown>[] = [];
+      const seen = new Set<string>();
+
+      for (const codigo of codigos) {
+        const os = await fetchOsByCodigo(codigo, gcHeaders);
+        const id = String(os?.id || "");
+        if (os && id && !seen.has(id)) { seen.add(id); osList.push(os); }
+      }
+
+      if (scanAll) {
+        let page = startPage;
+        let totalPages = 1;
+        const endPage = startPage + maxPages - 1;
+        while (page <= totalPages && page <= endPage) {
+          const url = `${GC_BASE_URL}/api/ordens_servicos?limite=100&pagina=${page}`;
+          const resp = await rateLimitedFetch(url, { headers: gcHeaders }, "gc");
+          if (resp.status === 429) { await new Promise(r => setTimeout(r, 3000)); continue; }
+          if (!resp.ok) break;
+          const json = await resp.json().catch(() => ({}));
+          const records: any[] = Array.isArray(json?.data) ? json.data : [];
+          totalPages = Number(json?.meta?.total_paginas || 1);
+          for (const os of records) {
+            const id = String(os?.id || "");
+            if (!id || seen.has(id)) continue;
+            if (parseCurrency(os?.valor_total ?? os?.valor) > 0) continue;
+            const snap = getOsFinancialSnapshot(os as Record<string, unknown>);
+            if (Math.round(Math.max(snap.totalPagamentos, snap.totalItens) * 100) > 0) {
+              seen.add(id);
+              osList.push(os as Record<string, unknown>);
+            }
+          }
+          page++;
+        }
+      }
+
+      const results: any[] = [];
+      for (const os of osList) {
+        const gcOsId = String(os.id || "");
+        const gcOsCodigo = String(os.codigo || gcOsId);
+        const before = getOsFinancialSnapshot(os);
+        const payload: Record<string, unknown> = { ...os };
+        const after = normalizeOsFinancialTotals(payload);
+        payload.__force_recalculate_totals = true;
+        const precisaCorrigir = before.valorOriginal <= 0 && Math.round(after.targetTotal * 100) > 0;
+
+        if (!precisaCorrigir) {
+          results.push({ gc_os_id: gcOsId, gc_os_codigo: gcOsCodigo, resultado: "sem_correcao", valor_atual: formatCurrency(before.valorOriginal), total_pagamentos: formatCurrency(before.totalPagamentos), total_itens: formatCurrency(before.totalItens) });
+          continue;
+        }
+
+        if (dryRun) {
+          results.push({ gc_os_id: gcOsId, gc_os_codigo: gcOsCodigo, resultado: "dry_run_ok", valor_antes: formatCurrency(before.valorOriginal), valor_depois: formatCurrency(after.targetTotal), valor_produtos: String(payload.valor_produtos || "0.00"), valor_servicos: String(payload.valor_servicos || "0.00"), total_pagamentos: formatCurrency(before.totalPagamentos), total_itens: formatCurrency(before.totalItens) });
+          continue;
+        }
+
+        const putResult = await executarPutOs(gcOsId, payload, gcHeaders, "FIX_ZERO_TOTALS");
+        const osDepois = putResult.success ? await buscarOsAtual(gcOsId, gcHeaders) : null;
+        const valorDepoisReal = parseCurrency((osDepois as any)?.valor_total ?? (osDepois as any)?.valor);
+        const corrigiuDeFato = putResult.success && valorDepoisReal > 0;
+        results.push({
+          gc_os_id: gcOsId,
+          gc_os_codigo: gcOsCodigo,
+          resultado: corrigiuDeFato ? "corrigida" : (putResult.success ? "gc_aceitou_mas_manteve_zero" : "erro_gc"),
+          valor_antes: formatCurrency(before.valorOriginal),
+          valor_depois: formatCurrency(after.targetTotal),
+          valor_depois_real: putResult.success ? formatCurrency(valorDepoisReal) : null,
+          http_status: putResult.status,
+          erro: corrigiuDeFato ? null : (putResult.success ? "GC retornou 200, mas a OS continuou com valor_total=0 no GET seguinte" : putResult.body),
+          body: body?.include_body === true ? putResult.body : undefined,
+        });
+      }
+
+      return new Response(JSON.stringify({ success: true, dry_run: dryRun, total: results.length, corrigiveis: results.filter(r => r.resultado === "dry_run_ok" || r.resultado === "corrigida").length, results }), {
+        status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
     
     // ─── Action: batch_scan — listar OS na situação 7116099 modificadas após uma data ───
     // (action fix_data_saida adicionado mais abaixo, antes de batch_scan via early-return acima)
