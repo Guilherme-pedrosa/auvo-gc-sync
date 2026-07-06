@@ -188,11 +188,9 @@ function normalizeOsFinancialTotals(payload: Record<string, unknown>) {
 }
 
 function forceGcRecalculateFromItems(payload: Record<string, unknown>) {
-  delete payload.valor_total;
-  delete payload.valor_produtos;
-  delete payload.valor_servicos;
-  delete payload.valor;
-
+  // Normaliza campos de desconto vazios ("") para "0.0000" — o GC trata "" como NaN
+  // e zera o cálculo do valor_total agregado. NÃO deleta os totais do cabeçalho:
+  // eles precisam ser enviados junto (o GC não recalcula sozinho).
   const normalizeItems = (items: unknown, key: "produto" | "servico") => {
     if (!Array.isArray(items)) return;
     for (const item of items) {
@@ -201,7 +199,6 @@ function forceGcRecalculateFromItems(payload: Record<string, unknown>) {
         : null;
       if (!inner || typeof inner !== "object") continue;
       const obj = inner as Record<string, unknown>;
-      delete obj.valor_total;
       if (!obj.tipo_desconto) obj.tipo_desconto = "R$";
       if (obj.desconto_valor === "" || obj.desconto_valor == null) obj.desconto_valor = "0.0000";
       if (obj.desconto_porcentagem === "" || obj.desconto_porcentagem == null) obj.desconto_porcentagem = "0.0000";
