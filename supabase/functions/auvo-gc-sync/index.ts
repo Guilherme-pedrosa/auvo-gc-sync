@@ -1083,9 +1083,9 @@ Deno.serve(async (req) => {
         const before = getOsFinancialSnapshot(os);
         const payload: Record<string, unknown> = { ...os };
         const after = normalizeOsFinancialTotals(payload);
-        // NÃO usar __force_recalculate_totals aqui: o GC não recalcula sozinho a partir dos itens.
-        // Precisamos enviar valor_total / valor_produtos / valor_servicos explicitamente
-        // (já preenchidos por normalizeOsFinancialTotals acima).
+        // Normaliza descontos vazios nos itens (GC trata "" como NaN e zera o total agregado).
+        // Envia também valor_total/valor_produtos/valor_servicos explícitos.
+        payload.__force_recalculate_totals = true;
         if (parseCurrency(payload.valor_produtos) <= 0 && after.totalProdutos > 0) {
           payload.valor_produtos = formatCurrency(after.totalProdutos);
         }
