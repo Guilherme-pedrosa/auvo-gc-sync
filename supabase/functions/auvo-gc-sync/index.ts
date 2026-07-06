@@ -1167,6 +1167,18 @@ Deno.serve(async (req) => {
           continue;
         }
 
+        // Situações que DEVEM permanecer zeradas (não recalcular)
+        const SITUACOES_MANTER_ZERO = ["7535001", "7438044"]; // PATRIMÔNIO, GARANTIA
+        if (SITUACOES_MANTER_ZERO.includes(situacaoOriginal)) {
+          results.push({
+            gc_os_id: gcOsId, gc_os_codigo: gcOsCodigo,
+            resultado: "ignorada_patrimonio_ou_garantia",
+            situacao_original: situacaoOriginal,
+            nome_situacao: nomeSituacaoOriginal,
+          });
+          continue;
+        }
+
         const pagamentos = before.pagamentos;
         const pagQuitados = pagamentos.filter(isPagamentoQuitado);
         if (pagQuitados.length > 0) {
