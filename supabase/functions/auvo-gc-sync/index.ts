@@ -188,11 +188,9 @@ function normalizeOsFinancialTotals(payload: Record<string, unknown>) {
 }
 
 function forceGcRecalculateFromItems(payload: Record<string, unknown>) {
-  delete payload.valor_total;
-  delete payload.valor_produtos;
-  delete payload.valor_servicos;
-  delete payload.valor;
-
+  // Normaliza campos de desconto vazios ("") para "0.0000" — o GC trata "" como NaN
+  // e zera o cálculo do valor_total agregado. NÃO deleta os totais do cabeçalho:
+  // eles precisam ser enviados junto (o GC não recalcula sozinho).
   const normalizeItems = (items: unknown, key: "produto" | "servico") => {
     if (!Array.isArray(items)) return;
     for (const item of items) {
@@ -201,7 +199,6 @@ function forceGcRecalculateFromItems(payload: Record<string, unknown>) {
         : null;
       if (!inner || typeof inner !== "object") continue;
       const obj = inner as Record<string, unknown>;
-      delete obj.valor_total;
       if (!obj.tipo_desconto) obj.tipo_desconto = "R$";
       if (obj.desconto_valor === "" || obj.desconto_valor == null) obj.desconto_valor = "0.0000";
       if (obj.desconto_porcentagem === "" || obj.desconto_porcentagem == null) obj.desconto_porcentagem = "0.0000";
@@ -1086,19 +1083,11 @@ Deno.serve(async (req) => {
         const before = getOsFinancialSnapshot(os);
         const payload: Record<string, unknown> = { ...os };
         const after = normalizeOsFinancialTotals(payload);
-        // NÃO usar __force_recalculate_totals aqui: o GC não recalcula sozinho a partir dos itens.
-        // Precisamos enviar valor_total / valor_produtos / valor_servicos explicitamente
-        // (já preenchidos por normalizeOsFinancialTotals acima).
-        if (parseCurrency(payload.valor_produtos) <= 0 && after.totalProdutos > 0) {
-          payload.valor_produtos = formatCurrency(after.totalProdutos);
-        }
-        if (parseCurrency(payload.valor_servicos) <= 0 && after.totalServicos > 0) {
-          payload.valor_servicos = formatCurrency(after.totalServicos);
-        }
-        if (parseCurrency(payload.valor_total) <= 0 && after.targetTotal > 0) {
-          payload.valor_total = formatCurrency(after.targetTotal);
-          if (payload.valor !== undefined) payload.valor = formatCurrency(after.targetTotal);
-        }
+        // ATENÇÃO: a API do GestãoClick IGNORA alterações em produtos/servicos/valor_total
+        // via PUT — só aceita mudanças de cabeçalho (situacao, vendedor, data_saida).
+        // Portanto este endpoint só serve para LISTAR as OS zeradas (dry_run) —
+        // a correção real precisa ser feita manualmente no GC (editar item e salvar
+        // força o recálculo do total agregado).
         const precisaCorrigir = before.valorOriginal <= 0 && Math.round(after.targetTotal * 100) > 0;
 
         if (!precisaCorrigir) {
