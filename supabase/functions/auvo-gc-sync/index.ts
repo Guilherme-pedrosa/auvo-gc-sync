@@ -1083,19 +1083,11 @@ Deno.serve(async (req) => {
         const before = getOsFinancialSnapshot(os);
         const payload: Record<string, unknown> = { ...os };
         const after = normalizeOsFinancialTotals(payload);
-        // Normaliza descontos vazios nos itens (GC trata "" como NaN e zera o total agregado).
-        // Envia também valor_total/valor_produtos/valor_servicos explícitos.
-        payload.__force_recalculate_totals = true;
-        if (parseCurrency(payload.valor_produtos) <= 0 && after.totalProdutos > 0) {
-          payload.valor_produtos = formatCurrency(after.totalProdutos);
-        }
-        if (parseCurrency(payload.valor_servicos) <= 0 && after.totalServicos > 0) {
-          payload.valor_servicos = formatCurrency(after.totalServicos);
-        }
-        if (parseCurrency(payload.valor_total) <= 0 && after.targetTotal > 0) {
-          payload.valor_total = formatCurrency(after.targetTotal);
-          if (payload.valor !== undefined) payload.valor = formatCurrency(after.targetTotal);
-        }
+        // ATENÇÃO: a API do GestãoClick IGNORA alterações em produtos/servicos/valor_total
+        // via PUT — só aceita mudanças de cabeçalho (situacao, vendedor, data_saida).
+        // Portanto este endpoint só serve para LISTAR as OS zeradas (dry_run) —
+        // a correção real precisa ser feita manualmente no GC (editar item e salvar
+        // força o recálculo do total agregado).
         const precisaCorrigir = before.valorOriginal <= 0 && Math.round(after.targetTotal * 100) > 0;
 
         if (!precisaCorrigir) {
