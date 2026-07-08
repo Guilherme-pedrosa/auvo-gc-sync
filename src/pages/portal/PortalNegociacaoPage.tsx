@@ -109,7 +109,8 @@ export default function PortalNegociacaoPage() {
   const [casaFilter, setCasaFilter] = useState<string>("__all__");
   const [mesSaidaFilter, setMesSaidaFilter] = useState<string>("__all__");
   const [situacaoFilter, setSituacaoFilter] = useState<string>("__all__");
-  const [equipSel, setEquipSel] = useState<Set<string> | null>(null); // null = todos
+  // Vazio = sem filtro (mostra tudo). Cliente marca só o que quiser filtrar.
+  const [equipSel, setEquipSel] = useState<Set<string>>(new Set());
   const [equipSearch, setEquipSearch] = useState("");
   const [equipOpen, setEquipOpen] = useState(false);
   const [selOs, setSelOs] = useState<Record<string, boolean>>({});
@@ -182,27 +183,28 @@ export default function PortalNegociacaoPage() {
     return Array.from(set).sort((a, b) => a.localeCompare(b, "pt-BR"));
   }, [data, casaFilter, situacaoFilter, mesSaidaFilter]);
 
-  // Sempre que a lista de equipamentos mudar (troca de casa/data recarregada),
-  // volta ao estado "todos selecionados".
+  // Remove seleções de equipamentos que não existem mais na lista atual.
   useEffect(() => {
-    setEquipSel(null);
+    setEquipSel((prev) => {
+      if (prev.size === 0) return prev;
+      const valid = new Set(equipamentosOpts);
+      const next = new Set<string>();
+      prev.forEach((e) => valid.has(e) && next.add(e));
+      return next.size === prev.size ? prev : next;
+    });
   }, [equipamentosOpts.join("|")]);
 
-  const equipSelectedSet = useMemo(
-    () => equipSel ?? new Set(equipamentosOpts),
-    [equipSel, equipamentosOpts],
-  );
-  const equipAllSelected = equipSel === null || equipSel.size === equipamentosOpts.length;
-  const equipFiltroAtivo = !equipAllSelected;
+  const equipSelectedSet = equipSel;
+  const equipFiltroAtivo = equipSel.size > 0;
 
   const toggleEquip = (e: string) => {
     setEquipSel((prev) => {
-      const base = new Set(prev ?? equipamentosOpts);
-      if (base.has(e)) base.delete(e); else base.add(e);
-      return base;
+      const next = new Set(prev);
+      if (next.has(e)) next.delete(e); else next.add(e);
+      return next;
     });
   };
-  const selecionarTodosEquip = () => setEquipSel(null);
+  const selecionarTodosEquip = () => setEquipSel(new Set(equipamentosOpts));
   const removerTodosEquip = () => setEquipSel(new Set());
 
   const filteredOs = useMemo(() => {
@@ -530,9 +532,9 @@ export default function PortalNegociacaoPage() {
                   <PopoverTrigger asChild>
                     <Button variant="outline" size="sm" className="w-[260px] justify-between font-normal">
                       <span className="truncate">
-                        {equipAllSelected
-                          ? `Todos os equipamentos (${equipamentosOpts.length})`
-                          : `${equipSelectedSet.size}/${equipamentosOpts.length} equipamentos`}
+                        {equipFiltroAtivo
+                          ? `${equipSelectedSet.size}/${equipamentosOpts.length} equipamentos`
+                          : `Todos os equipamentos (${equipamentosOpts.length})`}
                       </span>
                     </Button>
                   </PopoverTrigger>
