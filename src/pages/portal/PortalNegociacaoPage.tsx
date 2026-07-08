@@ -419,12 +419,12 @@ export default function PortalNegociacaoPage() {
           </Card>
           <Card className="p-3 border-l-4 border-l-emerald-500">
             <div className="flex items-center gap-2 text-xs text-muted-foreground">
-              <DollarSign className="h-4 w-4" /> Total geral pendente
+              <DollarSign className="h-4 w-4" /> Total geral OS executadas
             </div>
             <p className="text-2xl font-semibold mt-1">
-              {brl((totals?.valor_os ?? 0) + (totals?.valor_recebimentos ?? 0))}
+              {brl(totals?.valor_os ?? 0)}
             </p>
-            <p className="text-xs text-muted-foreground">OS + títulos</p>
+            <p className="text-xs text-muted-foreground">{totals?.qtd_os ?? 0} OS</p>
           </Card>
         </div>
 
