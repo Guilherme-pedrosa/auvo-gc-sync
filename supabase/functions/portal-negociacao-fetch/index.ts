@@ -7,6 +7,32 @@ const corsHeaders = {
 };
 
 const GC_BASE_URL = "https://api.gestaoclick.com";
+const AUVO_BASE_URL = "https://api.auvo.com.br/v2";
+
+async function auvoLogin(apiKey: string, apiToken: string): Promise<string | null> {
+  try {
+    const url = `${AUVO_BASE_URL}/login/?apiKey=${encodeURIComponent(apiKey)}&apiToken=${encodeURIComponent(apiToken)}`;
+    const r = await fetch(url);
+    if (!r.ok) return null;
+    const j = await r.json().catch(() => ({}));
+    return j?.result?.accessToken || null;
+  } catch { return null; }
+}
+
+async function fetchAuvoTaskLive(bearer: string, taskId: string): Promise<{ taskUrl: string; durationDecimal: number } | null> {
+  try {
+    const r = await fetch(`${AUVO_BASE_URL}/tasks/${encodeURIComponent(taskId)}`, {
+      headers: { Authorization: `Bearer ${bearer}`, "Content-Type": "application/json" },
+    });
+    if (!r.ok) return null;
+    const j = await r.json().catch(() => ({}));
+    const res = j?.result || j || {};
+    return {
+      taskUrl: String(res?.taskUrl || ""),
+      durationDecimal: Number(res?.durationDecimal || 0),
+    };
+  } catch { return null; }
+}
 
 // Situações de OS "EXECUTADO*" — todas as variantes exibidas no portal do cliente.
 // Podem ser sobrescritas via body.situacao_ids
@@ -245,11 +271,51 @@ Deno.serve(async (req) => {
             // Mesmo link que a aba "Horas" usa: primeiro o link salvo da tarefa;
             // só monta fallback se a sincronização antiga ainda não trouxe URL.
             (o as any).auvo_task_url = savedUrl || `https://app2.auvo.com.br/relatorioTarefas/DetalheTarefa/${ex}`;
+            // Marca se o URL público (informacoes/tarefa/...) ainda não foi resolvido
+            if (!/informacoes\/tarefa/.test((o as any).auvo_task_url)) {
+              (o as any)._needsAuvoLive = true;
+            }
           }
           const hrs = hoursByOs.get(o.gc_os_id);
           if (hrs && hrs > 0) (o as any).horas_execucao = hrs;
           const eqs = equipsByOs.get(o.gc_os_id);
           if (eqs && eqs.size > 0) (o as any).equipamentos = Array.from(eqs);
+        }
+
+        // Live fallback no Auvo para tarefas exec sem URL pública ou sem horas.
+        try {
+          const auvoKey = Deno.env.get("AUVO_APP_KEY");
+          const auvoTok = Deno.env.get("AUVO_TOKEN");
+          const targets = osFiltered.filter((o: any) =>
+            o.auvo_task_id && (o._needsAuvoLive || !(o.horas_execucao > 0))
+          );
+          if (auvoKey && auvoTok && targets.length > 0) {
+            const bearer = await auvoLogin(auvoKey, auvoTok);
+            if (bearer) {
+              const BATCH = 8;
+              for (let i = 0; i < targets.length; i += BATCH) {
+                const slice = targets.slice(i, i + BATCH);
+                await Promise.all(slice.map(async (o: any) => {
+                  const info = await fetchAuvoTaskLive(bearer, String(o.auvo_task_id));
+                  if (!info) return;
+                  if (info.taskUrl) {
+                    (o as any).auvo_task_url = info.taskUrl;
+                    admin.from("tarefas_central")
+                      .update({ auvo_task_url: info.taskUrl })
+                      .eq("auvo_task_id", String(o.auvo_task_id))
+                      .then(() => {}, () => {});
+                  }
+                  if (!(o.horas_execucao > 0) && info.durationDecimal > 0) {
+                    (o as any).horas_execucao = Math.round(info.durationDecimal * 100) / 100;
+                  }
+                }));
+              }
+            }
+          }
+          // limpa marcador interno
+          for (const o of osFiltered as any[]) delete o._needsAuvoLive;
+        } catch (e) {
+          console.warn("[portal-negociacao-fetch] auvo live fallback falhou:", e);
         }
       }
     } catch (e) {
