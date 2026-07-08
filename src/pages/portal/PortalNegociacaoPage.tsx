@@ -170,10 +170,17 @@ export default function PortalNegociacaoPage() {
     const set = new Set<string>();
     (data?.os_list || []).forEach((o) => {
       if (casaFilter !== "__all__" && o.cliente !== casaFilter) return;
-      (o.equipamentos || []).forEach((e) => e && set.add(e));
+      if (situacaoFilter !== "__all__" && o.situacao !== situacaoFilter) return;
+      if (mesSaidaFilter !== "__all__") {
+        const k = monthKey(o.data_saida || "");
+        if (k !== mesSaidaFilter) return;
+      }
+      const eqs = (o.equipamentos || []).filter(Boolean);
+      if (eqs.length === 0) return; // sem equipamento = sem atividade filtrável
+      eqs.forEach((e) => set.add(e));
     });
     return Array.from(set).sort((a, b) => a.localeCompare(b, "pt-BR"));
-  }, [data, casaFilter]);
+  }, [data, casaFilter, situacaoFilter, mesSaidaFilter]);
 
   // Sempre que a lista de equipamentos mudar (troca de casa/data recarregada),
   // volta ao estado "todos selecionados".
