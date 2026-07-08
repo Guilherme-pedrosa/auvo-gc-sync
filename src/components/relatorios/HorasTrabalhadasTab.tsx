@@ -339,6 +339,27 @@ export default function HorasTrabalhadasTab({
     return map;
   }, [grupos, membros]);
 
+  // Equipamentos disponíveis (id + nome) presentes nos dados atuais.
+  const equipamentosDisponiveis = useMemo(() => {
+    const map = new Map<string, string>(); // id_serie → nome
+    for (const t of data || []) {
+      const id = String(
+        t.equipamento_id_serie ||
+          equipamentoTaskMap[t.auvo_task_id]?.id_serie ||
+          "",
+      ).trim();
+      if (!id) continue;
+      const nome =
+        t.equipamento_nome ||
+        equipamentoTaskMap[t.auvo_task_id]?.nome ||
+        "Sem nome";
+      if (!map.has(id)) map.set(id, nome);
+    }
+    return Array.from(map.entries())
+      .map(([id, nome]) => ({ id, nome, label: `${nome} (${id})` }))
+      .sort((a, b) => a.label.localeCompare(b.label, "pt-BR"));
+  }, [data, equipamentoTaskMap]);
+
   // Holiday helper — Brazilian fixed national holidays. Treats holidays as FDS for billing.
   const isFeriadoBR = (dateStr: string): boolean => {
     if (!dateStr) return false;
