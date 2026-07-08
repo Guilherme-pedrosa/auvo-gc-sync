@@ -398,7 +398,7 @@ export default function PortalNegociacaoPage() {
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
           <Card className="p-3 border-l-4 border-l-amber-500">
             <div className="flex items-center gap-2 text-xs text-muted-foreground">
-              <ListChecks className="h-4 w-4" /> OS ag. negociação
+              <ListChecks className="h-4 w-4" /> OS executadas
             </div>
             <p className="text-2xl font-semibold mt-1">{totals?.qtd_os ?? 0}</p>
             <p className="text-xs text-muted-foreground">{brl(totals?.valor_os ?? 0)}</p>
@@ -530,7 +530,7 @@ export default function PortalNegociacaoPage() {
           <Tabs value={tab} onValueChange={(v) => setTab(v as "os" | "financeiro")}>
             <TabsList>
               <TabsTrigger value="os">
-                OS Ag. Negociação ({filteredOs.length})
+                OS Executadas ({filteredOs.length})
               </TabsTrigger>
               <TabsTrigger value="financeiro">
                 Financeiro Pendente ({filteredRec.length})
@@ -544,7 +544,7 @@ export default function PortalNegociacaoPage() {
                 </div>
               ) : filteredOs.length === 0 ? (
                 <div className="text-center py-12 text-muted-foreground text-sm">
-                  Nenhuma OS aguardando negociação encontrada.
+                  Nenhuma OS encontrada com os filtros atuais.
                 </div>
               ) : (
                 <div className="space-y-2">
