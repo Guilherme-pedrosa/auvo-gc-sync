@@ -147,6 +147,7 @@ Deno.serve(async (req) => {
         cor_situacao: String(o.cor_situacao || ""),
         data: String(o.data || ""),
         data_final: String(o.data_final || ""),
+        data_saida: String(o.data_saida || o.data_final || ""),
         valor_total: Number(o.valor_total || 0),
         descricao: String(o.descricao || ""),
         vendedor: String(o.nome_vendedor || ""),
