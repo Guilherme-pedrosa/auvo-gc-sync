@@ -9,7 +9,6 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Checkbox } from "@/components/ui/checkbox";
-import { SearchableSelect } from "@/components/ui/searchable-select";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import {
@@ -46,6 +45,8 @@ const monthKey = (s?: string): string => {
   if (br) return `${br[3]}-${br[2]}`;
   return "";
 };
+
+const isCoifaEquip = (e: string) => e.toLowerCase().includes("coifa");
 
 const MES_NOMES = [
   "Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho",
@@ -109,7 +110,6 @@ export default function PortalNegociacaoPage() {
   const [casaFilter, setCasaFilter] = useState<string>("__all__");
   const [mesSaidaFilter, setMesSaidaFilter] = useState<string>("__all__");
   const [situacaoFilter, setSituacaoFilter] = useState<string>("__all__");
-  // Vazio = sem filtro (mostra tudo). Cliente marca só o que quiser filtrar.
   const [equipSel, setEquipSel] = useState<Set<string>>(new Set());
   const [equipSearch, setEquipSearch] = useState("");
   const [equipOpen, setEquipOpen] = useState(false);
@@ -183,19 +183,22 @@ export default function PortalNegociacaoPage() {
     return Array.from(set).sort((a, b) => a.localeCompare(b, "pt-BR"));
   }, [data, casaFilter, situacaoFilter, mesSaidaFilter]);
 
-  // Remove seleções de equipamentos que não existem mais na lista atual.
+  // Padrão: todos os equipamentos com atividade marcados, exceto COIFA.
+  // Ao trocar casa/situação/mês, refaz a seleção padrão sem COIFA.
   useEffect(() => {
-    setEquipSel((prev) => {
-      if (prev.size === 0) return prev;
-      const valid = new Set(equipamentosOpts);
-      const next = new Set<string>();
-      prev.forEach((e) => valid.has(e) && next.add(e));
-      return next.size === prev.size ? prev : next;
-    });
+    setEquipSel(new Set(equipamentosOpts.filter((e) => !isCoifaEquip(e))));
   }, [equipamentosOpts.join("|")]);
 
   const equipSelectedSet = equipSel;
-  const equipFiltroAtivo = equipSel.size > 0;
+  const equipFiltroAtivo = equipSel.size !== equipamentosOpts.length;
+  const nonCoifaEquipamentos = useMemo(
+    () => equipamentosOpts.filter((e) => !isCoifaEquip(e)),
+    [equipamentosOpts],
+  );
+  const onlyCoifaExcluded = useMemo(() => {
+    if (equipSel.size !== nonCoifaEquipamentos.length) return false;
+    return nonCoifaEquipamentos.every((e) => equipSel.has(e));
+  }, [equipSel, nonCoifaEquipamentos]);
 
   const toggleEquip = (e: string) => {
     setEquipSel((prev) => {
@@ -207,6 +210,17 @@ export default function PortalNegociacaoPage() {
   const selecionarTodosEquip = () => setEquipSel(new Set(equipamentosOpts));
   const removerTodosEquip = () => setEquipSel(new Set());
 
+  const osSemCoifa = useMemo(() => {
+    return (data?.os_list || []).filter((o) => !(o.equipamentos || []).some(isCoifaEquip));
+  }, [data]);
+
+  const totalOsSemCoifa = useMemo(() => {
+    return osSemCoifa.reduce(
+      (acc, o) => ({ qtd: acc.qtd + 1, valor: acc.valor + Number(o.valor_total || 0) }),
+      { qtd: 0, valor: 0 },
+    );
+  }, [osSemCoifa]);
+
   const filteredOs = useMemo(() => {
     const q = search.trim().toLowerCase();
     const list = data?.os_list || [];
@@ -215,8 +229,9 @@ export default function PortalNegociacaoPage() {
       if (situacaoFilter !== "__all__" && o.situacao !== situacaoFilter) return false;
       if (equipFiltroAtivo) {
         const eqs = o.equipamentos || [];
-        if (eqs.length === 0) return false;
+        if (eqs.length === 0) return onlyCoifaExcluded && equipSelectedSet.size > 0;
         if (!eqs.some((e) => equipSelectedSet.has(e))) return false;
+        if (eqs.some((e) => !equipSelectedSet.has(e))) return false;
       }
       if (mesSaidaFilter !== "__all__") {
         const k = monthKey(o.data_saida || "");
@@ -231,7 +246,7 @@ export default function PortalNegociacaoPage() {
         (o.equipamentos || []).some((e) => e.toLowerCase().includes(q))
       );
     });
-  }, [data, search, casaFilter, mesSaidaFilter, situacaoFilter, equipSelectedSet, equipFiltroAtivo]);
+  }, [data, search, casaFilter, mesSaidaFilter, situacaoFilter, equipSelectedSet, equipFiltroAtivo, onlyCoifaExcluded]);
 
   const filteredRec = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -457,8 +472,8 @@ export default function PortalNegociacaoPage() {
             <div className="flex items-center gap-2 text-xs text-muted-foreground">
               <ListChecks className="h-4 w-4" /> OS executadas
             </div>
-            <p className="text-2xl font-semibold mt-1">{totals?.qtd_os ?? 0}</p>
-            <p className="text-xs text-muted-foreground">{brl(totals?.valor_os ?? 0)}</p>
+            <p className="text-2xl font-semibold mt-1">{totalOsSemCoifa.qtd}</p>
+            <p className="text-xs text-muted-foreground">{brl(totalOsSemCoifa.valor)}</p>
           </Card>
           <Card className="p-3 border-l-4 border-l-sky-500">
             <div className="flex items-center gap-2 text-xs text-muted-foreground">
@@ -479,9 +494,9 @@ export default function PortalNegociacaoPage() {
               <DollarSign className="h-4 w-4" /> Total geral OS executadas
             </div>
             <p className="text-2xl font-semibold mt-1">
-              {brl(totals?.valor_os ?? 0)}
+              {brl(totalOsSemCoifa.valor)}
             </p>
-            <p className="text-xs text-muted-foreground">{totals?.qtd_os ?? 0} OS</p>
+            <p className="text-xs text-muted-foreground">{totalOsSemCoifa.qtd} OS</p>
           </Card>
         </div>
 
