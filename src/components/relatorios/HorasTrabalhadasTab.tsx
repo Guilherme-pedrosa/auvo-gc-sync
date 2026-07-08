@@ -1639,9 +1639,58 @@ export default function HorasTrabalhadasTab({
               </Popover>
             </div>)}
 
+            {/* Equipment filter - searchable */}
+            {!clientMode && equipamentosDisponiveis.length > 0 && (
+              <div className="space-y-1">
+                <Label className="text-xs">Equipamento</Label>
+                <Popover open={equipOpen} onOpenChange={setEquipOpen}>
+                  <PopoverTrigger asChild>
+                    <Button variant="outline" size="sm" className="w-[240px] h-9 justify-between text-xs font-normal">
+                      <span className="truncate">
+                        {filterEquipamento === "todos"
+                          ? "Todos"
+                          : equipamentosDisponiveis.find((e) => e.id === filterEquipamento)?.label || filterEquipamento}
+                      </span>
+                      <ChevronsUpDown className="ml-2 h-3 w-3 shrink-0 opacity-50" />
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-[320px] p-0" align="start">
+                    <Command>
+                      <CommandInput placeholder="Buscar por nome ou ID..." className="h-8 text-xs" />
+                      <CommandList>
+                        <CommandEmpty>Nenhum equipamento.</CommandEmpty>
+                        <CommandGroup>
+                          <CommandItem
+                            value="todos"
+                            onSelect={() => { setFilterEquipamento("todos"); setEquipOpen(false); }}
+                            className="text-xs"
+                          >
+                            <Check className={cn("mr-2 h-3 w-3", filterEquipamento === "todos" ? "opacity-100" : "opacity-0")} />
+                            Todos ({equipamentosDisponiveis.length})
+                          </CommandItem>
+                          {equipamentosDisponiveis.map((e) => (
+                            <CommandItem
+                              key={e.id}
+                              value={`${e.nome} ${e.id}`}
+                              onSelect={() => { setFilterEquipamento(e.id); setEquipOpen(false); }}
+                              className="text-xs"
+                            >
+                              <Check className={cn("mr-2 h-3 w-3", filterEquipamento === e.id ? "opacity-100" : "opacity-0")} />
+                              <span className="truncate">
+                                {e.nome} <span className="text-muted-foreground">({e.id})</span>
+                              </span>
+                            </CommandItem>
+                          ))}
+                        </CommandGroup>
+                      </CommandList>
+                    </Command>
+                  </PopoverContent>
+                </Popover>
+              </div>
+            )}
+
             {/* Task type filter */}
             <Popover>
-              {/* placeholder */}
               <PopoverTrigger asChild>
                 <Button variant="outline" size="sm" className="gap-1.5">
                   <Filter className="h-3.5 w-3.5" />
