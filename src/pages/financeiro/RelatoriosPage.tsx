@@ -414,7 +414,7 @@ export default function RelatoriosPage() {
       return map;
     },
     enabled:
-      (activeTab === "os-abertas" || activeTab === "horas-trabalhadas") &&
+      (activeTab === "os-abertas" || activeTab === "horas") &&
       equipamentoLookupTaskIds.length > 0,
     staleTime: 5 * 60_000,
   });
