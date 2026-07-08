@@ -519,17 +519,55 @@ export default function PortalNegociacaoPage() {
                     ))}
                   </SelectContent>
                 </Select>
-                <SearchableSelect
-                  value={equipFilter}
-                  onValueChange={(v) => setEquipFilter(v || "__all__")}
-                  options={[
-                    { value: "__all__", label: "Todos os equipamentos" },
-                    ...equipamentosOpts.map((e) => ({ value: e, label: e })),
-                  ]}
-                  placeholder="Filtrar equipamento"
-                  searchPlaceholder="Digite para buscar equipamento..."
-                  className="w-[260px]"
-                />
+                <Popover open={equipOpen} onOpenChange={setEquipOpen}>
+                  <PopoverTrigger asChild>
+                    <Button variant="outline" size="sm" className="w-[260px] justify-between font-normal">
+                      <span className="truncate">
+                        {equipAllSelected
+                          ? `Todos os equipamentos (${equipamentosOpts.length})`
+                          : `${equipSelectedSet.size}/${equipamentosOpts.length} equipamentos`}
+                      </span>
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-[320px] p-2" align="start">
+                    <Input
+                      placeholder="Digite para buscar equipamento..."
+                      value={equipSearch}
+                      onChange={(e) => setEquipSearch(e.target.value)}
+                      className="h-8 mb-2"
+                    />
+                    <div className="flex gap-2 mb-2">
+                      <Button variant="secondary" size="sm" className="h-7 flex-1" onClick={selecionarTodosEquip}>
+                        Selecionar todos
+                      </Button>
+                      <Button variant="secondary" size="sm" className="h-7 flex-1" onClick={removerTodosEquip}>
+                        Remover todos
+                      </Button>
+                    </div>
+                    <ScrollArea className="h-64 pr-2">
+                      <div className="space-y-1">
+                        {equipamentosOpts
+                          .filter((e) => e.toLowerCase().includes(equipSearch.toLowerCase()))
+                          .map((e) => (
+                            <label
+                              key={e}
+                              className="flex items-start gap-2 rounded px-2 py-1 text-xs hover:bg-muted cursor-pointer"
+                            >
+                              <Checkbox
+                                checked={equipSelectedSet.has(e)}
+                                onCheckedChange={() => toggleEquip(e)}
+                                className="mt-0.5"
+                              />
+                              <span className="leading-tight break-words">{e}</span>
+                            </label>
+                          ))}
+                        {equipamentosOpts.length === 0 && (
+                          <div className="text-xs text-muted-foreground p-2">Sem equipamentos.</div>
+                        )}
+                      </div>
+                    </ScrollArea>
+                  </PopoverContent>
+                </Popover>
               </>
             )}
             <Button variant="outline" size="sm" onClick={exportExcel}>
