@@ -171,6 +171,12 @@ export default function PortalNegociacaoPage() {
     return Array.from(set).sort((a, b) => a.localeCompare(b, "pt-BR"));
   }, [data, casaFilter]);
 
+  useEffect(() => {
+    if (equipFilter !== "__all__" && !equipamentosOpts.includes(equipFilter)) {
+      setEquipFilter("__all__");
+    }
+  }, [equipamentosOpts, equipFilter]);
+
   const filteredOs = useMemo(() => {
     const q = search.trim().toLowerCase();
     const list = data?.os_list || [];
