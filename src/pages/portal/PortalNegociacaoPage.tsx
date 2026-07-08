@@ -101,6 +101,7 @@ export default function PortalNegociacaoPage() {
   const [tab, setTab] = useState<"os" | "financeiro">("os");
   const [casaFilter, setCasaFilter] = useState<string>("__all__");
   const [mesExecFilter, setMesExecFilter] = useState<string>("__all__");
+  const [situacaoFilter, setSituacaoFilter] = useState<string>("__all__");
   const [selOs, setSelOs] = useState<Record<string, boolean>>({});
   const [selRec, setSelRec] = useState<Record<string, boolean>>({});
 
@@ -148,11 +149,19 @@ export default function PortalNegociacaoPage() {
     return Array.from(set).sort((a, b) => b.localeCompare(a));
   }, [data]);
 
+  // Opções de situação (a partir das OS retornadas)
+  const situacoesOpts = useMemo(() => {
+    const set = new Set<string>();
+    (data?.os_list || []).forEach((o) => o.situacao && set.add(o.situacao));
+    return Array.from(set).sort((a, b) => a.localeCompare(b, "pt-BR"));
+  }, [data]);
+
   const filteredOs = useMemo(() => {
     const q = search.trim().toLowerCase();
     const list = data?.os_list || [];
     return list.filter((o) => {
       if (casaFilter !== "__all__" && o.cliente !== casaFilter) return false;
+      if (situacaoFilter !== "__all__" && o.situacao !== situacaoFilter) return false;
       if (mesExecFilter !== "__all__") {
         const k = monthKey(o.data_execucao || "");
         if (k !== mesExecFilter) return false;
@@ -165,7 +174,7 @@ export default function PortalNegociacaoPage() {
         o.situacao.toLowerCase().includes(q)
       );
     });
-  }, [data, search, casaFilter, mesExecFilter]);
+  }, [data, search, casaFilter, mesExecFilter, situacaoFilter]);
 
   const filteredRec = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -389,7 +398,7 @@ export default function PortalNegociacaoPage() {
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
           <Card className="p-3 border-l-4 border-l-amber-500">
             <div className="flex items-center gap-2 text-xs text-muted-foreground">
-              <ListChecks className="h-4 w-4" /> OS ag. negociação
+              <ListChecks className="h-4 w-4" /> OS executadas
             </div>
             <p className="text-2xl font-semibold mt-1">{totals?.qtd_os ?? 0}</p>
             <p className="text-xs text-muted-foreground">{brl(totals?.valor_os ?? 0)}</p>
@@ -439,17 +448,30 @@ export default function PortalNegociacaoPage() {
               </SelectContent>
             </Select>
             {tab === "os" && (
-              <Select value={mesExecFilter} onValueChange={setMesExecFilter}>
-                <SelectTrigger className="w-[200px]">
-                  <SelectValue placeholder="Mês da execução" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="__all__">Todos os meses</SelectItem>
-                  {mesesExec.map((k) => (
-                    <SelectItem key={k} value={k}>{monthLabel(k)}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <>
+                <Select value={situacaoFilter} onValueChange={setSituacaoFilter}>
+                  <SelectTrigger className="w-[260px]">
+                    <SelectValue placeholder="Filtrar situação" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__all__">Todas as situações</SelectItem>
+                    {situacoesOpts.map((s) => (
+                      <SelectItem key={s} value={s}>{s}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Select value={mesExecFilter} onValueChange={setMesExecFilter}>
+                  <SelectTrigger className="w-[200px]">
+                    <SelectValue placeholder="Mês da execução" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__all__">Todos os meses</SelectItem>
+                    {mesesExec.map((k) => (
+                      <SelectItem key={k} value={k}>{monthLabel(k)}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </>
             )}
             <Button variant="outline" size="sm" onClick={exportExcel}>
               <FileSpreadsheet className="h-4 w-4 mr-1" /> Excel
@@ -508,7 +530,7 @@ export default function PortalNegociacaoPage() {
           <Tabs value={tab} onValueChange={(v) => setTab(v as "os" | "financeiro")}>
             <TabsList>
               <TabsTrigger value="os">
-                OS Ag. Negociação ({filteredOs.length})
+                OS Executadas ({filteredOs.length})
               </TabsTrigger>
               <TabsTrigger value="financeiro">
                 Financeiro Pendente ({filteredRec.length})
@@ -522,7 +544,7 @@ export default function PortalNegociacaoPage() {
                 </div>
               ) : filteredOs.length === 0 ? (
                 <div className="text-center py-12 text-muted-foreground text-sm">
-                  Nenhuma OS aguardando negociação encontrada.
+                  Nenhuma OS encontrada com os filtros atuais.
                 </div>
               ) : (
                 <div className="space-y-2">
