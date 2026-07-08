@@ -169,7 +169,6 @@ export default function PortalNegociacaoPage() {
 
   const equipamentosOpts = useMemo(() => {
     const set = new Set<string>();
-    let hasSemEquip = false;
     (data?.os_list || []).forEach((o) => {
       if (casaFilter !== "__all__" && o.cliente !== casaFilter) return;
       if (situacaoFilter !== "__all__" && o.situacao !== situacaoFilter) return;
@@ -178,12 +177,10 @@ export default function PortalNegociacaoPage() {
         if (k !== mesSaidaFilter) return;
       }
       const eqs = (o.equipamentos || []).filter(Boolean);
-      if (eqs.length === 0) { hasSemEquip = true; return; }
+      if (eqs.length === 0) return; // sem equipamento = sem atividade filtrável
       eqs.forEach((e) => set.add(e));
     });
-    const arr = Array.from(set).sort((a, b) => a.localeCompare(b, "pt-BR"));
-    if (hasSemEquip) arr.unshift("(Sem equipamento)");
-    return arr;
+    return Array.from(set).sort((a, b) => a.localeCompare(b, "pt-BR"));
   }, [data, casaFilter, situacaoFilter, mesSaidaFilter]);
 
   // Padrão: todos os equipamentos com atividade marcados, exceto COIFA.
@@ -232,7 +229,7 @@ export default function PortalNegociacaoPage() {
       if (situacaoFilter !== "__all__" && o.situacao !== situacaoFilter) return false;
       if (equipFiltroAtivo) {
         const eqs = o.equipamentos || [];
-        if (eqs.length === 0) return equipSelectedSet.has("(Sem equipamento)");
+        if (eqs.length === 0) return onlyCoifaExcluded && equipSelectedSet.size > 0;
         if (!eqs.some((e) => equipSelectedSet.has(e))) return false;
         if (eqs.some((e) => !equipSelectedSet.has(e))) return false;
       }
