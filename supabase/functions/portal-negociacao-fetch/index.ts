@@ -29,7 +29,7 @@ function parsePgTimestamp(raw: string): number {
   return Number.isFinite(t) ? t : NaN;
 }
 
-async function fetchAuvoTaskLive(bearer: string, taskId: string): Promise<{ taskUrl: string; durationDecimal: number; checkIn: string | null; checkOut: string | null } | null> {
+async function fetchAuvoTaskLive(bearer: string, taskId: string): Promise<{ taskUrl: string; durationDecimal: number; checkIn: string | null; checkOut: string | null; equipmentIds: string[]; equipmentName: string; equipmentSerial: string } | null> {
   try {
     const r = await fetch(`${AUVO_BASE_URL}/tasks/${encodeURIComponent(taskId)}`, {
       headers: { Authorization: `Bearer ${bearer}`, "Content-Type": "application/json" },
@@ -37,13 +37,30 @@ async function fetchAuvoTaskLive(bearer: string, taskId: string): Promise<{ task
     if (!r.ok) return null;
     const j = await r.json().catch(() => ({}));
     const res = j?.result || j || {};
+    const equipmentIds = Array.from(new Set([
+      ...(Array.isArray(res?.equipmentsId) ? res.equipmentsId : []),
+      ...(Array.isArray(res?.equipmentsID) ? res.equipmentsID : []),
+      ...(Array.isArray(res?.equipmentIds) ? res.equipmentIds : []),
+    ].map((id) => String(id || "").trim()).filter(Boolean)));
     return {
       taskUrl: String(res?.taskUrl || ""),
       durationDecimal: Number(res?.durationDecimal || 0),
       checkIn: res?.checkInDate || res?.CheckInDate || null,
       checkOut: res?.checkOutDate || res?.CheckOutDate || null,
+      equipmentIds,
+      equipmentName: String(res?.equipmentName || res?.equipment?.name || res?.equipment?.model || "").trim(),
+      equipmentSerial: String(res?.equipmentIdentifier || res?.equipment?.identifier || res?.equipment?.serial || "").trim(),
     };
   } catch { return null; }
+}
+
+function addEquipLabel(map: Map<string, Set<string>>, osId: string, nome: string, serie: string) {
+  const cleanNome = String(nome || "").trim();
+  const cleanSerie = String(serie || "").trim();
+  const label = cleanNome && cleanSerie ? `${cleanNome} (${cleanSerie})` : (cleanNome || (cleanSerie ? `#${cleanSerie}` : ""));
+  if (!label) return;
+  if (!map.has(osId)) map.set(osId, new Set());
+  map.get(osId)!.add(label);
 }
 
 // Situações de OS "EXECUTADO*" — todas as variantes exibidas no portal do cliente.
