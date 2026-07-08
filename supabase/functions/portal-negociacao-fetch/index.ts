@@ -326,9 +326,12 @@ Deno.serve(async (req) => {
         // vínculo da Tarefa OS, não na execução — por isso buscar só auvo_task_id exec
         // fazia aparecer apenas alguns.
         try {
-          const semEquip = osFiltered.filter((o: any) => !o.equipamentos || o.equipamentos.length === 0);
-          if (semEquip.length > 0) {
-            const taskIds = Array.from(new Set(semEquip.flatMap((o: any) => {
+          const osComTarefas = osFiltered.filter((o: any) => {
+            const ids = taskIdsByOs.get(String(o.gc_os_id));
+            return (ids && ids.size > 0) || o.auvo_task_id;
+          });
+          if (osComTarefas.length > 0) {
+            const taskIds = Array.from(new Set(osComTarefas.flatMap((o: any) => {
               const ids = Array.from(taskIdsByOs.get(String(o.gc_os_id)) || []);
               if (o.auvo_task_id) ids.push(String(o.auvo_task_id));
               return ids;
@@ -366,7 +369,7 @@ Deno.serve(async (req) => {
                 addEquipLabel(equipsByOs, osId, info.nome, info.serie);
               }
             }
-            for (const o of semEquip as any[]) {
+            for (const o of osComTarefas as any[]) {
               const labels = equipsByOs.get(String(o.gc_os_id));
               if (labels && labels.size > 0) o.equipamentos = Array.from(labels);
             }
