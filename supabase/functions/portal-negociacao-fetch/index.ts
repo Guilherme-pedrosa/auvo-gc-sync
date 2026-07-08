@@ -8,10 +8,19 @@ const corsHeaders = {
 
 const GC_BASE_URL = "https://api.gestaoclick.com";
 
-// Situações de OS que representam pendência financeira / aguardando negociação
+// Situações de OS "EXECUTADO*" — todas as variantes exibidas no portal do cliente.
 // Podem ser sobrescritas via body.situacao_ids
 const DEFAULT_SITUACAO_IDS = [
   "7116099", // EXECUTADO - AGUARDANDO NEGOCIAÇÃO FINANCEIRA
+  "7124107", // EXECUTADO COM NOTA EMITIDA
+  "8760417", // LIBERADO P/ FATURAMENTO
+  "7063724", // AGUARDANDO PAGAMENTO
+  "7261986", // EXECUTADO POR CONTRATO
+  "7438044", // EXECUTADO EM GARANTIA
+  "7535001", // EXECUTADO - PATRIMÔNIO
+  "7720756", // FINANCEIRO SEPARADO
+  "8677491", // CIGAM
+  "8889036", // FECHADO CHAMADO
 ];
 
 const normalize = (s: string) =>
