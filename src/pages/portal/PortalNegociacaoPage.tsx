@@ -607,6 +607,12 @@ export default function PortalNegociacaoPage() {
                                 Tarefa Auvo: <strong>#{o.auvo_task_id}</strong>
                               </span>
                             )}
+                            {typeof o.horas_execucao === "number" && o.horas_execucao > 0 && (
+                              <span className="inline-flex items-center gap-1">
+                                <Clock className="h-3 w-3" />
+                                Horas: <strong>{o.horas_execucao.toFixed(2).replace(".", ",")}h</strong>
+                              </span>
+                            )}
                           </div>
                         </div>
                         <div className="text-right">
