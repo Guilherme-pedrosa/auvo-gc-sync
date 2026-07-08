@@ -189,19 +189,29 @@ Deno.serve(async (req) => {
       if (osIds.length > 0) {
         const { data: tarefas } = await admin
           .from("tarefas_central")
-          .select("gc_os_id, check_out_iso, data_conclusao")
+          .select("gc_os_id, auvo_task_id, check_out_iso, data_conclusao, gc_os_tarefa_exec")
           .in("gc_os_id", osIds);
-        const byOs = new Map<string, string>();
+        const dtByOs = new Map<string, string>();
+        const execByOs = new Map<string, string>();
         for (const t of tarefas || []) {
-          const dt = String((t as any).check_out_iso || (t as any).data_conclusao || "").trim();
-          if (!dt) continue;
           const key = String((t as any).gc_os_id);
-          const cur = byOs.get(key);
-          if (!cur || dt > cur) byOs.set(key, dt);
+          const dt = String((t as any).check_out_iso || (t as any).data_conclusao || "").trim();
+          if (dt) {
+            const cur = dtByOs.get(key);
+            if (!cur || dt > cur) dtByOs.set(key, dt);
+          }
+          // exec task id: prefer explicit gc_os_tarefa_exec; fallback ao próprio auvo_task_id
+          const exec = String((t as any).gc_os_tarefa_exec || (t as any).auvo_task_id || "").trim();
+          if (exec && !execByOs.has(key)) execByOs.set(key, exec);
         }
         for (const o of osFiltered) {
-          const v = byOs.get(o.gc_os_id);
+          const v = dtByOs.get(o.gc_os_id);
           if (v) o.data_execucao = v;
+          const ex = execByOs.get(o.gc_os_id);
+          if (ex) {
+            (o as any).auvo_task_id = ex;
+            (o as any).auvo_task_url = `https://app2.n.br/relatorioTarefas/DetalheTarefa/${ex}`;
+          }
         }
       }
     } catch (e) {
