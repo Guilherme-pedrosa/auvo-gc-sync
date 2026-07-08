@@ -7,6 +7,32 @@ const corsHeaders = {
 };
 
 const GC_BASE_URL = "https://api.gestaoclick.com";
+const AUVO_BASE_URL = "https://api.auvo.com.br/v2";
+
+async function auvoLogin(apiKey: string, apiToken: string): Promise<string | null> {
+  try {
+    const url = `${AUVO_BASE_URL}/login/?apiKey=${encodeURIComponent(apiKey)}&apiToken=${encodeURIComponent(apiToken)}`;
+    const r = await fetch(url);
+    if (!r.ok) return null;
+    const j = await r.json().catch(() => ({}));
+    return j?.result?.accessToken || null;
+  } catch { return null; }
+}
+
+async function fetchAuvoTaskLive(bearer: string, taskId: string): Promise<{ taskUrl: string; durationDecimal: number } | null> {
+  try {
+    const r = await fetch(`${AUVO_BASE_URL}/tasks/${encodeURIComponent(taskId)}`, {
+      headers: { Authorization: `Bearer ${bearer}`, "Content-Type": "application/json" },
+    });
+    if (!r.ok) return null;
+    const j = await r.json().catch(() => ({}));
+    const res = j?.result || j || {};
+    return {
+      taskUrl: String(res?.taskUrl || ""),
+      durationDecimal: Number(res?.durationDecimal || 0),
+    };
+  } catch { return null; }
+}
 
 // Situações de OS "EXECUTADO*" — todas as variantes exibidas no portal do cliente.
 // Podem ser sobrescritas via body.situacao_ids
