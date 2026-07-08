@@ -448,17 +448,30 @@ export default function PortalNegociacaoPage() {
               </SelectContent>
             </Select>
             {tab === "os" && (
-              <Select value={mesExecFilter} onValueChange={setMesExecFilter}>
-                <SelectTrigger className="w-[200px]">
-                  <SelectValue placeholder="Mês da execução" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="__all__">Todos os meses</SelectItem>
-                  {mesesExec.map((k) => (
-                    <SelectItem key={k} value={k}>{monthLabel(k)}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <>
+                <Select value={situacaoFilter} onValueChange={setSituacaoFilter}>
+                  <SelectTrigger className="w-[260px]">
+                    <SelectValue placeholder="Filtrar situação" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__all__">Todas as situações</SelectItem>
+                    {situacoesOpts.map((s) => (
+                      <SelectItem key={s} value={s}>{s}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Select value={mesExecFilter} onValueChange={setMesExecFilter}>
+                  <SelectTrigger className="w-[200px]">
+                    <SelectValue placeholder="Mês da execução" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__all__">Todos os meses</SelectItem>
+                    {mesesExec.map((k) => (
+                      <SelectItem key={k} value={k}>{monthLabel(k)}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </>
             )}
             <Button variant="outline" size="sm" onClick={exportExcel}>
               <FileSpreadsheet className="h-4 w-4 mr-1" /> Excel
