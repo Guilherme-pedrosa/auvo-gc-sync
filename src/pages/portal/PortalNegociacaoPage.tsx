@@ -34,6 +34,26 @@ const fmtData = (s: string) => {
   return s;
 };
 
+// Extrai a chave YYYY-MM de uma data em formato ISO (yyyy-mm-dd) ou br (dd/mm/yyyy)
+const monthKey = (s?: string): string => {
+  if (!s) return "";
+  const iso = s.match(/^(\d{4})-(\d{2})/);
+  if (iso) return `${iso[1]}-${iso[2]}`;
+  const br = s.match(/^(\d{2})\/(\d{2})\/(\d{4})/);
+  if (br) return `${br[3]}-${br[2]}`;
+  return "";
+};
+
+const MES_NOMES = [
+  "Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho",
+  "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro",
+];
+const monthLabel = (key: string): string => {
+  const [y, m] = key.split("-");
+  const idx = Number(m) - 1;
+  return `${MES_NOMES[idx] || m}/${y}`;
+};
+
 interface OSItem {
   gc_os_id: string;
   codigo: string;
@@ -117,11 +137,25 @@ export default function PortalNegociacaoPage() {
 
   const casasOpts = tab === "os" ? casasOs : casasRec;
 
+  // Opções de mês da data de saída (somente da aba OS)
+  const mesesSaida = useMemo(() => {
+    const set = new Set<string>();
+    (data?.os_list || []).forEach((o) => {
+      const k = monthKey(o.data_saida || o.data);
+      if (k) set.add(k);
+    });
+    return Array.from(set).sort((a, b) => b.localeCompare(a));
+  }, [data]);
+
   const filteredOs = useMemo(() => {
     const q = search.trim().toLowerCase();
     const list = data?.os_list || [];
     return list.filter((o) => {
       if (casaFilter !== "__all__" && o.cliente !== casaFilter) return false;
+      if (mesSaidaFilter !== "__all__") {
+        const k = monthKey(o.data_saida || o.data);
+        if (k !== mesSaidaFilter) return false;
+      }
       if (!q) return true;
       return (
         o.codigo.toLowerCase().includes(q) ||
@@ -130,7 +164,7 @@ export default function PortalNegociacaoPage() {
         o.situacao.toLowerCase().includes(q)
       );
     });
-  }, [data, search, casaFilter]);
+  }, [data, search, casaFilter, mesSaidaFilter]);
 
   const filteredRec = useMemo(() => {
     const q = search.trim().toLowerCase();
