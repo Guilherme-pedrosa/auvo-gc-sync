@@ -70,6 +70,7 @@ interface OSItem {
   auvo_task_id?: string;
   auvo_task_url?: string;
   horas_execucao?: number;
+  equipamentos?: string[];
 }
 
 interface RecebItem {
@@ -105,6 +106,7 @@ export default function PortalNegociacaoPage() {
   const [casaFilter, setCasaFilter] = useState<string>("__all__");
   const [mesSaidaFilter, setMesSaidaFilter] = useState<string>("__all__");
   const [situacaoFilter, setSituacaoFilter] = useState<string>("__all__");
+  const [equipFilter, setEquipFilter] = useState<string>("__all__");
   const [selOs, setSelOs] = useState<Record<string, boolean>>({});
   const [selRec, setSelRec] = useState<Record<string, boolean>>({});
 
@@ -159,12 +161,21 @@ export default function PortalNegociacaoPage() {
     return Array.from(set).sort((a, b) => a.localeCompare(b, "pt-BR"));
   }, [data]);
 
+  const equipamentosOpts = useMemo(() => {
+    const set = new Set<string>();
+    (data?.os_list || []).forEach((o) => (o.equipamentos || []).forEach((e) => e && set.add(e)));
+    return Array.from(set).sort((a, b) => a.localeCompare(b, "pt-BR"));
+  }, [data]);
+
   const filteredOs = useMemo(() => {
     const q = search.trim().toLowerCase();
     const list = data?.os_list || [];
     return list.filter((o) => {
       if (casaFilter !== "__all__" && o.cliente !== casaFilter) return false;
       if (situacaoFilter !== "__all__" && o.situacao !== situacaoFilter) return false;
+      if (equipFilter !== "__all__") {
+        if (!(o.equipamentos || []).includes(equipFilter)) return false;
+      }
       if (mesSaidaFilter !== "__all__") {
         const k = monthKey(o.data_saida || "");
         if (k !== mesSaidaFilter) return false;
@@ -174,10 +185,11 @@ export default function PortalNegociacaoPage() {
         o.codigo.toLowerCase().includes(q) ||
         o.cliente.toLowerCase().includes(q) ||
         o.descricao.toLowerCase().includes(q) ||
-        o.situacao.toLowerCase().includes(q)
+        o.situacao.toLowerCase().includes(q) ||
+        (o.equipamentos || []).some((e) => e.toLowerCase().includes(q))
       );
     });
-  }, [data, search, casaFilter, mesSaidaFilter, situacaoFilter]);
+  }, [data, search, casaFilter, mesSaidaFilter, situacaoFilter, equipFilter]);
 
   const filteredRec = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -474,6 +486,17 @@ export default function PortalNegociacaoPage() {
                     ))}
                   </SelectContent>
                 </Select>
+                <Select value={equipFilter} onValueChange={setEquipFilter}>
+                  <SelectTrigger className="w-[260px]">
+                    <SelectValue placeholder="Filtrar equipamento" />
+                  </SelectTrigger>
+                  <SelectContent className="max-h-[320px]">
+                    <SelectItem value="__all__">Todos os equipamentos</SelectItem>
+                    {equipamentosOpts.map((e) => (
+                      <SelectItem key={e} value={e}>{e}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </>
             )}
             <Button variant="outline" size="sm" onClick={exportExcel}>
@@ -615,6 +638,15 @@ export default function PortalNegociacaoPage() {
                               </span>
                             )}
                           </div>
+                          {o.equipamentos && o.equipamentos.length > 0 && (
+                            <div className="flex items-center gap-1 flex-wrap mt-1">
+                              {o.equipamentos.map((e) => (
+                                <Badge key={e} variant="secondary" className="text-[10px] font-normal">
+                                  {e}
+                                </Badge>
+                              ))}
+                            </div>
+                          )}
                         </div>
                         <div className="text-right">
                           <p className="text-lg font-semibold text-primary whitespace-nowrap">
