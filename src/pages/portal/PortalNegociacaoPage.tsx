@@ -101,6 +101,7 @@ export default function PortalNegociacaoPage() {
   const [tab, setTab] = useState<"os" | "financeiro">("os");
   const [casaFilter, setCasaFilter] = useState<string>("__all__");
   const [mesExecFilter, setMesExecFilter] = useState<string>("__all__");
+  const [situacaoFilter, setSituacaoFilter] = useState<string>("__all__");
   const [selOs, setSelOs] = useState<Record<string, boolean>>({});
   const [selRec, setSelRec] = useState<Record<string, boolean>>({});
 
@@ -148,11 +149,19 @@ export default function PortalNegociacaoPage() {
     return Array.from(set).sort((a, b) => b.localeCompare(a));
   }, [data]);
 
+  // Opções de situação (a partir das OS retornadas)
+  const situacoesOpts = useMemo(() => {
+    const set = new Set<string>();
+    (data?.os_list || []).forEach((o) => o.situacao && set.add(o.situacao));
+    return Array.from(set).sort((a, b) => a.localeCompare(b, "pt-BR"));
+  }, [data]);
+
   const filteredOs = useMemo(() => {
     const q = search.trim().toLowerCase();
     const list = data?.os_list || [];
     return list.filter((o) => {
       if (casaFilter !== "__all__" && o.cliente !== casaFilter) return false;
+      if (situacaoFilter !== "__all__" && o.situacao !== situacaoFilter) return false;
       if (mesExecFilter !== "__all__") {
         const k = monthKey(o.data_execucao || "");
         if (k !== mesExecFilter) return false;
@@ -165,7 +174,7 @@ export default function PortalNegociacaoPage() {
         o.situacao.toLowerCase().includes(q)
       );
     });
-  }, [data, search, casaFilter, mesExecFilter]);
+  }, [data, search, casaFilter, mesExecFilter, situacaoFilter]);
 
   const filteredRec = useMemo(() => {
     const q = search.trim().toLowerCase();
