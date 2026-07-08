@@ -69,6 +69,7 @@ interface OSItem {
   link: string;
   auvo_task_id?: string;
   auvo_task_url?: string;
+  horas_execucao?: number;
 }
 
 interface RecebItem {
