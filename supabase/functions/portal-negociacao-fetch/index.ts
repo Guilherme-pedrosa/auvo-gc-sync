@@ -19,7 +19,17 @@ async function auvoLogin(apiKey: string, apiToken: string): Promise<string | nul
   } catch { return null; }
 }
 
-async function fetchAuvoTaskLive(bearer: string, taskId: string): Promise<{ taskUrl: string; durationDecimal: number } | null> {
+function parsePgTimestamp(raw: string): number {
+  // Postgres devolve "YYYY-MM-DD HH:MM:SS+00" — Deno precisa de "T" e "+00:00"
+  if (!raw) return NaN;
+  let s = raw.trim().replace(" ", "T");
+  // "+00" → "+00:00" ; "-03" → "-03:00"
+  s = s.replace(/([+-]\d{2})$/, "$1:00");
+  const t = new Date(s).getTime();
+  return Number.isFinite(t) ? t : NaN;
+}
+
+async function fetchAuvoTaskLive(bearer: string, taskId: string): Promise<{ taskUrl: string; durationDecimal: number; checkIn: string | null; checkOut: string | null } | null> {
   try {
     const r = await fetch(`${AUVO_BASE_URL}/tasks/${encodeURIComponent(taskId)}`, {
       headers: { Authorization: `Bearer ${bearer}`, "Content-Type": "application/json" },
@@ -30,6 +40,8 @@ async function fetchAuvoTaskLive(bearer: string, taskId: string): Promise<{ task
     return {
       taskUrl: String(res?.taskUrl || ""),
       durationDecimal: Number(res?.durationDecimal || 0),
+      checkIn: res?.checkInDate || res?.CheckInDate || null,
+      checkOut: res?.checkOutDate || res?.CheckOutDate || null,
     };
   } catch { return null; }
 }
@@ -249,7 +261,7 @@ Deno.serve(async (req) => {
             const ci = String((t as any).check_in_iso || "").trim();
             const co = String((t as any).check_out_iso || "").trim();
             if (ci && co) {
-              const diffMs = new Date(co).getTime() - new Date(ci).getTime();
+              const diffMs = parsePgTimestamp(co) - parsePgTimestamp(ci);
               if (Number.isFinite(diffMs) && diffMs > 0) {
                 h = Math.round((diffMs / 3600000) * 100) / 100;
               }
@@ -307,6 +319,13 @@ Deno.serve(async (req) => {
                   }
                   if (!(o.horas_execucao > 0) && info.durationDecimal > 0) {
                     (o as any).horas_execucao = Math.round(info.durationDecimal * 100) / 100;
+                  }
+                  // Se Auvo devolveu check-in/out mas durationDecimal=0, calcula
+                  if (!(o.horas_execucao > 0) && info.checkIn && info.checkOut) {
+                    const diff = new Date(info.checkOut).getTime() - new Date(info.checkIn).getTime();
+                    if (Number.isFinite(diff) && diff > 0) {
+                      (o as any).horas_execucao = Math.round((diff / 3600000) * 100) / 100;
+                    }
                   }
                 }));
               }
