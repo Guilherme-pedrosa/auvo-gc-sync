@@ -47,6 +47,8 @@ const monthKey = (s?: string): string => {
   return "";
 };
 
+const isCoifaEquip = (e: string) => e.toLowerCase().includes("coifa");
+
 const MES_NOMES = [
   "Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho",
   "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro",
@@ -109,7 +111,6 @@ export default function PortalNegociacaoPage() {
   const [casaFilter, setCasaFilter] = useState<string>("__all__");
   const [mesSaidaFilter, setMesSaidaFilter] = useState<string>("__all__");
   const [situacaoFilter, setSituacaoFilter] = useState<string>("__all__");
-  // Vazio = sem filtro (mostra tudo). Cliente marca só o que quiser filtrar.
   const [equipSel, setEquipSel] = useState<Set<string>>(new Set());
   const [equipSearch, setEquipSearch] = useState("");
   const [equipOpen, setEquipOpen] = useState(false);
@@ -183,19 +184,14 @@ export default function PortalNegociacaoPage() {
     return Array.from(set).sort((a, b) => a.localeCompare(b, "pt-BR"));
   }, [data, casaFilter, situacaoFilter, mesSaidaFilter]);
 
-  // Remove seleções de equipamentos que não existem mais na lista atual.
+  // Padrão: todos os equipamentos com atividade marcados, exceto COIFA.
+  // Ao trocar casa/situação/mês, refaz a seleção padrão sem COIFA.
   useEffect(() => {
-    setEquipSel((prev) => {
-      if (prev.size === 0) return prev;
-      const valid = new Set(equipamentosOpts);
-      const next = new Set<string>();
-      prev.forEach((e) => valid.has(e) && next.add(e));
-      return next.size === prev.size ? prev : next;
-    });
+    setEquipSel(new Set(equipamentosOpts.filter((e) => !isCoifaEquip(e))));
   }, [equipamentosOpts.join("|")]);
 
   const equipSelectedSet = equipSel;
-  const equipFiltroAtivo = equipSel.size > 0;
+  const equipFiltroAtivo = equipSel.size !== equipamentosOpts.length;
 
   const toggleEquip = (e: string) => {
     setEquipSel((prev) => {
@@ -207,6 +203,17 @@ export default function PortalNegociacaoPage() {
   const selecionarTodosEquip = () => setEquipSel(new Set(equipamentosOpts));
   const removerTodosEquip = () => setEquipSel(new Set());
 
+  const osSemCoifa = useMemo(() => {
+    return (data?.os_list || []).filter((o) => !(o.equipamentos || []).some(isCoifaEquip));
+  }, [data]);
+
+  const totalOsSemCoifa = useMemo(() => {
+    return osSemCoifa.reduce(
+      (acc, o) => ({ qtd: acc.qtd + 1, valor: acc.valor + Number(o.valor_total || 0) }),
+      { qtd: 0, valor: 0 },
+    );
+  }, [osSemCoifa]);
+
   const filteredOs = useMemo(() => {
     const q = search.trim().toLowerCase();
     const list = data?.os_list || [];
@@ -215,7 +222,8 @@ export default function PortalNegociacaoPage() {
       if (situacaoFilter !== "__all__" && o.situacao !== situacaoFilter) return false;
       if (equipFiltroAtivo) {
         const eqs = o.equipamentos || [];
-        if (eqs.length === 0) return false;
+        if (eqs.some((e) => !equipSelectedSet.has(e))) return false;
+        if (eqs.length === 0 && equipSelectedSet.size === 0) return false;
         if (!eqs.some((e) => equipSelectedSet.has(e))) return false;
       }
       if (mesSaidaFilter !== "__all__") {
