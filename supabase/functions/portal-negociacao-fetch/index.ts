@@ -251,17 +251,21 @@ Deno.serve(async (req) => {
         const rowByTaskId = new Map<string, any>();
         const hoursByOs = new Map<string, number>();
         const equipsByOs = new Map<string, Set<string>>();
+        const taskIdsByOs = new Map<string, Set<string>>();
+        const osIdsByTaskId = new Map<string, Set<string>>();
         for (const t of tarefas || []) {
           const key = String((t as any).gc_os_id);
           const taskId = String((t as any).auvo_task_id || "").trim();
-          if (taskId) rowByTaskId.set(taskId, t);
+          if (taskId) {
+            rowByTaskId.set(taskId, t);
+            if (!taskIdsByOs.has(key)) taskIdsByOs.set(key, new Set());
+            taskIdsByOs.get(key)!.add(taskId);
+            if (!osIdsByTaskId.has(taskId)) osIdsByTaskId.set(taskId, new Set());
+            osIdsByTaskId.get(taskId)!.add(key);
+          }
           const eqNome = String((t as any).equipamento_nome || "").trim();
           const eqSerie = String((t as any).equipamento_id_serie || "").trim();
-          const eqLabel = eqNome && eqSerie ? `${eqNome} (${eqSerie})` : (eqNome || (eqSerie ? `#${eqSerie}` : ""));
-          if (eqLabel) {
-            if (!equipsByOs.has(key)) equipsByOs.set(key, new Set());
-            equipsByOs.get(key)!.add(eqLabel);
-          }
+          addEquipLabel(equipsByOs, key, eqNome, eqSerie);
           const dt = String((t as any).check_out_iso || (t as any).data_conclusao || "").trim();
           if (dt) {
             const cur = dtByOs.get(key);
@@ -270,6 +274,12 @@ Deno.serve(async (req) => {
           // exec task id: prefer explicit gc_os_tarefa_exec; fallback ao próprio auvo_task_id
           const exec = String((t as any).gc_os_tarefa_exec || (t as any).auvo_task_id || "").trim();
           if (exec && !execByOs.has(key)) execByOs.set(key, exec);
+          if (exec) {
+            if (!taskIdsByOs.has(key)) taskIdsByOs.set(key, new Set());
+            taskIdsByOs.get(key)!.add(exec);
+            if (!osIdsByTaskId.has(exec)) osIdsByTaskId.set(exec, new Set());
+            osIdsByTaskId.get(exec)!.add(key);
+          }
           // Horas: usa duracao_decimal; se estiver zerada mas houver check-in/out,
           // calcula a duração a partir dos timestamps (fallback quando a sync de horas
           // ainda não rodou pro período).
@@ -311,26 +321,26 @@ Deno.serve(async (req) => {
           if (eqs && eqs.size > 0) (o as any).equipamentos = Array.from(eqs);
         }
 
-        // Fallback: resolve equipamento via vínculo nativo Auvo
-        // (equipamento_tarefas_auvo → equipamentos_auvo), igual a aba "Horas".
+        // Fallback: resolve equipamento via vínculo nativo Auvo usando TODAS as tarefas
+        // amarradas à OS (Tarefa OS + Tarefa Execução). Muitos equipamentos ficam no
+        // vínculo da Tarefa OS, não na execução — por isso buscar só auvo_task_id exec
+        // fazia aparecer apenas alguns.
         try {
-          const semEquip = osFiltered.filter((o: any) =>
-            (!o.equipamentos || o.equipamentos.length === 0) && o.auvo_task_id
-          );
+          const semEquip = osFiltered.filter((o: any) => !o.equipamentos || o.equipamentos.length === 0);
           if (semEquip.length > 0) {
-            const taskIds = Array.from(new Set(semEquip.map((o: any) => String(o.auvo_task_id))));
+            const taskIds = Array.from(new Set(semEquip.flatMap((o: any) => {
+              const ids = Array.from(taskIdsByOs.get(String(o.gc_os_id)) || []);
+              if (o.auvo_task_id) ids.push(String(o.auvo_task_id));
+              return ids;
+            }).filter(Boolean)));
             const { data: links } = await admin
               .from("equipamento_tarefas_auvo")
               .select("auvo_task_id, auvo_equipment_id")
               .in("auvo_task_id", taskIds);
-            const eqIdsByTask = new Map<string, Set<string>>();
             const allEqIds = new Set<string>();
             for (const l of links || []) {
-              const tid = String((l as any).auvo_task_id || "");
               const eid = String((l as any).auvo_equipment_id || "");
-              if (!tid || !eid) continue;
-              if (!eqIdsByTask.has(tid)) eqIdsByTask.set(tid, new Set());
-              eqIdsByTask.get(tid)!.add(eid);
+              if (!eid) continue;
               allEqIds.add(eid);
             }
             const eqInfo = new Map<string, { nome: string; serie: string }>();
@@ -346,16 +356,18 @@ Deno.serve(async (req) => {
                 });
               }
             }
-            for (const o of semEquip as any[]) {
-              const eqIds = eqIdsByTask.get(String(o.auvo_task_id));
-              if (!eqIds || eqIds.size === 0) continue;
-              const labels: string[] = [];
-              for (const eid of eqIds) {
-                const info = eqInfo.get(eid);
-                if (!info?.nome && !info?.serie) continue;
-                labels.push(info.nome && info.serie ? `${info.nome} (${info.serie})` : (info.nome || `#${info.serie}`));
+            for (const l of links || []) {
+              const tid = String((l as any).auvo_task_id || "");
+              const eid = String((l as any).auvo_equipment_id || "");
+              const info = eqInfo.get(eid);
+              if (!tid || !info) continue;
+              for (const osId of osIdsByTaskId.get(tid) || []) {
+                addEquipLabel(equipsByOs, osId, info.nome, info.serie);
               }
-              if (labels.length > 0) o.equipamentos = labels;
+            }
+            for (const o of semEquip as any[]) {
+              const labels = equipsByOs.get(String(o.gc_os_id));
+              if (labels && labels.size > 0) o.equipamentos = Array.from(labels);
             }
           }
         } catch (e) {
