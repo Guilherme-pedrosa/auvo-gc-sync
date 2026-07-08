@@ -585,6 +585,8 @@ export default function PortalNegociacaoPage() {
                     {selectedOs.length > 0 && (
                       <span>
                         Selecionado: <strong>{brl(selectedOs.reduce((s, o) => s + Number(o.valor_total || 0), 0))}</strong>
+                        {" · "}
+                        Horas: <strong>{selectedOs.reduce((s, o) => s + Number(o.horas_execucao || 0), 0).toFixed(2).replace(".", ",")}h</strong>
                       </span>
                     )}
                   </div>
