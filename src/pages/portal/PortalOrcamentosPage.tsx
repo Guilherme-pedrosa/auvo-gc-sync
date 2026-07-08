@@ -36,7 +36,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { toast } from "sonner";
-import { Loader2, LogOut, CheckCircle2, MessageSquare, FileText, Clock, ExternalLink, Package, Wrench, Building2, DollarSign, ListChecks, TrendingUp } from "lucide-react";
+import { Loader2, LogOut, CheckCircle2, MessageSquare, FileText, Clock, ExternalLink, Package, Wrench, Building2, DollarSign, ListChecks, TrendingUp, HandshakeIcon } from "lucide-react";
 
 interface OrcamentoItem {
   gc_orcamento_id: string;
@@ -291,6 +291,9 @@ export default function PortalOrcamentosPage() {
           <div className="flex items-center gap-2">
             <Button variant="outline" size="sm" onClick={() => navigate("/portal/horas")}>
               Horas trabalhadas
+            </Button>
+            <Button variant="outline" size="sm" onClick={() => navigate("/portal/negociacao-financeira")}>
+              <HandshakeIcon className="h-4 w-4 mr-1" /> Negociação
             </Button>
             <Button variant="ghost" size="sm" onClick={() => signOut()}>
               <LogOut className="h-4 w-4 mr-1" /> Sair
