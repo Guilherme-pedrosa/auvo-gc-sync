@@ -9,6 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Checkbox } from "@/components/ui/checkbox";
+import { SearchableSelect } from "@/components/ui/searchable-select";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
@@ -486,17 +487,17 @@ export default function PortalNegociacaoPage() {
                     ))}
                   </SelectContent>
                 </Select>
-                <Select value={equipFilter} onValueChange={setEquipFilter}>
-                  <SelectTrigger className="w-[260px]">
-                    <SelectValue placeholder="Filtrar equipamento" />
-                  </SelectTrigger>
-                  <SelectContent className="max-h-[320px]">
-                    <SelectItem value="__all__">Todos os equipamentos</SelectItem>
-                    {equipamentosOpts.map((e) => (
-                      <SelectItem key={e} value={e}>{e}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <SearchableSelect
+                  value={equipFilter}
+                  onValueChange={(v) => setEquipFilter(v || "__all__")}
+                  options={[
+                    { value: "__all__", label: "Todos os equipamentos" },
+                    ...equipamentosOpts.map((e) => ({ value: e, label: e })),
+                  ]}
+                  placeholder="Filtrar equipamento"
+                  searchPlaceholder="Digite para buscar equipamento..."
+                  className="w-[260px]"
+                />
               </>
             )}
             <Button variant="outline" size="sm" onClick={exportExcel}>
