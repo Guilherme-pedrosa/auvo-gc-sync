@@ -473,8 +473,8 @@ export default function PortalNegociacaoPage() {
             <div className="flex items-center gap-2 text-xs text-muted-foreground">
               <ListChecks className="h-4 w-4" /> OS executadas
             </div>
-            <p className="text-2xl font-semibold mt-1">{totals?.qtd_os ?? 0}</p>
-            <p className="text-xs text-muted-foreground">{brl(totals?.valor_os ?? 0)}</p>
+            <p className="text-2xl font-semibold mt-1">{totalOsSemCoifa.qtd}</p>
+            <p className="text-xs text-muted-foreground">{brl(totalOsSemCoifa.valor)}</p>
           </Card>
           <Card className="p-3 border-l-4 border-l-sky-500">
             <div className="flex items-center gap-2 text-xs text-muted-foreground">
@@ -495,9 +495,9 @@ export default function PortalNegociacaoPage() {
               <DollarSign className="h-4 w-4" /> Total geral OS executadas
             </div>
             <p className="text-2xl font-semibold mt-1">
-              {brl(totals?.valor_os ?? 0)}
+              {brl(totalOsSemCoifa.valor)}
             </p>
-            <p className="text-xs text-muted-foreground">{totals?.qtd_os ?? 0} OS</p>
+            <p className="text-xs text-muted-foreground">{totalOsSemCoifa.qtd} OS</p>
           </Card>
         </div>
 
