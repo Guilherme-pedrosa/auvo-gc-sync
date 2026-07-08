@@ -125,6 +125,8 @@ export default function HorasTrabalhadasTab({
   const [filterTecnico, setFilterTecnico] = useState("todos");
   const [filterCliente, setFilterCliente] = useState("todos");
   const [filterGrupoState, setFilterGrupo] = useState("todos");
+  const [filterEquipamento, setFilterEquipamento] = useState("todos");
+  const [equipOpen, setEquipOpen] = useState(false);
   // Quando o pai força um grupo (Portal do Cliente), ele tem precedência
   // absoluta sobre o filtro interno — assim o caminho de cálculo é idêntico
   // ao do admin (dedup → filtro de grupo → totais).
@@ -337,6 +339,27 @@ export default function HorasTrabalhadasTab({
     return map;
   }, [grupos, membros]);
 
+  // Equipamentos disponíveis (id + nome) presentes nos dados atuais.
+  const equipamentosDisponiveis = useMemo(() => {
+    const map = new Map<string, string>(); // id_serie → nome
+    for (const t of data || []) {
+      const id = String(
+        t.equipamento_id_serie ||
+          equipamentoTaskMap[t.auvo_task_id]?.id_serie ||
+          "",
+      ).trim();
+      if (!id) continue;
+      const nome =
+        t.equipamento_nome ||
+        equipamentoTaskMap[t.auvo_task_id]?.nome ||
+        "Sem nome";
+      if (!map.has(id)) map.set(id, nome);
+    }
+    return Array.from(map.entries())
+      .map(([id, nome]) => ({ id, nome, label: `${nome} (${id})` }))
+      .sort((a, b) => a.label.localeCompare(b.label, "pt-BR"));
+  }, [data, equipamentoTaskMap]);
+
   // Holiday helper — Brazilian fixed national holidays. Treats holidays as FDS for billing.
   const isFeriadoBR = (dateStr: string): boolean => {
     if (!dateStr) return false;
@@ -377,6 +400,14 @@ export default function HorasTrabalhadasTab({
       const cliente = t.cliente || t.gc_os_cliente || "";
       if (filterCliente !== "todos" && cliente !== filterCliente) return false;
 
+      if (filterEquipamento !== "todos") {
+        const eqId =
+          t.equipamento_id_serie ||
+          equipamentoTaskMap[t.auvo_task_id]?.id_serie ||
+          "";
+        if (String(eqId) !== filterEquipamento) return false;
+      }
+
       if (filterGrupo !== "todos") {
         const grupoClientes = grupoClienteMap.get(filterGrupo) || [];
         const clienteAuvo = normalizeName(t.cliente || "");
@@ -394,8 +425,8 @@ export default function HorasTrabalhadasTab({
       return true;
     });
   }, [
-    data, filterTecnico, filterCliente, filterGrupo, tiposSelecionados,
-    grupoClienteMap,
+    data, filterTecnico, filterCliente, filterGrupo, filterEquipamento,
+    tiposSelecionados, grupoClienteMap, equipamentoTaskMap,
   ]);
 
   // When filtering by group, resolve which side (Auvo or GC) matched the group
@@ -1607,6 +1638,56 @@ export default function HorasTrabalhadasTab({
                 </PopoverContent>
               </Popover>
             </div>)}
+
+            {/* Equipment filter - searchable */}
+            {!clientMode && equipamentosDisponiveis.length > 0 && (
+              <div className="space-y-1">
+                <Label className="text-xs">Equipamento</Label>
+                <Popover open={equipOpen} onOpenChange={setEquipOpen}>
+                  <PopoverTrigger asChild>
+                    <Button variant="outline" size="sm" className="w-[240px] h-9 justify-between text-xs font-normal">
+                      <span className="truncate">
+                        {filterEquipamento === "todos"
+                          ? "Todos"
+                          : equipamentosDisponiveis.find((e) => e.id === filterEquipamento)?.label || filterEquipamento}
+                      </span>
+                      <ChevronsUpDown className="ml-2 h-3 w-3 shrink-0 opacity-50" />
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-[320px] p-0" align="start">
+                    <Command>
+                      <CommandInput placeholder="Buscar por nome ou ID..." className="h-8 text-xs" />
+                      <CommandList>
+                        <CommandEmpty>Nenhum equipamento.</CommandEmpty>
+                        <CommandGroup>
+                          <CommandItem
+                            value="todos"
+                            onSelect={() => { setFilterEquipamento("todos"); setEquipOpen(false); }}
+                            className="text-xs"
+                          >
+                            <Check className={cn("mr-2 h-3 w-3", filterEquipamento === "todos" ? "opacity-100" : "opacity-0")} />
+                            Todos ({equipamentosDisponiveis.length})
+                          </CommandItem>
+                          {equipamentosDisponiveis.map((e) => (
+                            <CommandItem
+                              key={e.id}
+                              value={`${e.nome} ${e.id}`}
+                              onSelect={() => { setFilterEquipamento(e.id); setEquipOpen(false); }}
+                              className="text-xs"
+                            >
+                              <Check className={cn("mr-2 h-3 w-3", filterEquipamento === e.id ? "opacity-100" : "opacity-0")} />
+                              <span className="truncate">
+                                {e.nome} <span className="text-muted-foreground">({e.id})</span>
+                              </span>
+                            </CommandItem>
+                          ))}
+                        </CommandGroup>
+                      </CommandList>
+                    </Command>
+                  </PopoverContent>
+                </Popover>
+              </div>
+            )}
 
             {/* Task type filter */}
             <Popover>
