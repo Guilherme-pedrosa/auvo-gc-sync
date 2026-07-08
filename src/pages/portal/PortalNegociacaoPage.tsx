@@ -8,11 +8,19 @@ import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Checkbox } from "@/components/ui/checkbox";
+import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from "@/components/ui/select";
 import { toast } from "sonner";
 import {
   Loader2, LogOut, ExternalLink, HandshakeIcon, DollarSign, AlertTriangle,
   ListChecks, Wallet, FileText, CalendarCheck, Clock, Building2,
+  FileDown, FileSpreadsheet,
 } from "lucide-react";
+import * as XLSX from "xlsx";
+import jsPDF from "jspdf";
+import autoTable from "jspdf-autotable";
 
 const brl = (n: number) =>
   Number(n || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
@@ -69,6 +77,9 @@ export default function PortalNegociacaoPage() {
   const navigate = useNavigate();
   const [search, setSearch] = useState("");
   const [tab, setTab] = useState<"os" | "financeiro">("os");
+  const [casaFilter, setCasaFilter] = useState<string>("__all__");
+  const [selOs, setSelOs] = useState<Record<string, boolean>>({});
+  const [selRec, setSelRec] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
     if (authLoading) return;
@@ -90,29 +101,213 @@ export default function PortalNegociacaoPage() {
 
   const totals = data?.totals;
 
+  const casasOs = useMemo(() => {
+    const set = new Set<string>();
+    (data?.os_list || []).forEach((o) => o.cliente && set.add(o.cliente));
+    return Array.from(set).sort((a, b) => a.localeCompare(b, "pt-BR"));
+  }, [data]);
+
+  const casasRec = useMemo(() => {
+    const set = new Set<string>();
+    (data?.recebimentos || []).forEach((r) => r.cliente && set.add(r.cliente));
+    return Array.from(set).sort((a, b) => a.localeCompare(b, "pt-BR"));
+  }, [data]);
+
+  const casasOpts = tab === "os" ? casasOs : casasRec;
+
   const filteredOs = useMemo(() => {
     const q = search.trim().toLowerCase();
     const list = data?.os_list || [];
-    if (!q) return list;
-    return list.filter((o) =>
-      o.codigo.toLowerCase().includes(q) ||
-      o.cliente.toLowerCase().includes(q) ||
-      o.descricao.toLowerCase().includes(q) ||
-      o.situacao.toLowerCase().includes(q),
-    );
-  }, [data, search]);
+    return list.filter((o) => {
+      if (casaFilter !== "__all__" && o.cliente !== casaFilter) return false;
+      if (!q) return true;
+      return (
+        o.codigo.toLowerCase().includes(q) ||
+        o.cliente.toLowerCase().includes(q) ||
+        o.descricao.toLowerCase().includes(q) ||
+        o.situacao.toLowerCase().includes(q)
+      );
+    });
+  }, [data, search, casaFilter]);
 
   const filteredRec = useMemo(() => {
     const q = search.trim().toLowerCase();
     const list = data?.recebimentos || [];
-    if (!q) return list;
-    return list.filter((r) =>
-      r.codigo.toLowerCase().includes(q) ||
-      r.cliente.toLowerCase().includes(q) ||
-      r.descricao.toLowerCase().includes(q) ||
-      r.os_codigo.toLowerCase().includes(q),
-    );
-  }, [data, search]);
+    return list.filter((r) => {
+      if (casaFilter !== "__all__" && r.cliente !== casaFilter) return false;
+      if (!q) return true;
+      return (
+        r.codigo.toLowerCase().includes(q) ||
+        r.cliente.toLowerCase().includes(q) ||
+        r.descricao.toLowerCase().includes(q) ||
+        r.os_codigo.toLowerCase().includes(q)
+      );
+    });
+  }, [data, search, casaFilter]);
+
+  // Somatórias por casa
+  const sumOsByCasa = useMemo(() => {
+    const map = new Map<string, { qtd: number; total: number }>();
+    filteredOs.forEach((o) => {
+      const c = o.cliente || "—";
+      const cur = map.get(c) || { qtd: 0, total: 0 };
+      cur.qtd += 1;
+      cur.total += Number(o.valor_total || 0);
+      map.set(c, cur);
+    });
+    return Array.from(map.entries()).sort((a, b) => b[1].total - a[1].total);
+  }, [filteredOs]);
+
+  const sumRecByCasa = useMemo(() => {
+    const map = new Map<string, { qtd: number; total: number; atraso: number }>();
+    filteredRec.forEach((r) => {
+      const c = r.cliente || "—";
+      const cur = map.get(c) || { qtd: 0, total: 0, atraso: 0 };
+      cur.qtd += 1;
+      cur.total += Number(r.valor_pendente || 0);
+      if (r.atrasado) cur.atraso += Number(r.valor_pendente || 0);
+      map.set(c, cur);
+    });
+    return Array.from(map.entries()).sort((a, b) => b[1].total - a[1].total);
+  }, [filteredRec]);
+
+  // Seleção
+  const selectedOs = useMemo(
+    () => filteredOs.filter((o) => selOs[o.gc_os_id]),
+    [filteredOs, selOs],
+  );
+  const selectedRec = useMemo(
+    () => filteredRec.filter((r) => selRec[r.gc_recebimento_id]),
+    [filteredRec, selRec],
+  );
+
+  const toggleAllOs = (checked: boolean) => {
+    const next: Record<string, boolean> = {};
+    if (checked) filteredOs.forEach((o) => (next[o.gc_os_id] = true));
+    setSelOs(next);
+  };
+  const toggleAllRec = (checked: boolean) => {
+    const next: Record<string, boolean> = {};
+    if (checked) filteredRec.forEach((r) => (next[r.gc_recebimento_id] = true));
+    setSelRec(next);
+  };
+
+  const rowsOsExport = () => {
+    const src = selectedOs.length > 0 ? selectedOs : filteredOs;
+    return src.map((o) => ({
+      Codigo: o.codigo,
+      Casa: o.cliente,
+      Situacao: o.situacao,
+      Abertura: fmtData(o.data),
+      Vendedor: o.vendedor || "",
+      Descricao: o.descricao || "",
+      Valor: Number(o.valor_total || 0),
+      Link: o.link || "",
+    }));
+  };
+  const rowsRecExport = () => {
+    const src = selectedRec.length > 0 ? selectedRec : filteredRec;
+    return src.map((r) => ({
+      Titulo: r.codigo || r.gc_recebimento_id,
+      Casa: r.cliente,
+      OS: r.os_codigo || "",
+      Parcela: r.parcela || "",
+      Vencimento: fmtData(r.data_vencimento),
+      Situacao: r.atrasado ? "EM ATRASO" : "EM ABERTO",
+      Forma: r.forma_pagamento || "",
+      Descricao: r.descricao || "",
+      Valor: Number(r.valor || 0),
+      Pago: Number(r.valor_pago || 0),
+      Pendente: Number(r.valor_pendente || 0),
+    }));
+  };
+
+  const exportExcel = () => {
+    const wb = XLSX.utils.book_new();
+    if (tab === "os") {
+      const rows = rowsOsExport();
+      if (!rows.length) return toast.error("Nada para exportar");
+      const ws = XLSX.utils.json_to_sheet(rows);
+      XLSX.utils.book_append_sheet(wb, ws, "OS Ag. Negociação");
+      const sumRows = sumOsByCasa.map(([c, v]) => ({ Casa: c, Qtd: v.qtd, Total: v.total }));
+      sumRows.push({ Casa: "TOTAL", Qtd: rows.length, Total: rows.reduce((s, r) => s + r.Valor, 0) });
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(sumRows), "Somatória por Casa");
+    } else {
+      const rows = rowsRecExport();
+      if (!rows.length) return toast.error("Nada para exportar");
+      const ws = XLSX.utils.json_to_sheet(rows);
+      XLSX.utils.book_append_sheet(wb, ws, "Financeiro Pendente");
+      const sumRows = sumRecByCasa.map(([c, v]) => ({
+        Casa: c, Qtd: v.qtd, Total: v.total, EmAtraso: v.atraso,
+      }));
+      sumRows.push({
+        Casa: "TOTAL", Qtd: rows.length,
+        Total: rows.reduce((s, r) => s + r.Pendente, 0),
+        EmAtraso: rows.filter((r) => r.Situacao === "EM ATRASO").reduce((s, r) => s + r.Pendente, 0),
+      });
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(sumRows), "Somatória por Casa");
+    }
+    const name = `negociacao_${tab}_${new Date().toISOString().slice(0, 10)}.xlsx`;
+    XLSX.writeFile(wb, name);
+    toast.success("Excel exportado");
+  };
+
+  const exportPdf = () => {
+    const doc = new jsPDF({ orientation: "landscape" });
+    const title = tab === "os" ? "OS Aguardando Negociação" : "Financeiro Pendente";
+    doc.setFontSize(14);
+    doc.text(title, 14, 14);
+    doc.setFontSize(9);
+    doc.text(`Cliente: ${profile?.nome || profile?.email || ""}`, 14, 20);
+    doc.text(`Emissão: ${new Date().toLocaleString("pt-BR")}`, 14, 25);
+
+    if (tab === "os") {
+      const rows = rowsOsExport();
+      if (!rows.length) return toast.error("Nada para exportar");
+      autoTable(doc, {
+        startY: 30,
+        head: [["Código", "Casa", "Situação", "Abertura", "Vendedor", "Valor"]],
+        body: rows.map((r) => [r.Codigo, r.Casa, r.Situacao, r.Abertura, r.Vendedor, brl(r.Valor)]),
+        styles: { fontSize: 8 },
+        headStyles: { fillColor: [37, 99, 235] },
+      });
+      const total = rows.reduce((s, r) => s + r.Valor, 0);
+      autoTable(doc, {
+        head: [["Casa", "Qtd", "Total"]],
+        body: [
+          ...sumOsByCasa.map(([c, v]) => [c, String(v.qtd), brl(v.total)]),
+          ["TOTAL", String(rows.length), brl(total)],
+        ],
+        styles: { fontSize: 8 },
+        headStyles: { fillColor: [16, 185, 129] },
+      });
+    } else {
+      const rows = rowsRecExport();
+      if (!rows.length) return toast.error("Nada para exportar");
+      autoTable(doc, {
+        startY: 30,
+        head: [["Título", "Casa", "OS", "Venc.", "Situação", "Forma", "Pendente"]],
+        body: rows.map((r) => [
+          r.Titulo, r.Casa, r.OS, r.Vencimento, r.Situacao, r.Forma, brl(r.Pendente),
+        ]),
+        styles: { fontSize: 8 },
+        headStyles: { fillColor: [37, 99, 235] },
+      });
+      const total = rows.reduce((s, r) => s + r.Pendente, 0);
+      const atraso = rows.filter((r) => r.Situacao === "EM ATRASO").reduce((s, r) => s + r.Pendente, 0);
+      autoTable(doc, {
+        head: [["Casa", "Qtd", "Total", "Em Atraso"]],
+        body: [
+          ...sumRecByCasa.map(([c, v]) => [c, String(v.qtd), brl(v.total), brl(v.atraso)]),
+          ["TOTAL", String(rows.length), brl(total), brl(atraso)],
+        ],
+        styles: { fontSize: 8 },
+        headStyles: { fillColor: [16, 185, 129] },
+      });
+    }
+    doc.save(`negociacao_${tab}_${new Date().toISOString().slice(0, 10)}.pdf`);
+    toast.success("PDF exportado");
+  };
 
   if (authLoading || !user) {
     return (
@@ -188,17 +383,65 @@ export default function PortalNegociacaoPage() {
         </div>
 
         <Card className="p-3 space-y-3">
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
             <Input
               placeholder="Buscar por código, casa, descrição ou OS…"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              className="flex-1"
+              className="flex-1 min-w-[220px]"
             />
+            <Select value={casaFilter} onValueChange={setCasaFilter}>
+              <SelectTrigger className="w-[240px]">
+                <SelectValue placeholder="Filtrar casa" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="__all__">Todas as casas</SelectItem>
+                {casasOpts.map((c) => (
+                  <SelectItem key={c} value={c}>{c}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Button variant="outline" size="sm" onClick={exportExcel}>
+              <FileSpreadsheet className="h-4 w-4 mr-1" /> Excel
+            </Button>
+            <Button variant="outline" size="sm" onClick={exportPdf}>
+              <FileDown className="h-4 w-4 mr-1" /> PDF
+            </Button>
             <Button variant="outline" size="sm" onClick={() => refetch()} disabled={isFetching}>
               {isFetching ? <Loader2 className="h-4 w-4 animate-spin" /> : "Atualizar"}
             </Button>
           </div>
+
+          {/* Somatória por casa */}
+          {tab === "os" && sumOsByCasa.length > 0 && (
+            <div className="rounded-md border bg-muted/30 p-2 text-xs">
+              <div className="font-semibold mb-1 text-muted-foreground">Somatória por casa</div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-1">
+                {sumOsByCasa.map(([c, v]) => (
+                  <div key={c} className="flex justify-between gap-2 px-2 py-1 rounded hover:bg-background">
+                    <span className="truncate">{c} <span className="text-muted-foreground">({v.qtd})</span></span>
+                    <span className="font-medium whitespace-nowrap">{brl(v.total)}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+          {tab === "financeiro" && sumRecByCasa.length > 0 && (
+            <div className="rounded-md border bg-muted/30 p-2 text-xs">
+              <div className="font-semibold mb-1 text-muted-foreground">Somatória por casa</div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-1">
+                {sumRecByCasa.map(([c, v]) => (
+                  <div key={c} className="flex justify-between gap-2 px-2 py-1 rounded hover:bg-background">
+                    <span className="truncate">
+                      {c} <span className="text-muted-foreground">({v.qtd})</span>
+                      {v.atraso > 0 && <span className="text-red-600"> · atraso {brl(v.atraso)}</span>}
+                    </span>
+                    <span className="font-medium whitespace-nowrap">{brl(v.total)}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
 
           <Tabs value={tab} onValueChange={(v) => setTab(v as "os" | "financeiro")}>
             <TabsList>
@@ -221,12 +464,33 @@ export default function PortalNegociacaoPage() {
                 </div>
               ) : (
                 <div className="space-y-2">
+                  <div className="flex items-center justify-between text-xs text-muted-foreground px-1">
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <Checkbox
+                        checked={filteredOs.length > 0 && selectedOs.length === filteredOs.length}
+                        onCheckedChange={(v) => toggleAllOs(!!v)}
+                      />
+                      Selecionar todos ({selectedOs.length}/{filteredOs.length})
+                    </label>
+                    {selectedOs.length > 0 && (
+                      <span>
+                        Selecionado: <strong>{brl(selectedOs.reduce((s, o) => s + Number(o.valor_total || 0), 0))}</strong>
+                      </span>
+                    )}
+                  </div>
                   {filteredOs.map((o) => (
                     <div
                       key={o.gc_os_id}
                       className="border rounded-md p-3 hover:bg-muted/40 transition-colors"
                     >
                       <div className="flex items-start justify-between gap-3 flex-wrap">
+                        <Checkbox
+                          checked={!!selOs[o.gc_os_id]}
+                          onCheckedChange={(v) =>
+                            setSelOs((s) => ({ ...s, [o.gc_os_id]: !!v }))
+                          }
+                          className="mt-1"
+                        />
                         <div className="min-w-0 flex-1">
                           <div className="flex items-center gap-2 flex-wrap">
                             <span className="font-semibold text-sm">OS #{o.codigo}</span>
@@ -281,6 +545,20 @@ export default function PortalNegociacaoPage() {
                 </div>
               ) : (
                 <div className="space-y-2">
+                  <div className="flex items-center justify-between text-xs text-muted-foreground px-1">
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <Checkbox
+                        checked={filteredRec.length > 0 && selectedRec.length === filteredRec.length}
+                        onCheckedChange={(v) => toggleAllRec(!!v)}
+                      />
+                      Selecionar todos ({selectedRec.length}/{filteredRec.length})
+                    </label>
+                    {selectedRec.length > 0 && (
+                      <span>
+                        Selecionado: <strong>{brl(selectedRec.reduce((s, r) => s + Number(r.valor_pendente || 0), 0))}</strong>
+                      </span>
+                    )}
+                  </div>
                   {filteredRec.map((r) => (
                     <div
                       key={r.gc_recebimento_id}
@@ -289,6 +567,13 @@ export default function PortalNegociacaoPage() {
                       }`}
                     >
                       <div className="flex items-start justify-between gap-3 flex-wrap">
+                        <Checkbox
+                          checked={!!selRec[r.gc_recebimento_id]}
+                          onCheckedChange={(v) =>
+                            setSelRec((s) => ({ ...s, [r.gc_recebimento_id]: !!v }))
+                          }
+                          className="mt-1"
+                        />
                         <div className="min-w-0 flex-1">
                           <div className="flex items-center gap-2 flex-wrap">
                             <span className="font-semibold text-sm">
