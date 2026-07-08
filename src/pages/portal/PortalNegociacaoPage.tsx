@@ -34,6 +34,26 @@ const fmtData = (s: string) => {
   return s;
 };
 
+// Extrai a chave YYYY-MM de uma data em formato ISO (yyyy-mm-dd) ou br (dd/mm/yyyy)
+const monthKey = (s?: string): string => {
+  if (!s) return "";
+  const iso = s.match(/^(\d{4})-(\d{2})/);
+  if (iso) return `${iso[1]}-${iso[2]}`;
+  const br = s.match(/^(\d{2})\/(\d{2})\/(\d{4})/);
+  if (br) return `${br[3]}-${br[2]}`;
+  return "";
+};
+
+const MES_NOMES = [
+  "Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho",
+  "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro",
+];
+const monthLabel = (key: string): string => {
+  const [y, m] = key.split("-");
+  const idx = Number(m) - 1;
+  return `${MES_NOMES[idx] || m}/${y}`;
+};
+
 interface OSItem {
   gc_os_id: string;
   codigo: string;
@@ -41,6 +61,7 @@ interface OSItem {
   situacao: string;
   cor_situacao?: string;
   data: string;
+  data_saida?: string;
   valor_total: number;
   descricao: string;
   vendedor: string;
@@ -78,6 +99,7 @@ export default function PortalNegociacaoPage() {
   const [search, setSearch] = useState("");
   const [tab, setTab] = useState<"os" | "financeiro">("os");
   const [casaFilter, setCasaFilter] = useState<string>("__all__");
+  const [mesSaidaFilter, setMesSaidaFilter] = useState<string>("__all__");
   const [selOs, setSelOs] = useState<Record<string, boolean>>({});
   const [selRec, setSelRec] = useState<Record<string, boolean>>({});
 
@@ -115,11 +137,25 @@ export default function PortalNegociacaoPage() {
 
   const casasOpts = tab === "os" ? casasOs : casasRec;
 
+  // Opções de mês da data de saída (somente da aba OS)
+  const mesesSaida = useMemo(() => {
+    const set = new Set<string>();
+    (data?.os_list || []).forEach((o) => {
+      const k = monthKey(o.data_saida || o.data);
+      if (k) set.add(k);
+    });
+    return Array.from(set).sort((a, b) => b.localeCompare(a));
+  }, [data]);
+
   const filteredOs = useMemo(() => {
     const q = search.trim().toLowerCase();
     const list = data?.os_list || [];
     return list.filter((o) => {
       if (casaFilter !== "__all__" && o.cliente !== casaFilter) return false;
+      if (mesSaidaFilter !== "__all__") {
+        const k = monthKey(o.data_saida || o.data);
+        if (k !== mesSaidaFilter) return false;
+      }
       if (!q) return true;
       return (
         o.codigo.toLowerCase().includes(q) ||
@@ -128,7 +164,7 @@ export default function PortalNegociacaoPage() {
         o.situacao.toLowerCase().includes(q)
       );
     });
-  }, [data, search, casaFilter]);
+  }, [data, search, casaFilter, mesSaidaFilter]);
 
   const filteredRec = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -401,6 +437,19 @@ export default function PortalNegociacaoPage() {
                 ))}
               </SelectContent>
             </Select>
+            {tab === "os" && (
+              <Select value={mesSaidaFilter} onValueChange={setMesSaidaFilter}>
+                <SelectTrigger className="w-[200px]">
+                  <SelectValue placeholder="Mês data de saída" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__all__">Todos os meses</SelectItem>
+                  {mesesSaida.map((k) => (
+                    <SelectItem key={k} value={k}>{monthLabel(k)}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
             <Button variant="outline" size="sm" onClick={exportExcel}>
               <FileSpreadsheet className="h-4 w-4 mr-1" /> Excel
             </Button>
@@ -511,6 +560,9 @@ export default function PortalNegociacaoPage() {
                           )}
                           <div className="flex items-center gap-3 text-[11px] text-muted-foreground mt-1">
                             <span>Abertura: {fmtData(o.data)}</span>
+                            {o.data_saida && (
+                              <span>Saída: {fmtData(o.data_saida)}</span>
+                            )}
                             {o.vendedor && <span>Vendedor: {o.vendedor}</span>}
                           </div>
                         </div>
