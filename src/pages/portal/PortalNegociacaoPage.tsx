@@ -62,6 +62,7 @@ interface OSItem {
   cor_situacao?: string;
   data: string;
   data_saida?: string;
+  data_execucao?: string;
   valor_total: number;
   descricao: string;
   vendedor: string;
@@ -99,7 +100,7 @@ export default function PortalNegociacaoPage() {
   const [search, setSearch] = useState("");
   const [tab, setTab] = useState<"os" | "financeiro">("os");
   const [casaFilter, setCasaFilter] = useState<string>("__all__");
-  const [mesSaidaFilter, setMesSaidaFilter] = useState<string>("__all__");
+  const [mesExecFilter, setMesExecFilter] = useState<string>("__all__");
   const [selOs, setSelOs] = useState<Record<string, boolean>>({});
   const [selRec, setSelRec] = useState<Record<string, boolean>>({});
 
@@ -137,11 +138,11 @@ export default function PortalNegociacaoPage() {
 
   const casasOpts = tab === "os" ? casasOs : casasRec;
 
-  // Opções de mês da data de saída (somente da aba OS)
-  const mesesSaida = useMemo(() => {
+  // Opções de mês da execução (checkout da Tarefa Execução — somente aba OS)
+  const mesesExec = useMemo(() => {
     const set = new Set<string>();
     (data?.os_list || []).forEach((o) => {
-      const k = monthKey(o.data_saida || o.data);
+      const k = monthKey(o.data_execucao || "");
       if (k) set.add(k);
     });
     return Array.from(set).sort((a, b) => b.localeCompare(a));
@@ -152,9 +153,9 @@ export default function PortalNegociacaoPage() {
     const list = data?.os_list || [];
     return list.filter((o) => {
       if (casaFilter !== "__all__" && o.cliente !== casaFilter) return false;
-      if (mesSaidaFilter !== "__all__") {
-        const k = monthKey(o.data_saida || o.data);
-        if (k !== mesSaidaFilter) return false;
+      if (mesExecFilter !== "__all__") {
+        const k = monthKey(o.data_execucao || "");
+        if (k !== mesExecFilter) return false;
       }
       if (!q) return true;
       return (
@@ -164,7 +165,7 @@ export default function PortalNegociacaoPage() {
         o.situacao.toLowerCase().includes(q)
       );
     });
-  }, [data, search, casaFilter, mesSaidaFilter]);
+  }, [data, search, casaFilter, mesExecFilter]);
 
   const filteredRec = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -438,13 +439,13 @@ export default function PortalNegociacaoPage() {
               </SelectContent>
             </Select>
             {tab === "os" && (
-              <Select value={mesSaidaFilter} onValueChange={setMesSaidaFilter}>
+              <Select value={mesExecFilter} onValueChange={setMesExecFilter}>
                 <SelectTrigger className="w-[200px]">
-                  <SelectValue placeholder="Mês data de saída" />
+                  <SelectValue placeholder="Mês da execução" />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="__all__">Todos os meses</SelectItem>
-                  {mesesSaida.map((k) => (
+                  {mesesExec.map((k) => (
                     <SelectItem key={k} value={k}>{monthLabel(k)}</SelectItem>
                   ))}
                 </SelectContent>
@@ -560,8 +561,8 @@ export default function PortalNegociacaoPage() {
                           )}
                           <div className="flex items-center gap-3 text-[11px] text-muted-foreground mt-1">
                             <span>Abertura: {fmtData(o.data)}</span>
-                            {o.data_saida && (
-                              <span>Saída: {fmtData(o.data_saida)}</span>
+                            {o.data_execucao && (
+                              <span>Execução: {fmtData(o.data_execucao)}</span>
                             )}
                             {o.vendedor && <span>Vendedor: {o.vendedor}</span>}
                           </div>

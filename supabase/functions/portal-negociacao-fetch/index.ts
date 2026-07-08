@@ -148,6 +148,7 @@ Deno.serve(async (req) => {
         data: String(o.data || ""),
         data_final: String(o.data_final || ""),
         data_saida: String(o.data_saida || o.data_final || ""),
+        data_execucao: "",
         valor_total: Number(o.valor_total || 0),
         descricao: String(o.descricao || ""),
         vendedor: String(o.nome_vendedor || ""),
@@ -172,6 +173,31 @@ Deno.serve(async (req) => {
           } catch { /* ignore */ }
         }),
     );
+
+    // Preenche data_execucao (checkout da Tarefa Execução Auvo) via tarefas_central
+    try {
+      const osIds = osFiltered.map((o) => o.gc_os_id).filter(Boolean);
+      if (osIds.length > 0) {
+        const { data: tarefas } = await admin
+          .from("tarefas_central")
+          .select("gc_os_id, check_out_iso, data_conclusao")
+          .in("gc_os_id", osIds);
+        const byOs = new Map<string, string>();
+        for (const t of tarefas || []) {
+          const dt = String((t as any).check_out_iso || (t as any).data_conclusao || "").trim();
+          if (!dt) continue;
+          const key = String((t as any).gc_os_id);
+          const cur = byOs.get(key);
+          if (!cur || dt > cur) byOs.set(key, dt);
+        }
+        for (const o of osFiltered) {
+          const v = byOs.get(o.gc_os_id);
+          if (v) o.data_execucao = v;
+        }
+      }
+    } catch (e) {
+      console.warn("[portal-negociacao-fetch] falha ao juntar data_execucao:", e);
+    }
 
     // 2. Recebimentos em aberto / atraso
     const recRaw = await fetchRecebimentosEmAberto(gcHeaders);
