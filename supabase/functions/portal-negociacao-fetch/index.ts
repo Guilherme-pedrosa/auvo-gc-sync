@@ -189,13 +189,16 @@ Deno.serve(async (req) => {
       if (osIds.length > 0) {
         const { data: tarefas } = await admin
           .from("tarefas_central")
-          .select("gc_os_id, auvo_task_id, check_out_iso, data_conclusao, gc_os_tarefa_exec, duracao_decimal")
+          .select("gc_os_id, auvo_task_id, check_out_iso, data_conclusao, gc_os_tarefa_exec, duracao_decimal, auvo_task_url, auvo_link")
           .in("gc_os_id", osIds);
         const dtByOs = new Map<string, string>();
         const execByOs = new Map<string, string>();
+        const rowByTaskId = new Map<string, any>();
         const hoursByOs = new Map<string, number>();
         for (const t of tarefas || []) {
           const key = String((t as any).gc_os_id);
+          const taskId = String((t as any).auvo_task_id || "").trim();
+          if (taskId) rowByTaskId.set(taskId, t);
           const dt = String((t as any).check_out_iso || (t as any).data_conclusao || "").trim();
           if (dt) {
             const cur = dtByOs.get(key);
@@ -215,8 +218,12 @@ Deno.serve(async (req) => {
           if (v) o.data_execucao = v;
           const ex = execByOs.get(o.gc_os_id);
           if (ex) {
+            const execRow = rowByTaskId.get(ex);
+            const savedUrl = String(execRow?.auvo_task_url || execRow?.auvo_link || "").trim();
             (o as any).auvo_task_id = ex;
-            (o as any).auvo_task_url = `https://app2.auvo.com.br/relatorioTarefas/DetalheTarefa/${ex}`;
+            // Mesmo link que a aba "Horas" usa: primeiro o link salvo da tarefa;
+            // só monta fallback se a sincronização antiga ainda não trouxe URL.
+            (o as any).auvo_task_url = savedUrl || `https://app2.auvo.com.br/relatorioTarefas/DetalheTarefa/${ex}`;
           }
           const hrs = hoursByOs.get(o.gc_os_id);
           if (hrs && hrs > 0) (o as any).horas_execucao = hrs;
