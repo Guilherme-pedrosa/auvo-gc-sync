@@ -638,6 +638,15 @@ export default function PortalNegociacaoPage() {
                               </span>
                             )}
                           </div>
+                          {o.equipamentos && o.equipamentos.length > 0 && (
+                            <div className="flex items-center gap-1 flex-wrap mt-1">
+                              {o.equipamentos.map((e) => (
+                                <Badge key={e} variant="secondary" className="text-[10px] font-normal">
+                                  {e}
+                                </Badge>
+                              ))}
+                            </div>
+                          )}
                         </div>
                         <div className="text-right">
                           <p className="text-lg font-semibold text-primary whitespace-nowrap">
