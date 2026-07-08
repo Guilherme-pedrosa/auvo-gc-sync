@@ -207,7 +207,20 @@ Deno.serve(async (req) => {
           // exec task id: prefer explicit gc_os_tarefa_exec; fallback ao próprio auvo_task_id
           const exec = String((t as any).gc_os_tarefa_exec || (t as any).auvo_task_id || "").trim();
           if (exec && !execByOs.has(key)) execByOs.set(key, exec);
-          const h = Number((t as any).duracao_decimal || 0);
+          // Horas: usa duracao_decimal; se estiver zerada mas houver check-in/out,
+          // calcula a duração a partir dos timestamps (fallback quando a sync de horas
+          // ainda não rodou pro período).
+          let h = Number((t as any).duracao_decimal || 0);
+          if (!(h > 0)) {
+            const ci = String((t as any).check_in_iso || "").trim();
+            const co = String((t as any).check_out_iso || "").trim();
+            if (ci && co) {
+              const diffMs = new Date(co).getTime() - new Date(ci).getTime();
+              if (Number.isFinite(diffMs) && diffMs > 0) {
+                h = Math.round((diffMs / 3600000) * 100) / 100;
+              }
+            }
+          }
           if (h > 0) {
             const cur = hoursByOs.get(key) || 0;
             if (h > cur) hoursByOs.set(key, h);
