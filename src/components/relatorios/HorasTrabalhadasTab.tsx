@@ -125,6 +125,8 @@ export default function HorasTrabalhadasTab({
   const [filterTecnico, setFilterTecnico] = useState("todos");
   const [filterCliente, setFilterCliente] = useState("todos");
   const [filterGrupoState, setFilterGrupo] = useState("todos");
+  const [filterEquipamento, setFilterEquipamento] = useState("todos");
+  const [equipOpen, setEquipOpen] = useState(false);
   // Quando o pai força um grupo (Portal do Cliente), ele tem precedência
   // absoluta sobre o filtro interno — assim o caminho de cálculo é idêntico
   // ao do admin (dedup → filtro de grupo → totais).
@@ -377,6 +379,14 @@ export default function HorasTrabalhadasTab({
       const cliente = t.cliente || t.gc_os_cliente || "";
       if (filterCliente !== "todos" && cliente !== filterCliente) return false;
 
+      if (filterEquipamento !== "todos") {
+        const eqId =
+          t.equipamento_id_serie ||
+          equipamentoTaskMap[t.auvo_task_id]?.id_serie ||
+          "";
+        if (String(eqId) !== filterEquipamento) return false;
+      }
+
       if (filterGrupo !== "todos") {
         const grupoClientes = grupoClienteMap.get(filterGrupo) || [];
         const clienteAuvo = normalizeName(t.cliente || "");
@@ -394,8 +404,8 @@ export default function HorasTrabalhadasTab({
       return true;
     });
   }, [
-    data, filterTecnico, filterCliente, filterGrupo, tiposSelecionados,
-    grupoClienteMap,
+    data, filterTecnico, filterCliente, filterGrupo, filterEquipamento,
+    tiposSelecionados, grupoClienteMap, equipamentoTaskMap,
   ]);
 
   // When filtering by group, resolve which side (Auvo or GC) matched the group
