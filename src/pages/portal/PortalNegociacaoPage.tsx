@@ -227,7 +227,7 @@ export default function PortalNegociacaoPage() {
   const filteredOs = useMemo(() => {
     const q = search.trim().toLowerCase();
     const list = data?.os_list || [];
-    return list.filter((o) => {
+    const filtered = list.filter((o) => {
       if (casaFilter !== "__all__" && o.cliente !== casaFilter) return false;
       if (situacaoFilter !== "__all__" && o.situacao !== situacaoFilter) return false;
       if (mesSaidaFilter !== "__all__") {
@@ -252,6 +252,7 @@ export default function PortalNegociacaoPage() {
         (o.equipamentos || []).some((e) => e.toLowerCase().includes(q))
       );
     });
+    return filtered.sort((a, b) => (b.data_saida || "").localeCompare(a.data_saida || ""));
   }, [data, search, casaFilter, mesSaidaFilter, situacaoFilter, equipSelectedSet, equipFiltroAtivo, onlyCoifaExcluded]);
 
   const filteredRec = useMemo(() => {
