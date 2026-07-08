@@ -150,8 +150,27 @@ Deno.serve(async (req) => {
         valor_total: Number(o.valor_total || 0),
         descricao: String(o.descricao || ""),
         vendedor: String(o.nome_vendedor || ""),
-        link: `https://gestaoclick.com/ordens_servicos/editar/${o.id}`,
+        link: o.hash
+          ? `https://gestaoclick.com/cobranca/${o.hash}`
+          : `https://gestaoclick.com/ordens_servicos/editar/${o.id}`,
       }));
+
+    // Fallback: buscar hash individual das OS que não vieram na listagem
+    await Promise.all(
+      osFiltered
+        .filter((o) => !o.link.includes("/cobranca/"))
+        .map(async (o) => {
+          try {
+            const res = await fetch(`${GC_BASE_URL}/api/ordens_servicos/${o.gc_os_id}`, {
+              headers: gcHeaders,
+            });
+            if (!res.ok) return;
+            const j = await res.json().catch(() => ({}));
+            const hash = j?.data?.hash;
+            if (hash) o.link = `https://gestaoclick.com/cobranca/${hash}`;
+          } catch { /* ignore */ }
+        }),
+    );
 
     // 2. Recebimentos em aberto / atraso
     const recRaw = await fetchRecebimentosEmAberto(gcHeaders);
