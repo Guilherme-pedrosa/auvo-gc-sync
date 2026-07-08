@@ -10,6 +10,8 @@ import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Checkbox } from "@/components/ui/checkbox";
 import { SearchableSelect } from "@/components/ui/searchable-select";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
@@ -107,7 +109,9 @@ export default function PortalNegociacaoPage() {
   const [casaFilter, setCasaFilter] = useState<string>("__all__");
   const [mesSaidaFilter, setMesSaidaFilter] = useState<string>("__all__");
   const [situacaoFilter, setSituacaoFilter] = useState<string>("__all__");
-  const [equipFilter, setEquipFilter] = useState<string>("__all__");
+  const [equipSel, setEquipSel] = useState<Set<string> | null>(null); // null = todos
+  const [equipSearch, setEquipSearch] = useState("");
+  const [equipOpen, setEquipOpen] = useState(false);
   const [selOs, setSelOs] = useState<Record<string, boolean>>({});
   const [selRec, setSelRec] = useState<Record<string, boolean>>({});
 
@@ -171,11 +175,28 @@ export default function PortalNegociacaoPage() {
     return Array.from(set).sort((a, b) => a.localeCompare(b, "pt-BR"));
   }, [data, casaFilter]);
 
+  // Sempre que a lista de equipamentos mudar (troca de casa/data recarregada),
+  // volta ao estado "todos selecionados".
   useEffect(() => {
-    if (equipFilter !== "__all__" && !equipamentosOpts.includes(equipFilter)) {
-      setEquipFilter("__all__");
-    }
-  }, [equipamentosOpts, equipFilter]);
+    setEquipSel(null);
+  }, [equipamentosOpts.join("|")]);
+
+  const equipSelectedSet = useMemo(
+    () => equipSel ?? new Set(equipamentosOpts),
+    [equipSel, equipamentosOpts],
+  );
+  const equipAllSelected = equipSel === null || equipSel.size === equipamentosOpts.length;
+  const equipFiltroAtivo = !equipAllSelected;
+
+  const toggleEquip = (e: string) => {
+    setEquipSel((prev) => {
+      const base = new Set(prev ?? equipamentosOpts);
+      if (base.has(e)) base.delete(e); else base.add(e);
+      return base;
+    });
+  };
+  const selecionarTodosEquip = () => setEquipSel(null);
+  const removerTodosEquip = () => setEquipSel(new Set());
 
   const filteredOs = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -183,8 +204,10 @@ export default function PortalNegociacaoPage() {
     return list.filter((o) => {
       if (casaFilter !== "__all__" && o.cliente !== casaFilter) return false;
       if (situacaoFilter !== "__all__" && o.situacao !== situacaoFilter) return false;
-      if (equipFilter !== "__all__") {
-        if (!(o.equipamentos || []).includes(equipFilter)) return false;
+      if (equipFiltroAtivo) {
+        const eqs = o.equipamentos || [];
+        if (eqs.length === 0) return false;
+        if (!eqs.some((e) => equipSelectedSet.has(e))) return false;
       }
       if (mesSaidaFilter !== "__all__") {
         const k = monthKey(o.data_saida || "");
@@ -199,7 +222,7 @@ export default function PortalNegociacaoPage() {
         (o.equipamentos || []).some((e) => e.toLowerCase().includes(q))
       );
     });
-  }, [data, search, casaFilter, mesSaidaFilter, situacaoFilter, equipFilter]);
+  }, [data, search, casaFilter, mesSaidaFilter, situacaoFilter, equipSelectedSet, equipFiltroAtivo]);
 
   const filteredRec = useMemo(() => {
     const q = search.trim().toLowerCase();
