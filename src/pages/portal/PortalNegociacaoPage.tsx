@@ -164,9 +164,18 @@ export default function PortalNegociacaoPage() {
 
   const equipamentosOpts = useMemo(() => {
     const set = new Set<string>();
-    (data?.os_list || []).forEach((o) => (o.equipamentos || []).forEach((e) => e && set.add(e)));
+    (data?.os_list || []).forEach((o) => {
+      if (casaFilter !== "__all__" && o.cliente !== casaFilter) return;
+      (o.equipamentos || []).forEach((e) => e && set.add(e));
+    });
     return Array.from(set).sort((a, b) => a.localeCompare(b, "pt-BR"));
-  }, [data]);
+  }, [data, casaFilter]);
+
+  useEffect(() => {
+    if (equipFilter !== "__all__" && !equipamentosOpts.includes(equipFilter)) {
+      setEquipFilter("__all__");
+    }
+  }, [equipamentosOpts, equipFilter]);
 
   const filteredOs = useMemo(() => {
     const q = search.trim().toLowerCase();
