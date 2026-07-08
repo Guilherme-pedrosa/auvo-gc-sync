@@ -333,6 +333,7 @@ Deno.serve(async (req) => {
               if (o.auvo_task_id) ids.push(String(o.auvo_task_id));
               return ids;
             }).filter(Boolean)));
+            if (taskIds.length === 0) throw new Error("Nenhuma tarefa Auvo vinculada para resolver equipamento");
             const { data: links } = await admin
               .from("equipamento_tarefas_auvo")
               .select("auvo_task_id, auvo_equipment_id")
@@ -374,12 +375,12 @@ Deno.serve(async (req) => {
           console.warn("[portal-negociacao-fetch] equip lookup failed:", e);
         }
 
-        // Live fallback no Auvo para tarefas exec sem URL pública ou sem horas.
+        // Live fallback no Auvo para tarefas exec sem URL pública, sem horas ou sem equipamento.
         try {
           const auvoKey = Deno.env.get("AUVO_APP_KEY");
           const auvoTok = Deno.env.get("AUVO_TOKEN");
           const targets = osFiltered.filter((o: any) =>
-            o.auvo_task_id && (o._needsAuvoLive || !(o.horas_execucao > 0))
+            o.auvo_task_id && (o._needsAuvoLive || !(o.horas_execucao > 0) || !((o.equipamentos || []).length > 0))
           );
           if (auvoKey && auvoTok && targets.length > 0) {
             const bearer = await auvoLogin(auvoKey, auvoTok);
@@ -406,6 +407,25 @@ Deno.serve(async (req) => {
                     if (Number.isFinite(diff) && diff > 0) {
                       (o as any).horas_execucao = Math.round((diff / 3600000) * 100) / 100;
                     }
+                  }
+                  if (!((o.equipamentos || []).length > 0)) {
+                    addEquipLabel(equipsByOs, String(o.gc_os_id), info.equipmentName, info.equipmentSerial);
+                    if ((!equipsByOs.get(String(o.gc_os_id)) || equipsByOs.get(String(o.gc_os_id))!.size === 0) && info.equipmentIds.length > 0) {
+                      const { data: eqs } = await admin
+                        .from("equipamentos_auvo")
+                        .select("auvo_equipment_id, nome, identificador")
+                        .in("auvo_equipment_id", info.equipmentIds);
+                      for (const e of eqs || []) {
+                        addEquipLabel(
+                          equipsByOs,
+                          String(o.gc_os_id),
+                          String((e as any).nome || "").trim(),
+                          String((e as any).identificador || "").trim(),
+                        );
+                      }
+                    }
+                    const labels = equipsByOs.get(String(o.gc_os_id));
+                    if (labels && labels.size > 0) (o as any).equipamentos = Array.from(labels);
                   }
                 }));
               }
