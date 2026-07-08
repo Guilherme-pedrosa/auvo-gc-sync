@@ -560,6 +560,9 @@ export default function PortalNegociacaoPage() {
                           )}
                           <div className="flex items-center gap-3 text-[11px] text-muted-foreground mt-1">
                             <span>Abertura: {fmtData(o.data)}</span>
+                            {o.data_saida && (
+                              <span>Saída: {fmtData(o.data_saida)}</span>
+                            )}
                             {o.vendedor && <span>Vendedor: {o.vendedor}</span>}
                           </div>
                         </div>
