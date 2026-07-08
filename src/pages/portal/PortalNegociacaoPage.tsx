@@ -41,6 +41,7 @@ interface OSItem {
   situacao: string;
   cor_situacao?: string;
   data: string;
+  data_saida?: string;
   valor_total: number;
   descricao: string;
   vendedor: string;
@@ -78,6 +79,7 @@ export default function PortalNegociacaoPage() {
   const [search, setSearch] = useState("");
   const [tab, setTab] = useState<"os" | "financeiro">("os");
   const [casaFilter, setCasaFilter] = useState<string>("__all__");
+  const [mesSaidaFilter, setMesSaidaFilter] = useState<string>("__all__");
   const [selOs, setSelOs] = useState<Record<string, boolean>>({});
   const [selRec, setSelRec] = useState<Record<string, boolean>>({});
 
