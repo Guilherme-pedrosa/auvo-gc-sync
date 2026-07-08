@@ -294,6 +294,57 @@ Deno.serve(async (req) => {
           if (eqs && eqs.size > 0) (o as any).equipamentos = Array.from(eqs);
         }
 
+        // Fallback: resolve equipamento via vínculo nativo Auvo
+        // (equipamento_tarefas_auvo → equipamentos_auvo), igual a aba "Horas".
+        try {
+          const semEquip = osFiltered.filter((o: any) =>
+            (!o.equipamentos || o.equipamentos.length === 0) && o.auvo_task_id
+          );
+          if (semEquip.length > 0) {
+            const taskIds = Array.from(new Set(semEquip.map((o: any) => String(o.auvo_task_id))));
+            const { data: links } = await admin
+              .from("equipamento_tarefas_auvo")
+              .select("auvo_task_id, auvo_equipment_id")
+              .in("auvo_task_id", taskIds);
+            const eqIdsByTask = new Map<string, Set<string>>();
+            const allEqIds = new Set<string>();
+            for (const l of links || []) {
+              const tid = String((l as any).auvo_task_id || "");
+              const eid = String((l as any).auvo_equipment_id || "");
+              if (!tid || !eid) continue;
+              if (!eqIdsByTask.has(tid)) eqIdsByTask.set(tid, new Set());
+              eqIdsByTask.get(tid)!.add(eid);
+              allEqIds.add(eid);
+            }
+            const eqInfo = new Map<string, { nome: string; serie: string }>();
+            if (allEqIds.size > 0) {
+              const { data: eqs } = await admin
+                .from("equipamentos_auvo")
+                .select("auvo_equipment_id, nome, identificador")
+                .in("auvo_equipment_id", Array.from(allEqIds));
+              for (const e of eqs || []) {
+                eqInfo.set(String((e as any).auvo_equipment_id), {
+                  nome: String((e as any).nome || "").trim(),
+                  serie: String((e as any).identificador || "").trim(),
+                });
+              }
+            }
+            for (const o of semEquip as any[]) {
+              const eqIds = eqIdsByTask.get(String(o.auvo_task_id));
+              if (!eqIds || eqIds.size === 0) continue;
+              const labels: string[] = [];
+              for (const eid of eqIds) {
+                const info = eqInfo.get(eid);
+                if (!info?.nome && !info?.serie) continue;
+                labels.push(info.nome && info.serie ? `${info.nome} (${info.serie})` : (info.nome || `#${info.serie}`));
+              }
+              if (labels.length > 0) o.equipamentos = labels;
+            }
+          }
+        } catch (e) {
+          console.warn("[portal-negociacao-fetch] equip lookup failed:", e);
+        }
+
         // Live fallback no Auvo para tarefas exec sem URL pública ou sem horas.
         try {
           const auvoKey = Deno.env.get("AUVO_APP_KEY");
