@@ -192,6 +192,14 @@ export default function PortalNegociacaoPage() {
 
   const equipSelectedSet = equipSel;
   const equipFiltroAtivo = equipSel.size !== equipamentosOpts.length;
+  const nonCoifaEquipamentos = useMemo(
+    () => equipamentosOpts.filter((e) => !isCoifaEquip(e)),
+    [equipamentosOpts],
+  );
+  const onlyCoifaExcluded = useMemo(() => {
+    if (equipSel.size !== nonCoifaEquipamentos.length) return false;
+    return nonCoifaEquipamentos.every((e) => equipSel.has(e));
+  }, [equipSel, nonCoifaEquipamentos]);
 
   const toggleEquip = (e: string) => {
     setEquipSel((prev) => {
@@ -222,9 +230,9 @@ export default function PortalNegociacaoPage() {
       if (situacaoFilter !== "__all__" && o.situacao !== situacaoFilter) return false;
       if (equipFiltroAtivo) {
         const eqs = o.equipamentos || [];
-        if (eqs.some((e) => !equipSelectedSet.has(e))) return false;
-        if (eqs.length === 0 && equipSelectedSet.size === 0) return false;
+        if (eqs.length === 0) return onlyCoifaExcluded && equipSelectedSet.size > 0;
         if (!eqs.some((e) => equipSelectedSet.has(e))) return false;
+        if (eqs.some((e) => !equipSelectedSet.has(e))) return false;
       }
       if (mesSaidaFilter !== "__all__") {
         const k = monthKey(o.data_saida || "");
@@ -239,7 +247,7 @@ export default function PortalNegociacaoPage() {
         (o.equipamentos || []).some((e) => e.toLowerCase().includes(q))
       );
     });
-  }, [data, search, casaFilter, mesSaidaFilter, situacaoFilter, equipSelectedSet, equipFiltroAtivo]);
+  }, [data, search, casaFilter, mesSaidaFilter, situacaoFilter, equipSelectedSet, equipFiltroAtivo, onlyCoifaExcluded]);
 
   const filteredRec = useMemo(() => {
     const q = search.trim().toLowerCase();
