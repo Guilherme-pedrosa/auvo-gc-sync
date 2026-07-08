@@ -355,8 +355,12 @@ export default function RelatoriosPage() {
       if (task?.auvo_task_id) ids.add(String(task.auvo_task_id));
       parseAuvoTaskIds(task?.gc_os_tarefa_exec).forEach((id) => ids.add(id));
     }
+    for (const task of horasData || []) {
+      if (task?.auvo_task_id) ids.add(String(task.auvo_task_id));
+      parseAuvoTaskIds((task as any)?.gc_os_tarefa_exec).forEach((id) => ids.add(id));
+    }
     return Array.from(ids).sort();
-  }, [tarefasOS]);
+  }, [tarefasOS, horasData]);
 
   // Equipment links: auvo_task_id → { nome, id_serie } (fallback for tasks where
   // tarefas_central.equipamento_nome was not populated by the sync)
@@ -409,7 +413,9 @@ export default function RelatoriosPage() {
       }
       return map;
     },
-    enabled: activeTab === "os-abertas" && equipamentoLookupTaskIds.length > 0,
+    enabled:
+      (activeTab === "os-abertas" || activeTab === "horas-trabalhadas") &&
+      equipamentoLookupTaskIds.length > 0,
     staleTime: 5 * 60_000,
   });
 
