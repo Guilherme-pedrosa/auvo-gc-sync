@@ -230,15 +230,18 @@ export default function PortalNegociacaoPage() {
     return list.filter((o) => {
       if (casaFilter !== "__all__" && o.cliente !== casaFilter) return false;
       if (situacaoFilter !== "__all__" && o.situacao !== situacaoFilter) return false;
-      if (equipFiltroAtivo) {
-        const eqs = o.equipamentos || [];
-        if (eqs.length === 0) return onlyCoifaExcluded && equipSelectedSet.size > 0;
-        if (!eqs.some((e) => equipSelectedSet.has(e))) return false;
-        if (eqs.some((e) => !equipSelectedSet.has(e))) return false;
-      }
       if (mesSaidaFilter !== "__all__") {
         const k = monthKey(o.data_saida || "");
         if (k !== mesSaidaFilter) return false;
+      }
+      if (equipFiltroAtivo) {
+        const eqs = o.equipamentos || [];
+        if (eqs.length === 0) {
+          if (!(onlyCoifaExcluded && equipSelectedSet.size > 0)) return false;
+        } else {
+          if (!eqs.some((e) => equipSelectedSet.has(e))) return false;
+          if (eqs.some((e) => !equipSelectedSet.has(e))) return false;
+        }
       }
       if (!q) return true;
       return (
