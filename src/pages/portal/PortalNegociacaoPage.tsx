@@ -189,16 +189,19 @@ export default function PortalNegociacaoPage() {
     setEquipSel(new Set(equipamentosOpts.filter((e) => !isCoifaEquip(e))));
   }, [equipamentosOpts.join("|")]);
 
-  const equipSelectedSet = equipSel;
-  const equipFiltroAtivo = equipSel.size !== equipamentosOpts.length;
+  const equipSelectedSet = useMemo(
+    () => new Set(Array.from(equipSel).filter((e) => equipamentosOpts.includes(e))),
+    [equipSel, equipamentosOpts],
+  );
+  const equipFiltroAtivo = equipamentosOpts.length > 0 && equipSelectedSet.size !== equipamentosOpts.length;
   const nonCoifaEquipamentos = useMemo(
     () => equipamentosOpts.filter((e) => !isCoifaEquip(e)),
     [equipamentosOpts],
   );
   const onlyCoifaExcluded = useMemo(() => {
-    if (equipSel.size !== nonCoifaEquipamentos.length) return false;
-    return nonCoifaEquipamentos.every((e) => equipSel.has(e));
-  }, [equipSel, nonCoifaEquipamentos]);
+    if (equipSelectedSet.size !== nonCoifaEquipamentos.length) return false;
+    return nonCoifaEquipamentos.every((e) => equipSelectedSet.has(e));
+  }, [equipSelectedSet, nonCoifaEquipamentos]);
 
   const toggleEquip = (e: string) => {
     setEquipSel((prev) => {
