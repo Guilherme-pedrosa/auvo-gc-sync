@@ -660,6 +660,17 @@ export default function PortalNegociacaoPage() {
                 Financeiro Pendente ({filteredRec.length})
               </TabsTrigger>
             </TabsList>
+            {tab === "os" && mesSaidaFilter !== "__all__" && (
+              <div className="mt-2 text-xs text-muted-foreground">
+                Filtro ativo: <strong>Mês da saída = {monthLabel(mesSaidaFilter)}</strong>{" "}
+                <button
+                  className="ml-1 underline text-primary"
+                  onClick={() => setMesSaidaFilter("__all__")}
+                >
+                  limpar
+                </button>
+              </div>
+            )}
 
             <TabsContent value="os" className="mt-3">
               {isLoading ? (
