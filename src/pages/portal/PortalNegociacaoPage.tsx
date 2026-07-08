@@ -67,6 +67,8 @@ interface OSItem {
   descricao: string;
   vendedor: string;
   link: string;
+  auvo_task_id?: string;
+  auvo_task_url?: string;
 }
 
 interface RecebItem {
@@ -599,6 +601,11 @@ export default function PortalNegociacaoPage() {
                               <span>Execução: {fmtData(o.data_execucao)}</span>
                             )}
                             {o.vendedor && <span>Vendedor: {o.vendedor}</span>}
+                            {o.auvo_task_id && (
+                              <span>
+                                Tarefa Auvo: <strong>#{o.auvo_task_id}</strong>
+                              </span>
+                            )}
                           </div>
                         </div>
                         <div className="text-right">
@@ -613,6 +620,16 @@ export default function PortalNegociacaoPage() {
                           >
                             Ver no GC <ExternalLink className="h-3 w-3" />
                           </a>
+                          {o.auvo_task_url && (
+                            <a
+                              href={o.auvo_task_url}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="text-xs text-emerald-600 hover:underline inline-flex items-center gap-1 mt-1 block"
+                            >
+                              Relatório Auvo <ExternalLink className="h-3 w-3" />
+                            </a>
+                          )}
                         </div>
                       </div>
                     </div>
