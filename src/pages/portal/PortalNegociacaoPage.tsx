@@ -465,7 +465,13 @@ export default function PortalNegociacaoPage() {
           {/* Somatória por casa */}
           {tab === "os" && sumOsByCasa.length > 0 && (
             <div className="rounded-md border bg-muted/30 p-2 text-xs">
-              <div className="font-semibold mb-1 text-muted-foreground">Somatória por casa</div>
+              <div className="flex items-center justify-between mb-1">
+                <span className="font-semibold text-muted-foreground">Somatória por casa</span>
+                <span className="text-sm">
+                  Total filtrado: <strong className="text-primary">{brl(filteredOs.reduce((s, o) => s + Number(o.valor_total || 0), 0))}</strong>
+                  <span className="text-muted-foreground ml-1">({filteredOs.length} OS)</span>
+                </span>
+              </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-1">
                 {sumOsByCasa.map(([c, v]) => (
                   <div key={c} className="flex justify-between gap-2 px-2 py-1 rounded hover:bg-background">
@@ -478,7 +484,13 @@ export default function PortalNegociacaoPage() {
           )}
           {tab === "financeiro" && sumRecByCasa.length > 0 && (
             <div className="rounded-md border bg-muted/30 p-2 text-xs">
-              <div className="font-semibold mb-1 text-muted-foreground">Somatória por casa</div>
+              <div className="flex items-center justify-between mb-1">
+                <span className="font-semibold text-muted-foreground">Somatória por casa</span>
+                <span className="text-sm">
+                  Total filtrado: <strong className="text-primary">{brl(filteredRec.reduce((s, r) => s + Number(r.valor_pendente || 0), 0))}</strong>
+                  <span className="text-muted-foreground ml-1">({filteredRec.length} títulos)</span>
+                </span>
+              </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-1">
                 {sumRecByCasa.map(([c, v]) => (
                   <div key={c} className="flex justify-between gap-2 px-2 py-1 rounded hover:bg-background">
