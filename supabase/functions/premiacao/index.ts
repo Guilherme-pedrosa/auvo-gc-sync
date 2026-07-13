@@ -693,9 +693,10 @@ Deno.serve(async (req) => {
     // escolhido manualmente na tela de Premiação.
     // ============================================================
     try {
-      const { data: compartilhadas } = await sb
+      const { data: compartilhadas, error: compartilhadasError } = await supabase
         .from("premiacao_os_compartilhada")
         .select("gc_os_codigo, tecnico_secundario");
+      if (compartilhadasError) throw compartilhadasError;
       const sharedMap = new Map<string, string>();
       for (const r of (compartilhadas || [])) {
         const cod = String((r as any).gc_os_codigo || "").trim();
@@ -760,6 +761,7 @@ Deno.serve(async (req) => {
                 ordens: [],
               };
               tecnicos.push(secAgg);
+              techMap.set(secKey, secAgg);
             }
             secAgg.os_count += 0.5;
             secAgg.valor_pecas += beforeValPec / 2;
