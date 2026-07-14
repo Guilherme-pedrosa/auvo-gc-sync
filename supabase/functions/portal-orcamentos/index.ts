@@ -188,8 +188,38 @@ Deno.serve(async (req) => {
         .map((r: any) => r.dados)
         .filter((d: any) => d && clientesNorm.has(normalize(d.cliente)));
 
+      // Sanidade: revalida cada orçamento no GC e remove os que saíram
+      // de "Aguardando Aprovação" (ex.: cancelado, aprovado, etc.).
+      // Escopo restrito aos clientes do grupo → volume pequeno.
+      const stale: string[] = [];
+      await Promise.all(
+        itens.map(async (i: any) => {
+          const id = String(i.gc_orcamento_id || "");
+          if (!id) return;
+          try {
+            const r = await fetch(`${GC_BASE_URL}/api/orcamentos/${id}`, { headers: gcHeaders });
+            if (!r.ok) return; // erro de rede: preserva cache
+            const j: any = await r.json().catch(() => ({}));
+            const orc = j?.data ?? j;
+            const sit = String(orc?.situacao_id ?? "");
+            if (sit && sit !== SITUACAO_AGUARDANDO_APROVACAO) {
+              stale.push(id);
+            }
+          } catch (_) { /* preserva cache em erro */ }
+        }),
+      );
+      if (stale.length > 0) {
+        await admin
+          .from("followup_kanban_cache")
+          .delete()
+          .in("gc_orcamento_id", stale)
+          .eq("coluna", SITUACAO_AGUARDANDO_APROVACAO);
+      }
+      const staleSet = new Set(stale);
+      const itensValidos = itens.filter((i: any) => !staleSet.has(String(i.gc_orcamento_id)));
+
       // Enriquece com equipamento via tarefas_central
-      const ids = itens.map((i: any) => String(i.gc_orcamento_id)).filter(Boolean);
+      const ids = itensValidos.map((i: any) => String(i.gc_orcamento_id)).filter(Boolean);
       const equipMap = new Map<string, string>();
       const linkMap = new Map<string, string>();
       if (ids.length > 0) {
@@ -207,7 +237,7 @@ Deno.serve(async (req) => {
       }
       // Para os que não vieram pela tarefas_central, busca o hash no GC e monta /prop/{hash}
       const tipoMap = new Map<string, string>();
-      const missing = itens.filter(
+      const missing = itensValidos.filter(
         (i: any) => !linkMap.has(String(i.gc_orcamento_id)) || !i.tipo,
       );
       await Promise.all(
@@ -223,7 +253,7 @@ Deno.serve(async (req) => {
           } catch (_) { /* ignore */ }
         }),
       );
-      const enriched = itens
+      const enriched = itensValidos
         .map((i: any) => ({
           ...i,
           tipo: String(i.tipo || tipoMap.get(String(i.gc_orcamento_id)) || "").toLowerCase(),
