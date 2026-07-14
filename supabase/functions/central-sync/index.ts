@@ -1459,6 +1459,7 @@ async function runCentralSync(body: CentralSyncBody = {}) {
       target.gc_orc_valor_total = orcPayload.gc_orc_valor_total;
       target.gc_orc_valor_produtos = orcPayload.gc_orc_valor_produtos;
       target.gc_orc_valor_servicos = orcPayload.gc_orc_valor_servicos;
+      target.gc_orc_tipo = orcPayload.gc_orc_tipo;
       target.gc_orc_vendedor = orcPayload.gc_orc_vendedor;
       target.gc_orc_data = orcPayload.gc_orc_data;
       target.gc_orc_link = orcPayload.gc_orc_link;
@@ -1597,6 +1598,7 @@ async function runCentralSync(body: CentralSyncBody = {}) {
               gc_orc_valor_total: orcPayload.gc_orc_valor_total,
               gc_orc_valor_produtos: orcPayload.gc_orc_valor_produtos,
               gc_orc_valor_servicos: orcPayload.gc_orc_valor_servicos,
+              gc_orc_tipo: orcPayload.gc_orc_tipo,
               gc_orc_vendedor: orcPayload.gc_orc_vendedor,
               gc_orc_data: orcPayload.gc_orc_data,
               gc_orc_link: orcPayload.gc_orc_link,
@@ -1871,6 +1873,7 @@ async function runCentralSync(body: CentralSyncBody = {}) {
               gc_orc_valor_total: fresh.gc_orc_valor_total,
               gc_orc_valor_produtos: fresh.gc_orc_valor_produtos,
               gc_orc_valor_servicos: fresh.gc_orc_valor_servicos,
+              gc_orc_tipo: fresh.gc_orc_tipo,
               gc_orc_vendedor: fresh.gc_orc_vendedor,
               gc_orc_cliente: fresh.gc_orc_cliente,
               atualizado_em: new Date().toISOString(),
@@ -2182,6 +2185,7 @@ async function runCentralSync(body: CentralSyncBody = {}) {
         row.gc_orc_valor_total = gcOrc.gc_orc_valor_total;
         row.gc_orc_valor_produtos = gcOrc.gc_orc_valor_produtos;
         row.gc_orc_valor_servicos = gcOrc.gc_orc_valor_servicos;
+        row.gc_orc_tipo = gcOrc.gc_orc_tipo;
         row.gc_orc_vendedor = gcOrc.gc_orc_vendedor;
         row.gc_orc_data = gcOrc.gc_orc_data;
         row.gc_orc_link = gcOrc.gc_orc_link;
@@ -2284,6 +2288,7 @@ async function runCentralSync(body: CentralSyncBody = {}) {
         fallbackRow.gc_orc_valor_total = gcOrc.gc_orc_valor_total;
         fallbackRow.gc_orc_valor_produtos = gcOrc.gc_orc_valor_produtos;
         fallbackRow.gc_orc_valor_servicos = gcOrc.gc_orc_valor_servicos;
+        fallbackRow.gc_orc_tipo = gcOrc.gc_orc_tipo;
         fallbackRow.gc_orc_vendedor = gcOrc.gc_orc_vendedor;
         fallbackRow.gc_orc_data = gcOrc.gc_orc_data;
         fallbackRow.gc_orc_link = gcOrc.gc_orc_link;
