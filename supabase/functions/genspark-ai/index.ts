@@ -1116,6 +1116,43 @@ const asConfidence = (value: unknown): "baixa" | "media" | "alta" => {
   return normalized === "alta" ? "alta" : normalized === "media" ? "media" : "baixa";
 };
 
+function repairTruncatedJson(input: string): string {
+  let s = input;
+  // Walk the string, tracking string state and bracket stack. If we end
+  // inside a string, close it. Then close any open arrays/objects. Drop any
+  // dangling trailing comma / partial key before closing.
+  const stack: string[] = [];
+  let inString = false;
+  let escape = false;
+  let lastSafeIndex = -1; // last index outside a string with balanced state
+  for (let i = 0; i < s.length; i++) {
+    const ch = s[i];
+    if (inString) {
+      if (escape) { escape = false; continue; }
+      if (ch === "\\") { escape = true; continue; }
+      if (ch === '"') { inString = false; }
+      continue;
+    }
+    if (ch === '"') { inString = true; continue; }
+    if (ch === "{" || ch === "[") { stack.push(ch); continue; }
+    if (ch === "}" || ch === "]") { stack.pop(); if (stack.length === 0) lastSafeIndex = i; continue; }
+  }
+  if (inString) s += '"';
+  // Remove trailing partial content after last comma inside the outermost open
+  // container so we don't leave "key": <partial> hanging.
+  // Strip trailing commas + whitespace at end.
+  s = s.replace(/,\s*$/g, "");
+  // Close remaining brackets in reverse.
+  while (stack.length) {
+    const open = stack.pop();
+    // Remove any trailing partial "key": value that's incomplete before closing an object.
+    s = s.replace(/,\s*"[^"]*"\s*:\s*[^,}\]]*$/g, "");
+    s = s.replace(/,\s*[^,}\]]*$/g, "");
+    s += open === "{" ? "}" : "]";
+  }
+  return s;
+}
+
 function parseAndNormalizeBudgetAnalysis(raw: string, maxRecommendations: number): BudgetAnalysis | null {
   try {
     const clean = raw.trim().replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "");
