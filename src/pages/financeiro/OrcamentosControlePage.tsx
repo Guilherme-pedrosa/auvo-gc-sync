@@ -100,6 +100,7 @@ export default function OrcamentosControlePage() {
   const [search, setSearch] = useState("");
   const [excludedSituacoes, setExcludedSituacoes] = useState<Set<string>>(new Set());
   const [searchSituacao, setSearchSituacao] = useState("");
+  const [activeTab, setActiveTab] = useState<"todos" | "produtos" | "servicos" | "mistos">("todos");
   const [expanded, setExpanded] = useState<string | null>(null);
   const [selectedCard, setSelectedCard] = useState<any | null>(null);
 
