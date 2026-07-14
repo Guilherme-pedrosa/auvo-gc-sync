@@ -506,6 +506,8 @@ function buildGcOrcPayload(orc: any) {
     gc_orc_situacao_id: String(orc.situacao_id || ""),
     gc_orc_cor_situacao: String(orc.cor_situacao || ""),
     gc_orc_valor_total: parseFloat(orc.valor_total || "0"),
+    gc_orc_valor_produtos: parseFloat(orc.valor_produtos || "0"),
+    gc_orc_valor_servicos: parseFloat(orc.valor_servicos || "0"),
     gc_orc_vendedor: String(orc.nome_vendedor || ""),
     gc_orc_data: String(orc.data || "").split("T")[0] || null,
     gc_orc_link: buildGcOrcPublicLink(orc),
