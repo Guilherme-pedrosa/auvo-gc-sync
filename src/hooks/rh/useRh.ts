@@ -264,6 +264,73 @@ export function useToggleRequirement() {
   });
 }
 
+export function useAddRequirement() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (payload: {
+      client_id: string; document_type_id: string;
+      required_for: "COMPANY" | "TECHNICIAN"; is_required?: boolean;
+    }) => {
+      const { error } = await sb.from("rh_client_requirements").upsert(
+        { is_required: true, ...payload },
+        { onConflict: "client_id,document_type_id,required_for" },
+      );
+      if (error) throw error;
+    },
+    onSuccess: (_d, vars) => {
+      qc.invalidateQueries({ queryKey: ["rh_client_requirements", vars.client_id] });
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+}
+
+export function useRemoveRequirement() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id }: { id: string; client_id: string }) => {
+      const { error } = await sb.from("rh_client_requirements").delete().eq("id", id);
+      if (error) throw error;
+    },
+    onSuccess: (_d, vars) => {
+      qc.invalidateQueries({ queryKey: ["rh_client_requirements", vars.client_id] });
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+}
+
+export function useSetRequirementRequired() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, is_required }: { id: string; is_required: boolean; client_id: string }) => {
+      const { error } = await sb.from("rh_client_requirements").update({ is_required }).eq("id", id);
+      if (error) throw error;
+    },
+    onSuccess: (_d, vars) => {
+      qc.invalidateQueries({ queryKey: ["rh_client_requirements", vars.client_id] });
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+}
+
+export async function applyRequirementsTemplate(clientId: string, docTypes: DocumentType[], existing: ClientRequirement[]) {
+  const techCodes = ["ASO", "NR10", "NR35", "NR33", "CNH", "FICHA_REGISTRO"];
+  const compCodes = ["CONTRATO_SOCIAL", "CERTIFICADO_NR", "ALVARA"];
+  const has = (t: DocumentType, s: "COMPANY" | "TECHNICIAN") =>
+    existing.some((r) => r.document_type_id === t.id && r.required_for === s);
+  const rows = [
+    ...docTypes
+      .filter((t) => t.ativo && t.scope === "TECHNICIAN" && techCodes.includes(t.code.toUpperCase()) && !has(t, "TECHNICIAN"))
+      .map((t) => ({ client_id: clientId, document_type_id: t.id, required_for: "TECHNICIAN" as const, is_required: true })),
+    ...docTypes
+      .filter((t) => t.ativo && t.scope === "COMPANY" && compCodes.includes(t.code.toUpperCase()) && !has(t, "COMPANY"))
+      .map((t) => ({ client_id: clientId, document_type_id: t.id, required_for: "COMPANY" as const, is_required: true })),
+  ];
+  if (rows.length === 0) return 0;
+  const { error } = await sb.from("rh_client_requirements").insert(rows);
+  if (error) throw error;
+  return rows.length;
+}
+
 // ---------- Integrations ----------
 export function useIntegrations() {
   return useQuery({
