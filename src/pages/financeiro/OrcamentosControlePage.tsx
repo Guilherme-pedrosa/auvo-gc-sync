@@ -498,7 +498,7 @@ export default function OrcamentosControlePage() {
       <div className="flex flex-wrap gap-3 items-center">
         <div className="relative max-w-sm">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input placeholder="Buscar cliente, código, tarefa..." value={search} onChange={(e) => setSearch(e.target.value)} className="pl-9" />
+          <Input placeholder="Buscar cliente, código, tarefa... (número = apenas orçamento)" value={search} onChange={(e) => setSearch(e.target.value)} className="pl-9" />
         </div>
 
         <Popover>
