@@ -36,6 +36,12 @@ const SITUACAO_ABERTA_REGEX = /aguardando\s*aprova/i;
 const fetchOrcamentosNoPeriodo = async (fromDate: Date, toDate: Date) => {
   const fromStr = format(fromDate, "yyyy-MM-dd");
   const toStr = format(toDate, "yyyy-MM-dd");
+  // Filtro estrito por data de CONFECÇÃO do orçamento (quando foi criado no sistema).
+  // Usamos `criado_em` (imutável) em vez de `gc_orc_data` porque o campo `data`
+  // no GestãoClick é editável pelo usuário e pode ser alterado após criação,
+  // fazendo com que orçamentos antigos apareçam em filtros de datas recentes.
+  const fromIso = `${fromStr}T00:00:00`;
+  const toIso = `${toStr}T23:59:59.999`;
   const rows: any[] = [];
   let from = 0;
   while (true) {
@@ -43,9 +49,9 @@ const fetchOrcamentosNoPeriodo = async (fromDate: Date, toDate: Date) => {
       .from("tarefas_central")
       .select("*")
       .not("gc_orcamento_id", "is", null)
-      .gte("gc_orc_data", fromStr)
-      .lte("gc_orc_data", toStr)
-      .order("gc_orc_data", { ascending: false })
+      .gte("criado_em", fromIso)
+      .lte("criado_em", toIso)
+      .order("criado_em", { ascending: false })
       .range(from, from + PAGE_SIZE - 1);
     if (error) throw error;
     const batch = data || [];
@@ -65,8 +71,10 @@ const fetchOrcamentosNoPeriodo = async (fromDate: Date, toDate: Date) => {
     const id = String((c as any).gc_orcamento_id || "");
     if (!id || seen.has(id)) continue;
     const d: any = (c as any).dados || {};
+    // Cache items: usa atualizado_em (nosso registro) como proxy de confecção
+    const cacheDate = String((c as any).atualizado_em || "").slice(0, 10);
+    if (!cacheDate || cacheDate < fromStr || cacheDate > toStr) continue;
     const dataOrc = String(d.data || "").slice(0, 10);
-    if (!dataOrc || dataOrc < fromStr || dataOrc > toStr) continue;
     rows.push({
       gc_orcamento_id: id,
       gc_orcamento_codigo: d.gc_orcamento_codigo || "",
@@ -81,6 +89,7 @@ const fetchOrcamentosNoPeriodo = async (fromDate: Date, toDate: Date) => {
       gc_orc_link: d.link || null,
       auvo_task_id: null,
       atualizado_em: (c as any).atualizado_em || null,
+      criado_em: (c as any).atualizado_em || null,
       _origem_cache_followup: true,
     });
     seen.add(id);
