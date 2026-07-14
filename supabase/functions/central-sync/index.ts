@@ -506,6 +506,8 @@ function buildGcOrcPayload(orc: any) {
     gc_orc_situacao_id: String(orc.situacao_id || ""),
     gc_orc_cor_situacao: String(orc.cor_situacao || ""),
     gc_orc_valor_total: parseFloat(orc.valor_total || "0"),
+    gc_orc_valor_produtos: parseFloat(orc.valor_produtos || "0"),
+    gc_orc_valor_servicos: parseFloat(orc.valor_servicos || "0"),
     gc_orc_vendedor: String(orc.nome_vendedor || ""),
     gc_orc_data: String(orc.data || "").split("T")[0] || null,
     gc_orc_link: buildGcOrcPublicLink(orc),
@@ -1447,6 +1449,8 @@ async function runCentralSync(body: CentralSyncBody = {}) {
       target.gc_orc_situacao_id = orcPayload.gc_orc_situacao_id;
       target.gc_orc_cor_situacao = orcPayload.gc_orc_cor_situacao;
       target.gc_orc_valor_total = orcPayload.gc_orc_valor_total;
+      target.gc_orc_valor_produtos = orcPayload.gc_orc_valor_produtos;
+      target.gc_orc_valor_servicos = orcPayload.gc_orc_valor_servicos;
       target.gc_orc_vendedor = orcPayload.gc_orc_vendedor;
       target.gc_orc_data = orcPayload.gc_orc_data;
       target.gc_orc_link = orcPayload.gc_orc_link;
@@ -1583,6 +1587,8 @@ async function runCentralSync(body: CentralSyncBody = {}) {
               gc_orc_situacao_id: orcPayload.gc_orc_situacao_id,
               gc_orc_cor_situacao: orcPayload.gc_orc_cor_situacao,
               gc_orc_valor_total: orcPayload.gc_orc_valor_total,
+              gc_orc_valor_produtos: orcPayload.gc_orc_valor_produtos,
+              gc_orc_valor_servicos: orcPayload.gc_orc_valor_servicos,
               gc_orc_vendedor: orcPayload.gc_orc_vendedor,
               gc_orc_data: orcPayload.gc_orc_data,
               gc_orc_link: orcPayload.gc_orc_link,
@@ -1855,6 +1861,8 @@ async function runCentralSync(body: CentralSyncBody = {}) {
               gc_orc_situacao_id: fresh.gc_orc_situacao_id,
               gc_orc_cor_situacao: fresh.gc_orc_cor_situacao,
               gc_orc_valor_total: fresh.gc_orc_valor_total,
+              gc_orc_valor_produtos: fresh.gc_orc_valor_produtos,
+              gc_orc_valor_servicos: fresh.gc_orc_valor_servicos,
               gc_orc_vendedor: fresh.gc_orc_vendedor,
               gc_orc_cliente: fresh.gc_orc_cliente,
               atualizado_em: new Date().toISOString(),
@@ -2164,6 +2172,8 @@ async function runCentralSync(body: CentralSyncBody = {}) {
         row.gc_orc_situacao_id = gcOrc.gc_orc_situacao_id;
         row.gc_orc_cor_situacao = gcOrc.gc_orc_cor_situacao;
         row.gc_orc_valor_total = gcOrc.gc_orc_valor_total;
+        row.gc_orc_valor_produtos = gcOrc.gc_orc_valor_produtos;
+        row.gc_orc_valor_servicos = gcOrc.gc_orc_valor_servicos;
         row.gc_orc_vendedor = gcOrc.gc_orc_vendedor;
         row.gc_orc_data = gcOrc.gc_orc_data;
         row.gc_orc_link = gcOrc.gc_orc_link;
@@ -2264,6 +2274,8 @@ async function runCentralSync(body: CentralSyncBody = {}) {
         fallbackRow.gc_orc_situacao_id = gcOrc.gc_orc_situacao_id;
         fallbackRow.gc_orc_cor_situacao = gcOrc.gc_orc_cor_situacao;
         fallbackRow.gc_orc_valor_total = gcOrc.gc_orc_valor_total;
+        fallbackRow.gc_orc_valor_produtos = gcOrc.gc_orc_valor_produtos;
+        fallbackRow.gc_orc_valor_servicos = gcOrc.gc_orc_valor_servicos;
         fallbackRow.gc_orc_vendedor = gcOrc.gc_orc_vendedor;
         fallbackRow.gc_orc_data = gcOrc.gc_orc_data;
         fallbackRow.gc_orc_link = gcOrc.gc_orc_link;

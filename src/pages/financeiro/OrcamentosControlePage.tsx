@@ -14,6 +14,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
 import {
@@ -99,6 +100,7 @@ export default function OrcamentosControlePage() {
   const [search, setSearch] = useState("");
   const [excludedSituacoes, setExcludedSituacoes] = useState<Set<string>>(new Set());
   const [searchSituacao, setSearchSituacao] = useState("");
+  const [activeTab, setActiveTab] = useState<"todos" | "produtos" | "servicos" | "mistos">("todos");
   const [expanded, setExpanded] = useState<string | null>(null);
   const [selectedCard, setSelectedCard] = useState<any | null>(null);
 
@@ -274,8 +276,21 @@ export default function OrcamentosControlePage() {
       if (!d) return false;
       return d >= fromStr && d <= toStr;
     });
+    // Filtro por tipo: produtos, serviços ou mistos
+    if (activeTab !== "todos") {
+      items = items.filter((t) => {
+        const vp = Number(t.gc_orc_valor_produtos) || 0;
+        const vs = Number(t.gc_orc_valor_servicos) || 0;
+        const hasProd = vp > 0;
+        const hasServ = vs > 0;
+        if (activeTab === "produtos") return hasProd && !hasServ;
+        if (activeTab === "servicos") return hasServ && !hasProd;
+        if (activeTab === "mistos") return hasProd && hasServ;
+        return true;
+      });
+    }
     return items;
-  }, [orcamentos, excludedSituacoes, movedIds, dateFrom, dateTo]);
+  }, [orcamentos, excludedSituacoes, movedIds, dateFrom, dateTo, activeTab]);
 
   const clienteSummary = useMemo(() => {
     const map = new Map<string, { cliente: string; count: number; total: number; items: any[] }>();
@@ -547,6 +562,16 @@ export default function OrcamentosControlePage() {
         </Popover>
       </div>
 
+      {/* Tabs por tipo */}
+      <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as any)} className="w-full">
+        <TabsList className="grid w-full max-w-md grid-cols-4">
+          <TabsTrigger value="todos">Todos</TabsTrigger>
+          <TabsTrigger value="produtos">Produtos</TabsTrigger>
+          <TabsTrigger value="servicos">Serviços</TabsTrigger>
+          <TabsTrigger value="mistos">Mistos</TabsTrigger>
+        </TabsList>
+      </Tabs>
+
       {/* Table */}
       <Card>
         <CardContent className="p-0">
@@ -591,6 +616,8 @@ export default function OrcamentosControlePage() {
                                   <TableHead className="text-xs">Equipamento</TableHead>
                                   <TableHead className="text-xs">Data Orç.</TableHead>
                                   <TableHead className="text-xs">Data Tarefa</TableHead>
+                                  <TableHead className="text-xs text-right">Produtos</TableHead>
+                                  <TableHead className="text-xs text-right">Serviços</TableHead>
                                   <TableHead className="text-xs text-right">Valor</TableHead>
                                   <TableHead className="text-xs w-44">Ações</TableHead>
                                 </TableRow>
