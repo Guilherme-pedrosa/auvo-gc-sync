@@ -1861,6 +1861,8 @@ async function runCentralSync(body: CentralSyncBody = {}) {
               gc_orc_situacao_id: fresh.gc_orc_situacao_id,
               gc_orc_cor_situacao: fresh.gc_orc_cor_situacao,
               gc_orc_valor_total: fresh.gc_orc_valor_total,
+              gc_orc_valor_produtos: fresh.gc_orc_valor_produtos,
+              gc_orc_valor_servicos: fresh.gc_orc_valor_servicos,
               gc_orc_vendedor: fresh.gc_orc_vendedor,
               gc_orc_cliente: fresh.gc_orc_cliente,
               atualizado_em: new Date().toISOString(),
