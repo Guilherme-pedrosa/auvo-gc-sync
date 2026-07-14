@@ -109,7 +109,7 @@ export default function OrcamentosControlePage() {
   const [search, setSearch] = useState("");
   const [excludedSituacoes, setExcludedSituacoes] = useState<Set<string>>(new Set());
   const [searchSituacao, setSearchSituacao] = useState("");
-  const [activeTab, setActiveTab] = useState<"produtos" | "servicos">("produtos");
+  const [activeTab, setActiveTab] = useState<"todos" | "produtos" | "servicos">("todos");
   const [expanded, setExpanded] = useState<string | null>(null);
   const [selectedCard, setSelectedCard] = useState<any | null>(null);
 
@@ -285,20 +285,23 @@ export default function OrcamentosControlePage() {
       if (!d) return false;
       return d >= fromStr && d <= toStr;
     });
-    // Filtro por tipo (base GC): produto ou servico
-    items = items.filter((t) => {
-      let tipo: string | null = (t.gc_orc_tipo || "").toLowerCase() || null;
-      if (!tipo) {
-        // Fallback quando ainda não sincronizado
-        const vp = Number(t.gc_orc_valor_produtos) || 0;
-        const vs = Number(t.gc_orc_valor_servicos) || 0;
-        if (vp > 0 && vs === 0) tipo = "produto";
-        else if (vs > 0 && vp === 0) tipo = "servico";
-      }
-      if (activeTab === "produtos") return tipo === "produto" || tipo === "produtos";
-      if (activeTab === "servicos") return tipo === "servico" || tipo === "servicos";
-      return true;
-    });
+    // Filtro por tipo (base GC): mantém "Todos" como padrão para não esconder
+    // orçamentos antigos que ainda não têm `gc_orc_tipo` gravado.
+    if (activeTab !== "todos") {
+      items = items.filter((t) => {
+        let tipo: string | null = (t.gc_orc_tipo || "").toLowerCase() || null;
+        if (!tipo) {
+          // Fallback quando ainda não sincronizado
+          const vp = Number(t.gc_orc_valor_produtos) || 0;
+          const vs = Number(t.gc_orc_valor_servicos) || 0;
+          if (vp > 0 && vs === 0) tipo = "produto";
+          else if (vs > 0 && vp === 0) tipo = "servico";
+        }
+        if (activeTab === "produtos") return tipo === "produto" || tipo === "produtos";
+        if (activeTab === "servicos") return tipo === "servico" || tipo === "servicos";
+        return true;
+      });
+    }
     return items;
   }, [orcamentos, excludedSituacoes, movedIds, dateFrom, dateTo, activeTab]);
 
@@ -575,7 +578,8 @@ export default function OrcamentosControlePage() {
 
       {/* Tabs por tipo */}
       <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as any)} className="w-full">
-        <TabsList className="grid w-full max-w-sm grid-cols-2">
+        <TabsList className="grid w-full max-w-xl grid-cols-3">
+          <TabsTrigger value="todos">Todos</TabsTrigger>
           <TabsTrigger value="produtos">Orçamentos de Produtos</TabsTrigger>
           <TabsTrigger value="servicos">Orçamentos de Serviços</TabsTrigger>
         </TabsList>
