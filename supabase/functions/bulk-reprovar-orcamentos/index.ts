@@ -199,13 +199,22 @@ Deno.serve(async (req) => {
         (payload as any).desconto_valor = descontoValor.toFixed(2);
         (payload as any).valor_total = novoTotal.toFixed(2);
 
-        // Alinha pagamentos: 1 única parcela com o total recalculado
+        // Alinha pagamentos: mantém todas as parcelas existentes (com seus IDs)
+        // e ajusta a última para fechar exatamente com o valor_total recalculado.
         if (Array.isArray((payload as any).pagamentos) && (payload as any).pagamentos.length > 0) {
-          const first = (payload as any).pagamentos[0]?.pagamento ?? (payload as any).pagamentos[0];
-          (payload as any).pagamentos = [
-            { pagamento: { ...first, valor: novoTotal.toFixed(2) } },
-          ];
-          (payload as any).numero_parcelas = "1";
+          const pags = (payload as any).pagamentos.map((wrap: any) => {
+            const p = wrap?.pagamento ?? wrap;
+            return { pagamento: { ...p, valor: round2(p?.valor).toFixed(2) } };
+          });
+          let somaPags = pags.reduce((acc: number, w: any) => acc + round2(w.pagamento.valor), 0);
+          somaPags = round2(somaPags);
+          const diff = round2(novoTotal - somaPags);
+          if (Math.abs(diff) > 0) {
+            const lastIdx = pags.length - 1;
+            const lastVal = round2(pags[lastIdx].pagamento.valor);
+            pags[lastIdx].pagamento.valor = round2(lastVal + diff).toFixed(2);
+          }
+          (payload as any).pagamentos = pags;
         }
 
         let putResp: Response | null = null;
