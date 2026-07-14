@@ -1423,7 +1423,7 @@ FORMATO: Retorne apenas o texto melhorado, sem explicação.`;
       const aiResult = await callAI([
         { role: "system", content: buildBudgetAnalysisSystemPrompt(false) },
         { role: "user", content },
-      ], ANALYSIS_MODEL, 3000, {
+      ], ANALYSIS_MODEL, 6000, {
         action: "analyze_v2",
         temperature: 0.1,
         timeoutMs: 45000,
