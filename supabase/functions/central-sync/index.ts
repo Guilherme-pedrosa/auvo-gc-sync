@@ -586,7 +586,11 @@ async function hydrateMissingOrcamentosByCodigo(gcHeaders: Record<string, string
     }));
     for (const orc of results) {
       if (!orc?.id) continue;
-      const payload = buildGcOrcPayload(orc);
+      // Detecta o tipo: se possuir array `produtos` com itens => produto, `servicos` => servico
+      const hasProdutos = Array.isArray(orc?.produtos) && orc.produtos.length > 0;
+      const hasServicos = Array.isArray(orc?.servicos) && orc.servicos.length > 0;
+      const tipo = orc?.tipo === "servico" || (!hasProdutos && hasServicos) ? "servico" : "produto";
+      const payload = { ...buildGcOrcPayload(orc), gc_orc_tipo: tipo };
       const codigo = String(orc.codigo || "").trim();
       if (codigo) gcOrcResult.byCodigo[codigo] = payload;
       for (const taskId of collectGcAttrTaskIds(orc.atributos || [], GC_ATRIBUTO_TAREFA_ORC)) {
