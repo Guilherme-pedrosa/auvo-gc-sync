@@ -489,34 +489,3 @@ export default function NovaIntegracaoPage() {
     </div>
   );
 }
-            </SelectContent>
-          </Select>
-        </div>
-
-        <div>
-          <Label>Técnicos</Label>
-          <div className="border rounded-md max-h-64 overflow-auto divide-y">
-            {colabs.filter((c) => c.ativo).map((c) => (
-              <label key={c.id} className="flex items-center gap-2 p-2 cursor-pointer hover:bg-muted/40">
-                <Checkbox checked={techIds.includes(c.id)} onCheckedChange={() => toggleTech(c.id)} />
-                <span className="text-sm">{c.nome}</span>
-                {c.cargo && <span className="text-xs text-muted-foreground">— {c.cargo}</span>}
-              </label>
-            ))}
-            {colabs.length === 0 && <div className="p-4 text-sm text-muted-foreground">Nenhum colaborador cadastrado.</div>}
-          </div>
-        </div>
-
-        <div>
-          <Label>Observações</Label>
-          <Input value={obs} onChange={(e) => setObs(e.target.value)} />
-        </div>
-
-        <div className="flex justify-end gap-2">
-          <Button variant="ghost" onClick={() => navigate("/rh/integracoes")}>Cancelar</Button>
-          <Button onClick={submit} disabled={!clientId || techIds.length === 0 || save.isPending}>Criar integração</Button>
-        </div>
-      </Card>
-    </div>
-  );
-}
