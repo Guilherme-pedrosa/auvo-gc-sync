@@ -514,18 +514,33 @@ function buildGcOrcPayload(orc: any) {
   };
 }
 
-async function fetchGcOrcamentos(gcHeaders: Record<string, string>): Promise<{ byTaskId: Record<string, any>; byCodigo: Record<string, any>; pagesFetched: number; totalPages: number }> {
+type FetchGcOrcamentosOptions = {
+  tipos?: Array<"produto" | "servico">;
+  startPage?: number;
+  maxPagesPerTipo?: number;
+};
+
+async function fetchGcOrcamentos(
+  gcHeaders: Record<string, string>,
+  options: FetchGcOrcamentosOptions = {},
+): Promise<{ byTaskId: Record<string, any>; byCodigo: Record<string, any>; pagesFetched: number; totalPages: number; nextPage: number | null; totalPagesByTipo: Record<string, number> }> {
   const map: Record<string, any> = {};
   const byCodigo: Record<string, any> = {};
   let pagesFetched = 0;
   let totalPagesGlobal = 0;
+  let nextPage: number | null = null;
+  const totalPagesByTipo: Record<string, number> = {};
+  const tipos = options.tipos?.length ? options.tipos : (["produto", "servico"] as const);
+  const startPage = Math.max(1, Number(options.startPage || 1));
+  const maxPagesPerTipo = options.maxPagesPerTipo ? Math.max(1, Number(options.maxPagesPerTipo)) : null;
 
   // Consulta separada por tipo (produto vs servico) para tagear corretamente cada orçamento
-  for (const tipo of ["produto", "servico"] as const) {
-    let page = 1;
-    let totalPages = 1;
+  for (const tipo of tipos) {
+    let page = startPage;
+    let totalPages = Math.max(1, startPage);
     const MAX_PAGES = 500;
-    while (page <= totalPages && page <= MAX_PAGES) {
+    let pagesForThisTipo = 0;
+    while (page <= totalPages && page <= MAX_PAGES && (!maxPagesPerTipo || pagesForThisTipo < maxPagesPerTipo)) {
       const url = `${GC_BASE_URL}/api/orcamentos?tipo=${tipo}&limite=100&pagina=${page}`;
       let response: Response | null = null;
       const RATE_BACKOFF = [3000, 6000, 12000];
@@ -544,6 +559,7 @@ async function fetchGcOrcamentos(gcHeaders: Record<string, string>): Promise<{ b
       const data = await response.json();
       const records: any[] = Array.isArray(data?.data) ? data.data : [];
       totalPages = data?.meta?.total_paginas || 1;
+      totalPagesByTipo[tipo] = totalPages;
 
       for (const orc of records) {
         const atributos: any[] = orc.atributos || [];
@@ -558,15 +574,17 @@ async function fetchGcOrcamentos(gcHeaders: Record<string, string>): Promise<{ b
       }
 
       pagesFetched++;
+      pagesForThisTipo++;
       console.log(`[central-sync] GC orçamentos(${tipo}) page ${page}/${totalPages}: ${records.length} registros`);
       page++;
     }
+    if (maxPagesPerTipo && page <= totalPages) nextPage = page;
     totalPagesGlobal += totalPages;
     if (page > MAX_PAGES && page <= totalPages) {
       console.warn(`[central-sync] TRUNCAMENTO: MAX_PAGES atingido em GC orcamentos tipo=${tipo}`);
     }
   }
-  return { byTaskId: map, byCodigo, pagesFetched, totalPages: totalPagesGlobal };
+  return { byTaskId: map, byCodigo, pagesFetched, totalPages: totalPagesGlobal, nextPage, totalPagesByTipo };
 }
 
 async function hydrateMissingOrcamentosByCodigo(gcHeaders: Record<string, string>, gcOrcResult: { byTaskId: Record<string, any>; byCodigo: Record<string, any> }, codigos: string[]) {
@@ -916,9 +934,152 @@ type CentralSyncBody = {
   wait?: unknown;
   fast?: unknown;
   lite?: unknown;
+  orcamentos_only?: unknown;
+  orcamentos_tipo?: unknown;
+  orcamentos_page?: unknown;
+  orcamentos_max_pages?: unknown;
   reports_only?: unknown;
   gc_status_only?: unknown;
 };
+
+async function refreshOrcamentosOnly(
+  sbClient: any,
+  gcHeaders: Record<string, string>,
+  options: { tipo?: "produto" | "servico"; page?: number; maxPages?: number } = {},
+) {
+  const gcOrcResult = await fetchGcOrcamentos(gcHeaders, {
+    tipos: options.tipo ? [options.tipo] : undefined,
+    startPage: options.page || 1,
+    maxPagesPerTipo: options.maxPages,
+  });
+
+  const allGcOrcById: Record<string, any> = {};
+  for (const orcPayload of Object.values(gcOrcResult.byCodigo)) {
+    if ((orcPayload as any)?.gc_orcamento_id) allGcOrcById[(orcPayload as any).gc_orcamento_id] = orcPayload;
+  }
+  for (const orcPayload of Object.values(gcOrcResult.byTaskId)) {
+    if ((orcPayload as any)?.gc_orcamento_id) allGcOrcById[(orcPayload as any).gc_orcamento_id] = orcPayload;
+  }
+
+  const dbOrcIds = new Set<string>();
+  for (let from = 0; ; from += 1000) {
+    const { data: chunk } = await sbClient
+      .from("tarefas_central")
+      .select("gc_orcamento_id")
+      .not("gc_orcamento_id", "is", null)
+      .range(from, from + 999);
+    if (!chunk || chunk.length === 0) break;
+    for (const r of chunk) {
+      if (r.gc_orcamento_id) dbOrcIds.add(String(r.gc_orcamento_id));
+    }
+    if (chunk.length < 1000) break;
+  }
+
+  const produtoIds = Object.values(allGcOrcById)
+    .filter((orc: any) => orc?.gc_orc_tipo === "produto" && dbOrcIds.has(String(orc.gc_orcamento_id)))
+    .map((orc: any) => String(orc.gc_orcamento_id));
+  const servicoIds = Object.values(allGcOrcById)
+    .filter((orc: any) => orc?.gc_orc_tipo === "servico" && dbOrcIds.has(String(orc.gc_orcamento_id)))
+    .map((orc: any) => String(orc.gc_orcamento_id));
+
+  let updatedRows = 0;
+  const updateTipoBatch = async (ids: string[], tipo: "produto" | "servico") => {
+    let countTotal = 0;
+    for (let i = 0; i < ids.length; i += 500) {
+      const batch = ids.slice(i, i + 500);
+      if (batch.length === 0) continue;
+      const { count, error } = await sbClient
+        .from("tarefas_central")
+        .update({ gc_orc_tipo: tipo, orcamento_realizado: true, atualizado_em: new Date().toISOString() }, { count: "exact" })
+        .in("gc_orcamento_id", batch);
+      if (error) console.error(`[central-sync] refreshOrcamentosOnly tipo=${tipo}:`, error.message);
+      else countTotal += count || 0;
+    }
+    return countTotal;
+  };
+
+  updatedRows += await updateTipoBatch(produtoIds, "produto");
+  updatedRows += await updateTipoBatch(servicoIds, "servico");
+
+  const missingOrcRows = Object.values(allGcOrcById)
+    .filter((orc: any) => orc?.gc_orcamento_id && !dbOrcIds.has(String(orc.gc_orcamento_id)))
+    .map((orc: any) => {
+      const orcId = String(orc.gc_orcamento_id);
+      const orcDate = String(orc.gc_orc_data || "").slice(0, 10);
+      return {
+        auvo_task_id: `gc-only::orc::${orcId}`,
+        cliente: orc.gc_orc_cliente || "Cliente não identificado",
+        tecnico: "",
+        tecnico_id: "",
+        data_tarefa: null,
+        status_auvo: "Sem tarefa Auvo",
+        orientacao: "",
+        pendencia: "",
+        descricao: "Orçamento GestãoClick sem tarefa Auvo vinculada",
+        duracao_decimal: 0,
+        hora_inicio: "",
+        hora_fim: "",
+        check_in: false,
+        check_out: false,
+        endereco: "",
+        auvo_link: "",
+        auvo_task_url: "",
+        auvo_survey_url: "",
+        questionario_id: null,
+        questionario_respostas: [],
+        questionario_preenchido: false,
+        gc_orcamento_id: orcId,
+        gc_orcamento_codigo: orc.gc_orcamento_codigo,
+        gc_orc_cliente: orc.gc_orc_cliente,
+        gc_orc_situacao: orc.gc_orc_situacao,
+        gc_orc_situacao_id: orc.gc_orc_situacao_id,
+        gc_orc_cor_situacao: orc.gc_orc_cor_situacao,
+        gc_orc_valor_total: orc.gc_orc_valor_total,
+        gc_orc_valor_produtos: orc.gc_orc_valor_produtos,
+        gc_orc_valor_servicos: orc.gc_orc_valor_servicos,
+        gc_orc_tipo: orc.gc_orc_tipo,
+        gc_orc_vendedor: orc.gc_orc_vendedor,
+        gc_orc_data: orc.gc_orc_data,
+        gc_orc_link: orc.gc_orc_link,
+        orcamento_realizado: true,
+        criado_em: orcDate ? `${orcDate}T12:00:00.000Z` : new Date().toISOString(),
+        atualizado_em: new Date().toISOString(),
+        mirror_key: `gc-only::orc::${orcId}`,
+      };
+    });
+
+  let insertedMissing = 0;
+  for (let i = 0; i < missingOrcRows.length; i += 100) {
+    const batch = missingOrcRows.slice(i, i + 100);
+    const { error } = await sbClient
+      .from("tarefas_central")
+      .upsert(batch, { onConflict: "mirror_key", ignoreDuplicates: false, defaultToNull: false });
+    if (error) console.error(`[central-sync] refreshOrcamentosOnly missing upsert:`, error.message);
+    else insertedMissing += batch.length;
+  }
+
+  const matchedOrcamentos = new Set([...produtoIds, ...servicoIds]).size;
+  const produto = Object.values(allGcOrcById).filter((orc: any) => orc?.gc_orc_tipo === "produto").length;
+  const servico = Object.values(allGcOrcById).filter((orc: any) => orc?.gc_orc_tipo === "servico").length;
+  console.log(`[central-sync] Orçamentos-only: ${matchedOrcamentos}/${dbOrcIds.size} orçamentos do banco encontrados no GC, ${updatedRows} linhas atualizadas, ${insertedMissing} orçamentos GC-only inseridos (${produto} produto, ${servico} serviço no GC)`);
+
+  return {
+    success: true,
+    mode: "orcamentos-only",
+    gc_orcamentos: Object.keys(allGcOrcById).length,
+    gc_orcamentos_produto: produto,
+    gc_orcamentos_servico: servico,
+    db_orcamentos: dbOrcIds.size,
+    matched_orcamentos: matchedOrcamentos,
+    upserted: updatedRows,
+    inserted_missing: insertedMissing,
+    tipo: options.tipo || "todos",
+    next_page: gcOrcResult.nextPage,
+    pages_fetched: gcOrcResult.pagesFetched,
+    total_pages_by_tipo: gcOrcResult.totalPagesByTipo,
+    errors: 0,
+  };
+}
 
 async function refreshGcOsStatusesForReportsOnly(
   sbClient: any,
@@ -1379,6 +1540,14 @@ async function runCentralSync(body: CentralSyncBody = {}) {
       "secret-access-token": gcSecretToken,
       "Content-Type": "application/json",
     };
+
+    if (body?.orcamentos_only === true) {
+      const rawTipo = String(body?.orcamentos_tipo || "").trim();
+      const tipo = rawTipo === "produto" || rawTipo === "servico" ? rawTipo : undefined;
+      const page = Math.max(1, Number(body?.orcamentos_page || 1));
+      const maxPages = body?.orcamentos_max_pages ? Math.max(1, Number(body.orcamentos_max_pages)) : undefined;
+      return await refreshOrcamentosOnly(sbClient, gcH, { tipo, page, maxPages });
+    }
 
     if (body?.gc_status_only === true) {
       const result = await refreshGcOsFieldsForPeriod(sbClient, gcH, startDate, endDate);
