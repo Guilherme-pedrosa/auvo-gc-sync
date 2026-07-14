@@ -293,17 +293,26 @@ export default function OrcamentosControlePage() {
   const filtered = useMemo(() => {
     if (!search) return clienteSummary;
     const s = search.toLowerCase();
+    const isNumeric = /^\d+$/.test(search.trim());
     const result: typeof clienteSummary = [];
     for (const c of clienteSummary) {
-      if (c.cliente.toLowerCase().includes(s)) {
+      if (!isNumeric && c.cliente.toLowerCase().includes(s)) {
         result.push(c);
       } else {
-        const matching = c.items.filter((it: any) =>
-          (it.gc_orc_situacao || "").toLowerCase().includes(s) ||
-          (it.gc_orcamento_codigo || "").toLowerCase().includes(s) ||
-          (String(it.gc_orcamento_id || "")).includes(s) ||
-          (it.auvo_task_id || "").toLowerCase().includes(s)
-        );
+        const matching = c.items.filter((it: any) => {
+          if (isNumeric) {
+            return (
+              (it.gc_orcamento_codigo || "").toLowerCase().includes(s) ||
+              String(it.gc_orcamento_id || "").includes(s)
+            );
+          }
+          return (
+            (it.gc_orc_situacao || "").toLowerCase().includes(s) ||
+            (it.gc_orcamento_codigo || "").toLowerCase().includes(s) ||
+            String(it.gc_orcamento_id || "").includes(s) ||
+            (it.auvo_task_id || "").toLowerCase().includes(s)
+          );
+        });
         if (matching.length > 0) {
           result.push({
             ...c,
