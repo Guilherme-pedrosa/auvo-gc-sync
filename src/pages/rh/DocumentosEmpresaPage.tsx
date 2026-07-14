@@ -9,6 +9,8 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Badge } from "@/components/ui/badge";
 import { Plus, Pencil } from "lucide-react";
 import { useCompanyDocs, useSaveCompanyDoc, useDocumentTypes, computeDocStatus, type CompanyDoc } from "@/hooks/rh/useRh";
+import { supabase } from "@/integrations/supabase/client";
+import { toast } from "sonner";
 
 const statusColor = (s: string) =>
   s === "expired" ? "destructive" : s === "expiring" ? "secondary" : s === "missing" ? "outline" : "default";
@@ -22,6 +24,14 @@ export default function DocumentosEmpresaPage() {
 
   const companyTypes = useMemo(() => types.filter((t) => t.scope === "COMPANY" && t.ativo), [types]);
   const typeMap = useMemo(() => new Map(types.map((t) => [t.id, t])), [types]);
+
+  const openArquivo = async (url: string) => {
+    if (!url) return;
+    if (/^https?:\/\//i.test(url)) { window.open(url, "_blank"); return; }
+    const { data, error } = await supabase.storage.from("rh-documentos").createSignedUrl(url, 60 * 60);
+    if (error || !data?.signedUrl) { toast.error("Falha ao abrir arquivo"); return; }
+    window.open(data.signedUrl, "_blank");
+  };
 
   const submit = async () => {
     if (!form.document_type_id) return;
@@ -67,7 +77,11 @@ export default function DocumentosEmpresaPage() {
                   <TableCell>{d.data_vencimento ?? "—"}</TableCell>
                   <TableCell><Badge variant={statusColor(st) as never}>{st}</Badge></TableCell>
                   <TableCell>
-                    {d.arquivo_url ? <a href={d.arquivo_url} target="_blank" rel="noreferrer" className="text-primary underline text-xs">{d.arquivo_nome ?? "abrir"}</a> : "—"}
+                    {d.arquivo_url ? (
+                      <button type="button" onClick={() => openArquivo(d.arquivo_url!)} className="text-primary underline text-xs">
+                        {d.arquivo_nome ?? "abrir"}
+                      </button>
+                    ) : "—"}
                   </TableCell>
                   <TableCell>
                     <Button size="sm" variant="ghost" onClick={() => { setForm(d); setOpen(true); }}>
