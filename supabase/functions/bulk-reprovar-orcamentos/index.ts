@@ -161,8 +161,6 @@ Deno.serve(async (req) => {
             return {
               produto: {
                 ...p,
-                valor_venda: round2(p?.valor_venda).toFixed(2),
-                valor_custo: round2(p?.valor_custo).toFixed(2),
                 valor_total: vtotal.toFixed(2),
               },
             };
@@ -177,8 +175,6 @@ Deno.serve(async (req) => {
             return {
               servico: {
                 ...s,
-                valor_venda: round2(s?.valor_venda).toFixed(2),
-                valor_custo: round2(s?.valor_custo).toFixed(2),
                 valor_total: vtotal.toFixed(2),
               },
             };
