@@ -326,9 +326,10 @@ export default function OrcamentosControlePage() {
       } else {
         const matching = c.items.filter((it: any) => {
           if (isNumeric) {
+            // Busca numérica = match EXATO por código do orçamento
             return (
-              (it.gc_orcamento_codigo || "").toLowerCase().includes(s) ||
-              String(it.gc_orcamento_id || "").includes(s)
+              String(it.gc_orcamento_codigo || "") === s ||
+              String(it.gc_orcamento_id || "") === s
             );
           }
           return (
