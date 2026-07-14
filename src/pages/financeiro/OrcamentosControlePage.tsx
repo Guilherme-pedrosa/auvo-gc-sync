@@ -144,17 +144,19 @@ export default function OrcamentosControlePage() {
       const syncFrom = format(dateFrom, "yyyy-MM-dd");
       const syncTo = format(dateTo, "yyyy-MM-dd");
       const { data, error } = await supabase.functions.invoke("central-sync", {
-        body: { start_date: syncFrom, end_date: syncTo, situacao_ids: [], fast: false },
+        body: { start_date: syncFrom, end_date: syncTo, orcamentos_only: true },
       });
       if (error) throw error;
       if (data?.background) {
-        toast.info("Sync rodando em background — atualizando automaticamente");
-        const delays = [15000, 30000, 60000];
+        toast.info("Classificação de orçamentos iniciada — atualizando a tela automaticamente");
+        const delays = [10000, 25000, 45000, 75000];
         refreshTimeoutsRef.current = delays.map((d) => setTimeout(refreshData, d));
         setTimeout(() => setSyncing(false), 2500);
         return;
       }
-      toast.success(`Sync ${syncFrom} → ${syncTo}: ${data?.upserted || 0} atualizadas`);
+      toast.success(
+        `Orçamentos atualizados: ${(data?.upserted || 0) + (data?.inserted_missing || 0)} linhas · ${data?.gc_orcamentos_produto || 0} produtos · ${data?.gc_orcamentos_servico || 0} serviços`
+      );
       refreshData();
       setSyncing(false);
     } catch (err: any) {
@@ -281,7 +283,7 @@ export default function OrcamentosControlePage() {
     const fromStr = format(dateFrom, "yyyy-MM-dd");
     const toStr = format(dateTo, "yyyy-MM-dd");
     items = items.filter((t) => {
-      const d = (t.criado_em || "").slice(0, 10);
+      const d = (t.criado_em || t.gc_orc_data || "").slice(0, 10);
       if (!d) return false;
       return d >= fromStr && d <= toStr;
     });

@@ -916,9 +916,137 @@ type CentralSyncBody = {
   wait?: unknown;
   fast?: unknown;
   lite?: unknown;
+  orcamentos_only?: unknown;
   reports_only?: unknown;
   gc_status_only?: unknown;
 };
+
+async function refreshOrcamentosOnly(sbClient: any, gcHeaders: Record<string, string>) {
+  const gcOrcResult = await fetchGcOrcamentos(gcHeaders);
+
+  const allGcOrcById: Record<string, any> = {};
+  for (const orcPayload of Object.values(gcOrcResult.byCodigo)) {
+    if ((orcPayload as any)?.gc_orcamento_id) allGcOrcById[(orcPayload as any).gc_orcamento_id] = orcPayload;
+  }
+  for (const orcPayload of Object.values(gcOrcResult.byTaskId)) {
+    if ((orcPayload as any)?.gc_orcamento_id) allGcOrcById[(orcPayload as any).gc_orcamento_id] = orcPayload;
+  }
+
+  const dbOrcIds = new Set<string>();
+  for (let from = 0; ; from += 1000) {
+    const { data: chunk } = await sbClient
+      .from("tarefas_central")
+      .select("gc_orcamento_id")
+      .not("gc_orcamento_id", "is", null)
+      .range(from, from + 999);
+    if (!chunk || chunk.length === 0) break;
+    for (const r of chunk) {
+      if (r.gc_orcamento_id) dbOrcIds.add(String(r.gc_orcamento_id));
+    }
+    if (chunk.length < 1000) break;
+  }
+
+  const produtoIds = Object.values(allGcOrcById)
+    .filter((orc: any) => orc?.gc_orc_tipo === "produto" && dbOrcIds.has(String(orc.gc_orcamento_id)))
+    .map((orc: any) => String(orc.gc_orcamento_id));
+  const servicoIds = Object.values(allGcOrcById)
+    .filter((orc: any) => orc?.gc_orc_tipo === "servico" && dbOrcIds.has(String(orc.gc_orcamento_id)))
+    .map((orc: any) => String(orc.gc_orcamento_id));
+
+  let updatedRows = 0;
+  const updateTipoBatch = async (ids: string[], tipo: "produto" | "servico") => {
+    let countTotal = 0;
+    for (let i = 0; i < ids.length; i += 500) {
+      const batch = ids.slice(i, i + 500);
+      if (batch.length === 0) continue;
+      const { count, error } = await sbClient
+        .from("tarefas_central")
+        .update({ gc_orc_tipo: tipo, orcamento_realizado: true, atualizado_em: new Date().toISOString() }, { count: "exact" })
+        .in("gc_orcamento_id", batch);
+      if (error) console.error(`[central-sync] refreshOrcamentosOnly tipo=${tipo}:`, error.message);
+      else countTotal += count || 0;
+    }
+    return countTotal;
+  };
+
+  updatedRows += await updateTipoBatch(produtoIds, "produto");
+  updatedRows += await updateTipoBatch(servicoIds, "servico");
+
+  const missingOrcRows = Object.values(allGcOrcById)
+    .filter((orc: any) => orc?.gc_orcamento_id && !dbOrcIds.has(String(orc.gc_orcamento_id)))
+    .map((orc: any) => {
+      const orcId = String(orc.gc_orcamento_id);
+      const orcDate = String(orc.gc_orc_data || "").slice(0, 10);
+      return {
+        auvo_task_id: `gc-only::orc::${orcId}`,
+        cliente: orc.gc_orc_cliente || "Cliente não identificado",
+        tecnico: "",
+        tecnico_id: "",
+        data_tarefa: null,
+        status_auvo: "Sem tarefa Auvo",
+        orientacao: "",
+        pendencia: "",
+        descricao: "Orçamento GestãoClick sem tarefa Auvo vinculada",
+        duracao_decimal: 0,
+        hora_inicio: "",
+        hora_fim: "",
+        check_in: false,
+        check_out: false,
+        endereco: "",
+        auvo_link: "",
+        auvo_task_url: "",
+        auvo_survey_url: "",
+        questionario_id: null,
+        questionario_respostas: [],
+        questionario_preenchido: false,
+        gc_orcamento_id: orcId,
+        gc_orcamento_codigo: orc.gc_orcamento_codigo,
+        gc_orc_cliente: orc.gc_orc_cliente,
+        gc_orc_situacao: orc.gc_orc_situacao,
+        gc_orc_situacao_id: orc.gc_orc_situacao_id,
+        gc_orc_cor_situacao: orc.gc_orc_cor_situacao,
+        gc_orc_valor_total: orc.gc_orc_valor_total,
+        gc_orc_valor_produtos: orc.gc_orc_valor_produtos,
+        gc_orc_valor_servicos: orc.gc_orc_valor_servicos,
+        gc_orc_tipo: orc.gc_orc_tipo,
+        gc_orc_vendedor: orc.gc_orc_vendedor,
+        gc_orc_data: orc.gc_orc_data,
+        gc_orc_link: orc.gc_orc_link,
+        orcamento_realizado: true,
+        criado_em: orcDate ? `${orcDate}T12:00:00.000Z` : new Date().toISOString(),
+        atualizado_em: new Date().toISOString(),
+        mirror_key: `gc-only::orc::${orcId}`,
+      };
+    });
+
+  let insertedMissing = 0;
+  for (let i = 0; i < missingOrcRows.length; i += 100) {
+    const batch = missingOrcRows.slice(i, i + 100);
+    const { error } = await sbClient
+      .from("tarefas_central")
+      .upsert(batch, { onConflict: "mirror_key", ignoreDuplicates: false, defaultToNull: false });
+    if (error) console.error(`[central-sync] refreshOrcamentosOnly missing upsert:`, error.message);
+    else insertedMissing += batch.length;
+  }
+
+  const matchedOrcamentos = new Set([...produtoIds, ...servicoIds]).size;
+  const produto = Object.values(allGcOrcById).filter((orc: any) => orc?.gc_orc_tipo === "produto").length;
+  const servico = Object.values(allGcOrcById).filter((orc: any) => orc?.gc_orc_tipo === "servico").length;
+  console.log(`[central-sync] Orçamentos-only: ${matchedOrcamentos}/${dbOrcIds.size} orçamentos do banco encontrados no GC, ${updatedRows} linhas atualizadas, ${insertedMissing} orçamentos GC-only inseridos (${produto} produto, ${servico} serviço no GC)`);
+
+  return {
+    success: true,
+    mode: "orcamentos-only",
+    gc_orcamentos: Object.keys(allGcOrcById).length,
+    gc_orcamentos_produto: produto,
+    gc_orcamentos_servico: servico,
+    db_orcamentos: dbOrcIds.size,
+    matched_orcamentos: matchedOrcamentos,
+    upserted: updatedRows,
+    inserted_missing: insertedMissing,
+    errors: 0,
+  };
+}
 
 async function refreshGcOsStatusesForReportsOnly(
   sbClient: any,
@@ -1379,6 +1507,10 @@ async function runCentralSync(body: CentralSyncBody = {}) {
       "secret-access-token": gcSecretToken,
       "Content-Type": "application/json",
     };
+
+    if (body?.orcamentos_only === true) {
+      return await refreshOrcamentosOnly(sbClient, gcH);
+    }
 
     if (body?.gc_status_only === true) {
       const result = await refreshGcOsFieldsForPeriod(sbClient, gcH, startDate, endDate);
