@@ -674,14 +674,14 @@ export default function PortalOrcamentosPage() {
 
                       {(() => {
                         const tarefas = (detailQuery.data.tarefas || []).filter(
-                          (t: any) => t.auvo_task_url || t.auvo_link || t.auvo_survey_url,
+                          (t: any) => t.auvo_task_url || t.auvo_survey_url,
                         );
                         if (tarefas.length === 0) return null;
                         return (
                           <div className="space-y-1">
                             <p className="text-xs font-semibold text-muted-foreground">Tarefas relacionadas</p>
                             {tarefas.map((t: any, i: number) => {
-                              const url = t.auvo_task_url || t.auvo_link || t.auvo_survey_url;
+                              const url = t.auvo_task_url || t.auvo_survey_url;
                               return (
                                 <a
                                   key={i}
