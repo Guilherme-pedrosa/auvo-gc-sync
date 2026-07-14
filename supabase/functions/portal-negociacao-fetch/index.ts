@@ -224,20 +224,27 @@ Deno.serve(async (req) => {
       }));
 
     // Fallback: buscar hash individual das OS que não vieram na listagem
+    // Também: coleta as parcelas (pagamentos) da OS pra gerar itens de
+    // "Financeiro Pendente" quando o cliente ainda não teve recebimento gerado
+    // no GC (comum em Klabin — OS com pagamentos previstos mas sem título).
+    const osPagamentosByOs = new Map<string, any[]>();
     await Promise.all(
-      osFiltered
-        .filter((o) => !o.link.includes("/cobranca/"))
-        .map(async (o) => {
-          try {
-            const res = await fetch(`${GC_BASE_URL}/api/ordens_servicos/${o.gc_os_id}`, {
-              headers: gcHeaders,
-            });
-            if (!res.ok) return;
-            const j = await res.json().catch(() => ({}));
-            const hash = j?.data?.hash;
-            if (hash) o.link = `https://gestaoclick.com/cobranca/${hash}`;
-          } catch { /* ignore */ }
-        }),
+      osFiltered.map(async (o) => {
+        try {
+          const res = await fetch(`${GC_BASE_URL}/api/ordens_servicos/${o.gc_os_id}`, {
+            headers: gcHeaders,
+          });
+          if (!res.ok) return;
+          const j = await res.json().catch(() => ({}));
+          const data = j?.data || {};
+          const hash = data?.hash;
+          if (hash && !o.link.includes("/cobranca/")) {
+            o.link = `https://gestaoclick.com/cobranca/${hash}`;
+          }
+          const pags = Array.isArray(data?.pagamentos) ? data.pagamentos : [];
+          if (pags.length > 0) osPagamentosByOs.set(o.gc_os_id, pags);
+        } catch { /* ignore */ }
+      }),
     );
 
     // Preenche data_execucao (checkout da Tarefa Execução Auvo) via tarefas_central
@@ -471,6 +478,43 @@ Deno.serve(async (req) => {
           parcela: r.parcela ? String(r.parcela) : "",
         };
       });
+
+    // Fallback: para OS cujo cliente não tem recebimento correspondente no GC,
+    // usa as parcelas (pagamentos) da própria OS como pendências financeiras.
+    // Dedup por (os_codigo, data_vencimento, valor) contra recebimentos reais.
+    const recKey = new Set(
+      recebimentos.map((r) =>
+        `${r.os_codigo || ""}|${r.data_vencimento}|${r.valor.toFixed(2)}`,
+      ),
+    );
+    for (const o of osFiltered) {
+      const pags = osPagamentosByOs.get(o.gc_os_id) || [];
+      pags.forEach((p: any, idx: number) => {
+        const node = p?.pagamento || p;
+        const valor = Number(node?.valor || 0);
+        if (!(valor > 0)) return;
+        const venc = String(node?.data_vencimento || "").slice(0, 10);
+        const k = `${o.codigo || ""}|${venc}|${valor.toFixed(2)}`;
+        if (recKey.has(k)) return;
+        recKey.add(k);
+        recebimentos.push({
+          gc_recebimento_id: `os-${o.gc_os_id}-${idx}`,
+          codigo: "",
+          descricao: `Parcela OS #${o.codigo}${node?.observacao ? ` — ${node.observacao}` : ""}`,
+          cliente: o.cliente,
+          valor,
+          valor_pago: 0,
+          valor_pendente: valor,
+          data_vencimento: venc,
+          data_competencia: "",
+          liquidado: "os",
+          atrasado: !!venc && venc < hoje,
+          os_codigo: String(o.codigo || ""),
+          forma_pagamento: String(node?.nome_forma_pagamento || ""),
+          parcela: String(idx + 1),
+        });
+      });
+    }
 
     const totals = {
       qtd_os: osFiltered.length,
