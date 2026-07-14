@@ -935,49 +935,64 @@ async function callAI(
   maxTokens: number,
   options: AiCallOptions = {},
 ): Promise<AiCallResult> {
-  const OPENAI_API_KEY = Deno.env.get("OPENAI_API_KEY");
-  if (!OPENAI_API_KEY) {
-    return { result: "", error: "OPENAI_API_KEY não configurada no backend", errorCode: AI_ERROR.NO_KEY, status: 500 };
-  }
-
   const temperature = options.temperature ?? 0.2;
   const actionLabel = options.action || "unknown";
   const timeoutMs = options.timeoutMs ?? 45000;
+
+  // Route google/* (and any non-openai vendor) through Lovable AI Gateway.
+  const isGateway = model.startsWith("google/") || model.startsWith("gemini");
+  const gatewayModel = model.startsWith("gemini") ? `google/${model}` : model;
   const openaiModel = model.replace(/^openai\//, "");
 
-  console.log(`[genspark-ai] [callAI] action=${actionLabel}, model=${openaiModel}, maxTokens=${maxTokens}, timeoutMs=${timeoutMs}`);
+  const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
+  const OPENAI_API_KEY = Deno.env.get("OPENAI_API_KEY");
+
+  if (isGateway && !LOVABLE_API_KEY) {
+    return { result: "", error: "LOVABLE_API_KEY não configurada no backend", errorCode: AI_ERROR.NO_KEY, status: 500 };
+  }
+  if (!isGateway && !OPENAI_API_KEY) {
+    return { result: "", error: "OPENAI_API_KEY não configurada no backend", errorCode: AI_ERROR.NO_KEY, status: 500 };
+  }
+
+  const endpointUrl = isGateway
+    ? "https://ai.gateway.lovable.dev/v1/chat/completions"
+    : "https://api.openai.com/v1/chat/completions";
+  const authHeader = isGateway ? `Bearer ${LOVABLE_API_KEY}` : `Bearer ${OPENAI_API_KEY}`;
+  const requestModel = isGateway ? gatewayModel : openaiModel;
+
+  console.log(`[genspark-ai] [callAI] action=${actionLabel}, model=${requestModel}, gateway=${isGateway}, maxTokens=${maxTokens}, timeoutMs=${timeoutMs}`);
 
   const MAX_RETRIES = 3;
   let response: Response | null = null;
   let lastErrorBody = "";
 
   for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
-    console.log(`[genspark-ai] Calling OpenAI: model=${openaiModel}, attempt=${attempt + 1}/${MAX_RETRIES + 1}`);
+    console.log(`[genspark-ai] Calling AI: model=${requestModel}, attempt=${attempt + 1}/${MAX_RETRIES + 1}`);
 
     try {
-      response = await fetchWithTimeout("https://api.openai.com/v1/chat/completions", {
+      response = await fetchWithTimeout(endpointUrl, {
         method: "POST",
         headers: {
-          Authorization: `Bearer ${OPENAI_API_KEY}`,
+          Authorization: authHeader,
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          model: openaiModel,
+          model: requestModel,
           messages,
           temperature,
-          ...(openaiModel.startsWith("gpt-5") ? { max_completion_tokens: maxTokens } : { max_tokens: maxTokens }),
+          ...(!isGateway && openaiModel.startsWith("gpt-5") ? { max_completion_tokens: maxTokens } : { max_tokens: maxTokens }),
           ...(options.jsonMode ? { response_format: { type: "json_object" } } : {}),
         }),
       }, timeoutMs);
     } catch (error) {
       if (error instanceof DOMException && error.name === "AbortError") {
-        console.error(`[genspark-ai] [TIMEOUT] action=${actionLabel} model=${openaiModel} timeoutMs=${timeoutMs}`);
+        console.error(`[genspark-ai] [TIMEOUT] action=${actionLabel} model=${requestModel} timeoutMs=${timeoutMs}`);
         return {
           result: "",
           error: `A análise excedeu ${Math.round(timeoutMs / 1000)} segundos. Tente novamente ou use menos fotos.`,
           errorCode: AI_ERROR.TIMEOUT,
           status: 408,
-          model: openaiModel,
+          model: requestModel,
         };
       }
       throw error;
@@ -1068,14 +1083,14 @@ async function callAI(
   const content = data.choices?.[0]?.message?.content || "";
   const usage = data.usage;
   if (usage) {
-    console.log(`[genspark-ai] [callAI] OK action=${actionLabel} model=${openaiModel} tokens_in=${usage.prompt_tokens} tokens_out=${usage.completion_tokens} total=${usage.total_tokens}`);
+    console.log(`[genspark-ai] [callAI] OK action=${actionLabel} model=${requestModel} tokens_in=${usage.prompt_tokens} tokens_out=${usage.completion_tokens} total=${usage.total_tokens}`);
   }
-  return { result: content, model: openaiModel };
+  return { result: content, model: requestModel };
 }
 
 const BUDGET_AI_PROMPT_VERSION = "budget-v2.0";
-const ANALYSIS_MODEL = Deno.env.get("OPENAI_BUDGET_ANALYSIS_MODEL") || "gpt-4o";
-const CHAT_MODEL = Deno.env.get("OPENAI_BUDGET_CHAT_MODEL") || "gpt-4o-mini";
+const ANALYSIS_MODEL = Deno.env.get("OPENAI_BUDGET_ANALYSIS_MODEL") || "google/gemini-3.1-pro-preview";
+const CHAT_MODEL = Deno.env.get("OPENAI_BUDGET_CHAT_MODEL") || "google/gemini-3.1-pro-preview";
 
 type BudgetAnalysis = {
   version: string;
