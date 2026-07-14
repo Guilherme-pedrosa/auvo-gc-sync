@@ -1811,7 +1811,7 @@ TOM: Técnico, direto, sem floreio.`;
       const aiResult = await callAI([
         { role: "system", content: buildBudgetAnalysisSystemPrompt(true) },
         { role: "user", content },
-      ], ANALYSIS_MODEL, 4200, {
+      ], ANALYSIS_MODEL, 8000, {
         action: "deep_analyze_v2",
         temperature: 0.1,
         timeoutMs: 50000,
