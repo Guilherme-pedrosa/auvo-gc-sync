@@ -58,13 +58,16 @@ Deno.serve(async (req) => {
     const anoLimite = Number(body?.ano_limite || 2025);
     const batchSize = Math.min(Number(body?.batch_size || 40), 80);
     const offset = Math.max(Number(body?.offset || 0), 0);
+    const targetIds: string[] = Array.isArray(body?.target_ids)
+      ? body.target_ids.map((x: unknown) => String(x))
+      : [];
 
     // Lista alvo do cache
     const { data: cache } = await admin
       .from("followup_kanban_cache")
       .select("gc_orcamento_id, dados")
       .eq("coluna", SITUACAO_ORIGEM);
-    const alvos = (cache || [])
+    let alvos = (cache || [])
       .filter((r: any) => {
         const d = String(r?.dados?.data || "");
         const ano = Number(d.slice(0, 4));
@@ -77,6 +80,14 @@ Deno.serve(async (req) => {
         data: String(r?.dados?.data || ""),
       }))
       .sort((a: any, b: any) => a.data.localeCompare(b.data));
+    if (targetIds.length > 0) {
+      const set = new Set(targetIds);
+      alvos = targetIds.map((id) => {
+        const found = alvos.find((a) => a.id === id);
+        return found || { id, codigo: "", cliente: "", data: "" };
+      });
+      alvos = alvos.filter((a) => set.has(a.id));
+    }
 
     if (action === "preview") {
       return ok({ ok: true, total: alvos.length, amostra: alvos.slice(0, 5) });
@@ -134,6 +145,67 @@ Deno.serve(async (req) => {
         for (const f of ["id", "codigo", "nome_situacao", "cor_situacao", "hash", "cadastrado_em", "modificado_em"]) {
           delete (payload as any)[f];
         }
+        // Força tudo a 2 casas decimais e alinha pagamentos ao valor_total recalculado
+        // (bug do GC: valor_venda com 4 casas × quantidade gera divergência de R$ 0,01).
+        const round2 = (v: unknown): number => {
+          const n = typeof v === "number" ? v : parseFloat(String(v ?? "").replace(",", "."));
+          return Number.isFinite(n) ? Math.round(n * 100) / 100 : 0;
+        };
+
+        let totalProdutos = 0;
+        if (Array.isArray((payload as any).produtos)) {
+          (payload as any).produtos = (payload as any).produtos.map((wrap: any) => {
+            const p = wrap?.produto ?? wrap;
+            const vtotal = round2(p?.valor_total);
+            totalProdutos += vtotal;
+            return {
+              produto: {
+                ...p,
+                valor_total: vtotal.toFixed(2),
+              },
+            };
+          });
+        }
+        let totalServicos = 0;
+        if (Array.isArray((payload as any).servicos)) {
+          (payload as any).servicos = (payload as any).servicos.map((wrap: any) => {
+            const s = wrap?.servico ?? wrap;
+            const vtotal = round2(s?.valor_total);
+            totalServicos += vtotal;
+            return {
+              servico: {
+                ...s,
+                valor_total: vtotal.toFixed(2),
+              },
+            };
+          });
+        }
+        const descontoValor = round2((payload as any).desconto_valor);
+        const valorFrete = round2((payload as any).valor_frete);
+        const novoTotal = round2(totalProdutos + totalServicos + valorFrete - descontoValor);
+        (payload as any).valor_produtos = totalProdutos.toFixed(2);
+        (payload as any).valor_servicos = totalServicos.toFixed(2);
+        (payload as any).valor_frete = valorFrete.toFixed(2);
+        (payload as any).desconto_valor = descontoValor.toFixed(2);
+        (payload as any).valor_total = novoTotal.toFixed(2);
+
+        // Alinha pagamentos: mantém todas as parcelas existentes (com seus IDs)
+        // e ajusta a última para fechar exatamente com o valor_total recalculado.
+        if (Array.isArray((payload as any).pagamentos) && (payload as any).pagamentos.length > 0) {
+          const pags = (payload as any).pagamentos.map((wrap: any) => {
+            const p = wrap?.pagamento ?? wrap;
+            return { pagamento: { ...p, valor: round2(p?.valor).toFixed(2) } };
+          });
+          let somaPags = pags.reduce((acc: number, w: any) => acc + round2(w.pagamento.valor), 0);
+          somaPags = round2(somaPags);
+          const diff = round2(novoTotal - somaPags);
+          if (Math.abs(diff) > 0) {
+            const lastIdx = pags.length - 1;
+            const lastVal = round2(pags[lastIdx].pagamento.valor);
+            pags[lastIdx].pagamento.valor = round2(lastVal + diff).toFixed(2);
+          }
+          (payload as any).pagamentos = pags;
+        }
 
         let putResp: Response | null = null;
         for (let attempt = 0; attempt < 3; attempt++) {
@@ -145,8 +217,28 @@ Deno.serve(async (req) => {
           if (putResp.status === 429) { await sleep(3000 + attempt * 2000); continue; }
           break;
         }
-        const putJson: any = await (putResp as Response).json().catch(() => ({}));
-        const success = (putResp as Response).ok && putJson?.code !== 400;
+        let putJson: any = await (putResp as Response).json().catch(() => ({}));
+        let success = (putResp as Response).ok && putJson?.code !== 400 && putJson?.code !== 404;
+
+        // Retry automático: se GC reclamar de mismatch de parcelas, ajusta a última
+        // parcela pelo delta exato e tenta de novo (até 3x).
+        for (let retry = 0; retry < 3 && !success; retry++) {
+          const msg = String(putJson?.data?.mensagem || putJson?.mensagem || "");
+          const m = msg.match(/passando\s+([\d.,]+)\s+no valor das parcelas/i);
+          if (!m) break;
+          const excedente = round2(m[1].replace(",", "."));
+          if (!Number.isFinite(excedente) || excedente === 0) break;
+          const pags = (payload as any).pagamentos;
+          if (!Array.isArray(pags) || pags.length === 0) break;
+          const lastIdx = pags.length - 1;
+          const lastVal = round2(pags[lastIdx].pagamento.valor);
+          pags[lastIdx].pagamento.valor = round2(lastVal - excedente).toFixed(2);
+          putResp = await fetch(`${GC_BASE_URL}/api/orcamentos/${alvo.id}`, {
+            method: "PUT", headers: gcHeaders, body: JSON.stringify(payload),
+          });
+          putJson = await (putResp as Response).json().catch(() => ({}));
+          success = (putResp as Response).ok && putJson?.code !== 400 && putJson?.code !== 404;
+        }
 
         await admin.from("orcamento_aprovacao_log").insert({
           gc_orcamento_id: alvo.id,
