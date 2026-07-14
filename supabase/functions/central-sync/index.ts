@@ -1587,6 +1587,8 @@ async function runCentralSync(body: CentralSyncBody = {}) {
               gc_orc_situacao_id: orcPayload.gc_orc_situacao_id,
               gc_orc_cor_situacao: orcPayload.gc_orc_cor_situacao,
               gc_orc_valor_total: orcPayload.gc_orc_valor_total,
+              gc_orc_valor_produtos: orcPayload.gc_orc_valor_produtos,
+              gc_orc_valor_servicos: orcPayload.gc_orc_valor_servicos,
               gc_orc_vendedor: orcPayload.gc_orc_vendedor,
               gc_orc_data: orcPayload.gc_orc_data,
               gc_orc_link: orcPayload.gc_orc_link,
