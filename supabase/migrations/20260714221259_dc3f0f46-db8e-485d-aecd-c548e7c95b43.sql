@@ -1,0 +1,1 @@
+UPDATE public.followup_kanban_cache SET coluna='7841143' WHERE coluna='7063588' AND (dados->>'data') <= '2025-12-31';
