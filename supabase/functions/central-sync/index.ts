@@ -514,18 +514,33 @@ function buildGcOrcPayload(orc: any) {
   };
 }
 
-async function fetchGcOrcamentos(gcHeaders: Record<string, string>): Promise<{ byTaskId: Record<string, any>; byCodigo: Record<string, any>; pagesFetched: number; totalPages: number }> {
+type FetchGcOrcamentosOptions = {
+  tipos?: Array<"produto" | "servico">;
+  startPage?: number;
+  maxPagesPerTipo?: number;
+};
+
+async function fetchGcOrcamentos(
+  gcHeaders: Record<string, string>,
+  options: FetchGcOrcamentosOptions = {},
+): Promise<{ byTaskId: Record<string, any>; byCodigo: Record<string, any>; pagesFetched: number; totalPages: number; nextPage: number | null; totalPagesByTipo: Record<string, number> }> {
   const map: Record<string, any> = {};
   const byCodigo: Record<string, any> = {};
   let pagesFetched = 0;
   let totalPagesGlobal = 0;
+  let nextPage: number | null = null;
+  const totalPagesByTipo: Record<string, number> = {};
+  const tipos = options.tipos?.length ? options.tipos : (["produto", "servico"] as const);
+  const startPage = Math.max(1, Number(options.startPage || 1));
+  const maxPagesPerTipo = options.maxPagesPerTipo ? Math.max(1, Number(options.maxPagesPerTipo)) : null;
 
   // Consulta separada por tipo (produto vs servico) para tagear corretamente cada orçamento
-  for (const tipo of ["produto", "servico"] as const) {
-    let page = 1;
+  for (const tipo of tipos) {
+    let page = startPage;
     let totalPages = 1;
     const MAX_PAGES = 500;
-    while (page <= totalPages && page <= MAX_PAGES) {
+    let pagesForThisTipo = 0;
+    while (page <= totalPages && page <= MAX_PAGES && (!maxPagesPerTipo || pagesForThisTipo < maxPagesPerTipo)) {
       const url = `${GC_BASE_URL}/api/orcamentos?tipo=${tipo}&limite=100&pagina=${page}`;
       let response: Response | null = null;
       const RATE_BACKOFF = [3000, 6000, 12000];
@@ -544,6 +559,7 @@ async function fetchGcOrcamentos(gcHeaders: Record<string, string>): Promise<{ b
       const data = await response.json();
       const records: any[] = Array.isArray(data?.data) ? data.data : [];
       totalPages = data?.meta?.total_paginas || 1;
+      totalPagesByTipo[tipo] = totalPages;
 
       for (const orc of records) {
         const atributos: any[] = orc.atributos || [];
@@ -558,15 +574,17 @@ async function fetchGcOrcamentos(gcHeaders: Record<string, string>): Promise<{ b
       }
 
       pagesFetched++;
+      pagesForThisTipo++;
       console.log(`[central-sync] GC orçamentos(${tipo}) page ${page}/${totalPages}: ${records.length} registros`);
       page++;
     }
+    if (maxPagesPerTipo && page <= totalPages) nextPage = page;
     totalPagesGlobal += totalPages;
     if (page > MAX_PAGES && page <= totalPages) {
       console.warn(`[central-sync] TRUNCAMENTO: MAX_PAGES atingido em GC orcamentos tipo=${tipo}`);
     }
   }
-  return { byTaskId: map, byCodigo, pagesFetched, totalPages: totalPagesGlobal };
+  return { byTaskId: map, byCodigo, pagesFetched, totalPages: totalPagesGlobal, nextPage, totalPagesByTipo };
 }
 
 async function hydrateMissingOrcamentosByCodigo(gcHeaders: Record<string, string>, gcOrcResult: { byTaskId: Record<string, any>; byCodigo: Record<string, any> }, codigos: string[]) {
