@@ -277,11 +277,11 @@ export default function OrcamentosControlePage() {
     if (excludedSituacoes.size > 0) {
       items = items.filter((t) => !excludedSituacoes.has(t.gc_orc_situacao || ""));
     }
-    // Filtro por data do orçamento (gc_orc_data) dentro do range selecionado
+    // Filtro estrito por data de confecção (criado_em) dentro do range selecionado
     const fromStr = format(dateFrom, "yyyy-MM-dd");
     const toStr = format(dateTo, "yyyy-MM-dd");
     items = items.filter((t) => {
-      const d = (t.gc_orc_data || "").slice(0, 10);
+      const d = (t.criado_em || "").slice(0, 10);
       if (!d) return false;
       return d >= fromStr && d <= toStr;
     });
