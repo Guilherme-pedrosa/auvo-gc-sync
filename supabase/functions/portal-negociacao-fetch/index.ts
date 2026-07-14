@@ -479,6 +479,43 @@ Deno.serve(async (req) => {
         };
       });
 
+    // Fallback: para OS cujo cliente não tem recebimento correspondente no GC,
+    // usa as parcelas (pagamentos) da própria OS como pendências financeiras.
+    // Dedup por (os_codigo, data_vencimento, valor) contra recebimentos reais.
+    const recKey = new Set(
+      recebimentos.map((r) =>
+        `${r.os_codigo || ""}|${r.data_vencimento}|${r.valor.toFixed(2)}`,
+      ),
+    );
+    for (const o of osFiltered) {
+      const pags = osPagamentosByOs.get(o.gc_os_id) || [];
+      pags.forEach((p: any, idx: number) => {
+        const node = p?.pagamento || p;
+        const valor = Number(node?.valor || 0);
+        if (!(valor > 0)) return;
+        const venc = String(node?.data_vencimento || "").slice(0, 10);
+        const k = `${o.codigo || ""}|${venc}|${valor.toFixed(2)}`;
+        if (recKey.has(k)) return;
+        recKey.add(k);
+        recebimentos.push({
+          gc_recebimento_id: `os-${o.gc_os_id}-${idx}`,
+          codigo: "",
+          descricao: `Parcela OS #${o.codigo}${node?.observacao ? ` — ${node.observacao}` : ""}`,
+          cliente: o.cliente,
+          valor,
+          valor_pago: 0,
+          valor_pendente: valor,
+          data_vencimento: venc,
+          data_competencia: "",
+          liquidado: "os",
+          atrasado: !!venc && venc < hoje,
+          os_codigo: String(o.codigo || ""),
+          forma_pagamento: String(node?.nome_forma_pagamento || ""),
+          parcela: String(idx + 1),
+        });
+      });
+    }
+
     const totals = {
       qtd_os: osFiltered.length,
       valor_os: osFiltered.reduce((s, o) => s + o.valor_total, 0),
