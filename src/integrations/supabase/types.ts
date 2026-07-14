@@ -1380,6 +1380,7 @@ export type Database = {
           gc_orc_link: string | null
           gc_orc_situacao: string | null
           gc_orc_situacao_id: string | null
+          gc_orc_tipo: string | null
           gc_orc_valor_produtos: number | null
           gc_orc_valor_servicos: number | null
           gc_orc_valor_total: number | null
@@ -1443,6 +1444,7 @@ export type Database = {
           gc_orc_link?: string | null
           gc_orc_situacao?: string | null
           gc_orc_situacao_id?: string | null
+          gc_orc_tipo?: string | null
           gc_orc_valor_produtos?: number | null
           gc_orc_valor_servicos?: number | null
           gc_orc_valor_total?: number | null
@@ -1506,6 +1508,7 @@ export type Database = {
           gc_orc_link?: string | null
           gc_orc_situacao?: string | null
           gc_orc_situacao_id?: string | null
+          gc_orc_tipo?: string | null
           gc_orc_valor_produtos?: number | null
           gc_orc_valor_servicos?: number | null
           gc_orc_valor_total?: number | null
