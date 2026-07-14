@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo, useEffect } from "react";
+import { useState, useCallback, useMemo, useEffect, useRef } from "react";
 import PhotoGallery from "@/components/financeiro/PhotoGallery";
 import { useQuery } from "@tanstack/react-query";
 import { isAfter, isEqual } from "date-fns";
@@ -24,6 +24,11 @@ import { ptBR } from "date-fns/locale";
 import { useNavigate } from "react-router-dom";
 import { DragDropContext, Droppable, Draggable, DropResult } from "@hello-pangea/dnd";
 import { toast } from "sonner";
+import {
+  moveBudgetKanbanCard,
+  RESOLVED_WITHOUT_BUDGET_COLUMN,
+  shouldAutoRouteToDoneToday,
+} from "@/lib/budgetKanban";
 
 type GcDocData = {
   gc_orcamento_id?: string;
@@ -136,7 +141,9 @@ export default function BudgetKanbanPage() {
   const [resolveTaskId, setResolveTaskId] = useState<string | null>(null);
   const [resolveMotivo, setResolveMotivo] = useState("");
   const [isSavingResolve, setIsSavingResolve] = useState(false);
+  const [reopeningTaskId, setReopeningTaskId] = useState<string | null>(null);
   const [resolutionDetails, setResolutionDetails] = useState<Record<string, { motivo: string; resolvido_por_nome: string | null; resolvido_em: string }>>({});
+  const positionSaveQueue = useRef<Promise<void>>(Promise.resolve());
 
   const { data, isLoading, refetch, isFetching } = useQuery<ApiResponse>({
     queryKey: ["budget-kanban", format(dateRange.from, "yyyy-MM-dd"), format(dateRange.to, "yyyy-MM-dd")],
@@ -270,9 +277,11 @@ export default function BudgetKanbanPage() {
 
     // Build a map of fresh API data by task id
     const freshDataMap = new Map<string, KanbanItem>();
+    const freshColumnMap = new Map<string, string>();
     for (const item of data.items) {
       const { _coluna, _posicao, ...cleanItem } = item as any;
       freshDataMap.set(cleanItem.auvo_task_id, cleanItem);
+      if (_coluna) freshColumnMap.set(cleanItem.auvo_task_id, String(_coluna));
     }
 
     // SMART MERGE: if columns already have data (re-sync scenario), preserve positions and only update card data
@@ -337,14 +346,12 @@ export default function BudgetKanbanPage() {
         // Only auto-move from SYSTEM pending columns. Manual columns
         // (resolvido_sem_orcamento, outras custom do usuário) NUNCA devem
         // perder cartões para o auto-route "Feito hoje".
-        const autoMoveFrom = new Set(["a_fazer", "falta_preenchimento"]);
         const movers: KanbanItem[] = [];
         for (const col of mergedCols) {
           if (col.id === targetId) continue;
-          if (!autoMoveFrom.has(col.id)) continue;
           const keep: KanbanItem[] = [];
           for (const card of col.items) {
-            if (isOrcDataToday(card)) movers.push(card);
+            if (shouldAutoRouteToDoneToday(col.id, card.gc_orcamento?.gc_data, todayStr)) movers.push(card);
             else keep.push(card);
           }
           col.items = keep;
@@ -370,13 +377,27 @@ export default function BudgetKanbanPage() {
 
       if (newCards.length > 0) {
         for (const card of newCards) {
+          const storedColumn = freshColumnMap.get(card.auvo_task_id);
+          const storedColumnIsManual = Boolean(storedColumn)
+            && storedColumn !== "a_fazer"
+            && storedColumn !== "falta_preenchimento"
+            && storedColumn !== "os_realizada"
+            && !storedColumn!.startsWith("orc_");
           let targetCol = "a_fazer";
-          if (feitoHojeCol && isOrcDataToday(card)) {
+          if (storedColumnIsManual) {
+            targetCol = storedColumn!;
+          } else if (feitoHojeCol && isOrcDataToday(card)) {
             targetCol = feitoHojeCol.id;
           } else {
             targetCol = resolveSystemColumn(card);
           }
-          const col = mergedCols.find((c) => c.id === targetCol) || mergedCols.find((c) => c.id === "a_fazer");
+          let col = mergedCols.find((c) => c.id === targetCol);
+          if (!col && storedColumnIsManual) {
+            const savedColumn = data.custom_columns?.find((candidate) => candidate.id === targetCol);
+            col = { id: targetCol, title: savedColumn?.title || targetCol, items: [] };
+            mergedCols.push(col);
+          }
+          col ||= mergedCols.find((c) => c.id === "a_fazer");
           if (col) col.items.push(card);
         }
       }
@@ -397,9 +418,11 @@ export default function BudgetKanbanPage() {
 
     if (hasSavedPositions) {
       const colMap: Record<string, KanbanItem[]> = {};
+      const savedPositionByTask = new Map<string, number>();
       for (const item of data.items) {
         let col = (item as any)._coluna || "a_fazer";
         const { _coluna, _posicao, ...cleanItem } = item as any;
+        savedPositionByTask.set(cleanItem.auvo_task_id, Number(_posicao) || 0);
 
         // Re-check system columns: "OS Realizada" wins whenever the task is in GC field 73343.
         if (col === "a_fazer" || col === "falta_preenchimento" || col === "os_realizada" || col.startsWith("orc_")) {
@@ -411,7 +434,9 @@ export default function BudgetKanbanPage() {
       }
       // Sort items within each column by saved position
       for (const col of Object.keys(colMap)) {
-        colMap[col].sort((a: any, b: any) => ((a as any)._posicao || 0) - ((b as any)._posicao || 0));
+        colMap[col].sort((a, b) =>
+          (savedPositionByTask.get(a.auvo_task_id) || 0) - (savedPositionByTask.get(b.auvo_task_id) || 0)
+        );
       }
 
       // Use saved column order and titles
@@ -468,9 +493,7 @@ export default function BudgetKanbanPage() {
           if (col.id === targetId) continue;
           const keep: KanbanItem[] = [];
           for (const card of col.items) {
-            const isToday =
-              !!card.gc_orcamento?.gc_data && card.gc_orcamento.gc_data.slice(0, 10) === todayStr;
-            if (isToday) movers.push(card);
+            if (shouldAutoRouteToDoneToday(col.id, card.gc_orcamento?.gc_data, todayStr)) movers.push(card);
             else keep.push(card);
           }
           col.items = keep;
@@ -619,7 +642,7 @@ export default function BudgetKanbanPage() {
   }, [columns, filterTecnico, allClientesSelected, selectedClientes, allEquipSelected, selectedEquipamentos, sortBy]);
 
   // Save positions + custom columns to DB
-  const savePositions = useCallback((cols: KanbanColumn[]) => {
+  const savePositions = useCallback((cols: KanbanColumn[]): Promise<void> => {
     const positions = cols.flatMap((col) =>
       col.items.map((item, idx) => ({
         auvo_task_id: item.auvo_task_id,
@@ -630,56 +653,101 @@ export default function BudgetKanbanPage() {
     // Save ALL columns order and titles (not just custom ones)
     const allColumnsOrder = cols.map((c, idx) => ({ id: c.id, title: c.title, order: idx }));
 
-    // Fire and forget
-    supabase.functions.invoke("budget-kanban", {
-      body: { mode: "save_positions", positions, custom_columns: allColumnsOrder },
-    }).catch((e) => console.warn("Erro ao salvar posições:", e));
+    const save = async () => {
+      const { data: saveData, error } = await supabase.functions.invoke("budget-kanban", {
+        body: { mode: "save_positions", positions, custom_columns: allColumnsOrder },
+      });
+      if (error) throw error;
+      if (!saveData?.ok || saveData?.error) {
+        throw new Error(saveData?.error || "O servidor não confirmou a gravação das posições");
+      }
+    };
+
+    // Serializa as gravações: uma resposta antiga nunca sobrescreve a mais recente.
+    const queuedSave = positionSaveQueue.current.catch(() => undefined).then(save);
+    positionSaveQueue.current = queuedSave;
+    return queuedSave;
   }, []);
 
   // Drag and drop (cards and columns)
-  const onDragEnd = useCallback((result: DropResult) => {
+  const onDragEnd = useCallback(async (result: DropResult) => {
     const { source, destination, type } = result;
     if (!destination) return;
 
     // Column reorder
     if (type === "COLUMN") {
       if (source.index === destination.index) return;
-      setColumns((prev) => {
-        const newCols = [...prev];
-        const [moved] = newCols.splice(source.index, 1);
-        newCols.splice(destination.index, 0, moved);
-        savePositions(newCols);
-        return newCols;
-      });
+      const previous = columns;
+      const newCols = [...columns];
+      const [moved] = newCols.splice(source.index, 1);
+      newCols.splice(destination.index, 0, moved);
+      setColumns(newCols);
+      try {
+        await savePositions(newCols);
+      } catch (error) {
+        console.error("Erro ao salvar ordem das colunas:", error);
+        setColumns((current) => current === newCols ? previous : current);
+        toast.error("Não foi possível salvar a ordem. A alteração foi desfeita.");
+      }
       return;
     }
 
     // Card reorder
     if (source.droppableId === destination.droppableId && source.index === destination.index) return;
-    setColumns((prev) => {
-      const newCols = prev.map((c) => ({ ...c, items: [...c.items] }));
-      const srcCol = newCols.find((c) => c.id === source.droppableId);
-      const destCol = newCols.find((c) => c.id === destination.droppableId);
-      if (!srcCol || !destCol) return prev;
-      const [moved] = srcCol.items.splice(source.index, 1);
-      for (const col of newCols) {
-        if (col.id !== destCol.id) {
-          col.items = col.items.filter((item) => item.auvo_task_id !== moved.auvo_task_id);
-        }
-      }
-      destCol.items.splice(destination.index, 0, moved);
-      const uniqueCols = dedupeKanbanColumns(newCols);
-      savePositions(uniqueCols);
-      return uniqueCols;
-    });
-  }, [savePositions]);
+    if (sortBy !== "manual") {
+      toast.info("Selecione a ordenação manual antes de mover cards.");
+      return;
+    }
+
+    const taskId = result.draggableId;
+    if (destination.droppableId === RESOLVED_WITHOUT_BUDGET_COLUMN
+        && source.droppableId !== RESOLVED_WITHOUT_BUDGET_COLUMN) {
+      setResolveTaskId(taskId);
+      setResolveMotivo(resolutionDetails[taskId]?.motivo || "");
+      setResolveDialogOpen(true);
+      return;
+    }
+    if (source.droppableId === RESOLVED_WITHOUT_BUDGET_COLUMN
+        && destination.droppableId !== RESOLVED_WITHOUT_BUDGET_COLUMN) {
+      toast.info("Use o botão Reabrir para retirar um card de Já Resolvido.");
+      return;
+    }
+
+    const destinationColumn = columns.find((column) => column.id === destination.droppableId);
+    if (!destinationColumn) return;
+    const visibleDestinationTaskIds = filteredColumns
+      .find((column) => column.id === destination.droppableId)?.items
+      .map((item) => item.auvo_task_id) || [];
+    const nextColumns = dedupeKanbanColumns(moveBudgetKanbanCard(
+      columns,
+      taskId,
+      destination.droppableId,
+      destinationColumn.title,
+      destination.index,
+      visibleDestinationTaskIds,
+    ));
+    if (nextColumns === columns) return;
+
+    const previous = columns;
+    setColumns(nextColumns);
+    try {
+      await savePositions(nextColumns);
+    } catch (error) {
+      console.error("Erro ao salvar movimento do card:", error);
+      setColumns((current) => current === nextColumns ? previous : current);
+      toast.error("Não foi possível salvar o movimento. A alteração foi desfeita.");
+    }
+  }, [columns, filteredColumns, resolutionDetails, savePositions, sortBy]);
 
   const addColumn = useCallback(() => {
     if (!newColumnTitle.trim()) return;
     const id = `custom_${Date.now()}`;
     setColumns((prev) => {
       const newCols = [...prev, { id, title: newColumnTitle.trim(), items: [] }];
-      savePositions(newCols);
+      void savePositions(newCols).catch((error) => {
+        console.error("Erro ao salvar nova coluna:", error);
+        toast.error("A coluna foi criada na tela, mas ainda não foi salva.");
+      });
       return newCols;
     });
     setNewColumnTitle("");
@@ -694,7 +762,10 @@ export default function BudgetKanbanPage() {
       const newCols = prev
         .filter((c) => c.id !== columnId)
         .map((c) => c.id === "a_fazer" ? { ...c, items: [...c.items, ...col.items] } : c);
-      savePositions(newCols);
+      void savePositions(newCols).catch((error) => {
+        console.error("Erro ao excluir coluna:", error);
+        toast.error("A exclusão não foi salva no servidor.");
+      });
       return newCols;
     });
   }, [savePositions]);
@@ -703,37 +774,29 @@ export default function BudgetKanbanPage() {
     if (!editingColumnId || !editingColumnTitle.trim()) return;
     setColumns((prev) => {
       const newCols = prev.map((c) => c.id === editingColumnId ? { ...c, title: editingColumnTitle.trim() } : c);
-      savePositions(newCols);
+      void savePositions(newCols).catch((error) => {
+        console.error("Erro ao renomear coluna:", error);
+        toast.error("O novo nome ainda não foi salvo no servidor.");
+      });
       return newCols;
     });
     setEditingColumnId(null);
-  }, [editingColumnId, editingColumnTitle]);
+  }, [editingColumnId, editingColumnTitle, savePositions]);
 
-  // Move card to "Já Resolvido" (or back to "A Fazer")
-  const moveCardToColumn = useCallback((taskId: string, targetColumnId: string, successMsg: string) => {
+  const moveCardLocally = useCallback((taskId: string, targetColumnId: string) => {
     setColumns((prev) => {
-      const newCols = prev.map((c) => ({ ...c, items: [...c.items] }));
-      let movedCard: KanbanItem | null = null;
-      for (const col of newCols) {
-        const idx = col.items.findIndex((i) => i.auvo_task_id === taskId);
-        if (idx !== -1) {
-          movedCard = col.items.splice(idx, 1)[0];
-          break;
-        }
-      }
-      if (!movedCard) return prev;
-      let target = newCols.find((c) => c.id === targetColumnId);
-      if (!target) {
-        target = { id: "resolvido_sem_orcamento", title: "✅ Já Resolvido", items: [] };
-        newCols.push(target);
-      }
-      target.items.unshift(movedCard);
-      const uniqueCols = dedupeKanbanColumns(newCols);
-      savePositions(uniqueCols);
-      return uniqueCols;
+      const title = targetColumnId === RESOLVED_WITHOUT_BUDGET_COLUMN
+        ? "✅ Já Resolvido"
+        : targetColumnId === "falta_preenchimento"
+          ? "⚠️ Falta Preenchimento"
+          : targetColumnId === "os_realizada"
+            ? "🔧 OS Realizada"
+            : targetColumnId.startsWith("orc_")
+              ? `💰 ${targetColumnId.replace("orc_", "").replace(/_/g, " ")}`
+              : "📋 A Fazer";
+      return dedupeKanbanColumns(moveBudgetKanbanCard(prev, taskId, targetColumnId, title));
     });
-    toast.success(successMsg);
-  }, [savePositions]);
+  }, []);
 
   // Load resolution details for tasks currently in "resolvido_sem_orcamento"
   useEffect(() => {
@@ -746,6 +809,7 @@ export default function BudgetKanbanPage() {
       const { data, error } = await supabase
         .from("kanban_resolution_details" as any)
         .select("auvo_task_id, motivo, resolvido_por_nome, resolvido_em")
+        .eq("ativo", true)
         .in("auvo_task_id", missing);
       if (error || !data) return;
       setResolutionDetails((prev) => {
@@ -779,37 +843,71 @@ export default function BudgetKanbanPage() {
     }
     setIsSavingResolve(true);
     try {
-      const payload = {
-        auvo_task_id: resolveTaskId,
-        motivo,
-        resolvido_por_id: user?.id || null,
-        resolvido_por_nome: profile?.nome || user?.email || null,
-        resolvido_em: new Date().toISOString(),
-        atualizado_em: new Date().toISOString(),
-      };
-      const { error } = await supabase
-        .from("kanban_resolution_details" as any)
-        .upsert(payload, { onConflict: "auvo_task_id" } as any);
+      const resolvedBy = profile?.nome || user?.email || null;
+      const { data: resolveData, error } = await supabase.functions.invoke("budget-kanban", {
+        body: {
+          mode: "resolve_without_budget",
+          auvo_task_id: resolveTaskId,
+          motivo,
+          user_id: user?.id || null,
+          user_name: resolvedBy,
+        },
+      });
       if (error) throw error;
+      if (!resolveData?.ok || resolveData?.error) {
+        throw new Error(resolveData?.error || "O servidor não confirmou a resolução");
+      }
+      const resolvedAt = resolveData?.item?.resolvido_em || new Date().toISOString();
       setResolutionDetails((prev) => ({
         ...prev,
         [resolveTaskId]: {
           motivo,
-          resolvido_por_nome: payload.resolvido_por_nome,
-          resolvido_em: payload.resolvido_em,
+          resolvido_por_nome: resolvedBy,
+          resolvido_em: resolvedAt,
         },
       }));
-      moveCardToColumn(resolveTaskId, "resolvido_sem_orcamento", "Marcado como resolvido sem orçamento");
+      moveCardLocally(resolveTaskId, RESOLVED_WITHOUT_BUDGET_COLUMN);
+      toast.success("Marcado como resolvido sem orçamento");
       setResolveDialogOpen(false);
       setResolveTaskId(null);
       setResolveMotivo("");
     } catch (e: any) {
       console.error("Erro ao salvar detalhes:", e);
-      toast.error("Erro ao salvar os detalhes");
+      toast.error("Não foi possível marcar como resolvido. O card não foi movido.");
     } finally {
       setIsSavingResolve(false);
     }
-  }, [resolveTaskId, resolveMotivo, user, profile, moveCardToColumn]);
+  }, [resolveTaskId, resolveMotivo, user, profile, moveCardLocally]);
+
+  const handleReopenResolved = useCallback(async (taskId: string) => {
+    setReopeningTaskId(taskId);
+    try {
+      const { data: reopenData, error } = await supabase.functions.invoke("budget-kanban", {
+        body: {
+          mode: "reopen_resolved",
+          auvo_task_id: taskId,
+          user_id: user?.id || null,
+          user_name: profile?.nome || user?.email || null,
+        },
+      });
+      if (error) throw error;
+      if (!reopenData?.ok || reopenData?.error || !reopenData?.coluna) {
+        throw new Error(reopenData?.error || "O servidor não confirmou a reabertura");
+      }
+      moveCardLocally(taskId, reopenData.coluna);
+      setResolutionDetails((prev) => {
+        const next = { ...prev };
+        delete next[taskId];
+        return next;
+      });
+      toast.success("Card reaberto e devolvido à etapa correta");
+    } catch (error) {
+      console.error("Erro ao reabrir card:", error);
+      toast.error("Não foi possível reabrir. O card continua em Já Resolvido.");
+    } finally {
+      setReopeningTaskId(null);
+    }
+  }, [moveCardLocally, profile, user]);
 
 
   // Abbreviate long client names: keep first + last word with "..." in between
@@ -1819,7 +1917,12 @@ export default function BudgetKanbanPage() {
                                 }`}
                               >
                                 {column.items.map((item, index) => (
-                                  <Draggable key={item.auvo_task_id} draggableId={item.auvo_task_id} index={index}>
+                                  <Draggable
+                                    key={item.auvo_task_id}
+                                    draggableId={item.auvo_task_id}
+                                    index={index}
+                                    isDragDisabled={sortBy !== "manual"}
+                                  >
                                     {(provided, snapshot) => (
                                       <div
                                         ref={provided.innerRef}
@@ -1995,10 +2098,15 @@ export default function BudgetKanbanPage() {
                                                     size="sm"
                                                     variant="ghost"
                                                     className="h-7 flex-1 text-[11px] text-muted-foreground hover:text-foreground"
-                                                    onClick={() => moveCardToColumn(item.auvo_task_id, "a_fazer", "Card movido de volta para 'A Fazer'")}
+                                                    onClick={() => handleReopenResolved(item.auvo_task_id)}
+                                                    disabled={reopeningTaskId === item.auvo_task_id}
                                                   >
-                                                    <RefreshCw className="h-3 w-3 mr-1" />
-                                                    Reabrir
+                                                    {reopeningTaskId === item.auvo_task_id ? (
+                                                      <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+                                                    ) : (
+                                                      <RefreshCw className="h-3 w-3 mr-1" />
+                                                    )}
+                                                    {reopeningTaskId === item.auvo_task_id ? "Reabrindo..." : "Reabrir"}
                                                   </Button>
                                                 </>
                                               ) : (

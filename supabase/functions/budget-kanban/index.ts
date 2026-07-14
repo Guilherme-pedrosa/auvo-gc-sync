@@ -660,6 +660,42 @@ function resolveStoredColumn(item: any, savedColuna: string | null): string {
   return saved;
 }
 
+const BUDGET_CACHE_PAGE_SIZE = 1000;
+const RESOLVED_WITHOUT_BUDGET_COLUMN = "resolvido_sem_orcamento";
+
+async function loadAllBudgetCacheRows(sbClient: any): Promise<any[]> {
+  const rows: any[] = [];
+  for (let from = 0; ; from += BUDGET_CACHE_PAGE_SIZE) {
+    const { data, error } = await sbClient
+      .from("kanban_orcamentos_cache")
+      .select("*")
+      .order("coluna")
+      .order("posicao")
+      .order("auvo_task_id")
+      .range(from, from + BUDGET_CACHE_PAGE_SIZE - 1);
+    if (error) throw error;
+    rows.push(...(data || []));
+    if (!data || data.length < BUDGET_CACHE_PAGE_SIZE) break;
+  }
+  return rows;
+}
+
+async function loadActiveBudgetResolutionIds(sbClient: any): Promise<Set<string>> {
+  const taskIds = new Set<string>();
+  for (let from = 0; ; from += BUDGET_CACHE_PAGE_SIZE) {
+    const { data, error } = await sbClient
+      .from("kanban_resolution_details")
+      .select("auvo_task_id")
+      .eq("ativo", true)
+      .order("auvo_task_id")
+      .range(from, from + BUDGET_CACHE_PAGE_SIZE - 1);
+    if (error) throw error;
+    for (const row of data || []) taskIds.add(String(row.auvo_task_id));
+    if (!data || data.length < BUDGET_CACHE_PAGE_SIZE) break;
+  }
+  return taskIds;
+}
+
 function buildBudgetItemFromCentral(row: any, gcOrcMap: Record<string, any> = {}, gcOsMap: Record<string, any> = {}) {
   const taskId = String(row.auvo_task_id || "").trim();
   const questionarioRespostas = Array.isArray(row.questionario_respostas) ? row.questionario_respostas : [];
@@ -729,8 +765,9 @@ Deno.serve(async (req) => {
 
     // === MODE: CACHE — read from DB ===
     if (mode === "cache") {
-      const [{ data: cached }, { data: meta }, { data: colMeta }] = await Promise.all([
-        sbClient.from("kanban_orcamentos_cache").select("*").order("coluna").order("posicao"),
+      const [cached, activeResolutionIds, { data: meta }, { data: colMeta }] = await Promise.all([
+        loadAllBudgetCacheRows(sbClient),
+        loadActiveBudgetResolutionIds(sbClient),
         sbClient.from("kanban_sync_meta").select("*").eq("id", "default").single(),
         sbClient.from("kanban_sync_meta").select("*").eq("id", "custom_columns").single(),
       ]);
@@ -744,7 +781,9 @@ Deno.serve(async (req) => {
         const item = row.dados || {};
         return {
           ...item,
-          _coluna: resolveStoredColumn(item, row.coluna),
+          _coluna: activeResolutionIds.has(String(row.auvo_task_id))
+            ? RESOLVED_WITHOUT_BUDGET_COLUMN
+            : resolveStoredColumn(item, row.coluna),
           _posicao: row.posicao,
         };
       });
@@ -806,33 +845,71 @@ Deno.serve(async (req) => {
       });
     }
 
-    // === MODE: SAVE_POSITIONS — persist column/position changes from drag-drop ===
+    // === MODE: RESOLVE — reason and column are committed in the same transaction ===
+    if (mode === "resolve_without_budget") {
+      const taskId = String(body.auvo_task_id || "").trim();
+      const motivo = String(body.motivo || "").trim();
+      if (!taskId || motivo.length < 3) {
+        throw new Error("Tarefa e motivo (mínimo 3 caracteres) são obrigatórios");
+      }
+
+      const { data: resolved, error } = await sbClient.rpc("resolve_budget_kanban_item", {
+        p_task_id: taskId,
+        p_motivo: motivo,
+        p_user_id: body.user_id || null,
+        p_user_name: body.user_name || null,
+      });
+      if (error) throw error;
+
+      return new Response(JSON.stringify({ ok: true, item: resolved?.[0] || null }), {
+        status: 200,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    // === MODE: REOPEN — clear active resolution and restore the current automatic column ===
+    if (mode === "reopen_resolved") {
+      const taskId = String(body.auvo_task_id || "").trim();
+      if (!taskId) throw new Error("Tarefa obrigatória");
+
+      const { data: cachedCard, error: cacheError } = await sbClient
+        .from("kanban_orcamentos_cache")
+        .select("dados")
+        .eq("auvo_task_id", taskId)
+        .single();
+      if (cacheError || !cachedCard) throw cacheError || new Error("Card não encontrado no cache");
+
+      const targetColumn = budgetColumnForItem(cachedCard.dados || {});
+      const { data: reopened, error } = await sbClient.rpc("reopen_budget_kanban_item", {
+        p_task_id: taskId,
+        p_target_column: targetColumn,
+        p_user_id: body.user_id || null,
+        p_user_name: body.user_name || null,
+      });
+      if (error) throw error;
+
+      return new Response(JSON.stringify({
+        ok: true,
+        coluna: targetColumn,
+        item: reopened?.[0] || null,
+      }), {
+        status: 200,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    // === MODE: SAVE_POSITIONS — persist all changes in one database transaction ===
     if (mode === "save_positions") {
       const positions: { auvo_task_id: string; coluna: string; posicao: number }[] = body.positions || [];
       const customColumns: { id: string; title: string; order: number }[] = body.custom_columns || [];
 
-      if (positions.length > 0) {
-        for (let i = 0; i < positions.length; i += 50) {
-          const batch = positions.slice(i, i + 50).map((p) => ({
-            auvo_task_id: p.auvo_task_id,
-            coluna: p.coluna,
-            posicao: p.posicao,
-            atualizado_em: new Date().toISOString(),
-          }));
-          await sbClient
-            .from("kanban_orcamentos_cache")
-            .upsert(batch, { onConflict: "auvo_task_id", ignoreDuplicates: false });
-        }
-      }
+      const { data: saved, error } = await sbClient.rpc("save_budget_kanban_positions", {
+        p_positions: positions,
+        p_custom_columns: customColumns,
+      });
+      if (error) throw error;
 
-      // Save custom column metadata if provided
-      if (customColumns.length > 0) {
-        await sbClient
-          .from("kanban_sync_meta")
-          .upsert({ id: "custom_columns", periodo_inicio: JSON.stringify(customColumns) });
-      }
-
-      return new Response(JSON.stringify({ ok: true, saved: positions.length }), {
+      return new Response(JSON.stringify({ ok: true, saved: Number(saved ?? positions.length) }), {
         status: 200,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
@@ -1003,11 +1080,10 @@ async function runBudgetKanbanSync(opts: {
     if (auvoTasks.length === 0 && auvoError && combinedCentral.length === 0) {
       console.warn(`[budget-kanban] Sync preservado por erro Auvo: ${auvoError}`);
 
-      const { data: cached } = await sbClient
-        .from("kanban_orcamentos_cache")
-        .select("*")
-        .order("coluna")
-        .order("posicao");
+      const [cached, activeResolutionIds] = await Promise.all([
+        loadAllBudgetCacheRows(sbClient),
+        loadActiveBudgetResolutionIds(sbClient),
+      ]);
 
       const { data: meta } = await sbClient
         .from("kanban_sync_meta")
@@ -1018,7 +1094,13 @@ async function runBudgetKanbanSync(opts: {
       const fallbackItems = (cached || [])
         .map((row: any) => {
           const item = row.dados || {};
-          return { ...item, _coluna: resolveStoredColumn(item, row.coluna), _posicao: row.posicao };
+          return {
+            ...item,
+            _coluna: activeResolutionIds.has(String(row.auvo_task_id))
+              ? RESOLVED_WITHOUT_BUDGET_COLUMN
+              : resolveStoredColumn(item, row.coluna),
+            _posicao: row.posicao,
+          };
         })
         .filter((item: any) => inDateRange(item.data_tarefa, startDate, endDate));
 
@@ -1252,73 +1334,24 @@ async function runBudgetKanbanSync(opts: {
     });
 
     // === UPSERT TO CACHE ===
-    // Read existing cache WITH dados to detect real changes
-    const { data: existingCache } = await sbClient
-      .from("kanban_orcamentos_cache")
-      .select("auvo_task_id, coluna, posicao, dados");
-    
-    const existingMap: Record<string, { coluna: string; posicao: number; dados: any }> = {};
-    for (const row of existingCache || []) {
-      existingMap[row.auvo_task_id] = { coluna: row.coluna, posicao: row.posicao, dados: row.dados };
-    }
-
+    // A função SQL decide a coluna usando o estado atual do banco no instante do
+    // UPDATE. Assim uma sincronização iniciada antes da ação do operador não
+    // consegue retirar um card que acabou de ser marcado como resolvido.
     const now = new Date().toISOString();
-    let movedCount = 0;
-    let keptCount = 0;
-
-    // Colunas SISTÊMICAS são auto-classificadas por budgetColumnForItem
-    // e devem ser recalculadas a cada sync. Colunas manuais (ex.:
-    // "resolvido_sem_orcamento" ou colunas custom do usuário) são
-    // preservadas — fonte de verdade é o operador.
-    const SISTEMICAS = new Set<string>([
-      "a_fazer",
-      "falta_preenchimento",
-      "os_realizada",
-    ]);
-    const isSistemica = (col: string): boolean =>
-      SISTEMICAS.has(col) || (typeof col === "string" && col.startsWith("orc_"));
-
-    const upsertRows = items.map((item: any, idx: number) => {
-      const existing = existingMap[item.auvo_task_id];
-
-      const autoColuna = budgetColumnForItem(item);
-
-      let finalColuna: string;
-      let finalPosicao: number;
-
-      if (!existing) {
-        finalColuna = autoColuna;
-        finalPosicao = idx;
-      } else if (isSistemica(existing.coluna)) {
-        // Coluna anterior foi auto-classificada → recalcular sempre.
-        finalColuna = autoColuna;
-        finalPosicao = existing.coluna === autoColuna ? existing.posicao : idx;
-        if (existing.coluna !== autoColuna) movedCount++;
-        else keptCount++;
-      } else {
-        // Coluna MANUAL (resolvido_sem_orcamento, custom) → preservar.
-        finalColuna = existing.coluna;
-        finalPosicao = existing.posicao;
-        keptCount++;
-      }
-
-      return {
+    const syncRows = items.map((item: any, idx: number) => ({
         auvo_task_id: item.auvo_task_id,
         dados: item,
-        coluna: finalColuna,
-        posicao: finalPosicao,
-        atualizado_em: now,
-      };
-    });
-
-    console.log(`[budget-kanban] Posições: ${movedCount} movidos por atualização, ${keptCount} mantidos`);
+        auto_coluna: budgetColumnForItem(item),
+        posicao: idx,
+      }));
 
     // Upsert in batches of 50
-    for (let i = 0; i < upsertRows.length; i += 50) {
-      const batch = upsertRows.slice(i, i + 50);
-      await sbClient
-        .from("kanban_orcamentos_cache")
-        .upsert(batch, { onConflict: "auvo_task_id" });
+    for (let i = 0; i < syncRows.length; i += 50) {
+      const batch = syncRows.slice(i, i + 50);
+      const { error } = await sbClient.rpc("upsert_budget_kanban_sync_items", {
+        p_items: batch,
+      });
+      if (error) throw error;
     }
 
     // Não remover itens antigos do cache: preservar histórico e posições já salvas
@@ -1334,7 +1367,7 @@ async function runBudgetKanbanSync(opts: {
         periodo_fim: endDate,
       });
 
-    console.log(`[budget-kanban] Cache atualizado: ${upsertRows.length} itens`);
+    console.log(`[budget-kanban] Cache atualizado: ${syncRows.length} itens`);
 
     console.log(`[budget-kanban] Sync concluído. Pendentes: ${items.filter((i: any) => !i.orcamento_realizado && !i.os_realizada).length}`);
 }
