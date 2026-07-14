@@ -1,0 +1,322 @@
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { supabase } from "@/integrations/supabase/client";
+import { toast } from "sonner";
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const sb = supabase as any;
+
+export type DocumentType = {
+  id: string; code: string; name: string;
+  scope: "COMPANY" | "TECHNICIAN" | "CLIENT";
+  requires_expiry: boolean; ativo: boolean;
+};
+export type RhCliente = {
+  id: string; gc_cliente_id: string | null;
+  nome: string; nome_normalizado: string; nome_fantasia: string | null;
+  cpf_cnpj: string | null; email: string | null; telefone: string | null;
+  endereco: string | null; cidade: string | null; uf: string | null; cep: string | null;
+  ativo: boolean; origem: "cache" | "gc" | "manual"; sync_em: string | null;
+  observacoes: string | null;
+};
+export type RhColaborador = {
+  id: string; tipo_pessoa: "PF" | "PJ"; nome: string;
+  nome_fantasia: string | null; cpf_cnpj: string | null;
+  email: string | null; telefone: string | null;
+  cargo: string | null; funcao: string | null; departamento: string | null;
+  ativo: boolean; auvo_user_id: string | null; observacoes: string | null;
+};
+export type ColabDoc = {
+  id: string; colaborador_id: string; document_type_id: string;
+  data_emissao: string | null; data_vencimento: string | null;
+  arquivo_url: string | null; arquivo_nome: string | null;
+  observacoes: string | null;
+};
+export type CompanyDoc = {
+  id: string; document_type_id: string; numero: string | null;
+  data_emissao: string | null; data_vencimento: string | null;
+  arquivo_url: string | null; arquivo_nome: string | null;
+  observacoes: string | null;
+};
+export type ClientRequirement = {
+  id: string; client_id: string; document_type_id: string;
+  required_for: "COMPANY" | "TECHNICIAN"; is_required: boolean;
+};
+export type Integration = {
+  id: string; client_id: string; technician_ids: string[];
+  status: "draft" | "authorized" | "sent" | "blocked" | "expired";
+  validated_at: string | null; sent_at: string | null;
+  earliest_expiry_date: string | null; blocked_reasons: unknown[];
+  zip_file_name: string | null; zip_url: string | null;
+  observacoes: string | null; criado_em: string;
+};
+
+// ---------- Document Types ----------
+export function useDocumentTypes() {
+  return useQuery({
+    queryKey: ["rh_document_types"],
+    queryFn: async () => {
+      const { data, error } = await sb.from("rh_document_types").select("*").order("scope").order("name");
+      if (error) throw error;
+      return (data ?? []) as DocumentType[];
+    },
+  });
+}
+export function useSaveDocumentType() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (payload: Partial<DocumentType> & { id?: string }) => {
+      if (payload.id) {
+        const { error } = await sb.from("rh_document_types").update(payload).eq("id", payload.id);
+        if (error) throw error;
+      } else {
+        const { error } = await sb.from("rh_document_types").insert(payload);
+        if (error) throw error;
+      }
+    },
+    onSuccess: () => { toast.success("Tipo salvo"); qc.invalidateQueries({ queryKey: ["rh_document_types"] }); },
+    onError: (e: Error) => toast.error(e.message),
+  });
+}
+
+// ---------- Clientes ----------
+export function useRhClientes(search = "") {
+  return useQuery({
+    queryKey: ["rh_clientes", search],
+    queryFn: async () => {
+      let q = sb.from("rh_clientes").select("*").order("nome");
+      if (search) q = q.ilike("nome", `%${search}%`);
+      const { data, error } = await q.limit(2000);
+      if (error) throw error;
+      return (data ?? []) as RhCliente[];
+    },
+  });
+}
+export function useSaveRhCliente() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (payload: Partial<RhCliente> & { id?: string }) => {
+      const body = { ...payload };
+      if (body.nome && !body.nome_normalizado) {
+        body.nome_normalizado = body.nome.trim().toLowerCase().replace(/\s+/g, " ");
+      }
+      if (payload.id) {
+        const { error } = await sb.from("rh_clientes").update(body).eq("id", payload.id);
+        if (error) throw error;
+      } else {
+        const { error } = await sb.from("rh_clientes").insert({ ...body, origem: "manual" });
+        if (error) throw error;
+      }
+    },
+    onSuccess: () => { toast.success("Cliente salvo"); qc.invalidateQueries({ queryKey: ["rh_clientes"] }); },
+    onError: (e: Error) => toast.error(e.message),
+  });
+}
+
+// ---------- Colaboradores ----------
+export function useColaboradores() {
+  return useQuery({
+    queryKey: ["rh_colaboradores"],
+    queryFn: async () => {
+      const { data, error } = await sb.from("rh_colaboradores").select("*").order("nome");
+      if (error) throw error;
+      return (data ?? []) as RhColaborador[];
+    },
+  });
+}
+export function useColaborador(id: string | undefined) {
+  return useQuery({
+    queryKey: ["rh_colaborador", id],
+    enabled: !!id,
+    queryFn: async () => {
+      const { data, error } = await sb.from("rh_colaboradores").select("*").eq("id", id).maybeSingle();
+      if (error) throw error;
+      return data as RhColaborador | null;
+    },
+  });
+}
+export function useSaveColaborador() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (payload: Partial<RhColaborador> & { id?: string }) => {
+      if (payload.id) {
+        const { error } = await sb.from("rh_colaboradores").update(payload).eq("id", payload.id);
+        if (error) throw error;
+      } else {
+        const { error } = await sb.from("rh_colaboradores").insert(payload);
+        if (error) throw error;
+      }
+    },
+    onSuccess: () => { toast.success("Colaborador salvo"); qc.invalidateQueries({ queryKey: ["rh_colaboradores"] }); },
+    onError: (e: Error) => toast.error(e.message),
+  });
+}
+
+// ---------- Colaborador Docs ----------
+export function useColaboradorDocs(colaboradorId: string | undefined) {
+  return useQuery({
+    queryKey: ["rh_colaborador_docs", colaboradorId],
+    enabled: !!colaboradorId,
+    queryFn: async () => {
+      const { data, error } = await sb
+        .from("rh_colaborador_docs")
+        .select("*")
+        .eq("colaborador_id", colaboradorId);
+      if (error) throw error;
+      return (data ?? []) as ColabDoc[];
+    },
+  });
+}
+export function useSaveColabDoc() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (payload: Partial<ColabDoc> & { id?: string }) => {
+      if (payload.id) {
+        const { error } = await sb.from("rh_colaborador_docs").update(payload).eq("id", payload.id);
+        if (error) throw error;
+      } else {
+        const { error } = await sb.from("rh_colaborador_docs").upsert(payload, {
+          onConflict: "colaborador_id,document_type_id",
+        });
+        if (error) throw error;
+      }
+    },
+    onSuccess: (_d, vars) => {
+      toast.success("Documento salvo");
+      qc.invalidateQueries({ queryKey: ["rh_colaborador_docs", vars.colaborador_id] });
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+}
+export function useDeleteColabDoc() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, colaborador_id }: { id: string; colaborador_id: string }) => {
+      const { error } = await sb.from("rh_colaborador_docs").delete().eq("id", id);
+      if (error) throw error;
+      return { colaborador_id };
+    },
+    onSuccess: (res) => {
+      toast.success("Removido");
+      qc.invalidateQueries({ queryKey: ["rh_colaborador_docs", res.colaborador_id] });
+    },
+  });
+}
+
+// ---------- Company Docs ----------
+export function useCompanyDocs() {
+  return useQuery({
+    queryKey: ["rh_company_documents"],
+    queryFn: async () => {
+      const { data, error } = await sb.from("rh_company_documents").select("*").order("criado_em", { ascending: false });
+      if (error) throw error;
+      return (data ?? []) as CompanyDoc[];
+    },
+  });
+}
+export function useSaveCompanyDoc() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (payload: Partial<CompanyDoc> & { id?: string }) => {
+      if (payload.id) {
+        const { error } = await sb.from("rh_company_documents").update(payload).eq("id", payload.id);
+        if (error) throw error;
+      } else {
+        const { error } = await sb.from("rh_company_documents").insert(payload);
+        if (error) throw error;
+      }
+    },
+    onSuccess: () => { toast.success("Documento salvo"); qc.invalidateQueries({ queryKey: ["rh_company_documents"] }); },
+    onError: (e: Error) => toast.error(e.message),
+  });
+}
+
+// ---------- Client Requirements ----------
+export function useClientRequirements(clientId: string | undefined) {
+  return useQuery({
+    queryKey: ["rh_client_requirements", clientId],
+    enabled: !!clientId,
+    queryFn: async () => {
+      const { data, error } = await sb
+        .from("rh_client_requirements")
+        .select("*")
+        .eq("client_id", clientId);
+      if (error) throw error;
+      return (data ?? []) as ClientRequirement[];
+    },
+  });
+}
+export function useToggleRequirement() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (payload: {
+      client_id: string; document_type_id: string;
+      required_for: "COMPANY" | "TECHNICIAN"; is_required: boolean;
+    }) => {
+      const { error } = await sb.from("rh_client_requirements").upsert(payload, {
+        onConflict: "client_id,document_type_id,required_for",
+      });
+      if (error) throw error;
+    },
+    onSuccess: (_d, vars) => {
+      qc.invalidateQueries({ queryKey: ["rh_client_requirements", vars.client_id] });
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+}
+
+// ---------- Integrations ----------
+export function useIntegrations() {
+  return useQuery({
+    queryKey: ["rh_integrations"],
+    queryFn: async () => {
+      const { data, error } = await sb.from("rh_integrations").select("*").order("criado_em", { ascending: false });
+      if (error) throw error;
+      return (data ?? []) as Integration[];
+    },
+  });
+}
+export function useSaveIntegration() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (payload: Partial<Integration> & { id?: string }) => {
+      if (payload.id) {
+        const { error } = await sb.from("rh_integrations").update(payload).eq("id", payload.id);
+        if (error) throw error;
+      } else {
+        const { error } = await sb.from("rh_integrations").insert(payload);
+        if (error) throw error;
+      }
+    },
+    onSuccess: () => { toast.success("Integração salva"); qc.invalidateQueries({ queryKey: ["rh_integrations"] }); },
+    onError: (e: Error) => toast.error(e.message),
+  });
+}
+
+// ---------- Sync GC ----------
+export function useSyncClientesGc() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async () => {
+      const { data, error } = await sb.functions.invoke("rh-clientes-sync-gc", { body: {} });
+      if (error) throw error;
+      return data as { updated: number; errors: number };
+    },
+    onSuccess: (res) => {
+      toast.success(`Sync concluído: ${res.updated} atualizado(s), ${res.errors} falha(s)`);
+      qc.invalidateQueries({ queryKey: ["rh_clientes"] });
+    },
+    onError: (e: Error) => toast.error(`Falha no sync: ${e.message}`),
+  });
+}
+
+// ---------- Helpers ----------
+export function computeDocStatus(doc: { data_vencimento: string | null } | undefined): "ok" | "expiring" | "expired" | "missing" {
+  if (!doc) return "missing";
+  if (!doc.data_vencimento) return "ok";
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const venc = new Date(doc.data_vencimento);
+  const diff = Math.floor((venc.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+  if (diff < 0) return "expired";
+  if (diff <= 30) return "expiring";
+  return "ok";
+}

@@ -27,6 +27,15 @@ import PremiacaoPage from "./pages/financeiro/PremiacaoPage.tsx";
 import ContratosPage from "./pages/configuracoes/ContratosPage.tsx";
 import TiposEquipamentoPage from "./pages/configuracoes/TiposEquipamentoPage.tsx";
 import TiposTarefaPreventivaPage from "./pages/configuracoes/TiposTarefaPreventivaPage.tsx";
+import ClientesRhPage from "./pages/rh/ClientesRhPage.tsx";
+import ClienteRequisitosPage from "./pages/rh/ClienteRequisitosPage.tsx";
+import ColaboradoresPage from "./pages/rh/ColaboradoresPage.tsx";
+import ColaboradorDetailPage from "./pages/rh/ColaboradorDetailPage.tsx";
+import TiposDocumentoPage from "./pages/rh/TiposDocumentoPage.tsx";
+import DocumentosEmpresaPage from "./pages/rh/DocumentosEmpresaPage.tsx";
+import MatrizIntegracoesPage from "./pages/rh/MatrizIntegracoesPage.tsx";
+import NovaIntegracaoPage from "./pages/rh/NovaIntegracaoPage.tsx";
+import IntegracoesDashboardPage from "./pages/rh/IntegracoesDashboardPage.tsx";
 import PortalLoginPage from "./pages/portal/PortalLoginPage.tsx";
 import PortalHorasPage from "./pages/portal/PortalHorasPage.tsx";
 import PortalOrcamentosPage from "./pages/portal/PortalOrcamentosPage.tsx";
@@ -105,6 +114,15 @@ const AppRoutes = () => {
                 <Route path="/configuracoes/contratos" element={<ContratosPage />} />
                 <Route path="/configuracoes/tipos-equipamento" element={<TiposEquipamentoPage />} />
                 <Route path="/configuracoes/tipos-tarefa-preventiva" element={<TiposTarefaPreventivaPage />} />
+                <Route path="/rh/clientes" element={<ClientesRhPage />} />
+                <Route path="/rh/clientes/:id/requisitos" element={<ClienteRequisitosPage />} />
+                <Route path="/rh/colaboradores" element={<ColaboradoresPage />} />
+                <Route path="/rh/colaboradores/:id" element={<ColaboradorDetailPage />} />
+                <Route path="/rh/tipos-documento" element={<TiposDocumentoPage />} />
+                <Route path="/rh/documentos-empresa" element={<DocumentosEmpresaPage />} />
+                <Route path="/rh/integracoes" element={<MatrizIntegracoesPage />} />
+                <Route path="/rh/integracoes/nova" element={<NovaIntegracaoPage />} />
+                <Route path="/rh/integracoes/dashboard" element={<IntegracoesDashboardPage />} />
                 <Route path="/admin/usuarios" element={<UsersPage />} />
                 <Route path="*" element={<NotFound />} />
               </Routes>

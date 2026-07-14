@@ -2,7 +2,7 @@ import { useNavigate, useLocation } from "react-router-dom";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/hooks/useAuth";
 import {
- RefreshCw, BarChart3, Kanban, LayoutDashboard, ListChecks, Radio, Wrench, CalendarDays, ChevronDown, Users, LogOut, Shield, FileText, PanelLeftClose, PanelLeft, Thermometer, ArrowLeftRight, Trophy, Settings
+ RefreshCw, BarChart3, Kanban, LayoutDashboard, ListChecks, Radio, Wrench, CalendarDays, ChevronDown, Users, LogOut, Shield, FileText, PanelLeftClose, PanelLeft, Thermometer, ArrowLeftRight, Trophy, Settings, UserCog, FileCheck, Building2
 } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useState } from "react";
@@ -67,7 +67,21 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   const [collapsed, setCollapsed] = useState(false);
 
   const allGroups: NavGroup[] = isAdmin
-    ? [...navGroups, { label: "Administração", items: [{ label: "Usuários", icon: Users, path: "/admin/usuarios" }] }]
+    ? [
+        ...navGroups,
+        {
+          label: "RH",
+          items: [
+            { label: "Dashboard", icon: LayoutDashboard, path: "/rh/integracoes/dashboard" },
+            { label: "Matriz de Integrações", icon: ListChecks, path: "/rh/integracoes" },
+            { label: "Colaboradores", icon: UserCog, path: "/rh/colaboradores" },
+            { label: "Clientes RH", icon: Building2, path: "/rh/clientes" },
+            { label: "Tipos de Documento", icon: FileCheck, path: "/rh/tipos-documento" },
+            { label: "Documentos da Empresa", icon: FileText, path: "/rh/documentos-empresa" },
+          ],
+        },
+        { label: "Administração", items: [{ label: "Usuários", icon: Users, path: "/admin/usuarios" }] },
+      ]
     : navGroups;
 
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(() => {
