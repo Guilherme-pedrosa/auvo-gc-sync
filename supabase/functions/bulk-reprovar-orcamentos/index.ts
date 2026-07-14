@@ -145,35 +145,67 @@ Deno.serve(async (req) => {
         for (const f of ["id", "codigo", "nome_situacao", "cor_situacao", "hash", "cadastrado_em", "modificado_em"]) {
           delete (payload as any)[f];
         }
-        // Remove financeiro (nenhum desses orçamentos possui) e força 2 casas decimais
-        // para evitar erro "valor do pedido diferente do valor das parcelas" (bug de arredondamento).
-        for (const f of ["parcelas", "pagamentos", "financeiro", "contas_receber"]) {
-          delete (payload as any)[f];
-        }
-        const round2 = (v: unknown) => {
+        // Força tudo a 2 casas decimais e alinha pagamentos ao valor_total recalculado
+        // (bug do GC: valor_venda com 4 casas × quantidade gera divergência de R$ 0,01).
+        const round2 = (v: unknown): number => {
           const n = typeof v === "number" ? v : parseFloat(String(v ?? "").replace(",", "."));
-          return Number.isFinite(n) ? Number(n.toFixed(2)) : v;
+          return Number.isFinite(n) ? Math.round(n * 100) / 100 : 0;
         };
-        for (const f of ["valor_total", "valor_desconto", "valor_acrescimo", "valor_frete", "valor_produtos", "valor_servicos", "total"]) {
-          if ((payload as any)[f] !== undefined && (payload as any)[f] !== null && (payload as any)[f] !== "") {
-            (payload as any)[f] = round2((payload as any)[f]);
-          }
-        }
+
+        let totalProdutos = 0;
         if (Array.isArray((payload as any).produtos)) {
-          (payload as any).produtos = (payload as any).produtos.map((p: any) => ({
-            ...p,
-            valor: p?.valor !== undefined ? round2(p.valor) : p?.valor,
-            valor_total: p?.valor_total !== undefined ? round2(p.valor_total) : p?.valor_total,
-            desconto: p?.desconto !== undefined ? round2(p.desconto) : p?.desconto,
-          }));
+          (payload as any).produtos = (payload as any).produtos.map((wrap: any) => {
+            const p = wrap?.produto ?? wrap;
+            const qtd = parseFloat(String(p?.quantidade ?? "1")) || 0;
+            const vvenda = round2(p?.valor_venda);
+            const vtotal = round2(qtd * venda);
+            totalProdutos += vtotal;
+            return {
+              produto: {
+                ...p,
+                valor_venda: venda.toFixed(2),
+                valor_custo: round2(p?.valor_custo).toFixed(2),
+                valor_total: vtotal.toFixed(2),
+                desconto_valor: p?.desconto_valor ? round2(p.desconto_valor).toFixed(2) : p?.desconto_valor,
+              },
+            };
+          });
         }
+        let totalServicos = 0;
         if (Array.isArray((payload as any).servicos)) {
-          (payload as any).servicos = (payload as any).servicos.map((s: any) => ({
-            ...s,
-            valor: s?.valor !== undefined ? round2(s.valor) : s?.valor,
-            valor_total: s?.valor_total !== undefined ? round2(s.valor_total) : s?.valor_total,
-            desconto: s?.desconto !== undefined ? round2(s.desconto) : s?.desconto,
-          }));
+          (payload as any).servicos = (payload as any).servicos.map((wrap: any) => {
+            const s = wrap?.servico ?? wrap;
+            const qtd = parseFloat(String(s?.quantidade ?? "1")) || 0;
+            const vvenda = round2(s?.valor_venda);
+            const vtotal = round2(qtd * vvenda);
+            totalServicos += vtotal;
+            return {
+              servico: {
+                ...s,
+                valor_venda: vvenda.toFixed(2),
+                valor_custo: round2(s?.valor_custo).toFixed(2),
+                valor_total: vtotal.toFixed(2),
+                desconto_valor: s?.desconto_valor ? round2(s.desconto_valor).toFixed(2) : s?.desconto_valor,
+              },
+            };
+          });
+        }
+        const descontoValor = round2((payload as any).desconto_valor);
+        const valorFrete = round2((payload as any).valor_frete);
+        const novoTotal = round2(totalProdutos + totalServicos + valorFrete - descontoValor);
+        (payload as any).valor_produtos = totalProdutos.toFixed(2);
+        (payload as any).valor_servicos = totalServicos.toFixed(2);
+        (payload as any).valor_frete = valorFrete.toFixed(2);
+        (payload as any).desconto_valor = descontoValor.toFixed(2);
+        (payload as any).valor_total = novoTotal.toFixed(2);
+
+        // Alinha pagamentos: 1 única parcela com o total recalculado
+        if (Array.isArray((payload as any).pagamentos) && (payload as any).pagamentos.length > 0) {
+          const first = (payload as any).pagamentos[0]?.pagamento ?? (payload as any).pagamentos[0];
+          (payload as any).pagamentos = [
+            { pagamento: { ...first, valor: novoTotal.toFixed(2) } },
+          ];
+          (payload as any).numero_parcelas = "1";
         }
 
         let putResp: Response | null = null;
