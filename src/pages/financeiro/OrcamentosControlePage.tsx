@@ -293,17 +293,26 @@ export default function OrcamentosControlePage() {
   const filtered = useMemo(() => {
     if (!search) return clienteSummary;
     const s = search.toLowerCase();
+    const isNumeric = /^\d+$/.test(search.trim());
     const result: typeof clienteSummary = [];
     for (const c of clienteSummary) {
-      if (c.cliente.toLowerCase().includes(s)) {
+      if (!isNumeric && c.cliente.toLowerCase().includes(s)) {
         result.push(c);
       } else {
-        const matching = c.items.filter((it: any) =>
-          (it.gc_orc_situacao || "").toLowerCase().includes(s) ||
-          (it.gc_orcamento_codigo || "").toLowerCase().includes(s) ||
-          (String(it.gc_orcamento_id || "")).includes(s) ||
-          (it.auvo_task_id || "").toLowerCase().includes(s)
-        );
+        const matching = c.items.filter((it: any) => {
+          if (isNumeric) {
+            return (
+              (it.gc_orcamento_codigo || "").toLowerCase().includes(s) ||
+              String(it.gc_orcamento_id || "").includes(s)
+            );
+          }
+          return (
+            (it.gc_orc_situacao || "").toLowerCase().includes(s) ||
+            (it.gc_orcamento_codigo || "").toLowerCase().includes(s) ||
+            String(it.gc_orcamento_id || "").includes(s) ||
+            (it.auvo_task_id || "").toLowerCase().includes(s)
+          );
+        });
         if (matching.length > 0) {
           result.push({
             ...c,
@@ -489,7 +498,7 @@ export default function OrcamentosControlePage() {
       <div className="flex flex-wrap gap-3 items-center">
         <div className="relative max-w-sm">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input placeholder="Buscar cliente, código, tarefa..." value={search} onChange={(e) => setSearch(e.target.value)} className="pl-9" />
+          <Input placeholder="Buscar cliente, código, tarefa... (número = apenas orçamento)" value={search} onChange={(e) => setSearch(e.target.value)} className="pl-9" />
         </div>
 
         <Popover>
