@@ -1542,7 +1542,11 @@ async function runCentralSync(body: CentralSyncBody = {}) {
     };
 
     if (body?.orcamentos_only === true) {
-      return await refreshOrcamentosOnly(sbClient, gcH);
+      const rawTipo = String(body?.orcamentos_tipo || "").trim();
+      const tipo = rawTipo === "produto" || rawTipo === "servico" ? rawTipo : undefined;
+      const page = Math.max(1, Number(body?.orcamentos_page || 1));
+      const maxPages = body?.orcamentos_max_pages ? Math.max(1, Number(body.orcamentos_max_pages)) : undefined;
+      return await refreshOrcamentosOnly(sbClient, gcH, { tipo, page, maxPages });
     }
 
     if (body?.gc_status_only === true) {
