@@ -686,7 +686,6 @@ async function loadActiveBudgetResolutionIds(sbClient: any): Promise<Set<string>
     const { data, error } = await sbClient
       .from("kanban_resolution_details")
       .select("auvo_task_id")
-      .eq("ativo", true)
       .order("auvo_task_id")
       .range(from, from + BUDGET_CACHE_PAGE_SIZE - 1);
     if (error) throw error;
