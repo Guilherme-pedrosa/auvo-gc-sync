@@ -156,18 +156,14 @@ Deno.serve(async (req) => {
         if (Array.isArray((payload as any).produtos)) {
           (payload as any).produtos = (payload as any).produtos.map((wrap: any) => {
             const p = wrap?.produto ?? wrap;
-            const qtd = parseFloat(String(p?.quantidade ?? "1")) || 0;
-            const vvenda = round2(p?.valor_venda);
-            const descItem = round2(p?.desconto_valor);
-            const vtotal = round2(qtd * vvenda - descItem);
+            const vtotal = round2(p?.valor_total);
             totalProdutos += vtotal;
             return {
               produto: {
                 ...p,
-                valor_venda: vvenda.toFixed(2),
+                valor_venda: round2(p?.valor_venda).toFixed(2),
                 valor_custo: round2(p?.valor_custo).toFixed(2),
                 valor_total: vtotal.toFixed(2),
-                desconto_valor: p?.desconto_valor ? descItem.toFixed(2) : p?.desconto_valor,
               },
             };
           });
@@ -176,18 +172,14 @@ Deno.serve(async (req) => {
         if (Array.isArray((payload as any).servicos)) {
           (payload as any).servicos = (payload as any).servicos.map((wrap: any) => {
             const s = wrap?.servico ?? wrap;
-            const qtd = parseFloat(String(s?.quantidade ?? "1")) || 0;
-            const vvenda = round2(s?.valor_venda);
-            const descItem = round2(s?.desconto_valor);
-            const vtotal = round2(qtd * vvenda - descItem);
+            const vtotal = round2(s?.valor_total);
             totalServicos += vtotal;
             return {
               servico: {
                 ...s,
-                valor_venda: vvenda.toFixed(2),
+                valor_venda: round2(s?.valor_venda).toFixed(2),
                 valor_custo: round2(s?.valor_custo).toFixed(2),
                 valor_total: vtotal.toFixed(2),
-                desconto_valor: s?.desconto_valor ? descItem.toFixed(2) : s?.desconto_valor,
               },
             };
           });
