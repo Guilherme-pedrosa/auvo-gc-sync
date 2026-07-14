@@ -36,12 +36,8 @@ const SITUACAO_ABERTA_REGEX = /aguardando\s*aprova/i;
 const fetchOrcamentosNoPeriodo = async (fromDate: Date, toDate: Date) => {
   const fromStr = format(fromDate, "yyyy-MM-dd");
   const toStr = format(toDate, "yyyy-MM-dd");
-  // Filtro estrito por data de CONFECÇÃO do orçamento (quando foi criado no sistema).
-  // Usamos `criado_em` (imutável) em vez de `gc_orc_data` porque o campo `data`
-  // no GestãoClick é editável pelo usuário e pode ser alterado após criação,
-  // fazendo com que orçamentos antigos apareçam em filtros de datas recentes.
-  const fromIso = `${fromStr}T00:00:00`;
-  const toIso = `${toStr}T23:59:59.999`;
+  // Filtro estrito pela data do orçamento exibida na tela.
+  // Se o usuário filtra julho, orçamento com Data Orç. de maio não pode aparecer.
   const rows: any[] = [];
   let from = 0;
   while (true) {
@@ -49,9 +45,9 @@ const fetchOrcamentosNoPeriodo = async (fromDate: Date, toDate: Date) => {
       .from("tarefas_central")
       .select("*")
       .not("gc_orcamento_id", "is", null)
-      .gte("criado_em", fromIso)
-      .lte("criado_em", toIso)
-      .order("criado_em", { ascending: false })
+      .gte("gc_orc_data", fromStr)
+      .lte("gc_orc_data", toStr)
+      .order("gc_orc_data", { ascending: false })
       .range(from, from + PAGE_SIZE - 1);
     if (error) throw error;
     const batch = data || [];
@@ -71,10 +67,8 @@ const fetchOrcamentosNoPeriodo = async (fromDate: Date, toDate: Date) => {
     const id = String((c as any).gc_orcamento_id || "");
     if (!id || seen.has(id)) continue;
     const d: any = (c as any).dados || {};
-    // Cache items: usa atualizado_em (nosso registro) como proxy de confecção
-    const cacheDate = String((c as any).atualizado_em || "").slice(0, 10);
-    if (!cacheDate || cacheDate < fromStr || cacheDate > toStr) continue;
     const dataOrc = String(d.data || "").slice(0, 10);
+    if (!dataOrc || dataOrc < fromStr || dataOrc > toStr) continue;
     rows.push({
       gc_orcamento_id: id,
       gc_orcamento_codigo: d.gc_orcamento_codigo || "",
@@ -294,11 +288,11 @@ export default function OrcamentosControlePage() {
     if (excludedSituacoes.size > 0) {
       items = items.filter((t) => !excludedSituacoes.has(t.gc_orc_situacao || ""));
     }
-    // Filtro estrito por data de confecção (criado_em) dentro do range selecionado
+    // Filtro estrito pela Data Orç. exibida na tela dentro do range selecionado.
     const fromStr = format(dateFrom, "yyyy-MM-dd");
     const toStr = format(dateTo, "yyyy-MM-dd");
     items = items.filter((t) => {
-      const d = (t.criado_em || t.gc_orc_data || "").slice(0, 10);
+      const d = String(t.gc_orc_data || "").slice(0, 10);
       if (!d) return false;
       return d >= fromStr && d <= toStr;
     });
