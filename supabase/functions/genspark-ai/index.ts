@@ -1328,7 +1328,7 @@ serve(async (req) => {
     // =====================================================================
     if (action === "improve") {
       const { text, field, context } = body;
-      let model = "gpt-4o-mini";
+      let model = "google/gemini-3.1-pro-preview";
 
       let tipoCampo = "Campo Livre";
       const fl = (field || "").toLowerCase();
@@ -1376,7 +1376,7 @@ FORMATO: Retorne apenas o texto melhorado, sem explicação.`;
 
       if (tipoCampo === "OBSERVAÇÕES" && context?.fotos?.length > 0) {
         await addPhotosToContent(userContentParts, context.fotos, 4, "low");
-        model = "gpt-4o"; // needs vision
+        model = "google/gemini-3.1-pro-preview"; // multimodal
       }
 
       const messages = [
@@ -1384,7 +1384,7 @@ FORMATO: Retorne apenas o texto melhorado, sem explicação.`;
         { role: "user", content: userContentParts.length === 1 ? userText : userContentParts },
       ];
 
-      const improveMaxTokens = model === "gpt-4o" ? 3200 : 2200;
+      const improveMaxTokens = 3200;
       const aiResult = await callAI(messages, model, improveMaxTokens, {
         temperature: 0.25, action: "improve", timeoutMs: 35000,
       });
@@ -1668,8 +1668,8 @@ TOM: Telegráfico, técnico, zero enrolação. Prefira disciplina e auditabilida
 
       // Retry com gpt-4o-mini se resultado veio vazio (timeout interno do modelo)
       if (!aiResult.error && !aiResult.result?.trim()) {
-        console.warn(`[genspark-ai] [analyze] Resultado vazio do ${ANALYSIS_MODEL}. Retentando com gpt-4o-mini...`);
-        aiResult = await callAI(messages, "gpt-4o-mini", analyzeMaxTokens, { action: "analyze_retry" });
+        console.warn(`[genspark-ai] [analyze] Resultado vazio do ${ANALYSIS_MODEL}. Retentando com google/gemini-3.5-flash...`);
+        aiResult = await callAI(messages, "google/gemini-3.5-flash", analyzeMaxTokens, { action: "analyze_retry" });
       }
 
       if (aiResult.error) {
@@ -1691,7 +1691,7 @@ TOM: Telegráfico, técnico, zero enrolação. Prefira disciplina e auditabilida
     // =====================================================================
     if (action === "chat") {
       const { context, analysis, userMessage, chatHistory } = body;
-      const CHAT_MODEL = "gpt-4o-mini"; // budget_chat_agent
+      const CHAT_MODEL = "google/gemini-3.1-pro-preview"; // budget_chat_agent
 
       const systemPrompt = `Você é o assistente de chat contextual do orçamento da WeDo.
 
@@ -1845,7 +1845,7 @@ TOM: Técnico, direto, sem floreio.`;
     if (action === "deep_analyze_legacy") {
       // Redireciona para analyze com flag forceExpand
       const { context } = body as { context: AnalyzeContext };
-      const DEEP_MODEL = "gpt-4o";
+      const DEEP_MODEL = "google/gemini-3.1-pro-preview";
 
       const equipForSearch = context?.equipamento || context?.descricao || "";
       const equipStr = cleanEquipmentString(equipForSearch);
