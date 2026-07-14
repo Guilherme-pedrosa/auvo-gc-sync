@@ -134,6 +134,36 @@ Deno.serve(async (req) => {
         for (const f of ["id", "codigo", "nome_situacao", "cor_situacao", "hash", "cadastrado_em", "modificado_em"]) {
           delete (payload as any)[f];
         }
+        // Remove financeiro (nenhum desses orçamentos possui) e força 2 casas decimais
+        // para evitar erro "valor do pedido diferente do valor das parcelas" (bug de arredondamento).
+        for (const f of ["parcelas", "pagamentos", "financeiro", "contas_receber"]) {
+          delete (payload as any)[f];
+        }
+        const round2 = (v: unknown) => {
+          const n = typeof v === "number" ? v : parseFloat(String(v ?? "").replace(",", "."));
+          return Number.isFinite(n) ? Number(n.toFixed(2)) : v;
+        };
+        for (const f of ["valor_total", "valor_desconto", "valor_acrescimo", "valor_frete", "valor_produtos", "valor_servicos", "total"]) {
+          if ((payload as any)[f] !== undefined && (payload as any)[f] !== null && (payload as any)[f] !== "") {
+            (payload as any)[f] = round2((payload as any)[f]);
+          }
+        }
+        if (Array.isArray((payload as any).produtos)) {
+          (payload as any).produtos = (payload as any).produtos.map((p: any) => ({
+            ...p,
+            valor: p?.valor !== undefined ? round2(p.valor) : p?.valor,
+            valor_total: p?.valor_total !== undefined ? round2(p.valor_total) : p?.valor_total,
+            desconto: p?.desconto !== undefined ? round2(p.desconto) : p?.desconto,
+          }));
+        }
+        if (Array.isArray((payload as any).servicos)) {
+          (payload as any).servicos = (payload as any).servicos.map((s: any) => ({
+            ...s,
+            valor: s?.valor !== undefined ? round2(s.valor) : s?.valor,
+            valor_total: s?.valor_total !== undefined ? round2(s.valor_total) : s?.valor_total,
+            desconto: s?.desconto !== undefined ? round2(s.desconto) : s?.desconto,
+          }));
+        }
 
         let putResp: Response | null = null;
         for (let attempt = 0; attempt < 3; attempt++) {
