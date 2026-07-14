@@ -517,52 +517,56 @@ function buildGcOrcPayload(orc: any) {
 async function fetchGcOrcamentos(gcHeaders: Record<string, string>): Promise<{ byTaskId: Record<string, any>; byCodigo: Record<string, any>; pagesFetched: number; totalPages: number }> {
   const map: Record<string, any> = {};
   const byCodigo: Record<string, any> = {};
-  let page = 1;
-  let totalPages = 1;
-  const MAX_PAGES = 500;
   let pagesFetched = 0;
+  let totalPagesGlobal = 0;
 
-  while (page <= totalPages && page <= MAX_PAGES) {
-    const url = `${GC_BASE_URL}/api/orcamentos?limite=100&pagina=${page}`;
-    let response: Response | null = null;
-    const RATE_BACKOFF = [3000, 6000, 12000];
-    for (let attempt = 0; attempt < RATE_BACKOFF.length; attempt++) {
-      response = await rateLimitedFetch(url, { headers: gcHeaders }, "gc");
-      if (response.status !== 429) break;
-      console.warn(`[central-sync] GC orcamentos page ${page} 429, retry ${attempt + 1}/${RATE_BACKOFF.length} em ${RATE_BACKOFF[attempt]}ms`);
-      await new Promise(r => setTimeout(r, RATE_BACKOFF[attempt]));
-    }
-    if (!response || response.status === 429) {
-      console.error(`[central-sync] GC orcamentos page ${page}: 429 persistente após retries — retornando mapa parcial`);
-      break;
-    }
-    if (!response.ok) break;
-
-    const data = await response.json();
-    const records: any[] = Array.isArray(data?.data) ? data.data : [];
-    totalPages = data?.meta?.total_paginas || 1;
-
-    for (const orc of records) {
-      const atributos: any[] = orc.atributos || [];
-      const orcPayload = buildGcOrcPayload(orc);
-
-      // Reverse map by orçamento código
-      const codigo = String(orc.codigo || "").trim();
-      if (codigo) byCodigo[codigo] = orcPayload;
-
-      for (const taskId of collectGcAttrTaskIds(atributos, GC_ATRIBUTO_TAREFA_ORC)) {
-        map[taskId] = orcPayload;
+  // Consulta separada por tipo (produto vs servico) para tagear corretamente cada orçamento
+  for (const tipo of ["produto", "servico"] as const) {
+    let page = 1;
+    let totalPages = 1;
+    const MAX_PAGES = 500;
+    while (page <= totalPages && page <= MAX_PAGES) {
+      const url = `${GC_BASE_URL}/api/orcamentos?tipo=${tipo}&limite=100&pagina=${page}`;
+      let response: Response | null = null;
+      const RATE_BACKOFF = [3000, 6000, 12000];
+      for (let attempt = 0; attempt < RATE_BACKOFF.length; attempt++) {
+        response = await rateLimitedFetch(url, { headers: gcHeaders }, "gc");
+        if (response.status !== 429) break;
+        console.warn(`[central-sync] GC orcamentos(${tipo}) page ${page} 429, retry ${attempt + 1}/${RATE_BACKOFF.length} em ${RATE_BACKOFF[attempt]}ms`);
+        await new Promise(r => setTimeout(r, RATE_BACKOFF[attempt]));
       }
-    }
+      if (!response || response.status === 429) {
+        console.error(`[central-sync] GC orcamentos(${tipo}) page ${page}: 429 persistente — pulando restante`);
+        break;
+      }
+      if (!response.ok) break;
 
-    pagesFetched++;
-    console.log(`[central-sync] GC orçamentos page ${page}/${totalPages}: ${records.length} registros, ${Object.keys(map).length} com tarefa`);
-    page++;
+      const data = await response.json();
+      const records: any[] = Array.isArray(data?.data) ? data.data : [];
+      totalPages = data?.meta?.total_paginas || 1;
+
+      for (const orc of records) {
+        const atributos: any[] = orc.atributos || [];
+        const orcPayload = { ...buildGcOrcPayload(orc), gc_orc_tipo: tipo };
+
+        const codigo = String(orc.codigo || "").trim();
+        if (codigo) byCodigo[codigo] = orcPayload;
+
+        for (const taskId of collectGcAttrTaskIds(atributos, GC_ATRIBUTO_TAREFA_ORC)) {
+          map[taskId] = orcPayload;
+        }
+      }
+
+      pagesFetched++;
+      console.log(`[central-sync] GC orçamentos(${tipo}) page ${page}/${totalPages}: ${records.length} registros`);
+      page++;
+    }
+    totalPagesGlobal += totalPages;
+    if (page > MAX_PAGES && page <= totalPages) {
+      console.warn(`[central-sync] TRUNCAMENTO: MAX_PAGES atingido em GC orcamentos tipo=${tipo}`);
+    }
   }
-  if (page > MAX_PAGES && page <= totalPages) {
-    console.warn(`[central-sync] TRUNCAMENTO: MAX_PAGES atingido em GC orcamentos (totalPages=${totalPages})`);
-  }
-  return { byTaskId: map, byCodigo, pagesFetched, totalPages };
+  return { byTaskId: map, byCodigo, pagesFetched, totalPages: totalPagesGlobal };
 }
 
 async function hydrateMissingOrcamentosByCodigo(gcHeaders: Record<string, string>, gcOrcResult: { byTaskId: Record<string, any>; byCodigo: Record<string, any> }, codigos: string[]) {
