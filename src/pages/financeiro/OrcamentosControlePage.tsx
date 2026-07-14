@@ -100,7 +100,7 @@ export default function OrcamentosControlePage() {
   const [search, setSearch] = useState("");
   const [excludedSituacoes, setExcludedSituacoes] = useState<Set<string>>(new Set());
   const [searchSituacao, setSearchSituacao] = useState("");
-  const [activeTab, setActiveTab] = useState<"todos" | "produtos" | "servicos" | "mistos">("todos");
+  const [activeTab, setActiveTab] = useState<"produtos" | "servicos">("produtos");
   const [expanded, setExpanded] = useState<string | null>(null);
   const [selectedCard, setSelectedCard] = useState<any | null>(null);
 
@@ -276,19 +276,20 @@ export default function OrcamentosControlePage() {
       if (!d) return false;
       return d >= fromStr && d <= toStr;
     });
-    // Filtro por tipo: produtos, serviços ou mistos
-    if (activeTab !== "todos") {
-      items = items.filter((t) => {
+    // Filtro por tipo (base GC): produto ou servico
+    items = items.filter((t) => {
+      let tipo: string | null = (t.gc_orc_tipo || "").toLowerCase() || null;
+      if (!tipo) {
+        // Fallback quando ainda não sincronizado
         const vp = Number(t.gc_orc_valor_produtos) || 0;
         const vs = Number(t.gc_orc_valor_servicos) || 0;
-        const hasProd = vp > 0;
-        const hasServ = vs > 0;
-        if (activeTab === "produtos") return hasProd && !hasServ;
-        if (activeTab === "servicos") return hasServ && !hasProd;
-        if (activeTab === "mistos") return hasProd && hasServ;
-        return true;
-      });
-    }
+        if (vp > 0 && vs === 0) tipo = "produto";
+        else if (vs > 0 && vp === 0) tipo = "servico";
+      }
+      if (activeTab === "produtos") return tipo === "produto" || tipo === "produtos";
+      if (activeTab === "servicos") return tipo === "servico" || tipo === "servicos";
+      return true;
+    });
     return items;
   }, [orcamentos, excludedSituacoes, movedIds, dateFrom, dateTo, activeTab]);
 
