@@ -2403,10 +2403,10 @@ export default function BudgetKanbanPage() {
 
                 {/* AI Analysis Result */}
                 {aiAnalysis && (
-                  <div className="p-4 rounded-lg bg-purple-50 border border-purple-200 space-y-3">
+                  <div className={`p-4 rounded-lg border space-y-3 ${aiAnalysisIsFallback ? "bg-amber-50 border-amber-300" : "bg-purple-50 border-purple-200"}`}>
                     <div className="flex items-center justify-between">
-                      <h4 className="font-semibold text-sm text-purple-900 flex items-center gap-1.5">
-                        <Brain className="h-4 w-4" /> Análise Técnica (IA)
+                      <h4 className={`font-semibold text-sm flex items-center gap-1.5 ${aiAnalysisIsFallback ? "text-amber-950" : "text-purple-900"}`}>
+                        <Brain className="h-4 w-4" /> {aiAnalysisIsFallback ? "Aviso — análise não concluída" : "Análise Técnica (IA)"}
                       </h4>
                       <button type="button" className="text-purple-400 hover:text-purple-600 text-xs" onClick={() => { setAiAnalysis(null); setAiAnalysisData(null); setAiAnalysisMeta(null); setAiAnalysisIsFallback(false); setShowChat(false); setChatMessages([]); }}>✕ Fechar</button>
                     </div>
