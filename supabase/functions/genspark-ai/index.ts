@@ -1119,7 +1119,15 @@ const asConfidence = (value: unknown): "baixa" | "media" | "alta" => {
 function parseAndNormalizeBudgetAnalysis(raw: string, maxRecommendations: number): BudgetAnalysis | null {
   try {
     const clean = raw.trim().replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "");
-    const parsed = JSON.parse(clean);
+    let parsed: any;
+    try {
+      parsed = JSON.parse(clean);
+    } catch (_err) {
+      // Tolerant recovery for truncated / malformed JSON: close open strings,
+      // drop trailing partial elements, then balance brackets.
+      parsed = JSON.parse(repairTruncatedJson(clean));
+      console.warn("[genspark-ai] Recovered truncated JSON via repair.");
+    }
     const allowedStatuses = new Set(["pode_seguir", "pode_seguir_com_ressalvas", "validacao_adicional"]);
     const equipment = parsed?.equipment || {};
     const readiness = parsed?.readiness || {};
