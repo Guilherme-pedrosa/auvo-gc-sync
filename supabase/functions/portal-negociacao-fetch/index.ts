@@ -224,20 +224,27 @@ Deno.serve(async (req) => {
       }));
 
     // Fallback: buscar hash individual das OS que não vieram na listagem
+    // Também: coleta as parcelas (pagamentos) da OS pra gerar itens de
+    // "Financeiro Pendente" quando o cliente ainda não teve recebimento gerado
+    // no GC (comum em Klabin — OS com pagamentos previstos mas sem título).
+    const osPagamentosByOs = new Map<string, any[]>();
     await Promise.all(
-      osFiltered
-        .filter((o) => !o.link.includes("/cobranca/"))
-        .map(async (o) => {
-          try {
-            const res = await fetch(`${GC_BASE_URL}/api/ordens_servicos/${o.gc_os_id}`, {
-              headers: gcHeaders,
-            });
-            if (!res.ok) return;
-            const j = await res.json().catch(() => ({}));
-            const hash = j?.data?.hash;
-            if (hash) o.link = `https://gestaoclick.com/cobranca/${hash}`;
-          } catch { /* ignore */ }
-        }),
+      osFiltered.map(async (o) => {
+        try {
+          const res = await fetch(`${GC_BASE_URL}/api/ordens_servicos/${o.gc_os_id}`, {
+            headers: gcHeaders,
+          });
+          if (!res.ok) return;
+          const j = await res.json().catch(() => ({}));
+          const data = j?.data || {};
+          const hash = data?.hash;
+          if (hash && !o.link.includes("/cobranca/")) {
+            o.link = `https://gestaoclick.com/cobranca/${hash}`;
+          }
+          const pags = Array.isArray(data?.pagamentos) ? data.pagamentos : [];
+          if (pags.length > 0) osPagamentosByOs.set(o.gc_os_id, pags);
+        } catch { /* ignore */ }
+      }),
     );
 
     // Preenche data_execucao (checkout da Tarefa Execução Auvo) via tarefas_central
