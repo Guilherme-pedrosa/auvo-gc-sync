@@ -58,13 +58,16 @@ Deno.serve(async (req) => {
     const anoLimite = Number(body?.ano_limite || 2025);
     const batchSize = Math.min(Number(body?.batch_size || 40), 80);
     const offset = Math.max(Number(body?.offset || 0), 0);
+    const targetIds: string[] = Array.isArray(body?.target_ids)
+      ? body.target_ids.map((x: unknown) => String(x))
+      : [];
 
     // Lista alvo do cache
     const { data: cache } = await admin
       .from("followup_kanban_cache")
       .select("gc_orcamento_id, dados")
       .eq("coluna", SITUACAO_ORIGEM);
-    const alvos = (cache || [])
+    let alvos = (cache || [])
       .filter((r: any) => {
         const d = String(r?.dados?.data || "");
         const ano = Number(d.slice(0, 4));
@@ -77,6 +80,14 @@ Deno.serve(async (req) => {
         data: String(r?.dados?.data || ""),
       }))
       .sort((a: any, b: any) => a.data.localeCompare(b.data));
+    if (targetIds.length > 0) {
+      const set = new Set(targetIds);
+      alvos = targetIds.map((id) => {
+        const found = alvos.find((a) => a.id === id);
+        return found || { id, codigo: "", cliente: "", data: "" };
+      });
+      alvos = alvos.filter((a) => set.has(a.id));
+    }
 
     if (action === "preview") {
       return ok({ ok: true, total: alvos.length, amostra: alvos.slice(0, 5) });
