@@ -52,6 +52,38 @@ const fetchOrcamentosNoPeriodo = async (fromDate: Date, toDate: Date) => {
     if (batch.length < PAGE_SIZE) break;
     from += PAGE_SIZE;
   }
+
+  // Merge com followup_kanban_cache (fonte de verdade "Aguardando Aprovação")
+  // para incluir orçamentos que ainda NÃO têm tarefa Auvo vinculada.
+  const seen = new Set(rows.map((r: any) => String(r.gc_orcamento_id || "")));
+  const { data: cache } = await supabase
+    .from("followup_kanban_cache")
+    .select("gc_orcamento_id, atualizado_em, dados")
+    .eq("coluna", "7063588");
+  for (const c of cache || []) {
+    const id = String((c as any).gc_orcamento_id || "");
+    if (!id || seen.has(id)) continue;
+    const d: any = (c as any).dados || {};
+    const dataOrc = String(d.data || "").slice(0, 10);
+    if (!dataOrc || dataOrc < fromStr || dataOrc > toStr) continue;
+    rows.push({
+      gc_orcamento_id: id,
+      gc_orcamento_codigo: d.gc_orcamento_codigo || "",
+      gc_orc_situacao: d.situacao || "",
+      gc_orc_situacao_id: d.situacao_id || "",
+      gc_orc_cor_situacao: d.cor_situacao || "",
+      gc_orc_data: dataOrc,
+      gc_orc_valor_total: Number(d.valor_total || 0),
+      gc_orc_cliente: d.cliente || "",
+      cliente: d.cliente || "",
+      gc_orc_vendedor: d.vendedor || "",
+      gc_orc_link: d.link || null,
+      auvo_task_id: null,
+      atualizado_em: (c as any).atualizado_em || null,
+      _origem_cache_followup: true,
+    });
+    seen.add(id);
+  }
   return rows;
 };
 
