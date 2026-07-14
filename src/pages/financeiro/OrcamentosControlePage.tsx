@@ -163,8 +163,8 @@ export default function OrcamentosControlePage() {
           });
           if (error) throw error;
           totalUpdated += (data?.upserted || 0) + (data?.inserted_missing || 0);
-          totalProduto = Math.max(totalProduto, data?.gc_orcamentos_produto || 0);
-          totalServico = Math.max(totalServico, data?.gc_orcamentos_servico || 0);
+          totalProduto += data?.gc_orcamentos_produto || 0;
+          totalServico += data?.gc_orcamentos_servico || 0;
           page = Number(data?.next_page || 0);
         }
       }
