@@ -935,12 +935,23 @@ type CentralSyncBody = {
   fast?: unknown;
   lite?: unknown;
   orcamentos_only?: unknown;
+  orcamentos_tipo?: unknown;
+  orcamentos_page?: unknown;
+  orcamentos_max_pages?: unknown;
   reports_only?: unknown;
   gc_status_only?: unknown;
 };
 
-async function refreshOrcamentosOnly(sbClient: any, gcHeaders: Record<string, string>) {
-  const gcOrcResult = await fetchGcOrcamentos(gcHeaders);
+async function refreshOrcamentosOnly(
+  sbClient: any,
+  gcHeaders: Record<string, string>,
+  options: { tipo?: "produto" | "servico"; page?: number; maxPages?: number } = {},
+) {
+  const gcOrcResult = await fetchGcOrcamentos(gcHeaders, {
+    tipos: options.tipo ? [options.tipo] : undefined,
+    startPage: options.page || 1,
+    maxPagesPerTipo: options.maxPages,
+  });
 
   const allGcOrcById: Record<string, any> = {};
   for (const orcPayload of Object.values(gcOrcResult.byCodigo)) {
@@ -1062,6 +1073,10 @@ async function refreshOrcamentosOnly(sbClient: any, gcHeaders: Record<string, st
     matched_orcamentos: matchedOrcamentos,
     upserted: updatedRows,
     inserted_missing: insertedMissing,
+    tipo: options.tipo || "todos",
+    next_page: gcOrcResult.nextPage,
+    pages_fetched: gcOrcResult.pagesFetched,
+    total_pages_by_tipo: gcOrcResult.totalPagesByTipo,
     errors: 0,
   };
 }
