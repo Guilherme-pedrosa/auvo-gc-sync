@@ -276,8 +276,21 @@ export default function OrcamentosControlePage() {
       if (!d) return false;
       return d >= fromStr && d <= toStr;
     });
+    // Filtro por tipo: produtos, serviços ou mistos
+    if (activeTab !== "todos") {
+      items = items.filter((t) => {
+        const vp = Number(t.gc_orc_valor_produtos) || 0;
+        const vs = Number(t.gc_orc_valor_servicos) || 0;
+        const hasProd = vp > 0;
+        const hasServ = vs > 0;
+        if (activeTab === "produtos") return hasProd && !hasServ;
+        if (activeTab === "servicos") return hasServ && !hasProd;
+        if (activeTab === "mistos") return hasProd && hasServ;
+        return true;
+      });
+    }
     return items;
-  }, [orcamentos, excludedSituacoes, movedIds, dateFrom, dateTo]);
+  }, [orcamentos, excludedSituacoes, movedIds, dateFrom, dateTo, activeTab]);
 
   const clienteSummary = useMemo(() => {
     const map = new Map<string, { cliente: string; count: number; total: number; items: any[] }>();
