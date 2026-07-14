@@ -14,6 +14,18 @@ const GC_ATRIBUTO_TAREFA_EXEC = "73344";
 const MIN_DELAY_MS = 200;
 const FUTURE_DAYS_WINDOW = 30;
 const AUVO_TASK_CHUNK_DAYS = 1;
+const OPEN_OS_SITUACAO_IDS = [
+  "7063579", // AGUARDANDO COMPRA DE PEÇAS
+  "7063580", // AGUARDANDO CHEGADA DE PEÇAS
+  "7659440", // AGUARDANDO FABRICAÇÃO
+  "7063581", // PEDIDO EM CONFERENCIA
+  "7063705", // PEDIDO CONFERIDO AGUARDANDO EXECUÇÃO
+  "7213493", // SERVICO AGUARDANDO EXECUCAO
+  "7684665", // RETIRADA PELO TECNICO
+  "7748831", // AGUARDANDO RETIRADA
+  "8219136", // EM ROTA
+  "7116099", // EXECUTADO – AG. NEGOCIAÇÃO
+] as const;
 let lastAuvoCall = 0;
 let lastGcCall = 0;
 
@@ -939,6 +951,7 @@ type CentralSyncBody = {
   orcamentos_page?: unknown;
   orcamentos_max_pages?: unknown;
   reports_only?: unknown;
+  reconcile_open_os?: unknown;
   gc_status_only?: unknown;
 };
 
@@ -1081,103 +1094,140 @@ async function refreshOrcamentosOnly(
   };
 }
 
-async function refreshGcOsStatusesForReportsOnly(
+function mapGcOsToMirrorPayload(os: any) {
+  const atributos: any[] = Array.isArray(os?.atributos) ? os.atributos : [];
+  return {
+    gc_os_id: String(os?.id || ""),
+    gc_os_codigo: String(os?.codigo || ""),
+    gc_os_cliente: String(os?.nome_cliente || ""),
+    gc_os_situacao: String(os?.nome_situacao || ""),
+    gc_os_situacao_id: String(os?.situacao_id || ""),
+    gc_os_cor_situacao: String(os?.cor_situacao || ""),
+    gc_os_valor_total: parseFloat(os?.valor_total || "0"),
+    gc_os_vendedor: String(os?.nome_vendedor || ""),
+    gc_os_data: String(os?.data_entrada || os?.data || "").split("T")[0] || null,
+    gc_os_data_saida: String(os?.data_saida || "").split("T")[0] || null,
+    gc_os_link: buildGcOsPublicLink(os),
+    gc_os_link_cobranca: buildGcOsPublicLink(os),
+    gc_os_tarefa_exec: collectGcAttrTaskIds(atributos, GC_ATRIBUTO_TAREFA_EXEC).join("/") || null,
+    gc_os_tarefa_os: collectGcAttrTaskIds(atributos, GC_ATRIBUTO_TAREFA_OS).join("/") || null,
+  };
+}
+
+function mirrorUpdateFromGcPayload(fresh: any) {
+  return {
+    gc_os_codigo: fresh.gc_os_codigo || null,
+    gc_os_cliente: fresh.gc_os_cliente || "",
+    gc_os_situacao: fresh.gc_os_situacao || "",
+    gc_os_situacao_id: fresh.gc_os_situacao_id || "",
+    gc_os_cor_situacao: fresh.gc_os_cor_situacao || "",
+    gc_os_valor_total: Number(fresh.gc_os_valor_total) || 0,
+    gc_os_vendedor: fresh.gc_os_vendedor || "",
+    gc_os_data: fresh.gc_os_data || null,
+    gc_os_data_saida: fresh.gc_os_data_saida || null,
+    gc_os_link: fresh.gc_os_link || null,
+    gc_os_link_cobranca: fresh.gc_os_link_cobranca || null,
+    gc_os_tarefa_exec: fresh.gc_os_tarefa_exec || null,
+    gc_os_tarefa_os: fresh.gc_os_tarefa_os || null,
+    atualizado_em: new Date().toISOString(),
+  };
+}
+
+async function reconcileOpenOsMirror(
   sbClient: any,
   gcHeaders: Record<string, string>,
-  startDate: string,
-  endDate: string,
-  auvoTaskIdsInWindow: string[],
+  currentOpenResult: { byCodigo: Record<string, any> },
 ) {
-  const taskIds = Array.from(new Set(auvoTaskIdsInWindow.map((id) => String(id || "").trim()).filter(Boolean)));
-
-  // Hard time budget so we never timeout the function. If exceeded, return what was done.
+  const startedAt = Date.now();
   const HARD_BUDGET_MS = 25_000;
-  const tStart = Date.now();
-  const timeUp = () => Date.now() - tStart > HARD_BUDGET_MS;
+  const currentById = new Map<string, any>();
+  for (const payload of Object.values(currentOpenResult.byCodigo || {})) {
+    const id = String((payload as any)?.gc_os_id || "").trim();
+    if (id) currentById.set(id, payload);
+  }
 
-  // Scope: only OS whose Auvo task (OS or Execução) is in this window. Avoids full-table scans.
-  const targetOsIds = new Set<string>();
-  const IN_CHUNK = 200;
-  for (let i = 0; i < taskIds.length; i += IN_CHUNK) {
-    if (timeUp()) break;
-    const batch = taskIds.slice(i, i + IN_CHUNK);
-    // (a) rows where OS task id matches
-    const { data: rowsByOsTask } = await sbClient
+  // Candidatas são as OS que o espelho ainda considera abertas. Se uma delas não
+  // veio no retrato atual do GC, buscamos a OS individualmente para descobrir a
+  // situação real e impedir que ela permaneça eternamente no processo antigo.
+  const mirroredOpenIds = new Set<string>();
+  for (let from = 0; ; from += 1000) {
+    const { data: rows, error } = await sbClient
       .from("tarefas_central")
-      .select("gc_os_id")
+      .select("gc_os_id,mirror_key")
+      .in("gc_os_situacao_id", [...OPEN_OS_SITUACAO_IDS])
       .not("gc_os_id", "is", null)
-      .in("auvo_task_id", batch);
-    for (const r of rowsByOsTask || []) {
-      const id = String(r.gc_os_id || "").trim();
-      if (id) targetOsIds.add(id);
+      .order("gc_os_id", { ascending: true })
+      .order("mirror_key", { ascending: true })
+      .range(from, from + 999);
+    if (error) throw new Error(`Falha ao ler OS abertas do espelho: ${error.message}`);
+    for (const row of rows || []) {
+      const id = String(row.gc_os_id || "").trim();
+      if (id) mirroredOpenIds.add(id);
     }
-    // (b) rows whose exec-task reference contains one of the ids (handles slash-separated)
-    const orExpr = batch.map((id) => `gc_os_tarefa_exec.ilike.%${id}%`).join(",");
-    const { data: rowsByExec } = await sbClient
-      .from("tarefas_central")
-      .select("gc_os_id")
-      .not("gc_os_id", "is", null)
-      .or(orExpr);
-    for (const r of rowsByExec || []) {
-      const id = String(r.gc_os_id || "").trim();
-      if (id) targetOsIds.add(id);
-    }
+    if (!rows || rows.length < 1000) break;
   }
 
   let updated = 0;
-  let processed = 0;
-  const osIds = Array.from(targetOsIds);
-  const PARALLEL = 8;
-  for (let i = 0; i < osIds.length; i += PARALLEL) {
-    if (timeUp()) {
-      console.warn(`[central-sync] Budget esgotado em refreshGcOsStatusesForReportsOnly após ${processed}/${osIds.length} OS`);
-      break;
+  let errors = 0;
+  const applyPayload = async (fresh: any) => {
+    const id = String(fresh?.gc_os_id || "").trim();
+    if (!id) return false;
+    const { count, error } = await sbClient
+      .from("tarefas_central")
+      .update(mirrorUpdateFromGcPayload(fresh), { count: "exact" })
+      .eq("gc_os_id", id);
+    if (error) {
+      console.error(`[central-sync] Falha ao atualizar espelho da OS ${id}: ${error.message}`);
+      errors++;
+      return false;
     }
-    const batch = osIds.slice(i, i + PARALLEL);
-    const freshList = await Promise.all(batch.map(async (osId) => {
-      const resp = await rateLimitedFetch(`${GC_BASE_URL}/api/ordens_servicos/${osId}`, { headers: gcHeaders }, "gc");
-      if (!resp.ok) return null;
-      const data = await resp.json().catch(() => null);
-      const os = data?.data || data;
-      if (!os?.id) return null;
-      const atributos: any[] = os.atributos || [];
-      return {
-        gc_os_id: String(os.id),
-        gc_os_cliente: String(os.nome_cliente || ""),
-        gc_os_situacao: String(os.nome_situacao || ""),
-        gc_os_situacao_id: String(os.situacao_id || ""),
-        gc_os_cor_situacao: String(os.cor_situacao || ""),
-        gc_os_valor_total: parseFloat(os.valor_total || "0"),
-        gc_os_vendedor: String(os.nome_vendedor || ""),
-        gc_os_data_saida: String(os.data_saida || "").split("T")[0] || null,
-        gc_os_tarefa_exec: collectGcAttrTaskIds(atributos, GC_ATRIBUTO_TAREFA_EXEC).join("/") || null,
-      };
-    }));
+    updated += count || 0;
+    return true;
+  };
 
-    const counts = await Promise.all(freshList.filter(Boolean).map(async (fresh: any) => {
-      const updatePayload: any = {
-        gc_os_cliente: fresh.gc_os_cliente,
-        gc_os_situacao: fresh.gc_os_situacao,
-        gc_os_situacao_id: fresh.gc_os_situacao_id,
-        gc_os_cor_situacao: fresh.gc_os_cor_situacao,
-        gc_os_valor_total: fresh.gc_os_valor_total,
-        gc_os_vendedor: fresh.gc_os_vendedor,
-        gc_os_data_saida: fresh.gc_os_data_saida,
-        atualizado_em: new Date().toISOString(),
-      };
-      if (fresh.gc_os_tarefa_exec) updatePayload.gc_os_tarefa_exec = fresh.gc_os_tarefa_exec;
-      const { count } = await sbClient
-        .from("tarefas_central")
-        .update(updatePayload, { count: "exact" })
-        .eq("gc_os_id", fresh.gc_os_id);
-      return count || 0;
-    }));
-    updated += counts.reduce((sum, count) => sum + count, 0);
-    processed += batch.length;
+  const currentPayloads = Array.from(currentById.values());
+  for (let i = 0; i < currentPayloads.length; i += 20) {
+    await Promise.all(currentPayloads.slice(i, i + 20).map(applyPayload));
   }
 
-  console.log(`[central-sync] Reports-only GC OS status refresh: ${updated} registros atualizados (${processed}/${targetOsIds.size} OS verificadas em ${Date.now() - tStart}ms)`);
-  return { checked: processed, updated };
+  const transitionedIds = Array.from(mirroredOpenIds).filter((id) => !currentById.has(id));
+  let transitionedChecked = 0;
+  let transitionedReconciled = 0;
+  const PARALLEL = 8;
+  for (let i = 0; i < transitionedIds.length; i += PARALLEL) {
+    if (Date.now() - startedAt >= HARD_BUDGET_MS) break;
+    const batch = transitionedIds.slice(i, i + PARALLEL);
+    const freshList = await Promise.all(batch.map(async (osId) => {
+      try {
+        const response = await rateLimitedFetch(`${GC_BASE_URL}/api/ordens_servicos/${osId}`, { headers: gcHeaders }, "gc");
+        if (!response.ok) {
+          console.warn(`[central-sync] OS ${osId} ausente do retrato aberto retornou HTTP ${response.status}`);
+          return null;
+        }
+        const data = await response.json().catch(() => null);
+        const os = data?.data || data;
+        return os?.id ? mapGcOsToMirrorPayload(os) : null;
+      } catch (error) {
+        console.error(`[central-sync] Falha ao reconciliar OS ${osId}: ${(error as Error).message}`);
+        return null;
+      }
+    }));
+    transitionedChecked += batch.length;
+    const results = await Promise.all(freshList.filter(Boolean).map(applyPayload));
+    transitionedReconciled += results.filter(Boolean).length;
+    errors += freshList.filter((fresh) => !fresh).length;
+  }
+
+  const remaining = transitionedIds.length - transitionedReconciled;
+  console.log(`[central-sync] Conciliação OS abertas: ${currentById.size} atuais, ${transitionedChecked}/${transitionedIds.length} saídas verificadas, ${transitionedReconciled} conciliadas, ${updated} linhas atualizadas, ${remaining} pendentes`);
+  return {
+    checked: currentById.size + transitionedChecked,
+    updated,
+    transitioned: transitionedReconciled,
+    remaining,
+    complete: remaining === 0,
+    errors,
+  };
 }
 
 async function refreshGcOsFieldsForPeriod(sbClient: any, gcHeaders: Record<string, string>, startDate: string, endDate: string) {
@@ -1305,34 +1355,31 @@ async function refreshGcOsFieldsForPeriod(sbClient: any, gcHeaders: Record<strin
   return { checked: ids.length, updated };
 }
 
-async function runReportsOnlySync(sbClient: any, bearerToken: string, gcHeaders: Record<string, string>, startDate: string, endDate: string) {
+async function runReportsOnlySync(
+  sbClient: any,
+  bearerToken: string,
+  gcHeaders: Record<string, string>,
+  startDate: string,
+  endDate: string,
+  shouldReconcileOpenOs = true,
+) {
   console.log(`[central-sync] Reports-only: buscando Auvo ${startDate} → ${endDate}`);
 
   // FIRST: pull GC OS in OPEN situations so they always appear in tarefas_central,
   // even when the Auvo task wasn't returned in the date window (or doesn't exist yet).
   // OS without Auvo link become "shell" rows flagged in the UI.
-  const OPEN_OS_SITUACAO_IDS = [
-    "7063579", // AGUARDANDO COMPRA DE PEÇAS
-    "7063580", // AGUARDANDO CHEGADA DE PEÇAS
-    "7659440", // AGUARDANDO FABRICAÇÃO
-    "7063581", // PEDIDO EM CONFERENCIA
-    "7063705", // PEDIDO CONFERIDO AGUARDANDO EXECUÇÃO
-    "7213493", // SERVICO AGUARDANDO EXECUCAO
-    "7684665", // RETIRADA PELO TECNICO
-    "7748831", // AGUARDANDO RETIRADA
-    "8219136", // EM ROTA
-    "7116099", // EXECUTADO – AG. NEGOCIAÇÃO
-    "8889036", // FECHADO CHAMADO
-  ];
   let gcShellUpserted = 0;
   let gcOsOpenCount = 0;
-  try {
-    const gcOsOpen = await fetchGcOs(gcHeaders, { situacaoIds: OPEN_OS_SITUACAO_IDS });
-    gcOsOpenCount = Object.keys(gcOsOpen.byCodigo || {}).length;
-    gcShellUpserted = await upsertGcOsShellRows(sbClient, gcOsOpen);
-    console.log(`[central-sync] Reports-only GC shells: ${gcShellUpserted}/${gcOsOpenCount} OS em situações abertas processadas`);
-  } catch (e) {
-    console.error(`[central-sync] Reports-only GC shell fetch falhou: ${(e as Error).message}`);
+  let gcOsOpen: Awaited<ReturnType<typeof fetchGcOs>> | null = null;
+  if (shouldReconcileOpenOs) {
+    try {
+      gcOsOpen = await fetchGcOs(gcHeaders, { situacaoIds: [...OPEN_OS_SITUACAO_IDS] });
+      gcOsOpenCount = Object.keys(gcOsOpen.byCodigo || {}).length;
+      gcShellUpserted = await upsertGcOsShellRows(sbClient, gcOsOpen);
+      console.log(`[central-sync] Reports-only GC shells: ${gcShellUpserted}/${gcOsOpenCount} OS em situações abertas processadas`);
+    } catch (e) {
+      console.error(`[central-sync] Reports-only GC shell fetch falhou: ${(e as Error).message}`);
+    }
   }
 
   const auvoTasks = await fetchAuvoTasks(bearerToken, startDate, endDate);
@@ -1488,7 +1535,15 @@ async function runReportsOnlySync(sbClient: any, bearerToken: string, gcHeaders:
     }
   }
 
-  const gcStatusRefresh = await refreshGcOsStatusesForReportsOnly(sbClient, gcHeaders, startDate, endDate, taskIds);
+  let gcStatusRefresh = { checked: 0, updated: 0, transitioned: 0, remaining: 0, complete: true, errors: 0 };
+  if (gcOsOpen) {
+    try {
+      gcStatusRefresh = await reconcileOpenOsMirror(sbClient, gcHeaders, gcOsOpen);
+    } catch (error) {
+      console.error(`[central-sync] Conciliação do processo OS em aberto falhou: ${(error as Error).message}`);
+      gcStatusRefresh = { ...gcStatusRefresh, complete: false, errors: 1 };
+    }
+  }
 
   return {
     success: true,
@@ -1500,7 +1555,10 @@ async function runReportsOnlySync(sbClient: any, bearerToken: string, gcHeaders:
     gc_shells_upserted: gcShellUpserted,
     gc_os_status_checked: gcStatusRefresh.checked,
     gc_os_status_updated: gcStatusRefresh.updated,
-    errors,
+    gc_os_transitioned: gcStatusRefresh.transitioned,
+    gc_os_status_remaining: gcStatusRefresh.remaining,
+    gc_os_reconciliation_complete: gcStatusRefresh.complete,
+    errors: errors + gcStatusRefresh.errors,
   };
 }
 
@@ -1564,7 +1622,14 @@ async function runCentralSync(body: CentralSyncBody = {}) {
     const bearerToken = await auvoLogin(auvoApiKey, auvoApiToken);
 
     if (body?.reports_only === true) {
-      return await runReportsOnlySync(sbClient, bearerToken, gcH, startDate, endDate);
+      return await runReportsOnlySync(
+        sbClient,
+        bearerToken,
+        gcH,
+        startDate,
+        endDate,
+        body?.reconcile_open_os !== false,
+      );
     }
 
     // Step 1: Fetch GC data first (faster, ~20s) — Auvo will come after status refresh
@@ -1698,13 +1763,24 @@ async function runCentralSync(body: CentralSyncBody = {}) {
     }
     if (isGcSolicitadasOnly) {
       if (body?.fast === true) {
+        const requestedSituationIds = new Set(situacaoIds);
+        const isCompleteOpenSnapshot = requestedSituationIds.size === OPEN_OS_SITUACAO_IDS.length
+          && OPEN_OS_SITUACAO_IDS.every((id) => requestedSituationIds.has(id));
+        const gcStatusRefresh = isCompleteOpenSnapshot
+          ? await reconcileOpenOsMirror(sbClient, gcH, gcOsResult)
+          : { checked: 0, updated: 0, transitioned: 0, remaining: 0, complete: false, errors: 0 };
         return {
           success: true,
           mode: "gc-first-fast",
           periodo: { inicio: startDate, fim: endDate },
           gc_os: Object.keys(gcOsResult.byCodigo).length,
           upserted: gcFirstUpserted,
-          errors: 0,
+          gc_os_status_checked: gcStatusRefresh.checked,
+          gc_os_status_updated: gcStatusRefresh.updated,
+          gc_os_transitioned: gcStatusRefresh.transitioned,
+          gc_os_status_remaining: gcStatusRefresh.remaining,
+          gc_os_reconciliation_complete: gcStatusRefresh.complete,
+          errors: gcStatusRefresh.errors,
         };
       }
     }

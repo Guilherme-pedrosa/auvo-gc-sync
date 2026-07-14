@@ -24,22 +24,13 @@ import { supabase } from "@/integrations/supabase/client";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { cn } from "@/lib/utils";
+import {
+  OPEN_OS_SITUATIONS,
+  RECONCILIATION_OS_SITUATIONS,
+  isOpenOsSituation,
+} from "@/lib/osOpenStatuses";
 import { toast } from "sonner";
 import { useAuth } from "@/hooks/useAuth";
-
-const SITUACOES_OPTIONS = [
-  { id: "7063579", label: "AGUARDANDO COMPRA DE PEÇAS" },
-  { id: "7063580", label: "AGUARDANDO CHEGADA DE PEÇAS" },
-  { id: "7659440", label: "AGUARDANDO FABRICAÇÃO" },
-  { id: "7063581", label: "PEDIDO EM CONFERENCIA" },
-  { id: "7063705", label: "PEDIDO CONFERIDO AGUARDANDO EXECUÇÃO" },
-  { id: "7213493", label: "SERVICO AGUARDANDO EXECUCAO" },
-  { id: "7684665", label: "RETIRADA PELO TECNICO" },
-  { id: "7748831", label: "AGUARDANDO RETIRADA" },
-  { id: "8219136", label: "EM ROTA" },
-  { id: "7116099", label: "EXECUTADO – AG. NEGOCIAÇÃO" },
-  { id: "8889036", label: "FECHADO CHAMADO" },
-];
 
 interface Props {
   data: any[];
@@ -199,9 +190,12 @@ export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, o
       });
       if (error) throw error;
       if (resp?.success) {
-        const label = SITUACOES_OPTIONS.find(s => s.id === situacaoId)?.label || situacaoId;
+        const label = RECONCILIATION_OS_SITUATIONS.find(s => s.id === situacaoId)?.label || situacaoId;
         setMovedOsIds(prev => new Set(prev).add(item.gc_os_id));
         toast.success(`OS ${item.gc_os_codigo} → ${label}`);
+        if (resp?.mirror_error) {
+          toast.warning("A OS foi alterada no GestãoClick, mas o espelho local será corrigido na próxima sincronização.");
+        }
         onRefresh?.();
       } else {
         toast.error(`Erro: ${JSON.stringify(resp?.body || resp?.error || resp)}`);
@@ -216,11 +210,11 @@ export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, o
   }, [profile?.gc_user_id, onRefresh]);
 
   const allSituacoes = useMemo(() => {
-    const allowed = new Set(SITUACOES_OPTIONS.map((s) => s.label.toUpperCase()));
     const set = new Set(
       data
+        .filter(isOpenOsSituation)
         .map((t) => String(t.gc_os_situacao || "").trim())
-        .filter((s) => s && allowed.has(s.toUpperCase()))
+        .filter(Boolean)
     );
     return Array.from(set).sort();
   }, [data]);
@@ -346,15 +340,10 @@ export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, o
       items = items.filter((t) => !excludedSituacoes.has(t.gc_os_situacao || ""));
     }
 
-    // Mantém apenas OS cujas situações estão na whitelist (SITUACOES_OPTIONS).
+    // Mantém apenas OS cujas situações pertencem de fato ao processo aberto.
     // Situações fora da whitelist (ex.: IMPORTADO API CIGAM, DESLOCAMENTO, CANCELADA)
     // só apareciam por terem tarefa Auvo vinculada, mas não devem ser listadas aqui.
-    const allowedSituacoes = new Set(SITUACOES_OPTIONS.map((s) => s.label.toUpperCase()));
-    items = items.filter((t) => {
-      const s = String(t.gc_os_situacao || "").toUpperCase().trim();
-      if (!s) return true; // sem situação GC (ex.: shell pendente) mantém
-      return allowedSituacoes.has(s);
-    });
+    items = items.filter(isOpenOsSituation);
 
     // Apply exec status filter
     if (execStatusFilter !== "all") {
@@ -1030,11 +1019,9 @@ export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, o
             size="sm"
             className="gap-1.5"
             onClick={() => {
-              // Get the visible (non-excluded) situação IDs from SITUACOES_OPTIONS
-              const visibleIds = SITUACOES_OPTIONS
-                .filter((s) => !excludedSituacoes.has(s.label))
-                .map((s) => s.id);
-              onSync(visibleIds);
+              // Sempre sincroniza o retrato completo do processo aberto. Os filtros
+              // desta tela são apenas de visualização e não podem limitar a conciliação.
+              onSync(OPEN_OS_SITUATIONS.map((s) => s.id));
             }}
             disabled={syncing}
           >
@@ -2036,7 +2023,7 @@ export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, o
                   <SelectValue placeholder="Selecione a situação destino..." />
                 </SelectTrigger>
                 <SelectContent>
-                  {SITUACOES_OPTIONS.map((s) => (
+                  {RECONCILIATION_OS_SITUATIONS.map((s) => (
                     <SelectItem key={s.id} value={s.id}>{s.label}</SelectItem>
                   ))}
                 </SelectContent>

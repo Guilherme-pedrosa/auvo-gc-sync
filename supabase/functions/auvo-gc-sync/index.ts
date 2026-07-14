@@ -841,6 +841,49 @@ async function buscarOsAtual(gcOsId: string, gcHeaders: Record<string, string>):
   return osAtual as Record<string, unknown>;
 }
 
+async function atualizarEspelhoDaOs(
+  supabase: any,
+  gcOsId: string,
+  gcHeaders: Record<string, string>,
+): Promise<{ updated: number; error: string | null }> {
+  const os = await buscarOsAtual(gcOsId, gcHeaders);
+  if (!os) return { updated: 0, error: "OS atualizada no GC, mas não foi possível reler seus dados" };
+
+  const tarefaOs = parseAuvoTaskIds(extrairAtributoGc(os, "73343", ["tarefa os"])).join("/") || null;
+  const tarefaExecucao = parseAuvoTaskIds(extrairAtributoGc(os, "73344", ["execução", "execucao"])).join("/") || null;
+  const hash = String((os as any).hash || "").trim();
+  const publicLink = hash ? `https://gestaoclick.com/cobranca/${hash}` : null;
+  const updatePayload = {
+    gc_os_codigo: String((os as any).codigo || ""),
+    gc_os_cliente: String((os as any).nome_cliente || ""),
+    gc_os_situacao: String((os as any).nome_situacao || ""),
+    gc_os_situacao_id: String((os as any).situacao_id || ""),
+    gc_os_cor_situacao: String((os as any).cor_situacao || ""),
+    gc_os_valor_total: parseCurrency((os as any).valor_total),
+    gc_os_vendedor: String((os as any).nome_vendedor || ""),
+    gc_os_data: String((os as any).data_entrada || (os as any).data || "").split("T")[0] || null,
+    gc_os_data_saida: String((os as any).data_saida || "").split("T")[0] || null,
+    gc_os_link: publicLink,
+    gc_os_link_cobranca: publicLink,
+    gc_os_tarefa_os: tarefaOs,
+    gc_os_tarefa_exec: tarefaExecucao,
+    os_realizada: true,
+    atualizado_em: new Date().toISOString(),
+  };
+
+  const { count, error } = await supabase
+    .from("tarefas_central")
+    .update(updatePayload, { count: "exact" })
+    .eq("gc_os_id", gcOsId);
+  if (error) {
+    console.error(`[auvo-gc-sync] OS ${gcOsId} alterada no GC, mas o espelho falhou: ${error.message}`);
+    return { updated: 0, error: error.message };
+  }
+
+  console.log(`[auvo-gc-sync] Espelho da OS ${gcOsId} atualizado em ${count || 0} linha(s)`);
+  return { updated: count || 0, error: null };
+}
+
 async function resolverDataSaidaExecucao(params: {
   supabase: any;
   gcHeaders: Record<string, string>;
@@ -1509,6 +1552,9 @@ Deno.serve(async (req) => {
 
       console.log(`[auvo-gc-sync] REVERT: OS ${gcOsCodigo} (${gcOsId}) → situação ${situacaoAnteriorId} | executor: ${resolvida.tecnicoNome || "N/A"} (${resolvida.tecnicoId || "N/A"}) | vendedor GC: ${vendedorNome || "N/A"} (${vendedorId || "N/A"}) | data_saida_execucao: ${dataSaida} (${resolvida.origem}, task ${resolvida.execTaskId || "N/A"}) | gc_usuario_id: ${gcUsuarioId || "N/A"}`);
       const revertResult = await atualizarSituacaoOsGC(gcOsId, situacaoAnteriorId, gcHeaders, { vendedorId, vendedorNome, dataSaida, gcUsuarioId });
+      const mirrorResult = revertResult.success
+        ? await atualizarEspelhoDaOs(supabase, gcOsId, gcHeaders)
+        : { updated: 0, error: null };
       
       await supabase.from("auvo_gc_sync_log").insert({
         executado_em: new Date().toISOString(),
@@ -1534,6 +1580,8 @@ Deno.serve(async (req) => {
       return new Response(JSON.stringify({ 
         success: revertResult.success, gc_os_id: gcOsId, gc_os_codigo: gcOsCodigo,
         status: revertResult.status, body: revertResult.body,
+        mirror_updated: mirrorResult.updated,
+        mirror_error: mirrorResult.error,
       }), {
         status: 200, 
         headers: { ...corsHeaders, "Content-Type": "application/json" },

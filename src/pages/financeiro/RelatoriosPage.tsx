@@ -11,6 +11,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { FileText, Clock, Settings, RefreshCw, CalendarIcon } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+import { isOpenOsSituation } from "@/lib/osOpenStatuses";
 import LastSyncBadge from "@/components/LastSyncBadge";
 import OSAbertasTab from "@/components/relatorios/OSAbertasTab";
 import HorasTrabalhadasTab from "@/components/relatorios/HorasTrabalhadasTab";
@@ -84,6 +85,7 @@ const fetchAllTarefasCentral = async ({
       .from("tarefas_central")
       .select(TAREFAS_CENTRAL_REPORT_COLUMNS)
       .order("data_tarefa", { ascending: false })
+      .order("mirror_key", { ascending: true })
       .range(from, from + TAREFAS_CENTRAL_PAGE_SIZE - 1)
       .abortSignal(signal);
 
@@ -222,6 +224,8 @@ export default function RelatoriosPage() {
         let totalAuvo = 0;
         let totalUpserted = 0;
         let totalErrors = 0;
+        let transitionedOs = 0;
+        let reconciliationRemaining = 0;
 
         for (let i = 0; i < chunks.length; i++) {
           const chunk = chunks[i];
@@ -229,7 +233,14 @@ export default function RelatoriosPage() {
           setSyncStatusMessage(`Buscando Auvo ${i + 1}/${chunks.length}: ${chunk.start} → ${chunk.end}`);
 
           const { data, error } = await supabase.functions.invoke("central-sync", {
-            body: { start_date: chunk.start, end_date: chunk.end, situacao_ids: [], reports_only: true, wait: true },
+            body: {
+              start_date: chunk.start,
+              end_date: chunk.end,
+              situacao_ids: [],
+              reports_only: true,
+              reconcile_open_os: i === 0,
+              wait: true,
+            },
           });
           if (error) throw error;
           if (data?.success === false) throw new Error(data.error || "Erro na sincronização");
@@ -238,12 +249,18 @@ export default function RelatoriosPage() {
           totalAuvo += Number(data?.auvo_tarefas || 0);
           totalUpserted += Number(data?.upserted || 0);
           totalErrors += Number(data?.errors || 0);
+          transitionedOs += Number(data?.gc_os_transitioned || 0);
+          reconciliationRemaining = Math.max(reconciliationRemaining, Number(data?.gc_os_status_remaining || 0));
         }
 
-        toast.success(`Sync ${syncFrom} → ${syncTo}: ${totalAuvo} tarefas, ${totalUpserted} atualizadas`);
+        if (reconciliationRemaining > 0) {
+          toast.warning(`Sync concluído; ${reconciliationRemaining} OS ainda precisam de outra rodada de conciliação.`);
+        } else {
+          toast.success(`Sync ${syncFrom} → ${syncTo}: ${totalAuvo} tarefas, ${totalUpserted} atualizadas`);
+        }
         stopProgressSimulation(true);
         setSyncStatusMessage(
-          `Última sincronização concluída em ${chunks.length} lotes: ${totalAuvo} tarefas Auvo, ${totalUpserted} atualizadas no banco${totalErrors ? `, ${totalErrors} lotes com erro` : ""}.`
+          `Última sincronização concluída em ${chunks.length} lotes: ${totalAuvo} tarefas Auvo, ${totalUpserted} atualizadas no banco, ${transitionedOs} OS retiradas das etapas antigas${reconciliationRemaining ? `, ${reconciliationRemaining} pendentes de nova rodada` : ""}${totalErrors ? `, ${totalErrors} erros` : ""}.`
         );
         refreshRelatoriosData();
         return;
@@ -265,13 +282,18 @@ export default function RelatoriosPage() {
         return;
       }
 
-      toast.success(syncSolicitadasOnly
-        ? `OS solicitadas do GC atualizadas: ${data.upserted || 0}`
-        : `Sync ${syncFrom} → ${syncTo}: ${data.auvo_tarefas || 0} tarefas, ${data.upserted || 0} atualizadas`
-      );
+      const reconciliationRemaining = Number(data?.gc_os_status_remaining || 0);
+      if (reconciliationRemaining > 0) {
+        toast.warning(`OS atualizadas; ${reconciliationRemaining} ainda precisam de outra rodada de conciliação.`);
+      } else {
+        toast.success(syncSolicitadasOnly
+          ? `OS do GC atualizadas: ${data.upserted || 0}; ${data.gc_os_transitioned || 0} saíram das etapas antigas`
+          : `Sync ${syncFrom} → ${syncTo}: ${data.auvo_tarefas || 0} tarefas, ${data.upserted || 0} atualizadas`
+        );
+      }
       stopProgressSimulation(true);
       setSyncStatusMessage(
-        `Última sincronização concluída: ${data?.auvo_tarefas ?? 0} tarefas Auvo, ${data?.upserted ?? 0} atualizadas no banco.`
+        `Última sincronização concluída: ${data?.auvo_tarefas ?? 0} tarefas Auvo, ${data?.upserted ?? 0} atualizadas no banco, ${data?.gc_os_transitioned ?? 0} OS retiradas das etapas antigas${reconciliationRemaining ? `, ${reconciliationRemaining} pendentes de nova rodada` : ""}.`
       );
       refreshRelatoriosData();
     } catch (err: any) {
@@ -431,10 +453,7 @@ export default function RelatoriosPage() {
         byOsId.set(osId, t);
       }
     }
-    return Array.from(byOsId.values()).filter((t) => {
-      const sit = (t.gc_os_situacao || "").toLowerCase();
-      return !sit.startsWith("executad") && !sit.startsWith("imp cigam faturado total") && !sit.startsWith("financeiro separado / baixa cigam");
-    });
+    return Array.from(byOsId.values()).filter(isOpenOsSituation);
   }, [tarefasOS]);
 
   // Map: auvo_task_id → status_auvo (to look up execution task status)
