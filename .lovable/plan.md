@@ -1,113 +1,80 @@
-# Gerar Plano de Preventivas — v5
 
-Rework de `supabase/functions/plano-preventivo-gerar/index.ts` + `src/pages/financeiro/GerarPlanoPreventivasDialog.tsx`. Por cliente. Sem Excel. Sem grupo.
+## Objetivo
 
-## 1. Backend
+Trazer para este projeto (WeDo) o módulo de **RH** do WAI ERP: matriz de integrações, dashboard, requisitos por cliente, colaboradores com prontuário, tipos de documento e documentos da empresa. Criar uma tabela local de **clientes** já populada com os nomes que aparecem em OS/Orçamentos, e completar CPF/CNPJ, endereço, contato via API do GestãoClick.
 
-### Entrada
-- `cliente_nome` + `ano_referencia`. Modos: `preview`, `apply` (apply reaproveita `meses_planejados`). Remove `export`.
+## Estrutura do banco
 
-### Contrato — precedência explícita
-1. Contrato por `cliente_nome` direto com `horas_mes_contratadas > 0` → usa. Ignora grupo.
-2. Senão, resolve grupos via `grupo_cliente_membros` e busca contrato por `grupo_id` com horas > 0.
-3. Nenhum → `{ok:false, code:"SEM_CONTRATO"}`.
-- Guarda `teto`, `vigencia_inicio`, `fonte: "cliente"|"grupo"`.
+Novas tabelas em `public` (com GRANT + RLS por `authenticated`, admin via `has_role`):
 
-### Classificação (mantida)
-- `override_manual` > `tipo_atual` > `ia_keywords` > `sem_tipo`.
-- `sem_tipo` fora do scheduler; retorna em `sem_tipo[]` para aviso na UI.
-- `visitas_ano`: MENSAL=12, BIMESTRAL=6, TRIMESTRAL=4, SEMESTRAL=2, ANUAL=1.
-- `HT_oc = horas_por_tecnico × qtd_tecnicos`.
-
-### Próxima preventiva
-- Reaproveita `lastPrevByAuvoId` (tipos 180175/180176/202616/235724).
-- Com última: `proxima = ultima + periodicidade`; senão descoberto puro.
-
-### Atraso inicial
-- **nunca**: `floor((hoje − vigencia_inicio)/30)` meses.
-- **vencido** (`proxima < mesInicio`): `mesInicio − mes(proxima)`.
-- **em dia** (`proxima >= mesInicio`): `-(mes(proxima) − mesInicio)` (0 ou negativo).
-- Peso criticidade: CRÍTICA=4, ALTA=3, MÉDIA=2, BAIXA=1 (default 2).
-
-### Scheduler — fila única, sem trava de exclusão
+```text
+rh_clientes             — cliente unificado (id, gc_cliente_id, nome, fantasia,
+                          cpf_cnpj, email, telefone, endereco, ativo,
+                          origem: 'cache' | 'gc' | 'manual', sync_em)
+rh_colaboradores        — PF/PJ (nome, cpf_cnpj, cargo, funcao, email, tel, ativo)
+rh_document_types       — catálogo (code, name, scope: COMPANY|TECHNICIAN|CLIENT,
+                          requires_expiry, ativo)
+rh_company_documents    — documentos da própria empresa (WeDo)
+rh_colaborador_docs     — docs por colaborador (tipo, emissão, vencimento, arquivo)
+rh_client_requirements  — o que cada cliente exige (client_id, doc_type_id,
+                          required_for: COMPANY|TECHNICIAN, is_required)
+rh_integrations         — kit de integração (client_id, technician_ids[],
+                          status: draft|authorized|sent|blocked|expired,
+                          validated_at, sent_at, earliest_expiry_date,
+                          blocked_reasons jsonb, zip_file_name, zip_url)
+rh_integration_audit    — auditoria de ações
 ```
-mesInicio = (anoRef == anoAtual) ? mesAtual : 1
-reservado[1..12] = 0
-primeiraVisita: Map<equipId, number>
-proximaOriginal[eq] = mes(proxima)  // só p/ em-dia
 
-for m = mesInicio..12:
-  // "chegou a vez": descobertos desde mesInicio; em-dia a partir de proximaOriginal
-  fila = equipamentos com tipo, sem entrada em primeiraVisita, elegíveis em m
+Bucket de storage `rh-documentos` para arquivos (com policies por autenticado).
 
-  // status vivo + atraso vivo
-  for eq in fila:
-    if eq.origem == "em_dia" e m > proximaOriginal[eq]:
-      eq.status_vivo = "vencido"
-      eq.atraso_vivo = m - proximaOriginal[eq]
-    else if eq.origem == "em_dia":
-      eq.status_vivo = "em_dia"
-      eq.atraso_vivo = -(proximaOriginal[eq] - m)
-    else:  // nunca / vencido original
-      eq.status_vivo = eq.origem
-      eq.atraso_vivo = eq.atraso_base + (m - mesInicio)
+Semente inicial: um seed insere em `rh_clientes` todos os nomes distintos de cliente já presentes em `followup_kanban_cache` (marcados `origem='cache'`).
 
-  ordena fila por (atraso_vivo desc, criticidade desc)
+## Backend / Edge Functions
 
-  for eq in fila:
-    cabe = reservado[m] + HT_oc <= teto
-    vencido_vivo = eq.status_vivo in ("vencido","nunca") e eq.atraso_vivo > 0
+- `rh-clientes-sync-gc`: percorre `rh_clientes` sem `gc_cliente_id` (ou marcados para reenriquecer), busca no GC via `gc-proxy` por nome, faz merge (não destrutivo) e preenche CPF/CNPJ, endereço, e-mail, telefone. Roda sob demanda por botão "Sincronizar com GC".
+- `rh-integrations-validate`: recalcula status/blocked_reasons cruzando `rh_colaborador_docs`, `rh_company_documents` e `rh_client_requirements`.
 
-    if cabe:
-      encaixa
-    else if vencido_vivo:
-      encaixa mesmo assim  // saldo do mês vira negativo, visível
-    else:
-      continue  // em-dia sem atraso escorrega pro próximo mês
+## Frontend
 
-    if encaixado:
-      primeiraVisita[eq] = m
-      reservado[m] += HT_oc
-      // ciclos subsequentes no ano
-      m2 = m + periodicidade
-      while m2 <= 12:
-        reservado[m2] += HT_oc
-        agenda[eq].push(m2)
-        m2 += periodicidade
+Novas rotas em `AppLayout` (grupo "RH", somente admin):
+
+```text
+/rh/colaboradores               — lista + CRUD
+/rh/colaboradores/:id           — prontuário (docs + integrações do colab)
+/rh/clientes                    — lista dos clientes locais + botão "Sync GC" + edição
+/rh/clientes/:id/requisitos     — cadastro de requisitos por cliente (empresa + técnico)
+/rh/integracoes                 — matriz (filtros, status, exportar Excel)
+/rh/integracoes/dashboard       — KPIs, pendências, vencimentos
+/rh/integracoes/nova            — form de nova integração (cliente + técnicos)
+/rh/tipos-documento             — catálogo
+/rh/documentos-empresa          — docs da própria empresa
 ```
-Efeitos:
-- Descoberto atraso=3 supera em-dia atraso=0 → em-dia escorrega. Se em-dia ultrapassa `proximaOriginal`, vira vencido e força encaixe, mesmo estourando teto.
-- Nenhum equipamento com preventiva devida some do plano.
-- Saldo negativo é sinal legítimo de contrato sub-dimensionado.
 
-### Resposta
-```ts
-{
-  ok, ano_referencia, cliente_nome,
-  contrato: { horas_mes_contratadas, vigencia_inicio, fonte },
-  resumo: { total, nunca, vencidos, em_dia, sem_tipo_count, ht_ano },
-  sem_tipo: [{equip_id, nome}],
-  tabela_meses: [{mes, ht_agendada, teto, saldo}],
-  itens: [{
-    equip_id, codigo_barras_auvo, nome, categoria, criticidade, periodicidade,
-    ht_oc, visitas_ano, ht_total_ano, meses_planejados: number[],
-    ultima_preventiva, proxima_original,
-    status: "nunca"|"vencido"|"em_dia",   // status final (após scheduler)
-    atraso_meses,
-    tipo_source, keyword_match
-  }]
-}
-```
-`itens` ordenados por `atraso desc, criticidade desc`. Status final = status vivo na hora do encaixe (em-dia que virou vencido reporta "vencido").
+Componentes principais adaptados do WAI ERP (removendo dependência de `companies` / `CompanyContext`, `pessoas` unificada):
+- Hooks: `useRhClientes`, `useRhColaboradores`, `useRhDocumentTypes`, `useRhCompanyDocuments`, `useRhClientRequirements`, `useRhIntegrations` + `useRhIntegrationsDashboard`.
+- `IntegrationDetailModal`, `SearchableSelect` (já existe algo similar aqui — reaproveitar).
 
-## 2. Frontend — `GerarPlanoPreventivasDialog.tsx`
+## Detalhes técnicos
 
-- Remove escopo "Grupo" e botão "Baixar Excel".
-- Matriz: `ID | Equipamento | Categoria | Crit | Period. | HT | Jan..Dez | Total`.
-  - Célula mensal preenchida com HT quando `meses_planejados.includes(m)`; fundo por status: `nunca`=vermelho, `vencido`=âmbar, `em_dia`=verde.
-  - Badge de status + tooltip com atraso.
-- Rodapé sticky: **Total mês**, **Meta**, **Saldo** (vermelho <0).
-- Cards topo: total, descobertos (nunca+vencidos), em-dia, HT/ano, saldo ano, meses com saldo negativo.
-- Aviso amarelo listando `sem_tipo` + botão **Revisar classificação (IA)** abrindo `RevisarTiposIADialog` filtrado no cliente.
-- `code === "SEM_CONTRATO"` → bloqueia com mensagem.
-- "Implementar plano" chama `apply` inalterado.
+- Sem `companies`/`CompanyContext`: escopo é global (uma empresa). RLS: `authenticated` lê tudo; escrita/edição só `admin` via `has_role`.
+- Arquivos vão para `storage.rh-documentos/{colaborador_id}/{tipo}/{uuid}.{ext}` com policy de leitura para autenticados e escrita/delete para admin.
+- Sync com GC: usa a Edge Function existente `gc-proxy` (endpoint `/api/clientes?nome=...`). Merge preserva edições manuais (`origem='manual'` não é sobrescrito).
+- Semente de `rh_clientes`: `INSERT ... SELECT DISTINCT cliente FROM followup_kanban_cache WHERE cliente IS NOT NULL ON CONFLICT DO NOTHING`.
+- Menu do sidebar (`AppLayout.tsx`): novo grupo **RH** com os itens acima, visível só para admin (padrão já usado para "Administração").
+
+## Ordem de execução
+
+1. Migração 1: `rh_document_types`, `rh_company_documents`, `rh_clientes` (+ seed do cache), `rh_colaboradores`, `rh_client_requirements`, `rh_colaborador_docs`, `rh_integrations`, `rh_integration_audit` + policies + GRANTs + bucket `rh-documentos` + seed inicial de tipos comuns (ASO, NR10, NR35, NR33, CNH, FICHA_REGISTRO, CONTRATO_SOCIAL, ALVARÁ).
+2. Edge Function `rh-clientes-sync-gc`.
+3. Hooks React Query (`src/hooks/rh/*`).
+4. Páginas em `src/pages/rh/*` (Colaboradores, ColaboradorDetail, Clientes, ClienteRequisitos, MatrizIntegracoes, IntegracoesDashboard, NovaIntegracao, TiposDocumento, DocumentosEmpresa).
+5. Rotas em `App.tsx` + grupo "RH" em `AppLayout.tsx`.
+6. Componentes auxiliares (`IntegrationDetailModal`).
+
+## Fora do escopo
+
+- Multi-tenant (`companies`) — este projeto não usa.
+- Envio automático de e-mail com anexo ZIP — mantido como `mailto:` (idêntico ao WAI ERP).
+- Portal do cliente exibindo requisitos (pode ser feito depois se você pedir).
+
+Confirma para começar pela migração?

@@ -17,8 +17,8 @@ describe("regras de OS em aberto", () => {
   });
 
   it("mantém FECHADO CHAMADO somente como destino de conciliação", () => {
-    expect(OPEN_OS_SITUATIONS.some((s) => s.id === "8889036")).toBe(false);
-    expect(RECONCILIATION_OS_SITUATIONS.some((s) => s.id === "8889036")).toBe(true);
+    expect(OPEN_OS_SITUATIONS.some((s) => (s.id as string) === "8889036")).toBe(false);
+    expect(RECONCILIATION_OS_SITUATIONS.some((s) => (s.id as string) === "8889036")).toBe(true);
   });
 
   it("usa o nome como fallback apenas quando o ID não existe", () => {
