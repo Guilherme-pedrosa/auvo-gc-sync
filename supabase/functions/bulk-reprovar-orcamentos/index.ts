@@ -158,12 +158,12 @@ Deno.serve(async (req) => {
             const p = wrap?.produto ?? wrap;
             const qtd = parseFloat(String(p?.quantidade ?? "1")) || 0;
             const vvenda = round2(p?.valor_venda);
-            const vtotal = round2(qtd * venda);
+            const vtotal = round2(qtd * vvenda);
             totalProdutos += vtotal;
             return {
               produto: {
                 ...p,
-                valor_venda: venda.toFixed(2),
+                valor_venda: vvenda.toFixed(2),
                 valor_custo: round2(p?.valor_custo).toFixed(2),
                 valor_total: vtotal.toFixed(2),
                 desconto_valor: p?.desconto_valor ? round2(p.desconto_valor).toFixed(2) : p?.desconto_valor,
