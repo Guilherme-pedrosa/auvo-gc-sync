@@ -615,8 +615,6 @@ export default function OrcamentosControlePage() {
                                   <TableHead className="text-xs">Equipamento</TableHead>
                                   <TableHead className="text-xs">Data Orç.</TableHead>
                                   <TableHead className="text-xs">Data Tarefa</TableHead>
-                                  <TableHead className="text-xs text-right">Produtos</TableHead>
-                                  <TableHead className="text-xs text-right">Serviços</TableHead>
                                   <TableHead className="text-xs text-right">Valor</TableHead>
                                   <TableHead className="text-xs w-44">Ações</TableHead>
                                 </TableRow>
