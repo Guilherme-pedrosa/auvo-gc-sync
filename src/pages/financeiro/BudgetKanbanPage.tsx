@@ -29,6 +29,14 @@ import {
   RESOLVED_WITHOUT_BUDGET_COLUMN,
   shouldAutoRouteToDoneToday,
 } from "@/lib/budgetKanban";
+import BudgetAiAnalysisPanel from "@/components/financeiro/BudgetAiAnalysisPanel";
+import {
+  evaluateBudgetAiReadiness,
+  extractBudgetAiPhotos,
+  withBudgetAiTimeout,
+  type BudgetAiResponseMeta,
+  type BudgetAiStructuredAnalysis,
+} from "@/lib/budgetAi";
 
 type GcDocData = {
   gc_orcamento_id?: string;
@@ -126,6 +134,10 @@ export default function BudgetKanbanPage() {
   const [isSavingField, setIsSavingField] = useState(false);
   const [aiLoadingSection, setAiLoadingSection] = useState<string | null>(null);
   const [aiAnalysis, setAiAnalysis] = useState<string | null>(null);
+  const [aiAnalysisData, setAiAnalysisData] = useState<BudgetAiStructuredAnalysis | null>(null);
+  const [aiAnalysisMeta, setAiAnalysisMeta] = useState<BudgetAiResponseMeta | null>(null);
+  const [aiAnalysisIsFallback, setAiAnalysisIsFallback] = useState(false);
+  const [aiSuggestDeep, setAiSuggestDeep] = useState(false);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [showChat, setShowChat] = useState(false);
   const [chatMessages, setChatMessages] = useState<{ role: "user" | "assistant"; content: string }[]>([]);
@@ -1234,7 +1246,12 @@ export default function BudgetKanbanPage() {
       const { error } = await supabase.functions.invoke("auvo-task-update", {
         body: {
           action: "persist-central",
-          rows: [{ auvo_task_id: selectedCard.auvo_task_id, questionario_respostas: respostas }],
+          row: {
+            auvo_task_id: selectedCard.auvo_task_id,
+            gc_os_id: selectedCard.gc_os?.gc_os_id || "",
+            gc_orcamento_id: selectedCard.gc_orcamento?.gc_orcamento_id || "",
+            questionario_respostas: respostas,
+          },
         },
       });
       if (error) throw error;
@@ -1272,9 +1289,7 @@ export default function BudgetKanbanPage() {
       };
 
       if (isObservacao) {
-        const fotos = selectedCard.questionario_respostas
-          .filter((r) => r.reply && r.reply.startsWith("http"))
-          .map((r) => r.reply);
+        const fotos = extractBudgetAiPhotos(selectedCard.questionario_respostas, 6);
 
         body.context = {
           orientacao: selectedCard.orientacao,
@@ -1283,7 +1298,10 @@ export default function BudgetKanbanPage() {
         };
       }
 
-      const { data: result, error } = await supabase.functions.invoke("genspark-ai", { body });
+      const { data: result, error } = await withBudgetAiTimeout(
+        supabase.functions.invoke("genspark-ai", { body }),
+        45000,
+      );
       if (error || result?.error || result?.errorCode) {
         const aiErr = await parseAiError(result, error);
         toast.warning(aiErr.message);
@@ -1295,33 +1313,17 @@ export default function BudgetKanbanPage() {
         toast.success("Texto melhorado pela IA! Revise e salve.");
       }
     } catch (e: any) {
-      toast.error("Erro na IA: " + (e?.message || "Tente novamente"));
+      toast.error(e?.message === "AI_REQUEST_TIMEOUT" ? "A melhoria excedeu 45 segundos. Tente novamente." : "Erro na IA: " + (e?.message || "Tente novamente"));
     } finally {
       setAiLoadingSection(null);
     }
   }, [selectedCard]);
 
-  // ── Fallback operacional quando IA indisponível ──
-  const AI_FALLBACK_ANALYSIS = `## 🚦 STATUS PARA ORÇAMENTO
-**Necessária validação técnica adicional antes do orçamento**
-
-**Motivo:** Análise por IA indisponível por limite temporário da OpenAI.
-
-### ✅ CHECKLIST MÍNIMO PARA SEGUIR SEM IA
-- [ ] Conferir observações do técnico
-- [ ] Conferir peças e serviços informados
-- [ ] Conferir fotos do defeito
-- [ ] Verificar coerência entre peças solicitadas e defeito
-- [ ] Confirmar marca, modelo e série do equipamento
-
-### 📋 PENDÊNCIAS MÍNIMAS
-- Modelo e série do equipamento
-- Fotos do defeito principal
-- Coerência entre peças e diagnóstico
-- Descrição técnica do problema
-
-### 📝 OBSERVAÇÃO INTERNA SUGERIDA
-> Orçamento condicionado à validação técnica manual por indisponibilidade temporária da análise por IA. Conferir dados da OS antes de prosseguir.`;
+  const buildAiFallback = (reason: string, details: string[] = []) => [
+    reason,
+    ...details.map((item) => `• ${item}`),
+    "Esta mensagem é um aviso operacional, não uma análise técnica gerada pela IA.",
+  ].join("\n");
 
   type ParsedAiError = {
     isQuota: boolean;
@@ -1395,146 +1397,164 @@ export default function BudgetKanbanPage() {
     const isRateLimited =
       allText.includes("openai_rate_limited") ||
       (allText.includes("rate limit") && !isQuota);
+    const isTimeout = allText.includes("openai_timeout") || allText.includes("excedeu") || allText.includes("timeout");
 
     const message = isQuota
       ? "OpenAI sem saldo/quota no momento. Use o fallback operacional ou tente novamente após regularizar a conta."
       : isRateLimited
         ? "A análise por IA está temporariamente indisponível por limite de requisições. Tente novamente em instantes."
+        : isTimeout
+          ? "A análise excedeu o tempo máximo e foi interrompida. Tente novamente ou use menos fotos."
         : "A análise por IA está temporariamente indisponível. Use o fallback operacional e tente novamente.";
 
     return { isQuota, isRateLimited, code, message };
   };
 
-  // AI technical analysis — budget_analysis_agent (standard or auto-expanded)
+  const buildBudgetAiRequest = (card: KanbanItem) => {
+    const photos = extractBudgetAiPhotos(card.questionario_respostas, 10);
+    const localEquipment = extractEquipmentFromCard(card);
+    const equipment = resolvedEquipment?.nome || localEquipment.nome || "";
+    const equipmentId = resolvedEquipment?.id || localEquipment.id || "";
+    const parts = getAnswer(card, "peças") || getAnswer(card, "material") || getAnswer(card, "peca") || "";
+    const services = getAnswer(card, "serviços") || getAnswer(card, "servico") || "";
+    const observations = getAnswer(card, "observ") || "";
+    const description = getAnswer(card, "descri") || "";
+    const readiness = evaluateBudgetAiReadiness({
+      equipment,
+      equipmentId,
+      orientation: card.orientacao,
+      parts,
+      services,
+      observations,
+      photos,
+    });
+
+    return {
+      readiness,
+      context: {
+        cliente: card.cliente,
+        tecnico: card.tecnico,
+        data_tarefa: card.data_tarefa,
+        orientacao: card.orientacao,
+        equipamento: equipment,
+        equipamento_id: equipmentId,
+        descricao: description,
+        pecas: parts,
+        servicos: services,
+        tempo: getAnswer(card, "horas") || getAnswer(card, "tempo") || "",
+        observacoes: observations,
+        fotos: photos,
+        todas_respostas: card.questionario_respostas
+          .filter((answer) => answer.reply && !/https?:\/\//i.test(answer.reply))
+          .map((answer) => `${answer.question}: ${answer.reply}`)
+          .join("\n"),
+      },
+    };
+  };
+
+  // Standard analysis: OS data + selected photos, without automatic external calls.
   const handleAiAnalysis = useCallback(async () => {
     if (!selectedCard) return;
+    if (isEquipmentLoading) {
+      toast.info("Aguarde a identificação do equipamento terminar.");
+      return;
+    }
     setIsAnalyzing(true);
     setAiAnalysis(null);
+    setAiAnalysisData(null);
+    setAiAnalysisMeta(null);
+    setAiAnalysisIsFallback(false);
+    setAiSuggestDeep(false);
+    setShowChat(false);
+    setChatMessages([]);
     try {
-      const fotosBrutas = selectedCard.questionario_respostas
-        .filter((r) => r.reply && r.reply.startsWith("http"))
-        .map((r) => r.reply);
-      const fotos = fotosBrutas.slice(0, 3);
+      const request = buildBudgetAiRequest(selectedCard);
+      if (!request.readiness.canAnalyze) {
+        setAiAnalysis(buildAiFallback("Não há dados suficientes para iniciar a análise.", request.readiness.blockers));
+        setAiAnalysisIsFallback(true);
+        toast.warning("Complete os dados mínimos da OS antes de usar a IA.");
+        return;
+      }
 
-      const todasRespostas = selectedCard.questionario_respostas
-        .filter((r) => r.reply && !r.reply.startsWith("http"))
-        .map((r) => `${r.question}: ${r.reply}`)
-        .join("\n");
-
-      const localEquipment = extractEquipmentFromCard(selectedCard);
-      const equipamento = resolvedEquipment?.nome || localEquipment.nome || "";
-      const equipamentoId = resolvedEquipment?.id || localEquipment.id || "";
-      const descricao = getAnswer(selectedCard, "descri") || "";
-      const equipamentoFinal = equipamento || (descricao ? descricao.substring(0, 120) : (selectedCard.orientacao || "").substring(0, 120));
-
-      const { data: result, error } = await supabase.functions.invoke("genspark-ai", {
-        body: {
-          action: "analyze",
-          context: {
-            cliente: selectedCard.cliente,
-            tecnico: selectedCard.tecnico,
-            data_tarefa: selectedCard.data_tarefa,
-            orientacao: selectedCard.orientacao,
-            equipamento: equipamentoFinal,
-            equipamento_id: equipamentoId,
-            descricao,
-            pecas: getAnswer(selectedCard, "peças") || getAnswer(selectedCard, "material") || getAnswer(selectedCard, "peca") || "",
-            servicos: getAnswer(selectedCard, "serviços") || getAnswer(selectedCard, "servico") || "",
-            tempo: getAnswer(selectedCard, "horas") || getAnswer(selectedCard, "tempo") || "",
-            observacoes: getAnswer(selectedCard, "observ") || "",
-            gc_valor: selectedCard.gc_orcamento?.gc_valor_total || selectedCard.gc_os?.gc_valor_total || "",
-            gc_situacao: selectedCard.gc_orcamento?.gc_situacao || selectedCard.gc_os?.gc_situacao || "",
-            fotos,
-            todas_respostas: todasRespostas,
-          },
-        },
-      });
+      const { data: result, error } = await withBudgetAiTimeout(
+        supabase.functions.invoke("genspark-ai", {
+          body: { action: "analyze", context: request.context },
+        }),
+        60000,
+      );
 
       // Handle structured errors from edge function
       if (error || result?.error || result?.errorCode) {
         const aiErr = await parseAiError(result, error);
         toast.warning(aiErr.message);
-        setAiAnalysis(AI_FALLBACK_ANALYSIS);
+        setAiAnalysis(buildAiFallback(aiErr.message, request.readiness.warnings));
+        setAiAnalysisIsFallback(true);
         return;
       }
 
-      setAiAnalysis(result?.result || AI_FALLBACK_ANALYSIS);
-      if (result?.mode === "expanded") {
-        toast.info(`Análise expandida ativada: ${(result?.reasons || []).join(", ")}`);
-      }
+      if (!result?.analysis) throw new Error("AI_INVALID_RESPONSE");
+      setAiAnalysis(result.result || "");
+      setAiAnalysisData(result.analysis as BudgetAiStructuredAnalysis);
+      setAiAnalysisMeta(result.meta || null);
+      setAiSuggestDeep(Boolean(result.suggest_deep));
+      if (request.readiness.warnings.length > 0) toast.info(`Análise concluída com ${request.readiness.warnings.length} ressalva(s) nos dados da OS.`);
     } catch (e: any) {
       console.error("[BudgetKanban] AI analysis error:", e);
-      toast.error("Erro na análise IA. Exibindo checklist operacional.");
-      setAiAnalysis(AI_FALLBACK_ANALYSIS);
+      const timedOut = e?.message === "AI_REQUEST_TIMEOUT";
+      const message = timedOut ? "A análise excedeu 60 segundos e foi interrompida." : "A IA não retornou uma análise válida.";
+      toast.error(message);
+      setAiAnalysis(buildAiFallback(message));
+      setAiAnalysisIsFallback(true);
     } finally {
       setIsAnalyzing(false);
     }
-  }, [selectedCard, resolvedEquipment]);
+  }, [selectedCard, resolvedEquipment, isEquipmentLoading]);
 
   // Deep analysis — budget_deep_analysis_agent (always expanded)
   const handleDeepAnalysis = useCallback(async () => {
     if (!selectedCard) return;
+    if (isEquipmentLoading) {
+      toast.info("Aguarde a identificação do equipamento terminar.");
+      return;
+    }
     setIsAnalyzing(true);
-    setAiAnalysis(null);
     try {
-      const fotosBrutas = selectedCard.questionario_respostas
-        .filter((r) => r.reply && r.reply.startsWith("http"))
-        .map((r) => r.reply);
-      const fotos = fotosBrutas.slice(0, 6);
-
-      const todasRespostas = selectedCard.questionario_respostas
-        .filter((r) => r.reply && !r.reply.startsWith("http"))
-        .map((r) => `${r.question}: ${r.reply}`)
-        .join("\n");
-
-      const localEquipment = extractEquipmentFromCard(selectedCard);
-      const equipamento = resolvedEquipment?.nome || localEquipment.nome || "";
-      const equipamentoId = resolvedEquipment?.id || localEquipment.id || "";
-      const descricao = getAnswer(selectedCard, "descri") || "";
-      const equipamentoFinal = equipamento || (descricao ? descricao.substring(0, 120) : (selectedCard.orientacao || "").substring(0, 120));
-
-      const { data: result, error } = await supabase.functions.invoke("genspark-ai", {
-        body: {
-          action: "deep_analyze",
-          context: {
-            cliente: selectedCard.cliente,
-            tecnico: selectedCard.tecnico,
-            data_tarefa: selectedCard.data_tarefa,
-            orientacao: selectedCard.orientacao,
-            equipamento: equipamentoFinal,
-            equipamento_id: equipamentoId,
-            descricao,
-            pecas: getAnswer(selectedCard, "peças") || getAnswer(selectedCard, "material") || getAnswer(selectedCard, "peca") || "",
-            servicos: getAnswer(selectedCard, "serviços") || getAnswer(selectedCard, "servico") || "",
-            tempo: getAnswer(selectedCard, "horas") || getAnswer(selectedCard, "tempo") || "",
-            observacoes: getAnswer(selectedCard, "observ") || "",
-            fotos,
-            todas_respostas: todasRespostas,
-          },
-        },
-      });
+      const request = buildBudgetAiRequest(selectedCard);
+      const { data: result, error } = await withBudgetAiTimeout(
+        supabase.functions.invoke("genspark-ai", {
+          body: { action: "deep_analyze", context: request.context },
+        }),
+        90000,
+      );
 
       if (error || result?.error || result?.errorCode) {
         const aiErr = await parseAiError(result, error);
         toast.warning(aiErr.message);
-        setAiAnalysis(AI_FALLBACK_ANALYSIS);
         return;
       }
 
-      setAiAnalysis(result?.result || AI_FALLBACK_ANALYSIS);
-      toast.success(`Análise aprofundada concluída (${result?.docs || 0} docs, web: ${result?.web ? "sim" : "não"})`);
+      if (!result?.analysis) throw new Error("AI_INVALID_RESPONSE");
+      setAiAnalysis(result.result || "");
+      setAiAnalysisData(result.analysis as BudgetAiStructuredAnalysis);
+      setAiAnalysisMeta(result.meta || null);
+      setAiAnalysisIsFallback(false);
+      setAiSuggestDeep(false);
+      toast.success(`Análise aprofundada concluída (${result?.meta?.docs || 0} documento(s), web: ${result?.meta?.web ? "sim" : "não"})`);
     } catch (e: any) {
       console.error("[BudgetKanban] Deep analysis error:", e);
-      toast.error("Erro na análise IA. Exibindo checklist operacional.");
-      setAiAnalysis(AI_FALLBACK_ANALYSIS);
+      toast.error(e?.message === "AI_REQUEST_TIMEOUT" ? "A análise aprofundada excedeu 90 segundos. A análise anterior foi mantida." : "A análise aprofundada falhou. A análise anterior foi mantida.");
     } finally {
       setIsAnalyzing(false);
     }
-  }, [selectedCard, resolvedEquipment]);
+  }, [selectedCard, resolvedEquipment, isEquipmentLoading]);
 
   // AI Chat — budget_chat_agent (lightweight, uses analysis as context)
   const handleChatSend = useCallback(async () => {
     if (!selectedCard || !chatInput.trim()) return;
+    if (aiAnalysisIsFallback || !aiAnalysisData) {
+      toast.warning("O chat só é liberado depois de uma análise concluída.");
+      return;
+    }
     const userMsg = chatInput.trim();
     setChatInput("");
     setChatMessages(prev => [...prev, { role: "user", content: userMsg }]);
@@ -1544,24 +1564,27 @@ export default function BudgetKanbanPage() {
       const equipamento = resolvedEquipment?.nome || localEquipment.nome || "";
       const equipamentoId = resolvedEquipment?.id || localEquipment.id || "";
 
-      const { data: result, error } = await supabase.functions.invoke("genspark-ai", {
-        body: {
-          action: "chat",
-          context: {
-            cliente: selectedCard.cliente,
-            tecnico: selectedCard.tecnico,
-            orientacao: selectedCard.orientacao,
-            equipamento: equipamento || (selectedCard.orientacao || "").substring(0, 120),
-            equipamento_id: equipamentoId,
-            pecas: getAnswer(selectedCard, "peças") || getAnswer(selectedCard, "material") || "",
-            servicos: getAnswer(selectedCard, "serviços") || getAnswer(selectedCard, "servico") || "",
-            observacoes: getAnswer(selectedCard, "observ") || "",
+      const { data: result, error } = await withBudgetAiTimeout(
+        supabase.functions.invoke("genspark-ai", {
+          body: {
+            action: "chat",
+            context: {
+              cliente: selectedCard.cliente,
+              tecnico: selectedCard.tecnico,
+              orientacao: selectedCard.orientacao,
+              equipamento,
+              equipamento_id: equipamentoId,
+              pecas: getAnswer(selectedCard, "peças") || getAnswer(selectedCard, "material") || "",
+              servicos: getAnswer(selectedCard, "serviços") || getAnswer(selectedCard, "servico") || "",
+              observacoes: getAnswer(selectedCard, "observ") || "",
+            },
+            analysis: aiAnalysis || "",
+            userMessage: userMsg,
+            chatHistory: chatMessages.slice(-8),
           },
-          analysis: aiAnalysis || "",
-          userMessage: userMsg,
-          chatHistory: chatMessages,
-        },
-      });
+        }),
+        45000,
+      );
 
       if (error || result?.error || result?.errorCode) {
         const aiErr = await parseAiError(result, error);
@@ -1573,12 +1596,13 @@ export default function BudgetKanbanPage() {
       setChatMessages(prev => [...prev, { role: "assistant", content: result?.result || "Sem resposta" }]);
     } catch (e: any) {
       console.error("[BudgetKanban] Chat error:", e);
-      toast.error("Erro no chat IA.");
-      setChatMessages(prev => [...prev, { role: "assistant", content: "Erro ao processar. Tente novamente." }]);
+      const message = e?.message === "AI_REQUEST_TIMEOUT" ? "O chat excedeu 45 segundos. Tente uma pergunta mais direta." : "Erro ao processar. Tente novamente.";
+      toast.error(message);
+      setChatMessages(prev => [...prev, { role: "assistant", content: message }]);
     } finally {
       setIsChatLoading(false);
     }
-  }, [selectedCard, chatInput, chatMessages, aiAnalysis, resolvedEquipment]);
+  }, [selectedCard, chatInput, chatMessages, aiAnalysis, aiAnalysisData, aiAnalysisIsFallback, resolvedEquipment]);
 
   const resumo = data?.resumo;
   // Orçamentos realizados breakdown: hoje, semana, mês
@@ -2172,7 +2196,7 @@ export default function BudgetKanbanPage() {
       )}
 
       {/* Card Detail Dialog */}
-      <Dialog open={!!selectedCard} onOpenChange={(open) => { if (!open) { setSelectedCard(null); setAiAnalysis(null); setShowChat(false); setChatMessages([]); } }}>
+      <Dialog open={!!selectedCard} onOpenChange={(open) => { if (!open) { setSelectedCard(null); setAiAnalysis(null); setAiAnalysisData(null); setAiAnalysisMeta(null); setAiAnalysisIsFallback(false); setAiSuggestDeep(false); setShowChat(false); setChatMessages([]); } }}>
         <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
           {selectedCard && (
             <>
@@ -2356,22 +2380,23 @@ export default function BudgetKanbanPage() {
                   <Button
                     className="flex-1 gap-2 bg-purple-600 hover:bg-purple-700 text-white"
                     onClick={handleAiAnalysis}
-                    disabled={isAnalyzing}
+                    disabled={isAnalyzing || isEquipmentLoading}
+                    title={isEquipmentLoading ? "Aguarde a identificação do equipamento" : "Análise rápida com dados e fotos da OS"}
                   >
                     {isAnalyzing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Brain className="h-4 w-4" />}
                     {isAnalyzing ? "Analisando..." : "Analisar com IA"}
                   </Button>
-                  {aiAnalysis && (
+                  {aiAnalysisData && !aiAnalysisIsFallback && (
                     <Button
                       variant="outline"
                       size="sm"
                       className="gap-1.5 border-orange-300 text-orange-700 hover:bg-orange-50"
                       onClick={handleDeepAnalysis}
-                      disabled={isAnalyzing}
+                      disabled={isAnalyzing || isEquipmentLoading}
                       title="Análise aprofundada com docs internos + pesquisa web"
                     >
                       {isAnalyzing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
-                      Aprofundar
+                      {aiSuggestDeep ? "Aprofundar recomendado" : "Aprofundar"}
                     </Button>
                   )}
                 </div>
@@ -2383,12 +2408,17 @@ export default function BudgetKanbanPage() {
                       <h4 className="font-semibold text-sm text-purple-900 flex items-center gap-1.5">
                         <Brain className="h-4 w-4" /> Análise Técnica (IA)
                       </h4>
-                      <button type="button" className="text-purple-400 hover:text-purple-600 text-xs" onClick={() => setAiAnalysis(null)}>✕ Fechar</button>
+                      <button type="button" className="text-purple-400 hover:text-purple-600 text-xs" onClick={() => { setAiAnalysis(null); setAiAnalysisData(null); setAiAnalysisMeta(null); setAiAnalysisIsFallback(false); setShowChat(false); setChatMessages([]); }}>✕ Fechar</button>
                     </div>
-                    <div className="text-sm text-purple-900 whitespace-pre-wrap leading-relaxed">{aiAnalysis}</div>
+                    <BudgetAiAnalysisPanel
+                      analysis={aiAnalysisData}
+                      legacyText={aiAnalysis}
+                      fallback={aiAnalysisIsFallback}
+                      meta={aiAnalysisMeta}
+                    />
 
                     {/* Chat contextual — aparece DENTRO da análise, só depois que existe análise */}
-                    <div className="border-t border-purple-200 pt-3 mt-3">
+                    {!aiAnalysisIsFallback && aiAnalysisData && <div className="border-t border-purple-200 pt-3 mt-3">
                       {!showChat ? (
                         <Button
                           variant="ghost"
@@ -2437,7 +2467,7 @@ export default function BudgetKanbanPage() {
                           </div>
                         </div>
                       )}
-                    </div>
+                    </div>}
                   </div>
                 )}
 

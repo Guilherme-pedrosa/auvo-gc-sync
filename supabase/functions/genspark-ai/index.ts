@@ -9,11 +9,70 @@ const corsHeaders = {
 // =========================================================================
 // IMAGE HELPERS
 // =========================================================================
+type AiPhotoInput = {
+  url: string;
+  label?: string;
+  category?: string;
+  originalIndex?: number;
+};
+
+async function fetchWithTimeout(url: string, init: RequestInit = {}, timeoutMs = 12000): Promise<Response> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(url, { ...init, signal: controller.signal });
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+function normalizePhotoInputs(photos: Array<string | AiPhotoInput> | undefined): AiPhotoInput[] {
+  const normalized: AiPhotoInput[] = [];
+  for (const photo of photos || []) {
+    const item = typeof photo === "string" ? { url: photo } : photo;
+    const url = String(item?.url || "").trim();
+    if (!/^https?:\/\//i.test(url)) continue;
+    normalized.push({
+      url,
+      label: String(item?.label || "Foto sem identificação"),
+      category: String(item?.category || "general"),
+      originalIndex: Number(item?.originalIndex || 0),
+    });
+  }
+  return normalized;
+}
+
+function selectPhotoInputs(photos: AiPhotoInput[], limit: number): AiPhotoInput[] {
+  if (photos.length <= limit) return photos;
+  const selected: AiPhotoInput[] = [];
+  const used = new Set<number>();
+  for (const category of ["identification", "defect", "parts", "general"]) {
+    const index = photos.findIndex((photo, photoIndex) => !used.has(photoIndex) && photo.category === category);
+    if (index >= 0 && selected.length < limit) {
+      selected.push(photos[index]);
+      used.add(index);
+    }
+  }
+  const remaining = photos.map((photo, index) => ({ photo, index })).filter(({ index }) => !used.has(index));
+  const slots = limit - selected.length;
+  for (let slot = 0; slot < slots && remaining.length > 0; slot++) {
+    const position = slots === 1 ? remaining.length - 1 : Math.round(slot * (remaining.length - 1) / (slots - 1));
+    selected.push(remaining[position].photo);
+  }
+  return selected.sort((a, b) => Number(a.originalIndex || 0) - Number(b.originalIndex || 0));
+}
+
 async function downloadImageAsBase64(url: string): Promise<{ mime: string; base64: string } | null> {
   try {
-    const imgResp = await fetch(url);
+    const imgResp = await fetchWithTimeout(url, {}, 8000);
     if (!imgResp.ok) return null;
+    const declaredLength = Number(imgResp.headers.get("content-length") || 0);
+    if (declaredLength > 4 * 1024 * 1024) {
+      console.warn(`[genspark-ai] Photo skipped: ${Math.round(declaredLength / 1024)}KB exceeds limit`);
+      return null;
+    }
     const arrayBuf = await imgResp.arrayBuffer();
+    if (arrayBuf.byteLength > 4 * 1024 * 1024) return null;
     const bytes = new Uint8Array(arrayBuf);
     let mime = "image/jpeg";
     if (bytes[0] === 0x89 && bytes[1] === 0x50) mime = "image/png";
@@ -25,29 +84,43 @@ async function downloadImageAsBase64(url: string): Promise<{ mime: string; base6
     const base64 = btoa(binary);
     console.log(`[genspark-ai] Photo added (${mime}, ${Math.round(base64.length / 1024)}KB)`);
     return { mime, base64 };
-  } catch {
+  } catch (error) {
+    console.warn(`[genspark-ai] Photo unavailable: ${error instanceof Error ? error.message : String(error)}`);
     return null;
   }
 }
 
-function filterImageUrls(urls: string[]): string[] {
-  return urls.filter((u: string) =>
-    /\.(jpg|jpeg|png|gif|webp|bmp)/i.test(u) || u.includes("image") || u.includes("foto") || u.includes("photo")
-  );
+function filterImageUrls(photos: Array<string | AiPhotoInput>): string[] {
+  return normalizePhotoInputs(photos).map((photo) => photo.url);
 }
 
-async function addPhotosToContent(contentParts: any[], fotos: string[], maxPhotos: number, detail: "low" | "high" = "low") {
-  const imageUrls = filterImageUrls(fotos);
-  for (const url of imageUrls.slice(0, maxPhotos)) {
-    console.log(`[genspark-ai] Downloading photo: ${url.substring(0, 100)}...`);
-    const img = await downloadImageAsBase64(url);
+async function addPhotosToContent(
+  contentParts: any[],
+  photos: Array<string | AiPhotoInput>,
+  maxPhotos: number,
+  detail: "low" | "high" = "low",
+): Promise<number> {
+  const selected = selectPhotoInputs(normalizePhotoInputs(photos), maxPhotos);
+  const downloaded = await Promise.all(selected.map(async (photo) => {
+    console.log(`[genspark-ai] Downloading photo: ${photo.url.substring(0, 100)}...`);
+    return { photo, image: await downloadImageAsBase64(photo.url) };
+  }));
+
+  let used = 0;
+  for (const { photo, image: img } of downloaded) {
     if (img) {
+      contentParts.push({
+        type: "text",
+        text: `Foto ${used + 1} — categoria: ${photo.category || "general"}; origem: ${photo.label || "não informada"}`,
+      });
       contentParts.push({
         type: "image_url",
         image_url: { url: `data:${img.mime};base64,${img.base64}`, detail },
       });
+      used++;
     }
   }
+  return used;
 }
 
 // =========================================================================
@@ -78,21 +151,50 @@ function cleanEquipmentString(raw: string): string {
     .replace(/\bMOD\b/gi, "")
     .replace(/\b[A-Za-z0-9]{8,}\b/g, (match) => {
       const digitRatio = (match.replace(/[^0-9]/g, "").length) / match.length;
-      if (match.length <= 8 && digitRatio < 0.6) return match;
-      return "";
+      // Preserve long alphabetic model names such as iCombiPro and SelfCookingCenter.
+      return digitRatio >= 0.6 ? "" : match;
     })
     .replace(/\s+/g, " ")
     .trim();
 }
 
+function identifyKnownEquipment(equipamento: string): { manufacturer: string[]; modelFamily: string | null } {
+  const text = equipamento.toLowerCase();
+  const knownBrands: Array<{ pattern: RegExp; terms: string[] }> = [
+    { pattern: /\brational\b/i, terms: ["rational"] },
+    { pattern: /\bhobart\b|\bvulcan\b/i, terms: ["hobart", "vulcan"] },
+    { pattern: /\bpr[aá]tica\b/i, terms: ["pratica", "prática"] },
+    { pattern: /\btramontina\b/i, terms: ["tramontina"] },
+    { pattern: /\belgin\b/i, terms: ["elgin"] },
+  ];
+  const brand = knownBrands.find((item) => item.pattern.test(text));
+  if (!brand) return { manufacturer: [], modelFamily: null };
+
+  const modelPatterns: Array<{ pattern: RegExp; name: string }> = [
+    { pattern: /\bi\s*combi\s*pro\b|\bicombipro\b/i, name: "iCombi Pro" },
+    { pattern: /\bi\s*vario\b/i, name: "iVario" },
+    { pattern: /\bself\s*cooking\s*center\b|\bselfcookingcenter\b|\bscc\b/i, name: "SelfCookingCenter" },
+    { pattern: /\bcombi\s*master\b|\bcombimaster\b|\bcpc\b/i, name: "CombiMaster" },
+    { pattern: /\becomax\b/i, name: "Ecomax" },
+  ];
+  const model = modelPatterns.find((item) => item.pattern.test(text));
+  return { manufacturer: brand.terms, modelFamily: model?.name || null };
+}
+
 async function identifyManufacturerAndModel(equipamento: string): Promise<{ manufacturer: string[]; modelFamily: string | null }> {
+  const cleaned = cleanEquipmentString(equipamento);
+  const known = identifyKnownEquipment(cleaned);
+  if (known.manufacturer.length > 0) {
+    console.log(`[genspark-ai] [manufacturer] Identificação local: [${known.manufacturer.join(",")}], modelo=${known.modelFamily || "?"}`);
+    return known;
+  }
+
   const PERPLEXITY_API_KEY = Deno.env.get("PERPLEXITY_API_KEY");
-  if (!PERPLEXITY_API_KEY || !equipamento.trim()) return { manufacturer: [], modelFamily: null };
+  if (!PERPLEXITY_API_KEY || !cleaned) return { manufacturer: [], modelFamily: null };
 
   try {
-    const cleaned = cleanEquipmentString(equipamento);
     console.log(`[genspark-ai] [manufacturer] Identificando fabricante+modelo de: "${cleaned.substring(0, 100)}"`);
-    const response = await fetch("https://api.perplexity.ai/chat/completions", {
+    const response = await fetchWithTimeout("https://api.perplexity.ai/chat/completions", {
       method: "POST",
       headers: {
         "Authorization": `Bearer ${PERPLEXITY_API_KEY}`,
@@ -112,7 +214,7 @@ iCombi Pro` },
         ],
         temperature: 0.0,
       }),
-    });
+    }, 8000);
 
     if (!response.ok) {
       const errText = await response.text();
@@ -219,6 +321,12 @@ async function fetchInternalTechDocs(query?: string, equipamento?: string, optio
 
   console.log(`[genspark-ai] [internal-docs] Termos: [${filterTerms.join(",")}], modelFamily="${modelFamily || "?"}"`);
 
+  if (filterTerms.length === 0) {
+    result.error = "Equipamento insuficientemente identificado para pesquisar documentos";
+    result.elapsed_ms = Date.now() - startTime;
+    return result;
+  }
+
   const results: string[] = [];
   let totalFilesRead = 0;
   let totalChars = 0;
@@ -261,7 +369,7 @@ async function fetchInternalTechDocs(query?: string, equipamento?: string, optio
 
         console.log(`[genspark-ai] [OCR] ${fileName} — batch páginas ${pages[0]}-${pages[pages.length - 1]}`);
         const visionUrl = `https://vision.googleapis.com/v1/files:annotate?key=${API_KEY}`;
-        const visionResp = await fetch(visionUrl, {
+        const visionResp = await fetchWithTimeout(visionUrl, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -271,7 +379,7 @@ async function fetchInternalTechDocs(query?: string, equipamento?: string, optio
               pages,
             }],
           }),
-        });
+        }, 15000);
 
         if (!visionResp.ok) {
           const errBody = await visionResp.text();
@@ -316,7 +424,7 @@ async function fetchInternalTechDocs(query?: string, equipamento?: string, optio
 
   async function listFolder(folderId: string): Promise<any[]> {
     const url = `https://www.googleapis.com/drive/v3/files?q='${folderId}'+in+parents+and+trashed=false&key=${API_KEY}&fields=files(id,name,mimeType,size)&pageSize=100`;
-    const resp = await fetch(url);
+    const resp = await fetchWithTimeout(url, {}, 8000);
     if (!resp.ok) {
       const errBody = await resp.text();
       console.error(`[genspark-ai] [internal-docs] Drive list FAILED: HTTP ${resp.status}`);
@@ -340,28 +448,28 @@ async function fetchInternalTechDocs(query?: string, equipamento?: string, optio
 
     if (mimeType === "application/vnd.google-apps.document") {
       try {
-        const resp = await fetch(`https://www.googleapis.com/drive/v3/files/${file.id}/export?mimeType=text/plain&key=${API_KEY}`);
+        const resp = await fetchWithTimeout(`https://www.googleapis.com/drive/v3/files/${file.id}/export?mimeType=text/plain&key=${API_KEY}`, {}, 8000);
         if (resp.ok) addResult(fullPath, await resp.text());
         else await resp.text();
       } catch (e) { console.error(`[genspark-ai] [internal-docs] Doc error ${fullPath}:`, e); }
     }
     else if (mimeType === "application/vnd.google-apps.spreadsheet") {
       try {
-        const resp = await fetch(`https://www.googleapis.com/drive/v3/files/${file.id}/export?mimeType=text/csv&key=${API_KEY}`);
+        const resp = await fetchWithTimeout(`https://www.googleapis.com/drive/v3/files/${file.id}/export?mimeType=text/csv&key=${API_KEY}`, {}, 8000);
         if (resp.ok) addResult(fullPath, await resp.text(), "📊");
         else await resp.text();
       } catch (e) { console.error(`[genspark-ai] [internal-docs] Sheet error ${fullPath}:`, e); }
     }
     else if (mimeType.startsWith("text/") || isTextFile(fileName)) {
       try {
-        const resp = await fetch(`https://www.googleapis.com/drive/v3/files/${file.id}?alt=media&key=${API_KEY}`);
+        const resp = await fetchWithTimeout(`https://www.googleapis.com/drive/v3/files/${file.id}?alt=media&key=${API_KEY}`, {}, 10000);
         if (resp.ok) addResult(fullPath, await resp.text());
         else await resp.text();
       } catch (e) { console.error(`[genspark-ai] [internal-docs] Text error ${fullPath}:`, e); }
     }
     else if (mimeType === "application/pdf" || fileName.toLowerCase().endsWith(".pdf")) {
       try {
-        const resp = await fetch(`https://www.googleapis.com/drive/v3/files/${file.id}?alt=media&key=${API_KEY}`);
+        const resp = await fetchWithTimeout(`https://www.googleapis.com/drive/v3/files/${file.id}?alt=media&key=${API_KEY}`, {}, 12000);
         if (resp.ok) {
           const buf = new Uint8Array(await resp.arrayBuffer());
           const pdfText = extractPdfText(buf);
@@ -407,7 +515,17 @@ async function fetchInternalTechDocs(query?: string, equipamento?: string, optio
       const matchingFolders = scoredFolders.filter((f: any) => f.score > 0);
       const foldersToScan = matchingFolders.slice(0, 3);
 
-      for (const file of topFiles) {
+      const scoredTopFiles = topFiles.map((file: any) => {
+        const name = (file.name || "").toLowerCase();
+        const isIndex = name.startsWith("_") || /(^|[_. -])(indice|índice|index|readme)([_. -]|$)/i.test(name);
+        let score = isIndex ? -100 : 0;
+        for (const term of filterTerms) {
+          if (name.includes(term)) score += manufacturerTerms.includes(term) ? 5 : 3;
+        }
+        return { file, score };
+      }).filter((item: any) => item.score > 0).sort((a: any, b: any) => b.score - a.score);
+
+      for (const { file } of scoredTopFiles) {
         if (limitReached()) break;
         const mime = file.mimeType || "";
         const name = (file.name || "").toLowerCase();
@@ -431,7 +549,9 @@ async function fetchInternalTechDocs(query?: string, equipamento?: string, optio
           const nameLower = (f.name || "").toLowerCase();
           if (f.mimeType === "application/zip" || nameLower.endsWith(".zip")) continue;
 
-          let score = 0;
+          // A file inside a strongly matching manufacturer folder is relevant even
+          // when its filename is generic (for example "manual de manutenção.pdf").
+          let score = Math.max(1, Number(folder.score || 0));
           for (const term of modelFamilyTerms) {
             if (nameLower.includes(term)) score += 15;
           }
@@ -510,14 +630,14 @@ async function searchPerplexity(
     if (options?.domains && options.domains.length > 0) bodyPayload.search_domain_filter = options.domains;
     if (options?.recency) bodyPayload.search_recency_filter = options.recency;
 
-    const response = await fetch("https://api.perplexity.ai/chat/completions", {
+    const response = await fetchWithTimeout("https://api.perplexity.ai/chat/completions", {
       method: "POST",
       headers: {
         "Authorization": `Bearer ${PERPLEXITY_API_KEY}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify(bodyPayload),
-    });
+    }, 15000);
 
     if (!response.ok) {
       const errText = await response.text();
@@ -620,8 +740,9 @@ interface AnalyzeContext {
   orientacao?: string;
   pecas?: string;
   servicos?: string;
+  tempo?: string;
   observacoes?: string;
-  fotos?: string[];
+  fotos?: Array<string | AiPhotoInput>;
   todas_respostas?: string;
   cliente?: string;
   tecnico?: string;
@@ -701,6 +822,9 @@ function buildWebBlock(webResearch: string): string {
 
 type AiCallOptions = {
   temperature?: number;
+  action?: string;
+  timeoutMs?: number;
+  jsonMode?: boolean;
 };
 
 // Error codes structured for frontend consumption
@@ -708,6 +832,7 @@ const AI_ERROR = {
   QUOTA_EXCEEDED: "OPENAI_QUOTA_EXCEEDED",
   RATE_LIMITED: "OPENAI_RATE_LIMITED",
   REQUEST_FAILED: "OPENAI_REQUEST_FAILED",
+  TIMEOUT: "OPENAI_TIMEOUT",
   NO_KEY: "OPENAI_NO_KEY",
 } as const;
 
@@ -716,6 +841,7 @@ type AiCallResult = {
   error?: string;
   errorCode?: string;
   status?: number;
+  model?: string;
 };
 
 function buildAiErrorResponse(aiResult: AiCallResult) {
@@ -726,6 +852,7 @@ function buildAiErrorResponse(aiResult: AiCallResult) {
     AI_ERROR.QUOTA_EXCEEDED,
     AI_ERROR.RATE_LIMITED,
     AI_ERROR.REQUEST_FAILED,
+    AI_ERROR.TIMEOUT,
   ]);
 
   const isHandledOperationalError = handledStatusCodes.has(code);
@@ -806,7 +933,7 @@ async function callAI(
   messages: any[],
   model: string,
   maxTokens: number,
-  options: AiCallOptions & { action?: string } = {},
+  options: AiCallOptions = {},
 ): Promise<AiCallResult> {
   const OPENAI_API_KEY = Deno.env.get("OPENAI_API_KEY");
   if (!OPENAI_API_KEY) {
@@ -815,17 +942,10 @@ async function callAI(
 
   const temperature = options.temperature ?? 0.2;
   const actionLabel = options.action || "unknown";
+  const timeoutMs = options.timeoutMs ?? 45000;
+  const openaiModel = model.replace(/^openai\//, "");
 
-  // Normaliza modelo — envia direto para a API OpenAI
-  let openaiModel = model;
-  if (model === "openai/gpt-5.2" || model === "openai/gpt-5") openaiModel = "gpt-4o";
-  else if (model === "openai/gpt-5-mini") openaiModel = "gpt-4o-mini";
-  else if (model.startsWith("openai/")) openaiModel = "gpt-4o";
-  else if (model.startsWith("google/")) openaiModel = "gpt-4o-mini";
-
-  // Log key prefix for diagnostic (safe — only first 8 chars)
-  const keyPrefix = OPENAI_API_KEY.substring(0, 8);
-  console.log(`[genspark-ai] [callAI] action=${actionLabel}, model=${openaiModel}, keyPrefix=${keyPrefix}..., maxTokens=${maxTokens}, temp=${temperature}`);
+  console.log(`[genspark-ai] [callAI] action=${actionLabel}, model=${openaiModel}, maxTokens=${maxTokens}, timeoutMs=${timeoutMs}`);
 
   const MAX_RETRIES = 3;
   let response: Response | null = null;
@@ -834,20 +954,34 @@ async function callAI(
   for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
     console.log(`[genspark-ai] Calling OpenAI: model=${openaiModel}, attempt=${attempt + 1}/${MAX_RETRIES + 1}`);
 
-    response = await fetch("https://api.openai.com/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${OPENAI_API_KEY}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: openaiModel,
-        messages,
-        temperature,
-        // Newer models (gpt-5*) require max_completion_tokens; older ones use max_tokens
-        ...(openaiModel.startsWith("gpt-5") ? { max_completion_tokens: maxTokens } : { max_tokens: maxTokens }),
-      }),
-    });
+    try {
+      response = await fetchWithTimeout("https://api.openai.com/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${OPENAI_API_KEY}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          model: openaiModel,
+          messages,
+          temperature,
+          ...(openaiModel.startsWith("gpt-5") ? { max_completion_tokens: maxTokens } : { max_tokens: maxTokens }),
+          ...(options.jsonMode ? { response_format: { type: "json_object" } } : {}),
+        }),
+      }, timeoutMs);
+    } catch (error) {
+      if (error instanceof DOMException && error.name === "AbortError") {
+        console.error(`[genspark-ai] [TIMEOUT] action=${actionLabel} model=${openaiModel} timeoutMs=${timeoutMs}`);
+        return {
+          result: "",
+          error: `A análise excedeu ${Math.round(timeoutMs / 1000)} segundos. Tente novamente ou use menos fotos.`,
+          errorCode: AI_ERROR.TIMEOUT,
+          status: 408,
+          model: openaiModel,
+        };
+      }
+      throw error;
+    }
 
     if (response.ok) break;
 
@@ -936,7 +1070,151 @@ async function callAI(
   if (usage) {
     console.log(`[genspark-ai] [callAI] OK action=${actionLabel} model=${openaiModel} tokens_in=${usage.prompt_tokens} tokens_out=${usage.completion_tokens} total=${usage.total_tokens}`);
   }
-  return { result: content };
+  return { result: content, model: openaiModel };
+}
+
+const BUDGET_AI_PROMPT_VERSION = "budget-v2.0";
+const ANALYSIS_MODEL = Deno.env.get("OPENAI_BUDGET_ANALYSIS_MODEL") || "gpt-4o";
+const CHAT_MODEL = Deno.env.get("OPENAI_BUDGET_CHAT_MODEL") || "gpt-4o-mini";
+
+type BudgetAnalysis = {
+  version: string;
+  summary: string;
+  status: "pode_seguir" | "pode_seguir_com_ressalvas" | "validacao_adicional";
+  equipment: { name: string; manufacturer: string; model: string; id: string; confidence: "baixa" | "media" | "alta"; evidence: string };
+  readiness: { blocked: boolean; reasons: string[]; missing: string[] };
+  facts: Array<{ statement: string; evidence: string; source: string }>;
+  hypotheses: Array<{ statement: string; reason: string; confidence: "baixa" | "media" | "alta"; needs_validation: boolean }>;
+  recommendations: Array<{ item: string; type: "peca" | "insumo" | "servico" | "verificacao"; status: "confirmado" | "recomendar" | "verificar"; reason: string; evidence: string; source: string; confidence: "baixa" | "media" | "alta" }>;
+  filling_improvements: string[];
+  observation_suggested: string;
+  policies: Array<{ policy: string; reason: string }>;
+  questions: string[];
+};
+
+const asText = (value: unknown, max = 600) => String(value || "").trim().slice(0, max);
+const asTextList = (value: unknown, maxItems = 8) => Array.isArray(value)
+  ? value.map((item) => asText(item, 350)).filter(Boolean).slice(0, maxItems)
+  : [];
+const asConfidence = (value: unknown): "baixa" | "media" | "alta" => {
+  const normalized = asText(value).toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+  return normalized === "alta" ? "alta" : normalized === "media" ? "media" : "baixa";
+};
+
+function parseAndNormalizeBudgetAnalysis(raw: string, maxRecommendations: number): BudgetAnalysis | null {
+  try {
+    const clean = raw.trim().replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "");
+    const parsed = JSON.parse(clean);
+    const allowedStatuses = new Set(["pode_seguir", "pode_seguir_com_ressalvas", "validacao_adicional"]);
+    const equipment = parsed?.equipment || {};
+    const readiness = parsed?.readiness || {};
+
+    const facts = (Array.isArray(parsed?.facts) ? parsed.facts : []).map((item: any) => ({
+      statement: asText(item?.statement),
+      evidence: asText(item?.evidence),
+      source: asText(item?.source || "OS"),
+    })).filter((item: any) => item.statement && item.evidence).slice(0, 10);
+
+    const hypotheses = (Array.isArray(parsed?.hypotheses) ? parsed.hypotheses : []).map((item: any) => ({
+      statement: asText(item?.statement),
+      reason: asText(item?.reason),
+      confidence: asConfidence(item?.confidence),
+      needs_validation: item?.needs_validation !== false,
+    })).filter((item: any) => item.statement && item.reason).slice(0, 8);
+
+    const recommendations = (Array.isArray(parsed?.recommendations) ? parsed.recommendations : []).map((item: any) => {
+      const evidence = asText(item?.evidence);
+      const source = asText(item?.source);
+      const requestedStatus = ["confirmado", "recomendar", "verificar"].includes(item?.status) ? item.status : "verificar";
+      // A recommendation is never allowed to remain "confirmed" without traceable evidence.
+      const status = requestedStatus === "confirmado" && (!evidence || !source) ? "verificar" : requestedStatus;
+      return {
+        item: asText(item?.item),
+        type: ["peca", "insumo", "servico", "verificacao"].includes(item?.type) ? item.type : "verificacao",
+        status,
+        reason: asText(item?.reason),
+        evidence: evidence || "Não evidenciado nos dados recebidos",
+        source: source || "hipótese da análise",
+        confidence: asConfidence(item?.confidence),
+      };
+    }).filter((item: any) => item.item && item.reason).slice(0, maxRecommendations);
+
+    return {
+      version: BUDGET_AI_PROMPT_VERSION,
+      summary: asText(parsed?.summary, 900) || "Análise técnica concluída com dados limitados.",
+      status: allowedStatuses.has(parsed?.status) ? parsed.status : "validacao_adicional",
+      equipment: {
+        name: asText(equipment?.name), manufacturer: asText(equipment?.manufacturer), model: asText(equipment?.model),
+        id: asText(equipment?.id), confidence: asConfidence(equipment?.confidence), evidence: asText(equipment?.evidence),
+      },
+      readiness: {
+        blocked: Boolean(readiness?.blocked),
+        reasons: asTextList(readiness?.reasons),
+        missing: asTextList(readiness?.missing),
+      },
+      facts,
+      hypotheses,
+      recommendations,
+      filling_improvements: asTextList(parsed?.filling_improvements),
+      observation_suggested: asText(parsed?.observation_suggested, 1500),
+      policies: (Array.isArray(parsed?.policies) ? parsed.policies : []).map((item: any) => ({
+        policy: asText(item?.policy), reason: asText(item?.reason),
+      })).filter((item: any) => item.policy && item.reason).slice(0, 6),
+      questions: asTextList(parsed?.questions),
+    };
+  } catch (error) {
+    console.error(`[genspark-ai] Invalid structured response: ${error instanceof Error ? error.message : String(error)}`);
+    return null;
+  }
+}
+
+function buildBudgetAnalysisSystemPrompt(deep: boolean): string {
+  const recommendationLimit = deep ? 10 : 6;
+  return `Você é o copiloto de triagem técnica de orçamentos da WeDo.
+Responda SOMENTE JSON válido, sem markdown, seguindo exatamente este contrato:
+{"version":"${BUDGET_AI_PROMPT_VERSION}","summary":"string","status":"pode_seguir|pode_seguir_com_ressalvas|validacao_adicional","equipment":{"name":"string","manufacturer":"string","model":"string","id":"string","confidence":"baixa|media|alta","evidence":"string"},"readiness":{"blocked":false,"reasons":["string"],"missing":["string"]},"facts":[{"statement":"string","evidence":"string","source":"OS|foto identificada|documento interno|web"}],"hypotheses":[{"statement":"string","reason":"string","confidence":"baixa|media|alta","needs_validation":true}],"recommendations":[{"item":"string","type":"peca|insumo|servico|verificacao","status":"confirmado|recomendar|verificar","reason":"string","evidence":"string","source":"string","confidence":"baixa|media|alta"}],"filling_improvements":["string"],"observation_suggested":"string","policies":[{"policy":"string","reason":"string"}],"questions":["string"]}.
+
+REGRAS OBRIGATÓRIAS:
+- Não invente peças, códigos, defeitos, medidas, causas, quantidades, preços ou procedimentos.
+- Separe fatos de hipóteses. Todo fato e toda recomendação deve citar evidência e fonte rastreáveis.
+- "confirmado" somente quando o item estiver explicitamente informado ou visualmente inequívoco; caso contrário use "recomendar" ou "verificar".
+- Política interna sozinha nunca confirma um item. Ela só pode gerar recomendação/verificação quando o gatilho e o componente forem compatíveis.
+- Para Rational, não liste automaticamente filtro, junta, sensor ou descalcificante. Só relacione quando modelo, manual, evidência ou subsistema do defeito justificar.
+- Se houver dano/queima/ausência explícita, priorize troca/verificação do componente; não esconda isso como preventiva.
+- Identifique equipamento pelas fontes fornecidas. Se não der, assuma confiança baixa e faça pergunta objetiva.
+- Não liste EPI básico. Não fale de preço.
+- Máximo de ${recommendationLimit} recomendações e 8 perguntas. Seja técnico e direto.
+${deep ? "- Modo aprofundado: use documentos/web somente como fonte auxiliar e diferencie claramente cada origem." : "- Modo padrão: use apenas dados e fotos desta OS; não suponha conteúdo de manuais ou da web."}`;
+}
+
+function buildBudgetCaseText(context: AnalyzeContext, manufacturer: string | null, modelFamily: string | null): string {
+  return `DADOS DA OS
+- Cliente: ${context?.cliente || "N/A"}
+- Técnico: ${context?.tecnico || "N/A"}
+- Data: ${context?.data_tarefa || "N/A"}
+- Equipamento: ${context?.equipamento || "N/A"}
+- ID / Patrimônio / Série: ${context?.equipamento_id || "N/A"}
+- Fabricante identificado: ${manufacturer || "Não identificado"}
+- Família/modelo identificado: ${modelFamily || "Não identificado"}
+- Descrição: ${context?.descricao || "N/A"}
+- Orientação do chamado: ${context?.orientacao || "N/A"}
+- Peças informadas: ${context?.pecas || "N/A"}
+- Serviços informados: ${context?.servicos || "N/A"}
+- Tempo informado: ${context?.tempo || "N/A"}
+- Observações do técnico: ${context?.observacoes || "N/A"}
+- Respostas do questionário: ${clampForPrompt(context?.todas_respostas || "N/A", 7000)}`;
+}
+
+function formatBudgetAnalysisForChat(analysis: BudgetAnalysis): string {
+  return [
+    `Status: ${analysis.status}`,
+    `Resumo: ${analysis.summary}`,
+    `Equipamento: ${analysis.equipment.name || "não identificado"}; fabricante: ${analysis.equipment.manufacturer || "não identificado"}; modelo: ${analysis.equipment.model || "não identificado"}`,
+    `Fatos: ${analysis.facts.map((item) => `${item.statement} [${item.evidence}]`).join(" | ") || "nenhum"}`,
+    `Hipóteses: ${analysis.hypotheses.map((item) => `${item.statement} (${item.confidence})`).join(" | ") || "nenhuma"}`,
+    `Recomendações: ${analysis.recommendations.map((item) => `${item.status}: ${item.item} — ${item.reason}`).join(" | ") || "nenhuma"}`,
+    `Pendências: ${[...analysis.readiness.reasons, ...analysis.readiness.missing].join(" | ") || "nenhuma"}`,
+  ].join("\n");
 }
 
 // =========================================================================
@@ -984,7 +1262,7 @@ serve(async (req) => {
       // Test 1: gpt-4o-mini (cheapest, most available)
       const t1 = await callAI(
         [{ role: "user", content: "Responda apenas: OK" }],
-        "openai/gpt-5-mini", // maps to gpt-4o-mini
+        "gpt-4o-mini",
         10,
         { temperature: 0, action: "sanity_test_mini" },
       );
@@ -1000,7 +1278,7 @@ serve(async (req) => {
       // Test 2: gpt-4o (main model used by analyze)
       const t2 = await callAI(
         [{ role: "user", content: "Responda apenas: OK" }],
-        "openai/gpt-5.2", // maps to gpt-4o
+        "gpt-4o",
         10,
         { temperature: 0, action: "sanity_test_4o" },
       );
@@ -1035,7 +1313,7 @@ serve(async (req) => {
     // =====================================================================
     if (action === "improve") {
       const { text, field, context } = body;
-      let model = "openai/gpt-5-mini";
+      let model = "gpt-4o-mini";
 
       let tipoCampo = "Campo Livre";
       const fl = (field || "").toLowerCase();
@@ -1083,7 +1361,7 @@ FORMATO: Retorne apenas o texto melhorado, sem explicação.`;
 
       if (tipoCampo === "OBSERVAÇÕES" && context?.fotos?.length > 0) {
         await addPhotosToContent(userContentParts, context.fotos, 4, "low");
-        model = "openai/gpt-5"; // needs vision
+        model = "gpt-4o"; // needs vision
       }
 
       const messages = [
@@ -1091,9 +1369,9 @@ FORMATO: Retorne apenas o texto melhorado, sem explicação.`;
         { role: "user", content: userContentParts.length === 1 ? userText : userContentParts },
       ];
 
-      const improveMaxTokens = model === "openai/gpt-5" ? 3200 : 2200;
+      const improveMaxTokens = model === "gpt-4o" ? 3200 : 2200;
       const aiResult = await callAI(messages, model, improveMaxTokens, {
-        temperature: 0.25, action: "improve",
+        temperature: 0.25, action: "improve", timeoutMs: 35000,
       });
       if (aiResult.error) {
         return buildAiErrorResponse(aiResult);
@@ -1111,8 +1389,66 @@ FORMATO: Retorne apenas o texto melhorado, sem explicação.`;
     // Modo expandido: gatilho real → web + docs + OCR + mais fotos
     // =====================================================================
     if (action === "analyze") {
+      const startedAt = Date.now();
+      const { context = {} } = body as { context: AnalyzeContext };
+      const equipForSearch = context.equipamento || "";
+      const { manufacturer: manufacturerTerms, modelFamily } = await identifyManufacturerAndModel(equipForSearch);
+      const manufacturer = manufacturerTerms.length > 0 ? manufacturerTerms[0] : null;
+      const deepSuggestion = shouldExpandAnalysis(context, manufacturer);
+      const receivedPhotos = normalizePhotoInputs(context.fotos).length;
+
+      const content: any[] = [{
+        type: "text",
+        text: `${buildBudgetCaseText(context, manufacturer, modelFamily)}\n\nFOTOS RECEBIDAS: ${receivedPhotos}. As legendas informam de qual pergunta do questionário cada foto veio.`,
+      }];
+      const photosUsed = receivedPhotos > 0
+        ? await addPhotosToContent(content, context.fotos || [], 6, manufacturer ? "low" : "high")
+        : 0;
+
+      const aiResult = await callAI([
+        { role: "system", content: buildBudgetAnalysisSystemPrompt(false) },
+        { role: "user", content },
+      ], ANALYSIS_MODEL, 3000, {
+        action: "analyze_v2",
+        temperature: 0.1,
+        timeoutMs: 45000,
+        jsonMode: true,
+      });
+
+      if (aiResult.error) return buildAiErrorResponse(aiResult);
+      const analysis = parseAndNormalizeBudgetAnalysis(aiResult.result, 6);
+      if (!analysis) {
+        return buildAiErrorResponse({
+          result: "",
+          error: "A IA respondeu em um formato inválido. Tente novamente.",
+          errorCode: AI_ERROR.REQUEST_FAILED,
+          status: 502,
+        });
+      }
+
+      return new Response(JSON.stringify({
+        result: formatBudgetAnalysisForChat(analysis),
+        analysis,
+        mode: "standard",
+        suggest_deep: deepSuggestion.expand,
+        reasons: deepSuggestion.reasons,
+        meta: {
+          model: aiResult.model || ANALYSIS_MODEL,
+          mode: "standard",
+          prompt_version: BUDGET_AI_PROMPT_VERSION,
+          photos_received: receivedPhotos,
+          photos_used: photosUsed,
+          docs: 0,
+          docs_titles: [],
+          web: false,
+          elapsed_ms: Date.now() - startedAt,
+        },
+      }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
+
+    if (action === "analyze_legacy") {
       const { context } = body as { context: AnalyzeContext };
-      const ANALYSIS_MODEL = "openai/gpt-5.2"; // budget_analysis_agent
+      const ANALYSIS_MODEL = "gpt-4o"; // legacy route
 
       // Step 1: Quick manufacturer identification (always, via Perplexity sonar — cheap)
       const equipForSearch = context?.equipamento || context?.descricao || "";
@@ -1318,7 +1654,7 @@ TOM: Telegráfico, técnico, zero enrolação. Prefira disciplina e auditabilida
       // Retry com gpt-4o-mini se resultado veio vazio (timeout interno do modelo)
       if (!aiResult.error && !aiResult.result?.trim()) {
         console.warn(`[genspark-ai] [analyze] Resultado vazio do ${ANALYSIS_MODEL}. Retentando com gpt-4o-mini...`);
-        aiResult = await callAI(messages, "openai/gpt-5-mini", analyzeMaxTokens, { action: "analyze_retry" });
+        aiResult = await callAI(messages, "gpt-4o-mini", analyzeMaxTokens, { action: "analyze_retry" });
       }
 
       if (aiResult.error) {
@@ -1340,7 +1676,7 @@ TOM: Telegráfico, técnico, zero enrolação. Prefira disciplina e auditabilida
     // =====================================================================
     if (action === "chat") {
       const { context, analysis, userMessage, chatHistory } = body;
-      const CHAT_MODEL = "openai/gpt-5-mini"; // budget_chat_agent
+      const CHAT_MODEL = "gpt-4o-mini"; // budget_chat_agent
 
       const systemPrompt = `Você é o assistente de chat contextual do orçamento da WeDo.
 
@@ -1411,7 +1747,7 @@ TOM: Técnico, direto, sem floreio.`;
 
       const messages: any[] = [{ role: "system", content: systemPrompt }];
       if (chatHistory && Array.isArray(chatHistory)) {
-        for (const msg of chatHistory) {
+        for (const msg of chatHistory.slice(-8)) {
           messages.push({ role: msg.role, content: msg.content });
         }
       }
@@ -1420,7 +1756,7 @@ TOM: Técnico, direto, sem floreio.`;
       console.log(`[genspark-ai] [chat] model=${CHAT_MODEL}, hasAnalysis=${!!analysis}, needsExternalData=${needsExternalData}, msgLen=${userMessage?.length}`);
 
       const aiResult = await callAI(messages, CHAT_MODEL, 1800, {
-        temperature: 0.2, action: "chat",
+        temperature: 0.2, action: "chat", timeoutMs: 35000,
       });
       if (aiResult.error) {
         return buildAiErrorResponse(aiResult);
@@ -1437,9 +1773,64 @@ TOM: Técnico, direto, sem floreio.`;
     // Ativado por pedido explícito do usuário
     // =====================================================================
     if (action === "deep_analyze") {
+      const startedAt = Date.now();
+      const { context = {} } = body as { context: AnalyzeContext };
+      const equipForSearch = context.equipamento || "";
+      const { manufacturer: manufacturerTerms, modelFamily } = await identifyManufacturerAndModel(equipForSearch);
+      const manufacturer = manufacturerTerms.length > 0 ? manufacturerTerms[0] : null;
+
+      const [internalDocs, webResearch] = await Promise.all([
+        fetchInternalTechDocs(equipForSearch, equipForSearch, { maxDocs: 4, timeout: 18000 }),
+        searchEquipmentOnWeb(equipForSearch, context.descricao || "", context.orientacao || "", context.pecas || ""),
+      ]);
+
+      const receivedPhotos = normalizePhotoInputs(context.fotos).length;
+      const content: any[] = [{
+        type: "text",
+        text: `${buildBudgetCaseText(context, manufacturer, modelFamily)}${buildInternalDocsBlock(internalDocs)}${buildWebBlock(webResearch)}\n\nFOTOS RECEBIDAS: ${receivedPhotos}.`,
+      }];
+      const photosUsed = receivedPhotos > 0
+        ? await addPhotosToContent(content, context.fotos || [], 8, "high")
+        : 0;
+
+      const aiResult = await callAI([
+        { role: "system", content: buildBudgetAnalysisSystemPrompt(true) },
+        { role: "user", content },
+      ], ANALYSIS_MODEL, 4200, {
+        action: "deep_analyze_v2",
+        temperature: 0.1,
+        timeoutMs: 50000,
+        jsonMode: true,
+      });
+      if (aiResult.error) return buildAiErrorResponse(aiResult);
+
+      const analysis = parseAndNormalizeBudgetAnalysis(aiResult.result, 10);
+      if (!analysis) {
+        return buildAiErrorResponse({ result: "", error: "A análise aprofundada retornou formato inválido. Tente novamente.", errorCode: AI_ERROR.REQUEST_FAILED, status: 502 });
+      }
+
+      return new Response(JSON.stringify({
+        result: formatBudgetAnalysisForChat(analysis),
+        analysis,
+        mode: "deep",
+        meta: {
+          model: aiResult.model || ANALYSIS_MODEL,
+          mode: "deep",
+          prompt_version: BUDGET_AI_PROMPT_VERSION,
+          photos_received: receivedPhotos,
+          photos_used: photosUsed,
+          docs: internalDocs.docs_count,
+          docs_titles: internalDocs.docs_titles,
+          web: Boolean(webResearch),
+          elapsed_ms: Date.now() - startedAt,
+        },
+      }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
+
+    if (action === "deep_analyze_legacy") {
       // Redireciona para analyze com flag forceExpand
       const { context } = body as { context: AnalyzeContext };
-      const DEEP_MODEL = "openai/gpt-5.2";
+      const DEEP_MODEL = "gpt-4o";
 
       const equipForSearch = context?.equipamento || context?.descricao || "";
       const equipStr = cleanEquipmentString(equipForSearch);
