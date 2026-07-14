@@ -537,7 +537,7 @@ async function fetchGcOrcamentos(
   // Consulta separada por tipo (produto vs servico) para tagear corretamente cada orçamento
   for (const tipo of tipos) {
     let page = startPage;
-    let totalPages = 1;
+    let totalPages = Math.max(1, startPage);
     const MAX_PAGES = 500;
     let pagesForThisTipo = 0;
     while (page <= totalPages && page <= MAX_PAGES && (!maxPagesPerTipo || pagesForThisTipo < maxPagesPerTipo)) {
