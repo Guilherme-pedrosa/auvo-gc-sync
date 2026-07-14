@@ -562,6 +562,16 @@ export default function OrcamentosControlePage() {
         </Popover>
       </div>
 
+      {/* Tabs por tipo */}
+      <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as any)} className="w-full">
+        <TabsList className="grid w-full max-w-md grid-cols-4">
+          <TabsTrigger value="todos">Todos</TabsTrigger>
+          <TabsTrigger value="produtos">Produtos</TabsTrigger>
+          <TabsTrigger value="servicos">Serviços</TabsTrigger>
+          <TabsTrigger value="mistos">Mistos</TabsTrigger>
+        </TabsList>
+      </Tabs>
+
       {/* Table */}
       <Card>
         <CardContent className="p-0">
