@@ -158,7 +158,8 @@ Deno.serve(async (req) => {
             const p = wrap?.produto ?? wrap;
             const qtd = parseFloat(String(p?.quantidade ?? "1")) || 0;
             const vvenda = round2(p?.valor_venda);
-            const vtotal = round2(qtd * vvenda);
+            const descItem = round2(p?.desconto_valor);
+            const vtotal = round2(qtd * vvenda - descItem);
             totalProdutos += vtotal;
             return {
               produto: {
@@ -166,7 +167,7 @@ Deno.serve(async (req) => {
                 valor_venda: vvenda.toFixed(2),
                 valor_custo: round2(p?.valor_custo).toFixed(2),
                 valor_total: vtotal.toFixed(2),
-                desconto_valor: p?.desconto_valor ? round2(p.desconto_valor).toFixed(2) : p?.desconto_valor,
+                desconto_valor: p?.desconto_valor ? descItem.toFixed(2) : p?.desconto_valor,
               },
             };
           });
@@ -177,7 +178,8 @@ Deno.serve(async (req) => {
             const s = wrap?.servico ?? wrap;
             const qtd = parseFloat(String(s?.quantidade ?? "1")) || 0;
             const vvenda = round2(s?.valor_venda);
-            const vtotal = round2(qtd * vvenda);
+            const descItem = round2(s?.desconto_valor);
+            const vtotal = round2(qtd * vvenda - descItem);
             totalServicos += vtotal;
             return {
               servico: {
@@ -185,7 +187,7 @@ Deno.serve(async (req) => {
                 valor_venda: vvenda.toFixed(2),
                 valor_custo: round2(s?.valor_custo).toFixed(2),
                 valor_total: vtotal.toFixed(2),
-                desconto_valor: s?.desconto_valor ? round2(s.desconto_valor).toFixed(2) : s?.desconto_valor,
+                desconto_valor: s?.desconto_valor ? descItem.toFixed(2) : s?.desconto_valor,
               },
             };
           });
