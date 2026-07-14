@@ -217,8 +217,28 @@ Deno.serve(async (req) => {
           if (putResp.status === 429) { await sleep(3000 + attempt * 2000); continue; }
           break;
         }
-        const putJson: any = await (putResp as Response).json().catch(() => ({}));
-        const success = (putResp as Response).ok && putJson?.code !== 400;
+        let putJson: any = await (putResp as Response).json().catch(() => ({}));
+        let success = (putResp as Response).ok && putJson?.code !== 400 && putJson?.code !== 404;
+
+        // Retry automático: se GC reclamar de mismatch de parcelas, ajusta a última
+        // parcela pelo delta exato e tenta de novo (até 3x).
+        for (let retry = 0; retry < 3 && !success; retry++) {
+          const msg = String(putJson?.data?.mensagem || putJson?.mensagem || "");
+          const m = msg.match(/passando\s+([\d.,]+)\s+no valor das parcelas/i);
+          if (!m) break;
+          const excedente = round2(m[1].replace(",", "."));
+          if (!Number.isFinite(excedente) || excedente === 0) break;
+          const pags = (payload as any).pagamentos;
+          if (!Array.isArray(pags) || pags.length === 0) break;
+          const lastIdx = pags.length - 1;
+          const lastVal = round2(pags[lastIdx].pagamento.valor);
+          pags[lastIdx].pagamento.valor = round2(lastVal - excedente).toFixed(2);
+          putResp = await fetch(`${GC_BASE_URL}/api/orcamentos/${alvo.id}`, {
+            method: "PUT", headers: gcHeaders, body: JSON.stringify(payload),
+          });
+          putJson = await (putResp as Response).json().catch(() => ({}));
+          success = (putResp as Response).ok && putJson?.code !== 400 && putJson?.code !== 404;
+        }
 
         await admin.from("orcamento_aprovacao_log").insert({
           gc_orcamento_id: alvo.id,
