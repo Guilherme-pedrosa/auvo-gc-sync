@@ -1196,9 +1196,9 @@ Deno.serve(async (req) => {
     };
 
     if (typeof EdgeRuntime !== "undefined" && EdgeRuntime?.waitUntil) {
-      EdgeRuntime.waitUntil(backgroundSync);
+      EdgeRuntime.waitUntil(backgroundSync());
     } else {
-      setTimeout(() => backgroundSync, 0);
+      setTimeout(() => void backgroundSync(), 0);
     }
 
     return new Response(
