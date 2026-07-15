@@ -282,11 +282,12 @@ export default function NovaIntegracaoPage() {
         ...(editingId ? { id: editingId } : {}),
         client_id: clientId,
         technician_ids: techIds,
-        status: "authorized",
+        status: "docs_enviados",
         validated_at: new Date().toISOString(),
         earliest_expiry_date: validade,
         blocked_reasons: [],
         zip_file_name: fileName,
+        docs_sent_at: new Date().toISOString(),
       });
 
       toast.success("Kit ZIP gerado!");
