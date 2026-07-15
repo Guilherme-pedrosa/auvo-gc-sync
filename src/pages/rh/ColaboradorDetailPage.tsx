@@ -39,6 +39,27 @@ export default function ColaboradorDetailPage() {
   const selectedType = form.document_type_id ? typeMap.get(form.document_type_id) : undefined;
   const requiresDates = !!selectedType && REQUIRE_DATES_CODES.includes(selectedType.code);
 
+  const AUTO_EXPIRY_MONTHS: Record<string, number> = {
+    FICHA_EPI: 3,
+    NR10: 12, NR12: 12, NR35: 12,
+    PCMSO: 12, PGR: 12, LTCAT: 12,
+  };
+  const addMonths = (iso: string, months: number) => {
+    const [y, m, d] = iso.split("-").map(Number);
+    const dt = new Date(y, m - 1, d);
+    dt.setMonth(dt.getMonth() + months);
+    return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, "0")}-${String(dt.getDate()).padStart(2, "0")}`;
+  };
+  const handleEmissaoChange = (value: string) => {
+    const code = selectedType?.code;
+    const months = code ? AUTO_EXPIRY_MONTHS[code] : undefined;
+    setForm((f) => ({
+      ...f,
+      data_emissao: value,
+      data_vencimento: value && months ? addMonths(value, months) : f.data_vencimento,
+    }));
+  };
+
   const submit = async () => {
     if (!form.document_type_id || !id) return;
     if (requiresDates && (!form.data_emissao || !form.data_vencimento)) {
@@ -158,7 +179,7 @@ export default function ColaboradorDetailPage() {
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <Label>Emissão {requiresDates && <span className="text-destructive">*</span>}</Label>
-                <Input type="date" required={requiresDates} value={form.data_emissao ?? ""} onChange={(e) => setForm({ ...form, data_emissao: e.target.value })} />
+                <Input type="date" required={requiresDates} value={form.data_emissao ?? ""} onChange={(e) => handleEmissaoChange(e.target.value)} />
               </div>
               <div>
                 <Label>Vencimento {requiresDates && <span className="text-destructive">*</span>}</Label>
