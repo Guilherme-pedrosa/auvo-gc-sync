@@ -1,8 +1,10 @@
+// Lovable Cloud deploy trigger: legacy-compatible Kanban sync.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
+  "Access-Control-Allow-Headers":
+    "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
 const AUVO_BASE_URL = "https://api.auvo.com.br/v2";
@@ -32,6 +34,24 @@ function syncErrorMessage(error: unknown): string {
   return message.slice(0, 1000);
 }
 
+function databaseErrorText(error: any): string {
+  return [error?.code, error?.message, error?.details, error?.hint].filter(Boolean).join(" ").toLowerCase();
+}
+
+function isMissingDatabaseContract(error: any, identifiers: string[] = []): boolean {
+  const text = databaseErrorText(error);
+  const missingContract =
+    ["42703", "42883", "pgrst202", "pgrst204"].some((code) => text.includes(code)) ||
+    text.includes("does not exist") ||
+    text.includes("could not find") ||
+    text.includes("schema cache");
+
+  return (
+    missingContract &&
+    (identifiers.length === 0 || identifiers.some((identifier) => text.includes(identifier.toLowerCase())))
+  );
+}
+
 const INVALID_EQUIPMENT_VALUES = new Set([
   "",
   ".",
@@ -49,7 +69,9 @@ const INVALID_EQUIPMENT_VALUES = new Set([
 ]);
 
 function sanitizeEquipmentValue(value: unknown): string | null {
-  const normalized = String(value ?? "").trim().replace(/\s+/g, " ");
+  const normalized = String(value ?? "")
+    .trim()
+    .replace(/\s+/g, " ");
   if (!normalized) return null;
 
   const comparable = normalized
@@ -105,19 +127,15 @@ function extractEquipmentFromEntity(entity: any): EquipmentPair & { equipmentIds
   }
 
   let nome = sanitizeEquipmentValue(
-    entity?.equipmentName ||
-    entity?.equipment?.name ||
-    entity?.equipment?.model ||
-    entity?.name ||
-    null
+    entity?.equipmentName || entity?.equipment?.name || entity?.equipment?.model || entity?.name || null,
   );
 
   let id = sanitizeEquipmentValue(
     entity?.equipmentIdentifier ||
-    entity?.equipment?.identifier ||
-    entity?.equipment?.serial ||
-    entity?.identifier ||
-    null
+      entity?.equipment?.identifier ||
+      entity?.equipment?.serial ||
+      entity?.identifier ||
+      null,
   );
 
   if ((!nome || !id) && Array.isArray(entity?.equipments) && entity.equipments.length > 0) {
@@ -188,8 +206,8 @@ async function resolveAndPersistMissingEquipment(
   items: any[],
   taskById: Record<string, any>,
 ) {
-  const unresolved = items.filter((item) =>
-    !sanitizeEquipmentValue(item.equipamento_nome) || !sanitizeEquipmentValue(item.equipamento_id_serie)
+  const unresolved = items.filter(
+    (item) => !sanitizeEquipmentValue(item.equipamento_nome) || !sanitizeEquipmentValue(item.equipamento_id_serie),
   );
 
   if (unresolved.length === 0) return;
@@ -199,7 +217,7 @@ async function resolveAndPersistMissingEquipment(
   const equipmentCache: Record<string, EquipmentPair> = {};
   const taskDetailCache: Record<string, any | null> = {};
   const unresolvedByTaskId = new Map<string, any>(
-    unresolved.map((item) => [String(item.auvo_task_id || "").trim(), item])
+    unresolved.map((item) => [String(item.auvo_task_id || "").trim(), item]),
   );
   const rowsToPersist: {
     auvo_task_id: string;
@@ -266,7 +284,7 @@ async function resolveAndPersistMissingEquipment(
         if (!nome && !id) return null;
 
         return { taskId, nome, id };
-      })
+      }),
     );
 
     for (const resolved of resolvedBatch) {
@@ -301,9 +319,7 @@ async function resolveAndPersistMissingEquipment(
 
   for (let i = 0; i < rowsToPersist.length; i += 100) {
     const batch = rowsToPersist.slice(i, i + 100);
-    const { error } = await sbClient
-      .from("tarefas_central")
-      .upsert(batch, { onConflict: "auvo_task_id" });
+    const { error } = await sbClient.from("tarefas_central").upsert(batch, { onConflict: "auvo_task_id" });
 
     if (error) {
       console.warn("[budget-kanban] Falha ao persistir equipamentos na central:", error.message);
@@ -317,7 +333,7 @@ async function rateLimitedFetch(url: string, options: RequestInit, type: "gc" | 
   const now = Date.now();
   const last = type === "gc" ? lastGcCall : lastAuvoCall;
   const elapsed = now - last;
-  if (elapsed < MIN_DELAY_MS) await new Promise(r => setTimeout(r, MIN_DELAY_MS - elapsed));
+  if (elapsed < MIN_DELAY_MS) await new Promise((r) => setTimeout(r, MIN_DELAY_MS - elapsed));
   if (type === "gc") lastGcCall = Date.now();
   else lastAuvoCall = Date.now();
   return fetch(url, options);
@@ -353,7 +369,7 @@ function auvoHeaders(token: string): Record<string, string> {
 async function fetchAuvoTasksWithQuestionnaire(
   bearerToken: string,
   startDate: string,
-  endDate: string
+  endDate: string,
 ): Promise<AuvoFetchResult> {
   const allTasks: any[] = [];
   let page = 1;
@@ -382,14 +398,16 @@ async function fetchAuvoTasksWithQuestionnaire(
       try {
         const now = Date.now();
         const elapsed = now - lastAuvoCall;
-        if (elapsed < MIN_DELAY_MS) await new Promise(r => setTimeout(r, MIN_DELAY_MS - elapsed));
+        if (elapsed < MIN_DELAY_MS) await new Promise((r) => setTimeout(r, MIN_DELAY_MS - elapsed));
         lastAuvoCall = Date.now();
         response = await fetchWithTimeout(url, { headers: auvoHeaders(bearerToken) }, AUVO_TASKS_TIMEOUT_MS);
       } catch (err) {
         if (timeoutAttempt < TIMEOUT_BACKOFF.length) {
           const wait = TIMEOUT_BACKOFF[timeoutAttempt++];
-          console.warn(`[budget-kanban] Auvo /tasks timeout pg ${page}, retry em ${wait}ms (${timeoutAttempt}/${TIMEOUT_BACKOFF.length})`);
-          await new Promise(r => setTimeout(r, wait));
+          console.warn(
+            `[budget-kanban] Auvo /tasks timeout pg ${page}, retry em ${wait}ms (${timeoutAttempt}/${TIMEOUT_BACKOFF.length})`,
+          );
+          await new Promise((r) => setTimeout(r, wait));
           continue;
         }
         pageError = `Auvo /tasks timeout ou conexão cancelada na página ${page}`;
@@ -400,8 +418,10 @@ async function fetchAuvoTasksWithQuestionnaire(
       if (response.status === 502 || response.status === 503) {
         if (statusAttempt < STATUS_BACKOFF.length) {
           const wait = STATUS_BACKOFF[statusAttempt++];
-          console.warn(`[budget-kanban] Auvo /tasks ${response.status} pg ${page}, retry em ${wait}ms (${statusAttempt}/${STATUS_BACKOFF.length})`);
-          await new Promise(r => setTimeout(r, wait));
+          console.warn(
+            `[budget-kanban] Auvo /tasks ${response.status} pg ${page}, retry em ${wait}ms (${statusAttempt}/${STATUS_BACKOFF.length})`,
+          );
+          await new Promise((r) => setTimeout(r, wait));
           continue;
         }
       }
@@ -432,7 +452,9 @@ async function fetchAuvoTasksWithQuestionnaire(
     }
 
     const totalItems = Number(data?.result?.pagedSearchReturnData?.totalItems || 0);
-    console.log(`[budget-kanban] Page ${page}: ${entities.length} tasks, ${allTasks.length} com questionário ${QUESTIONNAIRE_ID}`);
+    console.log(
+      `[budget-kanban] Page ${page}: ${entities.length} tasks, ${allTasks.length} com questionário ${QUESTIONNAIRE_ID}`,
+    );
     if (entities.length < pageSize || (totalItems > 0 && page * pageSize >= totalItems)) break;
     page++;
   }
@@ -443,7 +465,9 @@ async function fetchAuvoTasksWithQuestionnaire(
 
   if (allTasks.length > 0) {
     const sample = allTasks[0];
-    console.log(`[budget-kanban] Sample task fields: taskID=${sample.taskID}, customerDescription=${sample.customerDescription}, customerName=${sample.customerName}, customerId=${sample.customerId}, externalId=${sample.externalId}`);
+    console.log(
+      `[budget-kanban] Sample task fields: taskID=${sample.taskID}, customerDescription=${sample.customerDescription}, customerName=${sample.customerName}, customerId=${sample.customerId}, externalId=${sample.externalId}`,
+    );
   }
 
   return { tasks: allTasks, hadError, errorMessage };
@@ -453,7 +477,7 @@ async function fetchAuvoTasksWithQuestionnaire(
 async function fetchGcOrcamentosMap(
   gcHeaders: Record<string, string>,
   startDate?: string,
-  endDate?: string
+  endDate?: string,
 ): Promise<Record<string, any>> {
   const map: Record<string, any> = {};
   const MAX_PAGES = 30;
@@ -469,7 +493,7 @@ async function fetchGcOrcamentosMap(
       if (response.status === 429) {
         const wait = RATE_BACKOFF[attempt];
         console.warn(`[budget-kanban] GC orcamentos page ${page} 429, retry em ${wait}ms (${attempt + 1}/3)`);
-        await new Promise(r => setTimeout(r, wait));
+        await new Promise((r) => setTimeout(r, wait));
         continue;
       }
       if (!response.ok) {
@@ -519,7 +543,9 @@ async function fetchGcOrcamentosMap(
   ingest(first.records);
   const totalPages = Math.min(first.totalPages, MAX_PAGES);
   if (first.totalPages > MAX_PAGES) {
-    console.warn(`[budget-kanban] TRUNCAMENTO: MAX_PAGES atingido em GC orcamentos (totalPages=${first.totalPages}), possível perda de dados`);
+    console.warn(
+      `[budget-kanban] TRUNCAMENTO: MAX_PAGES atingido em GC orcamentos (totalPages=${first.totalPages}), possível perda de dados`,
+    );
   }
   console.log(`[budget-kanban] GC orçamentos: ${totalPages} páginas (paralelo x${CONCURRENCY})`);
 
@@ -538,7 +564,7 @@ async function fetchGcOrcamentosMap(
 async function fetchGcOsMap(
   gcHeaders: Record<string, string>,
   startDate?: string,
-  endDate?: string
+  endDate?: string,
 ): Promise<Record<string, any>> {
   const map: Record<string, any> = {};
   const MAX_PAGES = 30;
@@ -554,7 +580,7 @@ async function fetchGcOsMap(
       if (response.status === 429) {
         const wait = RATE_BACKOFF[attempt];
         console.warn(`[budget-kanban] GC OS page ${page} 429, retry em ${wait}ms (${attempt + 1}/3)`);
-        await new Promise(r => setTimeout(r, wait));
+        await new Promise((r) => setTimeout(r, wait));
         continue;
       }
       if (!response.ok) {
@@ -613,7 +639,9 @@ async function fetchGcOsMap(
   ingest(first.records);
   const totalPages = Math.min(first.totalPages, MAX_PAGES);
   if (first.totalPages > MAX_PAGES) {
-    console.warn(`[budget-kanban] TRUNCAMENTO: MAX_PAGES atingido em GC ordens_servicos (totalPages=${first.totalPages}), possível perda de dados`);
+    console.warn(
+      `[budget-kanban] TRUNCAMENTO: MAX_PAGES atingido em GC ordens_servicos (totalPages=${first.totalPages}), possível perda de dados`,
+    );
   }
   console.log(`[budget-kanban] GC OS: ${totalPages} páginas (paralelo x${CONCURRENCY})`);
 
@@ -686,19 +714,74 @@ async function loadAllBudgetCacheRows(sbClient: any): Promise<any[]> {
 }
 
 async function loadActiveBudgetResolutionIds(sbClient: any): Promise<Set<string>> {
-  const taskIds = new Set<string>();
-  for (let from = 0; ; from += BUDGET_CACHE_PAGE_SIZE) {
-    const { data, error } = await sbClient
-      .from("kanban_resolution_details")
-      .select("auvo_task_id")
-      .eq("ativo", true)
-      .order("auvo_task_id")
-      .range(from, from + BUDGET_CACHE_PAGE_SIZE - 1);
+  const load = async (activeOnly: boolean): Promise<Set<string>> => {
+    const taskIds = new Set<string>();
+    for (let from = 0; ; from += BUDGET_CACHE_PAGE_SIZE) {
+      let query = sbClient
+        .from("kanban_resolution_details")
+        .select("auvo_task_id")
+        .order("auvo_task_id")
+        .range(from, from + BUDGET_CACHE_PAGE_SIZE - 1);
+      if (activeOnly) query = query.eq("ativo", true);
+
+      const { data, error } = await query;
+      if (error) {
+        if (activeOnly && isMissingDatabaseContract(error, ["ativo"])) {
+          console.warn("[budget-kanban] Coluna ativo ausente; usando resoluções do contrato legado");
+          return load(false);
+        }
+        throw error;
+      }
+      for (const row of data || []) taskIds.add(String(row.auvo_task_id));
+      if (!data || data.length < BUDGET_CACHE_PAGE_SIZE) break;
+    }
+    return taskIds;
+  };
+
+  return load(true);
+}
+
+async function upsertBudgetKanbanSyncRowsLegacy(sbClient: any, syncRows: any[]): Promise<void> {
+  const [cachedRows, activeResolutionIds] = await Promise.all([
+    loadAllBudgetCacheRows(sbClient),
+    loadActiveBudgetResolutionIds(sbClient),
+  ]);
+  const cachedByTaskId = new Map(cachedRows.map((row: any) => [String(row.auvo_task_id), row]));
+  const updatedAt = new Date().toISOString();
+  const rows = syncRows.map((row: any) => {
+    const taskId = String(row.auvo_task_id);
+    const cached = cachedByTaskId.get(taskId) as any;
+    const cachedColumn = String(cached?.coluna || "");
+    const resolved = activeResolutionIds.has(taskId);
+    const manualColumn =
+      cachedColumn &&
+      cachedColumn !== "a_fazer" &&
+      cachedColumn !== "falta_preenchimento" &&
+      cachedColumn !== "os_realizada" &&
+      !cachedColumn.startsWith("orc_");
+    const column = resolved ? RESOLVED_WITHOUT_BUDGET_COLUMN : resolveStoredColumn(row.dados, cachedColumn || null);
+    const position =
+      cached && (resolved || manualColumn || cachedColumn === column)
+        ? Number(cached.posicao || 0)
+        : Number(row.posicao || 0);
+
+    return {
+      auvo_task_id: taskId,
+      dados: row.dados,
+      coluna: column,
+      posicao: position,
+      atualizado_em: updatedAt,
+    };
+  });
+
+  for (let i = 0; i < rows.length; i += 200) {
+    const { error } = await sbClient
+      .from("kanban_orcamentos_cache")
+      .upsert(rows.slice(i, i + 200), { onConflict: "auvo_task_id" });
     if (error) throw error;
-    for (const row of data || []) taskIds.add(String(row.auvo_task_id));
-    if (!data || data.length < BUDGET_CACHE_PAGE_SIZE) break;
   }
-  return taskIds;
+
+  console.warn(`[budget-kanban] Cache atualizado pelo fallback legado: ${rows.length} itens`);
 }
 
 function buildBudgetItemFromCentral(row: any, gcOrcMap: Record<string, any> = {}, gcOsMap: Record<string, any> = {}) {
@@ -723,30 +806,34 @@ function buildBudgetItemFromCentral(row: any, gcOrcMap: Record<string, any> = {}
     questionario_respostas: questionarioRespostas,
     orcamento_realizado: hasOrcamento,
     os_realizada: hasOs,
-    gc_orcamento: hasOrcamento ? {
-      gc_orcamento_id: String(freshOrc.gc_orcamento_id || ""),
-      gc_orcamento_codigo: String(freshOrc.gc_orcamento_codigo || ""),
-      gc_cliente: String(freshOrc.gc_cliente || freshOrc.gc_orc_cliente || row.cliente || ""),
-      gc_situacao: String(freshOrc.gc_situacao || freshOrc.gc_orc_situacao || ""),
-      gc_situacao_id: String(freshOrc.gc_situacao_id || freshOrc.gc_orc_situacao_id || ""),
-      gc_cor_situacao: String(freshOrc.gc_cor_situacao || freshOrc.gc_orc_cor_situacao || ""),
-      gc_valor_total: String(freshOrc.gc_valor_total || freshOrc.gc_orc_valor_total || "0"),
-      gc_vendedor: String(freshOrc.gc_vendedor || freshOrc.gc_orc_vendedor || ""),
-      gc_data: String(freshOrc.gc_data || freshOrc.gc_orc_data || ""),
-      gc_link: String(freshOrc.gc_link || freshOrc.gc_orc_link || ""),
-    } : null,
-    gc_os: hasOs ? {
-      gc_os_id: String(effectiveOs.gc_os_id || ""),
-      gc_os_codigo: String(effectiveOs.gc_os_codigo || ""),
-      gc_cliente: String(effectiveOs.gc_cliente || effectiveOs.gc_os_cliente || row.cliente || ""),
-      gc_situacao: String(effectiveOs.gc_situacao || effectiveOs.gc_os_situacao || ""),
-      gc_situacao_id: String(effectiveOs.gc_situacao_id || effectiveOs.gc_os_situacao_id || ""),
-      gc_cor_situacao: String(effectiveOs.gc_cor_situacao || effectiveOs.gc_os_cor_situacao || ""),
-      gc_valor_total: String(effectiveOs.gc_valor_total || effectiveOs.gc_os_valor_total || "0"),
-      gc_vendedor: String(effectiveOs.gc_vendedor || effectiveOs.gc_os_vendedor || ""),
-      gc_data: String(effectiveOs.gc_data || effectiveOs.gc_os_data || ""),
-      gc_link: String(effectiveOs.gc_link || effectiveOs.gc_os_link || ""),
-    } : null,
+    gc_orcamento: hasOrcamento
+      ? {
+          gc_orcamento_id: String(freshOrc.gc_orcamento_id || ""),
+          gc_orcamento_codigo: String(freshOrc.gc_orcamento_codigo || ""),
+          gc_cliente: String(freshOrc.gc_cliente || freshOrc.gc_orc_cliente || row.cliente || ""),
+          gc_situacao: String(freshOrc.gc_situacao || freshOrc.gc_orc_situacao || ""),
+          gc_situacao_id: String(freshOrc.gc_situacao_id || freshOrc.gc_orc_situacao_id || ""),
+          gc_cor_situacao: String(freshOrc.gc_cor_situacao || freshOrc.gc_orc_cor_situacao || ""),
+          gc_valor_total: String(freshOrc.gc_valor_total || freshOrc.gc_orc_valor_total || "0"),
+          gc_vendedor: String(freshOrc.gc_vendedor || freshOrc.gc_orc_vendedor || ""),
+          gc_data: String(freshOrc.gc_data || freshOrc.gc_orc_data || ""),
+          gc_link: String(freshOrc.gc_link || freshOrc.gc_orc_link || ""),
+        }
+      : null,
+    gc_os: hasOs
+      ? {
+          gc_os_id: String(effectiveOs.gc_os_id || ""),
+          gc_os_codigo: String(effectiveOs.gc_os_codigo || ""),
+          gc_cliente: String(effectiveOs.gc_cliente || effectiveOs.gc_os_cliente || row.cliente || ""),
+          gc_situacao: String(effectiveOs.gc_situacao || effectiveOs.gc_os_situacao || ""),
+          gc_situacao_id: String(effectiveOs.gc_situacao_id || effectiveOs.gc_os_situacao_id || ""),
+          gc_cor_situacao: String(effectiveOs.gc_cor_situacao || effectiveOs.gc_os_cor_situacao || ""),
+          gc_valor_total: String(effectiveOs.gc_valor_total || effectiveOs.gc_os_valor_total || "0"),
+          gc_vendedor: String(effectiveOs.gc_vendedor || effectiveOs.gc_os_vendedor || ""),
+          gc_data: String(effectiveOs.gc_data || effectiveOs.gc_os_data || ""),
+          gc_link: String(effectiveOs.gc_link || effectiveOs.gc_os_link || ""),
+        }
+      : null,
     equipamento_nome: row.equipamento_nome || null,
     equipamento_id_serie: row.equipamento_id_serie || null,
   };
@@ -761,7 +848,10 @@ Deno.serve(async (req) => {
     const sbClient = createClient(supabaseUrl, supabaseKey);
 
     let body: any = {};
-    try { const text = await req.text(); if (text) body = JSON.parse(text); } catch {}
+    try {
+      const text = await req.text();
+      if (text) body = JSON.parse(text);
+    } catch {}
 
     const mode = body.mode || "cache"; // "cache" = read DB, "sync" = fetch APIs + update DB
     const today = new Date().toISOString().split("T")[0];
@@ -776,19 +866,55 @@ Deno.serve(async (req) => {
         .select("ultimo_sync, sync_run_id, sync_status, sync_started_at, sync_finished_at, sync_error")
         .eq("id", "default")
         .maybeSingle();
+      if (
+        error &&
+        isMissingDatabaseContract(error, [
+          "sync_run_id",
+          "sync_status",
+          "sync_started_at",
+          "sync_finished_at",
+          "sync_error",
+        ])
+      ) {
+        const { data: legacyMeta, error: legacyError } = await sbClient
+          .from("kanban_sync_meta")
+          .select("ultimo_sync, periodo_inicio, periodo_fim")
+          .eq("id", "default")
+          .maybeSingle();
+        if (legacyError) throw legacyError;
+
+        return new Response(
+          JSON.stringify({
+            run_id: null,
+            status: "legacy",
+            started_at: null,
+            finished_at: legacyMeta?.ultimo_sync || null,
+            error: null,
+            ultimo_sync: legacyMeta?.ultimo_sync || null,
+            legacy: true,
+          }),
+          {
+            status: 200,
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
+          },
+        );
+      }
       if (error) throw error;
 
-      return new Response(JSON.stringify({
-        run_id: meta?.sync_run_id || null,
-        status: meta?.sync_status || "idle",
-        started_at: meta?.sync_started_at || null,
-        finished_at: meta?.sync_finished_at || null,
-        error: meta?.sync_error || null,
-        ultimo_sync: meta?.ultimo_sync || null,
-      }), {
-        status: 200,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+      return new Response(
+        JSON.stringify({
+          run_id: meta?.sync_run_id || null,
+          status: meta?.sync_status || "idle",
+          started_at: meta?.sync_started_at || null,
+          finished_at: meta?.sync_finished_at || null,
+          error: meta?.sync_error || null,
+          ultimo_sync: meta?.ultimo_sync || null,
+        }),
+        {
+          status: 200,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        },
+      );
     }
 
     // === MODE: CACHE — read from DB ===
@@ -839,7 +965,7 @@ Deno.serve(async (req) => {
 
       const persistedEquipmentMap = await loadPersistedEquipmentMap(
         sbClient,
-        filteredItems.map((item: any) => String(item.auvo_task_id || ""))
+        filteredItems.map((item: any) => String(item.auvo_task_id || "")),
       );
 
       const enrichedItems = filteredItems.map((item: any) => {
@@ -861,19 +987,22 @@ Deno.serve(async (req) => {
         pendentes: enrichedItems.filter((i: any) => !i.orcamento_realizado && !i.os_realizada).length,
       };
 
-      return new Response(JSON.stringify({
-        resumo,
-        items: enrichedItems,
-        ultimo_sync: meta?.ultimo_sync || null,
-        sync_run_id: meta?.sync_run_id || null,
-        sync_status: meta?.sync_status || "idle",
-        sync_error: meta?.sync_error || null,
-        custom_columns: customColumns,
-        from_cache: true,
-      }), {
-        status: 200,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+      return new Response(
+        JSON.stringify({
+          resumo,
+          items: enrichedItems,
+          ultimo_sync: meta?.ultimo_sync || null,
+          sync_run_id: meta?.sync_run_id || null,
+          sync_status: meta?.sync_status || "idle",
+          sync_error: meta?.sync_error || null,
+          custom_columns: customColumns,
+          from_cache: true,
+        }),
+        {
+          status: 200,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        },
+      );
     }
 
     // === MODE: RESOLVE — reason and column are committed in the same transaction ===
@@ -919,14 +1048,17 @@ Deno.serve(async (req) => {
       });
       if (error) throw error;
 
-      return new Response(JSON.stringify({
-        ok: true,
-        coluna: targetColumn,
-        item: reopened?.[0] || null,
-      }), {
-        status: 200,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+      return new Response(
+        JSON.stringify({
+          ok: true,
+          coluna: targetColumn,
+          item: reopened?.[0] || null,
+        }),
+        {
+          status: 200,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        },
+      );
     }
 
     // === MODE: SAVE_POSITIONS — persist all changes in one database transaction ===
@@ -954,40 +1086,61 @@ Deno.serve(async (req) => {
 
     if (!auvoApiKey || !auvoApiToken) {
       return new Response(JSON.stringify({ error: "Credenciais Auvo não configuradas" }), {
-        status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        status: 500,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
     if (!gcAccessToken || !gcSecretToken) {
       return new Response(JSON.stringify({ error: "Credenciais GC não configuradas" }), {
-        status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        status: 500,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
     // startDate/endDate already declared above
 
-
     console.log(`[budget-kanban] Período: ${startDate} a ${endDate}`);
 
     const runId = crypto.randomUUID();
     const startedAt = new Date().toISOString();
-    const { error: startError } = await sbClient
-      .from("kanban_sync_meta")
-      .upsert({
-        id: "default",
-        periodo_inicio: startDate,
-        periodo_fim: endDate,
-        sync_run_id: runId,
-        sync_status: "running",
-        sync_started_at: startedAt,
-        sync_finished_at: null,
-        sync_error: null,
-      });
+    let syncTrackingEnabled = true;
+    const { error: startError } = await sbClient.from("kanban_sync_meta").upsert({
+      id: "default",
+      periodo_inicio: startDate,
+      periodo_fim: endDate,
+      sync_run_id: runId,
+      sync_status: "running",
+      sync_started_at: startedAt,
+      sync_finished_at: null,
+      sync_error: null,
+    });
 
-    if (startError) {
-      throw new Error(`Contrato de sincronização do banco não instalado: ${startError.message}`);
+    if (
+      startError &&
+      isMissingDatabaseContract(startError, [
+        "sync_run_id",
+        "sync_status",
+        "sync_started_at",
+        "sync_finished_at",
+        "sync_error",
+      ])
+    ) {
+      syncTrackingEnabled = false;
+      const { error: legacyStartError } = await sbClient.from("kanban_sync_meta").upsert(
+        {
+          id: "default",
+          periodo_inicio: startDate,
+          periodo_fim: endDate,
+        },
+        { onConflict: "id" },
+      );
+      if (legacyStartError) throw legacyStartError;
+      console.warn("[budget-kanban] Executando com rastreamento legado de sincronização");
+    } else if (startError) {
+      throw startError;
     }
 
-    const backgroundSync = (async () => {
+    const backgroundSync = async () => {
       try {
         const bearerToken = await auvoLogin(auvoApiKey, auvoApiToken);
         await runBudgetKanbanSync({
@@ -1000,36 +1153,47 @@ Deno.serve(async (req) => {
         });
 
         const finishedAt = new Date().toISOString();
-        const { error: finishError } = await sbClient
+        let finishQuery = sbClient
           .from("kanban_sync_meta")
-          .update({
-            ultimo_sync: finishedAt,
-            periodo_inicio: startDate,
-            periodo_fim: endDate,
-            sync_status: "succeeded",
-            sync_finished_at: finishedAt,
-            sync_error: null,
-          })
-          .eq("id", "default")
-          .eq("sync_run_id", runId);
+          .update(
+            syncTrackingEnabled
+              ? {
+                  ultimo_sync: finishedAt,
+                  periodo_inicio: startDate,
+                  periodo_fim: endDate,
+                  sync_status: "succeeded",
+                  sync_finished_at: finishedAt,
+                  sync_error: null,
+                }
+              : {
+                  ultimo_sync: finishedAt,
+                  periodo_inicio: startDate,
+                  periodo_fim: endDate,
+                },
+          )
+          .eq("id", "default");
+        if (syncTrackingEnabled) finishQuery = finishQuery.eq("sync_run_id", runId);
+        const { error: finishError } = await finishQuery;
         if (finishError) throw finishError;
       } catch (err) {
         const message = syncErrorMessage(err);
         console.error(`[budget-kanban] Background error (${runId}):`, err);
-        const { error: failureStatusError } = await sbClient
-          .from("kanban_sync_meta")
-          .update({
-            sync_status: "failed",
-            sync_finished_at: new Date().toISOString(),
-            sync_error: message,
-          })
-          .eq("id", "default")
-          .eq("sync_run_id", runId);
-        if (failureStatusError) {
-          console.error(`[budget-kanban] Não foi possível registrar a falha (${runId}):`, failureStatusError);
+        if (syncTrackingEnabled) {
+          const { error: failureStatusError } = await sbClient
+            .from("kanban_sync_meta")
+            .update({
+              sync_status: "failed",
+              sync_finished_at: new Date().toISOString(),
+              sync_error: message,
+            })
+            .eq("id", "default")
+            .eq("sync_run_id", runId);
+          if (failureStatusError) {
+            console.error(`[budget-kanban] Não foi possível registrar a falha (${runId}):`, failureStatusError);
+          }
         }
       }
-    });
+    };
 
     if (typeof EdgeRuntime !== "undefined" && EdgeRuntime?.waitUntil) {
       EdgeRuntime.waitUntil(backgroundSync);
@@ -1037,15 +1201,19 @@ Deno.serve(async (req) => {
       setTimeout(() => backgroundSync, 0);
     }
 
-    return new Response(JSON.stringify({
-      ok: true,
-      background: true,
-      run_id: runId,
-      periodo: { inicio: startDate, fim: endDate },
-    }), {
-      status: 200,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
+    return new Response(
+      JSON.stringify({
+        ok: true,
+        background: true,
+        run_id: syncTrackingEnabled ? runId : null,
+        tracking: syncTrackingEnabled ? "status" : "legacy",
+        periodo: { inicio: startDate, fim: endDate },
+      }),
+      {
+        status: 200,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      },
+    );
   } catch (err) {
     console.error("[budget-kanban] Error:", err);
     return new Response(JSON.stringify({ error: (err as Error).message }), {
@@ -1069,336 +1237,350 @@ async function runBudgetKanbanSync(opts: {
   const { sbClient, bearerToken, gcAccessToken, gcSecretToken, startDate, endDate } = opts;
 
   const gcH: Record<string, string> = {
-      "access-token": gcAccessToken,
-      "secret-access-token": gcSecretToken,
-      "Content-Type": "application/json",
-    };
+    "access-token": gcAccessToken,
+    "secret-access-token": gcSecretToken,
+    "Content-Type": "application/json",
+  };
 
-    // Load conciliation snapshot for customer name mapping
+  // Load conciliation snapshot for customer name mapping
 
-    const auvoTaskClienteMap: Record<string, string> = {};
-    try {
-      const { data: snapshotRows } = await sbClient
-        .from("auvo_gc_sync_log")
-        .select("detalhes")
-        .eq("observacao", "CONCILIACAO_SNAPSHOT")
-        .order("executado_em", { ascending: false })
-        .limit(1);
+  const auvoTaskClienteMap: Record<string, string> = {};
+  try {
+    const { data: snapshotRows } = await sbClient
+      .from("auvo_gc_sync_log")
+      .select("detalhes")
+      .eq("observacao", "CONCILIACAO_SNAPSHOT")
+      .order("executado_em", { ascending: false })
+      .limit(1);
 
-      const detalhes = snapshotRows?.[0]?.detalhes as any;
-      const itens: any[] = Array.isArray(detalhes?.itens) ? detalhes.itens : (Array.isArray(detalhes) ? detalhes : []);
-      for (const item of itens) {
-        const tid = String(item.auvo_task_id || "").trim();
-        const nome = String(item.auvo_cliente || item.gc_cliente || "").trim();
-        if (tid && nome) auvoTaskClienteMap[tid] = nome;
-      }
-      console.log(`[budget-kanban] Snapshot: ${Object.keys(auvoTaskClienteMap).length} task→cliente mappings`);
-    } catch (err) {
-      console.warn(`[budget-kanban] Erro ao carregar snapshot:`, err);
+    const detalhes = snapshotRows?.[0]?.detalhes as any;
+    const itens: any[] = Array.isArray(detalhes?.itens) ? detalhes.itens : Array.isArray(detalhes) ? detalhes : [];
+    for (const item of itens) {
+      const tid = String(item.auvo_task_id || "").trim();
+      const nome = String(item.auvo_cliente || item.gc_cliente || "").trim();
+      if (tid && nome) auvoTaskClienteMap[tid] = nome;
     }
+    console.log(`[budget-kanban] Snapshot: ${Object.keys(auvoTaskClienteMap).length} task→cliente mappings`);
+  } catch (err) {
+    console.warn(`[budget-kanban] Erro ao carregar snapshot:`, err);
+  }
 
-    // Auvo é fonte de verdade do questionário 216040. Sempre buscamos Auvo + GC em
-    // paralelo, e usamos tarefas_central apenas como complemento (tarefas que a Auvo
-    // não devolveu na janela). Respostas frescas da Auvo SOBRESCREVEM o que está no
-    // banco, sem depender do central-sync ter rodado antes.
-    const { data: centralRows, error: centralError } = await sbClient
-      .from("tarefas_central")
-      .select("*")
-      .gte("data_tarefa", startDate)
-      .lte("data_tarefa", endDate)
-      .eq("questionario_id", QUESTIONNAIRE_ID);
+  // Auvo é fonte de verdade do questionário 216040. Sempre buscamos Auvo + GC em
+  // paralelo, e usamos tarefas_central apenas como complemento (tarefas que a Auvo
+  // não devolveu na janela). Respostas frescas da Auvo SOBRESCREVEM o que está no
+  // banco, sem depender do central-sync ter rodado antes.
+  const { data: centralRows, error: centralError } = await sbClient
+    .from("tarefas_central")
+    .select("*")
+    .gte("data_tarefa", startDate)
+    .lte("data_tarefa", endDate)
+    .eq("questionario_id", QUESTIONNAIRE_ID);
 
-    // Regra de negócio WeDo:
-    // Kanban Orçamentos é funil de venda. OS só entra se houver
-    // orçamento associado. OS de execução pura (contratos, garantia,
-    // atendimento direto sem orçamento) NÃO pertencem a este Kanban.
-    const { data: centralRowsExtras } = await sbClient
-      .from("tarefas_central")
-      .select("*")
-      .gte("data_tarefa", startDate)
-      .lte("data_tarefa", endDate)
-      .or("gc_orcamento_id.not.is.null,gc_os_id.not.is.null");
+  // Regra de negócio WeDo:
+  // Kanban Orçamentos é funil de venda. OS só entra se houver
+  // orçamento associado. OS de execução pura (contratos, garantia,
+  // atendimento direto sem orçamento) NÃO pertencem a este Kanban.
+  const { data: centralRowsExtras } = await sbClient
+    .from("tarefas_central")
+    .select("*")
+    .gte("data_tarefa", startDate)
+    .lte("data_tarefa", endDate)
+    .or("gc_orcamento_id.not.is.null,gc_os_id.not.is.null");
 
-    const seenIds = new Set<string>();
-    const combinedCentral: any[] = [];
-    for (const row of [...(centralRows || []), ...(centralRowsExtras || [])]) {
-      const tid = String(row.auvo_task_id || "");
-      if (!tid || seenIds.has(tid)) continue;
-      seenIds.add(tid);
-      combinedCentral.push(row);
-    }
+  const seenIds = new Set<string>();
+  const combinedCentral: any[] = [];
+  for (const row of [...(centralRows || []), ...(centralRowsExtras || [])]) {
+    const tid = String(row.auvo_task_id || "");
+    if (!tid || seenIds.has(tid)) continue;
+    seenIds.add(tid);
+    combinedCentral.push(row);
+  }
 
-    if (centralError) {
-      console.warn("[budget-kanban] Erro ao ler tarefas_central, usando APIs externas:", centralError.message);
-    }
+  if (centralError) {
+    console.warn("[budget-kanban] Erro ao ler tarefas_central, usando APIs externas:", centralError.message);
+  }
 
-    // Sempre busca Auvo + GC em paralelo. Auvo é fonte de verdade.
-    const [auvoPrimary, gcOrcMap, gcOsMap] = await Promise.all([
-      fetchAuvoTasksWithQuestionnaire(bearerToken, startDate, endDate),
-      fetchGcOrcamentosMap(gcH),
-      fetchGcOsMap(gcH),
-    ]);
+  // Sempre busca Auvo + GC em paralelo. Auvo é fonte de verdade.
+  const [auvoPrimary, gcOrcMap, gcOsMap] = await Promise.all([
+    fetchAuvoTasksWithQuestionnaire(bearerToken, startDate, endDate),
+    fetchGcOrcamentosMap(gcH),
+    fetchGcOsMap(gcH),
+  ]);
 
-    let auvoTasks = auvoPrimary.tasks;
-    let auvoError = auvoPrimary.errorMessage;
+  let auvoTasks = auvoPrimary.tasks;
+  let auvoError = auvoPrimary.errorMessage;
 
-    // Fallback robusto: se vier vazio sem erro no range escolhido, tenta range amplo e filtra localmente.
-    // Se o Auvo retornou erro (ex.: 502), NÃO dispara busca 2020-2030 — isso piora timeout e cancela a sync.
-    if (!auvoPrimary.hadError && auvoTasks.length === 0 && (startDate !== AUVO_SAFE_START || endDate !== AUVO_SAFE_END)) {
-      console.warn("[budget-kanban] Tentando fallback Auvo com range amplo (2020-2030)");
-      const auvoFallback = await fetchAuvoTasksWithQuestionnaire(bearerToken, AUVO_SAFE_START, AUVO_SAFE_END);
-      if (!auvoError && auvoFallback.errorMessage) auvoError = auvoFallback.errorMessage;
+  // Fallback robusto: se vier vazio sem erro no range escolhido, tenta range amplo e filtra localmente.
+  // Se o Auvo retornou erro (ex.: 502), NÃO dispara busca 2020-2030 — isso piora timeout e cancela a sync.
+  if (!auvoPrimary.hadError && auvoTasks.length === 0 && (startDate !== AUVO_SAFE_START || endDate !== AUVO_SAFE_END)) {
+    console.warn("[budget-kanban] Tentando fallback Auvo com range amplo (2020-2030)");
+    const auvoFallback = await fetchAuvoTasksWithQuestionnaire(bearerToken, AUVO_SAFE_START, AUVO_SAFE_END);
+    if (!auvoError && auvoFallback.errorMessage) auvoError = auvoFallback.errorMessage;
 
-      const fallbackFiltered = auvoFallback.tasks.filter((task: any) =>
-        inDateRange(String(task.taskDate || ""), startDate, endDate)
-      );
-
-      if (fallbackFiltered.length > 0) {
-        auvoTasks = fallbackFiltered;
-        console.log(`[budget-kanban] Fallback Auvo recuperou ${auvoTasks.length} tarefas no período`);
-      }
-    }
-
-    console.log(`[budget-kanban] Auvo tasks: ${auvoTasks.length}, GC orçamentos: ${Object.keys(gcOrcMap).length}, GC OS: ${Object.keys(gcOsMap).length}`);
-
-    // Preserve the existing cache and let the run tracker expose the real error.
-    if (auvoTasks.length === 0 && auvoError && combinedCentral.length === 0) {
-      console.warn(`[budget-kanban] Sync preservado por erro Auvo: ${auvoError}`);
-      throw new Error(auvoError);
-    }
-
-    // Index Auvo tasks by ID for overlay
-    const auvoById: Record<string, any> = {};
-    for (const t of auvoTasks) {
-      const tid = String(t?.taskID || "").trim();
-      if (tid) auvoById[tid] = t;
-    }
-
-    // Overlay: respostas frescas da Auvo sobrescrevem o que veio da central
-    let overlayCount = 0;
-    for (const row of combinedCentral) {
-      const tid = String(row.auvo_task_id || "").trim();
-      const t = auvoById[tid];
-      if (!t) continue;
-      const targetQ = (t.questionnaires || []).find(
-        (q: any) => String(q.questionnaireId) === QUESTIONNAIRE_ID
-      );
-      if (targetQ && Array.isArray(targetQ.answers)) {
-        row.questionario_respostas = targetQ.answers.map((a: any) => ({
-          question: String(a.questionDescription || ""),
-          reply: String(a.reply || ""),
-        }));
-        row.questionario_id = QUESTIONNAIRE_ID;
-        overlayCount++;
-      }
-    }
-
-    // Build kanban items: central rows (com overlay) + Auvo-only (não na central)
-    const centralIds = new Set(
-      combinedCentral
-        .map((r: any) => String(r.auvo_task_id || "").trim())
-        .filter(Boolean)
-    );
-    const auvoOnlyTasks = auvoTasks.filter(
-      (t: any) => !centralIds.has(String(t?.taskID || "").trim())
+    const fallbackFiltered = auvoFallback.tasks.filter((task: any) =>
+      inDateRange(String(task.taskDate || ""), startDate, endDate),
     );
 
-    console.log(`[budget-kanban] sync_path=auvo+central`);
-    console.log(`[budget-kanban] auvo_tasks=${auvoTasks.length} central_rows=${combinedCentral.length} merged=${overlayCount} only_auvo=${auvoOnlyTasks.length}`);
+    if (fallbackFiltered.length > 0) {
+      auvoTasks = fallbackFiltered;
+      console.log(`[budget-kanban] Fallback Auvo recuperou ${auvoTasks.length} tarefas no período`);
+    }
+  }
 
-    const itemsFromCentral = combinedCentral
-      .map((row: any) => buildBudgetItemFromCentral(row, gcOrcMap, gcOsMap))
-      .filter((item: any) => item.auvo_task_id);
+  console.log(
+    `[budget-kanban] Auvo tasks: ${auvoTasks.length}, GC orçamentos: ${Object.keys(gcOrcMap).length}, GC OS: ${Object.keys(gcOsMap).length}`,
+  );
 
-    const itemsFromAuvo = auvoOnlyTasks.map((task: any) => {
-      const taskId = String(task.taskID || "");
-      const gcOrcMatch = gcOrcMap[taskId] || null;
-      const gcOsMatch = gcOsMap[taskId] || null;
+  // Preserve the existing cache and let the run tracker expose the real error.
+  if (auvoTasks.length === 0 && auvoError && combinedCentral.length === 0) {
+    console.warn(`[budget-kanban] Sync preservado por erro Auvo: ${auvoError}`);
+    throw new Error(auvoError);
+  }
 
-      const targetQ = (task.questionnaires || []).find(
-        (q: any) => String(q.questionnaireId) === QUESTIONNAIRE_ID
-      );
-      const answers = (targetQ?.answers || []).map((a: any) => ({
+  // Index Auvo tasks by ID for overlay
+  const auvoById: Record<string, any> = {};
+  for (const t of auvoTasks) {
+    const tid = String(t?.taskID || "").trim();
+    if (tid) auvoById[tid] = t;
+  }
+
+  // Overlay: respostas frescas da Auvo sobrescrevem o que veio da central
+  let overlayCount = 0;
+  for (const row of combinedCentral) {
+    const tid = String(row.auvo_task_id || "").trim();
+    const t = auvoById[tid];
+    if (!t) continue;
+    const targetQ = (t.questionnaires || []).find((q: any) => String(q.questionnaireId) === QUESTIONNAIRE_ID);
+    if (targetQ && Array.isArray(targetQ.answers)) {
+      row.questionario_respostas = targetQ.answers.map((a: any) => ({
         question: String(a.questionDescription || ""),
         reply: String(a.reply || ""),
       }));
+      row.questionario_id = QUESTIONNAIRE_ID;
+      overlayCount++;
+    }
+  }
 
-      // === CADEIA DE RESOLUÇÃO DO CLIENTE ===
-      // 1. customerDescription (campo direto da task)
-      const desc = String(task.customerDescription || "").trim();
-      // 2. customerName / customer object
-      const nameRaw = String(
-        task.customerName || task.customer?.tradeName || task.customer?.companyName || ""
-      ).trim();
-      // 3. Snapshot (conciliação anterior)
-      const nameSnapshot = auvoTaskClienteMap[taskId] || "";
-      // 4. GC match (orçamento ou OS)
-      const nameGc = gcOrcMatch?.gc_cliente || gcOsMatch?.gc_cliente || "";
+  // Build kanban items: central rows (com overlay) + Auvo-only (não na central)
+  const centralIds = new Set(combinedCentral.map((r: any) => String(r.auvo_task_id || "").trim()).filter(Boolean));
+  const auvoOnlyTasks = auvoTasks.filter((t: any) => !centralIds.has(String(t?.taskID || "").trim()));
 
-      const clienteSync = desc || nameRaw || nameSnapshot || nameGc;
+  console.log(`[budget-kanban] sync_path=auvo+central`);
+  console.log(
+    `[budget-kanban] auvo_tasks=${auvoTasks.length} central_rows=${combinedCentral.length} merged=${overlayCount} only_auvo=${auvoOnlyTasks.length}`,
+  );
 
-      return {
-        auvo_task_id: taskId,
-        auvo_link: `https://app2.auvo.com.br/relatorioTarefas/DetalheTarefa/${taskId}`,
-        auvo_task_url: String(task.taskUrl || ""),
-        auvo_survey_url: String(task.survey || ""),
-        cliente: clienteSync || "",
-        _customerId: (!clienteSync && task.customerId && Number(task.customerId) > 0) ? String(task.customerId) : null,
-        _externalId: (!clienteSync && !task.customerId) ? String(task.externalId || "").trim() : null,
-        _resolucao: clienteSync ? (desc ? "customerDescription" : nameRaw ? "customerName" : nameSnapshot ? "snapshot" : "gc_match") : "pendente",
-        tecnico: String(task.userToName || ""),
-        data_tarefa: String(task.taskDate || "").split("T")[0],
-        orientacao: String(task.orientation || ""),
-        status_auvo: task.finished ? "Finalizada" : (task.checkIn ? "Em andamento" : "Aberta"),
-        questionario_respostas: answers,
-        orcamento_realizado: !!gcOrcMatch,
-        os_realizada: !!gcOsMatch,
-        gc_orcamento: gcOrcMatch,
-        gc_os: gcOsMatch,
-      };
-    });
+  const itemsFromCentral = combinedCentral
+    .map((row: any) => buildBudgetItemFromCentral(row, gcOrcMap, gcOsMap))
+    .filter((item: any) => item.auvo_task_id);
 
-    const items = [...itemsFromCentral, ...itemsFromAuvo];
+  const itemsFromAuvo = auvoOnlyTasks.map((task: any) => {
+    const taskId = String(task.taskID || "");
+    const gcOrcMatch = gcOrcMap[taskId] || null;
+    const gcOsMatch = gcOsMap[taskId] || null;
 
-    // === RESOLUÇÃO ASYNC: customerId → Auvo /customers/{id} ===
-    const needsCustomerLookup = items.filter((i: any) => i._customerId);
-    if (needsCustomerLookup.length > 0) {
-      console.log(`[budget-kanban] Resolvendo ${needsCustomerLookup.length} clientes via Auvo /customers/{id}`);
-      const customerCache: Record<string, string> = {};
-      for (const item of needsCustomerLookup) {
-        const cid = (item as any)._customerId;
-        if (customerCache[cid]) {
-          (item as any).cliente = customerCache[cid];
-          (item as any)._resolucao = "auvo_customer_api";
-          continue;
-        }
-        try {
-          const url = `${AUVO_BASE_URL}/customers/${cid}`;
-          const resp = await rateLimitedFetch(url, { headers: auvoHeaders(bearerToken) }, "auvo");
-          if (resp.ok) {
-            const cData = await resp.json();
-            const cust = cData?.result;
-            const name = String(cust?.tradeName || cust?.companyName || cust?.description || cust?.name || "").trim();
-            if (name) {
-              customerCache[cid] = name;
-              (item as any).cliente = name;
-              (item as any)._resolucao = "auvo_customer_api";
-              console.log(`[budget-kanban] Customer ${cid} → ${name}`);
-            }
+    const targetQ = (task.questionnaires || []).find((q: any) => String(q.questionnaireId) === QUESTIONNAIRE_ID);
+    const answers = (targetQ?.answers || []).map((a: any) => ({
+      question: String(a.questionDescription || ""),
+      reply: String(a.reply || ""),
+    }));
+
+    // === CADEIA DE RESOLUÇÃO DO CLIENTE ===
+    // 1. customerDescription (campo direto da task)
+    const desc = String(task.customerDescription || "").trim();
+    // 2. customerName / customer object
+    const nameRaw = String(task.customerName || task.customer?.tradeName || task.customer?.companyName || "").trim();
+    // 3. Snapshot (conciliação anterior)
+    const nameSnapshot = auvoTaskClienteMap[taskId] || "";
+    // 4. GC match (orçamento ou OS)
+    const nameGc = gcOrcMatch?.gc_cliente || gcOsMatch?.gc_cliente || "";
+
+    const clienteSync = desc || nameRaw || nameSnapshot || nameGc;
+
+    return {
+      auvo_task_id: taskId,
+      auvo_link: `https://app2.auvo.com.br/relatorioTarefas/DetalheTarefa/${taskId}`,
+      auvo_task_url: String(task.taskUrl || ""),
+      auvo_survey_url: String(task.survey || ""),
+      cliente: clienteSync || "",
+      _customerId: !clienteSync && task.customerId && Number(task.customerId) > 0 ? String(task.customerId) : null,
+      _externalId: !clienteSync && !task.customerId ? String(task.externalId || "").trim() : null,
+      _resolucao: clienteSync
+        ? desc
+          ? "customerDescription"
+          : nameRaw
+            ? "customerName"
+            : nameSnapshot
+              ? "snapshot"
+              : "gc_match"
+        : "pendente",
+      tecnico: String(task.userToName || ""),
+      data_tarefa: String(task.taskDate || "").split("T")[0],
+      orientacao: String(task.orientation || ""),
+      status_auvo: task.finished ? "Finalizada" : task.checkIn ? "Em andamento" : "Aberta",
+      questionario_respostas: answers,
+      orcamento_realizado: !!gcOrcMatch,
+      os_realizada: !!gcOsMatch,
+      gc_orcamento: gcOrcMatch,
+      gc_os: gcOsMatch,
+    };
+  });
+
+  const items = [...itemsFromCentral, ...itemsFromAuvo];
+
+  // === RESOLUÇÃO ASYNC: customerId → Auvo /customers/{id} ===
+  const needsCustomerLookup = items.filter((i: any) => i._customerId);
+  if (needsCustomerLookup.length > 0) {
+    console.log(`[budget-kanban] Resolvendo ${needsCustomerLookup.length} clientes via Auvo /customers/{id}`);
+    const customerCache: Record<string, string> = {};
+    for (const item of needsCustomerLookup) {
+      const cid = (item as any)._customerId;
+      if (customerCache[cid]) {
+        (item as any).cliente = customerCache[cid];
+        (item as any)._resolucao = "auvo_customer_api";
+        continue;
+      }
+      try {
+        const url = `${AUVO_BASE_URL}/customers/${cid}`;
+        const resp = await rateLimitedFetch(url, { headers: auvoHeaders(bearerToken) }, "auvo");
+        if (resp.ok) {
+          const cData = await resp.json();
+          const cust = cData?.result;
+          const name = String(cust?.tradeName || cust?.companyName || cust?.description || cust?.name || "").trim();
+          if (name) {
+            customerCache[cid] = name;
+            (item as any).cliente = name;
+            (item as any)._resolucao = "auvo_customer_api";
+            console.log(`[budget-kanban] Customer ${cid} → ${name}`);
           }
-        } catch (e) {
-          console.warn(`[budget-kanban] Erro customer ${cid}:`, e);
         }
+      } catch (e) {
+        console.warn(`[budget-kanban] Erro customer ${cid}:`, e);
       }
     }
+  }
 
-    // === RESOLUÇÃO ASYNC: externalId → GC OS/cliente ===
-    const needsExternalLookup = items.filter((i: any) => !(i as any).cliente && (i as any)._externalId);
-    if (needsExternalLookup.length > 0) {
-      console.log(`[budget-kanban] Resolvendo ${needsExternalLookup.length} clientes via externalId no GC`);
-      for (const item of needsExternalLookup) {
-        const extId = (item as any)._externalId;
-        try {
-          // Try fetching OS by codigo (externalId)
-          const url = `${GC_BASE_URL}/api/ordens_servicos?codigo=${encodeURIComponent(extId)}&limite=1`;
-          const resp = await rateLimitedFetch(url, { headers: gcH }, "gc");
-          if (resp.ok) {
-            const data = await resp.json();
-            const os = Array.isArray(data?.data) ? data.data[0] : null;
-            if (os?.nome_cliente) {
-              (item as any).cliente = String(os.nome_cliente);
-              (item as any)._resolucao = "gc_externalId";
-              console.log(`[budget-kanban] ExternalId ${extId} → ${os.nome_cliente}`);
-            }
+  // === RESOLUÇÃO ASYNC: externalId → GC OS/cliente ===
+  const needsExternalLookup = items.filter((i: any) => !(i as any).cliente && (i as any)._externalId);
+  if (needsExternalLookup.length > 0) {
+    console.log(`[budget-kanban] Resolvendo ${needsExternalLookup.length} clientes via externalId no GC`);
+    for (const item of needsExternalLookup) {
+      const extId = (item as any)._externalId;
+      try {
+        // Try fetching OS by codigo (externalId)
+        const url = `${GC_BASE_URL}/api/ordens_servicos?codigo=${encodeURIComponent(extId)}&limite=1`;
+        const resp = await rateLimitedFetch(url, { headers: gcH }, "gc");
+        if (resp.ok) {
+          const data = await resp.json();
+          const os = Array.isArray(data?.data) ? data.data[0] : null;
+          if (os?.nome_cliente) {
+            (item as any).cliente = String(os.nome_cliente);
+            (item as any)._resolucao = "gc_externalId";
+            console.log(`[budget-kanban] ExternalId ${extId} → ${os.nome_cliente}`);
           }
-        } catch (e) {
-          console.warn(`[budget-kanban] Erro externalId ${extId}:`, e);
         }
+      } catch (e) {
+        console.warn(`[budget-kanban] Erro externalId ${extId}:`, e);
       }
     }
+  }
 
-    // Fallback final + log de não resolvidos
-    const unresolved: string[] = [];
-    for (const item of items) {
-      if (!(item as any).cliente) {
-        (item as any).cliente = "Cliente não identificado";
-        (item as any)._resolucao = "nao_identificado";
-        unresolved.push((item as any).auvo_task_id);
-      }
+  // Fallback final + log de não resolvidos
+  const unresolved: string[] = [];
+  for (const item of items) {
+    if (!(item as any).cliente) {
+      (item as any).cliente = "Cliente não identificado";
+      (item as any)._resolucao = "nao_identificado";
+      unresolved.push((item as any).auvo_task_id);
     }
-    if (unresolved.length > 0) {
-      console.warn(`[budget-kanban] ${unresolved.length} tarefas sem cliente: ${unresolved.join(", ")}`);
-    }
+  }
+  if (unresolved.length > 0) {
+    console.warn(`[budget-kanban] ${unresolved.length} tarefas sem cliente: ${unresolved.join(", ")}`);
+  }
 
-    // Log resolução summary
-    const resolucaoCount: Record<string, number> = {};
-    for (const item of items) {
-      const r = (item as any)._resolucao || "unknown";
-      resolucaoCount[r] = (resolucaoCount[r] || 0) + 1;
-    }
-    console.log(`[budget-kanban] Resolução clientes: ${JSON.stringify(resolucaoCount)}`);
+  // Log resolução summary
+  const resolucaoCount: Record<string, number> = {};
+  for (const item of items) {
+    const r = (item as any)._resolucao || "unknown";
+    resolucaoCount[r] = (resolucaoCount[r] || 0) + 1;
+  }
+  console.log(`[budget-kanban] Resolução clientes: ${JSON.stringify(resolucaoCount)}`);
 
-    // Remove internal fields
-    for (const item of items) {
-      delete (item as any)._customerId;
-      delete (item as any)._externalId;
-      delete (item as any)._resolucao;
-    }
+  // Remove internal fields
+  for (const item of items) {
+    delete (item as any)._customerId;
+    delete (item as any)._externalId;
+    delete (item as any)._resolucao;
+  }
 
-    // Merge persisted equipment/serial data from central table
-    const persistedEquipmentMap = await loadPersistedEquipmentMap(
-      sbClient,
-      items.map((item: any) => String(item.auvo_task_id || ""))
-    );
+  // Merge persisted equipment/serial data from central table
+  const persistedEquipmentMap = await loadPersistedEquipmentMap(
+    sbClient,
+    items.map((item: any) => String(item.auvo_task_id || "")),
+  );
 
-    for (const item of items as any[]) {
-      const persisted = persistedEquipmentMap[String(item.auvo_task_id || "")];
-      if (!persisted) continue;
-      if (!sanitizeEquipmentValue(item.equipamento_nome) && persisted.equipamento_nome) item.equipamento_nome = persisted.equipamento_nome;
-      if (!sanitizeEquipmentValue(item.equipamento_id_serie) && persisted.equipamento_id_serie) item.equipamento_id_serie = persisted.equipamento_id_serie;
-    }
+  for (const item of items as any[]) {
+    const persisted = persistedEquipmentMap[String(item.auvo_task_id || "")];
+    if (!persisted) continue;
+    if (!sanitizeEquipmentValue(item.equipamento_nome) && persisted.equipamento_nome)
+      item.equipamento_nome = persisted.equipamento_nome;
+    if (!sanitizeEquipmentValue(item.equipamento_id_serie) && persisted.equipamento_id_serie)
+      item.equipamento_id_serie = persisted.equipamento_id_serie;
+  }
 
-    // During sync, resolve missing equipment directly from Auvo and persist in central table
-    const auvoTaskById: Record<string, any> = {};
-    for (const task of auvoTasks) {
-      const taskId = String(task?.taskID || "").trim();
-      if (taskId) auvoTaskById[taskId] = task;
-    }
+  // During sync, resolve missing equipment directly from Auvo and persist in central table
+  const auvoTaskById: Record<string, any> = {};
+  for (const task of auvoTasks) {
+    const taskId = String(task?.taskID || "").trim();
+    if (taskId) auvoTaskById[taskId] = task;
+  }
 
-    await resolveAndPersistMissingEquipment(sbClient, bearerToken, items as any[], auvoTaskById);
+  await resolveAndPersistMissingEquipment(sbClient, bearerToken, items as any[], auvoTaskById);
 
-    // Sort: pendentes primeiro, depois por data desc
-    items.sort((a: any, b: any) => {
-      const aHasGc = a.orcamento_realizado || a.os_realizada;
-      const bHasGc = b.orcamento_realizado || b.os_realizada;
-      if (aHasGc !== bHasGc) return aHasGc ? 1 : -1;
-      return b.data_tarefa.localeCompare(a.data_tarefa);
+  // Sort: pendentes primeiro, depois por data desc
+  items.sort((a: any, b: any) => {
+    const aHasGc = a.orcamento_realizado || a.os_realizada;
+    const bHasGc = b.orcamento_realizado || b.os_realizada;
+    if (aHasGc !== bHasGc) return aHasGc ? 1 : -1;
+    return b.data_tarefa.localeCompare(a.data_tarefa);
+  });
+
+  // === UPSERT TO CACHE ===
+  // A função SQL decide a coluna usando o estado atual do banco no instante do
+  // UPDATE. Assim uma sincronização iniciada antes da ação do operador não
+  // consegue retirar um card que acabou de ser marcado como resolvido.
+  const syncRows = items.map((item: any, idx: number) => ({
+    auvo_task_id: item.auvo_task_id,
+    dados: item,
+    auto_coluna: budgetColumnForItem(item),
+    posicao: idx,
+  }));
+
+  // Upsert in batches of 50. Projects created before the sync-contract
+  // migration fall back to a service-role upsert with the same column rules.
+  let legacyFallbackUsed = false;
+  for (let i = 0; i < syncRows.length; i += 50) {
+    const batch = syncRows.slice(i, i + 50);
+    const { error } = await sbClient.rpc("upsert_budget_kanban_sync_items", {
+      p_items: batch,
     });
-
-    // === UPSERT TO CACHE ===
-    // A função SQL decide a coluna usando o estado atual do banco no instante do
-    // UPDATE. Assim uma sincronização iniciada antes da ação do operador não
-    // consegue retirar um card que acabou de ser marcado como resolvido.
-    const syncRows = items.map((item: any, idx: number) => ({
-        auvo_task_id: item.auvo_task_id,
-        dados: item,
-        auto_coluna: budgetColumnForItem(item),
-        posicao: idx,
-      }));
-
-    // Upsert in batches of 50
-    for (let i = 0; i < syncRows.length; i += 50) {
-      const batch = syncRows.slice(i, i + 50);
-      const { error } = await sbClient.rpc("upsert_budget_kanban_sync_items", {
-        p_items: batch,
-      });
-      if (error) throw error;
+    if (error) {
+      if (i === 0 && isMissingDatabaseContract(error, ["upsert_budget_kanban_sync_items", "ativo"])) {
+        await upsertBudgetKanbanSyncRowsLegacy(sbClient, syncRows);
+        legacyFallbackUsed = true;
+        break;
+      }
+      throw error;
     }
+  }
 
-    // Não remover itens antigos do cache: preservar histórico e posições já salvas
+  // Não remover itens antigos do cache: preservar histórico e posições já salvas
 
-
+  if (!legacyFallbackUsed) {
     console.log(`[budget-kanban] Cache atualizado: ${syncRows.length} itens`);
+  }
 
-    console.log(`[budget-kanban] Sync concluído. Pendentes: ${items.filter((i: any) => !i.orcamento_realizado && !i.os_realizada).length}`);
+  console.log(
+    `[budget-kanban] Sync concluído. Pendentes: ${items.filter((i: any) => !i.orcamento_realizado && !i.os_realizada).length}`,
+  );
 }
