@@ -358,17 +358,25 @@ export function useSetRequirementRequired() {
 }
 
 export async function applyRequirementsTemplate(clientId: string, docTypes: DocumentType[], existing: ClientRequirement[]) {
-  const techCodes = ["ASO", "NR10", "NR35", "NR33", "CNH", "FICHA_REGISTRO"];
-  const compCodes = ["CONTRATO_SOCIAL", "CERTIFICADO_NR", "ALVARA"];
   const has = (t: DocumentType, s: "COMPANY" | "TECHNICIAN") =>
     existing.some((r) => r.document_type_id === t.id && r.required_for === s);
+  const inPack = (t: DocumentType, k: "COMPANY" | "MEI" | "CLT") =>
+    (t.pacote_padrao ?? []).includes(k);
   const rows = [
+    // Empresa
     ...docTypes
-      .filter((t) => t.ativo && t.scope === "TECHNICIAN" && techCodes.includes(t.code.toUpperCase()) && !has(t, "TECHNICIAN"))
-      .map((t) => ({ client_id: clientId, document_type_id: t.id, required_for: "TECHNICIAN" as const, is_required: true })),
-    ...docTypes
-      .filter((t) => t.ativo && t.scope === "COMPANY" && compCodes.includes(t.code.toUpperCase()) && !has(t, "COMPANY"))
+      .filter((t) => t.ativo && t.scope === "COMPANY" && inPack(t, "COMPANY") && !has(t, "COMPANY"))
       .map((t) => ({ client_id: clientId, document_type_id: t.id, required_for: "COMPANY" as const, is_required: true })),
+    // Técnico (MEI ∪ CLT)
+    ...docTypes
+      .filter(
+        (t) =>
+          t.ativo &&
+          t.scope === "TECHNICIAN" &&
+          (inPack(t, "MEI") || inPack(t, "CLT")) &&
+          !has(t, "TECHNICIAN")
+      )
+      .map((t) => ({ client_id: clientId, document_type_id: t.id, required_for: "TECHNICIAN" as const, is_required: true })),
   ];
   if (rows.length === 0) return 0;
   const { error } = await sb.from("rh_client_requirements").insert(rows);
