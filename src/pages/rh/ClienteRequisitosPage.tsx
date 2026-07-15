@@ -223,7 +223,8 @@ export default function ClienteRequisitosPage() {
         <CardHeader>
           <CardTitle className="text-lg">Prazo e canal de integração</CardTitle>
         </CardHeader>
-        <CardContent className="grid md:grid-cols-3 gap-4 items-end">
+        <CardContent className="space-y-4">
+          <div className="grid md:grid-cols-3 gap-4 items-end">
           <div>
             <Label>Validade da integração (dias)</Label>
             <Input
@@ -254,6 +255,48 @@ export default function ClienteRequisitosPage() {
             {savingCfg && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
             Salvar
           </Button>
+          </div>
+
+          {sendChannel === "portal" && (
+            <div className="grid md:grid-cols-3 gap-4 pt-2 border-t">
+              <div className="md:col-span-3 -mb-2">
+                <p className="text-xs font-medium text-muted-foreground">Acesso ao portal</p>
+              </div>
+              <div>
+                <Label>Link do portal</Label>
+                <Input
+                  type="url"
+                  value={portalUrl}
+                  onChange={(e) => setPortalUrl(e.target.value)}
+                  placeholder="https://..."
+                />
+              </div>
+              <div>
+                <Label>Login</Label>
+                <Input
+                  value={portalLogin}
+                  onChange={(e) => setPortalLogin(e.target.value)}
+                  placeholder="usuário"
+                  autoComplete="off"
+                />
+              </div>
+              <div>
+                <Label>Senha</Label>
+                <div className="flex gap-2">
+                  <Input
+                    type={showSenha ? "text" : "password"}
+                    value={portalSenha}
+                    onChange={(e) => setPortalSenha(e.target.value)}
+                    placeholder="••••••"
+                    autoComplete="off"
+                  />
+                  <Button type="button" variant="outline" size="sm" onClick={() => setShowSenha((v) => !v)}>
+                    {showSenha ? "Ocultar" : "Mostrar"}
+                  </Button>
+                </div>
+              </div>
+            </div>
+          )}
         </CardContent>
       </Card>
 
