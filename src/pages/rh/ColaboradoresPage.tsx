@@ -37,7 +37,18 @@ export default function ColaboradoresPage() {
 
   const submit = async () => {
     if (!form.nome) return;
-    await save.mutateAsync(form);
+    const upper = (v?: string | null) => (v ?? "").toString().toUpperCase();
+    const normalized: Partial<RhColaborador> = {
+      ...form,
+      nome: upper(form.nome),
+      cpf_cnpj: form.cpf_cnpj ? upper(form.cpf_cnpj) : form.cpf_cnpj,
+      cargo: form.cargo ? upper(form.cargo) : form.cargo,
+      funcao: form.funcao ? upper(form.funcao) : form.funcao,
+      email: form.email ? upper(form.email) : form.email,
+      telefone: form.telefone ? upper(form.telefone) : form.telefone,
+      observacoes: form.observacoes ? upper(form.observacoes) : form.observacoes,
+    };
+    await save.mutateAsync(normalized);
     setOpen(false); setForm({ tipo_pessoa: "PF", ativo: true });
   };
 
