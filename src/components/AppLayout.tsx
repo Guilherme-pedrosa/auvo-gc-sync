@@ -77,6 +77,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
             { label: "Colaboradores", icon: UserCog, path: "/rh/colaboradores" },
             { label: "Clientes RH", icon: Building2, path: "/rh/clientes" },
             { label: "Tipos de Documento", icon: FileCheck, path: "/rh/tipos-documento" },
+            { label: "Pacote Padrão", icon: FileCheck, path: "/rh/pacotes-padrao" },
             { label: "Documentos da Empresa", icon: FileText, path: "/rh/documentos-empresa" },
           ],
         },

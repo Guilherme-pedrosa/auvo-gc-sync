@@ -9,7 +9,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import {
   LayoutDashboard, Plus, Settings, ShieldCheck, ShieldX, Clock,
   AlertTriangle, TrendingUp, Users, Building2, FileWarning, CalendarClock,
-  FileSpreadsheet,
+  FileSpreadsheet, PackageOpen,
 } from "lucide-react";
 import * as XLSX from "xlsx";
 import { format, formatDistanceToNow } from "date-fns";
@@ -187,6 +187,40 @@ export default function IntegracoesDashboardPage() {
     }
     return Object.entries(acc).sort((a, b) => b[1] - a[1]).slice(0, 10);
   }, [allColabDocs, colabMap]);
+
+  // Documentos faltantes do PACOTE PADRÃO por profissão (PJ=MEI, PF=CLT)
+  const faltantesPacote = useMemo(() => {
+    const meiTypes = types.filter((t) => t.scope === "TECHNICIAN" && t.ativo && (t.pacote_padrao ?? []).includes("MEI"));
+    const cltTypes = types.filter((t) => t.scope === "TECHNICIAN" && t.ativo && (t.pacote_padrao ?? []).includes("CLT"));
+
+    const docsByColab = new Map<string, Set<string>>();
+    for (const d of allColabDocs) {
+      let s = docsByColab.get(d.colaborador_id);
+      if (!s) { s = new Set(); docsByColab.set(d.colaborador_id, s); }
+      s.add(d.document_type_id);
+    }
+
+    const rows = colabs
+      .filter((c) => c.ativo)
+      .map((c) => {
+        const pack = c.tipo_pessoa === "PJ" ? "MEI" : "CLT";
+        const required = pack === "MEI" ? meiTypes : cltTypes;
+        const has = docsByColab.get(c.id) ?? new Set<string>();
+        const missing = required.filter((t) => !has.has(t.id));
+        return {
+          id: c.id,
+          nome: c.nome_fantasia || c.nome,
+          pack,
+          missingNames: missing.map((t) => t.name),
+          missingCount: missing.length,
+          totalRequired: required.length,
+        };
+      })
+      .filter((r) => r.missingCount > 0)
+      .sort((a, b) => b.missingCount - a.missingCount);
+
+    return rows;
+  }, [colabs, types, allColabDocs]);
 
   const vencendo = useMemo(() => {
     const rows: Row[] = [];
@@ -385,6 +419,56 @@ export default function IntegracoesDashboardPage() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Faltantes do pacote padrão por profissão */}
+      <Card>
+        <CardHeader className="pb-3 flex flex-row items-center justify-between">
+          <CardTitle className="text-base flex items-center gap-2">
+            <PackageOpen className="h-4 w-4 text-amber-600" />
+            Técnicos com documentos faltantes do pacote padrão
+          </CardTitle>
+          <Button size="sm" variant="outline" onClick={() => navigate("/rh/pacotes-padrao")}>
+            <Settings className="mr-2 h-3.5 w-3.5" /> Configurar pacote
+          </Button>
+        </CardHeader>
+        <CardContent className="p-0">
+          {faltantesPacote.length === 0 ? (
+            <p className="text-sm text-muted-foreground text-center py-6">Todos os técnicos ativos têm os documentos do pacote padrão.</p>
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Técnico</TableHead>
+                  <TableHead className="w-20">Pacote</TableHead>
+                  <TableHead className="w-24 text-right">Faltando</TableHead>
+                  <TableHead>Documentos faltantes</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {faltantesPacote.map((r) => (
+                  <TableRow
+                    key={r.id}
+                    className="cursor-pointer hover:bg-muted/50"
+                    onClick={() => navigate(`/rh/colaboradores/${r.id}`)}
+                  >
+                    <TableCell className="font-medium">{r.nome}</TableCell>
+                    <TableCell>
+                      <Badge variant="outline">{r.pack}</Badge>
+                    </TableCell>
+                    <TableCell className="text-right tabular-nums">
+                      <Badge variant="destructive">{r.missingCount}/{r.totalRequired}</Badge>
+                    </TableCell>
+                    <TableCell className="text-xs text-muted-foreground">
+                      {r.missingNames.slice(0, 5).join(", ")}
+                      {r.missingNames.length > 5 ? ` +${r.missingNames.length - 5}` : ""}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          )}
+        </CardContent>
+      </Card>
 
       {/* Vencimentos + Recentes */}
       <div className="grid lg:grid-cols-2 gap-6">
