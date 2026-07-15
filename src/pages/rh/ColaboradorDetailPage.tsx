@@ -200,9 +200,9 @@ export default function ColaboradorDetailPage() {
                 </p>
               )}
             </div>
-            <div><Label>Nome do arquivo</Label><Input value={form.arquivo_nome ?? ""} onChange={(e) => setForm({ ...form, arquivo_nome: e.target.value })} placeholder="Opcional" /></div>
+            <div><Label>Nome do arquivo</Label><Input className="uppercase" value={form.arquivo_nome ?? ""} onChange={(e) => setForm({ ...form, arquivo_nome: e.target.value.toUpperCase() })} placeholder="Opcional" /></div>
             <div><Label className="text-xs text-muted-foreground">Ou URL externa</Label><Input value={/^https?:\/\//i.test(form.arquivo_url ?? "") ? (form.arquivo_url ?? "") : ""} onChange={(e) => setForm({ ...form, arquivo_url: e.target.value })} placeholder="https://..." /></div>
-            <div><Label>Observações</Label><Textarea value={form.observacoes ?? ""} onChange={(e) => setForm({ ...form, observacoes: e.target.value })} /></div>
+            <div><Label>Observações</Label><Textarea className="uppercase" value={form.observacoes ?? ""} onChange={(e) => setForm({ ...form, observacoes: e.target.value.toUpperCase() })} /></div>
           </div>
           <DialogFooter>
             <Button variant="ghost" onClick={() => setOpen(false)}>Cancelar</Button>

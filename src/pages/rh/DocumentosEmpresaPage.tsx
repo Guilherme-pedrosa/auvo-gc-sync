@@ -164,7 +164,7 @@ export default function DocumentosEmpresaPage() {
                 </SelectContent>
               </Select>
             </div>
-            <div><Label>Número</Label><Input value={form.numero ?? ""} onChange={(e) => setForm({ ...form, numero: e.target.value })} /></div>
+            <div><Label>Número</Label><Input className="uppercase" value={form.numero ?? ""} onChange={(e) => setForm({ ...form, numero: e.target.value.toUpperCase() })} /></div>
             <div className="grid grid-cols-2 gap-3">
               <div><Label>Emissão</Label><Input type="date" value={form.data_emissao ?? ""} onChange={(e) => handleEmissaoChange(e.target.value)} /></div>
               <div><Label>Vencimento</Label><Input type="date" value={form.data_vencimento ?? ""} onChange={(e) => setForm({ ...form, data_vencimento: e.target.value })} /></div>
@@ -178,9 +178,9 @@ export default function DocumentosEmpresaPage() {
                 </p>
               )}
             </div>
-            <div><Label>Nome do arquivo</Label><Input value={form.arquivo_nome ?? ""} onChange={(e) => setForm({ ...form, arquivo_nome: e.target.value })} placeholder="Opcional" /></div>
+            <div><Label>Nome do arquivo</Label><Input className="uppercase" value={form.arquivo_nome ?? ""} onChange={(e) => setForm({ ...form, arquivo_nome: e.target.value.toUpperCase() })} placeholder="Opcional" /></div>
             <div><Label className="text-xs text-muted-foreground">Ou URL externa</Label><Input value={/^https?:\/\//i.test(form.arquivo_url ?? "") ? (form.arquivo_url ?? "") : ""} onChange={(e) => setForm({ ...form, arquivo_url: e.target.value })} placeholder="https://..." /></div>
-            <div><Label>Observações</Label><Textarea value={form.observacoes ?? ""} onChange={(e) => setForm({ ...form, observacoes: e.target.value })} /></div>
+            <div><Label>Observações</Label><Textarea className="uppercase" value={form.observacoes ?? ""} onChange={(e) => setForm({ ...form, observacoes: e.target.value.toUpperCase() })} /></div>
           </div>
           <DialogFooter>
             <Button variant="ghost" onClick={() => setOpen(false)}>Cancelar</Button>
