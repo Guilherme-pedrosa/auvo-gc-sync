@@ -7,12 +7,17 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
-import { Plus, Pencil } from "lucide-react";
-import { useDocumentTypes, useSaveDocumentType, type DocumentType } from "@/hooks/rh/useRh";
+import { Plus, Pencil, Trash2 } from "lucide-react";
+import { useDocumentTypes, useSaveDocumentType, useDeleteDocumentType, type DocumentType } from "@/hooks/rh/useRh";
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 
 export default function TiposDocumentoPage() {
   const { data: tipos = [], isLoading } = useDocumentTypes();
   const save = useSaveDocumentType();
+  const del = useDeleteDocumentType();
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState<Partial<DocumentType>>({
     scope: "TECHNICIAN", requires_expiry: true, ativo: true,
@@ -59,10 +64,27 @@ export default function TiposDocumentoPage() {
                 <TableCell><Badge variant="outline">{t.scope}</Badge></TableCell>
                 <TableCell>{t.requires_expiry ? "Sim" : "Não"}</TableCell>
                 <TableCell>{t.ativo ? <Badge>ativo</Badge> : <Badge variant="secondary">inativo</Badge>}</TableCell>
-                <TableCell>
+                <TableCell className="flex gap-1">
                   <Button size="sm" variant="ghost" onClick={() => { setForm(t); setOpen(true); }}>
                     <Pencil className="h-3.5 w-3.5" />
                   </Button>
+                  <AlertDialog>
+                    <AlertDialogTrigger asChild>
+                      <Button size="sm" variant="ghost"><Trash2 className="h-3.5 w-3.5 text-destructive" /></Button>
+                    </AlertDialogTrigger>
+                    <AlertDialogContent>
+                      <AlertDialogHeader>
+                        <AlertDialogTitle>Excluir tipo de documento?</AlertDialogTitle>
+                        <AlertDialogDescription>
+                          "{t.name}" será removido do catálogo. Se houver documentos vinculados, a exclusão pode falhar — nesse caso, desative em vez de excluir.
+                        </AlertDialogDescription>
+                      </AlertDialogHeader>
+                      <AlertDialogFooter>
+                        <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                        <AlertDialogAction onClick={() => del.mutate(t.id)}>Excluir</AlertDialogAction>
+                      </AlertDialogFooter>
+                    </AlertDialogContent>
+                  </AlertDialog>
                 </TableCell>
               </TableRow>
             ))}
