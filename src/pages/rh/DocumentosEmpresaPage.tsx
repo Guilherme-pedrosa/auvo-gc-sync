@@ -31,6 +31,23 @@ export default function DocumentosEmpresaPage() {
   const companyTypes = useMemo(() => types.filter((t) => t.scope === "COMPANY" && t.ativo), [types]);
   const typeMap = useMemo(() => new Map(types.map((t) => [t.id, t])), [types]);
 
+  const AUTO_EXPIRY_MONTHS: Record<string, number> = { PCMSO: 12, PGR: 12, LTCAT: 12 };
+  const addMonths = (iso: string, months: number) => {
+    const [y, m, d] = iso.split("-").map(Number);
+    const dt = new Date(y, m - 1, d);
+    dt.setMonth(dt.getMonth() + months);
+    return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, "0")}-${String(dt.getDate()).padStart(2, "0")}`;
+  };
+  const handleEmissaoChange = (value: string) => {
+    const code = form.document_type_id ? typeMap.get(form.document_type_id)?.code : undefined;
+    const months = code ? AUTO_EXPIRY_MONTHS[code] : undefined;
+    setForm((f) => ({
+      ...f,
+      data_emissao: value,
+      data_vencimento: value && months ? addMonths(value, months) : f.data_vencimento,
+    }));
+  };
+
   const openArquivo = async (url: string) => {
     if (!url) return;
     if (/^https?:\/\//i.test(url)) { window.open(url, "_blank"); return; }
@@ -149,7 +166,7 @@ export default function DocumentosEmpresaPage() {
             </div>
             <div><Label>Número</Label><Input value={form.numero ?? ""} onChange={(e) => setForm({ ...form, numero: e.target.value })} /></div>
             <div className="grid grid-cols-2 gap-3">
-              <div><Label>Emissão</Label><Input type="date" value={form.data_emissao ?? ""} onChange={(e) => setForm({ ...form, data_emissao: e.target.value })} /></div>
+              <div><Label>Emissão</Label><Input type="date" value={form.data_emissao ?? ""} onChange={(e) => handleEmissaoChange(e.target.value)} /></div>
               <div><Label>Vencimento</Label><Input type="date" value={form.data_vencimento ?? ""} onChange={(e) => setForm({ ...form, data_vencimento: e.target.value })} /></div>
             </div>
             <div>
