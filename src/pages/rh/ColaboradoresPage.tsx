@@ -9,13 +9,18 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
-import { Plus, Pencil, Search, FolderOpen } from "lucide-react";
-import { useColaboradores, useSaveColaborador, type RhColaborador } from "@/hooks/rh/useRh";
+import { Plus, Pencil, Search, FolderOpen, Trash2 } from "lucide-react";
+import { useColaboradores, useSaveColaborador, useDeleteColaborador, type RhColaborador } from "@/hooks/rh/useRh";
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 
 export default function ColaboradoresPage() {
   const navigate = useNavigate();
   const { data: colabs = [], isLoading } = useColaboradores();
   const save = useSaveColaborador();
+  const del = useDeleteColaborador();
   const [search, setSearch] = useState("");
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState<Partial<RhColaborador>>({ tipo_pessoa: "PF", ativo: true });
@@ -82,6 +87,23 @@ export default function ColaboradoresPage() {
                   <Button size="sm" variant="ghost" onClick={() => { setForm(c); setOpen(true); }}>
                     <Pencil className="h-3.5 w-3.5" />
                   </Button>
+                  <AlertDialog>
+                    <AlertDialogTrigger asChild>
+                      <Button size="sm" variant="ghost"><Trash2 className="h-3.5 w-3.5 text-destructive" /></Button>
+                    </AlertDialogTrigger>
+                    <AlertDialogContent>
+                      <AlertDialogHeader>
+                        <AlertDialogTitle>Excluir colaborador?</AlertDialogTitle>
+                        <AlertDialogDescription>
+                          "{c.nome}" e todos os documentos anexados serão removidos. Esta ação não pode ser desfeita.
+                        </AlertDialogDescription>
+                      </AlertDialogHeader>
+                      <AlertDialogFooter>
+                        <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                        <AlertDialogAction onClick={() => del.mutate(c.id)}>Excluir</AlertDialogAction>
+                      </AlertDialogFooter>
+                    </AlertDialogContent>
+                  </AlertDialog>
                 </TableCell>
               </TableRow>
             ))}
