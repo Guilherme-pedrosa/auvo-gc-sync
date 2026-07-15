@@ -137,19 +137,19 @@ export default function ColaboradoresPage() {
                   </SelectContent>
                 </Select>
               </div>
-              <div><Label>CPF/CNPJ</Label><Input value={form.cpf_cnpj ?? ""} onChange={(e) => setForm({ ...form, cpf_cnpj: e.target.value })} /></div>
+              <div><Label>CPF/CNPJ</Label><Input value={form.cpf_cnpj ?? ""} onChange={(e) => setForm({ ...form, cpf_cnpj: e.target.value.toUpperCase() })} /></div>
             </div>
-            <div><Label>Nome</Label><Input value={form.nome ?? ""} onChange={(e) => setForm({ ...form, nome: e.target.value })} /></div>
+            <div><Label>Nome</Label><Input value={form.nome ?? ""} onChange={(e) => setForm({ ...form, nome: e.target.value.toUpperCase() })} /></div>
             <div className="grid grid-cols-2 gap-3">
-              <div><Label>Cargo</Label><Input value={form.cargo ?? ""} onChange={(e) => setForm({ ...form, cargo: e.target.value })} /></div>
-              <div><Label>Função</Label><Input value={form.funcao ?? ""} onChange={(e) => setForm({ ...form, funcao: e.target.value })} /></div>
+              <div><Label>Cargo</Label><Input value={form.cargo ?? ""} onChange={(e) => setForm({ ...form, cargo: e.target.value.toUpperCase() })} /></div>
+              <div><Label>Função</Label><Input value={form.funcao ?? ""} onChange={(e) => setForm({ ...form, funcao: e.target.value.toUpperCase() })} /></div>
             </div>
             <div className="grid grid-cols-2 gap-3">
-              <div><Label>Email</Label><Input value={form.email ?? ""} onChange={(e) => setForm({ ...form, email: e.target.value })} /></div>
-              <div><Label>Telefone</Label><Input value={form.telefone ?? ""} onChange={(e) => setForm({ ...form, telefone: e.target.value })} /></div>
+              <div><Label>Email</Label><Input value={form.email ?? ""} onChange={(e) => setForm({ ...form, email: e.target.value.toUpperCase() })} /></div>
+              <div><Label>Telefone</Label><Input value={form.telefone ?? ""} onChange={(e) => setForm({ ...form, telefone: e.target.value.toUpperCase() })} /></div>
             </div>
             <div><Label>Auvo User ID</Label><Input value={form.auvo_user_id ?? ""} onChange={(e) => setForm({ ...form, auvo_user_id: e.target.value })} /></div>
-            <div><Label>Observações</Label><Textarea value={form.observacoes ?? ""} onChange={(e) => setForm({ ...form, observacoes: e.target.value })} /></div>
+            <div><Label>Observações</Label><Textarea value={form.observacoes ?? ""} onChange={(e) => setForm({ ...form, observacoes: e.target.value.toUpperCase() })} /></div>
             <div className="flex items-center gap-2">
               <Switch checked={form.ativo ?? true} onCheckedChange={(v) => setForm({ ...form, ativo: v })} />
               <Label>Ativo</Label>
