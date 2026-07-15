@@ -97,6 +97,17 @@ export default function NovaIntegracaoPage() {
   const [generating, setGenerating] = useState(false);
   const [prefilled, setPrefilled] = useState(false);
 
+  // Workflow steps state (only meaningful once integration is saved)
+  const [workflowStatus, setWorkflowStatus] = useState<string>("draft");
+  const [sendChannel, setSendChannel] = useState<string>("");
+  const [docsSentAt, setDocsSentAt] = useState<string>("");
+  const [docsAcceptedAt, setDocsAcceptedAt] = useState<string>("");
+  const [scheduledAt, setScheduledAt] = useState<string>("");
+  const [completedAt, setCompletedAt] = useState<string>("");
+  const [completedByTech, setCompletedByTech] = useState<string>("");
+  const [validUntil, setValidUntil] = useState<string>("");
+  const [savingWf, setSavingWf] = useState(false);
+
   // Prefill when editing
   useEffect(() => {
     if (!editingId || prefilled) return;
@@ -106,10 +117,44 @@ export default function NovaIntegracaoPage() {
     setTechIds(rec.technician_ids || []);
     setScope((rec.technician_ids?.length ?? 0) > 0 ? "both" : "company");
     setValidade(rec.earliest_expiry_date ?? "");
+    setWorkflowStatus(rec.status ?? "draft");
+    setSendChannel(rec.send_channel ?? "");
+    setDocsSentAt(rec.docs_sent_at ? rec.docs_sent_at.slice(0, 10) : "");
+    setDocsAcceptedAt(rec.docs_accepted_at ? rec.docs_accepted_at.slice(0, 10) : "");
+    setScheduledAt(rec.scheduled_at ? rec.scheduled_at.slice(0, 10) : "");
+    setCompletedAt(rec.completed_at ? rec.completed_at.slice(0, 10) : "");
+    setCompletedByTech(rec.completed_by_technician_id ?? "");
+    setValidUntil(rec.integration_valid_until ?? "");
     setPrefilled(true);
   }, [editingId, integrations, prefilled]);
 
   const { data: reqs = [], isLoading: loadingReqs } = useClientRequirements(clientId || undefined);
+  const cliente = useMemo(() => clientes.find((c) => c.id === clientId), [clientes, clientId]);
+
+  // Prefill send channel from client default when creating new
+  useEffect(() => {
+    if (!editingId && cliente?.integration_send_channel && !sendChannel) {
+      setSendChannel(cliente.integration_send_channel);
+    }
+  }, [cliente, editingId, sendChannel]);
+
+  const saveWorkflow = async (patch: Record<string, unknown>, nextStatus?: string) => {
+    if (!editingId) {
+      toast.error("Salve/gere o kit primeiro para poder atualizar o fluxo.");
+      return;
+    }
+    setSavingWf(true);
+    try {
+      await save.mutateAsync({
+        id: editingId,
+        ...(nextStatus ? { status: nextStatus as Integration["status"] } : {}),
+        ...patch,
+      });
+      if (nextStatus) setWorkflowStatus(nextStatus);
+    } finally {
+      setSavingWf(false);
+    }
+  };
 
   const clienteOptions = useMemo(
     () => clientes.filter((c) => c.ativo !== false).map((c) => ({ value: c.id, label: c.nome })),
