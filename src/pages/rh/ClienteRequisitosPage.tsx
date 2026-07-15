@@ -9,6 +9,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { ArrowLeft, Plus, Trash2, Building2, Users, FileCheck, AlertCircle, Download, Loader2 } from "lucide-react";
 import { toast } from "sonner";
+import { Input } from "@/components/ui/input";
+import { supabase } from "@/integrations/supabase/client";
 import {
   useRhClientes,
   useDocumentTypes,
@@ -19,6 +21,9 @@ import {
   applyRequirementsTemplate,
 } from "@/hooks/rh/useRh";
 import { useQueryClient } from "@tanstack/react-query";
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const sb = supabase as any;
 
 type Scope = "COMPANY" | "TECHNICIAN";
 
@@ -35,6 +40,44 @@ export default function ClienteRequisitosPage() {
   const setRequired = useSetRequirementRequired();
 
   const cliente = useMemo(() => clientes.find((c) => c.id === id), [clientes, id]);
+
+  const [validityDays, setValidityDays] = useState<string>("");
+  const [sendChannel, setSendChannel] = useState<string>("");
+  const [savingCfg, setSavingCfg] = useState(false);
+
+  // Sync local config state whenever cliente loads
+  useMemo(() => {
+    if (cliente) {
+      setValidityDays(cliente.integration_validity_days != null ? String(cliente.integration_validity_days) : "");
+      setSendChannel(cliente.integration_send_channel ?? "");
+    }
+  }, [cliente]);
+
+  const saveIntegrationConfig = async () => {
+    if (!id) return;
+    const days = validityDays.trim() === "" ? null : Number(validityDays);
+    if (days !== null && (!Number.isFinite(days) || days <= 0)) {
+      toast.error("Prazo deve ser um número maior que zero.");
+      return;
+    }
+    setSavingCfg(true);
+    try {
+      const { error } = await sb
+        .from("rh_clientes")
+        .update({
+          integration_validity_days: days,
+          integration_send_channel: sendChannel || null,
+        })
+        .eq("id", id);
+      if (error) throw error;
+      toast.success("Configuração de integração salva");
+      qc.invalidateQueries({ queryKey: ["rh_clientes"] });
+    } catch (e) {
+      toast.error((e as Error).message);
+    } finally {
+      setSavingCfg(false);
+    }
+  };
 
   const companyReqs = useMemo(() => reqs.filter((r) => r.required_for === "COMPANY"), [reqs]);
   const techReqs = useMemo(() => reqs.filter((r) => r.required_for === "TECHNICIAN"), [reqs]);
@@ -165,6 +208,44 @@ export default function ClienteRequisitosPage() {
           Aplicar Pacote Padrão
         </Button>
       </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-lg">Prazo e canal de integração</CardTitle>
+        </CardHeader>
+        <CardContent className="grid md:grid-cols-3 gap-4 items-end">
+          <div>
+            <Label>Validade da integração (dias)</Label>
+            <Input
+              type="number"
+              min={1}
+              value={validityDays}
+              onChange={(e) => setValidityDays(e.target.value)}
+              placeholder="Ex.: 90, 180, 365"
+            />
+            <p className="text-xs text-muted-foreground mt-1">
+              Contado a partir da <b>realização</b> da integração pelo técnico.
+            </p>
+          </div>
+          <div>
+            <Label>Canal de envio</Label>
+            <Select value={sendChannel || "none"} onValueChange={(v) => setSendChannel(v === "none" ? "" : v)}>
+              <SelectTrigger><SelectValue placeholder="Selecione..." /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="none">— não definido —</SelectItem>
+                <SelectItem value="email">E-mail</SelectItem>
+                <SelectItem value="portal">Portal</SelectItem>
+                <SelectItem value="presencial">Presencial</SelectItem>
+                <SelectItem value="outro">Outro</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <Button onClick={saveIntegrationConfig} disabled={savingCfg}>
+            {savingCfg && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+            Salvar
+          </Button>
+        </CardContent>
+      </Card>
 
       <div className="grid lg:grid-cols-2 gap-6">
         <Card>

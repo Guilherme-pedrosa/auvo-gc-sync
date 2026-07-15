@@ -7,9 +7,10 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Badge } from "@/components/ui/badge";
 import { SearchableSelect } from "@/components/ui/searchable-select";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
   ArrowLeft, ShieldCheck, ShieldX, Download, Building2, Users,
-  CheckCircle, Clock, FileX, FileCheck, AlertCircle, Loader2, Save,
+  CheckCircle, Clock, FileX, FileCheck, AlertCircle, Loader2, Save, Send, Calendar, PlayCircle,
 } from "lucide-react";
 import JSZip from "jszip";
 import { format } from "date-fns";
@@ -17,7 +18,7 @@ import { toast } from "sonner";
 import {
   useRhClientes, useColaboradores, useSaveIntegration, useIntegrations,
   useDocumentTypes, useCompanyDocs, useClientRequirements,
-  computeDocStatus,
+  computeDocStatus, type Integration,
 } from "@/hooks/rh/useRh";
 import { supabase } from "@/integrations/supabase/client";
 
@@ -96,6 +97,17 @@ export default function NovaIntegracaoPage() {
   const [generating, setGenerating] = useState(false);
   const [prefilled, setPrefilled] = useState(false);
 
+  // Workflow steps state (only meaningful once integration is saved)
+  const [workflowStatus, setWorkflowStatus] = useState<string>("draft");
+  const [sendChannel, setSendChannel] = useState<string>("");
+  const [docsSentAt, setDocsSentAt] = useState<string>("");
+  const [docsAcceptedAt, setDocsAcceptedAt] = useState<string>("");
+  const [scheduledAt, setScheduledAt] = useState<string>("");
+  const [completedAt, setCompletedAt] = useState<string>("");
+  const [completedByTech, setCompletedByTech] = useState<string>("");
+  const [validUntil, setValidUntil] = useState<string>("");
+  const [savingWf, setSavingWf] = useState(false);
+
   // Prefill when editing
   useEffect(() => {
     if (!editingId || prefilled) return;
@@ -105,10 +117,44 @@ export default function NovaIntegracaoPage() {
     setTechIds(rec.technician_ids || []);
     setScope((rec.technician_ids?.length ?? 0) > 0 ? "both" : "company");
     setValidade(rec.earliest_expiry_date ?? "");
+    setWorkflowStatus(rec.status ?? "draft");
+    setSendChannel(rec.send_channel ?? "");
+    setDocsSentAt(rec.docs_sent_at ? rec.docs_sent_at.slice(0, 10) : "");
+    setDocsAcceptedAt(rec.docs_accepted_at ? rec.docs_accepted_at.slice(0, 10) : "");
+    setScheduledAt(rec.scheduled_at ? rec.scheduled_at.slice(0, 10) : "");
+    setCompletedAt(rec.completed_at ? rec.completed_at.slice(0, 10) : "");
+    setCompletedByTech(rec.completed_by_technician_id ?? "");
+    setValidUntil(rec.integration_valid_until ?? "");
     setPrefilled(true);
   }, [editingId, integrations, prefilled]);
 
   const { data: reqs = [], isLoading: loadingReqs } = useClientRequirements(clientId || undefined);
+  const cliente = useMemo(() => clientes.find((c) => c.id === clientId), [clientes, clientId]);
+
+  // Prefill send channel from client default when creating new
+  useEffect(() => {
+    if (!editingId && cliente?.integration_send_channel && !sendChannel) {
+      setSendChannel(cliente.integration_send_channel);
+    }
+  }, [cliente, editingId, sendChannel]);
+
+  const saveWorkflow = async (patch: Record<string, unknown>, nextStatus?: string) => {
+    if (!editingId) {
+      toast.error("Salve/gere o kit primeiro para poder atualizar o fluxo.");
+      return;
+    }
+    setSavingWf(true);
+    try {
+      await save.mutateAsync({
+        id: editingId,
+        ...(nextStatus ? { status: nextStatus as Integration["status"] } : {}),
+        ...patch,
+      });
+      if (nextStatus) setWorkflowStatus(nextStatus);
+    } finally {
+      setSavingWf(false);
+    }
+  };
 
   const clienteOptions = useMemo(
     () => clientes.filter((c) => c.ativo !== false).map((c) => ({ value: c.id, label: c.nome })),
@@ -282,11 +328,12 @@ export default function NovaIntegracaoPage() {
         ...(editingId ? { id: editingId } : {}),
         client_id: clientId,
         technician_ids: techIds,
-        status: "authorized",
+        status: "docs_enviados",
         validated_at: new Date().toISOString(),
         earliest_expiry_date: validade,
         blocked_reasons: [],
         zip_file_name: fileName,
+        docs_sent_at: new Date().toISOString(),
       });
 
       toast.success("Kit ZIP gerado!");
@@ -546,6 +593,133 @@ export default function NovaIntegracaoPage() {
           </CardContent>
         </Card>
       </div>
+
+      {editingId && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-lg flex items-center gap-2">
+              <CheckCircle className="h-5 w-5 text-primary" />
+              Fluxo da integração
+              <Badge variant="outline" className="ml-2">{workflowStatus}</Badge>
+              {validUntil && (
+                <span className="ml-auto text-sm text-muted-foreground">
+                  Válida até <b>{new Date(validUntil).toLocaleDateString("pt-BR")}</b>
+                </span>
+              )}
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-6">
+            {cliente && (
+              <p className="text-xs text-muted-foreground">
+                Prazo do cliente: <b>{cliente.integration_validity_days ?? "—"} dias</b> · canal padrão: <b>{cliente.integration_send_channel ?? "—"}</b>
+              </p>
+            )}
+
+            {/* Passo 1 */}
+            <div className="grid md:grid-cols-4 gap-3 items-end">
+              <div className="md:col-span-1">
+                <Label className="flex items-center gap-1"><Send className="h-3.5 w-3.5" />1. Envio de docs</Label>
+                <Input type="date" value={docsSentAt} onChange={(e) => setDocsSentAt(e.target.value)} />
+              </div>
+              <div>
+                <Label>Canal</Label>
+                <Select value={sendChannel || "none"} onValueChange={(v) => setSendChannel(v === "none" ? "" : v)}>
+                  <SelectTrigger><SelectValue placeholder="Canal..." /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">—</SelectItem>
+                    <SelectItem value="email">E-mail</SelectItem>
+                    <SelectItem value="portal">Portal</SelectItem>
+                    <SelectItem value="presencial">Presencial</SelectItem>
+                    <SelectItem value="outro">Outro</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <Button
+                variant="outline"
+                disabled={savingWf || !docsSentAt}
+                onClick={() => saveWorkflow(
+                  { docs_sent_at: new Date(docsSentAt).toISOString(), send_channel: sendChannel || null },
+                  "docs_enviados",
+                )}
+              >
+                Marcar enviado
+              </Button>
+            </div>
+
+            {/* Passo 2 */}
+            <div className="grid md:grid-cols-4 gap-3 items-end">
+              <div>
+                <Label className="flex items-center gap-1"><FileCheck className="h-3.5 w-3.5" />2. Aceite dos docs</Label>
+                <Input type="date" value={docsAcceptedAt} onChange={(e) => setDocsAcceptedAt(e.target.value)} />
+              </div>
+              <Button
+                variant="outline"
+                disabled={savingWf || !docsAcceptedAt}
+                onClick={() => saveWorkflow(
+                  { docs_accepted_at: new Date(docsAcceptedAt).toISOString() },
+                  "docs_aceitos",
+                )}
+              >
+                Marcar aceito
+              </Button>
+            </div>
+
+            {/* Passo 3 */}
+            <div className="grid md:grid-cols-4 gap-3 items-end">
+              <div>
+                <Label className="flex items-center gap-1"><Calendar className="h-3.5 w-3.5" />3. Agendamento</Label>
+                <Input type="date" value={scheduledAt} onChange={(e) => setScheduledAt(e.target.value)} />
+              </div>
+              <Button
+                variant="outline"
+                disabled={savingWf || !scheduledAt}
+                onClick={() => saveWorkflow(
+                  { scheduled_at: new Date(scheduledAt).toISOString() },
+                  "agendada",
+                )}
+              >
+                Marcar agendada
+              </Button>
+            </div>
+
+            {/* Passo 4 */}
+            <div className="grid md:grid-cols-4 gap-3 items-end">
+              <div>
+                <Label className="flex items-center gap-1"><PlayCircle className="h-3.5 w-3.5" />4. Realização</Label>
+                <Input type="date" value={completedAt} onChange={(e) => setCompletedAt(e.target.value)} />
+              </div>
+              <div>
+                <Label>Técnico que realizou</Label>
+                <SearchableSelect
+                  value={completedByTech}
+                  onValueChange={setCompletedByTech}
+                  placeholder="Selecione o técnico..."
+                  options={techIds.map((tid) => {
+                    const t = colabs.find((c) => c.id === tid);
+                    return { value: tid, label: t?.nome ?? tid };
+                  })}
+                />
+              </div>
+              <Button
+                disabled={savingWf || !completedAt || !completedByTech}
+                onClick={() => saveWorkflow(
+                  {
+                    completed_at: new Date(completedAt).toISOString(),
+                    completed_by_technician_id: completedByTech,
+                  },
+                  "realizada",
+                )}
+              >
+                Marcar realizada
+              </Button>
+            </div>
+
+            <p className="text-xs text-muted-foreground">
+              A validade da integração é calculada automaticamente ao marcar a etapa 4 (Realização), usando o prazo do cliente.
+            </p>
+          </CardContent>
+        </Card>
+      )}
     </div>
   );
 }

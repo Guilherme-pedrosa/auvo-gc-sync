@@ -18,6 +18,8 @@ export type RhCliente = {
   endereco: string | null; cidade: string | null; uf: string | null; cep: string | null;
   ativo: boolean; origem: "cache" | "gc" | "manual"; sync_em: string | null;
   observacoes: string | null;
+  integration_validity_days: number | null;
+  integration_send_channel: "email" | "portal" | "presencial" | "outro" | null;
 };
 export type RhColaborador = {
   id: string; tipo_pessoa: "PF" | "PJ"; nome: string;
@@ -44,11 +46,19 @@ export type ClientRequirement = {
 };
 export type Integration = {
   id: string; client_id: string; technician_ids: string[];
-  status: "draft" | "authorized" | "sent" | "blocked" | "expired";
+  status: "draft" | "docs_enviados" | "docs_aceitos" | "agendada" | "realizada" | "bloqueada" | "expirada";
   validated_at: string | null; sent_at: string | null;
   earliest_expiry_date: string | null; blocked_reasons: unknown[];
   zip_file_name: string | null; zip_url: string | null;
   observacoes: string | null; criado_em: string;
+  send_channel: "email" | "portal" | "presencial" | "outro" | null;
+  docs_sent_at: string | null;
+  docs_accepted_at: string | null;
+  scheduled_at: string | null;
+  completed_at: string | null;
+  completed_by_technician_id: string | null;
+  integration_valid_until: string | null;
+  validity_days_snapshot: number | null;
 };
 
 // ---------- Document Types ----------
