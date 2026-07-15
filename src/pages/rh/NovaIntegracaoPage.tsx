@@ -695,7 +695,7 @@ export default function NovaIntegracaoPage() {
                   onValueChange={setCompletedByTech}
                   placeholder="Selecione o técnico..."
                   options={techIds.map((tid) => {
-                    const t = colaboradores.find((c) => c.id === tid);
+                    const t = colabs.find((c) => c.id === tid);
                     return { value: tid, label: t?.nome ?? tid };
                   })}
                 />
