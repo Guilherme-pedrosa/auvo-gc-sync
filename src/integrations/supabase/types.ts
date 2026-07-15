@@ -899,25 +899,37 @@ export type Database = {
       }
       kanban_resolution_details: {
         Row: {
+          ativo: boolean
           atualizado_em: string
           auvo_task_id: string
           motivo: string
+          reaberto_em: string | null
+          reaberto_por_id: string | null
+          reaberto_por_nome: string | null
           resolvido_em: string
           resolvido_por_id: string | null
           resolvido_por_nome: string | null
         }
         Insert: {
+          ativo?: boolean
           atualizado_em?: string
           auvo_task_id: string
           motivo: string
+          reaberto_em?: string | null
+          reaberto_por_id?: string | null
+          reaberto_por_nome?: string | null
           resolvido_em?: string
           resolvido_por_id?: string | null
           resolvido_por_nome?: string | null
         }
         Update: {
+          ativo?: boolean
           atualizado_em?: string
           auvo_task_id?: string
           motivo?: string
+          reaberto_em?: string | null
+          reaberto_por_id?: string | null
+          reaberto_por_nome?: string | null
           resolvido_em?: string
           resolvido_por_id?: string | null
           resolvido_por_nome?: string | null
@@ -929,18 +941,33 @@ export type Database = {
           id: string
           periodo_fim: string | null
           periodo_inicio: string | null
+          sync_error: string | null
+          sync_finished_at: string | null
+          sync_run_id: string | null
+          sync_started_at: string | null
+          sync_status: string
           ultimo_sync: string | null
         }
         Insert: {
           id?: string
           periodo_fim?: string | null
           periodo_inicio?: string | null
+          sync_error?: string | null
+          sync_finished_at?: string | null
+          sync_run_id?: string | null
+          sync_started_at?: string | null
+          sync_status?: string
           ultimo_sync?: string | null
         }
         Update: {
           id?: string
           periodo_fim?: string | null
           periodo_inicio?: string | null
+          sync_error?: string | null
+          sync_finished_at?: string | null
+          sync_run_id?: string | null
+          sync_started_at?: string | null
+          sync_status?: string
           ultimo_sync?: string | null
         }
         Relationships: []
@@ -2229,6 +2256,41 @@ export type Database = {
           _user_id: string
         }
         Returns: boolean
+      }
+      reopen_budget_kanban_item: {
+        Args: {
+          p_target_column: string
+          p_task_id: string
+          p_user_id?: string
+          p_user_name?: string
+        }
+        Returns: {
+          auvo_task_id: string
+          coluna: string
+          posicao: number
+        }[]
+      }
+      resolve_budget_kanban_item: {
+        Args: {
+          p_motivo: string
+          p_task_id: string
+          p_user_id?: string
+          p_user_name?: string
+        }
+        Returns: {
+          auvo_task_id: string
+          coluna: string
+          posicao: number
+          resolvido_em: string
+        }[]
+      }
+      save_budget_kanban_positions: {
+        Args: { p_custom_columns?: Json; p_positions: Json }
+        Returns: number
+      }
+      upsert_budget_kanban_sync_items: {
+        Args: { p_items: Json }
+        Returns: number
       }
     }
     Enums: {
