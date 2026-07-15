@@ -32,6 +32,26 @@ function syncErrorMessage(error: unknown): string {
   return message.slice(0, 1000);
 }
 
+function databaseErrorText(error: any): string {
+  return [error?.code, error?.message, error?.details, error?.hint]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
+}
+
+function isMissingDatabaseContract(error: any, identifiers: string[] = []): boolean {
+  const text = databaseErrorText(error);
+  const missingContract =
+    ["42703", "42883", "pgrst202", "pgrst204"].some((code) => text.includes(code)) ||
+    text.includes("does not exist") ||
+    text.includes("could not find") ||
+    text.includes("schema cache");
+
+  return missingContract && (
+    identifiers.length === 0 || identifiers.some((identifier) => text.includes(identifier.toLowerCase()))
+  );
+}
+
 const INVALID_EQUIPMENT_VALUES = new Set([
   "",
   ".",
@@ -686,19 +706,76 @@ async function loadAllBudgetCacheRows(sbClient: any): Promise<any[]> {
 }
 
 async function loadActiveBudgetResolutionIds(sbClient: any): Promise<Set<string>> {
-  const taskIds = new Set<string>();
-  for (let from = 0; ; from += BUDGET_CACHE_PAGE_SIZE) {
-    const { data, error } = await sbClient
-      .from("kanban_resolution_details")
-      .select("auvo_task_id")
-      .eq("ativo", true)
-      .order("auvo_task_id")
-      .range(from, from + BUDGET_CACHE_PAGE_SIZE - 1);
+  const load = async (activeOnly: boolean): Promise<Set<string>> => {
+    const taskIds = new Set<string>();
+    for (let from = 0; ; from += BUDGET_CACHE_PAGE_SIZE) {
+      let query = sbClient
+        .from("kanban_resolution_details")
+        .select("auvo_task_id")
+        .order("auvo_task_id")
+        .range(from, from + BUDGET_CACHE_PAGE_SIZE - 1);
+      if (activeOnly) query = query.eq("ativo", true);
+
+      const { data, error } = await query;
+      if (error) {
+        if (activeOnly && isMissingDatabaseContract(error, ["ativo"])) {
+          console.warn("[budget-kanban] Coluna ativo ausente; usando resoluções do contrato legado");
+          return load(false);
+        }
+        throw error;
+      }
+      for (const row of data || []) taskIds.add(String(row.auvo_task_id));
+      if (!data || data.length < BUDGET_CACHE_PAGE_SIZE) break;
+    }
+    return taskIds;
+  };
+
+  return load(true);
+}
+
+async function upsertBudgetKanbanSyncRowsLegacy(sbClient: any, syncRows: any[]): Promise<void> {
+  const [cachedRows, activeResolutionIds] = await Promise.all([
+    loadAllBudgetCacheRows(sbClient),
+    loadActiveBudgetResolutionIds(sbClient),
+  ]);
+  const cachedByTaskId = new Map(
+    cachedRows.map((row: any) => [String(row.auvo_task_id), row]),
+  );
+  const updatedAt = new Date().toISOString();
+  const rows = syncRows.map((row: any) => {
+    const taskId = String(row.auvo_task_id);
+    const cached = cachedByTaskId.get(taskId) as any;
+    const cachedColumn = String(cached?.coluna || "");
+    const resolved = activeResolutionIds.has(taskId);
+    const manualColumn = cachedColumn &&
+      cachedColumn !== "a_fazer" &&
+      cachedColumn !== "falta_preenchimento" &&
+      cachedColumn !== "os_realizada" &&
+      !cachedColumn.startsWith("orc_");
+    const column = resolved
+      ? RESOLVED_WITHOUT_BUDGET_COLUMN
+      : resolveStoredColumn(row.dados, cachedColumn || null);
+    const position = cached && (resolved || manualColumn || cachedColumn === column)
+      ? Number(cached.posicao || 0)
+      : Number(row.posicao || 0);
+
+    return {
+      auvo_task_id: taskId,
+      dados: row.dados,
+      coluna: column,
+      posicao: position,
+      atualizado_em: updatedAt,
+    };
+  });
+
+  for (let i = 0; i < rows.length; i += 200) {
+    const { error } = await sbClient
+      .from("kanban_orcamentos_cache")
+      .upsert(rows.slice(i, i + 200), { onConflict: "auvo_task_id" });
     if (error) throw error;
-    for (const row of data || []) taskIds.add(String(row.auvo_task_id));
-    if (!data || data.length < BUDGET_CACHE_PAGE_SIZE) break;
   }
-  return taskIds;
+
+  console.warn(`[budget-kanban] Cache atualizado pelo fallback legado: ${rows.length} itens`);
 }
 
 function buildBudgetItemFromCentral(row: any, gcOrcMap: Record<string, any> = {}, gcOsMap: Record<string, any> = {}) {
@@ -776,6 +853,27 @@ Deno.serve(async (req) => {
         .select("ultimo_sync, sync_run_id, sync_status, sync_started_at, sync_finished_at, sync_error")
         .eq("id", "default")
         .maybeSingle();
+      if (error && isMissingDatabaseContract(error, ["sync_run_id", "sync_status", "sync_started_at", "sync_finished_at", "sync_error"])) {
+        const { data: legacyMeta, error: legacyError } = await sbClient
+          .from("kanban_sync_meta")
+          .select("ultimo_sync, periodo_inicio, periodo_fim")
+          .eq("id", "default")
+          .maybeSingle();
+        if (legacyError) throw legacyError;
+
+        return new Response(JSON.stringify({
+          run_id: null,
+          status: "legacy",
+          started_at: null,
+          finished_at: legacyMeta?.ultimo_sync || null,
+          error: null,
+          ultimo_sync: legacyMeta?.ultimo_sync || null,
+          legacy: true,
+        }), {
+          status: 200,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
       if (error) throw error;
 
       return new Response(JSON.stringify({
@@ -970,6 +1068,7 @@ Deno.serve(async (req) => {
 
     const runId = crypto.randomUUID();
     const startedAt = new Date().toISOString();
+    let syncTrackingEnabled = true;
     const { error: startError } = await sbClient
       .from("kanban_sync_meta")
       .upsert({
@@ -983,8 +1082,19 @@ Deno.serve(async (req) => {
         sync_error: null,
       });
 
-    if (startError) {
-      throw new Error(`Contrato de sincronização do banco não instalado: ${startError.message}`);
+    if (startError && isMissingDatabaseContract(startError, ["sync_run_id", "sync_status", "sync_started_at", "sync_finished_at", "sync_error"])) {
+      syncTrackingEnabled = false;
+      const { error: legacyStartError } = await sbClient
+        .from("kanban_sync_meta")
+        .upsert({
+          id: "default",
+          periodo_inicio: startDate,
+          periodo_fim: endDate,
+        }, { onConflict: "id" });
+      if (legacyStartError) throw legacyStartError;
+      console.warn("[budget-kanban] Executando com rastreamento legado de sincronização");
+    } else if (startError) {
+      throw startError;
     }
 
     const backgroundSync = (async () => {
@@ -1000,33 +1110,40 @@ Deno.serve(async (req) => {
         });
 
         const finishedAt = new Date().toISOString();
-        const { error: finishError } = await sbClient
+        let finishQuery = sbClient
           .from("kanban_sync_meta")
-          .update({
+          .update(syncTrackingEnabled ? {
             ultimo_sync: finishedAt,
             periodo_inicio: startDate,
             periodo_fim: endDate,
             sync_status: "succeeded",
             sync_finished_at: finishedAt,
             sync_error: null,
+          } : {
+            ultimo_sync: finishedAt,
+            periodo_inicio: startDate,
+            periodo_fim: endDate,
           })
-          .eq("id", "default")
-          .eq("sync_run_id", runId);
+          .eq("id", "default");
+        if (syncTrackingEnabled) finishQuery = finishQuery.eq("sync_run_id", runId);
+        const { error: finishError } = await finishQuery;
         if (finishError) throw finishError;
       } catch (err) {
         const message = syncErrorMessage(err);
         console.error(`[budget-kanban] Background error (${runId}):`, err);
-        const { error: failureStatusError } = await sbClient
-          .from("kanban_sync_meta")
-          .update({
-            sync_status: "failed",
-            sync_finished_at: new Date().toISOString(),
-            sync_error: message,
-          })
-          .eq("id", "default")
-          .eq("sync_run_id", runId);
-        if (failureStatusError) {
-          console.error(`[budget-kanban] Não foi possível registrar a falha (${runId}):`, failureStatusError);
+        if (syncTrackingEnabled) {
+          const { error: failureStatusError } = await sbClient
+            .from("kanban_sync_meta")
+            .update({
+              sync_status: "failed",
+              sync_finished_at: new Date().toISOString(),
+              sync_error: message,
+            })
+            .eq("id", "default")
+            .eq("sync_run_id", runId);
+          if (failureStatusError) {
+            console.error(`[budget-kanban] Não foi possível registrar a falha (${runId}):`, failureStatusError);
+          }
         }
       }
     });
@@ -1040,7 +1157,8 @@ Deno.serve(async (req) => {
     return new Response(JSON.stringify({
       ok: true,
       background: true,
-      run_id: runId,
+      run_id: syncTrackingEnabled ? runId : null,
+      tracking: syncTrackingEnabled ? "status" : "legacy",
       periodo: { inicio: startDate, fim: endDate },
     }), {
       status: 200,
@@ -1386,19 +1504,30 @@ async function runBudgetKanbanSync(opts: {
         posicao: idx,
       }));
 
-    // Upsert in batches of 50
+    // Upsert in batches of 50. Projects created before the sync-contract
+    // migration fall back to a service-role upsert with the same column rules.
+    let legacyFallbackUsed = false;
     for (let i = 0; i < syncRows.length; i += 50) {
       const batch = syncRows.slice(i, i + 50);
       const { error } = await sbClient.rpc("upsert_budget_kanban_sync_items", {
         p_items: batch,
       });
-      if (error) throw error;
+      if (error) {
+        if (i === 0 && isMissingDatabaseContract(error, ["upsert_budget_kanban_sync_items", "ativo"])) {
+          await upsertBudgetKanbanSyncRowsLegacy(sbClient, syncRows);
+          legacyFallbackUsed = true;
+          break;
+        }
+        throw error;
+      }
     }
 
     // Não remover itens antigos do cache: preservar histórico e posições já salvas
 
 
-    console.log(`[budget-kanban] Cache atualizado: ${syncRows.length} itens`);
+    if (!legacyFallbackUsed) {
+      console.log(`[budget-kanban] Cache atualizado: ${syncRows.length} itens`);
+    }
 
     console.log(`[budget-kanban] Sync concluído. Pendentes: ${items.filter((i: any) => !i.orcamento_realizado && !i.os_realizada).length}`);
 }
