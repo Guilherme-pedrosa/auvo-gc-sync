@@ -5,6 +5,44 @@ export const BUDGET_PENDING_SYSTEM_COLUMNS = new Set([
   "falta_preenchimento",
 ]);
 
+export type BudgetSyncStatusPayload = {
+  run_id?: string | null;
+  status?: string | null;
+  error?: string | null;
+};
+
+export type BudgetSyncPollEvaluation = {
+  state: "waiting" | "succeeded" | "failed";
+  message?: string;
+};
+
+export function evaluateBudgetSyncStatus(
+  payload: BudgetSyncStatusPayload | null | undefined,
+  expectedRunId: string,
+): BudgetSyncPollEvaluation {
+  if (payload?.error) {
+    return { state: "failed", message: payload.error };
+  }
+
+  const currentRunId = String(payload?.run_id || "");
+  if (currentRunId && currentRunId !== expectedRunId) {
+    return {
+      state: "failed",
+      message: "Outra sincronização substituiu esta execução. Atualize a tela e tente novamente.",
+    };
+  }
+
+  if (payload?.status === "succeeded") return { state: "succeeded" };
+  if (payload?.status === "failed") {
+    return {
+      state: "failed",
+      message: "A sincronização falhou no servidor.",
+    };
+  }
+
+  return { state: "waiting" };
+}
+
 export type BudgetKanbanCardIdentity = {
   auvo_task_id: string;
 };

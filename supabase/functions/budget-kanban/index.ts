@@ -27,6 +27,11 @@ type AuvoFetchResult = {
 
 type EquipmentPair = { nome: string | null; id: string | null };
 
+function syncErrorMessage(error: unknown): string {
+  const message = error instanceof Error ? error.message : String(error || "falha desconhecida");
+  return message.slice(0, 1000);
+}
+
 const INVALID_EQUIPMENT_VALUES = new Set([
   "",
   ".",
@@ -686,6 +691,7 @@ async function loadActiveBudgetResolutionIds(sbClient: any): Promise<Set<string>
     const { data, error } = await sbClient
       .from("kanban_resolution_details")
       .select("auvo_task_id")
+      .eq("ativo", true)
       .order("auvo_task_id")
       .range(from, from + BUDGET_CACHE_PAGE_SIZE - 1);
     if (error) throw error;
@@ -762,6 +768,29 @@ Deno.serve(async (req) => {
     const startDate = body.start_date || "2026-01-01";
     const endDate = body.end_date || today;
 
+    // Lightweight polling: do not reload the entire Kanban cache just to learn
+    // whether the background execution finished.
+    if (mode === "sync_status") {
+      const { data: meta, error } = await sbClient
+        .from("kanban_sync_meta")
+        .select("ultimo_sync, sync_run_id, sync_status, sync_started_at, sync_finished_at, sync_error")
+        .eq("id", "default")
+        .maybeSingle();
+      if (error) throw error;
+
+      return new Response(JSON.stringify({
+        run_id: meta?.sync_run_id || null,
+        status: meta?.sync_status || "idle",
+        started_at: meta?.sync_started_at || null,
+        finished_at: meta?.sync_finished_at || null,
+        error: meta?.sync_error || null,
+        ultimo_sync: meta?.ultimo_sync || null,
+      }), {
+        status: 200,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
     // === MODE: CACHE — read from DB ===
     if (mode === "cache") {
       const [cached, activeResolutionIds, { data: meta }, { data: colMeta }] = await Promise.all([
@@ -836,6 +865,9 @@ Deno.serve(async (req) => {
         resumo,
         items: enrichedItems,
         ultimo_sync: meta?.ultimo_sync || null,
+        sync_run_id: meta?.sync_run_id || null,
+        sync_status: meta?.sync_status || "idle",
+        sync_error: meta?.sync_error || null,
         custom_columns: customColumns,
         from_cache: true,
       }), {
@@ -936,18 +968,67 @@ Deno.serve(async (req) => {
 
     console.log(`[budget-kanban] Período: ${startDate} a ${endDate}`);
 
-    const backgroundSync = (async () => {
-      const bearerToken = await auvoLogin(auvoApiKey, auvoApiToken);
-      await runBudgetKanbanSync({
-        sbClient,
-        bearerToken,
-        gcAccessToken,
-        gcSecretToken,
-        startDate,
-        endDate,
+    const runId = crypto.randomUUID();
+    const startedAt = new Date().toISOString();
+    const { error: startError } = await sbClient
+      .from("kanban_sync_meta")
+      .upsert({
+        id: "default",
+        periodo_inicio: startDate,
+        periodo_fim: endDate,
+        sync_run_id: runId,
+        sync_status: "running",
+        sync_started_at: startedAt,
+        sync_finished_at: null,
+        sync_error: null,
       });
-    })().catch((err) => {
-      console.error("[budget-kanban] Background error:", err);
+
+    if (startError) {
+      throw new Error(`Contrato de sincronização do banco não instalado: ${startError.message}`);
+    }
+
+    const backgroundSync = (async () => {
+      try {
+        const bearerToken = await auvoLogin(auvoApiKey, auvoApiToken);
+        await runBudgetKanbanSync({
+          sbClient,
+          bearerToken,
+          gcAccessToken,
+          gcSecretToken,
+          startDate,
+          endDate,
+        });
+
+        const finishedAt = new Date().toISOString();
+        const { error: finishError } = await sbClient
+          .from("kanban_sync_meta")
+          .update({
+            ultimo_sync: finishedAt,
+            periodo_inicio: startDate,
+            periodo_fim: endDate,
+            sync_status: "succeeded",
+            sync_finished_at: finishedAt,
+            sync_error: null,
+          })
+          .eq("id", "default")
+          .eq("sync_run_id", runId);
+        if (finishError) throw finishError;
+      } catch (err) {
+        const message = syncErrorMessage(err);
+        console.error(`[budget-kanban] Background error (${runId}):`, err);
+        const { error: failureStatusError } = await sbClient
+          .from("kanban_sync_meta")
+          .update({
+            sync_status: "failed",
+            sync_finished_at: new Date().toISOString(),
+            sync_error: message,
+          })
+          .eq("id", "default")
+          .eq("sync_run_id", runId);
+        if (failureStatusError) {
+          console.error(`[budget-kanban] Não foi possível registrar a falha (${runId}):`, failureStatusError);
+        }
+      }
     });
 
     if (typeof EdgeRuntime !== "undefined" && EdgeRuntime?.waitUntil) {
@@ -956,7 +1037,12 @@ Deno.serve(async (req) => {
       setTimeout(() => backgroundSync, 0);
     }
 
-    return new Response(JSON.stringify({ ok: true, background: true, periodo: { inicio: startDate, fim: endDate } }), {
+    return new Response(JSON.stringify({
+      ok: true,
+      background: true,
+      run_id: runId,
+      periodo: { inicio: startDate, fim: endDate },
+    }), {
       status: 200,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
@@ -1075,53 +1161,10 @@ async function runBudgetKanbanSync(opts: {
 
     console.log(`[budget-kanban] Auvo tasks: ${auvoTasks.length}, GC orçamentos: ${Object.keys(gcOrcMap).length}, GC OS: ${Object.keys(gcOsMap).length}`);
 
-    // Se Auvo falhar E central também estiver vazia, devolve cache sem sobrescrever
+    // Preserve the existing cache and let the run tracker expose the real error.
     if (auvoTasks.length === 0 && auvoError && combinedCentral.length === 0) {
       console.warn(`[budget-kanban] Sync preservado por erro Auvo: ${auvoError}`);
-
-      const [cached, activeResolutionIds] = await Promise.all([
-        loadAllBudgetCacheRows(sbClient),
-        loadActiveBudgetResolutionIds(sbClient),
-      ]);
-
-      const { data: meta } = await sbClient
-        .from("kanban_sync_meta")
-        .select("*")
-        .eq("id", "default")
-        .single();
-
-      const fallbackItems = (cached || [])
-        .map((row: any) => {
-          const item = row.dados || {};
-          return {
-            ...item,
-            _coluna: activeResolutionIds.has(String(row.auvo_task_id))
-              ? RESOLVED_WITHOUT_BUDGET_COLUMN
-              : resolveStoredColumn(item, row.coluna),
-            _posicao: row.posicao,
-          };
-        })
-        .filter((item: any) => inDateRange(item.data_tarefa, startDate, endDate));
-
-      const resumo = {
-        periodo: { inicio: startDate, fim: endDate },
-        total_tarefas_com_questionario: fallbackItems.length,
-        orcamentos_realizados: fallbackItems.filter((i: any) => i.orcamento_realizado).length,
-        os_realizadas: fallbackItems.filter((i: any) => i.os_realizada).length,
-        pendentes: fallbackItems.filter((i: any) => !i.orcamento_realizado && !i.os_realizada).length,
-      };
-
-      return new Response(JSON.stringify({
-        success: false,
-        error: auvoError,
-        resumo,
-        items: fallbackItems,
-        ultimo_sync: meta?.ultimo_sync || null,
-        from_cache: true,
-      }), {
-        status: 200,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+      throw new Error(auvoError);
     }
 
     // Index Auvo tasks by ID for overlay
@@ -1336,7 +1379,6 @@ async function runBudgetKanbanSync(opts: {
     // A função SQL decide a coluna usando o estado atual do banco no instante do
     // UPDATE. Assim uma sincronização iniciada antes da ação do operador não
     // consegue retirar um card que acabou de ser marcado como resolvido.
-    const now = new Date().toISOString();
     const syncRows = items.map((item: any, idx: number) => ({
         auvo_task_id: item.auvo_task_id,
         dados: item,
@@ -1355,16 +1397,6 @@ async function runBudgetKanbanSync(opts: {
 
     // Não remover itens antigos do cache: preservar histórico e posições já salvas
 
-
-    // Update sync metadata
-    await sbClient
-      .from("kanban_sync_meta")
-      .upsert({
-        id: "default",
-        ultimo_sync: now,
-        periodo_inicio: startDate,
-        periodo_fim: endDate,
-      });
 
     console.log(`[budget-kanban] Cache atualizado: ${syncRows.length} itens`);
 
