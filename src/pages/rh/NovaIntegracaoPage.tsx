@@ -372,6 +372,22 @@ export default function NovaIntegracaoPage() {
                     />
                   </div>
                 )}
+
+                <div>
+                  <Label htmlFor="validade">
+                    Validade da integração <span className="text-destructive">*</span>
+                  </Label>
+                  <Input
+                    id="validade"
+                    type="date"
+                    value={validade}
+                    onChange={(e) => setValidade(e.target.value)}
+                    className="w-full"
+                  />
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Obrigatório. Sugerido: menor vencimento dos documentos.
+                  </p>
+                </div>
               </>
             )}
 
