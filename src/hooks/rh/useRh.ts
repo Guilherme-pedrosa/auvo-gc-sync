@@ -9,6 +9,7 @@ export type DocumentType = {
   id: string; code: string; name: string;
   scope: "COMPANY" | "TECHNICIAN" | "CLIENT";
   requires_expiry: boolean; ativo: boolean;
+  pacote_padrao?: ("COMPANY" | "MEI" | "CLT")[];
 };
 export type RhCliente = {
   id: string; gc_cliente_id: string | null;
