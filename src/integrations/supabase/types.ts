@@ -2257,6 +2257,41 @@ export type Database = {
         }
         Returns: boolean
       }
+      reopen_budget_kanban_item: {
+        Args: {
+          p_target_column: string
+          p_task_id: string
+          p_user_id?: string
+          p_user_name?: string
+        }
+        Returns: {
+          auvo_task_id: string
+          coluna: string
+          posicao: number
+        }[]
+      }
+      resolve_budget_kanban_item: {
+        Args: {
+          p_motivo: string
+          p_task_id: string
+          p_user_id?: string
+          p_user_name?: string
+        }
+        Returns: {
+          auvo_task_id: string
+          coluna: string
+          posicao: number
+          resolvido_em: string
+        }[]
+      }
+      save_budget_kanban_positions: {
+        Args: { p_custom_columns?: Json; p_positions: Json }
+        Returns: number
+      }
+      upsert_budget_kanban_sync_items: {
+        Args: { p_items: Json }
+        Returns: number
+      }
     }
     Enums: {
       app_role: "admin" | "user" | "cliente"
