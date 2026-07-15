@@ -101,7 +101,7 @@ export default function ColaboradorDetailPage() {
       </Button>
 
       <Card className="p-6">
-        <h1 className="text-xl font-semibold">{colab?.nome ?? "..."}</h1>
+        <h1 className="text-xl font-semibold uppercase">{colab?.nome ?? "..."}</h1>
         <div className="text-sm text-muted-foreground grid grid-cols-2 md:grid-cols-4 gap-2 mt-2">
           <div><span className="text-xs">Tipo:</span> {colab?.tipo_pessoa}</div>
           <div><span className="text-xs">CPF/CNPJ:</span> {colab?.cpf_cnpj ?? "—"}</div>

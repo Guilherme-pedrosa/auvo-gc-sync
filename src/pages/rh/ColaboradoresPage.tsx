@@ -86,7 +86,7 @@ export default function ColaboradoresPage() {
               <TableRow><TableCell colSpan={6} className="text-center py-8">Carregando...</TableCell></TableRow>
             ) : filtered.map((c) => (
               <TableRow key={c.id}>
-                <TableCell className="font-medium">{c.nome}</TableCell>
+                <TableCell className="font-medium uppercase">{c.nome}</TableCell>
                 <TableCell><Badge variant="outline">{c.tipo_pessoa}</Badge></TableCell>
                 <TableCell className="font-mono text-xs">{c.cpf_cnpj ?? "—"}</TableCell>
                 <TableCell>{c.cargo ?? "—"}</TableCell>
