@@ -1411,6 +1411,8 @@ export type Database = {
           endereco: string | null
           gc_cliente_id: string | null
           id: string
+          integration_send_channel: string | null
+          integration_validity_days: number | null
           nome: string
           nome_fantasia: string | null
           nome_normalizado: string
@@ -1431,6 +1433,8 @@ export type Database = {
           endereco?: string | null
           gc_cliente_id?: string | null
           id?: string
+          integration_send_channel?: string | null
+          integration_validity_days?: number | null
           nome: string
           nome_fantasia?: string | null
           nome_normalizado: string
@@ -1451,6 +1455,8 @@ export type Database = {
           endereco?: string | null
           gc_cliente_id?: string | null
           id?: string
+          integration_send_channel?: string | null
+          integration_validity_days?: number | null
           nome?: string
           nome_fantasia?: string | null
           nome_normalizado?: string
@@ -1699,15 +1705,23 @@ export type Database = {
           atualizado_em: string
           blocked_reasons: Json
           client_id: string
+          completed_at: string | null
+          completed_by_technician_id: string | null
           criado_em: string
           criado_por: string | null
+          docs_accepted_at: string | null
+          docs_sent_at: string | null
           earliest_expiry_date: string | null
           id: string
+          integration_valid_until: string | null
           observacoes: string | null
+          scheduled_at: string | null
+          send_channel: string | null
           sent_at: string | null
           status: string
           technician_ids: string[]
           validated_at: string | null
+          validity_days_snapshot: number | null
           zip_file_name: string | null
           zip_url: string | null
         }
@@ -1715,15 +1729,23 @@ export type Database = {
           atualizado_em?: string
           blocked_reasons?: Json
           client_id: string
+          completed_at?: string | null
+          completed_by_technician_id?: string | null
           criado_em?: string
           criado_por?: string | null
+          docs_accepted_at?: string | null
+          docs_sent_at?: string | null
           earliest_expiry_date?: string | null
           id?: string
+          integration_valid_until?: string | null
           observacoes?: string | null
+          scheduled_at?: string | null
+          send_channel?: string | null
           sent_at?: string | null
           status?: string
           technician_ids?: string[]
           validated_at?: string | null
+          validity_days_snapshot?: number | null
           zip_file_name?: string | null
           zip_url?: string | null
         }
@@ -1731,15 +1753,23 @@ export type Database = {
           atualizado_em?: string
           blocked_reasons?: Json
           client_id?: string
+          completed_at?: string | null
+          completed_by_technician_id?: string | null
           criado_em?: string
           criado_por?: string | null
+          docs_accepted_at?: string | null
+          docs_sent_at?: string | null
           earliest_expiry_date?: string | null
           id?: string
+          integration_valid_until?: string | null
           observacoes?: string | null
+          scheduled_at?: string | null
+          send_channel?: string | null
           sent_at?: string | null
           status?: string
           technician_ids?: string[]
           validated_at?: string | null
+          validity_days_snapshot?: number | null
           zip_file_name?: string | null
           zip_url?: string | null
         }
@@ -1749,6 +1779,13 @@ export type Database = {
             columns: ["client_id"]
             isOneToOne: false
             referencedRelation: "rh_clientes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "rh_integrations_completed_by_technician_id_fkey"
+            columns: ["completed_by_technician_id"]
+            isOneToOne: false
+            referencedRelation: "rh_colaboradores"
             referencedColumns: ["id"]
           },
         ]
