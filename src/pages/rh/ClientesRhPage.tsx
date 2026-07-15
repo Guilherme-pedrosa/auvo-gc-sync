@@ -94,9 +94,9 @@ export default function ClientesRhPage() {
               <TableRow><TableCell colSpan={5} className="text-center py-8">Carregando...</TableCell></TableRow>
             ) : clientes.map((c) => (
               <TableRow key={c.id}>
-                <TableCell className="font-medium">{c.nome}</TableCell>
-                <TableCell className="font-mono text-xs">{c.cpf_cnpj ?? "—"}</TableCell>
-                <TableCell className="text-xs">{[c.cidade, c.uf].filter(Boolean).join(" / ") || "—"}</TableCell>
+                <TableCell className="font-medium uppercase">{c.nome}</TableCell>
+                <TableCell className="font-mono text-xs uppercase">{c.cpf_cnpj ?? "—"}</TableCell>
+                <TableCell className="text-xs uppercase">{[c.cidade, c.uf].filter(Boolean).join(" / ") || "—"}</TableCell>
                 <TableCell>{originBadge(c.origem)}</TableCell>
                 <TableCell className="flex gap-1">
                   <Button size="sm" variant="ghost" onClick={() => navigate(`/rh/clientes/${c.id}/requisitos`)}>
