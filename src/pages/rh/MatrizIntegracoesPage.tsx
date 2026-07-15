@@ -5,8 +5,12 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Plus, Search } from "lucide-react";
-import { useIntegrations, useRhClientes, useColaboradores } from "@/hooks/rh/useRh";
+import { Plus, Search, Pencil, Trash2 } from "lucide-react";
+import { useIntegrations, useRhClientes, useColaboradores, useDeleteIntegration } from "@/hooks/rh/useRh";
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 const statusVariant: Record<string, "default" | "secondary" | "outline" | "destructive"> = {
   draft: "outline",
@@ -23,6 +27,8 @@ export default function MatrizIntegracoesPage() {
   const { data: colabs = [] } = useColaboradores();
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
+  const del = useDeleteIntegration();
+  const [toDelete, setToDelete] = useState<{ id: string; nome: string } | null>(null);
 
   const clientMap = useMemo(() => new Map(clientes.map((c) => [c.id, c])), [clientes]);
   const colabMap = useMemo(() => new Map(colabs.map((c) => [c.id, c])), [colabs]);
@@ -77,13 +83,14 @@ export default function MatrizIntegracoesPage() {
               <TableHead>Validada</TableHead>
               <TableHead>Enviada</TableHead>
               <TableHead>Menor venc.</TableHead>
+              <TableHead className="text-right">Ações</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {isLoading ? (
-              <TableRow><TableCell colSpan={6} className="text-center py-8">Carregando...</TableCell></TableRow>
+              <TableRow><TableCell colSpan={7} className="text-center py-8">Carregando...</TableCell></TableRow>
             ) : rows.length === 0 ? (
-              <TableRow><TableCell colSpan={6} className="text-center py-8 text-muted-foreground">Nenhuma integração.</TableCell></TableRow>
+              <TableRow><TableCell colSpan={7} className="text-center py-8 text-muted-foreground">Nenhuma integração.</TableCell></TableRow>
             ) : rows.map((i) => (
               <TableRow key={i.id}>
                 <TableCell className="font-medium">{clientMap.get(i.client_id)?.nome ?? "—"}</TableCell>
@@ -94,11 +101,55 @@ export default function MatrizIntegracoesPage() {
                 <TableCell className="text-xs">{i.validated_at ? new Date(i.validated_at).toLocaleDateString("pt-BR") : "—"}</TableCell>
                 <TableCell className="text-xs">{i.sent_at ? new Date(i.sent_at).toLocaleDateString("pt-BR") : "—"}</TableCell>
                 <TableCell className="text-xs">{i.earliest_expiry_date ?? "—"}</TableCell>
+                <TableCell className="text-right">
+                  <div className="flex justify-end gap-1">
+                    <Button
+                      size="icon"
+                      variant="ghost"
+                      onClick={() => navigate(`/rh/integracoes/nova?id=${i.id}`)}
+                      title="Editar"
+                    >
+                      <Pencil className="h-4 w-4" />
+                    </Button>
+                    <Button
+                      size="icon"
+                      variant="ghost"
+                      className="text-destructive hover:text-destructive"
+                      onClick={() => setToDelete({ id: i.id, nome: clientMap.get(i.client_id)?.nome ?? "esta integração" })}
+                      title="Excluir"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </TableCell>
               </TableRow>
             ))}
           </TableBody>
         </Table>
       </div>
+
+      <AlertDialog open={!!toDelete} onOpenChange={(o) => !o && setToDelete(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Excluir integração?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Esta ação removerá a integração de <b>{toDelete?.nome}</b> permanentemente.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={async () => {
+                if (toDelete) await del.mutateAsync(toDelete.id);
+                setToDelete(null);
+              }}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              Excluir
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

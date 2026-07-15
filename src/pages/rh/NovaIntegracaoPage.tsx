@@ -1,7 +1,8 @@
-import { useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useEffect, useMemo, useState } from "react";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
+import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Badge } from "@/components/ui/badge";
@@ -14,7 +15,7 @@ import JSZip from "jszip";
 import { format } from "date-fns";
 import { toast } from "sonner";
 import {
-  useRhClientes, useColaboradores, useSaveIntegration,
+  useRhClientes, useColaboradores, useSaveIntegration, useIntegrations,
   useDocumentTypes, useCompanyDocs, useClientRequirements,
   computeDocStatus,
 } from "@/hooks/rh/useRh";
@@ -73,10 +74,13 @@ function stateBadge(s: DocState) {
 
 export default function NovaIntegracaoPage() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const editingId = searchParams.get("id");
   const { data: clientes = [] } = useRhClientes();
   const { data: colabs = [] } = useColaboradores();
   const { data: docTypes = [] } = useDocumentTypes();
   const { data: companyDocs = [] } = useCompanyDocs();
+  const { data: integrations = [] } = useIntegrations();
   const save = useSaveIntegration();
 
   const [clientId, setClientId] = useState<string>("");
@@ -87,8 +91,22 @@ export default function NovaIntegracaoPage() {
   const [companyRows, setCompanyRows] = useState<DocRow[]>([]);
   const [techBlocks, setTechBlocks] = useState<TechBlock[]>([]);
   const [earliestExpiry, setEarliestExpiry] = useState<string | null>(null);
+  const [validade, setValidade] = useState<string>("");
   const [validating, setValidating] = useState(false);
   const [generating, setGenerating] = useState(false);
+  const [prefilled, setPrefilled] = useState(false);
+
+  // Prefill when editing
+  useEffect(() => {
+    if (!editingId || prefilled) return;
+    const rec = integrations.find((i) => i.id === editingId);
+    if (!rec) return;
+    setClientId(rec.client_id);
+    setTechIds(rec.technician_ids || []);
+    setScope((rec.technician_ids?.length ?? 0) > 0 ? "both" : "company");
+    setValidade(rec.earliest_expiry_date ?? "");
+    setPrefilled(true);
+  }, [editingId, integrations, prefilled]);
 
   const { data: reqs = [], isLoading: loadingReqs } = useClientRequirements(clientId || undefined);
 
@@ -117,6 +135,7 @@ export default function NovaIntegracaoPage() {
     setCompanyRows([]);
     setTechBlocks([]);
     setEarliestExpiry(null);
+    setValidade("");
   };
 
   const validate = async () => {
@@ -194,6 +213,7 @@ export default function NovaIntegracaoPage() {
       setTechBlocks(tBlocks);
       setReasons(problems);
       setEarliestExpiry(minExp ? format(minExp, "yyyy-MM-dd") : null);
+      if (!validade && minExp) setValidade(format(minExp, "yyyy-MM-dd"));
       setStatus(problems.length > 0 ? "BLOCKED" : "AUTHORIZED");
     } catch (e) {
       toast.error((e as Error).message);
@@ -204,6 +224,10 @@ export default function NovaIntegracaoPage() {
 
   const generateZip = async () => {
     if (status !== "AUTHORIZED") return;
+    if (!validade) {
+      toast.error("Informe a validade da integração antes de gerar o kit.");
+      return;
+    }
     setGenerating(true);
     try {
       const zip = new JSZip();
@@ -255,11 +279,12 @@ export default function NovaIntegracaoPage() {
 
       // Persist integration record
       await save.mutateAsync({
+        ...(editingId ? { id: editingId } : {}),
         client_id: clientId,
         technician_ids: techIds,
         status: "authorized",
         validated_at: new Date().toISOString(),
-        earliest_expiry_date: earliestExpiry,
+        earliest_expiry_date: validade,
         blocked_reasons: [],
         zip_file_name: fileName,
       });
@@ -279,7 +304,7 @@ export default function NovaIntegracaoPage() {
       </Button>
 
       <div>
-        <h1 className="text-2xl font-semibold">Nova Integração</h1>
+        <h1 className="text-2xl font-semibold">{editingId ? "Editar Integração" : "Nova Integração"}</h1>
         <p className="text-sm text-muted-foreground">Gere o kit de documentação (ZIP) para acesso do cliente.</p>
       </div>
 
@@ -347,6 +372,22 @@ export default function NovaIntegracaoPage() {
                     />
                   </div>
                 )}
+
+                <div>
+                  <Label htmlFor="validade">
+                    Validade da integração <span className="text-destructive">*</span>
+                  </Label>
+                  <Input
+                    id="validade"
+                    type="date"
+                    value={validade}
+                    onChange={(e) => setValidade(e.target.value)}
+                    className="w-full"
+                  />
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Obrigatório. Sugerido: menor vencimento dos documentos.
+                  </p>
+                </div>
               </>
             )}
 
@@ -474,12 +515,31 @@ export default function NovaIntegracaoPage() {
                 <div className="flex gap-3 pt-4 border-t">
                   <Button
                     onClick={generateZip}
-                    disabled={status !== "AUTHORIZED" || generating}
+                    disabled={status !== "AUTHORIZED" || generating || !validade}
                     className="flex-1"
                   >
                     {generating ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Download className="h-4 w-4 mr-2" />}
-                    Gerar ZIP
+                    {editingId ? "Regerar ZIP e salvar" : "Gerar ZIP"}
                   </Button>
+                  {editingId && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      disabled={!validade || save.isPending}
+                      onClick={async () => {
+                        await save.mutateAsync({
+                          id: editingId,
+                          client_id: clientId,
+                          technician_ids: techIds,
+                          earliest_expiry_date: validade,
+                        });
+                        navigate("/rh/integracoes");
+                      }}
+                    >
+                      {save.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Save className="h-4 w-4 mr-2" />}
+                      Salvar alterações
+                    </Button>
+                  )}
                 </div>
               </div>
             )}
