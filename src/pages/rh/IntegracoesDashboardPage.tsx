@@ -188,6 +188,40 @@ export default function IntegracoesDashboardPage() {
     return Object.entries(acc).sort((a, b) => b[1] - a[1]).slice(0, 10);
   }, [allColabDocs, colabMap]);
 
+  // Documentos faltantes do PACOTE PADRÃO por profissão (PJ=MEI, PF=CLT)
+  const faltantesPacote = useMemo(() => {
+    const meiTypes = types.filter((t) => t.scope === "TECHNICIAN" && t.ativo && (t.pacote_padrao ?? []).includes("MEI"));
+    const cltTypes = types.filter((t) => t.scope === "TECHNICIAN" && t.ativo && (t.pacote_padrao ?? []).includes("CLT"));
+
+    const docsByColab = new Map<string, Set<string>>();
+    for (const d of allColabDocs) {
+      let s = docsByColab.get(d.colaborador_id);
+      if (!s) { s = new Set(); docsByColab.set(d.colaborador_id, s); }
+      s.add(d.document_type_id);
+    }
+
+    const rows = colabs
+      .filter((c) => c.ativo)
+      .map((c) => {
+        const pack = c.tipo_pessoa === "PJ" ? "MEI" : "CLT";
+        const required = pack === "MEI" ? meiTypes : cltTypes;
+        const has = docsByColab.get(c.id) ?? new Set<string>();
+        const missing = required.filter((t) => !has.has(t.id));
+        return {
+          id: c.id,
+          nome: c.nome_fantasia || c.nome,
+          pack,
+          missingNames: missing.map((t) => t.name),
+          missingCount: missing.length,
+          totalRequired: required.length,
+        };
+      })
+      .filter((r) => r.missingCount > 0)
+      .sort((a, b) => b.missingCount - a.missingCount);
+
+    return rows;
+  }, [colabs, types, allColabDocs]);
+
   const vencendo = useMemo(() => {
     const rows: Row[] = [];
 
