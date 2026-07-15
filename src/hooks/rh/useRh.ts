@@ -77,6 +77,17 @@ export function useSaveDocumentType() {
     onError: (e: Error) => toast.error(e.message),
   });
 }
+export function useDeleteDocumentType() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (id: string) => {
+      const { error } = await sb.from("rh_document_types").delete().eq("id", id);
+      if (error) throw error;
+    },
+    onSuccess: () => { toast.success("Tipo excluído"); qc.invalidateQueries({ queryKey: ["rh_document_types"] }); },
+    onError: (e: Error) => toast.error(e.message),
+  });
+}
 
 // ---------- Clientes ----------
 export function useRhClientes(search = "") {
@@ -108,6 +119,17 @@ export function useSaveRhCliente() {
       }
     },
     onSuccess: () => { toast.success("Cliente salvo"); qc.invalidateQueries({ queryKey: ["rh_clientes"] }); },
+    onError: (e: Error) => toast.error(e.message),
+  });
+}
+export function useDeleteRhCliente() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (id: string) => {
+      const { error } = await sb.from("rh_clientes").delete().eq("id", id);
+      if (error) throw error;
+    },
+    onSuccess: () => { toast.success("Cliente excluído"); qc.invalidateQueries({ queryKey: ["rh_clientes"] }); },
     onError: (e: Error) => toast.error(e.message),
   });
 }
@@ -147,6 +169,17 @@ export function useSaveColaborador() {
       }
     },
     onSuccess: () => { toast.success("Colaborador salvo"); qc.invalidateQueries({ queryKey: ["rh_colaboradores"] }); },
+    onError: (e: Error) => toast.error(e.message),
+  });
+}
+export function useDeleteColaborador() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (id: string) => {
+      const { error } = await sb.from("rh_colaboradores").delete().eq("id", id);
+      if (error) throw error;
+    },
+    onSuccess: () => { toast.success("Colaborador excluído"); qc.invalidateQueries({ queryKey: ["rh_colaboradores"] }); },
     onError: (e: Error) => toast.error(e.message),
   });
 }
@@ -226,6 +259,17 @@ export function useSaveCompanyDoc() {
       }
     },
     onSuccess: () => { toast.success("Documento salvo"); qc.invalidateQueries({ queryKey: ["rh_company_documents"] }); },
+    onError: (e: Error) => toast.error(e.message),
+  });
+}
+export function useDeleteCompanyDoc() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (id: string) => {
+      const { error } = await sb.from("rh_company_documents").delete().eq("id", id);
+      if (error) throw error;
+    },
+    onSuccess: () => { toast.success("Documento excluído"); qc.invalidateQueries({ queryKey: ["rh_company_documents"] }); },
     onError: (e: Error) => toast.error(e.message),
   });
 }
