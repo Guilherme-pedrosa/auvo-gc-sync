@@ -43,6 +43,10 @@ export default function ClienteRequisitosPage() {
 
   const [validityDays, setValidityDays] = useState<string>("");
   const [sendChannel, setSendChannel] = useState<string>("");
+  const [portalUrl, setPortalUrl] = useState<string>("");
+  const [portalLogin, setPortalLogin] = useState<string>("");
+  const [portalSenha, setPortalSenha] = useState<string>("");
+  const [showSenha, setShowSenha] = useState(false);
   const [savingCfg, setSavingCfg] = useState(false);
 
   // Sync local config state whenever cliente loads
@@ -50,6 +54,9 @@ export default function ClienteRequisitosPage() {
     if (cliente) {
       setValidityDays(cliente.integration_validity_days != null ? String(cliente.integration_validity_days) : "");
       setSendChannel(cliente.integration_send_channel ?? "");
+      setPortalUrl(cliente.portal_url ?? "");
+      setPortalLogin(cliente.portal_login ?? "");
+      setPortalSenha(cliente.portal_senha ?? "");
     }
   }, [cliente]);
 
@@ -67,6 +74,9 @@ export default function ClienteRequisitosPage() {
         .update({
           integration_validity_days: days,
           integration_send_channel: sendChannel || null,
+          portal_url: sendChannel === "portal" ? (portalUrl || null) : null,
+          portal_login: sendChannel === "portal" ? (portalLogin || null) : null,
+          portal_senha: sendChannel === "portal" ? (portalSenha || null) : null,
         })
         .eq("id", id);
       if (error) throw error;
