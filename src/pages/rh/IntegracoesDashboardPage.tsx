@@ -9,7 +9,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import {
   LayoutDashboard, Plus, Settings, ShieldCheck, ShieldX, Clock,
   AlertTriangle, TrendingUp, Users, Building2, FileWarning, CalendarClock,
-  FileSpreadsheet,
+  FileSpreadsheet, PackageOpen,
 } from "lucide-react";
 import * as XLSX from "xlsx";
 import { format, formatDistanceToNow } from "date-fns";
@@ -419,6 +419,56 @@ export default function IntegracoesDashboardPage() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Faltantes do pacote padrão por profissão */}
+      <Card>
+        <CardHeader className="pb-3 flex flex-row items-center justify-between">
+          <CardTitle className="text-base flex items-center gap-2">
+            <PackageOpen className="h-4 w-4 text-amber-600" />
+            Técnicos com documentos faltantes do pacote padrão
+          </CardTitle>
+          <Button size="sm" variant="outline" onClick={() => navigate("/rh/pacotes-padrao")}>
+            <Settings className="mr-2 h-3.5 w-3.5" /> Configurar pacote
+          </Button>
+        </CardHeader>
+        <CardContent className="p-0">
+          {faltantesPacote.length === 0 ? (
+            <p className="text-sm text-muted-foreground text-center py-6">Todos os técnicos ativos têm os documentos do pacote padrão.</p>
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Técnico</TableHead>
+                  <TableHead className="w-20">Pacote</TableHead>
+                  <TableHead className="w-24 text-right">Faltando</TableHead>
+                  <TableHead>Documentos faltantes</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {faltantesPacote.map((r) => (
+                  <TableRow
+                    key={r.id}
+                    className="cursor-pointer hover:bg-muted/50"
+                    onClick={() => navigate(`/rh/colaboradores/${r.id}`)}
+                  >
+                    <TableCell className="font-medium">{r.nome}</TableCell>
+                    <TableCell>
+                      <Badge variant="outline">{r.pack}</Badge>
+                    </TableCell>
+                    <TableCell className="text-right tabular-nums">
+                      <Badge variant="destructive">{r.missingCount}/{r.totalRequired}</Badge>
+                    </TableCell>
+                    <TableCell className="text-xs text-muted-foreground">
+                      {r.missingNames.slice(0, 5).join(", ")}
+                      {r.missingNames.length > 5 ? ` +${r.missingNames.length - 5}` : ""}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          )}
+        </CardContent>
+      </Card>
 
       {/* Vencimentos + Recentes */}
       <div className="grid lg:grid-cols-2 gap-6">
