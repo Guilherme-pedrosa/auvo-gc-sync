@@ -1628,6 +1628,7 @@ export type Database = {
           criado_em: string
           id: string
           name: string
+          pacote_padrao: string[]
           requires_expiry: boolean
           scope: string
         }
@@ -1638,6 +1639,7 @@ export type Database = {
           criado_em?: string
           id?: string
           name: string
+          pacote_padrao?: string[]
           requires_expiry?: boolean
           scope: string
         }
@@ -1648,6 +1650,7 @@ export type Database = {
           criado_em?: string
           id?: string
           name?: string
+          pacote_padrao?: string[]
           requires_expiry?: boolean
           scope?: string
         }

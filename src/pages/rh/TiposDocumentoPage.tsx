@@ -9,6 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { Plus, Pencil, Trash2 } from "lucide-react";
 import { useDocumentTypes, useSaveDocumentType, useDeleteDocumentType, type DocumentType } from "@/hooks/rh/useRh";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger,
@@ -22,6 +23,17 @@ export default function TiposDocumentoPage() {
   const [form, setForm] = useState<Partial<DocumentType>>({
     scope: "TECHNICIAN", requires_expiry: true, ativo: true,
   });
+
+  const PACOTES: { key: "COMPANY" | "MEI" | "CLT"; label: string }[] = [
+    { key: "COMPANY", label: "Empresa" },
+    { key: "MEI", label: "Téc. MEI" },
+    { key: "CLT", label: "Téc. CLT" },
+  ];
+  const togglePacote = (k: "COMPANY" | "MEI" | "CLT") => {
+    const cur = new Set(form.pacote_padrao ?? []);
+    cur.has(k) ? cur.delete(k) : cur.add(k);
+    setForm({ ...form, pacote_padrao: Array.from(cur) as DocumentType["pacote_padrao"] });
+  };
 
   const submit = async () => {
     if (!form.name || !form.code) return;
@@ -49,6 +61,7 @@ export default function TiposDocumentoPage() {
               <TableHead>Código</TableHead>
               <TableHead>Nome</TableHead>
               <TableHead>Escopo</TableHead>
+              <TableHead>Pacote Padrão</TableHead>
               <TableHead>Vence?</TableHead>
               <TableHead>Ativo</TableHead>
               <TableHead />
@@ -56,12 +69,23 @@ export default function TiposDocumentoPage() {
           </TableHeader>
           <TableBody>
             {isLoading ? (
-              <TableRow><TableCell colSpan={6} className="text-center py-8">Carregando...</TableCell></TableRow>
+              <TableRow><TableCell colSpan={7} className="text-center py-8">Carregando...</TableCell></TableRow>
             ) : tipos.map((t) => (
               <TableRow key={t.id}>
                 <TableCell className="font-mono text-xs">{t.code}</TableCell>
                 <TableCell>{t.name}</TableCell>
                 <TableCell><Badge variant="outline">{t.scope}</Badge></TableCell>
+                <TableCell>
+                  <div className="flex flex-wrap gap-1">
+                    {(t.pacote_padrao ?? []).length === 0 ? (
+                      <span className="text-xs text-muted-foreground">—</span>
+                    ) : (t.pacote_padrao ?? []).map((p) => (
+                      <Badge key={p} variant="secondary" className="text-[10px]">
+                        {p === "COMPANY" ? "Empresa" : p === "MEI" ? "MEI" : "CLT"}
+                      </Badge>
+                    ))}
+                  </div>
+                </TableCell>
                 <TableCell>{t.requires_expiry ? "Sim" : "Não"}</TableCell>
                 <TableCell>{t.ativo ? <Badge>ativo</Badge> : <Badge variant="secondary">inativo</Badge>}</TableCell>
                 <TableCell className="flex gap-1">
@@ -122,6 +146,23 @@ export default function TiposDocumentoPage() {
             <div className="flex items-center gap-2">
               <Switch checked={form.ativo ?? true} onCheckedChange={(v) => setForm({ ...form, ativo: v })} />
               <Label>Ativo</Label>
+            </div>
+            <div>
+              <Label className="mb-2 block">Pacote Padrão WD</Label>
+              <div className="flex gap-4">
+                {PACOTES.map((p) => (
+                  <label key={p.key} className="flex items-center gap-2 cursor-pointer">
+                    <Checkbox
+                      checked={(form.pacote_padrao ?? []).includes(p.key)}
+                      onCheckedChange={() => togglePacote(p.key)}
+                    />
+                    <span className="text-sm">{p.label}</span>
+                  </label>
+                ))}
+              </div>
+              <p className="text-xs text-muted-foreground mt-1">
+                Marca este documento como exigido no pacote padrão de integração.
+              </p>
             </div>
           </div>
           <DialogFooter>
