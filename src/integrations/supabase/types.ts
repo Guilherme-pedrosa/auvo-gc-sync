@@ -1418,6 +1418,9 @@ export type Database = {
           nome_normalizado: string
           observacoes: string | null
           origem: string
+          portal_login: string | null
+          portal_senha: string | null
+          portal_url: string | null
           sync_em: string | null
           telefone: string | null
           uf: string | null
@@ -1440,6 +1443,9 @@ export type Database = {
           nome_normalizado: string
           observacoes?: string | null
           origem?: string
+          portal_login?: string | null
+          portal_senha?: string | null
+          portal_url?: string | null
           sync_em?: string | null
           telefone?: string | null
           uf?: string | null
@@ -1462,6 +1468,9 @@ export type Database = {
           nome_normalizado?: string
           observacoes?: string | null
           origem?: string
+          portal_login?: string | null
+          portal_senha?: string | null
+          portal_url?: string | null
           sync_em?: string | null
           telefone?: string | null
           uf?: string | null

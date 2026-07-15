@@ -20,6 +20,9 @@ export type RhCliente = {
   observacoes: string | null;
   integration_validity_days: number | null;
   integration_send_channel: "email" | "portal" | "presencial" | "outro" | null;
+  portal_url: string | null;
+  portal_login: string | null;
+  portal_senha: string | null;
 };
 export type RhColaborador = {
   id: string; tipo_pessoa: "PF" | "PJ"; nome: string;
