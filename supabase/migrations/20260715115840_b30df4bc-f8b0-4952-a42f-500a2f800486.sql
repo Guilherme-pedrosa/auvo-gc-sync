@@ -1,0 +1,1 @@
+UPDATE public.rh_document_types SET pacote_padrao = '{}'::text[] WHERE code IN ('CND_ESTADUAL','CND_FEDERAL','CND_INSS','CND_TRABALHISTA','CRF_FGTS','CTPS','FOTO_3X4','NR35','NR6','PROFICIENCIA');
