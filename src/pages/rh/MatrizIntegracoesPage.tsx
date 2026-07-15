@@ -83,13 +83,14 @@ export default function MatrizIntegracoesPage() {
               <TableHead>Validada</TableHead>
               <TableHead>Enviada</TableHead>
               <TableHead>Menor venc.</TableHead>
+              <TableHead className="text-right">Ações</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {isLoading ? (
-              <TableRow><TableCell colSpan={6} className="text-center py-8">Carregando...</TableCell></TableRow>
+              <TableRow><TableCell colSpan={7} className="text-center py-8">Carregando...</TableCell></TableRow>
             ) : rows.length === 0 ? (
-              <TableRow><TableCell colSpan={6} className="text-center py-8 text-muted-foreground">Nenhuma integração.</TableCell></TableRow>
+              <TableRow><TableCell colSpan={7} className="text-center py-8 text-muted-foreground">Nenhuma integração.</TableCell></TableRow>
             ) : rows.map((i) => (
               <TableRow key={i.id}>
                 <TableCell className="font-medium">{clientMap.get(i.client_id)?.nome ?? "—"}</TableCell>
