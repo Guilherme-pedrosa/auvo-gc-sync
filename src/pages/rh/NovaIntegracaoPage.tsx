@@ -304,7 +304,7 @@ export default function NovaIntegracaoPage() {
       </Button>
 
       <div>
-        <h1 className="text-2xl font-semibold">Nova Integração</h1>
+        <h1 className="text-2xl font-semibold">{editingId ? "Editar Integração" : "Nova Integração"}</h1>
         <p className="text-sm text-muted-foreground">Gere o kit de documentação (ZIP) para acesso do cliente.</p>
       </div>
 
@@ -515,12 +515,31 @@ export default function NovaIntegracaoPage() {
                 <div className="flex gap-3 pt-4 border-t">
                   <Button
                     onClick={generateZip}
-                    disabled={status !== "AUTHORIZED" || generating}
+                    disabled={status !== "AUTHORIZED" || generating || !validade}
                     className="flex-1"
                   >
                     {generating ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Download className="h-4 w-4 mr-2" />}
-                    Gerar ZIP
+                    {editingId ? "Regerar ZIP e salvar" : "Gerar ZIP"}
                   </Button>
+                  {editingId && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      disabled={!validade || save.isPending}
+                      onClick={async () => {
+                        await save.mutateAsync({
+                          id: editingId,
+                          client_id: clientId,
+                          technician_ids: techIds,
+                          earliest_expiry_date: validade,
+                        });
+                        navigate("/rh/integracoes");
+                      }}
+                    >
+                      {save.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Save className="h-4 w-4 mr-2" />}
+                      Salvar alterações
+                    </Button>
+                  )}
                 </div>
               </div>
             )}
