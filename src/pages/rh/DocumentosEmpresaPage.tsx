@@ -26,6 +26,7 @@ export default function DocumentosEmpresaPage() {
   const del = useDeleteCompanyDoc();
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState<Partial<CompanyDoc>>({});
+  const [uploading, setUploading] = useState(false);
 
   const companyTypes = useMemo(() => types.filter((t) => t.scope === "COMPANY" && t.ativo), [types]);
   const typeMap = useMemo(() => new Map(types.map((t) => [t.id, t])), [types]);
@@ -36,6 +37,22 @@ export default function DocumentosEmpresaPage() {
     const { data, error } = await supabase.storage.from("rh-documentos").createSignedUrl(url, 60 * 60);
     if (error || !data?.signedUrl) { toast.error("Falha ao abrir arquivo"); return; }
     window.open(data.signedUrl, "_blank");
+  };
+
+  const handleUpload = async (file: File | null) => {
+    if (!file) return;
+    setUploading(true);
+    try {
+      const path = `empresa/${Date.now()}-${file.name.replace(/[^\w.\-]+/g, "_")}`;
+      const { error } = await supabase.storage.from("rh-documentos").upload(path, file, { upsert: false });
+      if (error) throw error;
+      setForm((f) => ({ ...f, arquivo_url: path, arquivo_nome: f.arquivo_nome || file.name }));
+      toast.success("Arquivo enviado");
+    } catch (e) {
+      toast.error("Falha no upload: " + (e as Error).message);
+    } finally {
+      setUploading(false);
+    }
   };
 
   const submit = async () => {
@@ -135,8 +152,17 @@ export default function DocumentosEmpresaPage() {
               <div><Label>Emissão</Label><Input type="date" value={form.data_emissao ?? ""} onChange={(e) => setForm({ ...form, data_emissao: e.target.value })} /></div>
               <div><Label>Vencimento</Label><Input type="date" value={form.data_vencimento ?? ""} onChange={(e) => setForm({ ...form, data_vencimento: e.target.value })} /></div>
             </div>
-            <div><Label>URL do arquivo</Label><Input value={form.arquivo_url ?? ""} onChange={(e) => setForm({ ...form, arquivo_url: e.target.value })} placeholder="https://..." /></div>
-            <div><Label>Nome do arquivo</Label><Input value={form.arquivo_nome ?? ""} onChange={(e) => setForm({ ...form, arquivo_nome: e.target.value })} /></div>
+            <div>
+              <Label>Anexo</Label>
+              <Input type="file" onChange={(e) => handleUpload(e.target.files?.[0] ?? null)} disabled={uploading} />
+              {form.arquivo_url && (
+                <p className="text-xs text-muted-foreground mt-1">
+                  {uploading ? "Enviando..." : `Arquivo: ${form.arquivo_nome ?? form.arquivo_url}`}
+                </p>
+              )}
+            </div>
+            <div><Label>Nome do arquivo</Label><Input value={form.arquivo_nome ?? ""} onChange={(e) => setForm({ ...form, arquivo_nome: e.target.value })} placeholder="Opcional" /></div>
+            <div><Label className="text-xs text-muted-foreground">Ou URL externa</Label><Input value={/^https?:\/\//i.test(form.arquivo_url ?? "") ? (form.arquivo_url ?? "") : ""} onChange={(e) => setForm({ ...form, arquivo_url: e.target.value })} placeholder="https://..." /></div>
             <div><Label>Observações</Label><Textarea value={form.observacoes ?? ""} onChange={(e) => setForm({ ...form, observacoes: e.target.value })} /></div>
           </div>
           <DialogFooter>
