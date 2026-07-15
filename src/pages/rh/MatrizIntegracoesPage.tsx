@@ -14,10 +14,22 @@ import {
 
 const statusVariant: Record<string, "default" | "secondary" | "outline" | "destructive"> = {
   draft: "outline",
-  authorized: "secondary",
-  sent: "default",
-  blocked: "destructive",
-  expired: "destructive",
+  docs_enviados: "secondary",
+  docs_aceitos: "secondary",
+  agendada: "default",
+  realizada: "default",
+  bloqueada: "destructive",
+  expirada: "destructive",
+};
+
+const statusLabel: Record<string, string> = {
+  draft: "Rascunho",
+  docs_enviados: "Docs enviados",
+  docs_aceitos: "Docs aceitos",
+  agendada: "Agendada",
+  realizada: "Realizada",
+  bloqueada: "Bloqueada",
+  expirada: "Expirada",
 };
 
 export default function MatrizIntegracoesPage() {
@@ -65,10 +77,12 @@ export default function MatrizIntegracoesPage() {
           <SelectContent>
             <SelectItem value="all">Todos os status</SelectItem>
             <SelectItem value="draft">Rascunho</SelectItem>
-            <SelectItem value="authorized">Autorizada</SelectItem>
-            <SelectItem value="sent">Enviada</SelectItem>
-            <SelectItem value="blocked">Bloqueada</SelectItem>
-            <SelectItem value="expired">Vencida</SelectItem>
+            <SelectItem value="docs_enviados">Docs enviados</SelectItem>
+            <SelectItem value="docs_aceitos">Docs aceitos</SelectItem>
+            <SelectItem value="agendada">Agendada</SelectItem>
+            <SelectItem value="realizada">Realizada</SelectItem>
+            <SelectItem value="bloqueada">Bloqueada</SelectItem>
+            <SelectItem value="expirada">Expirada</SelectItem>
           </SelectContent>
         </Select>
       </div>
@@ -80,9 +94,11 @@ export default function MatrizIntegracoesPage() {
               <TableHead>Cliente</TableHead>
               <TableHead>Técnicos</TableHead>
               <TableHead>Status</TableHead>
-              <TableHead>Validada</TableHead>
-              <TableHead>Enviada</TableHead>
-              <TableHead>Menor venc.</TableHead>
+            <TableHead>Envio</TableHead>
+            <TableHead>Aceite</TableHead>
+            <TableHead>Agendada</TableHead>
+            <TableHead>Realizada</TableHead>
+            <TableHead>Válida até</TableHead>
               <TableHead className="text-right">Ações</TableHead>
             </TableRow>
           </TableHeader>
@@ -90,17 +106,19 @@ export default function MatrizIntegracoesPage() {
             {isLoading ? (
               <TableRow><TableCell colSpan={7} className="text-center py-8">Carregando...</TableCell></TableRow>
             ) : rows.length === 0 ? (
-              <TableRow><TableCell colSpan={7} className="text-center py-8 text-muted-foreground">Nenhuma integração.</TableCell></TableRow>
+              <TableRow><TableCell colSpan={9} className="text-center py-8 text-muted-foreground">Nenhuma integração.</TableCell></TableRow>
             ) : rows.map((i) => (
               <TableRow key={i.id}>
                 <TableCell className="font-medium">{clientMap.get(i.client_id)?.nome ?? "—"}</TableCell>
                 <TableCell className="text-xs">
                   {i.technician_ids.map((tid) => colabMap.get(tid)?.nome ?? tid).join(", ") || "—"}
                 </TableCell>
-                <TableCell><Badge variant={statusVariant[i.status]}>{i.status}</Badge></TableCell>
-                <TableCell className="text-xs">{i.validated_at ? new Date(i.validated_at).toLocaleDateString("pt-BR") : "—"}</TableCell>
-                <TableCell className="text-xs">{i.sent_at ? new Date(i.sent_at).toLocaleDateString("pt-BR") : "—"}</TableCell>
-                <TableCell className="text-xs">{i.earliest_expiry_date ?? "—"}</TableCell>
+                <TableCell><Badge variant={statusVariant[i.status] ?? "outline"}>{statusLabel[i.status] ?? i.status}</Badge></TableCell>
+                <TableCell className="text-xs">{i.docs_sent_at ? new Date(i.docs_sent_at).toLocaleDateString("pt-BR") : "—"}</TableCell>
+                <TableCell className="text-xs">{i.docs_accepted_at ? new Date(i.docs_accepted_at).toLocaleDateString("pt-BR") : "—"}</TableCell>
+                <TableCell className="text-xs">{i.scheduled_at ? new Date(i.scheduled_at).toLocaleDateString("pt-BR") : "—"}</TableCell>
+                <TableCell className="text-xs">{i.completed_at ? new Date(i.completed_at).toLocaleDateString("pt-BR") : "—"}</TableCell>
+                <TableCell className="text-xs">{i.integration_valid_until ?? "—"}</TableCell>
                 <TableCell className="text-right">
                   <div className="flex justify-end gap-1">
                     <Button
