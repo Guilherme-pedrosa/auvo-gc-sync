@@ -133,19 +133,19 @@ export default function ClientesRhPage() {
         <DialogContent>
           <DialogHeader><DialogTitle>{form.id ? "Editar" : "Novo"} cliente</DialogTitle></DialogHeader>
           <div className="space-y-3">
-            <div><Label>Nome</Label><Input value={form.nome ?? ""} onChange={(e) => setForm({ ...form, nome: e.target.value })} /></div>
+            <div><Label>Nome</Label><Input className="uppercase" value={form.nome ?? ""} onChange={(e) => setForm({ ...form, nome: e.target.value.toUpperCase() })} /></div>
             <div className="grid grid-cols-2 gap-3">
-              <div><Label>Fantasia</Label><Input value={form.nome_fantasia ?? ""} onChange={(e) => setForm({ ...form, nome_fantasia: e.target.value })} /></div>
-              <div><Label>CPF/CNPJ</Label><Input value={form.cpf_cnpj ?? ""} onChange={(e) => setForm({ ...form, cpf_cnpj: e.target.value })} /></div>
+              <div><Label>Fantasia</Label><Input className="uppercase" value={form.nome_fantasia ?? ""} onChange={(e) => setForm({ ...form, nome_fantasia: e.target.value.toUpperCase() })} /></div>
+              <div><Label>CPF/CNPJ</Label><Input className="uppercase" value={form.cpf_cnpj ?? ""} onChange={(e) => setForm({ ...form, cpf_cnpj: e.target.value.toUpperCase() })} /></div>
             </div>
             <div className="grid grid-cols-2 gap-3">
-              <div><Label>Email</Label><Input value={form.email ?? ""} onChange={(e) => setForm({ ...form, email: e.target.value })} /></div>
+              <div><Label>Email</Label><Input className="uppercase" value={form.email ?? ""} onChange={(e) => setForm({ ...form, email: e.target.value.toUpperCase() })} /></div>
               <div><Label>Telefone</Label><Input value={form.telefone ?? ""} onChange={(e) => setForm({ ...form, telefone: e.target.value })} /></div>
             </div>
-            <div><Label>Endereço</Label><Input value={form.endereco ?? ""} onChange={(e) => setForm({ ...form, endereco: e.target.value })} /></div>
+            <div><Label>Endereço</Label><Input className="uppercase" value={form.endereco ?? ""} onChange={(e) => setForm({ ...form, endereco: e.target.value.toUpperCase() })} /></div>
             <div className="grid grid-cols-3 gap-3">
-              <div><Label>Cidade</Label><Input value={form.cidade ?? ""} onChange={(e) => setForm({ ...form, cidade: e.target.value })} /></div>
-              <div><Label>UF</Label><Input value={form.uf ?? ""} onChange={(e) => setForm({ ...form, uf: e.target.value })} /></div>
+              <div><Label>Cidade</Label><Input className="uppercase" value={form.cidade ?? ""} onChange={(e) => setForm({ ...form, cidade: e.target.value.toUpperCase() })} /></div>
+              <div><Label>UF</Label><Input className="uppercase" value={form.uf ?? ""} onChange={(e) => setForm({ ...form, uf: e.target.value.toUpperCase() })} /></div>
               <div><Label>CEP</Label><Input value={form.cep ?? ""} onChange={(e) => setForm({ ...form, cep: e.target.value })} /></div>
             </div>
           </div>
