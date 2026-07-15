@@ -7,8 +7,12 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { Plus, Pencil } from "lucide-react";
-import { useCompanyDocs, useSaveCompanyDoc, useDocumentTypes, computeDocStatus, type CompanyDoc } from "@/hooks/rh/useRh";
+import { Plus, Pencil, Trash2 } from "lucide-react";
+import { useCompanyDocs, useSaveCompanyDoc, useDeleteCompanyDoc, useDocumentTypes, computeDocStatus, type CompanyDoc } from "@/hooks/rh/useRh";
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 
@@ -19,6 +23,7 @@ export default function DocumentosEmpresaPage() {
   const { data: docs = [], isLoading } = useCompanyDocs();
   const { data: types = [] } = useDocumentTypes();
   const save = useSaveCompanyDoc();
+  const del = useDeleteCompanyDoc();
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState<Partial<CompanyDoc>>({});
 
@@ -83,10 +88,27 @@ export default function DocumentosEmpresaPage() {
                       </button>
                     ) : "—"}
                   </TableCell>
-                  <TableCell>
+                  <TableCell className="flex gap-1">
                     <Button size="sm" variant="ghost" onClick={() => { setForm(d); setOpen(true); }}>
                       <Pencil className="h-3.5 w-3.5" />
                     </Button>
+                    <AlertDialog>
+                      <AlertDialogTrigger asChild>
+                        <Button size="sm" variant="ghost"><Trash2 className="h-3.5 w-3.5 text-destructive" /></Button>
+                      </AlertDialogTrigger>
+                      <AlertDialogContent>
+                        <AlertDialogHeader>
+                          <AlertDialogTitle>Excluir documento?</AlertDialogTitle>
+                          <AlertDialogDescription>
+                            "{typeMap.get(d.document_type_id)?.name ?? "Documento"}" será removido. Esta ação não pode ser desfeita.
+                          </AlertDialogDescription>
+                        </AlertDialogHeader>
+                        <AlertDialogFooter>
+                          <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                          <AlertDialogAction onClick={() => del.mutate(d.id)}>Excluir</AlertDialogAction>
+                        </AlertDialogFooter>
+                      </AlertDialogContent>
+                    </AlertDialog>
                   </TableCell>
                 </TableRow>
               );
