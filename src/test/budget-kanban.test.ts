@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  evaluateBudgetSyncStatus,
   moveBudgetKanbanCard,
   RESOLVED_WITHOUT_BUDGET_COLUMN,
   shouldAutoRouteToDoneToday,
@@ -79,5 +80,24 @@ describe("budget kanban state rules", () => {
       "moving",
       "visible-2",
     ]);
+  });
+
+  it("recognizes the terminal state of the requested sync run", () => {
+    expect(evaluateBudgetSyncStatus({ run_id: "run-1", status: "running" }, "run-1"))
+      .toEqual({ state: "waiting" });
+    expect(evaluateBudgetSyncStatus({ run_id: "run-1", status: "succeeded" }, "run-1"))
+      .toEqual({ state: "succeeded" });
+  });
+
+  it("surfaces backend failures and superseded runs", () => {
+    expect(evaluateBudgetSyncStatus({ run_id: "run-1", status: "failed", error: "RPC ausente" }, "run-1"))
+      .toEqual({ state: "failed", message: "RPC ausente" });
+
+    const superseded = evaluateBudgetSyncStatus(
+      { run_id: "run-2", status: "running" },
+      "run-1",
+    );
+    expect(superseded.state).toBe("failed");
+    expect(superseded.message).toContain("Outra sincronização");
   });
 });

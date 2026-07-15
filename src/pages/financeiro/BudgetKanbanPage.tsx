@@ -25,6 +25,7 @@ import { useNavigate } from "react-router-dom";
 import { DragDropContext, Droppable, Draggable, DropResult } from "@hello-pangea/dnd";
 import { toast } from "sonner";
 import {
+  evaluateBudgetSyncStatus,
   moveBudgetKanbanCard,
   RESOLVED_WITHOUT_BUDGET_COLUMN,
   shouldAutoRouteToDoneToday,
@@ -100,6 +101,9 @@ type ApiResponse = {
   };
   items: (KanbanItem & { _coluna?: string; _posicao?: number })[];
   ultimo_sync?: string | null;
+  sync_run_id?: string | null;
+  sync_status?: string;
+  sync_error?: string | null;
   custom_columns?: { id: string; title: string; order: number }[];
   from_cache?: boolean;
   error?: string;
@@ -200,25 +204,49 @@ export default function BudgetKanbanPage() {
 
         const pollStartedAt = Date.now();
         let refreshed: ApiResponse | null = null;
+        const runId = String(syncData?.run_id || "");
+        let terminalError: string | null = null;
 
-        while (Date.now() - pollStartedAt < 180_000) {
-          const result = await refetch();
-          const latest = result.data as ApiResponse | undefined;
-          const latestTime = latest?.ultimo_sync ? new Date(latest.ultimo_sync).getTime() : 0;
-          const previousTime = previousSync ? new Date(previousSync).getTime() : 0;
-          if (latestTime > previousTime) {
-            refreshed = latest;
-            break;
+        while (Date.now() - pollStartedAt < 240_000) {
+          if (runId) {
+            const { data: statusData, error: statusError } = await supabase.functions.invoke("budget-kanban", {
+              body: { mode: "sync_status" },
+            });
+            if (statusError) throw statusError;
+
+            const evaluation = evaluateBudgetSyncStatus(statusData, runId);
+            if (evaluation.state === "failed") {
+              terminalError = evaluation.message || "A sincronização falhou no servidor.";
+              break;
+            }
+            if (evaluation.state === "succeeded") {
+              const result = await refetch();
+              refreshed = (result.data as ApiResponse | undefined) || null;
+              break;
+            }
+          } else {
+            // Compatibilidade durante deploy: o frontend novo ainda entende a
+            // resposta antiga enquanto a Edge Function não recebeu a atualização.
+            const result = await refetch();
+            const latest = result.data as ApiResponse | undefined;
+            const latestTime = latest?.ultimo_sync ? new Date(latest.ultimo_sync).getTime() : 0;
+            const previousTime = previousSync ? new Date(previousSync).getTime() : 0;
+            if (latestTime > previousTime) {
+              refreshed = latest;
+              break;
+            }
           }
           await new Promise((resolve) => setTimeout(resolve, 2500));
         }
 
-        if (refreshed) {
+        if (terminalError) {
+          toast.error(`Erro na sincronização: ${terminalError}`);
+        } else if (refreshed) {
           setColumnsInitialized(false);
           syncFinished = true;
           toast.success(`Sincronizado! ${refreshed.resumo?.total_tarefas_com_questionario ?? 0} tarefas atualizadas`);
         } else {
-          toast.error("A sincronização não terminou no backend. Tente novamente.");
+          toast.info("A sincronização ainda está em execução no servidor. Você pode continuar usando a tela e atualizar em alguns instantes.");
         }
       }
     } catch (e: any) {
