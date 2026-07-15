@@ -349,12 +349,26 @@ export function useSaveIntegration() {
       if (payload.id) {
         const { error } = await sb.from("rh_integrations").update(payload).eq("id", payload.id);
         if (error) throw error;
+        return payload.id;
       } else {
-        const { error } = await sb.from("rh_integrations").insert(payload);
+        const { data, error } = await sb.from("rh_integrations").insert(payload).select("id").maybeSingle();
         if (error) throw error;
+        return data?.id as string | undefined;
       }
     },
     onSuccess: () => { toast.success("Integração salva"); qc.invalidateQueries({ queryKey: ["rh_integrations"] }); },
+    onError: (e: Error) => toast.error(e.message),
+  });
+}
+
+export function useDeleteIntegration() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (id: string) => {
+      const { error } = await sb.from("rh_integrations").delete().eq("id", id);
+      if (error) throw error;
+    },
+    onSuccess: () => { toast.success("Integração excluída"); qc.invalidateQueries({ queryKey: ["rh_integrations"] }); },
     onError: (e: Error) => toast.error(e.message),
   });
 }
