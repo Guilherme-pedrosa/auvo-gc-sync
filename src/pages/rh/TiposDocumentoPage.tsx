@@ -126,7 +126,7 @@ export default function TiposDocumentoPage() {
             </div>
             <div>
               <Label>Nome</Label>
-              <Input value={form.name ?? ""} onChange={(e) => setForm({ ...form, name: e.target.value })} />
+              <Input className="uppercase" value={form.name ?? ""} onChange={(e) => setForm({ ...form, name: e.target.value.toUpperCase() })} />
             </div>
             <div>
               <Label>Escopo</Label>
