@@ -35,8 +35,16 @@ export default function ColaboradorDetailPage() {
   const techTypes = useMemo(() => types.filter((t) => t.scope === "TECHNICIAN" && t.ativo), [types]);
   const typeMap = useMemo(() => new Map(types.map((t) => [t.id, t])), [types]);
 
+  const REQUIRE_DATES_CODES = ["ASO", "FICHA_EPI", "CNH", "CNH_SOCIO"];
+  const selectedType = form.document_type_id ? typeMap.get(form.document_type_id) : undefined;
+  const requiresDates = !!selectedType && REQUIRE_DATES_CODES.includes(selectedType.code);
+
   const submit = async () => {
     if (!form.document_type_id || !id) return;
+    if (requiresDates && (!form.data_emissao || !form.data_vencimento)) {
+      toast.error(`${selectedType?.name}: data de emissão e vencimento são obrigatórias.`);
+      return;
+    }
     await save.mutateAsync({ ...form, colaborador_id: id });
     setOpen(false); setForm({});
   };
@@ -148,9 +156,20 @@ export default function ColaboradorDetailPage() {
               </Select>
             </div>
             <div className="grid grid-cols-2 gap-3">
-              <div><Label>Emissão</Label><Input type="date" value={form.data_emissao ?? ""} onChange={(e) => setForm({ ...form, data_emissao: e.target.value })} /></div>
-              <div><Label>Vencimento</Label><Input type="date" value={form.data_vencimento ?? ""} onChange={(e) => setForm({ ...form, data_vencimento: e.target.value })} /></div>
+              <div>
+                <Label>Emissão {requiresDates && <span className="text-destructive">*</span>}</Label>
+                <Input type="date" required={requiresDates} value={form.data_emissao ?? ""} onChange={(e) => setForm({ ...form, data_emissao: e.target.value })} />
+              </div>
+              <div>
+                <Label>Vencimento {requiresDates && <span className="text-destructive">*</span>}</Label>
+                <Input type="date" required={requiresDates} value={form.data_vencimento ?? ""} onChange={(e) => setForm({ ...form, data_vencimento: e.target.value })} />
+              </div>
             </div>
+            {requiresDates && (
+              <p className="text-xs text-destructive">
+                {selectedType?.name} exige data de emissão e vencimento.
+              </p>
+            )}
             <div>
               <Label>Anexo</Label>
               <Input type="file" onChange={(e) => handleUpload(e.target.files?.[0] ?? null)} disabled={uploading} />
@@ -166,7 +185,7 @@ export default function ColaboradorDetailPage() {
           </div>
           <DialogFooter>
             <Button variant="ghost" onClick={() => setOpen(false)}>Cancelar</Button>
-            <Button onClick={submit} disabled={save.isPending}>Salvar</Button>
+            <Button onClick={submit} disabled={save.isPending || (requiresDates && (!form.data_emissao || !form.data_vencimento))}>Salvar</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
