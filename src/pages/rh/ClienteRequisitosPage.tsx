@@ -162,7 +162,7 @@ export default function ClienteRequisitosPage() {
         </div>
         <Button variant="outline" size="sm" onClick={handleTemplate} disabled={templateLoading}>
           {templateLoading ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Download className="h-4 w-4 mr-2" />}
-          Aplicar Template Padrão
+          Aplicar Pacote Padrão
         </Button>
       </div>
 
