@@ -18,7 +18,7 @@ import { toast } from "sonner";
 import {
   useRhClientes, useColaboradores, useSaveIntegration, useIntegrations,
   useDocumentTypes, useCompanyDocs, useClientRequirements,
-  computeDocStatus,
+  computeDocStatus, type Integration,
 } from "@/hooks/rh/useRh";
 import { supabase } from "@/integrations/supabase/client";
 
