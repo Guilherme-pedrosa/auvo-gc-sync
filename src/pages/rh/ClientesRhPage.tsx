@@ -6,8 +6,12 @@ import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { Plus, Pencil, Search, RefreshCw, ListChecks } from "lucide-react";
-import { useRhClientes, useSaveRhCliente, useSyncClientesGc, type RhCliente } from "@/hooks/rh/useRh";
+import { Plus, Pencil, Search, RefreshCw, ListChecks, Trash2 } from "lucide-react";
+import { useRhClientes, useSaveRhCliente, useSyncClientesGc, useDeleteRhCliente, type RhCliente } from "@/hooks/rh/useRh";
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 
 const originBadge = (o: string) =>
   o === "manual" ? <Badge variant="secondary">manual</Badge> :
@@ -20,6 +24,7 @@ export default function ClientesRhPage() {
   const { data: clientes = [], isLoading } = useRhClientes(search);
   const save = useSaveRhCliente();
   const sync = useSyncClientesGc();
+  const del = useDeleteRhCliente();
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState<Partial<RhCliente>>({});
 
@@ -100,6 +105,23 @@ export default function ClientesRhPage() {
                   <Button size="sm" variant="ghost" onClick={() => { setForm(c); setOpen(true); }}>
                     <Pencil className="h-3.5 w-3.5" />
                   </Button>
+                  <AlertDialog>
+                    <AlertDialogTrigger asChild>
+                      <Button size="sm" variant="ghost"><Trash2 className="h-3.5 w-3.5 text-destructive" /></Button>
+                    </AlertDialogTrigger>
+                    <AlertDialogContent>
+                      <AlertDialogHeader>
+                        <AlertDialogTitle>Excluir cliente?</AlertDialogTitle>
+                        <AlertDialogDescription>
+                          "{c.nome}" e seus requisitos serão removidos. Esta ação não pode ser desfeita.
+                        </AlertDialogDescription>
+                      </AlertDialogHeader>
+                      <AlertDialogFooter>
+                        <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                        <AlertDialogAction onClick={() => del.mutate(c.id)}>Excluir</AlertDialogAction>
+                      </AlertDialogFooter>
+                    </AlertDialogContent>
+                  </AlertDialog>
                 </TableCell>
               </TableRow>
             ))}
