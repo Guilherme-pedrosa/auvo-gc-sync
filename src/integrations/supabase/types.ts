@@ -1465,6 +1465,7 @@ export type Database = {
       rh_colaborador_docs: {
         Row: {
           arquivo_nome: string | null
+          arquivo_sha256: string | null
           arquivo_url: string | null
           atualizado_em: string
           colaborador_id: string
@@ -1478,6 +1479,7 @@ export type Database = {
         }
         Insert: {
           arquivo_nome?: string | null
+          arquivo_sha256?: string | null
           arquivo_url?: string | null
           atualizado_em?: string
           colaborador_id: string
@@ -1491,6 +1493,7 @@ export type Database = {
         }
         Update: {
           arquivo_nome?: string | null
+          arquivo_sha256?: string | null
           arquivo_url?: string | null
           atualizado_em?: string
           colaborador_id?: string
