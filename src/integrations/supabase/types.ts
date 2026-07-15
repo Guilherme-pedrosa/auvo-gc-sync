@@ -899,37 +899,25 @@ export type Database = {
       }
       kanban_resolution_details: {
         Row: {
-          ativo: boolean
           atualizado_em: string
           auvo_task_id: string
           motivo: string
-          reaberto_em: string | null
-          reaberto_por_id: string | null
-          reaberto_por_nome: string | null
           resolvido_em: string
           resolvido_por_id: string | null
           resolvido_por_nome: string | null
         }
         Insert: {
-          ativo?: boolean
           atualizado_em?: string
           auvo_task_id: string
           motivo: string
-          reaberto_em?: string | null
-          reaberto_por_id?: string | null
-          reaberto_por_nome?: string | null
           resolvido_em?: string
           resolvido_por_id?: string | null
           resolvido_por_nome?: string | null
         }
         Update: {
-          ativo?: boolean
           atualizado_em?: string
           auvo_task_id?: string
           motivo?: string
-          reaberto_em?: string | null
-          reaberto_por_id?: string | null
-          reaberto_por_nome?: string | null
           resolvido_em?: string
           resolvido_por_id?: string | null
           resolvido_por_nome?: string | null
@@ -941,33 +929,18 @@ export type Database = {
           id: string
           periodo_fim: string | null
           periodo_inicio: string | null
-          sync_error: string | null
-          sync_finished_at: string | null
-          sync_run_id: string | null
-          sync_started_at: string | null
-          sync_status: string
           ultimo_sync: string | null
         }
         Insert: {
           id?: string
           periodo_fim?: string | null
           periodo_inicio?: string | null
-          sync_error?: string | null
-          sync_finished_at?: string | null
-          sync_run_id?: string | null
-          sync_started_at?: string | null
-          sync_status?: string
           ultimo_sync?: string | null
         }
         Update: {
           id?: string
           periodo_fim?: string | null
           periodo_inicio?: string | null
-          sync_error?: string | null
-          sync_finished_at?: string | null
-          sync_run_id?: string | null
-          sync_started_at?: string | null
-          sync_status?: string
           ultimo_sync?: string | null
         }
         Relationships: []
