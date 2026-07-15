@@ -593,6 +593,133 @@ export default function NovaIntegracaoPage() {
           </CardContent>
         </Card>
       </div>
+
+      {editingId && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-lg flex items-center gap-2">
+              <CheckCircle className="h-5 w-5 text-primary" />
+              Fluxo da integração
+              <Badge variant="outline" className="ml-2">{workflowStatus}</Badge>
+              {validUntil && (
+                <span className="ml-auto text-sm text-muted-foreground">
+                  Válida até <b>{new Date(validUntil).toLocaleDateString("pt-BR")}</b>
+                </span>
+              )}
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-6">
+            {cliente && (
+              <p className="text-xs text-muted-foreground">
+                Prazo do cliente: <b>{cliente.integration_validity_days ?? "—"} dias</b> · canal padrão: <b>{cliente.integration_send_channel ?? "—"}</b>
+              </p>
+            )}
+
+            {/* Passo 1 */}
+            <div className="grid md:grid-cols-4 gap-3 items-end">
+              <div className="md:col-span-1">
+                <Label className="flex items-center gap-1"><Send className="h-3.5 w-3.5" />1. Envio de docs</Label>
+                <Input type="date" value={docsSentAt} onChange={(e) => setDocsSentAt(e.target.value)} />
+              </div>
+              <div>
+                <Label>Canal</Label>
+                <Select value={sendChannel || "none"} onValueChange={(v) => setSendChannel(v === "none" ? "" : v)}>
+                  <SelectTrigger><SelectValue placeholder="Canal..." /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">—</SelectItem>
+                    <SelectItem value="email">E-mail</SelectItem>
+                    <SelectItem value="portal">Portal</SelectItem>
+                    <SelectItem value="presencial">Presencial</SelectItem>
+                    <SelectItem value="outro">Outro</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <Button
+                variant="outline"
+                disabled={savingWf || !docsSentAt}
+                onClick={() => saveWorkflow(
+                  { docs_sent_at: new Date(docsSentAt).toISOString(), send_channel: sendChannel || null },
+                  "docs_enviados",
+                )}
+              >
+                Marcar enviado
+              </Button>
+            </div>
+
+            {/* Passo 2 */}
+            <div className="grid md:grid-cols-4 gap-3 items-end">
+              <div>
+                <Label className="flex items-center gap-1"><FileCheck className="h-3.5 w-3.5" />2. Aceite dos docs</Label>
+                <Input type="date" value={docsAcceptedAt} onChange={(e) => setDocsAcceptedAt(e.target.value)} />
+              </div>
+              <Button
+                variant="outline"
+                disabled={savingWf || !docsAcceptedAt}
+                onClick={() => saveWorkflow(
+                  { docs_accepted_at: new Date(docsAcceptedAt).toISOString() },
+                  "docs_aceitos",
+                )}
+              >
+                Marcar aceito
+              </Button>
+            </div>
+
+            {/* Passo 3 */}
+            <div className="grid md:grid-cols-4 gap-3 items-end">
+              <div>
+                <Label className="flex items-center gap-1"><Calendar className="h-3.5 w-3.5" />3. Agendamento</Label>
+                <Input type="date" value={scheduledAt} onChange={(e) => setScheduledAt(e.target.value)} />
+              </div>
+              <Button
+                variant="outline"
+                disabled={savingWf || !scheduledAt}
+                onClick={() => saveWorkflow(
+                  { scheduled_at: new Date(scheduledAt).toISOString() },
+                  "agendada",
+                )}
+              >
+                Marcar agendada
+              </Button>
+            </div>
+
+            {/* Passo 4 */}
+            <div className="grid md:grid-cols-4 gap-3 items-end">
+              <div>
+                <Label className="flex items-center gap-1"><PlayCircle className="h-3.5 w-3.5" />4. Realização</Label>
+                <Input type="date" value={completedAt} onChange={(e) => setCompletedAt(e.target.value)} />
+              </div>
+              <div>
+                <Label>Técnico que realizou</Label>
+                <SearchableSelect
+                  value={completedByTech}
+                  onValueChange={setCompletedByTech}
+                  placeholder="Selecione o técnico..."
+                  options={techIds.map((tid) => {
+                    const t = colaboradores.find((c) => c.id === tid);
+                    return { value: tid, label: t?.nome ?? tid };
+                  })}
+                />
+              </div>
+              <Button
+                disabled={savingWf || !completedAt || !completedByTech}
+                onClick={() => saveWorkflow(
+                  {
+                    completed_at: new Date(completedAt).toISOString(),
+                    completed_by_technician_id: completedByTech,
+                  },
+                  "realizada",
+                )}
+              >
+                Marcar realizada
+              </Button>
+            </div>
+
+            <p className="text-xs text-muted-foreground">
+              A validade da integração é calculada automaticamente ao marcar a etapa 4 (Realização), usando o prazo do cliente.
+            </p>
+          </CardContent>
+        </Card>
+      )}
     </div>
   );
 }
