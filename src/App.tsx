@@ -36,6 +36,7 @@ import DocumentosEmpresaPage from "./pages/rh/DocumentosEmpresaPage.tsx";
 import MatrizIntegracoesPage from "./pages/rh/MatrizIntegracoesPage.tsx";
 import NovaIntegracaoPage from "./pages/rh/NovaIntegracaoPage.tsx";
 import IntegracoesDashboardPage from "./pages/rh/IntegracoesDashboardPage.tsx";
+import PacotesPadraoPage from "./pages/rh/PacotesPadraoPage.tsx";
 import PortalLoginPage from "./pages/portal/PortalLoginPage.tsx";
 import PortalHorasPage from "./pages/portal/PortalHorasPage.tsx";
 import PortalOrcamentosPage from "./pages/portal/PortalOrcamentosPage.tsx";
@@ -119,6 +120,7 @@ const AppRoutes = () => {
                 <Route path="/rh/colaboradores" element={<ColaboradoresPage />} />
                 <Route path="/rh/colaboradores/:id" element={<ColaboradorDetailPage />} />
                 <Route path="/rh/tipos-documento" element={<TiposDocumentoPage />} />
+                <Route path="/rh/pacotes-padrao" element={<PacotesPadraoPage />} />
                 <Route path="/rh/documentos-empresa" element={<DocumentosEmpresaPage />} />
                 <Route path="/rh/integracoes" element={<MatrizIntegracoesPage />} />
                 <Route path="/rh/integracoes/nova" element={<NovaIntegracaoPage />} />
