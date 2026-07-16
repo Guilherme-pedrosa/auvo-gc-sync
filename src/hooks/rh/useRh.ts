@@ -467,3 +467,184 @@ export function computeDocStatus(doc: { data_vencimento: string | null } | undef
   if (diff <= 30) return "expiring";
   return "ok";
 }
+
+// ==================== TREINAMENTOS ====================
+export type TreinamentoTipo = {
+  id: string; code: string; name: string;
+  validade_meses: number | null; ativo: boolean;
+};
+export type Treinamento = {
+  id: string; tipo_id: string; titulo: string;
+  data_realizacao: string; data_validade: string | null;
+  instrutor: string | null; carga_horaria: number | null;
+  local: string | null; observacoes: string | null;
+  certificado_url: string | null; certificado_nome: string | null;
+  lista_presenca_url: string | null; lista_presenca_nome: string | null;
+};
+export type TreinamentoParticipante = {
+  id: string; treinamento_id: string; colaborador_id: string;
+  presente: boolean; certificado_url: string | null; certificado_nome: string | null;
+  observacoes: string | null;
+};
+
+export function useTreinamentoTipos() {
+  return useQuery({
+    queryKey: ["rh_treinamento_tipos"],
+    queryFn: async () => {
+      const { data, error } = await sb.from("rh_treinamento_tipos").select("*").order("name");
+      if (error) throw error;
+      return (data ?? []) as TreinamentoTipo[];
+    },
+  });
+}
+export function useSaveTreinamentoTipo() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (payload: Partial<TreinamentoTipo> & { id?: string }) => {
+      const body = { ...payload };
+      if (body.id) {
+        const { error } = await sb.from("rh_treinamento_tipos").update(body).eq("id", body.id);
+        if (error) throw error;
+      } else {
+        const { error } = await sb.from("rh_treinamento_tipos").insert(body);
+        if (error) throw error;
+      }
+    },
+    onSuccess: () => { toast.success("Tipo salvo"); qc.invalidateQueries({ queryKey: ["rh_treinamento_tipos"] }); },
+    onError: (e: Error) => toast.error(e.message),
+  });
+}
+export function useDeleteTreinamentoTipo() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (id: string) => {
+      const { error } = await sb.from("rh_treinamento_tipos").delete().eq("id", id);
+      if (error) throw error;
+    },
+    onSuccess: () => { toast.success("Tipo excluído"); qc.invalidateQueries({ queryKey: ["rh_treinamento_tipos"] }); },
+    onError: (e: Error) => toast.error(e.message),
+  });
+}
+
+export function useTreinamentos() {
+  return useQuery({
+    queryKey: ["rh_treinamentos"],
+    queryFn: async () => {
+      const { data, error } = await sb.from("rh_treinamentos").select("*").order("data_realizacao", { ascending: false }).limit(2000);
+      if (error) throw error;
+      return (data ?? []) as Treinamento[];
+    },
+  });
+}
+export function useTreinamento(id?: string) {
+  return useQuery({
+    queryKey: ["rh_treinamento", id],
+    queryFn: async () => {
+      const { data, error } = await sb.from("rh_treinamentos").select("*").eq("id", id).maybeSingle();
+      if (error) throw error;
+      return data as Treinamento | null;
+    },
+    enabled: !!id,
+  });
+}
+export function useSaveTreinamento() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (payload: Partial<Treinamento> & { id?: string }) => {
+      const body = { ...payload };
+      if (body.id) {
+        const { error } = await sb.from("rh_treinamentos").update(body).eq("id", body.id);
+        if (error) throw error;
+        return body.id;
+      } else {
+        const { data, error } = await sb.from("rh_treinamentos").insert(body).select("id").single();
+        if (error) throw error;
+        return (data as { id: string }).id;
+      }
+    },
+    onSuccess: (id) => {
+      toast.success("Treinamento salvo");
+      qc.invalidateQueries({ queryKey: ["rh_treinamentos"] });
+      if (id) qc.invalidateQueries({ queryKey: ["rh_treinamento", id] });
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+}
+export function useDeleteTreinamento() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (id: string) => {
+      const { error } = await sb.from("rh_treinamentos").delete().eq("id", id);
+      if (error) throw error;
+    },
+    onSuccess: () => { toast.success("Treinamento excluído"); qc.invalidateQueries({ queryKey: ["rh_treinamentos"] }); },
+    onError: (e: Error) => toast.error(e.message),
+  });
+}
+
+export function useTreinamentoParticipantes(treinamentoId?: string) {
+  return useQuery({
+    queryKey: ["rh_treinamento_participantes", treinamentoId],
+    queryFn: async () => {
+      const { data, error } = await sb.from("rh_treinamento_participantes").select("*").eq("treinamento_id", treinamentoId);
+      if (error) throw error;
+      return (data ?? []) as TreinamentoParticipante[];
+    },
+    enabled: !!treinamentoId,
+  });
+}
+export function useColaboradorTreinamentos(colaboradorId?: string) {
+  return useQuery({
+    queryKey: ["rh_colaborador_treinamentos", colaboradorId],
+    queryFn: async () => {
+      const { data, error } = await sb
+        .from("rh_treinamento_participantes")
+        .select("*, treinamento:rh_treinamentos(*)")
+        .eq("colaborador_id", colaboradorId);
+      if (error) throw error;
+      return (data ?? []) as (TreinamentoParticipante & { treinamento: Treinamento })[];
+    },
+    enabled: !!colaboradorId,
+  });
+}
+export function useAddParticipantes() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ treinamento_id, colaborador_ids }: { treinamento_id: string; colaborador_ids: string[] }) => {
+      if (colaborador_ids.length === 0) return;
+      const rows = colaborador_ids.map((cid) => ({ treinamento_id, colaborador_id: cid, presente: true }));
+      const { error } = await sb.from("rh_treinamento_participantes").upsert(rows, { onConflict: "treinamento_id,colaborador_id" });
+      if (error) throw error;
+    },
+    onSuccess: (_d, v) => {
+      toast.success("Participantes vinculados");
+      qc.invalidateQueries({ queryKey: ["rh_treinamento_participantes", v.treinamento_id] });
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+}
+export function useRemoveParticipante() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id }: { id: string; treinamento_id: string }) => {
+      const { error } = await sb.from("rh_treinamento_participantes").delete().eq("id", id);
+      if (error) throw error;
+    },
+    onSuccess: (_d, v) => {
+      toast.success("Participante removido");
+      qc.invalidateQueries({ queryKey: ["rh_treinamento_participantes", v.treinamento_id] });
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+}
+
+export function computeTrainingStatus(t: { data_validade: string | null } | undefined): "ok" | "expiring" | "expired" | "missing" {
+  if (!t) return "missing";
+  if (!t.data_validade) return "ok";
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const venc = new Date(t.data_validade);
+  const diff = Math.floor((venc.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+  if (diff < 0) return "expired";
+  if (diff <= 30) return "expiring";
+  return "ok";
+}
