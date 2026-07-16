@@ -238,12 +238,12 @@ export default function ClienteRequisitosPage() {
             <CardHeader><CardTitle className="text-base">Dados do cliente</CardTitle></CardHeader>
             <CardContent className="grid grid-cols-2 md:grid-cols-3 gap-3 text-sm">
               <div><Label className="text-xs">Nome</Label><div className="uppercase">{cliente?.nome ?? "—"}</div></div>
-              <div><Label className="text-xs">CNPJ</Label><div className="font-mono">{cliente?.cnpj ?? "—"}</div></div>
+              <div><Label className="text-xs">CPF/CNPJ</Label><div className="font-mono">{cliente?.cpf_cnpj ?? "—"}</div></div>
               <div><Label className="text-xs">Cidade/UF</Label><div>{[cliente?.cidade, cliente?.uf].filter(Boolean).join(" / ") || "—"}</div></div>
-              <div><Label className="text-xs">Contato</Label><div>{cliente?.contato_nome ?? "—"}</div></div>
-              <div><Label className="text-xs">E-mail</Label><div>{cliente?.contato_email ?? "—"}</div></div>
-              <div><Label className="text-xs">Telefone</Label><div>{cliente?.contato_fone ?? "—"}</div></div>
-              <div className="col-span-full"><Label className="text-xs">Observações de integração</Label><div className="whitespace-pre-wrap">{cliente?.notas_integracao ?? "—"}</div></div>
+              <div><Label className="text-xs">Nome fantasia</Label><div>{cliente?.nome_fantasia ?? "—"}</div></div>
+              <div><Label className="text-xs">E-mail</Label><div>{cliente?.email ?? "—"}</div></div>
+              <div><Label className="text-xs">Telefone</Label><div>{cliente?.telefone ?? "—"}</div></div>
+              <div className="col-span-full"><Label className="text-xs">Observações</Label><div className="whitespace-pre-wrap">{cliente?.observacoes ?? "—"}</div></div>
             </CardContent>
           </Card>
 
