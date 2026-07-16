@@ -152,27 +152,6 @@ export default function TreinamentoDetailPage() {
 
       <div className="grid md:grid-cols-2 gap-4">
         <Card>
-          <CardHeader><CardTitle className="text-base">Certificado</CardTitle></CardHeader>
-          <CardContent className="space-y-2">
-            {treino.certificado_url ? (
-              <div className="flex items-center gap-2">
-                <Button size="sm" variant="outline" onClick={() => openArquivo(treino.certificado_url!)}>
-                  <Download className="h-4 w-4 mr-1" /> {treino.certificado_nome ?? "baixar"}
-                </Button>
-                <Button size="sm" variant="ghost" onClick={() => id && save.mutate({ id, certificado_url: null, certificado_nome: null })}>
-                  <Trash2 className="h-4 w-4 text-destructive" />
-                </Button>
-              </div>
-            ) : <p className="text-xs text-muted-foreground">Sem arquivo.</p>}
-            <label className="inline-flex">
-              <input type="file" hidden onChange={(e) => uploadArquivo("cert", e.target.files?.[0] ?? null)} />
-              <Button asChild size="sm" variant="secondary" disabled={uploading === "cert"}>
-                <span><Upload className="h-4 w-4 mr-1" /> {uploading === "cert" ? "Enviando..." : "Anexar"}</span>
-              </Button>
-            </label>
-          </CardContent>
-        </Card>
-        <Card>
           <CardHeader><CardTitle className="text-base">Lista de presença</CardTitle></CardHeader>
           <CardContent className="space-y-2">
             {treino.lista_presenca_url ? (
