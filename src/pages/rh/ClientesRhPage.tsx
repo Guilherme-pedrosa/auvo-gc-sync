@@ -45,8 +45,8 @@ export default function ClientesRhPage() {
     <div className="p-6 max-w-6xl mx-auto">
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h1 className="text-2xl font-semibold">Clientes (RH)</h1>
-          <p className="text-sm text-muted-foreground">Lista de clientes usada para integrações e requisitos de documentação.</p>
+          <h1 className="text-2xl font-semibold">Clientes</h1>
+          <p className="text-sm text-muted-foreground">Cadastro central de clientes: requisitos, integrações e (em breve) validação de aptidão.</p>
         </div>
         <div className="flex gap-2">
           <Button variant="outline" onClick={() => sync.mutate()} disabled={sync.isPending}>

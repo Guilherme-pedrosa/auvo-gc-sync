@@ -7,7 +7,9 @@ import { Label } from "@/components/ui/label";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { ArrowLeft, Plus, Trash2, Building2, Users, FileCheck, AlertCircle, Download, Loader2 } from "lucide-react";
+import { ArrowLeft, Plus, Trash2, Building2, Users, FileCheck, AlertCircle, Download, Loader2, Link2, UserCheck } from "lucide-react";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import { Input } from "@/components/ui/input";
 import { supabase } from "@/integrations/supabase/client";
@@ -19,6 +21,8 @@ import {
   useRemoveRequirement,
   useSetRequirementRequired,
   applyRequirementsTemplate,
+  useIntegrations,
+  useColaboradores,
 } from "@/hooks/rh/useRh";
 import { useQueryClient } from "@tanstack/react-query";
 
@@ -35,6 +39,8 @@ export default function ClienteRequisitosPage() {
   const { data: clientes = [] } = useRhClientes();
   const { data: types = [] } = useDocumentTypes();
   const { data: reqs = [], isLoading } = useClientRequirements(id);
+  const { data: integrations = [] } = useIntegrations();
+  const { data: colabs = [] } = useColaboradores();
   const addReq = useAddRequirement();
   const removeReq = useRemoveRequirement();
   const setRequired = useSetRequirementRequired();
@@ -210,8 +216,8 @@ export default function ClienteRequisitosPage() {
 
       <div className="flex items-start justify-between flex-wrap gap-3">
         <div>
-          <h1 className="text-xl font-semibold">{cliente?.nome ?? "..."}</h1>
-          <p className="text-sm text-muted-foreground">Configure quais documentos são exigidos por este cliente.</p>
+          <h1 className="text-xl font-semibold uppercase">{cliente?.nome ?? "..."}</h1>
+          <p className="text-sm text-muted-foreground">Ficha do cliente: dados, requisitos de documentação, integrações e aptidão da equipe.</p>
         </div>
         <Button variant="outline" size="sm" onClick={handleTemplate} disabled={templateLoading}>
           {templateLoading ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Download className="h-4 w-4 mr-2" />}
@@ -219,7 +225,29 @@ export default function ClienteRequisitosPage() {
         </Button>
       </div>
 
-      <Card>
+      <Tabs defaultValue="resumo" className="w-full">
+        <TabsList>
+          <TabsTrigger value="resumo">Resumo</TabsTrigger>
+          <TabsTrigger value="requisitos">Requisitos</TabsTrigger>
+          <TabsTrigger value="integracoes">Integrações</TabsTrigger>
+          <TabsTrigger value="aptos">Funcionários Aptos</TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="resumo" className="mt-4 space-y-4">
+          <Card>
+            <CardHeader><CardTitle className="text-base">Dados do cliente</CardTitle></CardHeader>
+            <CardContent className="grid grid-cols-2 md:grid-cols-3 gap-3 text-sm">
+              <div><Label className="text-xs">Nome</Label><div className="uppercase">{cliente?.nome ?? "—"}</div></div>
+              <div><Label className="text-xs">CPF/CNPJ</Label><div className="font-mono">{cliente?.cpf_cnpj ?? "—"}</div></div>
+              <div><Label className="text-xs">Cidade/UF</Label><div>{[cliente?.cidade, cliente?.uf].filter(Boolean).join(" / ") || "—"}</div></div>
+              <div><Label className="text-xs">Nome fantasia</Label><div>{cliente?.nome_fantasia ?? "—"}</div></div>
+              <div><Label className="text-xs">E-mail</Label><div>{cliente?.email ?? "—"}</div></div>
+              <div><Label className="text-xs">Telefone</Label><div>{cliente?.telefone ?? "—"}</div></div>
+              <div className="col-span-full"><Label className="text-xs">Observações</Label><div className="whitespace-pre-wrap">{cliente?.observacoes ?? "—"}</div></div>
+            </CardContent>
+          </Card>
+
+          <Card>
         <CardHeader>
           <CardTitle className="text-lg">Prazo e canal de integração</CardTitle>
         </CardHeader>
@@ -298,9 +326,11 @@ export default function ClienteRequisitosPage() {
             </div>
           )}
         </CardContent>
-      </Card>
+          </Card>
+        </TabsContent>
 
-      <div className="grid lg:grid-cols-2 gap-6">
+        <TabsContent value="requisitos" className="mt-4 space-y-6">
+          <div className="grid lg:grid-cols-2 gap-6">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between">
             <CardTitle className="text-lg flex items-center gap-2">
@@ -324,7 +354,7 @@ export default function ClienteRequisitosPage() {
           </CardHeader>
           <CardContent>{renderTable(techReqs, "Nenhum requisito cadastrado")}</CardContent>
         </Card>
-      </div>
+          </div>
 
       <Card>
         <CardContent className="pt-4">
@@ -344,6 +374,74 @@ export default function ClienteRequisitosPage() {
           </div>
         </CardContent>
       </Card>
+        </TabsContent>
+
+        <TabsContent value="integracoes" className="mt-4">
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base flex items-center gap-2">
+                <Link2 className="h-4 w-4 text-muted-foreground" /> Integrações do cliente
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="p-0">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Técnicos</TableHead>
+                    <TableHead className="w-32">Status</TableHead>
+                    <TableHead className="w-36">Realizada</TableHead>
+                    <TableHead className="w-36">Validade</TableHead>
+                    <TableHead className="w-32 text-right">Arquivo</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {(() => {
+                    const clientIntegs = integrations.filter((i) => i.client_id === id);
+                    const colabMap = new Map(colabs.map((c) => [c.id, c]));
+                    if (clientIntegs.length === 0) {
+                      return (
+                        <TableRow><TableCell colSpan={5} className="text-center py-6 text-muted-foreground">
+                          Nenhuma integração registrada para este cliente.
+                        </TableCell></TableRow>
+                      );
+                    }
+                    return clientIntegs.map((i) => (
+                      <TableRow key={i.id}>
+                        <TableCell className="uppercase text-xs">
+                          {(i.technician_ids ?? []).map((tid) => colabMap.get(tid)?.nome ?? tid).join(", ") || "—"}
+                        </TableCell>
+                        <TableCell><Badge variant="outline">{i.status}</Badge></TableCell>
+                        <TableCell>{i.completed_at?.slice(0, 10) ?? "—"}</TableCell>
+                        <TableCell>{i.integration_valid_until ?? "—"}</TableCell>
+                        <TableCell className="text-right">
+                          {i.zip_url ? (
+                            <a href={i.zip_url} target="_blank" rel="noreferrer" className="text-primary underline text-xs">
+                              baixar
+                            </a>
+                          ) : "—"}
+                        </TableCell>
+                      </TableRow>
+                    ));
+                  })()}
+                </TableBody>
+              </Table>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="aptos" className="mt-4">
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base flex items-center gap-2">
+                <UserCheck className="h-4 w-4 text-muted-foreground" /> Funcionários aptos
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="text-sm text-muted-foreground">
+              Em breve: cruzamento automático entre requisitos deste cliente e a documentação vigente dos colaboradores para indicar quem está apto a atender.
+            </CardContent>
+          </Card>
+        </TabsContent>
+      </Tabs>
 
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent>
