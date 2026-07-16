@@ -14,7 +14,7 @@ import { supabase } from "@/integrations/supabase/client";
 import {
   useTreinamento, useTreinamentoTipos, useTreinamentoParticipantes,
   useAddParticipantes, useRemoveParticipante, useSaveTreinamento,
-  useColaboradores, computeTrainingStatus,
+  useColaboradores, computeTrainingStatus, useSaveParticipante,
 } from "@/hooks/rh/useRh";
 
 const statusVariant = (s: string) => s === "expired" ? "destructive" : s === "expiring" ? "secondary" : "default";
@@ -30,6 +30,38 @@ export default function TreinamentoDetailPage() {
   const add = useAddParticipantes();
   const remove = useRemoveParticipante();
   const save = useSaveTreinamento();
+  const saveParticipante = useSaveParticipante();
+  const [uploadingCertId, setUploadingCertId] = useState<string | null>(null);
+
+  const slugify = (s: string) =>
+    s.normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^\w]+/g, "_").replace(/^_+|_+$/g, "").toUpperCase();
+
+  const uploadParticipanteCert = async (participanteId: string, colabNome: string, file: File | null) => {
+    if (!file || !id) return;
+    setUploadingCertId(participanteId);
+    try {
+      const dotIdx = file.name.lastIndexOf(".");
+      const ext = dotIdx >= 0 ? file.name.slice(dotIdx).toLowerCase() : "";
+      const tipoCode = tipo?.code ?? "";
+      const tipoSlug = slugify(tipoCode || treino?.titulo || "TREINAMENTO").slice(0, 40);
+      const colabSlug = slugify(colabNome).slice(0, 60);
+      const shortId = id.slice(0, 8).toUpperCase();
+      const baseName = `${shortId}_${tipoSlug}_${colabSlug}`;
+      const path = `treinamentos/${id}/certificados/${baseName}-${Date.now()}${ext}`;
+      const { error } = await supabase.storage.from("rh-documentos").upload(path, file, { upsert: false });
+      if (error) throw error;
+      await saveParticipante.mutateAsync({
+        id: participanteId,
+        treinamento_id: id,
+        certificado_url: path,
+        certificado_nome: `${baseName}${ext}`,
+      });
+    } catch (e) {
+      toast.error("Falha no upload: " + (e as Error).message);
+    } finally {
+      setUploadingCertId(null);
+    }
+  };
 
   const tipo = useMemo(() => tipos.find((t) => t.id === treino?.tipo_id), [tipos, treino]);
   const colabMap = useMemo(() => new Map(colabs.map((c) => [c.id, c])), [colabs]);
@@ -180,12 +212,13 @@ export default function TreinamentoDetailPage() {
                 <TableHead>Colaborador</TableHead>
                 <TableHead className="w-32">CPF/CNPJ</TableHead>
                 <TableHead className="w-24 text-center">Presente</TableHead>
+                <TableHead className="w-64 text-right">Certificado</TableHead>
                 <TableHead className="w-20 text-right">Ações</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {participantes.length === 0 ? (
-                <TableRow><TableCell colSpan={4} className="text-center py-6 text-muted-foreground">
+                <TableRow><TableCell colSpan={5} className="text-center py-6 text-muted-foreground">
                   Nenhum participante vinculado.
                 </TableCell></TableRow>
               ) : participantes.map((p) => {
@@ -196,6 +229,28 @@ export default function TreinamentoDetailPage() {
                     <TableCell className="font-mono text-xs">{c?.cpf_cnpj ?? "—"}</TableCell>
                     <TableCell className="text-center">
                       <Badge variant={p.presente ? "default" : "outline"}>{p.presente ? "Sim" : "Não"}</Badge>
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <div className="flex items-center justify-end gap-1">
+                        {p.certificado_url && (
+                          <Button size="sm" variant="ghost" onClick={() => openArquivo(p.certificado_url!)} title={p.certificado_nome ?? "abrir"}>
+                            <Download className="h-3.5 w-3.5" />
+                          </Button>
+                        )}
+                        <label className="inline-flex">
+                          <input
+                            type="file"
+                            hidden
+                            onChange={(e) => uploadParticipanteCert(p.id, c?.nome ?? p.colaborador_id, e.target.files?.[0] ?? null)}
+                          />
+                          <Button asChild size="sm" variant="outline" disabled={uploadingCertId === p.id}>
+                            <span>
+                              <Upload className="h-3.5 w-3.5 mr-1" />
+                              {uploadingCertId === p.id ? "Enviando..." : p.certificado_url ? "Substituir" : "Anexar"}
+                            </span>
+                          </Button>
+                        </label>
+                      </div>
                     </TableCell>
                     <TableCell className="text-right">
                       <Button size="sm" variant="ghost" onClick={() => id && remove.mutate({ id: p.id, treinamento_id: id })}>
