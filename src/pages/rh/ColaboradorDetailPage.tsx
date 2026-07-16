@@ -285,7 +285,7 @@ export default function ColaboradorDetailPage() {
                 {obrigatoriosRows.filter((r) => r.doc).length}/{obrigatoriosRows.length} preenchidos
               </span>
             </CardHeader>
-            <CardContent className="p-0">
+            <CardContent className="p-0 overflow-x-auto">
               <Table>
                 <TableHeader>
                   <TableRow>
@@ -378,14 +378,14 @@ export default function ColaboradorDetailPage() {
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Treinamento</TableHead>
-                    <TableHead>Tipo</TableHead>
-                    <TableHead className="w-32">Realização</TableHead>
-                    <TableHead className="w-32">Validade</TableHead>
-                    <TableHead className="w-28">Status</TableHead>
-                    <TableHead className="w-24 text-right">Presente</TableHead>
-                     <TableHead className="w-56 text-right">Certificado</TableHead>
-                     <TableHead className="w-40 text-right">Lista de presença</TableHead>
+                     <TableHead className="min-w-[180px]">Treinamento</TableHead>
+                     <TableHead className="w-[150px]">Tipo</TableHead>
+                     <TableHead className="w-[100px] whitespace-nowrap">Realização</TableHead>
+                     <TableHead className="w-[100px] whitespace-nowrap">Validade</TableHead>
+                     <TableHead className="w-[80px]">Status</TableHead>
+                     <TableHead className="w-[70px] text-center">Presente</TableHead>
+                     <TableHead className="w-[90px] text-right">Certificado</TableHead>
+                     <TableHead className="w-[110px] text-right whitespace-nowrap">Presença</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -401,18 +401,22 @@ export default function ColaboradorDetailPage() {
                         const st = computeTrainingStatus(t);
                         return (
                           <TableRow key={p.id}>
-                            <TableCell className="font-medium uppercase">
+                            <TableCell className="font-medium uppercase truncate max-w-[220px]">
                               {t ? <Link to={`/rh/treinamentos/${t.id}`} className="hover:underline">{t.titulo}</Link> : "—"}
                             </TableCell>
-                            <TableCell><Badge variant="outline">{t ? (tTipoMap.get(t.tipo_id)?.name ?? "—") : "—"}</Badge></TableCell>
-                            <TableCell>{t?.data_realizacao ?? "—"}</TableCell>
-                            <TableCell>{t?.data_validade ?? "—"}</TableCell>
+                            <TableCell>
+                              <Badge variant="outline" className="max-w-[140px] truncate inline-block align-middle">
+                                {t ? (tTipoMap.get(t.tipo_id)?.name ?? "—") : "—"}
+                              </Badge>
+                            </TableCell>
+                            <TableCell className="whitespace-nowrap tabular-nums">{t?.data_realizacao ?? "—"}</TableCell>
+                            <TableCell className="whitespace-nowrap tabular-nums">{t?.data_validade ?? "—"}</TableCell>
                             <TableCell><Badge variant={statusColor(st) as never}>{statusLabel(st)}</Badge></TableCell>
-                            <TableCell className="text-right">
+                            <TableCell className="text-center">
                               <Badge variant={p.presente ? "default" : "outline"}>{p.presente ? "Sim" : "Não"}</Badge>
                             </TableCell>
                             <TableCell className="text-right">
-                              <div className="flex items-center justify-end gap-1">
+                              <div className="flex items-center justify-end gap-1 whitespace-nowrap">
                                 {p.certificado_url && (
                                   <Button size="sm" variant="ghost" onClick={() => openArquivo(p.certificado_url!)} title={p.certificado_nome ?? "abrir"}>
                                     <Download className="h-3.5 w-3.5" />
@@ -424,16 +428,15 @@ export default function ColaboradorDetailPage() {
                                     hidden
                                     onChange={(e) => uploadCertificadoParticipante(p, t, e.target.files?.[0] ?? null)}
                                   />
-                                  <Button asChild size="sm" variant="outline" disabled={uploadingCertId === p.id}>
+                                  <Button asChild size="icon" variant="outline" disabled={uploadingCertId === p.id} title={p.certificado_url ? "Substituir" : "Anexar"} className="h-8 w-8">
                                     <span>
-                                      <Upload className="h-3.5 w-3.5 mr-1" />
-                                      {uploadingCertId === p.id ? "Enviando..." : p.certificado_url ? "Substituir" : "Anexar"}
+                                      <Upload className="h-3.5 w-3.5" />
                                     </span>
                                   </Button>
                                 </label>
                               </div>
                             </TableCell>
-                            <TableCell className="text-right">
+                            <TableCell className="text-right whitespace-nowrap">
                               {t?.lista_presenca_url ? (
                                 <Button size="sm" variant="ghost" onClick={() => openArquivo(t.lista_presenca_url!)} title={t.lista_presenca_nome ?? "baixar"}>
                                   <Download className="h-3.5 w-3.5 mr-1" /> Baixar
