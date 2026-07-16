@@ -638,6 +638,23 @@ export function useRemoveParticipante() {
   });
 }
 
+export function useSaveParticipante() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (payload: Partial<TreinamentoParticipante> & { id: string; treinamento_id: string }) => {
+      const { id, treinamento_id: _t, ...rest } = payload;
+      const { error } = await sb.from("rh_treinamento_participantes").update(rest).eq("id", id);
+      if (error) throw error;
+    },
+    onSuccess: (_d, v) => {
+      toast.success("Certificado atualizado");
+      qc.invalidateQueries({ queryKey: ["rh_treinamento_participantes", v.treinamento_id] });
+      qc.invalidateQueries({ queryKey: ["rh_colaborador_treinamentos"] });
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+}
+
 export function computeTrainingStatus(t: { data_validade: string | null } | undefined): "ok" | "expiring" | "expired" | "missing" {
   if (!t) return "missing";
   if (!t.data_validade) return "ok";
