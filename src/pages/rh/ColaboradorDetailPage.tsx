@@ -378,14 +378,14 @@ export default function ColaboradorDetailPage() {
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Treinamento</TableHead>
-                    <TableHead>Tipo</TableHead>
-                    <TableHead className="w-32">Realização</TableHead>
-                    <TableHead className="w-32">Validade</TableHead>
-                    <TableHead className="w-28">Status</TableHead>
-                    <TableHead className="w-24 text-right">Presente</TableHead>
-                     <TableHead className="w-56 text-right">Certificado</TableHead>
-                     <TableHead className="w-40 text-right">Lista de presença</TableHead>
+                     <TableHead className="min-w-[220px]">Treinamento</TableHead>
+                     <TableHead className="w-[180px]">Tipo</TableHead>
+                     <TableHead className="w-[110px] whitespace-nowrap">Realização</TableHead>
+                     <TableHead className="w-[110px] whitespace-nowrap">Validade</TableHead>
+                     <TableHead className="w-[90px]">Status</TableHead>
+                     <TableHead className="w-[80px] text-center">Presente</TableHead>
+                     <TableHead className="w-[160px] text-right">Certificado</TableHead>
+                     <TableHead className="w-[130px] text-right whitespace-nowrap">Lista de presença</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -401,18 +401,22 @@ export default function ColaboradorDetailPage() {
                         const st = computeTrainingStatus(t);
                         return (
                           <TableRow key={p.id}>
-                            <TableCell className="font-medium uppercase">
+                            <TableCell className="font-medium uppercase truncate max-w-[260px]">
                               {t ? <Link to={`/rh/treinamentos/${t.id}`} className="hover:underline">{t.titulo}</Link> : "—"}
                             </TableCell>
-                            <TableCell><Badge variant="outline">{t ? (tTipoMap.get(t.tipo_id)?.name ?? "—") : "—"}</Badge></TableCell>
-                            <TableCell>{t?.data_realizacao ?? "—"}</TableCell>
-                            <TableCell>{t?.data_validade ?? "—"}</TableCell>
+                            <TableCell>
+                              <Badge variant="outline" className="max-w-[170px] truncate inline-block align-middle">
+                                {t ? (tTipoMap.get(t.tipo_id)?.name ?? "—") : "—"}
+                              </Badge>
+                            </TableCell>
+                            <TableCell className="whitespace-nowrap tabular-nums">{t?.data_realizacao ?? "—"}</TableCell>
+                            <TableCell className="whitespace-nowrap tabular-nums">{t?.data_validade ?? "—"}</TableCell>
                             <TableCell><Badge variant={statusColor(st) as never}>{statusLabel(st)}</Badge></TableCell>
-                            <TableCell className="text-right">
+                            <TableCell className="text-center">
                               <Badge variant={p.presente ? "default" : "outline"}>{p.presente ? "Sim" : "Não"}</Badge>
                             </TableCell>
                             <TableCell className="text-right">
-                              <div className="flex items-center justify-end gap-1">
+                              <div className="flex items-center justify-end gap-1 whitespace-nowrap">
                                 {p.certificado_url && (
                                   <Button size="sm" variant="ghost" onClick={() => openArquivo(p.certificado_url!)} title={p.certificado_nome ?? "abrir"}>
                                     <Download className="h-3.5 w-3.5" />
@@ -433,7 +437,7 @@ export default function ColaboradorDetailPage() {
                                 </label>
                               </div>
                             </TableCell>
-                            <TableCell className="text-right">
+                            <TableCell className="text-right whitespace-nowrap">
                               {t?.lista_presenca_url ? (
                                 <Button size="sm" variant="ghost" onClick={() => openArquivo(t.lista_presenca_url!)} title={t.lista_presenca_nome ?? "baixar"}>
                                   <Download className="h-3.5 w-3.5 mr-1" /> Baixar
