@@ -192,7 +192,7 @@ export default function TreinamentoDetailPage() {
                 <TableHead className="w-32">CPF/CNPJ</TableHead>
                 <TableHead className="w-24 text-center">Presente</TableHead>
                 <TableHead className="w-64 text-right">Certificado</TableHead>
-                <TableHead className="w-40 text-right">Lista de treinamento</TableHead>
+                <TableHead className="w-40 text-right">Lista de presença</TableHead>
                 <TableHead className="w-20 text-right">Ações</TableHead>
               </TableRow>
             </TableHeader>
