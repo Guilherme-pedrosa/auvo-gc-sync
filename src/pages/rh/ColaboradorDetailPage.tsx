@@ -50,21 +50,27 @@ export default function ColaboradorDetailPage() {
 
   const uploadCertificadoParticipante = async (
     participante: { id: string; treinamento_id: string },
+    treinamento: { id: string; titulo: string } | undefined,
     file: File | null,
   ) => {
     if (!file || !colab) return;
     setUploadingCertId(participante.id);
     try {
-      const safeName = file.name.replace(/[^\w.\-]+/g, "_");
+      const dotIdx = file.name.lastIndexOf(".");
+      const ext = dotIdx >= 0 ? file.name.slice(dotIdx).toLowerCase() : "";
       const colabSlug = slugify(colab.nome || colab.id);
-      const path = `treinamentos/${participante.treinamento_id}/certificados/${colabSlug}-${Date.now()}-${safeName}`;
+      const tituloSlug = slugify(treinamento?.titulo ?? "TREINAMENTO").slice(0, 60);
+      const shortId = participante.treinamento_id.slice(0, 8).toUpperCase();
+      const baseName = `${shortId}_${tituloSlug}_${colabSlug}`;
+      const displayName = `${baseName}${ext}`;
+      const path = `treinamentos/${participante.treinamento_id}/certificados/${baseName}-${Date.now()}${ext}`;
       const { error } = await supabase.storage.from("rh-documentos").upload(path, file, { upsert: false });
       if (error) throw error;
       await saveParticipante.mutateAsync({
         id: participante.id,
         treinamento_id: participante.treinamento_id,
         certificado_url: path,
-        certificado_nome: `${colabSlug} - ${file.name}`,
+        certificado_nome: displayName,
       });
     } catch (e) {
       toast.error("Falha no upload: " + (e as Error).message);
@@ -414,7 +420,7 @@ export default function ColaboradorDetailPage() {
                                   <input
                                     type="file"
                                     hidden
-                                    onChange={(e) => uploadCertificadoParticipante(p, e.target.files?.[0] ?? null)}
+                                    onChange={(e) => uploadCertificadoParticipante(p, t, e.target.files?.[0] ?? null)}
                                   />
                                   <Button asChild size="sm" variant="outline" disabled={uploadingCertId === p.id}>
                                     <span>
