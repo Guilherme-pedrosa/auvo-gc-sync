@@ -50,7 +50,7 @@ export default function ColaboradorDetailPage() {
 
   const uploadCertificadoParticipante = async (
     participante: { id: string; treinamento_id: string },
-    treinamento: { id: string; titulo: string } | undefined,
+    treinamento: { id: string; titulo: string; tipo_id: string } | undefined,
     file: File | null,
   ) => {
     if (!file || !colab) return;
@@ -59,9 +59,10 @@ export default function ColaboradorDetailPage() {
       const dotIdx = file.name.lastIndexOf(".");
       const ext = dotIdx >= 0 ? file.name.slice(dotIdx).toLowerCase() : "";
       const colabSlug = slugify(colab.nome || colab.id);
-      const tituloSlug = slugify(treinamento?.titulo ?? "TREINAMENTO").slice(0, 60);
+      const tipoCode = treinamento ? (tTipoMap.get(treinamento.tipo_id)?.code ?? "") : "";
+      const tipoSlug = slugify(tipoCode || treinamento?.titulo || "TREINAMENTO").slice(0, 40);
       const shortId = participante.treinamento_id.slice(0, 8).toUpperCase();
-      const baseName = `${shortId}_${tituloSlug}_${colabSlug}`;
+      const baseName = `${shortId}_${tipoSlug}_${colabSlug}`;
       const displayName = `${baseName}${ext}`;
       const path = `treinamentos/${participante.treinamento_id}/certificados/${baseName}-${Date.now()}${ext}`;
       const { error } = await supabase.storage.from("rh-documentos").upload(path, file, { upsert: false });
