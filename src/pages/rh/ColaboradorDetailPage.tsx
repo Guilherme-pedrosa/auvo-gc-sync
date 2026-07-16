@@ -384,7 +384,7 @@ export default function ColaboradorDetailPage() {
                      <TableHead className="w-[100px] whitespace-nowrap">Validade</TableHead>
                      <TableHead className="w-[80px]">Status</TableHead>
                      <TableHead className="w-[70px] text-center">Presente</TableHead>
-                     <TableHead className="w-[130px] text-right">Certificado</TableHead>
+                     <TableHead className="w-[90px] text-right">Certificado</TableHead>
                      <TableHead className="w-[110px] text-right whitespace-nowrap">Presença</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -428,10 +428,9 @@ export default function ColaboradorDetailPage() {
                                     hidden
                                     onChange={(e) => uploadCertificadoParticipante(p, t, e.target.files?.[0] ?? null)}
                                   />
-                                  <Button asChild size="sm" variant="outline" disabled={uploadingCertId === p.id} title={p.certificado_url ? "Substituir" : "Anexar"}>
+                                  <Button asChild size="icon" variant="outline" disabled={uploadingCertId === p.id} title={p.certificado_url ? "Substituir" : "Anexar"} className="h-8 w-8">
                                     <span>
-                                      <Upload className="h-3.5 w-3.5 mr-1" />
-                                      {uploadingCertId === p.id ? "..." : p.certificado_url ? "Trocar" : "Anexar"}
+                                      <Upload className="h-3.5 w-3.5" />
                                     </span>
                                   </Button>
                                 </label>
