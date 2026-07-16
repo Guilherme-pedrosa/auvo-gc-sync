@@ -1826,6 +1826,149 @@ export type Database = {
           },
         ]
       }
+      rh_treinamento_participantes: {
+        Row: {
+          certificado_nome: string | null
+          certificado_url: string | null
+          colaborador_id: string
+          created_at: string
+          id: string
+          observacoes: string | null
+          presente: boolean
+          treinamento_id: string
+          updated_at: string
+        }
+        Insert: {
+          certificado_nome?: string | null
+          certificado_url?: string | null
+          colaborador_id: string
+          created_at?: string
+          id?: string
+          observacoes?: string | null
+          presente?: boolean
+          treinamento_id: string
+          updated_at?: string
+        }
+        Update: {
+          certificado_nome?: string | null
+          certificado_url?: string | null
+          colaborador_id?: string
+          created_at?: string
+          id?: string
+          observacoes?: string | null
+          presente?: boolean
+          treinamento_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "rh_treinamento_participantes_colaborador_id_fkey"
+            columns: ["colaborador_id"]
+            isOneToOne: false
+            referencedRelation: "rh_colaboradores"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "rh_treinamento_participantes_treinamento_id_fkey"
+            columns: ["treinamento_id"]
+            isOneToOne: false
+            referencedRelation: "rh_treinamentos"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      rh_treinamento_tipos: {
+        Row: {
+          ativo: boolean
+          code: string
+          created_at: string
+          id: string
+          name: string
+          updated_at: string
+          validade_meses: number | null
+        }
+        Insert: {
+          ativo?: boolean
+          code: string
+          created_at?: string
+          id?: string
+          name: string
+          updated_at?: string
+          validade_meses?: number | null
+        }
+        Update: {
+          ativo?: boolean
+          code?: string
+          created_at?: string
+          id?: string
+          name?: string
+          updated_at?: string
+          validade_meses?: number | null
+        }
+        Relationships: []
+      }
+      rh_treinamentos: {
+        Row: {
+          carga_horaria: number | null
+          certificado_nome: string | null
+          certificado_url: string | null
+          created_at: string
+          data_realizacao: string
+          data_validade: string | null
+          id: string
+          instrutor: string | null
+          lista_presenca_nome: string | null
+          lista_presenca_url: string | null
+          local: string | null
+          observacoes: string | null
+          tipo_id: string
+          titulo: string
+          updated_at: string
+        }
+        Insert: {
+          carga_horaria?: number | null
+          certificado_nome?: string | null
+          certificado_url?: string | null
+          created_at?: string
+          data_realizacao: string
+          data_validade?: string | null
+          id?: string
+          instrutor?: string | null
+          lista_presenca_nome?: string | null
+          lista_presenca_url?: string | null
+          local?: string | null
+          observacoes?: string | null
+          tipo_id: string
+          titulo: string
+          updated_at?: string
+        }
+        Update: {
+          carga_horaria?: number | null
+          certificado_nome?: string | null
+          certificado_url?: string | null
+          created_at?: string
+          data_realizacao?: string
+          data_validade?: string | null
+          id?: string
+          instrutor?: string | null
+          lista_presenca_nome?: string | null
+          lista_presenca_url?: string | null
+          local?: string | null
+          observacoes?: string | null
+          tipo_id?: string
+          titulo?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "rh_treinamentos_tipo_id_fkey"
+            columns: ["tipo_id"]
+            isOneToOne: false
+            referencedRelation: "rh_treinamento_tipos"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       tarefas_central: {
         Row: {
           atualizado_em: string | null
