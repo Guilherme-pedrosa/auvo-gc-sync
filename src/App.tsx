@@ -38,6 +38,7 @@ import NovaIntegracaoPage from "./pages/rh/NovaIntegracaoPage.tsx";
 import IntegracoesDashboardPage from "./pages/rh/IntegracoesDashboardPage.tsx";
 import PacotesPadraoPage from "./pages/rh/PacotesPadraoPage.tsx";
 import TreinamentosPage from "./pages/rh/TreinamentosPage.tsx";
+import TreinamentoDetailPage from "./pages/rh/TreinamentoDetailPage.tsx";
 import TiposTreinamentoPage from "./pages/rh/configuracoes/TiposTreinamentoPage.tsx";
 import PortalLoginPage from "./pages/portal/PortalLoginPage.tsx";
 import PortalHorasPage from "./pages/portal/PortalHorasPage.tsx";
@@ -129,6 +130,7 @@ const AppRoutes = () => {
                 <Route path="/rh/integracoes/dashboard" element={<IntegracoesDashboardPage />} />
                 <Route path="/rh/dashboard" element={<IntegracoesDashboardPage />} />
                 <Route path="/rh/treinamentos" element={<TreinamentosPage />} />
+                <Route path="/rh/treinamentos/:id" element={<TreinamentoDetailPage />} />
                 <Route path="/rh/configuracoes/tipos-treinamento" element={<TiposTreinamentoPage />} />
                 <Route path="/admin/usuarios" element={<UsersPage />} />
                 <Route path="*" element={<NotFound />} />
