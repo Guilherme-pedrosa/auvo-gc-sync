@@ -378,14 +378,14 @@ export default function ColaboradorDetailPage() {
               <Table>
                 <TableHeader>
                   <TableRow>
-                     <TableHead className="min-w-[220px]">Treinamento</TableHead>
-                     <TableHead className="w-[180px]">Tipo</TableHead>
-                     <TableHead className="w-[110px] whitespace-nowrap">Realização</TableHead>
-                     <TableHead className="w-[110px] whitespace-nowrap">Validade</TableHead>
-                     <TableHead className="w-[90px]">Status</TableHead>
-                     <TableHead className="w-[80px] text-center">Presente</TableHead>
-                     <TableHead className="w-[160px] text-right">Certificado</TableHead>
-                     <TableHead className="w-[130px] text-right whitespace-nowrap">Lista de presença</TableHead>
+                     <TableHead className="min-w-[180px]">Treinamento</TableHead>
+                     <TableHead className="w-[150px]">Tipo</TableHead>
+                     <TableHead className="w-[100px] whitespace-nowrap">Realização</TableHead>
+                     <TableHead className="w-[100px] whitespace-nowrap">Validade</TableHead>
+                     <TableHead className="w-[80px]">Status</TableHead>
+                     <TableHead className="w-[70px] text-center">Presente</TableHead>
+                     <TableHead className="w-[130px] text-right">Certificado</TableHead>
+                     <TableHead className="w-[110px] text-right whitespace-nowrap">Presença</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -401,11 +401,11 @@ export default function ColaboradorDetailPage() {
                         const st = computeTrainingStatus(t);
                         return (
                           <TableRow key={p.id}>
-                            <TableCell className="font-medium uppercase truncate max-w-[260px]">
+                            <TableCell className="font-medium uppercase truncate max-w-[220px]">
                               {t ? <Link to={`/rh/treinamentos/${t.id}`} className="hover:underline">{t.titulo}</Link> : "—"}
                             </TableCell>
                             <TableCell>
-                              <Badge variant="outline" className="max-w-[170px] truncate inline-block align-middle">
+                              <Badge variant="outline" className="max-w-[140px] truncate inline-block align-middle">
                                 {t ? (tTipoMap.get(t.tipo_id)?.name ?? "—") : "—"}
                               </Badge>
                             </TableCell>
@@ -428,10 +428,10 @@ export default function ColaboradorDetailPage() {
                                     hidden
                                     onChange={(e) => uploadCertificadoParticipante(p, t, e.target.files?.[0] ?? null)}
                                   />
-                                  <Button asChild size="sm" variant="outline" disabled={uploadingCertId === p.id}>
+                                  <Button asChild size="sm" variant="outline" disabled={uploadingCertId === p.id} title={p.certificado_url ? "Substituir" : "Anexar"}>
                                     <span>
                                       <Upload className="h-3.5 w-3.5 mr-1" />
-                                      {uploadingCertId === p.id ? "Enviando..." : p.certificado_url ? "Substituir" : "Anexar"}
+                                      {uploadingCertId === p.id ? "..." : p.certificado_url ? "Trocar" : "Anexar"}
                                     </span>
                                   </Button>
                                 </label>
