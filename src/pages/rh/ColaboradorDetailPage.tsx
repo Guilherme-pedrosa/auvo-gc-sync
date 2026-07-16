@@ -327,15 +327,56 @@ export default function ColaboradorDetailPage() {
 
         <TabsContent value="treinamentos" className="mt-4">
           <Card>
-            <CardHeader>
+            <CardHeader className="flex flex-row items-center justify-between">
               <CardTitle className="text-base flex items-center gap-2">
                 <GraduationCap className="h-4 w-4 text-muted-foreground" />
                 Treinamentos do colaborador
+                <Badge variant="secondary" className="ml-1">{colabTreinos.length}</Badge>
               </CardTitle>
+              <Button asChild size="sm" variant="outline">
+                <Link to="/rh/treinamentos">Ir para módulo</Link>
+              </Button>
             </CardHeader>
-            <CardContent className="text-sm text-muted-foreground">
-              Os treinamentos são cadastrados no módulo <b>RH → Treinamentos</b> e vinculados automaticamente ao selecionar participantes.
-              Esta lista exibirá treinamento, data, validade e download de certificado / lista de presença quando o módulo estiver ativo.
+            <CardContent className="p-0">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Treinamento</TableHead>
+                    <TableHead>Tipo</TableHead>
+                    <TableHead className="w-32">Realização</TableHead>
+                    <TableHead className="w-32">Validade</TableHead>
+                    <TableHead className="w-28">Status</TableHead>
+                    <TableHead className="w-24 text-right">Presente</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {colabTreinos.length === 0 ? (
+                    <TableRow><TableCell colSpan={6} className="text-center py-6 text-muted-foreground">
+                      Nenhum treinamento vinculado. Cadastre em <b>RH → Treinamentos</b> e adicione este colaborador aos participantes.
+                    </TableCell></TableRow>
+                  ) : colabTreinos
+                      .slice()
+                      .sort((a, b) => (a.treinamento?.data_realizacao ?? "") < (b.treinamento?.data_realizacao ?? "") ? 1 : -1)
+                      .map((p) => {
+                        const t = p.treinamento;
+                        const st = computeTrainingStatus(t);
+                        return (
+                          <TableRow key={p.id}>
+                            <TableCell className="font-medium uppercase">
+                              {t ? <Link to={`/rh/treinamentos/${t.id}`} className="hover:underline">{t.titulo}</Link> : "—"}
+                            </TableCell>
+                            <TableCell><Badge variant="outline">{t ? (tTipoMap.get(t.tipo_id)?.name ?? "—") : "—"}</Badge></TableCell>
+                            <TableCell>{t?.data_realizacao ?? "—"}</TableCell>
+                            <TableCell>{t?.data_validade ?? "—"}</TableCell>
+                            <TableCell><Badge variant={statusColor(st) as never}>{statusLabel(st)}</Badge></TableCell>
+                            <TableCell className="text-right">
+                              <Badge variant={p.presente ? "default" : "outline"}>{p.presente ? "Sim" : "Não"}</Badge>
+                            </TableCell>
+                          </TableRow>
+                        );
+                      })}
+                </TableBody>
+              </Table>
             </CardContent>
           </Card>
         </TabsContent>
