@@ -2,7 +2,7 @@ import { useNavigate, useLocation } from "react-router-dom";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/hooks/useAuth";
 import {
- RefreshCw, BarChart3, Kanban, LayoutDashboard, ListChecks, Radio, Wrench, CalendarDays, ChevronDown, Users, LogOut, Shield, FileText, PanelLeftClose, PanelLeft, Thermometer, ArrowLeftRight, Trophy, Settings, UserCog, FileCheck, Building2
+ RefreshCw, BarChart3, Kanban, LayoutDashboard, ListChecks, Radio, Wrench, CalendarDays, ChevronDown, Users, LogOut, Shield, FileText, PanelLeftClose, PanelLeft, Thermometer, ArrowLeftRight, Trophy, Settings, UserCog, FileCheck, Building2, GraduationCap
 } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useState } from "react";
@@ -72,13 +72,19 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
         {
           label: "RH",
           items: [
-            { label: "Dashboard", icon: LayoutDashboard, path: "/rh/integracoes/dashboard" },
-            { label: "Matriz de Integrações", icon: ListChecks, path: "/rh/integracoes" },
+            { label: "Dashboard", icon: LayoutDashboard, path: "/rh/dashboard" },
             { label: "Colaboradores", icon: UserCog, path: "/rh/colaboradores" },
-            { label: "Clientes RH", icon: Building2, path: "/rh/clientes" },
-            { label: "Tipos de Documento", icon: FileCheck, path: "/rh/tipos-documento" },
-            { label: "Pacote Padrão", icon: FileCheck, path: "/rh/pacotes-padrao" },
+            { label: "Treinamentos", icon: GraduationCap, path: "/rh/treinamentos" },
+            { label: "Clientes", icon: Building2, path: "/rh/clientes" },
             { label: "Documentos da Empresa", icon: FileText, path: "/rh/documentos-empresa" },
+          ],
+        },
+        {
+          label: "RH · Configurações",
+          items: [
+            { label: "Tipos de Documento", icon: FileCheck, path: "/rh/tipos-documento" },
+            { label: "Pacotes Padrão", icon: FileCheck, path: "/rh/pacotes-padrao" },
+            { label: "Tipos de Treinamento", icon: GraduationCap, path: "/rh/configuracoes/tipos-treinamento" },
           ],
         },
         { label: "Administração", items: [{ label: "Usuários", icon: Users, path: "/admin/usuarios" }] },
