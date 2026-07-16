@@ -384,12 +384,13 @@ export default function ColaboradorDetailPage() {
                     <TableHead className="w-32">Validade</TableHead>
                     <TableHead className="w-28">Status</TableHead>
                     <TableHead className="w-24 text-right">Presente</TableHead>
-                    <TableHead className="w-56 text-right">Certificado</TableHead>
+                     <TableHead className="w-56 text-right">Certificado</TableHead>
+                     <TableHead className="w-40 text-right">Lista de presença</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {colabTreinos.length === 0 ? (
-                    <TableRow><TableCell colSpan={7} className="text-center py-6 text-muted-foreground">
+                    <TableRow><TableCell colSpan={8} className="text-center py-6 text-muted-foreground">
                       Nenhum treinamento vinculado. Cadastre em <b>RH → Treinamentos</b> e adicione este colaborador aos participantes.
                     </TableCell></TableRow>
                   ) : colabTreinos
@@ -431,6 +432,15 @@ export default function ColaboradorDetailPage() {
                                   </Button>
                                 </label>
                               </div>
+                            </TableCell>
+                            <TableCell className="text-right">
+                              {t?.lista_presenca_url ? (
+                                <Button size="sm" variant="ghost" onClick={() => openArquivo(t.lista_presenca_url!)} title={t.lista_presenca_nome ?? "baixar"}>
+                                  <Download className="h-3.5 w-3.5 mr-1" /> Baixar
+                                </Button>
+                              ) : (
+                                <span className="text-xs text-muted-foreground">N.A.</span>
+                              )}
                             </TableCell>
                           </TableRow>
                         );
