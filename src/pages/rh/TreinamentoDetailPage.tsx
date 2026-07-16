@@ -192,12 +192,13 @@ export default function TreinamentoDetailPage() {
                 <TableHead className="w-32">CPF/CNPJ</TableHead>
                 <TableHead className="w-24 text-center">Presente</TableHead>
                 <TableHead className="w-64 text-right">Certificado</TableHead>
+                <TableHead className="w-40 text-right">Lista de treinamento</TableHead>
                 <TableHead className="w-20 text-right">Ações</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {participantes.length === 0 ? (
-                <TableRow><TableCell colSpan={5} className="text-center py-6 text-muted-foreground">
+                <TableRow><TableCell colSpan={6} className="text-center py-6 text-muted-foreground">
                   Nenhum participante vinculado.
                 </TableCell></TableRow>
               ) : participantes.map((p) => {
@@ -230,6 +231,15 @@ export default function TreinamentoDetailPage() {
                           </Button>
                         </label>
                       </div>
+                    </TableCell>
+                    <TableCell className="text-right">
+                      {treino.lista_presenca_url ? (
+                        <Button size="sm" variant="ghost" onClick={() => openArquivo(treino.lista_presenca_url!)} title={treino.lista_presenca_nome ?? "baixar"}>
+                          <Download className="h-3.5 w-3.5 mr-1" /> Baixar
+                        </Button>
+                      ) : (
+                        <span className="text-xs text-muted-foreground">N.A.</span>
+                      )}
                     </TableCell>
                     <TableCell className="text-right">
                       <Button size="sm" variant="ghost" onClick={() => id && remove.mutate({ id: p.id, treinamento_id: id })}>
