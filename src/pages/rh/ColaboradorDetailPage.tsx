@@ -14,7 +14,7 @@ import { ArrowLeft, Plus, Pencil, Trash2, Upload, History as HistoryIcon, Downlo
 import {
   useColaborador, useColaboradorDocs, useSaveColabDoc, useDeleteColabDoc,
   useDocumentTypes, useIntegrations, useRhClientes, computeDocStatus, type ColabDoc, type DocumentType,
-  useColaboradorTreinamentos, useTreinamentoTipos, computeTrainingStatus,
+  useColaboradorTreinamentos, useTreinamentoTipos, computeTrainingStatus, useSaveParticipante,
 } from "@/hooks/rh/useRh";
 import { supabase } from "@/integrations/supabase/client";
 import { Link } from "react-router-dom";
@@ -42,6 +42,36 @@ export default function ColaboradorDetailPage() {
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState<Partial<ColabDoc>>({});
   const [uploading, setUploading] = useState(false);
+  const saveParticipante = useSaveParticipante();
+  const [uploadingCertId, setUploadingCertId] = useState<string | null>(null);
+
+  const slugify = (s: string) =>
+    s.normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^\w]+/g, "_").replace(/^_+|_+$/g, "").toUpperCase();
+
+  const uploadCertificadoParticipante = async (
+    participante: { id: string; treinamento_id: string },
+    file: File | null,
+  ) => {
+    if (!file || !colab) return;
+    setUploadingCertId(participante.id);
+    try {
+      const safeName = file.name.replace(/[^\w.\-]+/g, "_");
+      const colabSlug = slugify(colab.nome || colab.id);
+      const path = `treinamentos/${participante.treinamento_id}/certificados/${colabSlug}-${Date.now()}-${safeName}`;
+      const { error } = await supabase.storage.from("rh-documentos").upload(path, file, { upsert: false });
+      if (error) throw error;
+      await saveParticipante.mutateAsync({
+        id: participante.id,
+        treinamento_id: participante.treinamento_id,
+        certificado_url: path,
+        certificado_nome: `${colabSlug} - ${file.name}`,
+      });
+    } catch (e) {
+      toast.error("Falha no upload: " + (e as Error).message);
+    } finally {
+      setUploadingCertId(null);
+    }
+  };
 
   const techTypes = useMemo(() => types.filter((t) => t.scope === "TECHNICIAN" && t.ativo), [types]);
   const typeMap = useMemo(() => new Map(types.map((t) => [t.id, t])), [types]);
@@ -347,11 +377,12 @@ export default function ColaboradorDetailPage() {
                     <TableHead className="w-32">Validade</TableHead>
                     <TableHead className="w-28">Status</TableHead>
                     <TableHead className="w-24 text-right">Presente</TableHead>
+                    <TableHead className="w-56 text-right">Certificado</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {colabTreinos.length === 0 ? (
-                    <TableRow><TableCell colSpan={6} className="text-center py-6 text-muted-foreground">
+                    <TableRow><TableCell colSpan={7} className="text-center py-6 text-muted-foreground">
                       Nenhum treinamento vinculado. Cadastre em <b>RH → Treinamentos</b> e adicione este colaborador aos participantes.
                     </TableCell></TableRow>
                   ) : colabTreinos
@@ -371,6 +402,28 @@ export default function ColaboradorDetailPage() {
                             <TableCell><Badge variant={statusColor(st) as never}>{statusLabel(st)}</Badge></TableCell>
                             <TableCell className="text-right">
                               <Badge variant={p.presente ? "default" : "outline"}>{p.presente ? "Sim" : "Não"}</Badge>
+                            </TableCell>
+                            <TableCell className="text-right">
+                              <div className="flex items-center justify-end gap-1">
+                                {p.certificado_url && (
+                                  <Button size="sm" variant="ghost" onClick={() => openArquivo(p.certificado_url!)} title={p.certificado_nome ?? "abrir"}>
+                                    <Download className="h-3.5 w-3.5" />
+                                  </Button>
+                                )}
+                                <label className="inline-flex">
+                                  <input
+                                    type="file"
+                                    hidden
+                                    onChange={(e) => uploadCertificadoParticipante(p, e.target.files?.[0] ?? null)}
+                                  />
+                                  <Button asChild size="sm" variant="outline" disabled={uploadingCertId === p.id}>
+                                    <span>
+                                      <Upload className="h-3.5 w-3.5 mr-1" />
+                                      {uploadingCertId === p.id ? "Enviando..." : p.certificado_url ? "Substituir" : "Anexar"}
+                                    </span>
+                                  </Button>
+                                </label>
+                              </div>
                             </TableCell>
                           </TableRow>
                         );
