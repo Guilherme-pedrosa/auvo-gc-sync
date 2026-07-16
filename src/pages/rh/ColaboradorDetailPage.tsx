@@ -14,8 +14,10 @@ import { ArrowLeft, Plus, Pencil, Trash2, Upload, History as HistoryIcon, Downlo
 import {
   useColaborador, useColaboradorDocs, useSaveColabDoc, useDeleteColabDoc,
   useDocumentTypes, useIntegrations, useRhClientes, computeDocStatus, type ColabDoc, type DocumentType,
+  useColaboradorTreinamentos, useTreinamentoTipos, computeTrainingStatus,
 } from "@/hooks/rh/useRh";
 import { supabase } from "@/integrations/supabase/client";
+import { Link } from "react-router-dom";
 import { toast } from "sonner";
 
 const statusColor = (s: string) =>
@@ -32,6 +34,9 @@ export default function ColaboradorDetailPage() {
   const { data: types = [] } = useDocumentTypes();
   const { data: integrations = [] } = useIntegrations();
   const { data: clientes = [] } = useRhClientes();
+  const { data: colabTreinos = [] } = useColaboradorTreinamentos(id);
+  const { data: tTipos = [] } = useTreinamentoTipos();
+  const tTipoMap = useMemo(() => new Map(tTipos.map((t) => [t.id, t])), [tTipos]);
   const save = useSaveColabDoc();
   const del = useDeleteColabDoc();
   const [open, setOpen] = useState(false);
