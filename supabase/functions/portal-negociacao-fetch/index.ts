@@ -314,6 +314,81 @@ async function fetchOsFromLocalCache(
     .sort((a, b) => String(b.data_saida || "").localeCompare(String(a.data_saida || "")));
 }
 
+// Busca OS em Ag. Negociação Financeira com equipamento "coifa" no cache local,
+// ignorando o filtro de grupo (o cliente pediu para incluir todas as OS de coifa
+// nessa situação). Respeita filtro de cliente e mês quando informados.
+async function fetchCoifaOsFromCache(
+  admin: ReturnType<typeof createClient>,
+  filtroClienteNorm: string,
+  filtroMes: string,
+) {
+  const situacaoIds = [AG_NEGOCIACAO_ID];
+  const allClientes = new Set<string>();
+  // sentinel: fetchOsFromLocalCache exige clientesNorm.has(x) — usamos um Set
+  // com um wildcard e adaptamos a lógica localmente.
+  const rows: any[] = [];
+  for (let from = 0; ; from += 1000) {
+    const { data, error } = await admin
+      .from("tarefas_central")
+      .select("gc_os_id, gc_os_codigo, gc_os_cliente, cliente, gc_os_situacao, gc_os_situacao_id, gc_os_cor_situacao, gc_os_valor_total, gc_os_vendedor, gc_os_data, gc_os_data_saida, gc_os_link, gc_os_link_cobranca, auvo_task_id, gc_os_tarefa_exec, auvo_task_url, auvo_link, equipamento_nome, equipamento_id_serie, duracao_decimal, check_in_iso, check_out_iso, data_conclusao, data_tarefa")
+      .not("gc_os_id", "is", null)
+      .in("gc_os_situacao_id", situacaoIds)
+      .ilike("equipamento_nome", "%coifa%")
+      .range(from, from + 999);
+    if (error) throw error;
+    const chunk = data || [];
+    rows.push(...chunk);
+    if (chunk.length < 1000) break;
+  }
+
+  const byOs = new Map<string, any>();
+  for (const row of rows) {
+    const osId = String((row as any).gc_os_id || "").trim();
+    if (!osId) continue;
+    const cliente = String((row as any).gc_os_cliente || (row as any).cliente || "").trim();
+    const clienteNorm = normalize(cliente);
+    if (filtroClienteNorm && clienteNorm !== filtroClienteNorm) continue;
+    const dataSaida = String((row as any).gc_os_data_saida || (row as any).data_conclusao || (row as any).gc_os_data || (row as any).data_tarefa || "").slice(0, 10);
+    if (filtroMes && monthKeyOf(dataSaida) !== filtroMes) continue;
+
+    if (!byOs.has(osId)) {
+      byOs.set(osId, {
+        gc_os_id: osId,
+        codigo: String((row as any).gc_os_codigo || osId),
+        cliente,
+        situacao: String((row as any).gc_os_situacao || ""),
+        situacao_id: String((row as any).gc_os_situacao_id || ""),
+        cor_situacao: String((row as any).gc_os_cor_situacao || ""),
+        data: String((row as any).gc_os_data || (row as any).data_tarefa || "").slice(0, 10),
+        data_final: "",
+        data_saida: dataSaida,
+        data_execucao: String((row as any).data_conclusao || (row as any).check_out_iso || "").slice(0, 10),
+        valor_total: Number((row as any).gc_os_valor_total || 0),
+        descricao: "",
+        vendedor: String((row as any).gc_os_vendedor || ""),
+        link: String((row as any).gc_os_link_cobranca || (row as any).gc_os_link || "") || `https://gestaoclick.com/ordens_servicos/editar/${osId}`,
+        auvo_task_id: String((row as any).gc_os_tarefa_exec || (row as any).auvo_task_id || ""),
+        auvo_task_url: String((row as any).auvo_task_url || (row as any).auvo_link || ""),
+        horas_execucao: Number((row as any).duracao_decimal || 0),
+        equipamentos: [] as string[],
+        _equipSet: new Set<string>(),
+        _fromCoifa: true,
+      });
+    }
+    const item = byOs.get(osId)!;
+    addEquipLabel(new Map([[osId, item._equipSet]]), osId, String((row as any).equipamento_nome || ""), String((row as any).equipamento_id_serie || ""));
+  }
+
+  return Array.from(byOs.values()).map((item) => {
+    item.equipamentos = Array.from(item._equipSet || []);
+    delete item._equipSet;
+    if (item.auvo_task_id && !item.auvo_task_url) {
+      item.auvo_task_url = `https://app2.auvo.com.br/relatorioTarefas/DetalheTarefa/${item.auvo_task_id}`;
+    }
+    return item;
+  });
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
@@ -726,6 +801,25 @@ Deno.serve(async (req) => {
       valor_atrasado: recebimentos.filter((r) => r.atrasado).reduce((s, r) => s + r.valor_pendente, 0),
       qtd_atrasado: recebimentos.filter((r) => r.atrasado).length,
     };
+
+    // 3. Inclusão adicional: OS em Ag. Negociação Financeira (7116099) cujo
+    // equipamento vinculado contenha "coifa" — mesmo fora do grupo do cliente
+    // logado. Só entra quando a aba está mostrando essa situação.
+    try {
+      if (situacaoIds.includes(AG_NEGOCIACAO_ID)) {
+        const extras = await fetchCoifaOsFromCache(admin, filtroClienteNorm, filtroMes);
+        const existentes = new Set(osFiltered.map((o: any) => String(o.gc_os_id)));
+        const novos = extras.filter((o: any) => !existentes.has(String(o.gc_os_id)));
+        if (novos.length > 0) {
+          osFiltered.push(...novos);
+          osFiltered.sort((a: any, b: any) => String(b.data_saida || "").localeCompare(String(a.data_saida || "")));
+          totals.qtd_os = osFiltered.length;
+          totals.valor_os = osFiltered.reduce((s: number, o: any) => s + Number(o.valor_total || 0), 0);
+        }
+      }
+    } catch (e) {
+      console.warn("[portal-negociacao-fetch] falha ao incluir OS coifa:", e);
+    }
 
     return ok({ ok: true, os_list: osFiltered, recebimentos, totals, source: dataSource, warnings: avisos });
   } catch (err) {
