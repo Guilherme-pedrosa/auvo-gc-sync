@@ -972,6 +972,265 @@ export type Database = {
         }
         Relationships: []
       }
+      med_agendamentos: {
+        Row: {
+          aso_id: string | null
+          atualizado_em: string
+          clinica_id: string | null
+          colaborador_id: string
+          criado_em: string
+          data: string
+          hora: string | null
+          id: string
+          observacoes: string | null
+          status: string
+          tipo_id: string
+        }
+        Insert: {
+          aso_id?: string | null
+          atualizado_em?: string
+          clinica_id?: string | null
+          colaborador_id: string
+          criado_em?: string
+          data: string
+          hora?: string | null
+          id?: string
+          observacoes?: string | null
+          status?: string
+          tipo_id: string
+        }
+        Update: {
+          aso_id?: string | null
+          atualizado_em?: string
+          clinica_id?: string | null
+          colaborador_id?: string
+          criado_em?: string
+          data?: string
+          hora?: string | null
+          id?: string
+          observacoes?: string | null
+          status?: string
+          tipo_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "med_agendamentos_aso_id_fkey"
+            columns: ["aso_id"]
+            isOneToOne: false
+            referencedRelation: "med_aso"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "med_agendamentos_clinica_id_fkey"
+            columns: ["clinica_id"]
+            isOneToOne: false
+            referencedRelation: "med_clinicas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "med_agendamentos_colaborador_id_fkey"
+            columns: ["colaborador_id"]
+            isOneToOne: false
+            referencedRelation: "rh_colaboradores"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "med_agendamentos_tipo_id_fkey"
+            columns: ["tipo_id"]
+            isOneToOne: false
+            referencedRelation: "med_tipos_aso"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      med_aso: {
+        Row: {
+          agendamento_id: string | null
+          atualizado_em: string
+          clinica_id: string | null
+          colaborador_id: string
+          criado_em: string
+          data_emissao: string
+          data_validade: string | null
+          documento_id: string | null
+          id: string
+          medico_crm: string | null
+          medico_nome: string | null
+          observacoes: string | null
+          situacao: string
+          tipo_id: string
+          vigente: boolean
+        }
+        Insert: {
+          agendamento_id?: string | null
+          atualizado_em?: string
+          clinica_id?: string | null
+          colaborador_id: string
+          criado_em?: string
+          data_emissao: string
+          data_validade?: string | null
+          documento_id?: string | null
+          id?: string
+          medico_crm?: string | null
+          medico_nome?: string | null
+          observacoes?: string | null
+          situacao?: string
+          tipo_id: string
+          vigente?: boolean
+        }
+        Update: {
+          agendamento_id?: string | null
+          atualizado_em?: string
+          clinica_id?: string | null
+          colaborador_id?: string
+          criado_em?: string
+          data_emissao?: string
+          data_validade?: string | null
+          documento_id?: string | null
+          id?: string
+          medico_crm?: string | null
+          medico_nome?: string | null
+          observacoes?: string | null
+          situacao?: string
+          tipo_id?: string
+          vigente?: boolean
+        }
+        Relationships: [
+          {
+            foreignKeyName: "med_aso_agendamento_id_fkey"
+            columns: ["agendamento_id"]
+            isOneToOne: false
+            referencedRelation: "med_agendamentos"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "med_aso_clinica_id_fkey"
+            columns: ["clinica_id"]
+            isOneToOne: false
+            referencedRelation: "med_clinicas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "med_aso_colaborador_id_fkey"
+            columns: ["colaborador_id"]
+            isOneToOne: false
+            referencedRelation: "rh_colaboradores"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "med_aso_documento_id_fkey"
+            columns: ["documento_id"]
+            isOneToOne: false
+            referencedRelation: "rh_colaborador_docs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "med_aso_tipo_id_fkey"
+            columns: ["tipo_id"]
+            isOneToOne: false
+            referencedRelation: "med_tipos_aso"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      med_clinicas: {
+        Row: {
+          ativo: boolean
+          atualizado_em: string
+          contato: string | null
+          criado_em: string
+          endereco: string | null
+          id: string
+          nome: string
+          observacoes: string | null
+        }
+        Insert: {
+          ativo?: boolean
+          atualizado_em?: string
+          contato?: string | null
+          criado_em?: string
+          endereco?: string | null
+          id?: string
+          nome: string
+          observacoes?: string | null
+        }
+        Update: {
+          ativo?: boolean
+          atualizado_em?: string
+          contato?: string | null
+          criado_em?: string
+          endereco?: string | null
+          id?: string
+          nome?: string
+          observacoes?: string | null
+        }
+        Relationships: []
+      }
+      med_historico: {
+        Row: {
+          colaborador_id: string
+          criado_em: string
+          criado_por: string | null
+          evento: string
+          id: string
+          payload: Json
+        }
+        Insert: {
+          colaborador_id: string
+          criado_em?: string
+          criado_por?: string | null
+          evento: string
+          id?: string
+          payload?: Json
+        }
+        Update: {
+          colaborador_id?: string
+          criado_em?: string
+          criado_por?: string | null
+          evento?: string
+          id?: string
+          payload?: Json
+        }
+        Relationships: [
+          {
+            foreignKeyName: "med_historico_colaborador_id_fkey"
+            columns: ["colaborador_id"]
+            isOneToOne: false
+            referencedRelation: "rh_colaboradores"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      med_tipos_aso: {
+        Row: {
+          ativo: boolean
+          atualizado_em: string
+          codigo: string
+          criado_em: string
+          id: string
+          nome: string
+          periodicidade_meses: number | null
+        }
+        Insert: {
+          ativo?: boolean
+          atualizado_em?: string
+          codigo: string
+          criado_em?: string
+          id?: string
+          nome: string
+          periodicidade_meses?: number | null
+        }
+        Update: {
+          ativo?: boolean
+          atualizado_em?: string
+          codigo?: string
+          criado_em?: string
+          id?: string
+          nome?: string
+          periodicidade_meses?: number | null
+        }
+        Relationships: []
+      }
       metas_tecnicos: {
         Row: {
           ativo: boolean
