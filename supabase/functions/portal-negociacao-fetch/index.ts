@@ -110,6 +110,27 @@ function ok(body: unknown, status = 200) {
   });
 }
 
+class GcApiError extends Error {
+  status: number;
+  constructor(status: number, message: string) {
+    super(message);
+    this.name = "GcApiError";
+    this.status = status;
+  }
+}
+
+async function assertGcOk(res: Response, context: string) {
+  if (res.ok) return;
+  let detail = "";
+  try {
+    const json = await res.json();
+    detail = String(json?.data?.mensagem || json?.mensagem || json?.message || json?.erro || "");
+  } catch {
+    detail = await res.text().catch(() => "");
+  }
+  throw new GcApiError(res.status, `${context}: GC ${res.status}${detail ? ` - ${detail}` : ""}`);
+}
+
 async function fetchOsBySituacao(gcHeaders: Record<string, string>, situacaoId: string) {
   const records: any[] = [];
   const MAX_PAGES = 30;
@@ -124,7 +145,8 @@ async function fetchOsBySituacao(gcHeaders: Record<string, string>, situacaoId: 
       }
       break;
     }
-    if (!res || !res.ok) break;
+    if (!res) throw new GcApiError(0, `ordens_servicos ${situacaoId}: sem resposta do GC`);
+    await assertGcOk(res, `ordens_servicos ${situacaoId}`);
     const json = await res.json().catch(() => ({}));
     const data = Array.isArray(json?.data) ? json.data : [];
     records.push(...data);
@@ -150,7 +172,8 @@ async function fetchRecebimentosEmAberto(gcHeaders: Record<string, string>) {
         }
         break;
       }
-      if (!res || !res.ok) break;
+      if (!res) throw new GcApiError(0, `recebimentos ${liquidado}: sem resposta do GC`);
+      await assertGcOk(res, `recebimentos ${liquidado}`);
       const json = await res.json().catch(() => ({}));
       const data = Array.isArray(json?.data) ? json.data : [];
       for (const r of data) records.push({ ...r, _liquidado: liquidado });
@@ -159,6 +182,136 @@ async function fetchRecebimentosEmAberto(gcHeaders: Record<string, string>) {
     }
   }
   return records;
+}
+
+function uniqueBy<T>(items: T[], keyFn: (item: T) => string): T[] {
+  const seen = new Set<string>();
+  const out: T[] = [];
+  for (const item of items) {
+    const key = keyFn(item);
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    out.push(item);
+  }
+  return out;
+}
+
+async function fetchOsFromLocalCache(
+  admin: ReturnType<typeof createClient>,
+  clientesNorm: Set<string>,
+  situacaoIds: string[],
+  filtroClienteNorm: string,
+  filtroMes: string,
+) {
+  const rows: any[] = [];
+  for (let from = 0; ; from += 1000) {
+    let query = admin
+      .from("tarefas_central")
+      .select("gc_os_id, gc_os_codigo, gc_os_cliente, cliente, gc_os_situacao, gc_os_situacao_id, gc_os_cor_situacao, gc_os_valor_total, gc_os_vendedor, gc_os_data, gc_os_data_saida, gc_os_link, gc_os_link_cobranca, auvo_task_id, gc_os_tarefa_exec, auvo_task_url, auvo_link, equipamento_nome, equipamento_id_serie, duracao_decimal, check_in_iso, check_out_iso, data_conclusao, data_tarefa")
+      .not("gc_os_id", "is", null)
+      .range(from, from + 999);
+
+    if (situacaoIds.length > 0) query = query.in("gc_os_situacao_id", situacaoIds);
+
+    const { data, error } = await query;
+    if (error) throw error;
+    const chunk = data || [];
+    rows.push(...chunk);
+    if (chunk.length < 1000) break;
+  }
+
+  const byOs = new Map<string, any>();
+  const parseTime = (value: string) => {
+    const t = parsePgTimestamp(value);
+    return Number.isFinite(t) ? t : new Date(value).getTime();
+  };
+
+  for (const row of rows) {
+    const osId = String(row.gc_os_id || "").trim();
+    if (!osId) continue;
+
+    const cliente = String(row.gc_os_cliente || row.cliente || "").trim();
+    const clienteNorm = normalize(cliente);
+    if (!clientesNorm.has(clienteNorm)) continue;
+    if (filtroClienteNorm && clienteNorm !== filtroClienteNorm) continue;
+
+    const dataSaida = String(row.gc_os_data_saida || row.data_conclusao || row.gc_os_data || row.data_tarefa || "").slice(0, 10);
+    if (filtroMes && monthKeyOf(dataSaida) !== filtroMes) continue;
+
+    if (!byOs.has(osId)) {
+      byOs.set(osId, {
+        gc_os_id: osId,
+        codigo: String(row.gc_os_codigo || osId),
+        cliente,
+        situacao: String(row.gc_os_situacao || ""),
+        situacao_id: String(row.gc_os_situacao_id || ""),
+        cor_situacao: String(row.gc_os_cor_situacao || ""),
+        data: String(row.gc_os_data || row.data_tarefa || "").slice(0, 10),
+        data_final: "",
+        data_saida: dataSaida,
+        data_execucao: String(row.data_conclusao || row.check_out_iso || "").slice(0, 10),
+        valor_total: Number(row.gc_os_valor_total || 0),
+        descricao: "",
+        vendedor: String(row.gc_os_vendedor || ""),
+        link: String(row.gc_os_link_cobranca || row.gc_os_link || "") || `https://gestaoclick.com/ordens_servicos/editar/${osId}`,
+        auvo_task_id: "",
+        auvo_task_url: "",
+        horas_execucao: 0,
+        equipamentos: [] as string[],
+        _equipSet: new Set<string>(),
+        _bestExecTime: 0,
+      });
+    }
+
+    const item = byOs.get(osId)!;
+    const execTaskId = String(row.gc_os_tarefa_exec || row.auvo_task_id || "").trim();
+    const taskId = String(row.auvo_task_id || "").trim();
+    const checkOut = String(row.check_out_iso || row.data_conclusao || "").trim();
+    const checkOutTime = checkOut ? parseTime(checkOut) : 0;
+    const isExecRow = execTaskId && taskId && execTaskId === taskId;
+
+    if (!item.auvo_task_id || isExecRow || checkOutTime > item._bestExecTime) {
+      item.auvo_task_id = execTaskId || taskId || item.auvo_task_id;
+      item._bestExecTime = Math.max(item._bestExecTime || 0, checkOutTime || 0);
+    }
+
+    const publicUrl = String(row.auvo_task_url || "").trim();
+    const savedUrl = publicUrl || String(row.auvo_link || "").trim();
+    if (savedUrl && (!item.auvo_task_url || /informacoes\/tarefa/.test(savedUrl) || isExecRow)) {
+      item.auvo_task_url = savedUrl;
+    }
+
+    if (checkOut) {
+      const current = String(item.data_execucao || "");
+      const next = checkOut.slice(0, 10);
+      if (!current || next > current) item.data_execucao = next;
+    }
+
+    let h = Number(row.duracao_decimal || 0);
+    if (!(h > 0)) {
+      const ci = String(row.check_in_iso || "").trim();
+      const co = String(row.check_out_iso || "").trim();
+      if (ci && co) {
+        const diffMs = parseTime(co) - parseTime(ci);
+        if (Number.isFinite(diffMs) && diffMs > 0) h = Math.round((diffMs / 3600000) * 100) / 100;
+      }
+    }
+    if (h > 0) item.horas_execucao = Math.max(Number(item.horas_execucao || 0), h);
+
+    addEquipLabel(new Map([[osId, item._equipSet]]), osId, String(row.equipamento_nome || ""), String(row.equipamento_id_serie || ""));
+  }
+
+  return Array.from(byOs.values())
+    .map((item) => {
+      item.equipamentos = Array.from(item._equipSet || []);
+      delete item._equipSet;
+      delete item._bestExecTime;
+      if (item.auvo_task_id && !item.auvo_task_url) {
+        item.auvo_task_url = `https://app2.auvo.com.br/relatorioTarefas/DetalheTarefa/${item.auvo_task_id}`;
+      }
+      return item;
+    })
+    .sort((a, b) => String(b.data_saida || "").localeCompare(String(a.data_saida || "")));
 }
 
 Deno.serve(async (req) => {
