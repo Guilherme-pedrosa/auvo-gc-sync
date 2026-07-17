@@ -802,6 +802,25 @@ Deno.serve(async (req) => {
       qtd_atrasado: recebimentos.filter((r) => r.atrasado).length,
     };
 
+    // 3. Inclusão adicional: OS em Ag. Negociação Financeira (7116099) cujo
+    // equipamento vinculado contenha "coifa" — mesmo fora do grupo do cliente
+    // logado. Só entra quando a aba está mostrando essa situação.
+    try {
+      if (situacaoIds.includes(AG_NEGOCIACAO_ID)) {
+        const extras = await fetchCoifaOsFromCache(admin, filtroClienteNorm, filtroMes);
+        const existentes = new Set(osFiltered.map((o: any) => String(o.gc_os_id)));
+        const novos = extras.filter((o: any) => !existentes.has(String(o.gc_os_id)));
+        if (novos.length > 0) {
+          osFiltered.push(...novos);
+          osFiltered.sort((a: any, b: any) => String(b.data_saida || "").localeCompare(String(a.data_saida || "")));
+          totals.qtd_os = osFiltered.length;
+          totals.valor_os = osFiltered.reduce((s: number, o: any) => s + Number(o.valor_total || 0), 0);
+        }
+      }
+    } catch (e) {
+      console.warn("[portal-negociacao-fetch] falha ao incluir OS coifa:", e);
+    }
+
     return ok({ ok: true, os_list: osFiltered, recebimentos, totals, source: dataSource, warnings: avisos });
   } catch (err) {
     console.error("[portal-negociacao-fetch] erro:", err);
