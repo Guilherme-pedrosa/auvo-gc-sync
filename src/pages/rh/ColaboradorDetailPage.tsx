@@ -83,6 +83,50 @@ export default function ColaboradorDetailPage() {
   const techTypes = useMemo(() => types.filter((t) => t.scope === "TECHNICIAN" && t.ativo), [types]);
   const typeMap = useMemo(() => new Map(types.map((t) => [t.id, t])), [types]);
 
+  // Categorização do Prontuário — apenas UI, sem alterar schema.
+  type CategoryKey = "PESSOAIS" | "SAUDE" | "SEGURANCA" | "CONTRATOS" | "CERTIFICACOES" | "OUTROS";
+  const CATEGORY_LABEL: Record<CategoryKey, string> = {
+    PESSOAIS: "Documentos Pessoais",
+    SAUDE: "Saúde Ocupacional",
+    SEGURANCA: "Segurança do Trabalho",
+    CONTRATOS: "Contratos e Termos",
+    CERTIFICACOES: "Certificações",
+    OUTROS: "Outros Documentos",
+  };
+  const CATEGORY_BY_CODE: Record<string, CategoryKey> = {
+    // Documentos pessoais
+    CNH: "PESSOAIS", CTPS: "PESSOAIS", FOTO_3X4: "PESSOAIS",
+    COMPROVANTE_ENDERECO: "PESSOAIS", COMPROVANTE_PAGAMENTO: "PESSOAIS",
+    VACINACAO: "PESSOAIS", CARTAO_CNPJ_MEI: "PESSOAIS", CCMEI: "PESSOAIS",
+    CODIGO_CULTURA: "PESSOAIS",
+    // Saúde ocupacional
+    ASO: "SAUDE",
+    // Segurança do trabalho
+    FICHA_EPI: "SEGURANCA", ORDEM_SERVICO_INTERNA: "SEGURANCA", APR: "SEGURANCA",
+    NR1: "SEGURANCA", NR6: "SEGURANCA", NR10: "SEGURANCA",
+    NR12: "SEGURANCA", NR33: "SEGURANCA", NR35: "SEGURANCA",
+    // Contratos e termos
+    CONTRATO_TRABALHO: "CONTRATOS", CONTRATO_CLT: "CONTRATOS",
+    CONFIDENCIALIDADE: "CONTRATOS", TERMO_AUVO: "CONTRATOS",
+    USO_CELULAR: "CONTRATOS", TERMO_CARROS: "CONTRATOS",
+    ADVERTENCIA: "CONTRATOS", REGISTRO_EMPREGADO: "CONTRATOS",
+    FICHA_REGISTRO: "CONTRATOS", DESCRITIVO_FUNCAO: "CONTRATOS",
+    // Certificações
+    PROFICIENCIA: "CERTIFICACOES", TREINAMENTO_INTERNO: "CERTIFICACOES",
+  };
+  const categoryOf = (code?: string): CategoryKey => (code && CATEGORY_BY_CODE[code]) || "OUTROS";
+  // Sub-rótulo: NR-1 documento aparece como "Ordem de Serviço" com norma NR-1
+  const normaOf = (code?: string): string | null => {
+    if (!code) return null;
+    if (code === "ORDEM_SERVICO_INTERNA" || code === "NR1") return "NR-1";
+    if (code === "FICHA_EPI") return "NR-6";
+    if (/^NR\d+$/.test(code)) return code.replace("NR", "NR-");
+    return null;
+  };
+
+  // Categorias que aceitam upload manual pelo prontuário
+  const MANUAL_CATEGORIES: CategoryKey[] = ["PESSOAIS", "SAUDE", "SEGURANCA", "CONTRATOS", "CERTIFICACOES", "OUTROS"];
+
   // Pacote padrão do colaborador: PJ -> MEI, PF -> CLT
   const packKey: "MEI" | "CLT" = colab?.tipo_pessoa === "PJ" ? "MEI" : "CLT";
   const requiredTypes: DocumentType[] = useMemo(
@@ -101,6 +145,33 @@ export default function ColaboradorDetailPage() {
     () => docs.filter((d) => !requiredTypeIds.has(d.document_type_id)),
     [docs, requiredTypeIds],
   );
+
+  // Agrupamento por categoria — lista completa (obrigatórios + complementares) do prontuário
+  const docsByCategory = useMemo(() => {
+    const map = new Map<CategoryKey, { type: DocumentType; doc?: ColabDoc; required: boolean }[]>();
+    for (const t of techTypes) {
+      const cat = categoryOf(t.code);
+      const doc = docs.find((d) => d.document_type_id === t.id);
+      const required = requiredTypeIds.has(t.id);
+      // Só listar tipos que ou são do pacote ou já possuem doc anexado
+      if (!required && !doc) continue;
+      const arr = map.get(cat) ?? [];
+      arr.push({ type: t, doc, required });
+      map.set(cat, arr);
+    }
+    // Docs complementares com tipo que não bateu (ex.: tipo desativado)
+    for (const d of complementares) {
+      const t = typeMap.get(d.document_type_id);
+      if (!t) continue;
+      const cat = categoryOf(t.code);
+      const arr = map.get(cat) ?? [];
+      if (!arr.some((r) => r.doc?.id === d.id || r.type.id === t.id)) {
+        arr.push({ type: t, doc: d, required: false });
+        map.set(cat, arr);
+      }
+    }
+    return map;
+  }, [techTypes, docs, complementares, requiredTypeIds, typeMap]);
 
   // Integrações do colaborador
   const clienteMap = useMemo(() => new Map(clientes.map((c) => [c.id, c])), [clientes]);
@@ -195,10 +266,22 @@ export default function ColaboradorDetailPage() {
     }
   };
 
+  const [addCategory, setAddCategory] = useState<CategoryKey | "">("");
   const openAddForType = (typeId?: string) => {
+    const t = typeId ? typeMap.get(typeId) : undefined;
+    setAddCategory(t ? categoryOf(t.code) : "");
     setForm(typeId ? { document_type_id: typeId } : {});
     setOpen(true);
   };
+  const openAddForCategory = (cat: CategoryKey) => {
+    setAddCategory(cat);
+    setForm({});
+    setOpen(true);
+  };
+  const dialogTypes = useMemo(
+    () => techTypes.filter((t) => (addCategory ? categoryOf(t.code) === addCategory : true)),
+    [techTypes, addCategory],
+  );
 
   const renderDocActions = (d?: ColabDoc, typeId?: string) => (
     <div className="flex gap-1 justify-end">
