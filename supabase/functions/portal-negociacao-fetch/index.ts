@@ -354,7 +354,7 @@ Deno.serve(async (req) => {
     const body = await req.json().catch(() => ({}));
     const situacaoIds: string[] = Array.isArray(body?.situacao_ids) && body.situacao_ids.length > 0
       ? body.situacao_ids.map(String)
-      : (body?.only_negociacao ? [AG_NEGOCIACAO_ID] : DEFAULT_SITUACAO_IDS);
+      : (body?.all_executadas ? DEFAULT_SITUACAO_IDS : [AG_NEGOCIACAO_ID]);
     const filtroClienteRaw = String(body?.cliente || "").trim();
     const filtroClienteNorm = filtroClienteRaw ? normalize(filtroClienteRaw) : "";
     const filtroMes = String(body?.mes || "").trim();
