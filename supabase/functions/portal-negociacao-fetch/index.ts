@@ -80,6 +80,19 @@ const DEFAULT_SITUACAO_IDS = [
   "9203836", // CHAMADO FECHADO - FATURADO
 ];
 
+// Situação prioritária da aba "Negociação Financeira".
+const AG_NEGOCIACAO_ID = "7116099";
+
+// Extrai YYYY-MM de uma data em formato ISO (yyyy-mm-dd) ou br (dd/mm/yyyy).
+function monthKeyOf(s?: string): string {
+  if (!s) return "";
+  const iso = s.match(/^(\d{4})-(\d{2})/);
+  if (iso) return `${iso[1]}-${iso[2]}`;
+  const br = s.match(/^(\d{2})\/(\d{2})\/(\d{4})/);
+  if (br) return `${br[3]}-${br[2]}`;
+  return "";
+}
+
 const normalize = (s: string) =>
   (s || "")
     .trim()
@@ -188,7 +201,10 @@ Deno.serve(async (req) => {
     const body = await req.json().catch(() => ({}));
     const situacaoIds: string[] = Array.isArray(body?.situacao_ids) && body.situacao_ids.length > 0
       ? body.situacao_ids.map(String)
-      : DEFAULT_SITUACAO_IDS;
+      : (body?.only_negociacao ? [AG_NEGOCIACAO_ID] : DEFAULT_SITUACAO_IDS);
+    const filtroClienteRaw = String(body?.cliente || "").trim();
+    const filtroClienteNorm = filtroClienteRaw ? normalize(filtroClienteRaw) : "";
+    const filtroMes = String(body?.mes || "").trim();
 
     const gcHeaders = {
       "access-token": gcAccessToken,
@@ -203,7 +219,16 @@ Deno.serve(async (req) => {
       osRaw.push(...arr);
     }
     const osFiltered = osRaw
-      .filter((o: any) => clientesNorm.has(normalize(String(o.nome_cliente || ""))))
+      .filter((o: any) => {
+        const nomeNorm = normalize(String(o.nome_cliente || ""));
+        if (!clientesNorm.has(nomeNorm)) return false;
+        if (filtroClienteNorm && nomeNorm !== filtroClienteNorm) return false;
+        if (filtroMes) {
+          const k = monthKeyOf(String(o.data_saida || o.data_final || o.data || ""));
+          if (k !== filtroMes) return false;
+        }
+        return true;
+      })
       .map((o: any) => ({
         gc_os_id: String(o.id),
         codigo: String(o.codigo || ""),

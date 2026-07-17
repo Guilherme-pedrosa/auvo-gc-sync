@@ -122,11 +122,14 @@ export default function PortalNegociacaoPage() {
   }, [user, role, authLoading, navigate]);
 
   const { data, isLoading, isFetching, refetch } = useQuery({
-    queryKey: ["portal-negociacao"],
+    queryKey: ["portal-negociacao", casaFilter, mesSaidaFilter],
     enabled: !!user && role === "cliente",
     queryFn: async () => {
       const { data, error } = await supabase.functions.invoke("portal-negociacao-fetch", {
-        body: {},
+        body: {
+          cliente: casaFilter !== "__all__" ? casaFilter : undefined,
+          mes: mesSaidaFilter !== "__all__" ? mesSaidaFilter : undefined,
+        },
       });
       if (error) throw error;
       if (data?.ok === false) throw new Error(data?.error || "Falha ao carregar");
