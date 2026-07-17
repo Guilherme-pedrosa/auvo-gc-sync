@@ -10,7 +10,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { ArrowLeft, Plus, Pencil, Trash2, Upload, History as HistoryIcon, Download, FileText, GraduationCap, Link2, AlertCircle } from "lucide-react";
+import { ArrowLeft, Plus, Pencil, Trash2, Upload, History as HistoryIcon, Download, FileText, GraduationCap, Link2, AlertCircle, HeartPulse, ShieldCheck, Award, FileSignature, Folder, IdCard, Sparkles } from "lucide-react";
 import {
   useColaborador, useColaboradorDocs, useSaveColabDoc, useDeleteColabDoc,
   useDocumentTypes, useIntegrations, useRhClientes, computeDocStatus, type ColabDoc, type DocumentType,
