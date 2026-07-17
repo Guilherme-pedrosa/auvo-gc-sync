@@ -330,16 +330,15 @@ export default function ColaboradorDetailPage() {
         </div>
       </Card>
 
-      <Tabs defaultValue="resumo" className="w-full">
+      <Tabs defaultValue="cadastro" className="w-full">
         <TabsList>
-          <TabsTrigger value="resumo">Resumo</TabsTrigger>
-          <TabsTrigger value="documentos">Documentos</TabsTrigger>
-          <TabsTrigger value="treinamentos">Treinamentos</TabsTrigger>
-          <TabsTrigger value="integracoes">Integrações</TabsTrigger>
+          <TabsTrigger value="cadastro">Dados Cadastrais</TabsTrigger>
+          <TabsTrigger value="prontuario">Prontuário</TabsTrigger>
+          <TabsTrigger value="competencias">Competências</TabsTrigger>
           <TabsTrigger value="historico">Histórico</TabsTrigger>
         </TabsList>
 
-        <TabsContent value="resumo" className="mt-4">
+        <TabsContent value="cadastro" className="mt-4">
           <Card>
             <CardHeader><CardTitle className="text-base">Dados cadastrais</CardTitle></CardHeader>
             <CardContent className="grid grid-cols-2 md:grid-cols-3 gap-3 text-sm">
@@ -357,100 +356,90 @@ export default function ColaboradorDetailPage() {
           </Card>
         </TabsContent>
 
-        <TabsContent value="documentos" className="mt-4 space-y-6">
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between">
-              <CardTitle className="text-base flex items-center gap-2">
-                <FileText className="h-4 w-4 text-muted-foreground" />
-                Documentos obrigatórios <Badge variant="outline" className="ml-1 text-[10px]">{packKey}</Badge>
-              </CardTitle>
-              <span className="text-xs text-muted-foreground">
-                {obrigatoriosRows.filter((r) => r.doc).length}/{obrigatoriosRows.length} preenchidos
-              </span>
-            </CardHeader>
-            <CardContent className="p-0 overflow-x-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Documento</TableHead>
-                    <TableHead className="w-28">Status</TableHead>
-                    <TableHead className="w-32">Emissão</TableHead>
-                    <TableHead className="w-32">Validade</TableHead>
-                    <TableHead className="w-40 text-right">Ações</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {obrigatoriosRows.length === 0 ? (
-                    <TableRow><TableCell colSpan={5} className="text-center py-6 text-muted-foreground">
-                      Nenhum documento obrigatório configurado para o pacote {packKey}. Ajuste em Configurações → Pacotes Padrão.
-                    </TableCell></TableRow>
-                  ) : obrigatoriosRows.map(({ type, doc }) => {
-                    const st = computeDocStatus(doc);
-                    return (
-                      <TableRow key={type.id}>
-                        <TableCell className="font-medium">{type.name}</TableCell>
-                        <TableCell><Badge variant={statusColor(st) as never}>{statusLabel(st)}</Badge></TableCell>
-                        <TableCell>{doc?.data_emissao ?? "—"}</TableCell>
-                        <TableCell>{doc?.data_vencimento ?? "—"}</TableCell>
-                        <TableCell>{renderDocActions(doc, type.id)}</TableCell>
-                      </TableRow>
-                    );
-                  })}
-                </TableBody>
-              </Table>
-            </CardContent>
-          </Card>
+        <TabsContent value="prontuario" className="mt-4">
+          <Tabs defaultValue="PESSOAIS" orientation="vertical" className="flex flex-col md:flex-row gap-4">
+            <TabsList className="flex md:flex-col h-auto md:min-w-[220px] justify-start md:items-stretch bg-muted/40 p-1">
+              <TabsTrigger value="PESSOAIS" className="justify-start gap-2"><IdCard className="h-4 w-4" /> Documentos Pessoais</TabsTrigger>
+              <TabsTrigger value="SAUDE" className="justify-start gap-2"><HeartPulse className="h-4 w-4" /> Saúde Ocupacional</TabsTrigger>
+              <TabsTrigger value="SEGURANCA" className="justify-start gap-2"><ShieldCheck className="h-4 w-4" /> Segurança do Trabalho</TabsTrigger>
+              <TabsTrigger value="TREINAMENTOS" className="justify-start gap-2"><GraduationCap className="h-4 w-4" /> Treinamentos</TabsTrigger>
+              <TabsTrigger value="INTEGRACOES" className="justify-start gap-2"><Link2 className="h-4 w-4" /> Integrações</TabsTrigger>
+              <TabsTrigger value="CERTIFICACOES" className="justify-start gap-2"><Award className="h-4 w-4" /> Certificações</TabsTrigger>
+              <TabsTrigger value="CONTRATOS" className="justify-start gap-2"><FileSignature className="h-4 w-4" /> Contratos e Termos</TabsTrigger>
+              <TabsTrigger value="OUTROS" className="justify-start gap-2"><Folder className="h-4 w-4" /> Outros Documentos</TabsTrigger>
+            </TabsList>
 
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between">
-              <CardTitle className="text-base flex items-center gap-2">
-                <FileText className="h-4 w-4 text-muted-foreground" />
-                Documentos complementares
-              </CardTitle>
-              <Button size="sm" onClick={() => openAddForType()}>
-                <Plus className="h-4 w-4 mr-1" /> Adicionar Documento
-              </Button>
-            </CardHeader>
-            <CardContent className="p-0">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Documento</TableHead>
-                    <TableHead className="w-28">Status</TableHead>
-                    <TableHead className="w-32">Emissão</TableHead>
-                    <TableHead className="w-32">Validade</TableHead>
-                    <TableHead className="w-40 text-right">Ações</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {complementares.length === 0 ? (
-                    <TableRow><TableCell colSpan={5} className="text-center py-6 text-muted-foreground">
-                      Nenhum documento complementar. Use "Adicionar Documento" para incluir certificados, advertências, contratos ou outros.
-                    </TableCell></TableRow>
-                  ) : complementares.map((d) => {
-                    const st = computeDocStatus(d);
-                    return (
-                      <TableRow key={d.id}>
-                        <TableCell>{typeMap.get(d.document_type_id)?.name ?? "—"}</TableCell>
-                        <TableCell><Badge variant={statusColor(st) as never}>{statusLabel(st)}</Badge></TableCell>
-                        <TableCell>{d.data_emissao ?? "—"}</TableCell>
-                        <TableCell>{d.data_vencimento ?? "—"}</TableCell>
-                        <TableCell>{renderDocActions(d)}</TableCell>
-                      </TableRow>
-                    );
-                  })}
-                </TableBody>
-              </Table>
-            </CardContent>
-          </Card>
-        </TabsContent>
+            <div className="flex-1 min-w-0 space-y-4">
+              {(["PESSOAIS", "SAUDE", "SEGURANCA", "CONTRATOS", "CERTIFICACOES", "OUTROS"] as CategoryKey[]).map((cat) => {
+                const rows = docsByCategory.get(cat) ?? [];
+                const preenchidos = rows.filter((r) => r.doc).length;
+                const obrig = rows.filter((r) => r.required).length;
+                return (
+                  <TabsContent key={cat} value={cat} className="mt-0">
+                    <Card>
+                      <CardHeader className="flex flex-row items-center justify-between">
+                        <CardTitle className="text-base flex items-center gap-2">
+                          <FileText className="h-4 w-4 text-muted-foreground" />
+                          {CATEGORY_LABEL[cat]}
+                          {obrig > 0 && (
+                            <span className="text-xs text-muted-foreground font-normal">
+                              · {preenchidos}/{obrig} obrigatórios preenchidos
+                            </span>
+                          )}
+                        </CardTitle>
+                        <Button size="sm" onClick={() => openAddForCategory(cat)}>
+                          <Plus className="h-4 w-4 mr-1" /> Adicionar Documento
+                        </Button>
+                      </CardHeader>
+                      <CardContent className="p-0 overflow-x-auto">
+                        <Table>
+                          <TableHeader>
+                            <TableRow>
+                              <TableHead>Documento</TableHead>
+                              <TableHead className="w-28">Status</TableHead>
+                              <TableHead className="w-32">Emissão</TableHead>
+                              <TableHead className="w-32">Validade</TableHead>
+                              <TableHead className="w-40 text-right">Ações</TableHead>
+                            </TableRow>
+                          </TableHeader>
+                          <TableBody>
+                            {rows.length === 0 ? (
+                              <TableRow><TableCell colSpan={5} className="text-center py-6 text-muted-foreground">
+                                Nenhum documento nesta categoria. Use <b>Adicionar Documento</b> para incluir.
+                              </TableCell></TableRow>
+                            ) : rows.map(({ type, doc, required }) => {
+                              const st = computeDocStatus(doc);
+                              const norma = normaOf(type.code);
+                              return (
+                                <TableRow key={type.id + (doc?.id ?? "")}>
+                                  <TableCell className="font-medium">
+                                    <div className="flex items-center gap-2 flex-wrap">
+                                      <span>{type.name}</span>
+                                      {required && <Badge variant="outline" className="text-[10px]">Obrigatório</Badge>}
+                                      {norma && <Badge variant="secondary" className="text-[10px]">Norma: {norma}</Badge>}
+                                    </div>
+                                  </TableCell>
+                                  <TableCell><Badge variant={statusColor(st) as never}>{statusLabel(st)}</Badge></TableCell>
+                                  <TableCell>{doc?.data_emissao ?? "—"}</TableCell>
+                                  <TableCell>{doc?.data_vencimento ?? "—"}</TableCell>
+                                  <TableCell>{renderDocActions(doc, type.id)}</TableCell>
+                                </TableRow>
+                              );
+                            })}
+                          </TableBody>
+                        </Table>
+                      </CardContent>
+                    </Card>
+                  </TabsContent>
+                );
+              })}
 
-        <TabsContent value="treinamentos" className="mt-4">
-          <Card>
+              <TabsContent value="TREINAMENTOS" className="mt-0">
+                <Card>
             <CardHeader className="flex flex-row items-center justify-between">
               <CardTitle className="text-base flex items-center gap-2">
                 <GraduationCap className="h-4 w-4 text-muted-foreground" />
-                Treinamentos do colaborador
+                Treinamentos <span className="text-xs text-muted-foreground font-normal">(somente consulta)</span>
                 <Badge variant="secondary" className="ml-1">{colabTreinos.length}</Badge>
               </CardTitle>
               <Button asChild size="sm" variant="outline">
@@ -534,15 +523,15 @@ export default function ColaboradorDetailPage() {
                 </TableBody>
               </Table>
             </CardContent>
-          </Card>
-        </TabsContent>
+                </Card>
+              </TabsContent>
 
-        <TabsContent value="integracoes" className="mt-4">
-          <Card>
+              <TabsContent value="INTEGRACOES" className="mt-0">
+                <Card>
             <CardHeader>
               <CardTitle className="text-base flex items-center gap-2">
                 <Link2 className="h-4 w-4 text-muted-foreground" />
-                Integrações realizadas
+                Integrações <span className="text-xs text-muted-foreground font-normal">(somente consulta)</span>
               </CardTitle>
             </CardHeader>
             <CardContent className="p-0">
@@ -578,6 +567,22 @@ export default function ColaboradorDetailPage() {
                   ))}
                 </TableBody>
               </Table>
+            </CardContent>
+                </Card>
+              </TabsContent>
+            </div>
+          </Tabs>
+        </TabsContent>
+
+        <TabsContent value="competencias" className="mt-4">
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base flex items-center gap-2">
+                <Sparkles className="h-4 w-4 text-muted-foreground" /> Competências
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="py-10 text-center text-sm text-muted-foreground">
+              Em breve — habilitações operacionais adquiridas pelo colaborador serão exibidas aqui.
             </CardContent>
           </Card>
         </TabsContent>
