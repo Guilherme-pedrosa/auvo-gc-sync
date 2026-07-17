@@ -118,11 +118,32 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(() => {
     const initial = new Set<string>();
     allGroups.forEach((g) => {
-      if (g.items.some((i) => i.path === location.pathname)) initial.add(g.label);
+      if (g.items.some((i) => i.path === location.pathname || i.children?.some((c) => c.path === location.pathname))) initial.add(g.label);
       if (g.items.length === 1) initial.add(g.label);
     });
     return initial;
   });
+
+  const [expandedSubs, setExpandedSubs] = useState<Set<string>>(() => {
+    const initial = new Set<string>();
+    allGroups.forEach((g) => {
+      g.items.forEach((i) => {
+        if (i.children?.some((c) => c.path === location.pathname)) {
+          initial.add(`${g.label}::${i.label}`);
+        }
+      });
+    });
+    return initial;
+  });
+
+  const toggleSub = (key: string) => {
+    setExpandedSubs((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  };
 
   const toggleGroup = (label: string) => {
     setExpandedGroups((prev) => {
@@ -165,7 +186,9 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
         <nav className="flex-1 py-3 px-2 space-y-3 overflow-y-auto">
           {allGroups.map((group) => {
             const isExpanded = expandedGroups.has(group.label);
-            const hasActiveItem = group.items.some((i) => i.path === location.pathname);
+            const hasActiveItem = group.items.some(
+              (i) => i.path === location.pathname || i.children?.some((c) => c.path === location.pathname)
+            );
 
             return (
               <div key={group.label}>
@@ -187,12 +210,69 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
                   !collapsed && !isExpanded ? "max-h-0 opacity-0" : "max-h-96 opacity-100"
                 )}>
                   {group.items.map((item) => {
+                    if (item.children) {
+                      const subKey = `${group.label}::${item.label}`;
+                      const subOpen = expandedSubs.has(subKey);
+                      const subHasActive = item.children.some((c) => c.path === location.pathname);
+                      return (
+                        <div key={item.label}>
+                          <Tooltip delayDuration={0}>
+                            <TooltipTrigger asChild>
+                              <button
+                                onClick={() => !collapsed && toggleSub(subKey)}
+                                className={cn(
+                                  "w-full flex items-center gap-2.5 rounded-md px-2.5 py-2 text-sm transition-colors",
+                                  collapsed && "justify-center px-0",
+                                  subHasActive
+                                    ? "text-sidebar-primary font-medium"
+                                    : "text-sidebar-foreground/70 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground"
+                                )}
+                              >
+                                <item.icon className={cn("h-4 w-4 flex-shrink-0", subHasActive && "text-sidebar-primary")} />
+                                {!collapsed && (
+                                  <>
+                                    <span className="truncate flex-1 text-left">{item.label}</span>
+                                    <ChevronDown className={cn("h-3 w-3 transition-transform", !subOpen && "-rotate-90")} />
+                                  </>
+                                )}
+                              </button>
+                            </TooltipTrigger>
+                            {collapsed && <TooltipContent side="right">{item.label}</TooltipContent>}
+                          </Tooltip>
+                          {!collapsed && (
+                            <div className={cn(
+                              "ml-3 pl-2 border-l border-sidebar-border/50 space-y-0.5 mt-0.5 overflow-hidden transition-all duration-200",
+                              subOpen ? "max-h-96 opacity-100" : "max-h-0 opacity-0"
+                            )}>
+                              {item.children.map((child) => {
+                                const isActive = location.pathname === child.path;
+                                return (
+                                  <button
+                                    key={child.path}
+                                    onClick={() => navigate(child.path)}
+                                    className={cn(
+                                      "w-full flex items-center gap-2.5 rounded-md px-2.5 py-1.5 text-sm transition-colors",
+                                      isActive
+                                        ? "bg-sidebar-accent text-sidebar-primary-foreground font-medium"
+                                        : "text-sidebar-foreground/70 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground"
+                                    )}
+                                  >
+                                    <child.icon className={cn("h-3.5 w-3.5 flex-shrink-0", isActive && "text-sidebar-primary")} />
+                                    <span className="truncate">{child.label}</span>
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    }
                     const isActive = location.pathname === item.path;
                     return (
                       <Tooltip key={item.path} delayDuration={0}>
                         <TooltipTrigger asChild>
                           <button
-                            onClick={() => navigate(item.path)}
+                            onClick={() => item.path && navigate(item.path)}
                             className={cn(
                               "w-full flex items-center gap-2.5 rounded-md px-2.5 py-2 text-sm transition-colors",
                               collapsed && "justify-center px-0",
