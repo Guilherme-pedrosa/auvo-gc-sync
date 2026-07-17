@@ -40,6 +40,12 @@ import PacotesPadraoPage from "./pages/rh/PacotesPadraoPage.tsx";
 import TreinamentosPage from "./pages/rh/TreinamentosPage.tsx";
 import TreinamentoDetailPage from "./pages/rh/TreinamentoDetailPage.tsx";
 import TiposTreinamentoPage from "./pages/rh/configuracoes/TiposTreinamentoPage.tsx";
+import MedSegDashboardPage from "./pages/med-seg/MedSegDashboardPage.tsx";
+import SaudeOcupacionalPage from "./pages/med-seg/SaudeOcupacionalPage.tsx";
+import ColaboradorSaudePage from "./pages/med-seg/ColaboradorSaudePage.tsx";
+import AgendaMedPage from "./pages/med-seg/AgendaPage.tsx";
+import TiposASOPage from "./pages/med-seg/config/TiposASOPage.tsx";
+import ClinicasPage from "./pages/med-seg/config/ClinicasPage.tsx";
 import PortalLoginPage from "./pages/portal/PortalLoginPage.tsx";
 import PortalHorasPage from "./pages/portal/PortalHorasPage.tsx";
 import PortalOrcamentosPage from "./pages/portal/PortalOrcamentosPage.tsx";
@@ -132,6 +138,13 @@ const AppRoutes = () => {
                 <Route path="/rh/treinamentos" element={<TreinamentosPage />} />
                 <Route path="/rh/treinamentos/:id" element={<TreinamentoDetailPage />} />
                 <Route path="/rh/configuracoes/tipos-treinamento" element={<TiposTreinamentoPage />} />
+                <Route path="/med-seg/dashboard" element={<MedSegDashboardPage />} />
+                <Route path="/med-seg/saude-ocupacional" element={<SaudeOcupacionalPage />} />
+                <Route path="/med-seg/saude-ocupacional/:id" element={<ColaboradorSaudePage />} />
+                <Route path="/med-seg/agenda" element={<AgendaMedPage />} />
+                <Route path="/med-seg/config/tipos-aso" element={<TiposASOPage />} />
+                <Route path="/med-seg/config/periodicidade" element={<TiposASOPage />} />
+                <Route path="/med-seg/config/clinicas" element={<ClinicasPage />} />
                 <Route path="/admin/usuarios" element={<UsersPage />} />
                 <Route path="*" element={<NotFound />} />
               </Routes>
