@@ -10,7 +10,14 @@ import { TaskFlowChat } from "./TaskFlowChat";
 
 interface NavGroup {
   label: string;
-  items: { label: string; icon: React.ElementType; path: string }[];
+  items: NavItem[];
+}
+
+interface NavItem {
+  label: string;
+  icon: React.ElementType;
+  path?: string;
+  children?: { label: string; icon: React.ElementType; path: string }[];
 }
 
 const navGroups: NavGroup[] = [
@@ -77,9 +84,15 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
             { label: "Treinamentos", icon: GraduationCap, path: "/rh/treinamentos" },
             { label: "Clientes", icon: Building2, path: "/rh/clientes" },
             { label: "Documentos da Empresa", icon: FileText, path: "/rh/documentos-empresa" },
-            { label: "Tipos de Documento", icon: FileCheck, path: "/rh/tipos-documento" },
-            { label: "Pacotes Padrão", icon: FileCheck, path: "/rh/pacotes-padrao" },
-            { label: "Tipos de Treinamento", icon: GraduationCap, path: "/rh/configuracoes/tipos-treinamento" },
+            {
+              label: "Configurações",
+              icon: Settings,
+              children: [
+                { label: "Tipos de Documento", icon: FileCheck, path: "/rh/tipos-documento" },
+                { label: "Pacotes Padrão", icon: FileCheck, path: "/rh/pacotes-padrao" },
+                { label: "Tipos de Treinamento", icon: GraduationCap, path: "/rh/configuracoes/tipos-treinamento" },
+              ],
+            },
           ],
         },
         {
@@ -88,8 +101,14 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
             { label: "Dashboard", icon: LayoutDashboard, path: "/med-seg/dashboard" },
             { label: "Saúde Ocupacional", icon: HeartPulse, path: "/med-seg/saude-ocupacional" },
             { label: "Agenda", icon: CalendarDays, path: "/med-seg/agenda" },
-            { label: "Tipos de ASO / Periodicidade", icon: Stethoscope, path: "/med-seg/config/tipos-aso" },
-            { label: "Clínicas", icon: Building2, path: "/med-seg/config/clinicas" },
+            {
+              label: "Configurações",
+              icon: Settings,
+              children: [
+                { label: "Tipos de ASO / Periodicidade", icon: Stethoscope, path: "/med-seg/config/tipos-aso" },
+                { label: "Clínicas", icon: Building2, path: "/med-seg/config/clinicas" },
+              ],
+            },
           ],
         },
         { label: "Administração", items: [{ label: "Usuários", icon: Users, path: "/admin/usuarios" }] },
