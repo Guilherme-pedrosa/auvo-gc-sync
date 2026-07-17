@@ -622,14 +622,34 @@ export default function ColaboradorDetailPage() {
         <DialogContent>
           <DialogHeader><DialogTitle>{form.id ? "Editar" : "Novo"} documento</DialogTitle></DialogHeader>
           <div className="space-y-3">
-            <div>
-              <Label>Tipo</Label>
-              <Select value={form.document_type_id} onValueChange={(v) => setForm({ ...form, document_type_id: v })}>
-                <SelectTrigger><SelectValue placeholder="Selecione..." /></SelectTrigger>
-                <SelectContent>
-                  {techTypes.map((t) => <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>)}
-                </SelectContent>
-              </Select>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <Label>Categoria</Label>
+                <Select
+                  value={addCategory}
+                  onValueChange={(v) => { setAddCategory(v as CategoryKey); setForm((f) => ({ ...f, document_type_id: undefined })); }}
+                >
+                  <SelectTrigger><SelectValue placeholder="Selecione..." /></SelectTrigger>
+                  <SelectContent>
+                    {(Object.keys(CATEGORY_LABEL) as CategoryKey[]).map((k) => (
+                      <SelectItem key={k} value={k}>{CATEGORY_LABEL[k]}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label>Tipo</Label>
+                <Select
+                  value={form.document_type_id}
+                  onValueChange={(v) => setForm({ ...form, document_type_id: v })}
+                  disabled={!addCategory}
+                >
+                  <SelectTrigger><SelectValue placeholder={addCategory ? "Selecione..." : "Escolha a categoria"} /></SelectTrigger>
+                  <SelectContent>
+                    {dialogTypes.map((t) => <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div>
