@@ -110,6 +110,27 @@ function ok(body: unknown, status = 200) {
   });
 }
 
+class GcApiError extends Error {
+  status: number;
+  constructor(status: number, message: string) {
+    super(message);
+    this.name = "GcApiError";
+    this.status = status;
+  }
+}
+
+async function assertGcOk(res: Response, context: string) {
+  if (res.ok) return;
+  let detail = "";
+  try {
+    const json = await res.json();
+    detail = String(json?.data?.mensagem || json?.mensagem || json?.message || json?.erro || "");
+  } catch {
+    detail = await res.text().catch(() => "");
+  }
+  throw new GcApiError(res.status, `${context}: GC ${res.status}${detail ? ` - ${detail}` : ""}`);
+}
+
 async function fetchOsBySituacao(gcHeaders: Record<string, string>, situacaoId: string) {
   const records: any[] = [];
   const MAX_PAGES = 30;
@@ -124,7 +145,8 @@ async function fetchOsBySituacao(gcHeaders: Record<string, string>, situacaoId: 
       }
       break;
     }
-    if (!res || !res.ok) break;
+    if (!res) throw new GcApiError(0, `ordens_servicos ${situacaoId}: sem resposta do GC`);
+    await assertGcOk(res, `ordens_servicos ${situacaoId}`);
     const json = await res.json().catch(() => ({}));
     const data = Array.isArray(json?.data) ? json.data : [];
     records.push(...data);
@@ -150,7 +172,8 @@ async function fetchRecebimentosEmAberto(gcHeaders: Record<string, string>) {
         }
         break;
       }
-      if (!res || !res.ok) break;
+      if (!res) throw new GcApiError(0, `recebimentos ${liquidado}: sem resposta do GC`);
+      await assertGcOk(res, `recebimentos ${liquidado}`);
       const json = await res.json().catch(() => ({}));
       const data = Array.isArray(json?.data) ? json.data : [];
       for (const r of data) records.push({ ...r, _liquidado: liquidado });
@@ -159,6 +182,136 @@ async function fetchRecebimentosEmAberto(gcHeaders: Record<string, string>) {
     }
   }
   return records;
+}
+
+function uniqueBy<T>(items: T[], keyFn: (item: T) => string): T[] {
+  const seen = new Set<string>();
+  const out: T[] = [];
+  for (const item of items) {
+    const key = keyFn(item);
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    out.push(item);
+  }
+  return out;
+}
+
+async function fetchOsFromLocalCache(
+  admin: ReturnType<typeof createClient>,
+  clientesNorm: Set<string>,
+  situacaoIds: string[],
+  filtroClienteNorm: string,
+  filtroMes: string,
+) {
+  const rows: any[] = [];
+  for (let from = 0; ; from += 1000) {
+    let query = admin
+      .from("tarefas_central")
+      .select("gc_os_id, gc_os_codigo, gc_os_cliente, cliente, gc_os_situacao, gc_os_situacao_id, gc_os_cor_situacao, gc_os_valor_total, gc_os_vendedor, gc_os_data, gc_os_data_saida, gc_os_link, gc_os_link_cobranca, auvo_task_id, gc_os_tarefa_exec, auvo_task_url, auvo_link, equipamento_nome, equipamento_id_serie, duracao_decimal, check_in_iso, check_out_iso, data_conclusao, data_tarefa")
+      .not("gc_os_id", "is", null)
+      .range(from, from + 999);
+
+    if (situacaoIds.length > 0) query = query.in("gc_os_situacao_id", situacaoIds);
+
+    const { data, error } = await query;
+    if (error) throw error;
+    const chunk = data || [];
+    rows.push(...chunk);
+    if (chunk.length < 1000) break;
+  }
+
+  const byOs = new Map<string, any>();
+  const parseTime = (value: string) => {
+    const t = parsePgTimestamp(value);
+    return Number.isFinite(t) ? t : new Date(value).getTime();
+  };
+
+  for (const row of rows) {
+    const osId = String(row.gc_os_id || "").trim();
+    if (!osId) continue;
+
+    const cliente = String(row.gc_os_cliente || row.cliente || "").trim();
+    const clienteNorm = normalize(cliente);
+    if (!clientesNorm.has(clienteNorm)) continue;
+    if (filtroClienteNorm && clienteNorm !== filtroClienteNorm) continue;
+
+    const dataSaida = String(row.gc_os_data_saida || row.data_conclusao || row.gc_os_data || row.data_tarefa || "").slice(0, 10);
+    if (filtroMes && monthKeyOf(dataSaida) !== filtroMes) continue;
+
+    if (!byOs.has(osId)) {
+      byOs.set(osId, {
+        gc_os_id: osId,
+        codigo: String(row.gc_os_codigo || osId),
+        cliente,
+        situacao: String(row.gc_os_situacao || ""),
+        situacao_id: String(row.gc_os_situacao_id || ""),
+        cor_situacao: String(row.gc_os_cor_situacao || ""),
+        data: String(row.gc_os_data || row.data_tarefa || "").slice(0, 10),
+        data_final: "",
+        data_saida: dataSaida,
+        data_execucao: String(row.data_conclusao || row.check_out_iso || "").slice(0, 10),
+        valor_total: Number(row.gc_os_valor_total || 0),
+        descricao: "",
+        vendedor: String(row.gc_os_vendedor || ""),
+        link: String(row.gc_os_link_cobranca || row.gc_os_link || "") || `https://gestaoclick.com/ordens_servicos/editar/${osId}`,
+        auvo_task_id: "",
+        auvo_task_url: "",
+        horas_execucao: 0,
+        equipamentos: [] as string[],
+        _equipSet: new Set<string>(),
+        _bestExecTime: 0,
+      });
+    }
+
+    const item = byOs.get(osId)!;
+    const execTaskId = String(row.gc_os_tarefa_exec || row.auvo_task_id || "").trim();
+    const taskId = String(row.auvo_task_id || "").trim();
+    const checkOut = String(row.check_out_iso || row.data_conclusao || "").trim();
+    const checkOutTime = checkOut ? parseTime(checkOut) : 0;
+    const isExecRow = execTaskId && taskId && execTaskId === taskId;
+
+    if (!item.auvo_task_id || isExecRow || checkOutTime > item._bestExecTime) {
+      item.auvo_task_id = execTaskId || taskId || item.auvo_task_id;
+      item._bestExecTime = Math.max(item._bestExecTime || 0, checkOutTime || 0);
+    }
+
+    const publicUrl = String(row.auvo_task_url || "").trim();
+    const savedUrl = publicUrl || String(row.auvo_link || "").trim();
+    if (savedUrl && (!item.auvo_task_url || /informacoes\/tarefa/.test(savedUrl) || isExecRow)) {
+      item.auvo_task_url = savedUrl;
+    }
+
+    if (checkOut) {
+      const current = String(item.data_execucao || "");
+      const next = checkOut.slice(0, 10);
+      if (!current || next > current) item.data_execucao = next;
+    }
+
+    let h = Number(row.duracao_decimal || 0);
+    if (!(h > 0)) {
+      const ci = String(row.check_in_iso || "").trim();
+      const co = String(row.check_out_iso || "").trim();
+      if (ci && co) {
+        const diffMs = parseTime(co) - parseTime(ci);
+        if (Number.isFinite(diffMs) && diffMs > 0) h = Math.round((diffMs / 3600000) * 100) / 100;
+      }
+    }
+    if (h > 0) item.horas_execucao = Math.max(Number(item.horas_execucao || 0), h);
+
+    addEquipLabel(new Map([[osId, item._equipSet]]), osId, String(row.equipamento_nome || ""), String(row.equipamento_id_serie || ""));
+  }
+
+  return Array.from(byOs.values())
+    .map((item) => {
+      item.equipamentos = Array.from(item._equipSet || []);
+      delete item._equipSet;
+      delete item._bestExecTime;
+      if (item.auvo_task_id && !item.auvo_task_url) {
+        item.auvo_task_url = `https://app2.auvo.com.br/relatorioTarefas/DetalheTarefa/${item.auvo_task_id}`;
+      }
+      return item;
+    })
+    .sort((a, b) => String(b.data_saida || "").localeCompare(String(a.data_saida || "")));
 }
 
 Deno.serve(async (req) => {
@@ -201,7 +354,7 @@ Deno.serve(async (req) => {
     const body = await req.json().catch(() => ({}));
     const situacaoIds: string[] = Array.isArray(body?.situacao_ids) && body.situacao_ids.length > 0
       ? body.situacao_ids.map(String)
-      : (body?.only_negociacao ? [AG_NEGOCIACAO_ID] : DEFAULT_SITUACAO_IDS);
+      : (body?.all_executadas ? DEFAULT_SITUACAO_IDS : [AG_NEGOCIACAO_ID]);
     const filtroClienteRaw = String(body?.cliente || "").trim();
     const filtroClienteNorm = filtroClienteRaw ? normalize(filtroClienteRaw) : "";
     const filtroMes = String(body?.mes || "").trim();
@@ -212,65 +365,81 @@ Deno.serve(async (req) => {
       "Content-Type": "application/json",
     };
 
-    // 1. OS aguardando negociação
-    const osRaw: any[] = [];
-    for (const sit of situacaoIds) {
-      const arr = await fetchOsBySituacao(gcHeaders, sit);
-      osRaw.push(...arr);
-    }
-    const osFiltered = osRaw
-      .filter((o: any) => {
-        const nomeNorm = normalize(String(o.nome_cliente || ""));
-        if (!clientesNorm.has(nomeNorm)) return false;
-        if (filtroClienteNorm && nomeNorm !== filtroClienteNorm) return false;
-        if (filtroMes) {
-          const k = monthKeyOf(String(o.data_saida || o.data_final || o.data || ""));
-          if (k !== filtroMes) return false;
-        }
-        return true;
-      })
-      .map((o: any) => ({
-        gc_os_id: String(o.id),
-        codigo: String(o.codigo || ""),
-        cliente: String(o.nome_cliente || ""),
-        situacao: String(o.nome_situacao || ""),
-        situacao_id: String(o.situacao_id || ""),
-        cor_situacao: String(o.cor_situacao || ""),
-        data: String(o.data || ""),
-        data_final: String(o.data_final || ""),
-        data_saida: String(o.data_saida || o.data_final || ""),
-        data_execucao: "",
-        valor_total: Number(o.valor_total || 0),
-        descricao: String(o.descricao || ""),
-        vendedor: String(o.nome_vendedor || ""),
-        link: o.hash
-          ? `https://gestaoclick.com/cobranca/${o.hash}`
-          : `https://gestaoclick.com/ordens_servicos/editar/${o.id}`,
-      }));
-
-    // Fallback: buscar hash individual das OS que não vieram na listagem
-    // Também: coleta as parcelas (pagamentos) da OS pra gerar itens de
-    // "Financeiro Pendente" quando o cliente ainda não teve recebimento gerado
-    // no GC (comum em Klabin — OS com pagamentos previstos mas sem título).
+    const avisos: string[] = [];
+    let dataSource = "gc";
+    let osFiltered: any[] = [];
     const osPagamentosByOs = new Map<string, any[]>();
-    await Promise.all(
-      osFiltered.map(async (o) => {
-        try {
-          const res = await fetch(`${GC_BASE_URL}/api/ordens_servicos/${o.gc_os_id}`, {
-            headers: gcHeaders,
-          });
-          if (!res.ok) return;
-          const j = await res.json().catch(() => ({}));
-          const data = j?.data || {};
-          const hash = data?.hash;
-          if (hash && !o.link.includes("/cobranca/")) {
-            o.link = `https://gestaoclick.com/cobranca/${hash}`;
-          }
-          const pags = Array.isArray(data?.pagamentos) ? data.pagamentos : [];
-          if (pags.length > 0) osPagamentosByOs.set(o.gc_os_id, pags);
-        } catch { /* ignore */ }
-      }),
-    );
+
+    // 1. OS aguardando negociação. Se o GC falhar, usa o cache local para não
+    // deixar o portal do cliente em branco.
+    try {
+      const osRaw: any[] = [];
+      for (const sit of situacaoIds) {
+        const arr = await fetchOsBySituacao(gcHeaders, sit);
+        osRaw.push(...arr);
+      }
+      osFiltered = uniqueBy(
+        osRaw
+          .filter((o: any) => {
+            const nomeNorm = normalize(String(o.nome_cliente || ""));
+            if (!clientesNorm.has(nomeNorm)) return false;
+            if (filtroClienteNorm && nomeNorm !== filtroClienteNorm) return false;
+            if (filtroMes) {
+              const k = monthKeyOf(String(o.data_saida || o.data_final || o.data || ""));
+              if (k !== filtroMes) return false;
+            }
+            return true;
+          })
+          .map((o: any) => ({
+            gc_os_id: String(o.id),
+            codigo: String(o.codigo || ""),
+            cliente: String(o.nome_cliente || ""),
+            situacao: String(o.nome_situacao || ""),
+            situacao_id: String(o.situacao_id || ""),
+            cor_situacao: String(o.cor_situacao || ""),
+            data: String(o.data || ""),
+            data_final: String(o.data_final || ""),
+            data_saida: String(o.data_saida || o.data_final || o.data || ""),
+            data_execucao: "",
+            valor_total: Number(o.valor_total || 0),
+            descricao: String(o.descricao || ""),
+            vendedor: String(o.nome_vendedor || ""),
+            link: o.hash
+              ? `https://gestaoclick.com/cobranca/${o.hash}`
+              : `https://gestaoclick.com/ordens_servicos/editar/${o.id}`,
+          })),
+        (o) => String(o.gc_os_id || ""),
+      );
+
+      // Fallback: buscar hash individual das OS que não vieram na listagem
+      // Também: coleta as parcelas (pagamentos) da OS pra gerar itens de
+      // "Financeiro Pendente" quando o cliente ainda não teve recebimento gerado
+      // no GC (comum em Klabin — OS com pagamentos previstos mas sem título).
+      await Promise.all(
+        osFiltered.map(async (o) => {
+          try {
+            const res = await fetch(`${GC_BASE_URL}/api/ordens_servicos/${o.gc_os_id}`, {
+              headers: gcHeaders,
+            });
+            if (!res.ok) return;
+            const j = await res.json().catch(() => ({}));
+            const data = j?.data || {};
+            const hash = data?.hash;
+            if (hash && !o.link.includes("/cobranca/")) {
+              o.link = `https://gestaoclick.com/cobranca/${hash}`;
+            }
+            const pags = Array.isArray(data?.pagamentos) ? data.pagamentos : [];
+            if (pags.length > 0) osPagamentosByOs.set(o.gc_os_id, pags);
+          } catch { /* ignore */ }
+        }),
+      );
+    } catch (e) {
+      if (!(e instanceof GcApiError)) throw e;
+      console.warn("[portal-negociacao-fetch] GC indisponível; usando cache local:", e.message);
+      avisos.push("Dados exibidos do cache local porque o GC recusou a consulta em tempo real.");
+      dataSource = "cache";
+      osFiltered = await fetchOsFromLocalCache(admin, clientesNorm, situacaoIds, filtroClienteNorm, filtroMes);
+    }
 
     // Preenche data_execucao (checkout da Tarefa Execução Auvo) via tarefas_central
     try {
@@ -479,7 +648,15 @@ Deno.serve(async (req) => {
     }
 
     // 2. Recebimentos em aberto / atraso
-    const recRaw = await fetchRecebimentosEmAberto(gcHeaders);
+    let recRaw: any[] = [];
+    try {
+      recRaw = await fetchRecebimentosEmAberto(gcHeaders);
+    } catch (e) {
+      if (!(e instanceof GcApiError)) throw e;
+      console.warn("[portal-negociacao-fetch] recebimentos GC indisponível:", e.message);
+      avisos.push("Financeiro pendente em tempo real indisponível no GC no momento.");
+      if (dataSource !== "cache") dataSource = "parcial";
+    }
     const hoje = new Date().toISOString().slice(0, 10);
     const recebimentos = recRaw
       .filter((r: any) => clientesNorm.has(normalize(String(r.nome_cliente || r.nome || ""))))
@@ -550,7 +727,7 @@ Deno.serve(async (req) => {
       qtd_atrasado: recebimentos.filter((r) => r.atrasado).length,
     };
 
-    return ok({ ok: true, os_list: osFiltered, recebimentos, totals });
+    return ok({ ok: true, os_list: osFiltered, recebimentos, totals, source: dataSource, warnings: avisos });
   } catch (err) {
     console.error("[portal-negociacao-fetch] erro:", err);
     return ok({ ok: false, error: (err as Error)?.message || "Erro interno" });
