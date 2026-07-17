@@ -365,65 +365,81 @@ Deno.serve(async (req) => {
       "Content-Type": "application/json",
     };
 
-    // 1. OS aguardando negociação
-    const osRaw: any[] = [];
-    for (const sit of situacaoIds) {
-      const arr = await fetchOsBySituacao(gcHeaders, sit);
-      osRaw.push(...arr);
-    }
-    const osFiltered = osRaw
-      .filter((o: any) => {
-        const nomeNorm = normalize(String(o.nome_cliente || ""));
-        if (!clientesNorm.has(nomeNorm)) return false;
-        if (filtroClienteNorm && nomeNorm !== filtroClienteNorm) return false;
-        if (filtroMes) {
-          const k = monthKeyOf(String(o.data_saida || o.data_final || o.data || ""));
-          if (k !== filtroMes) return false;
-        }
-        return true;
-      })
-      .map((o: any) => ({
-        gc_os_id: String(o.id),
-        codigo: String(o.codigo || ""),
-        cliente: String(o.nome_cliente || ""),
-        situacao: String(o.nome_situacao || ""),
-        situacao_id: String(o.situacao_id || ""),
-        cor_situacao: String(o.cor_situacao || ""),
-        data: String(o.data || ""),
-        data_final: String(o.data_final || ""),
-        data_saida: String(o.data_saida || o.data_final || ""),
-        data_execucao: "",
-        valor_total: Number(o.valor_total || 0),
-        descricao: String(o.descricao || ""),
-        vendedor: String(o.nome_vendedor || ""),
-        link: o.hash
-          ? `https://gestaoclick.com/cobranca/${o.hash}`
-          : `https://gestaoclick.com/ordens_servicos/editar/${o.id}`,
-      }));
-
-    // Fallback: buscar hash individual das OS que não vieram na listagem
-    // Também: coleta as parcelas (pagamentos) da OS pra gerar itens de
-    // "Financeiro Pendente" quando o cliente ainda não teve recebimento gerado
-    // no GC (comum em Klabin — OS com pagamentos previstos mas sem título).
+    const avisos: string[] = [];
+    let dataSource = "gc";
+    let osFiltered: any[] = [];
     const osPagamentosByOs = new Map<string, any[]>();
-    await Promise.all(
-      osFiltered.map(async (o) => {
-        try {
-          const res = await fetch(`${GC_BASE_URL}/api/ordens_servicos/${o.gc_os_id}`, {
-            headers: gcHeaders,
-          });
-          if (!res.ok) return;
-          const j = await res.json().catch(() => ({}));
-          const data = j?.data || {};
-          const hash = data?.hash;
-          if (hash && !o.link.includes("/cobranca/")) {
-            o.link = `https://gestaoclick.com/cobranca/${hash}`;
-          }
-          const pags = Array.isArray(data?.pagamentos) ? data.pagamentos : [];
-          if (pags.length > 0) osPagamentosByOs.set(o.gc_os_id, pags);
-        } catch { /* ignore */ }
-      }),
-    );
+
+    // 1. OS aguardando negociação. Se o GC falhar, usa o cache local para não
+    // deixar o portal do cliente em branco.
+    try {
+      const osRaw: any[] = [];
+      for (const sit of situacaoIds) {
+        const arr = await fetchOsBySituacao(gcHeaders, sit);
+        osRaw.push(...arr);
+      }
+      osFiltered = uniqueBy(
+        osRaw
+          .filter((o: any) => {
+            const nomeNorm = normalize(String(o.nome_cliente || ""));
+            if (!clientesNorm.has(nomeNorm)) return false;
+            if (filtroClienteNorm && nomeNorm !== filtroClienteNorm) return false;
+            if (filtroMes) {
+              const k = monthKeyOf(String(o.data_saida || o.data_final || o.data || ""));
+              if (k !== filtroMes) return false;
+            }
+            return true;
+          })
+          .map((o: any) => ({
+            gc_os_id: String(o.id),
+            codigo: String(o.codigo || ""),
+            cliente: String(o.nome_cliente || ""),
+            situacao: String(o.nome_situacao || ""),
+            situacao_id: String(o.situacao_id || ""),
+            cor_situacao: String(o.cor_situacao || ""),
+            data: String(o.data || ""),
+            data_final: String(o.data_final || ""),
+            data_saida: String(o.data_saida || o.data_final || o.data || ""),
+            data_execucao: "",
+            valor_total: Number(o.valor_total || 0),
+            descricao: String(o.descricao || ""),
+            vendedor: String(o.nome_vendedor || ""),
+            link: o.hash
+              ? `https://gestaoclick.com/cobranca/${o.hash}`
+              : `https://gestaoclick.com/ordens_servicos/editar/${o.id}`,
+          })),
+        (o) => String(o.gc_os_id || ""),
+      );
+
+      // Fallback: buscar hash individual das OS que não vieram na listagem
+      // Também: coleta as parcelas (pagamentos) da OS pra gerar itens de
+      // "Financeiro Pendente" quando o cliente ainda não teve recebimento gerado
+      // no GC (comum em Klabin — OS com pagamentos previstos mas sem título).
+      await Promise.all(
+        osFiltered.map(async (o) => {
+          try {
+            const res = await fetch(`${GC_BASE_URL}/api/ordens_servicos/${o.gc_os_id}`, {
+              headers: gcHeaders,
+            });
+            if (!res.ok) return;
+            const j = await res.json().catch(() => ({}));
+            const data = j?.data || {};
+            const hash = data?.hash;
+            if (hash && !o.link.includes("/cobranca/")) {
+              o.link = `https://gestaoclick.com/cobranca/${hash}`;
+            }
+            const pags = Array.isArray(data?.pagamentos) ? data.pagamentos : [];
+            if (pags.length > 0) osPagamentosByOs.set(o.gc_os_id, pags);
+          } catch { /* ignore */ }
+        }),
+      );
+    } catch (e) {
+      if (!(e instanceof GcApiError)) throw e;
+      console.warn("[portal-negociacao-fetch] GC indisponível; usando cache local:", e.message);
+      avisos.push("Dados exibidos do cache local porque o GC recusou a consulta em tempo real.");
+      dataSource = "cache";
+      osFiltered = await fetchOsFromLocalCache(admin, clientesNorm, situacaoIds, filtroClienteNorm, filtroMes);
+    }
 
     // Preenche data_execucao (checkout da Tarefa Execução Auvo) via tarefas_central
     try {
