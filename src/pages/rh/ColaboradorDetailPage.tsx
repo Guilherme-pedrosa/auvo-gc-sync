@@ -10,7 +10,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { ArrowLeft, Plus, Pencil, Trash2, Upload, History as HistoryIcon, Download, FileText, GraduationCap, Link2, AlertCircle } from "lucide-react";
+import { ArrowLeft, Plus, Pencil, Trash2, Upload, History as HistoryIcon, Download, FileText, GraduationCap, Link2, AlertCircle, HeartPulse, ShieldCheck, Award, FileSignature, Folder, IdCard, Sparkles } from "lucide-react";
 import {
   useColaborador, useColaboradorDocs, useSaveColabDoc, useDeleteColabDoc,
   useDocumentTypes, useIntegrations, useRhClientes, computeDocStatus, type ColabDoc, type DocumentType,
@@ -83,6 +83,50 @@ export default function ColaboradorDetailPage() {
   const techTypes = useMemo(() => types.filter((t) => t.scope === "TECHNICIAN" && t.ativo), [types]);
   const typeMap = useMemo(() => new Map(types.map((t) => [t.id, t])), [types]);
 
+  // Categorização do Prontuário — apenas UI, sem alterar schema.
+  type CategoryKey = "PESSOAIS" | "SAUDE" | "SEGURANCA" | "CONTRATOS" | "CERTIFICACOES" | "OUTROS";
+  const CATEGORY_LABEL: Record<CategoryKey, string> = {
+    PESSOAIS: "Documentos Pessoais",
+    SAUDE: "Saúde Ocupacional",
+    SEGURANCA: "Segurança do Trabalho",
+    CONTRATOS: "Contratos e Termos",
+    CERTIFICACOES: "Certificações",
+    OUTROS: "Outros Documentos",
+  };
+  const CATEGORY_BY_CODE: Record<string, CategoryKey> = {
+    // Documentos pessoais
+    CNH: "PESSOAIS", CTPS: "PESSOAIS", FOTO_3X4: "PESSOAIS",
+    COMPROVANTE_ENDERECO: "PESSOAIS", COMPROVANTE_PAGAMENTO: "PESSOAIS",
+    VACINACAO: "PESSOAIS", CARTAO_CNPJ_MEI: "PESSOAIS", CCMEI: "PESSOAIS",
+    CODIGO_CULTURA: "PESSOAIS",
+    // Saúde ocupacional
+    ASO: "SAUDE",
+    // Segurança do trabalho
+    FICHA_EPI: "SEGURANCA", ORDEM_SERVICO_INTERNA: "SEGURANCA", APR: "SEGURANCA",
+    NR1: "SEGURANCA", NR6: "SEGURANCA", NR10: "SEGURANCA",
+    NR12: "SEGURANCA", NR33: "SEGURANCA", NR35: "SEGURANCA",
+    // Contratos e termos
+    CONTRATO_TRABALHO: "CONTRATOS", CONTRATO_CLT: "CONTRATOS",
+    CONFIDENCIALIDADE: "CONTRATOS", TERMO_AUVO: "CONTRATOS",
+    USO_CELULAR: "CONTRATOS", TERMO_CARROS: "CONTRATOS",
+    ADVERTENCIA: "CONTRATOS", REGISTRO_EMPREGADO: "CONTRATOS",
+    FICHA_REGISTRO: "CONTRATOS", DESCRITIVO_FUNCAO: "CONTRATOS",
+    // Certificações
+    PROFICIENCIA: "CERTIFICACOES", TREINAMENTO_INTERNO: "CERTIFICACOES",
+  };
+  const categoryOf = (code?: string): CategoryKey => (code && CATEGORY_BY_CODE[code]) || "OUTROS";
+  // Sub-rótulo: NR-1 documento aparece como "Ordem de Serviço" com norma NR-1
+  const normaOf = (code?: string): string | null => {
+    if (!code) return null;
+    if (code === "ORDEM_SERVICO_INTERNA" || code === "NR1") return "NR-1";
+    if (code === "FICHA_EPI") return "NR-6";
+    if (/^NR\d+$/.test(code)) return code.replace("NR", "NR-");
+    return null;
+  };
+
+  // Categorias que aceitam upload manual pelo prontuário
+  const MANUAL_CATEGORIES: CategoryKey[] = ["PESSOAIS", "SAUDE", "SEGURANCA", "CONTRATOS", "CERTIFICACOES", "OUTROS"];
+
   // Pacote padrão do colaborador: PJ -> MEI, PF -> CLT
   const packKey: "MEI" | "CLT" = colab?.tipo_pessoa === "PJ" ? "MEI" : "CLT";
   const requiredTypes: DocumentType[] = useMemo(
@@ -101,6 +145,33 @@ export default function ColaboradorDetailPage() {
     () => docs.filter((d) => !requiredTypeIds.has(d.document_type_id)),
     [docs, requiredTypeIds],
   );
+
+  // Agrupamento por categoria — lista completa (obrigatórios + complementares) do prontuário
+  const docsByCategory = useMemo(() => {
+    const map = new Map<CategoryKey, { type: DocumentType; doc?: ColabDoc; required: boolean }[]>();
+    for (const t of techTypes) {
+      const cat = categoryOf(t.code);
+      const doc = docs.find((d) => d.document_type_id === t.id);
+      const required = requiredTypeIds.has(t.id);
+      // Só listar tipos que ou são do pacote ou já possuem doc anexado
+      if (!required && !doc) continue;
+      const arr = map.get(cat) ?? [];
+      arr.push({ type: t, doc, required });
+      map.set(cat, arr);
+    }
+    // Docs complementares com tipo que não bateu (ex.: tipo desativado)
+    for (const d of complementares) {
+      const t = typeMap.get(d.document_type_id);
+      if (!t) continue;
+      const cat = categoryOf(t.code);
+      const arr = map.get(cat) ?? [];
+      if (!arr.some((r) => r.doc?.id === d.id || r.type.id === t.id)) {
+        arr.push({ type: t, doc: d, required: false });
+        map.set(cat, arr);
+      }
+    }
+    return map;
+  }, [techTypes, docs, complementares, requiredTypeIds, typeMap]);
 
   // Integrações do colaborador
   const clienteMap = useMemo(() => new Map(clientes.map((c) => [c.id, c])), [clientes]);
@@ -195,10 +266,22 @@ export default function ColaboradorDetailPage() {
     }
   };
 
+  const [addCategory, setAddCategory] = useState<CategoryKey | "">("");
   const openAddForType = (typeId?: string) => {
+    const t = typeId ? typeMap.get(typeId) : undefined;
+    setAddCategory(t ? categoryOf(t.code) : "");
     setForm(typeId ? { document_type_id: typeId } : {});
     setOpen(true);
   };
+  const openAddForCategory = (cat: CategoryKey) => {
+    setAddCategory(cat);
+    setForm({});
+    setOpen(true);
+  };
+  const dialogTypes = useMemo(
+    () => techTypes.filter((t) => (addCategory ? categoryOf(t.code) === addCategory : true)),
+    [techTypes, addCategory],
+  );
 
   const renderDocActions = (d?: ColabDoc, typeId?: string) => (
     <div className="flex gap-1 justify-end">
@@ -247,16 +330,15 @@ export default function ColaboradorDetailPage() {
         </div>
       </Card>
 
-      <Tabs defaultValue="resumo" className="w-full">
+      <Tabs defaultValue="cadastro" className="w-full">
         <TabsList>
-          <TabsTrigger value="resumo">Resumo</TabsTrigger>
-          <TabsTrigger value="documentos">Documentos</TabsTrigger>
-          <TabsTrigger value="treinamentos">Treinamentos</TabsTrigger>
-          <TabsTrigger value="integracoes">Integrações</TabsTrigger>
+          <TabsTrigger value="cadastro">Dados Cadastrais</TabsTrigger>
+          <TabsTrigger value="prontuario">Prontuário</TabsTrigger>
+          <TabsTrigger value="competencias">Competências</TabsTrigger>
           <TabsTrigger value="historico">Histórico</TabsTrigger>
         </TabsList>
 
-        <TabsContent value="resumo" className="mt-4">
+        <TabsContent value="cadastro" className="mt-4">
           <Card>
             <CardHeader><CardTitle className="text-base">Dados cadastrais</CardTitle></CardHeader>
             <CardContent className="grid grid-cols-2 md:grid-cols-3 gap-3 text-sm">
@@ -274,100 +356,90 @@ export default function ColaboradorDetailPage() {
           </Card>
         </TabsContent>
 
-        <TabsContent value="documentos" className="mt-4 space-y-6">
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between">
-              <CardTitle className="text-base flex items-center gap-2">
-                <FileText className="h-4 w-4 text-muted-foreground" />
-                Documentos obrigatórios <Badge variant="outline" className="ml-1 text-[10px]">{packKey}</Badge>
-              </CardTitle>
-              <span className="text-xs text-muted-foreground">
-                {obrigatoriosRows.filter((r) => r.doc).length}/{obrigatoriosRows.length} preenchidos
-              </span>
-            </CardHeader>
-            <CardContent className="p-0 overflow-x-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Documento</TableHead>
-                    <TableHead className="w-28">Status</TableHead>
-                    <TableHead className="w-32">Emissão</TableHead>
-                    <TableHead className="w-32">Validade</TableHead>
-                    <TableHead className="w-40 text-right">Ações</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {obrigatoriosRows.length === 0 ? (
-                    <TableRow><TableCell colSpan={5} className="text-center py-6 text-muted-foreground">
-                      Nenhum documento obrigatório configurado para o pacote {packKey}. Ajuste em Configurações → Pacotes Padrão.
-                    </TableCell></TableRow>
-                  ) : obrigatoriosRows.map(({ type, doc }) => {
-                    const st = computeDocStatus(doc);
-                    return (
-                      <TableRow key={type.id}>
-                        <TableCell className="font-medium">{type.name}</TableCell>
-                        <TableCell><Badge variant={statusColor(st) as never}>{statusLabel(st)}</Badge></TableCell>
-                        <TableCell>{doc?.data_emissao ?? "—"}</TableCell>
-                        <TableCell>{doc?.data_vencimento ?? "—"}</TableCell>
-                        <TableCell>{renderDocActions(doc, type.id)}</TableCell>
-                      </TableRow>
-                    );
-                  })}
-                </TableBody>
-              </Table>
-            </CardContent>
-          </Card>
+        <TabsContent value="prontuario" className="mt-4">
+          <Tabs defaultValue="PESSOAIS" orientation="vertical" className="flex flex-col md:flex-row gap-4">
+            <TabsList className="flex md:flex-col h-auto md:min-w-[220px] justify-start md:items-stretch bg-muted/40 p-1">
+              <TabsTrigger value="PESSOAIS" className="justify-start gap-2"><IdCard className="h-4 w-4" /> Documentos Pessoais</TabsTrigger>
+              <TabsTrigger value="SAUDE" className="justify-start gap-2"><HeartPulse className="h-4 w-4" /> Saúde Ocupacional</TabsTrigger>
+              <TabsTrigger value="SEGURANCA" className="justify-start gap-2"><ShieldCheck className="h-4 w-4" /> Segurança do Trabalho</TabsTrigger>
+              <TabsTrigger value="TREINAMENTOS" className="justify-start gap-2"><GraduationCap className="h-4 w-4" /> Treinamentos</TabsTrigger>
+              <TabsTrigger value="INTEGRACOES" className="justify-start gap-2"><Link2 className="h-4 w-4" /> Integrações</TabsTrigger>
+              <TabsTrigger value="CERTIFICACOES" className="justify-start gap-2"><Award className="h-4 w-4" /> Certificações</TabsTrigger>
+              <TabsTrigger value="CONTRATOS" className="justify-start gap-2"><FileSignature className="h-4 w-4" /> Contratos e Termos</TabsTrigger>
+              <TabsTrigger value="OUTROS" className="justify-start gap-2"><Folder className="h-4 w-4" /> Outros Documentos</TabsTrigger>
+            </TabsList>
 
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between">
-              <CardTitle className="text-base flex items-center gap-2">
-                <FileText className="h-4 w-4 text-muted-foreground" />
-                Documentos complementares
-              </CardTitle>
-              <Button size="sm" onClick={() => openAddForType()}>
-                <Plus className="h-4 w-4 mr-1" /> Adicionar Documento
-              </Button>
-            </CardHeader>
-            <CardContent className="p-0">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Documento</TableHead>
-                    <TableHead className="w-28">Status</TableHead>
-                    <TableHead className="w-32">Emissão</TableHead>
-                    <TableHead className="w-32">Validade</TableHead>
-                    <TableHead className="w-40 text-right">Ações</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {complementares.length === 0 ? (
-                    <TableRow><TableCell colSpan={5} className="text-center py-6 text-muted-foreground">
-                      Nenhum documento complementar. Use "Adicionar Documento" para incluir certificados, advertências, contratos ou outros.
-                    </TableCell></TableRow>
-                  ) : complementares.map((d) => {
-                    const st = computeDocStatus(d);
-                    return (
-                      <TableRow key={d.id}>
-                        <TableCell>{typeMap.get(d.document_type_id)?.name ?? "—"}</TableCell>
-                        <TableCell><Badge variant={statusColor(st) as never}>{statusLabel(st)}</Badge></TableCell>
-                        <TableCell>{d.data_emissao ?? "—"}</TableCell>
-                        <TableCell>{d.data_vencimento ?? "—"}</TableCell>
-                        <TableCell>{renderDocActions(d)}</TableCell>
-                      </TableRow>
-                    );
-                  })}
-                </TableBody>
-              </Table>
-            </CardContent>
-          </Card>
-        </TabsContent>
+            <div className="flex-1 min-w-0 space-y-4">
+              {(["PESSOAIS", "SAUDE", "SEGURANCA", "CONTRATOS", "CERTIFICACOES", "OUTROS"] as CategoryKey[]).map((cat) => {
+                const rows = docsByCategory.get(cat) ?? [];
+                const preenchidos = rows.filter((r) => r.doc).length;
+                const obrig = rows.filter((r) => r.required).length;
+                return (
+                  <TabsContent key={cat} value={cat} className="mt-0">
+                    <Card>
+                      <CardHeader className="flex flex-row items-center justify-between">
+                        <CardTitle className="text-base flex items-center gap-2">
+                          <FileText className="h-4 w-4 text-muted-foreground" />
+                          {CATEGORY_LABEL[cat]}
+                          {obrig > 0 && (
+                            <span className="text-xs text-muted-foreground font-normal">
+                              · {preenchidos}/{obrig} obrigatórios preenchidos
+                            </span>
+                          )}
+                        </CardTitle>
+                        <Button size="sm" onClick={() => openAddForCategory(cat)}>
+                          <Plus className="h-4 w-4 mr-1" /> Adicionar Documento
+                        </Button>
+                      </CardHeader>
+                      <CardContent className="p-0 overflow-x-auto">
+                        <Table>
+                          <TableHeader>
+                            <TableRow>
+                              <TableHead>Documento</TableHead>
+                              <TableHead className="w-28">Status</TableHead>
+                              <TableHead className="w-32">Emissão</TableHead>
+                              <TableHead className="w-32">Validade</TableHead>
+                              <TableHead className="w-40 text-right">Ações</TableHead>
+                            </TableRow>
+                          </TableHeader>
+                          <TableBody>
+                            {rows.length === 0 ? (
+                              <TableRow><TableCell colSpan={5} className="text-center py-6 text-muted-foreground">
+                                Nenhum documento nesta categoria. Use <b>Adicionar Documento</b> para incluir.
+                              </TableCell></TableRow>
+                            ) : rows.map(({ type, doc, required }) => {
+                              const st = computeDocStatus(doc);
+                              const norma = normaOf(type.code);
+                              return (
+                                <TableRow key={type.id + (doc?.id ?? "")}>
+                                  <TableCell className="font-medium">
+                                    <div className="flex items-center gap-2 flex-wrap">
+                                      <span>{type.name}</span>
+                                      {required && <Badge variant="outline" className="text-[10px]">Obrigatório</Badge>}
+                                      {norma && <Badge variant="secondary" className="text-[10px]">Norma: {norma}</Badge>}
+                                    </div>
+                                  </TableCell>
+                                  <TableCell><Badge variant={statusColor(st) as never}>{statusLabel(st)}</Badge></TableCell>
+                                  <TableCell>{doc?.data_emissao ?? "—"}</TableCell>
+                                  <TableCell>{doc?.data_vencimento ?? "—"}</TableCell>
+                                  <TableCell>{renderDocActions(doc, type.id)}</TableCell>
+                                </TableRow>
+                              );
+                            })}
+                          </TableBody>
+                        </Table>
+                      </CardContent>
+                    </Card>
+                  </TabsContent>
+                );
+              })}
 
-        <TabsContent value="treinamentos" className="mt-4">
-          <Card>
+              <TabsContent value="TREINAMENTOS" className="mt-0">
+                <Card>
             <CardHeader className="flex flex-row items-center justify-between">
               <CardTitle className="text-base flex items-center gap-2">
                 <GraduationCap className="h-4 w-4 text-muted-foreground" />
-                Treinamentos do colaborador
+                Treinamentos <span className="text-xs text-muted-foreground font-normal">(somente consulta)</span>
                 <Badge variant="secondary" className="ml-1">{colabTreinos.length}</Badge>
               </CardTitle>
               <Button asChild size="sm" variant="outline">
@@ -451,15 +523,15 @@ export default function ColaboradorDetailPage() {
                 </TableBody>
               </Table>
             </CardContent>
-          </Card>
-        </TabsContent>
+                </Card>
+              </TabsContent>
 
-        <TabsContent value="integracoes" className="mt-4">
-          <Card>
+              <TabsContent value="INTEGRACOES" className="mt-0">
+                <Card>
             <CardHeader>
               <CardTitle className="text-base flex items-center gap-2">
                 <Link2 className="h-4 w-4 text-muted-foreground" />
-                Integrações realizadas
+                Integrações <span className="text-xs text-muted-foreground font-normal">(somente consulta)</span>
               </CardTitle>
             </CardHeader>
             <CardContent className="p-0">
@@ -495,6 +567,22 @@ export default function ColaboradorDetailPage() {
                   ))}
                 </TableBody>
               </Table>
+            </CardContent>
+                </Card>
+              </TabsContent>
+            </div>
+          </Tabs>
+        </TabsContent>
+
+        <TabsContent value="competencias" className="mt-4">
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base flex items-center gap-2">
+                <Sparkles className="h-4 w-4 text-muted-foreground" /> Competências
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="py-10 text-center text-sm text-muted-foreground">
+              Em breve — habilitações operacionais adquiridas pelo colaborador serão exibidas aqui.
             </CardContent>
           </Card>
         </TabsContent>
@@ -534,14 +622,34 @@ export default function ColaboradorDetailPage() {
         <DialogContent>
           <DialogHeader><DialogTitle>{form.id ? "Editar" : "Novo"} documento</DialogTitle></DialogHeader>
           <div className="space-y-3">
-            <div>
-              <Label>Tipo</Label>
-              <Select value={form.document_type_id} onValueChange={(v) => setForm({ ...form, document_type_id: v })}>
-                <SelectTrigger><SelectValue placeholder="Selecione..." /></SelectTrigger>
-                <SelectContent>
-                  {techTypes.map((t) => <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>)}
-                </SelectContent>
-              </Select>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <Label>Categoria</Label>
+                <Select
+                  value={addCategory}
+                  onValueChange={(v) => { setAddCategory(v as CategoryKey); setForm((f) => ({ ...f, document_type_id: undefined })); }}
+                >
+                  <SelectTrigger><SelectValue placeholder="Selecione..." /></SelectTrigger>
+                  <SelectContent>
+                    {(Object.keys(CATEGORY_LABEL) as CategoryKey[]).map((k) => (
+                      <SelectItem key={k} value={k}>{CATEGORY_LABEL[k]}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label>Tipo</Label>
+                <Select
+                  value={form.document_type_id}
+                  onValueChange={(v) => setForm({ ...form, document_type_id: v })}
+                  disabled={!addCategory}
+                >
+                  <SelectTrigger><SelectValue placeholder={addCategory ? "Selecione..." : "Escolha a categoria"} /></SelectTrigger>
+                  <SelectContent>
+                    {dialogTypes.map((t) => <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div>
