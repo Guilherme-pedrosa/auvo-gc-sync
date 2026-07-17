@@ -2,7 +2,7 @@ import { useNavigate, useLocation } from "react-router-dom";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/hooks/useAuth";
 import {
- RefreshCw, BarChart3, Kanban, LayoutDashboard, ListChecks, Radio, Wrench, CalendarDays, ChevronDown, Users, LogOut, Shield, FileText, PanelLeftClose, PanelLeft, Thermometer, ArrowLeftRight, Trophy, Settings, UserCog, FileCheck, Building2, GraduationCap
+ RefreshCw, BarChart3, Kanban, LayoutDashboard, ListChecks, Radio, Wrench, CalendarDays, ChevronDown, Users, LogOut, Shield, FileText, PanelLeftClose, PanelLeft, Thermometer, ArrowLeftRight, Trophy, Settings, UserCog, FileCheck, Building2, GraduationCap, HeartPulse, Stethoscope
 } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useState } from "react";
@@ -85,6 +85,21 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
             { label: "Tipos de Documento", icon: FileCheck, path: "/rh/tipos-documento" },
             { label: "Pacotes Padrão", icon: FileCheck, path: "/rh/pacotes-padrao" },
             { label: "Tipos de Treinamento", icon: GraduationCap, path: "/rh/configuracoes/tipos-treinamento" },
+          ],
+        },
+        {
+          label: "Medicina e Segurança",
+          items: [
+            { label: "Dashboard", icon: LayoutDashboard, path: "/med-seg/dashboard" },
+            { label: "Saúde Ocupacional", icon: HeartPulse, path: "/med-seg/saude-ocupacional" },
+            { label: "Agenda", icon: CalendarDays, path: "/med-seg/agenda" },
+          ],
+        },
+        {
+          label: "Medicina · Configurações",
+          items: [
+            { label: "Tipos de ASO / Periodicidade", icon: Stethoscope, path: "/med-seg/config/tipos-aso" },
+            { label: "Clínicas", icon: Building2, path: "/med-seg/config/clinicas" },
           ],
         },
         { label: "Administração", items: [{ label: "Usuários", icon: Users, path: "/admin/usuarios" }] },
