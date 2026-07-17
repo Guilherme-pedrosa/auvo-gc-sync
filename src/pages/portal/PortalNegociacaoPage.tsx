@@ -121,7 +121,7 @@ export default function PortalNegociacaoPage() {
     if (!user || role !== "cliente") navigate("/portal/login", { replace: true });
   }, [user, role, authLoading, navigate]);
 
-  const { data, isLoading, isFetching, refetch } = useQuery({
+  const { data, isLoading, isFetching, refetch, error } = useQuery({
     queryKey: ["portal-negociacao", casaFilter, mesSaidaFilter],
     enabled: !!user && role === "cliente",
     queryFn: async () => {
@@ -133,7 +133,13 @@ export default function PortalNegociacaoPage() {
       });
       if (error) throw error;
       if (data?.ok === false) throw new Error(data?.error || "Falha ao carregar");
-      return data as { os_list: OSItem[]; recebimentos: RecebItem[]; totals: Totals };
+      return data as {
+        os_list: OSItem[];
+        recebimentos: RecebItem[];
+        totals: Totals;
+        source?: "gc" | "cache" | "parcial";
+        warnings?: string[];
+      };
     },
   });
 
@@ -511,6 +517,16 @@ export default function PortalNegociacaoPage() {
         </div>
 
         <Card className="p-3 space-y-3">
+          {error && (
+            <div className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+              Falha ao carregar negociação financeira: {(error as Error).message}
+            </div>
+          )}
+          {(data?.warnings || []).map((warning) => (
+            <div key={warning} className="rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-700">
+              {warning}
+            </div>
+          ))}
           <div className="flex items-center gap-2 flex-wrap">
             <Input
               placeholder="Buscar por código, casa, descrição ou OS…"
