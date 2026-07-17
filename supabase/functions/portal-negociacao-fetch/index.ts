@@ -648,7 +648,15 @@ Deno.serve(async (req) => {
     }
 
     // 2. Recebimentos em aberto / atraso
-    const recRaw = await fetchRecebimentosEmAberto(gcHeaders);
+    let recRaw: any[] = [];
+    try {
+      recRaw = await fetchRecebimentosEmAberto(gcHeaders);
+    } catch (e) {
+      if (!(e instanceof GcApiError)) throw e;
+      console.warn("[portal-negociacao-fetch] recebimentos GC indisponível:", e.message);
+      avisos.push("Financeiro pendente em tempo real indisponível no GC no momento.");
+      if (dataSource !== "cache") dataSource = "parcial";
+    }
     const hoje = new Date().toISOString().slice(0, 10);
     const recebimentos = recRaw
       .filter((r: any) => clientesNorm.has(normalize(String(r.nome_cliente || r.nome || ""))))
@@ -719,7 +727,7 @@ Deno.serve(async (req) => {
       qtd_atrasado: recebimentos.filter((r) => r.atrasado).length,
     };
 
-    return ok({ ok: true, os_list: osFiltered, recebimentos, totals });
+    return ok({ ok: true, os_list: osFiltered, recebimentos, totals, source: dataSource, warnings: avisos });
   } catch (err) {
     console.error("[portal-negociacao-fetch] erro:", err);
     return ok({ ok: false, error: (err as Error)?.message || "Erro interno" });
