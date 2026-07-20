@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -7,7 +7,7 @@ import { Label } from "@/components/ui/label";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { ArrowLeft, Plus, Trash2, Building2, Users, FileCheck, AlertCircle, Download, Loader2, Link2, UserCheck } from "lucide-react";
+import { ArrowLeft, Plus, Trash2, Building2, Users, FileCheck, AlertCircle, Download, Loader2, Link2, UserCheck, CheckCircle2, XCircle, PlayCircle } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
@@ -23,8 +23,11 @@ import {
   applyRequirementsTemplate,
   useIntegrations,
   useColaboradores,
+  useSaveIntegration,
+  computeDocStatus,
 } from "@/hooks/rh/useRh";
 import { useQueryClient } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const sb = supabase as any;
@@ -44,6 +47,7 @@ export default function ClienteRequisitosPage() {
   const addReq = useAddRequirement();
   const removeReq = useRemoveRequirement();
   const setRequired = useSetRequirementRequired();
+  const saveIntegration = useSaveIntegration();
 
   const cliente = useMemo(() => clientes.find((c) => c.id === id), [clientes, id]);
 
@@ -117,6 +121,131 @@ export default function ClienteRequisitosPage() {
   const [dialogScope, setDialogScope] = useState<Scope>("COMPANY");
   const [dialogTypeId, setDialogTypeId] = useState("");
   const [templateLoading, setTemplateLoading] = useState(false);
+
+  // ---------- Funcionários Aptos ----------
+  const requiredTechDocTypeIds = useMemo(
+    () => techReqs.filter((r) => r.is_required).map((r) => r.document_type_id),
+    [techReqs],
+  );
+
+  const { data: allTechDocs = [] } = useQuery({
+    queryKey: ["rh_colaborador_docs_all_for_client", id, requiredTechDocTypeIds],
+    enabled: !!id && requiredTechDocTypeIds.length > 0,
+    queryFn: async () => {
+      const { data, error } = await sb
+        .from("rh_colaborador_docs")
+        .select("id, colaborador_id, document_type_id, data_vencimento")
+        .in("document_type_id", requiredTechDocTypeIds);
+      if (error) throw error;
+      return (data ?? []) as Array<{ colaborador_id: string; document_type_id: string; data_vencimento: string | null }>;
+    },
+  });
+
+  const clientIntegrations = useMemo(
+    () => integrations.filter((i) => i.client_id === id),
+    [integrations, id],
+  );
+
+  const integratedTechIds = useMemo(() => {
+    const today = new Date(); today.setHours(0, 0, 0, 0);
+    const set = new Set<string>();
+    for (const i of clientIntegrations) {
+      if (i.status !== "realizada") continue;
+      if (i.integration_valid_until) {
+        const v = new Date(i.integration_valid_until);
+        if (v < today) continue;
+      }
+      for (const tid of i.technician_ids ?? []) set.add(tid);
+    }
+    return set;
+  }, [clientIntegrations]);
+
+  type AptidaoRow = {
+    colaborador: (typeof colabs)[number];
+    apto: boolean;
+    faltantes: { name: string; reason: "missing" | "expired" | "expiring" }[];
+    integrado: boolean;
+  };
+
+  const aptidao = useMemo<AptidaoRow[]>(() => {
+    return colabs
+      .filter((c) => c.ativo !== false)
+      .map((c) => {
+        const faltantes: AptidaoRow["faltantes"] = [];
+        for (const r of techReqs.filter((x) => x.is_required)) {
+          const t = typeById.get(r.document_type_id);
+          const doc = allTechDocs.find(
+            (d) => d.colaborador_id === c.id && d.document_type_id === r.document_type_id,
+          );
+          const st = doc ? computeDocStatus(doc) : "missing";
+          if (st === "missing" || st === "expired") {
+            faltantes.push({ name: t?.name ?? "Documento", reason: st });
+          }
+        }
+        return {
+          colaborador: c,
+          apto: faltantes.length === 0,
+          faltantes,
+          integrado: integratedTechIds.has(c.id),
+        };
+      })
+      .sort((a, b) => {
+        // Não integrados aptos primeiro; depois aptos integrados; depois não aptos
+        const rank = (r: AptidaoRow) => (r.integrado ? 2 : r.apto ? 0 : 1);
+        const d = rank(a) - rank(b);
+        return d !== 0 ? d : a.colaborador.nome.localeCompare(b.colaborador.nome);
+      });
+  }, [colabs, techReqs, allTechDocs, typeById, integratedTechIds]);
+
+  const [integrarOpen, setIntegrarOpen] = useState(false);
+  const [integrarTech, setIntegrarTech] = useState<(typeof colabs)[number] | null>(null);
+  const todayIso = new Date().toISOString().slice(0, 10);
+  const [intData, setIntData] = useState(todayIso);
+  const [intHoraIni, setIntHoraIni] = useState("08:00");
+  const [intHoraFim, setIntHoraFim] = useState("09:00");
+  const [integrando, setIntegrando] = useState(false);
+
+  const openIntegrar = (tech: (typeof colabs)[number]) => {
+    setIntegrarTech(tech);
+    setIntData(todayIso);
+    setIntHoraIni("08:00");
+    setIntHoraFim("09:00");
+    setIntegrarOpen(true);
+  };
+
+  const confirmarIntegracao = async () => {
+    if (!id || !integrarTech) return;
+    if (!intData || !intHoraIni || !intHoraFim) {
+      toast.error("Preencha data, hora início e hora fim.");
+      return;
+    }
+    if (intHoraFim <= intHoraIni) {
+      toast.error("Hora fim deve ser maior que hora início.");
+      return;
+    }
+    setIntegrando(true);
+    try {
+      const startIso = new Date(`${intData}T${intHoraIni}:00`).toISOString();
+      const endIso = new Date(`${intData}T${intHoraFim}:00`).toISOString();
+      await saveIntegration.mutateAsync({
+        client_id: id,
+        technician_ids: [integrarTech.id],
+        status: "realizada",
+        send_channel: cliente?.integration_send_channel ?? null,
+        scheduled_at: startIso,
+        completed_at: endIso,
+        completed_by_technician_id: integrarTech.id,
+        observacoes: `Integração realizada em ${intData} das ${intHoraIni} às ${intHoraFim}.`,
+      });
+      toast.success("Integração formalizada");
+      setIntegrarOpen(false);
+      qc.invalidateQueries({ queryKey: ["rh_integrations"] });
+    } catch (e) {
+      toast.error((e as Error).message);
+    } finally {
+      setIntegrando(false);
+    }
+  };
 
   const openAdd = (scope: Scope) => {
     setDialogScope(scope);
@@ -441,8 +570,81 @@ export default function ClienteRequisitosPage() {
                 <UserCheck className="h-4 w-4 text-muted-foreground" /> Funcionários aptos
               </CardTitle>
             </CardHeader>
-            <CardContent className="text-sm text-muted-foreground">
-              Em breve: cruzamento automático entre requisitos deste cliente e a documentação vigente dos colaboradores para indicar quem está apto a atender.
+            <CardContent className="p-0">
+              {techReqs.filter((r) => r.is_required).length === 0 ? (
+                <p className="text-sm text-muted-foreground text-center py-8">
+                  Nenhum requisito de <b>técnico</b> obrigatório cadastrado. Adicione requisitos na aba "Requisitos" para avaliar aptidão.
+                </p>
+              ) : aptidao.length === 0 ? (
+                <p className="text-sm text-muted-foreground text-center py-8">Nenhum colaborador ativo.</p>
+              ) : (
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Colaborador</TableHead>
+                      <TableHead className="w-32">Situação</TableHead>
+                      <TableHead>Pendências</TableHead>
+                      <TableHead className="w-40 text-right">Ação</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {aptidao.map((row) => (
+                      <TableRow key={row.colaborador.id}>
+                        <TableCell>
+                          <div className="uppercase font-medium">{row.colaborador.nome}</div>
+                          {row.colaborador.cargo && (
+                            <div className="text-xs text-muted-foreground">{row.colaborador.cargo}</div>
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          {row.integrado ? (
+                            <Badge className="bg-blue-500 text-white">JÁ INTEGRADO</Badge>
+                          ) : row.apto ? (
+                            <Badge className="bg-green-500 text-white gap-1">
+                              <CheckCircle2 className="h-3 w-3" /> APTO
+                            </Badge>
+                          ) : (
+                            <Badge variant="destructive" className="gap-1">
+                              <XCircle className="h-3 w-3" /> NÃO APTO
+                            </Badge>
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          {row.faltantes.length === 0 ? (
+                            <span className="text-xs text-muted-foreground">—</span>
+                          ) : (
+                            <div className="flex flex-wrap gap-1">
+                              {row.faltantes.map((f, i) => (
+                                <Badge
+                                  key={i}
+                                  variant="outline"
+                                  className={
+                                    f.reason === "expired"
+                                      ? "border-orange-500 text-orange-600 text-xs"
+                                      : "border-destructive text-destructive text-xs"
+                                  }
+                                >
+                                  {f.name} {f.reason === "expired" ? "(vencido)" : "(faltando)"}
+                                </Badge>
+                              ))}
+                            </div>
+                          )}
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <Button
+                            size="sm"
+                            disabled={!row.apto || row.integrado}
+                            onClick={() => openIntegrar(row.colaborador)}
+                          >
+                            <PlayCircle className="h-4 w-4 mr-1" />
+                            {row.integrado ? "Integrado" : "Integrar"}
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              )}
             </CardContent>
           </Card>
         </TabsContent>
@@ -484,6 +686,52 @@ export default function ClienteRequisitosPage() {
             <Button onClick={handleAdd} disabled={!dialogTypeId || addReq.isPending}>
               {addReq.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
               Adicionar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={integrarOpen} onOpenChange={setIntegrarOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Formalizar integração</DialogTitle>
+            <DialogDescription>
+              {integrarTech ? (
+                <>
+                  Registrar integração de <b className="uppercase">{integrarTech.nome}</b> no cliente{" "}
+                  <b className="uppercase">{cliente?.nome}</b>.
+                </>
+              ) : null}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="grid grid-cols-3 gap-3">
+              <div>
+                <Label>Data</Label>
+                <Input type="date" value={intData} onChange={(e) => setIntData(e.target.value)} />
+              </div>
+              <div>
+                <Label>Hora início</Label>
+                <Input type="time" value={intHoraIni} onChange={(e) => setIntHoraIni(e.target.value)} />
+              </div>
+              <div>
+                <Label>Hora fim</Label>
+                <Input type="time" value={intHoraFim} onChange={(e) => setIntHoraFim(e.target.value)} />
+              </div>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Ao confirmar, a integração será gravada com status <b>REALIZADA</b> e a validade calculada
+              automaticamente pela regra do cliente (aniversário da data de realização). O registro aparecerá
+              na aba <b>Integrações</b>.
+            </p>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIntegrarOpen(false)} disabled={integrando}>
+              Cancelar
+            </Button>
+            <Button onClick={confirmarIntegracao} disabled={integrando}>
+              {integrando && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+              Confirmar integração
             </Button>
           </DialogFooter>
         </DialogContent>
