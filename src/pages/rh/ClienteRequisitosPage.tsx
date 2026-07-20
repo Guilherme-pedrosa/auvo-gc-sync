@@ -122,6 +122,131 @@ export default function ClienteRequisitosPage() {
   const [dialogTypeId, setDialogTypeId] = useState("");
   const [templateLoading, setTemplateLoading] = useState(false);
 
+  // ---------- Funcionários Aptos ----------
+  const requiredTechDocTypeIds = useMemo(
+    () => techReqs.filter((r) => r.is_required).map((r) => r.document_type_id),
+    [techReqs],
+  );
+
+  const { data: allTechDocs = [] } = useQuery({
+    queryKey: ["rh_colaborador_docs_all_for_client", id, requiredTechDocTypeIds],
+    enabled: !!id && requiredTechDocTypeIds.length > 0,
+    queryFn: async () => {
+      const { data, error } = await sb
+        .from("rh_colaborador_docs")
+        .select("id, colaborador_id, document_type_id, data_vencimento")
+        .in("document_type_id", requiredTechDocTypeIds);
+      if (error) throw error;
+      return (data ?? []) as Array<{ colaborador_id: string; document_type_id: string; data_vencimento: string | null }>;
+    },
+  });
+
+  const clientIntegrations = useMemo(
+    () => integrations.filter((i) => i.client_id === id),
+    [integrations, id],
+  );
+
+  const integratedTechIds = useMemo(() => {
+    const today = new Date(); today.setHours(0, 0, 0, 0);
+    const set = new Set<string>();
+    for (const i of clientIntegrations) {
+      if (i.status !== "realizada") continue;
+      if (i.integration_valid_until) {
+        const v = new Date(i.integration_valid_until);
+        if (v < today) continue;
+      }
+      for (const tid of i.technician_ids ?? []) set.add(tid);
+    }
+    return set;
+  }, [clientIntegrations]);
+
+  type AptidaoRow = {
+    colaborador: (typeof colabs)[number];
+    apto: boolean;
+    faltantes: { name: string; reason: "missing" | "expired" | "expiring" }[];
+    integrado: boolean;
+  };
+
+  const aptidao = useMemo<AptidaoRow[]>(() => {
+    return colabs
+      .filter((c) => c.ativo !== false)
+      .map((c) => {
+        const faltantes: AptidaoRow["faltantes"] = [];
+        for (const r of techReqs.filter((x) => x.is_required)) {
+          const t = typeById.get(r.document_type_id);
+          const doc = allTechDocs.find(
+            (d) => d.colaborador_id === c.id && d.document_type_id === r.document_type_id,
+          );
+          const st = doc ? computeDocStatus(doc) : "missing";
+          if (st === "missing" || st === "expired") {
+            faltantes.push({ name: t?.name ?? "Documento", reason: st });
+          }
+        }
+        return {
+          colaborador: c,
+          apto: faltantes.length === 0,
+          faltantes,
+          integrado: integratedTechIds.has(c.id),
+        };
+      })
+      .sort((a, b) => {
+        // Não integrados aptos primeiro; depois aptos integrados; depois não aptos
+        const rank = (r: AptidaoRow) => (r.integrado ? 2 : r.apto ? 0 : 1);
+        const d = rank(a) - rank(b);
+        return d !== 0 ? d : a.colaborador.nome.localeCompare(b.colaborador.nome);
+      });
+  }, [colabs, techReqs, allTechDocs, typeById, integratedTechIds]);
+
+  const [integrarOpen, setIntegrarOpen] = useState(false);
+  const [integrarTech, setIntegrarTech] = useState<(typeof colabs)[number] | null>(null);
+  const todayIso = new Date().toISOString().slice(0, 10);
+  const [intData, setIntData] = useState(todayIso);
+  const [intHoraIni, setIntHoraIni] = useState("08:00");
+  const [intHoraFim, setIntHoraFim] = useState("09:00");
+  const [integrando, setIntegrando] = useState(false);
+
+  const openIntegrar = (tech: (typeof colabs)[number]) => {
+    setIntegrarTech(tech);
+    setIntData(todayIso);
+    setIntHoraIni("08:00");
+    setIntHoraFim("09:00");
+    setIntegrarOpen(true);
+  };
+
+  const confirmarIntegracao = async () => {
+    if (!id || !integrarTech) return;
+    if (!intData || !intHoraIni || !intHoraFim) {
+      toast.error("Preencha data, hora início e hora fim.");
+      return;
+    }
+    if (intHoraFim <= intHoraIni) {
+      toast.error("Hora fim deve ser maior que hora início.");
+      return;
+    }
+    setIntegrando(true);
+    try {
+      const startIso = new Date(`${intData}T${intHoraIni}:00`).toISOString();
+      const endIso = new Date(`${intData}T${intHoraFim}:00`).toISOString();
+      await saveIntegration.mutateAsync({
+        client_id: id,
+        technician_ids: [integrarTech.id],
+        status: "realizada",
+        send_channel: cliente?.integration_send_channel ?? null,
+        scheduled_at: startIso,
+        completed_at: endIso,
+        completed_by_technician_id: integrarTech.id,
+        observacoes: `Integração realizada em ${intData} das ${intHoraIni} às ${intHoraFim}.`,
+      });
+      toast.success("Integração formalizada");
+      setIntegrarOpen(false);
+      qc.invalidateQueries({ queryKey: ["rh_integrations"] });
+    } catch (e) {
+      toast.error((e as Error).message);
+    } finally {
+      setIntegrando(false);
+    }
+  };
+
   const openAdd = (scope: Scope) => {
     setDialogScope(scope);
     setDialogTypeId("");
