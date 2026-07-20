@@ -47,6 +47,7 @@ export default function ClienteRequisitosPage() {
   const addReq = useAddRequirement();
   const removeReq = useRemoveRequirement();
   const setRequired = useSetRequirementRequired();
+  const saveIntegration = useSaveIntegration();
 
   const cliente = useMemo(() => clientes.find((c) => c.id === id), [clientes, id]);
 
