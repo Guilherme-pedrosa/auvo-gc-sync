@@ -1699,6 +1699,7 @@ export type Database = {
           id: string
           integration_send_channel: string | null
           integration_validity_days: number | null
+          integration_validity_months: number | null
           nome: string
           nome_fantasia: string | null
           nome_normalizado: string
@@ -1724,6 +1725,7 @@ export type Database = {
           id?: string
           integration_send_channel?: string | null
           integration_validity_days?: number | null
+          integration_validity_months?: number | null
           nome: string
           nome_fantasia?: string | null
           nome_normalizado: string
@@ -1749,6 +1751,7 @@ export type Database = {
           id?: string
           integration_send_channel?: string | null
           integration_validity_days?: number | null
+          integration_validity_months?: number | null
           nome?: string
           nome_fantasia?: string | null
           nome_normalizado?: string
@@ -2017,6 +2020,7 @@ export type Database = {
           technician_ids: string[]
           validated_at: string | null
           validity_days_snapshot: number | null
+          validity_months_snapshot: number | null
           zip_file_name: string | null
           zip_url: string | null
         }
@@ -2041,6 +2045,7 @@ export type Database = {
           technician_ids?: string[]
           validated_at?: string | null
           validity_days_snapshot?: number | null
+          validity_months_snapshot?: number | null
           zip_file_name?: string | null
           zip_url?: string | null
         }
@@ -2065,6 +2070,7 @@ export type Database = {
           technician_ids?: string[]
           validated_at?: string | null
           validity_days_snapshot?: number | null
+          validity_months_snapshot?: number | null
           zip_file_name?: string | null
           zip_url?: string | null
         }
