@@ -570,8 +570,81 @@ export default function ClienteRequisitosPage() {
                 <UserCheck className="h-4 w-4 text-muted-foreground" /> Funcionários aptos
               </CardTitle>
             </CardHeader>
-            <CardContent className="text-sm text-muted-foreground">
-              Em breve: cruzamento automático entre requisitos deste cliente e a documentação vigente dos colaboradores para indicar quem está apto a atender.
+            <CardContent className="p-0">
+              {techReqs.filter((r) => r.is_required).length === 0 ? (
+                <p className="text-sm text-muted-foreground text-center py-8">
+                  Nenhum requisito de <b>técnico</b> obrigatório cadastrado. Adicione requisitos na aba "Requisitos" para avaliar aptidão.
+                </p>
+              ) : aptidao.length === 0 ? (
+                <p className="text-sm text-muted-foreground text-center py-8">Nenhum colaborador ativo.</p>
+              ) : (
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Colaborador</TableHead>
+                      <TableHead className="w-32">Situação</TableHead>
+                      <TableHead>Pendências</TableHead>
+                      <TableHead className="w-40 text-right">Ação</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {aptidao.map((row) => (
+                      <TableRow key={row.colaborador.id}>
+                        <TableCell>
+                          <div className="uppercase font-medium">{row.colaborador.nome}</div>
+                          {row.colaborador.cargo && (
+                            <div className="text-xs text-muted-foreground">{row.colaborador.cargo}</div>
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          {row.integrado ? (
+                            <Badge className="bg-blue-500 text-white">JÁ INTEGRADO</Badge>
+                          ) : row.apto ? (
+                            <Badge className="bg-green-500 text-white gap-1">
+                              <CheckCircle2 className="h-3 w-3" /> APTO
+                            </Badge>
+                          ) : (
+                            <Badge variant="destructive" className="gap-1">
+                              <XCircle className="h-3 w-3" /> NÃO APTO
+                            </Badge>
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          {row.faltantes.length === 0 ? (
+                            <span className="text-xs text-muted-foreground">—</span>
+                          ) : (
+                            <div className="flex flex-wrap gap-1">
+                              {row.faltantes.map((f, i) => (
+                                <Badge
+                                  key={i}
+                                  variant="outline"
+                                  className={
+                                    f.reason === "expired"
+                                      ? "border-orange-500 text-orange-600 text-xs"
+                                      : "border-destructive text-destructive text-xs"
+                                  }
+                                >
+                                  {f.name} {f.reason === "expired" ? "(vencido)" : "(faltando)"}
+                                </Badge>
+                              ))}
+                            </div>
+                          )}
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <Button
+                            size="sm"
+                            disabled={!row.apto || row.integrado}
+                            onClick={() => openIntegrar(row.colaborador)}
+                          >
+                            <PlayCircle className="h-4 w-4 mr-1" />
+                            {row.integrado ? "Integrado" : "Integrar"}
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              )}
             </CardContent>
           </Card>
         </TabsContent>
