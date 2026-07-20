@@ -47,7 +47,7 @@ export default function ClienteRequisitosPage() {
 
   const cliente = useMemo(() => clientes.find((c) => c.id === id), [clientes, id]);
 
-  const [validityDays, setValidityDays] = useState<string>("");
+  const [validityMonths, setValidityMonths] = useState<string>("");
   const [sendChannel, setSendChannel] = useState<string>("");
   const [portalUrl, setPortalUrl] = useState<string>("");
   const [portalLogin, setPortalLogin] = useState<string>("");
@@ -58,7 +58,11 @@ export default function ClienteRequisitosPage() {
   // Sync local config state whenever cliente loads
   useMemo(() => {
     if (cliente) {
-      setValidityDays(cliente.integration_validity_days != null ? String(cliente.integration_validity_days) : "");
+      const months = (cliente as any).integration_validity_months
+        ?? (cliente.integration_validity_days != null
+          ? Math.max(1, Math.round(Number(cliente.integration_validity_days) / 30))
+          : null);
+      setValidityMonths(months != null ? String(months) : "");
       setSendChannel(cliente.integration_send_channel ?? "");
       setPortalUrl(cliente.portal_url ?? "");
       setPortalLogin(cliente.portal_login ?? "");
@@ -68,8 +72,8 @@ export default function ClienteRequisitosPage() {
 
   const saveIntegrationConfig = async () => {
     if (!id) return;
-    const days = validityDays.trim() === "" ? null : Number(validityDays);
-    if (days !== null && (!Number.isFinite(days) || days <= 0)) {
+    const months = validityMonths.trim() === "" ? null : Number(validityMonths);
+    if (months !== null && (!Number.isFinite(months) || months <= 0)) {
       toast.error("Prazo deve ser um número maior que zero.");
       return;
     }
@@ -78,7 +82,8 @@ export default function ClienteRequisitosPage() {
       const { error } = await sb
         .from("rh_clientes")
         .update({
-          integration_validity_days: days,
+          integration_validity_months: months,
+          integration_validity_days: months != null ? months * 30 : null,
           integration_send_channel: sendChannel || null,
           portal_url: sendChannel === "portal" ? (portalUrl || null) : null,
           portal_login: sendChannel === "portal" ? (portalLogin || null) : null,
@@ -254,16 +259,16 @@ export default function ClienteRequisitosPage() {
         <CardContent className="space-y-4">
           <div className="grid md:grid-cols-3 gap-4 items-end">
           <div>
-            <Label>Validade da integração (dias)</Label>
+            <Label>Validade da integração (meses)</Label>
             <Input
               type="number"
               min={1}
-              value={validityDays}
-              onChange={(e) => setValidityDays(e.target.value)}
-              placeholder="Ex.: 90, 180, 365"
+              value={validityMonths}
+              onChange={(e) => setValidityMonths(e.target.value)}
+              placeholder="Ex.: 3, 6, 12"
             />
             <p className="text-xs text-muted-foreground mt-1">
-              Contado a partir da <b>realização</b> da integração pelo técnico.
+              Contado em <b>meses</b> a partir da <b>realização</b> da integração — vence no <b>aniversário</b> da data.
             </p>
           </div>
           <div>
