@@ -690,6 +690,52 @@ export default function ClienteRequisitosPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <Dialog open={integrarOpen} onOpenChange={setIntegrarOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Formalizar integração</DialogTitle>
+            <DialogDescription>
+              {integrarTech ? (
+                <>
+                  Registrar integração de <b className="uppercase">{integrarTech.nome}</b> no cliente{" "}
+                  <b className="uppercase">{cliente?.nome}</b>.
+                </>
+              ) : null}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="grid grid-cols-3 gap-3">
+              <div>
+                <Label>Data</Label>
+                <Input type="date" value={intData} onChange={(e) => setIntData(e.target.value)} />
+              </div>
+              <div>
+                <Label>Hora início</Label>
+                <Input type="time" value={intHoraIni} onChange={(e) => setIntHoraIni(e.target.value)} />
+              </div>
+              <div>
+                <Label>Hora fim</Label>
+                <Input type="time" value={intHoraFim} onChange={(e) => setIntHoraFim(e.target.value)} />
+              </div>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Ao confirmar, a integração será gravada com status <b>REALIZADA</b> e a validade calculada
+              automaticamente pela regra do cliente (aniversário da data de realização). O registro aparecerá
+              na aba <b>Integrações</b>.
+            </p>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIntegrarOpen(false)} disabled={integrando}>
+              Cancelar
+            </Button>
+            <Button onClick={confirmarIntegracao} disabled={integrando}>
+              {integrando && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+              Confirmar integração
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
