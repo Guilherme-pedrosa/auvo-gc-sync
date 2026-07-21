@@ -864,6 +864,75 @@ export default function ClienteRequisitosPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <Dialog open={agendarOpen} onOpenChange={setAgendarOpen}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Agendar integração</DialogTitle>
+            <DialogDescription>
+              Programe a integração de um ou mais funcionários no cliente{" "}
+              <b className="uppercase">{cliente?.nome}</b>. Selecione a data, o horário e os técnicos que participarão.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="grid grid-cols-3 gap-3">
+              <div>
+                <Label>Data</Label>
+                <Input type="date" value={agData} onChange={(e) => setAgData(e.target.value)} />
+              </div>
+              <div>
+                <Label>Hora início</Label>
+                <Input type="time" value={agHoraIni} onChange={(e) => setAgHoraIni(e.target.value)} />
+              </div>
+              <div>
+                <Label>Hora fim</Label>
+                <Input type="time" value={agHoraFim} onChange={(e) => setAgHoraFim(e.target.value)} />
+              </div>
+            </div>
+            <div>
+              <Label className="mb-2 block">Funcionários (aptos e ainda não integrados)</Label>
+              <div className="max-h-64 overflow-y-auto border rounded-md divide-y">
+                {aptidao.filter((r) => r.apto && !r.integrado).length === 0 ? (
+                  <p className="text-sm text-muted-foreground p-3">
+                    Nenhum funcionário apto disponível.
+                  </p>
+                ) : aptidao.filter((r) => r.apto && !r.integrado).map((row) => {
+                  const tid = row.colaborador.id;
+                  const checked = agTechs.includes(tid);
+                  return (
+                    <label key={tid} className="flex items-center gap-2 p-2 cursor-pointer hover:bg-muted/50">
+                      <Checkbox
+                        checked={checked}
+                        onCheckedChange={(v) =>
+                          setAgTechs((prev) => v ? [...prev, tid] : prev.filter((x) => x !== tid))
+                        }
+                      />
+                      <span className="uppercase text-sm">{row.colaborador.nome}</span>
+                      {row.colaborador.cargo && (
+                        <span className="text-xs text-muted-foreground">— {row.colaborador.cargo}</span>
+                      )}
+                    </label>
+                  );
+                })}
+              </div>
+              <p className="text-xs text-muted-foreground mt-1">
+                {agTechs.length} selecionado(s).
+              </p>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Ao confirmar, será criada uma integração com status <b>AGENDADA</b> vinculada aos funcionários
+              selecionados. Após a realização, use "Integrar" na lista para formalizar.
+            </p>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setAgendarOpen(false)} disabled={agendando}>Cancelar</Button>
+            <Button onClick={confirmarAgendamento} disabled={agendando || agTechs.length === 0}>
+              {agendando && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+              Confirmar agendamento
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
