@@ -7,7 +7,9 @@ import { Label } from "@/components/ui/label";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { ArrowLeft, Plus, Trash2, Building2, Users, FileCheck, AlertCircle, Download, Loader2, Link2, UserCheck, CheckCircle2, XCircle, PlayCircle } from "lucide-react";
+import { ArrowLeft, Plus, Trash2, Building2, Users, FileCheck, AlertCircle, Download, Loader2, Link2, UserCheck, CheckCircle2, XCircle, PlayCircle, Package, CalendarPlus } from "lucide-react";
+import JSZip from "jszip";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
@@ -134,10 +136,10 @@ export default function ClienteRequisitosPage() {
     queryFn: async () => {
       const { data, error } = await sb
         .from("rh_colaborador_docs")
-        .select("id, colaborador_id, document_type_id, data_vencimento")
+        .select("id, colaborador_id, document_type_id, data_vencimento, arquivo_url, arquivo_nome")
         .in("document_type_id", requiredTechDocTypeIds);
       if (error) throw error;
-      return (data ?? []) as Array<{ colaborador_id: string; document_type_id: string; data_vencimento: string | null }>;
+      return (data ?? []) as Array<{ colaborador_id: string; document_type_id: string; data_vencimento: string | null; arquivo_url: string | null; arquivo_nome: string | null }>;
     },
   });
 
@@ -217,6 +219,107 @@ export default function ClienteRequisitosPage() {
     setIntHoraIni("08:00");
     setIntHoraFim("09:00");
     setIntegrarOpen(true);
+  };
+
+  // ---------- Download PACK (ZIP) por colaborador ----------
+  const [packLoadingId, setPackLoadingId] = useState<string | null>(null);
+  const downloadPack = async (row: AptidaoRow) => {
+    setPackLoadingId(row.colaborador.id);
+    try {
+      const pack: "MEI" | "CLT" = row.colaborador.tipo_pessoa === "PJ" ? "MEI" : "CLT";
+      const relevantTypeIds = techReqs
+        .filter((r) => r.is_required)
+        .filter((r) => {
+          const t = typeById.get(r.document_type_id);
+          const pks = (t?.pacote_padrao ?? []).filter((p) => p === "MEI" || p === "CLT");
+          return pks.length === 0 || pks.includes(pack);
+        })
+        .map((r) => r.document_type_id);
+      const docs = allTechDocs.filter(
+        (d) => d.colaborador_id === row.colaborador.id && relevantTypeIds.includes(d.document_type_id) && d.arquivo_url,
+      );
+      if (docs.length === 0) {
+        toast.error("Nenhum documento disponível para compactar.");
+        return;
+      }
+      const zip = new JSZip();
+      let added = 0;
+      for (const d of docs) {
+        const url = d.arquivo_url as string;
+        let blob: Blob | null = null;
+        try {
+          if (/^https?:\/\//i.test(url)) {
+            const r = await fetch(url); blob = await r.blob();
+          } else {
+            const { data } = await supabase.storage.from("rh-documentos").createSignedUrl(url, 60 * 60);
+            if (data?.signedUrl) { const r = await fetch(data.signedUrl); blob = await r.blob(); }
+          }
+        } catch { /* skip */ }
+        if (!blob) continue;
+        const t = typeById.get(d.document_type_id);
+        const ext = d.arquivo_nome?.split(".").pop() || "pdf";
+        const safe = (s: string) => s.replace(/[^\p{L}\p{N}._ -]+/gu, "").replace(/\s+/g, "_");
+        const name = d.arquivo_nome
+          ? safe(d.arquivo_nome)
+          : `${safe(t?.code || t?.name || "documento")}.${ext}`;
+        zip.file(name, blob);
+        added++;
+      }
+      if (added === 0) { toast.error("Não foi possível baixar os arquivos."); return; }
+      const content = await zip.generateAsync({ type: "blob" });
+      const fileName = `Pack_${row.colaborador.nome.replace(/[^a-zA-Z0-9]/g, "_")}_${(cliente?.nome ?? "cliente").replace(/[^a-zA-Z0-9]/g, "_")}.zip`;
+      const link = URL.createObjectURL(content);
+      const a = document.createElement("a");
+      a.href = link; a.download = fileName; a.click();
+      URL.revokeObjectURL(link);
+      toast.success(`Pack gerado com ${added} arquivo(s).`);
+    } catch (e) {
+      toast.error((e as Error).message);
+    } finally {
+      setPackLoadingId(null);
+    }
+  };
+
+  // ---------- Agendar integração (múltiplos técnicos) ----------
+  const [agendarOpen, setAgendarOpen] = useState(false);
+  const [agData, setAgData] = useState(todayIso);
+  const [agHoraIni, setAgHoraIni] = useState("08:00");
+  const [agHoraFim, setAgHoraFim] = useState("09:00");
+  const [agTechs, setAgTechs] = useState<string[]>([]);
+  const [agendando, setAgendando] = useState(false);
+
+  const openAgendar = () => {
+    setAgData(todayIso);
+    setAgHoraIni("08:00");
+    setAgHoraFim("09:00");
+    setAgTechs(aptidao.filter((r) => r.apto && !r.integrado).map((r) => r.colaborador.id));
+    setAgendarOpen(true);
+  };
+
+  const confirmarAgendamento = async () => {
+    if (!id) return;
+    if (agTechs.length === 0) { toast.error("Selecione ao menos um funcionário."); return; }
+    if (!agData || !agHoraIni || !agHoraFim) { toast.error("Preencha data e horários."); return; }
+    if (agHoraFim <= agHoraIni) { toast.error("Hora fim deve ser maior que hora início."); return; }
+    setAgendando(true);
+    try {
+      const startIso = new Date(`${agData}T${agHoraIni}:00`).toISOString();
+      await saveIntegration.mutateAsync({
+        client_id: id,
+        technician_ids: agTechs,
+        status: "agendada",
+        send_channel: cliente?.integration_send_channel ?? null,
+        scheduled_at: startIso,
+        observacoes: `Integração agendada para ${agData} das ${agHoraIni} às ${agHoraFim}.`,
+      });
+      toast.success("Integração agendada");
+      setAgendarOpen(false);
+      qc.invalidateQueries({ queryKey: ["rh_integrations"] });
+    } catch (e) {
+      toast.error((e as Error).message);
+    } finally {
+      setAgendando(false);
+    }
   };
 
   const confirmarIntegracao = async () => {
@@ -369,8 +472,8 @@ export default function ClienteRequisitosPage() {
         <TabsList>
           <TabsTrigger value="resumo">Resumo</TabsTrigger>
           <TabsTrigger value="requisitos">Requisitos</TabsTrigger>
-          <TabsTrigger value="integracoes">Integrações</TabsTrigger>
-          <TabsTrigger value="aptos">Funcionários Aptos</TabsTrigger>
+          <TabsTrigger value="aptos">Integrações</TabsTrigger>
+          <TabsTrigger value="integracoes">Histórico</TabsTrigger>
         </TabsList>
 
         <TabsContent value="resumo" className="mt-4 space-y-4">
@@ -571,10 +674,13 @@ export default function ClienteRequisitosPage() {
 
         <TabsContent value="aptos" className="mt-4">
           <Card>
-            <CardHeader>
+            <CardHeader className="flex flex-row items-center justify-between">
               <CardTitle className="text-base flex items-center gap-2">
-                <UserCheck className="h-4 w-4 text-muted-foreground" /> Funcionários aptos
+                <UserCheck className="h-4 w-4 text-muted-foreground" /> Integrações — funcionários
               </CardTitle>
+              <Button size="sm" onClick={openAgendar} disabled={aptidao.filter((r) => r.apto && !r.integrado).length === 0}>
+                <CalendarPlus className="h-4 w-4 mr-1" /> Agendar integração
+              </Button>
             </CardHeader>
             <CardContent className="p-0">
               {techReqs.filter((r) => r.is_required).length === 0 ? (
@@ -590,6 +696,7 @@ export default function ClienteRequisitosPage() {
                       <TableHead>Colaborador</TableHead>
                       <TableHead className="w-32">Situação</TableHead>
                       <TableHead>Pendências</TableHead>
+                      <TableHead className="w-28 text-center">Pack</TableHead>
                       <TableHead className="w-40 text-right">Ação</TableHead>
                     </TableRow>
                   </TableHeader>
@@ -604,14 +711,14 @@ export default function ClienteRequisitosPage() {
                         </TableCell>
                         <TableCell>
                           {row.integrado ? (
-                            <Badge className="bg-blue-500 text-white">JÁ INTEGRADO</Badge>
+                            <Badge className="bg-blue-500 text-white">INTEGRADO</Badge>
                           ) : row.apto ? (
                             <Badge className="bg-green-500 text-white gap-1">
                               <CheckCircle2 className="h-3 w-3" /> APTO
                             </Badge>
                           ) : (
                             <Badge variant="destructive" className="gap-1">
-                              <XCircle className="h-3 w-3" /> NÃO APTO
+                              <XCircle className="h-3 w-3" /> INAPTO
                             </Badge>
                           )}
                         </TableCell>
@@ -635,6 +742,21 @@ export default function ClienteRequisitosPage() {
                               ))}
                             </div>
                           )}
+                        </TableCell>
+                        <TableCell className="text-center">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            disabled={packLoadingId === row.colaborador.id}
+                            onClick={() => downloadPack(row)}
+                            title="Baixar documentos compactados (ZIP)"
+                          >
+                            {packLoadingId === row.colaborador.id ? (
+                              <Loader2 className="h-4 w-4 animate-spin" />
+                            ) : (
+                              <><Package className="h-4 w-4 mr-1" /> ZIP</>
+                            )}
+                          </Button>
                         </TableCell>
                         <TableCell className="text-right">
                           <Button
@@ -738,6 +860,75 @@ export default function ClienteRequisitosPage() {
             <Button onClick={confirmarIntegracao} disabled={integrando}>
               {integrando && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
               Confirmar integração
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={agendarOpen} onOpenChange={setAgendarOpen}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Agendar integração</DialogTitle>
+            <DialogDescription>
+              Programe a integração de um ou mais funcionários no cliente{" "}
+              <b className="uppercase">{cliente?.nome}</b>. Selecione a data, o horário e os técnicos que participarão.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="grid grid-cols-3 gap-3">
+              <div>
+                <Label>Data</Label>
+                <Input type="date" value={agData} onChange={(e) => setAgData(e.target.value)} />
+              </div>
+              <div>
+                <Label>Hora início</Label>
+                <Input type="time" value={agHoraIni} onChange={(e) => setAgHoraIni(e.target.value)} />
+              </div>
+              <div>
+                <Label>Hora fim</Label>
+                <Input type="time" value={agHoraFim} onChange={(e) => setAgHoraFim(e.target.value)} />
+              </div>
+            </div>
+            <div>
+              <Label className="mb-2 block">Funcionários (aptos e ainda não integrados)</Label>
+              <div className="max-h-64 overflow-y-auto border rounded-md divide-y">
+                {aptidao.filter((r) => r.apto && !r.integrado).length === 0 ? (
+                  <p className="text-sm text-muted-foreground p-3">
+                    Nenhum funcionário apto disponível.
+                  </p>
+                ) : aptidao.filter((r) => r.apto && !r.integrado).map((row) => {
+                  const tid = row.colaborador.id;
+                  const checked = agTechs.includes(tid);
+                  return (
+                    <label key={tid} className="flex items-center gap-2 p-2 cursor-pointer hover:bg-muted/50">
+                      <Checkbox
+                        checked={checked}
+                        onCheckedChange={(v) =>
+                          setAgTechs((prev) => v ? [...prev, tid] : prev.filter((x) => x !== tid))
+                        }
+                      />
+                      <span className="uppercase text-sm">{row.colaborador.nome}</span>
+                      {row.colaborador.cargo && (
+                        <span className="text-xs text-muted-foreground">— {row.colaborador.cargo}</span>
+                      )}
+                    </label>
+                  );
+                })}
+              </div>
+              <p className="text-xs text-muted-foreground mt-1">
+                {agTechs.length} selecionado(s).
+              </p>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Ao confirmar, será criada uma integração com status <b>AGENDADA</b> vinculada aos funcionários
+              selecionados. Após a realização, use "Integrar" na lista para formalizar.
+            </p>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setAgendarOpen(false)} disabled={agendando}>Cancelar</Button>
+            <Button onClick={confirmarAgendamento} disabled={agendando || agTechs.length === 0}>
+              {agendando && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+              Confirmar agendamento
             </Button>
           </DialogFooter>
         </DialogContent>
