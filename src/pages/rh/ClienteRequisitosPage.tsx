@@ -7,7 +7,7 @@ import { Label } from "@/components/ui/label";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { ArrowLeft, Plus, Trash2, Building2, Users, FileCheck, AlertCircle, Download, Loader2, Link2, UserCheck, CheckCircle2, XCircle, PlayCircle, Package, CalendarPlus } from "lucide-react";
+import { ArrowLeft, Plus, Trash2, Building2, Users, FileCheck, AlertCircle, Download, Loader2, Link2, UserCheck, CheckCircle2, XCircle, PlayCircle, Package, CalendarPlus, CalendarClock } from "lucide-react";
 import JSZip from "jszip";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -162,11 +162,29 @@ export default function ClienteRequisitosPage() {
     return set;
   }, [clientIntegrations]);
 
+  // Integrações agendadas por técnico (para exibir situação e reaproveitar registro ao integrar)
+  const scheduledByTech = useMemo(() => {
+    const map = new Map<string, { id: string; scheduled_at: string | null; observacoes: string | null }>();
+    for (const i of clientIntegrations) {
+      if (i.status !== "agendada") continue;
+      for (const tid of i.technician_ids ?? []) {
+        const existing = map.get(tid);
+        const iAt = i.scheduled_at ? new Date(i.scheduled_at).getTime() : 0;
+        const eAt = existing?.scheduled_at ? new Date(existing.scheduled_at).getTime() : -1;
+        if (!existing || iAt > eAt) {
+          map.set(tid, { id: i.id, scheduled_at: i.scheduled_at ?? null, observacoes: (i as any).observacoes ?? null });
+        }
+      }
+    }
+    return map;
+  }, [clientIntegrations]);
+
   type AptidaoRow = {
     colaborador: (typeof colabs)[number];
     apto: boolean;
     faltantes: { name: string; reason: "missing" | "expired" | "expiring" }[];
     integrado: boolean;
+    agendada: { id: string; scheduled_at: string | null; observacoes: string | null } | null;
   };
 
   const aptidao = useMemo<AptidaoRow[]>(() => {
@@ -195,29 +213,42 @@ export default function ClienteRequisitosPage() {
           apto: faltantes.length === 0,
           faltantes,
           integrado: integratedTechIds.has(c.id),
+          agendada: scheduledByTech.get(c.id) ?? null,
         };
       })
       .sort((a, b) => {
-        // Não integrados aptos primeiro; depois aptos integrados; depois não aptos
-        const rank = (r: AptidaoRow) => (r.integrado ? 2 : r.apto ? 0 : 1);
+        // Ordem: apto (não agendado) → agendado → inapto → integrado
+        const rank = (r: AptidaoRow) => (r.integrado ? 3 : !r.apto ? 2 : r.agendada ? 1 : 0);
         const d = rank(a) - rank(b);
         return d !== 0 ? d : a.colaborador.nome.localeCompare(b.colaborador.nome);
       });
-  }, [colabs, techReqs, allTechDocs, typeById, integratedTechIds]);
+  }, [colabs, techReqs, allTechDocs, typeById, integratedTechIds, scheduledByTech]);
 
   const [integrarOpen, setIntegrarOpen] = useState(false);
   const [integrarTech, setIntegrarTech] = useState<(typeof colabs)[number] | null>(null);
+  const [integrarExistingId, setIntegrarExistingId] = useState<string | null>(null);
   const todayIso = new Date().toISOString().slice(0, 10);
   const [intData, setIntData] = useState(todayIso);
   const [intHoraIni, setIntHoraIni] = useState("08:00");
   const [intHoraFim, setIntHoraFim] = useState("09:00");
   const [integrando, setIntegrando] = useState(false);
 
-  const openIntegrar = (tech: (typeof colabs)[number]) => {
+  const openIntegrar = (tech: (typeof colabs)[number], scheduled?: AptidaoRow["agendada"]) => {
     setIntegrarTech(tech);
-    setIntData(todayIso);
-    setIntHoraIni("08:00");
-    setIntHoraFim("09:00");
+    setIntegrarExistingId(scheduled?.id ?? null);
+    if (scheduled?.scheduled_at) {
+      const d = new Date(scheduled.scheduled_at);
+      const iso = new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString();
+      setIntData(iso.slice(0, 10));
+      setIntHoraIni(iso.slice(11, 16));
+      // Extrai hora fim da observação "das HH:MM às HH:MM" se existir
+      const m = /às\s+(\d{2}:\d{2})/.exec(scheduled.observacoes ?? "");
+      setIntHoraFim(m ? m[1] : iso.slice(11, 16));
+    } else {
+      setIntData(todayIso);
+      setIntHoraIni("08:00");
+      setIntHoraFim("09:00");
+    }
     setIntegrarOpen(true);
   };
 
@@ -337,6 +368,7 @@ export default function ClienteRequisitosPage() {
       const startIso = new Date(`${intData}T${intHoraIni}:00`).toISOString();
       const endIso = new Date(`${intData}T${intHoraFim}:00`).toISOString();
       await saveIntegration.mutateAsync({
+        ...(integrarExistingId ? { id: integrarExistingId } : {}),
         client_id: id,
         technician_ids: [integrarTech.id],
         status: "realizada",
