@@ -761,6 +761,20 @@ export default function ClienteRequisitosPage() {
                         <TableCell>
                           {row.integrado ? (
                             <Badge className="bg-blue-500 text-white">INTEGRADO</Badge>
+                          ) : row.agendada ? (
+                            <div className="flex flex-col gap-1">
+                              <Badge className="bg-amber-500 text-white gap-1 w-fit">
+                                <CalendarClock className="h-3 w-3" /> AGENDADA
+                              </Badge>
+                              {row.agendada.scheduled_at && (
+                                <span className="text-[11px] text-muted-foreground">
+                                  {new Date(row.agendada.scheduled_at).toLocaleString("pt-BR", {
+                                    day: "2-digit", month: "2-digit", year: "numeric",
+                                    hour: "2-digit", minute: "2-digit",
+                                  })}
+                                </span>
+                              )}
+                            </div>
                           ) : row.apto ? (
                             <Badge className="bg-green-500 text-white gap-1">
                               <CheckCircle2 className="h-3 w-3" /> APTO
@@ -811,7 +825,7 @@ export default function ClienteRequisitosPage() {
                           <Button
                             size="sm"
                             disabled={!row.apto || row.integrado}
-                            onClick={() => openIntegrar(row.colaborador)}
+                            onClick={() => openIntegrar(row.colaborador, row.agendada ?? undefined)}
                           >
                             <PlayCircle className="h-4 w-4 mr-1" />
                             {row.integrado ? "Integrado" : "Integrar"}
