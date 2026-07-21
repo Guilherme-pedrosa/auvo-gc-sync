@@ -635,6 +635,7 @@ export default function ClienteRequisitosPage() {
                     <TableHead className="w-36">Realizada</TableHead>
                     <TableHead className="w-36">Validade</TableHead>
                     <TableHead className="w-32 text-right">Arquivo</TableHead>
+                    <TableHead className="w-28 text-right">Ação</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -643,7 +644,7 @@ export default function ClienteRequisitosPage() {
                     const colabMap = new Map(colabs.map((c) => [c.id, c]));
                     if (clientIntegs.length === 0) {
                       return (
-                        <TableRow><TableCell colSpan={5} className="text-center py-6 text-muted-foreground">
+                        <TableRow><TableCell colSpan={6} className="text-center py-6 text-muted-foreground">
                           Nenhuma integração registrada para este cliente.
                         </TableCell></TableRow>
                       );
@@ -662,6 +663,22 @@ export default function ClienteRequisitosPage() {
                               baixar
                             </a>
                           ) : "—"}
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="text-destructive hover:text-destructive"
+                            onClick={async () => {
+                              if (!confirm("Cancelar esta integração? A ação removerá o registro do histórico e não pode ser desfeita.")) return;
+                              const { error } = await sb.from("rh_integrations").delete().eq("id", i.id);
+                              if (error) { toast.error("Falha ao cancelar: " + error.message); return; }
+                              toast.success("Integração cancelada");
+                              qc.invalidateQueries({ queryKey: ["rh_integrations"] });
+                            }}
+                          >
+                            <XCircle className="h-4 w-4 mr-1" /> Cancelar
+                          </Button>
                         </TableCell>
                       </TableRow>
                     ));
