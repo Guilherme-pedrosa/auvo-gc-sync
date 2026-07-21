@@ -674,10 +674,13 @@ export default function ClienteRequisitosPage() {
 
         <TabsContent value="aptos" className="mt-4">
           <Card>
-            <CardHeader>
+            <CardHeader className="flex flex-row items-center justify-between">
               <CardTitle className="text-base flex items-center gap-2">
-                <UserCheck className="h-4 w-4 text-muted-foreground" /> Funcionários aptos
+                <UserCheck className="h-4 w-4 text-muted-foreground" /> Integrações — funcionários
               </CardTitle>
+              <Button size="sm" onClick={openAgendar} disabled={aptidao.filter((r) => r.apto && !r.integrado).length === 0}>
+                <CalendarPlus className="h-4 w-4 mr-1" /> Agendar integração
+              </Button>
             </CardHeader>
             <CardContent className="p-0">
               {techReqs.filter((r) => r.is_required).length === 0 ? (
@@ -693,6 +696,7 @@ export default function ClienteRequisitosPage() {
                       <TableHead>Colaborador</TableHead>
                       <TableHead className="w-32">Situação</TableHead>
                       <TableHead>Pendências</TableHead>
+                      <TableHead className="w-28 text-center">Pack</TableHead>
                       <TableHead className="w-40 text-right">Ação</TableHead>
                     </TableRow>
                   </TableHeader>
@@ -707,14 +711,14 @@ export default function ClienteRequisitosPage() {
                         </TableCell>
                         <TableCell>
                           {row.integrado ? (
-                            <Badge className="bg-blue-500 text-white">JÁ INTEGRADO</Badge>
+                            <Badge className="bg-blue-500 text-white">INTEGRADO</Badge>
                           ) : row.apto ? (
                             <Badge className="bg-green-500 text-white gap-1">
                               <CheckCircle2 className="h-3 w-3" /> APTO
                             </Badge>
                           ) : (
                             <Badge variant="destructive" className="gap-1">
-                              <XCircle className="h-3 w-3" /> NÃO APTO
+                              <XCircle className="h-3 w-3" /> INAPTO
                             </Badge>
                           )}
                         </TableCell>
@@ -738,6 +742,21 @@ export default function ClienteRequisitosPage() {
                               ))}
                             </div>
                           )}
+                        </TableCell>
+                        <TableCell className="text-center">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            disabled={packLoadingId === row.colaborador.id}
+                            onClick={() => downloadPack(row)}
+                            title="Baixar documentos compactados (ZIP)"
+                          >
+                            {packLoadingId === row.colaborador.id ? (
+                              <Loader2 className="h-4 w-4 animate-spin" />
+                            ) : (
+                              <><Package className="h-4 w-4 mr-1" /> ZIP</>
+                            )}
+                          </Button>
                         </TableCell>
                         <TableCell className="text-right">
                           <Button
