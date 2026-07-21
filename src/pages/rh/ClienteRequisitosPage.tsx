@@ -171,9 +171,15 @@ export default function ClienteRequisitosPage() {
     return colabs
       .filter((c) => c.ativo !== false)
       .map((c) => {
+        // MEI = PJ (CNPJ), CLT = PF (CPF)
+        const pack: "MEI" | "CLT" = c.tipo_pessoa === "PJ" ? "MEI" : "CLT";
         const faltantes: AptidaoRow["faltantes"] = [];
         for (const r of techReqs.filter((x) => x.is_required)) {
           const t = typeById.get(r.document_type_id);
+          // Se o tipo de documento tem pacote padrão definido e não inclui
+          // o pacote deste colaborador, não é obrigatório para ele.
+          const pacotes = (t?.pacote_padrao ?? []).filter((p) => p === "MEI" || p === "CLT");
+          if (pacotes.length > 0 && !pacotes.includes(pack)) continue;
           const doc = allTechDocs.find(
             (d) => d.colaborador_id === c.id && d.document_type_id === r.document_type_id,
           );
