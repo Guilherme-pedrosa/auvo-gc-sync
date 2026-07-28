@@ -11,7 +11,10 @@ const QUESTIONNAIRE_ID = "216040";
 const GC_ATRIBUTO_TAREFA_ORC = "73341";
 const GC_ATRIBUTO_TAREFA_OS = "73343";
 const GC_ATRIBUTO_TAREFA_EXEC = "73344";
-const MIN_DELAY_MS = 200;
+// GestãoClick documents a company-wide limit of 3 requests/second. Keep each
+// Edge Function instance below that ceiling and serialize concurrent callers
+// inside this process so Promise.all cannot create request bursts.
+const MIN_DELAY_MS = 350;
 const FUTURE_DAYS_WINDOW = 30;
 const AUVO_TASK_CHUNK_DAYS = 1;
 const OPEN_OS_SITUACAO_IDS = [
@@ -28,6 +31,7 @@ const OPEN_OS_SITUACAO_IDS = [
 ] as const;
 let lastAuvoCall = 0;
 let lastGcCall = 0;
+let gcRateQueue: Promise<void> = Promise.resolve();
 
 declare const EdgeRuntime: { waitUntil?: (promise: Promise<unknown>) => void } | undefined;
 
@@ -42,12 +46,24 @@ function buildGcOrcPublicLink(orc: any): string | null {
 }
 
 async function rateLimitedFetch(url: string, options: RequestInit, type: "gc" | "auvo"): Promise<Response> {
+  if (type === "gc") {
+    const queued = gcRateQueue.then(async () => {
+      const elapsed = Date.now() - lastGcCall;
+      if (elapsed < MIN_DELAY_MS) {
+        await new Promise(r => setTimeout(r, MIN_DELAY_MS - elapsed));
+      }
+      lastGcCall = Date.now();
+      return fetch(url, options);
+    });
+    gcRateQueue = queued.then(() => undefined, () => undefined);
+    return queued;
+  }
+
   const now = Date.now();
-  const last = type === "gc" ? lastGcCall : lastAuvoCall;
+  const last = lastAuvoCall;
   const elapsed = now - last;
   if (elapsed < MIN_DELAY_MS) await new Promise(r => setTimeout(r, MIN_DELAY_MS - elapsed));
-  if (type === "gc") lastGcCall = Date.now();
-  else lastAuvoCall = Date.now();
+  lastAuvoCall = Date.now();
   return fetch(url, options);
 }
 
@@ -1249,30 +1265,25 @@ async function refreshGcOsFieldsForPeriod(sbClient: any, gcHeaders: Record<strin
   let updated = 0;
   const PARALLEL = 10;
   const ids = Array.from(osIds);
+  // One paginated snapshot replaces the old N detail requests plus a second
+  // full listing of the same period. With hundreds of OS, the former 15-minute
+  // cron could exhaust the company's 30k daily GestãoClick quota on its own.
+  const gcOsList = await fetchGcOs(gcHeaders, {
+    dataInicio: startDate,
+    dataFim: endDate,
+  });
+  const gcOsById = new Map<string, any>();
+  for (const osPayload of Object.values(gcOsList.byCodigo || {}) as any[]) {
+    if (osPayload?.gc_os_id) {
+      gcOsById.set(String(osPayload.gc_os_id), osPayload);
+    }
+  }
+
   for (let i = 0; i < ids.length; i += PARALLEL) {
     const batch = ids.slice(i, i + PARALLEL);
-    const freshList = await Promise.all(batch.map(async (osId) => {
-      const resp = await rateLimitedFetch(`${GC_BASE_URL}/api/ordens_servicos/${osId}`, { headers: gcHeaders }, "gc");
-      if (!resp.ok) return null;
-      const data = await resp.json().catch(() => null);
-      const os = data?.data || data;
-      if (!os?.id) return null;
-      const atributos: any[] = os.atributos || [];
-      return {
-        gc_os_id: String(os.id),
-        gc_os_cliente: String(os.nome_cliente || ""),
-        gc_os_situacao: String(os.nome_situacao || ""),
-        gc_os_situacao_id: String(os.situacao_id || ""),
-        gc_os_cor_situacao: String(os.cor_situacao || ""),
-        gc_os_valor_total: parseFloat(os.valor_total || "0"),
-        gc_os_vendedor: String(os.nome_vendedor || ""),
-        gc_os_data_saida: String(os.data_saida || "").split("T")[0] || null,
-        gc_os_tarefa_exec: collectGcAttrTaskIds(atributos, GC_ATRIBUTO_TAREFA_EXEC).join("/") || null,
-        gc_os_tarefa_os: collectGcAttrTaskIds(atributos, GC_ATRIBUTO_TAREFA_OS).join("/") || null,
-        gc_os_link: buildGcOsPublicLink(os),
-        gc_os_link_cobranca: buildGcOsPublicLink(os),
-      };
-    }));
+    const freshList = batch
+      .map((osId) => gcOsById.get(osId) || null)
+      .filter(Boolean);
 
     const counts = await Promise.all(freshList.filter(Boolean).map(async (fresh: any) => {
       const updatePayload: any = {
@@ -1304,7 +1315,6 @@ async function refreshGcOsFieldsForPeriod(sbClient: any, gcHeaders: Record<strin
   // execução. Só preenche linhas locais sem gc_os_id (não sobrescreve).
   let execLinked = 0;
   try {
-    const gcOsList = await fetchGcOs(gcHeaders, { dataInicio: startDate, dataFim: endDate });
     const execEntries: Array<[string, any]> = [];
     for (const osPayload of Object.values(gcOsList.byCodigo || {}) as any[]) {
       if (!osPayload?.gc_os_id) continue;
