@@ -1,84 +1,156 @@
-# Medicina e Segurança — V1
+# Migração OMIE → GestãoClick: Requisitos & Entrevista
 
-Módulo enxuto focado em **ciclo de vida dos exames ocupacionais (ASO)**. Reutiliza o cadastro de colaborador existente e escreve o PDF do ASO no mesmo lugar do prontuário (`rh_colaborador_docs` tipo `ASO`), garantindo que o documento apareça em **RH → Colaborador → Prontuário → Saúde Ocupacional** sem duplicação.
+Este plano NÃO altera código. É um artefato de consultoria para conduzir a descoberta com o cliente e mapear a migração. Ao final, se você quiser, transformamos isso em um checklist dentro do WAI ERP ou em edge functions de importação.
 
-## Escopo e princípios
+---
 
-- Não altera cadastro de colaborador, buckets, tipos de documento existentes, nem regras do RH.
-- Colaborador continua único; o módulo apenas consome `rh_colaboradores`.
-- ASO em PDF continua no bucket `rh-documentos` e na tabela `rh_colaborador_docs` (tipo `ASO`) — mesma estrutura já usada hoje.
-- O que é novo: metadados operacionais (tipo do ASO, clínica, médico, agendamento, status do processo), não presentes hoje.
+## 1. Objetivo da migração
 
-## Estrutura de menu (AppLayout, seção nova para admin)
+Antes de qualquer coisa, alinhar com o cliente:
+- **Por que sair do OMIE?** (custo, funcionalidade faltante, integração com Auvo, suporte, etc.)
+- **Data-alvo do go-live no GestãoClick (GC)?**
+- **Estratégia de corte:** *big bang* (vira a chave num dia) ou *coexistência* (OMIE roda até fechar o mês/ano fiscal e GC começa em paralelo).
+- **Quem é o dono da migração** do lado do cliente (financeiro, TI, comercial)?
+- Há **obrigação fiscal** aberta no OMIE (NF-e/NFS-e emitidas, apurações) que precisa continuar acessível?
+
+---
+
+## 2. Roteiro de entrevista (blocos temáticos)
+
+### Bloco A — Perfil da operação
+1. Regime tributário (Simples, Lucro Presumido, Real)?
+2. Quantas empresas/filiais/CNPJs estão no OMIE hoje?
+3. Volume médio mensal: NF-e, NFS-e, boletos, OS, orçamentos, movimentações de estoque.
+4. Quantos usuários e quais perfis usam o OMIE hoje?
+5. Módulos do OMIE em uso: Financeiro, Vendas, Estoque, Serviços, Produção, Compras, CRM, Contratos?
+
+### Bloco B — Cadastros (dados mestres)
+6. Clientes: quantos ativos? Há duplicidades conhecidas?
+7. Fornecedores: quantidade e dados obrigatórios (contato, dados bancários)?
+8. Produtos: SKU, unidade, NCM, CFOP, CEST, preço, custo, estoque atual por depósito.
+9. Serviços: código municipal, alíquota ISS, descrição padrão.
+10. Categorias financeiras (plano de contas) e centros de custo — a estrutura precisa ser replicada?
+11. Vendedores/técnicos e comissionamento.
+12. Formas e condições de pagamento.
+13. Tabelas de preço, descontos, campanhas.
+
+### Bloco C — Financeiro
+14. Contas a receber em aberto (títulos + parcelas + boletos gerados).
+15. Contas a pagar em aberto.
+16. Contas bancárias, saldos, conciliação e integração bancária (quais bancos).
+17. Boletos: quem é o convênio hoje? Vai manter no GC?
+18. Fluxo de caixa histórico — precisa migrar ou basta relatório PDF?
+19. Cheques, cartões, PIX — meios em uso.
+
+### Bloco D — Vendas / Faturamento
+20. Pedidos em aberto (não faturados).
+21. Orçamentos ativos.
+22. Contratos recorrentes / faturamento recorrente.
+23. Séries e numeração de NF-e/NFS-e (o GC continua a numeração?).
+24. Certificado digital A1 disponível?
+
+### Bloco E — Estoque
+25. Depósitos/locais de estoque.
+26. Saldo atual por SKU (data de corte).
+27. Kits/composições, produção, ordens de produção.
+28. Movimentações históricas — migrar ou apenas saldo inicial?
+
+### Bloco F — OS e Serviços (relevante pra base atual do WAI)
+29. OS em aberto no OMIE? Formato, campos customizados, anexos.
+30. Integração com Auvo já existe? Como está mapeada hoje?
+31. Fluxo de aprovação de orçamento → OS → faturamento.
+
+### Bloco G — Integrações e periféricos
+32. Sistemas conectados ao OMIE hoje (e-commerce, marketplaces, CRM, BI, Auvo, WAI, contabilidade).
+33. Webhooks/API keys ativos.
+34. Relatórios/dashboards externos que consomem dados do OMIE.
+35. Escritório de contabilidade — como recebe hoje (SPED, XMLs, planilhas)?
+
+### Bloco H — Documentos e histórico
+36. XMLs de NF-e/NFS-e emitidos (guarda de 5 anos) — onde ficam?
+37. Anexos em OS/pedidos/clientes.
+38. Histórico de e-mails/logs de envio.
+
+### Bloco I — Governança e go-live
+39. Ambiente de homologação no GC antes do corte?
+40. Plano de treinamento dos usuários.
+41. Plano de contingência (e se der errado no dia D?).
+42. Data de congelamento do OMIE (freeze) e janela de importação.
+
+---
+
+## 3. Requisitos de migração (a preencher com as respostas)
+
+Para cada domínio abaixo, o levantamento precisa produzir:
+- **Fonte** (relatório/export do OMIE — CSV, XLSX, API, XML).
+- **Destino** (entidade equivalente no GC — via API `/api/clientes`, `/api/produtos`, `/api/ordens_servicos`, `/api/contas_receber`, `/api/contas_pagar`, `/api/orcamentos`, etc.).
+- **Mapeamento de campos** (de → para, com transformação).
+- **Regras de deduplicação** (CPF/CNPJ, código interno).
+- **Data de corte** (o que migra como saldo, o que migra como histórico).
+- **Validação pós-carga** (conferência de totais).
+
+Domínios mínimos:
 
 ```text
-Medicina e Segurança
-├── Dashboard        /med-seg/dashboard
-├── Saúde Ocupacional /med-seg/saude-ocupacional
-├── Agenda           /med-seg/agenda
-└── Configurações
-    ├── Tipos de ASO         /med-seg/config/tipos-aso
-    ├── Clínicas             /med-seg/config/clinicas
-    └── Periodicidade        /med-seg/config/periodicidade
+1. Empresas / filiais
+2. Usuários e permissões
+3. Clientes            (dedup por CPF/CNPJ)
+4. Fornecedores        (dedup por CPF/CNPJ)
+5. Produtos            (dedup por código; NCM/CFOP obrigatórios)
+6. Serviços
+7. Plano de contas / categorias financeiras
+8. Centros de custo
+9. Formas e condições de pagamento
+10. Tabelas de preço
+11. Estoque — saldo inicial por depósito
+12. Contas bancárias + saldos iniciais
+13. Contas a receber em aberto (títulos + parcelas)
+14. Contas a pagar em aberto
+15. Orçamentos em aberto
+16. Pedidos / OS em aberto
+17. Contratos recorrentes
+18. Vendedores / comissões
+19. Anexos / XMLs históricos (armazenamento externo se GC não suportar)
 ```
 
-## Banco de dados (novas tabelas — schema `public`)
+---
 
-Todas com GRANTs `authenticated`+`service_role`, RLS ligado, políticas via `has_role(auth.uid(), 'admin')` (mesmo padrão do RH existente), triggers de `updated_at`.
+## 4. Estratégia de execução recomendada
 
-- `med_tipos_aso` — `codigo` (Admissional, Periódico, Retorno, Mudança de Função, Demissional), `nome`, `periodicidade_meses` (nullable), `ativo`. Seed com os 5 tipos padrão.
-- `med_clinicas` — `nome`, `contato`, `endereco`, `observacoes`, `ativo`.
-- `med_aso` — `colaborador_id` (fk), `tipo_id` (fk med_tipos_aso), `data_emissao`, `data_validade`, `clinica_id`, `medico_nome`, `medico_crm`, `situacao` (`valido|vencido|substituido`), `documento_id` (fk `rh_colaborador_docs.id` — o PDF), `agendamento_id` (fk med_agendamentos, nullable), `vigente` (bool). Índice único parcial: um único `vigente=true` por colaborador.
-- `med_agendamentos` — `colaborador_id`, `tipo_id`, `data`, `hora`, `clinica_id`, `observacoes`, `status` (`agendado|confirmado|realizado|cancelado`), `aso_id` (nullable, preenchido quando gera ASO).
-- `med_historico` — `colaborador_id`, `evento` (`aso_novo|agendamento_novo|reagendado|documento_anexado|cancelado|situacao_alterada`), `payload jsonb`, `criado_em`, `criado_por`.
+1. **Fase 1 — Descoberta (1 semana)**: rodar o questionário acima, coletar exports de amostra do OMIE, validar limites e formatos da API GC.
+2. **Fase 2 — Mapeamento (1–2 semanas)**: planilha "de-para" campo a campo, definir regras de dedup e transformações (ex.: normalizar CNPJ, converter datas ISO, arredondamentos financeiros).
+3. **Fase 3 — Carga em homologação**: importar cadastros primeiro (clientes, produtos), depois saldos, por último títulos em aberto. Conferir totais.
+4. **Fase 4 — Simulação de corte**: emitir 1 NF-e, 1 boleto, 1 OS no GC em ambiente real com dados migrados.
+5. **Fase 5 — Freeze do OMIE + carga final + go-live**: janela definida (idealmente fim de semana / virada de mês).
+6. **Fase 6 — Acompanhamento assistido (2–4 semanas)**: suporte próximo, ajustes finos, garantia de que contabilidade recebeu tudo.
 
-Triggers:
-- Ao inserir `med_aso` com `vigente=true`: marca o ASO anterior do mesmo colaborador como `vigente=false, situacao='substituido'`.
-- Ao inserir `med_aso`: calcula `data_validade` se null usando `periodicidade_meses` do tipo.
-- Ao mudar `status` de agendamento: escreve linha em `med_historico`.
+---
 
-Nenhuma alteração em `rh_colaborador_docs` — quando o PDF é anexado pelo módulo, cria um registro normal em `rh_colaborador_docs` com `tipo_codigo='ASO'`, e guarda o `id` em `med_aso.documento_id`. Assim aparece automaticamente no Prontuário → Saúde Ocupacional.
+## 5. Riscos a comunicar ao cliente
 
-## Frontend
+- **API do GC é destrutiva em PUT** (padrão da nossa integração exige GET → merge → PUT). Migração precisa respeitar isso.
+- **Numeração fiscal** não pode ser reiniciada sem alinhar com contabilidade.
+- **Histórico de XMLs** de 5 anos: guarda legal continua sendo do cliente, independente do sistema.
+- **Boletos já emitidos** no OMIE continuam válidos e devem ser baixados no GC manualmente ou via importação de retorno bancário.
+- **Integrações existentes** (Auvo, e-commerce, contabilidade) precisam ser reapontadas — não é automático.
 
-Componentes reutilizados: `SearchableSelect`, `Table`, `Dialog`, `Tabs`, `Card`, upload já usado em `ColaboradorDetailPage`.
+---
 
-### Dashboard (`/med-seg/dashboard`)
-- KPIs: total monitorados, ASOs válidos, vencendo (≤30d), vencidos, agendados, realizados aguardando upload.
-- **Fila priorizada de ações** (sugestão estratégica aceita):
-  - 🔴 ASO vencido / vencendo em ≤7 dias — CTA "Agendar"
-  - 🟠 Agendamento amanhã — CTA "Confirmar"
-  - 🟡 Realizado sem PDF — CTA "Anexar ASO"
-  - 🔴 Sem ASO cadastrado — CTA "Cadastrar"
-- Cada item leva ao colaborador/agendamento correspondente.
+## 6. Entregáveis desta consultoria
 
-### Saúde Ocupacional (`/med-seg/saude-ocupacional`)
-- Listagem: Nome, Cargo, Empresa, Último ASO (tipo/data), Validade, Situação (badge), Próximo previsto.
-- Situação: `Válido | Vencendo | Vencido | Agendado | Aguardando Documento`.
-- Clique abre `/med-seg/saude-ocupacional/:colaboradorId` com abas: **Dados**, **ASOs**, **Agendamentos**, **Histórico** (view enxuta, não duplica o prontuário completo).
-- Aba **ASOs**: histórico + botão "Novo ASO" (form: tipo, emissão, validade auto-calculada, clínica, médico, upload PDF). Upload cria registro em `rh_colaborador_docs` **e** em `med_aso`.
-- Aba **Agendamentos**: CRUD simples, botão "Marcar como Realizado" abre modal de anexo de ASO.
+- Questionário respondido (Blocos A–I).
+- Planilha "de-para" por domínio.
+- Cronograma com data de freeze e go-live.
+- Checklist de validação pós-carga (totais bateram? títulos em aberto conferem? saldos de estoque idem?).
+- Plano de rollback.
 
-### Agenda (`/med-seg/agenda`)
-- 3 abas: Hoje / Próximos 7 dias / Próximos 30 dias.
-- Botão "Novo Agendamento" (dialog reutilizável).
+---
 
-### Configurações
-- Três páginas CRUD simples baseadas no padrão de `TiposDocumentoPage.tsx`.
+## Próximo passo sugerido
 
-## Integração com o RH existente
+Se quiser, posso transformar este questionário em:
+- **(a)** um PDF/DOCX pronto para você enviar ao cliente, ou
+- **(b)** uma tela dentro do WAI ERP ("Onboarding de Cliente / Migração") que registra as respostas e gera o checklist automaticamente, ou
+- **(c)** já começar a esboçar as **edge functions de importação em massa** (clientes, produtos, títulos) usando o `gc-proxy` que já temos.
 
-- ASO anexado no módulo → grava em `rh_colaborador_docs` com `tipo_codigo='ASO'`, `data_emissao`, `data_validade`, `arquivo_url`, `escopo='TECHNICIAN'`.
-- Prontuário do colaborador (`ColaboradorDetailPage`) já lista ASO em **Saúde Ocupacional** (categoria já criada na turn anterior). Nada muda lá.
-- O que aparece por lá continua sendo o PDF + histórico documental; o **ciclo de vida operacional** (agenda, status, vencimento antecipado) vive no novo módulo.
-
-## Fora de escopo desta V1
-
-- Gráficos, cálculo de próxima data por idade/risco, notificações e-mail/WhatsApp, PPRA/LTCAT, workflow ASO admissional integrado a admissão automática.
-
-## Detalhes técnicos
-
-- Migrações em uma call `supabase--migration` com todas as tabelas + GRANTs + RLS + policies + seed dos 5 tipos.
-- Rotas em `src/App.tsx` (admin only via `ProtectedRoute` existente).
-- Menu novo em `AppLayout.tsx` no bloco `isAdmin`.
-- Sem edge function nesta V1 — tudo via Supabase client + RLS.
+Me diga qual caminho seguir que eu detalho o plano técnico.
