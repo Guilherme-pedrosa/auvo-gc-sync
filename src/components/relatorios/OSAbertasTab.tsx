@@ -631,6 +631,12 @@ export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, o
             });
             if (error || cancelled) continue;
 
+            if (isGcOsMissingResponse(gcData)) {
+              markOsDeleted(String(item.gc_os_id));
+              updates.set(String(item.gc_os_id), { execTaskId: "", tecnico: "", dataTarefa: "", status: "" });
+              continue;
+            }
+
             const osObj = gcData?.data?.data ?? gcData?.data ?? null;
             const atributos: any[] = osObj?.atributos || [];
             const execAttr = atributos.find((a: any) => {
