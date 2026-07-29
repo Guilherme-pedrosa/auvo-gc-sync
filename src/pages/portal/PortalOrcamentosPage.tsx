@@ -655,10 +655,7 @@ export default function PortalOrcamentosPage() {
                           </div>
                         )}
 
-                      {(() => {
-                        const orc: any = detailQuery.data.orcamento || {};
-                        const interna =
-                       Array.isArray((detailQuery.data as any).respostas_wai) &&
+                      {Array.isArray((detailQuery.data as any).respostas_wai) &&
                         (detailQuery.data as any).respostas_wai.length > 0 && (
                           <div className="rounded-md border border-emerald-300 bg-emerald-50 p-2 text-xs space-y-2">
                             <p className="font-semibold text-emerald-900">Resposta da nossa equipe:</p>
