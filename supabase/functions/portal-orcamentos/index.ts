@@ -68,6 +68,18 @@ const normalize = (s: string) =>
     .replace(/\s+(ltda|me|sa|s\.a\.|s\/a|eireli|epp)\s*\.?$/i, "")
     .replace(/\s+/g, " ");
 
+// Equipamento vem como atributo customizado 66890 ("Equipamento") no orçamento do GC
+function equipDeAtributos(orc: any): string {
+  const atribs: any[] = Array.isArray(orc?.atributos) ? orc.atributos : [];
+  for (const a of atribs) {
+    const node = a?.atributo || a;
+    if (String(node?.atributo_id || "") !== "66890") continue;
+    const v = String(node?.conteudo || "").trim();
+    if (v) return v;
+  }
+  return "";
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
@@ -254,6 +266,10 @@ Deno.serve(async (req) => {
             if (hash) linkMap.set(String(i.gc_orcamento_id), `https://gestaoclick.com/prop/${hash}`);
             const tipo = String(orc?.tipo || "").trim().toLowerCase();
             if (tipo) tipoMap.set(String(i.gc_orcamento_id), tipo);
+            const equipAttr = equipDeAtributos(orc);
+            if (equipAttr && !equipMap.has(String(i.gc_orcamento_id))) {
+              equipMap.set(String(i.gc_orcamento_id), equipAttr);
+            }
             // Fallback de equipamento: atributo 73341 (TAREFA OS) -> tarefas_central
             const atribs: any[] = Array.isArray(orc?.atributos) ? orc.atributos : [];
             const ids: string[] = [];
@@ -367,7 +383,14 @@ Deno.serve(async (req) => {
         }
         return "";
       };
-        return ok({ ok: true, orcamento: cached.orcamento, tarefas: mergedTarefas, equipamento: equipDeTarefas(mergedTarefas), observacoes_cliente: obsLogC || [], cached: true });
+        return ok({
+          ok: true,
+          orcamento: cached.orcamento,
+          tarefas: mergedTarefas,
+          equipamento: equipDeAtributos(cached.orcamento) || equipDeTarefas(mergedTarefas),
+          observacoes_cliente: obsLogC || [],
+          cached: true,
+        });
       }
 
       const resp = await fetch(`${GC_BASE_URL}/api/orcamentos/${gcOrcId}`, { headers: gcHeaders });
@@ -444,7 +467,14 @@ Deno.serve(async (req) => {
         }
         return "";
       })();
-      return ok({ ok: true, orcamento: orc, tarefas: tarefas || [], equipamento: equipDetalhe, observacoes_cliente: obsLog || [], cached: false });
+      return ok({
+        ok: true,
+        orcamento: orc,
+        tarefas: tarefas || [],
+        equipamento: equipDeAtributos(orc) || equipDetalhe,
+        observacoes_cliente: obsLog || [],
+        cached: false,
+      });
     }
 
     if (action === "approve" || action === "observation") {
