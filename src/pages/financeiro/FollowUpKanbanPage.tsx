@@ -69,6 +69,9 @@ export default function FollowUpKanbanPage() {
   const [resposta, setResposta] = useState("");
   const [situacaoDestino, setSituacaoDestino] = useState<string>("7063588");
   const [enviandoResposta, setEnviandoResposta] = useState(false);
+  const [conversa, setConversa] = useState<any[]>([]);
+  const [obsInterna, setObsInterna] = useState("");
+  const [carregandoConversa, setCarregandoConversa] = useState(false);
   const [colunasVisiveis, setColunasVisiveis] = useState<string[]>(() => {
     try {
       const raw = localStorage.getItem(COLUNAS_VISIVEIS_KEY);
