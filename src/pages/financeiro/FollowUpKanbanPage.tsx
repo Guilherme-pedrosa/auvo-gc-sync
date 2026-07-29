@@ -426,7 +426,16 @@ export default function FollowUpKanbanPage() {
         )}
       </div>
 
-      <Dialog open={!!selecionado} onOpenChange={(v) => !v && setSelecionado(null)}>
+      <Dialog
+        open={!!selecionado}
+        onOpenChange={(v) => {
+          if (!v) {
+            setSelecionado(null);
+            setResposta("");
+            setDevolver(true);
+          }
+        }}
+      >
         <DialogContent className="max-w-lg">
           {selecionado && (
             <>
@@ -454,6 +463,40 @@ export default function FollowUpKanbanPage() {
                 >
                   Abrir no GestãoClick <ExternalLink className="h-3 w-3" />
                 </a>
+
+                <div className="rounded-md border p-3 space-y-2 mt-3">
+                  <p className="text-sm font-medium flex items-center gap-2">
+                    <MessageSquarePlus className="h-4 w-4" /> Responder ao cliente
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    A resposta é gravada na OBS interna do GC e aparece para o cliente no portal.
+                  </p>
+                  <Textarea
+                    value={resposta}
+                    onChange={(e) => setResposta(e.target.value)}
+                    placeholder="Escreva a resposta para o cliente…"
+                    rows={3}
+                    disabled={enviandoResposta}
+                  />
+                  <label className="flex items-center gap-2 text-xs">
+                    <Checkbox
+                      checked={devolver}
+                      onCheckedChange={(v) => setDevolver(v === true)}
+                      disabled={enviandoResposta}
+                    />
+                    Devolver o orçamento para "Aguardando Aprovação"
+                  </label>
+                  <div className="flex justify-end">
+                    <Button size="sm" onClick={enviarResposta} disabled={enviandoResposta}>
+                      {enviandoResposta ? (
+                        <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" />
+                      ) : (
+                        <MessageSquarePlus className="h-3.5 w-3.5 mr-1" />
+                      )}
+                      Enviar resposta
+                    </Button>
+                  </div>
+                </div>
               </div>
             </>
           )}
