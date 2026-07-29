@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback, useEffect } from "react";
+import { useState, useMemo, useCallback, useEffect, useRef } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -428,18 +428,21 @@ export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, o
   }, [data, deletedOsIds, excludedSituacoes, execStatusFilter, getItemExecStatus, movedOsIds, removedOsIds]);
 
   // Verifica no GC quais OS listadas foram apagadas
-  const verificarOsExcluidas = useCallback(async () => {
-    const ids = Array.from(new Set(filteredItems.map((i: any) => String(i.gc_os_id || "")).filter(Boolean)));
-    if (ids.length === 0) return;
+  const checkedOsIdsRef = useRef<Set<string>>(new Set());
+
+  const validarOsNoGc = useCallback(async (ids: string[], opts?: { silent?: boolean }) => {
+    const alvo = Array.from(new Set(ids.filter(Boolean)));
+    if (alvo.length === 0) return 0;
     setCheckingDeleted(true);
     const encontradas: string[] = [];
     try {
       const CONC = 5;
-      for (let i = 0; i < ids.length; i += CONC) {
-        await Promise.all(ids.slice(i, i + CONC).map(async (id) => {
+      for (let i = 0; i < alvo.length; i += CONC) {
+        await Promise.all(alvo.slice(i, i + CONC).map(async (id) => {
           const { data: resp, error } = await supabase.functions.invoke("gc-proxy", {
             body: { endpoint: `/api/ordens_servicos/${id}`, method: "GET" },
           });
+          checkedOsIdsRef.current.add(id);
           if (error) return;
           if (isGcOsMissingResponse(resp)) {
             encontradas.push(id);
@@ -449,14 +452,42 @@ export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, o
       }
       if (encontradas.length > 0) {
         toast.warning(`${encontradas.length} OS não existem mais no GestãoClick — marcadas como ${SITUACAO_EXCLUIDA}`);
-        setExecStatusFilter("excluidas");
-      } else {
+        if (!opts?.silent) setExecStatusFilter("excluidas");
+      } else if (!opts?.silent) {
         toast.success("Nenhuma OS excluída encontrada");
       }
+      return encontradas.length;
     } finally {
       setCheckingDeleted(false);
     }
-  }, [filteredItems, markOsDeleted]);
+  }, [markOsDeleted]);
+
+  const verificarOsExcluidas = useCallback(async () => {
+    checkedOsIdsRef.current = new Set();
+    await validarOsNoGc(filteredItems.map((i: any) => String(i.gc_os_id || "")));
+  }, [filteredItems, validarOsNoGc]);
+
+  // Validação automática: toda vez que a lista carrega/sincroniza, confere no GC
+  // se as OS espelhadas no banco ainda existem (evita mostrar OS apagada como aberta).
+  useEffect(() => {
+    if (syncing || checkingDeleted) return;
+    const pendentes = Array.from(
+      new Set(
+        data
+          .map((t: any) => String(t.gc_os_id || ""))
+          .filter((id) => id && !checkedOsIdsRef.current.has(id) && !deletedOsIds.has(id) && !removedOsIds.has(id))
+      )
+    );
+    if (pendentes.length === 0) return;
+    void validarOsNoGc(pendentes, { silent: true });
+  }, [data, syncing, checkingDeleted, deletedOsIds, removedOsIds, validarOsNoGc]);
+
+  // Após uma sincronização, revalida tudo do zero
+  const prevSyncingRef = useRef(syncing);
+  useEffect(() => {
+    if (prevSyncingRef.current && !syncing) checkedOsIdsRef.current = new Set();
+    prevSyncingRef.current = syncing;
+  }, [syncing]);
 
   // Group by client, sum values
   const clienteSummary = useMemo(() => {
