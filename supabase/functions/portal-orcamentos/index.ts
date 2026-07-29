@@ -425,7 +425,7 @@ Deno.serve(async (req) => {
 
       const stamp = new Date().toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" });
       const quem = profile.nome || profile.email || "Cliente";
-      const obsAtual = String(orcAtual.observacao || "");
+      const obsAtual = String(orcAtual.observacoes_interna || "");
       let novaObs = obsAtual;
       if (action === "approve") {
         const linha = `\n\n[${stamp}] APROVADO VIA PORTAL por ${quem} — Termo aceito.`;
@@ -438,7 +438,7 @@ Deno.serve(async (req) => {
       const payload: Record<string, unknown> = {
         ...orcAtual,
         situacao_id: novaSituacao,
-        observacao: novaObs,
+        observacoes_interna: novaObs,
       };
       for (const f of ["id", "codigo", "nome_situacao", "cor_situacao", "hash", "cadastrado_em", "modificado_em"]) {
         delete (payload as any)[f];
