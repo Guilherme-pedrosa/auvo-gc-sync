@@ -342,7 +342,7 @@ Deno.serve(async (req) => {
         if (idsC.size > 0) {
           const { data: t2c } = await admin
             .from("tarefas_central")
-            .select("auvo_task_id, auvo_task_url, auvo_link, auvo_survey_url, gc_orc_link, gc_os_link, status_auvo")
+            .select("auvo_task_id, auvo_task_url, auvo_link, auvo_survey_url, gc_orc_link, gc_os_link, status_auvo, equipamento_nome")
             .in("auvo_task_id", Array.from(idsC));
           extraC = t2c || [];
         }
@@ -374,7 +374,7 @@ Deno.serve(async (req) => {
       // Procura tarefa Auvo relacionada (via tarefas_central)
       const { data: tarefasPorOrc } = await admin
         .from("tarefas_central")
-        .select("auvo_task_id, auvo_task_url, auvo_link, auvo_survey_url, gc_orc_link, gc_os_link, status_auvo")
+        .select("auvo_task_id, auvo_task_url, auvo_link, auvo_survey_url, gc_orc_link, gc_os_link, status_auvo, equipamento_nome")
         .eq("gc_orcamento_id", gcOrcId)
         .limit(5);
 
@@ -399,7 +399,7 @@ Deno.serve(async (req) => {
       if (taskIdsFromOrc.size > 0) {
         const { data: t2 } = await admin
           .from("tarefas_central")
-          .select("auvo_task_id, auvo_task_url, auvo_link, auvo_survey_url, gc_orc_link, gc_os_link, status_auvo")
+          .select("auvo_task_id, auvo_task_url, auvo_link, auvo_survey_url, gc_orc_link, gc_os_link, status_auvo, equipamento_nome")
           .in("auvo_task_id", Array.from(taskIdsFromOrc));
         tarefasPorAttr = t2 || [];
       }
