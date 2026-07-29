@@ -18,9 +18,10 @@ import { Skeleton } from "@/components/ui/skeleton";
 import {
    Search, ArrowDownWideNarrow, ExternalLink, Filter, CalendarIcon,
    Edit2, Save, Loader2, UserCog, MapPin, Navigation, Package,
-   ClipboardList, FileText, AlertTriangle, RefreshCw, CheckCircle2,
+   ClipboardList, FileText, AlertTriangle, RefreshCw, CheckCircle2, MessageSquare,
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
+import { ObservacoesOsDialog } from "./ObservacoesOsDialog";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { cn } from "@/lib/utils";
@@ -160,6 +161,27 @@ export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, o
   // Conciliação dialog
   const [conciliacaoCard, setConciliacaoCard] = useState<any | null>(null);
   const [conciliacaoSituacao, setConciliacaoSituacao] = useState("");
+
+  // Observações por OS (espelhadas na OBS interna do GC)
+  const [obsItem, setObsItem] = useState<{ item: any; cliente: string } | null>(null);
+  const { data: obsCounts, refetch: refetchObsCounts } = useQuery({
+    queryKey: ["os-observacoes-counts"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("os_observacoes")
+        .select("gc_os_id, cliente")
+        .limit(5000);
+      if (error) throw error;
+      const porOs = new Map<string, number>();
+      const porCliente = new Map<string, number>();
+      for (const row of (data ?? []) as { gc_os_id: string | null; cliente: string | null }[]) {
+        if (row.gc_os_id) porOs.set(String(row.gc_os_id), (porOs.get(String(row.gc_os_id)) || 0) + 1);
+        if (row.cliente) porCliente.set(row.cliente, (porCliente.get(row.cliente) || 0) + 1);
+      }
+      return { porOs, porCliente };
+    },
+    staleTime: 1000 * 60,
+  });
 
   // Fetch Auvo users
   const { data: auvoUsers } = useQuery({
@@ -1099,6 +1121,7 @@ export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, o
                                   <TableHead className="text-xs">Data OS</TableHead>
                                   <TableHead className="text-xs">Data Execução</TableHead>
                                   <TableHead className="text-xs text-right">Valor</TableHead>
+                                  <TableHead className="text-xs">Obs</TableHead>
                                   <TableHead className="text-xs w-56">Ações</TableHead>
                                 </TableRow>
                               </TableHeader>
@@ -1242,6 +1265,26 @@ export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, o
                                       </TableCell>
                                       <TableCell className="text-right font-medium">
                                         {formatCurrency(Number(item.gc_os_valor_total) || 0)}
+                                      </TableCell>
+                                      <TableCell>
+                                        {(() => {
+                                          const qtd = obsCounts?.porOs.get(String(item.gc_os_id)) || 0;
+                                          return (
+                                            <Button
+                                              size="sm"
+                                              variant={qtd > 0 ? "secondary" : "ghost"}
+                                              className="h-6 px-2 text-[11px]"
+                                              title={qtd > 0 ? `${qtd} observação(ões)` : "Adicionar observação"}
+                                              onClick={(e) => {
+                                                e.stopPropagation();
+                                                setObsItem({ item, cliente: row.cliente });
+                                              }}
+                                            >
+                                              <MessageSquare className="h-3 w-3 mr-1" />
+                                              {qtd > 0 ? qtd : "+"}
+                                            </Button>
+                                          );
+                                        })()}
                                       </TableCell>
                                       <TableCell>
                                         <div className="flex items-center gap-1">
@@ -2048,6 +2091,14 @@ export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, o
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <ObservacoesOsDialog
+        open={!!obsItem}
+        onOpenChange={(open) => { if (!open) setObsItem(null); }}
+        item={obsItem?.item ?? null}
+        cliente={obsItem?.cliente ?? ""}
+        onSaved={() => refetchObsCounts()}
+      />
     </div>
   );
 }

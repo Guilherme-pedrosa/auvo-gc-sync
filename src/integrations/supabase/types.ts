@@ -1339,6 +1339,51 @@ export type Database = {
         }
         Relationships: []
       }
+      os_observacoes: {
+        Row: {
+          autor_id: string | null
+          autor_nome: string | null
+          auvo_task_id: string | null
+          cliente: string | null
+          created_at: string
+          erro_gc: string | null
+          gc_os_codigo: string | null
+          gc_os_id: string | null
+          id: string
+          sincronizado_gc: boolean
+          texto: string
+          updated_at: string
+        }
+        Insert: {
+          autor_id?: string | null
+          autor_nome?: string | null
+          auvo_task_id?: string | null
+          cliente?: string | null
+          created_at?: string
+          erro_gc?: string | null
+          gc_os_codigo?: string | null
+          gc_os_id?: string | null
+          id?: string
+          sincronizado_gc?: boolean
+          texto: string
+          updated_at?: string
+        }
+        Update: {
+          autor_id?: string | null
+          autor_nome?: string | null
+          auvo_task_id?: string | null
+          cliente?: string | null
+          created_at?: string
+          erro_gc?: string | null
+          gc_os_codigo?: string | null
+          gc_os_id?: string | null
+          id?: string
+          sincronizado_gc?: boolean
+          texto?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       os_operation_locks: {
         Row: {
           gc_os_id: string
