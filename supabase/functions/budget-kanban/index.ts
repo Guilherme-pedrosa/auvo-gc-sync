@@ -1,3 +1,6 @@
+import { installGcUsuarioId } from "../_shared/gc-user.ts";
+installGcUsuarioId();
+
 // Lovable Cloud deploy trigger: legacy-compatible Kanban sync.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
