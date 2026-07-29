@@ -360,7 +360,14 @@ Deno.serve(async (req) => {
           .not("observacao", "is", null)
           .order("created_at", { ascending: false })
           .limit(20);
-        return ok({ ok: true, orcamento: cached.orcamento, tarefas: mergedTarefas, observacoes_cliente: obsLogC || [], cached: true });
+      const equipDeTarefas = (arr: any[]) => {
+        for (const t of arr || []) {
+          const n = String(t?.equipamento_nome || "").trim();
+          if (n) return n;
+        }
+        return "";
+      };
+        return ok({ ok: true, orcamento: cached.orcamento, tarefas: mergedTarefas, equipamento: equipDeTarefas(mergedTarefas), observacoes_cliente: obsLogC || [], cached: true });
       }
 
       const resp = await fetch(`${GC_BASE_URL}/api/orcamentos/${gcOrcId}`, { headers: gcHeaders });
@@ -430,7 +437,14 @@ Deno.serve(async (req) => {
         atualizado_em: new Date().toISOString(),
       }, { onConflict: "gc_orcamento_id" });
 
-      return ok({ ok: true, orcamento: orc, tarefas: tarefas || [], observacoes_cliente: obsLog || [], cached: false });
+      const equipDetalhe = (() => {
+        for (const t of tarefas || []) {
+          const n = String((t as any)?.equipamento_nome || "").trim();
+          if (n) return n;
+        }
+        return "";
+      })();
+      return ok({ ok: true, orcamento: orc, tarefas: tarefas || [], equipamento: equipDetalhe, observacoes_cliente: obsLog || [], cached: false });
     }
 
     if (action === "approve" || action === "observation") {
