@@ -7,6 +7,7 @@ const corsHeaders = {
 
 const GC_BASE_URL = "https://api.gestaoclick.com";
 const SITUACOES = ["7063588", "7063587", "7084340", "8757598", "7065899"];
+const SITUACAO_AGUARDANDO_APROVACAO = "7063588";
 
 function ok(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), {
