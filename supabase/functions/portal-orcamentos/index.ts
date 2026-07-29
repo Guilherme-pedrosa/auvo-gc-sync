@@ -376,6 +376,14 @@ Deno.serve(async (req) => {
           .not("observacao", "is", null)
           .order("created_at", { ascending: false })
           .limit(20);
+        const { data: respLogC } = await admin
+          .from("orcamento_aprovacao_log")
+          .select("observacao, user_nome, created_at")
+          .eq("gc_orcamento_id", gcOrcId)
+          .eq("acao", "reply")
+          .not("observacao", "is", null)
+          .order("created_at", { ascending: false })
+          .limit(20);
       const equipDeTarefas = (arr: any[]) => {
         for (const t of arr || []) {
           const n = String(t?.equipamento_nome || "").trim();
@@ -389,6 +397,7 @@ Deno.serve(async (req) => {
           tarefas: mergedTarefas,
           equipamento: equipDeAtributos(cached.orcamento) || equipDeTarefas(mergedTarefas),
           observacoes_cliente: obsLogC || [],
+          respostas_wai: respLogC || [],
           cached: true,
         });
       }
@@ -450,6 +459,14 @@ Deno.serve(async (req) => {
         .not("observacao", "is", null)
         .order("created_at", { ascending: false })
         .limit(20);
+      const { data: respLog } = await admin
+        .from("orcamento_aprovacao_log")
+        .select("observacao, user_nome, created_at")
+        .eq("gc_orcamento_id", gcOrcId)
+        .eq("acao", "reply")
+        .not("observacao", "is", null)
+        .order("created_at", { ascending: false })
+        .limit(20);
 
       // Persiste no cache
       await admin.from("orcamento_detalhe_cache").upsert({
@@ -473,6 +490,7 @@ Deno.serve(async (req) => {
         tarefas: tarefas || [],
         equipamento: equipDeAtributos(orc) || equipDetalhe,
         observacoes_cliente: obsLog || [],
+        respostas_wai: respLog || [],
         cached: false,
       });
     }

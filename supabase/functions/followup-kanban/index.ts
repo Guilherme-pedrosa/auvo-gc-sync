@@ -7,6 +7,7 @@ const corsHeaders = {
 
 const GC_BASE_URL = "https://api.gestaoclick.com";
 const SITUACOES = ["7063588", "7063587", "7084340", "8757598", "7065899"];
+const SITUACAO_AGUARDANDO_APROVACAO = "7063588";
 
 function ok(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), {
@@ -268,6 +269,111 @@ Deno.serve(async (req) => {
           .eq("id", ids[i]);
       }
       return ok({ ok: true });
+    }
+
+    // Resposta interna visível ao cliente: grava na OBS interna do GC e,
+    // opcionalmente, devolve o orçamento para "Aguardando Aprovação".
+    if (action === "reply") {
+      const gcOrcId = String(body?.gc_orcamento_id || "");
+      const texto = String(body?.texto || "").trim();
+      const devolver = body?.devolver_para_aprovacao !== false;
+      if (!gcOrcId) return ok({ ok: false, error: "gc_orcamento_id obrigatório" });
+      if (texto.length < 2) return ok({ ok: false, error: "texto obrigatório" });
+
+      const gcAccessToken = Deno.env.get("GC_ACCESS_TOKEN");
+      const gcSecretToken = Deno.env.get("GC_SECRET_TOKEN");
+      if (!gcAccessToken || !gcSecretToken) return ok({ ok: false, error: "GC credentials missing" });
+      const gcHeaders = {
+        "access-token": gcAccessToken,
+        "secret-access-token": gcSecretToken,
+        "Content-Type": "application/json",
+      };
+
+      // Autor (opcional — usa o token do usuário logado quando presente)
+      let autor = "Equipe WAI";
+      const token = (req.headers.get("Authorization") || "").replace(/^Bearer\s+/i, "");
+      let userId: string | null = null;
+      if (token) {
+        const { data: u } = await sb.auth.getUser(token);
+        userId = u?.user?.id ?? null;
+        if (userId) {
+          const { data: p } = await sb.from("profiles").select("nome, email").eq("id", userId).maybeSingle();
+          autor = String(p?.nome || p?.email || autor).trim();
+        }
+      }
+
+      // GET completo → merge → PUT (padrão não destrutivo do GC)
+      const getResp = await fetch(`${GC_BASE_URL}/api/orcamentos/${gcOrcId}`, { headers: gcHeaders });
+      const getJson: any = await getResp.json().catch(() => ({}));
+      const orcAtual = getJson?.data ?? getJson;
+      if (!orcAtual || typeof orcAtual !== "object") {
+        return ok({ ok: false, error: `Orçamento ${gcOrcId} não encontrado (HTTP ${getResp.status})` });
+      }
+
+      const situacaoAntes = String(orcAtual.situacao_id ?? "");
+      const novaSituacao = devolver ? SITUACAO_AGUARDANDO_APROVACAO : situacaoAntes;
+      const stamp = new Date().toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" });
+      const obsAtual = String(orcAtual.observacoes_interna || "");
+      const linha = `\n\n[${stamp}] RESPOSTA WAI (visível ao cliente) — ${autor}:\n${texto}`;
+
+      const payload: Record<string, unknown> = {
+        ...orcAtual,
+        situacao_id: novaSituacao,
+        observacoes_interna: (obsAtual + linha).trim(),
+      };
+      for (const f of ["id", "codigo", "nome_situacao", "cor_situacao", "hash", "cadastrado_em", "modificado_em"]) {
+        delete (payload as any)[f];
+      }
+
+      const putResp = await fetch(`${GC_BASE_URL}/api/orcamentos/${gcOrcId}`, {
+        method: "PUT",
+        headers: gcHeaders,
+        body: JSON.stringify(payload),
+      });
+      const putJson: any = await putResp.json().catch(() => ({}));
+      const success = putResp.ok && putJson?.code !== 400;
+
+      await sb.from("orcamento_aprovacao_log").insert({
+        gc_orcamento_id: gcOrcId,
+        gc_orcamento_codigo: String(orcAtual.codigo || ""),
+        cliente: String(orcAtual.nome_cliente || ""),
+        acao: "reply",
+        situacao_id_antes: situacaoAntes,
+        situacao_id_depois: success ? novaSituacao : null,
+        observacao: texto,
+        termo_aceito: false,
+        user_id: userId,
+        user_nome: autor,
+        ip: req.headers.get("x-forwarded-for") || req.headers.get("cf-connecting-ip"),
+        user_agent: req.headers.get("user-agent"),
+        detalhes: { http_status: putResp.status, gc_response: putJson },
+      });
+
+      if (!success) {
+        return ok({ ok: false, error: `Falha ao gravar no GestãoClick (HTTP ${putResp.status})` });
+      }
+
+      // Reflete no cache do kanban e invalida o detalhe do portal
+      if (devolver) {
+        const { data: prev } = await sb
+          .from("followup_kanban_cache")
+          .select("dados")
+          .eq("gc_orcamento_id", gcOrcId)
+          .maybeSingle();
+        const dados = { ...((prev?.dados as any) || {}), situacao_id: SITUACAO_AGUARDANDO_APROVACAO };
+        await sb
+          .from("followup_kanban_cache")
+          .update({
+            coluna: SITUACAO_AGUARDANDO_APROVACAO,
+            situacao_id_origem: SITUACAO_AGUARDANDO_APROVACAO,
+            dados,
+            atualizado_em: new Date().toISOString(),
+          })
+          .eq("gc_orcamento_id", gcOrcId);
+      }
+      await sb.from("orcamento_detalhe_cache").delete().eq("gc_orcamento_id", gcOrcId);
+
+      return ok({ ok: true, situacao_id_depois: novaSituacao });
     }
 
     return ok({ ok: false, error: `action desconhecida: ${action}` });
