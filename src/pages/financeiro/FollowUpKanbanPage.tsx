@@ -69,6 +69,37 @@ export default function FollowUpKanbanPage() {
   const [resposta, setResposta] = useState("");
   const [situacaoDestino, setSituacaoDestino] = useState<string>("7063588");
   const [enviandoResposta, setEnviandoResposta] = useState(false);
+  const [colunasVisiveis, setColunasVisiveis] = useState<string[]>(() => {
+    try {
+      const raw = localStorage.getItem(COLUNAS_VISIVEIS_KEY);
+      const parsed = raw ? JSON.parse(raw) : null;
+      if (Array.isArray(parsed)) return parsed.map(String);
+    } catch {
+      // ignora storage inválido e usa o padrão
+    }
+    return COLUNAS_VISIVEIS_PADRAO;
+  });
+
+  const toggleColuna = (id: string) => {
+    setColunasVisiveis((prev) => {
+      const next = prev.includes(id) ? prev.filter((c) => c !== id) : [...prev, id];
+      try {
+        localStorage.setItem(COLUNAS_VISIVEIS_KEY, JSON.stringify(next));
+      } catch {
+        // storage indisponível: mantém apenas em memória
+      }
+      return next;
+    });
+  };
+
+  const definirColunas = (ids: string[]) => {
+    setColunasVisiveis(ids);
+    try {
+      localStorage.setItem(COLUNAS_VISIVEIS_KEY, JSON.stringify(ids));
+    } catch {
+      // storage indisponível: mantém apenas em memória
+    }
+  };
 
   const enviarResposta = async () => {
     if (!selecionado) return;
