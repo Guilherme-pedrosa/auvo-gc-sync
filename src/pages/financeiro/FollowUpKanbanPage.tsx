@@ -3,10 +3,12 @@ import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { ArrowLeft, RefreshCw, Plus, ExternalLink, Trash2, Edit2, Check, X, Lock, Loader2, MessageSquarePlus } from "lucide-react";
+import { ArrowLeft, RefreshCw, Plus, ExternalLink, Trash2, Edit2, Check, X, Lock, Loader2, MessageSquarePlus, Columns3 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { DragDropContext, Droppable, Draggable, DropResult } from "@hello-pangea/dnd";
 import { toast } from "sonner";
@@ -42,6 +44,9 @@ type CacheItem = {
 
 const formatBRL = (n: number) =>
   new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(n || 0);
+
+const COLUNAS_VISIVEIS_KEY = "followup-kanban-colunas-visiveis";
+const COLUNAS_VISIVEIS_PADRAO = ["7063588", "8757598"]; // Ag. Aprovação e Ag. Informações / Correções
 
 const formatDate = (s: string) => {
   if (!s) return "";
