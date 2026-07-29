@@ -2091,6 +2091,14 @@ export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, o
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <ObservacoesOsDialog
+        open={!!obsItem}
+        onOpenChange={(open) => { if (!open) setObsItem(null); }}
+        item={obsItem?.item ?? null}
+        cliente={obsItem?.cliente ?? ""}
+        onSaved={() => refetchObsCounts()}
+      />
     </div>
   );
 }
