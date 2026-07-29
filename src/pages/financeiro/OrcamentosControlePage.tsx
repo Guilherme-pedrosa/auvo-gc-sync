@@ -33,6 +33,20 @@ const formatCurrency = (val: number) =>
 /** Apenas orçamentos aguardando aprovação devem aparecer aqui */
 const SITUACAO_ABERTA_REGEX = /aguardando\s*aprova/i;
 
+/** Mesma heurística usada no Controle de OS para extrair equipamento da orientação */
+const extractEquipmentFromOrientation = (raw: unknown): string => {
+  const lines = String(raw || "")
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+
+  return lines.find((line) => {
+    if (/^(OS|OR|ORÇAMENTO|TAREFA)\s*(N[°º]|#|:)?\s*\d+/i.test(line)) return false;
+    if (/^(PEÇA|PEÇAS|SERVIÇO|SERVIÇOS|PERFIL|BORRACHA|KIT)\b/i.test(line)) return false;
+    return /[a-zÀ-ÿ]{3,}/i.test(line);
+  }) || "";
+};
+
 const fetchOrcamentosNoPeriodo = async (fromDate: Date, toDate: Date) => {
   const fromStr = format(fromDate, "yyyy-MM-dd");
   const toStr = format(toDate, "yyyy-MM-dd");
