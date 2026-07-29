@@ -504,13 +504,29 @@ Deno.serve(async (req) => {
 
       const stamp = new Date().toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" });
       const quem = profile.nome || profile.email || "Cliente";
+      const emailQuem = String(profile.email || "").trim();
+      const ipQuem = String(
+        req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ||
+          req.headers.get("cf-connecting-ip") ||
+          ""
+      ).trim();
+      const identificacao = [
+        emailQuem ? `e-mail: ${emailQuem}` : "",
+        ipQuem ? `IP: ${ipQuem}` : "",
+      ]
+        .filter(Boolean)
+        .join(" | ");
       const obsAtual = String(orcAtual.observacoes_interna || "");
       let novaObs = obsAtual;
       if (action === "approve") {
-        const linha = `\n\n[${stamp}] APROVADO VIA PORTAL por ${quem} — Termo aceito.`;
+        const linha = `\n\n[${stamp}] APROVADO VIA PORTAL por ${quem}${
+          identificacao ? ` (${identificacao})` : ""
+        } — Termo aceito.`;
         novaObs = (obsAtual + linha).trim();
       } else {
-        const linha = `\n\n[${stamp}] OBSERVAÇÃO do cliente ${quem}:\n${observacaoTexto}`;
+        const linha = `\n\n[${stamp}] OBSERVAÇÃO do cliente ${quem}${
+          identificacao ? ` (${identificacao})` : ""
+        }:\n${observacaoTexto}`;
         novaObs = (obsAtual + linha).trim();
       }
 
