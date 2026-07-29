@@ -171,6 +171,40 @@ export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, o
   const [conciliacaoCard, setConciliacaoCard] = useState<any | null>(null);
   const [conciliacaoSituacao, setConciliacaoSituacao] = useState("");
 
+  // OS excluídas no GC (situação virtual)
+  const [deletedOsIds, setDeletedOsIds] = useState<Set<string>>(() => loadDeletedOsIds());
+  const [removedOsIds, setRemovedOsIds] = useState<Set<string>>(() => loadRemovedOsIds());
+  const [checkingDeleted, setCheckingDeleted] = useState(false);
+
+  const markOsDeleted = useCallback((gcOsId: string) => {
+    setDeletedOsIds((prev) => {
+      if (prev.has(gcOsId)) return prev;
+      const next = new Set(prev).add(gcOsId);
+      saveDeletedOsIds(next);
+      return next;
+    });
+  }, []);
+
+  const removerOsExcluida = useCallback((item: any) => {
+    const id = String(item?.gc_os_id || "");
+    if (!id) return;
+    setRemovedOsIds((prev) => {
+      const next = new Set(prev).add(id);
+      saveRemovedOsIds(next);
+      return next;
+    });
+    toast.success(`OS ${item.gc_os_codigo || id} removida da lista`);
+  }, []);
+
+  const restaurarRemovidas = useCallback(() => {
+    setRemovedOsIds(() => {
+      const next = new Set<string>();
+      saveRemovedOsIds(next);
+      return next;
+    });
+    toast.info("OS removidas restauradas na lista");
+  }, []);
+
   // Observações por OS (espelhadas na OBS interna do GC)
   const [obsItem, setObsItem] = useState<{ item: any; cliente: string } | null>(null);
   const { data: obsCounts, refetch: refetchObsCounts } = useQuery({
