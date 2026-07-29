@@ -303,7 +303,86 @@ Deno.serve(async (req) => {
         }
       }
 
-      return ok({ ok: true, eventos: logs || [], observacoes_interna: obsInterna });
+      // Parse dos carimbos gravados na OBS interna do GC (fonte de verdade)
+      type Ev = {
+        acao: string;
+        observacao: string;
+        user_nome: string;
+        user_email: string | null;
+        created_at: string | null;
+        origem: string;
+      };
+      const parseBR = (s: string): string | null => {
+        const m = s.match(/^(\d{2})\/(\d{2})\/(\d{4})[,\s]+(\d{2}):(\d{2})(?::(\d{2}))?$/);
+        if (!m) return null;
+        const [, d, mo, y, h, mi, se] = m;
+        // -03:00 (America/Sao_Paulo)
+        return `${y}-${mo}-${d}T${h}:${mi}:${se || "00"}-03:00`;
+      };
+      const eventosObs: Ev[] = [];
+      if (obsInterna) {
+        const blocos = obsInterna.split(/\n(?=\[\d{2}\/\d{2}\/\d{4})/g);
+        for (const bloco of blocos) {
+          const head = bloco.match(/^\[([^\]]+)\]\s*(.*)$/m);
+          if (!head) continue;
+          const quando = parseBR(head[1].trim());
+          const primeiraLinha = head[2] || "";
+          const resto = bloco.slice(bloco.indexOf(primeiraLinha) + primeiraLinha.length).trim();
+
+          const mObs = primeiraLinha.match(/^OBSERVAÇÃO do cliente\s+([^(:]+)/i);
+          const mAprov = primeiraLinha.match(/^APROVADO VIA PORTAL por\s+([^(—]+)/i);
+          const mResp = primeiraLinha.match(/^RESPOSTA WAI[^—]*—\s*([^:]+)/i);
+          const mEmail = primeiraLinha.match(/e-mail:\s*([^\s|)]+)/i);
+
+          if (mObs) {
+            const inline = primeiraLinha.split(":").slice(1).join(":").trim();
+            eventosObs.push({
+              acao: "observation",
+              observacao: (resto || inline || "").trim(),
+              user_nome: mObs[1].trim(),
+              user_email: mEmail?.[1] || null,
+              created_at: quando,
+              origem: "gc",
+            });
+          } else if (mAprov) {
+            eventosObs.push({
+              acao: "approve",
+              observacao: "Aprovado via portal (termo aceito).",
+              user_nome: mAprov[1].trim(),
+              user_email: mEmail?.[1] || null,
+              created_at: quando,
+              origem: "gc",
+            });
+          } else if (mResp) {
+            eventosObs.push({
+              acao: "reply",
+              observacao: resto.trim(),
+              user_nome: mResp[1].trim(),
+              user_email: null,
+              created_at: quando,
+              origem: "gc",
+            });
+          }
+        }
+      }
+
+      // Mescla com o log local (evita duplicar o mesmo texto)
+      const chave = (e: any) =>
+        `${e.acao}|${String(e.observacao || "").replace(/\s+/g, " ").trim().toLowerCase().slice(0, 120)}`;
+      const vistos = new Set(eventosObs.map(chave));
+      const eventos: any[] = [...eventosObs];
+      for (const l of logs || []) {
+        if (!l.observacao && l.acao !== "approve") continue;
+        const k = chave(l);
+        if (vistos.has(k)) continue;
+        vistos.add(k);
+        eventos.push({ ...l, origem: "log" });
+      }
+      eventos.sort((a, b) =>
+        String(a.created_at || "").localeCompare(String(b.created_at || "")),
+      );
+
+      return ok({ ok: true, eventos, observacoes_interna: obsInterna });
     }
 
     // Resposta interna visível ao cliente: grava na OBS interna do GC e,
