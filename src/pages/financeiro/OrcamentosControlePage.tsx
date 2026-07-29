@@ -33,6 +33,20 @@ const formatCurrency = (val: number) =>
 /** Apenas orçamentos aguardando aprovação devem aparecer aqui */
 const SITUACAO_ABERTA_REGEX = /aguardando\s*aprova/i;
 
+/** Mesma heurística usada no Controle de OS para extrair equipamento da orientação */
+const extractEquipmentFromOrientation = (raw: unknown): string => {
+  const lines = String(raw || "")
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+
+  return lines.find((line) => {
+    if (/^(OS|OR|ORÇAMENTO|TAREFA)\s*(N[°º]|#|:)?\s*\d+/i.test(line)) return false;
+    if (/^(PEÇA|PEÇAS|SERVIÇO|SERVIÇOS|PERFIL|BORRACHA|KIT)\b/i.test(line)) return false;
+    return /[a-zÀ-ÿ]{3,}/i.test(line);
+  }) || "";
+};
+
 const fetchOrcamentosNoPeriodo = async (fromDate: Date, toDate: Date) => {
   const fromStr = format(fromDate, "yyyy-MM-dd");
   const toStr = format(toDate, "yyyy-MM-dd");
@@ -274,9 +288,37 @@ export default function OrcamentosControlePage() {
   }, [rows]);
 
   const allSituacoes = useMemo(() => {
-    const set = new Set(orcamentos.map((t) => t.gc_orc_situacao || "").filter(Boolean));
-    return Array.from(set).sort();
+    return Array.from(new Set(orcamentos.map((t) => t.gc_orc_situacao || "").filter(Boolean))).sort();
   }, [orcamentos]);
+
+  // Mapa de equipamento por tarefa Auvo (mesma lógica do Controle de OS)
+  const equipamentoTaskMap = useMemo(() => {
+    const map = new Map<string, { nome: string; serie: string }>();
+    for (const r of rows || []) {
+      const taskId = String((r as any).auvo_task_id || "");
+      if (!taskId) continue;
+      const nome = String((r as any).equipamento_nome || "").trim();
+      const serie = String((r as any).equipamento_id_serie || "").trim();
+      if (!nome && !serie) continue;
+      if (!map.has(taskId)) map.set(taskId, { nome, serie });
+    }
+    return map;
+  }, [rows]);
+
+  const getItemEquipamento = useCallback((item: any): { nome: string; serie: string } => {
+    const nome = String(item?.equipamento_nome || "").trim();
+    const serie = String(item?.equipamento_id_serie || "").trim();
+    if (nome || serie) return { nome, serie };
+
+    const taskId = String(item?.auvo_task_id || "");
+    const mapped = taskId ? equipamentoTaskMap.get(taskId) : undefined;
+    if (mapped?.nome || mapped?.serie) return mapped;
+
+    const fromText =
+      extractEquipmentFromOrientation(item?.orientacao) ||
+      extractEquipmentFromOrientation(item?.descricao);
+    return { nome: fromText, serie: "" };
+  }, [equipamentoTaskMap]);
 
   const filteredSituacoes = useMemo(() => {
     if (!searchSituacao) return allSituacoes;
@@ -346,8 +388,11 @@ export default function OrcamentosControlePage() {
               String(it.gc_orcamento_id || "") === s
             );
           }
+          const eq = getItemEquipamento(it);
           return (
             (it.gc_orc_situacao || "").toLowerCase().includes(s) ||
+            (eq.nome || "").toLowerCase().includes(s) ||
+            (eq.serie || "").toLowerCase().includes(s) ||
             (it.gc_orcamento_codigo || "").toLowerCase().includes(s) ||
             String(it.gc_orcamento_id || "").includes(s) ||
             (it.auvo_task_id || "").toLowerCase().includes(s)
@@ -364,7 +409,7 @@ export default function OrcamentosControlePage() {
       }
     }
     return result;
-  }, [clienteSummary, search]);
+  }, [clienteSummary, search, getItemEquipamento]);
 
   const grandTotal = filtered.reduce((s, c) => s + c.total, 0);
   const grandCount = filtered.reduce((s, c) => s + c.count, 0);
@@ -661,7 +706,19 @@ export default function OrcamentosControlePage() {
                                     </TableCell>
                                     <TableCell>{item.gc_orc_vendedor || "—"}</TableCell>
                                     <TableCell>{item.tecnico || "—"}</TableCell>
-                                    <TableCell>{item.equipamento_nome || "—"}</TableCell>
+                                    <TableCell className="max-w-[220px]">
+                                      {(() => {
+                                        const eq = getItemEquipamento(item);
+                                        return (
+                                          <div className="min-w-0">
+                                            <div className="truncate" title={eq.nome}>{eq.nome || "—"}</div>
+                                            {eq.serie && (
+                                              <div className="text-[10px] text-muted-foreground font-mono truncate" title={eq.serie}>{eq.serie}</div>
+                                            )}
+                                          </div>
+                                        );
+                                      })()}
+                                    </TableCell>
                                     <TableCell>{item.gc_orc_data || "—"}</TableCell>
                                     <TableCell>{item.data_tarefa || "—"}</TableCell>
                                     <TableCell className="text-right font-medium">{formatCurrency(Number(item.gc_orc_valor_total) || 0)}</TableCell>
