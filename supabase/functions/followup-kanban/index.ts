@@ -272,6 +272,40 @@ Deno.serve(async (req) => {
       return ok({ ok: true });
     }
 
+    // Histórico de conversa: observações do cliente + respostas WAI + OBS interna do GC
+    if (action === "conversa") {
+      const gcOrcId = String(body?.gc_orcamento_id || "");
+      if (!gcOrcId) return ok({ ok: false, error: "gc_orcamento_id obrigatório" });
+
+      const { data: logs } = await sb
+        .from("orcamento_aprovacao_log")
+        .select("acao, observacao, user_nome, user_email, created_at, termo_aceito")
+        .eq("gc_orcamento_id", gcOrcId)
+        .order("created_at", { ascending: true });
+
+      let obsInterna = "";
+      const gcAccessToken = Deno.env.get("GC_ACCESS_TOKEN");
+      const gcSecretToken = Deno.env.get("GC_SECRET_TOKEN");
+      if (gcAccessToken && gcSecretToken) {
+        try {
+          const r = await fetch(`${GC_BASE_URL}/api/orcamentos/${gcOrcId}`, {
+            headers: {
+              "access-token": gcAccessToken,
+              "secret-access-token": gcSecretToken,
+              "Content-Type": "application/json",
+            },
+          });
+          const j: any = await r.json().catch(() => ({}));
+          const o = j?.data ?? j;
+          obsInterna = String(o?.observacoes_interna || "");
+        } catch (_e) {
+          obsInterna = "";
+        }
+      }
+
+      return ok({ ok: true, eventos: logs || [], observacoes_interna: obsInterna });
+    }
+
     // Resposta interna visível ao cliente: grava na OBS interna do GC e,
     // opcionalmente, devolve o orçamento para "Aguardando Aprovação".
     if (action === "reply") {
