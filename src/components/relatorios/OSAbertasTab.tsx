@@ -162,6 +162,27 @@ export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, o
   const [conciliacaoCard, setConciliacaoCard] = useState<any | null>(null);
   const [conciliacaoSituacao, setConciliacaoSituacao] = useState("");
 
+  // Observações por OS (espelhadas na OBS interna do GC)
+  const [obsItem, setObsItem] = useState<{ item: any; cliente: string } | null>(null);
+  const { data: obsCounts, refetch: refetchObsCounts } = useQuery({
+    queryKey: ["os-observacoes-counts"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("os_observacoes")
+        .select("gc_os_id, cliente")
+        .limit(5000);
+      if (error) throw error;
+      const porOs = new Map<string, number>();
+      const porCliente = new Map<string, number>();
+      for (const row of (data ?? []) as { gc_os_id: string | null; cliente: string | null }[]) {
+        if (row.gc_os_id) porOs.set(String(row.gc_os_id), (porOs.get(String(row.gc_os_id)) || 0) + 1);
+        if (row.cliente) porCliente.set(row.cliente, (porCliente.get(row.cliente) || 0) + 1);
+      }
+      return { porOs, porCliente };
+    },
+    staleTime: 1000 * 60,
+  });
+
   // Fetch Auvo users
   const { data: auvoUsers } = useQuery({
     queryKey: ["auvo-users"],
