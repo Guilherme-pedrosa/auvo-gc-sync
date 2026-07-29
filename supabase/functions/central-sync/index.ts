@@ -7,6 +7,7 @@ const corsHeaders = {
 
 const AUVO_BASE_URL = "https://api.auvo.com.br/v2";
 const GC_BASE_URL = "https://api.gestaoclick.com";
+const GC_API_USER_ID = "1320473";
 const QUESTIONNAIRE_ID = "216040";
 const GC_ATRIBUTO_TAREFA_ORC = "73341";
 const GC_ATRIBUTO_TAREFA_OS = "73343";
@@ -47,13 +48,18 @@ function buildGcOrcPublicLink(orc: any): string | null {
 
 async function rateLimitedFetch(url: string, options: RequestInit, type: "gc" | "auvo"): Promise<Response> {
   if (type === "gc") {
+    const requestUrl = new URL(url);
+    const method = String(options.method || "GET").toUpperCase();
+    if (method === "GET" && !requestUrl.searchParams.has("usuario_id")) {
+      requestUrl.searchParams.set("usuario_id", GC_API_USER_ID);
+    }
     const queued = gcRateQueue.then(async () => {
       const elapsed = Date.now() - lastGcCall;
       if (elapsed < MIN_DELAY_MS) {
         await new Promise(r => setTimeout(r, MIN_DELAY_MS - elapsed));
       }
       lastGcCall = Date.now();
-      return fetch(url, options);
+      return fetch(requestUrl.toString(), options);
     });
     gcRateQueue = queued.then(() => undefined, () => undefined);
     return queued;

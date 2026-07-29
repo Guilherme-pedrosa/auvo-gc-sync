@@ -4,6 +4,7 @@ const corsHeaders = {
 };
 
 const GC_BASE_URL = "https://api.gestaoclick.com";
+const GC_API_USER_ID = "1320473";
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
@@ -39,6 +40,9 @@ Deno.serve(async (req) => {
       for (const [key, value] of Object.entries(params)) {
         url.searchParams.set(key, String(value));
       }
+    }
+    if (method.toUpperCase() === "GET" && !url.searchParams.has("usuario_id")) {
+      url.searchParams.set("usuario_id", GC_API_USER_ID);
     }
 
     const gcHeaders: Record<string, string> = {
