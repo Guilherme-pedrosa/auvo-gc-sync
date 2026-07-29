@@ -703,7 +703,19 @@ export default function OrcamentosControlePage() {
                                     </TableCell>
                                     <TableCell>{item.gc_orc_vendedor || "—"}</TableCell>
                                     <TableCell>{item.tecnico || "—"}</TableCell>
-                                    <TableCell>{item.equipamento_nome || "—"}</TableCell>
+                                    <TableCell className="max-w-[220px]">
+                                      {(() => {
+                                        const eq = getItemEquipamento(item);
+                                        return (
+                                          <div className="min-w-0">
+                                            <div className="truncate" title={eq.nome}>{eq.nome || "—"}</div>
+                                            {eq.serie && (
+                                              <div className="text-[10px] text-muted-foreground font-mono truncate" title={eq.serie}>{eq.serie}</div>
+                                            )}
+                                          </div>
+                                        );
+                                      })()}
+                                    </TableCell>
                                     <TableCell>{item.gc_orc_data || "—"}</TableCell>
                                     <TableCell>{item.data_tarefa || "—"}</TableCell>
                                     <TableCell className="text-right font-medium">{formatCurrency(Number(item.gc_orc_valor_total) || 0)}</TableCell>
