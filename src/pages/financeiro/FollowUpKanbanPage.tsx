@@ -434,7 +434,7 @@ export default function FollowUpKanbanPage() {
           if (!v) {
             setSelecionado(null);
             setResposta("");
-            setDevolver(true);
+            setSituacaoDestino("7063588");
           }
         }}
       >
@@ -480,14 +480,23 @@ export default function FollowUpKanbanPage() {
                     rows={3}
                     disabled={enviandoResposta}
                   />
-                  <label className="flex items-center gap-2 text-xs">
-                    <Checkbox
-                      checked={devolver}
-                      onCheckedChange={(v) => setDevolver(v === true)}
+                  <div className="space-y-1">
+                    <p className="text-xs text-muted-foreground">Situação no GestãoClick após responder</p>
+                    <Select
+                      value={situacaoDestino}
+                      onValueChange={setSituacaoDestino}
                       disabled={enviandoResposta}
-                    />
-                    Devolver o orçamento para "Aguardando Aprovação"
-                  </label>
+                    >
+                      <SelectTrigger className="h-9 text-sm">
+                        <SelectValue placeholder="Selecione a situação" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="7063588">Aguardando Aprovação</SelectItem>
+                        <SelectItem value="7841143">Não Aprovado</SelectItem>
+                        <SelectItem value="manter">Manter situação atual</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
                   <div className="flex justify-end">
                     <Button size="sm" onClick={enviarResposta} disabled={enviandoResposta}>
                       {enviandoResposta ? (
