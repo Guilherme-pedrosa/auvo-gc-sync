@@ -192,7 +192,57 @@ Deno.serve(async (req) => {
         if (error) console.error("[followup-kanban] upsert error", error);
       }
 
-      return ok({ ok: true, total: all.length, inseridos, movidos, mantidos });
+      // Reconciliação: cards em cache que não vieram em nenhuma situação monitorada
+      // (mudaram de situação ou foram excluídos no GC) precisam ser reavaliados 1 a 1.
+      const vistosIds = new Set(all.map((o) => String(o.id)));
+      const orfaos = (cacheAtual || [])
+        .map((r) => String(r.gc_orcamento_id))
+        .filter((id) => !vistosIds.has(id));
+
+      let atualizadosOrfaos = 0, removidos = 0;
+      const MAX_ORFAOS = 300;
+      for (const id of orfaos.slice(0, MAX_ORFAOS)) {
+        try {
+          const r = await fetch(`${GC_BASE_URL}/api/orcamentos/${id}`, { headers: gcHeaders });
+          if (r.status === 404 || r.status === 410) {
+            await sb.from("followup_kanban_cache").delete().eq("gc_orcamento_id", id);
+            removidos++;
+            continue;
+          }
+          const j: any = await r.json().catch(() => ({}));
+          const o = j?.data ?? j;
+          if (!o || typeof o !== "object" || !o.id) continue;
+          const m = mapOrc(o);
+          if (SITUACOES.includes(m.situacao_id)) {
+            const nextPos = (posByColuna.get(m.situacao_id) ?? -1) + 1;
+            posByColuna.set(m.situacao_id, nextPos);
+            await sb.from("followup_kanban_cache").update({
+              coluna: m.situacao_id,
+              posicao: nextPos,
+              situacao_id_origem: m.situacao_id,
+              dados: m,
+              atualizado_em: new Date().toISOString(),
+            }).eq("gc_orcamento_id", id);
+          } else {
+            // saiu do fluxo de follow-up (aprovado, faturado, cancelado...)
+            await sb.from("followup_kanban_cache").delete().eq("gc_orcamento_id", id);
+            removidos++;
+          }
+          atualizadosOrfaos++;
+        } catch (e) {
+          console.error(`[followup-kanban] reconcile ${id}`, (e as Error).message);
+        }
+      }
+
+      return ok({
+        ok: true,
+        total: all.length,
+        inseridos,
+        movidos,
+        mantidos,
+        reconciliados: atualizadosOrfaos,
+        removidos,
+      });
     }
 
     if (action === "move") {
