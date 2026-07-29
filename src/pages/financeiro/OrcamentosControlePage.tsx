@@ -320,11 +320,6 @@ export default function OrcamentosControlePage() {
     return { nome: fromText, serie: "" };
   }, [equipamentoTaskMap]);
 
-  const unusedSituacoes = useMemo(() => {
-    const set = new Set(orcamentos.map((t) => t.gc_orc_situacao || "").filter(Boolean));
-    return Array.from(set).sort();
-  }, [orcamentos]);
-
   const filteredSituacoes = useMemo(() => {
     if (!searchSituacao) return allSituacoes;
     return allSituacoes.filter((s) => s.toLowerCase().includes(searchSituacao.toLowerCase()));
