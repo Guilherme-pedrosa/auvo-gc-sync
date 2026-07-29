@@ -3,10 +3,12 @@ import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { ArrowLeft, RefreshCw, Plus, ExternalLink, Trash2, Edit2, Check, X, Lock, Loader2, MessageSquarePlus } from "lucide-react";
+import { ArrowLeft, RefreshCw, Plus, ExternalLink, Trash2, Edit2, Check, X, Lock, Loader2, MessageSquarePlus, Columns3 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { DragDropContext, Droppable, Draggable, DropResult } from "@hello-pangea/dnd";
 import { toast } from "sonner";
@@ -43,6 +45,9 @@ type CacheItem = {
 const formatBRL = (n: number) =>
   new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(n || 0);
 
+const COLUNAS_VISIVEIS_KEY = "followup-kanban-colunas-visiveis";
+const COLUNAS_VISIVEIS_PADRAO = ["7063588", "8757598"]; // Ag. Aprovação e Ag. Informações / Correções
+
 const formatDate = (s: string) => {
   if (!s) return "";
   const d = new Date(s);
@@ -64,6 +69,37 @@ export default function FollowUpKanbanPage() {
   const [resposta, setResposta] = useState("");
   const [situacaoDestino, setSituacaoDestino] = useState<string>("7063588");
   const [enviandoResposta, setEnviandoResposta] = useState(false);
+  const [colunasVisiveis, setColunasVisiveis] = useState<string[]>(() => {
+    try {
+      const raw = localStorage.getItem(COLUNAS_VISIVEIS_KEY);
+      const parsed = raw ? JSON.parse(raw) : null;
+      if (Array.isArray(parsed)) return parsed.map(String);
+    } catch {
+      // ignora storage inválido e usa o padrão
+    }
+    return COLUNAS_VISIVEIS_PADRAO;
+  });
+
+  const toggleColuna = (id: string) => {
+    setColunasVisiveis((prev) => {
+      const next = prev.includes(id) ? prev.filter((c) => c !== id) : [...prev, id];
+      try {
+        localStorage.setItem(COLUNAS_VISIVEIS_KEY, JSON.stringify(next));
+      } catch {
+        // storage indisponível: mantém apenas em memória
+      }
+      return next;
+    });
+  };
+
+  const definirColunas = (ids: string[]) => {
+    setColunasVisiveis(ids);
+    try {
+      localStorage.setItem(COLUNAS_VISIVEIS_KEY, JSON.stringify(ids));
+    } catch {
+      // storage indisponível: mantém apenas em memória
+    }
+  };
 
   const enviarResposta = async () => {
     if (!selecionado) return;
@@ -163,6 +199,11 @@ export default function FollowUpKanbanPage() {
     }
     return m;
   }, [itensPorColuna]);
+
+  const colunasExibidas = useMemo(
+    () => colunas.filter((c) => colunasVisiveis.includes(c.id)),
+    [colunas, colunasVisiveis],
+  );
 
   const onDragEnd = async (result: DropResult) => {
     const { source, destination, draggableId } = result;
@@ -272,6 +313,52 @@ export default function FollowUpKanbanPage() {
         <Button variant="outline" size="sm" onClick={() => setShowNova(true)}>
           <Plus className="h-4 w-4 mr-1" /> Coluna
         </Button>
+        <Popover>
+          <PopoverTrigger asChild>
+            <Button variant="outline" size="sm">
+              <Columns3 className="h-4 w-4 mr-1" />
+              Colunas ({colunasExibidas.length}/{colunas.length})
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent align="end" className="w-64 p-3 space-y-2">
+            <p className="text-xs font-medium">Colunas visíveis</p>
+            {colunas.length === 0 ? (
+              <p className="text-xs text-muted-foreground">Nenhuma coluna disponível.</p>
+            ) : (
+              <>
+                <div className="max-h-64 overflow-auto space-y-1.5">
+                  {colunas.map((c) => (
+                    <label key={c.id} className="flex items-center gap-2 text-sm cursor-pointer">
+                      <Checkbox
+                        checked={colunasVisiveis.includes(c.id)}
+                        onCheckedChange={() => toggleColuna(c.id)}
+                      />
+                      <span className="truncate">{c.titulo}</span>
+                    </label>
+                  ))}
+                </div>
+                <div className="flex gap-2 pt-1">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 text-xs px-2"
+                    onClick={() => definirColunas(colunas.map((c) => c.id))}
+                  >
+                    Todas
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 text-xs px-2"
+                    onClick={() => definirColunas(COLUNAS_VISIVEIS_PADRAO)}
+                  >
+                    Padrão
+                  </Button>
+                </div>
+              </>
+            )}
+          </PopoverContent>
+        </Popover>
         <Button size="sm" onClick={sincronizar} disabled={syncing}>
           <RefreshCw className={`h-4 w-4 mr-1 ${syncing ? "animate-spin" : ""}`} />
           {syncing ? "Sincronizando..." : "Sincronizar"}
@@ -296,10 +383,14 @@ export default function FollowUpKanbanPage() {
       <div className="flex-1 overflow-auto p-4">
         {loading ? (
           <div className="text-center text-muted-foreground py-8">Carregando...</div>
+        ) : colunasExibidas.length === 0 ? (
+          <div className="text-center text-muted-foreground py-8 text-sm">
+            Nenhuma coluna selecionada. Use o filtro "Colunas" para escolher o que exibir.
+          </div>
         ) : (
           <DragDropContext onDragEnd={onDragEnd}>
             <div className="flex gap-3 min-h-full">
-              {colunas.map((col) => {
+              {colunasExibidas.map((col) => {
                 const arr = itensPorColuna.get(col.id) || [];
                 return (
                   <div
