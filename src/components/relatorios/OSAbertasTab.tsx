@@ -19,6 +19,7 @@ import {
    Search, ArrowDownWideNarrow, ExternalLink, Filter, CalendarIcon,
    Edit2, Save, Loader2, UserCog, MapPin, Navigation, Package,
    ClipboardList, FileText, AlertTriangle, RefreshCw, CheckCircle2, MessageSquare,
+   Trash2, ShieldAlert,
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { ObservacoesOsDialog } from "./ObservacoesOsDialog";
@@ -32,6 +33,14 @@ import {
 } from "@/lib/osOpenStatuses";
 import { toast } from "sonner";
 import { useAuth } from "@/hooks/useAuth";
+import {
+  SITUACAO_EXCLUIDA,
+  isGcOsMissingResponse,
+  loadDeletedOsIds,
+  loadRemovedOsIds,
+  saveDeletedOsIds,
+  saveRemovedOsIds,
+} from "@/lib/osExcluidas";
 
 interface Props {
   data: any[];
