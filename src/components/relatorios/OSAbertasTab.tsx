@@ -1121,6 +1121,7 @@ export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, o
                                   <TableHead className="text-xs">Data OS</TableHead>
                                   <TableHead className="text-xs">Data Execução</TableHead>
                                   <TableHead className="text-xs text-right">Valor</TableHead>
+                                  <TableHead className="text-xs">Obs</TableHead>
                                   <TableHead className="text-xs w-56">Ações</TableHead>
                                 </TableRow>
                               </TableHeader>
