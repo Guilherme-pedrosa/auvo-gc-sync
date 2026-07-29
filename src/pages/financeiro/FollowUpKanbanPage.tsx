@@ -69,6 +69,9 @@ export default function FollowUpKanbanPage() {
   const [resposta, setResposta] = useState("");
   const [situacaoDestino, setSituacaoDestino] = useState<string>("7063588");
   const [enviandoResposta, setEnviandoResposta] = useState(false);
+  const [conversa, setConversa] = useState<any[]>([]);
+  const [obsInterna, setObsInterna] = useState("");
+  const [carregandoConversa, setCarregandoConversa] = useState(false);
   const [colunasVisiveis, setColunasVisiveis] = useState<string[]>(() => {
     try {
       const raw = localStorage.getItem(COLUNAS_VISIVEIS_KEY);
@@ -132,6 +135,19 @@ export default function FollowUpKanbanPage() {
     setResposta("");
     setSelecionado(null);
     await carregar();
+  };
+
+  const carregarConversa = async (gcOrcamentoId: string) => {
+    setCarregandoConversa(true);
+    setConversa([]);
+    setObsInterna("");
+    const { data, error } = await supabase.functions.invoke("followup-kanban", {
+      body: { action: "conversa", gc_orcamento_id: gcOrcamentoId },
+    });
+    setCarregandoConversa(false);
+    if (error || !data?.ok) return;
+    setConversa(Array.isArray(data.eventos) ? data.eventos : []);
+    setObsInterna(String(data.observacoes_interna || ""));
   };
 
   const carregar = useCallback(async () => {
@@ -466,7 +482,10 @@ export default function FollowUpKanbanPage() {
                                   ref={p.innerRef}
                                   {...p.draggableProps}
                                   {...p.dragHandleProps}
-                                  onClick={() => setSelecionado(it)}
+                                  onClick={() => {
+                                    setSelecionado(it);
+                                    carregarConversa(it.gc_orcamento_id);
+                                  }}
                                   className={`bg-card rounded-md border p-2 cursor-pointer hover:border-primary transition-colors ${
                                     snap.isDragging ? "shadow-lg" : ""
                                   }`}
@@ -529,7 +548,7 @@ export default function FollowUpKanbanPage() {
           }
         }}
       >
-        <DialogContent className="max-w-lg">
+        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
           {selecionado && (
             <>
               <DialogHeader>
@@ -556,6 +575,60 @@ export default function FollowUpKanbanPage() {
                 >
                   Abrir no GestãoClick <ExternalLink className="h-3 w-3" />
                 </a>
+
+                <div className="rounded-md border p-3 space-y-2 mt-3">
+                  <p className="text-sm font-medium flex items-center gap-2">
+                    <MessageSquarePlus className="h-4 w-4" /> Conversa com o cliente
+                  </p>
+                  {carregandoConversa ? (
+                    <p className="text-xs text-muted-foreground flex items-center gap-2">
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" /> Carregando histórico…
+                    </p>
+                  ) : conversa.length === 0 ? (
+                    <p className="text-xs text-muted-foreground">
+                      Nenhum comentário registrado pelo cliente neste orçamento.
+                    </p>
+                  ) : (
+                    <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
+                      {conversa.map((ev, i) => {
+                        const cliente = ev.acao === "observation" || ev.acao === "approve";
+                        return (
+                          <div
+                            key={i}
+                            className={`rounded-md border p-2 text-xs ${
+                              cliente ? "bg-amber-50 border-amber-200" : "bg-emerald-50 border-emerald-200"
+                            }`}
+                          >
+                            <div className="flex items-center justify-between gap-2 mb-1">
+                              <span className="font-medium">
+                                {cliente
+                                  ? `Cliente — ${ev.user_nome || ev.user_email || "sem nome"}`
+                                  : `Equipe WAI — ${ev.user_nome || "sem nome"}`}
+                              </span>
+                              <span className="text-muted-foreground">
+                                {ev.created_at
+                                  ? new Date(ev.created_at).toLocaleString("pt-BR")
+                                  : ""}
+                              </span>
+                            </div>
+                            <p className="whitespace-pre-wrap">
+                              {ev.observacao ||
+                                (ev.acao === "approve" ? "Aprovado via portal (termo aceito)." : "—")}
+                            </p>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                  {obsInterna && (
+                    <details className="text-xs">
+                      <summary className="cursor-pointer text-muted-foreground">
+                        Ver OBS interna completa do GC
+                      </summary>
+                      <pre className="whitespace-pre-wrap mt-1 text-[11px] leading-relaxed">{obsInterna}</pre>
+                    </details>
+                  )}
+                </div>
 
                 <div className="rounded-md border p-3 space-y-2 mt-3">
                   <p className="text-sm font-medium flex items-center gap-2">
