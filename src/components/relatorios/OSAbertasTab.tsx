@@ -1453,6 +1453,17 @@ export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, o
                                               <CheckCircle2 className="h-3 w-3 mr-0.5" /> Alterada
                                             </Badge>
                                           )}
+                                          {deletedOsIds.has(String(item.gc_os_id || "")) && (
+                                            <Button
+                                              size="icon"
+                                              variant="ghost"
+                                              className="h-6 w-6 text-destructive"
+                                              title="Remover OS excluída da lista"
+                                              onClick={(e) => { e.stopPropagation(); removerOsExcluida(item); }}
+                                            >
+                                              <Trash2 className="h-3 w-3" />
+                                            </Button>
+                                          )}
                                         </div>
                                       </TableCell>
                                     </TableRow>
