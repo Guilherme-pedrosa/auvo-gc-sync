@@ -1215,6 +1215,20 @@ async function reconcileOpenOsMirror(
   const transitionedIds = Array.from(mirroredOpenIds).filter((id) => !currentById.has(id));
   let transitionedChecked = 0;
   let transitionedReconciled = 0;
+  let transitionedMissing = 0;
+  // OS apagada no GC: a API responde 400/404/410. Marcamos como excluída para
+  // que ela saia das etapas abertas em vez de ficar pendente para sempre.
+  const markMissing = async (osId: string) => {
+    const { error } = await sbClient
+      .from("tarefas_central")
+      .update({ gc_os_situacao: "EXCLUÍDA NO GC", gc_os_situacao_id: "" })
+      .eq("gc_os_id", osId);
+    if (error) {
+      console.error(`[central-sync] Falha ao marcar OS ${osId} como excluída: ${error.message}`);
+      return false;
+    }
+    return true;
+  };
   const PARALLEL = 8;
   for (let i = 0; i < transitionedIds.length; i += PARALLEL) {
     if (Date.now() - startedAt >= HARD_BUDGET_MS) break;
@@ -1223,29 +1237,40 @@ async function reconcileOpenOsMirror(
       try {
         const response = await rateLimitedFetch(`${GC_BASE_URL}/api/ordens_servicos/${osId}`, { headers: gcHeaders }, "gc");
         if (!response.ok) {
+          if ([400, 404, 410].includes(response.status)) {
+            console.log(`[central-sync] OS ${osId} não existe mais no GC (HTTP ${response.status}) — marcando como excluída`);
+            if (await markMissing(osId)) transitionedMissing++;
+            return "missing" as const;
+          }
           console.warn(`[central-sync] OS ${osId} ausente do retrato aberto retornou HTTP ${response.status}`);
           return null;
         }
         const data = await response.json().catch(() => null);
         const os = data?.data || data;
-        return os?.id ? mapGcOsToMirrorPayload(os) : null;
+        if (!os?.id) {
+          if (await markMissing(osId)) transitionedMissing++;
+          return "missing" as const;
+        }
+        return mapGcOsToMirrorPayload(os);
       } catch (error) {
         console.error(`[central-sync] Falha ao reconciliar OS ${osId}: ${(error as Error).message}`);
         return null;
       }
     }));
     transitionedChecked += batch.length;
-    const results = await Promise.all(freshList.filter(Boolean).map(applyPayload));
+    const results = await Promise.all(
+      freshList.filter((f) => f && f !== "missing").map((f) => applyPayload(f)),
+    );
     transitionedReconciled += results.filter(Boolean).length;
     errors += freshList.filter((fresh) => !fresh).length;
   }
 
-  const remaining = transitionedIds.length - transitionedReconciled;
-  console.log(`[central-sync] Conciliação OS abertas: ${currentById.size} atuais, ${transitionedChecked}/${transitionedIds.length} saídas verificadas, ${transitionedReconciled} conciliadas, ${updated} linhas atualizadas, ${remaining} pendentes`);
+  const remaining = transitionedIds.length - transitionedReconciled - transitionedMissing;
+  console.log(`[central-sync] Conciliação OS abertas: ${currentById.size} atuais, ${transitionedChecked}/${transitionedIds.length} saídas verificadas, ${transitionedReconciled} conciliadas, ${transitionedMissing} excluídas no GC, ${updated} linhas atualizadas, ${remaining} pendentes`);
   return {
     checked: currentById.size + transitionedChecked,
     updated,
-    transitioned: transitionedReconciled,
+    transitioned: transitionedReconciled + transitionedMissing,
     remaining,
     complete: remaining === 0,
     errors,
