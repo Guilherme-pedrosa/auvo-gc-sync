@@ -288,6 +288,39 @@ export default function OrcamentosControlePage() {
   }, [rows]);
 
   const allSituacoes = useMemo(() => {
+    return Array.from(new Set(orcamentos.map((t) => t.gc_orc_situacao || "").filter(Boolean))).sort();
+  }, [orcamentos]);
+
+  // Mapa de equipamento por tarefa Auvo (mesma lógica do Controle de OS)
+  const equipamentoTaskMap = useMemo(() => {
+    const map = new Map<string, { nome: string; serie: string }>();
+    for (const r of rows || []) {
+      const taskId = String((r as any).auvo_task_id || "");
+      if (!taskId) continue;
+      const nome = String((r as any).equipamento_nome || "").trim();
+      const serie = String((r as any).equipamento_id_serie || "").trim();
+      if (!nome && !serie) continue;
+      if (!map.has(taskId)) map.set(taskId, { nome, serie });
+    }
+    return map;
+  }, [rows]);
+
+  const getItemEquipamento = useCallback((item: any): { nome: string; serie: string } => {
+    const nome = String(item?.equipamento_nome || "").trim();
+    const serie = String(item?.equipamento_id_serie || "").trim();
+    if (nome || serie) return { nome, serie };
+
+    const taskId = String(item?.auvo_task_id || "");
+    const mapped = taskId ? equipamentoTaskMap.get(taskId) : undefined;
+    if (mapped?.nome || mapped?.serie) return mapped;
+
+    const fromText =
+      extractEquipmentFromOrientation(item?.orientacao) ||
+      extractEquipmentFromOrientation(item?.descricao);
+    return { nome: fromText, serie: "" };
+  }, [equipamentoTaskMap]);
+
+  const unusedSituacoes = useMemo(() => {
     const set = new Set(orcamentos.map((t) => t.gc_orc_situacao || "").filter(Boolean));
     return Array.from(set).sort();
   }, [orcamentos]);
