@@ -1101,6 +1101,7 @@ export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, o
             { value: "pausada", label: "⏸ Pausada", icon: null },
             { value: "finalizada", label: "✅ Finalizada", icon: null },
             { value: "sem_exec", label: "Sem execução", icon: null },
+            { value: "excluidas", label: `🗑 Excluídas${deletedOsIds.size ? ` (${deletedOsIds.size})` : ""}`, icon: null },
           ].map((opt) => (
             <Button
               key={opt.value}
@@ -1129,6 +1130,24 @@ export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, o
           >
             <RefreshCw className={`h-3.5 w-3.5 ${syncing ? "animate-spin" : ""}`} />
             {syncing ? "Sincronizando..." : "Sincronizar OS"}
+          </Button>
+        )}
+
+        <Button
+          variant="outline"
+          size="sm"
+          className="gap-1.5"
+          onClick={verificarOsExcluidas}
+          disabled={checkingDeleted}
+          title="Consulta cada OS no GestãoClick e marca as que foram apagadas"
+        >
+          {checkingDeleted ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ShieldAlert className="h-3.5 w-3.5" />}
+          {checkingDeleted ? "Verificando..." : "Verificar excluídas"}
+        </Button>
+
+        {removedOsIds.size > 0 && (
+          <Button variant="ghost" size="sm" className="text-xs" onClick={restaurarRemovidas}>
+            Restaurar {removedOsIds.size} removida(s)
           </Button>
         )}
       </div>
