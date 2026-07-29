@@ -383,7 +383,14 @@ Deno.serve(async (req) => {
         }
         return "";
       };
-        return ok({ ok: true, orcamento: cached.orcamento, tarefas: mergedTarefas, equipamento: equipDeTarefas(mergedTarefas), observacoes_cliente: obsLogC || [], cached: true });
+        return ok({
+          ok: true,
+          orcamento: cached.orcamento,
+          tarefas: mergedTarefas,
+          equipamento: equipDeAtributos(cached.orcamento) || equipDeTarefas(mergedTarefas),
+          observacoes_cliente: obsLogC || [],
+          cached: true,
+        });
       }
 
       const resp = await fetch(`${GC_BASE_URL}/api/orcamentos/${gcOrcId}`, { headers: gcHeaders });
@@ -460,7 +467,14 @@ Deno.serve(async (req) => {
         }
         return "";
       })();
-      return ok({ ok: true, orcamento: orc, tarefas: tarefas || [], equipamento: equipDetalhe, observacoes_cliente: obsLog || [], cached: false });
+      return ok({
+        ok: true,
+        orcamento: orc,
+        tarefas: tarefas || [],
+        equipamento: equipDeAtributos(orc) || equipDetalhe,
+        observacoes_cliente: obsLog || [],
+        cached: false,
+      });
     }
 
     if (action === "approve" || action === "observation") {
