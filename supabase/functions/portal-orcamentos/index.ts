@@ -68,6 +68,18 @@ const normalize = (s: string) =>
     .replace(/\s+(ltda|me|sa|s\.a\.|s\/a|eireli|epp)\s*\.?$/i, "")
     .replace(/\s+/g, " ");
 
+// Equipamento vem como atributo customizado 66890 ("Equipamento") no orçamento do GC
+function equipDeAtributos(orc: any): string {
+  const atribs: any[] = Array.isArray(orc?.atributos) ? orc.atributos : [];
+  for (const a of atribs) {
+    const node = a?.atributo || a;
+    if (String(node?.atributo_id || "") !== "66890") continue;
+    const v = String(node?.conteudo || "").trim();
+    if (v) return v;
+  }
+  return "";
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
