@@ -3,7 +3,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { Checkbox } from "@/components/ui/checkbox";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { ArrowLeft, RefreshCw, Plus, ExternalLink, Trash2, Edit2, Check, X, Lock, Loader2, MessageSquarePlus } from "lucide-react";
@@ -62,7 +62,7 @@ export default function FollowUpKanbanPage() {
   const [editandoColTitulo, setEditandoColTitulo] = useState("");
   const [selecionado, setSelecionado] = useState<CacheItem | null>(null);
   const [resposta, setResposta] = useState("");
-  const [devolver, setDevolver] = useState(true);
+  const [situacaoDestino, setSituacaoDestino] = useState<string>("7063588");
   const [enviandoResposta, setEnviandoResposta] = useState(false);
 
   const enviarResposta = async () => {
@@ -78,7 +78,7 @@ export default function FollowUpKanbanPage() {
         action: "reply",
         gc_orcamento_id: selecionado.gc_orcamento_id,
         texto,
-        devolver_para_aprovacao: devolver,
+        situacao_destino: situacaoDestino,
       },
     });
     setEnviandoResposta(false);
@@ -87,9 +87,11 @@ export default function FollowUpKanbanPage() {
       return;
     }
     toast.success(
-      devolver
-        ? "Resposta enviada ao cliente e orçamento devolvido para aprovação."
-        : "Resposta enviada ao cliente.",
+      situacaoDestino === "7063588"
+        ? "Resposta enviada e orçamento devolvido para Aguardando Aprovação."
+        : situacaoDestino === "7841143"
+          ? "Resposta enviada e orçamento marcado como Não Aprovado."
+          : "Resposta enviada ao cliente.",
     );
     setResposta("");
     setSelecionado(null);
