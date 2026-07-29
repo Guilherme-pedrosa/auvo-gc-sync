@@ -18,9 +18,10 @@ import { Skeleton } from "@/components/ui/skeleton";
 import {
    Search, ArrowDownWideNarrow, ExternalLink, Filter, CalendarIcon,
    Edit2, Save, Loader2, UserCog, MapPin, Navigation, Package,
-   ClipboardList, FileText, AlertTriangle, RefreshCw, CheckCircle2,
+   ClipboardList, FileText, AlertTriangle, RefreshCw, CheckCircle2, MessageSquare,
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
+import { ObservacoesOsDialog } from "./ObservacoesOsDialog";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { cn } from "@/lib/utils";
