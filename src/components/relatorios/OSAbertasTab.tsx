@@ -376,7 +376,7 @@ export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, o
 
   // Filter items by situação, exec status, and moved OS
   const filteredItems = useMemo(() => {
-    let items = data.filter((t) => !movedOsIds.has(t.gc_os_id));
+    let items = data.filter((t) => !movedOsIds.has(t.gc_os_id) && !removedOsIds.has(String(t.gc_os_id || "")));
 
     // Deduplica por gc_os_id: se houver linha "real" (Auvo) e "shell pendente" para a mesma OS,
     // descarta a shell pendente. A shell GC-only (sem 73343) é preservada porque é a única fonte.
@@ -411,7 +411,9 @@ export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, o
     items = items.filter(isOpenOsSituation);
 
     // Apply exec status filter
-    if (execStatusFilter !== "all") {
+    if (execStatusFilter === "excluidas") {
+      items = items.filter((item) => deletedOsIds.has(String(item.gc_os_id || "")));
+    } else if (execStatusFilter !== "all") {
       items = items.filter((item) => {
         const status = getItemExecStatus(item).toLowerCase();
         if (execStatusFilter === "em_andamento") return status.includes("andamento") || status.includes("deslocamento");
@@ -423,7 +425,38 @@ export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, o
     }
 
     return items;
-  }, [data, excludedSituacoes, execStatusFilter, getItemExecStatus, movedOsIds]);
+  }, [data, deletedOsIds, excludedSituacoes, execStatusFilter, getItemExecStatus, movedOsIds, removedOsIds]);
+
+  // Verifica no GC quais OS listadas foram apagadas
+  const verificarOsExcluidas = useCallback(async () => {
+    const ids = Array.from(new Set(filteredItems.map((i: any) => String(i.gc_os_id || "")).filter(Boolean)));
+    if (ids.length === 0) return;
+    setCheckingDeleted(true);
+    const encontradas: string[] = [];
+    try {
+      const CONC = 5;
+      for (let i = 0; i < ids.length; i += CONC) {
+        await Promise.all(ids.slice(i, i + CONC).map(async (id) => {
+          const { data: resp, error } = await supabase.functions.invoke("gc-proxy", {
+            body: { endpoint: `/api/ordens_servicos/${id}`, method: "GET" },
+          });
+          if (error) return;
+          if (isGcOsMissingResponse(resp)) {
+            encontradas.push(id);
+            markOsDeleted(id);
+          }
+        }));
+      }
+      if (encontradas.length > 0) {
+        toast.warning(`${encontradas.length} OS não existem mais no GestãoClick — marcadas como ${SITUACAO_EXCLUIDA}`);
+        setExecStatusFilter("excluidas");
+      } else {
+        toast.success("Nenhuma OS excluída encontrada");
+      }
+    } finally {
+      setCheckingDeleted(false);
+    }
+  }, [filteredItems, markOsDeleted]);
 
   // Group by client, sum values
   const clienteSummary = useMemo(() => {
