@@ -150,39 +150,6 @@ export default function FollowUpKanbanPage() {
     setObsInterna(String(data.observacoes_interna || ""));
   };
 
-  const enviarRespostaLegacy = async () => {
-    if (!selecionado) return;
-    const texto = resposta.trim();
-    if (texto.length < 2) {
-      toast.error("Escreva a resposta antes de enviar.");
-      return;
-    }
-    setEnviandoResposta(true);
-    const { data, error } = await supabase.functions.invoke("followup-kanban", {
-      body: {
-        action: "reply",
-        gc_orcamento_id: selecionado.gc_orcamento_id,
-        texto,
-        situacao_destino: situacaoDestino,
-      },
-    });
-    setEnviandoResposta(false);
-    if (error || !data?.ok) {
-      toast.error(data?.error || "Erro ao enviar resposta");
-      return;
-    }
-    toast.success(
-      situacaoDestino === "7063588"
-        ? "Resposta enviada e orçamento devolvido para Aguardando Aprovação."
-        : situacaoDestino === "7841143"
-          ? "Resposta enviada e orçamento marcado como Não Aprovado."
-          : "Resposta enviada ao cliente.",
-    );
-    setResposta("");
-    setSelecionado(null);
-    await carregar();
-  };
-
   const carregar = useCallback(async () => {
     setLoading(true);
     const { data, error } = await supabase.functions.invoke("followup-kanban", {
