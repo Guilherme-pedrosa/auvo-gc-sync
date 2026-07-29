@@ -266,6 +266,10 @@ Deno.serve(async (req) => {
             if (hash) linkMap.set(String(i.gc_orcamento_id), `https://gestaoclick.com/prop/${hash}`);
             const tipo = String(orc?.tipo || "").trim().toLowerCase();
             if (tipo) tipoMap.set(String(i.gc_orcamento_id), tipo);
+            const equipAttr = equipDeAtributos(orc);
+            if (equipAttr && !equipMap.has(String(i.gc_orcamento_id))) {
+              equipMap.set(String(i.gc_orcamento_id), equipAttr);
+            }
             // Fallback de equipamento: atributo 73341 (TAREFA OS) -> tarefas_central
             const atribs: any[] = Array.isArray(orc?.atributos) ? orc.atributos : [];
             const ids: string[] = [];
