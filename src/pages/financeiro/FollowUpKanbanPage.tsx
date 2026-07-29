@@ -482,7 +482,10 @@ export default function FollowUpKanbanPage() {
                                   ref={p.innerRef}
                                   {...p.draggableProps}
                                   {...p.dragHandleProps}
-                                  onClick={() => setSelecionado(it)}
+                                  onClick={() => {
+                                    setSelecionado(it);
+                                    carregarConversa(it.gc_orcamento_id);
+                                  }}
                                   className={`bg-card rounded-md border p-2 cursor-pointer hover:border-primary transition-colors ${
                                     snap.isDragging ? "shadow-lg" : ""
                                   }`}
