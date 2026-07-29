@@ -2,9 +2,11 @@ import { useEffect, useMemo, useState, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { ArrowLeft, RefreshCw, Plus, ExternalLink, Trash2, Edit2, Check, X, Lock } from "lucide-react";
+import { ArrowLeft, RefreshCw, Plus, ExternalLink, Trash2, Edit2, Check, X, Lock, Loader2, MessageSquarePlus } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { DragDropContext, Droppable, Draggable, DropResult } from "@hello-pangea/dnd";
 import { toast } from "sonner";
@@ -59,6 +61,40 @@ export default function FollowUpKanbanPage() {
   const [editandoColId, setEditandoColId] = useState<string | null>(null);
   const [editandoColTitulo, setEditandoColTitulo] = useState("");
   const [selecionado, setSelecionado] = useState<CacheItem | null>(null);
+  const [resposta, setResposta] = useState("");
+  const [devolver, setDevolver] = useState(true);
+  const [enviandoResposta, setEnviandoResposta] = useState(false);
+
+  const enviarResposta = async () => {
+    if (!selecionado) return;
+    const texto = resposta.trim();
+    if (texto.length < 2) {
+      toast.error("Escreva a resposta antes de enviar.");
+      return;
+    }
+    setEnviandoResposta(true);
+    const { data, error } = await supabase.functions.invoke("followup-kanban", {
+      body: {
+        action: "reply",
+        gc_orcamento_id: selecionado.gc_orcamento_id,
+        texto,
+        devolver_para_aprovacao: devolver,
+      },
+    });
+    setEnviandoResposta(false);
+    if (error || !data?.ok) {
+      toast.error(data?.error || "Erro ao enviar resposta");
+      return;
+    }
+    toast.success(
+      devolver
+        ? "Resposta enviada ao cliente e orçamento devolvido para aprovação."
+        : "Resposta enviada ao cliente.",
+    );
+    setResposta("");
+    setSelecionado(null);
+    await carregar();
+  };
 
   const carregar = useCallback(async () => {
     setLoading(true);
