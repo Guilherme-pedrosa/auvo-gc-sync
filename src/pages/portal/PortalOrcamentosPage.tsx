@@ -658,6 +658,29 @@ export default function PortalOrcamentosPage() {
                       {(() => {
                         const orc: any = detailQuery.data.orcamento || {};
                         const interna =
+                       Array.isArray((detailQuery.data as any).respostas_wai) &&
+                        (detailQuery.data as any).respostas_wai.length > 0 && (
+                          <div className="rounded-md border border-emerald-300 bg-emerald-50 p-2 text-xs space-y-2">
+                            <p className="font-semibold text-emerald-900">Resposta da nossa equipe:</p>
+                            {(detailQuery.data as any).respostas_wai.map((o: any, idx: number) => (
+                              <div key={idx} className="border-l-2 border-emerald-400 pl-2">
+                                <p className="text-[11px] text-emerald-700">
+                                  {o.user_nome || "Equipe WAI"} ·{" "}
+                                  {o.created_at
+                                    ? new Date(o.created_at).toLocaleString("pt-BR", {
+                                        timeZone: "America/Sao_Paulo",
+                                      })
+                                    : ""}
+                                </p>
+                                <p className="whitespace-pre-wrap text-emerald-900">{o.observacao}</p>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+
+                      {(() => {
+                        const orc: any = detailQuery.data.orcamento || {};
+                        const interna =
                           orc.observacoes_interna ||
                           orc.observacao_interna ||
                           orc.observacoes_internas ||
