@@ -19,6 +19,7 @@ import {
    Search, ArrowDownWideNarrow, ExternalLink, Filter, CalendarIcon,
    Edit2, Save, Loader2, UserCog, MapPin, Navigation, Package,
    ClipboardList, FileText, AlertTriangle, RefreshCw, CheckCircle2, MessageSquare,
+   Trash2, ShieldAlert,
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { ObservacoesOsDialog } from "./ObservacoesOsDialog";
@@ -32,6 +33,14 @@ import {
 } from "@/lib/osOpenStatuses";
 import { toast } from "sonner";
 import { useAuth } from "@/hooks/useAuth";
+import {
+  SITUACAO_EXCLUIDA,
+  isGcOsMissingResponse,
+  loadDeletedOsIds,
+  loadRemovedOsIds,
+  saveDeletedOsIds,
+  saveRemovedOsIds,
+} from "@/lib/osExcluidas";
 
 interface Props {
   data: any[];
@@ -161,6 +170,40 @@ export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, o
   // Conciliação dialog
   const [conciliacaoCard, setConciliacaoCard] = useState<any | null>(null);
   const [conciliacaoSituacao, setConciliacaoSituacao] = useState("");
+
+  // OS excluídas no GC (situação virtual)
+  const [deletedOsIds, setDeletedOsIds] = useState<Set<string>>(() => loadDeletedOsIds());
+  const [removedOsIds, setRemovedOsIds] = useState<Set<string>>(() => loadRemovedOsIds());
+  const [checkingDeleted, setCheckingDeleted] = useState(false);
+
+  const markOsDeleted = useCallback((gcOsId: string) => {
+    setDeletedOsIds((prev) => {
+      if (prev.has(gcOsId)) return prev;
+      const next = new Set(prev).add(gcOsId);
+      saveDeletedOsIds(next);
+      return next;
+    });
+  }, []);
+
+  const removerOsExcluida = useCallback((item: any) => {
+    const id = String(item?.gc_os_id || "");
+    if (!id) return;
+    setRemovedOsIds((prev) => {
+      const next = new Set(prev).add(id);
+      saveRemovedOsIds(next);
+      return next;
+    });
+    toast.success(`OS ${item.gc_os_codigo || id} removida da lista`);
+  }, []);
+
+  const restaurarRemovidas = useCallback(() => {
+    setRemovedOsIds(() => {
+      const next = new Set<string>();
+      saveRemovedOsIds(next);
+      return next;
+    });
+    toast.info("OS removidas restauradas na lista");
+  }, []);
 
   // Observações por OS (espelhadas na OBS interna do GC)
   const [obsItem, setObsItem] = useState<{ item: any; cliente: string } | null>(null);
@@ -333,7 +376,7 @@ export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, o
 
   // Filter items by situação, exec status, and moved OS
   const filteredItems = useMemo(() => {
-    let items = data.filter((t) => !movedOsIds.has(t.gc_os_id));
+    let items = data.filter((t) => !movedOsIds.has(t.gc_os_id) && !removedOsIds.has(String(t.gc_os_id || "")));
 
     // Deduplica por gc_os_id: se houver linha "real" (Auvo) e "shell pendente" para a mesma OS,
     // descarta a shell pendente. A shell GC-only (sem 73343) é preservada porque é a única fonte.
@@ -368,7 +411,9 @@ export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, o
     items = items.filter(isOpenOsSituation);
 
     // Apply exec status filter
-    if (execStatusFilter !== "all") {
+    if (execStatusFilter === "excluidas") {
+      items = items.filter((item) => deletedOsIds.has(String(item.gc_os_id || "")));
+    } else if (execStatusFilter !== "all") {
       items = items.filter((item) => {
         const status = getItemExecStatus(item).toLowerCase();
         if (execStatusFilter === "em_andamento") return status.includes("andamento") || status.includes("deslocamento");
@@ -380,7 +425,38 @@ export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, o
     }
 
     return items;
-  }, [data, excludedSituacoes, execStatusFilter, getItemExecStatus, movedOsIds]);
+  }, [data, deletedOsIds, excludedSituacoes, execStatusFilter, getItemExecStatus, movedOsIds, removedOsIds]);
+
+  // Verifica no GC quais OS listadas foram apagadas
+  const verificarOsExcluidas = useCallback(async () => {
+    const ids = Array.from(new Set(filteredItems.map((i: any) => String(i.gc_os_id || "")).filter(Boolean)));
+    if (ids.length === 0) return;
+    setCheckingDeleted(true);
+    const encontradas: string[] = [];
+    try {
+      const CONC = 5;
+      for (let i = 0; i < ids.length; i += CONC) {
+        await Promise.all(ids.slice(i, i + CONC).map(async (id) => {
+          const { data: resp, error } = await supabase.functions.invoke("gc-proxy", {
+            body: { endpoint: `/api/ordens_servicos/${id}`, method: "GET" },
+          });
+          if (error) return;
+          if (isGcOsMissingResponse(resp)) {
+            encontradas.push(id);
+            markOsDeleted(id);
+          }
+        }));
+      }
+      if (encontradas.length > 0) {
+        toast.warning(`${encontradas.length} OS não existem mais no GestãoClick — marcadas como ${SITUACAO_EXCLUIDA}`);
+        setExecStatusFilter("excluidas");
+      } else {
+        toast.success("Nenhuma OS excluída encontrada");
+      }
+    } finally {
+      setCheckingDeleted(false);
+    }
+  }, [filteredItems, markOsDeleted]);
 
   // Group by client, sum values
   const clienteSummary = useMemo(() => {
@@ -554,6 +630,12 @@ export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, o
               body: { endpoint: `/api/ordens_servicos/${item.gc_os_id}`, method: "GET" },
             });
             if (error || cancelled) continue;
+
+            if (isGcOsMissingResponse(gcData)) {
+              markOsDeleted(String(item.gc_os_id));
+              updates.set(String(item.gc_os_id), { execTaskId: "", tecnico: "", dataTarefa: "", status: "" });
+              continue;
+            }
 
             const osObj = gcData?.data?.data ?? gcData?.data ?? null;
             const atributos: any[] = osObj?.atributos || [];
@@ -1025,6 +1107,7 @@ export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, o
             { value: "pausada", label: "⏸ Pausada", icon: null },
             { value: "finalizada", label: "✅ Finalizada", icon: null },
             { value: "sem_exec", label: "Sem execução", icon: null },
+            { value: "excluidas", label: `🗑 Excluídas${deletedOsIds.size ? ` (${deletedOsIds.size})` : ""}`, icon: null },
           ].map((opt) => (
             <Button
               key={opt.value}
@@ -1053,6 +1136,24 @@ export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, o
           >
             <RefreshCw className={`h-3.5 w-3.5 ${syncing ? "animate-spin" : ""}`} />
             {syncing ? "Sincronizando..." : "Sincronizar OS"}
+          </Button>
+        )}
+
+        <Button
+          variant="outline"
+          size="sm"
+          className="gap-1.5"
+          onClick={verificarOsExcluidas}
+          disabled={checkingDeleted}
+          title="Consulta cada OS no GestãoClick e marca as que foram apagadas"
+        >
+          {checkingDeleted ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ShieldAlert className="h-3.5 w-3.5" />}
+          {checkingDeleted ? "Verificando..." : "Verificar excluídas"}
+        </Button>
+
+        {removedOsIds.size > 0 && (
+          <Button variant="ghost" size="sm" className="text-xs" onClick={restaurarRemovidas}>
+            Restaurar {removedOsIds.size} removida(s)
           </Button>
         )}
       </div>
@@ -1181,6 +1282,11 @@ export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, o
                                         </div>
                                       </TableCell>
                                       <TableCell>
+                                        {deletedOsIds.has(String(item.gc_os_id || "")) ? (
+                                          <Badge variant="destructive" className="text-[10px]">
+                                            {SITUACAO_EXCLUIDA}
+                                          </Badge>
+                                        ) : (
                                         <Badge
                                           variant="outline"
                                           className="text-[10px]"
@@ -1191,6 +1297,7 @@ export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, o
                                         >
                                           {item.gc_os_situacao || "—"}
                                         </Badge>
+                                        )}
                                       </TableCell>
                                       <TableCell className="max-w-[260px]">
                                         {(() => {
@@ -1351,6 +1458,17 @@ export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, o
                                             <Badge variant="outline" className="text-[9px] bg-green-100 text-green-700 border-green-300 dark:bg-green-900/50 dark:text-green-300 dark:border-green-700">
                                               <CheckCircle2 className="h-3 w-3 mr-0.5" /> Alterada
                                             </Badge>
+                                          )}
+                                          {deletedOsIds.has(String(item.gc_os_id || "")) && (
+                                            <Button
+                                              size="icon"
+                                              variant="ghost"
+                                              className="h-6 w-6 text-destructive"
+                                              title="Remover OS excluída da lista"
+                                              onClick={(e) => { e.stopPropagation(); removerOsExcluida(item); }}
+                                            >
+                                              <Trash2 className="h-3 w-3" />
+                                            </Button>
                                           )}
                                         </div>
                                       </TableCell>
