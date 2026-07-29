@@ -388,8 +388,11 @@ export default function OrcamentosControlePage() {
               String(it.gc_orcamento_id || "") === s
             );
           }
+          const eq = getItemEquipamento(it);
           return (
             (it.gc_orc_situacao || "").toLowerCase().includes(s) ||
+            (eq.nome || "").toLowerCase().includes(s) ||
+            (eq.serie || "").toLowerCase().includes(s) ||
             (it.gc_orcamento_codigo || "").toLowerCase().includes(s) ||
             String(it.gc_orcamento_id || "").includes(s) ||
             (it.auvo_task_id || "").toLowerCase().includes(s)
@@ -406,7 +409,7 @@ export default function OrcamentosControlePage() {
       }
     }
     return result;
-  }, [clienteSummary, search]);
+  }, [clienteSummary, search, getItemEquipamento]);
 
   const grandTotal = filtered.reduce((s, c) => s + c.total, 0);
   const grandCount = filtered.reduce((s, c) => s + c.count, 0);
