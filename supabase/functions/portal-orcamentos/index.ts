@@ -237,8 +237,12 @@ Deno.serve(async (req) => {
       }
       // Para os que não vieram pela tarefas_central, busca o hash no GC e monta /prop/{hash}
       const tipoMap = new Map<string, string>();
+      const taskIdsPorOrc = new Map<string, string[]>();
       const missing = itensValidos.filter(
-        (i: any) => !linkMap.has(String(i.gc_orcamento_id)) || !i.tipo,
+        (i: any) =>
+          !linkMap.has(String(i.gc_orcamento_id)) ||
+          !i.tipo ||
+          !equipMap.has(String(i.gc_orcamento_id)),
       );
       await Promise.all(
         missing.map(async (i: any) => {
@@ -250,9 +254,40 @@ Deno.serve(async (req) => {
             if (hash) linkMap.set(String(i.gc_orcamento_id), `https://gestaoclick.com/prop/${hash}`);
             const tipo = String(orc?.tipo || "").trim().toLowerCase();
             if (tipo) tipoMap.set(String(i.gc_orcamento_id), tipo);
+            // Fallback de equipamento: atributo 73341 (TAREFA OS) -> tarefas_central
+            const atribs: any[] = Array.isArray(orc?.atributos) ? orc.atributos : [];
+            const ids: string[] = [];
+            for (const a of atribs) {
+              const node = a?.atributo || a;
+              const attrId = String(node?.atributo_id || "");
+              if (attrId !== "73341" && attrId !== "73344" && attrId !== "73343") continue;
+              for (const part of String(node?.conteudo || "").split(/[\/,;\s]+/)) {
+                const id = part.trim();
+                if (/^\d{6,}$/.test(id)) ids.push(id);
+              }
+            }
+            if (ids.length > 0) taskIdsPorOrc.set(String(i.gc_orcamento_id), ids);
           } catch (_) { /* ignore */ }
         }),
       );
+      // Resolve equipamento pelas tarefas referenciadas nos atributos do orçamento
+      const allTaskIds = Array.from(new Set(Array.from(taskIdsPorOrc.values()).flat()));
+      if (allTaskIds.length > 0) {
+        const { data: tarefasAttr } = await admin
+          .from("tarefas_central")
+          .select("auvo_task_id, equipamento_nome")
+          .in("auvo_task_id", allTaskIds);
+        const porTask = new Map<string, string>();
+        for (const t of tarefasAttr || []) {
+          const nome = String((t as any).equipamento_nome || "").trim();
+          if (nome) porTask.set(String((t as any).auvo_task_id), nome);
+        }
+        for (const [orcId, ids] of taskIdsPorOrc.entries()) {
+          if (equipMap.has(orcId)) continue;
+          const nome = ids.map((id) => porTask.get(id)).find((n) => !!n);
+          if (nome) equipMap.set(orcId, nome);
+        }
+      }
       const enriched = itensValidos
         .map((i: any) => ({
           ...i,
@@ -307,7 +342,7 @@ Deno.serve(async (req) => {
         if (idsC.size > 0) {
           const { data: t2c } = await admin
             .from("tarefas_central")
-            .select("auvo_task_id, auvo_task_url, auvo_link, auvo_survey_url, gc_orc_link, gc_os_link, status_auvo")
+            .select("auvo_task_id, auvo_task_url, auvo_link, auvo_survey_url, gc_orc_link, gc_os_link, status_auvo, equipamento_nome")
             .in("auvo_task_id", Array.from(idsC));
           extraC = t2c || [];
         }
@@ -325,7 +360,14 @@ Deno.serve(async (req) => {
           .not("observacao", "is", null)
           .order("created_at", { ascending: false })
           .limit(20);
-        return ok({ ok: true, orcamento: cached.orcamento, tarefas: mergedTarefas, observacoes_cliente: obsLogC || [], cached: true });
+      const equipDeTarefas = (arr: any[]) => {
+        for (const t of arr || []) {
+          const n = String(t?.equipamento_nome || "").trim();
+          if (n) return n;
+        }
+        return "";
+      };
+        return ok({ ok: true, orcamento: cached.orcamento, tarefas: mergedTarefas, equipamento: equipDeTarefas(mergedTarefas), observacoes_cliente: obsLogC || [], cached: true });
       }
 
       const resp = await fetch(`${GC_BASE_URL}/api/orcamentos/${gcOrcId}`, { headers: gcHeaders });
@@ -339,7 +381,7 @@ Deno.serve(async (req) => {
       // Procura tarefa Auvo relacionada (via tarefas_central)
       const { data: tarefasPorOrc } = await admin
         .from("tarefas_central")
-        .select("auvo_task_id, auvo_task_url, auvo_link, auvo_survey_url, gc_orc_link, gc_os_link, status_auvo")
+        .select("auvo_task_id, auvo_task_url, auvo_link, auvo_survey_url, gc_orc_link, gc_os_link, status_auvo, equipamento_nome")
         .eq("gc_orcamento_id", gcOrcId)
         .limit(5);
 
@@ -364,7 +406,7 @@ Deno.serve(async (req) => {
       if (taskIdsFromOrc.size > 0) {
         const { data: t2 } = await admin
           .from("tarefas_central")
-          .select("auvo_task_id, auvo_task_url, auvo_link, auvo_survey_url, gc_orc_link, gc_os_link, status_auvo")
+          .select("auvo_task_id, auvo_task_url, auvo_link, auvo_survey_url, gc_orc_link, gc_os_link, status_auvo, equipamento_nome")
           .in("auvo_task_id", Array.from(taskIdsFromOrc));
         tarefasPorAttr = t2 || [];
       }
@@ -395,7 +437,14 @@ Deno.serve(async (req) => {
         atualizado_em: new Date().toISOString(),
       }, { onConflict: "gc_orcamento_id" });
 
-      return ok({ ok: true, orcamento: orc, tarefas: tarefas || [], observacoes_cliente: obsLog || [], cached: false });
+      const equipDetalhe = (() => {
+        for (const t of tarefas || []) {
+          const n = String((t as any)?.equipamento_nome || "").trim();
+          if (n) return n;
+        }
+        return "";
+      })();
+      return ok({ ok: true, orcamento: orc, tarefas: tarefas || [], equipamento: equipDetalhe, observacoes_cliente: obsLog || [], cached: false });
     }
 
     if (action === "approve" || action === "observation") {

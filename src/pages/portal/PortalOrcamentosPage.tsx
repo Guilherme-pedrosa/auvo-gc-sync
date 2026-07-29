@@ -153,7 +153,7 @@ export default function PortalOrcamentosPage() {
       });
       if (error) throw error;
       if (!data?.ok) throw new Error(data?.error || "Falha ao carregar detalhes");
-      return data as { orcamento: any; tarefas: any[] };
+      return data as { orcamento: any; tarefas: any[]; equipamento?: string };
     },
   });
 
@@ -510,7 +510,7 @@ export default function PortalOrcamentosPage() {
                   <div className="rounded-md border p-3 text-sm space-y-1">
                     <div><span className="text-muted-foreground">Vendedor:</span> {selected.vendedor || "—"}</div>
                     <div><span className="text-muted-foreground">Data:</span> {fmtData(selected.data)}</div>
-                    <div><span className="text-muted-foreground">Equipamento:</span> {selected.equipamento || "—"}</div>
+                    <div><span className="text-muted-foreground">Equipamento:</span> {selected.equipamento || detailQuery.data?.equipamento || detailQuery.data?.orcamento?.nome_equipamento || "—"}</div>
                     <div><span className="text-muted-foreground">Valor total:</span> <strong>{brl(selected.valor_total)}</strong></div>
                     {selected.gc_orc_link && (
                       <a
