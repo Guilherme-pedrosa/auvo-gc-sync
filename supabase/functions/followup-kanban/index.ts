@@ -8,6 +8,7 @@ const corsHeaders = {
 const GC_BASE_URL = "https://api.gestaoclick.com";
 const SITUACOES = ["7063588", "7063587", "7084340", "8757598", "7065899"];
 const SITUACAO_AGUARDANDO_APROVACAO = "7063588";
+const SITUACAO_NAO_APROVADO = "7841143";
 
 function ok(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), {
@@ -277,6 +278,17 @@ Deno.serve(async (req) => {
       const gcOrcId = String(body?.gc_orcamento_id || "");
       const texto = String(body?.texto || "").trim();
       const devolver = body?.devolver_para_aprovacao !== false;
+      // Situação destino: "manter" | id permitido. Compat: usa devolver_para_aprovacao quando ausente.
+      const SITUACOES_PERMITIDAS: Record<string, string> = {
+        [SITUACAO_AGUARDANDO_APROVACAO]: "Aguardando Aprovação",
+        [SITUACAO_NAO_APROVADO]: "Não Aprovado",
+      };
+      const destinoRaw = body?.situacao_destino === undefined || body?.situacao_destino === null
+        ? (devolver ? SITUACAO_AGUARDANDO_APROVACAO : "manter")
+        : String(body.situacao_destino);
+      if (destinoRaw !== "manter" && !SITUACOES_PERMITIDAS[destinoRaw]) {
+        return ok({ ok: false, error: `situacao_destino inválida: ${destinoRaw}` });
+      }
       if (!gcOrcId) return ok({ ok: false, error: "gc_orcamento_id obrigatório" });
       if (texto.length < 2) return ok({ ok: false, error: "texto obrigatório" });
 
@@ -311,7 +323,8 @@ Deno.serve(async (req) => {
       }
 
       const situacaoAntes = String(orcAtual.situacao_id ?? "");
-      const novaSituacao = devolver ? SITUACAO_AGUARDANDO_APROVACAO : situacaoAntes;
+      const alteraSituacao = destinoRaw !== "manter";
+      const novaSituacao = alteraSituacao ? destinoRaw : situacaoAntes;
       const stamp = new Date().toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" });
       const obsAtual = String(orcAtual.observacoes_interna || "");
       const linha = `\n\n[${stamp}] RESPOSTA WAI (visível ao cliente) — ${autor}:\n${texto}`;
@@ -354,18 +367,22 @@ Deno.serve(async (req) => {
       }
 
       // Reflete no cache do kanban e invalida o detalhe do portal
-      if (devolver) {
+      if (alteraSituacao) {
         const { data: prev } = await sb
           .from("followup_kanban_cache")
           .select("dados")
           .eq("gc_orcamento_id", gcOrcId)
           .maybeSingle();
-        const dados = { ...((prev?.dados as any) || {}), situacao_id: SITUACAO_AGUARDANDO_APROVACAO };
+        const dados = {
+          ...((prev?.dados as any) || {}),
+          situacao_id: novaSituacao,
+          situacao: SITUACOES_PERMITIDAS[novaSituacao] || (prev?.dados as any)?.situacao,
+        };
         await sb
           .from("followup_kanban_cache")
           .update({
-            coluna: SITUACAO_AGUARDANDO_APROVACAO,
-            situacao_id_origem: SITUACAO_AGUARDANDO_APROVACAO,
+            coluna: novaSituacao,
+            situacao_id_origem: novaSituacao,
             dados,
             atualizado_em: new Date().toISOString(),
           })
