@@ -1267,6 +1267,26 @@ export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, o
                                         {formatCurrency(Number(item.gc_os_valor_total) || 0)}
                                       </TableCell>
                                       <TableCell>
+                                        {(() => {
+                                          const qtd = obsCounts?.porOs.get(String(item.gc_os_id)) || 0;
+                                          return (
+                                            <Button
+                                              size="sm"
+                                              variant={qtd > 0 ? "secondary" : "ghost"}
+                                              className="h-6 px-2 text-[11px]"
+                                              title={qtd > 0 ? `${qtd} observação(ões)` : "Adicionar observação"}
+                                              onClick={(e) => {
+                                                e.stopPropagation();
+                                                setObsItem({ item, cliente: row.cliente });
+                                              }}
+                                            >
+                                              <MessageSquare className="h-3 w-3 mr-1" />
+                                              {qtd > 0 ? qtd : "+"}
+                                            </Button>
+                                          );
+                                        })()}
+                                      </TableCell>
+                                      <TableCell>
                                         <div className="flex items-center gap-1">
                                           <Button
                                             size="icon"
