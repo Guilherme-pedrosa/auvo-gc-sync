@@ -1276,6 +1276,11 @@ export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, o
                                         </div>
                                       </TableCell>
                                       <TableCell>
+                                        {deletedOsIds.has(String(item.gc_os_id || "")) ? (
+                                          <Badge variant="destructive" className="text-[10px]">
+                                            {SITUACAO_EXCLUIDA}
+                                          </Badge>
+                                        ) : (
                                         <Badge
                                           variant="outline"
                                           className="text-[10px]"
@@ -1286,6 +1291,7 @@ export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, o
                                         >
                                           {item.gc_os_situacao || "—"}
                                         </Badge>
+                                        )}
                                       </TableCell>
                                       <TableCell className="max-w-[260px]">
                                         {(() => {
