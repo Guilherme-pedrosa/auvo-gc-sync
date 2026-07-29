@@ -200,6 +200,19 @@ export default function FollowUpKanbanPage() {
     return m;
   }, [itensPorColuna]);
 
+  const colunasExibidas = useMemo(
+    () => colunas.filter((c) => colunasVisiveis.includes(c.id)),
+    [colunas, colunasVisiveis],
+  );
+
+  const _totalPorColunaLegado = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const [cid, arr] of itensPorColuna) {
+      m.set(cid, arr.reduce((sum, it) => sum + (it.dados.valor_total || 0), 0));
+    }
+    return m;
+  }, [itensPorColuna]);
+
   const onDragEnd = async (result: DropResult) => {
     const { source, destination, draggableId } = result;
     if (!destination) return;
