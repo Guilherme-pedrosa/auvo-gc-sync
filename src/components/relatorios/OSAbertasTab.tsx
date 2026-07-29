@@ -385,7 +385,11 @@ export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, o
         continue;
       }
 
-      const cliente = item.cliente || item.gc_os_cliente || "Sem cliente";
+      // No Controle OS, a OS do GC é o registro financeiro/operacional canônico.
+      // Quando a mesma OS já está vinculada ao Auvo, agrupar pelo cliente Auvo cria
+      // duas linhas para o mesmo cliente se o espelho local ainda tiver nomenclatura
+      // antiga do Auvo. Para OS com vínculo GC, usamos sempre o cliente GC.
+      const cliente = item.gc_os_cliente || item.cliente || "Sem cliente";
       const key = normalizeKey(cliente) || cliente;
       const entry = map.get(key) || { cliente, count: 0, total: 0, items: [] };
       entry.count++;
