@@ -27,7 +27,9 @@ function truncate(v: unknown, max = 1500): string {
 async function analisar(apiKey: string, ctx: Ctx) {
   const prompt = `Você é um ANALISTA OPERACIONAL de manutenção. Analise a preventiva abaixo e produza uma avaliação gerencial.
 Não crie ordens de serviço, compras ou orçamentos: apenas sintetize fatos, classifique criticidade e sugira ação.
-Se não houver nada relevante, use diagnóstico "Preventiva concluída integralmente sem observações relevantes.", pendência "Sem pendências", ação "Nenhuma ação necessária." e prioridade "baixa".
+Leia com atenção o relato do técnico E TODAS as respostas do questionário (campos como SERVIÇOS NECESSÁRIOS, PEÇAS NECESSÁRIAS, OBSERVAÇÕES, HORAS PARA EXECUÇÃO). Qualquer serviço necessário, peça necessária, higienização pendente, risco de segurança, retorno ou alinhamento com cliente é PENDÊNCIA — nesse caso satisfacao NUNCA pode ser 100 e a prioridade deve refletir o risco (risco de incêndio/segurança = alta ou critica).
+Só use "Preventiva concluída integralmente sem observações relevantes.", pendência "Sem pendências", ação "Nenhuma ação necessária." e prioridade "baixa" quando o questionário e o relato estiverem realmente vazios de qualquer necessidade.
+Se o contexto vier vazio (sem relato e sem questionário), responda diagnóstico "Sem dados de execução sincronizados para avaliação.", pendência "Dados ausentes", ação "Revisar sincronização da tarefa.", prioridade "media" e satisfacao null.
 
 DADOS DA PREVENTIVA (JSON):
 ${JSON.stringify(ctx)}
