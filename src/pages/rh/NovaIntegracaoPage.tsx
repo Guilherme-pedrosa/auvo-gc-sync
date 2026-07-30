@@ -401,6 +401,16 @@ export default function NovaIntegracaoPage() {
           <CardHeader><CardTitle className="text-lg">Seleção</CardTitle></CardHeader>
           <CardContent className="space-y-4">
             <div>
+              <Label>Nome da integração</Label>
+              <Input
+                className="uppercase"
+                placeholder="EX.: INTEGRAÇÃO CORPORATIVA"
+                value={nome}
+                onChange={(e) => setNome(e.target.value.toUpperCase())}
+              />
+            </div>
+
+            <div>
               <Label>Cliente</Label>
               <SearchableSelect
                 options={clienteOptions}
@@ -410,6 +420,61 @@ export default function NovaIntegracaoPage() {
                 searchPlaceholder="Digite o nome..."
                 className="w-full"
               />
+            </div>
+
+            <div className="rounded-lg border p-3 space-y-3">
+              <Label className="block">Abrangência</Label>
+              <RadioGroup
+                value={abrangencia}
+                onValueChange={(v) => setAbrangencia(v as "exclusiva" | "compartilhada")}
+                className="space-y-2"
+              >
+                <div className="flex items-center space-x-2">
+                  <RadioGroupItem value="exclusiva" id="ab-excl" />
+                  <Label htmlFor="ab-excl" className="font-normal cursor-pointer">Exclusiva (apenas este cliente)</Label>
+                </div>
+                <div className="flex items-center space-x-2">
+                  <RadioGroupItem value="compartilhada" id="ab-comp" />
+                  <Label htmlFor="ab-comp" className="font-normal cursor-pointer">Compartilhada com outros clientes</Label>
+                </div>
+              </RadioGroup>
+
+              {abrangencia === "compartilhada" && (
+                <div className="space-y-2">
+                  <Label>Clientes abrangidos</Label>
+                  <SearchableSelect
+                    multiple
+                    options={clienteOptions.filter((o) => o.value !== clientId)}
+                    value={sharedClientIds}
+                    onValueChange={setSharedClientIds}
+                    placeholder="Selecione os clientes..."
+                    searchPlaceholder="Buscar cliente..."
+                    className="w-full"
+                  />
+                  <div>
+                    <p className="text-xs font-medium mb-1">Empresas Abrangidas</p>
+                    <ul className="text-xs text-muted-foreground space-y-0.5">
+                      <li className="uppercase">• {cliente?.nome ?? "—"} <span className="normal-case">(anfitrião)</span></li>
+                      {sharedClientIds.filter((c) => c !== clientId).map((cid) => (
+                        <li key={cid} className="uppercase">• {clientes.find((c) => c.id === cid)?.nome ?? cid}</li>
+                      ))}
+                      {sharedClientIds.filter((c) => c !== clientId).length === 0 && (
+                        <li className="italic">Nenhuma empresa adicional selecionada.</li>
+                      )}
+                    </ul>
+                  </div>
+                </div>
+              )}
+
+              {editingId && (
+                <Button variant="outline" size="sm" className="w-full" onClick={salvarAbrangencia} disabled={savingShares}>
+                  {savingShares ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Save className="h-4 w-4 mr-2" />}
+                  Salvar abrangência
+                </Button>
+              )}
+              <p className="text-[11px] text-muted-foreground">
+                A integração continua única: os clientes abrangidos apenas referenciam este mesmo registro, arquivos e histórico.
+              </p>
             </div>
 
             {clientId && !loadingReqs && (
