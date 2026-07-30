@@ -18,7 +18,7 @@ import { toast } from "sonner";
 import {
   useRhClientes, useColaboradores, useSaveIntegration, useIntegrations,
   useDocumentTypes, useCompanyDocs, useClientRequirements,
-  computeDocStatus, type Integration,
+  computeDocStatus, useIntegrationShares, useSaveIntegrationShares, type Integration,
 } from "@/hooks/rh/useRh";
 import { supabase } from "@/integrations/supabase/client";
 
@@ -82,9 +82,15 @@ export default function NovaIntegracaoPage() {
   const { data: docTypes = [] } = useDocumentTypes();
   const { data: companyDocs = [] } = useCompanyDocs();
   const { data: integrations = [] } = useIntegrations();
+  const { data: shares = [] } = useIntegrationShares();
   const save = useSaveIntegration();
+  const saveShares = useSaveIntegrationShares();
 
   const [clientId, setClientId] = useState<string>("");
+  const [nome, setNome] = useState<string>("");
+  const [abrangencia, setAbrangencia] = useState<"exclusiva" | "compartilhada">("exclusiva");
+  const [sharedClientIds, setSharedClientIds] = useState<string[]>([]);
+  const [savingShares, setSavingShares] = useState(false);
   const [scope, setScope] = useState<Scope>("both");
   const [techIds, setTechIds] = useState<string[]>([]);
   const [status, setStatus] = useState<"INITIAL" | "AUTHORIZED" | "BLOCKED">("INITIAL");
@@ -114,6 +120,8 @@ export default function NovaIntegracaoPage() {
     const rec = integrations.find((i) => i.id === editingId);
     if (!rec) return;
     setClientId(rec.client_id);
+    setNome(rec.nome ?? "");
+    setAbrangencia((rec.abrangencia as "exclusiva" | "compartilhada") ?? "exclusiva");
     setTechIds(rec.technician_ids || []);
     setScope((rec.technician_ids?.length ?? 0) > 0 ? "both" : "company");
     setValidade(rec.earliest_expiry_date ?? "");
