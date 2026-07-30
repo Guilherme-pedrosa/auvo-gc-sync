@@ -2,7 +2,7 @@ import { useNavigate, useLocation } from "react-router-dom";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/hooks/useAuth";
 import {
- RefreshCw, BarChart3, Kanban, LayoutDashboard, ListChecks, Radio, Wrench, CalendarDays, ChevronDown, Users, LogOut, Shield, FileText, PanelLeftClose, PanelLeft, Thermometer, ArrowLeftRight, Trophy, Settings, UserCog, FileCheck, Building2, GraduationCap, HeartPulse, Stethoscope
+ RefreshCw, BarChart3, Kanban, LayoutDashboard, ListChecks, Radio, Wrench, CalendarDays, ChevronDown, Users, LogOut, Shield, FileText, PanelLeftClose, PanelLeft, Thermometer, ArrowLeftRight, Trophy, Settings, UserCog, FileCheck, Building2, GraduationCap, HeartPulse, Stethoscope, Brain
 } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useState } from "react";
