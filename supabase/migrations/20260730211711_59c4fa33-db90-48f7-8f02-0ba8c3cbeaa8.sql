@@ -1,0 +1,1 @@
+ALTER TABLE public.analises_operacionais ADD COLUMN IF NOT EXISTS atualizado_em timestamptz NOT NULL DEFAULT now();

@@ -27,7 +27,9 @@ function truncate(v: unknown, max = 1500): string {
 async function analisar(apiKey: string, ctx: Ctx) {
   const prompt = `Você é um ANALISTA OPERACIONAL de manutenção. Analise a preventiva abaixo e produza uma avaliação gerencial.
 Não crie ordens de serviço, compras ou orçamentos: apenas sintetize fatos, classifique criticidade e sugira ação.
-Se não houver nada relevante, use diagnóstico "Preventiva concluída integralmente sem observações relevantes.", pendência "Sem pendências", ação "Nenhuma ação necessária." e prioridade "baixa".
+Leia com atenção o relato do técnico E TODAS as respostas do questionário (campos como SERVIÇOS NECESSÁRIOS, PEÇAS NECESSÁRIAS, OBSERVAÇÕES, HORAS PARA EXECUÇÃO). Qualquer serviço necessário, peça necessária, higienização pendente, risco de segurança, retorno ou alinhamento com cliente é PENDÊNCIA — nesse caso satisfacao NUNCA pode ser 100 e a prioridade deve refletir o risco (risco de incêndio/segurança = alta ou critica).
+Só use "Preventiva concluída integralmente sem observações relevantes.", pendência "Sem pendências", ação "Nenhuma ação necessária." e prioridade "baixa" quando o questionário e o relato estiverem realmente vazios de qualquer necessidade.
+Se o contexto vier vazio (sem relato e sem questionário), responda diagnóstico "Sem dados de execução sincronizados para avaliação.", pendência "Dados ausentes", ação "Revisar sincronização da tarefa.", prioridade "media" e satisfacao null.
 
 DADOS DA PREVENTIVA (JSON):
 ${JSON.stringify(ctx)}
@@ -126,13 +128,26 @@ Deno.serve(async (req) => {
     const loteIds = lote.map((p: any) => String(p.ultima_preventiva_task_id));
     const tarefas = new Map<string, any>();
     for (let i = 0; i < loteIds.length; i += 200) {
-      const { data } = await supabase
+      const { data, error: eT } = await supabase
         .from("tarefas_central")
         .select(
-          "auvo_task_id, cliente, tecnico, status_auvo, orientacao, descricao, pendencia, questionario_respostas, data_tarefa, data_conclusao, auvo_task_url, auvo_link, equipamento_nome, gc_os_codigo, gc_orc_codigo",
+          "auvo_task_id, cliente, tecnico, status_auvo, orientacao, descricao, pendencia, questionario_respostas, data_tarefa, data_conclusao, auvo_task_url, auvo_link, equipamento_nome, gc_os_codigo, gc_orcamento_codigo",
         )
         .in("auvo_task_id", loteIds.slice(i, i + 200));
-      (data || []).forEach((t: any) => tarefas.set(String(t.auvo_task_id), t));
+      if (eT) throw eT;
+      // Pode existir mais de uma linha por auvo_task_id (shells "Pendente vínculo Auvo",
+      // OS distintas compartilhando a mesma tarefa). Escolhe sempre a mais rica.
+      const score = (t: any) =>
+        (String(t.questionario_respostas ?? "").length > 5 ? 1000 : 0) +
+        String(t.descricao ?? "").length +
+        String(t.orientacao ?? "").length +
+        String(t.pendencia ?? "").length +
+        (t.status_auvo && !String(t.status_auvo).toLowerCase().includes("pendente vínculo") ? 500 : 0);
+      (data || []).forEach((t: any) => {
+        const key = String(t.auvo_task_id);
+        const atual = tarefas.get(key);
+        if (!atual || score(t) > score(atual)) tarefas.set(key, t);
+      });
     }
 
     // 4) Grupos por cliente
@@ -167,7 +182,7 @@ Deno.serve(async (req) => {
         pendencia_registrada: truncate(t.pendencia, 800),
         os_simplificada: truncate(t.questionario_respostas, 6000),
         gc_os: t.gc_os_codigo || null,
-        gc_orcamento: t.gc_orc_codigo || null,
+        gc_orcamento: t.gc_orcamento_codigo || null,
       };
 
       try {
@@ -204,7 +219,13 @@ Deno.serve(async (req) => {
         processadas++;
       } catch (err) {
         erros++;
-        const msg = err instanceof Error ? err.message : String(err);
+        const msg =
+          err instanceof Error
+            ? err.message
+            : typeof err === "object" && err
+              ? JSON.stringify(err)
+              : String(err);
+        console.error("falha", taskId, msg);
         falhas.push(`${taskId}: ${msg}`);
         if (msg === "RATE_LIMIT" || msg === "SEM_CREDITOS") break;
       }

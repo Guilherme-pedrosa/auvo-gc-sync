@@ -68,6 +68,7 @@ export type Database = {
       analises_operacionais: {
         Row: {
           acao_sugerida: string | null
+          atualizado_em: string
           auvo_equipment_id: string | null
           auvo_link: string | null
           auvo_task_id: string
@@ -94,6 +95,7 @@ export type Database = {
         }
         Insert: {
           acao_sugerida?: string | null
+          atualizado_em?: string
           auvo_equipment_id?: string | null
           auvo_link?: string | null
           auvo_task_id: string
@@ -120,6 +122,7 @@ export type Database = {
         }
         Update: {
           acao_sugerida?: string | null
+          atualizado_em?: string
           auvo_equipment_id?: string | null
           auvo_link?: string | null
           auvo_task_id?: string
