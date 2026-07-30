@@ -2043,8 +2043,51 @@ export type Database = {
           },
         ]
       }
+      rh_integration_clients: {
+        Row: {
+          atualizado_em: string
+          client_id: string
+          criado_em: string
+          criado_por: string | null
+          id: string
+          integration_id: string
+        }
+        Insert: {
+          atualizado_em?: string
+          client_id: string
+          criado_em?: string
+          criado_por?: string | null
+          id?: string
+          integration_id: string
+        }
+        Update: {
+          atualizado_em?: string
+          client_id?: string
+          criado_em?: string
+          criado_por?: string | null
+          id?: string
+          integration_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "rh_integration_clients_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "rh_clientes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "rh_integration_clients_integration_id_fkey"
+            columns: ["integration_id"]
+            isOneToOne: false
+            referencedRelation: "rh_integrations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       rh_integrations: {
         Row: {
+          abrangencia: string
           atualizado_em: string
           blocked_reasons: Json
           client_id: string
@@ -2057,6 +2100,7 @@ export type Database = {
           earliest_expiry_date: string | null
           id: string
           integration_valid_until: string | null
+          nome: string | null
           observacoes: string | null
           scheduled_at: string | null
           send_channel: string | null
@@ -2070,6 +2114,7 @@ export type Database = {
           zip_url: string | null
         }
         Insert: {
+          abrangencia?: string
           atualizado_em?: string
           blocked_reasons?: Json
           client_id: string
@@ -2082,6 +2127,7 @@ export type Database = {
           earliest_expiry_date?: string | null
           id?: string
           integration_valid_until?: string | null
+          nome?: string | null
           observacoes?: string | null
           scheduled_at?: string | null
           send_channel?: string | null
@@ -2095,6 +2141,7 @@ export type Database = {
           zip_url?: string | null
         }
         Update: {
+          abrangencia?: string
           atualizado_em?: string
           blocked_reasons?: Json
           client_id?: string
@@ -2107,6 +2154,7 @@ export type Database = {
           earliest_expiry_date?: string | null
           id?: string
           integration_valid_until?: string | null
+          nome?: string | null
           observacoes?: string | null
           scheduled_at?: string | null
           send_channel?: string | null

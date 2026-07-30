@@ -18,7 +18,7 @@ import { toast } from "sonner";
 import {
   useRhClientes, useColaboradores, useSaveIntegration, useIntegrations,
   useDocumentTypes, useCompanyDocs, useClientRequirements,
-  computeDocStatus, type Integration,
+  computeDocStatus, useIntegrationShares, useSaveIntegrationShares, type Integration,
 } from "@/hooks/rh/useRh";
 import { supabase } from "@/integrations/supabase/client";
 
@@ -82,9 +82,15 @@ export default function NovaIntegracaoPage() {
   const { data: docTypes = [] } = useDocumentTypes();
   const { data: companyDocs = [] } = useCompanyDocs();
   const { data: integrations = [] } = useIntegrations();
+  const { data: shares = [] } = useIntegrationShares();
   const save = useSaveIntegration();
+  const saveShares = useSaveIntegrationShares();
 
   const [clientId, setClientId] = useState<string>("");
+  const [nome, setNome] = useState<string>("");
+  const [abrangencia, setAbrangencia] = useState<"exclusiva" | "compartilhada">("exclusiva");
+  const [sharedClientIds, setSharedClientIds] = useState<string[]>([]);
+  const [savingShares, setSavingShares] = useState(false);
   const [scope, setScope] = useState<Scope>("both");
   const [techIds, setTechIds] = useState<string[]>([]);
   const [status, setStatus] = useState<"INITIAL" | "AUTHORIZED" | "BLOCKED">("INITIAL");
@@ -114,6 +120,8 @@ export default function NovaIntegracaoPage() {
     const rec = integrations.find((i) => i.id === editingId);
     if (!rec) return;
     setClientId(rec.client_id);
+    setNome(rec.nome ?? "");
+    setAbrangencia((rec.abrangencia as "exclusiva" | "compartilhada") ?? "exclusiva");
     setTechIds(rec.technician_ids || []);
     setScope((rec.technician_ids?.length ?? 0) > 0 ? "both" : "company");
     setValidade(rec.earliest_expiry_date ?? "");
@@ -130,6 +138,35 @@ export default function NovaIntegracaoPage() {
 
   const { data: reqs = [], isLoading: loadingReqs } = useClientRequirements(clientId || undefined);
   const cliente = useMemo(() => clientes.find((c) => c.id === clientId), [clientes, clientId]);
+
+  // Abrangência: carrega clientes já vinculados à integração em edição
+  useEffect(() => {
+    if (!editingId) return;
+    setSharedClientIds(shares.filter((s) => s.integration_id === editingId).map((s) => s.client_id));
+  }, [editingId, shares]);
+
+  /** Persiste nome/abrangência + relacionamentos (sem duplicar integrações). */
+  const persistAbrangencia = async (integrationId: string) => {
+    const ids = abrangencia === "compartilhada" ? sharedClientIds.filter((c) => c !== clientId) : [];
+    await saveShares.mutateAsync({ integration_id: integrationId, client_ids: ids });
+  };
+
+  const salvarAbrangencia = async () => {
+    if (!editingId) {
+      toast.error("Gere/salve a integração primeiro para definir a abrangência.");
+      return;
+    }
+    setSavingShares(true);
+    try {
+      await save.mutateAsync({ id: editingId, nome: nome || null, abrangencia });
+      await persistAbrangencia(editingId);
+      toast.success("Abrangência atualizada");
+    } catch (e) {
+      toast.error((e as Error).message);
+    } finally {
+      setSavingShares(false);
+    }
+  };
 
   // Prefill send channel from client default when creating new
   useEffect(() => {
@@ -324,9 +361,11 @@ export default function NovaIntegracaoPage() {
       URL.revokeObjectURL(url);
 
       // Persist integration record
-      await save.mutateAsync({
+      const savedId = await save.mutateAsync({
         ...(editingId ? { id: editingId } : {}),
         client_id: clientId,
+        nome: nome || null,
+        abrangencia,
         technician_ids: techIds,
         status: "docs_enviados",
         validated_at: new Date().toISOString(),
@@ -335,6 +374,7 @@ export default function NovaIntegracaoPage() {
         zip_file_name: fileName,
         docs_sent_at: new Date().toISOString(),
       });
+      if (savedId) await persistAbrangencia(savedId);
 
       toast.success("Kit ZIP gerado!");
     } catch (e) {
@@ -361,6 +401,16 @@ export default function NovaIntegracaoPage() {
           <CardHeader><CardTitle className="text-lg">Seleção</CardTitle></CardHeader>
           <CardContent className="space-y-4">
             <div>
+              <Label>Nome da integração</Label>
+              <Input
+                className="uppercase"
+                placeholder="EX.: INTEGRAÇÃO CORPORATIVA"
+                value={nome}
+                onChange={(e) => setNome(e.target.value.toUpperCase())}
+              />
+            </div>
+
+            <div>
               <Label>Cliente</Label>
               <SearchableSelect
                 options={clienteOptions}
@@ -370,6 +420,61 @@ export default function NovaIntegracaoPage() {
                 searchPlaceholder="Digite o nome..."
                 className="w-full"
               />
+            </div>
+
+            <div className="rounded-lg border p-3 space-y-3">
+              <Label className="block">Abrangência</Label>
+              <RadioGroup
+                value={abrangencia}
+                onValueChange={(v) => setAbrangencia(v as "exclusiva" | "compartilhada")}
+                className="space-y-2"
+              >
+                <div className="flex items-center space-x-2">
+                  <RadioGroupItem value="exclusiva" id="ab-excl" />
+                  <Label htmlFor="ab-excl" className="font-normal cursor-pointer">Exclusiva (apenas este cliente)</Label>
+                </div>
+                <div className="flex items-center space-x-2">
+                  <RadioGroupItem value="compartilhada" id="ab-comp" />
+                  <Label htmlFor="ab-comp" className="font-normal cursor-pointer">Compartilhada com outros clientes</Label>
+                </div>
+              </RadioGroup>
+
+              {abrangencia === "compartilhada" && (
+                <div className="space-y-2">
+                  <Label>Clientes abrangidos</Label>
+                  <SearchableSelect
+                    multiple
+                    options={clienteOptions.filter((o) => o.value !== clientId)}
+                    value={sharedClientIds}
+                    onValueChange={setSharedClientIds}
+                    placeholder="Selecione os clientes..."
+                    searchPlaceholder="Buscar cliente..."
+                    className="w-full"
+                  />
+                  <div>
+                    <p className="text-xs font-medium mb-1">Empresas Abrangidas</p>
+                    <ul className="text-xs text-muted-foreground space-y-0.5">
+                      <li className="uppercase">• {cliente?.nome ?? "—"} <span className="normal-case">(anfitrião)</span></li>
+                      {sharedClientIds.filter((c) => c !== clientId).map((cid) => (
+                        <li key={cid} className="uppercase">• {clientes.find((c) => c.id === cid)?.nome ?? cid}</li>
+                      ))}
+                      {sharedClientIds.filter((c) => c !== clientId).length === 0 && (
+                        <li className="italic">Nenhuma empresa adicional selecionada.</li>
+                      )}
+                    </ul>
+                  </div>
+                </div>
+              )}
+
+              {editingId && (
+                <Button variant="outline" size="sm" className="w-full" onClick={salvarAbrangencia} disabled={savingShares}>
+                  {savingShares ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Save className="h-4 w-4 mr-2" />}
+                  Salvar abrangência
+                </Button>
+              )}
+              <p className="text-[11px] text-muted-foreground">
+                A integração continua única: os clientes abrangidos apenas referenciam este mesmo registro, arquivos e histórico.
+              </p>
             </div>
 
             {clientId && !loadingReqs && (

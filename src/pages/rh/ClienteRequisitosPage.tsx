@@ -26,6 +26,7 @@ import {
   useIntegrations,
   useColaboradores,
   useSaveIntegration,
+  useIntegrationShares,
   computeDocStatus,
 } from "@/hooks/rh/useRh";
 import { useQueryClient } from "@tanstack/react-query";
@@ -45,6 +46,7 @@ export default function ClienteRequisitosPage() {
   const { data: types = [] } = useDocumentTypes();
   const { data: reqs = [], isLoading } = useClientRequirements(id);
   const { data: integrations = [] } = useIntegrations();
+  const { data: integrationShares = [] } = useIntegrationShares();
   const { data: colabs = [] } = useColaboradores();
   const addReq = useAddRequirement();
   const removeReq = useRemoveRequirement();
@@ -143,10 +145,12 @@ export default function ClienteRequisitosPage() {
     },
   });
 
-  const clientIntegrations = useMemo(
-    () => integrations.filter((i) => i.client_id === id),
-    [integrations, id],
-  );
+  const clientIntegrations = useMemo(() => {
+    const sharedIds = new Set(
+      integrationShares.filter((s) => s.client_id === id).map((s) => s.integration_id),
+    );
+    return integrations.filter((i) => i.client_id === id || sharedIds.has(i.id));
+  }, [integrations, integrationShares, id]);
 
   const integratedTechIds = useMemo(() => {
     const today = new Date(); today.setHours(0, 0, 0, 0);
@@ -662,6 +666,7 @@ export default function ClienteRequisitosPage() {
               <Table>
                 <TableHeader>
                   <TableRow>
+                    <TableHead>Integração</TableHead>
                     <TableHead>Técnicos</TableHead>
                     <TableHead className="w-32">Status</TableHead>
                     <TableHead className="w-36">Realizada</TableHead>
@@ -672,17 +677,49 @@ export default function ClienteRequisitosPage() {
                 </TableHeader>
                 <TableBody>
                   {(() => {
-                    const clientIntegs = integrations.filter((i) => i.client_id === id);
+                    const sharedIds = new Set(
+                      integrationShares.filter((s) => s.client_id === id).map((s) => s.integration_id),
+                    );
+                    const clientIntegs = integrations.filter(
+                      (i) => i.client_id === id || sharedIds.has(i.id),
+                    );
                     const colabMap = new Map(colabs.map((c) => [c.id, c]));
+                    const clienteMap = new Map(clientes.map((c) => [c.id, c]));
                     if (clientIntegs.length === 0) {
                       return (
-                        <TableRow><TableCell colSpan={6} className="text-center py-6 text-muted-foreground">
+                        <TableRow><TableCell colSpan={7} className="text-center py-6 text-muted-foreground">
                           Nenhuma integração registrada para este cliente.
                         </TableCell></TableRow>
                       );
                     }
-                    return clientIntegs.map((i) => (
+                    return clientIntegs.map((i) => {
+                      const propria = i.client_id === id;
+                      const anfitriao = clienteMap.get(i.client_id)?.nome ?? "—";
+                      const abrangidos = integrationShares
+                        .filter((s) => s.integration_id === i.id)
+                        .map((s) => clienteMap.get(s.client_id)?.nome ?? s.client_id);
+                      return (
                       <TableRow key={i.id}>
+                        <TableCell className="text-xs">
+                          <div className="uppercase font-medium">{i.nome || "INTEGRAÇÃO"}</div>
+                          {propria ? (
+                            i.abrangencia === "compartilhada" && (
+                              <div className="mt-1 space-y-0.5">
+                                <Badge variant="secondary" className="text-[10px]">COMPARTILHADA</Badge>
+                                {abrangidos.length > 0 && (
+                                  <div className="text-[11px] text-muted-foreground uppercase">
+                                    Empresas abrangidas: {abrangidos.join(", ")}
+                                  </div>
+                                )}
+                              </div>
+                            )
+                          ) : (
+                            <div className="mt-1">
+                              <Badge variant="outline" className="text-[10px]">COMPARTILHADA POR</Badge>
+                              <div className="text-[11px] text-muted-foreground uppercase">{anfitriao}</div>
+                            </div>
+                          )}
+                        </TableCell>
                         <TableCell className="uppercase text-xs">
                           {(i.technician_ids ?? []).map((tid) => colabMap.get(tid)?.nome ?? tid).join(", ") || "—"}
                         </TableCell>
@@ -697,6 +734,7 @@ export default function ClienteRequisitosPage() {
                           ) : "—"}
                         </TableCell>
                         <TableCell className="text-right">
+                          {propria ? (
                           <Button
                             size="sm"
                             variant="ghost"
@@ -711,9 +749,13 @@ export default function ClienteRequisitosPage() {
                           >
                             <XCircle className="h-4 w-4 mr-1" /> Cancelar
                           </Button>
+                          ) : (
+                            <span className="text-[11px] text-muted-foreground">gerida pelo anfitrião</span>
+                          )}
                         </TableCell>
                       </TableRow>
-                    ));
+                      );
+                    });
                   })()}
                 </TableBody>
               </Table>
