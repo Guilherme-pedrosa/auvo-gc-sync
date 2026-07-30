@@ -134,7 +134,19 @@ Deno.serve(async (req) => {
           "auvo_task_id, cliente, tecnico, status_auvo, orientacao, descricao, pendencia, questionario_respostas, data_tarefa, data_conclusao, auvo_task_url, auvo_link, equipamento_nome, gc_os_codigo, gc_orc_codigo",
         )
         .in("auvo_task_id", loteIds.slice(i, i + 200));
-      (data || []).forEach((t: any) => tarefas.set(String(t.auvo_task_id), t));
+      // Pode existir mais de uma linha por auvo_task_id (shells "Pendente vínculo Auvo",
+      // OS distintas compartilhando a mesma tarefa). Escolhe sempre a mais rica.
+      const score = (t: any) =>
+        (String(t.questionario_respostas ?? "").length > 5 ? 1000 : 0) +
+        String(t.descricao ?? "").length +
+        String(t.orientacao ?? "").length +
+        String(t.pendencia ?? "").length +
+        (t.status_auvo && !String(t.status_auvo).toLowerCase().includes("pendente vínculo") ? 500 : 0);
+      (data || []).forEach((t: any) => {
+        const key = String(t.auvo_task_id);
+        const atual = tarefas.get(key);
+        if (!atual || score(t) > score(atual)) tarefas.set(key, t);
+      });
     }
 
     // 4) Grupos por cliente
