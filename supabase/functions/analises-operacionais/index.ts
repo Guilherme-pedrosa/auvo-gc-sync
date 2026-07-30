@@ -182,7 +182,7 @@ Deno.serve(async (req) => {
         pendencia_registrada: truncate(t.pendencia, 800),
         os_simplificada: truncate(t.questionario_respostas, 6000),
         gc_os: t.gc_os_codigo || null,
-        gc_orcamento: t.gc_orc_codigo || null,
+        gc_orcamento: t.gc_orcamento_codigo || null,
       };
 
       try {
