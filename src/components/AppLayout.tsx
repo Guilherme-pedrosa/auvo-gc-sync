@@ -37,6 +37,7 @@ const navGroups: NavGroup[] = [
       { label: "Controle Orçamentos", icon: FileText, path: "/financeiro/controle-orcamentos" },
       { label: "OS Cruzadas", icon: ArrowLeftRight, path: "/financeiro/os-cruzadas" },
       { label: "Preventiva Equip.", icon: Thermometer, path: "/financeiro/equipamentos-preventivos" },
+      { label: "Análises Operacionais", icon: Brain, path: "/financeiro/analises-operacionais" },
       { label: "Planos Preventiva", icon: CalendarDays, path: "/financeiro/planos-preventivos" },
       { label: "Premiação", icon: Trophy, path: "/financeiro/premiacao" },
     ],
