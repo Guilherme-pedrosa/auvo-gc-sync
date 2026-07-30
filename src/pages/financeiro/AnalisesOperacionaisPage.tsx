@@ -104,6 +104,7 @@ export default function AnalisesOperacionaisPage() {
   const [fStatusTarefa, setFStatusTarefa] = useState("");
   const [fPendencia, setFPendencia] = useState("");
   const [fSatisfacao, setFSatisfacao] = useState("");
+  const [fTipoPlano, setFTipoPlano] = useState("");
   const [cardFilter, setCardFilter] = useState<string>("");
   const [gerando, setGerando] = useState(false);
   const [selected, setSelected] = useState<Analise | null>(null);
@@ -159,6 +160,7 @@ export default function AnalisesOperacionaisPage() {
         if (fSatisfacao === "media" && (s < 50 || s >= 80)) return false;
         if (fSatisfacao === "baixa" && (s < 0 || s >= 50)) return false;
       }
+      if (fTipoPlano && a.categoria !== fTipoPlano) return false;
       if (cardFilter) {
         if (cardFilter === "sem_pendencia" && !semPendencia(a.pendencia)) return false;
         if (cardFilter === "com_pendencia" && semPendencia(a.pendencia)) return false;
@@ -173,7 +175,7 @@ export default function AnalisesOperacionaisPage() {
       }
       return true;
     });
-  }, [analises, busca, fCliente, fGrupo, fEquip, fMarca, fTecnico, fPrioridade, fStatus, fStatusTarefa, fPendencia, fSatisfacao, cardFilter]);
+  }, [analises, busca, fCliente, fGrupo, fEquip, fMarca, fTecnico, fPrioridade, fStatus, fStatusTarefa, fPendencia, fSatisfacao, fTipoPlano, cardFilter]);
 
   const stats = useMemo(() => {
     const by = (s: string) => analises.filter((a) => a.status_analise === s).length;
@@ -331,14 +333,14 @@ export default function AnalisesOperacionaisPage() {
             onValueChange={setFSatisfacao}
             placeholder="Satisfação"
           />
-          <SearchableSelect className="w-[170px]" options={uniq("categoria")} value={""} onValueChange={() => {}} placeholder="Tipo de plano" />
-          {(cardFilter || fCliente || fGrupo || fEquip || fMarca || fTecnico || fPrioridade || fStatus || fStatusTarefa || fPendencia || fSatisfacao || busca) && (
+          <SearchableSelect className="w-[170px]" options={uniq("categoria")} value={fTipoPlano} onValueChange={setFTipoPlano} placeholder="Tipo de plano" />
+          {(cardFilter || fCliente || fGrupo || fEquip || fMarca || fTecnico || fPrioridade || fStatus || fStatusTarefa || fPendencia || fSatisfacao || fTipoPlano || busca) && (
             <Button
               variant="ghost"
               size="sm"
               onClick={() => {
                 setCardFilter(""); setFCliente(""); setFGrupo(""); setFEquip(""); setFMarca(""); setFTecnico("");
-                setFPrioridade(""); setFStatus(""); setFStatusTarefa(""); setFPendencia(""); setFSatisfacao(""); setBusca("");
+                setFPrioridade(""); setFStatus(""); setFStatusTarefa(""); setFPendencia(""); setFSatisfacao(""); setFTipoPlano(""); setBusca("");
               }}
             >
               Limpar filtros
