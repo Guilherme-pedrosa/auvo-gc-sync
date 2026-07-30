@@ -26,6 +26,7 @@ import {
   useIntegrations,
   useColaboradores,
   useSaveIntegration,
+  useIntegrationShares,
   computeDocStatus,
 } from "@/hooks/rh/useRh";
 import { useQueryClient } from "@tanstack/react-query";
@@ -45,6 +46,7 @@ export default function ClienteRequisitosPage() {
   const { data: types = [] } = useDocumentTypes();
   const { data: reqs = [], isLoading } = useClientRequirements(id);
   const { data: integrations = [] } = useIntegrations();
+  const { data: integrationShares = [] } = useIntegrationShares();
   const { data: colabs = [] } = useColaboradores();
   const addReq = useAddRequirement();
   const removeReq = useRemoveRequirement();
