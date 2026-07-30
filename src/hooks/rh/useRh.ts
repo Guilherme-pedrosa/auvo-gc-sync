@@ -62,6 +62,8 @@ export type Integration = {
   completed_by_technician_id: string | null;
   integration_valid_until: string | null;
   validity_days_snapshot: number | null;
+  nome: string | null;
+  abrangencia: "exclusiva" | "compartilhada";
 };
 
 // ---------- Document Types ----------
