@@ -428,26 +428,38 @@ function buildEquipmentRows(
     let tipoTarefaLabel: string | null = null;
     let ultimoTecnico: string | null = null;
     let ultimoLink: string | null = null;
-    if (cons && cons.ultima_preventiva) {
+
+    // Fallback sempre calculado a partir dos vínculos: se o consolidado estiver
+    // defasado (cron de consolidação rodou antes da ingestão da tarefa), usamos
+    // a preventiva mais recente vinda de `equipamento_tarefas_auvo`.
+    const preventiveTasks = allEqTasks.filter(
+      (t) => t.auvo_task_type_id && PREVENTIVA_TASK_TYPE_IDS.has(String(t.auvo_task_type_id)),
+    );
+    const completedTasks = preventiveTasks
+      .filter((t) => t.status_auvo === "Finalizada" && (t.data_conclusao || t.data_tarefa))
+      .sort((a, b) => {
+        const dateA = a.data_conclusao || a.data_tarefa || "";
+        const dateB = b.data_conclusao || b.data_tarefa || "";
+        return dateB.localeCompare(dateA);
+      });
+    const relLastTask = completedTasks[0] || null;
+    const relUltimaData = relLastTask ? (relLastTask.data_conclusao || relLastTask.data_tarefa) : null;
+
+    const consMaisRecente = !!(
+      cons?.ultima_preventiva &&
+      (!relUltimaData || cons.ultima_preventiva >= relUltimaData)
+    );
+
+    if (cons && cons.ultima_preventiva && consMaisRecente) {
       ultimaData = cons.ultima_preventiva;
       totalPreventivas = cons.total_tarefas ?? 0;
       tipoTarefaLabel = cons.tipo_nome || "Preventiva";
       ultimoTecnico = cons.ultima_preventiva_tecnico;
       ultimoLink = cons.ultima_preventiva_link;
     } else {
-      const preventiveTasks = allEqTasks.filter(
-        (t) => t.auvo_task_type_id && PREVENTIVA_TASK_TYPE_IDS.has(String(t.auvo_task_type_id)),
-      );
-      const completedTasks = preventiveTasks
-        .filter((t) => t.status_auvo === "Finalizada" && (t.data_conclusao || t.data_tarefa))
-        .sort((a, b) => {
-          const dateA = a.data_conclusao || a.data_tarefa || "";
-          const dateB = b.data_conclusao || b.data_tarefa || "";
-          return dateB.localeCompare(dateA);
-        });
-      lastTask = completedTasks[0] || null;
-      ultimaData = lastTask ? (lastTask.data_conclusao || lastTask.data_tarefa) : null;
-      totalPreventivas = completedTasks.length;
+      lastTask = relLastTask;
+      ultimaData = relUltimaData;
+      totalPreventivas = Math.max(completedTasks.length, cons?.total_tarefas ?? 0);
       tipoTarefaLabel = lastTask?.auvo_task_type_description || null;
       ultimoTecnico = lastTask?.tecnico || null;
       ultimoLink = getTaskDigitalLink(lastTask);
