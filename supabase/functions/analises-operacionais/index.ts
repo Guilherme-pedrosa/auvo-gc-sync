@@ -128,12 +128,13 @@ Deno.serve(async (req) => {
     const loteIds = lote.map((p: any) => String(p.ultima_preventiva_task_id));
     const tarefas = new Map<string, any>();
     for (let i = 0; i < loteIds.length; i += 200) {
-      const { data } = await supabase
+      const { data, error: eT } = await supabase
         .from("tarefas_central")
         .select(
-          "auvo_task_id, cliente, tecnico, status_auvo, orientacao, descricao, pendencia, questionario_respostas, data_tarefa, data_conclusao, auvo_task_url, auvo_link, equipamento_nome, gc_os_codigo, gc_orc_codigo",
+          "auvo_task_id, cliente, tecnico, status_auvo, orientacao, descricao, pendencia, questionario_respostas, data_tarefa, data_conclusao, auvo_task_url, auvo_link, equipamento_nome, gc_os_codigo, gc_orcamento_codigo",
         )
         .in("auvo_task_id", loteIds.slice(i, i + 200));
+      if (eT) throw eT;
       // Pode existir mais de uma linha por auvo_task_id (shells "Pendente vínculo Auvo",
       // OS distintas compartilhando a mesma tarefa). Escolhe sempre a mais rica.
       const score = (t: any) =>
