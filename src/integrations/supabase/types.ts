@@ -65,6 +65,128 @@ export type Database = {
         }
         Relationships: []
       }
+      analises_operacionais: {
+        Row: {
+          acao_sugerida: string | null
+          auvo_equipment_id: string | null
+          auvo_link: string | null
+          auvo_task_id: string
+          categoria: string | null
+          cliente: string | null
+          contexto: Json
+          created_at: string
+          data_analise: string
+          data_preventiva: string | null
+          diagnostico_ia: string | null
+          equipamento_nome: string | null
+          grupo_nome: string | null
+          id: string
+          identificador: string | null
+          marca: string | null
+          observacoes_gerenciais: string | null
+          pendencia: string | null
+          prioridade: string
+          satisfacao: number | null
+          status_analise: string
+          status_tarefa: string | null
+          tecnico: string | null
+          updated_at: string
+        }
+        Insert: {
+          acao_sugerida?: string | null
+          auvo_equipment_id?: string | null
+          auvo_link?: string | null
+          auvo_task_id: string
+          categoria?: string | null
+          cliente?: string | null
+          contexto?: Json
+          created_at?: string
+          data_analise?: string
+          data_preventiva?: string | null
+          diagnostico_ia?: string | null
+          equipamento_nome?: string | null
+          grupo_nome?: string | null
+          id?: string
+          identificador?: string | null
+          marca?: string | null
+          observacoes_gerenciais?: string | null
+          pendencia?: string | null
+          prioridade?: string
+          satisfacao?: number | null
+          status_analise?: string
+          status_tarefa?: string | null
+          tecnico?: string | null
+          updated_at?: string
+        }
+        Update: {
+          acao_sugerida?: string | null
+          auvo_equipment_id?: string | null
+          auvo_link?: string | null
+          auvo_task_id?: string
+          categoria?: string | null
+          cliente?: string | null
+          contexto?: Json
+          created_at?: string
+          data_analise?: string
+          data_preventiva?: string | null
+          diagnostico_ia?: string | null
+          equipamento_nome?: string | null
+          grupo_nome?: string | null
+          id?: string
+          identificador?: string | null
+          marca?: string | null
+          observacoes_gerenciais?: string | null
+          pendencia?: string | null
+          prioridade?: string
+          satisfacao?: number | null
+          status_analise?: string
+          status_tarefa?: string | null
+          tecnico?: string | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      analises_operacionais_log: {
+        Row: {
+          analise_id: string
+          criado_em: string
+          id: string
+          observacao: string | null
+          status_anterior: string | null
+          status_novo: string
+          user_id: string | null
+          user_nome: string | null
+        }
+        Insert: {
+          analise_id: string
+          criado_em?: string
+          id?: string
+          observacao?: string | null
+          status_anterior?: string | null
+          status_novo: string
+          user_id?: string | null
+          user_nome?: string | null
+        }
+        Update: {
+          analise_id?: string
+          criado_em?: string
+          id?: string
+          observacao?: string | null
+          status_anterior?: string | null
+          status_novo?: string
+          user_id?: string | null
+          user_nome?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "analises_operacionais_log_analise_id_fkey"
+            columns: ["analise_id"]
+            isOneToOne: false
+            referencedRelation: "analises_operacionais"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       atividades_nao_executadas: {
         Row: {
           auvo_task_id: string
