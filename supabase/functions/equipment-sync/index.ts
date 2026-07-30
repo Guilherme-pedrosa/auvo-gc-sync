@@ -652,6 +652,7 @@ Deno.serve(async (req) => {
 
     let phase1Result: any = null;
     let phase2Result: any = null;
+    let consolidateResult: any = null;
     let validEquipmentIds: Set<string> | null = null;
 
     // ── Phase 1: Equipment catalog + brand extraction ──
@@ -1011,6 +1012,30 @@ Deno.serve(async (req) => {
         ultima_por_equipamento_count: ultimaPorEquipamento.size,
         errors: allErrors.length > 0 ? allErrors : undefined,
       };
+
+      // ── Encadeia a consolidação ──
+      // Sem isso, `equipamento_preventiva_consolidado` (fonte de "última/próxima
+      // preventiva" na tela) fica sempre um ciclo atrás dos vínculos recém
+      // ingeridos, exibindo "Sem registro" mesmo com preventiva executada.
+      if (body?.skipConsolidate !== true) {
+        try {
+          const consRes = await fetch(`${supabaseUrl}/functions/v1/preventiva-consolidar`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${serviceKey}`,
+              apikey: serviceKey,
+            },
+            body: JSON.stringify({}),
+          });
+          const consJson = await consRes.json().catch(() => ({}));
+          consolidateResult = { ok: consRes.ok, ...consJson };
+          console.log(`[equipment-sync] consolidar → ${consRes.status} ${JSON.stringify(consJson).slice(0, 200)}`);
+        } catch (e) {
+          consolidateResult = { ok: false, error: (e as Error).message };
+          console.error("[equipment-sync] consolidar falhou:", e);
+        }
+      }
     }
 
     // ── Phase 2: Equipment-task relationships ──
@@ -1131,6 +1156,7 @@ Deno.serve(async (req) => {
       phase_executed: phase,
       phase1_equipment_catalog: phase1Result,
       phase2_equipment_tasks: phase2Result,
+      consolidado: consolidateResult,
     }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
