@@ -218,7 +218,13 @@ Deno.serve(async (req) => {
         processadas++;
       } catch (err) {
         erros++;
-        const msg = err instanceof Error ? err.message : String(err);
+        const msg =
+          err instanceof Error
+            ? err.message
+            : typeof err === "object" && err
+              ? JSON.stringify(err)
+              : String(err);
+        console.error("falha", taskId, msg);
         falhas.push(`${taskId}: ${msg}`);
         if (msg === "RATE_LIMIT" || msg === "SEM_CREDITOS") break;
       }
