@@ -145,10 +145,12 @@ export default function ClienteRequisitosPage() {
     },
   });
 
-  const clientIntegrations = useMemo(
-    () => integrations.filter((i) => i.client_id === id),
-    [integrations, id],
-  );
+  const clientIntegrations = useMemo(() => {
+    const sharedIds = new Set(
+      integrationShares.filter((s) => s.client_id === id).map((s) => s.integration_id),
+    );
+    return integrations.filter((i) => i.client_id === id || sharedIds.has(i.id));
+  }, [integrations, integrationShares, id]);
 
   const integratedTechIds = useMemo(() => {
     const today = new Date(); today.setHours(0, 0, 0, 0);
