@@ -6,7 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Plus, Search, Pencil, Trash2 } from "lucide-react";
-import { useIntegrations, useRhClientes, useColaboradores, useDeleteIntegration } from "@/hooks/rh/useRh";
+import { useIntegrations, useRhClientes, useColaboradores, useDeleteIntegration, useIntegrationShares } from "@/hooks/rh/useRh";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
@@ -37,6 +37,7 @@ export default function MatrizIntegracoesPage() {
   const { data: integrations = [], isLoading } = useIntegrations();
   const { data: clientes = [] } = useRhClientes();
   const { data: colabs = [] } = useColaboradores();
+  const { data: shares = [] } = useIntegrationShares();
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const del = useDeleteIntegration();
@@ -91,6 +92,7 @@ export default function MatrizIntegracoesPage() {
         <Table>
           <TableHeader>
             <TableRow>
+              <TableHead>Integração</TableHead>
               <TableHead>Cliente</TableHead>
               <TableHead>Técnicos</TableHead>
               <TableHead>Status</TableHead>
@@ -104,11 +106,27 @@ export default function MatrizIntegracoesPage() {
           </TableHeader>
           <TableBody>
             {isLoading ? (
-              <TableRow><TableCell colSpan={7} className="text-center py-8">Carregando...</TableCell></TableRow>
+              <TableRow><TableCell colSpan={10} className="text-center py-8">Carregando...</TableCell></TableRow>
             ) : rows.length === 0 ? (
-              <TableRow><TableCell colSpan={9} className="text-center py-8 text-muted-foreground">Nenhuma integração.</TableCell></TableRow>
+              <TableRow><TableCell colSpan={10} className="text-center py-8 text-muted-foreground">Nenhuma integração.</TableCell></TableRow>
             ) : rows.map((i) => (
               <TableRow key={i.id}>
+                <TableCell className="text-xs">
+                  <div className="uppercase font-medium">{i.nome || "INTEGRAÇÃO"}</div>
+                  {i.abrangencia === "compartilhada" ? (
+                    <div className="mt-1">
+                      <Badge variant="secondary" className="text-[10px]">COMPARTILHADA</Badge>
+                      <div className="text-[11px] text-muted-foreground uppercase">
+                        {shares
+                          .filter((s) => s.integration_id === i.id)
+                          .map((s) => clientMap.get(s.client_id)?.nome ?? s.client_id)
+                          .join(", ") || "sem empresas abrangidas"}
+                      </div>
+                    </div>
+                  ) : (
+                    <Badge variant="outline" className="text-[10px]">EXCLUSIVA</Badge>
+                  )}
+                </TableCell>
                 <TableCell className="font-medium">{clientMap.get(i.client_id)?.nome ?? "—"}</TableCell>
                 <TableCell className="text-xs">
                   {i.technician_ids.map((tid) => colabMap.get(tid)?.nome ?? tid).join(", ") || "—"}
