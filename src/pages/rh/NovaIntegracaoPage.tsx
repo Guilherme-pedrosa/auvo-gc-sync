@@ -139,6 +139,35 @@ export default function NovaIntegracaoPage() {
   const { data: reqs = [], isLoading: loadingReqs } = useClientRequirements(clientId || undefined);
   const cliente = useMemo(() => clientes.find((c) => c.id === clientId), [clientes, clientId]);
 
+  // Abrangência: carrega clientes já vinculados à integração em edição
+  useEffect(() => {
+    if (!editingId) return;
+    setSharedClientIds(shares.filter((s) => s.integration_id === editingId).map((s) => s.client_id));
+  }, [editingId, shares]);
+
+  /** Persiste nome/abrangência + relacionamentos (sem duplicar integrações). */
+  const persistAbrangencia = async (integrationId: string) => {
+    const ids = abrangencia === "compartilhada" ? sharedClientIds.filter((c) => c !== clientId) : [];
+    await saveShares.mutateAsync({ integration_id: integrationId, client_ids: ids });
+  };
+
+  const salvarAbrangencia = async () => {
+    if (!editingId) {
+      toast.error("Gere/salve a integração primeiro para definir a abrangência.");
+      return;
+    }
+    setSavingShares(true);
+    try {
+      await save.mutateAsync({ id: editingId, nome: nome || null, abrangencia });
+      await persistAbrangencia(editingId);
+      toast.success("Abrangência atualizada");
+    } catch (e) {
+      toast.error((e as Error).message);
+    } finally {
+      setSavingShares(false);
+    }
+  };
+
   // Prefill send channel from client default when creating new
   useEffect(() => {
     if (!editingId && cliente?.integration_send_channel && !sendChannel) {
