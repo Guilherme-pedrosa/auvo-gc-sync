@@ -361,9 +361,11 @@ export default function NovaIntegracaoPage() {
       URL.revokeObjectURL(url);
 
       // Persist integration record
-      await save.mutateAsync({
+      const savedId = await save.mutateAsync({
         ...(editingId ? { id: editingId } : {}),
         client_id: clientId,
+        nome: nome || null,
+        abrangencia,
         technician_ids: techIds,
         status: "docs_enviados",
         validated_at: new Date().toISOString(),
@@ -372,6 +374,7 @@ export default function NovaIntegracaoPage() {
         zip_file_name: fileName,
         docs_sent_at: new Date().toISOString(),
       });
+      if (savedId) await persistAbrangencia(savedId);
 
       toast.success("Kit ZIP gerado!");
     } catch (e) {
