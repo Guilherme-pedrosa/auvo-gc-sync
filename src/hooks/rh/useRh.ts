@@ -439,6 +439,60 @@ export function useDeleteIntegration() {
   });
 }
 
+// ---------- Abrangência (compartilhamento de integrações) ----------
+export type IntegrationShare = {
+  id: string; integration_id: string; client_id: string; criado_em: string;
+};
+
+/** Todos os vínculos integração ↔ cliente abrangido (tabela leve, carregada inteira). */
+export function useIntegrationShares() {
+  return useQuery({
+    queryKey: ["rh_integration_clients"],
+    queryFn: async () => {
+      const { data, error } = await sb.from("rh_integration_clients").select("*");
+      if (error) throw error;
+      return (data ?? []) as IntegrationShare[];
+    },
+  });
+}
+
+/**
+ * Sincroniza a lista de clientes abrangidos de UMA integração.
+ * Nunca duplica integrações: apenas cria/remove relacionamentos.
+ */
+export function useSaveIntegrationShares() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ integration_id, client_ids }: { integration_id: string; client_ids: string[] }) => {
+      const { data: current, error: readErr } = await sb
+        .from("rh_integration_clients")
+        .select("id, client_id")
+        .eq("integration_id", integration_id);
+      if (readErr) throw readErr;
+      const existing = (current ?? []) as { id: string; client_id: string }[];
+      const wanted = new Set(client_ids);
+      const toRemove = existing.filter((r) => !wanted.has(r.client_id)).map((r) => r.id);
+      const have = new Set(existing.map((r) => r.client_id));
+      const toAdd = client_ids.filter((cid) => !have.has(cid)).map((cid) => ({ integration_id, client_id: cid }));
+
+      if (toRemove.length) {
+        const { error } = await sb.from("rh_integration_clients").delete().in("id", toRemove);
+        if (error) throw error;
+      }
+      if (toAdd.length) {
+        const { error } = await sb.from("rh_integration_clients").insert(toAdd);
+        if (error) throw error;
+      }
+      return { added: toAdd.length, removed: toRemove.length };
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["rh_integration_clients"] });
+      qc.invalidateQueries({ queryKey: ["rh_integrations"] });
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+}
+
 // ---------- Sync GC ----------
 export function useSyncClientesGc() {
   const qc = useQueryClient();
