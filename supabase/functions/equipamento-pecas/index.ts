@@ -166,7 +166,7 @@ Deno.serve(async (req) => {
     const atualizarVinculosAuvoAoVivo = async () => {
       if (!equipIds.size) return;
       const token = await auvoLogin();
-      if (!token) return;
+      if (!token) { console.log("[pecas] auvo login falhou"); return; }
 
       const { data: ultimo } = await supabase
         .from("equipamento_tarefas_auvo")
@@ -181,6 +181,7 @@ Deno.serve(async (req) => {
       inicio = new Date(inicio.getTime() - 7 * 86400000);
       if (inicio < limite) inicio = limite;
       const fim = new Date(hoje.getTime() + 7 * 86400000);
+      console.log(`[pecas] live auvo ${isoDay(inicio)} → ${isoDay(fim)} equips=${Array.from(equipIds).join(",")}`);
 
       const headers = { Authorization: `Bearer ${token}`, "Content-Type": "application/json" };
       const novos: any[] = [];
@@ -193,9 +194,9 @@ Deno.serve(async (req) => {
         let json: any = null;
         try {
           const res = await fetch(url, { headers });
-          if (!res.ok) break;
+          if (!res.ok) { console.log(`[pecas] auvo tasks HTTP ${res.status}`); break; }
           json = await res.json();
-        } catch { break; }
+        } catch (e) { console.log("[pecas] auvo tasks erro", String(e)); break; }
         const lista = json?.result?.entityList || [];
         if (!Array.isArray(lista) || lista.length === 0) break;
         for (const t of lista) {
@@ -222,13 +223,15 @@ Deno.serve(async (req) => {
           }
         }
         const total = Number(json?.result?.pagedSearchReturnData?.totalItems || 0);
+        console.log(`[pecas] page ${page}: ${lista.length} tarefas, total=${total}, vinculos=${novos.length}`);
         if (page * 100 >= total) break;
       }
 
       if (novos.length) {
-        await supabase
+        const { error } = await supabase
           .from("equipamento_tarefas_auvo")
           .upsert(novos, { onConflict: "auvo_equipment_id,auvo_task_id" });
+        if (error) console.log("[pecas] upsert erro", error.message);
       }
     };
 
