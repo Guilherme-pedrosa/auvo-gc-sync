@@ -236,6 +236,8 @@ export type BudgetAiPartOccurrence = {
 export type BudgetAiPartsHistoryPayload = {
   consolidado?: BudgetAiPartHistoryItem[];
   pecas?: BudgetAiPartOccurrence[];
+  consolidado_servicos?: BudgetAiPartHistoryItem[];
+  servicos?: BudgetAiPartOccurrence[];
   totais?: { os?: number; orcamentos?: number; itens?: number };
 };
 
@@ -249,6 +251,7 @@ export type BudgetAiPartsHistoryContext = {
     confianca: "alta" | "media" | "baixa";
     score: number;
     evidencias: string[];
+    tipo?: "peca" | "servico";
   }>;
   itemsConsidered: number;
 };
