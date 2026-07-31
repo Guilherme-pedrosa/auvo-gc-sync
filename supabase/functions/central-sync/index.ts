@@ -15,6 +15,8 @@ const QUESTIONNAIRE_ID = "216040";
 const GC_ATRIBUTO_TAREFA_ORC = "73341";
 const GC_ATRIBUTO_TAREFA_OS = "73343";
 const GC_ATRIBUTO_TAREFA_EXEC = "73344";
+// 88695 = ID EQUIPAMENTO (identificador/série do equipamento preenchido no GC)
+const GC_ATRIBUTO_ID_EQUIPAMENTO = "88695";
 // GestãoClick documents a company-wide limit of 3 requests/second. Keep each
 // Edge Function instance below that ceiling and serialize concurrent callers
 // inside this process so Promise.all cannot create request bursts.
