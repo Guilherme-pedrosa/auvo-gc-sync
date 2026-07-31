@@ -50,7 +50,7 @@ type Peca = {
   auvo_task_id: string | null;
   link: string | null;
   vendida: boolean;
-  vinculo: "direto" | "texto";
+  vinculo: "direto" | "texto" | "historico";
 };
 
 const SITUACOES_VENDIDAS = [
