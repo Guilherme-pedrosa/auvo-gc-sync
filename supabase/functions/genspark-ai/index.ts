@@ -1238,7 +1238,7 @@ function parseAndNormalizeBudgetAnalysis(raw: string, maxRecommendations: number
 }
 
 function buildBudgetAnalysisSystemPrompt(deep: boolean): string {
-  const recommendationLimit = deep ? 10 : 6;
+  const recommendationLimit = deep ? 24 : 18;
   return `Você é o copiloto de triagem técnica de orçamentos da WeDo.
 Responda SOMENTE JSON válido, sem markdown, seguindo exatamente este contrato:
 {"version":"${BUDGET_AI_PROMPT_VERSION}","summary":"string","status":"pode_seguir|pode_seguir_com_ressalvas|validacao_adicional","equipment":{"name":"string","manufacturer":"string","model":"string","id":"string","confidence":"baixa|media|alta","evidence":"string"},"readiness":{"blocked":false,"reasons":["string"],"missing":["string"]},"facts":[{"statement":"string","evidence":"string","source":"OS|foto identificada|documento interno|web"}],"hypotheses":[{"statement":"string","reason":"string","confidence":"baixa|media|alta","needs_validation":true}],"recommendations":[{"item":"string","type":"peca|insumo|servico|verificacao","status":"confirmado|recomendar|verificar","reason":"string","evidence":"string","source":"string","confidence":"baixa|media|alta","part_code":"string","code_evidence":"string","code_confidence":"baixa|media|alta"}],"filling_improvements":["string"],"observation_suggested":"string","policies":[{"policy":"string","reason":"string"}],"questions":["string"]}.
@@ -1259,6 +1259,8 @@ REGRAS OBRIGATÓRIAS:
 - SERVIÇOS: trate os itens do tipo "servico" (mão de obra, atendimento, higienização, instalação) EXATAMENTE como as peças. Use o bloco "Serviços/mão de obra já orçados/vendidos neste equipamento" do histórico, reutilize a descrição oficial do serviço no campo "item", preencha "part_code" com o CÓDIGO do serviço vindo do histórico (nunca ID, nunca inventado) e "code_evidence" no formato "Código X porque este serviço já foi cobrado na OS 1234 de 12/03/2025 (vendido)".
 - Sempre que a intervenção exigir mão de obra (troca de compressor, carga de gás, solda, deslocamento, teste), RECOMENDE explicitamente o serviço correspondente do histórico — não deixe o orçamento só com peças.
 - Serviço sem código no histórico: deixe "part_code" vazio, use "code_confidence" no máximo "media" e explique em "code_evidence" que não há serviço equivalente cadastrado.
+- COBERTURA OBRIGATÓRIA: percorra item por item TUDO que o técnico escreveu em "Peças informadas" e em "Serviços informados" (inclusive listas separadas por vírgula, barra, hífen ou quebra de linha, ex.: laudo NR13, teste de estanqueidade, limpeza, hora técnica). CADA item precisa de uma recomendação própria em "recommendations" — nunca resuma vários itens em um só e nunca responda apenas com hora técnica/mão de obra genérica.
+- Se um item solicitado não tiver correspondência no histórico, ainda assim gere a recomendação com status "verificar", "part_code" vazio e "code_evidence" explicando que é a primeira ocorrência para este equipamento. Omitir um item solicitado é erro grave.
 - Peças recorrentes no histórico (várias ocorrências ou trocadas recentemente) podem virar "recomendar"/"verificar" com a justificativa do padrão observado — nunca "confirmado" só por histórico.
 - Se o técnico pediu uma peça que não existe no histórico, mantenha o pedido dele e sinalize que é a primeira ocorrência para este equipamento.
 - Máximo de ${recommendationLimit} recomendações e 8 perguntas. Seja técnico e direto.

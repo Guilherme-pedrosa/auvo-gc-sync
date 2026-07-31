@@ -1487,7 +1487,10 @@ export default function BudgetKanbanPage() {
     });
 
     const historyPayload = await fetchPartsHistory(card, equipmentId, equipment);
-    const partsHistory = buildPartsHistoryContext(historyPayload, parts);
+    const partsHistory = buildPartsHistoryContext(
+      historyPayload,
+      [parts, services].filter(Boolean).join("\n"),
+    );
 
     return {
       readiness,
@@ -1644,7 +1647,10 @@ export default function BudgetKanbanPage() {
               observacoes: getAnswer(selectedCard, "observ") || "",
               historico_pecas: buildPartsHistoryContext(
                 partsHistoryCache.current.get(equipamentoId || equipamento || selectedCard.auvo_task_id),
-                getAnswer(selectedCard, "peças") || getAnswer(selectedCard, "material") || "",
+                [
+                  getAnswer(selectedCard, "peças") || getAnswer(selectedCard, "material") || "",
+                  getAnswer(selectedCard, "serviços") || getAnswer(selectedCard, "servico") || "",
+                ].filter(Boolean).join("\n"),
               )?.text || "",
             },
             analysis: aiAnalysis || "",
