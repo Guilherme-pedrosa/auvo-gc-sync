@@ -645,6 +645,57 @@ Deno.serve(async (req) => {
         aceitosHistorico++;
       }
     }
+    // Documentos antigos (gc-only) não têm tarefa Auvo nem texto local. Nesse
+    // caso a única fonte é o próprio documento no GC: buscamos o detalhe e só
+    // aceitamos quando o texto do documento nomeia o equipamento inteiro
+    // (todos os termos do nome, ex.: fogao + bocas + tramontina).
+    const detalheCache = new Map<string, any>();
+    const textoDoDetalhe = (d: any) => norm([
+      d?.nome_equipamento, d?.equipamento, d?.marca, d?.modelo, d?.numero_serie,
+      d?.descricao, d?.observacoes, d?.observacoes_interna, d?.informacoes_adicionais,
+      d?.problema, d?.solucao, d?.laudo_tecnico, d?.nome_servico,
+      ...(Array.isArray(d?.servicos) ? d.servicos.map((x: any) => (x?.servico || x)?.nome_servico || (x?.servico || x)?.detalhes || "") : []),
+    ].filter(Boolean).join("\n"));
+
+    const avaliarHistoricoNoGc = async (
+      entradas: Array<[string, any]>,
+      origem: "os" | "orcamento",
+      alvoMap: Map<string, any>,
+      chave: string,
+    ) => {
+      const pendentes = entradas.filter(([id, ref]) => {
+        if (alvoMap.has(id)) return false;
+        const data = dataDoRef(ref, origem);
+        return !!data && data < CORTE_HISTORICO;
+      });
+      if (!pendentes.length || !termos.length) return 0;
+      let aceitos = 0;
+      const rota = origem === "os" ? "ordens_servicos" : "orcamentos";
+      const CONC_H = 6;
+      for (let i = 0; i < pendentes.length; i += CONC_H) {
+        const batch = pendentes.slice(i, i + CONC_H);
+        const res = await Promise.all(
+          batch.map(([id]) => gcGet(`/api/${rota}/${encodeURIComponent(id)}`, gcHeaders)),
+        );
+        res.forEach((j, idx) => {
+          const detail = j?.data || j;
+          if (!detail) return;
+          const [id, ref] = batch[idx];
+          detalheCache.set(`${chave}:${id}`, detail);
+          const texto = textoDoDetalhe(detail);
+          if (!texto) return;
+          if (termos.some((toks) => toks.every((t) => texto.includes(t)))) {
+            alvoMap.set(id, ref);
+            historicos.add(`${chave}:${id}`);
+            aceitos++;
+          }
+        });
+      }
+      return aceitos;
+    };
+    aceitosHistorico += await avaliarHistoricoNoGc(Array.from(candidatosOs), "os", osMap, "os");
+    aceitosHistorico += await avaliarHistoricoNoGc(Array.from(candidatosOrc), "orcamento", orcMap, "orc");
+
     // Também valida os documentos encontrados na carga inicial. Isso impede que
     // um vínculo antigo da Tarefa OS mantenha uma OS cuja Tarefa Execução aponta
     // explicitamente para outro equipamento.
@@ -731,7 +782,10 @@ Deno.serve(async (req) => {
     const osEntries = Array.from(osMap.entries());
     for (let i = 0; i < osEntries.length; i += CONC) {
       const batch = osEntries.slice(i, i + CONC);
-      const res = await Promise.all(batch.map(([id]) => gcGet(`/api/ordens_servicos/${encodeURIComponent(id)}`, gcHeaders)));
+      const res = await Promise.all(batch.map(([id]) =>
+        detalheCache.has(`os:${id}`)
+          ? Promise.resolve({ data: detalheCache.get(`os:${id}`) })
+          : gcGet(`/api/ordens_servicos/${encodeURIComponent(id)}`, gcHeaders)));
       res.forEach((j, idx) => {
         const detail = j?.data || j;
         if (detail) {
@@ -746,7 +800,10 @@ Deno.serve(async (req) => {
     const orcEntries = Array.from(orcMap.entries());
     for (let i = 0; i < orcEntries.length; i += CONC) {
       const batch = orcEntries.slice(i, i + CONC);
-      const res = await Promise.all(batch.map(([id]) => gcGet(`/api/orcamentos/${encodeURIComponent(id)}`, gcHeaders)));
+      const res = await Promise.all(batch.map(([id]) =>
+        detalheCache.has(`orc:${id}`)
+          ? Promise.resolve({ data: detalheCache.get(`orc:${id}`) })
+          : gcGet(`/api/orcamentos/${encodeURIComponent(id)}`, gcHeaders)));
       res.forEach((j, idx) => {
         const detail = j?.data || j;
         if (detail) {
