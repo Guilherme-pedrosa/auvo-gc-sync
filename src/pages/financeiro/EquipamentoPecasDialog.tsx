@@ -150,14 +150,15 @@ export default function EquipamentoPecasDialog({ open, onOpenChange, equipamento
             <Tabs defaultValue="consolidado" className="flex-1 min-h-0 flex flex-col">
               <TabsList>
                 <TabsTrigger value="consolidado">Consolidado ({consolidado.length})</TabsTrigger>
-                <TabsTrigger value="itens">Itens ({pecas.length})</TabsTrigger>
-                <TabsTrigger value="documentos">Documentos ({documentos.length})</TabsTrigger>
+                <TabsTrigger value="os">OS ({pecasOs.length})</TabsTrigger>
+                <TabsTrigger value="orcamento">Orçamento ({pecasOrc.length})</TabsTrigger>
               </TabsList>
 
               <TabsContent value="consolidado" className="flex-1 min-h-0 overflow-auto">
                 <Table>
                   <TableHeader>
                     <TableRow>
+                      <TableHead>Código</TableHead>
                       <TableHead>Peça</TableHead>
                       <TableHead className="text-right">Qtd vendida</TableHead>
                       <TableHead className="text-right">Valor vendido</TableHead>
@@ -168,9 +169,10 @@ export default function EquipamentoPecasDialog({ open, onOpenChange, equipamento
                   </TableHeader>
                   <TableBody>
                     {consolidado.length === 0 ? (
-                      <TableRow><TableCell colSpan={6} className="text-center text-muted-foreground py-6">Nenhuma peça encontrada</TableCell></TableRow>
+                      <TableRow><TableCell colSpan={7} className="text-center text-muted-foreground py-6">Nenhuma peça encontrada</TableCell></TableRow>
                     ) : consolidado.map((p: any, i: number) => (
                       <TableRow key={i}>
+                        <TableCell className="text-xs font-mono">{p.codigo || "—"}</TableCell>
                         <TableCell className="text-sm">{p.descricao}</TableCell>
                         <TableCell className="text-right text-sm">{p.qtd_vendida || "—"}</TableCell>
                         <TableCell className="text-right text-sm font-medium">{p.valor_vendido ? brl(p.valor_vendido) : "—"}</TableCell>
