@@ -287,7 +287,7 @@ export default function AnalisesOperacionaisPage() {
         </Button>
       </header>
 
-      <div className="px-6 py-4 space-y-4 flex-1 overflow-auto">
+      <div className="px-6 py-4 space-y-4 flex-1 overflow-y-scroll scroll-always">
         <div className="grid grid-cols-2 md:grid-cols-5 gap-2">
           {cards.map((c) => {
             const active = c.key !== "__sat" && cardFilter === c.key;
@@ -348,8 +348,8 @@ export default function AnalisesOperacionaisPage() {
           )}
         </div>
 
-        <div className="border border-border rounded-lg overflow-hidden">
-          <Table>
+        <div className="border border-border rounded-lg overflow-x-scroll scroll-always">
+          <Table className="min-w-[1100px]">
             <TableHeader>
               <TableRow>
                 <TableHead>Status análise</TableHead>
