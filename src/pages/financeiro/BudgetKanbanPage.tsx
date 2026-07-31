@@ -36,6 +36,7 @@ import {
   evaluateBudgetAiReadiness,
   extractBudgetAiPhotos,
   withBudgetAiTimeout,
+  buildPartsHistoryContext,
   type BudgetAiResponseMeta,
   type BudgetAiStructuredAnalysis,
 } from "@/lib/budgetAi";
