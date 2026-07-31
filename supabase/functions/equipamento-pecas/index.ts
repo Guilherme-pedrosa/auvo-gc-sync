@@ -569,10 +569,13 @@ Deno.serve(async (req) => {
 
     type EquipmentMatch = "target" | "other" | "unknown";
     const tarefaClassificaEquipamento = (taskId: string): EquipmentMatch => {
+      // O vínculo nativo tarefa → equipamento do Auvo é a fonte autoritativa.
+      // Deve prevalecer sobre descrições genéricas como "máquina", que antes
+      // faziam tarefas válidas serem classificadas como outro equipamento.
+      if (taskIds.has(taskId) || linkedToTargetEquipment.has(taskId)) return "target";
+
       const row = linkedTaskRows.get(taskId);
-      if (!row) {
-        return taskIds.has(taskId) || linkedToTargetEquipment.has(taskId) ? "target" : "unknown";
-      }
+      if (!row) return "unknown";
       const texto = norm([
         row.equipamento_id_serie, row.equipamento_nome, row.orientacao, row.descricao,
       ].filter(Boolean).join("\n"));
@@ -590,7 +593,7 @@ Deno.serve(async (req) => {
         /(?:equipamento\s*:|\b(?:fogao|forno|fritadeira|chapa|coifa|lavadora|camara|refrigerador|freezer|maquina|balcao)\b)/.test(orientacao)
       );
       if (nomeiaEquipamento) return "other";
-      return taskIds.has(taskId) || linkedToTargetEquipment.has(taskId) ? "target" : "unknown";
+      return "unknown";
     };
     const documentoLigadoAoEquipamento = (ref: any, origem: "os" | "orcamento") => {
       // Cada documento deve seguir a tarefa que efetivamente o originou:
