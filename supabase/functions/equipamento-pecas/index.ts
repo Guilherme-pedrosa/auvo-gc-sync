@@ -161,6 +161,77 @@ Deno.serve(async (req) => {
       (data || []).forEach((r: any) => { if (r.auvo_task_id) taskIds.add(String(r.auvo_task_id)); });
     };
 
+    // Vínculos podem estar defasados (sync noturno). Busca AO VIVO no Auvo as
+    // tarefas do período ainda não sincronizado e grava os vínculos que faltam.
+    const atualizarVinculosAuvoAoVivo = async () => {
+      if (!equipIds.size) return;
+      const token = await auvoLogin();
+      if (!token) return;
+
+      const { data: ultimo } = await supabase
+        .from("equipamento_tarefas_auvo")
+        .select("synced_at")
+        .in("auvo_equipment_id", Array.from(equipIds))
+        .order("synced_at", { ascending: false })
+        .limit(1);
+
+      const hoje = new Date();
+      const limite = new Date(hoje.getTime() - 400 * 86400000);
+      let inicio = ultimo?.[0]?.synced_at ? new Date(ultimo[0].synced_at) : limite;
+      inicio = new Date(inicio.getTime() - 7 * 86400000);
+      if (inicio < limite) inicio = limite;
+      const fim = new Date(hoje.getTime() + 7 * 86400000);
+
+      const headers = { Authorization: `Bearer ${token}`, "Content-Type": "application/json" };
+      const novos: any[] = [];
+      for (let page = 1; page <= 20; page++) {
+        const paramFilter = encodeURIComponent(JSON.stringify({
+          startDate: `${isoDay(inicio)}T00:00:00`,
+          endDate: `${isoDay(fim)}T23:59:59`,
+        }));
+        const url = `${AUVO_BASE_URL}/tasks/?page=${page}&pageSize=100&order=desc&paramFilter=${paramFilter}&selectFields=${encodeURIComponent(AUVO_TASK_FIELDS)}`;
+        let json: any = null;
+        try {
+          const res = await fetch(url, { headers });
+          if (!res.ok) break;
+          json = await res.json();
+        } catch { break; }
+        const lista = json?.result?.entityList || [];
+        if (!Array.isArray(lista) || lista.length === 0) break;
+        for (const t of lista) {
+          const ids: any[] = Array.isArray(t.equipmentsId) ? t.equipmentsId : [];
+          const taskId = String(t.taskID || t.id || "");
+          if (!taskId) continue;
+          for (const eq of ids) {
+            if (!equipIds.has(String(eq))) continue;
+            taskIds.add(taskId);
+            novos.push({
+              auvo_equipment_id: String(eq),
+              auvo_task_id: taskId,
+              auvo_task_type_id: t.taskType ? String(t.taskType) : null,
+              auvo_task_type_description: t.taskTypeDescription || null,
+              status_auvo: t.finished || t.checkOutDate ? "Finalizada" : "Pendente",
+              data_tarefa: String(t.taskDate || "").slice(0, 10) || null,
+              data_conclusao: String(t.checkOutDate || t.finishedDate || "").slice(0, 10) || null,
+              cliente: t.customerDescription || t.customerName || null,
+              tecnico: t.userToName || null,
+              auvo_link: `https://app2.auvo.com.br/relatorioTarefas/DetalheTarefa/${taskId}`,
+              source: "live_equipment_relation",
+              synced_at: new Date().toISOString(),
+            });
+          }
+        }
+        const total = Number(json?.result?.pagedSearchReturnData?.totalItems || 0);
+        if (page * 100 >= total) break;
+      }
+
+      if (novos.length) {
+        await supabase
+          .from("equipamento_tarefas_auvo")
+          .upsert(novos, { onConflict: "auvo_equipment_id,auvo_task_id" });
+      }
+    };
+
     const carregarCentral = async () => {
       let novos = 0;
       const ids = Array.from(taskIds).filter((id) => !centralById.has(id));
@@ -281,6 +352,7 @@ Deno.serve(async (req) => {
     // Passe único e fechado: série -> catálogo -> tarefas do MESMO equipamento -> central
     await resolveEquipCatalogo();
     await expandirTarefasPorEquipamento();
+    await atualizarVinculosAuvoAoVivo();
     await carregarCentral();
     // varre todo o período disponível, recuperando OS/orçamentos antigos
     await expandirHistoricoAntigo();
