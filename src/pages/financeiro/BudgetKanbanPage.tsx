@@ -1640,6 +1640,10 @@ export default function BudgetKanbanPage() {
               pecas: getAnswer(selectedCard, "peças") || getAnswer(selectedCard, "material") || "",
               servicos: getAnswer(selectedCard, "serviços") || getAnswer(selectedCard, "servico") || "",
               observacoes: getAnswer(selectedCard, "observ") || "",
+              historico_pecas: buildPartsHistoryContext(
+                partsHistoryCache.current.get(equipamentoId || equipamento || selectedCard.auvo_task_id),
+                getAnswer(selectedCard, "peças") || getAnswer(selectedCard, "material") || "",
+              )?.text || "",
             },
             analysis: aiAnalysis || "",
             userMessage: userMsg,
