@@ -48,6 +48,8 @@ type Peca = {
   data: string | null;
   cliente: string;
   auvo_task_id: string | null;
+  auvo_task_ids?: string[];
+  auvo_link: string | null;
   link: string | null;
   vendida: boolean;
   vinculo: "direto" | "texto";
