@@ -359,7 +359,7 @@ export function buildPartsHistoryContext(
 
   const lines: string[] = [];
   lines.push(
-    `Documentos no histórico: ${payload?.totais?.os ?? 0} OS e ${payload?.totais?.orcamentos ?? 0} orçamento(s); ${payload?.totais?.itens ?? ocorrencias.length} item(ns) de peça.`,
+    `Documentos no histórico: ${payload?.totais?.os ?? 0} OS e ${payload?.totais?.orcamentos ?? 0} orçamento(s); ${payload?.totais?.itens ?? ocorrencias.length} item(ns) de peça e ${ocorrenciasServicos.length} lançamento(s) de serviço.`,
   );
 
   if (top.length > 0) {
