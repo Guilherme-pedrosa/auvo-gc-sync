@@ -34,6 +34,7 @@ const fmtData = (d: string | null) => {
 
 export default function EquipamentoPecasDialog({ open, onOpenChange, equipamento }: Props) {
   const [busca, setBusca] = useState("");
+  const [somenteDireto, setSomenteDireto] = useState(false);
 
   const { data, isFetching, refetch, error } = useQuery({
     queryKey: [
@@ -63,10 +64,29 @@ export default function EquipamentoPecasDialog({ open, onOpenChange, equipamento
   const match = (...vals: (string | null | undefined)[]) =>
     !filtro || vals.some((v) => String(v || "").toLowerCase().includes(filtro));
 
-  const consolidado = (data?.consolidado || []).filter((p: any) => match(p.descricao, p.codigo));
-  const pecas = (data?.pecas || []).filter((p: any) =>
-    match(p.descricao, p.codigo, p.documento_codigo, p.situacao)
-  );
+  const pecas = (data?.pecas || [])
+    .filter((p: any) => !somenteDireto || p.vinculo !== "texto")
+    .filter((p: any) => match(p.descricao, p.codigo, p.documento_codigo, p.situacao));
+
+  const consolidado = (() => {
+    const mapa = new Map<string, any>();
+    for (const p of pecas as any[]) {
+      const key = p.codigo ? `c:${String(p.codigo).toLowerCase()}` : `d:${String(p.descricao).toLowerCase()}`;
+      const cur = mapa.get(key) || {
+        codigo: p.codigo || "", descricao: p.descricao,
+        qtd_orcada: 0, valor_orcado: 0, qtd_vendida: 0, valor_vendido: 0,
+        ocorrencias: 0, ultima_data: null as string | null,
+      };
+      if (p.vendida) { cur.qtd_vendida += p.quantidade; cur.valor_vendido += p.valor_total; }
+      else { cur.qtd_orcada += p.quantidade; cur.valor_orcado += p.valor_total; }
+      cur.ocorrencias += 1;
+      if (p.data && (!cur.ultima_data || p.data > cur.ultima_data)) cur.ultima_data = p.data;
+      mapa.set(key, cur);
+    }
+    return Array.from(mapa.values()).sort(
+      (a, b) => (b.valor_vendido + b.valor_orcado) - (a.valor_vendido + a.valor_orcado),
+    );
+  })();
   const pecasOs = pecas.filter((p: any) => p.origem === "os");
   const pecasOrc = pecas.filter((p: any) => p.origem === "orcamento");
 
@@ -137,8 +157,8 @@ export default function EquipamentoPecasDialog({ open, onOpenChange, equipamento
                 { l: "Tarefas Auvo", v: data.tarefas },
                 { l: "OS", v: data.totais.os },
                 { l: "Orçamentos", v: data.totais.orcamentos },
-                { l: "Vendido", v: brl(data.totais.valor_vendido) },
-                { l: "Orçado (não vendido)", v: brl(data.totais.valor_orcado) },
+                { l: "Vendido", v: brl(pecas.filter((p: any) => p.vendida).reduce((s: number, p: any) => s + p.valor_total, 0)) },
+                { l: "Orçado (não vendido)", v: brl(pecas.filter((p: any) => !p.vendida).reduce((s: number, p: any) => s + p.valor_total, 0)) },
               ].map((c) => (
                 <div key={c.l} className="rounded-md border p-2">
                   <div className="text-xs text-muted-foreground">{c.l}</div>
@@ -161,6 +181,14 @@ export default function EquipamentoPecasDialog({ open, onOpenChange, equipamento
                 onChange={(e) => setBusca(e.target.value)}
                 className="h-8"
               />
+              <Button
+                variant={somenteDireto ? "default" : "outline"}
+                size="sm"
+                onClick={() => setSomenteDireto((v) => !v)}
+                title="Mostrar apenas documentos ligados diretamente às tarefas do equipamento"
+              >
+                {somenteDireto ? "Só vínculo direto" : `Inclui citados (${data.totais.docs_por_texto ?? 0})`}
+              </Button>
               <Button variant="outline" size="sm" onClick={() => refetch()}>
                 <RefreshCw className="h-4 w-4 mr-1" /> Atualizar
               </Button>
@@ -233,6 +261,9 @@ export default function EquipamentoPecasDialog({ open, onOpenChange, equipamento
                           <TableCell className="text-sm">
                             <span className="flex items-center gap-1">
                               {p.documento_codigo}
+                              {p.vinculo === "texto" && (
+                                <Badge variant="outline" className="text-[9px]">citado</Badge>
+                              )}
                               {p.link && (
                                 <a href={p.link} target="_blank" rel="noopener noreferrer">
                                   <ExternalLink className="h-3 w-3 text-muted-foreground" />

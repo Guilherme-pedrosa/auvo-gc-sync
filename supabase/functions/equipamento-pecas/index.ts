@@ -50,6 +50,7 @@ type Peca = {
   auvo_task_id: string | null;
   link: string | null;
   vendida: boolean;
+  vinculo: "direto" | "texto";
 };
 
 const SITUACOES_VENDIDAS = [
@@ -419,6 +420,74 @@ Deno.serve(async (req) => {
       if (orcId && !orcMap.has(orcId)) orcMap.set(orcId, r);
     }
 
+    // 3b) Muitos documentos do GC não têm vínculo nenhum com a tarefa do
+    // equipamento. Varremos TODOS os documentos do(s) cliente(s) do equipamento
+    // e aceitamos apenas os que citam a série/chapa ou o tipo+marca do
+    // equipamento no texto (descrição, observações, itens).
+    const clientes = new Set<string>();
+    for (const r of centralRows) if (r.cliente) clientes.add(String(r.cliente));
+    if (equipIds.size) {
+      const { data: catCli } = await supabase
+        .from("equipamentos_auvo")
+        .select("cliente, nome")
+        .in("auvo_equipment_id", Array.from(equipIds));
+      (catCli || []).forEach((e: any) => { if (e?.cliente) clientes.add(String(e.cliente)); });
+    }
+
+    const STOP = new Set([
+      "cima", "baixo", "sobre", "para", "com", "sem", "balcao", "area", "cozinha",
+      "salao", "lado", "esquerdo", "direito", "frente", "fundo", "novo", "nova",
+    ]);
+    const nomesEquip = new Set<string>();
+    if (equipamentoNome) nomesEquip.add(equipamentoNome);
+    for (const r of centralRows) if (r.equipamento_nome) nomesEquip.add(String(r.equipamento_nome));
+    if (equipIds.size) {
+      const { data: catNomes } = await supabase
+        .from("equipamentos_auvo")
+        .select("nome")
+        .in("auvo_equipment_id", Array.from(equipIds));
+      (catNomes || []).forEach((e: any) => { if (e?.nome) nomesEquip.add(String(e.nome)); });
+    }
+    const termos: string[][] = [];
+    for (const n of nomesEquip) {
+      const toks = norm(n)
+        .replace(/[^a-z0-9 ]+/g, " ")
+        .split(/\s+/)
+        .filter((t) => t.length >= 4 && !STOP.has(t));
+      if (toks.length) termos.push(toks.slice(0, 2));
+    }
+    const seriesArr = Array.from(series).map((s) => norm(s)).filter((s) => s.length >= 5);
+
+    const documentoCita = (detail: any) => {
+      const texto = norm(JSON.stringify(detail || {}));
+      if (seriesArr.some((s) => texto.includes(s))) return true;
+      return termos.some((toks) => toks.every((t) => texto.includes(t)));
+    };
+
+    const osTexto = new Map<string, any>();
+    const orcTexto = new Map<string, any>();
+    if (clientes.size && (termos.length || seriesArr.length)) {
+      for (const cli of clientes) {
+        for (let from = 0; ; from += 1000) {
+          const { data } = await supabase
+            .from("tarefas_central")
+            .select(selectCols)
+            .eq("cliente", cli)
+            .range(from, from + 999);
+          for (const r of data || []) {
+            const osId = String(r.gc_os_id || "").trim();
+            if (osId && !osMap.has(osId) && !osTexto.has(osId)) osTexto.set(osId, r);
+            const orcId = String(r.gc_orcamento_id || "").trim();
+            if (orcId && !orcMap.has(orcId) && !orcTexto.has(orcId)) orcTexto.set(orcId, r);
+          }
+          if (!data || data.length < 1000) break;
+        }
+      }
+    }
+    console.log(
+      `[pecas] candidatos por cliente: os=${osTexto.size} orc=${orcTexto.size} termos=${JSON.stringify(termos)}`,
+    );
+
     const pecas: Peca[] = [];
     const documentos: any[] = [];
 
@@ -427,6 +496,7 @@ Deno.serve(async (req) => {
       origem: "os" | "orcamento",
       docId: string,
       ref: any,
+      vinculo: "direto" | "texto" = "direto",
     ) => {
       const codigo = String(detail?.codigo || (origem === "os" ? ref?.gc_os_codigo : ref?.gc_orcamento_codigo) || docId);
       const situacao = String(detail?.nome_situacao || (origem === "os" ? ref?.gc_os_situacao : ref?.gc_orc_situacao) || "");
@@ -468,6 +538,7 @@ Deno.serve(async (req) => {
           auvo_task_id: ref?.auvo_task_id ? String(ref.auvo_task_id) : null,
           link,
           vendida,
+          vinculo,
         });
         itens++;
       }
@@ -475,7 +546,7 @@ Deno.serve(async (req) => {
       documentos.push({
         origem, documento_id: docId, documento_codigo: codigo, situacao, data, cliente,
         auvo_task_id: ref?.auvo_task_id ? String(ref.auvo_task_id) : null,
-        link, itens, vendida,
+        link, itens, vendida, vinculo,
         valor_total: toNum(detail?.valor_total),
       });
     };
@@ -500,6 +571,30 @@ Deno.serve(async (req) => {
         if (detail) extrair(detail, "orcamento", batch[idx][0], batch[idx][1]);
       });
     }
+
+    // Documentos do cliente sem vínculo de tarefa: só entram se citarem o equipamento
+    let aceitosTexto = 0;
+    const varrerPorTexto = async (
+      entries: [string, any][],
+      origem: "os" | "orcamento",
+      path: string,
+    ) => {
+      for (let i = 0; i < entries.length; i += CONC) {
+        const batch = entries.slice(i, i + CONC);
+        const res = await Promise.all(
+          batch.map(([id]) => gcGet(`${path}/${encodeURIComponent(id)}`, gcHeaders)),
+        );
+        res.forEach((j, idx) => {
+          const detail = j?.data || j;
+          if (!detail || !documentoCita(detail)) return;
+          aceitosTexto++;
+          extrair(detail, origem, batch[idx][0], batch[idx][1], "texto");
+        });
+      }
+    };
+    await varrerPorTexto(Array.from(osTexto.entries()), "os", "/api/ordens_servicos");
+    await varrerPorTexto(Array.from(orcTexto.entries()), "orcamento", "/api/orcamentos");
+    console.log(`[pecas] docs aceitos por texto: ${aceitosTexto}`);
 
     // 4) Consolidado por peça
     // Resolve o código interno real dos produtos que vieram sem código
@@ -570,8 +665,9 @@ Deno.serve(async (req) => {
       pecas: pecas.sort((a, b) => String(b.data || "").localeCompare(String(a.data || ""))),
       consolidado: lista,
       totais: {
-        os: osMap.size,
-        orcamentos: orcMap.size,
+        os: documentos.filter((d: any) => d.origem === "os").length,
+        orcamentos: documentos.filter((d: any) => d.origem === "orcamento").length,
+        docs_por_texto: aceitosTexto,
         itens: pecas.length,
         valor_vendido: pecas.filter((p) => p.vendida).reduce((s, p) => s + p.valor_total, 0),
         valor_orcado: pecas.filter((p) => !p.vendida).reduce((s, p) => s + p.valor_total, 0),
