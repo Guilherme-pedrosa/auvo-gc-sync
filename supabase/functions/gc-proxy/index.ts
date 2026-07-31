@@ -1,4 +1,4 @@
-import { installGcUsuarioId } from "../_shared/gc-user.ts";
+import { installGcUsuarioId, GC_API_USER_ID } from "../_shared/gc-user.ts";
 installGcUsuarioId();
 
 const corsHeaders = {
@@ -7,7 +7,6 @@ const corsHeaders = {
 };
 
 const GC_BASE_URL = "https://api.gestaoclick.com";
-const GC_API_USER_ID = "1320473";
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
@@ -44,7 +43,7 @@ Deno.serve(async (req) => {
         url.searchParams.set(key, String(value));
       }
     }
-    if (method.toUpperCase() === "GET" && !url.searchParams.has("usuario_id")) {
+    if (!url.searchParams.get("usuario_id")) {
       url.searchParams.set("usuario_id", GC_API_USER_ID);
     }
 
@@ -52,6 +51,7 @@ Deno.serve(async (req) => {
       "access-token": gcAccessToken,
       "secret-access-token": gcSecretToken,
       "Content-Type": "application/json",
+      "usuario-id": GC_API_USER_ID,
     };
 
     const fetchOptions: RequestInit = {
