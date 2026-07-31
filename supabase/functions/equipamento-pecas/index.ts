@@ -506,22 +506,45 @@ Deno.serve(async (req) => {
       for (const row of data || []) linkedToTargetEquipment.add(String(row.auvo_task_id));
     }
 
-    const tarefaEhDoEquipamento = (taskId: string) => {
-      if (taskIds.has(taskId) || linkedToTargetEquipment.has(taskId)) return true;
+    type EquipmentMatch = "target" | "other" | "unknown";
+    const tarefaClassificaEquipamento = (taskId: string): EquipmentMatch => {
       const row = linkedTaskRows.get(taskId);
-      if (!row) return false;
+      if (!row) {
+        return taskIds.has(taskId) || linkedToTargetEquipment.has(taskId) ? "target" : "unknown";
+      }
       const texto = norm([
         row.equipamento_id_serie, row.equipamento_nome, row.orientacao, row.descricao,
       ].filter(Boolean).join("\n"));
-      if (seriesArr.some((s) => texto.includes(s))) return true;
-      return termos.some((toks) => toks.every((t) => texto.includes(t)));
+      if (seriesArr.some((s) => texto.includes(s))) return "target";
+      if (termos.some((toks) => toks.every((t) => texto.includes(t)))) return "target";
+
+      // A orientação da tarefa de execução é a fonte mais específica usada no
+      // Controle OS. Se ela nomeia claramente outro equipamento, o documento não
+      // pode herdar o equipamento da tarefa OS genérica.
+      const orientacao = norm(row.orientacao || "");
+      const nomeDireto = norm(row.equipamento_nome || "");
+      const serieDireta = norm(row.equipamento_id_serie || "");
+      const nomeiaEquipamento = Boolean(
+        nomeDireto || serieDireta ||
+        /(?:equipamento\s*:|\b(?:fogao|forno|fritadeira|chapa|coifa|lavadora|camara|refrigerador|freezer|maquina|balcao)\b)/.test(orientacao)
+      );
+      if (nomeiaEquipamento) return "other";
+      return taskIds.has(taskId) || linkedToTargetEquipment.has(taskId) ? "target" : "unknown";
     };
     const documentoLigadoAoEquipamento = (ref: any) => {
-      const ids = new Set([
-        ...tokensDeTarefa(ref.gc_os_tarefa_os),
-        ...tokensDeTarefa(ref.gc_os_tarefa_exec),
-      ]);
-      return Array.from(ids).some(tarefaEhDoEquipamento);
+      const execIds = tokensDeTarefa(ref.gc_os_tarefa_exec);
+      const execMatches = execIds.map(tarefaClassificaEquipamento);
+      if (execMatches.includes("target")) return true;
+      if (execMatches.includes("other")) return false;
+
+      const osIds = tokensDeTarefa(ref.gc_os_tarefa_os);
+      const osMatches = osIds.map(tarefaClassificaEquipamento);
+      if (osMatches.includes("target")) return true;
+      if (osMatches.includes("other")) return false;
+
+      // Orçamentos preventivos podem estar diretamente na tarefa do equipamento
+      // sem os atributos 73343/73344.
+      return taskIds.has(String(ref.auvo_task_id || ""));
     };
 
     let aceitosPorTarefa = 0;
@@ -535,6 +558,19 @@ Deno.serve(async (req) => {
       if (documentoLigadoAoEquipamento(ref)) {
         orcMap.set(id, ref);
         aceitosPorTarefa++;
+      }
+    }
+    // Também valida os documentos encontrados na carga inicial. Isso impede que
+    // um vínculo antigo da Tarefa OS mantenha uma OS cuja Tarefa Execução aponta
+    // explicitamente para outro equipamento.
+    for (const [id, ref] of Array.from(osMap.entries())) {
+      if ((ref.gc_os_tarefa_os || ref.gc_os_tarefa_exec) && !documentoLigadoAoEquipamento(ref)) {
+        osMap.delete(id);
+      }
+    }
+    for (const [id, ref] of Array.from(orcMap.entries())) {
+      if ((ref.gc_os_tarefa_os || ref.gc_os_tarefa_exec) && !documentoLigadoAoEquipamento(ref)) {
+        orcMap.delete(id);
       }
     }
     console.log(
