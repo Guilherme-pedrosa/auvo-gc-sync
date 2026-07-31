@@ -734,6 +734,7 @@ Deno.serve(async (req) => {
     );
 
     const pecas: Peca[] = [];
+    const servicos: any[] = [];
     const documentos: any[] = [];
 
     const extrair = (
@@ -807,12 +808,48 @@ Deno.serve(async (req) => {
         itens++;
       }
 
+      // Serviços (mão de obra / atendimentos) do mesmo documento
+      const servicosDoc: any[] = (Array.isArray(detail?.servicos) ? detail.servicos : [])
+        .map((x: any) => x?.servico || x)
+        .filter(Boolean);
+      let itensServico = 0;
+      for (const s of servicosDoc) {
+        const descricao = String(s.nome_servico || s.nome || s.detalhes || "Serviço sem descrição").trim();
+        const codigoServico = String(
+          s.codigo_interno || s.codigo || s.codigo_servico || s.servico_codigo || ""
+        ).trim();
+        const quantidade = toNum(s.quantidade) || 1;
+        const valor_total = toNum(s.valor_total) || (toNum(s.valor_venda || s.valor_unitario) * quantidade);
+        servicos.push({
+          codigo: codigoServico,
+          servico_id: String(s.servico_id || s.id || "").trim() || null,
+          descricao,
+          detalhes: String(s.detalhes || "").trim() || null,
+          quantidade,
+          valor_unitario: quantidade > 0 ? valor_total / quantidade : valor_total,
+          valor_total,
+          origem,
+          documento_id: docId,
+          documento_codigo: codigo,
+          situacao,
+          data,
+          cliente,
+          auvo_task_id: ref?.auvo_task_id ? String(ref.auvo_task_id) : null,
+          auvo_task_ids: tarefasDoc,
+          auvo_link: auvoLink,
+          link,
+          vendida,
+          vinculo,
+        });
+        itensServico++;
+      }
+
       documentos.push({
         origem, documento_id: docId, documento_codigo: codigo, situacao, data, cliente,
         auvo_task_id: ref?.auvo_task_id ? String(ref.auvo_task_id) : null,
         auvo_task_ids: tarefasDoc,
         auvo_link: auvoLink,
-        link, itens, vendida, vinculo,
+        link, itens, itens_servico: itensServico, vendida, vinculo,
         valor_total: toNum(detail?.valor_total),
       });
     };
