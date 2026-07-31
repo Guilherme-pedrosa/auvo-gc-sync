@@ -601,34 +601,65 @@ Deno.serve(async (req) => {
       return taskIds.has(String(ref.auvo_task_id || ""));
     };
 
+    // Histórico anterior ao vínculo estrutural: o Auvo não devolve mais tarefas
+    // antigas pela API e as linhas antigas não têm equipamento preenchido. Nesse
+    // período (e SOMENTE nele) aceitamos o documento quando o texto da tarefa
+    // nomeia exatamente o equipamento (todos os termos do nome, ex.: fogao +
+    // bocas + tramontina), sempre dentro dos clientes do equipamento.
+    const CORTE_HISTORICO = String(body?.corte_historico || "2025-03-01");
+    const historicos = new Set<string>();
+    const dataDoRef = (ref: any, origem: "os" | "orcamento") =>
+      String((origem === "os" ? ref?.gc_os_data : ref?.gc_orc_data) || ref?.data_tarefa || "").slice(0, 10);
+    const matchHistoricoTexto = (ref: any, origem: "os" | "orcamento") => {
+      if (!termos.length) return false;
+      const data = dataDoRef(ref, origem);
+      if (!data || data >= CORTE_HISTORICO) return false;
+      const texto = norm([
+        ref.equipamento_nome, ref.equipamento_id_serie, ref.orientacao, ref.descricao,
+      ].filter(Boolean).join("\n"));
+      if (!texto) return false;
+      return termos.some((toks) => toks.every((t) => texto.includes(t)));
+    };
+
     let aceitosPorTarefa = 0;
+    let aceitosHistorico = 0;
     for (const [id, ref] of candidatosOs) {
       if (documentoLigadoAoEquipamento(ref, "os")) {
         osMap.set(id, ref);
         aceitosPorTarefa++;
+      } else if (matchHistoricoTexto(ref, "os")) {
+        osMap.set(id, ref);
+        historicos.add(`os:${id}`);
+        aceitosHistorico++;
       }
     }
     for (const [id, ref] of candidatosOrc) {
       if (documentoLigadoAoEquipamento(ref, "orcamento")) {
         orcMap.set(id, ref);
         aceitosPorTarefa++;
+      } else if (matchHistoricoTexto(ref, "orcamento")) {
+        orcMap.set(id, ref);
+        historicos.add(`orc:${id}`);
+        aceitosHistorico++;
       }
     }
     // Também valida os documentos encontrados na carga inicial. Isso impede que
     // um vínculo antigo da Tarefa OS mantenha uma OS cuja Tarefa Execução aponta
     // explicitamente para outro equipamento.
     for (const [id, ref] of Array.from(osMap.entries())) {
+      if (historicos.has(`os:${id}`)) continue;
       if ((ref.gc_os_tarefa_os || ref.gc_os_tarefa_exec) && !documentoLigadoAoEquipamento(ref, "os")) {
         osMap.delete(id);
       }
     }
     for (const [id, ref] of Array.from(orcMap.entries())) {
+      if (historicos.has(`orc:${id}`)) continue;
       if ((ref.gc_os_tarefa_os || ref.gc_os_tarefa_exec) && !documentoLigadoAoEquipamento(ref, "orcamento")) {
         orcMap.delete(id);
       }
     }
     console.log(
-      `[pecas] resolução Controle OS: candidatos_os=${candidatosOs.size} candidatos_orc=${candidatosOrc.size} aceitos_por_73343_73344=${aceitosPorTarefa}`,
+      `[pecas] resolução Controle OS: candidatos_os=${candidatosOs.size} candidatos_orc=${candidatosOrc.size} aceitos_por_73343_73344=${aceitosPorTarefa} historico_texto=${aceitosHistorico}`,
     );
 
     const pecas: Peca[] = [];
@@ -639,7 +670,7 @@ Deno.serve(async (req) => {
       origem: "os" | "orcamento",
       docId: string,
       ref: any,
-      vinculo: "direto" | "texto" = "direto",
+      vinculo: "direto" | "texto" | "historico" = "direto",
     ) => {
       const codigo = String(detail?.codigo || (origem === "os" ? ref?.gc_os_codigo : ref?.gc_orcamento_codigo) || docId);
       const situacao = String(detail?.nome_situacao || (origem === "os" ? ref?.gc_os_situacao : ref?.gc_orc_situacao) || "");
