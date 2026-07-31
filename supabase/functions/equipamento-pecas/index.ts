@@ -9,6 +9,9 @@ const corsHeaders = {
 };
 
 const GC_BASE = "https://api.gestaoclick.com";
+const AUVO_BASE_URL = "https://api.auvo.com.br/v2";
+const AUVO_TASK_FIELDS =
+  "taskID,taskDate,checkOutDate,deliveredDate,finishedDate,equipmentsId,taskType,taskTypeDescription,taskStatus,finished,customerDescription,customerName,userToName";
 
 function toNum(v: any): number {
   if (v === null || v === undefined || v === "") return 0;
@@ -63,6 +66,27 @@ async function gcGet(path: string, headers: Record<string, string>) {
   } catch {
     return null;
   }
+}
+
+async function auvoLogin(): Promise<string | null> {
+  const apiKey = Deno.env.get("AUVO_APP_KEY") ?? "";
+  const apiToken = Deno.env.get("AUVO_TOKEN") ?? "";
+  if (!apiKey || !apiToken) return null;
+  try {
+    const res = await fetch(
+      `${AUVO_BASE_URL}/login/?apiKey=${encodeURIComponent(apiKey)}&apiToken=${encodeURIComponent(apiToken)}`,
+      { headers: { "Content-Type": "application/json" } },
+    );
+    if (!res.ok) return null;
+    const data = await res.json();
+    return data?.result?.accessToken ?? null;
+  } catch {
+    return null;
+  }
+}
+
+function isoDay(d: Date) {
+  return d.toISOString().slice(0, 10);
 }
 
 Deno.serve(async (req) => {
