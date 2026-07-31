@@ -911,6 +911,7 @@ Deno.serve(async (req) => {
         qtd_orcada: 0, valor_orcado: 0,
         qtd_vendida: 0, valor_vendido: 0,
         ocorrencias: 0, ultima_data: null as string | null,
+        documentos: [] as any[],
       };
       if (!cur.codigo && p.codigo) cur.codigo = p.codigo;
       if (p.vendida) {
@@ -922,10 +923,25 @@ Deno.serve(async (req) => {
       }
       cur.ocorrencias += 1;
       if (p.data && (!cur.ultima_data || p.data > cur.ultima_data)) cur.ultima_data = p.data;
+      if (cur.documentos.length < 10) {
+        cur.documentos.push({
+          origem: p.origem,
+          documento_codigo: p.documento_codigo,
+          data: p.data,
+          situacao: p.situacao,
+          vendida: p.vendida,
+          quantidade: p.quantidade,
+          auvo_task_id: p.auvo_task_id || null,
+          link: p.link || null,
+        });
+      }
       consolidado.set(key, cur);
     }
 
-    const lista = Array.from(consolidado.values()).sort(
+    const lista = Array.from(consolidado.values()).map((item: any) => ({
+      ...item,
+      documentos: (item.documentos || []).sort((a: any, b: any) => String(b.data || "").localeCompare(String(a.data || ""))),
+    })).sort(
       (a, b) => (b.valor_vendido + b.valor_orcado) - (a.valor_vendido + a.valor_orcado),
     );
 
