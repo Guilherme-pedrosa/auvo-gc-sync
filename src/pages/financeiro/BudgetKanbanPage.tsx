@@ -17,7 +17,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   ArrowLeft, CalendarIcon, RefreshCw, ExternalLink, ClipboardList,
   FileText, Plus, GripVertical, Trash2, Edit2, Check, X, Filter, FileDown, Star,
-  Pencil, Save, Sparkles, Brain, Loader2, MessageCircle, Send
+  Pencil, Save, Sparkles, Brain, Loader2, MessageCircle, Send, Wrench
 } from "lucide-react";
 import { format, startOfMonth } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -31,6 +31,7 @@ import {
   shouldAutoRouteToDoneToday,
 } from "@/lib/budgetKanban";
 import BudgetAiAnalysisPanel from "@/components/financeiro/BudgetAiAnalysisPanel";
+import EquipamentoPecasDialog from "@/pages/financeiro/EquipamentoPecasDialog";
 import {
   evaluateBudgetAiReadiness,
   extractBudgetAiPhotos,
@@ -132,6 +133,7 @@ export default function BudgetKanbanPage() {
   const [editingColumnId, setEditingColumnId] = useState<string | null>(null);
   const [editingColumnTitle, setEditingColumnTitle] = useState("");
   const [selectedCard, setSelectedCard] = useState<KanbanItem | null>(null);
+  const [pecasCard, setPecasCard] = useState<KanbanItem | null>(null);
   const [sortBy, setSortBy] = useState<"manual" | "data" | "cliente" | "tecnico" | "valor">("manual");
   const [editingSection, setEditingSection] = useState<string | null>(null);
   const [editValue, setEditValue] = useState("");
@@ -2116,6 +2118,18 @@ export default function BudgetKanbanPage() {
                                                   OS GC
                                                 </a>
                                               )}
+                                              <button
+                                                type="button"
+                                                className="inline-flex items-center gap-1 text-[10px] text-amber-700 hover:underline"
+                                                title="Peças (varredura no GC)"
+                                                onClick={(e) => {
+                                                  e.stopPropagation();
+                                                  setPecasCard(item);
+                                                }}
+                                              >
+                                                <Wrench className="h-3 w-3" />
+                                                Peças
+                                              </button>
                                             </div>
 
                                             {/* Detalhes da resolução (quando na coluna Já Resolvido) */}
@@ -2615,6 +2629,19 @@ export default function BudgetKanbanPage() {
         </DialogContent>
       </Dialog>
 
+      {pecasCard && (
+        <EquipamentoPecasDialog
+          open={!!pecasCard}
+          onOpenChange={(v) => { if (!v) setPecasCard(null); }}
+          equipamento={{
+            nome: (pecasCard as any).equipamento_nome || `Tarefa #${pecasCard.auvo_task_id}`,
+            cliente: pecasCard.cliente ?? null,
+            identificador: (pecasCard as any).equipamento_id_serie || null,
+            auvo_equipment_id: null,
+            auvo_task_id: pecasCard.auvo_task_id,
+          }}
+        />
+      )}
     </div>
   );
 }
