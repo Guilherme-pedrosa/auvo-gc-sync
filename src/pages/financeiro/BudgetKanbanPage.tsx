@@ -2323,6 +2323,18 @@ export default function BudgetKanbanPage() {
                       Pesquisa de Satisfação
                     </a>
                   )}
+                  <button
+                    type="button"
+                    onClick={() => setPecasCard({
+                      ...selectedCard,
+                      equipamento_nome: resolvedEquipment?.nome || (selectedCard as any).equipamento_nome,
+                      equipamento_id_serie: resolvedEquipment?.id || (selectedCard as any).equipamento_id_serie,
+                    } as any)}
+                    className="inline-flex items-center gap-1.5 text-sm text-emerald-600 hover:underline font-medium"
+                  >
+                    <Wrench className="h-4 w-4" />
+                    Rastreio de Peças
+                  </button>
                   {selectedCard.gc_orcamento && (
                     <a
                       href={selectedCard.gc_orcamento.gc_link}
