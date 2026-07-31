@@ -91,14 +91,12 @@ Deno.serve(async (req) => {
       "Content-Type": "application/json",
     };
 
-    // 1) Descoberta ampla (sem limite de período): equipamento -> tarefas -> equipamento ...
+    // 1) Descoberta ESTRITA: apenas o equipamento exato (auvo_equipment_id / série)
     const taskIds = new Set<string>();
     const equipIds = new Set<string>();
     const series = new Set<string>();
-    const nomes = new Set<string>();
     if (auvoEquipmentId) equipIds.add(auvoEquipmentId);
     if (identificador) series.add(identificador);
-    if (equipamentoNome) nomes.add(equipamentoNome);
     if (auvoTaskId) taskIds.add(auvoTaskId);
 
     const selectCols =
@@ -111,14 +109,6 @@ Deno.serve(async (req) => {
         const k = String(r.auvo_task_id || "");
         if (!k) continue;
         if (!centralById.has(k)) { centralById.set(k, r); novos++; }
-        if (r.equipamento_id_serie) {
-          const s = String(r.equipamento_id_serie).trim();
-          if (s.length >= 4 && !series.has(s)) { series.add(s); novos++; }
-        }
-        if (r.equipamento_nome) {
-          const n = String(r.equipamento_nome).trim();
-          if (n.length >= 5 && !nomes.has(n)) { nomes.add(n); novos++; }
-        }
         taskIds.add(k);
       }
       return novos;
@@ -134,7 +124,6 @@ Deno.serve(async (req) => {
         .in("identificador", seriesArr);
       (data || []).forEach((e: any) => {
         if (e.auvo_equipment_id) equipIds.add(String(e.auvo_equipment_id));
-        if (e.nome) nomes.add(String(e.nome).trim());
       });
     };
 
@@ -158,28 +147,24 @@ Deno.serve(async (req) => {
         if (error) throw error;
         novos += addCentral(data);
       }
+      // Somente série EXATA do próprio equipamento (nunca por nome)
       for (const s of Array.from(series)) {
         const { data } = await supabase
           .from("tarefas_central")
           .select(selectCols)
-          .ilike("equipamento_id_serie", `%${s}%`)
-          .limit(1000);
-        novos += addCentral(data);
-      }
-      for (const n of Array.from(nomes)) {
-        const { data } = await supabase
-          .from("tarefas_central")
-          .select(selectCols)
-          .ilike("equipamento_nome", `%${n}%`)
+          .eq("equipamento_id_serie", s)
           .limit(1000);
         novos += addCentral(data);
       }
       return novos;
     };
 
-    // Tarefa base (kanban) para descobrir série/nome antes de expandir
-    if (auvoTaskId) await carregarCentral();
+    // Tarefa base (kanban): descobre a série/equipamento antes de expandir
     if (auvoTaskId) {
+      await carregarCentral();
+      const base = centralById.get(auvoTaskId);
+      const serieBase = String(base?.equipamento_id_serie || "").trim();
+      if (serieBase) series.add(serieBase);
       const { data: linkRows } = await supabase
         .from("equipamento_tarefas_auvo")
         .select("auvo_equipment_id")
@@ -187,13 +172,10 @@ Deno.serve(async (req) => {
       (linkRows || []).forEach((r: any) => { if (r.auvo_equipment_id) equipIds.add(String(r.auvo_equipment_id)); });
     }
 
-    // Até 3 passes: catálogo -> tarefas do equipamento -> central (que revela novas séries/nomes)
-    for (let pass = 0; pass < 3; pass++) {
-      await resolveEquipCatalogo();
-      await expandirTarefasPorEquipamento();
-      const novos = await carregarCentral();
-      if (!novos) break;
-    }
+    // Passe único e fechado: série -> catálogo -> tarefas do MESMO equipamento -> central
+    await resolveEquipCatalogo();
+    await expandirTarefasPorEquipamento();
+    await carregarCentral();
 
     if (!identificador) identificador = Array.from(series)[0] || "";
     const centralRows: any[] = Array.from(centralById.values());
