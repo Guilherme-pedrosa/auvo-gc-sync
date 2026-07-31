@@ -98,6 +98,7 @@ export default function BudgetAiAnalysisPanel({ analysis, legacyText, fallback, 
               <div key={index} className="rounded-md border bg-background p-2.5">
                 <div className="flex flex-wrap items-center gap-2">
                   <Badge variant="outline">{recommendation.status}</Badge>
+                  <Badge variant="outline" className="text-[10px] uppercase">{recommendation.type}</Badge>
                   <span className="font-medium">{recommendation.item}</span>
                   {recommendation.part_code && (
                     <Badge variant="secondary" className="font-mono text-[10px]">cód. {recommendation.part_code}</Badge>
