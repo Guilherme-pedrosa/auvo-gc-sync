@@ -1238,7 +1238,7 @@ function parseAndNormalizeBudgetAnalysis(raw: string, maxRecommendations: number
 }
 
 function buildBudgetAnalysisSystemPrompt(deep: boolean): string {
-  const recommendationLimit = deep ? 24 : 18;
+  const recommendationLimit = deep ? 40 : 30;
   return `Você é o copiloto de triagem técnica de orçamentos da WeDo.
 Responda SOMENTE JSON válido, sem markdown, seguindo exatamente este contrato:
 {"version":"${BUDGET_AI_PROMPT_VERSION}","summary":"string","status":"pode_seguir|pode_seguir_com_ressalvas|validacao_adicional","equipment":{"name":"string","manufacturer":"string","model":"string","id":"string","confidence":"baixa|media|alta","evidence":"string"},"readiness":{"blocked":false,"reasons":["string"],"missing":["string"]},"facts":[{"statement":"string","evidence":"string","source":"OS|foto identificada|documento interno|web"}],"hypotheses":[{"statement":"string","reason":"string","confidence":"baixa|media|alta","needs_validation":true}],"recommendations":[{"item":"string","type":"peca|insumo|servico|verificacao","status":"confirmado|recomendar|verificar","reason":"string","evidence":"string","source":"string","confidence":"baixa|media|alta","part_code":"string","code_evidence":"string","code_confidence":"baixa|media|alta"}],"filling_improvements":["string"],"observation_suggested":"string","policies":[{"policy":"string","reason":"string"}],"questions":["string"]}.
@@ -1497,7 +1497,7 @@ FORMATO: Retorne apenas o texto melhorado, sem explicação.`;
       });
 
       if (aiResult.error) return buildAiErrorResponse(aiResult);
-      const analysis = parseAndNormalizeBudgetAnalysis(aiResult.result, 6);
+      const analysis = parseAndNormalizeBudgetAnalysis(aiResult.result, 40);
       if (!analysis) {
         return buildAiErrorResponse({
           result: "",
@@ -1935,7 +1935,7 @@ TOM: Técnico, direto, sem floreio.`;
       });
       if (aiResult.error) return buildAiErrorResponse(aiResult);
 
-      const analysis = parseAndNormalizeBudgetAnalysis(aiResult.result, 10);
+      const analysis = parseAndNormalizeBudgetAnalysis(aiResult.result, 40);
       if (!analysis) {
         return buildAiErrorResponse({ result: "", error: "A análise aprofundada retornou formato inválido. Tente novamente.", errorCode: AI_ERROR.REQUEST_FAILED, status: 502 });
       }
