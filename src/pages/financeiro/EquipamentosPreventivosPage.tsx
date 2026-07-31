@@ -32,8 +32,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import { FileText, Users, Sparkles } from "lucide-react";
-import { Plus, Filter } from "lucide-react";
+import { Plus, Filter, Wrench } from "lucide-react";
 import CriarTarefaAuvoDialog from "./CriarTarefaAuvoDialog";
+import EquipamentoPecasDialog from "./EquipamentoPecasDialog";
 import ImportarPlanoExcelDialog from "./ImportarPlanoExcelDialog";
 import RevisarTiposIADialog from "./RevisarTiposIADialog";
 import GerarPlanoPreventivasDialog from "./GerarPlanoPreventivasDialog";
@@ -531,6 +532,7 @@ export default function EquipamentosPreventivosPage() {
   const [pdfDialogOpen, setPdfDialogOpen] = useState(false);
   const [pdfScope, setPdfScope] = useState<"selecionados" | "filtrados" | "feitos" | "atrasados" | "atencao_vencido" | "sem_registro">("filtrados");
   const [criarTarefaEq, setCriarTarefaEq] = useState<EquipmentRow | null>(null);
+  const [pecasEq, setPecasEq] = useState<EquipmentRow | null>(null);
   const [importOpen, setImportOpen] = useState(false);
   const [revisarIaOpen, setRevisarIaOpen] = useState(false);
   const [gerarOpen, setGerarOpen] = useState(false);
@@ -2107,6 +2109,19 @@ export default function EquipamentosPreventivosPage() {
                             <TooltipContent>Criar tarefa no Auvo</TooltipContent>
                           </Tooltip>
                         )}
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-7 w-7 ml-1"
+                              onClick={() => setPecasEq(eq)}
+                            >
+                              <Wrench className="h-4 w-4 text-muted-foreground hover:text-primary" />
+                            </Button>
+                          </TooltipTrigger>
+                          <TooltipContent>Peças (varredura no GC)</TooltipContent>
+                        </Tooltip>
                       </TableCell>
                     </TableRow>
                   );
@@ -2206,6 +2221,18 @@ export default function EquipamentosPreventivosPage() {
           }}
           onCreated={() => {
             // Sincronização posterior puxa a tarefa para o banco; nada a fazer agora
+          }}
+        />
+      )}
+      {pecasEq && (
+        <EquipamentoPecasDialog
+          open={!!pecasEq}
+          onOpenChange={(v) => { if (!v) setPecasEq(null); }}
+          equipamento={{
+            nome: pecasEq.nome,
+            cliente: pecasEq.cliente,
+            identificador: pecasEq.identificador,
+            auvo_equipment_id: pecasEq.auvo_equipment_id,
           }}
         />
       )}
