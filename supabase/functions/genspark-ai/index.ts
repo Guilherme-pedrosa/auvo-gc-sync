@@ -1100,7 +1100,7 @@ type BudgetAnalysis = {
   readiness: { blocked: boolean; reasons: string[]; missing: string[] };
   facts: Array<{ statement: string; evidence: string; source: string }>;
   hypotheses: Array<{ statement: string; reason: string; confidence: "baixa" | "media" | "alta"; needs_validation: boolean }>;
-  recommendations: Array<{ item: string; type: "peca" | "insumo" | "servico" | "verificacao"; status: "confirmado" | "recomendar" | "verificar"; reason: string; evidence: string; source: string; confidence: "baixa" | "media" | "alta" }>;
+  recommendations: Array<{ item: string; type: "peca" | "insumo" | "servico" | "verificacao"; status: "confirmado" | "recomendar" | "verificar"; reason: string; evidence: string; source: string; confidence: "baixa" | "media" | "alta"; part_code?: string; code_evidence?: string; code_confidence?: "baixa" | "media" | "alta" }>;
   filling_improvements: string[];
   observation_suggested: string;
   policies: Array<{ policy: string; reason: string }>;
@@ -1196,6 +1196,9 @@ function parseAndNormalizeBudgetAnalysis(raw: string, maxRecommendations: number
         evidence: evidence || "Não evidenciado nos dados recebidos",
         source: source || "hipótese da análise",
         confidence: asConfidence(item?.confidence),
+        part_code: asText(item?.part_code),
+        code_evidence: asText(item?.code_evidence),
+        code_confidence: item?.part_code ? asConfidence(item?.code_confidence) : undefined,
       };
     }).filter((item: any) => item.item && item.reason).slice(0, maxRecommendations);
 
@@ -1232,7 +1235,7 @@ function buildBudgetAnalysisSystemPrompt(deep: boolean): string {
   const recommendationLimit = deep ? 10 : 6;
   return `Você é o copiloto de triagem técnica de orçamentos da WeDo.
 Responda SOMENTE JSON válido, sem markdown, seguindo exatamente este contrato:
-{"version":"${BUDGET_AI_PROMPT_VERSION}","summary":"string","status":"pode_seguir|pode_seguir_com_ressalvas|validacao_adicional","equipment":{"name":"string","manufacturer":"string","model":"string","id":"string","confidence":"baixa|media|alta","evidence":"string"},"readiness":{"blocked":false,"reasons":["string"],"missing":["string"]},"facts":[{"statement":"string","evidence":"string","source":"OS|foto identificada|documento interno|web"}],"hypotheses":[{"statement":"string","reason":"string","confidence":"baixa|media|alta","needs_validation":true}],"recommendations":[{"item":"string","type":"peca|insumo|servico|verificacao","status":"confirmado|recomendar|verificar","reason":"string","evidence":"string","source":"string","confidence":"baixa|media|alta"}],"filling_improvements":["string"],"observation_suggested":"string","policies":[{"policy":"string","reason":"string"}],"questions":["string"]}.
+{"version":"${BUDGET_AI_PROMPT_VERSION}","summary":"string","status":"pode_seguir|pode_seguir_com_ressalvas|validacao_adicional","equipment":{"name":"string","manufacturer":"string","model":"string","id":"string","confidence":"baixa|media|alta","evidence":"string"},"readiness":{"blocked":false,"reasons":["string"],"missing":["string"]},"facts":[{"statement":"string","evidence":"string","source":"OS|foto identificada|documento interno|web"}],"hypotheses":[{"statement":"string","reason":"string","confidence":"baixa|media|alta","needs_validation":true}],"recommendations":[{"item":"string","type":"peca|insumo|servico|verificacao","status":"confirmado|recomendar|verificar","reason":"string","evidence":"string","source":"string","confidence":"baixa|media|alta","part_code":"string","code_evidence":"string","code_confidence":"baixa|media|alta"}],"filling_improvements":["string"],"observation_suggested":"string","policies":[{"policy":"string","reason":"string"}],"questions":["string"]}.
 
 REGRAS OBRIGATÓRIAS:
 - Não invente peças, códigos, defeitos, medidas, causas, quantidades, preços ou procedimentos.
@@ -1244,6 +1247,9 @@ REGRAS OBRIGATÓRIAS:
 - Identifique equipamento pelas fontes fornecidas. Se não der, assuma confiança baixa e faça pergunta objetiva.
 - Não liste EPI básico. Não fale de preço.
 - Use o HISTÓRICO DE PEÇAS DO EQUIPAMENTO quando fornecido: cruze a nomenclatura usada pelo técnico agora com as peças já orçadas/vendidas. Quando houver correspondência, reutilize a descrição e o código do histórico no campo "item", cite a fonte como "histórico de peças" e informe a data/documento na evidência.
+- Para todo item do tipo "peca": preencha "part_code" com o CÓDIGO da peça vindo do histórico (o campo "cód." — nunca ID interno, nunca código inventado). Se a peça não tiver código no histórico, deixe "part_code" vazio e registre em "code_evidence" que ela não possui código cadastrado.
+- "code_evidence" deve justificar o código citando o documento de origem, no formato: "Código X porque esta peça já foi usada na OS 1234 de 12/03/2025 (vendida)" ou "... no Orçamento 987". Use exatamente os documentos listados no histórico; nunca invente número de OS/orçamento.
+- "code_confidence" reflete a confiabilidade do casamento de nomenclatura: se o histórico informar a confiança da correspondência, repita-a; se você inferiu sozinho, use no máximo "media".
 - Peças recorrentes no histórico (várias ocorrências ou trocadas recentemente) podem virar "recomendar"/"verificar" com a justificativa do padrão observado — nunca "confirmado" só por histórico.
 - Se o técnico pediu uma peça que não existe no histórico, mantenha o pedido dele e sinalize que é a primeira ocorrência para este equipamento.
 - Máximo de ${recommendationLimit} recomendações e 8 perguntas. Seja técnico e direto.
