@@ -423,6 +423,19 @@ export function buildPartsHistoryContext(
     lines.push("Nenhuma peça/serviço solicitado agora bate com a nomenclatura do histórico deste equipamento.");
   }
 
+  if (requestedLines.length > 0) {
+    const matchedLines = new Set(matches.map((m) => m.solicitado.toLowerCase()));
+    const semMatch = requestedLines.filter((line) => !matchedLines.has(line.toLowerCase()));
+    lines.push(
+      `ITENS SOLICITADOS AGORA (${requestedLines.length}) — todos devem ser avaliados individualmente, peças E serviços: ${requestedLines.join(" | ")}`,
+    );
+    if (semMatch.length > 0) {
+      lines.push(
+        `Sem correspondência no histórico (recomendar mesmo assim, sem código, confiança baixa): ${semMatch.join(" | ")}`,
+      );
+    }
+  }
+
   return {
     text: lines.join("\n"),
     matches,
