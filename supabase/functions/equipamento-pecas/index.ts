@@ -535,15 +535,15 @@ Deno.serve(async (req) => {
       return taskIds.has(taskId) || linkedToTargetEquipment.has(taskId) ? "target" : "unknown";
     };
     const documentoLigadoAoEquipamento = (ref: any) => {
-      const execIds = tokensDeTarefa(ref.gc_os_tarefa_exec);
-      const execMatches = execIds.map(tarefaClassificaEquipamento);
-      if (execMatches.includes("target")) return true;
-      if (execMatches.includes("other")) return false;
-
-      const osIds = tokensDeTarefa(ref.gc_os_tarefa_os);
-      const osMatches = osIds.map(tarefaClassificaEquipamento);
-      if (osMatches.includes("target")) return true;
-      if (osMatches.includes("other")) return false;
+      // Tarefa OS (73343 → gera o orçamento) e Tarefa Execução (73344 → gera a
+      // OS) têm o MESMO peso: se qualquer uma das duas aponta para o
+      // equipamento alvo, o documento entra no histórico.
+      const matches = [
+        ...tokensDeTarefa(ref.gc_os_tarefa_os),
+        ...tokensDeTarefa(ref.gc_os_tarefa_exec),
+      ].map(tarefaClassificaEquipamento);
+      if (matches.includes("target")) return true;
+      if (matches.includes("other")) return false;
 
       // Orçamentos preventivos podem estar diretamente na tarefa do equipamento
       // sem os atributos 73343/73344.
