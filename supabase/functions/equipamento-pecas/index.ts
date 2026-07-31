@@ -126,16 +126,45 @@ Deno.serve(async (req) => {
     if (auvoTaskId) taskIds.add(auvoTaskId);
 
     const selectCols =
-      "auvo_task_id, cliente, data_tarefa, equipamento_nome, equipamento_id_serie, gc_os_id, gc_os_codigo, gc_os_situacao, gc_os_link, gc_os_data, gc_orcamento_id, gc_orcamento_codigo, gc_orc_situacao, gc_orc_link, gc_orc_data";
+      "auvo_task_id, cliente, data_tarefa, equipamento_nome, equipamento_id_serie, gc_os_id, gc_os_codigo, gc_os_situacao, gc_os_link, gc_os_data, gc_orcamento_id, gc_orcamento_codigo, gc_orc_situacao, gc_orc_link, gc_orc_data, gc_os_tarefa_os, gc_os_tarefa_exec";
 
     const centralById = new Map<string, any>();
-    const addCentral = (rows: any[] | null) => {
+    const addCentral = (rows: any[] | null, expandirTarefas = true) => {
       let novos = 0;
       for (const r of rows || []) {
         const k = String(r.auvo_task_id || "");
         if (!k) continue;
         if (!centralById.has(k)) { centralById.set(k, r); novos++; }
-        taskIds.add(k);
+        if (expandirTarefas) taskIds.add(k);
+      }
+      return novos;
+    };
+
+    // Muitas tarefas do equipamento não têm gc_os_id na própria linha: o documento
+    // GC está em OUTRA linha (ex.: linha "gc-only" ou a tarefa OS) que aponta para
+    // esta tarefa em gc_os_tarefa_os / gc_os_tarefa_exec. Recupera esses documentos.
+    const carregarPorTarefaVinculada = async () => {
+      const ids = Array.from(taskIds).filter(Boolean);
+      if (!ids.length) return 0;
+      const tokensDe = (v: any) =>
+        String(v || "").split(/[\/;,|\s]+/).map((t) => t.trim()).filter(Boolean);
+      let novos = 0;
+      for (let i = 0; i < ids.length; i += 20) {
+        const chunk = ids.slice(i, i + 20);
+        const filtro = chunk
+          .flatMap((id) => [`gc_os_tarefa_os.ilike.%${id}%`, `gc_os_tarefa_exec.ilike.%${id}%`])
+          .join(",");
+        const { data } = await supabase
+          .from("tarefas_central")
+          .select(selectCols)
+          .or(filtro)
+          .limit(1000);
+        const validos = (data || []).filter((r: any) => {
+          const toks = new Set([...tokensDe(r.gc_os_tarefa_os), ...tokensDe(r.gc_os_tarefa_exec)]);
+          return chunk.some((id) => toks.has(id));
+        });
+        // não expande taskIds: evita cascata para tarefas de outros equipamentos
+        novos += addCentral(validos, false);
       }
       return novos;
     };
@@ -373,6 +402,9 @@ Deno.serve(async (req) => {
     // varre todo o período disponível, recuperando OS/orçamentos antigos
     await expandirHistoricoAntigo();
     await carregarCentral();
+    // documentos GC que apontam para as tarefas do equipamento (tarefa OS / execução)
+    const vinculados = await carregarPorTarefaVinculada();
+    console.log(`[pecas] docs por tarefa vinculada: ${vinculados}`);
 
     if (!identificador) identificador = Array.from(series)[0] || "";
     const centralRows: any[] = Array.from(centralById.values());
