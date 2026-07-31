@@ -534,31 +534,33 @@ Deno.serve(async (req) => {
       if (nomeiaEquipamento) return "other";
       return taskIds.has(taskId) || linkedToTargetEquipment.has(taskId) ? "target" : "unknown";
     };
-    const documentoLigadoAoEquipamento = (ref: any) => {
-      // Tarefa OS (73343 → gera o orçamento) e Tarefa Execução (73344 → gera a
-      // OS) têm o MESMO peso: se qualquer uma das duas aponta para o
-      // equipamento alvo, o documento entra no histórico.
-      const matches = [
-        ...tokensDeTarefa(ref.gc_os_tarefa_os),
-        ...tokensDeTarefa(ref.gc_os_tarefa_exec),
-      ].map(tarefaClassificaEquipamento);
+    const documentoLigadoAoEquipamento = (ref: any, origem: "os" | "orcamento") => {
+      // Cada documento deve seguir a tarefa que efetivamente o originou:
+      // 73343 (Tarefa OS) gera orçamento; 73344 (Tarefa Execução) gera OS.
+      // Misturar os dois faz uma OS de outro equipamento herdar o equipamento
+      // do orçamento (caso real: OS 8703, Forno Rational, no Fogão Tramontina).
+      const idsDaOrigem = origem === "orcamento"
+        ? tokensDeTarefa(ref.gc_os_tarefa_os)
+        : tokensDeTarefa(ref.gc_os_tarefa_exec);
+      const matches = idsDaOrigem.map(tarefaClassificaEquipamento);
       if (matches.includes("target")) return true;
       if (matches.includes("other")) return false;
 
-      // Orçamentos preventivos podem estar diretamente na tarefa do equipamento
-      // sem os atributos 73343/73344.
+      // Documentos antigos podem estar diretamente na própria tarefa do
+      // equipamento, sem o atributo correspondente preenchido.
+      if (idsDaOrigem.length) return false;
       return taskIds.has(String(ref.auvo_task_id || ""));
     };
 
     let aceitosPorTarefa = 0;
     for (const [id, ref] of candidatosOs) {
-      if (documentoLigadoAoEquipamento(ref)) {
+      if (documentoLigadoAoEquipamento(ref, "os")) {
         osMap.set(id, ref);
         aceitosPorTarefa++;
       }
     }
     for (const [id, ref] of candidatosOrc) {
-      if (documentoLigadoAoEquipamento(ref)) {
+      if (documentoLigadoAoEquipamento(ref, "orcamento")) {
         orcMap.set(id, ref);
         aceitosPorTarefa++;
       }
@@ -567,12 +569,12 @@ Deno.serve(async (req) => {
     // um vínculo antigo da Tarefa OS mantenha uma OS cuja Tarefa Execução aponta
     // explicitamente para outro equipamento.
     for (const [id, ref] of Array.from(osMap.entries())) {
-      if ((ref.gc_os_tarefa_os || ref.gc_os_tarefa_exec) && !documentoLigadoAoEquipamento(ref)) {
+      if ((ref.gc_os_tarefa_os || ref.gc_os_tarefa_exec) && !documentoLigadoAoEquipamento(ref, "os")) {
         osMap.delete(id);
       }
     }
     for (const [id, ref] of Array.from(orcMap.entries())) {
-      if ((ref.gc_os_tarefa_os || ref.gc_os_tarefa_exec) && !documentoLigadoAoEquipamento(ref)) {
+      if ((ref.gc_os_tarefa_os || ref.gc_os_tarefa_exec) && !documentoLigadoAoEquipamento(ref, "orcamento")) {
         orcMap.delete(id);
       }
     }
