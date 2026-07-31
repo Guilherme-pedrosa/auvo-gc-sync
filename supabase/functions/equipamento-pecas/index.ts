@@ -185,20 +185,22 @@ Deno.serve(async (req) => {
 
       const headers = { Authorization: `Bearer ${token}`, "Content-Type": "application/json" };
       const novos: any[] = [];
-      for (let page = 1; page <= 20; page++) {
-        const paramFilter = encodeURIComponent(JSON.stringify({
-          startDate: `${isoDay(inicio)}T00:00:00`,
-          endDate: `${isoDay(fim)}T23:59:59`,
-        }));
-        const url = `${AUVO_BASE_URL}/tasks/?page=${page}&pageSize=100&order=desc&paramFilter=${paramFilter}&selectFields=${encodeURIComponent(AUVO_TASK_FIELDS)}`;
-        let json: any = null;
+      const paramFilter = encodeURIComponent(JSON.stringify({
+        startDate: `${isoDay(inicio)}T00:00:00`,
+        endDate: `${isoDay(fim)}T23:59:59`,
+      }));
+      const pageUrl = (page: number) =>
+        `${AUVO_BASE_URL}/tasks/?page=${page}&pageSize=200&order=desc&paramFilter=${paramFilter}&selectFields=${encodeURIComponent(AUVO_TASK_FIELDS)}`;
+      const buscarPagina = async (page: number): Promise<any> => {
         try {
-          const res = await fetch(url, { headers });
-          if (!res.ok) { console.log(`[pecas] auvo tasks HTTP ${res.status}`); break; }
-          json = await res.json();
-        } catch (e) { console.log("[pecas] auvo tasks erro", String(e)); break; }
+          const res = await fetch(pageUrl(page), { headers });
+          if (!res.ok) { console.log(`[pecas] auvo tasks HTTP ${res.status} page ${page}`); return null; }
+          return await res.json();
+        } catch (e) { console.log("[pecas] auvo tasks erro", String(e)); return null; }
+      };
+      const ingerir = (json: any) => {
         const lista = json?.result?.entityList || [];
-        if (!Array.isArray(lista) || lista.length === 0) break;
+        if (!Array.isArray(lista)) return;
         for (const t of lista) {
           const ids: any[] = Array.isArray(t.equipmentsId) ? t.equipmentsId : [];
           const taskId = String(t.taskID || t.id || "");
@@ -222,10 +224,20 @@ Deno.serve(async (req) => {
             });
           }
         }
-        const total = Number(json?.result?.pagedSearchReturnData?.totalItems || 0);
-        console.log(`[pecas] page ${page}: ${lista.length} tarefas, total=${total}, vinculos=${novos.length}`);
-        if (page * 100 >= total) break;
+      };
+
+      const first = await buscarPagina(1);
+      if (!first) return;
+      ingerir(first);
+      const total = Number(first?.result?.pagedSearchReturnData?.totalItems || 0);
+      const totalPaginas = Math.min(15, Math.ceil(total / 200));
+      if (totalPaginas > 1) {
+        const restantes = await Promise.all(
+          Array.from({ length: totalPaginas - 1 }, (_, i) => buscarPagina(i + 2)),
+        );
+        restantes.forEach(ingerir);
       }
+      console.log(`[pecas] live auvo: ${total} tarefas em ${totalPaginas} pág, vinculos=${novos.length}`);
 
       if (novos.length) {
         const { error } = await supabase
