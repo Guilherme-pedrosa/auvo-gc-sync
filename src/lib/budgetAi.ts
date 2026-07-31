@@ -45,6 +45,9 @@ export type BudgetAiRecommendation = {
   evidence: string;
   source: string;
   confidence: "baixa" | "media" | "alta";
+  part_code?: string;
+  code_evidence?: string;
+  code_confidence?: "baixa" | "media" | "alta";
 };
 
 export type BudgetAiStructuredAnalysis = {
