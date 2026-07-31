@@ -318,6 +318,116 @@ export default function EquipamentoPecasDialog({ open, onOpenChange, equipamento
                   </Table>
                 </TabsContent>
               ))}
+
+              <TabsContent value="servicos" className="flex-1 min-h-0 overflow-auto space-y-4">
+                <div>
+                  <div className="text-xs font-medium text-muted-foreground mb-1">
+                    Consolidado de serviços ({servicosConsolidados.length})
+                  </div>
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Código</TableHead>
+                        <TableHead>Serviço</TableHead>
+                        <TableHead className="text-right">Qtd vendida</TableHead>
+                        <TableHead className="text-right">Valor vendido</TableHead>
+                        <TableHead className="text-right">Qtd orçada</TableHead>
+                        <TableHead className="text-right">Valor orçado</TableHead>
+                        <TableHead className="text-right">Última</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {servicosConsolidados.length === 0 ? (
+                        <TableRow><TableCell colSpan={7} className="text-center text-muted-foreground py-6">Nenhum serviço encontrado</TableCell></TableRow>
+                      ) : servicosConsolidados.map((s: any, i: number) => (
+                        <TableRow key={i}>
+                          <TableCell className="text-xs font-mono">{s.codigo || "—"}</TableCell>
+                          <TableCell className="text-sm">{s.descricao}</TableCell>
+                          <TableCell className="text-right text-sm">{s.qtd_vendida || "—"}</TableCell>
+                          <TableCell className="text-right text-sm font-medium">{s.valor_vendido ? brl(s.valor_vendido) : "—"}</TableCell>
+                          <TableCell className="text-right text-sm">{s.qtd_orcada || "—"}</TableCell>
+                          <TableCell className="text-right text-sm">{s.valor_orcado ? brl(s.valor_orcado) : "—"}</TableCell>
+                          <TableCell className="text-right text-sm">{fmtData(s.ultima_data)}</TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+
+                <div>
+                  <div className="text-xs font-medium text-muted-foreground mb-1">
+                    Lançamentos ({servicos.length})
+                  </div>
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Data</TableHead>
+                        <TableHead>Documento</TableHead>
+                        <TableHead>Tarefa Auvo</TableHead>
+                        <TableHead>Serviço</TableHead>
+                        <TableHead className="text-right">Qtd</TableHead>
+                        <TableHead className="text-right">Total</TableHead>
+                        <TableHead>Situação</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {servicos.length === 0 ? (
+                        <TableRow><TableCell colSpan={7} className="text-center text-muted-foreground py-6">Nenhum serviço</TableCell></TableRow>
+                      ) : servicos.map((s: any, i: number) => (
+                        <TableRow key={i}>
+                          <TableCell className="text-sm">{fmtData(s.data)}</TableCell>
+                          <TableCell className="text-sm">
+                            <span className="flex items-center gap-1">
+                              <Badge variant="outline" className="text-[10px]">
+                                {s.origem === "os" ? "OS" : "ORC"}
+                              </Badge>
+                              {s.documento_codigo}
+                              {s.link && (
+                                <a href={s.link} target="_blank" rel="noopener noreferrer">
+                                  <ExternalLink className="h-3 w-3 text-muted-foreground" />
+                                </a>
+                              )}
+                            </span>
+                          </TableCell>
+                          <TableCell className="text-xs">
+                            {(s.auvo_task_ids?.length ? s.auvo_task_ids : (s.auvo_task_id ? [s.auvo_task_id] : [])).length === 0 ? (
+                              <span className="text-muted-foreground">—</span>
+                            ) : (
+                              <div className="flex flex-col gap-0.5">
+                                {(s.auvo_task_ids?.length ? s.auvo_task_ids : [s.auvo_task_id]).map((tid: string) => (
+                                  <a
+                                    key={tid}
+                                    href={`https://app2.auvo.com.br/relatorioTarefas/DetalheTarefa/${tid}`}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="font-mono text-primary hover:underline inline-flex items-center gap-1"
+                                  >
+                                    {tid}
+                                    <ExternalLink className="h-3 w-3" />
+                                  </a>
+                                ))}
+                              </div>
+                            )}
+                          </TableCell>
+                          <TableCell className="text-sm">
+                            {s.descricao}
+                            {s.detalhes && (
+                              <div className="text-[11px] text-muted-foreground">{s.detalhes}</div>
+                            )}
+                          </TableCell>
+                          <TableCell className="text-right text-sm">{s.quantidade}</TableCell>
+                          <TableCell className="text-right text-sm">{brl(s.valor_total)}</TableCell>
+                          <TableCell className="text-xs">
+                            <Badge variant={s.vendida ? "default" : "outline"} className="text-[10px]">
+                              {s.situacao || (s.vendida ? "Vendido" : "Orçado")}
+                            </Badge>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              </TabsContent>
             </Tabs>
           </>
         )}
