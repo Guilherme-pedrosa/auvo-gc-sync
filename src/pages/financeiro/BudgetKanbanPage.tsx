@@ -2508,8 +2508,8 @@ export default function BudgetKanbanPage() {
                       meta={aiAnalysisMeta}
                     />
 
-                    {/* Chat contextual — aparece DENTRO da análise, só depois que existe análise */}
-                    {!aiAnalysisIsFallback && aiAnalysisData && <div className="border-t border-purple-200 pt-3 mt-3">
+                    {/* Chat contextual — com acesso aos módulos (Controle OS, Preventivas, Peças GC) */}
+                    {<div className="border-t border-purple-200 pt-3 mt-3">
                       {!showChat ? (
                         <Button
                           variant="ghost"
@@ -2524,7 +2524,7 @@ export default function BudgetKanbanPage() {
                         <div className="space-y-2">
                           <div className="flex items-center justify-between">
                             <span className="text-xs font-semibold text-indigo-700 flex items-center gap-1">
-                              <MessageCircle className="h-3 w-3" /> Chat contextual
+                              <MessageCircle className="h-3 w-3" /> Chat contextual · acessa Controle OS, Preventivas e Peças do GC
                             </span>
                             <button type="button" className="text-indigo-400 hover:text-indigo-600 text-xs" onClick={() => { setShowChat(false); setChatMessages([]); }}>✕</button>
                           </div>
@@ -2545,7 +2545,7 @@ export default function BudgetKanbanPage() {
                           )}
                           <div className="flex gap-2">
                             <Input
-                              placeholder="Pergunte sobre este orçamento..."
+                              placeholder="Pergunte sobre este orçamento, histórico de OS, preventivas, peças..."
                               value={chatInput}
                               onChange={(e) => setChatInput(e.target.value)}
                               onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && handleChatSend()}
