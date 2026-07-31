@@ -15,6 +15,8 @@ const QUESTIONNAIRE_ID = "216040";
 const GC_ATRIBUTO_TAREFA_ORC = "73341";
 const GC_ATRIBUTO_TAREFA_OS = "73343";
 const GC_ATRIBUTO_TAREFA_EXEC = "73344";
+// 88695 = ID EQUIPAMENTO (identificador/série do equipamento preenchido no GC)
+const GC_ATRIBUTO_ID_EQUIPAMENTO = "88695";
 // GestãoClick documents a company-wide limit of 3 requests/second. Keep each
 // Edge Function instance below that ceiling and serialize concurrent callers
 // inside this process so Promise.all cannot create request bursts.
@@ -704,6 +706,7 @@ async function hydrateMissingOsByCodigo(
         gc_os_link_cobranca: buildGcOsPublicLink(os),
         gc_os_tarefa_exec,
         gc_os_tarefa_os,
+        gc_os_equip_id: getGcAttrValue(atributos, GC_ATRIBUTO_ID_EQUIPAMENTO) || null,
         gc_os_orcamento_codigo: null as string | null,
       };
       const codigo = String(os.codigo || "").trim();
@@ -827,10 +830,12 @@ async function fetchGcOs(gcHeaders: Record<string, string>, options?: { situacao
           gc_os_link_cobranca: buildGcOsPublicLink(os),
           gc_os_tarefa_exec,
           gc_os_tarefa_os,
+          gc_os_equip_id: getGcAttrValue(atributos, GC_ATRIBUTO_ID_EQUIPAMENTO) || null,
           gc_os_orcamento_codigo: null as string | null,
         };
 
         // Reverse map by OS código
+        // (ID EQUIPAMENTO 88695 acompanha o payload para o rastreio de peças)
         const codigo = String(os.codigo || "").trim();
         if (codigo) byCodigo[codigo] = osPayload;
 

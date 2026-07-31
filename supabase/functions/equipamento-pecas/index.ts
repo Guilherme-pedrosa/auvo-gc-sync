@@ -127,7 +127,7 @@ Deno.serve(async (req) => {
     if (auvoTaskId) taskIds.add(auvoTaskId);
 
     const selectCols =
-      "auvo_task_id, cliente, data_tarefa, orientacao, descricao, equipamento_nome, equipamento_id_serie, gc_os_id, gc_os_codigo, gc_os_situacao, gc_os_link, gc_os_data, gc_orcamento_id, gc_orcamento_codigo, gc_orc_situacao, gc_orc_link, gc_orc_data, gc_os_tarefa_os, gc_os_tarefa_exec";
+      "auvo_task_id, cliente, data_tarefa, orientacao, descricao, equipamento_nome, equipamento_id_serie, gc_os_id, gc_os_codigo, gc_os_situacao, gc_os_link, gc_os_data, gc_orcamento_id, gc_orcamento_codigo, gc_orc_situacao, gc_orc_link, gc_orc_data, gc_os_tarefa_os, gc_os_tarefa_exec, gc_os_equip_id";
 
     const centralById = new Map<string, any>();
     const addCentral = (rows: any[] | null, expandirTarefas = true) => {
@@ -672,6 +672,14 @@ Deno.serve(async (req) => {
       return "unknown";
     };
     const documentoLigadoAoEquipamento = (ref: any, origem: "os" | "orcamento") => {
+      // Campo GC 88695 (ID EQUIPAMENTO): quando preenchido, é uma identificação
+      // direta do equipamento e vale mais que qualquer inferência por tarefa.
+      const gcEquip = norm(ref?.gc_os_equip_id || "");
+      if (gcEquip) {
+        const bateSerie = seriesArr.some((s) => s && (gcEquip === s || gcEquip.includes(s) || s.includes(gcEquip)));
+        const bateId = Array.from(equipIds).some((id) => norm(id) === gcEquip);
+        if (bateSerie || bateId) { aceitosPorCampoEquip++; return true; }
+      }
       // Cada documento deve seguir a tarefa que efetivamente o originou:
       // 73343 (Tarefa OS) gera orçamento; 73344 (Tarefa Execução) gera OS.
       // Misturar os dois faz uma OS de outro equipamento herdar o equipamento
@@ -690,6 +698,7 @@ Deno.serve(async (req) => {
     };
 
     let aceitosPorTarefa = 0;
+    let aceitosPorCampoEquip = 0;
     let descartados = 0;
     for (const [id, ref] of candidatosOs) {
       if (documentoLigadoAoEquipamento(ref, "os")) {
@@ -719,7 +728,7 @@ Deno.serve(async (req) => {
       }
     }
     console.log(
-      `[pecas] resolução Controle OS: candidatos_os=${candidatosOs.size} candidatos_orc=${candidatosOrc.size} aceitos_por_73343_73344=${aceitosPorTarefa}`,
+      `[pecas] resolução Controle OS: candidatos_os=${candidatosOs.size} candidatos_orc=${candidatosOrc.size} aceitos_por_73343_73344=${aceitosPorTarefa} aceitos_por_88695=${aceitosPorCampoEquip}`,
     );
 
     const pecas: Peca[] = [];
@@ -877,6 +886,7 @@ Deno.serve(async (req) => {
         vinculos_resolvidos_ao_vivo: tarefasResolvidasAoVivo,
         tarefas_de_outro_equipamento: linkedResolvidoOutro.size,
         tarefas_sem_equipamento_no_auvo: tarefasSemEquipamentoAuvo,
+        documentos_por_id_equipamento_gc: aceitosPorCampoEquip,
         documentos_descartados: descartados,
       },
       documentos: documentos.sort((a, b) => String(b.data || "").localeCompare(String(a.data || ""))),
