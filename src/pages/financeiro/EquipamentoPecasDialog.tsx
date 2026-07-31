@@ -19,6 +19,7 @@ type Props = {
     cliente: string | null;
     identificador: string | null;
     auvo_equipment_id: string | null;
+    auvo_task_id?: string | null;
   };
 };
 
@@ -35,7 +36,12 @@ export default function EquipamentoPecasDialog({ open, onOpenChange, equipamento
   const [busca, setBusca] = useState("");
 
   const { data, isFetching, refetch, error } = useQuery({
-    queryKey: ["equipamento-pecas", equipamento.auvo_equipment_id, equipamento.identificador],
+    queryKey: [
+      "equipamento-pecas",
+      equipamento.auvo_equipment_id,
+      equipamento.identificador,
+      equipamento.auvo_task_id ?? null,
+    ],
     enabled: open,
     staleTime: 5 * 60 * 1000,
     queryFn: async () => {
@@ -43,6 +49,7 @@ export default function EquipamentoPecasDialog({ open, onOpenChange, equipamento
         body: {
           auvo_equipment_id: equipamento.auvo_equipment_id,
           identificador: equipamento.identificador,
+          auvo_task_id: equipamento.auvo_task_id ?? null,
           nome: equipamento.nome,
         },
       });
