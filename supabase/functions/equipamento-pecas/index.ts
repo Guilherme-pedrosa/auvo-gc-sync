@@ -672,6 +672,14 @@ Deno.serve(async (req) => {
       return "unknown";
     };
     const documentoLigadoAoEquipamento = (ref: any, origem: "os" | "orcamento") => {
+      // Campo GC 88695 (ID EQUIPAMENTO): quando preenchido, é uma identificação
+      // direta do equipamento e vale mais que qualquer inferência por tarefa.
+      const gcEquip = norm(ref?.gc_os_equip_id || "");
+      if (gcEquip) {
+        const bateSerie = seriesAlvo.some((s) => s && (gcEquip === s || gcEquip.includes(s) || s.includes(gcEquip)));
+        const bateId = Array.from(equipIds).some((id) => norm(id) === gcEquip);
+        if (bateSerie || bateId) { aceitosPorCampoEquip++; return true; }
+      }
       // Cada documento deve seguir a tarefa que efetivamente o originou:
       // 73343 (Tarefa OS) gera orçamento; 73344 (Tarefa Execução) gera OS.
       // Misturar os dois faz uma OS de outro equipamento herdar o equipamento
