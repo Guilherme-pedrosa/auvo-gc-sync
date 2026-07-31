@@ -88,6 +88,29 @@ export default function EquipamentoPecasDialog({ open, onOpenChange, equipamento
   const pecasOs = pecas.filter((p: any) => p.origem === "os");
   const pecasOrc = pecas.filter((p: any) => p.origem === "orcamento");
 
+  const servicos = (data?.servicos || []).filter((s: any) =>
+    match(s.descricao, s.codigo, s.detalhes, s.documento_codigo, s.situacao),
+  );
+  const servicosConsolidados = (() => {
+    const mapa = new Map<string, any>();
+    for (const s of servicos as any[]) {
+      const key = s.codigo ? `c:${String(s.codigo).toLowerCase()}` : `d:${String(s.descricao).toLowerCase()}`;
+      const cur = mapa.get(key) || {
+        codigo: s.codigo || "", descricao: s.descricao,
+        qtd_vendida: 0, valor_vendido: 0, qtd_orcada: 0, valor_orcado: 0,
+        ocorrencias: 0, ultima_data: null as string | null,
+      };
+      if (s.vendida) { cur.qtd_vendida += s.quantidade; cur.valor_vendido += s.valor_total; }
+      else { cur.qtd_orcada += s.quantidade; cur.valor_orcado += s.valor_total; }
+      cur.ocorrencias += 1;
+      if (s.data && (!cur.ultima_data || s.data > cur.ultima_data)) cur.ultima_data = s.data;
+      mapa.set(key, cur);
+    }
+    return Array.from(mapa.values()).sort(
+      (a, b) => (b.valor_vendido + b.valor_orcado) - (a.valor_vendido + a.valor_orcado),
+    );
+  })();
+
   const exportarCsv = () => {
     const linhas = [
       ["Código", "Peça", "Qtd orçada", "Valor orçado", "Qtd vendida", "Valor vendido", "Ocorrências", "Última"],
@@ -192,6 +215,7 @@ export default function EquipamentoPecasDialog({ open, onOpenChange, equipamento
                 <TabsTrigger value="consolidado">Consolidado ({consolidado.length})</TabsTrigger>
                 <TabsTrigger value="os">OS ({pecasOs.length})</TabsTrigger>
                 <TabsTrigger value="orcamento">Orçamento ({pecasOrc.length})</TabsTrigger>
+                <TabsTrigger value="servicos">Serviços ({servicos.length})</TabsTrigger>
               </TabsList>
 
               <TabsContent value="consolidado" className="flex-1 min-h-0 overflow-auto">
