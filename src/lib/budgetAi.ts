@@ -305,8 +305,9 @@ export function buildPartsHistoryContext(
   ) return null;
 
   const requestedLines = String(requestedPartsText || "")
-    .split(/[\n;•]|(?:,\s)/)
+    .split(/[\n\r;•·|]|(?:,\s)|(?:\s[-–]\s)|(?:\s\/\s)/)
     .map((line) => line.trim())
+    .map((line) => line.replace(/^[-*\d.)\s]+/, "").trim())
     .filter((line) => line.length >= 3);
 
   const matchAgainst = (
@@ -317,16 +318,20 @@ export function buildPartsHistoryContext(
     for (const line of requestedLines) {
       const tokens = tokenize(line);
       if (tokens.length === 0) continue;
-      let best: { item: BudgetAiPartHistoryItem; score: number } | null = null;
+      const candidates: { item: BudgetAiPartHistoryItem; score: number }[] = [];
       for (const item of catalog) {
         const historyTokens = new Set(tokenize(String(item.descricao || "") + " " + String(item.codigo || "")));
         const hits = tokens.filter((token) => historyTokens.has(token)).length;
         if (hits === 0) continue;
         const score = hits / tokens.length;
-        if (score < 0.5) continue;
-        if (!best || score > best.score) best = { item, score };
+        // aceita quando cobre boa parte do pedido OU quando há pelo menos 2 termos
+        // técnicos em comum (ex.: "laudo nr13", "limpeza de queimadores")
+        if (score < 0.34 && hits < 2) continue;
+        candidates.push({ item, score });
       }
-      if (!best) continue;
+      if (candidates.length === 0) continue;
+      candidates.sort((a, b) => b.score - a.score);
+      for (const best of candidates.slice(0, 3)) {
       const vendidaAlguma = (Number(best.item.qtd_vendida) || 0) > 0;
       const confianca: "alta" | "media" | "baixa" =
         best.score >= 0.85 && String(best.item.codigo || "") && vendidaAlguma
@@ -344,13 +349,20 @@ export function buildPartsHistoryContext(
         evidencias: docsSummary(best.item),
         tipo,
       });
+      }
     }
     return found;
   };
 
   const matchesPecas = matchAgainst(consolidado, "peca");
   const matchesServicos = matchAgainst(consolidadoServicos, "servico");
-  const matches = [...matchesPecas, ...matchesServicos];
+  const seenMatch = new Set<string>();
+  const matches = [...matchesPecas, ...matchesServicos].filter((m) => {
+    const key = `${m.tipo}|${m.solicitado.toLowerCase()}|${m.historico.toLowerCase()}`;
+    if (seenMatch.has(key)) return false;
+    seenMatch.add(key);
+    return true;
+  });
 
   const top = consolidado.slice(0, limit);
   const ultimasOcorrencias = ocorrencias.slice(0, 15);
