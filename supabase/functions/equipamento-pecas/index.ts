@@ -567,12 +567,88 @@ Deno.serve(async (req) => {
       for (const row of data || []) linkedToTargetEquipment.add(String(row.auvo_task_id));
     }
 
+    // Tarefas citadas nos campos 73343/73344 que NÃO têm nenhum vínculo
+    // tarefa→equipamento salvo: hoje caíam em "unknown" e eram descartadas em
+    // silêncio. Resolve cada uma direto no Auvo (equipmentsId da tarefa) e
+    // persiste o vínculo, para que o descarte só ocorra com evidência real.
+    const linkedResolvidoOutro = new Set<string>();
+    let tarefasResolvidasAoVivo = 0;
+    let tarefasSemEquipamentoAuvo = 0;
+    {
+      const semVinculo = new Set(linkedIdList);
+      for (let i = 0; i < linkedIdList.length; i += 500) {
+        const { data } = await supabase
+          .from("equipamento_tarefas_auvo")
+          .select("auvo_task_id")
+          .in("auvo_task_id", linkedIdList.slice(i, i + 500));
+        for (const row of data || []) semVinculo.delete(String(row.auvo_task_id));
+      }
+      for (const id of taskIds) semVinculo.delete(id);
+      const pendentes = Array.from(semVinculo);
+      if (pendentes.length) {
+        const token = await auvoLogin();
+        const headers = token
+          ? { Authorization: `Bearer ${token}`, "Content-Type": "application/json" }
+          : null;
+        const novosVinculos: any[] = [];
+        const buscarTarefa = async (taskId: string) => {
+          if (!headers) return;
+          try {
+            const res = await fetch(`${AUVO_BASE_URL}/tasks/${taskId}`, { headers });
+            if (!res.ok) return;
+            const json = await res.json();
+            const t = json?.result?.entityList?.[0] || json?.result || json;
+            const eqs: any[] = Array.isArray(t?.equipmentsId) ? t.equipmentsId : [];
+            if (!eqs.length) { tarefasSemEquipamentoAuvo++; return; }
+            tarefasResolvidasAoVivo++;
+            let bate = false;
+            for (const eq of eqs) {
+              if (equipIds.has(String(eq))) bate = true;
+              novosVinculos.push({
+                auvo_equipment_id: String(eq),
+                auvo_task_id: taskId,
+                auvo_task_type_id: t?.taskType ? String(t.taskType) : null,
+                auvo_task_type_description: t?.taskTypeDescription || null,
+                status_auvo: t?.finished || t?.checkOutDate ? "Finalizada" : "Pendente",
+                data_tarefa: String(t?.taskDate || "").slice(0, 10) || null,
+                data_conclusao: String(t?.checkOutDate || t?.finishedDate || "").slice(0, 10) || null,
+                cliente: t?.customerDescription || t?.customerName || null,
+                tecnico: t?.userToName || null,
+                auvo_link: `https://app2.auvo.com.br/relatorioTarefas/DetalheTarefa/${taskId}`,
+                source: "live_task_lookup",
+                synced_at: new Date().toISOString(),
+              });
+            }
+            if (bate) linkedToTargetEquipment.add(taskId);
+            else linkedResolvidoOutro.add(taskId);
+          } catch { /* ignora */ }
+        };
+        const CONC_T = 6;
+        for (let i = 0; i < pendentes.length; i += CONC_T) {
+          await Promise.all(pendentes.slice(i, i + CONC_T).map(buscarTarefa));
+        }
+        for (let i = 0; i < novosVinculos.length; i += 500) {
+          const { error } = await supabase
+            .from("equipamento_tarefas_auvo")
+            .upsert(novosVinculos.slice(i, i + 500), { onConflict: "auvo_equipment_id,auvo_task_id" });
+          if (error) console.log("[pecas] upsert lookup erro", error.message);
+        }
+        console.log(
+          `[pecas] lookup tarefas sem vínculo: pendentes=${pendentes.length} ` +
+          `resolvidas=${tarefasResolvidasAoVivo} alvo=${linkedToTargetEquipment.size} ` +
+          `outro_equip=${linkedResolvidoOutro.size} sem_equip_no_auvo=${tarefasSemEquipamentoAuvo}`,
+        );
+      }
+    }
+
     type EquipmentMatch = "target" | "other" | "unknown";
     const tarefaClassificaEquipamento = (taskId: string): EquipmentMatch => {
       // O vínculo nativo tarefa → equipamento do Auvo é a fonte autoritativa.
       // Deve prevalecer sobre descrições genéricas como "máquina", que antes
       // faziam tarefas válidas serem classificadas como outro equipamento.
       if (taskIds.has(taskId) || linkedToTargetEquipment.has(taskId)) return "target";
+      // Só é "outro" por vínculo quando o Auvo confirmou outro equipamento.
+      if (linkedResolvidoOutro.has(taskId)) return "other";
 
       const row = linkedTaskRows.get(taskId);
       if (!row) return "unknown";
