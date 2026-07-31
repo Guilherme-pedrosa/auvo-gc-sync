@@ -2224,9 +2224,20 @@ export default function EquipamentosPreventivosPage() {
           }}
         />
       )}
+      {pecasEq && (
+        <EquipamentoPecasDialog
+          open={!!pecasEq}
+          onOpenChange={(v) => { if (!v) setPecasEq(null); }}
+          equipamento={{
+            nome: pecasEq.nome,
+            cliente: pecasEq.cliente,
+            identificador: pecasEq.identificador,
+            auvo_equipment_id: pecasEq.auvo_equipment_id,
+          }}
+        />
+      )}
       <ImportarPlanoExcelDialog
         open={importOpen}
-        onOpenChange={setImportOpen}
         onOpenChange={setImportOpen}
         grupos={gruposData?.grupos ?? []}
         onImported={() => {
