@@ -1531,7 +1531,7 @@ export default function BudgetKanbanPage() {
     setShowChat(false);
     setChatMessages([]);
     try {
-      const request = buildBudgetAiRequest(selectedCard);
+      const request = await buildBudgetAiRequest(selectedCard);
       if (!request.readiness.canAnalyze) {
         setAiAnalysis(buildAiFallback("Não há dados suficientes para iniciar a análise.", request.readiness.blockers));
         setAiAnalysisIsFallback(true);
@@ -1582,7 +1582,7 @@ export default function BudgetKanbanPage() {
     }
     setIsAnalyzing(true);
     try {
-      const request = buildBudgetAiRequest(selectedCard);
+      const request = await buildBudgetAiRequest(selectedCard);
       const { data: result, error } = await withBudgetAiTimeout(
         supabase.functions.invoke("genspark-ai", {
           body: { action: "deep_analyze", context: request.context },
