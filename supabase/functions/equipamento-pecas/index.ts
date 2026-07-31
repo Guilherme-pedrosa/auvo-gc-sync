@@ -728,7 +728,7 @@ Deno.serve(async (req) => {
       }
     }
     console.log(
-      `[pecas] resolução Controle OS: candidatos_os=${candidatosOs.size} candidatos_orc=${candidatosOrc.size} aceitos_por_73343_73344=${aceitosPorTarefa}`,
+      `[pecas] resolução Controle OS: candidatos_os=${candidatosOs.size} candidatos_orc=${candidatosOrc.size} aceitos_por_73343_73344=${aceitosPorTarefa} aceitos_por_88695=${aceitosPorCampoEquip}`,
     );
 
     const pecas: Peca[] = [];
