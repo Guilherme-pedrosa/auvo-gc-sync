@@ -63,15 +63,18 @@ export default function EquipamentoPecasDialog({ open, onOpenChange, equipamento
   const match = (...vals: (string | null | undefined)[]) =>
     !filtro || vals.some((v) => String(v || "").toLowerCase().includes(filtro));
 
-  const consolidado = (data?.consolidado || []).filter((p: any) => match(p.descricao));
-  const pecas = (data?.pecas || []).filter((p: any) => match(p.descricao, p.documento_codigo, p.situacao));
-  const documentos = (data?.documentos || []).filter((d: any) => match(d.documento_codigo, d.situacao, d.cliente));
+  const consolidado = (data?.consolidado || []).filter((p: any) => match(p.descricao, p.codigo));
+  const pecas = (data?.pecas || []).filter((p: any) =>
+    match(p.descricao, p.codigo, p.documento_codigo, p.situacao)
+  );
+  const pecasOs = pecas.filter((p: any) => p.origem === "os");
+  const pecasOrc = pecas.filter((p: any) => p.origem === "orcamento");
 
   const exportarCsv = () => {
     const linhas = [
-      ["Peça", "Qtd orçada", "Valor orçado", "Qtd vendida", "Valor vendido", "Ocorrências", "Última"],
+      ["Código", "Peça", "Qtd orçada", "Valor orçado", "Qtd vendida", "Valor vendido", "Ocorrências", "Última"],
       ...consolidado.map((p: any) => [
-        p.descricao, p.qtd_orcada, String(p.valor_orcado).replace(".", ","),
+        p.codigo || "", p.descricao, p.qtd_orcada, String(p.valor_orcado).replace(".", ","),
         p.qtd_vendida, String(p.valor_vendido).replace(".", ","), p.ocorrencias, fmtData(p.ultima_data),
       ]),
     ];
