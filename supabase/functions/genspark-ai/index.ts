@@ -1100,7 +1100,7 @@ type BudgetAnalysis = {
   readiness: { blocked: boolean; reasons: string[]; missing: string[] };
   facts: Array<{ statement: string; evidence: string; source: string }>;
   hypotheses: Array<{ statement: string; reason: string; confidence: "baixa" | "media" | "alta"; needs_validation: boolean }>;
-  recommendations: Array<{ item: string; type: "peca" | "insumo" | "servico" | "verificacao"; status: "confirmado" | "recomendar" | "verificar"; reason: string; evidence: string; source: string; confidence: "baixa" | "media" | "alta" }>;
+  recommendations: Array<{ item: string; type: "peca" | "insumo" | "servico" | "verificacao"; status: "confirmado" | "recomendar" | "verificar"; reason: string; evidence: string; source: string; confidence: "baixa" | "media" | "alta"; part_code?: string; code_evidence?: string; code_confidence?: "baixa" | "media" | "alta" }>;
   filling_improvements: string[];
   observation_suggested: string;
   policies: Array<{ policy: string; reason: string }>;
@@ -1196,6 +1196,9 @@ function parseAndNormalizeBudgetAnalysis(raw: string, maxRecommendations: number
         evidence: evidence || "Não evidenciado nos dados recebidos",
         source: source || "hipótese da análise",
         confidence: asConfidence(item?.confidence),
+        part_code: asText(item?.part_code),
+        code_evidence: asText(item?.code_evidence),
+        code_confidence: item?.part_code ? asConfidence(item?.code_confidence) : undefined,
       };
     }).filter((item: any) => item.item && item.reason).slice(0, maxRecommendations);
 
