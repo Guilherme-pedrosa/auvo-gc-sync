@@ -34,7 +34,6 @@ const fmtData = (d: string | null) => {
 
 export default function EquipamentoPecasDialog({ open, onOpenChange, equipamento }: Props) {
   const [busca, setBusca] = useState("");
-  const [somenteDireto, setSomenteDireto] = useState(false);
 
   const { data, isFetching, refetch, error } = useQuery({
     queryKey: [
@@ -65,7 +64,6 @@ export default function EquipamentoPecasDialog({ open, onOpenChange, equipamento
     !filtro || vals.some((v) => String(v || "").toLowerCase().includes(filtro));
 
   const pecas = (data?.pecas || [])
-    .filter((p: any) => !somenteDireto || p.vinculo !== "texto")
     .filter((p: any) => match(p.descricao, p.codigo, p.documento_codigo, p.situacao));
 
   const consolidado = (() => {
@@ -181,14 +179,6 @@ export default function EquipamentoPecasDialog({ open, onOpenChange, equipamento
                 onChange={(e) => setBusca(e.target.value)}
                 className="h-8"
               />
-              <Button
-                variant={somenteDireto ? "default" : "outline"}
-                size="sm"
-                onClick={() => setSomenteDireto((v) => !v)}
-                title="Mostrar apenas documentos ligados diretamente às tarefas do equipamento"
-              >
-                {somenteDireto ? "Só vínculo direto" : `Inclui citados (${data.totais.docs_por_texto ?? 0})`}
-              </Button>
               <Button variant="outline" size="sm" onClick={() => refetch()}>
                 <RefreshCw className="h-4 w-4 mr-1" /> Atualizar
               </Button>
@@ -261,9 +251,6 @@ export default function EquipamentoPecasDialog({ open, onOpenChange, equipamento
                           <TableCell className="text-sm">
                             <span className="flex items-center gap-1">
                               {p.documento_codigo}
-                              {p.vinculo === "texto" && (
-                                <Badge variant="outline" className="text-[9px]">citado</Badge>
-                              )}
                               {p.link && (
                                 <a href={p.link} target="_blank" rel="noopener noreferrer">
                                   <ExternalLink className="h-3 w-3 text-muted-foreground" />
