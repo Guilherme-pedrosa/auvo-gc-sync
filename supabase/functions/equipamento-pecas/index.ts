@@ -199,33 +199,73 @@ Deno.serve(async (req) => {
       const token = await auvoLogin();
       if (!token) { console.log("[pecas] auvo login falhou"); return; }
 
+      const equipsArr = Array.from(equipIds);
+      const hoje = new Date();
+      const fim = new Date(hoje.getTime() + 7 * 86400000);
+
+      // Histórico completo: por padrão varre desde 2024-01-01 (ou desde a data
+      // enviada pelo cliente). Só limita ao período recente quando o histórico
+      // antigo já foi trazido em uma varredura anterior.
+      const desdeParam = String(body?.desde || "").trim();
+      const desde = /^\d{4}-\d{2}-\d{2}$/.test(desdeParam)
+        ? new Date(`${desdeParam}T00:00:00Z`)
+        : new Date("2024-01-01T00:00:00Z");
+
+      const { data: maisAntigo } = await supabase
+        .from("equipamento_tarefas_auvo")
+        .select("data_tarefa")
+        .in("auvo_equipment_id", equipsArr)
+        .not("data_tarefa", "is", null)
+        .order("data_tarefa", { ascending: true })
+        .limit(1);
       const { data: ultimo } = await supabase
         .from("equipamento_tarefas_auvo")
         .select("synced_at")
-        .in("auvo_equipment_id", Array.from(equipIds))
+        .in("auvo_equipment_id", equipsArr)
         .order("synced_at", { ascending: false })
         .limit(1);
 
-      const hoje = new Date();
-      const limite = new Date(hoje.getTime() - 400 * 86400000);
-      let inicio = ultimo?.[0]?.synced_at ? new Date(ultimo[0].synced_at) : limite;
-      inicio = new Date(inicio.getTime() - 7 * 86400000);
-      if (inicio < limite) inicio = limite;
-      const fim = new Date(hoje.getTime() + 7 * 86400000);
-      console.log(`[pecas] live auvo ${isoDay(inicio)} → ${isoDay(fim)} equips=${Array.from(equipIds).join(",")}`);
+      const antigoIso = maisAntigo?.[0]?.data_tarefa ? String(maisAntigo[0].data_tarefa).slice(0, 10) : null;
+      const historicoJaVarrido = body?.full_history === true
+        ? false
+        : !!antigoIso && new Date(`${antigoIso}T00:00:00Z`).getTime() <= desde.getTime() + 45 * 86400000;
+
+      let inicio: Date;
+      if (historicoJaVarrido) {
+        const limite = new Date(hoje.getTime() - 400 * 86400000);
+        inicio = ultimo?.[0]?.synced_at ? new Date(ultimo[0].synced_at) : limite;
+        inicio = new Date(inicio.getTime() - 7 * 86400000);
+        if (inicio < limite) inicio = limite;
+      } else {
+        inicio = desde;
+      }
+
+      console.log(
+        `[pecas] live auvo ${isoDay(inicio)} → ${isoDay(fim)} (histórico=${!historicoJaVarrido}) equips=${equipsArr.join(",")}`,
+      );
 
       const headers = { Authorization: `Bearer ${token}`, "Content-Type": "application/json" };
       const novos: any[] = [];
-      const paramFilter = encodeURIComponent(JSON.stringify({
-        startDate: `${isoDay(inicio)}T00:00:00`,
-        endDate: `${isoDay(fim)}T23:59:59`,
-      }));
-      const pageUrl = (page: number) =>
-        `${AUVO_BASE_URL}/tasks/?page=${page}&pageSize=200&order=desc&paramFilter=${paramFilter}&selectFields=${encodeURIComponent(AUVO_TASK_FIELDS)}`;
-      const buscarPagina = async (page: number): Promise<any> => {
+
+      // Auvo limita paginação; quebramos o período em janelas de 60 dias.
+      const janelas: Array<{ ini: Date; fim: Date }> = [];
+      for (let cur = new Date(inicio); cur < fim;) {
+        const prox = new Date(Math.min(cur.getTime() + 60 * 86400000, fim.getTime()));
+        janelas.push({ ini: new Date(cur), fim: prox });
+        cur = new Date(prox.getTime() + 86400000);
+      }
+
+      const pageUrl = (page: number, j: { ini: Date; fim: Date }) => {
+        const paramFilter = encodeURIComponent(JSON.stringify({
+          startDate: `${isoDay(j.ini)}T00:00:00`,
+          endDate: `${isoDay(j.fim)}T23:59:59`,
+        }));
+        return `${AUVO_BASE_URL}/tasks/?page=${page}&pageSize=100&order=desc&paramFilter=${paramFilter}&selectFields=${encodeURIComponent(AUVO_TASK_FIELDS)}`;
+      };
+      const buscarPagina = async (page: number, j: { ini: Date; fim: Date }): Promise<any> => {
         try {
-          const res = await fetch(pageUrl(page), { headers });
-          if (!res.ok) { console.log(`[pecas] auvo tasks HTTP ${res.status} page ${page}`); return null; }
+          const res = await fetch(pageUrl(page, j), { headers });
+          if (!res.ok) { const b = await res.text().catch(() => ""); console.log(`[pecas] auvo tasks HTTP ${res.status} page ${page}: ${b.slice(0, 200)}`); return null; }
           return await res.json();
         } catch (e) { console.log("[pecas] auvo tasks erro", String(e)); return null; }
       };
@@ -257,18 +297,27 @@ Deno.serve(async (req) => {
         }
       };
 
-      const first = await buscarPagina(1);
-      if (!first) return;
-      ingerir(first);
-      const total = Number(first?.result?.pagedSearchReturnData?.totalItems || 0);
-      const totalPaginas = Math.min(15, Math.ceil(total / 200));
-      if (totalPaginas > 1) {
-        const restantes = await Promise.all(
-          Array.from({ length: totalPaginas - 1 }, (_, i) => buscarPagina(i + 2)),
-        );
-        restantes.forEach(ingerir);
+      let totalGeral = 0;
+      const varrerJanela = async (j: { ini: Date; fim: Date }) => {
+        const first = await buscarPagina(1, j);
+        if (!first) return;
+        ingerir(first);
+        const total = Number(first?.result?.pagedSearchReturnData?.totalItems || 0);
+        totalGeral += total;
+        const totalPaginas = Math.min(40, Math.ceil(total / 100));
+        if (totalPaginas > 1) {
+          const restantes = await Promise.all(
+            Array.from({ length: totalPaginas - 1 }, (_, i) => buscarPagina(i + 2, j)),
+          );
+          restantes.forEach(ingerir);
+        }
+      };
+      for (let i = 0; i < janelas.length; i += 4) {
+        await Promise.all(janelas.slice(i, i + 4).map(varrerJanela));
       }
-      console.log(`[pecas] live auvo: ${total} tarefas em ${totalPaginas} pág, vinculos=${novos.length}`);
+      console.log(
+        `[pecas] live auvo: ${totalGeral} tarefas em ${janelas.length} janela(s), vinculos=${novos.length}`,
+      );
 
       if (novos.length) {
         const { error } = await supabase
