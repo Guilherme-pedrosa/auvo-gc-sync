@@ -706,6 +706,7 @@ async function hydrateMissingOsByCodigo(
         gc_os_link_cobranca: buildGcOsPublicLink(os),
         gc_os_tarefa_exec,
         gc_os_tarefa_os,
+        gc_os_equip_id: getGcAttrValue(atributos, GC_ATRIBUTO_ID_EQUIPAMENTO) || null,
         gc_os_orcamento_codigo: null as string | null,
       };
       const codigo = String(os.codigo || "").trim();
