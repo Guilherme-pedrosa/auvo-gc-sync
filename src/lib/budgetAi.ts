@@ -236,6 +236,8 @@ export type BudgetAiPartOccurrence = {
 export type BudgetAiPartsHistoryPayload = {
   consolidado?: BudgetAiPartHistoryItem[];
   pecas?: BudgetAiPartOccurrence[];
+  consolidado_servicos?: BudgetAiPartHistoryItem[];
+  servicos?: BudgetAiPartOccurrence[];
   totais?: { os?: number; orcamentos?: number; itens?: number };
 };
 
@@ -249,6 +251,7 @@ export type BudgetAiPartsHistoryContext = {
     confianca: "alta" | "media" | "baixa";
     score: number;
     evidencias: string[];
+    tipo?: "peca" | "servico";
   }>;
   itemsConsidered: number;
 };
@@ -294,52 +297,69 @@ export function buildPartsHistoryContext(
 ): BudgetAiPartsHistoryContext | null {
   const consolidado = (payload?.consolidado || []).filter((item) => item?.descricao);
   const ocorrencias = (payload?.pecas || []).filter((item) => item?.descricao);
-  if (consolidado.length === 0 && ocorrencias.length === 0) return null;
+  const consolidadoServicos = (payload?.consolidado_servicos || []).filter((item) => item?.descricao);
+  const ocorrenciasServicos = (payload?.servicos || []).filter((item) => item?.descricao);
+  if (
+    consolidado.length === 0 && ocorrencias.length === 0 &&
+    consolidadoServicos.length === 0 && ocorrenciasServicos.length === 0
+  ) return null;
 
   const requestedLines = String(requestedPartsText || "")
     .split(/[\n;•]|(?:,\s)/)
     .map((line) => line.trim())
     .filter((line) => line.length >= 3);
 
-  const matches: BudgetAiPartsHistoryContext["matches"] = [];
-  for (const line of requestedLines) {
-    const tokens = tokenize(line);
-    if (tokens.length === 0) continue;
-    let best: { item: BudgetAiPartHistoryItem; score: number } | null = null;
-    for (const item of consolidado) {
-      const historyTokens = new Set(tokenize(String(item.descricao || "") + " " + String(item.codigo || "")));
-      const hits = tokens.filter((token) => historyTokens.has(token)).length;
-      if (hits === 0) continue;
-      const score = hits / tokens.length;
-      if (score < 0.5) continue;
-      if (!best || score > best.score) best = { item, score };
+  const matchAgainst = (
+    catalog: BudgetAiPartHistoryItem[],
+    tipo: "peca" | "servico",
+  ): BudgetAiPartsHistoryContext["matches"] => {
+    const found: BudgetAiPartsHistoryContext["matches"] = [];
+    for (const line of requestedLines) {
+      const tokens = tokenize(line);
+      if (tokens.length === 0) continue;
+      let best: { item: BudgetAiPartHistoryItem; score: number } | null = null;
+      for (const item of catalog) {
+        const historyTokens = new Set(tokenize(String(item.descricao || "") + " " + String(item.codigo || "")));
+        const hits = tokens.filter((token) => historyTokens.has(token)).length;
+        if (hits === 0) continue;
+        const score = hits / tokens.length;
+        if (score < 0.5) continue;
+        if (!best || score > best.score) best = { item, score };
+      }
+      if (!best) continue;
+      const vendidaAlguma = (Number(best.item.qtd_vendida) || 0) > 0;
+      const confianca: "alta" | "media" | "baixa" =
+        best.score >= 0.85 && String(best.item.codigo || "") && vendidaAlguma
+          ? "alta"
+          : best.score >= 0.65
+            ? "media"
+            : "baixa";
+      found.push({
+        solicitado: line,
+        historico: String(best.item.descricao || ""),
+        codigo: String(best.item.codigo || ""),
+        ultima_data: best.item.ultima_data || null,
+        confianca,
+        score: Math.round(best.score * 100) / 100,
+        evidencias: docsSummary(best.item),
+        tipo,
+      });
     }
-    if (!best) continue;
-    const evidencias = docsSummary(best.item);
-    const vendidaAlguma = (Number(best.item.qtd_vendida) || 0) > 0;
-    const confianca: "alta" | "media" | "baixa" =
-      best.score >= 0.85 && String(best.item.codigo || "") && vendidaAlguma
-        ? "alta"
-        : best.score >= 0.65
-          ? "media"
-          : "baixa";
-    matches.push({
-      solicitado: line,
-      historico: String(best.item.descricao || ""),
-      codigo: String(best.item.codigo || ""),
-      ultima_data: best.item.ultima_data || null,
-      confianca,
-      score: Math.round(best.score * 100) / 100,
-      evidencias,
-    });
-  }
+    return found;
+  };
+
+  const matchesPecas = matchAgainst(consolidado, "peca");
+  const matchesServicos = matchAgainst(consolidadoServicos, "servico");
+  const matches = [...matchesPecas, ...matchesServicos];
 
   const top = consolidado.slice(0, limit);
   const ultimasOcorrencias = ocorrencias.slice(0, 15);
+  const topServicos = consolidadoServicos.slice(0, limit);
+  const ultimosServicos = ocorrenciasServicos.slice(0, 10);
 
   const lines: string[] = [];
   lines.push(
-    `Documentos no histórico: ${payload?.totais?.os ?? 0} OS e ${payload?.totais?.orcamentos ?? 0} orçamento(s); ${payload?.totais?.itens ?? ocorrencias.length} item(ns) de peça.`,
+    `Documentos no histórico: ${payload?.totais?.os ?? 0} OS e ${payload?.totais?.orcamentos ?? 0} orçamento(s); ${payload?.totais?.itens ?? ocorrencias.length} item(ns) de peça e ${ocorrenciasServicos.length} lançamento(s) de serviço.`,
   );
 
   if (top.length > 0) {
@@ -361,20 +381,39 @@ export function buildPartsHistoryContext(
     }
   }
 
+  if (topServicos.length > 0) {
+    lines.push("Serviços/mão de obra já orçados/vendidos neste equipamento (consolidado):");
+    for (const item of topServicos) {
+      const docs = docsSummary(item, 3);
+      lines.push(
+        `- ${item.descricao}${item.codigo ? ` [cód. ${item.codigo}]` : " [sem código cadastrado]"} · orçado ${Number(item.qtd_orcada) || 0}x (${formatCurrency(item.valor_orcado)}) · vendido ${Number(item.qtd_vendida) || 0}x (${formatCurrency(item.valor_vendido)}) · ocorrências ${Number(item.ocorrencias) || 0} · última ${item.ultima_data || "n/d"}${docs.length ? ` · usado em: ${docs.join("; ")}` : ""}`,
+      );
+    }
+  }
+
+  if (ultimosServicos.length > 0) {
+    lines.push("Últimos serviços lançados (mais recentes primeiro):");
+    for (const item of ultimosServicos) {
+      lines.push(
+        `- ${item.data || "s/data"} · ${item.origem === "os" ? "OS" : "Orçamento"} ${item.documento_codigo || "?"} (${item.situacao || "sem situação"}) · ${item.descricao}${item.codigo ? ` [cód. ${item.codigo}]` : ""} · qtd ${Number(item.quantidade) || 0} · ${item.vendida ? "VENDIDO" : "apenas orçado"}`,
+      );
+    }
+  }
+
   if (matches.length > 0) {
     lines.push("Correspondências entre o que o técnico pediu agora e o histórico (use o CÓDIGO e cite o documento como prova):");
     for (const match of matches) {
       lines.push(
-        `- "${match.solicitado}" ≈ "${match.historico}"${match.codigo ? ` [cód. ${match.codigo}]` : " [sem código cadastrado]"} · confiança ${match.confianca} (similaridade ${Math.round(match.score * 100)}%) · última vez em ${match.ultima_data || "n/d"}${match.evidencias.length ? ` · prova: ${match.evidencias.join("; ")}` : ""}`,
+        `- [${match.tipo === "servico" ? "SERVIÇO" : "PEÇA"}] "${match.solicitado}" ≈ "${match.historico}"${match.codigo ? ` [cód. ${match.codigo}]` : " [sem código cadastrado]"} · confiança ${match.confianca} (similaridade ${Math.round(match.score * 100)}%) · última vez em ${match.ultima_data || "n/d"}${match.evidencias.length ? ` · prova: ${match.evidencias.join("; ")}` : ""}`,
       );
     }
   } else if (requestedLines.length > 0) {
-    lines.push("Nenhuma peça solicitada agora bate com a nomenclatura do histórico deste equipamento.");
+    lines.push("Nenhuma peça/serviço solicitado agora bate com a nomenclatura do histórico deste equipamento.");
   }
 
   return {
     text: lines.join("\n"),
     matches,
-    itemsConsidered: top.length + ultimasOcorrencias.length,
+    itemsConsidered: top.length + ultimasOcorrencias.length + topServicos.length + ultimosServicos.length,
   };
 }

@@ -953,14 +953,30 @@ Deno.serve(async (req) => {
         codigo: s.codigo || "", descricao: s.descricao,
         qtd_vendida: 0, valor_vendido: 0, qtd_orcada: 0, valor_orcado: 0,
         ocorrencias: 0, ultima_data: null as string | null,
+        documentos: [] as any[],
       };
       if (s.vendida) { cur.qtd_vendida += s.quantidade; cur.valor_vendido += s.valor_total; }
       else { cur.qtd_orcada += s.quantidade; cur.valor_orcado += s.valor_total; }
       cur.ocorrencias += 1;
       if (s.data && (!cur.ultima_data || s.data > cur.ultima_data)) cur.ultima_data = s.data;
+      if (cur.documentos.length < 12) {
+        cur.documentos.push({
+          origem: s.origem,
+          documento_codigo: s.documento_codigo,
+          data: s.data,
+          situacao: s.situacao,
+          vendida: s.vendida,
+          quantidade: s.quantidade,
+          auvo_task_id: s.auvo_task_id || null,
+          link: s.link || null,
+        });
+      }
       consolidadoServicosMap.set(key, cur);
     }
-    const listaServicos = Array.from(consolidadoServicosMap.values()).sort(
+    const listaServicos = Array.from(consolidadoServicosMap.values()).map((item: any) => ({
+      ...item,
+      documentos: (item.documentos || []).sort((a: any, b: any) => String(b.data || "").localeCompare(String(a.data || ""))),
+    })).sort(
       (a, b) => (b.valor_vendido + b.valor_orcado) - (a.valor_vendido + a.valor_orcado),
     );
 
