@@ -9,6 +9,9 @@ const corsHeaders = {
 };
 
 const GC_BASE = "https://api.gestaoclick.com";
+const AUVO_BASE_URL = "https://api.auvo.com.br/v2";
+const AUVO_TASK_FIELDS =
+  "taskID,taskDate,checkOutDate,deliveredDate,finishedDate,equipmentsId,taskType,taskTypeDescription,taskStatus,finished,customerDescription,customerName,userToName";
 
 function toNum(v: any): number {
   if (v === null || v === undefined || v === "") return 0;
@@ -63,6 +66,27 @@ async function gcGet(path: string, headers: Record<string, string>) {
   } catch {
     return null;
   }
+}
+
+async function auvoLogin(): Promise<string | null> {
+  const apiKey = Deno.env.get("AUVO_APP_KEY") ?? "";
+  const apiToken = Deno.env.get("AUVO_TOKEN") ?? "";
+  if (!apiKey || !apiToken) return null;
+  try {
+    const res = await fetch(
+      `${AUVO_BASE_URL}/login/?apiKey=${encodeURIComponent(apiKey)}&apiToken=${encodeURIComponent(apiToken)}`,
+      { headers: { "Content-Type": "application/json" } },
+    );
+    if (!res.ok) return null;
+    const data = await res.json();
+    return data?.result?.accessToken ?? null;
+  } catch {
+    return null;
+  }
+}
+
+function isoDay(d: Date) {
+  return d.toISOString().slice(0, 10);
 }
 
 Deno.serve(async (req) => {
@@ -135,6 +159,92 @@ Deno.serve(async (req) => {
         .select("auvo_task_id")
         .in("auvo_equipment_id", Array.from(equipIds));
       (data || []).forEach((r: any) => { if (r.auvo_task_id) taskIds.add(String(r.auvo_task_id)); });
+    };
+
+    // Vínculos podem estar defasados (sync noturno). Busca AO VIVO no Auvo as
+    // tarefas do período ainda não sincronizado e grava os vínculos que faltam.
+    const atualizarVinculosAuvoAoVivo = async () => {
+      if (!equipIds.size) return;
+      const token = await auvoLogin();
+      if (!token) { console.log("[pecas] auvo login falhou"); return; }
+
+      const { data: ultimo } = await supabase
+        .from("equipamento_tarefas_auvo")
+        .select("synced_at")
+        .in("auvo_equipment_id", Array.from(equipIds))
+        .order("synced_at", { ascending: false })
+        .limit(1);
+
+      const hoje = new Date();
+      const limite = new Date(hoje.getTime() - 400 * 86400000);
+      let inicio = ultimo?.[0]?.synced_at ? new Date(ultimo[0].synced_at) : limite;
+      inicio = new Date(inicio.getTime() - 7 * 86400000);
+      if (inicio < limite) inicio = limite;
+      const fim = new Date(hoje.getTime() + 7 * 86400000);
+      console.log(`[pecas] live auvo ${isoDay(inicio)} → ${isoDay(fim)} equips=${Array.from(equipIds).join(",")}`);
+
+      const headers = { Authorization: `Bearer ${token}`, "Content-Type": "application/json" };
+      const novos: any[] = [];
+      const paramFilter = encodeURIComponent(JSON.stringify({
+        startDate: `${isoDay(inicio)}T00:00:00`,
+        endDate: `${isoDay(fim)}T23:59:59`,
+      }));
+      const pageUrl = (page: number) =>
+        `${AUVO_BASE_URL}/tasks/?page=${page}&pageSize=200&order=desc&paramFilter=${paramFilter}&selectFields=${encodeURIComponent(AUVO_TASK_FIELDS)}`;
+      const buscarPagina = async (page: number): Promise<any> => {
+        try {
+          const res = await fetch(pageUrl(page), { headers });
+          if (!res.ok) { console.log(`[pecas] auvo tasks HTTP ${res.status} page ${page}`); return null; }
+          return await res.json();
+        } catch (e) { console.log("[pecas] auvo tasks erro", String(e)); return null; }
+      };
+      const ingerir = (json: any) => {
+        const lista = json?.result?.entityList || [];
+        if (!Array.isArray(lista)) return;
+        for (const t of lista) {
+          const ids: any[] = Array.isArray(t.equipmentsId) ? t.equipmentsId : [];
+          const taskId = String(t.taskID || t.id || "");
+          if (!taskId) continue;
+          for (const eq of ids) {
+            if (!equipIds.has(String(eq))) continue;
+            taskIds.add(taskId);
+            novos.push({
+              auvo_equipment_id: String(eq),
+              auvo_task_id: taskId,
+              auvo_task_type_id: t.taskType ? String(t.taskType) : null,
+              auvo_task_type_description: t.taskTypeDescription || null,
+              status_auvo: t.finished || t.checkOutDate ? "Finalizada" : "Pendente",
+              data_tarefa: String(t.taskDate || "").slice(0, 10) || null,
+              data_conclusao: String(t.checkOutDate || t.finishedDate || "").slice(0, 10) || null,
+              cliente: t.customerDescription || t.customerName || null,
+              tecnico: t.userToName || null,
+              auvo_link: `https://app2.auvo.com.br/relatorioTarefas/DetalheTarefa/${taskId}`,
+              source: "live_equipment_relation",
+              synced_at: new Date().toISOString(),
+            });
+          }
+        }
+      };
+
+      const first = await buscarPagina(1);
+      if (!first) return;
+      ingerir(first);
+      const total = Number(first?.result?.pagedSearchReturnData?.totalItems || 0);
+      const totalPaginas = Math.min(15, Math.ceil(total / 200));
+      if (totalPaginas > 1) {
+        const restantes = await Promise.all(
+          Array.from({ length: totalPaginas - 1 }, (_, i) => buscarPagina(i + 2)),
+        );
+        restantes.forEach(ingerir);
+      }
+      console.log(`[pecas] live auvo: ${total} tarefas em ${totalPaginas} pág, vinculos=${novos.length}`);
+
+      if (novos.length) {
+        const { error } = await supabase
+          .from("equipamento_tarefas_auvo")
+          .upsert(novos, { onConflict: "auvo_equipment_id,auvo_task_id" });
+        if (error) console.log("[pecas] upsert erro", error.message);
+      }
     };
 
     const carregarCentral = async () => {
@@ -257,6 +367,7 @@ Deno.serve(async (req) => {
     // Passe único e fechado: série -> catálogo -> tarefas do MESMO equipamento -> central
     await resolveEquipCatalogo();
     await expandirTarefasPorEquipamento();
+    await atualizarVinculosAuvoAoVivo();
     await carregarCentral();
     // varre todo o período disponível, recuperando OS/orçamentos antigos
     await expandirHistoricoAntigo();
@@ -389,6 +500,7 @@ Deno.serve(async (req) => {
       tarefas: taskIds.size,
       cobertura: {
         tarefas_com_dados: centralRows.length,
+        live_sync: true,
         series: Array.from(series),
         equipamentos: Array.from(equipIds),
         data_inicial: documentos.reduce((m: string | null, d: any) => (d.data && (!m || d.data < m) ? d.data : m), null),
