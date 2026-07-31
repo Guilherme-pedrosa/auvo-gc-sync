@@ -2227,6 +2227,7 @@ export default function EquipamentosPreventivosPage() {
       <ImportarPlanoExcelDialog
         open={importOpen}
         onOpenChange={setImportOpen}
+*** PLACEHOLDER ***
         grupos={gruposData?.grupos ?? []}
         onImported={() => {
           queryClient.invalidateQueries({ queryKey: ["preventiva-equipamentos"] });
