@@ -31,6 +31,7 @@ import {
   shouldAutoRouteToDoneToday,
 } from "@/lib/budgetKanban";
 import BudgetAiAnalysisPanel from "@/components/financeiro/BudgetAiAnalysisPanel";
+import EquipamentoPecasDialog from "@/pages/financeiro/EquipamentoPecasDialog";
 import {
   evaluateBudgetAiReadiness,
   extractBudgetAiPhotos,
@@ -2116,6 +2117,18 @@ export default function BudgetKanbanPage() {
                                                   OS GC
                                                 </a>
                                               )}
+                                              <button
+                                                type="button"
+                                                className="inline-flex items-center gap-1 text-[10px] text-amber-700 hover:underline"
+                                                title="Peças (varredura no GC)"
+                                                onClick={(e) => {
+                                                  e.stopPropagation();
+                                                  setPecasCard(item);
+                                                }}
+                                              >
+                                                <Wrench className="h-3 w-3" />
+                                                Peças
+                                              </button>
                                             </div>
 
                                             {/* Detalhes da resolução (quando na coluna Já Resolvido) */}
