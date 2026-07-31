@@ -281,9 +281,14 @@ Deno.serve(async (req) => {
       let itens = 0;
       for (const p of produtos) {
         const descricao = String(p.nome_produto || p.nome || p.detalhes || "Peça sem descrição").trim();
+        const codigo = String(
+          p.codigo_interno || p.codigo || p.codigo_produto || p.sku ||
+          p.produto_codigo || p.produto_id || ""
+        ).trim();
         const quantidade = toNum(p.quantidade) || 1;
         const valor_total = toNum(p.valor_total) || (toNum(p.valor_venda || p.valor_unitario) * quantidade);
         pecas.push({
+          codigo,
           descricao,
           quantidade,
           valor_unitario: quantidade > 0 ? valor_total / quantidade : valor_total,
