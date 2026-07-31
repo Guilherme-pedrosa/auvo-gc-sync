@@ -313,6 +313,13 @@ Deno.serve(async (req) => {
       ok: true,
       equipamento: { auvo_equipment_id: auvoEquipmentId || null, identificador: identificador || null, nome: equipamentoNome || null },
       tarefas: taskIds.size,
+      cobertura: {
+        tarefas_com_dados: centralRows.length,
+        series: Array.from(series),
+        equipamentos: Array.from(equipIds),
+        data_inicial: documentos.reduce((m: string | null, d: any) => (d.data && (!m || d.data < m) ? d.data : m), null),
+        data_final: documentos.reduce((m: string | null, d: any) => (d.data && (!m || d.data > m) ? d.data : m), null),
+      },
       documentos: documentos.sort((a, b) => String(b.data || "").localeCompare(String(a.data || ""))),
       pecas: pecas.sort((a, b) => String(b.data || "").localeCompare(String(a.data || ""))),
       consolidado: lista,
