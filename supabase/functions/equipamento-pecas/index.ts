@@ -929,6 +929,25 @@ Deno.serve(async (req) => {
       (a, b) => (b.valor_vendido + b.valor_orcado) - (a.valor_vendido + a.valor_orcado),
     );
 
+    // Consolidado de serviços por descrição/código
+    const consolidadoServicosMap = new Map<string, any>();
+    for (const s of servicos) {
+      const key = s.codigo ? `c:${String(s.codigo).toLowerCase()}` : `d:${norm(s.descricao)}`;
+      const cur = consolidadoServicosMap.get(key) || {
+        codigo: s.codigo || "", descricao: s.descricao,
+        qtd_vendida: 0, valor_vendido: 0, qtd_orcada: 0, valor_orcado: 0,
+        ocorrencias: 0, ultima_data: null as string | null,
+      };
+      if (s.vendida) { cur.qtd_vendida += s.quantidade; cur.valor_vendido += s.valor_total; }
+      else { cur.qtd_orcada += s.quantidade; cur.valor_orcado += s.valor_total; }
+      cur.ocorrencias += 1;
+      if (s.data && (!cur.ultima_data || s.data > cur.ultima_data)) cur.ultima_data = s.data;
+      consolidadoServicosMap.set(key, cur);
+    }
+    const listaServicos = Array.from(consolidadoServicosMap.values()).sort(
+      (a, b) => (b.valor_vendido + b.valor_orcado) - (a.valor_vendido + a.valor_orcado),
+    );
+
     return new Response(JSON.stringify({
       ok: true,
       equipamento: { auvo_equipment_id: auvoEquipmentId || null, identificador: identificador || null, nome: equipamentoNome || null },
@@ -952,13 +971,18 @@ Deno.serve(async (req) => {
       documentos: documentos.sort((a, b) => String(b.data || "").localeCompare(String(a.data || ""))),
       pecas: pecas.sort((a, b) => String(b.data || "").localeCompare(String(a.data || ""))),
       consolidado: lista,
+      servicos: servicos.sort((a, b) => String(b.data || "").localeCompare(String(a.data || ""))),
+      consolidado_servicos: listaServicos,
       totais: {
         os: documentos.filter((d: any) => d.origem === "os").length,
         orcamentos: documentos.filter((d: any) => d.origem === "orcamento").length,
         docs_por_texto: 0,
         itens: pecas.length,
+        itens_servicos: servicos.length,
         valor_vendido: pecas.filter((p) => p.vendida).reduce((s, p) => s + p.valor_total, 0),
         valor_orcado: pecas.filter((p) => !p.vendida).reduce((s, p) => s + p.valor_total, 0),
+        valor_servicos_vendidos: servicos.filter((s) => s.vendida).reduce((t, s) => t + s.valor_total, 0),
+        valor_servicos_orcados: servicos.filter((s) => !s.vendida).reduce((t, s) => t + s.valor_total, 0),
       },
     }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
   } catch (err) {
