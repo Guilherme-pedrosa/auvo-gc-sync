@@ -36,6 +36,7 @@ import {
   evaluateBudgetAiReadiness,
   extractBudgetAiPhotos,
   withBudgetAiTimeout,
+  buildPartsHistoryContext,
   type BudgetAiResponseMeta,
   type BudgetAiStructuredAnalysis,
 } from "@/lib/budgetAi";
@@ -1440,7 +1441,33 @@ export default function BudgetKanbanPage() {
     return { isQuota, isRateLimited, code, message };
   };
 
-  const buildBudgetAiRequest = (card: KanbanItem) => {
+  // Cache do rastreio de peças por equipamento/tarefa, evita refetch a cada análise
+  const partsHistoryCache = useRef(new Map<string, any>());
+
+  const fetchPartsHistory = async (card: KanbanItem, equipmentId: string, equipmentName: string) => {
+    const cacheKey = equipmentId || equipmentName || card.auvo_task_id;
+    if (partsHistoryCache.current.has(cacheKey)) return partsHistoryCache.current.get(cacheKey);
+    try {
+      const { data } = await withBudgetAiTimeout(
+        supabase.functions.invoke("equipamento-pecas", {
+          body: {
+            auvo_task_id: card.auvo_task_id,
+            identificador: equipmentId || undefined,
+            equipamento_nome: equipmentName || undefined,
+          },
+        }),
+        45000,
+      );
+      const payload = data?.ok ? data : null;
+      partsHistoryCache.current.set(cacheKey, payload);
+      return payload;
+    } catch (error) {
+      console.warn("[budget-kanban] Falha ao carregar histórico de peças:", error);
+      return null;
+    }
+  };
+
+  const buildBudgetAiRequest = async (card: KanbanItem) => {
     const photos = extractBudgetAiPhotos(card.questionario_respostas, 10);
     const localEquipment = extractEquipmentFromCard(card);
     const equipment = resolvedEquipment?.nome || localEquipment.nome || "";
@@ -1459,8 +1486,12 @@ export default function BudgetKanbanPage() {
       photos,
     });
 
+    const historyPayload = await fetchPartsHistory(card, equipmentId, equipment);
+    const partsHistory = buildPartsHistoryContext(historyPayload, parts);
+
     return {
       readiness,
+      partsHistory,
       context: {
         cliente: card.cliente,
         tecnico: card.tecnico,
@@ -1474,6 +1505,8 @@ export default function BudgetKanbanPage() {
         tempo: getAnswer(card, "horas") || getAnswer(card, "tempo") || "",
         observacoes: observations,
         fotos: photos,
+        historico_pecas: partsHistory?.text || "",
+        historico_pecas_matches: partsHistory?.matches || [],
         todas_respostas: card.questionario_respostas
           .filter((answer) => answer.reply && !/https?:\/\//i.test(answer.reply))
           .map((answer) => `${answer.question}: ${answer.reply}`)
@@ -1498,7 +1531,7 @@ export default function BudgetKanbanPage() {
     setShowChat(false);
     setChatMessages([]);
     try {
-      const request = buildBudgetAiRequest(selectedCard);
+      const request = await buildBudgetAiRequest(selectedCard);
       if (!request.readiness.canAnalyze) {
         setAiAnalysis(buildAiFallback("Não há dados suficientes para iniciar a análise.", request.readiness.blockers));
         setAiAnalysisIsFallback(true);
@@ -1549,7 +1582,7 @@ export default function BudgetKanbanPage() {
     }
     setIsAnalyzing(true);
     try {
-      const request = buildBudgetAiRequest(selectedCard);
+      const request = await buildBudgetAiRequest(selectedCard);
       const { data: result, error } = await withBudgetAiTimeout(
         supabase.functions.invoke("genspark-ai", {
           body: { action: "deep_analyze", context: request.context },
@@ -1607,6 +1640,10 @@ export default function BudgetKanbanPage() {
               pecas: getAnswer(selectedCard, "peças") || getAnswer(selectedCard, "material") || "",
               servicos: getAnswer(selectedCard, "serviços") || getAnswer(selectedCard, "servico") || "",
               observacoes: getAnswer(selectedCard, "observ") || "",
+              historico_pecas: buildPartsHistoryContext(
+                partsHistoryCache.current.get(equipamentoId || equipamento || selectedCard.auvo_task_id),
+                getAnswer(selectedCard, "peças") || getAnswer(selectedCard, "material") || "",
+              )?.text || "",
             },
             analysis: aiAnalysis || "",
             userMessage: userMsg,
