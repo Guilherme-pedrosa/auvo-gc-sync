@@ -140,6 +140,35 @@ Deno.serve(async (req) => {
       return novos;
     };
 
+    // Muitas tarefas do equipamento não têm gc_os_id na própria linha: o documento
+    // GC está em OUTRA linha (ex.: linha "gc-only" ou a tarefa OS) que aponta para
+    // esta tarefa em gc_os_tarefa_os / gc_os_tarefa_exec. Recupera esses documentos.
+    const carregarPorTarefaVinculada = async () => {
+      const ids = Array.from(taskIds).filter(Boolean);
+      if (!ids.length) return 0;
+      const tokensDe = (v: any) =>
+        String(v || "").split(/[\/;,|\s]+/).map((t) => t.trim()).filter(Boolean);
+      let novos = 0;
+      for (let i = 0; i < ids.length; i += 20) {
+        const chunk = ids.slice(i, i + 20);
+        const filtro = chunk
+          .flatMap((id) => [`gc_os_tarefa_os.ilike.%${id}%`, `gc_os_tarefa_exec.ilike.%${id}%`])
+          .join(",");
+        const { data } = await supabase
+          .from("tarefas_central")
+          .select(selectCols)
+          .or(filtro)
+          .limit(1000);
+        const validos = (data || []).filter((r: any) => {
+          const toks = new Set([...tokensDe(r.gc_os_tarefa_os), ...tokensDe(r.gc_os_tarefa_exec)]);
+          return chunk.some((id) => toks.has(id));
+        });
+        // não expande taskIds: evita cascata para tarefas de outros equipamentos
+        novos += addCentral(validos, false);
+      }
+      return novos;
+    };
+
     // Equipamentos do catálogo que batem com a série informada
     const resolveEquipCatalogo = async () => {
       const seriesArr = Array.from(series).filter(Boolean);
