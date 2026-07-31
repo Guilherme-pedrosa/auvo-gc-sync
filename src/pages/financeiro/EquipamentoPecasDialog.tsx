@@ -185,92 +185,54 @@ export default function EquipamentoPecasDialog({ open, onOpenChange, equipamento
                 </Table>
               </TabsContent>
 
-              <TabsContent value="itens" className="flex-1 min-h-0 overflow-auto">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Data</TableHead>
-                      <TableHead>Documento</TableHead>
-                      <TableHead>Peça</TableHead>
-                      <TableHead className="text-right">Qtd</TableHead>
-                      <TableHead className="text-right">Total</TableHead>
-                      <TableHead>Situação</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {pecas.length === 0 ? (
-                      <TableRow><TableCell colSpan={6} className="text-center text-muted-foreground py-6">Nenhum item</TableCell></TableRow>
-                    ) : pecas.map((p: any, i: number) => (
-                      <TableRow key={i}>
-                        <TableCell className="text-sm">{fmtData(p.data)}</TableCell>
-                        <TableCell className="text-sm">
-                          <span className="flex items-center gap-1">
-                            <Badge variant={p.origem === "os" ? "default" : "secondary"} className="text-[10px]">
-                              {p.origem === "os" ? "OS" : "ORC"}
+              {([
+                { value: "os", rows: pecasOs, label: "OS" },
+                { value: "orcamento", rows: pecasOrc, label: "Orçamento" },
+              ] as const).map((tab) => (
+                <TabsContent key={tab.value} value={tab.value} className="flex-1 min-h-0 overflow-auto">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Data</TableHead>
+                        <TableHead>{tab.label}</TableHead>
+                        <TableHead>Código</TableHead>
+                        <TableHead>Peça</TableHead>
+                        <TableHead className="text-right">Qtd</TableHead>
+                        <TableHead className="text-right">Total</TableHead>
+                        <TableHead>Situação</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {tab.rows.length === 0 ? (
+                        <TableRow><TableCell colSpan={7} className="text-center text-muted-foreground py-6">Nenhum item</TableCell></TableRow>
+                      ) : tab.rows.map((p: any, i: number) => (
+                        <TableRow key={i}>
+                          <TableCell className="text-sm">{fmtData(p.data)}</TableCell>
+                          <TableCell className="text-sm">
+                            <span className="flex items-center gap-1">
+                              {p.documento_codigo}
+                              {p.link && (
+                                <a href={p.link} target="_blank" rel="noopener noreferrer">
+                                  <ExternalLink className="h-3 w-3 text-muted-foreground" />
+                                </a>
+                              )}
+                            </span>
+                          </TableCell>
+                          <TableCell className="text-xs font-mono">{p.codigo || "—"}</TableCell>
+                          <TableCell className="text-sm">{p.descricao}</TableCell>
+                          <TableCell className="text-right text-sm">{p.quantidade}</TableCell>
+                          <TableCell className="text-right text-sm">{brl(p.valor_total)}</TableCell>
+                          <TableCell className="text-xs">
+                            <Badge variant={p.vendida ? "default" : "outline"} className="text-[10px]">
+                              {p.situacao || (p.vendida ? "Vendida" : "Orçada")}
                             </Badge>
-                            {p.documento_codigo}
-                            {p.link && (
-                              <a href={p.link} target="_blank" rel="noopener noreferrer">
-                                <ExternalLink className="h-3 w-3 text-muted-foreground" />
-                              </a>
-                            )}
-                          </span>
-                        </TableCell>
-                        <TableCell className="text-sm">{p.descricao}</TableCell>
-                        <TableCell className="text-right text-sm">{p.quantidade}</TableCell>
-                        <TableCell className="text-right text-sm">{brl(p.valor_total)}</TableCell>
-                        <TableCell className="text-xs">
-                          <Badge variant={p.vendida ? "default" : "outline"} className="text-[10px]">
-                            {p.situacao || (p.vendida ? "Vendida" : "Orçada")}
-                          </Badge>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </TabsContent>
-
-              <TabsContent value="documentos" className="flex-1 min-h-0 overflow-auto">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Data</TableHead>
-                      <TableHead>Tipo</TableHead>
-                      <TableHead>Código</TableHead>
-                      <TableHead>Cliente</TableHead>
-                      <TableHead>Tarefa Auvo</TableHead>
-                      <TableHead className="text-right">Peças</TableHead>
-                      <TableHead className="text-right">Total doc.</TableHead>
-                      <TableHead>Situação</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {documentos.length === 0 ? (
-                      <TableRow><TableCell colSpan={8} className="text-center text-muted-foreground py-6">Nenhum documento</TableCell></TableRow>
-                    ) : documentos.map((d: any, i: number) => (
-                      <TableRow key={i}>
-                        <TableCell className="text-sm">{fmtData(d.data)}</TableCell>
-                        <TableCell><Badge variant={d.origem === "os" ? "default" : "secondary"} className="text-[10px]">{d.origem === "os" ? "OS" : "ORC"}</Badge></TableCell>
-                        <TableCell className="text-sm">
-                          <span className="flex items-center gap-1">
-                            {d.documento_codigo}
-                            {d.link && (
-                              <a href={d.link} target="_blank" rel="noopener noreferrer">
-                                <ExternalLink className="h-3 w-3 text-muted-foreground" />
-                              </a>
-                            )}
-                          </span>
-                        </TableCell>
-                        <TableCell className="text-sm">{d.cliente || "—"}</TableCell>
-                        <TableCell className="text-sm">{d.auvo_task_id || "—"}</TableCell>
-                        <TableCell className="text-right text-sm">{d.itens}</TableCell>
-                        <TableCell className="text-right text-sm">{brl(d.valor_total)}</TableCell>
-                        <TableCell className="text-xs">{d.situacao || "—"}</TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </TabsContent>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </TabsContent>
+              ))}
             </Tabs>
           </>
         )}
