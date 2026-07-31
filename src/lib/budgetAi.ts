@@ -293,7 +293,7 @@ function docsSummary(item: BudgetAiPartHistoryItem, limit = 4): string[] {
 export function buildPartsHistoryContext(
   payload: BudgetAiPartsHistoryPayload | null | undefined,
   requestedPartsText: string,
-  limit = 20,
+  limit = 40,
 ): BudgetAiPartsHistoryContext | null {
   const consolidado = (payload?.consolidado || []).filter((item) => item?.descricao);
   const ocorrencias = (payload?.pecas || []).filter((item) => item?.descricao);
@@ -365,9 +365,9 @@ export function buildPartsHistoryContext(
   });
 
   const top = consolidado.slice(0, limit);
-  const ultimasOcorrencias = ocorrencias.slice(0, 15);
+  const ultimasOcorrencias = ocorrencias.slice(0, 25);
   const topServicos = consolidadoServicos.slice(0, limit);
-  const ultimosServicos = ocorrenciasServicos.slice(0, 10);
+  const ultimosServicos = ocorrenciasServicos.slice(0, 25);
 
   const lines: string[] = [];
   lines.push(
