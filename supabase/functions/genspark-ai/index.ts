@@ -1781,6 +1781,7 @@ TOM: Técnico, direto, sem floreio.`;
         contextText += `- Peças: ${context.pecas || "N/A"}\n`;
         contextText += `- Serviços: ${context.servicos || "N/A"}\n`;
         contextText += `- Observações: ${context.observacoes || "N/A"}\n`;
+        if (context.historico_pecas) contextText += `\nHISTÓRICO DE PEÇAS DO EQUIPAMENTO:\n${clampForPrompt(String(context.historico_pecas), 3000)}\n`;
       }
 
       if (analysis) {
