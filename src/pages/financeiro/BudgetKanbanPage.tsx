@@ -1614,10 +1614,6 @@ export default function BudgetKanbanPage() {
   // AI Chat — budget_chat_agent (lightweight, uses analysis as context)
   const handleChatSend = useCallback(async () => {
     if (!selectedCard || !chatInput.trim()) return;
-    if (aiAnalysisIsFallback || !aiAnalysisData) {
-      toast.warning("O chat só é liberado depois de uma análise concluída.");
-      return;
-    }
     const userMsg = chatInput.trim();
     setChatInput("");
     setChatMessages(prev => [...prev, { role: "user", content: userMsg }]);
@@ -1637,6 +1633,12 @@ export default function BudgetKanbanPage() {
               orientacao: selectedCard.orientacao,
               equipamento,
               equipamento_id: equipamentoId,
+              equipamento_serie: resolvedEquipment?.identificador || localEquipment.id || "",
+              auvo_equipment_id: resolvedEquipment?.auvo_equipment_id || "",
+              auvo_task_id: selectedCard.auvo_task_id || "",
+              gc_os_codigo: (selectedCard as any).gc_os_codigo || "",
+              gc_orcamento_codigo: (selectedCard as any).gc_orcamento_codigo || "",
+              data_tarefa: (selectedCard as any).data_tarefa || "",
               pecas: getAnswer(selectedCard, "peças") || getAnswer(selectedCard, "material") || "",
               servicos: getAnswer(selectedCard, "serviços") || getAnswer(selectedCard, "servico") || "",
               observacoes: getAnswer(selectedCard, "observ") || "",
@@ -1650,7 +1652,7 @@ export default function BudgetKanbanPage() {
             chatHistory: chatMessages.slice(-8),
           },
         }),
-        45000,
+        120000,
       );
 
       if (error || result?.error || result?.errorCode) {
