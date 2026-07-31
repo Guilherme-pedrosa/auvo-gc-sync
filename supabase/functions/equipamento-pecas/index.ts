@@ -734,6 +734,7 @@ Deno.serve(async (req) => {
     );
 
     const pecas: Peca[] = [];
+    const servicos: any[] = [];
     const documentos: any[] = [];
 
     const extrair = (
@@ -807,12 +808,48 @@ Deno.serve(async (req) => {
         itens++;
       }
 
+      // Serviços (mão de obra / atendimentos) do mesmo documento
+      const servicosDoc: any[] = (Array.isArray(detail?.servicos) ? detail.servicos : [])
+        .map((x: any) => x?.servico || x)
+        .filter(Boolean);
+      let itensServico = 0;
+      for (const s of servicosDoc) {
+        const descricao = String(s.nome_servico || s.nome || s.detalhes || "Serviço sem descrição").trim();
+        const codigoServico = String(
+          s.codigo_interno || s.codigo || s.codigo_servico || s.servico_codigo || ""
+        ).trim();
+        const quantidade = toNum(s.quantidade) || 1;
+        const valor_total = toNum(s.valor_total) || (toNum(s.valor_venda || s.valor_unitario) * quantidade);
+        servicos.push({
+          codigo: codigoServico,
+          servico_id: String(s.servico_id || s.id || "").trim() || null,
+          descricao,
+          detalhes: String(s.detalhes || "").trim() || null,
+          quantidade,
+          valor_unitario: quantidade > 0 ? valor_total / quantidade : valor_total,
+          valor_total,
+          origem,
+          documento_id: docId,
+          documento_codigo: codigo,
+          situacao,
+          data,
+          cliente,
+          auvo_task_id: ref?.auvo_task_id ? String(ref.auvo_task_id) : null,
+          auvo_task_ids: tarefasDoc,
+          auvo_link: auvoLink,
+          link,
+          vendida,
+          vinculo,
+        });
+        itensServico++;
+      }
+
       documentos.push({
         origem, documento_id: docId, documento_codigo: codigo, situacao, data, cliente,
         auvo_task_id: ref?.auvo_task_id ? String(ref.auvo_task_id) : null,
         auvo_task_ids: tarefasDoc,
         auvo_link: auvoLink,
-        link, itens, vendida, vinculo,
+        link, itens, itens_servico: itensServico, vendida, vinculo,
         valor_total: toNum(detail?.valor_total),
       });
     };
@@ -892,6 +929,25 @@ Deno.serve(async (req) => {
       (a, b) => (b.valor_vendido + b.valor_orcado) - (a.valor_vendido + a.valor_orcado),
     );
 
+    // Consolidado de serviços por descrição/código
+    const consolidadoServicosMap = new Map<string, any>();
+    for (const s of servicos) {
+      const key = s.codigo ? `c:${String(s.codigo).toLowerCase()}` : `d:${norm(s.descricao)}`;
+      const cur = consolidadoServicosMap.get(key) || {
+        codigo: s.codigo || "", descricao: s.descricao,
+        qtd_vendida: 0, valor_vendido: 0, qtd_orcada: 0, valor_orcado: 0,
+        ocorrencias: 0, ultima_data: null as string | null,
+      };
+      if (s.vendida) { cur.qtd_vendida += s.quantidade; cur.valor_vendido += s.valor_total; }
+      else { cur.qtd_orcada += s.quantidade; cur.valor_orcado += s.valor_total; }
+      cur.ocorrencias += 1;
+      if (s.data && (!cur.ultima_data || s.data > cur.ultima_data)) cur.ultima_data = s.data;
+      consolidadoServicosMap.set(key, cur);
+    }
+    const listaServicos = Array.from(consolidadoServicosMap.values()).sort(
+      (a, b) => (b.valor_vendido + b.valor_orcado) - (a.valor_vendido + a.valor_orcado),
+    );
+
     return new Response(JSON.stringify({
       ok: true,
       equipamento: { auvo_equipment_id: auvoEquipmentId || null, identificador: identificador || null, nome: equipamentoNome || null },
@@ -915,13 +971,18 @@ Deno.serve(async (req) => {
       documentos: documentos.sort((a, b) => String(b.data || "").localeCompare(String(a.data || ""))),
       pecas: pecas.sort((a, b) => String(b.data || "").localeCompare(String(a.data || ""))),
       consolidado: lista,
+      servicos: servicos.sort((a, b) => String(b.data || "").localeCompare(String(a.data || ""))),
+      consolidado_servicos: listaServicos,
       totais: {
         os: documentos.filter((d: any) => d.origem === "os").length,
         orcamentos: documentos.filter((d: any) => d.origem === "orcamento").length,
         docs_por_texto: 0,
         itens: pecas.length,
+        itens_servicos: servicos.length,
         valor_vendido: pecas.filter((p) => p.vendida).reduce((s, p) => s + p.valor_total, 0),
         valor_orcado: pecas.filter((p) => !p.vendida).reduce((s, p) => s + p.valor_total, 0),
+        valor_servicos_vendidos: servicos.filter((s) => s.vendida).reduce((t, s) => t + s.valor_total, 0),
+        valor_servicos_orcados: servicos.filter((s) => !s.vendida).reduce((t, s) => t + s.valor_total, 0),
       },
     }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
   } catch (err) {
