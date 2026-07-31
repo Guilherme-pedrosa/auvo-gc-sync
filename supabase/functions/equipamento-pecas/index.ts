@@ -338,13 +338,15 @@ Deno.serve(async (req) => {
     // 4) Consolidado por peça
     const consolidado = new Map<string, any>();
     for (const p of pecas) {
-      const key = norm(p.descricao);
+      const key = p.codigo ? `c:${norm(p.codigo)}` : `d:${norm(p.descricao)}`;
       const cur = consolidado.get(key) || {
+        codigo: p.codigo || "",
         descricao: p.descricao,
         qtd_orcada: 0, valor_orcado: 0,
         qtd_vendida: 0, valor_vendido: 0,
         ocorrencias: 0, ultima_data: null as string | null,
       };
+      if (!cur.codigo && p.codigo) cur.codigo = p.codigo;
       if (p.vendida) {
         cur.qtd_vendida += p.quantidade;
         cur.valor_vendido += p.valor_total;
