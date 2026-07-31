@@ -690,6 +690,7 @@ Deno.serve(async (req) => {
     };
 
     let aceitosPorTarefa = 0;
+    let descartados = 0;
     for (const [id, ref] of candidatosOs) {
       if (documentoLigadoAoEquipamento(ref, "os")) {
         osMap.set(id, ref);
@@ -708,11 +709,13 @@ Deno.serve(async (req) => {
     for (const [id, ref] of Array.from(osMap.entries())) {
       if ((ref.gc_os_tarefa_os || ref.gc_os_tarefa_exec) && !documentoLigadoAoEquipamento(ref, "os")) {
         osMap.delete(id);
+        descartados++;
       }
     }
     for (const [id, ref] of Array.from(orcMap.entries())) {
       if ((ref.gc_os_tarefa_os || ref.gc_os_tarefa_exec) && !documentoLigadoAoEquipamento(ref, "orcamento")) {
         orcMap.delete(id);
+        descartados++;
       }
     }
     console.log(
@@ -868,6 +871,13 @@ Deno.serve(async (req) => {
         equipamentos: Array.from(equipIds),
         data_inicial: documentos.reduce((m: string | null, d: any) => (d.data && (!m || d.data < m) ? d.data : m), null),
         data_final: documentos.reduce((m: string | null, d: any) => (d.data && (!m || d.data > m) ? d.data : m), null),
+      },
+      auditoria: {
+        tarefas_citadas_no_gc: linkedIdList.length,
+        vinculos_resolvidos_ao_vivo: tarefasResolvidasAoVivo,
+        tarefas_de_outro_equipamento: linkedResolvidoOutro.size,
+        tarefas_sem_equipamento_no_auvo: tarefasSemEquipamentoAuvo,
+        documentos_descartados: descartados,
       },
       documentos: documentos.sort((a, b) => String(b.data || "").localeCompare(String(a.data || ""))),
       pecas: pecas.sort((a, b) => String(b.data || "").localeCompare(String(a.data || ""))),
