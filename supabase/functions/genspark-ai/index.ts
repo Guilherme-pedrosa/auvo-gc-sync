@@ -1497,7 +1497,7 @@ FORMATO: Retorne apenas o texto melhorado, sem explicação.`;
       });
 
       if (aiResult.error) return buildAiErrorResponse(aiResult);
-      const analysis = parseAndNormalizeBudgetAnalysis(aiResult.result, 6);
+      const analysis = parseAndNormalizeBudgetAnalysis(aiResult.result, 40);
       if (!analysis) {
         return buildAiErrorResponse({
           result: "",
@@ -1935,7 +1935,7 @@ TOM: Técnico, direto, sem floreio.`;
       });
       if (aiResult.error) return buildAiErrorResponse(aiResult);
 
-      const analysis = parseAndNormalizeBudgetAnalysis(aiResult.result, 10);
+      const analysis = parseAndNormalizeBudgetAnalysis(aiResult.result, 40);
       if (!analysis) {
         return buildAiErrorResponse({ result: "", error: "A análise aprofundada retornou formato inválido. Tente novamente.", errorCode: AI_ERROR.REQUEST_FAILED, status: 502 });
       }
