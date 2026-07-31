@@ -834,6 +834,7 @@ async function fetchGcOs(gcHeaders: Record<string, string>, options?: { situacao
         };
 
         // Reverse map by OS código
+        // (ID EQUIPAMENTO 88695 acompanha o payload para o rastreio de peças)
         const codigo = String(os.codigo || "").trim();
         if (codigo) byCodigo[codigo] = osPayload;
 
