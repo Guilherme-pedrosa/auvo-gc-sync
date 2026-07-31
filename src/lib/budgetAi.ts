@@ -208,6 +208,15 @@ export type BudgetAiPartHistoryItem = {
   valor_vendido?: number | null;
   ocorrencias?: number | null;
   ultima_data?: string | null;
+  documentos?: Array<{
+    origem?: string | null;
+    documento_codigo?: string | null;
+    data?: string | null;
+    situacao?: string | null;
+    vendida?: boolean | null;
+    quantidade?: number | null;
+    auvo_task_id?: string | null;
+  }> | null;
 };
 
 export type BudgetAiPartOccurrence = {
@@ -229,7 +238,15 @@ export type BudgetAiPartsHistoryPayload = {
 
 export type BudgetAiPartsHistoryContext = {
   text: string;
-  matches: Array<{ solicitado: string; historico: string; codigo: string; ultima_data: string | null }>;
+  matches: Array<{
+    solicitado: string;
+    historico: string;
+    codigo: string;
+    ultima_data: string | null;
+    confianca: "alta" | "media" | "baixa";
+    score: number;
+    evidencias: string[];
+  }>;
   itemsConsidered: number;
 };
 
@@ -247,6 +264,20 @@ function tokenize(value: string): string[] {
 
 function formatCurrency(value?: number | null): string {
   return (Number(value) || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+}
+
+function docLabel(doc: {
+  origem?: string | null;
+  documento_codigo?: string | null;
+  data?: string | null;
+  vendida?: boolean | null;
+}): string {
+  const tipo = doc.origem === "os" ? "OS" : "Orçamento";
+  return `${tipo} ${doc.documento_codigo || "?"}${doc.data ? ` (${doc.data})` : ""}${doc.vendida ? " — VENDIDA" : " — orçada"}`;
+}
+
+function docsSummary(item: BudgetAiPartHistoryItem, limit = 4): string[] {
+  return (item.documentos || []).slice(0, limit).map((doc) => docLabel(doc));
 }
 
 /**
@@ -271,20 +302,33 @@ export function buildPartsHistoryContext(
   for (const line of requestedLines) {
     const tokens = tokenize(line);
     if (tokens.length === 0) continue;
+    let best: { item: BudgetAiPartHistoryItem; score: number } | null = null;
     for (const item of consolidado) {
       const historyTokens = new Set(tokenize(String(item.descricao || "") + " " + String(item.codigo || "")));
       const hits = tokens.filter((token) => historyTokens.has(token)).length;
       if (hits === 0) continue;
       const score = hits / tokens.length;
       if (score < 0.5) continue;
-      matches.push({
-        solicitado: line,
-        historico: String(item.descricao || ""),
-        codigo: String(item.codigo || ""),
-        ultima_data: item.ultima_data || null,
-      });
-      break;
+      if (!best || score > best.score) best = { item, score };
     }
+    if (!best) continue;
+    const evidencias = docsSummary(best.item);
+    const vendidaAlguma = (Number(best.item.qtd_vendida) || 0) > 0;
+    const confianca: "alta" | "media" | "baixa" =
+      best.score >= 0.85 && String(best.item.codigo || "") && vendidaAlguma
+        ? "alta"
+        : best.score >= 0.65
+          ? "media"
+          : "baixa";
+    matches.push({
+      solicitado: line,
+      historico: String(best.item.descricao || ""),
+      codigo: String(best.item.codigo || ""),
+      ultima_data: best.item.ultima_data || null,
+      confianca,
+      score: Math.round(best.score * 100) / 100,
+      evidencias,
+    });
   }
 
   const top = consolidado.slice(0, limit);
@@ -298,8 +342,9 @@ export function buildPartsHistoryContext(
   if (top.length > 0) {
     lines.push("Peças já orçadas/vendidas neste equipamento (consolidado):");
     for (const item of top) {
+      const docs = docsSummary(item, 3);
       lines.push(
-        `- ${item.descricao}${item.codigo ? ` [cód. ${item.codigo}]` : ""} · orçada ${Number(item.qtd_orcada) || 0}x (${formatCurrency(item.valor_orcado)}) · vendida ${Number(item.qtd_vendida) || 0}x (${formatCurrency(item.valor_vendido)}) · ocorrências ${Number(item.ocorrencias) || 0} · última ${item.ultima_data || "n/d"}`,
+        `- ${item.descricao}${item.codigo ? ` [cód. ${item.codigo}]` : " [sem código cadastrado]"} · orçada ${Number(item.qtd_orcada) || 0}x (${formatCurrency(item.valor_orcado)}) · vendida ${Number(item.qtd_vendida) || 0}x (${formatCurrency(item.valor_vendido)}) · ocorrências ${Number(item.ocorrencias) || 0} · última ${item.ultima_data || "n/d"}${docs.length ? ` · usada em: ${docs.join("; ")}` : ""}`,
       );
     }
   }
@@ -314,9 +359,11 @@ export function buildPartsHistoryContext(
   }
 
   if (matches.length > 0) {
-    lines.push("Correspondências entre o que o técnico pediu agora e o histórico:");
+    lines.push("Correspondências entre o que o técnico pediu agora e o histórico (use o CÓDIGO e cite o documento como prova):");
     for (const match of matches) {
-      lines.push(`- "${match.solicitado}" ≈ "${match.historico}"${match.codigo ? ` [cód. ${match.codigo}]` : ""} (última vez em ${match.ultima_data || "n/d"})`);
+      lines.push(
+        `- "${match.solicitado}" ≈ "${match.historico}"${match.codigo ? ` [cód. ${match.codigo}]` : " [sem código cadastrado]"} · confiança ${match.confianca} (similaridade ${Math.round(match.score * 100)}%) · última vez em ${match.ultima_data || "n/d"}${match.evidencias.length ? ` · prova: ${match.evidencias.join("; ")}` : ""}`,
+      );
     }
   } else if (requestedLines.length > 0) {
     lines.push("Nenhuma peça solicitada agora bate com a nomenclatura do histórico deste equipamento.");
