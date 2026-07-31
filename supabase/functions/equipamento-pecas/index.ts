@@ -50,6 +50,7 @@ type Peca = {
   auvo_task_id: string | null;
   link: string | null;
   vendida: boolean;
+  vinculo: "direto" | "texto";
 };
 
 const SITUACOES_VENDIDAS = [
@@ -537,6 +538,7 @@ Deno.serve(async (req) => {
           auvo_task_id: ref?.auvo_task_id ? String(ref.auvo_task_id) : null,
           link,
           vendida,
+          vinculo,
         });
         itens++;
       }
