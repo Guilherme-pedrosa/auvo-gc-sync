@@ -124,6 +124,12 @@ export default function EquipamentoPecasDialog({ open, onOpenChange, equipamento
             </div>
 
             <div className="flex items-center gap-2">
+              {data?.cobertura && (
+                <span className="text-xs text-muted-foreground whitespace-nowrap">
+                  Período varrido: {fmtData(data.cobertura.data_inicial)} → {fmtData(data.cobertura.data_final)} ·{" "}
+                  {data.cobertura.tarefas_com_dados} tarefas
+                </span>
+              )}
               <Input
                 placeholder="Buscar peça, OS, situação..."
                 value={busca}
