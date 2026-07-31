@@ -70,11 +70,12 @@ Deno.serve(async (req) => {
   try {
     const body = await req.json().catch(() => ({}));
     const auvoEquipmentId = String(body?.auvo_equipment_id || "").trim();
-    const identificador = String(body?.identificador || "").trim();
+    let identificador = String(body?.identificador || "").trim();
+    const auvoTaskId = String(body?.auvo_task_id || "").trim();
     const equipamentoNome = String(body?.nome || "").trim();
 
-    if (!auvoEquipmentId && !identificador) {
-      return new Response(JSON.stringify({ ok: false, error: "auvo_equipment_id ou identificador é obrigatório" }), {
+    if (!auvoEquipmentId && !identificador && !auvoTaskId) {
+      return new Response(JSON.stringify({ ok: false, error: "auvo_equipment_id, identificador ou auvo_task_id é obrigatório" }), {
         status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
@@ -92,11 +93,36 @@ Deno.serve(async (req) => {
 
     // 1) Tarefas Auvo vinculadas ao equipamento
     const taskIds = new Set<string>();
-    if (auvoEquipmentId) {
+    const equipIds = new Set<string>();
+    if (auvoEquipmentId) equipIds.add(auvoEquipmentId);
+
+    // Resolve equipamento a partir da tarefa (uso no Kanban de Orçamentos)
+    if (auvoTaskId) {
+      taskIds.add(auvoTaskId);
+      const { data: linkRows } = await supabase
+        .from("equipamento_tarefas_auvo")
+        .select("auvo_equipment_id")
+        .eq("auvo_task_id", auvoTaskId);
+      (linkRows || []).forEach((r: any) => { if (r.auvo_equipment_id) equipIds.add(String(r.auvo_equipment_id)); });
+
+      if (!identificador) {
+        const { data: centralRow } = await supabase
+          .from("tarefas_central")
+          .select("equipamento_id_serie")
+          .eq("auvo_task_id", auvoTaskId)
+          .not("equipamento_id_serie", "is", null)
+          .limit(1)
+          .maybeSingle();
+        const serie = String((centralRow as any)?.equipamento_id_serie || "").trim();
+        if (serie) identificador = serie;
+      }
+    }
+
+    if (equipIds.size) {
       const { data, error } = await supabase
         .from("equipamento_tarefas_auvo")
         .select("auvo_task_id")
-        .eq("auvo_equipment_id", auvoEquipmentId);
+        .in("auvo_equipment_id", Array.from(equipIds));
       if (error) throw error;
       (data || []).forEach((r: any) => { if (r.auvo_task_id) taskIds.add(String(r.auvo_task_id)); });
     }
