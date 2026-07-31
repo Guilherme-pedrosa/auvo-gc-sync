@@ -488,6 +488,7 @@ Deno.serve(async (req) => {
       tarefas: taskIds.size,
       cobertura: {
         tarefas_com_dados: centralRows.length,
+        live_sync: true,
         series: Array.from(series),
         equipamentos: Array.from(equipIds),
         data_inicial: documentos.reduce((m: string | null, d: any) => (d.data && (!m || d.data < m) ? d.data : m), null),
