@@ -232,6 +232,26 @@ Deno.serve(async (req) => {
         .select("auvo_equipment_id")
         .eq("auvo_task_id", auvoTaskId);
       (linkRows || []).forEach((r: any) => { if (r.auvo_equipment_id) equipIds.add(String(r.auvo_equipment_id)); });
+
+      // Fallback: sem vínculo/série, resolve o equipamento no catálogo pelo
+      // nome EXATO + cliente da tarefa base (evita cruzar equipamentos).
+      if (!equipIds.size && !series.size) {
+        const norm = (v: string) => String(v || "").trim().toUpperCase();
+        const nomeBase = norm(base?.equipamento_nome || equipamentoNome);
+        const clienteBase = norm(base?.cliente);
+        if (nomeBase.length >= 4) {
+          const { data: cat } = await supabase
+            .from("equipamentos_auvo")
+            .select("auvo_equipment_id, identificador, nome, cliente")
+            .ilike("nome", nomeBase);
+          for (const e of cat || []) {
+            if (norm(e.nome) !== nomeBase) continue;
+            if (clienteBase && norm(e.cliente) && norm(e.cliente) !== clienteBase) continue;
+            if (e.auvo_equipment_id) equipIds.add(String(e.auvo_equipment_id));
+            if (e.identificador) series.add(String(e.identificador));
+          }
+        }
+      }
     }
 
     // Passe único e fechado: série -> catálogo -> tarefas do MESMO equipamento -> central
