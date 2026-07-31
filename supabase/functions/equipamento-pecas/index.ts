@@ -209,7 +209,7 @@ Deno.serve(async (req) => {
       const desdeParam = String(body?.desde || "").trim();
       const desde = /^\d{4}-\d{2}-\d{2}$/.test(desdeParam)
         ? new Date(`${desdeParam}T00:00:00Z`)
-        : new Date("2024-01-01T00:00:00Z");
+        : new Date("2025-01-01T00:00:00Z");
 
       const { data: maisAntigo } = await supabase
         .from("equipamento_tarefas_auvo")
@@ -226,9 +226,11 @@ Deno.serve(async (req) => {
         .limit(1);
 
       const antigoIso = maisAntigo?.[0]?.data_tarefa ? String(maisAntigo[0].data_tarefa).slice(0, 10) : null;
+      // A API do Auvo não devolve mais tarefas anteriores a 2025; a varredura
+      // longa só roda sob pedido explícito (full_history) para não estourar tempo.
       const historicoJaVarrido = body?.full_history === true
         ? false
-        : !!antigoIso && new Date(`${antigoIso}T00:00:00Z`).getTime() <= desde.getTime() + 45 * 86400000;
+        : true;
 
       let inicio: Date;
       if (historicoJaVarrido) {
