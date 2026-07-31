@@ -192,46 +192,55 @@ Deno.serve(async (req) => {
       (data || []).forEach((r: any) => { if (r.auvo_task_id) taskIds.add(String(r.auvo_task_id)); });
     };
 
-    // Vínculos podem estar defasados (sync noturno). Busca AO VIVO no Auvo as
-    // tarefas do período ainda não sincronizado e grava os vínculos que faltam.
+    // Varredura AO VIVO no Auvo: TODAS as tarefas do cadastro do equipamento,
+    // em QUALQUER época (sem corte de período). Escaneia ano a ano, e quando o
+    // cliente do equipamento é resolvido no Auvo, filtra por customerId para
+    // reduzir volume sem perder histórico.
+    const HISTORICO_ANO_INICIAL = 2018;
+
+    const resolverCustomerIdsAuvo = async (headers: Record<string, string>) => {
+      const nomes = new Set<string>();
+      for (const r of centralById.values()) if (r.cliente) nomes.add(String(r.cliente));
+      if (equipIds.size) {
+        const { data } = await supabase
+          .from("equipamentos_auvo")
+          .select("cliente")
+          .in("auvo_equipment_id", Array.from(equipIds));
+        (data || []).forEach((e: any) => { if (e?.cliente) nomes.add(String(e.cliente)); });
+      }
+      const ids = new Set<number>();
+      for (const nome of Array.from(nomes).slice(0, 6)) {
+        const pf = encodeURIComponent(JSON.stringify({ description: nome }));
+        try {
+          const res = await fetch(
+            `${AUVO_BASE_URL}/customers/?page=1&pageSize=50&order=asc&paramFilter=${pf}&selectFields=id,description`,
+            { headers },
+          );
+          if (!res.ok) continue;
+          const json = await res.json();
+          for (const c of json?.result?.entityList || []) {
+            if (norm(c?.description) === norm(nome) && c?.id) ids.add(Number(c.id));
+          }
+        } catch { /* ignora */ }
+      }
+      return Array.from(ids);
+    };
+
     const atualizarVinculosAuvoAoVivo = async () => {
       if (!equipIds.size) return;
       const token = await auvoLogin();
       if (!token) { console.log("[pecas] auvo login falhou"); return; }
-
-      const { data: ultimo } = await supabase
-        .from("equipamento_tarefas_auvo")
-        .select("synced_at")
-        .in("auvo_equipment_id", Array.from(equipIds))
-        .order("synced_at", { ascending: false })
-        .limit(1);
-
-      const hoje = new Date();
-      const limite = new Date(hoje.getTime() - 400 * 86400000);
-      let inicio = ultimo?.[0]?.synced_at ? new Date(ultimo[0].synced_at) : limite;
-      inicio = new Date(inicio.getTime() - 7 * 86400000);
-      if (inicio < limite) inicio = limite;
-      const fim = new Date(hoje.getTime() + 7 * 86400000);
-      console.log(`[pecas] live auvo ${isoDay(inicio)} → ${isoDay(fim)} equips=${Array.from(equipIds).join(",")}`);
-
       const headers = { Authorization: `Bearer ${token}`, "Content-Type": "application/json" };
+
+      const customerIds = await resolverCustomerIdsAuvo(headers);
+      const hoje = new Date();
+      const anoFinal = hoje.getUTCFullYear();
       const novos: any[] = [];
-      const paramFilter = encodeURIComponent(JSON.stringify({
-        startDate: `${isoDay(inicio)}T00:00:00`,
-        endDate: `${isoDay(fim)}T23:59:59`,
-      }));
-      const pageUrl = (page: number) =>
-        `${AUVO_BASE_URL}/tasks/?page=${page}&pageSize=200&order=desc&paramFilter=${paramFilter}&selectFields=${encodeURIComponent(AUVO_TASK_FIELDS)}`;
-      const buscarPagina = async (page: number): Promise<any> => {
-        try {
-          const res = await fetch(pageUrl(page), { headers });
-          if (!res.ok) { console.log(`[pecas] auvo tasks HTTP ${res.status} page ${page}`); return null; }
-          return await res.json();
-        } catch (e) { console.log("[pecas] auvo tasks erro", String(e)); return null; }
-      };
+      let totalTarefas = 0;
+
       const ingerir = (json: any) => {
         const lista = json?.result?.entityList || [];
-        if (!Array.isArray(lista)) return;
+        if (!Array.isArray(lista)) return 0;
         for (const t of lista) {
           const ids: any[] = Array.isArray(t.equipmentsId) ? t.equipmentsId : [];
           const taskId = String(t.taskID || t.id || "");
@@ -255,26 +264,75 @@ Deno.serve(async (req) => {
             });
           }
         }
+        return lista.length;
       };
 
-      const first = await buscarPagina(1);
-      if (!first) return;
-      ingerir(first);
-      const total = Number(first?.result?.pagedSearchReturnData?.totalItems || 0);
-      const totalPaginas = Math.min(15, Math.ceil(total / 200));
-      if (totalPaginas > 1) {
-        const restantes = await Promise.all(
-          Array.from({ length: totalPaginas - 1 }, (_, i) => buscarPagina(i + 2)),
-        );
-        restantes.forEach(ingerir);
+      const buscarPagina = async (
+        page: number, inicio: string, fim: string, customerId?: number,
+      ): Promise<any> => {
+        const filtro: Record<string, any> = {
+          startDate: `${inicio}T00:00:00`,
+          endDate: `${fim}T23:59:59`,
+        };
+        if (customerId) filtro.customerId = customerId;
+        const pf = encodeURIComponent(JSON.stringify(filtro));
+        const url =
+          `${AUVO_BASE_URL}/tasks/?page=${page}&pageSize=200&order=desc&paramFilter=${pf}` +
+          `&selectFields=${encodeURIComponent(AUVO_TASK_FIELDS)}`;
+        try {
+          const res = await fetch(url, { headers });
+          if (!res.ok) { console.log(`[pecas] auvo tasks HTTP ${res.status} ${inicio} p${page}`); return null; }
+          return await res.json();
+        } catch (e) { console.log("[pecas] auvo tasks erro", String(e)); return null; }
+      };
+
+      // Uma janela = (ano, cliente). Sem cliente resolvido, varre o ano inteiro.
+      const janelas: { inicio: string; fim: string; customerId?: number }[] = [];
+      for (let ano = HISTORICO_ANO_INICIAL; ano <= anoFinal; ano++) {
+        const inicio = `${ano}-01-01`;
+        const fim = ano === anoFinal ? isoDay(new Date(hoje.getTime() + 30 * 86400000)) : `${ano}-12-31`;
+        if (customerIds.length) {
+          for (const cid of customerIds) janelas.push({ inicio, fim, customerId: cid });
+        } else {
+          janelas.push({ inicio, fim });
+        }
       }
-      console.log(`[pecas] live auvo: ${total} tarefas em ${totalPaginas} pág, vinculos=${novos.length}`);
+
+      const varrerJanela = async (j: { inicio: string; fim: string; customerId?: number }) => {
+        const first = await buscarPagina(1, j.inicio, j.fim, j.customerId);
+        if (!first) return;
+        totalTarefas += ingerir(first);
+        const total = Number(first?.result?.pagedSearchReturnData?.totalItems || 0);
+        const paginas = Math.min(60, Math.ceil(total / 200));
+        for (let p = 2; p <= paginas; p += 4) {
+          const lote = await Promise.all(
+            Array.from({ length: Math.min(4, paginas - p + 1) }, (_, i) =>
+              buscarPagina(p + i, j.inicio, j.fim, j.customerId)),
+          );
+          lote.forEach((r) => { totalTarefas += ingerir(r); });
+        }
+      };
+
+      const CONC_J = 4;
+      for (let i = 0; i < janelas.length; i += CONC_J) {
+        await Promise.all(janelas.slice(i, i + CONC_J).map(varrerJanela));
+      }
+
+      console.log(
+        `[pecas] live auvo histórico ${HISTORICO_ANO_INICIAL}→${anoFinal} ` +
+        `clientes=${customerIds.length} tarefas_lidas=${totalTarefas} vinculos=${novos.length}`,
+      );
 
       if (novos.length) {
-        const { error } = await supabase
-          .from("equipamento_tarefas_auvo")
-          .upsert(novos, { onConflict: "auvo_equipment_id,auvo_task_id" });
-        if (error) console.log("[pecas] upsert erro", error.message);
+        const unicos = new Map<string, any>();
+        for (const n of novos) unicos.set(`${n.auvo_equipment_id}|${n.auvo_task_id}`, n);
+        const lista = Array.from(unicos.values());
+        for (let i = 0; i < lista.length; i += 500) {
+          const { error } = await supabase
+            .from("equipamento_tarefas_auvo")
+            .upsert(lista.slice(i, i + 500), { onConflict: "auvo_equipment_id,auvo_task_id" });
+          if (error) console.log("[pecas] upsert erro", error.message);
+        }
       }
     };
 
