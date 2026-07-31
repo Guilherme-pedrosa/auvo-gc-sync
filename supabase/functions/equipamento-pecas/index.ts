@@ -36,6 +36,7 @@ function norm(s: string) {
 
 type Peca = {
   codigo: string;
+  produto_id?: string | null;
   descricao: string;
   quantidade: number;
   valor_unitario: number;
@@ -412,14 +413,16 @@ Deno.serve(async (req) => {
       let itens = 0;
       for (const p of produtos) {
         const descricao = String(p.nome_produto || p.nome || p.detalhes || "Peça sem descrição").trim();
-        const codigo = String(
-          p.codigo_interno || p.codigo || p.codigo_produto || p.sku ||
-          p.produto_codigo || p.produto_id || ""
+        // Código real do produto (nunca o ID interno do GC)
+        const codigoPeca = String(
+          p.codigo_interno || p.codigo || p.codigo_produto || p.sku || p.produto_codigo || ""
         ).trim();
+        const produtoId = String(p.produto_id || p.id || "").trim();
         const quantidade = toNum(p.quantidade) || 1;
         const valor_total = toNum(p.valor_total) || (toNum(p.valor_venda || p.valor_unitario) * quantidade);
         pecas.push({
-          codigo,
+          codigo: codigoPeca,
+          produto_id: produtoId || null,
           descricao,
           quantidade,
           valor_unitario: quantidade > 0 ? valor_total / quantidade : valor_total,
@@ -467,6 +470,31 @@ Deno.serve(async (req) => {
     }
 
     // 4) Consolidado por peça
+    // Resolve o código interno real dos produtos que vieram sem código
+    const idsSemCodigo = Array.from(
+      new Set(pecas.filter((p: any) => !p.codigo && p.produto_id).map((p: any) => p.produto_id as string)),
+    );
+    if (idsSemCodigo.length) {
+      const mapaCodigos = new Map<string, string>();
+      const CONC_P = 6;
+      for (let i = 0; i < idsSemCodigo.length; i += CONC_P) {
+        const batch = idsSemCodigo.slice(i, i + CONC_P);
+        const res = await Promise.all(
+          batch.map((id) => gcGet(`/api/produtos/${encodeURIComponent(id)}`, gcHeaders)),
+        );
+        res.forEach((j, idx) => {
+          const d = j?.data || j;
+          const cod = String(d?.codigo_interno || d?.codigo || d?.sku || "").trim();
+          if (cod) mapaCodigos.set(batch[idx], cod);
+        });
+      }
+      for (const p of pecas as any[]) {
+        if (!p.codigo && p.produto_id && mapaCodigos.has(p.produto_id)) {
+          p.codigo = mapaCodigos.get(p.produto_id)!;
+        }
+      }
+    }
+
     const consolidado = new Map<string, any>();
     for (const p of pecas) {
       const key = p.codigo ? `c:${norm(p.codigo)}` : `d:${norm(p.descricao)}`;
