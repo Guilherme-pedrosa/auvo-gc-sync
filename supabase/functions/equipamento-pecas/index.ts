@@ -50,7 +50,7 @@ type Peca = {
   auvo_task_id: string | null;
   link: string | null;
   vendida: boolean;
-  vinculo: "direto" | "texto" | "historico";
+  vinculo: "direto" | "texto";
 };
 
 const SITUACOES_VENDIDAS = [
@@ -199,75 +199,33 @@ Deno.serve(async (req) => {
       const token = await auvoLogin();
       if (!token) { console.log("[pecas] auvo login falhou"); return; }
 
-      const equipsArr = Array.from(equipIds);
-      const hoje = new Date();
-      const fim = new Date(hoje.getTime() + 7 * 86400000);
-
-      // Histórico completo: por padrão varre desde 2024-01-01 (ou desde a data
-      // enviada pelo cliente). Só limita ao período recente quando o histórico
-      // antigo já foi trazido em uma varredura anterior.
-      const desdeParam = String(body?.desde || "").trim();
-      const desde = /^\d{4}-\d{2}-\d{2}$/.test(desdeParam)
-        ? new Date(`${desdeParam}T00:00:00Z`)
-        : new Date("2025-01-01T00:00:00Z");
-
-      const { data: maisAntigo } = await supabase
-        .from("equipamento_tarefas_auvo")
-        .select("data_tarefa")
-        .in("auvo_equipment_id", equipsArr)
-        .not("data_tarefa", "is", null)
-        .order("data_tarefa", { ascending: true })
-        .limit(1);
       const { data: ultimo } = await supabase
         .from("equipamento_tarefas_auvo")
         .select("synced_at")
-        .in("auvo_equipment_id", equipsArr)
+        .in("auvo_equipment_id", Array.from(equipIds))
         .order("synced_at", { ascending: false })
         .limit(1);
 
-      const antigoIso = maisAntigo?.[0]?.data_tarefa ? String(maisAntigo[0].data_tarefa).slice(0, 10) : null;
-      // A API do Auvo não devolve mais tarefas anteriores a 2025; a varredura
-      // longa só roda sob pedido explícito (full_history) para não estourar tempo.
-      const historicoJaVarrido = body?.full_history === true
-        ? false
-        : true;
-
-      let inicio: Date;
-      if (historicoJaVarrido) {
-        const limite = new Date(hoje.getTime() - 400 * 86400000);
-        inicio = ultimo?.[0]?.synced_at ? new Date(ultimo[0].synced_at) : limite;
-        inicio = new Date(inicio.getTime() - 7 * 86400000);
-        if (inicio < limite) inicio = limite;
-      } else {
-        inicio = desde;
-      }
-
-      console.log(
-        `[pecas] live auvo ${isoDay(inicio)} → ${isoDay(fim)} (histórico=${!historicoJaVarrido}) equips=${equipsArr.join(",")}`,
-      );
+      const hoje = new Date();
+      const limite = new Date(hoje.getTime() - 400 * 86400000);
+      let inicio = ultimo?.[0]?.synced_at ? new Date(ultimo[0].synced_at) : limite;
+      inicio = new Date(inicio.getTime() - 7 * 86400000);
+      if (inicio < limite) inicio = limite;
+      const fim = new Date(hoje.getTime() + 7 * 86400000);
+      console.log(`[pecas] live auvo ${isoDay(inicio)} → ${isoDay(fim)} equips=${Array.from(equipIds).join(",")}`);
 
       const headers = { Authorization: `Bearer ${token}`, "Content-Type": "application/json" };
       const novos: any[] = [];
-
-      // Auvo limita paginação; quebramos o período em janelas de 60 dias.
-      const janelas: Array<{ ini: Date; fim: Date }> = [];
-      for (let cur = new Date(inicio); cur < fim;) {
-        const prox = new Date(Math.min(cur.getTime() + 60 * 86400000, fim.getTime()));
-        janelas.push({ ini: new Date(cur), fim: prox });
-        cur = new Date(prox.getTime() + 86400000);
-      }
-
-      const pageUrl = (page: number, j: { ini: Date; fim: Date }) => {
-        const paramFilter = encodeURIComponent(JSON.stringify({
-          startDate: `${isoDay(j.ini)}T00:00:00`,
-          endDate: `${isoDay(j.fim)}T23:59:59`,
-        }));
-        return `${AUVO_BASE_URL}/tasks/?page=${page}&pageSize=100&order=desc&paramFilter=${paramFilter}&selectFields=${encodeURIComponent(AUVO_TASK_FIELDS)}`;
-      };
-      const buscarPagina = async (page: number, j: { ini: Date; fim: Date }): Promise<any> => {
+      const paramFilter = encodeURIComponent(JSON.stringify({
+        startDate: `${isoDay(inicio)}T00:00:00`,
+        endDate: `${isoDay(fim)}T23:59:59`,
+      }));
+      const pageUrl = (page: number) =>
+        `${AUVO_BASE_URL}/tasks/?page=${page}&pageSize=200&order=desc&paramFilter=${paramFilter}&selectFields=${encodeURIComponent(AUVO_TASK_FIELDS)}`;
+      const buscarPagina = async (page: number): Promise<any> => {
         try {
-          const res = await fetch(pageUrl(page, j), { headers });
-          if (!res.ok) { const b = await res.text().catch(() => ""); console.log(`[pecas] auvo tasks HTTP ${res.status} page ${page}: ${b.slice(0, 200)}`); return null; }
+          const res = await fetch(pageUrl(page), { headers });
+          if (!res.ok) { console.log(`[pecas] auvo tasks HTTP ${res.status} page ${page}`); return null; }
           return await res.json();
         } catch (e) { console.log("[pecas] auvo tasks erro", String(e)); return null; }
       };
@@ -299,27 +257,18 @@ Deno.serve(async (req) => {
         }
       };
 
-      let totalGeral = 0;
-      const varrerJanela = async (j: { ini: Date; fim: Date }) => {
-        const first = await buscarPagina(1, j);
-        if (!first) return;
-        ingerir(first);
-        const total = Number(first?.result?.pagedSearchReturnData?.totalItems || 0);
-        totalGeral += total;
-        const totalPaginas = Math.min(40, Math.ceil(total / 100));
-        if (totalPaginas > 1) {
-          const restantes = await Promise.all(
-            Array.from({ length: totalPaginas - 1 }, (_, i) => buscarPagina(i + 2, j)),
-          );
-          restantes.forEach(ingerir);
-        }
-      };
-      for (let i = 0; i < janelas.length; i += 4) {
-        await Promise.all(janelas.slice(i, i + 4).map(varrerJanela));
+      const first = await buscarPagina(1);
+      if (!first) return;
+      ingerir(first);
+      const total = Number(first?.result?.pagedSearchReturnData?.totalItems || 0);
+      const totalPaginas = Math.min(15, Math.ceil(total / 200));
+      if (totalPaginas > 1) {
+        const restantes = await Promise.all(
+          Array.from({ length: totalPaginas - 1 }, (_, i) => buscarPagina(i + 2)),
+        );
+        restantes.forEach(ingerir);
       }
-      console.log(
-        `[pecas] live auvo: ${totalGeral} tarefas em ${janelas.length} janela(s), vinculos=${novos.length}`,
-      );
+      console.log(`[pecas] live auvo: ${total} tarefas em ${totalPaginas} pág, vinculos=${novos.length}`);
 
       if (novos.length) {
         const { error } = await supabase
@@ -603,175 +552,34 @@ Deno.serve(async (req) => {
       return taskIds.has(String(ref.auvo_task_id || ""));
     };
 
-    // Histórico anterior ao vínculo estrutural: o Auvo não devolve mais tarefas
-    // antigas pela API e as linhas antigas não têm equipamento preenchido. Nesse
-    // período (e SOMENTE nele) aceitamos o documento quando o texto da tarefa
-    // nomeia exatamente o equipamento (todos os termos do nome, ex.: fogao +
-    // bocas + tramontina), sempre dentro dos clientes do equipamento.
-    const CORTE_HISTORICO = String(body?.corte_historico || "2025-03-01");
-    const historicos = new Set<string>();
-    const dataDoRef = (ref: any, origem: "os" | "orcamento") =>
-      String((origem === "os" ? ref?.gc_os_data : ref?.gc_orc_data) || ref?.data_tarefa || "").slice(0, 10);
-    const matchHistoricoTexto = (ref: any, origem: "os" | "orcamento") => {
-      if (!termos.length) return false;
-      const data = dataDoRef(ref, origem);
-      if (!data || data >= CORTE_HISTORICO) return false;
-      const texto = norm([
-        ref.equipamento_nome, ref.equipamento_id_serie, ref.orientacao, ref.descricao,
-      ].filter(Boolean).join("\n"));
-      if (!texto) return false;
-      return termos.some((toks) => toks.every((t) => texto.includes(t)));
-    };
-
     let aceitosPorTarefa = 0;
-    let aceitosHistorico = 0;
     for (const [id, ref] of candidatosOs) {
       if (documentoLigadoAoEquipamento(ref, "os")) {
         osMap.set(id, ref);
         aceitosPorTarefa++;
-      } else if (matchHistoricoTexto(ref, "os")) {
-        osMap.set(id, ref);
-        historicos.add(`os:${id}`);
-        aceitosHistorico++;
       }
     }
     for (const [id, ref] of candidatosOrc) {
       if (documentoLigadoAoEquipamento(ref, "orcamento")) {
         orcMap.set(id, ref);
         aceitosPorTarefa++;
-      } else if (matchHistoricoTexto(ref, "orcamento")) {
-        orcMap.set(id, ref);
-        historicos.add(`orc:${id}`);
-        aceitosHistorico++;
       }
     }
-    // Documentos antigos (gc-only) não têm tarefa Auvo nem texto local. Nesse
-    // caso a única fonte é o próprio documento no GC: buscamos o detalhe e só
-    // aceitamos quando o texto do documento nomeia o equipamento inteiro
-    // (todos os termos do nome, ex.: fogao + bocas + tramontina).
-    const detalheCache = new Map<string, any>();
-
-    // O GC identifica o equipamento em dois lugares: o atributo "Equipamento"
-    // e o bloco equipamentos[].equipamento. É isso (e só isso) que usamos —
-    // nunca o texto das peças, que gera falso positivo de outro equipamento.
-    const equipTextoDoDetalhe = (d: any) => {
-      const partes: string[] = [];
-      for (const a of Array.isArray(d?.atributos) ? d.atributos : []) {
-        const at = a?.atributo || a;
-        if (/equipamento/i.test(String(at?.descricao || "")) && at?.conteudo) partes.push(String(at.conteudo));
-      }
-      for (const e of Array.isArray(d?.equipamentos) ? d.equipamentos : []) {
-        const eq = e?.equipamento || e;
-        partes.push([eq?.equipamento, eq?.marca, eq?.modelo, eq?.serie].filter(Boolean).join(" "));
-      }
-      if (d?.nome_equipamento) partes.push(String(d.nome_equipamento));
-      return norm(partes.filter(Boolean).join(" | "));
-    };
-
-    const MARCAS = [
-      "tramontina","rational","pratica","venancio","metalcubas","macom","elettromec","tedesco",
-      "croydon","universal","gastromaq","skymsen","hobart","unox","klimaquip","fogatti","progas",
-      "bertolini","philco","brastemp","consul","electrolux","midea","springer","carrier","elgin",
-      "gelopar","imbera","metalfrio","refrimate","frilux","cozil","itajobi","wiber","tecnopan",
-    ];
-    const FAMILIAS: Record<string, string[]> = {
-      fogao: ["fogao", "cooktop", "cook top"],
-      forno: ["forno", "combinado"],
-      fritadeira: ["fritadeira"],
-      chapa: ["chapa", "char broiler", "charbroiler", "grill"],
-      coifa: ["coifa", "exaustor"],
-      camara: ["camara", "camera fria"],
-      banho: ["banho maria", "banho-maria"],
-      refrigeracao: ["geladeira", "refrigerador", "expositor", "balcao refrigerado"],
-      freezer: ["freezer", "ultracongelador"],
-      lavagem: ["lava loucas", "lava-loucas", "lavadora", "lavadoura"],
-      cocao: ["salamandra", "crepeira", "cozedor", "caldeirao", "frigideira basculante"],
-      preparo: ["masseira", "batedeira", "moedor", "liquidificador", "processador", "fatiador", "amaciador"],
-      cafe: ["cafeteira", "maquina de cafe"],
-      gelo: ["maquina de gelo", "produtora de gelo"],
-    };
-    const familiaDe = (txt: string) => {
-      for (const [fam, palavras] of Object.entries(FAMILIAS)) {
-        if (palavras.some((w) => txt.includes(w))) return fam;
-      }
-      return "";
-    };
-    const marcaDe = (txt: string) => MARCAS.find((m) => txt.includes(m)) || "";
-
-    const nomeAlvoTxt = norm(Array.from(nomesEquip).join(" | "));
-    const familiaAlvo = familiaDe(nomeAlvoTxt);
-    const marcaAlvo = marcaDe(nomeAlvoTxt);
-
-    // Aceita o documento antigo quando o equipamento nomeado no GC é da mesma
-    // família do alvo e nenhuma marca conflita (ex.: "Cooktop Tramontina" ==
-    // "Fogão 04 bocas Tramontina"; "Forno Rational" nunca entra).
-    const equipamentoGcBate = (texto: string) => {
-      if (!texto) return false;
-      if (termos.some((toks) => toks.every((t) => texto.includes(t)))) return true;
-      if (!familiaAlvo) return false;
-      const fam = familiaDe(texto);
-      if (fam !== familiaAlvo) return false;
-      const marca = marcaDe(texto);
-      if (marca && marcaAlvo && marca !== marcaAlvo) return false;
-      return true;
-    };
-
-    const avaliarHistoricoNoGc = async (
-      entradas: Array<[string, any]>,
-      origem: "os" | "orcamento",
-      alvoMap: Map<string, any>,
-      chave: string,
-    ) => {
-      const pendentes = entradas.filter(([id, ref]) => {
-        if (alvoMap.has(id)) return false;
-        const data = dataDoRef(ref, origem);
-        return !!data && data < CORTE_HISTORICO;
-      });
-      if (!pendentes.length || (!termos.length && !familiaAlvo)) return 0;
-      let aceitos = 0;
-      const rota = origem === "os" ? "ordens_servicos" : "orcamentos";
-      const CONC_H = 6;
-      for (let i = 0; i < pendentes.length; i += CONC_H) {
-        const batch = pendentes.slice(i, i + CONC_H);
-        const res = await Promise.all(
-          batch.map(([id]) => gcGet(`/api/${rota}/${encodeURIComponent(id)}`, gcHeaders)),
-        );
-        res.forEach((j, idx) => {
-          const detail = j?.data || j;
-          if (!detail) return;
-          const [id, ref] = batch[idx];
-          detalheCache.set(`${chave}:${id}`, detail);
-          const texto = equipTextoDoDetalhe(detail);
-          if (!equipamentoGcBate(texto)) return;
-          {
-            alvoMap.set(id, ref);
-            historicos.add(`${chave}:${id}`);
-            aceitos++;
-          }
-        });
-      }
-      return aceitos;
-    };
-    aceitosHistorico += await avaliarHistoricoNoGc(Array.from(candidatosOs), "os", osMap, "os");
-    aceitosHistorico += await avaliarHistoricoNoGc(Array.from(candidatosOrc), "orcamento", orcMap, "orc");
-
     // Também valida os documentos encontrados na carga inicial. Isso impede que
     // um vínculo antigo da Tarefa OS mantenha uma OS cuja Tarefa Execução aponta
     // explicitamente para outro equipamento.
     for (const [id, ref] of Array.from(osMap.entries())) {
-      if (historicos.has(`os:${id}`)) continue;
       if ((ref.gc_os_tarefa_os || ref.gc_os_tarefa_exec) && !documentoLigadoAoEquipamento(ref, "os")) {
         osMap.delete(id);
       }
     }
     for (const [id, ref] of Array.from(orcMap.entries())) {
-      if (historicos.has(`orc:${id}`)) continue;
       if ((ref.gc_os_tarefa_os || ref.gc_os_tarefa_exec) && !documentoLigadoAoEquipamento(ref, "orcamento")) {
         orcMap.delete(id);
       }
     }
     console.log(
-      `[pecas] resolução Controle OS: candidatos_os=${candidatosOs.size} candidatos_orc=${candidatosOrc.size} aceitos_por_73343_73344=${aceitosPorTarefa} historico_texto=${aceitosHistorico}`,
+      `[pecas] resolução Controle OS: candidatos_os=${candidatosOs.size} candidatos_orc=${candidatosOrc.size} aceitos_por_73343_73344=${aceitosPorTarefa}`,
     );
 
     const pecas: Peca[] = [];
@@ -782,7 +590,7 @@ Deno.serve(async (req) => {
       origem: "os" | "orcamento",
       docId: string,
       ref: any,
-      vinculo: "direto" | "texto" | "historico" = "direto",
+      vinculo: "direto" | "texto" = "direto",
     ) => {
       const codigo = String(detail?.codigo || (origem === "os" ? ref?.gc_os_codigo : ref?.gc_orcamento_codigo) || docId);
       const situacao = String(detail?.nome_situacao || (origem === "os" ? ref?.gc_os_situacao : ref?.gc_orc_situacao) || "");
@@ -841,36 +649,20 @@ Deno.serve(async (req) => {
     const osEntries = Array.from(osMap.entries());
     for (let i = 0; i < osEntries.length; i += CONC) {
       const batch = osEntries.slice(i, i + CONC);
-      const res = await Promise.all(batch.map(([id]) =>
-        detalheCache.has(`os:${id}`)
-          ? Promise.resolve({ data: detalheCache.get(`os:${id}`) })
-          : gcGet(`/api/ordens_servicos/${encodeURIComponent(id)}`, gcHeaders)));
+      const res = await Promise.all(batch.map(([id]) => gcGet(`/api/ordens_servicos/${encodeURIComponent(id)}`, gcHeaders)));
       res.forEach((j, idx) => {
         const detail = j?.data || j;
-        if (detail) {
-          extrair(
-            detail, "os", batch[idx][0], batch[idx][1],
-            historicos.has(`os:${batch[idx][0]}`) ? "historico" : "direto",
-          );
-        }
+        if (detail) extrair(detail, "os", batch[idx][0], batch[idx][1]);
       });
     }
 
     const orcEntries = Array.from(orcMap.entries());
     for (let i = 0; i < orcEntries.length; i += CONC) {
       const batch = orcEntries.slice(i, i + CONC);
-      const res = await Promise.all(batch.map(([id]) =>
-        detalheCache.has(`orc:${id}`)
-          ? Promise.resolve({ data: detalheCache.get(`orc:${id}`) })
-          : gcGet(`/api/orcamentos/${encodeURIComponent(id)}`, gcHeaders)));
+      const res = await Promise.all(batch.map(([id]) => gcGet(`/api/orcamentos/${encodeURIComponent(id)}`, gcHeaders)));
       res.forEach((j, idx) => {
         const detail = j?.data || j;
-        if (detail) {
-          extrair(
-            detail, "orcamento", batch[idx][0], batch[idx][1],
-            historicos.has(`orc:${batch[idx][0]}`) ? "historico" : "direto",
-          );
-        }
+        if (detail) extrair(detail, "orcamento", batch[idx][0], batch[idx][1]);
       });
     }
 
