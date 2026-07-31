@@ -91,65 +91,112 @@ Deno.serve(async (req) => {
       "Content-Type": "application/json",
     };
 
-    // 1) Tarefas Auvo vinculadas ao equipamento
+    // 1) Descoberta ampla (sem limite de período): equipamento -> tarefas -> equipamento ...
     const taskIds = new Set<string>();
     const equipIds = new Set<string>();
+    const series = new Set<string>();
+    const nomes = new Set<string>();
     if (auvoEquipmentId) equipIds.add(auvoEquipmentId);
+    if (identificador) series.add(identificador);
+    if (equipamentoNome) nomes.add(equipamentoNome);
+    if (auvoTaskId) taskIds.add(auvoTaskId);
 
-    // Resolve equipamento a partir da tarefa (uso no Kanban de Orçamentos)
+    const selectCols =
+      "auvo_task_id, cliente, data_tarefa, equipamento_nome, equipamento_id_serie, gc_os_id, gc_os_codigo, gc_os_situacao, gc_os_link, gc_os_data, gc_orcamento_id, gc_orcamento_codigo, gc_orc_situacao, gc_orc_link, gc_orc_data";
+
+    const centralById = new Map<string, any>();
+    const addCentral = (rows: any[] | null) => {
+      let novos = 0;
+      for (const r of rows || []) {
+        const k = String(r.auvo_task_id || "");
+        if (!k) continue;
+        if (!centralById.has(k)) { centralById.set(k, r); novos++; }
+        if (r.equipamento_id_serie) {
+          const s = String(r.equipamento_id_serie).trim();
+          if (s.length >= 4 && !series.has(s)) { series.add(s); novos++; }
+        }
+        if (r.equipamento_nome) {
+          const n = String(r.equipamento_nome).trim();
+          if (n.length >= 5 && !nomes.has(n)) { nomes.add(n); novos++; }
+        }
+        taskIds.add(k);
+      }
+      return novos;
+    };
+
+    // Equipamentos do catálogo que batem com a série informada
+    const resolveEquipCatalogo = async () => {
+      const seriesArr = Array.from(series).filter(Boolean);
+      if (!seriesArr.length) return;
+      const { data } = await supabase
+        .from("equipamentos_auvo")
+        .select("auvo_equipment_id, identificador, nome")
+        .in("identificador", seriesArr);
+      (data || []).forEach((e: any) => {
+        if (e.auvo_equipment_id) equipIds.add(String(e.auvo_equipment_id));
+        if (e.nome) nomes.add(String(e.nome).trim());
+      });
+    };
+
+    const expandirTarefasPorEquipamento = async () => {
+      if (!equipIds.size) return;
+      const { data } = await supabase
+        .from("equipamento_tarefas_auvo")
+        .select("auvo_task_id")
+        .in("auvo_equipment_id", Array.from(equipIds));
+      (data || []).forEach((r: any) => { if (r.auvo_task_id) taskIds.add(String(r.auvo_task_id)); });
+    };
+
+    const carregarCentral = async () => {
+      let novos = 0;
+      const ids = Array.from(taskIds).filter((id) => !centralById.has(id));
+      for (let i = 0; i < ids.length; i += 200) {
+        const { data, error } = await supabase
+          .from("tarefas_central")
+          .select(selectCols)
+          .in("auvo_task_id", ids.slice(i, i + 200));
+        if (error) throw error;
+        novos += addCentral(data);
+      }
+      for (const s of Array.from(series)) {
+        const { data } = await supabase
+          .from("tarefas_central")
+          .select(selectCols)
+          .ilike("equipamento_id_serie", `%${s}%`)
+          .limit(1000);
+        novos += addCentral(data);
+      }
+      for (const n of Array.from(nomes)) {
+        const { data } = await supabase
+          .from("tarefas_central")
+          .select(selectCols)
+          .ilike("equipamento_nome", `%${n}%`)
+          .limit(1000);
+        novos += addCentral(data);
+      }
+      return novos;
+    };
+
+    // Tarefa base (kanban) para descobrir série/nome antes de expandir
+    if (auvoTaskId) await carregarCentral();
     if (auvoTaskId) {
-      taskIds.add(auvoTaskId);
       const { data: linkRows } = await supabase
         .from("equipamento_tarefas_auvo")
         .select("auvo_equipment_id")
         .eq("auvo_task_id", auvoTaskId);
       (linkRows || []).forEach((r: any) => { if (r.auvo_equipment_id) equipIds.add(String(r.auvo_equipment_id)); });
-
-      if (!identificador) {
-        const { data: centralRow } = await supabase
-          .from("tarefas_central")
-          .select("equipamento_id_serie")
-          .eq("auvo_task_id", auvoTaskId)
-          .not("equipamento_id_serie", "is", null)
-          .limit(1)
-          .maybeSingle();
-        const serie = String((centralRow as any)?.equipamento_id_serie || "").trim();
-        if (serie) identificador = serie;
-      }
     }
 
-    if (equipIds.size) {
-      const { data, error } = await supabase
-        .from("equipamento_tarefas_auvo")
-        .select("auvo_task_id")
-        .in("auvo_equipment_id", Array.from(equipIds));
-      if (error) throw error;
-      (data || []).forEach((r: any) => { if (r.auvo_task_id) taskIds.add(String(r.auvo_task_id)); });
+    // Até 3 passes: catálogo -> tarefas do equipamento -> central (que revela novas séries/nomes)
+    for (let pass = 0; pass < 3; pass++) {
+      await resolveEquipCatalogo();
+      await expandirTarefasPorEquipamento();
+      const novos = await carregarCentral();
+      if (!novos) break;
     }
 
-    // 2) Tarefas centrais: por task id vinculada e por identificador/série do equipamento
-    const centralRows: any[] = [];
-    const selectCols =
-      "auvo_task_id, cliente, data_tarefa, equipamento_nome, equipamento_id_serie, gc_os_id, gc_os_codigo, gc_os_situacao, gc_os_link, gc_os_data, gc_orcamento_id, gc_orcamento_codigo, gc_orc_situacao, gc_orc_link, gc_orc_data";
-
-    const ids = Array.from(taskIds);
-    for (let i = 0; i < ids.length; i += 200) {
-      const { data, error } = await supabase
-        .from("tarefas_central")
-        .select(selectCols)
-        .in("auvo_task_id", ids.slice(i, i + 200));
-      if (error) throw error;
-      centralRows.push(...(data || []));
-    }
-
-    if (identificador) {
-      const { data, error } = await supabase
-        .from("tarefas_central")
-        .select(selectCols)
-        .ilike("equipamento_id_serie", `%${identificador}%`);
-      if (error) throw error;
-      centralRows.push(...(data || []));
-    }
+    if (!identificador) identificador = Array.from(series)[0] || "";
+    const centralRows: any[] = Array.from(centralById.values());
 
     // 3) Documentos GC únicos
     const osMap = new Map<string, any>();
@@ -266,6 +313,13 @@ Deno.serve(async (req) => {
       ok: true,
       equipamento: { auvo_equipment_id: auvoEquipmentId || null, identificador: identificador || null, nome: equipamentoNome || null },
       tarefas: taskIds.size,
+      cobertura: {
+        tarefas_com_dados: centralRows.length,
+        series: Array.from(series),
+        equipamentos: Array.from(equipIds),
+        data_inicial: documentos.reduce((m: string | null, d: any) => (d.data && (!m || d.data < m) ? d.data : m), null),
+        data_final: documentos.reduce((m: string | null, d: any) => (d.data && (!m || d.data > m) ? d.data : m), null),
+      },
       documentos: documentos.sort((a, b) => String(b.data || "").localeCompare(String(a.data || ""))),
       pecas: pecas.sort((a, b) => String(b.data || "").localeCompare(String(a.data || ""))),
       consolidado: lista,
