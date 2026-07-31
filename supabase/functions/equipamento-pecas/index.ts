@@ -127,7 +127,7 @@ Deno.serve(async (req) => {
     if (auvoTaskId) taskIds.add(auvoTaskId);
 
     const selectCols =
-      "auvo_task_id, cliente, data_tarefa, orientacao, descricao, equipamento_nome, equipamento_id_serie, gc_os_id, gc_os_codigo, gc_os_situacao, gc_os_link, gc_os_data, gc_orcamento_id, gc_orcamento_codigo, gc_orc_situacao, gc_orc_link, gc_orc_data, gc_os_tarefa_os, gc_os_tarefa_exec";
+      "auvo_task_id, cliente, data_tarefa, orientacao, descricao, equipamento_nome, equipamento_id_serie, gc_os_id, gc_os_codigo, gc_os_situacao, gc_os_link, gc_os_data, gc_orcamento_id, gc_orcamento_codigo, gc_orc_situacao, gc_orc_link, gc_orc_data, gc_os_tarefa_os, gc_os_tarefa_exec, gc_os_equip_id";
 
     const centralById = new Map<string, any>();
     const addCentral = (rows: any[] | null, expandirTarefas = true) => {
