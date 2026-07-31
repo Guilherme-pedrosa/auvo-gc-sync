@@ -570,6 +570,30 @@ Deno.serve(async (req) => {
       });
     }
 
+    // Documentos do cliente sem vínculo de tarefa: só entram se citarem o equipamento
+    let aceitosTexto = 0;
+    const varrerPorTexto = async (
+      entries: [string, any][],
+      origem: "os" | "orcamento",
+      path: string,
+    ) => {
+      for (let i = 0; i < entries.length; i += CONC) {
+        const batch = entries.slice(i, i + CONC);
+        const res = await Promise.all(
+          batch.map(([id]) => gcGet(`${path}/${encodeURIComponent(id)}`, gcHeaders)),
+        );
+        res.forEach((j, idx) => {
+          const detail = j?.data || j;
+          if (!detail || !documentoCita(detail)) return;
+          aceitosTexto++;
+          extrair(detail, origem, batch[idx][0], batch[idx][1], "texto");
+        });
+      }
+    };
+    await varrerPorTexto(Array.from(osTexto.entries()), "os", "/api/ordens_servicos");
+    await varrerPorTexto(Array.from(orcTexto.entries()), "orcamento", "/api/orcamentos");
+    console.log(`[pecas] docs aceitos por texto: ${aceitosTexto}`);
+
     // 4) Consolidado por peça
     // Resolve o código interno real dos produtos que vieram sem código
     const idsSemCodigo = Array.from(
