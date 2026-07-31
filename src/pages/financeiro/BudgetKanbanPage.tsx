@@ -17,7 +17,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   ArrowLeft, CalendarIcon, RefreshCw, ExternalLink, ClipboardList,
   FileText, Plus, GripVertical, Trash2, Edit2, Check, X, Filter, FileDown, Star,
-  Pencil, Save, Sparkles, Brain, Loader2, MessageCircle, Send
+  Pencil, Save, Sparkles, Brain, Loader2, MessageCircle, Send, Wrench
 } from "lucide-react";
 import { format, startOfMonth } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -133,6 +133,7 @@ export default function BudgetKanbanPage() {
   const [editingColumnId, setEditingColumnId] = useState<string | null>(null);
   const [editingColumnTitle, setEditingColumnTitle] = useState("");
   const [selectedCard, setSelectedCard] = useState<KanbanItem | null>(null);
+  const [pecasCard, setPecasCard] = useState<KanbanItem | null>(null);
   const [sortBy, setSortBy] = useState<"manual" | "data" | "cliente" | "tecnico" | "valor">("manual");
   const [editingSection, setEditingSection] = useState<string | null>(null);
   const [editValue, setEditValue] = useState("");
