@@ -147,14 +147,75 @@ Deno.serve(async (req) => {
         if (error) throw error;
         novos += addCentral(data);
       }
-      // Somente série EXATA do próprio equipamento (nunca por nome)
+      // Série EXATA do próprio equipamento — inclusive quando o campo traz vários
+      // equipamentos separados por / ; , (validamos token a token, sem match parcial)
+      const norm = (v: string) => String(v || "").trim().toUpperCase();
+      const tokens = (v: string) =>
+        norm(v).split(/[\/;,|]+/).map((t) => t.trim()).filter(Boolean);
       for (const s of Array.from(series)) {
+        const alvo = norm(s);
+        if (!alvo) continue;
+        // 1) igualdade direta (varredura completa, paginada)
+        for (let from = 0; ; from += 1000) {
+          const { data } = await supabase
+            .from("tarefas_central")
+            .select(selectCols)
+            .eq("equipamento_id_serie", s)
+            .range(from, from + 999);
+          novos += addCentral(data);
+          if (!data || data.length < 1000) break;
+        }
+        // 2) campos com múltiplos equipamentos: filtra por token exato
+        for (let from = 0; ; from += 1000) {
+          const { data } = await supabase
+            .from("tarefas_central")
+            .select(selectCols)
+            .ilike("equipamento_id_serie", `%${s}%`)
+            .range(from, from + 999);
+          const validos = (data || []).filter((r: any) =>
+            tokens(r.equipamento_id_serie).includes(alvo)
+          );
+          novos += addCentral(validos);
+          if (!data || data.length < 1000) break;
+        }
+      }
+      return novos;
+    };
+
+    // Histórico antigo (antes do vínculo Auvo existir): nome EXATO do equipamento
+    // restrito aos clientes já identificados para este equipamento.
+    const expandirHistoricoAntigo = async () => {
+      const norm = (v: string) => String(v || "").trim().toUpperCase();
+      const nomes = new Set<string>();
+      if (equipamentoNome) nomes.add(norm(equipamentoNome));
+      const clientes = new Set<string>();
+      for (const r of centralById.values()) {
+        if (r.equipamento_nome) nomes.add(norm(r.equipamento_nome));
+        if (r.cliente) clientes.add(norm(r.cliente));
+      }
+      if (equipIds.size) {
         const { data } = await supabase
-          .from("tarefas_central")
-          .select(selectCols)
-          .eq("equipamento_id_serie", s)
-          .limit(1000);
-        novos += addCentral(data);
+          .from("equipamentos_auvo")
+          .select("nome")
+          .in("auvo_equipment_id", Array.from(equipIds));
+        (data || []).forEach((e: any) => { if (e?.nome) nomes.add(norm(e.nome)); });
+      }
+      if (!nomes.size || !clientes.size) return 0;
+      let novos = 0;
+      for (const nome of Array.from(nomes)) {
+        if (nome.length < 4) continue;
+        for (let from = 0; ; from += 1000) {
+          const { data } = await supabase
+            .from("tarefas_central")
+            .select(selectCols)
+            .ilike("equipamento_nome", nome)
+            .range(from, from + 999);
+          const validos = (data || []).filter((r: any) =>
+            norm(r.equipamento_nome) === nome && clientes.has(norm(r.cliente))
+          );
+          novos += addCentral(validos);
+          if (!data || data.length < 1000) break;
+        }
       }
       return novos;
     };
@@ -175,6 +236,9 @@ Deno.serve(async (req) => {
     // Passe único e fechado: série -> catálogo -> tarefas do MESMO equipamento -> central
     await resolveEquipCatalogo();
     await expandirTarefasPorEquipamento();
+    await carregarCentral();
+    // varre todo o período disponível, recuperando OS/orçamentos antigos
+    await expandirHistoricoAntigo();
     await carregarCentral();
 
     if (!identificador) identificador = Array.from(series)[0] || "";
