@@ -732,7 +732,12 @@ Deno.serve(async (req) => {
       const res = await Promise.all(batch.map(([id]) => gcGet(`/api/ordens_servicos/${encodeURIComponent(id)}`, gcHeaders)));
       res.forEach((j, idx) => {
         const detail = j?.data || j;
-        if (detail) extrair(detail, "os", batch[idx][0], batch[idx][1]);
+        if (detail) {
+          extrair(
+            detail, "os", batch[idx][0], batch[idx][1],
+            historicos.has(`os:${batch[idx][0]}`) ? "historico" : "direto",
+          );
+        }
       });
     }
 
@@ -742,7 +747,12 @@ Deno.serve(async (req) => {
       const res = await Promise.all(batch.map(([id]) => gcGet(`/api/orcamentos/${encodeURIComponent(id)}`, gcHeaders)));
       res.forEach((j, idx) => {
         const detail = j?.data || j;
-        if (detail) extrair(detail, "orcamento", batch[idx][0], batch[idx][1]);
+        if (detail) {
+          extrair(
+            detail, "orcamento", batch[idx][0], batch[idx][1],
+            historicos.has(`orc:${batch[idx][0]}`) ? "historico" : "direto",
+          );
+        }
       });
     }
 
