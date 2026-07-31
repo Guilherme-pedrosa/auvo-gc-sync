@@ -753,6 +753,23 @@ Deno.serve(async (req) => {
       const sitNorm = norm(situacao);
       const vendida = origem === "os" && SITUACOES_VENDIDAS.some((s) => sitNorm.includes(s));
 
+      // Tarefa Auvo que originou o documento (mesma regra do Controle OS):
+      // orçamento → Tarefa OS (73343); OS → Tarefa Execução (73344).
+      const tarefasDoc = (() => {
+        const principais = origem === "orcamento"
+          ? tokensDeTarefa(ref?.gc_os_tarefa_os)
+          : tokensDeTarefa(ref?.gc_os_tarefa_exec);
+        const extras = origem === "orcamento"
+          ? tokensDeTarefa(ref?.gc_os_tarefa_exec)
+          : tokensDeTarefa(ref?.gc_os_tarefa_os);
+        const base = ref?.auvo_task_id ? [String(ref.auvo_task_id)] : [];
+        return Array.from(new Set([...principais, ...base, ...extras].filter(Boolean)));
+      })();
+      const tarefaPrincipal = tarefasDoc[0] || null;
+      const auvoLink = tarefaPrincipal
+        ? `https://app2.auvo.com.br/relatorioTarefas/DetalheTarefa/${tarefaPrincipal}`
+        : null;
+
       const produtos: any[] = (Array.isArray(detail?.produtos) ? detail.produtos : [])
         .map((x: any) => x?.produto || x)
         .filter(Boolean);
@@ -781,6 +798,8 @@ Deno.serve(async (req) => {
           data,
           cliente,
           auvo_task_id: ref?.auvo_task_id ? String(ref.auvo_task_id) : null,
+          auvo_task_ids: tarefasDoc,
+          auvo_link: auvoLink,
           link,
           vendida,
           vinculo,
@@ -791,6 +810,8 @@ Deno.serve(async (req) => {
       documentos.push({
         origem, documento_id: docId, documento_codigo: codigo, situacao, data, cliente,
         auvo_task_id: ref?.auvo_task_id ? String(ref.auvo_task_id) : null,
+        auvo_task_ids: tarefasDoc,
+        auvo_link: auvoLink,
         link, itens, vendida, vinculo,
         valor_total: toNum(detail?.valor_total),
       });
