@@ -482,7 +482,10 @@ Deno.serve(async (req) => {
     }
 
     const linkedIds = new Set<string>();
-    for (const ref of [...candidatosOs.values(), ...candidatosOrc.values()]) {
+    for (const ref of [
+      ...osMap.values(), ...orcMap.values(),
+      ...candidatosOs.values(), ...candidatosOrc.values(),
+    ]) {
       tokensDeTarefa(ref.gc_os_tarefa_os).forEach((id) => linkedIds.add(id));
       tokensDeTarefa(ref.gc_os_tarefa_exec).forEach((id) => linkedIds.add(id));
     }
