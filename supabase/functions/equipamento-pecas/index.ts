@@ -36,6 +36,7 @@ function norm(s: string) {
 
 type Peca = {
   codigo: string;
+  produto_id?: string | null;
   descricao: string;
   quantidade: number;
   valor_unitario: number;
