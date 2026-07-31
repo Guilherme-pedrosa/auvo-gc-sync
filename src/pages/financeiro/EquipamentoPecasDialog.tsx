@@ -99,6 +99,27 @@ export default function EquipamentoPecasDialog({ open, onOpenChange, equipamento
           </DialogDescription>
         </DialogHeader>
 
+        {!isFetching && data?.cobertura && (
+          <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground -mt-2">
+            <span>
+              ID equipamento:{" "}
+              <span className="font-mono text-foreground">
+                {(data.cobertura.equipamentos || []).join(", ") || "—"}
+              </span>
+            </span>
+            <span>
+              Série/identificador:{" "}
+              <span className="font-mono text-foreground">
+                {(data.cobertura.series || []).join(", ") || equipamento.identificador || "—"}
+              </span>
+            </span>
+            <span>
+              Tarefas Auvo vinculadas:{" "}
+              <span className="text-foreground">{data.tarefas}</span>
+            </span>
+          </div>
+        )}
+
         {isFetching && (
           <div className="flex items-center gap-2 text-sm text-muted-foreground py-10 justify-center">
             <Loader2 className="h-4 w-4 animate-spin" /> Varrendo OS e orçamentos no GestãoClick...
