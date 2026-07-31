@@ -102,15 +102,15 @@ export default function EquipamentoPecasDialog({ open, onOpenChange, equipamento
         {!isFetching && data?.cobertura && (
           <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground -mt-2">
             <span>
-              ID equipamento:{" "}
+              ID do equipamento (chapa/série):{" "}
               <span className="font-mono text-foreground">
-                {(data.cobertura.equipamentos || []).join(", ") || "—"}
+                {equipamento.identificador || (data.cobertura.series || []).join(", ") || "—"}
               </span>
             </span>
             <span>
-              Série/identificador:{" "}
+              ID interno Auvo:{" "}
               <span className="font-mono text-foreground">
-                {(data.cobertura.series || []).join(", ") || equipamento.identificador || "—"}
+                {(data.cobertura.equipamentos || []).join(", ") || "—"}
               </span>
             </span>
             <span>
