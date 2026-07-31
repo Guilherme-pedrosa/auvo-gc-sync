@@ -235,6 +235,7 @@ export default function EquipamentoPecasDialog({ open, onOpenChange, equipamento
                       <TableRow>
                         <TableHead>Data</TableHead>
                         <TableHead>{tab.label}</TableHead>
+                        <TableHead>Tarefa Auvo</TableHead>
                         <TableHead>Código</TableHead>
                         <TableHead>Peça</TableHead>
                         <TableHead className="text-right">Qtd</TableHead>
@@ -244,7 +245,7 @@ export default function EquipamentoPecasDialog({ open, onOpenChange, equipamento
                     </TableHeader>
                     <TableBody>
                       {tab.rows.length === 0 ? (
-                        <TableRow><TableCell colSpan={7} className="text-center text-muted-foreground py-6">Nenhum item</TableCell></TableRow>
+                        <TableRow><TableCell colSpan={8} className="text-center text-muted-foreground py-6">Nenhum item</TableCell></TableRow>
                       ) : tab.rows.map((p: any, i: number) => (
                         <TableRow key={i}>
                           <TableCell className="text-sm">{fmtData(p.data)}</TableCell>
@@ -257,6 +258,26 @@ export default function EquipamentoPecasDialog({ open, onOpenChange, equipamento
                                 </a>
                               )}
                             </span>
+                          </TableCell>
+                          <TableCell className="text-xs">
+                            {(p.auvo_task_ids?.length ? p.auvo_task_ids : (p.auvo_task_id ? [p.auvo_task_id] : [])).length === 0 ? (
+                              <span className="text-muted-foreground">—</span>
+                            ) : (
+                              <div className="flex flex-col gap-0.5">
+                                {(p.auvo_task_ids?.length ? p.auvo_task_ids : [p.auvo_task_id]).map((tid: string) => (
+                                  <a
+                                    key={tid}
+                                    href={`https://app2.auvo.com.br/relatorioTarefas/DetalheTarefa/${tid}`}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="font-mono text-primary hover:underline inline-flex items-center gap-1"
+                                  >
+                                    {tid}
+                                    <ExternalLink className="h-3 w-3" />
+                                  </a>
+                                ))}
+                              </div>
+                            )}
                           </TableCell>
                           <TableCell className="text-xs font-mono">{p.codigo || "—"}</TableCell>
                           <TableCell className="text-sm">{p.descricao}</TableCell>
