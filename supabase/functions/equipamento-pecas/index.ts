@@ -676,7 +676,7 @@ Deno.serve(async (req) => {
       // direta do equipamento e vale mais que qualquer inferência por tarefa.
       const gcEquip = norm(ref?.gc_os_equip_id || "");
       if (gcEquip) {
-        const bateSerie = seriesAlvo.some((s) => s && (gcEquip === s || gcEquip.includes(s) || s.includes(gcEquip)));
+        const bateSerie = seriesArr.some((s) => s && (gcEquip === s || gcEquip.includes(s) || s.includes(gcEquip)));
         const bateId = Array.from(equipIds).some((id) => norm(id) === gcEquip);
         if (bateSerie || bateId) { aceitosPorCampoEquip++; return true; }
       }
@@ -698,6 +698,7 @@ Deno.serve(async (req) => {
     };
 
     let aceitosPorTarefa = 0;
+    let aceitosPorCampoEquip = 0;
     let descartados = 0;
     for (const [id, ref] of candidatosOs) {
       if (documentoLigadoAoEquipamento(ref, "os")) {
