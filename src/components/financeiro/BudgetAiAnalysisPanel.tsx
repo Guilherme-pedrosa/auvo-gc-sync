@@ -99,8 +99,17 @@ export default function BudgetAiAnalysisPanel({ analysis, legacyText, fallback, 
                 <div className="flex flex-wrap items-center gap-2">
                   <Badge variant="outline">{recommendation.status}</Badge>
                   <span className="font-medium">{recommendation.item}</span>
+                  {recommendation.part_code && (
+                    <Badge variant="secondary" className="font-mono text-[10px]">cód. {recommendation.part_code}</Badge>
+                  )}
+                  {recommendation.code_confidence && (
+                    <Badge variant="outline" className="text-[10px]">confiabilidade do código: {recommendation.code_confidence}</Badge>
+                  )}
                 </div>
                 <p className="mt-1 text-xs">{recommendation.reason}</p>
+                {recommendation.code_evidence && (
+                  <p className="mt-1 text-xs text-blue-700 dark:text-blue-400">{recommendation.code_evidence}</p>
+                )}
                 <p className="mt-1 text-xs text-muted-foreground">Base: {recommendation.evidence} · Fonte: {recommendation.source} · Confiança: {recommendation.confidence}</p>
               </div>
             ))}
