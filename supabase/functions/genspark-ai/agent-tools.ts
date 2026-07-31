@@ -248,7 +248,7 @@ async function toolConsultarGc(a: any) {
 
 async function toolObservacoes(a: any) {
   const limit = Math.min(Number(a?.limite) || 20, 50);
-  let q = sb().from("os_observacoes").select("*").order("criado_em", { ascending: false }).limit(limit);
+  let q = sb().from("os_observacoes").select("*").order("created_at", { ascending: false }).limit(limit);
   if (a?.gc_os_codigo) q = q.eq("gc_os_codigo", String(a.gc_os_codigo));
   if (a?.auvo_task_id) q = q.eq("auvo_task_id", String(a.auvo_task_id));
   if (a?.cliente) q = q.ilike("cliente", `%${a.cliente}%`);
