@@ -663,8 +663,9 @@ Deno.serve(async (req) => {
       pecas: pecas.sort((a, b) => String(b.data || "").localeCompare(String(a.data || ""))),
       consolidado: lista,
       totais: {
-        os: osMap.size,
-        orcamentos: orcMap.size,
+        os: documentos.filter((d: any) => d.origem === "os").length,
+        orcamentos: documentos.filter((d: any) => d.origem === "orcamento").length,
+        docs_por_texto: aceitosTexto,
         itens: pecas.length,
         valor_vendido: pecas.filter((p) => p.vendida).reduce((s, p) => s + p.valor_total, 0),
         valor_orcado: pecas.filter((p) => !p.vendida).reduce((s, p) => s + p.valor_total, 0),
