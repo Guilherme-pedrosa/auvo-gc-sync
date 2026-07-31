@@ -1756,7 +1756,20 @@ TOM: Telegráfico, técnico, zero enrolação. Prefira disciplina e auditabilida
 
       const systemPrompt = `Você é o assistente de chat contextual do orçamento da WeDo.
 
-CONTEXTO PRINCIPAL: Você responde com base na análise técnica já gerada e nos dados da OS. NÃO refaça a análise.
+CONTEXTO PRINCIPAL: Você responde com base na análise técnica já gerada, nos dados da OS e nos DADOS REAIS DOS MÓDULOS DO SISTEMA que você pode consultar por ferramentas. NÃO refaça a análise.
+
+FERRAMENTAS (use sempre que a pergunta depender de dado histórico/real, sem pedir permissão):
+- buscar_controle_os: módulo Controle OS (tarefas Auvo + OS/orçamentos GC, situação, técnico, datas, valores).
+- historico_pecas_equipamento: varredura completa GC de peças e serviços já orçados/vendidos do equipamento (códigos e documentos).
+- consultar_preventivas: módulo Preventiva de Equipamentos (última/próxima preventiva, periodicidade, criticidade, status).
+- buscar_equipamentos: cadastro de equipamentos (cliente, série, marca, tipo).
+- consultar_gc: consulta direta ao GestãoClick (produtos/peças por nome ou código, OS, orçamentos, clientes, serviços).
+- observacoes_os: observações internas registradas na OS.
+
+REGRAS DE FERRAMENTA:
+- Se a pergunta envolver histórico, "já foi trocado?", "quando foi a última preventiva?", "qual o código dessa peça?", "quais OS desse cliente/equipamento?", CHAME a ferramenta antes de responder.
+- Pode encadear várias chamadas. Nunca invente número de OS, código de peça ou data: só cite o que veio das ferramentas.
+- Se a ferramenta não retornar nada, diga explicitamente que não há registro — não presuma.
 
 OBJETIVO: Ajudar o usuário a tirar dúvidas sobre este orçamento específico.
 
@@ -1766,6 +1779,7 @@ VOCÊ DEVE:
 - Dizer o que está confirmado, provável ou precisa validar
 - Ajudar a decidir se item entra ou não no orçamento
 - Apontar o que falta de informação
+- Cruzar o caso com o histórico real dos módulos (Controle OS, Preventivas, Peças do GC)
 
 VOCÊ NÃO DEVE:
 - Inventar dados que não estejam neste caso
@@ -1832,14 +1846,44 @@ TOM: Técnico, direto, sem floreio.`;
 
       console.log(`[genspark-ai] [chat] model=${CHAT_MODEL}, hasAnalysis=${!!analysis}, needsExternalData=${needsExternalData}, msgLen=${userMessage?.length}`);
 
-      const aiResult = await callAI(messages, CHAT_MODEL, 1800, {
-        temperature: 0.2, action: "chat", timeoutMs: 35000,
-      });
-      if (aiResult.error) {
-        return buildAiErrorResponse(aiResult);
+      // Loop de ferramentas: a IA pode consultar os módulos do sistema antes de responder.
+      const MAX_TOOL_ROUNDS = 4;
+      const toolsUsed: string[] = [];
+      let aiResult: AiCallResult = { result: "" };
+
+      for (let round = 0; round <= MAX_TOOL_ROUNDS; round++) {
+        aiResult = await callAI(messages, CHAT_MODEL, 2200, {
+          temperature: 0.2,
+          action: `chat_round_${round}`,
+          timeoutMs: 45000,
+          tools: round < MAX_TOOL_ROUNDS ? AGENT_TOOLS : undefined,
+        });
+        if (aiResult.error) return buildAiErrorResponse(aiResult);
+
+        const calls = aiResult.toolCalls || [];
+        if (!calls.length) break;
+
+        messages.push(aiResult.rawMessage || { role: "assistant", content: "", tool_calls: calls });
+
+        const results = await Promise.all(calls.map(async (call: any) => {
+          const name = call?.function?.name || "";
+          let args: any = {};
+          try { args = JSON.parse(call?.function?.arguments || "{}"); } catch { /* args inválidos */ }
+          toolsUsed.push(name);
+          const out = await runAgentTool(name, args);
+          return { call, out };
+        }));
+
+        for (const { call, out } of results) {
+          messages.push({
+            role: "tool",
+            tool_call_id: call.id,
+            content: clampForPrompt(JSON.stringify(out), 12000),
+          });
+        }
       }
 
-      return new Response(JSON.stringify({ result: aiResult.result }), {
+      return new Response(JSON.stringify({ result: aiResult.result, tools_used: toolsUsed }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
