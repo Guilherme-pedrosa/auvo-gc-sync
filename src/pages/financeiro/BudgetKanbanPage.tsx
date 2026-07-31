@@ -1614,10 +1614,6 @@ export default function BudgetKanbanPage() {
   // AI Chat — budget_chat_agent (lightweight, uses analysis as context)
   const handleChatSend = useCallback(async () => {
     if (!selectedCard || !chatInput.trim()) return;
-    if (aiAnalysisIsFallback || !aiAnalysisData) {
-      toast.warning("O chat só é liberado depois de uma análise concluída.");
-      return;
-    }
     const userMsg = chatInput.trim();
     setChatInput("");
     setChatMessages(prev => [...prev, { role: "user", content: userMsg }]);
@@ -1637,6 +1633,12 @@ export default function BudgetKanbanPage() {
               orientacao: selectedCard.orientacao,
               equipamento,
               equipamento_id: equipamentoId,
+              equipamento_serie: (resolvedEquipment as any)?.identificador || localEquipment.id || "",
+              auvo_equipment_id: (resolvedEquipment as any)?.auvo_equipment_id || "",
+              auvo_task_id: selectedCard.auvo_task_id || "",
+              gc_os_codigo: (selectedCard as any).gc_os_codigo || "",
+              gc_orcamento_codigo: (selectedCard as any).gc_orcamento_codigo || "",
+              data_tarefa: (selectedCard as any).data_tarefa || "",
               pecas: getAnswer(selectedCard, "peças") || getAnswer(selectedCard, "material") || "",
               servicos: getAnswer(selectedCard, "serviços") || getAnswer(selectedCard, "servico") || "",
               observacoes: getAnswer(selectedCard, "observ") || "",
@@ -1650,7 +1652,7 @@ export default function BudgetKanbanPage() {
             chatHistory: chatMessages.slice(-8),
           },
         }),
-        45000,
+        120000,
       );
 
       if (error || result?.error || result?.errorCode) {
@@ -2508,8 +2510,8 @@ export default function BudgetKanbanPage() {
                       meta={aiAnalysisMeta}
                     />
 
-                    {/* Chat contextual — aparece DENTRO da análise, só depois que existe análise */}
-                    {!aiAnalysisIsFallback && aiAnalysisData && <div className="border-t border-purple-200 pt-3 mt-3">
+                    {/* Chat contextual — com acesso aos módulos (Controle OS, Preventivas, Peças GC) */}
+                    {<div className="border-t border-purple-200 pt-3 mt-3">
                       {!showChat ? (
                         <Button
                           variant="ghost"
@@ -2524,7 +2526,7 @@ export default function BudgetKanbanPage() {
                         <div className="space-y-2">
                           <div className="flex items-center justify-between">
                             <span className="text-xs font-semibold text-indigo-700 flex items-center gap-1">
-                              <MessageCircle className="h-3 w-3" /> Chat contextual
+                              <MessageCircle className="h-3 w-3" /> Chat contextual · acessa Controle OS, Preventivas e Peças do GC
                             </span>
                             <button type="button" className="text-indigo-400 hover:text-indigo-600 text-xs" onClick={() => { setShowChat(false); setChatMessages([]); }}>✕</button>
                           </div>
@@ -2545,7 +2547,7 @@ export default function BudgetKanbanPage() {
                           )}
                           <div className="flex gap-2">
                             <Input
-                              placeholder="Pergunte sobre este orçamento..."
+                              placeholder="Pergunte sobre este orçamento, histórico de OS, preventivas, peças..."
                               value={chatInput}
                               onChange={(e) => setChatInput(e.target.value)}
                               onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && handleChatSend()}
