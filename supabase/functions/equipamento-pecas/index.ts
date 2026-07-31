@@ -402,6 +402,9 @@ Deno.serve(async (req) => {
     // varre todo o período disponível, recuperando OS/orçamentos antigos
     await expandirHistoricoAntigo();
     await carregarCentral();
+    // documentos GC que apontam para as tarefas do equipamento (tarefa OS / execução)
+    const vinculados = await carregarPorTarefaVinculada();
+    console.log(`[pecas] docs por tarefa vinculada: ${vinculados}`);
 
     if (!identificador) identificador = Array.from(series)[0] || "";
     const centralRows: any[] = Array.from(centralById.values());
