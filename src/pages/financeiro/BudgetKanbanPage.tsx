@@ -2629,6 +2629,19 @@ export default function BudgetKanbanPage() {
         </DialogContent>
       </Dialog>
 
+      {pecasCard && (
+        <EquipamentoPecasDialog
+          open={!!pecasCard}
+          onOpenChange={(v) => { if (!v) setPecasCard(null); }}
+          equipamento={{
+            nome: (pecasCard as any).equipamento_nome || `Tarefa #${pecasCard.auvo_task_id}`,
+            cliente: pecasCard.cliente ?? null,
+            identificador: (pecasCard as any).equipamento_id_serie || null,
+            auvo_equipment_id: null,
+            auvo_task_id: pecasCard.auvo_task_id,
+          }}
+        />
+      )}
     </div>
   );
 }
