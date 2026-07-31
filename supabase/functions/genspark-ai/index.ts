@@ -1,4 +1,5 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { AGENT_TOOLS, runAgentTool } from "./agent-tools.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -825,6 +826,7 @@ type AiCallOptions = {
   action?: string;
   timeoutMs?: number;
   jsonMode?: boolean;
+  tools?: any[];
 };
 
 // Error codes structured for frontend consumption
@@ -842,6 +844,8 @@ type AiCallResult = {
   errorCode?: string;
   status?: number;
   model?: string;
+  toolCalls?: any[];
+  rawMessage?: any;
 };
 
 function buildAiErrorResponse(aiResult: AiCallResult) {
@@ -982,6 +986,7 @@ async function callAI(
           temperature,
           ...(!isGateway && openaiModel.startsWith("gpt-5") ? { max_completion_tokens: maxTokens } : { max_tokens: maxTokens }),
           ...(options.jsonMode ? { response_format: { type: "json_object" } } : {}),
+          ...(options.tools && options.tools.length ? { tools: options.tools, tool_choice: "auto" } : {}),
         }),
       }, timeoutMs);
     } catch (error) {
@@ -1080,12 +1085,13 @@ async function callAI(
   }
 
   const data = await response.json();
-  const content = data.choices?.[0]?.message?.content || "";
+  const aiMessage = data.choices?.[0]?.message || {};
+  const content = aiMessage.content || "";
   const usage = data.usage;
   if (usage) {
     console.log(`[genspark-ai] [callAI] OK action=${actionLabel} model=${requestModel} tokens_in=${usage.prompt_tokens} tokens_out=${usage.completion_tokens} total=${usage.total_tokens}`);
   }
-  return { result: content, model: requestModel };
+  return { result: content, model: requestModel, toolCalls: aiMessage.tool_calls || [], rawMessage: aiMessage };
 }
 
 const BUDGET_AI_PROMPT_VERSION = "budget-v2.0";
