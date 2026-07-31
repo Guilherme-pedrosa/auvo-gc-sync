@@ -32,6 +32,7 @@ function norm(s: string) {
 }
 
 type Peca = {
+  codigo: string;
   descricao: string;
   quantidade: number;
   valor_unitario: number;
