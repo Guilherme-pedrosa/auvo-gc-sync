@@ -1,0 +1,2 @@
+ALTER TABLE public.tarefas_central ADD COLUMN IF NOT EXISTS gc_os_equip_id text;
+CREATE INDEX IF NOT EXISTS idx_tarefas_central_gc_os_equip_id ON public.tarefas_central (gc_os_equip_id) WHERE gc_os_equip_id IS NOT NULL;

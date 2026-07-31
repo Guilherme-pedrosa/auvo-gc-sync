@@ -2493,6 +2493,7 @@ export type Database = {
           gc_os_cor_situacao: string | null
           gc_os_data: string | null
           gc_os_data_saida: string | null
+          gc_os_equip_id: string | null
           gc_os_id: string | null
           gc_os_link: string | null
           gc_os_link_cobranca: string | null
@@ -2557,6 +2558,7 @@ export type Database = {
           gc_os_cor_situacao?: string | null
           gc_os_data?: string | null
           gc_os_data_saida?: string | null
+          gc_os_equip_id?: string | null
           gc_os_id?: string | null
           gc_os_link?: string | null
           gc_os_link_cobranca?: string | null
@@ -2621,6 +2623,7 @@ export type Database = {
           gc_os_cor_situacao?: string | null
           gc_os_data?: string | null
           gc_os_data_saida?: string | null
+          gc_os_equip_id?: string | null
           gc_os_id?: string | null
           gc_os_link?: string | null
           gc_os_link_cobranca?: string | null
