@@ -650,12 +650,71 @@ Deno.serve(async (req) => {
     // aceitamos quando o texto do documento nomeia o equipamento inteiro
     // (todos os termos do nome, ex.: fogao + bocas + tramontina).
     const detalheCache = new Map<string, any>();
-    const textoDoDetalhe = (d: any) => norm([
-      d?.nome_equipamento, d?.equipamento, d?.marca, d?.modelo, d?.numero_serie,
-      d?.descricao, d?.observacoes, d?.observacoes_interna, d?.informacoes_adicionais,
-      d?.problema, d?.solucao, d?.laudo_tecnico, d?.nome_servico,
-      ...(Array.isArray(d?.servicos) ? d.servicos.map((x: any) => (x?.servico || x)?.nome_servico || (x?.servico || x)?.detalhes || "") : []),
-    ].filter(Boolean).join("\n"));
+
+    // O GC identifica o equipamento em dois lugares: o atributo "Equipamento"
+    // e o bloco equipamentos[].equipamento. É isso (e só isso) que usamos —
+    // nunca o texto das peças, que gera falso positivo de outro equipamento.
+    const equipTextoDoDetalhe = (d: any) => {
+      const partes: string[] = [];
+      for (const a of Array.isArray(d?.atributos) ? d.atributos : []) {
+        const at = a?.atributo || a;
+        if (/equipamento/i.test(String(at?.descricao || "")) && at?.conteudo) partes.push(String(at.conteudo));
+      }
+      for (const e of Array.isArray(d?.equipamentos) ? d.equipamentos : []) {
+        const eq = e?.equipamento || e;
+        partes.push([eq?.equipamento, eq?.marca, eq?.modelo, eq?.serie].filter(Boolean).join(" "));
+      }
+      if (d?.nome_equipamento) partes.push(String(d.nome_equipamento));
+      return norm(partes.filter(Boolean).join(" | "));
+    };
+
+    const MARCAS = [
+      "tramontina","rational","pratica","venancio","metalcubas","macom","elettromec","tedesco",
+      "croydon","universal","gastromaq","skymsen","hobart","unox","klimaquip","fogatti","progas",
+      "bertolini","philco","brastemp","consul","electrolux","midea","springer","carrier","elgin",
+      "gelopar","imbera","metalfrio","refrimate","frilux","cozil","itajobi","wiber","tecnopan",
+    ];
+    const FAMILIAS: Record<string, string[]> = {
+      fogao: ["fogao", "cooktop", "cook top"],
+      forno: ["forno", "combinado"],
+      fritadeira: ["fritadeira"],
+      chapa: ["chapa", "char broiler", "charbroiler", "grill"],
+      coifa: ["coifa", "exaustor"],
+      camara: ["camara", "camera fria"],
+      banho: ["banho maria", "banho-maria"],
+      refrigeracao: ["geladeira", "refrigerador", "expositor", "balcao refrigerado"],
+      freezer: ["freezer", "ultracongelador"],
+      lavagem: ["lava loucas", "lava-loucas", "lavadora", "lavadoura"],
+      cocao: ["salamandra", "crepeira", "cozedor", "caldeirao", "frigideira basculante"],
+      preparo: ["masseira", "batedeira", "moedor", "liquidificador", "processador", "fatiador", "amaciador"],
+      cafe: ["cafeteira", "maquina de cafe"],
+      gelo: ["maquina de gelo", "produtora de gelo"],
+    };
+    const familiaDe = (txt: string) => {
+      for (const [fam, palavras] of Object.entries(FAMILIAS)) {
+        if (palavras.some((w) => txt.includes(w))) return fam;
+      }
+      return "";
+    };
+    const marcaDe = (txt: string) => MARCAS.find((m) => txt.includes(m)) || "";
+
+    const nomeAlvoTxt = norm(Array.from(nomesEquip).join(" | "));
+    const familiaAlvo = familiaDe(nomeAlvoTxt);
+    const marcaAlvo = marcaDe(nomeAlvoTxt);
+
+    // Aceita o documento antigo quando o equipamento nomeado no GC é da mesma
+    // família do alvo e nenhuma marca conflita (ex.: "Cooktop Tramontina" ==
+    // "Fogão 04 bocas Tramontina"; "Forno Rational" nunca entra).
+    const equipamentoGcBate = (texto: string) => {
+      if (!texto) return false;
+      if (termos.some((toks) => toks.every((t) => texto.includes(t)))) return true;
+      if (!familiaAlvo) return false;
+      const fam = familiaDe(texto);
+      if (fam !== familiaAlvo) return false;
+      const marca = marcaDe(texto);
+      if (marca && marcaAlvo && marca !== marcaAlvo) return false;
+      return true;
+    };
 
     const avaliarHistoricoNoGc = async (
       entradas: Array<[string, any]>,
@@ -668,7 +727,7 @@ Deno.serve(async (req) => {
         const data = dataDoRef(ref, origem);
         return !!data && data < CORTE_HISTORICO;
       });
-      if (!pendentes.length || !termos.length) return 0;
+      if (!pendentes.length || (!termos.length && !familiaAlvo)) return 0;
       let aceitos = 0;
       const rota = origem === "os" ? "ordens_servicos" : "orcamentos";
       const CONC_H = 6;
@@ -682,9 +741,9 @@ Deno.serve(async (req) => {
           if (!detail) return;
           const [id, ref] = batch[idx];
           detalheCache.set(`${chave}:${id}`, detail);
-          const texto = textoDoDetalhe(detail);
-          if (!texto) return;
-          if (termos.some((toks) => toks.every((t) => texto.includes(t)))) {
+          const texto = equipTextoDoDetalhe(detail);
+          if (!equipamentoGcBate(texto)) return;
+          {
             alvoMap.set(id, ref);
             historicos.add(`${chave}:${id}`);
             aceitos++;
