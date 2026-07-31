@@ -886,6 +886,7 @@ Deno.serve(async (req) => {
         vinculos_resolvidos_ao_vivo: tarefasResolvidasAoVivo,
         tarefas_de_outro_equipamento: linkedResolvidoOutro.size,
         tarefas_sem_equipamento_no_auvo: tarefasSemEquipamentoAuvo,
+        documentos_por_id_equipamento_gc: aceitosPorCampoEquip,
         documentos_descartados: descartados,
       },
       documentos: documentos.sort((a, b) => String(b.data || "").localeCompare(String(a.data || ""))),
