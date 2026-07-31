@@ -1243,6 +1243,9 @@ REGRAS OBRIGATÓRIAS:
 - Se houver dano/queima/ausência explícita, priorize troca/verificação do componente; não esconda isso como preventiva.
 - Identifique equipamento pelas fontes fornecidas. Se não der, assuma confiança baixa e faça pergunta objetiva.
 - Não liste EPI básico. Não fale de preço.
+- Use o HISTÓRICO DE PEÇAS DO EQUIPAMENTO quando fornecido: cruze a nomenclatura usada pelo técnico agora com as peças já orçadas/vendidas. Quando houver correspondência, reutilize a descrição e o código do histórico no campo "item", cite a fonte como "histórico de peças" e informe a data/documento na evidência.
+- Peças recorrentes no histórico (várias ocorrências ou trocadas recentemente) podem virar "recomendar"/"verificar" com a justificativa do padrão observado — nunca "confirmado" só por histórico.
+- Se o técnico pediu uma peça que não existe no histórico, mantenha o pedido dele e sinalize que é a primeira ocorrência para este equipamento.
 - Máximo de ${recommendationLimit} recomendações e 8 perguntas. Seja técnico e direto.
 ${deep ? "- Modo aprofundado: use documentos/web somente como fonte auxiliar e diferencie claramente cada origem." : "- Modo padrão: use apenas dados e fotos desta OS; não suponha conteúdo de manuais ou da web."}`;
 }
@@ -1262,6 +1265,7 @@ function buildBudgetCaseText(context: AnalyzeContext, manufacturer: string | nul
 - Serviços informados: ${context?.servicos || "N/A"}
 - Tempo informado: ${context?.tempo || "N/A"}
 - Observações do técnico: ${context?.observacoes || "N/A"}
+${context?.historico_pecas ? `\nHISTÓRICO DE PEÇAS DESTE EQUIPAMENTO (rastreio GestãoClick — orçadas e vendidas)\n${clampForPrompt(String(context.historico_pecas), 6000)}\n` : "\nHISTÓRICO DE PEÇAS DESTE EQUIPAMENTO: não disponível.\n"}
 - Respostas do questionário: ${clampForPrompt(context?.todas_respostas || "N/A", 7000)}`;
 }
 
