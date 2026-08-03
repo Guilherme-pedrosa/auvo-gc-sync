@@ -2354,7 +2354,8 @@ export default function BudgetKanbanPage() {
                                       </div>
                                     )}
                                   </Draggable>
-                                ))}
+                                  );
+                                })}
                                 {provided.placeholder}
                               </div>
                             )}
