@@ -378,9 +378,16 @@ export default function BudgetKanbanPage() {
     if (!data?.items || columnsInitialized) return;
 
     const hasFilledQuestionnaire = (item: KanbanItem) =>
-      item.questionario_respostas.some(
-        (r) => r.reply && r.reply.trim() !== "" && !r.reply.startsWith("http")
-      );
+      item.questionario_respostas.some((r) => {
+        const reply = String(r.reply ?? "").trim();
+        if (reply === "" || /^https?:\/\//i.test(reply)) return false;
+        const question = String((r as any).question ?? "")
+          .normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase();
+        if (question.includes("HORA") || question.includes("TEMPO")) return false;
+        if (/^\d{1,2}:\d{2}(\s*(AM|PM))?$/i.test(reply)) return false;
+        if (/^(0|00|-|n\/a|na|nao|sim)$/i.test(reply)) return false;
+        return true;
+      });
 
     const resolveSystemColumn = (item: KanbanItem) => {
       if (item.os_realizada) return "os_realizada";
