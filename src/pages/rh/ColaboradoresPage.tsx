@@ -9,8 +9,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
-import { Plus, Pencil, Search, FolderOpen, Trash2 } from "lucide-react";
+import { Plus, Pencil, Search, FolderOpen, Trash2, Link2 } from "lucide-react";
 import { useColaboradores, useSaveColaborador, useDeleteColaborador, type RhColaborador } from "@/hooks/rh/useRh";
+import { VinculoAuvoGcDialog, useVinculosAuvoGc } from "@/components/rh/VinculoAuvoGcDialog";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger,
@@ -24,6 +25,15 @@ export default function ColaboradoresPage() {
   const [search, setSearch] = useState("");
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState<Partial<RhColaborador>>({ tipo_pessoa: "PF", ativo: true });
+  const { data: vinculos = [] } = useVinculosAuvoGc();
+  const [vinculoAlvo, setVinculoAlvo] = useState<RhColaborador | null>(null);
+
+  const vinculoDe = (c: RhColaborador) =>
+    vinculos.find(
+      (v) =>
+        (c.auvo_user_id && String(v.auvo_user_id) === String(c.auvo_user_id)) ||
+        (v.auvo_user_nome || "").trim().toLowerCase() === (c.nome || "").trim().toLowerCase(),
+    ) || null;
 
   const filtered = useMemo(() => {
     const s = search.trim().toLowerCase();
@@ -77,21 +87,38 @@ export default function ColaboradoresPage() {
               <TableHead>Tipo</TableHead>
               <TableHead>CPF/CNPJ</TableHead>
               <TableHead>Cargo</TableHead>
+              <TableHead>Vínculo Auvo ↔ GC</TableHead>
               <TableHead>Ativo</TableHead>
               <TableHead />
             </TableRow>
           </TableHeader>
           <TableBody>
             {isLoading ? (
-              <TableRow><TableCell colSpan={6} className="text-center py-8">Carregando...</TableCell></TableRow>
+              <TableRow><TableCell colSpan={7} className="text-center py-8">Carregando...</TableCell></TableRow>
             ) : filtered.map((c) => (
               <TableRow key={c.id}>
                 <TableCell className="font-medium uppercase">{c.nome}</TableCell>
                 <TableCell><Badge variant="outline">{c.tipo_pessoa}</Badge></TableCell>
                 <TableCell className="font-mono text-xs">{c.cpf_cnpj ?? "—"}</TableCell>
                 <TableCell>{c.cargo ?? "—"}</TableCell>
+                <TableCell className="text-xs">
+                  {(() => {
+                    const v = vinculoDe(c);
+                    return v ? (
+                      <span className="inline-flex flex-col">
+                        <span className="font-medium">{v.auvo_user_nome || "—"}</span>
+                        <span className="text-muted-foreground">GC: {v.gc_vendedor_nome || "—"}</span>
+                      </span>
+                    ) : (
+                      <Badge variant="secondary">não vinculado</Badge>
+                    );
+                  })()}
+                </TableCell>
                 <TableCell>{c.ativo ? <Badge>ativo</Badge> : <Badge variant="secondary">inativo</Badge>}</TableCell>
                 <TableCell className="flex gap-1">
+                  <Button size="sm" variant="ghost" title="Vincular Auvo ↔ GC" onClick={() => setVinculoAlvo(c)}>
+                    <Link2 className="h-3.5 w-3.5" />
+                  </Button>
                   <Button size="sm" variant="ghost" onClick={() => navigate(`/rh/colaboradores/${c.id}`)}>
                     <FolderOpen className="h-3.5 w-3.5" />
                   </Button>
@@ -121,6 +148,17 @@ export default function ColaboradoresPage() {
           </TableBody>
         </Table>
       </div>
+
+      {vinculoAlvo && (
+        <VinculoAuvoGcDialog
+          open={!!vinculoAlvo}
+          onOpenChange={(v) => !v && setVinculoAlvo(null)}
+          colaboradorId={vinculoAlvo.id}
+          colaboradorNome={vinculoAlvo.nome}
+          auvoUserId={vinculoAlvo.auvo_user_id}
+          vinculo={vinculoDe(vinculoAlvo)}
+        />
+      )}
 
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent>
