@@ -92,10 +92,21 @@ export default {
             height: "0",
           },
         },
+        "blink-danger": {
+          "0%, 100%": {
+            boxShadow: "0 0 0 0 hsl(0 84% 60% / 0.55)",
+            opacity: "1",
+          },
+          "50%": {
+            boxShadow: "0 0 0 6px hsl(0 84% 60% / 0)",
+            opacity: "0.82",
+          },
+        },
       },
       animation: {
         "accordion-down": "accordion-down 0.2s ease-out",
         "accordion-up": "accordion-up 0.2s ease-out",
+        "blink-danger": "blink-danger 1.2s ease-in-out infinite",
       },
     },
   },
