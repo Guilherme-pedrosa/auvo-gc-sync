@@ -57,8 +57,17 @@ export function unrelatedDocumentPenalty(value: string, activeTerms: string[]): 
   if (/receita|coccao|cozimento/.test(text) && !requested(/receita|coccao|cozimento/)) penalty -= 18;
   if (/instalacao/.test(text) && !requested(/instalacao|instalar/)) penalty -= 16;
   if (/\bapp\b|portal unox|criar seu acesso/.test(text) && !requested(/\bapp\b|portal|acesso/)) penalty -= 24;
+  if (/serie ?5e/.test(text) && requested(/mindmaps/) && !requested(/serie ?5e/)) penalty -= 32;
 
   return penalty;
+}
+
+export function canonicalTechnicalDocumentKey(value: string): string {
+  return normalize(value)
+    .replace(/\b(unox|novo|copia|copy)\b/g, " ")
+    .replace(/\b\d+\b/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 export function buildPdfPageSample(totalPages: number, maxPages = 16): number[] {
