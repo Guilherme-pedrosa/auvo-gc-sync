@@ -378,17 +378,35 @@ async function fetchInternalTechDocs(query?: string, equipamento?: string, optio
     let parseError = "";
     try {
       const parsePromise = (async () => {
-        const { extractText, getDocumentProxy } = await import("npm:unpdf@1.8.0");
+        const { getDocumentProxy } = await import("npm:unpdf@1.8.0");
         // pdf.js may transfer/detach the supplied buffer. Keep the original
         // available for the OCR fallback when a PDF has no embedded text.
         const pdf = await getDocumentProxy(bytes.slice(), { maxImageSize: 16_777_216 });
-        const extracted = await extractText(pdf, { mergePages: true });
-        return String(extracted.text || "").replace(/\s+/g, " ").trim().slice(0, 24000);
+        const pageLimit = Math.min(Number(pdf.numPages || 0), 24);
+        const pages: string[] = [];
+        let extractedChars = 0;
+
+        // The prompt stores at most 8k characters per document. Reading all
+        // pages of 200+ page manuals wastes the Edge execution budget and can
+        // terminate the request with HTTP 546 before any source is returned.
+        for (let pageNumber = 1; pageNumber <= pageLimit && extractedChars < 10000; pageNumber++) {
+          const page = await pdf.getPage(pageNumber);
+          const content = await page.getTextContent();
+          const pageText = (content.items || [])
+            .map((item: any) => String(item?.str || "").trim())
+            .filter(Boolean)
+            .join(" ");
+          if (!pageText) continue;
+          pages.push(`[p. ${pageNumber}] ${pageText}`);
+          extractedChars += pageText.length;
+        }
+
+        return pages.join("\n").replace(/\s+/g, " ").trim().slice(0, 10000);
       })();
 
       const parsed = await Promise.race([
         parsePromise,
-        new Promise<string>((_, reject) => setTimeout(() => reject(new Error("PDF_PARSE_TIMEOUT")), 20000)),
+        new Promise<string>((_, reject) => setTimeout(() => reject(new Error("PDF_PARSE_TIMEOUT")), 12000)),
       ]);
       if (parsed.length > 50) return { text: parsed, error: "" };
       parseError = "UNPDF_EMPTY_TEXT";
