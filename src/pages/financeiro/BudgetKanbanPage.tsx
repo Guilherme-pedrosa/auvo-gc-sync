@@ -2109,7 +2109,12 @@ export default function BudgetKanbanPage() {
                                   snapshot.isDraggingOver ? "bg-accent/50" : ""
                                 }`}
                               >
-                                {column.items.map((item, index) => (
+                                {column.items.map((item, index) => {
+                                  // Cards já resolvidos manualmente não envelhecem.
+                                  const agingLevel = column.id === RESOLVED_WITHOUT_BUDGET_COLUMN
+                                    ? "normal"
+                                    : getBudgetAgingLevel(item);
+                                  return (
                                   <Draggable
                                     key={item.auvo_task_id}
                                     draggableId={item.auvo_task_id}
