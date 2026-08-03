@@ -19,7 +19,7 @@ import {
   FileText, Plus, GripVertical, Trash2, Edit2, Check, X, Filter, FileDown, Star,
   Pencil, Save, Sparkles, Brain, Loader2, MessageCircle, Send, Wrench
 } from "lucide-react";
-import { format, startOfMonth, startOfDay, subMonths } from "date-fns";
+import { format, startOfMonth, startOfDay, subMonths, subDays } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { useNavigate } from "react-router-dom";
 import { DragDropContext, Droppable, Draggable, DropResult } from "@hello-pangea/dnd";
@@ -117,13 +117,42 @@ type ApiResponse = {
   error?: string;
 };
 
+const BUDGET_DATE_FILTER_KEY = "budget-kanban:date-range";
+
 export default function BudgetKanbanPage() {
   const navigate = useNavigate();
   const today = new Date();
-  const [dateRange, setDateRange] = useState({
-    from: startOfMonth(today),
-    to: today,
+  const [dateRange, setDateRange] = useState(() => {
+    try {
+      const saved = localStorage.getItem(BUDGET_DATE_FILTER_KEY);
+      if (saved) {
+        const parsed = JSON.parse(saved) as { from?: string; to?: string };
+        const from = parsed.from ? new Date(`${parsed.from}T00:00:00`) : null;
+        const to = parsed.to ? new Date(`${parsed.to}T00:00:00`) : null;
+        if (from && to && !isNaN(from.getTime()) && !isNaN(to.getTime())) {
+          return { from, to };
+        }
+      }
+    } catch {
+      // ignore corrupted preference
+    }
+    return { from: startOfMonth(new Date()), to: new Date() };
   });
+
+  // Mantém o filtro de data pré-fixado entre visitas/recarregamentos.
+  useEffect(() => {
+    try {
+      localStorage.setItem(
+        BUDGET_DATE_FILTER_KEY,
+        JSON.stringify({
+          from: format(dateRange.from, "yyyy-MM-dd"),
+          to: format(dateRange.to, "yyyy-MM-dd"),
+        }),
+      );
+    } catch {
+      // storage indisponível: segue sem persistir
+    }
+  }, [dateRange]);
   const [columns, setColumns] = useState<KanbanColumn[]>([]);
   const [columnsInitialized, setColumnsInitialized] = useState(false);
   const [filterTecnico, setFilterTecnico] = useState("todos");
@@ -1840,6 +1869,38 @@ export default function BudgetKanbanPage() {
           </div>
           <div className="flex items-center gap-3">
             <div className="flex items-center gap-1.5">
+              <Select
+                value="custom"
+                onValueChange={(v) => {
+                  const now = new Date();
+                  const presets: Record<string, { from: Date; to: Date }> = {
+                    hoje: { from: startOfDay(now), to: now },
+                    "7d": { from: subDays(startOfDay(now), 7), to: now },
+                    mes: { from: startOfMonth(now), to: now },
+                    "30d": { from: subDays(startOfDay(now), 30), to: now },
+                    "3m": { from: subMonths(startOfDay(now), 3), to: now },
+                    "6m": { from: subMonths(startOfDay(now), 6), to: now },
+                  };
+                  const preset = presets[v];
+                  if (preset) {
+                    setDateRange(preset);
+                    setColumnsInitialized(false);
+                  }
+                }}
+              >
+                <SelectTrigger className="h-8 w-[130px] text-xs">
+                  <SelectValue placeholder="Período" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="custom">Período</SelectItem>
+                  <SelectItem value="hoje">Hoje</SelectItem>
+                  <SelectItem value="7d">Últimos 7 dias</SelectItem>
+                  <SelectItem value="mes">Este mês</SelectItem>
+                  <SelectItem value="30d">Últimos 30 dias</SelectItem>
+                  <SelectItem value="3m">Últimos 3 meses</SelectItem>
+                  <SelectItem value="6m">Últimos 6 meses</SelectItem>
+                </SelectContent>
+              </Select>
               <Popover>
                 <PopoverTrigger asChild>
                   <Button variant="outline" size="sm" className="gap-1.5 text-xs">
