@@ -1869,6 +1869,38 @@ export default function BudgetKanbanPage() {
           </div>
           <div className="flex items-center gap-3">
             <div className="flex items-center gap-1.5">
+              <Select
+                value="custom"
+                onValueChange={(v) => {
+                  const now = new Date();
+                  const presets: Record<string, { from: Date; to: Date }> = {
+                    hoje: { from: startOfDay(now), to: now },
+                    "7d": { from: subDays(startOfDay(now), 7), to: now },
+                    mes: { from: startOfMonth(now), to: now },
+                    "30d": { from: subDays(startOfDay(now), 30), to: now },
+                    "3m": { from: subMonths(startOfDay(now), 3), to: now },
+                    "6m": { from: subMonths(startOfDay(now), 6), to: now },
+                  };
+                  const preset = presets[v];
+                  if (preset) {
+                    setDateRange(preset);
+                    setColumnsInitialized(false);
+                  }
+                }}
+              >
+                <SelectTrigger className="h-8 w-[130px] text-xs">
+                  <SelectValue placeholder="Período" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="custom">Período</SelectItem>
+                  <SelectItem value="hoje">Hoje</SelectItem>
+                  <SelectItem value="7d">Últimos 7 dias</SelectItem>
+                  <SelectItem value="mes">Este mês</SelectItem>
+                  <SelectItem value="30d">Últimos 30 dias</SelectItem>
+                  <SelectItem value="3m">Últimos 3 meses</SelectItem>
+                  <SelectItem value="6m">Últimos 6 meses</SelectItem>
+                </SelectContent>
+              </Select>
               <Popover>
                 <PopoverTrigger asChild>
                   <Button variant="outline" size="sm" className="gap-1.5 text-xs">
