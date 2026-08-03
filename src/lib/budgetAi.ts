@@ -91,6 +91,8 @@ export type BudgetAiResponseMeta = {
   history_os?: number;
   history_budgets?: number;
   history_error?: string | null;
+  credits_used?: boolean;
+  sources_ready?: boolean;
   web?: boolean;
   elapsed_ms?: number;
 };
@@ -245,7 +247,7 @@ export type BudgetAiPartsHistoryPayload = {
   pecas?: BudgetAiPartOccurrence[];
   consolidado_servicos?: BudgetAiPartHistoryItem[];
   servicos?: BudgetAiPartOccurrence[];
-  totais?: { os?: number; orcamentos?: number; itens?: number };
+  totais?: { os?: number; orcamentos?: number; itens?: number; itens_servicos?: number };
 };
 
 export type BudgetAiPartsHistoryContext = {

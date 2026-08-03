@@ -15,14 +15,46 @@ const statusLabel: Record<BudgetAiStructuredAnalysis["status"], string> = {
   validacao_adicional: "Validação adicional necessária",
 };
 
+function SourceCoverage({ meta }: { meta: BudgetAiResponseMeta }) {
+  return (
+    <section className="grid gap-2 sm:grid-cols-2">
+      <div className={`rounded-md border p-3 ${meta.docs_error ? "border-amber-300 bg-amber-50" : "bg-background"}`}>
+        <h5 className="flex items-center gap-1.5 font-semibold">
+          <FileSearch className="h-4 w-4" /> Biblioteca CHAT
+        </h5>
+        <p className="mt-1 text-xs">
+          {meta.docs ?? 0} documento(s) carregado(s)
+          {meta.docs_candidates !== undefined ? ` de ${meta.docs_candidates} candidato(s)` : ""}.
+        </p>
+        {meta.docs_titles && meta.docs_titles.length > 0 && (
+          <p className="mt-1 break-words text-[11px] text-muted-foreground">{meta.docs_titles.join(" · ")}</p>
+        )}
+        {meta.docs_error && <p className="mt-1 text-[11px] font-medium text-amber-800">{meta.docs_error}</p>}
+      </div>
+      <div className={`rounded-md border p-3 ${meta.history_error ? "border-amber-300 bg-amber-50" : "bg-background"}`}>
+        <h5 className="flex items-center gap-1.5 font-semibold">
+          <Wrench className="h-4 w-4" /> Histórico do equipamento
+        </h5>
+        <p className="mt-1 text-xs">
+          {meta.history_items ?? 0} item(ns) encontrado(s) em {meta.history_os ?? 0} OS e {meta.history_budgets ?? 0} orçamento(s).
+        </p>
+        {meta.history_error && <p className="mt-1 text-[11px] font-medium text-amber-800">{meta.history_error}</p>}
+      </div>
+    </section>
+  );
+}
+
 export default function BudgetAiAnalysisPanel({ analysis, legacyText, fallback, meta }: Props) {
   if (fallback) {
     return (
-      <div className="rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950">
-        <div className="mb-1 flex items-center gap-1.5 font-semibold">
-          <AlertTriangle className="h-4 w-4" /> A IA não concluiu esta análise
+      <div className="space-y-3">
+        <div className="rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950">
+          <div className="mb-1 flex items-center gap-1.5 font-semibold">
+            <AlertTriangle className="h-4 w-4" /> A IA não concluiu esta análise
+          </div>
+          <p className="whitespace-pre-wrap">{legacyText || "Revise os dados técnicos manualmente e tente novamente."}</p>
         </div>
-        <p className="whitespace-pre-wrap">{legacyText || "Revise os dados técnicos manualmente e tente novamente."}</p>
+        {meta && <SourceCoverage meta={meta} />}
       </div>
     );
   }
@@ -42,36 +74,7 @@ export default function BudgetAiAnalysisPanel({ analysis, legacyText, fallback, 
 
       <p className="font-medium leading-relaxed">{analysis.summary}</p>
 
-      {meta && (
-        <section className="grid gap-2 sm:grid-cols-2">
-          <div className={`rounded-md border p-3 ${meta.docs_error ? "border-amber-300 bg-amber-50" : "bg-background"}`}>
-            <h5 className="flex items-center gap-1.5 font-semibold">
-              <FileSearch className="h-4 w-4" /> Biblioteca CHAT
-            </h5>
-            <p className="mt-1 text-xs">
-              {meta.docs ?? 0} documento(s) carregado(s)
-              {meta.docs_candidates !== undefined ? ` de ${meta.docs_candidates} candidato(s)` : ""}.
-            </p>
-            {meta.docs_titles && meta.docs_titles.length > 0 && (
-              <p className="mt-1 break-words text-[11px] text-muted-foreground">{meta.docs_titles.join(" · ")}</p>
-            )}
-            {meta.docs_error && (
-              <p className="mt-1 text-[11px] font-medium text-amber-800">{meta.docs_error}</p>
-            )}
-          </div>
-          <div className={`rounded-md border p-3 ${meta.history_error ? "border-amber-300 bg-amber-50" : "bg-background"}`}>
-            <h5 className="flex items-center gap-1.5 font-semibold">
-              <Wrench className="h-4 w-4" /> Histórico do equipamento
-            </h5>
-            <p className="mt-1 text-xs">
-              {meta.history_items ?? 0} item(ns) encontrado(s) em {meta.history_os ?? 0} OS e {meta.history_budgets ?? 0} orçamento(s).
-            </p>
-            {meta.history_error && (
-              <p className="mt-1 text-[11px] font-medium text-amber-800">{meta.history_error}</p>
-            )}
-          </div>
-        </section>
-      )}
+      {meta && <SourceCoverage meta={meta} />}
 
       <section className="rounded-md border bg-background p-3">
         <h5 className="mb-2 flex items-center gap-1.5 font-semibold"><FileSearch className="h-4 w-4" /> Equipamento identificado</h5>
