@@ -19,7 +19,7 @@ import {
   FileText, Plus, GripVertical, Trash2, Edit2, Check, X, Filter, FileDown, Star,
   Pencil, Save, Sparkles, Brain, Loader2, MessageCircle, Send, Wrench
 } from "lucide-react";
-import { format, startOfMonth } from "date-fns";
+import { format, startOfMonth, startOfDay, subMonths } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { useNavigate } from "react-router-dom";
 import { DragDropContext, Droppable, Draggable, DropResult } from "@hello-pangea/dnd";
@@ -27,6 +27,10 @@ import { toast } from "sonner";
 import {
   evaluateBudgetSyncStatus,
   moveBudgetKanbanCard,
+  BUDGET_BACKLOG_MONTHS,
+  getBudgetAgingLevel,
+  getBudgetCardAgeDays,
+  isUnresolvedBudgetCard,
   RESOLVED_WITHOUT_BUDGET_COLUMN,
   shouldAutoRouteToDoneToday,
 } from "@/lib/budgetKanban";
