@@ -5,6 +5,7 @@ import { identifyKnownEquipment as identifyKnownEquipmentByCode } from "./equipm
 import { evaluateBudgetSourcePreflight } from "./source-preflight.ts";
 import {
   buildPdfPageSample,
+  canonicalTechnicalDocumentKey,
   expandTechnicalTerms,
   scoreTechnicalText,
   unrelatedDocumentPenalty,
@@ -707,7 +708,7 @@ async function fetchInternalTechDocs(query?: string, equipamento?: string, optio
         if (/\.(md|txt|html?)$/i.test(String(file.name || ""))) score += 7;
         else if (/\.pdf$/i.test(String(file.name || ""))) score += 3;
         if (isIndex) score -= 12;
-        score += unrelatedDocumentPenalty(fullPath, questionSearchTerms);
+        score += unrelatedDocumentPenalty(fullPath, [...questionSearchTerms, ...modelSearchTerms]);
         return score;
       };
 
@@ -764,11 +765,19 @@ async function fetchInternalTechDocs(query?: string, equipamento?: string, optio
       await collectFolder(DRIVE_FOLDER_ID, "", 0, 0);
 
       const ranked = Array.from(candidates.values()).sort((a, b) => b.score - a.score);
+      const loadedDocumentKeys = new Set<string>();
       result.folders_scanned = foldersListed;
       result.candidates_found = ranked.length;
       for (const candidate of ranked) {
         if (limitReached()) break;
+        const documentKey = canonicalTechnicalDocumentKey(String(candidate.file.name || ""));
+        if (documentKey && loadedDocumentKeys.has(documentKey)) {
+          result.skipped_files.push(`${candidate.path}/${candidate.file.name} (duplicado de documento já carregado)`);
+          continue;
+        }
+        const filesBefore = totalFilesRead;
         await processFile(candidate.file, candidate.path);
+        if (documentKey && totalFilesRead > filesBefore) loadedDocumentKeys.add(documentKey);
       }
 
       if (totalFilesRead === 0) {

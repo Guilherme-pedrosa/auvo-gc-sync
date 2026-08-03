@@ -3,6 +3,7 @@ import { identifyKnownEquipment } from "../../supabase/functions/genspark-ai/equ
 import { evaluateBudgetSourcePreflight } from "../../supabase/functions/genspark-ai/source-preflight";
 import {
   buildPdfPageSample,
+  canonicalTechnicalDocumentKey,
   expandTechnicalTerms,
   scoreTechnicalText,
   unrelatedDocumentPenalty,
@@ -36,6 +37,16 @@ describe("identificação e busca técnica UNOX", () => {
     const terms = expandTechnicalTerms(["placa", "power", "ventilador"]);
     expect(unrelatedDocumentPenalty("Como colocar os fornos em modo show.pdf", terms)).toBeLessThan(0);
     expect(unrelatedDocumentPenalty("23 - PLACAS DE POTÊNCIA.pdf", terms)).toBe(0);
+  });
+
+  it("rebaixa SERIE5E quando o equipamento identificado é MINDMaps", () => {
+    expect(unrelatedDocumentPenalty("UNOX/CHEFTOP_SERIE5E/manual.pdf", ["mindmaps"]))
+      .toBeLessThan(0);
+  });
+
+  it("reconhece cópias do mesmo procedimento", () => {
+    expect(canonicalTechnicalDocumentKey("UNOX_PROCEDIMENTO_DE_RESET_DA_PLACA.pdf"))
+      .toBe(canonicalTechnicalDocumentKey("NOVO_PROCEDIMENTO_DE_RESET_DA_PLACA (1) - Copia.pdf"));
   });
 
   it("amostra início e páginas distribuídas de catálogos extensos", () => {
