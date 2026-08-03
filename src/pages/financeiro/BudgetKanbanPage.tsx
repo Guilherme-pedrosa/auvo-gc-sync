@@ -225,6 +225,20 @@ export default function BudgetKanbanPage() {
     return { warning, critical };
   }, [data]);
 
+  // Quando o backlog de 6 meses chega depois do período filtrado, o conjunto de
+  // cards muda: é preciso reprocessar as colunas para que as pendências entrem.
+  const lastItemsSignature = useRef<string>("");
+  useEffect(() => {
+    if (!data?.items) return;
+    const signature = data.items
+      .map((item) => item.auvo_task_id)
+      .sort()
+      .join(",");
+    if (signature === lastItemsSignature.current) return;
+    lastItemsSignature.current = signature;
+    setColumnsInitialized(false);
+  }, [data]);
+
   const [isSyncing, setIsSyncing] = useState(false);
 
   const handleSync = useCallback(async () => {
@@ -2095,7 +2109,12 @@ export default function BudgetKanbanPage() {
                                   snapshot.isDraggingOver ? "bg-accent/50" : ""
                                 }`}
                               >
-                                {column.items.map((item, index) => (
+                                {column.items.map((item, index) => {
+                                  // Cards já resolvidos manualmente não envelhecem.
+                                  const agingLevel = column.id === RESOLVED_WITHOUT_BUDGET_COLUMN
+                                    ? "normal"
+                                    : getBudgetAgingLevel(item);
+                                  return (
                                   <Draggable
                                     key={item.auvo_task_id}
                                     draggableId={item.auvo_task_id}
@@ -2110,9 +2129,9 @@ export default function BudgetKanbanPage() {
                                         className={`rounded-md border bg-card shadow-sm transition-shadow cursor-pointer ${
                                           snapshot.isDragging ? "shadow-lg ring-2 ring-primary/20" : "hover:shadow-md"
                                         } ${item.orcamento_realizado ? "border-l-4 border-l-emerald-500" : item.os_realizada ? "border-l-4 border-l-blue-500" : "border-l-4 border-l-amber-400"} ${
-                                          getBudgetAgingLevel(item) === "critical"
+                                          agingLevel === "critical"
                                             ? "border-l-red-600 border-red-400 bg-red-50 animate-blink-danger"
-                                            : getBudgetAgingLevel(item) === "warning"
+                                            : agingLevel === "warning"
                                               ? "border-l-yellow-500 border-yellow-400 bg-yellow-50"
                                               : ""
                                         }`}
@@ -2132,11 +2151,11 @@ export default function BudgetKanbanPage() {
                                             <p className="text-xs text-muted-foreground mt-0.5">
                                               {item.tecnico} • {item.data_tarefa}
                                             </p>
-                                            {getBudgetAgingLevel(item) !== "normal" && (
+                                            {agingLevel !== "normal" && (
                                               <Badge
                                                 variant="outline"
                                                 className={`mt-1 text-[10px] h-5 ${
-                                                  getBudgetAgingLevel(item) === "critical"
+                                                  agingLevel === "critical"
                                                     ? "border-red-500 text-red-700 bg-red-100"
                                                     : "border-yellow-500 text-yellow-800 bg-yellow-100"
                                                 }`}
@@ -2335,7 +2354,8 @@ export default function BudgetKanbanPage() {
                                       </div>
                                     )}
                                   </Draggable>
-                                ))}
+                                  );
+                                })}
                                 {provided.placeholder}
                               </div>
                             )}
