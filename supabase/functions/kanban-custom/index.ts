@@ -18,6 +18,14 @@ const MIN_DELAY_MS = 200;
 let lastAuvoCall = 0;
 let lastGcCall = 0;
 
+// Orçamento de tempo: a edge function é abortada em 150s (IDLE_TIMEOUT).
+// Paramos de paginar antes disso e devolvemos resultado parcial.
+const TIME_BUDGET_MS = 110_000;
+let deadlineAt = Number.POSITIVE_INFINITY;
+function outOfTime(): boolean {
+  return Date.now() > deadlineAt;
+}
+
 function inDateRange(dateValue: string | undefined, startDate: string, endDate: string): boolean {
   const dateOnly = String(dateValue || "").split("T")[0];
   if (!dateOnly || !/^\d{4}-\d{2}-\d{2}$/.test(dateOnly)) return true;
@@ -93,6 +101,10 @@ async function fetchAuvoTasksAll(
   console.log(`[kanban-custom] Auvo paramFilter: ${JSON.stringify(filterObj)}`);
 
   while (page <= MAX_PAGES) {
+    if (outOfTime()) {
+      console.warn(`[kanban-custom] Deadline atingido em Auvo /tasks na página ${page}; retornando parcial`);
+      break;
+    }
     const paramFilter = encodeURIComponent(JSON.stringify(filterObj));
     const url = `${AUVO_BASE_URL}/tasks/?page=${page}&pageSize=${pageSize}&order=desc&paramFilter=${paramFilter}`;
 
@@ -160,6 +172,10 @@ async function fetchGcOsMapByAttr(
   const MAX_PAGES = 30;
 
   while (page <= totalPages && page <= MAX_PAGES) {
+    if (outOfTime()) {
+      console.warn(`[kanban-custom] Deadline atingido em GC ${label} na página ${page}; retornando parcial`);
+      break;
+    }
     let url = `${GC_BASE_URL}/api/ordens_servicos?limite=100&pagina=${page}`;
     if (startDate) url += `&data_inicio=${startDate}`;
     if (endDate) url += `&data_fim=${endDate}`;
