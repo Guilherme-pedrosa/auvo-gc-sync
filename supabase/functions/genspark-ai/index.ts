@@ -372,41 +372,31 @@ async function fetchInternalTechDocs(query?: string, equipamento?: string, optio
     }
   };
 
-  const extractPdfText = async (bytes: Uint8Array): Promise<string> => {
+  type PdfExtractionResult = { text: string; error: string };
+
+  const extractPdfText = async (bytes: Uint8Array): Promise<PdfExtractionResult> => {
+    let parseError = "";
     try {
       const parsePromise = (async () => {
-        const { getDocumentProxy } = await import("npm:unpdf@1.8.0");
+        const { extractText, getDocumentProxy } = await import("npm:unpdf@1.8.0");
         // pdf.js may transfer/detach the supplied buffer. Keep the original
         // available for the OCR fallback when a PDF has no embedded text.
         const pdf = await getDocumentProxy(bytes.slice(), { maxImageSize: 16_777_216 });
-        const pageLimit = Math.min(Number(pdf.numPages || 0), 50);
-        const pages: string[] = [];
-        try {
-          for (let pageNumber = 1; pageNumber <= pageLimit; pageNumber++) {
-            const page = await pdf.getPage(pageNumber);
-            const content = await page.getTextContent();
-            const text = (content.items || [])
-              .map((item: any) => String(item?.str || "").trim())
-              .filter(Boolean)
-              .join(" ");
-            if (text) pages.push(`[p. ${pageNumber}] ${text}`);
-            if (pages.join(" ").length >= 24000) break;
-          }
-        } finally {
-          await pdf.destroy();
-        }
-        return pages.join("\n").replace(/\s+/g, " ").trim();
+        const extracted = await extractText(pdf, { mergePages: true });
+        return String(extracted.text || "").replace(/\s+/g, " ").trim().slice(0, 24000);
       })();
 
       const parsed = await Promise.race([
         parsePromise,
-        new Promise<string>((_, reject) => setTimeout(() => reject(new Error("PDF_PARSE_TIMEOUT")), 10000)),
+        new Promise<string>((_, reject) => setTimeout(() => reject(new Error("PDF_PARSE_TIMEOUT")), 20000)),
       ]);
-      if (parsed.length > 50) return parsed;
+      if (parsed.length > 50) return { text: parsed, error: "" };
+      parseError = "UNPDF_EMPTY_TEXT";
     } catch (error) {
-      console.warn("[genspark-ai] [internal-docs] unpdf falhou; usando extração simples:", error instanceof Error ? error.message : String(error));
+      parseError = error instanceof Error ? error.message : String(error);
+      console.warn("[genspark-ai] [internal-docs] unpdf falhou; usando extração simples:", parseError);
     }
-    return extractPdfTextFallback(bytes);
+    return { text: extractPdfTextFallback(bytes), error: parseError };
   };
 
   const ocrPdfViaVision = async (pdfBytes: Uint8Array, fileName: string): Promise<string> => {
@@ -616,18 +606,21 @@ async function fetchInternalTechDocs(query?: string, equipamento?: string, optio
             result.skipped_files.push(`${fullPath} (${Math.round(buf.byteLength / 1024 / 1024)}MB — muito grande)`);
             return;
           }
-          const pdfText = await extractPdfText(buf);
-          if (pdfText.length > 50) {
-            addResult(fullPath, pdfText, "📕");
+          const pdfExtraction = await extractPdfText(buf);
+          if (pdfExtraction.text.length > 50) {
+            addResult(fullPath, pdfExtraction.text, "📕");
           } else {
+            const parseDiagnostic = pdfExtraction.error
+              ? `; unpdf: ${pdfExtraction.error.slice(0, 160)}`
+              : "";
             if (SKIP_OCR || fileSize > MAX_OCR_DOC_BYTES) {
-              result.skipped_files.push(`${fullPath} (PDF scan — OCR ignorado)`);
+              result.skipped_files.push(`${fullPath} (PDF sem texto extraído — OCR ignorado${parseDiagnostic})`);
             } else {
               const ocrText = await ocrPdfViaVision(buf, fullPath);
               if (ocrText.length > 50) {
                 addResult(fullPath, ocrText, "🔍");
               } else {
-                result.skipped_files.push(`${fullPath} (PDF scan — OCR sem resultado)`);
+                result.skipped_files.push(`${fullPath} (PDF sem texto extraído — OCR sem resultado${parseDiagnostic})`);
               }
             }
           }
@@ -661,6 +654,8 @@ async function fetchInternalTechDocs(query?: string, equipamento?: string, optio
         for (const term of filterTerms) if (text.includes(term)) score += 2;
         if (/catalogo de pecas|vista explodida|parts catalog/.test(text)) score += 12;
         if (/manual de servico|manual tecnico|service manual/.test(text)) score += 10;
+        if (/servicereferenz|service referenz|referencia de servico/.test(text)) score += 18;
+        if (/training manual|manual de treinamento|(^|\s)tm(\s|$)|_tm_/.test(text)) score += 12;
         if (/preventiv|manutenc|procedimento|boletim|esquema/.test(text)) score += 5;
         return score;
       };
