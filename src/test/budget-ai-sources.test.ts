@@ -58,10 +58,16 @@ describe("identificação e busca técnica UNOX", () => {
 });
 
 describe("pré-validação das fontes da IA", () => {
-  it("bloqueia a cobrança quando a biblioteca não foi carregada", () => {
-    const result = evaluateBudgetSourcePreflight({ docsCount: 0, historyLoaded: true });
+  it("bloqueia a cobrança quando a biblioteca falhou", () => {
+    const result = evaluateBudgetSourcePreflight({ docsCount: 0, historyLoaded: true, docsError: "Drive 403" });
     expect(result.ready).toBe(false);
     expect(result.failures[0]).toContain("Biblioteca CHAT");
+  });
+
+  it("libera a análise quando a biblioteca está vazia sem erro", () => {
+    const result = evaluateBudgetSourcePreflight({ docsCount: 0, historyLoaded: true });
+    expect(result.ready).toBe(true);
+    expect(result.warnings[0]).toContain("Biblioteca CHAT");
   });
 
   it("bloqueia a cobrança quando o histórico falhou", () => {
