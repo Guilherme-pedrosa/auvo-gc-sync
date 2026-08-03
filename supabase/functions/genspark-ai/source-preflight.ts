@@ -8,20 +8,30 @@ export type BudgetSourcePreflightInput = {
 export type BudgetSourcePreflightResult = {
   ready: boolean;
   failures: string[];
+  warnings: string[];
 };
 
 /**
- * Paid analysis may only start after the internal library was actually read
- * and the equipment-history lookup completed. An empty but successful history
- * is valid; a failed/not-executed lookup is not.
+ * Paid analysis is blocked only when a source pipeline actually FAILED.
+ * An empty-but-successful library (no adherent document for this equipment)
+ * or an empty history is valid evidence — it degrades to a warning.
  */
 export function evaluateBudgetSourcePreflight(input: BudgetSourcePreflightInput): BudgetSourcePreflightResult {
   const failures: string[] = [];
-  if (Number(input.docsCount || 0) <= 0) {
-    failures.push(`Biblioteca CHAT não carregada: ${input.docsError || "nenhum documento aderente foi extraído"}`);
+  const warnings: string[] = [];
+  const docsError = String(input.docsError || "").trim();
+  if (docsError) {
+    failures.push(`Biblioteca CHAT não carregada: ${docsError}`);
+  } else if (Number(input.docsCount || 0) <= 0) {
+    warnings.push("Biblioteca CHAT consultada, mas nenhum documento aderente foi encontrado para este equipamento.");
   }
   if (!input.historyLoaded) {
-    failures.push(`Histórico do equipamento não carregado: ${input.historyError || "a consulta não foi concluída"}`);
+    const historyError = String(input.historyError || "").trim();
+    if (historyError) {
+      failures.push(`Histórico do equipamento não carregado: ${historyError}`);
+    } else {
+      warnings.push("Histórico do equipamento não retornou itens; a análise seguirá sem esse reforço.");
+    }
   }
-  return { ready: failures.length === 0, failures };
+  return { ready: failures.length === 0, failures, warnings };
 }
