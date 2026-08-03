@@ -2138,7 +2138,8 @@ export default function BudgetKanbanPage() {
                               >
                                 {column.items.map((item, index) => {
                                   // Cards já resolvidos manualmente não envelhecem.
-                                  const agingLevel = column.id === RESOLVED_WITHOUT_BUDGET_COLUMN
+                                  const isResolvedColumn = isResolvedBudgetColumn(column.id, column.title);
+                                  const agingLevel = isResolvedColumn
                                     ? "normal"
                                     : getBudgetAgingLevel(item);
                                   return (
@@ -2336,7 +2337,7 @@ export default function BudgetKanbanPage() {
                                             </div>
 
                                             {/* Detalhes da resolução (quando na coluna Já Resolvido) */}
-                                            {column.id === "resolvido_sem_orcamento" && resolutionDetails[item.auvo_task_id] && (
+                                            {isResolvedColumn && resolutionDetails[item.auvo_task_id] && (
                                               <div className="mt-2 pt-2 border-t text-[11px] bg-emerald-50/50 -mx-2 px-2 py-2 rounded">
                                                 <div className="font-semibold text-emerald-800 mb-0.5">📝 Motivo:</div>
                                                 <div className="text-emerald-900 whitespace-pre-wrap break-words">
@@ -2352,7 +2353,7 @@ export default function BudgetKanbanPage() {
 
                                             {/* Botão: Resolvido sem orçamento / Reabrir / Editar motivo */}
                                             <div className="mt-2 pt-2 border-t flex gap-1" onClick={(e) => e.stopPropagation()}>
-                                              {column.id === "resolvido_sem_orcamento" ? (
+                                              {isResolvedColumn && resolutionDetails[item.auvo_task_id] ? (
                                                 <>
                                                   <Button
                                                     size="sm"
