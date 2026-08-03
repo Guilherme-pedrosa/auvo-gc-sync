@@ -120,10 +120,37 @@ type ApiResponse = {
 export default function BudgetKanbanPage() {
   const navigate = useNavigate();
   const today = new Date();
-  const [dateRange, setDateRange] = useState({
-    from: startOfMonth(today),
-    to: today,
+  const [dateRange, setDateRange] = useState(() => {
+    try {
+      const saved = localStorage.getItem(BUDGET_DATE_FILTER_KEY);
+      if (saved) {
+        const parsed = JSON.parse(saved) as { from?: string; to?: string };
+        const from = parsed.from ? new Date(`${parsed.from}T00:00:00`) : null;
+        const to = parsed.to ? new Date(`${parsed.to}T00:00:00`) : null;
+        if (from && to && !isNaN(from.getTime()) && !isNaN(to.getTime())) {
+          return { from, to };
+        }
+      }
+    } catch {
+      // ignore corrupted preference
+    }
+    return { from: startOfMonth(new Date()), to: new Date() };
   });
+
+  // Mantém o filtro de data pré-fixado entre visitas/recarregamentos.
+  useEffect(() => {
+    try {
+      localStorage.setItem(
+        BUDGET_DATE_FILTER_KEY,
+        JSON.stringify({
+          from: format(dateRange.from, "yyyy-MM-dd"),
+          to: format(dateRange.to, "yyyy-MM-dd"),
+        }),
+      );
+    } catch {
+      // storage indisponível: segue sem persistir
+    }
+  }, [dateRange]);
   const [columns, setColumns] = useState<KanbanColumn[]>([]);
   const [columnsInitialized, setColumnsInitialized] = useState(false);
   const [filterTecnico, setFilterTecnico] = useState("todos");
