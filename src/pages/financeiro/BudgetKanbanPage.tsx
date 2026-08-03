@@ -915,23 +915,34 @@ export default function BudgetKanbanPage() {
     });
   }, []);
 
-  // Load resolution details for tasks currently in "resolvido_sem_orcamento"
+  // Carrega o motivo da resolução de todos os cards em colunas de "já resolvido"
+  // (coluna de sistema ou custom criada pelo usuário), mesmo de registros antigos.
   useEffect(() => {
     const taskIds = columns
-      .find((c) => c.id === "resolvido_sem_orcamento")?.items.map((i) => i.auvo_task_id) || [];
+      .filter((c) => isResolvedBudgetColumn(c.id, c.title))
+      .flatMap((c) => c.items.map((i) => i.auvo_task_id));
     if (taskIds.length === 0) return;
     const missing = taskIds.filter((id) => !(id in resolutionDetails));
     if (missing.length === 0) return;
     (async () => {
-      const { data, error } = await supabase
-        .from("kanban_resolution_details" as any)
-        .select("auvo_task_id, motivo, resolvido_por_nome, resolvido_em")
-        .eq("ativo", true)
-        .in("auvo_task_id", missing);
-      if (error || !data) return;
+      const chunks: string[][] = [];
+      for (let i = 0; i < missing.length; i += 200) chunks.push(missing.slice(i, i + 200));
+      const rows: any[] = [];
+      for (const chunk of chunks) {
+        const { data, error } = await supabase
+          .from("kanban_resolution_details" as any)
+          .select("auvo_task_id, motivo, resolvido_por_nome, resolvido_em")
+          .in("auvo_task_id", chunk)
+          .order("resolvido_em", { ascending: false });
+        if (error) return;
+        rows.push(...(data || []));
+      }
+      if (rows.length === 0) return;
       setResolutionDetails((prev) => {
         const next = { ...prev };
-        for (const row of data as any[]) {
+        for (const row of rows) {
+          // Ordenado do mais recente para o mais antigo: mantém o primeiro.
+          if (next[row.auvo_task_id]) continue;
           next[row.auvo_task_id] = {
             motivo: row.motivo,
             resolvido_por_nome: row.resolvido_por_nome,
