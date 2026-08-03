@@ -37,6 +37,7 @@ import {
   extractBudgetAiPhotos,
   withBudgetAiTimeout,
   buildPartsHistoryContext,
+  type BudgetAiPartsHistoryPayload,
   type BudgetAiResponseMeta,
   type BudgetAiStructuredAnalysis,
 } from "@/lib/budgetAi";
@@ -1442,28 +1443,38 @@ export default function BudgetKanbanPage() {
   };
 
   // Cache do rastreio de peças por equipamento/tarefa, evita refetch a cada análise
-  const partsHistoryCache = useRef(new Map<string, any>());
+  type PartsHistoryFetchResult = {
+    payload: BudgetAiPartsHistoryPayload | null;
+    error: string | null;
+  };
+  const partsHistoryCache = useRef(new Map<string, PartsHistoryFetchResult>());
 
   const fetchPartsHistory = async (card: KanbanItem, equipmentId: string, equipmentName: string) => {
-    const cacheKey = equipmentId || equipmentName || card.auvo_task_id;
+    const cacheKey = `${card.auvo_task_id}|${equipmentId}|${equipmentName}`;
     if (partsHistoryCache.current.has(cacheKey)) return partsHistoryCache.current.get(cacheKey);
     try {
-      const { data } = await withBudgetAiTimeout(
+      const { data, error } = await withBudgetAiTimeout(
         supabase.functions.invoke("equipamento-pecas", {
           body: {
             auvo_task_id: card.auvo_task_id,
             identificador: equipmentId || undefined,
-            equipamento_nome: equipmentName || undefined,
+            nome: equipmentName || undefined,
           },
         }),
         45000,
       );
-      const payload = data?.ok ? data : null;
-      partsHistoryCache.current.set(cacheKey, payload);
-      return payload;
+      if (error) throw error;
+      if (!data?.ok) throw new Error(data?.error || "O rastreio não retornou um resultado válido");
+      const result: PartsHistoryFetchResult = { payload: data as BudgetAiPartsHistoryPayload, error: null };
+      partsHistoryCache.current.set(cacheKey, result);
+      return result;
     } catch (error) {
       console.warn("[budget-kanban] Falha ao carregar histórico de peças:", error);
-      return null;
+      // Não grave falha no cache: a próxima tentativa deve consultar novamente.
+      return {
+        payload: null,
+        error: error instanceof Error ? error.message : "Falha desconhecida ao carregar o histórico",
+      } satisfies PartsHistoryFetchResult;
     }
   };
 
@@ -1486,7 +1497,8 @@ export default function BudgetKanbanPage() {
       photos,
     });
 
-    const historyPayload = await fetchPartsHistory(card, equipmentId, equipment);
+    const historyFetch = await fetchPartsHistory(card, equipmentId, equipment);
+    const historyPayload = historyFetch?.payload || null;
     const partsHistory = buildPartsHistoryContext(
       historyPayload,
       [parts, services].filter(Boolean).join("\n"),
@@ -1495,6 +1507,7 @@ export default function BudgetKanbanPage() {
     return {
       readiness,
       partsHistory,
+      historyFetch,
       context: {
         cliente: card.cliente,
         tecnico: card.tecnico,
@@ -1510,6 +1523,12 @@ export default function BudgetKanbanPage() {
         fotos: photos,
         historico_pecas: partsHistory?.text || "",
         historico_pecas_matches: partsHistory?.matches || [],
+        historico_pecas_meta: {
+          items: Number(historyPayload?.totais?.itens || 0) + Number(historyPayload?.servicos?.length || 0),
+          os: Number(historyPayload?.totais?.os || 0),
+          orcamentos: Number(historyPayload?.totais?.orcamentos || 0),
+          error: historyFetch?.error || null,
+        },
         todas_respostas: card.questionario_respostas
           .filter((answer) => answer.reply && !/https?:\/\//i.test(answer.reply))
           .map((answer) => `${answer.question}: ${answer.reply}`)
@@ -1546,7 +1565,7 @@ export default function BudgetKanbanPage() {
         supabase.functions.invoke("genspark-ai", {
           body: { action: "analyze", context: request.context },
         }),
-        60000,
+        120000,
       );
 
       // Handle structured errors from edge function
@@ -1567,7 +1586,7 @@ export default function BudgetKanbanPage() {
     } catch (e: any) {
       console.error("[BudgetKanban] AI analysis error:", e);
       const timedOut = e?.message === "AI_REQUEST_TIMEOUT";
-      const message = timedOut ? "A análise excedeu 60 segundos e foi interrompida." : "A IA não retornou uma análise válida.";
+      const message = timedOut ? "A análise com histórico e documentos excedeu 120 segundos e foi interrompida." : "A IA não retornou uma análise válida.";
       toast.error(message);
       setAiAnalysis(buildAiFallback(message));
       setAiAnalysisIsFallback(true);
@@ -1625,6 +1644,7 @@ export default function BudgetKanbanPage() {
       const localEquipment = extractEquipmentFromCard(selectedCard);
       const equipamento = resolvedEquipment?.nome || localEquipment.nome || "";
       const equipamentoId = resolvedEquipment?.id || localEquipment.id || "";
+      const historyFetch = await fetchPartsHistory(selectedCard, equipamentoId, equipamento);
 
       const { data: result, error } = await withBudgetAiTimeout(
         supabase.functions.invoke("genspark-ai", {
@@ -1646,7 +1666,7 @@ export default function BudgetKanbanPage() {
               servicos: getAnswer(selectedCard, "serviços") || getAnswer(selectedCard, "servico") || "",
               observacoes: getAnswer(selectedCard, "observ") || "",
               historico_pecas: buildPartsHistoryContext(
-                partsHistoryCache.current.get(equipamentoId || equipamento || selectedCard.auvo_task_id),
+                historyFetch?.payload || null,
                 [
                   getAnswer(selectedCard, "peças") || getAnswer(selectedCard, "material") || "",
                   getAnswer(selectedCard, "serviços") || getAnswer(selectedCard, "servico") || "",

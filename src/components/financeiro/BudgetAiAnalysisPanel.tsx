@@ -42,6 +42,37 @@ export default function BudgetAiAnalysisPanel({ analysis, legacyText, fallback, 
 
       <p className="font-medium leading-relaxed">{analysis.summary}</p>
 
+      {meta && (
+        <section className="grid gap-2 sm:grid-cols-2">
+          <div className={`rounded-md border p-3 ${meta.docs_error ? "border-amber-300 bg-amber-50" : "bg-background"}`}>
+            <h5 className="flex items-center gap-1.5 font-semibold">
+              <FileSearch className="h-4 w-4" /> Biblioteca CHAT
+            </h5>
+            <p className="mt-1 text-xs">
+              {meta.docs ?? 0} documento(s) carregado(s)
+              {meta.docs_candidates !== undefined ? ` de ${meta.docs_candidates} candidato(s)` : ""}.
+            </p>
+            {meta.docs_titles && meta.docs_titles.length > 0 && (
+              <p className="mt-1 break-words text-[11px] text-muted-foreground">{meta.docs_titles.join(" · ")}</p>
+            )}
+            {meta.docs_error && (
+              <p className="mt-1 text-[11px] font-medium text-amber-800">{meta.docs_error}</p>
+            )}
+          </div>
+          <div className={`rounded-md border p-3 ${meta.history_error ? "border-amber-300 bg-amber-50" : "bg-background"}`}>
+            <h5 className="flex items-center gap-1.5 font-semibold">
+              <Wrench className="h-4 w-4" /> Histórico do equipamento
+            </h5>
+            <p className="mt-1 text-xs">
+              {meta.history_items ?? 0} item(ns) encontrado(s) em {meta.history_os ?? 0} OS e {meta.history_budgets ?? 0} orçamento(s).
+            </p>
+            {meta.history_error && (
+              <p className="mt-1 text-[11px] font-medium text-amber-800">{meta.history_error}</p>
+            )}
+          </div>
+        </section>
+      )}
+
       <section className="rounded-md border bg-background p-3">
         <h5 className="mb-2 flex items-center gap-1.5 font-semibold"><FileSearch className="h-4 w-4" /> Equipamento identificado</h5>
         <div className="grid gap-1 text-xs sm:grid-cols-2">
@@ -136,7 +167,7 @@ export default function BudgetAiAnalysisPanel({ analysis, legacyText, fallback, 
 
       {meta && (
         <div className="border-t pt-2 text-[10px] text-muted-foreground">
-          Modelo: {meta.model || "não informado"} · Modo: {meta.mode || "standard"} · Fotos usadas: {meta.photos_used ?? 0}/{meta.photos_received ?? 0} · Docs: {meta.docs ?? 0} · Web: {meta.web ? "sim" : "não"} · {meta.elapsed_ms ?? 0} ms
+          Modelo: {meta.model || "não informado"} · Modo: {meta.mode || "standard"} · Fotos usadas: {meta.photos_used ?? 0}/{meta.photos_received ?? 0} · Docs: {meta.docs ?? 0} · Histórico: {meta.history_items ?? 0} itens · Web: {meta.web ? "sim" : "não"} · {meta.elapsed_ms ?? 0} ms
         </div>
       )}
     </div>
