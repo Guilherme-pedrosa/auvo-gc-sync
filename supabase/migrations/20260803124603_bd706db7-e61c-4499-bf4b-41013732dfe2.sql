@@ -1,0 +1,1 @@
+UPDATE public.kanban_resolution_details SET motivo = 'Resolvido sem orçamento' WHERE auvo_task_id = '76833150' AND motivo = 'Teste de verificação da correção';
