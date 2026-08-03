@@ -24,8 +24,10 @@ import {
 } from "lucide-react";
 import { Map as MapIcon } from "lucide-react";
 import OSMapView from "@/components/financeiro/OSMapView";
+import OSAiAssistant from "@/components/financeiro/OSAiAssistant";
 import RouteCorridorFilter from "@/components/financeiro/RouteCorridorFilter";
 import FlagFilterPopover from "@/components/financeiro/FlagFilterPopover";
+import EquipamentoPecasDialog from "./EquipamentoPecasDialog";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { Label } from "@/components/ui/label";
@@ -76,6 +78,9 @@ type OSItem = {
   duracao_decimal: number | null;
   questionario_preenchido: boolean;
   questionario_respostas: { question: string; reply: string }[] | null;
+  equipamento_nome?: string | null;
+  equipamento_id_serie?: string | null;
+  auvo_equipment_id?: string | null;
   _coluna?: string;
 };
 
@@ -141,6 +146,7 @@ export default function OSKanbanPage() {
   const [allClientesSelected, setAllClientesSelected] = useState(true);
   const [showClienteFilter, setShowClienteFilter] = useState(false);
   const [selectedCard, setSelectedCard] = useState<OSItem | null>(null);
+  const [pecasCard, setPecasCard] = useState<OSItem | null>(null);
   const [isSyncing, setIsSyncing] = useState(false);
   const [syncStatus, setSyncStatus] = useState("");
   const [osDetail, setOsDetail] = useState<any>(null);
@@ -1614,7 +1620,7 @@ export default function OSKanbanPage() {
       )}
 
       <Dialog open={!!selectedCard} onOpenChange={(open) => !open && setSelectedCard(null)}>
-        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <span>OS {selectedCard?.gc_os_codigo}</span>
@@ -1861,6 +1867,12 @@ export default function OSKanbanPage() {
                 );
               })()}
 
+              <OSAiAssistant
+                os={selectedCard}
+                osDetail={osDetail}
+                onOpenParts={() => setPecasCard(selectedCard)}
+              />
+
               {selectedCard.orcamento_realizado && selectedCard.gc_orcamento_codigo && (
                 <div className="border rounded-md border-emerald-300 bg-emerald-50 dark:bg-emerald-950/20">
                   <div className="flex items-center gap-2 px-3 py-2 border-b border-emerald-300">
@@ -1982,6 +1994,20 @@ export default function OSKanbanPage() {
           )}
         </DialogContent>
       </Dialog>
+
+      {pecasCard && (
+        <EquipamentoPecasDialog
+          open={!!pecasCard}
+          onOpenChange={(open) => { if (!open) setPecasCard(null); }}
+          equipamento={{
+            nome: pecasCard.equipamento_nome || `Tarefa #${pecasCard.auvo_task_id}`,
+            cliente: pecasCard.cliente || null,
+            identificador: pecasCard.equipamento_id_serie || null,
+            auvo_equipment_id: pecasCard.auvo_equipment_id || null,
+            auvo_task_id: pecasCard.auvo_task_id,
+          }}
+        />
+      )}
 
       {/* Edit Task Modal */}
       <Dialog open={showEditModal} onOpenChange={setShowEditModal}>
