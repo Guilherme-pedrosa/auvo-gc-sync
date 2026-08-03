@@ -84,6 +84,13 @@ export type BudgetAiResponseMeta = {
   photos_used?: number;
   docs?: number;
   docs_titles?: string[];
+  docs_error?: string | null;
+  docs_listing_source?: string;
+  docs_candidates?: number;
+  history_items?: number;
+  history_os?: number;
+  history_budgets?: number;
+  history_error?: string | null;
   web?: boolean;
   elapsed_ms?: number;
 };

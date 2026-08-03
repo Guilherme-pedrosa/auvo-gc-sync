@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { AGENT_TOOLS, runAgentTool } from "./agent-tools.ts";
+import { parsePublicDriveFolderHtml } from "./drive-public-listing.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -148,6 +149,9 @@ type InternalDocsResult = {
   error: string | null;
   api_source: string;
   manufacturer_identified: string | null;
+  folders_scanned: number;
+  candidates_found: number;
+  listing_source: "drive_api" | "public_html" | "mixed" | "none";
 };
 
 // =========================================================================
@@ -308,14 +312,12 @@ async function fetchInternalTechDocs(query?: string, equipamento?: string, optio
     error: null,
     api_source: "google_drive_api",
     manufacturer_identified: null,
+    folders_scanned: 0,
+    candidates_found: 0,
+    listing_source: "none",
   };
 
   const API_KEY = Deno.env.get("GOOGLE_DRIVE_API_KEY");
-  if (!API_KEY) {
-    result.error = "GOOGLE_DRIVE_API_KEY não configurada no ambiente";
-    result.elapsed_ms = Date.now() - startTime;
-    return result;
-  }
 
   const equipStr = cleanEquipmentString(equipamento || query || "");
   const { manufacturer: manufacturerTerms, modelFamily } = await identifyManufacturerAndModel(equipStr);
@@ -370,7 +372,7 @@ async function fetchInternalTechDocs(query?: string, equipamento?: string, optio
   let totalFilesRead = 0;
   let totalChars = 0;
 
-  const extractPdfText = (bytes: Uint8Array): string => {
+  const extractPdfTextFallback = (bytes: Uint8Array): string => {
     try {
       const raw = new TextDecoder("latin1").decode(bytes);
       const textParts: string[] = [];
@@ -389,6 +391,43 @@ async function fetchInternalTechDocs(query?: string, equipamento?: string, optio
     } catch {
       return "";
     }
+  };
+
+  const extractPdfText = async (bytes: Uint8Array): Promise<string> => {
+    try {
+      const parsePromise = (async () => {
+        const { getDocumentProxy } = await import("npm:unpdf@1.8.0");
+        // pdf.js may transfer/detach the supplied buffer. Keep the original
+        // available for the OCR fallback when a PDF has no embedded text.
+        const pdf = await getDocumentProxy(bytes.slice(), { maxImageSize: 16_777_216 });
+        const pageLimit = Math.min(Number(pdf.numPages || 0), 50);
+        const pages: string[] = [];
+        try {
+          for (let pageNumber = 1; pageNumber <= pageLimit; pageNumber++) {
+            const page = await pdf.getPage(pageNumber);
+            const content = await page.getTextContent();
+            const text = (content.items || [])
+              .map((item: any) => String(item?.str || "").trim())
+              .filter(Boolean)
+              .join(" ");
+            if (text) pages.push(`[p. ${pageNumber}] ${text}`);
+            if (pages.join(" ").length >= 24000) break;
+          }
+        } finally {
+          await pdf.destroy();
+        }
+        return pages.join("\n").replace(/\s+/g, " ").trim();
+      })();
+
+      const parsed = await Promise.race([
+        parsePromise,
+        new Promise<string>((_, reject) => setTimeout(() => reject(new Error("PDF_PARSE_TIMEOUT")), 10000)),
+      ]);
+      if (parsed.length > 50) return parsed;
+    } catch (error) {
+      console.warn("[genspark-ai] [internal-docs] unpdf falhou; usando extração simples:", error instanceof Error ? error.message : String(error));
+    }
+    return extractPdfTextFallback(bytes);
   };
 
   const ocrPdfViaVision = async (pdfBytes: Uint8Array, fileName: string): Promise<string> => {
@@ -461,29 +500,93 @@ async function fetchInternalTechDocs(query?: string, equipamento?: string, optio
     console.log(`[genspark-ai] [internal-docs] Loaded: ${name} (${text.length} chars)`);
   };
 
+  let preferPublicHtml = !API_KEY;
+
   async function listFolder(folderId: string): Promise<any[]> {
     const files: any[] = [];
-    let pageToken = "";
-    do {
-      const params = new URLSearchParams({
-        q: `'${folderId}' in parents and trashed=false`,
-        key: API_KEY,
-        fields: "nextPageToken,files(id,name,mimeType,size,modifiedTime)",
-        pageSize: "1000",
-      });
-      if (pageToken) params.set("pageToken", pageToken);
-      const url = `https://www.googleapis.com/drive/v3/files?${params.toString()}`;
-      const resp = await fetchWithTimeout(url, {}, 10000);
-      if (!resp.ok) {
-        const errBody = await resp.text();
-        console.error(`[genspark-ai] [internal-docs] Drive list FAILED: HTTP ${resp.status}`);
-        throw new Error(`Drive API HTTP ${resp.status}: ${errBody.substring(0, 100)}`);
+    let apiError = "";
+
+    if (API_KEY && !preferPublicHtml) {
+      try {
+        let pageToken = "";
+        do {
+          const params = new URLSearchParams({
+            q: `'${folderId}' in parents and trashed=false`,
+            key: API_KEY,
+            fields: "nextPageToken,files(id,name,mimeType,size,modifiedTime)",
+            pageSize: "1000",
+            supportsAllDrives: "true",
+            includeItemsFromAllDrives: "true",
+          });
+          if (pageToken) params.set("pageToken", pageToken);
+          const url = `https://www.googleapis.com/drive/v3/files?${params.toString()}`;
+          const resp = await fetchWithTimeout(url, {}, 10000);
+          if (!resp.ok) {
+            const errBody = await resp.text();
+            throw new Error(`Drive API HTTP ${resp.status}: ${errBody.substring(0, 100)}`);
+          }
+          const data = await resp.json();
+          files.push(...(data.files || []));
+          pageToken = String(data.nextPageToken || "");
+        } while (pageToken);
+
+        if (files.length > 0) {
+          result.listing_source = result.listing_source === "public_html" ? "mixed" : "drive_api";
+          return files;
+        }
+        // Files.list with API-key-only access returns [] for many public
+        // shared folders. Prefer the public HTML listing for the rest of this run.
+        preferPublicHtml = true;
+      } catch (error) {
+        apiError = error instanceof Error ? error.message : String(error);
+        preferPublicHtml = true;
       }
-      const data = await resp.json();
-      files.push(...(data.files || []));
-      pageToken = String(data.nextPageToken || "");
-    } while (pageToken);
-    return files;
+    }
+
+    try {
+      const publicUrl = `https://drive.google.com/drive/folders/${encodeURIComponent(folderId)}?usp=sharing&hl=en`;
+      const response = await fetchWithTimeout(publicUrl, {
+        headers: {
+          "Accept": "text/html,application/xhtml+xml",
+          "Accept-Language": "en-US,en;q=0.9",
+          "User-Agent": "Mozilla/5.0 (compatible; WeDoTechnicalLibrary/1.0)",
+        },
+      }, 10000);
+      if (!response.ok) throw new Error(`Google Drive público HTTP ${response.status}`);
+      const publicItems = parsePublicDriveFolderHtml(await response.text());
+      if (publicItems.length > 0) {
+        result.listing_source = result.listing_source === "drive_api" ? "mixed" : "public_html";
+        result.api_source = result.listing_source === "mixed" ? "google_drive_api+public_html" : "google_drive_public_html";
+        return publicItems;
+      }
+      if (apiError) throw new Error(`${apiError}; pasta pública sem itens reconhecíveis`);
+      return [];
+    } catch (error) {
+      const htmlError = error instanceof Error ? error.message : String(error);
+      throw new Error(apiError ? `${apiError}; ${htmlError}` : htmlError);
+    }
+  }
+
+  async function fetchPublicDriveFile(fileId: string, timeoutMs: number): Promise<Response> {
+    const urls = [
+      API_KEY ? `https://www.googleapis.com/drive/v3/files/${fileId}?alt=media&key=${API_KEY}` : "",
+      `https://drive.usercontent.google.com/download?id=${encodeURIComponent(fileId)}&export=download&confirm=t`,
+    ].filter(Boolean);
+    let lastError = "";
+
+    for (const url of urls) {
+      try {
+        const response = await fetchWithTimeout(url, { redirect: "follow" }, timeoutMs);
+        const contentType = String(response.headers.get("content-type") || "").toLowerCase();
+        if (response.ok && !contentType.includes("text/html")) return response;
+        lastError = `HTTP ${response.status}${contentType ? ` (${contentType})` : ""}`;
+        await response.body?.cancel();
+      } catch (error) {
+        lastError = error instanceof Error ? error.message : String(error);
+      }
+    }
+
+    throw new Error(`Falha ao baixar arquivo público do Drive: ${lastError || "sem resposta"}`);
   }
 
   async function processFile(file: any, parentPath: string) {
@@ -500,31 +603,41 @@ async function fetchInternalTechDocs(query?: string, equipamento?: string, optio
 
     if (mimeType === "application/vnd.google-apps.document") {
       try {
-        const resp = await fetchWithTimeout(`https://www.googleapis.com/drive/v3/files/${file.id}/export?mimeType=text/plain&key=${API_KEY}`, {}, 8000);
+        const exportUrl = API_KEY
+          ? `https://www.googleapis.com/drive/v3/files/${file.id}/export?mimeType=text/plain&key=${API_KEY}`
+          : `https://docs.google.com/document/d/${file.id}/export?format=txt`;
+        const resp = await fetchWithTimeout(exportUrl, {}, 8000);
         if (resp.ok) addResult(fullPath, await resp.text());
         else await resp.text();
       } catch (e) { console.error(`[genspark-ai] [internal-docs] Doc error ${fullPath}:`, e); }
     }
     else if (mimeType === "application/vnd.google-apps.spreadsheet") {
       try {
-        const resp = await fetchWithTimeout(`https://www.googleapis.com/drive/v3/files/${file.id}/export?mimeType=text/csv&key=${API_KEY}`, {}, 8000);
+        const exportUrl = API_KEY
+          ? `https://www.googleapis.com/drive/v3/files/${file.id}/export?mimeType=text/csv&key=${API_KEY}`
+          : `https://docs.google.com/spreadsheets/d/${file.id}/export?format=csv`;
+        const resp = await fetchWithTimeout(exportUrl, {}, 8000);
         if (resp.ok) addResult(fullPath, await resp.text(), "📊");
         else await resp.text();
       } catch (e) { console.error(`[genspark-ai] [internal-docs] Sheet error ${fullPath}:`, e); }
     }
     else if (mimeType.startsWith("text/") || isTextFile(fileName)) {
       try {
-        const resp = await fetchWithTimeout(`https://www.googleapis.com/drive/v3/files/${file.id}?alt=media&key=${API_KEY}`, {}, 10000);
+        const resp = await fetchPublicDriveFile(file.id, 10000);
         if (resp.ok) addResult(fullPath, await resp.text());
         else await resp.text();
       } catch (e) { console.error(`[genspark-ai] [internal-docs] Text error ${fullPath}:`, e); }
     }
     else if (mimeType === "application/pdf" || fileName.toLowerCase().endsWith(".pdf")) {
       try {
-        const resp = await fetchWithTimeout(`https://www.googleapis.com/drive/v3/files/${file.id}?alt=media&key=${API_KEY}`, {}, 12000);
+        const resp = await fetchPublicDriveFile(file.id, 15000);
         if (resp.ok) {
           const buf = new Uint8Array(await resp.arrayBuffer());
-          const pdfText = extractPdfText(buf);
+          if (buf.byteLength > MAX_INTERNAL_DOC_BYTES) {
+            result.skipped_files.push(`${fullPath} (${Math.round(buf.byteLength / 1024 / 1024)}MB — muito grande)`);
+            return;
+          }
+          const pdfText = await extractPdfText(buf);
           if (pdfText.length > 50) {
             addResult(fullPath, pdfText, "📕");
           } else {
@@ -637,9 +750,17 @@ async function fetchInternalTechDocs(query?: string, equipamento?: string, optio
       await collectFolder(DRIVE_FOLDER_ID, "", 0, 0);
 
       const ranked = Array.from(candidates.values()).sort((a, b) => b.score - a.score);
+      result.folders_scanned = foldersListed;
+      result.candidates_found = ranked.length;
       for (const candidate of ranked) {
         if (limitReached()) break;
         await processFile(candidate.file, candidate.path);
+      }
+
+      if (totalFilesRead === 0) {
+        result.error = ranked.length === 0
+          ? `Biblioteca CHAT acessível via ${result.listing_source}, mas nenhum arquivo aderente foi localizado para fabricante/modelo.`
+          : `${ranked.length} arquivo(s) aderente(s) localizado(s), mas nenhum conteúdo textual pôde ser extraído.`;
       }
 
       console.log(`[genspark-ai] [internal-docs] folders=${foldersListed}, candidates=${ranked.length}, loaded=${totalFilesRead}`);
@@ -1155,7 +1276,7 @@ async function callAI(
   return { result: content, model: requestModel, toolCalls: aiMessage.tool_calls || [], rawMessage: aiMessage };
 }
 
-const BUDGET_AI_PROMPT_VERSION = "budget-v2.0";
+const BUDGET_AI_PROMPT_VERSION = "budget-v2.1-evidence";
 const ANALYSIS_MODEL = Deno.env.get("OPENAI_BUDGET_ANALYSIS_MODEL") || "google/gemini-3.1-pro-preview";
 const CHAT_MODEL = Deno.env.get("OPENAI_BUDGET_CHAT_MODEL") || "google/gemini-3.1-pro-preview";
 
@@ -1325,7 +1446,7 @@ REGRAS OBRIGATÓRIAS:
 - Peças recorrentes no histórico (várias ocorrências ou trocadas recentemente) podem virar "recomendar"/"verificar" com a justificativa do padrão observado — nunca "confirmado" só por histórico.
 - Se o técnico pediu uma peça que não existe no histórico, mantenha o pedido dele e sinalize que é a primeira ocorrência para este equipamento.
 - Máximo de ${recommendationLimit} recomendações e 8 perguntas. Seja técnico e direto.
-${deep ? "- Modo aprofundado: use documentos/web somente como fonte auxiliar e diferencie claramente cada origem." : "- Modo padrão: use apenas dados e fotos desta OS; não suponha conteúdo de manuais ou da web."}`;
+  ${deep ? "- Modo aprofundado: use documentos/web somente como fonte auxiliar e diferencie claramente cada origem." : "- Modo padrão: use dados, fotos, histórico do equipamento e documentos internos recebidos; não use nem suponha conteúdo da web."}`;
 }
 
 function buildBudgetCaseText(context: AnalyzeContext, manufacturer: string | null, modelFamily: string | null): string {
@@ -1383,6 +1504,9 @@ serve(async (req) => {
         docs_count: docsResult.docs_count,
         docs_titles: docsResult.docs_titles.slice(0, 20),
         skipped_files: docsResult.skipped_files.slice(0, 20),
+        folders_scanned: docsResult.folders_scanned,
+        candidates_found: docsResult.candidates_found,
+        listing_source: docsResult.listing_source,
         elapsed_ms: docsResult.elapsed_ms,
         error: docsResult.error,
       }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
@@ -1527,8 +1651,8 @@ FORMATO: Retorne apenas o texto melhorado, sem explicação.`;
     // =====================================================================
     // 2) ANALISAR OS PARA ORÇAMENTO — REFATORADO
     // Agente: budget_analysis_agent (openai/gpt-5.2)
-    // Modo padrão: texto + até 3 fotos detail:low, SEM web, SEM OCR, SEM docs
-    // Modo expandido: gatilho real → web + docs + OCR + mais fotos
+    // Modo padrão: OS + fotos + histórico + biblioteca interna; sem web.
+    // Modo expandido: acrescenta pesquisa web e mais evidências.
     // =====================================================================
     if (action === "analyze") {
       const startedAt = Date.now();
@@ -1538,10 +1662,24 @@ FORMATO: Retorne apenas o texto melhorado, sem explicação.`;
       const manufacturer = manufacturerTerms.length > 0 ? manufacturerTerms[0] : null;
       const deepSuggestion = shouldExpandAnalysis(context, manufacturer);
       const receivedPhotos = normalizePhotoInputs(context.fotos).length;
+      const docsQuery = [
+        context.equipamento,
+        context.equipamento_id,
+        context.orientacao,
+        context.descricao,
+        context.pecas,
+        context.servicos,
+        context.observacoes,
+      ].filter(Boolean).join(" ");
+      const internalDocs = await fetchInternalTechDocs(
+        docsQuery,
+        equipForSearch || docsQuery,
+        { maxDocs: 4, timeout: 30000 },
+      );
 
       const content: any[] = [{
         type: "text",
-        text: `${buildBudgetCaseText(context, manufacturer, modelFamily)}\n\nFOTOS RECEBIDAS: ${receivedPhotos}. As legendas informam de qual pergunta do questionário cada foto veio.`,
+        text: `${buildBudgetCaseText(context, manufacturer, modelFamily)}${buildInternalDocsBlock(internalDocs)}\n\nFOTOS RECEBIDAS: ${receivedPhotos}. As legendas informam de qual pergunta do questionário cada foto veio.`,
       }];
       const photosUsed = receivedPhotos > 0
         ? await addPhotosToContent(content, context.fotos || [], 6, manufacturer ? "low" : "high")
@@ -1568,6 +1706,17 @@ FORMATO: Retorne apenas o texto melhorado, sem explicação.`;
         });
       }
 
+      const historyMeta = context?.historico_pecas_meta || {};
+      const historyItems = Number(historyMeta.items || 0);
+      const historyError = String(historyMeta.error || "").trim();
+      const evidenceFailures: string[] = [];
+      if (internalDocs.docs_count === 0) evidenceFailures.push(`Biblioteca CHAT sem evidência: ${internalDocs.error || "nenhum documento aderente"}`);
+      if (historyError) evidenceFailures.push(`Histórico de peças indisponível: ${historyError}`);
+      if (evidenceFailures.length > 0) {
+        analysis.status = "validacao_adicional";
+        analysis.readiness.reasons = Array.from(new Set([...analysis.readiness.reasons, ...evidenceFailures]));
+      }
+
       return new Response(JSON.stringify({
         result: formatBudgetAnalysisForChat(analysis),
         analysis,
@@ -1580,8 +1729,15 @@ FORMATO: Retorne apenas o texto melhorado, sem explicação.`;
           prompt_version: BUDGET_AI_PROMPT_VERSION,
           photos_received: receivedPhotos,
           photos_used: photosUsed,
-          docs: 0,
-          docs_titles: [],
+          docs: internalDocs.docs_count,
+          docs_titles: internalDocs.docs_titles,
+          docs_error: internalDocs.error,
+          docs_listing_source: internalDocs.listing_source,
+          docs_candidates: internalDocs.candidates_found,
+          history_items: historyItems,
+          history_os: Number(historyMeta.os || 0),
+          history_budgets: Number(historyMeta.orcamentos || 0),
+          history_error: historyError || null,
           web: false,
           elapsed_ms: Date.now() - startedAt,
         },
@@ -2026,6 +2182,12 @@ TOM: Técnico, direto, sem floreio.`;
         analysis,
         mode: "deep",
         meta: {
+          ...(context?.historico_pecas_meta ? {
+            history_items: Number(context.historico_pecas_meta.items || 0),
+            history_os: Number(context.historico_pecas_meta.os || 0),
+            history_budgets: Number(context.historico_pecas_meta.orcamentos || 0),
+            history_error: context.historico_pecas_meta.error || null,
+          } : {}),
           model: aiResult.model || ANALYSIS_MODEL,
           mode: "deep",
           prompt_version: BUDGET_AI_PROMPT_VERSION,
@@ -2033,6 +2195,9 @@ TOM: Técnico, direto, sem floreio.`;
           photos_used: photosUsed,
           docs: internalDocs.docs_count,
           docs_titles: internalDocs.docs_titles,
+          docs_error: internalDocs.error,
+          docs_listing_source: internalDocs.listing_source,
+          docs_candidates: internalDocs.candidates_found,
           web: Boolean(webResearch),
           elapsed_ms: Date.now() - startedAt,
         },
