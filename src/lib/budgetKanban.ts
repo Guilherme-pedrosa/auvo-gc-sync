@@ -1,5 +1,46 @@
 export const RESOLVED_WITHOUT_BUDGET_COLUMN = "resolvido_sem_orcamento";
 
+/** Janela fixa de backlog: cards sem resolução dos últimos 6 meses nunca somem. */
+export const BUDGET_BACKLOG_MONTHS = 6;
+
+export type BudgetAgingLevel = "normal" | "warning" | "critical";
+
+export type BudgetResolutionLike = {
+  orcamento_realizado?: boolean | null;
+  os_realizada?: boolean | null;
+};
+
+/** Card sem resolução = não gerou orçamento nem OS no GestãoClick. */
+export function isUnresolvedBudgetCard(item: BudgetResolutionLike | null | undefined): boolean {
+  return !item?.orcamento_realizado && !item?.os_realizada;
+}
+
+export function getBudgetCardAgeDays(
+  taskDate: string | null | undefined,
+  now: Date = new Date(),
+): number | null {
+  const raw = String(taskDate || "").slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(raw)) return null;
+  const [year, month, day] = raw.split("-").map(Number);
+  const start = Date.UTC(year, month - 1, day);
+  const today = Date.UTC(now.getFullYear(), now.getMonth(), now.getDate());
+  const days = Math.floor((today - start) / 86_400_000);
+  return days < 0 ? 0 : days;
+}
+
+/** >30 dias sem resolução = crítico (vermelho cintilante); >15 dias = atenção (amarelo). */
+export function getBudgetAgingLevel(
+  item: (BudgetResolutionLike & { data_tarefa?: string | null }) | null | undefined,
+  now: Date = new Date(),
+): BudgetAgingLevel {
+  if (!isUnresolvedBudgetCard(item)) return "normal";
+  const days = getBudgetCardAgeDays(item?.data_tarefa, now);
+  if (days === null) return "normal";
+  if (days > 30) return "critical";
+  if (days > 15) return "warning";
+  return "normal";
+}
+
 export const BUDGET_PENDING_SYSTEM_COLUMNS = new Set([
   "a_fazer",
   "falta_preenchimento",
