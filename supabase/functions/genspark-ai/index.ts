@@ -1758,7 +1758,7 @@ FORMATO: Retorne apenas o texto melhorado, sem explicação.`;
       ], ANALYSIS_MODEL, 6000, {
         action: "analyze_v2",
         temperature: 0.1,
-        timeoutMs: 45000,
+        timeoutMs: 110000,
         jsonMode: true,
       });
 
@@ -2154,7 +2154,7 @@ TOM: Técnico, direto, sem floreio.`;
         aiResult = await callAI(messages, CHAT_MODEL, 2200, {
           temperature: 0.2,
           action: `chat_round_${round}`,
-          timeoutMs: 45000,
+          timeoutMs: 70000,
           tools: round < MAX_TOOL_ROUNDS ? AGENT_TOOLS : undefined,
         });
         if (aiResult.error) return buildAiErrorResponse(aiResult);
@@ -2225,7 +2225,7 @@ TOM: Técnico, direto, sem floreio.`;
       ], ANALYSIS_MODEL, 8000, {
         action: "deep_analyze_v2",
         temperature: 0.1,
-        timeoutMs: 50000,
+        timeoutMs: 110000,
         jsonMode: true,
       });
       if (aiResult.error) return buildAiErrorResponse(aiResult);
