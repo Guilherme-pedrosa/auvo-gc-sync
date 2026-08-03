@@ -169,7 +169,7 @@ export default function BudgetKanbanPage() {
   const [resolutionDetails, setResolutionDetails] = useState<Record<string, { motivo: string; resolvido_por_nome: string | null; resolvido_em: string }>>({});
   const positionSaveQueue = useRef<Promise<void>>(Promise.resolve());
 
-  const { data, isLoading, refetch, isFetching } = useQuery<ApiResponse>({
+  const { data: periodData, isLoading, refetch, isFetching } = useQuery<ApiResponse>({
     queryKey: ["budget-kanban", format(dateRange.from, "yyyy-MM-dd"), format(dateRange.to, "yyyy-MM-dd")],
     queryFn: async () => {
       const { data, error } = await supabase.functions.invoke("budget-kanban", {
@@ -185,6 +185,45 @@ export default function BudgetKanbanPage() {
     },
     staleTime: Infinity, // Don't auto-refetch, use cache
   });
+
+  // Backlog fixo: cards SEM resolução dos últimos 6 meses aparecem sempre,
+  // independentemente do filtro de data. O que não foi feito não pode sumir.
+  const backlogStart = format(subMonths(startOfDay(today), BUDGET_BACKLOG_MONTHS), "yyyy-MM-dd");
+  const backlogEnd = format(today, "yyyy-MM-dd");
+  const { data: backlogData } = useQuery<ApiResponse>({
+    queryKey: ["budget-kanban-backlog", backlogStart, backlogEnd],
+    queryFn: async () => {
+      const { data, error } = await supabase.functions.invoke("budget-kanban", {
+        body: { mode: "cache", start_date: backlogStart, end_date: backlogEnd },
+      });
+      if (error) throw error;
+      if (data?.error) throw new Error(data.error);
+      return data as ApiResponse;
+    },
+    staleTime: Infinity,
+  });
+
+  // Une o período filtrado com o backlog de pendências (sem duplicar cards).
+  const data = useMemo<ApiResponse | undefined>(() => {
+    if (!periodData) return periodData;
+    const backlogItems = (backlogData?.items || []).filter((item) => isUnresolvedBudgetCard(item));
+    if (backlogItems.length === 0) return periodData;
+    const seen = new Set(periodData.items.map((item) => item.auvo_task_id));
+    const extras = backlogItems.filter((item) => !seen.has(item.auvo_task_id));
+    if (extras.length === 0) return periodData;
+    return { ...periodData, items: [...periodData.items, ...extras] };
+  }, [periodData, backlogData]);
+
+  const agingCounts = useMemo(() => {
+    let warning = 0;
+    let critical = 0;
+    for (const item of data?.items || []) {
+      const level = getBudgetAgingLevel(item);
+      if (level === "critical") critical++;
+      else if (level === "warning") warning++;
+    }
+    return { warning, critical };
+  }, [data]);
 
   const [isSyncing, setIsSyncing] = useState(false);
 
