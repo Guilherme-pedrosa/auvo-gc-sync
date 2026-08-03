@@ -2151,6 +2151,20 @@ export default function BudgetKanbanPage() {
                                             <p className="text-xs text-muted-foreground mt-0.5">
                                               {item.tecnico} • {item.data_tarefa}
                                             </p>
+                                            {((item as any).equipamento_nome || (item as any).equipamento_id_serie) && (
+                                              <p
+                                                className="text-xs text-foreground/80 mt-0.5 truncate"
+                                                title={[(item as any).equipamento_nome, (item as any).equipamento_id_serie]
+                                                  .filter(Boolean)
+                                                  .join(" • ")}
+                                              >
+                                                <Wrench className="h-3 w-3 inline mr-1 text-muted-foreground" />
+                                                {(item as any).equipamento_nome || "Equipamento"}
+                                                {(item as any).equipamento_id_serie
+                                                  ? ` • ${(item as any).equipamento_id_serie}`
+                                                  : ""}
+                                              </p>
+                                            )}
                                             {agingLevel !== "normal" && (
                                               <Badge
                                                 variant="outline"
