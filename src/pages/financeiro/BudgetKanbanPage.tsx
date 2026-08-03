@@ -1837,6 +1837,23 @@ export default function BudgetKanbanPage() {
                 Último sync: {new Date(data.ultimo_sync).toLocaleString("pt-BR")}
               </span>
             )}
+            {(agingCounts.critical > 0 || agingCounts.warning > 0) && (
+              <div className="flex items-center gap-2">
+                {agingCounts.critical > 0 && (
+                  <Badge variant="outline" className="border-red-500 bg-red-100 text-red-700 text-[11px]">
+                    {agingCounts.critical} com +30 dias
+                  </Badge>
+                )}
+                {agingCounts.warning > 0 && (
+                  <Badge variant="outline" className="border-yellow-500 bg-yellow-100 text-yellow-800 text-[11px]">
+                    {agingCounts.warning} com +15 dias
+                  </Badge>
+                )}
+                <span className="text-[11px] text-muted-foreground">
+                  Pendências dos últimos {BUDGET_BACKLOG_MONTHS} meses sempre visíveis
+                </span>
+              </div>
+            )}
           </div>
         </div>
 
