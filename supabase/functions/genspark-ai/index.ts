@@ -1,6 +1,8 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { AGENT_TOOLS, runAgentTool } from "./agent-tools.ts";
 import { parsePublicDriveFolderHtml } from "./drive-public-listing.ts";
+import { identifyKnownEquipment as identifyKnownEquipmentByCode } from "./equipment-identification.ts";
+import { evaluateBudgetSourcePreflight } from "./source-preflight.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -194,32 +196,9 @@ function techSearchTerms(value: string, limit = 16): string[] {
     .slice(0, limit);
 }
 
-function identifyKnownEquipment(equipamento: string): { manufacturer: string[]; modelFamily: string | null } {
-  const text = equipamento.toLowerCase();
-  const knownBrands: Array<{ pattern: RegExp; terms: string[] }> = [
-    { pattern: /\brational\b/i, terms: ["rational"] },
-    { pattern: /\bhobart\b|\bvulcan\b/i, terms: ["hobart", "vulcan"] },
-    { pattern: /\bpr[aá]tica\b/i, terms: ["pratica", "prática"] },
-    { pattern: /\btramontina\b/i, terms: ["tramontina"] },
-    { pattern: /\belgin\b/i, terms: ["elgin"] },
-  ];
-  const brand = knownBrands.find((item) => item.pattern.test(text));
-  if (!brand) return { manufacturer: [], modelFamily: null };
-
-  const modelPatterns: Array<{ pattern: RegExp; name: string }> = [
-    { pattern: /\bi\s*combi\s*pro\b|\bicombipro\b/i, name: "iCombi Pro" },
-    { pattern: /\bi\s*vario\b/i, name: "iVario" },
-    { pattern: /\bself\s*cooking\s*center\b|\bselfcookingcenter\b|\bscc\b/i, name: "SelfCookingCenter" },
-    { pattern: /\bcombi\s*master\b|\bcombimaster\b|\bcpc\b/i, name: "CombiMaster" },
-    { pattern: /\becomax\b/i, name: "Ecomax" },
-  ];
-  const model = modelPatterns.find((item) => item.pattern.test(text));
-  return { manufacturer: brand.terms, modelFamily: model?.name || null };
-}
-
 async function identifyManufacturerAndModel(equipamento: string): Promise<{ manufacturer: string[]; modelFamily: string | null }> {
   const cleaned = cleanEquipmentString(equipamento);
-  const known = identifyKnownEquipment(cleaned);
+  const known = identifyKnownEquipmentByCode(cleaned);
   if (known.manufacturer.length > 0) {
     console.log(`[genspark-ai] [manufacturer] Identificação local: [${known.manufacturer.join(",")}], modelo=${known.modelFamily || "?"}`);
     return known;
@@ -1276,7 +1255,7 @@ async function callAI(
   return { result: content, model: requestModel, toolCalls: aiMessage.tool_calls || [], rawMessage: aiMessage };
 }
 
-const BUDGET_AI_PROMPT_VERSION = "budget-v2.1-evidence";
+const BUDGET_AI_PROMPT_VERSION = "budget-v2.2-source-preflight";
 const ANALYSIS_MODEL = Deno.env.get("OPENAI_BUDGET_ANALYSIS_MODEL") || "google/gemini-3.1-pro-preview";
 const CHAT_MODEL = Deno.env.get("OPENAI_BUDGET_CHAT_MODEL") || "google/gemini-3.1-pro-preview";
 
@@ -1677,6 +1656,50 @@ FORMATO: Retorne apenas o texto melhorado, sem explicação.`;
         { maxDocs: 4, timeout: 30000 },
       );
 
+      const historyMeta = context?.historico_pecas_meta || {};
+      const historyItems = Number(historyMeta.items || 0);
+      const historyError = String(historyMeta.error || "").trim();
+      const historyLoaded = Boolean(historyMeta.loaded)
+        || historyItems > 0
+        || Boolean(String(context?.historico_pecas || "").trim())
+        || historyMeta.empty === true;
+      const sourcePreflight = evaluateBudgetSourcePreflight({
+        docsCount: internalDocs.docs_count,
+        docsError: internalDocs.error,
+        historyLoaded,
+        historyError,
+      });
+
+      // Do not spend model credits when the evidence pipeline failed. The
+      // operator receives the real source diagnostics and can retry safely.
+      if (!sourcePreflight.ready) {
+        return new Response(JSON.stringify({
+          errorCode: "SOURCE_PREFLIGHT_FAILED",
+          message: `A IA não foi chamada e nenhum crédito de modelo foi consumido. ${sourcePreflight.failures.join(" ")}`,
+          source_failures: sourcePreflight.failures,
+          meta: {
+            model: null,
+            mode: "preflight",
+            prompt_version: BUDGET_AI_PROMPT_VERSION,
+            photos_received: receivedPhotos,
+            photos_used: 0,
+            docs: internalDocs.docs_count,
+            docs_titles: internalDocs.docs_titles,
+            docs_error: internalDocs.error || sourcePreflight.failures.find((item) => item.startsWith("Biblioteca CHAT")) || null,
+            docs_listing_source: internalDocs.listing_source,
+            docs_candidates: internalDocs.candidates_found,
+            history_items: historyItems,
+            history_os: Number(historyMeta.os || 0),
+            history_budgets: Number(historyMeta.orcamentos || 0),
+            history_error: historyError || sourcePreflight.failures.find((item) => item.startsWith("Histórico")) || null,
+            credits_used: false,
+            sources_ready: false,
+            web: false,
+            elapsed_ms: Date.now() - startedAt,
+          },
+        }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      }
+
       const content: any[] = [{
         type: "text",
         text: `${buildBudgetCaseText(context, manufacturer, modelFamily)}${buildInternalDocsBlock(internalDocs)}\n\nFOTOS RECEBIDAS: ${receivedPhotos}. As legendas informam de qual pergunta do questionário cada foto veio.`,
@@ -1706,17 +1729,6 @@ FORMATO: Retorne apenas o texto melhorado, sem explicação.`;
         });
       }
 
-      const historyMeta = context?.historico_pecas_meta || {};
-      const historyItems = Number(historyMeta.items || 0);
-      const historyError = String(historyMeta.error || "").trim();
-      const evidenceFailures: string[] = [];
-      if (internalDocs.docs_count === 0) evidenceFailures.push(`Biblioteca CHAT sem evidência: ${internalDocs.error || "nenhum documento aderente"}`);
-      if (historyError) evidenceFailures.push(`Histórico de peças indisponível: ${historyError}`);
-      if (evidenceFailures.length > 0) {
-        analysis.status = "validacao_adicional";
-        analysis.readiness.reasons = Array.from(new Set([...analysis.readiness.reasons, ...evidenceFailures]));
-      }
-
       return new Response(JSON.stringify({
         result: formatBudgetAnalysisForChat(analysis),
         analysis,
@@ -1738,6 +1750,8 @@ FORMATO: Retorne apenas o texto melhorado, sem explicação.`;
           history_os: Number(historyMeta.os || 0),
           history_budgets: Number(historyMeta.orcamentos || 0),
           history_error: historyError || null,
+          credits_used: true,
+          sources_ready: true,
           web: false,
           elapsed_ms: Date.now() - startedAt,
         },

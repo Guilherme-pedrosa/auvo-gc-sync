@@ -1615,7 +1615,9 @@ export default function BudgetKanbanPage() {
         historico_pecas: partsHistory?.text || "",
         historico_pecas_matches: partsHistory?.matches || [],
         historico_pecas_meta: {
-          items: Number(historyPayload?.totais?.itens || 0) + Number(historyPayload?.servicos?.length || 0),
+          loaded: Boolean(historyPayload),
+          empty: Boolean(historyPayload) && Number(historyPayload?.totais?.itens || 0) === 0 && Number(historyPayload?.totais?.itens_servicos || historyPayload?.servicos?.length || 0) === 0,
+          items: Number(historyPayload?.totais?.itens || 0) + Number(historyPayload?.totais?.itens_servicos || historyPayload?.servicos?.length || 0),
           os: Number(historyPayload?.totais?.os || 0),
           orcamentos: Number(historyPayload?.totais?.orcamentos || 0),
           error: historyFetch?.error || null,
@@ -1658,6 +1660,14 @@ export default function BudgetKanbanPage() {
         }),
         120000,
       );
+
+      if (result?.errorCode === "SOURCE_PREFLIGHT_FAILED") {
+        setAiAnalysis(String(result.message || "As fontes obrigatórias não foram carregadas. A IA não foi chamada."));
+        setAiAnalysisMeta(result.meta || null);
+        setAiAnalysisIsFallback(true);
+        toast.warning("Análise interrompida antes da cobrança: biblioteca ou histórico não carregado.");
+        return;
+      }
 
       // Handle structured errors from edge function
       if (error || result?.error || result?.errorCode) {
