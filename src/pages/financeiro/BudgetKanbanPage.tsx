@@ -225,6 +225,20 @@ export default function BudgetKanbanPage() {
     return { warning, critical };
   }, [data]);
 
+  // Quando o backlog de 6 meses chega depois do período filtrado, o conjunto de
+  // cards muda: é preciso reprocessar as colunas para que as pendências entrem.
+  const lastItemsSignature = useRef<string>("");
+  useEffect(() => {
+    if (!data?.items) return;
+    const signature = data.items
+      .map((item) => item.auvo_task_id)
+      .sort()
+      .join(",");
+    if (signature === lastItemsSignature.current) return;
+    lastItemsSignature.current = signature;
+    setColumnsInitialized(false);
+  }, [data]);
+
   const [isSyncing, setIsSyncing] = useState(false);
 
   const handleSync = useCallback(async () => {
