@@ -1,5 +1,21 @@
 export const RESOLVED_WITHOUT_BUDGET_COLUMN = "resolvido_sem_orcamento";
 
+/**
+ * Coluna de "já resolvido": a coluna de sistema ou qualquer coluna criada pelo
+ * usuário cujo título indique resolução (ex.: "JÁ RESOLVIDO").
+ */
+export function isResolvedBudgetColumn(
+  columnId: string | null | undefined,
+  columnTitle?: string | null,
+): boolean {
+  if (String(columnId || "") === RESOLVED_WITHOUT_BUDGET_COLUMN) return true;
+  const title = String(columnTitle || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase();
+  return /resolvid/.test(title);
+}
+
 /** Janela fixa de backlog: cards sem resolução dos últimos 6 meses nunca somem. */
 export const BUDGET_BACKLOG_MONTHS = 6;
 

@@ -32,6 +32,7 @@ import {
   getBudgetCardAgeDays,
   isUnresolvedBudgetCard,
   RESOLVED_WITHOUT_BUDGET_COLUMN,
+  isResolvedBudgetColumn,
   shouldAutoRouteToDoneToday,
 } from "@/lib/budgetKanban";
 import BudgetAiAnalysisPanel from "@/components/financeiro/BudgetAiAnalysisPanel";
@@ -203,27 +204,42 @@ export default function BudgetKanbanPage() {
     staleTime: Infinity,
   });
 
+  // Ids de colunas consideradas "já resolvido" (sistema + custom do usuário).
+  const resolvedColumnIds = useMemo(() => {
+    const ids = new Set<string>([RESOLVED_WITHOUT_BUDGET_COLUMN]);
+    for (const col of periodData?.custom_columns || []) {
+      if (isResolvedBudgetColumn(col.id, col.title)) ids.add(col.id);
+    }
+    return ids;
+  }, [periodData]);
+
   // Une o período filtrado com o backlog de pendências (sem duplicar cards).
   const data = useMemo<ApiResponse | undefined>(() => {
     if (!periodData) return periodData;
-    const backlogItems = (backlogData?.items || []).filter((item) => isUnresolvedBudgetCard(item));
+    const backlogItems = (backlogData?.items || []).filter(
+      (item) =>
+        isUnresolvedBudgetCard(item)
+        // Cards já resolvidos manualmente seguem o filtro de data normal.
+        && !resolvedColumnIds.has(String((item as any)._coluna || "")),
+    );
     if (backlogItems.length === 0) return periodData;
     const seen = new Set(periodData.items.map((item) => item.auvo_task_id));
     const extras = backlogItems.filter((item) => !seen.has(item.auvo_task_id));
     if (extras.length === 0) return periodData;
     return { ...periodData, items: [...periodData.items, ...extras] };
-  }, [periodData, backlogData]);
+  }, [periodData, backlogData, resolvedColumnIds]);
 
   const agingCounts = useMemo(() => {
     let warning = 0;
     let critical = 0;
     for (const item of data?.items || []) {
+      if (resolvedColumnIds.has(String((item as any)._coluna || ""))) continue;
       const level = getBudgetAgingLevel(item);
       if (level === "critical") critical++;
       else if (level === "warning") warning++;
     }
     return { warning, critical };
-  }, [data]);
+  }, [data, resolvedColumnIds]);
 
   // Quando o backlog de 6 meses chega depois do período filtrado, o conjunto de
   // cards muda: é preciso reprocessar as colunas para que as pendências entrem.
@@ -899,23 +915,34 @@ export default function BudgetKanbanPage() {
     });
   }, []);
 
-  // Load resolution details for tasks currently in "resolvido_sem_orcamento"
+  // Carrega o motivo da resolução de todos os cards em colunas de "já resolvido"
+  // (coluna de sistema ou custom criada pelo usuário), mesmo de registros antigos.
   useEffect(() => {
     const taskIds = columns
-      .find((c) => c.id === "resolvido_sem_orcamento")?.items.map((i) => i.auvo_task_id) || [];
+      .filter((c) => isResolvedBudgetColumn(c.id, c.title))
+      .flatMap((c) => c.items.map((i) => i.auvo_task_id));
     if (taskIds.length === 0) return;
     const missing = taskIds.filter((id) => !(id in resolutionDetails));
     if (missing.length === 0) return;
     (async () => {
-      const { data, error } = await supabase
-        .from("kanban_resolution_details" as any)
-        .select("auvo_task_id, motivo, resolvido_por_nome, resolvido_em")
-        .eq("ativo", true)
-        .in("auvo_task_id", missing);
-      if (error || !data) return;
+      const chunks: string[][] = [];
+      for (let i = 0; i < missing.length; i += 200) chunks.push(missing.slice(i, i + 200));
+      const rows: any[] = [];
+      for (const chunk of chunks) {
+        const { data, error } = await supabase
+          .from("kanban_resolution_details" as any)
+          .select("auvo_task_id, motivo, resolvido_por_nome, resolvido_em")
+          .in("auvo_task_id", chunk)
+          .order("resolvido_em", { ascending: false });
+        if (error) return;
+        rows.push(...(data || []));
+      }
+      if (rows.length === 0) return;
       setResolutionDetails((prev) => {
         const next = { ...prev };
-        for (const row of data as any[]) {
+        for (const row of rows) {
+          // Ordenado do mais recente para o mais antigo: mantém o primeiro.
+          if (next[row.auvo_task_id]) continue;
           next[row.auvo_task_id] = {
             motivo: row.motivo,
             resolvido_por_nome: row.resolvido_por_nome,
@@ -2111,7 +2138,8 @@ export default function BudgetKanbanPage() {
                               >
                                 {column.items.map((item, index) => {
                                   // Cards já resolvidos manualmente não envelhecem.
-                                  const agingLevel = column.id === RESOLVED_WITHOUT_BUDGET_COLUMN
+                                  const isResolvedColumn = isResolvedBudgetColumn(column.id, column.title);
+                                  const agingLevel = isResolvedColumn
                                     ? "normal"
                                     : getBudgetAgingLevel(item);
                                   return (
@@ -2309,7 +2337,7 @@ export default function BudgetKanbanPage() {
                                             </div>
 
                                             {/* Detalhes da resolução (quando na coluna Já Resolvido) */}
-                                            {column.id === "resolvido_sem_orcamento" && resolutionDetails[item.auvo_task_id] && (
+                                            {isResolvedColumn && resolutionDetails[item.auvo_task_id] && (
                                               <div className="mt-2 pt-2 border-t text-[11px] bg-emerald-50/50 -mx-2 px-2 py-2 rounded">
                                                 <div className="font-semibold text-emerald-800 mb-0.5">📝 Motivo:</div>
                                                 <div className="text-emerald-900 whitespace-pre-wrap break-words">
@@ -2325,7 +2353,7 @@ export default function BudgetKanbanPage() {
 
                                             {/* Botão: Resolvido sem orçamento / Reabrir / Editar motivo */}
                                             <div className="mt-2 pt-2 border-t flex gap-1" onClick={(e) => e.stopPropagation()}>
-                                              {column.id === "resolvido_sem_orcamento" ? (
+                                              {isResolvedColumn && resolutionDetails[item.auvo_task_id] ? (
                                                 <>
                                                   <Button
                                                     size="sm"
