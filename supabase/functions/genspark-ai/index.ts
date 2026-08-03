@@ -127,10 +127,17 @@ async function addPhotosToContent(
 // =========================================================================
 // INTERNAL TECH DOCS — busca documentos técnicos da pasta pública WeDo
 // =========================================================================
-const DRIVE_FOLDER_ID = "1Sum9oUAzqfDew0FH1UC7_cIQyxEvAdcd";
+// Public Google Drive mirror of C:\Users\Admin\OneDrive\Desktop\CHAT.
+// Keep the id configurable so the knowledge base can be replaced without a code deploy.
+const DRIVE_FOLDER_ID =
+  Deno.env.get("TECHNICAL_DOCS_DRIVE_FOLDER_ID") || "1Sum9oUAzqfDew0FH1UC7_cIQyxEvAdcd";
 const INTERNAL_DOCS_TIMEOUT = 35000;
 const MAX_DOCS = 6;
 const MAX_TOTAL_CHARS = 30000;
+const MAX_INTERNAL_DOC_BYTES = 12 * 1024 * 1024;
+const MAX_OCR_DOC_BYTES = 3 * 1024 * 1024;
+const MAX_FOLDER_LISTS = 18;
+const MAX_FOLDER_DEPTH = 4;
 
 type InternalDocsResult = {
   text: string;
@@ -157,6 +164,30 @@ function cleanEquipmentString(raw: string): string {
     })
     .replace(/\s+/g, " ")
     .trim();
+}
+
+function normalizeTechSearch(value: string): string {
+  return String(value || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+const TECH_SEARCH_STOPWORDS = new Set([
+  "para", "com", "sem", "uma", "uns", "das", "dos", "que", "qual", "quais",
+  "equipamento", "maquina", "industrial", "profissional", "cliente", "tarefa",
+  "ordem", "servico", "servicos", "peca", "pecas", "material", "materiais",
+  "manual", "arquivo", "pasta", "documento", "documentos", "sobre", "deste", "dessa",
+]);
+
+function techSearchTerms(value: string, limit = 16): string[] {
+  return normalizeTechSearch(value)
+    .split(" ")
+    .filter((term) => term.length >= 3 && !TECH_SEARCH_STOPWORDS.has(term))
+    .slice(0, limit);
 }
 
 function identifyKnownEquipment(equipamento: string): { manufacturer: string[]; modelFamily: string | null } {
@@ -317,7 +348,14 @@ async function fetchInternalTechDocs(query?: string, equipamento?: string, optio
     modelFamilyTerms.push(...mfTerms);
   }
 
-  const allTermsSet = new Set([...manufacturerTerms, ...modelFamilyTerms, ...equipTerms]);
+  // The equipment identifies the manufacturer/model tree. The question adds
+  // component/failure terms (for example "placa I/O" or "válvula de vapor").
+  const questionTerms = techSearchTerms(query || "");
+  const allTermsSet = new Set(
+    [...manufacturerTerms, ...modelFamilyTerms, ...equipTerms, ...questionTerms]
+      .map(normalizeTechSearch)
+      .filter(Boolean),
+  );
   const filterTerms = Array.from(allTermsSet);
 
   console.log(`[genspark-ai] [internal-docs] Termos: [${filterTerms.join(",")}], modelFamily="${modelFamily || "?"}"`);
@@ -424,15 +462,28 @@ async function fetchInternalTechDocs(query?: string, equipamento?: string, optio
   };
 
   async function listFolder(folderId: string): Promise<any[]> {
-    const url = `https://www.googleapis.com/drive/v3/files?q='${folderId}'+in+parents+and+trashed=false&key=${API_KEY}&fields=files(id,name,mimeType,size)&pageSize=100`;
-    const resp = await fetchWithTimeout(url, {}, 8000);
-    if (!resp.ok) {
-      const errBody = await resp.text();
-      console.error(`[genspark-ai] [internal-docs] Drive list FAILED: HTTP ${resp.status}`);
-      throw new Error(`Drive API HTTP ${resp.status}: ${errBody.substring(0, 100)}`);
-    }
-    const data = await resp.json();
-    return data.files || [];
+    const files: any[] = [];
+    let pageToken = "";
+    do {
+      const params = new URLSearchParams({
+        q: `'${folderId}' in parents and trashed=false`,
+        key: API_KEY,
+        fields: "nextPageToken,files(id,name,mimeType,size,modifiedTime)",
+        pageSize: "1000",
+      });
+      if (pageToken) params.set("pageToken", pageToken);
+      const url = `https://www.googleapis.com/drive/v3/files?${params.toString()}`;
+      const resp = await fetchWithTimeout(url, {}, 10000);
+      if (!resp.ok) {
+        const errBody = await resp.text();
+        console.error(`[genspark-ai] [internal-docs] Drive list FAILED: HTTP ${resp.status}`);
+        throw new Error(`Drive API HTTP ${resp.status}: ${errBody.substring(0, 100)}`);
+      }
+      const data = await resp.json();
+      files.push(...(data.files || []));
+      pageToken = String(data.nextPageToken || "");
+    } while (pageToken);
+    return files;
   }
 
   async function processFile(file: any, parentPath: string) {
@@ -442,7 +493,7 @@ async function fetchInternalTechDocs(query?: string, equipamento?: string, optio
     const fullPath = parentPath ? `${parentPath}/${fileName}` : fileName;
     const fileSize = parseInt(file.size || "0", 10);
 
-    if (fileSize > 3 * 1024 * 1024) {
+    if (fileSize > MAX_INTERNAL_DOC_BYTES) {
       result.skipped_files.push(`${fullPath} (${Math.round(fileSize / 1024 / 1024)}MB — muito grande)`);
       return;
     }
@@ -477,7 +528,7 @@ async function fetchInternalTechDocs(query?: string, equipamento?: string, optio
           if (pdfText.length > 50) {
             addResult(fullPath, pdfText, "📕");
           } else {
-            if (SKIP_OCR) {
+            if (SKIP_OCR || fileSize > MAX_OCR_DOC_BYTES) {
               result.skipped_files.push(`${fullPath} (PDF scan — OCR ignorado)`);
             } else {
               const ocrText = await ocrPdfViaVision(buf, fullPath);
@@ -498,90 +549,100 @@ async function fetchInternalTechDocs(query?: string, equipamento?: string, optio
 
   try {
     const drivePromise = (async () => {
-      const topItems = await listFolder(DRIVE_FOLDER_ID);
-      const folders = topItems.filter((f: any) => f.mimeType === "application/vnd.google-apps.folder");
-      const topFiles = topItems.filter((f: any) => f.mimeType !== "application/vnd.google-apps.folder");
+      const FOLDER_MIME = "application/vnd.google-apps.folder";
+      const manufacturerSearchTerms = manufacturerTerms.map(normalizeTechSearch).filter(Boolean);
+      const modelSearchTerms = modelFamilyTerms.map(normalizeTechSearch).filter(Boolean);
+      const questionSearchTerms = questionTerms.map(normalizeTechSearch).filter(Boolean);
+      const genericTechnicalFolder = /geral|manual|catalog|peca|servic|esquema|eletric|hidraul|procedimento|boletim|vista explodida/;
+      const supportedFile = /\.(pdf|txt|csv|md|json|xml|html?|log|ini|cfg|ya?ml|tsv)$/i;
+      const blockedFile = /\.(zip|rar|7z|mp4|mov|avi|dwg|dxf|rvt|rfa|ifc|stl|tif|tiff)$/i;
+      const seenFolders = new Set<string>();
+      const candidates = new Map<string, { file: any; path: string; score: number }>();
+      let foldersListed = 0;
 
-      const scoredFolders = folders.map((f: any) => {
-        const nameLower = (f.name || "").toLowerCase();
+      const scoreText = (value: string) => {
+        const text = normalizeTechSearch(value);
         let score = 0;
-        for (const term of filterTerms) {
-          if (nameLower.includes(term)) {
-            score += manufacturerTerms.includes(term) ? 5 : 2;
+        for (const term of manufacturerSearchTerms) if (text.includes(term)) score += 10;
+        for (const term of modelSearchTerms) if (text.includes(term)) score += 18;
+        for (const term of questionSearchTerms) if (text.includes(term)) score += 7;
+        for (const term of filterTerms) if (text.includes(term)) score += 2;
+        if (/catalogo de pecas|vista explodida|parts catalog/.test(text)) score += 12;
+        if (/manual de servico|manual tecnico|service manual/.test(text)) score += 10;
+        if (/preventiv|manutenc|procedimento|boletim|esquema/.test(text)) score += 5;
+        return score;
+      };
+
+      const scoreFile = (file: any, path: string, inheritedScore: number) => {
+        const fullPath = path ? `${path}/${file.name || ""}` : String(file.name || "");
+        const normalized = normalizeTechSearch(fullPath);
+        const isIndex = /(^|\s)(indice|index|readme|organizacao)(\s|$)/.test(normalized);
+        let score = Math.max(0, inheritedScore) + scoreText(fullPath);
+        if (/\.(md|txt|html?)$/i.test(String(file.name || ""))) score += 7;
+        else if (/\.pdf$/i.test(String(file.name || ""))) score += 3;
+        if (isIndex) score -= 12;
+        return score;
+      };
+
+      const collectFolder = async (
+        folderId: string,
+        path: string,
+        depth: number,
+        inheritedScore: number,
+      ): Promise<void> => {
+        if (depth > MAX_FOLDER_DEPTH || foldersListed >= MAX_FOLDER_LISTS || seenFolders.has(folderId)) return;
+        seenFolders.add(folderId);
+        foldersListed++;
+
+        const entries = await listFolder(folderId);
+        const subfolders: Array<{ file: any; path: string; ownScore: number; totalScore: number }> = [];
+
+        for (const entry of entries) {
+          const name = String(entry.name || "");
+          const fullPath = path ? `${path}/${name}` : name;
+          if (entry.mimeType === FOLDER_MIME) {
+            const ownScore = scoreText(name);
+            subfolders.push({ file: entry, path: fullPath, ownScore, totalScore: inheritedScore + ownScore });
+            continue;
           }
+          if (blockedFile.test(name) || (!supportedFile.test(name) && !String(entry.mimeType || "").startsWith("text/") && !String(entry.mimeType || "").startsWith("application/vnd.google-apps."))) continue;
+          const score = scoreFile(entry, path, inheritedScore);
+          if (score > 0) candidates.set(entry.id, { file: entry, path, score });
         }
-        return { ...f, score };
-      }).sort((a: any, b: any) => b.score - a.score);
 
-      const matchingFolders = scoredFolders.filter((f: any) => f.score > 0);
-      const foldersToScan = matchingFolders.slice(0, 3);
+        if (depth >= MAX_FOLDER_DEPTH || foldersListed >= MAX_FOLDER_LISTS) return;
 
-      const scoredTopFiles = topFiles.map((file: any) => {
-        const name = (file.name || "").toLowerCase();
-        const isIndex = name.startsWith("_") || /(^|[_. -])(indice|índice|index|readme)([_. -]|$)/i.test(name);
-        let score = isIndex ? -100 : 0;
-        for (const term of filterTerms) {
-          if (name.includes(term)) score += manufacturerTerms.includes(term) ? 5 : 3;
+        let nextFolders = subfolders
+          .filter((entry) => entry.ownScore > 0)
+          .sort((a, b) => b.totalScore - a.totalScore)
+          .slice(0, depth === 0 ? 4 : 8);
+
+        // Once a manufacturer/model was matched, inspect technical child folders
+        // even when their generic name does not repeat the model name.
+        if (depth > 0) {
+          const generic = subfolders
+            .filter((entry) => genericTechnicalFolder.test(normalizeTechSearch(entry.file.name || "")))
+            .sort((a, b) => b.totalScore - a.totalScore)
+            .slice(0, 4);
+          const byId = new Map([...nextFolders, ...generic].map((entry) => [entry.file.id, entry]));
+          nextFolders = Array.from(byId.values()).slice(0, 10);
         }
-        return { file, score };
-      }).filter((item: any) => item.score > 0).sort((a: any, b: any) => b.score - a.score);
 
-      for (const { file } of scoredTopFiles) {
+        for (const next of nextFolders) {
+          if (foldersListed >= MAX_FOLDER_LISTS) break;
+          await collectFolder(next.file.id, next.path, depth + 1, Math.max(inheritedScore, next.totalScore));
+        }
+      };
+
+      await collectFolder(DRIVE_FOLDER_ID, "", 0, 0);
+
+      const ranked = Array.from(candidates.values()).sort((a, b) => b.score - a.score);
+      for (const candidate of ranked) {
         if (limitReached()) break;
-        const mime = file.mimeType || "";
-        const name = (file.name || "").toLowerCase();
-        if (mime === "application/zip" || name.endsWith(".zip")) continue;
-        await processFile(file, "");
+        await processFile(candidate.file, candidate.path);
       }
 
-      const folderListings = await Promise.all(
-        foldersToScan.map(async (folder: any) => {
-          const subFiles = await listFolder(folder.id);
-          return { folder, subFiles };
-        })
-      );
-
-      const modelTerms = filterTerms.filter((t: string) => !manufacturerTerms.includes(t));
-      const allScoredFiles: { file: any; folderName: string; score: number }[] = [];
-
-      for (const { folder, subFiles } of folderListings) {
-        for (const f of subFiles) {
-          if (f.mimeType === "application/vnd.google-apps.folder") continue;
-          const nameLower = (f.name || "").toLowerCase();
-          if (f.mimeType === "application/zip" || nameLower.endsWith(".zip")) continue;
-
-          // A file inside a strongly matching manufacturer folder is relevant even
-          // when its filename is generic (for example "manual de manutenção.pdf").
-          let score = Math.max(1, Number(folder.score || 0));
-          for (const term of modelFamilyTerms) {
-            if (nameLower.includes(term)) score += 15;
-          }
-          for (const term of filterTerms) {
-            if (nameLower.includes(term)) {
-              if (modelFamilyTerms.includes(term)) continue;
-              score += manufacturerTerms.includes(term) ? 2 : 5;
-            }
-          }
-          if (modelFamilyTerms.length > 1) {
-            const combined = modelFamilyTerms.join(" ");
-            if (nameLower.includes(combined)) score += 20;
-          }
-          if (nameLower.includes("preventiv") || nameLower.includes("manutencao") || nameLower.includes("manutenção")) score += 8;
-          if (modelFamily) {
-            const otherModels = ["scc", "icombi", "ivario", "selfcookingcenter", "combimaster"];
-            for (const other of otherModels) {
-              if (!modelFamilyTerms.includes(other) && nameLower.includes(other)) score -= 10;
-            }
-          }
-          allScoredFiles.push({ file: f, folderName: folder.name, score });
-        }
-      }
-
-      allScoredFiles.sort((a, b) => b.score - a.score);
-      for (const { file, folderName } of allScoredFiles) {
-        if (limitReached()) break;
-        await processFile(file, folderName);
-      }
+      console.log(`[genspark-ai] [internal-docs] folders=${foldersListed}, candidates=${ranked.length}, loaded=${totalFilesRead}`);
     })();
 
     await Promise.race([
@@ -1759,7 +1820,7 @@ TOM: Telegráfico, técnico, zero enrolação. Prefira disciplina e auditabilida
       const { context, analysis, userMessage, chatHistory } = body;
       const CHAT_MODEL = "google/gemini-3.1-pro-preview"; // budget_chat_agent
 
-      const systemPrompt = `Você é o assistente de chat contextual do orçamento da WeDo.
+      const systemPrompt = `Você é o assistente técnico contextual da WeDo para ordens de serviço e orçamentos.
 
 CONTEXTO PRINCIPAL: Você responde com base na análise técnica já gerada, nos dados da OS e nos DADOS REAIS DOS MÓDULOS DO SISTEMA que você pode consultar por ferramentas. NÃO refaça a análise.
 
@@ -1770,13 +1831,15 @@ FERRAMENTAS (use sempre que a pergunta depender de dado histórico/real, sem ped
 - buscar_equipamentos: cadastro de equipamentos (cliente, série, marca, tipo).
 - consultar_gc: consulta direta ao GestãoClick (produtos/peças por nome ou código, OS, orçamentos, clientes, serviços).
 - observacoes_os: observações internas registradas na OS.
+- biblioteca técnica CHAT: manuais, catálogos de peças, boletins e procedimentos internos organizados por fabricante/modelo.
 
 REGRAS DE FERRAMENTA:
 - Se a pergunta envolver histórico, "já foi trocado?", "quando foi a última preventiva?", "qual o código dessa peça?", "quais OS desse cliente/equipamento?", CHAME a ferramenta antes de responder.
 - Pode encadear várias chamadas. Nunca invente número de OS, código de peça ou data: só cite o que veio das ferramentas.
 - Se a ferramenta não retornar nada, diga explicitamente que não há registro — não presuma.
+- Quando receber MATERIAIS INTERNOS, cite o caminho exato do arquivo usado. Material interno sem aderência ao modelo não confirma peça ou procedimento.
 
-OBJETIVO: Ajudar o usuário a tirar dúvidas sobre este orçamento específico.
+OBJETIVO: Ajudar o usuário a decidir e executar corretamente esta OS ou orçamento específico.
 
 VOCÊ DEVE:
 - Responder dúvidas sobre o diagnóstico
@@ -1802,7 +1865,8 @@ FORMATO: Resposta direta com:
 TOM: Técnico, direto, sem floreio.`;
 
       // Build context from analysis + OS data (lightweight)
-      let contextText = `CONTEXTO DO ORÇAMENTO\n\nOS:\n`;
+      const isOsKanban = context?.source === "kanban_os";
+      let contextText = `${isOsKanban ? "CONTEXTO DO KANBAN OS" : "CONTEXTO DO ORÇAMENTO"}\n\nOS:\n`;
       if (context) {
         contextText += `- Cliente: ${context.cliente || "N/A"}\n`;
         contextText += `- Técnico: ${context.tecnico || "N/A"}\n`;
@@ -1824,25 +1888,36 @@ TOM: Técnico, direto, sem floreio.`;
         contextText += `\nANÁLISE TÉCNICA JÁ GERADA:\n${analysis}\n`;
       }
 
-      // Check if user asks for source/manual/deep info — only then fetch external data
-      const needsExternalData = /manual|arquivo|pdf|fonte|material|especificação|especificacao|fabricante|datasheet|catalogo|catálogo/i.test(userMessage || "");
+      // The OS Kanban explicitly opts into the internal CHAT library on every
+      // question. Web search remains opt-in so internal procedures stay primary.
+      const asksForTechnicalSource = /manual|arquivo|pdf|fonte|material|especificação|especificacao|fabricante|datasheet|catalogo|catálogo|peça|peca|componente|falha|defeito|procedimento|esquema/i.test(userMessage || "");
+      const asksForWeb = /internet|web|fonte externa|site do fabricante|pesquise fora/i.test(userMessage || "");
+      const needsInternalDocs = Boolean(context?.use_internal_docs) || asksForTechnicalSource;
+      const equipForChat = context?.equipamento || "";
+      const docsQuery = [
+        equipForChat,
+        context?.equipamento_serie,
+        context?.pecas,
+        context?.servicos,
+        userMessage,
+      ].filter(Boolean).join(" ");
 
-      if (needsExternalData) {
-        console.log(`[genspark-ai] [chat] Pergunta pede fonte externa — buscando docs/web`);
-        const equipForChat = context?.equipamento || "";
-        const [chatDocs, chatWeb] = await Promise.all([
-          fetchInternalTechDocs(equipForChat, equipForChat, { skipOcr: true, maxDocs: 2, timeout: 12000 }),
-          searchForChatQuestion(userMessage, equipForChat, context?.orientacao || "", analysis || ""),
-        ]);
+      const [chatDocs, chatWeb] = await Promise.all([
+        needsInternalDocs
+          ? fetchInternalTechDocs(docsQuery, equipForChat || docsQuery, { skipOcr: true, maxDocs: 4, timeout: 18000 })
+          : Promise.resolve(null),
+        asksForWeb
+          ? searchForChatQuestion(userMessage, equipForChat, context?.orientacao || "", analysis || "")
+          : Promise.resolve(""),
+      ]);
 
-        if (chatDocs.docs_count > 0) {
-          contextText += buildInternalDocsBlock(chatDocs);
-          contextText += `\nARQUIVOS CONSULTADOS: ${chatDocs.docs_titles.slice(0, 5).join(" | ")}\n`;
-        }
-        if (chatWeb) {
-          contextText += chatWeb;
-        }
+      if (chatDocs?.docs_count) {
+        contextText += buildInternalDocsBlock(chatDocs);
+        contextText += `\nARQUIVOS CONSULTADOS NA PASTA CHAT: ${chatDocs.docs_titles.slice(0, 8).join(" | ")}\n`;
+      } else if (needsInternalDocs) {
+        contextText += `\nPASTA CHAT: nenhum documento aderente foi encontrado para o equipamento/modelo informado.\n`;
       }
+      if (chatWeb) contextText += chatWeb;
 
       contextText += `\nPERGUNTA DO USUÁRIO:\n${userMessage}`;
 
@@ -1854,7 +1929,7 @@ TOM: Técnico, direto, sem floreio.`;
       }
       messages.push({ role: "user", content: contextText });
 
-      console.log(`[genspark-ai] [chat] model=${CHAT_MODEL}, hasAnalysis=${!!analysis}, needsExternalData=${needsExternalData}, msgLen=${userMessage?.length}`);
+      console.log(`[genspark-ai] [chat] model=${CHAT_MODEL}, hasAnalysis=${!!analysis}, internalDocs=${chatDocs?.docs_count || 0}, web=${asksForWeb}, msgLen=${userMessage?.length}`);
 
       // Loop de ferramentas: a IA pode consultar os módulos do sistema antes de responder.
       const MAX_TOOL_ROUNDS = 4;
@@ -1893,7 +1968,13 @@ TOM: Técnico, direto, sem floreio.`;
         }
       }
 
-      return new Response(JSON.stringify({ result: aiResult.result, tools_used: toolsUsed }), {
+      return new Response(JSON.stringify({
+        result: aiResult.result,
+        tools_used: toolsUsed,
+        docs_count: chatDocs?.docs_count || 0,
+        docs_titles: chatDocs?.docs_titles || [],
+        docs_error: chatDocs?.error || null,
+      }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
