@@ -117,6 +117,8 @@ type ApiResponse = {
   error?: string;
 };
 
+const BUDGET_DATE_FILTER_KEY = "budget-kanban:date-range";
+
 export default function BudgetKanbanPage() {
   const navigate = useNavigate();
   const today = new Date();
