@@ -662,7 +662,15 @@ function hasFilledQuestionnaireAnswers(item: any): boolean {
   const answers = Array.isArray(item?.questionario_respostas) ? item.questionario_respostas : [];
   return answers.some((answer: any) => {
     const reply = String(answer?.reply ?? answer?.resposta ?? answer?.answer ?? "").trim();
-    return reply !== "" && !reply.startsWith("http");
+    if (reply === "" || /^https?:\/\//i.test(reply)) return false;
+    const question = String(answer?.question ?? answer?.pergunta ?? "")
+      .normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase();
+    // Campo de tempo/horas não conta como preenchimento técnico
+    if (question.includes("HORA") || question.includes("TEMPO")) return false;
+    // Valores de relógio/placeholder (12:00 AM, 00:00, 0) não contam
+    if (/^\d{1,2}:\d{2}(\s*(AM|PM))?$/i.test(reply)) return false;
+    if (/^(0|00|-|n\/a|na|nao|sim)$/i.test(reply)) return false;
+    return true;
   });
 }
 
