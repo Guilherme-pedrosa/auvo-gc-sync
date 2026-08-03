@@ -408,7 +408,11 @@ Deno.serve(async (req) => {
     const auvoError = auvoResult.errorMessage;
 
     // Fallback
-    if ((auvoResult.hadError || auvoTasks.length === 0) && (startDate !== AUVO_SAFE_START || endDate !== AUVO_SAFE_END)) {
+    if (
+      (auvoResult.hadError || auvoTasks.length === 0)
+      && (startDate !== AUVO_SAFE_START || endDate !== AUVO_SAFE_END)
+      && !outOfTime()
+    ) {
       console.warn("[kanban-custom] Tentando fallback Auvo com range amplo");
       const fallback = await fetchAuvoTasksAll(bearerToken, AUVO_SAFE_START, AUVO_SAFE_END);
       const fallbackFiltered = filterTasksByQuestionnaires(fallback.tasks, questionnaireIds)
