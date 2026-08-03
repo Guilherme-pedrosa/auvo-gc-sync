@@ -16,6 +16,7 @@ export function identifyKnownEquipment(equipment: string): KnownEquipmentIdentif
     { pattern: /\bpr[aá]tica\b/i, terms: ["pratica", "prática"] },
     { pattern: /\btramontina\b/i, terms: ["tramontina"] },
     { pattern: /\belgin\b/i, terms: ["elgin"] },
+    { pattern: /\bunox\b/i, terms: ["unox"] },
   ];
   const brand = knownBrands.find((item) => item.pattern.test(text));
   if (!brand) return { manufacturer: [], modelFamily: null };
@@ -27,6 +28,8 @@ export function identifyKnownEquipment(equipment: string): KnownEquipmentIdentif
     { pattern: /\bself\s*cooking\s*center\b|\bselfcookingcenter\b|\bscc\b/i, name: "SelfCookingCenter" },
     { pattern: /\bcombi\s*master\b|\bcombimaster\b|\bcpc\b/i, name: "CombiMaster" },
     { pattern: /\becomax\b/i, name: "Ecomax" },
+    { pattern: /\bxebc[-\s]|\bbakertop\b.*\bmind[.\s_-]*maps\b/i, name: "BAKERTOP CHEFTOP MINDMaps" },
+    { pattern: /\bxevc[-\s]|\bcheftop\b.*\bmind[.\s_-]*maps\b/i, name: "CHEFTOP MINDMaps" },
   ];
   const model = modelPatterns.find((item) => item.pattern.test(text));
   return { manufacturer: brand.terms, modelFamily: model?.name || null };

@@ -3,6 +3,12 @@ import { AGENT_TOOLS, runAgentTool } from "./agent-tools.ts";
 import { parsePublicDriveFolderHtml } from "./drive-public-listing.ts";
 import { identifyKnownEquipment as identifyKnownEquipmentByCode } from "./equipment-identification.ts";
 import { evaluateBudgetSourcePreflight } from "./source-preflight.ts";
+import {
+  buildPdfPageSample,
+  expandTechnicalTerms,
+  scoreTechnicalText,
+  unrelatedDocumentPenalty,
+} from "./technical-doc-relevance.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -137,6 +143,7 @@ const DRIVE_FOLDER_ID =
 const INTERNAL_DOCS_TIMEOUT = 35000;
 const MAX_DOCS = 6;
 const MAX_TOTAL_CHARS = 30000;
+const MAX_CHARS_PER_INTERNAL_DOC = 2200;
 const MAX_INTERNAL_DOC_BYTES = 12 * 1024 * 1024;
 const MAX_OCR_DOC_BYTES = 3 * 1024 * 1024;
 const MAX_FOLDER_LISTS = 18;
@@ -187,9 +194,11 @@ const TECH_SEARCH_STOPWORDS = new Set([
   "equipamento", "maquina", "industrial", "profissional", "cliente", "tarefa",
   "ordem", "servico", "servicos", "peca", "pecas", "material", "materiais",
   "manual", "arquivo", "pasta", "documento", "documentos", "sobre", "deste", "dessa",
+  "forno", "tecnico", "tecnica", "solicita", "solicitado", "troca", "devido",
+  "falha", "baixa", "eficiencia", "corretamente", "foto", "fotos", "mostra",
 ]);
 
-function techSearchTerms(value: string, limit = 16): string[] {
+function techSearchTerms(value: string, limit = 32): string[] {
   return normalizeTechSearch(value)
     .split(" ")
     .filter((term) => term.length >= 3 && !TECH_SEARCH_STOPWORDS.has(term))
@@ -331,7 +340,7 @@ async function fetchInternalTechDocs(query?: string, equipamento?: string, optio
 
   // The equipment identifies the manufacturer/model tree. The question adds
   // component/failure terms (for example "placa I/O" or "válvula de vapor").
-  const questionTerms = techSearchTerms(query || "");
+  const questionTerms = expandTechnicalTerms(techSearchTerms(query || ""));
   const allTermsSet = new Set(
     [...manufacturerTerms, ...modelFamilyTerms, ...equipTerms, ...questionTerms]
       .map(normalizeTechSearch)
@@ -382,14 +391,12 @@ async function fetchInternalTechDocs(query?: string, equipamento?: string, optio
         // pdf.js may transfer/detach the supplied buffer. Keep the original
         // available for the OCR fallback when a PDF has no embedded text.
         const pdf = await getDocumentProxy(bytes.slice(), { maxImageSize: 16_777_216 });
-        const pageLimit = Math.min(Number(pdf.numPages || 0), 24);
-        const pages: string[] = [];
-        let extractedChars = 0;
+        const pageNumbers = buildPdfPageSample(Number(pdf.numPages || 0), 16);
+        const pages: Array<{ pageNumber: number; text: string; score: number }> = [];
 
-        // The prompt stores at most 8k characters per document. Reading all
-        // pages of 200+ page manuals wastes the Edge execution budget and can
-        // terminate the request with HTTP 546 before any source is returned.
-        for (let pageNumber = 1; pageNumber <= pageLimit && extractedChars < 10000; pageNumber++) {
+        // Sample the beginning and evenly distributed pages. A parts catalog
+        // often keeps the requested component far beyond its table of contents.
+        for (const pageNumber of pageNumbers) {
           const page = await pdf.getPage(pageNumber);
           const content = await page.getTextContent();
           const pageText = (content.items || [])
@@ -397,11 +404,22 @@ async function fetchInternalTechDocs(query?: string, equipamento?: string, optio
             .filter(Boolean)
             .join(" ");
           if (!pageText) continue;
-          pages.push(`[p. ${pageNumber}] ${pageText}`);
-          extractedChars += pageText.length;
+          pages.push({
+            pageNumber,
+            text: pageText,
+            score: scoreTechnicalText(pageText, questionTerms),
+          });
         }
 
-        return pages.join("\n").replace(/\s+/g, " ").trim().slice(0, 10000);
+        const rankedPages = pages.sort((a, b) => b.score - a.score || a.pageNumber - b.pageNumber);
+        let selectedText = "";
+        for (const selected of rankedPages) {
+          const next = `[p. ${selected.pageNumber}] ${selected.text}`;
+          if (selectedText.length > 0 && selectedText.length + next.length > 10000) continue;
+          selectedText += `${selectedText ? "\n" : ""}${next}`;
+          if (selectedText.length >= 9000) break;
+        }
+        return selectedText.replace(/\s+/g, " ").trim().slice(0, 10000);
       })();
 
       const parsed = await Promise.race([
@@ -479,7 +497,9 @@ async function fetchInternalTechDocs(query?: string, equipamento?: string, optio
   const limitReached = () => totalFilesRead >= EFFECTIVE_MAX_DOCS || totalChars >= MAX_TOTAL_CHARS;
 
   const addResult = (name: string, text: string, icon = "📄") => {
-    if (text.length > 8000) text = text.substring(0, 8000) + "\n... [truncado]";
+    if (text.length > MAX_CHARS_PER_INTERNAL_DOC) {
+      text = text.substring(0, MAX_CHARS_PER_INTERNAL_DOC) + "\n... [trecho relevante truncado]";
+    }
     results.push(`${icon} ${name}:\n${text}`);
     totalChars += text.length;
     totalFilesRead++;
@@ -675,6 +695,7 @@ async function fetchInternalTechDocs(query?: string, equipamento?: string, optio
         if (/servicereferenz|service referenz|referencia de servico/.test(text)) score += 18;
         if (/training manual|manual de treinamento|(^|\s)tm(\s|$)|_tm_/.test(text)) score += 12;
         if (/preventiv|manutenc|procedimento|boletim|esquema/.test(text)) score += 5;
+        score += scoreTechnicalText(text, questionSearchTerms);
         return score;
       };
 
@@ -686,6 +707,7 @@ async function fetchInternalTechDocs(query?: string, equipamento?: string, optio
         if (/\.(md|txt|html?)$/i.test(String(file.name || ""))) score += 7;
         else if (/\.pdf$/i.test(String(file.name || ""))) score += 3;
         if (isIndex) score -= 12;
+        score += unrelatedDocumentPenalty(fullPath, questionSearchTerms);
         return score;
       };
 
@@ -978,7 +1000,7 @@ function buildInternalDocsBlock(docsResult: InternalDocsResult): string {
   if (docsResult.docs_count > 0 && docsResult.text) {
     const docsText = clampForPrompt(docsResult.text, 9000);
     let block = `\n\n========== 📂 ${docsText} ==========`;
-    block += `\nINSTRUÇÃO: Use os materiais internos acima para fundamentar o diagnóstico. Marque com 📂 informações vindas dos materiais internos.\n`;
+    block += `\nINSTRUÇÃO: Use somente trechos que tratem do modelo, subsistema ou componente solicitado. Para CADA peça/serviço pedido pelo técnico, informe qual documento e trecho dão suporte. Se nenhum material mencionar o item, diga explicitamente "não localizado na biblioteca" e mantenha como verificar, sem transformar a simples presença de documentos em evidência. Marque com 📂 informações realmente vindas dos materiais internos.\n`;
     if (docsResult.error) {
       block += `\n⚠️ Busca interna parcial (${docsResult.error}). ${docsResult.docs_count} doc(s) carregados em ${docsResult.elapsed_ms}ms.\n`;
     }
