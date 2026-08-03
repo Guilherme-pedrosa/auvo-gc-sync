@@ -19,7 +19,7 @@ import {
   FileText, Plus, GripVertical, Trash2, Edit2, Check, X, Filter, FileDown, Star,
   Pencil, Save, Sparkles, Brain, Loader2, MessageCircle, Send, Wrench
 } from "lucide-react";
-import { format, startOfMonth } from "date-fns";
+import { format, startOfMonth, startOfDay, subMonths } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { useNavigate } from "react-router-dom";
 import { DragDropContext, Droppable, Draggable, DropResult } from "@hello-pangea/dnd";
@@ -27,6 +27,10 @@ import { toast } from "sonner";
 import {
   evaluateBudgetSyncStatus,
   moveBudgetKanbanCard,
+  BUDGET_BACKLOG_MONTHS,
+  getBudgetAgingLevel,
+  getBudgetCardAgeDays,
+  isUnresolvedBudgetCard,
   RESOLVED_WITHOUT_BUDGET_COLUMN,
   shouldAutoRouteToDoneToday,
 } from "@/lib/budgetKanban";
@@ -165,7 +169,7 @@ export default function BudgetKanbanPage() {
   const [resolutionDetails, setResolutionDetails] = useState<Record<string, { motivo: string; resolvido_por_nome: string | null; resolvido_em: string }>>({});
   const positionSaveQueue = useRef<Promise<void>>(Promise.resolve());
 
-  const { data, isLoading, refetch, isFetching } = useQuery<ApiResponse>({
+  const { data: periodData, isLoading, refetch, isFetching } = useQuery<ApiResponse>({
     queryKey: ["budget-kanban", format(dateRange.from, "yyyy-MM-dd"), format(dateRange.to, "yyyy-MM-dd")],
     queryFn: async () => {
       const { data, error } = await supabase.functions.invoke("budget-kanban", {
@@ -181,6 +185,45 @@ export default function BudgetKanbanPage() {
     },
     staleTime: Infinity, // Don't auto-refetch, use cache
   });
+
+  // Backlog fixo: cards SEM resolução dos últimos 6 meses aparecem sempre,
+  // independentemente do filtro de data. O que não foi feito não pode sumir.
+  const backlogStart = format(subMonths(startOfDay(today), BUDGET_BACKLOG_MONTHS), "yyyy-MM-dd");
+  const backlogEnd = format(today, "yyyy-MM-dd");
+  const { data: backlogData } = useQuery<ApiResponse>({
+    queryKey: ["budget-kanban-backlog", backlogStart, backlogEnd],
+    queryFn: async () => {
+      const { data, error } = await supabase.functions.invoke("budget-kanban", {
+        body: { mode: "cache", start_date: backlogStart, end_date: backlogEnd },
+      });
+      if (error) throw error;
+      if (data?.error) throw new Error(data.error);
+      return data as ApiResponse;
+    },
+    staleTime: Infinity,
+  });
+
+  // Une o período filtrado com o backlog de pendências (sem duplicar cards).
+  const data = useMemo<ApiResponse | undefined>(() => {
+    if (!periodData) return periodData;
+    const backlogItems = (backlogData?.items || []).filter((item) => isUnresolvedBudgetCard(item));
+    if (backlogItems.length === 0) return periodData;
+    const seen = new Set(periodData.items.map((item) => item.auvo_task_id));
+    const extras = backlogItems.filter((item) => !seen.has(item.auvo_task_id));
+    if (extras.length === 0) return periodData;
+    return { ...periodData, items: [...periodData.items, ...extras] };
+  }, [periodData, backlogData]);
+
+  const agingCounts = useMemo(() => {
+    let warning = 0;
+    let critical = 0;
+    for (const item of data?.items || []) {
+      const level = getBudgetAgingLevel(item);
+      if (level === "critical") critical++;
+      else if (level === "warning") warning++;
+    }
+    return { warning, critical };
+  }, [data]);
 
   const [isSyncing, setIsSyncing] = useState(false);
 
@@ -1794,6 +1837,23 @@ export default function BudgetKanbanPage() {
                 Último sync: {new Date(data.ultimo_sync).toLocaleString("pt-BR")}
               </span>
             )}
+            {(agingCounts.critical > 0 || agingCounts.warning > 0) && (
+              <div className="flex items-center gap-2">
+                {agingCounts.critical > 0 && (
+                  <Badge variant="outline" className="border-red-500 bg-red-100 text-red-700 text-[11px]">
+                    {agingCounts.critical} com +30 dias
+                  </Badge>
+                )}
+                {agingCounts.warning > 0 && (
+                  <Badge variant="outline" className="border-yellow-500 bg-yellow-100 text-yellow-800 text-[11px]">
+                    {agingCounts.warning} com +15 dias
+                  </Badge>
+                )}
+                <span className="text-[11px] text-muted-foreground">
+                  Pendências dos últimos {BUDGET_BACKLOG_MONTHS} meses sempre visíveis
+                </span>
+              </div>
+            )}
           </div>
         </div>
 
@@ -2049,7 +2109,13 @@ export default function BudgetKanbanPage() {
                                         {...provided.dragHandleProps}
                                         className={`rounded-md border bg-card shadow-sm transition-shadow cursor-pointer ${
                                           snapshot.isDragging ? "shadow-lg ring-2 ring-primary/20" : "hover:shadow-md"
-                                        } ${item.orcamento_realizado ? "border-l-4 border-l-emerald-500" : item.os_realizada ? "border-l-4 border-l-blue-500" : "border-l-4 border-l-amber-400"}`}
+                                        } ${item.orcamento_realizado ? "border-l-4 border-l-emerald-500" : item.os_realizada ? "border-l-4 border-l-blue-500" : "border-l-4 border-l-amber-400"} ${
+                                          getBudgetAgingLevel(item) === "critical"
+                                            ? "border-l-red-600 border-red-400 bg-red-50 animate-blink-danger"
+                                            : getBudgetAgingLevel(item) === "warning"
+                                              ? "border-l-yellow-500 border-yellow-400 bg-yellow-50"
+                                              : ""
+                                        }`}
                                         onClick={() => setSelectedCard(item)}
                                       >
                                         <div className="flex items-start gap-1 px-3 py-2">
@@ -2066,6 +2132,18 @@ export default function BudgetKanbanPage() {
                                             <p className="text-xs text-muted-foreground mt-0.5">
                                               {item.tecnico} • {item.data_tarefa}
                                             </p>
+                                            {getBudgetAgingLevel(item) !== "normal" && (
+                                              <Badge
+                                                variant="outline"
+                                                className={`mt-1 text-[10px] h-5 ${
+                                                  getBudgetAgingLevel(item) === "critical"
+                                                    ? "border-red-500 text-red-700 bg-red-100"
+                                                    : "border-yellow-500 text-yellow-800 bg-yellow-100"
+                                                }`}
+                                              >
+                                                Sem resolução há {getBudgetCardAgeDays(item.data_tarefa)} dias
+                                              </Badge>
+                                            )}
 
                                             {/* GC Orçamento summary */}
                                             {item.gc_orcamento && (
