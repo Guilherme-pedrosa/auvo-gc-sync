@@ -32,6 +32,7 @@ import {
   getBudgetCardAgeDays,
   isUnresolvedBudgetCard,
   RESOLVED_WITHOUT_BUDGET_COLUMN,
+  isResolvedBudgetColumn,
   shouldAutoRouteToDoneToday,
 } from "@/lib/budgetKanban";
 import BudgetAiAnalysisPanel from "@/components/financeiro/BudgetAiAnalysisPanel";
@@ -203,27 +204,42 @@ export default function BudgetKanbanPage() {
     staleTime: Infinity,
   });
 
+  // Ids de colunas consideradas "já resolvido" (sistema + custom do usuário).
+  const resolvedColumnIds = useMemo(() => {
+    const ids = new Set<string>([RESOLVED_WITHOUT_BUDGET_COLUMN]);
+    for (const col of periodData?.custom_columns || []) {
+      if (isResolvedBudgetColumn(col.id, col.title)) ids.add(col.id);
+    }
+    return ids;
+  }, [periodData]);
+
   // Une o período filtrado com o backlog de pendências (sem duplicar cards).
   const data = useMemo<ApiResponse | undefined>(() => {
     if (!periodData) return periodData;
-    const backlogItems = (backlogData?.items || []).filter((item) => isUnresolvedBudgetCard(item));
+    const backlogItems = (backlogData?.items || []).filter(
+      (item) =>
+        isUnresolvedBudgetCard(item)
+        // Cards já resolvidos manualmente seguem o filtro de data normal.
+        && !resolvedColumnIds.has(String((item as any)._coluna || "")),
+    );
     if (backlogItems.length === 0) return periodData;
     const seen = new Set(periodData.items.map((item) => item.auvo_task_id));
     const extras = backlogItems.filter((item) => !seen.has(item.auvo_task_id));
     if (extras.length === 0) return periodData;
     return { ...periodData, items: [...periodData.items, ...extras] };
-  }, [periodData, backlogData]);
+  }, [periodData, backlogData, resolvedColumnIds]);
 
   const agingCounts = useMemo(() => {
     let warning = 0;
     let critical = 0;
     for (const item of data?.items || []) {
+      if (resolvedColumnIds.has(String((item as any)._coluna || ""))) continue;
       const level = getBudgetAgingLevel(item);
       if (level === "critical") critical++;
       else if (level === "warning") warning++;
     }
     return { warning, critical };
-  }, [data]);
+  }, [data, resolvedColumnIds]);
 
   // Quando o backlog de 6 meses chega depois do período filtrado, o conjunto de
   // cards muda: é preciso reprocessar as colunas para que as pendências entrem.
