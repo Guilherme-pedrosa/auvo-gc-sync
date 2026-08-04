@@ -34,6 +34,7 @@ import {
   RESOLVED_WITHOUT_BUDGET_COLUMN,
   isResolvedBudgetColumn,
   shouldAutoRouteToDoneToday,
+  shouldEvictFromDoneToday,
 } from "@/lib/budgetKanban";
 import BudgetAiAnalysisPanel from "@/components/financeiro/BudgetAiAnalysisPanel";
 import EquipamentoPecasDialog from "@/pages/financeiro/EquipamentoPecasDialog";
