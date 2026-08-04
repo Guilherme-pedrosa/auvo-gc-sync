@@ -958,8 +958,9 @@ export default function BudgetKanbanPage() {
       .filter((c) => isResolvedBudgetColumn(c.id, c.title))
       .flatMap((c) => c.items.map((i) => i.auvo_task_id));
     if (taskIds.length === 0) return;
-    const missing = taskIds.filter((id) => !(id in resolutionDetails));
+    const missing = taskIds.filter((id) => !(id in resolutionDetails) && !resolutionFetched.current.has(id));
     if (missing.length === 0) return;
+    missing.forEach((id) => resolutionFetched.current.add(id));
     (async () => {
       const chunks: string[][] = [];
       for (let i = 0; i < missing.length; i += 200) chunks.push(missing.slice(i, i + 200));
@@ -970,7 +971,11 @@ export default function BudgetKanbanPage() {
           .select("auvo_task_id, motivo, resolvido_por_nome, resolvido_em")
           .in("auvo_task_id", chunk)
           .order("resolvido_em", { ascending: false });
-        if (error) return;
+        if (error) {
+          console.error("Erro ao carregar histórico de resolução:", error);
+          chunk.forEach((id) => resolutionFetched.current.delete(id));
+          return;
+        }
         rows.push(...(data || []));
       }
       if (rows.length === 0) return;
