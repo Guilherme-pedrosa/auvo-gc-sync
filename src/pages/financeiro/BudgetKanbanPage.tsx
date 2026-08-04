@@ -244,21 +244,44 @@ export default function BudgetKanbanPage() {
     return ids;
   }, [periodData]);
 
+  // O quadro legado já possuía uma coluna customizada chamada "JÁ RESOLVIDO".
+  // O contrato novo também criou a coluna técnica resolvido_sem_orcamento. Exibir
+  // as duas separadamente deixa a coluna visível vazia, embora os cards estejam
+  // preservados na coluna técnica. Na tela, consolida ambas na coluna já existente.
+  const displayedResolvedColumnId = useMemo(() => {
+    const customResolved = (periodData?.custom_columns || []).find(
+      (col) => col.id !== RESOLVED_WITHOUT_BUDGET_COLUMN && isResolvedBudgetColumn(col.id, col.title),
+    );
+    return customResolved?.id || RESOLVED_WITHOUT_BUDGET_COLUMN;
+  }, [periodData]);
+
   // Une o período filtrado com o backlog de pendências (sem duplicar cards).
   const data = useMemo<ApiResponse | undefined>(() => {
     if (!periodData) return periodData;
+    const normalizeResolvedColumns = (items: KanbanItem[]) => items.map((item) => {
+      const currentColumn = String((item as any)._coluna || "");
+      if (!resolvedColumnIds.has(currentColumn)) return item;
+      return { ...item, _coluna: displayedResolvedColumnId } as KanbanItem;
+    });
+    const normalizedPeriodData: ApiResponse = {
+      ...periodData,
+      items: normalizeResolvedColumns(periodData.items),
+      custom_columns: (periodData.custom_columns || []).filter(
+        (col) => col.id !== RESOLVED_WITHOUT_BUDGET_COLUMN || displayedResolvedColumnId === RESOLVED_WITHOUT_BUDGET_COLUMN,
+      ),
+    };
     const backlogItems = (backlogData?.items || []).filter(
       (item) =>
         isUnresolvedBudgetCard(item)
         // Cards já resolvidos manualmente seguem o filtro de data normal.
         && !resolvedColumnIds.has(String((item as any)._coluna || "")),
     );
-    if (backlogItems.length === 0) return periodData;
-    const seen = new Set(periodData.items.map((item) => item.auvo_task_id));
+    if (backlogItems.length === 0) return normalizedPeriodData;
+    const seen = new Set(normalizedPeriodData.items.map((item) => item.auvo_task_id));
     const extras = backlogItems.filter((item) => !seen.has(item.auvo_task_id));
-    if (extras.length === 0) return periodData;
-    return { ...periodData, items: [...periodData.items, ...extras] };
-  }, [periodData, backlogData, resolvedColumnIds]);
+    if (extras.length === 0) return normalizedPeriodData;
+    return { ...normalizedPeriodData, items: [...normalizedPeriodData.items, ...extras] };
+  }, [periodData, backlogData, resolvedColumnIds, displayedResolvedColumnId]);
 
   const agingCounts = useMemo(() => {
     let warning = 0;
