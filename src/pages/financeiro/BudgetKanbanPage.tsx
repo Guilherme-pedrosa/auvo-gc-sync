@@ -485,6 +485,37 @@ export default function BudgetKanbanPage() {
         }),
       }));
 
+      // O smart merge preserva a posição local dos cards, mas a resolução ativa
+      // vem do backend pela _coluna. Portanto, cards já conhecidos também precisam
+      // migrar imediatamente para a coluna visível de resolvidos, sem hard reload.
+      const resolvedMovers: KanbanItem[] = [];
+      for (const col of mergedCols) {
+        if (col.id === displayedResolvedColumnId) continue;
+        const keep: KanbanItem[] = [];
+        for (const card of col.items) {
+          const freshColumn = freshColumnMap.get(card.auvo_task_id);
+          if (freshColumn && resolvedColumnIds.has(freshColumn)) resolvedMovers.push(card);
+          else keep.push(card);
+        }
+        col.items = keep;
+      }
+      if (resolvedMovers.length > 0) {
+        let resolvedColumn = mergedCols.find((col) => col.id === displayedResolvedColumnId);
+        if (!resolvedColumn) {
+          const savedColumn = data.custom_columns?.find((col) => col.id === displayedResolvedColumnId);
+          resolvedColumn = {
+            id: displayedResolvedColumnId,
+            title: savedColumn?.title || "✅ Já Resolvido",
+            items: [],
+          };
+          mergedCols.push(resolvedColumn);
+        }
+        const present = new Set(resolvedColumn.items.map((item) => item.auvo_task_id));
+        for (const card of resolvedMovers) {
+          if (!present.has(card.auvo_task_id)) resolvedColumn.items.push(card);
+        }
+      }
+
       // Auto-route: cards que viraram "orcamento_realizado" ou "os_realizada"
       // e ainda estão em coluna de sistema "pendente" (a_fazer / falta_preenchimento)
       // devem migrar para a coluna correta. Colunas manuais
