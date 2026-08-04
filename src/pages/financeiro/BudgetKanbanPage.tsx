@@ -273,6 +273,7 @@ export default function BudgetKanbanPage() {
   // Quando o backlog de 6 meses chega depois do período filtrado, o conjunto de
   // cards muda: é preciso reprocessar as colunas para que as pendências entrem.
   const lastItemsSignature = useRef<string>("");
+  const resolutionFetched = useRef<Set<string>>(new Set());
   useEffect(() => {
     if (!data?.items) return;
     const signature = data.items
