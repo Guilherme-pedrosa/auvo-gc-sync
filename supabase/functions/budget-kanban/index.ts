@@ -1567,6 +1567,56 @@ async function runBudgetKanbanSync(opts: {
     posicao: idx,
   }));
 
+  // === BACKFILL: cards já em cache (fora da janela sincronizada, ex.: backlog de
+  // 6 meses) que passaram a ter orçamento/OS no GC. Sem isso eles ficam vermelhos
+  // para sempre, mesmo com documento existente no GestãoClick. ===
+  try {
+    const syncedIds = new Set(items.map((i: any) => String(i.auvo_task_id || "")));
+    const gcLinkedIds = Array.from(
+      new Set([...Object.keys(gcOrcMap), ...Object.keys(gcOsMap)]),
+    ).filter((id) => id && !syncedIds.has(id));
+
+    const backfillRows: any[] = [];
+    for (let i = 0; i < gcLinkedIds.length; i += 200) {
+      const chunk = gcLinkedIds.slice(i, i + 200);
+      const { data: cachedRows, error: cachedError } = await sbClient
+        .from("kanban_orcamentos_cache")
+        .select("auvo_task_id, dados, posicao")
+        .in("auvo_task_id", chunk);
+      if (cachedError) throw cachedError;
+      for (const row of cachedRows || []) {
+        const tid = String(row.auvo_task_id || "");
+        const dados = { ...(row.dados || {}) } as any;
+        const orcMatch = gcOrcMap[tid] || null;
+        const osMatch = gcOsMap[tid] || null;
+        const needsOrc = !!orcMatch && !dados.gc_orcamento;
+        const needsOs = !!osMatch && !dados.gc_os;
+        if (!needsOrc && !needsOs) continue;
+        if (needsOrc) {
+          dados.gc_orcamento = orcMatch;
+          dados.orcamento_realizado = true;
+        }
+        if (needsOs) {
+          dados.gc_os = osMatch;
+          dados.os_realizada = true;
+        }
+        backfillRows.push({
+          auvo_task_id: tid,
+          dados,
+          auto_coluna: budgetColumnForItem(dados),
+          posicao: typeof row.posicao === "number" ? row.posicao : 0,
+        });
+      }
+    }
+
+    if (backfillRows.length > 0) {
+      console.log(`[budget-kanban] Backfill GC: ${backfillRows.length} cards antigos revinculados`);
+      syncRows.push(...backfillRows);
+    }
+  } catch (err) {
+    console.warn("[budget-kanban] Backfill GC falhou (seguindo sem ele):", err);
+  }
+
   // Upsert in batches of 50. Projects created before the sync-contract
   // migration fall back to a service-role upsert with the same column rules.
   let legacyFallbackUsed = false;
