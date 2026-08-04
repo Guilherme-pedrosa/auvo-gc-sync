@@ -156,6 +156,7 @@ export default function BudgetKanbanPage() {
   }, [dateRange]);
   const [columns, setColumns] = useState<KanbanColumn[]>([]);
   const [columnsInitialized, setColumnsInitialized] = useState(false);
+  const [needsPositionPersist, setNeedsPositionPersist] = useState(false);
   const [filterTecnico, setFilterTecnico] = useState("todos");
   const [filterClienteSearch, setFilterClienteSearch] = useState("");
   const [selectedClientes, setSelectedClientes] = useState<Set<string>>(new Set());
