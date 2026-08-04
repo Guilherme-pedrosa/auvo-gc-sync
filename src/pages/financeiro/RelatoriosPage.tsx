@@ -39,7 +39,7 @@ const TAREFAS_CENTRAL_REPORT_COLUMNS = [
   "check_in_iso", "check_out_iso", "duracao_deslocamento", "equipamento_nome", "equipamento_id_serie",
   "gc_os_id", "gc_os_codigo", "gc_os_cliente", "gc_os_situacao", "gc_os_situacao_id", "gc_os_cor_situacao",
   "gc_os_valor_total", "gc_os_vendedor", "gc_os_data", "gc_os_data_saida", "gc_os_link", "gc_os_link_cobranca",
-  "gc_os_tarefa_exec", "gc_os_tarefa_os", "gc_orcamento_id", "gc_orcamento_codigo", "gc_orc_cliente",
+  "gc_os_tarefa_exec", "gc_os_tarefa_os", "gc_os_local_reparo", "gc_orcamento_id", "gc_orcamento_codigo", "gc_orc_cliente",
   "gc_orc_situacao", "gc_orc_situacao_id", "gc_orc_cor_situacao", "gc_orc_valor_total", "gc_orc_vendedor",
   "gc_orc_data", "gc_orc_link", "task_type_id", "atualizado_em",
 ].join(",");
