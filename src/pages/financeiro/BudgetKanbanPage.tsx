@@ -869,6 +869,15 @@ export default function BudgetKanbanPage() {
     return queuedSave;
   }, []);
 
+  // Persiste a limpeza automática da coluna "Feito hoje" (cartões de dias anteriores)
+  useEffect(() => {
+    if (!needsPositionPersist || columns.length === 0) return;
+    setNeedsPositionPersist(false);
+    void savePositions(columns).catch((error) => {
+      console.error("Falha ao persistir limpeza de 'Feito hoje'", error);
+    });
+  }, [needsPositionPersist, columns, savePositions]);
+
   // Drag and drop (cards and columns)
   const onDragEnd = useCallback(async (result: DropResult) => {
     const { source, destination, type } = result;
