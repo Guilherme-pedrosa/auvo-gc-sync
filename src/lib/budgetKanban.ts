@@ -121,6 +121,18 @@ export function shouldAutoRouteToDoneToday(
 }
 
 /**
+ * "Feito hoje" só pode conter cartões cuja data do documento GC é a data de hoje.
+ * Cartões de dias anteriores (ou sem data) devem voltar para a coluna de sistema.
+ */
+export function shouldEvictFromDoneToday(
+  budgetDate: string | null | undefined,
+  today: string,
+): boolean {
+  if (!budgetDate) return true;
+  return String(budgetDate).slice(0, 10) !== today;
+}
+
+/**
  * Moves the card by its stable task id instead of using the visible array index.
  * Visible indexes differ from stored indexes whenever filters are active.
  */

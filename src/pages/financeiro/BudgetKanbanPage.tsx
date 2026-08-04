@@ -34,6 +34,7 @@ import {
   RESOLVED_WITHOUT_BUDGET_COLUMN,
   isResolvedBudgetColumn,
   shouldAutoRouteToDoneToday,
+  shouldEvictFromDoneToday,
 } from "@/lib/budgetKanban";
 import BudgetAiAnalysisPanel from "@/components/financeiro/BudgetAiAnalysisPanel";
 import EquipamentoPecasDialog from "@/pages/financeiro/EquipamentoPecasDialog";
@@ -155,6 +156,7 @@ export default function BudgetKanbanPage() {
   }, [dateRange]);
   const [columns, setColumns] = useState<KanbanColumn[]>([]);
   const [columnsInitialized, setColumnsInitialized] = useState(false);
+  const [needsPositionPersist, setNeedsPositionPersist] = useState(false);
   const [filterTecnico, setFilterTecnico] = useState("todos");
   const [filterClienteSearch, setFilterClienteSearch] = useState("");
   const [selectedClientes, setSelectedClientes] = useState<Set<string>>(new Set());
@@ -516,6 +518,29 @@ export default function BudgetKanbanPage() {
           const present = new Set(target.items.map((i) => i.auvo_task_id));
           for (const m of movers) if (!present.has(m.auvo_task_id)) target.items.unshift(m);
         }
+
+        // Auto-eviction: cartões cuja data do documento GC não é hoje NÃO podem
+        // permanecer em "Feito hoje" — voltam para a coluna de sistema correta.
+        if (target) {
+          const stay: KanbanItem[] = [];
+          const evicted: KanbanItem[] = [];
+          for (const card of target.items) {
+            const docDate = card.gc_orcamento?.gc_data || card.gc_os?.gc_data;
+            if (shouldEvictFromDoneToday(docDate, todayStr)) evicted.push(card);
+            else stay.push(card);
+          }
+          target.items = stay;
+          for (const card of evicted) {
+            const destId = resolveSystemColumn(card);
+            let dest = mergedCols.find((c) => c.id === destId);
+            if (!dest) {
+              dest = { id: destId, title: destId === "os_realizada" ? "🔧 OS Realizada" : destId.startsWith("orc_") ? `💰 ${destId.replace("orc_", "").replace(/_/g, " ")}` : destId, items: [] };
+              mergedCols.push(dest);
+            }
+            if (!dest.items.some((i) => i.auvo_task_id === card.auvo_task_id)) dest.items.push(card);
+          }
+          if (evicted.length > 0) setNeedsPositionPersist(true);
+        }
       }
 
       // Ensure "resolvido_sem_orcamento" column exists (fixed system column)
@@ -656,6 +681,27 @@ export default function BudgetKanbanPage() {
         if (target && movers.length > 0) {
           const present = new Set(target.items.map((i) => i.auvo_task_id));
           for (const m of movers) if (!present.has(m.auvo_task_id)) target.items.unshift(m);
+        }
+
+        if (target) {
+          const stay: KanbanItem[] = [];
+          const evicted: KanbanItem[] = [];
+          for (const card of target.items) {
+            const docDate = card.gc_orcamento?.gc_data || card.gc_os?.gc_data;
+            if (shouldEvictFromDoneToday(docDate, todayStr)) evicted.push(card);
+            else stay.push(card);
+          }
+          target.items = stay;
+          for (const card of evicted) {
+            const destId = resolveSystemColumn(card);
+            let dest = cols.find((c) => c.id === destId);
+            if (!dest) {
+              dest = { id: destId, title: destId === "os_realizada" ? "🔧 OS Realizada" : destId.startsWith("orc_") ? `💰 ${destId.replace("orc_", "").replace(/_/g, " ")}` : destId, items: [] };
+              cols.push(dest);
+            }
+            if (!dest.items.some((i) => i.auvo_task_id === card.auvo_task_id)) dest.items.push(card);
+          }
+          if (evicted.length > 0) setNeedsPositionPersist(true);
         }
       }
 
@@ -822,6 +868,15 @@ export default function BudgetKanbanPage() {
     positionSaveQueue.current = queuedSave;
     return queuedSave;
   }, []);
+
+  // Persiste a limpeza automática da coluna "Feito hoje" (cartões de dias anteriores)
+  useEffect(() => {
+    if (!needsPositionPersist || columns.length === 0) return;
+    setNeedsPositionPersist(false);
+    void savePositions(columns).catch((error) => {
+      console.error("Falha ao persistir limpeza de 'Feito hoje'", error);
+    });
+  }, [needsPositionPersist, columns, savePositions]);
 
   // Drag and drop (cards and columns)
   const onDragEnd = useCallback(async (result: DropResult) => {
