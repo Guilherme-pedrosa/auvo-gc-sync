@@ -244,21 +244,44 @@ export default function BudgetKanbanPage() {
     return ids;
   }, [periodData]);
 
+  // O quadro legado já possuía uma coluna customizada chamada "JÁ RESOLVIDO".
+  // O contrato novo também criou a coluna técnica resolvido_sem_orcamento. Exibir
+  // as duas separadamente deixa a coluna visível vazia, embora os cards estejam
+  // preservados na coluna técnica. Na tela, consolida ambas na coluna já existente.
+  const displayedResolvedColumnId = useMemo(() => {
+    const customResolved = (periodData?.custom_columns || []).find(
+      (col) => col.id !== RESOLVED_WITHOUT_BUDGET_COLUMN && isResolvedBudgetColumn(col.id, col.title),
+    );
+    return customResolved?.id || RESOLVED_WITHOUT_BUDGET_COLUMN;
+  }, [periodData]);
+
   // Une o período filtrado com o backlog de pendências (sem duplicar cards).
   const data = useMemo<ApiResponse | undefined>(() => {
     if (!periodData) return periodData;
+    const normalizeResolvedColumns = (items: KanbanItem[]) => items.map((item) => {
+      const currentColumn = String((item as any)._coluna || "");
+      if (!resolvedColumnIds.has(currentColumn)) return item;
+      return { ...item, _coluna: displayedResolvedColumnId } as KanbanItem;
+    });
+    const normalizedPeriodData: ApiResponse = {
+      ...periodData,
+      items: normalizeResolvedColumns(periodData.items),
+      custom_columns: (periodData.custom_columns || []).filter(
+        (col) => col.id !== RESOLVED_WITHOUT_BUDGET_COLUMN || displayedResolvedColumnId === RESOLVED_WITHOUT_BUDGET_COLUMN,
+      ),
+    };
     const backlogItems = (backlogData?.items || []).filter(
       (item) =>
         isUnresolvedBudgetCard(item)
         // Cards já resolvidos manualmente seguem o filtro de data normal.
         && !resolvedColumnIds.has(String((item as any)._coluna || "")),
     );
-    if (backlogItems.length === 0) return periodData;
-    const seen = new Set(periodData.items.map((item) => item.auvo_task_id));
+    if (backlogItems.length === 0) return normalizedPeriodData;
+    const seen = new Set(normalizedPeriodData.items.map((item) => item.auvo_task_id));
     const extras = backlogItems.filter((item) => !seen.has(item.auvo_task_id));
-    if (extras.length === 0) return periodData;
-    return { ...periodData, items: [...periodData.items, ...extras] };
-  }, [periodData, backlogData, resolvedColumnIds]);
+    if (extras.length === 0) return normalizedPeriodData;
+    return { ...normalizedPeriodData, items: [...normalizedPeriodData.items, ...extras] };
+  }, [periodData, backlogData, resolvedColumnIds, displayedResolvedColumnId]);
 
   const agingCounts = useMemo(() => {
     let warning = 0;
@@ -462,6 +485,37 @@ export default function BudgetKanbanPage() {
         }),
       }));
 
+      // O smart merge preserva a posição local dos cards, mas a resolução ativa
+      // vem do backend pela _coluna. Portanto, cards já conhecidos também precisam
+      // migrar imediatamente para a coluna visível de resolvidos, sem hard reload.
+      const resolvedMovers: KanbanItem[] = [];
+      for (const col of mergedCols) {
+        if (col.id === displayedResolvedColumnId) continue;
+        const keep: KanbanItem[] = [];
+        for (const card of col.items) {
+          const freshColumn = freshColumnMap.get(card.auvo_task_id);
+          if (freshColumn && resolvedColumnIds.has(freshColumn)) resolvedMovers.push(card);
+          else keep.push(card);
+        }
+        col.items = keep;
+      }
+      if (resolvedMovers.length > 0) {
+        let resolvedColumn = mergedCols.find((col) => col.id === displayedResolvedColumnId);
+        if (!resolvedColumn) {
+          const savedColumn = data.custom_columns?.find((col) => col.id === displayedResolvedColumnId);
+          resolvedColumn = {
+            id: displayedResolvedColumnId,
+            title: savedColumn?.title || "✅ Já Resolvido",
+            items: [],
+          };
+          mergedCols.push(resolvedColumn);
+        }
+        const present = new Set(resolvedColumn.items.map((item) => item.auvo_task_id));
+        for (const card of resolvedMovers) {
+          if (!present.has(card.auvo_task_id)) resolvedColumn.items.push(card);
+        }
+      }
+
       // Auto-route: cards que viraram "orcamento_realizado" ou "os_realizada"
       // e ainda estão em coluna de sistema "pendente" (a_fazer / falta_preenchimento)
       // devem migrar para a coluna correta. Colunas manuais
@@ -480,14 +534,35 @@ export default function BudgetKanbanPage() {
         }
         col.items = keep;
       }
+
+      // Auto-route: cards que ganharam (ou perderam) resolução manual ativa
+      // (kanban_resolution_details.ativo=true) desde a última renderização.
+      // O backend já sinaliza isso via freshColumnMap[_coluna] === RESOLVED_WITHOUT_BUDGET_COLUMN,
+      // mas o merge acima só reaproveita a coluna já existente em `state`,
+      // então sem esta checagem os cards resolvidos ficam presos na coluna
+      // antiga (ex.: a_fazer) e nunca aparecem em "Já Resolvido".
+      for (const col of mergedCols) {
+        if (col.id === RESOLVED_WITHOUT_BUDGET_COLUMN) continue;
+        const keep: KanbanItem[] = [];
+        for (const card of col.items) {
+          if (freshColumnMap.get(card.auvo_task_id) === RESOLVED_WITHOUT_BUDGET_COLUMN) {
+            promotionMovers.push({ card, target: RESOLVED_WITHOUT_BUDGET_COLUMN });
+          } else {
+            keep.push(card);
+          }
+        }
+        col.items = keep;
+      }
       for (const { card, target } of promotionMovers) {
         let col = mergedCols.find((c) => c.id === target);
         if (!col) {
-          const title = target === "os_realizada"
-            ? "🔧 OS Realizada"
-            : target.startsWith("orc_")
-              ? `💰 ${target.replace("orc_", "").replace(/_/g, " ")}`
-              : target;
+          const title = target === RESOLVED_WITHOUT_BUDGET_COLUMN
+            ? "✅ Já Resolvido"
+            : target === "os_realizada"
+              ? "🔧 OS Realizada"
+              : target.startsWith("orc_")
+                ? `💰 ${target.replace("orc_", "").replace(/_/g, " ")}`
+                : target;
           col = { id: target, title, items: [] };
           mergedCols.push(col);
         }
@@ -543,8 +618,8 @@ export default function BudgetKanbanPage() {
         }
       }
 
-      // Ensure "resolvido_sem_orcamento" column exists (fixed system column)
-      if (!mergedCols.find((c) => c.id === "resolvido_sem_orcamento")) {
+      // Só cria a coluna técnica quando não existe uma coluna de resolvidos visível.
+      if (displayedResolvedColumnId === RESOLVED_WITHOUT_BUDGET_COLUMN && !mergedCols.find((c) => c.id === RESOLVED_WITHOUT_BUDGET_COLUMN)) {
         mergedCols.push({ id: "resolvido_sem_orcamento", title: "✅ Já Resolvido", items: [] });
       }
 
@@ -639,13 +714,13 @@ export default function BudgetKanbanPage() {
         if (!orderedIds.includes(colId)) orderedIds.push(colId);
       }
 
-      // Ensure falta_preenchimento, a_fazer and resolvido_sem_orcamento exist
+      // Ensure fixed system columns exist; resolved uses the existing visible column.
       if (!orderedIds.includes("falta_preenchimento")) orderedIds.unshift("falta_preenchimento");
       if (!orderedIds.includes("a_fazer")) {
         const fpIdx = orderedIds.indexOf("falta_preenchimento");
         orderedIds.splice(fpIdx + 1, 0, "a_fazer");
       }
-      if (!orderedIds.includes("resolvido_sem_orcamento")) orderedIds.push("resolvido_sem_orcamento");
+      if (!orderedIds.includes(displayedResolvedColumnId)) orderedIds.push(displayedResolvedColumnId);
 
       const defaultTitlesExtra: Record<string, string> = {
         ...defaultTitles,
@@ -653,7 +728,7 @@ export default function BudgetKanbanPage() {
       };
 
       const cols: KanbanColumn[] = orderedIds
-        .filter((colId) => (colMap[colId] && colMap[colId].length > 0) || savedOrderMap.has(colId) || colId === "falta_preenchimento" || colId === "a_fazer" || colId === "resolvido_sem_orcamento")
+        .filter((colId) => (colMap[colId] && colMap[colId].length > 0) || savedOrderMap.has(colId) || colId === "falta_preenchimento" || colId === "a_fazer" || colId === displayedResolvedColumnId)
         .map((colId) => ({
           id: colId,
           title: savedOrderMap.get(colId)?.title || defaultTitlesExtra[colId] || (colId.startsWith("orc_") ? `💰 ${colId.replace("orc_", "").replace(/_/g, " ")}` : colId),
@@ -742,7 +817,7 @@ export default function BudgetKanbanPage() {
     }
 
     setColumnsInitialized(true);
-  }, [data, columnsInitialized]);
+  }, [data, columnsInitialized, displayedResolvedColumnId]);
 
   const handleRefresh = useCallback(() => {
     setColumnsInitialized(false);
