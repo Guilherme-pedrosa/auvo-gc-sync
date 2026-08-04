@@ -17,6 +17,8 @@ const GC_ATRIBUTO_TAREFA_OS = "73343";
 const GC_ATRIBUTO_TAREFA_EXEC = "73344";
 // 88695 = ID EQUIPAMENTO (identificador/série do equipamento preenchido no GC)
 const GC_ATRIBUTO_ID_EQUIPAMENTO = "88695";
+// 68658 = LOCAL DO REPARO (CLIENTE / GALPÃO)
+const GC_ATRIBUTO_LOCAL_REPARO = "68658";
 // GestãoClick documents a company-wide limit of 3 requests/second. Keep each
 // Edge Function instance below that ceiling and serialize concurrent callers
 // inside this process so Promise.all cannot create request bursts.
@@ -707,6 +709,7 @@ async function hydrateMissingOsByCodigo(
         gc_os_tarefa_exec,
         gc_os_tarefa_os,
         gc_os_equip_id: getGcAttrValue(atributos, GC_ATRIBUTO_ID_EQUIPAMENTO) || null,
+        gc_os_local_reparo: getGcAttrValue(atributos, GC_ATRIBUTO_LOCAL_REPARO) || null,
         gc_os_orcamento_codigo: null as string | null,
       };
       const codigo = String(os.codigo || "").trim();
@@ -831,6 +834,7 @@ async function fetchGcOs(gcHeaders: Record<string, string>, options?: { situacao
           gc_os_tarefa_exec,
           gc_os_tarefa_os,
           gc_os_equip_id: getGcAttrValue(atributos, GC_ATRIBUTO_ID_EQUIPAMENTO) || null,
+        gc_os_local_reparo: getGcAttrValue(atributos, GC_ATRIBUTO_LOCAL_REPARO) || null,
           gc_os_orcamento_codigo: null as string | null,
         };
 
@@ -1141,6 +1145,7 @@ function mapGcOsToMirrorPayload(os: any) {
     gc_os_link_cobranca: buildGcOsPublicLink(os),
     gc_os_tarefa_exec: collectGcAttrTaskIds(atributos, GC_ATRIBUTO_TAREFA_EXEC).join("/") || null,
     gc_os_tarefa_os: collectGcAttrTaskIds(atributos, GC_ATRIBUTO_TAREFA_OS).join("/") || null,
+    gc_os_local_reparo: getGcAttrValue(atributos, GC_ATRIBUTO_LOCAL_REPARO) || null,
   };
 }
 
@@ -1159,6 +1164,7 @@ function mirrorUpdateFromGcPayload(fresh: any) {
     gc_os_link_cobranca: fresh.gc_os_link_cobranca || null,
     gc_os_tarefa_exec: fresh.gc_os_tarefa_exec || null,
     gc_os_tarefa_os: fresh.gc_os_tarefa_os || null,
+    gc_os_local_reparo: fresh.gc_os_local_reparo ?? null,
     atualizado_em: new Date().toISOString(),
   };
 }

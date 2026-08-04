@@ -119,6 +119,14 @@ const extractEquipmentInfo = (raw: any): { nome: string; serie: string } => {
 type LiveTaskResolution = { taskId: string; tecnico: string; tecnicoId: string; dataTarefa: string; status: string };
 type OSAbertasGroup = { cliente: string; count: number; total: number; items: any[]; isPendingLinkGroup?: boolean };
 
+/** Normaliza o valor do campo GC "LOCAL DO REPARO" (68658) */
+const normalizeLocalReparo = (raw: unknown): string =>
+  String(raw ?? "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .trim();
+
 const isPendingLinkItem = (item: any) => String(item?.auvo_task_id || "").startsWith("gc-only::");
 
 const extractLiveTaskResolution = (taskData: any, taskId: string): LiveTaskResolution | null => {
@@ -141,6 +149,7 @@ export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, o
   const [excludedSituacoes, setExcludedSituacoes] = useState<Set<string>>(new Set());
   const [searchSituacao, setSearchSituacao] = useState("");
   const [execStatusFilter, setExecStatusFilter] = useState<string>("all"); // all | em_andamento | pausada | finalizada | sem_exec
+  const [localReparoFilter, setLocalReparoFilter] = useState<string>("all"); // all | galpao | cliente | sem_info
   const [expanded, setExpanded] = useState<string | null>(null);
 
   // Detail dialog
@@ -410,6 +419,16 @@ export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, o
     // só apareciam por terem tarefa Auvo vinculada, mas não devem ser listadas aqui.
     items = items.filter(isOpenOsSituation);
 
+    // Filtro LOCAL DO REPARO (campo 68658 do GC)
+    if (localReparoFilter !== "all") {
+      items = items.filter((item) => {
+        const local = normalizeLocalReparo(item?.gc_os_local_reparo);
+        if (localReparoFilter === "galpao") return local.includes("galpao");
+        if (localReparoFilter === "cliente") return local.includes("cliente");
+        return !local;
+      });
+    }
+
     // Apply exec status filter
     if (execStatusFilter === "excluidas") {
       items = items.filter((item) => deletedOsIds.has(String(item.gc_os_id || "")));
@@ -425,7 +444,7 @@ export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, o
     }
 
     return items;
-  }, [data, deletedOsIds, excludedSituacoes, execStatusFilter, getItemExecStatus, movedOsIds, removedOsIds]);
+  }, [data, deletedOsIds, excludedSituacoes, execStatusFilter, getItemExecStatus, localReparoFilter, movedOsIds, removedOsIds]);
 
   // Verifica no GC quais OS listadas foram apagadas
   const checkedOsIdsRef = useRef<Set<string>>(new Set());
@@ -1146,6 +1165,26 @@ export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, o
               size="sm"
               className="text-xs h-7 px-2.5"
               onClick={() => setExecStatusFilter(opt.value)}
+            >
+              {opt.label}
+            </Button>
+          ))}
+        </div>
+
+        {/* Local do reparo (campo GC 68658) */}
+        <div className="flex items-center gap-1.5">
+          {[
+            { value: "all", label: "Local: todos" },
+            { value: "galpao", label: "🏭 Galpão" },
+            { value: "cliente", label: "🏢 Cliente" },
+            { value: "sem_info", label: "Sem local" },
+          ].map((opt) => (
+            <Button
+              key={opt.value}
+              variant={localReparoFilter === opt.value ? "default" : "outline"}
+              size="sm"
+              className="text-xs h-7 px-2.5"
+              onClick={() => setLocalReparoFilter(opt.value)}
             >
               {opt.label}
             </Button>
