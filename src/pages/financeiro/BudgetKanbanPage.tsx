@@ -503,14 +503,35 @@ export default function BudgetKanbanPage() {
         }
         col.items = keep;
       }
+
+      // Auto-route: cards que ganharam (ou perderam) resolução manual ativa
+      // (kanban_resolution_details.ativo=true) desde a última renderização.
+      // O backend já sinaliza isso via freshColumnMap[_coluna] === RESOLVED_WITHOUT_BUDGET_COLUMN,
+      // mas o merge acima só reaproveita a coluna já existente em `state`,
+      // então sem esta checagem os cards resolvidos ficam presos na coluna
+      // antiga (ex.: a_fazer) e nunca aparecem em "Já Resolvido".
+      for (const col of mergedCols) {
+        if (col.id === RESOLVED_WITHOUT_BUDGET_COLUMN) continue;
+        const keep: KanbanItem[] = [];
+        for (const card of col.items) {
+          if (freshColumnMap.get(card.auvo_task_id) === RESOLVED_WITHOUT_BUDGET_COLUMN) {
+            promotionMovers.push({ card, target: RESOLVED_WITHOUT_BUDGET_COLUMN });
+          } else {
+            keep.push(card);
+          }
+        }
+        col.items = keep;
+      }
       for (const { card, target } of promotionMovers) {
         let col = mergedCols.find((c) => c.id === target);
         if (!col) {
-          const title = target === "os_realizada"
-            ? "🔧 OS Realizada"
-            : target.startsWith("orc_")
-              ? `💰 ${target.replace("orc_", "").replace(/_/g, " ")}`
-              : target;
+          const title = target === RESOLVED_WITHOUT_BUDGET_COLUMN
+            ? "✅ Já Resolvido"
+            : target === "os_realizada"
+              ? "🔧 OS Realizada"
+              : target.startsWith("orc_")
+                ? `💰 ${target.replace("orc_", "").replace(/_/g, " ")}`
+                : target;
           col = { id: target, title, items: [] };
           mergedCols.push(col);
         }
