@@ -960,6 +960,9 @@ Deno.serve(async (req) => {
       // Assim "orçamentos realizados" não somem quando a tarefa Auvo é antiga
       // mas o orçamento foi gerado dentro do período visualizado.
       const filteredItems = items.filter((item: any) => {
+        // Cards resolvidos (com histórico ativo) NUNCA saem por filtro de data:
+        // caso contrário a coluna "Já Resolvido" aparece zerada.
+        if (activeResolutionIds.has(String(item.auvo_task_id))) return true;
         const candidates: string[] = [];
         if (item.os_realizada) {
           const d = item.gc_os?.gc_data || item.gc_os?.gc_orc_data;
