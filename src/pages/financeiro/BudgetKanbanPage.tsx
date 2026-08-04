@@ -854,20 +854,22 @@ export default function BudgetKanbanPage() {
     }
 
     const taskId = result.draggableId;
-    if (destination.droppableId === RESOLVED_WITHOUT_BUDGET_COLUMN
-        && source.droppableId !== RESOLVED_WITHOUT_BUDGET_COLUMN) {
+    const sourceColumn = columns.find((column) => column.id === source.droppableId);
+    const destinationColumn = columns.find((column) => column.id === destination.droppableId);
+    const sourceIsResolved = isResolvedBudgetColumn(sourceColumn?.id, sourceColumn?.title);
+    const destinationIsResolved = isResolvedBudgetColumn(destinationColumn?.id, destinationColumn?.title);
+
+    if (destinationIsResolved && !sourceIsResolved) {
       setResolveTaskId(taskId);
       setResolveMotivo(resolutionDetails[taskId]?.motivo || "");
       setResolveDialogOpen(true);
       return;
     }
-    if (source.droppableId === RESOLVED_WITHOUT_BUDGET_COLUMN
-        && destination.droppableId !== RESOLVED_WITHOUT_BUDGET_COLUMN) {
+    if (sourceIsResolved && !destinationIsResolved) {
       toast.info("Use o botão Reabrir para retirar um card de Já Resolvido.");
       return;
     }
 
-    const destinationColumn = columns.find((column) => column.id === destination.droppableId);
     if (!destinationColumn) return;
     const visibleDestinationTaskIds = filteredColumns
       .find((column) => column.id === destination.droppableId)?.items
@@ -2435,6 +2437,13 @@ export default function BudgetKanbanPage() {
                                               </div>
                                             )}
 
+                                            {isResolvedColumn && !resolutionDetails[item.auvo_task_id] && (
+                                              <div className="mt-2 border border-destructive/30 bg-destructive/10 px-2 py-2 text-[11px] text-destructive">
+                                                <div className="font-semibold">Histórico não registrado</div>
+                                                <div>Este card foi movido para “Já Resolvido” sem salvar motivo, autor e data.</div>
+                                              </div>
+                                            )}
+
                                             {/* Botão: Resolvido sem orçamento / Reabrir / Editar motivo */}
                                             <div className="mt-2 pt-2 border-t flex gap-1" onClick={(e) => e.stopPropagation()}>
                                               {isResolvedColumn && resolutionDetails[item.auvo_task_id] ? (
@@ -2471,7 +2480,7 @@ export default function BudgetKanbanPage() {
                                                   onClick={() => openResolveDialog(item.auvo_task_id)}
                                                 >
                                                   <Check className="h-3 w-3 mr-1" />
-                                                  Resolvido sem orçamento
+                                                  {isResolvedColumn ? "Registrar histórico" : "Resolvido sem orçamento"}
                                                 </Button>
                                               )}
                                             </div>
