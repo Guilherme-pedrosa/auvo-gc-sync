@@ -587,8 +587,8 @@ export default function BudgetKanbanPage() {
         }
       }
 
-      // Ensure "resolvido_sem_orcamento" column exists (fixed system column)
-      if (!mergedCols.find((c) => c.id === "resolvido_sem_orcamento")) {
+      // Só cria a coluna técnica quando não existe uma coluna de resolvidos visível.
+      if (displayedResolvedColumnId === RESOLVED_WITHOUT_BUDGET_COLUMN && !mergedCols.find((c) => c.id === RESOLVED_WITHOUT_BUDGET_COLUMN)) {
         mergedCols.push({ id: "resolvido_sem_orcamento", title: "✅ Já Resolvido", items: [] });
       }
 
@@ -683,13 +683,13 @@ export default function BudgetKanbanPage() {
         if (!orderedIds.includes(colId)) orderedIds.push(colId);
       }
 
-      // Ensure falta_preenchimento, a_fazer and resolvido_sem_orcamento exist
+      // Ensure fixed system columns exist; resolved uses the existing visible column.
       if (!orderedIds.includes("falta_preenchimento")) orderedIds.unshift("falta_preenchimento");
       if (!orderedIds.includes("a_fazer")) {
         const fpIdx = orderedIds.indexOf("falta_preenchimento");
         orderedIds.splice(fpIdx + 1, 0, "a_fazer");
       }
-      if (!orderedIds.includes("resolvido_sem_orcamento")) orderedIds.push("resolvido_sem_orcamento");
+      if (!orderedIds.includes(displayedResolvedColumnId)) orderedIds.push(displayedResolvedColumnId);
 
       const defaultTitlesExtra: Record<string, string> = {
         ...defaultTitles,
@@ -697,7 +697,7 @@ export default function BudgetKanbanPage() {
       };
 
       const cols: KanbanColumn[] = orderedIds
-        .filter((colId) => (colMap[colId] && colMap[colId].length > 0) || savedOrderMap.has(colId) || colId === "falta_preenchimento" || colId === "a_fazer" || colId === "resolvido_sem_orcamento")
+        .filter((colId) => (colMap[colId] && colMap[colId].length > 0) || savedOrderMap.has(colId) || colId === "falta_preenchimento" || colId === "a_fazer" || colId === displayedResolvedColumnId)
         .map((colId) => ({
           id: colId,
           title: savedOrderMap.get(colId)?.title || defaultTitlesExtra[colId] || (colId.startsWith("orc_") ? `💰 ${colId.replace("orc_", "").replace(/_/g, " ")}` : colId),
@@ -786,7 +786,7 @@ export default function BudgetKanbanPage() {
     }
 
     setColumnsInitialized(true);
-  }, [data, columnsInitialized]);
+  }, [data, columnsInitialized, displayedResolvedColumnId]);
 
   const handleRefresh = useCallback(() => {
     setColumnsInitialized(false);
