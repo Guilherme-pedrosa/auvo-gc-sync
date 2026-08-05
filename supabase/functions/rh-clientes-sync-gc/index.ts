@@ -8,7 +8,7 @@ const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const GC_ACCESS_TOKEN = Deno.env.get("GC_ACCESS_TOKEN") ?? "";
 const GC_SECRET_TOKEN = Deno.env.get("GC_SECRET_TOKEN") ?? "";
-const GC_BASE = "https://api.gestaoclick.com/v2";
+const GC_BASE = "https://api.gestaoclick.com/api";
 
 function normalize(s: string) {
   return s
@@ -21,18 +21,51 @@ function normalize(s: string) {
     .trim();
 }
 
-async function gcSearch(term: string) {
-  const url = `${GC_BASE}/clientes?nome=${encodeURIComponent(term)}`;
-  const res = await fetch(url, {
-    headers: {
-      "access-token": GC_ACCESS_TOKEN,
-      "secret-access-token": GC_SECRET_TOKEN,
-      "Content-Type": "application/json",
-    },
-  });
-  if (!res.ok) return [];
-  const json = await res.json();
-  return Array.isArray(json?.data) ? json.data : [];
+const gcH = {
+  "access-token": GC_ACCESS_TOKEN,
+  "secret-access-token": GC_SECRET_TOKEN,
+  "Content-Type": "application/json",
+};
+
+/** Baixa TODOS os clientes do GC (paginado). */
+async function gcFetchAll(): Promise<any[]> {
+  const all: any[] = [];
+  for (let pagina = 1; pagina <= 200; pagina++) {
+    const res = await fetch(`${GC_BASE}/clientes?pagina=${pagina}`, { headers: gcH });
+    if (!res.ok) break;
+    const json = await res.json().catch(() => null);
+    const rows = Array.isArray(json?.data) ? json.data : [];
+    all.push(...rows);
+    const meta = json?.meta;
+    if (!rows.length || !meta?.proxima_pagina) break;
+  }
+  return all;
+}
+
+function firstEndereco(c: any) {
+  const raw = Array.isArray(c?.enderecos) ? c.enderecos[0] : null;
+  return raw?.endereco ?? raw ?? {};
+}
+
+function mapCliente(found: any) {
+  const e = firstEndereco(found);
+  const endereco = [e.logradouro, e.numero, e.complemento, e.bairro]
+    .filter((v: unknown) => v && String(v).trim())
+    .join(", ");
+  const doc = found.cnpj || found.cpf || found.cpf_cnpj || null;
+  return {
+    gc_cliente_id: String(found.id ?? found.codigo ?? ""),
+    nome_fantasia: found.nome_fantasia ?? found.razao_social ?? null,
+    cpf_cnpj: doc ? String(doc).trim() : null,
+    email: found.email || null,
+    telefone: found.telefone || found.celular || null,
+    endereco: endereco || null,
+    cidade: e.nome_cidade || null,
+    uf: e.estado || null,
+    cep: e.cep || null,
+    origem: "gc",
+    sync_em: new Date().toISOString(),
+  } as Record<string, unknown>;
 }
 
 Deno.serve(async (req) => {
@@ -45,38 +78,32 @@ Deno.serve(async (req) => {
 
     let query = supabase.from("rh_clientes").select("id, nome, gc_cliente_id, origem");
     if (onlyIds?.length) query = query.in("id", onlyIds);
-    else query = query.is("gc_cliente_id", null).neq("origem", "manual");
+    else query = query.neq("origem", "manual");
 
-    const { data: alvo, error } = await query.limit(500);
+    const { data: alvo, error } = await query.limit(2000);
     if (error) throw error;
 
-    let updated = 0, errors = 0;
+    const gcAll = await gcFetchAll();
+    const byNome = new Map<string, any>();
+    const byId = new Map<string, any>();
+    for (const g of gcAll) {
+      byId.set(String(g.id), g);
+      for (const nome of [g.nome, g.razao_social, g.nome_fantasia]) {
+        const k = normalize(String(nome ?? ""));
+        if (k && !byNome.has(k)) byNome.set(k, g);
+      }
+    }
+
+    let updated = 0, errors = 0, naoEncontrados = 0;
     for (const c of alvo ?? []) {
       try {
-        const results = await gcSearch(c.nome);
-        const target = normalize(c.nome);
-        const found = results.find((r: any) => normalize(r?.nome ?? r?.razao_social ?? "") === target)
-          ?? results[0];
-        if (!found) continue;
+        const found =
+          (c.gc_cliente_id ? byId.get(String(c.gc_cliente_id)) : null) ??
+          byNome.get(normalize(c.nome));
+        if (!found) { naoEncontrados++; continue; }
 
-        const endereco = [
-          found.endereco, found.numero, found.bairro,
-        ].filter(Boolean).join(", ");
-
-        const patch: Record<string, unknown> = {
-          gc_cliente_id: String(found.id ?? found.codigo ?? ""),
-          nome_fantasia: found.nome_fantasia ?? null,
-          cpf_cnpj: found.cpf_cnpj ?? found.cnpj ?? found.cpf ?? null,
-          email: found.email ?? null,
-          telefone: found.telefone ?? found.celular ?? null,
-          endereco: endereco || null,
-          cidade: found.cidade ?? null,
-          uf: found.estado ?? null,
-          cep: found.cep ?? null,
-          origem: "gc",
-          sync_em: new Date().toISOString(),
-        };
-        const { error: upErr } = await supabase.from("rh_clientes").update(patch).eq("id", c.id);
+        const { error: upErr } = await supabase
+          .from("rh_clientes").update(mapCliente(found)).eq("id", c.id);
         if (upErr) throw upErr;
         updated++;
       } catch (err) {
@@ -85,7 +112,10 @@ Deno.serve(async (req) => {
       }
     }
 
-    return new Response(JSON.stringify({ ok: true, updated, errors, total: alvo?.length ?? 0 }), {
+    return new Response(JSON.stringify({
+      ok: true, updated, errors, naoEncontrados,
+      gcTotal: gcAll.length, total: alvo?.length ?? 0,
+    }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (err) {
