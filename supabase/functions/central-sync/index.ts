@@ -1294,6 +1294,12 @@ async function refreshSingleTasks(
         console.error(`[central-sync] single-task ORC ${orcId}: ${(e as Error).message}`);
       }
     }
+
+    try {
+      if (await syncBudgetKanbanCardFromMirror(sbClient, taskId)) summary.kanban_cards_updated++;
+    } catch (e) {
+      console.error(`[central-sync] cache kanban ${taskId}: ${(e as Error).message}`);
+    }
   }
 
   console.log(`[central-sync] single-task: ${JSON.stringify(summary)}`);
