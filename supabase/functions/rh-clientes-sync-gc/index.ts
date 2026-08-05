@@ -166,26 +166,39 @@ Deno.serve(async (req) => {
 
       const novos: Record<string, unknown>[] = [];
       const vistos = new Set<string>();
+      const vistosNome = new Set<string>();
       for (const g of gcAll) {
         const gcId = String(g.id ?? "");
         const nome = String(g.nome || g.razao_social || g.nome_fantasia || "").trim();
         if (!gcId || !nome) continue;
         if (vistos.has(gcId) || existentesIds.has(gcId) || matchedGcIds.has(gcId)) continue;
         if (existentesNomes.has(normalize(nome))) continue;
+        const chaveNome = normalizeStored(nome);
+        if (vistosNome.has(chaveNome)) continue;
+        vistosNome.add(chaveNome);
         vistos.add(gcId);
         novos.push({
           ...mapCliente(g),
           nome,
-          nome_normalizado: normalizeStored(nome),
+          nome_normalizado: chaveNome,
           ativo: true,
         });
       }
 
       for (let i = 0; i < novos.length; i += 200) {
-        const { error: insErr } = await supabase
-          .from("rh_clientes").insert(novos.slice(i, i + 200));
-        if (insErr) { console.error("insert failed", insErr); errors++; }
-        else inserted += Math.min(200, novos.length - i);
+        const lote = novos.slice(i, i + 200);
+        const { data: ok, error: insErr } = await supabase
+          .from("rh_clientes")
+          .upsert(lote, { onConflict: "nome_normalizado", ignoreDuplicates: true })
+          .select("id");
+        if (!insErr) { inserted += ok?.length ?? 0; continue; }
+        // fallback linha a linha para não perder o lote inteiro
+        for (const row of lote) {
+          const { error: rowErr } = await supabase
+            .from("rh_clientes")
+            .upsert(row, { onConflict: "nome_normalizado", ignoreDuplicates: true });
+          if (rowErr) errors++; else inserted++;
+        }
       }
     }
 
