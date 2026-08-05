@@ -1806,6 +1806,13 @@ async function runCentralSync(body: CentralSyncBody = {}) {
 
     const bearerToken = await auvoLogin(auvoApiKey, auvoApiToken);
 
+    const singleTaskIds: string[] = Array.isArray(body?.task_ids)
+      ? (body.task_ids as unknown[]).map((t) => String(t || "").trim()).filter(Boolean)
+      : [];
+    if (singleTaskIds.length > 0) {
+      return await refreshSingleTasks(sbClient, bearerToken, gcH, singleTaskIds);
+    }
+
     if (body?.reports_only === true) {
       return await runReportsOnlySync(
         sbClient,
