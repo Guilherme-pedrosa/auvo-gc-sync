@@ -5,8 +5,16 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Plus, Search, Pencil, Trash2 } from "lucide-react";
-import { useIntegrations, useRhClientes, useColaboradores, useDeleteIntegration, useIntegrationShares } from "@/hooks/rh/useRh";
+import { Plus, Search, Pencil, Trash2, Share2, AlertTriangle, Loader2 } from "lucide-react";
+import { Checkbox } from "@/components/ui/checkbox";
+import {
+  Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
+} from "@/components/ui/dialog";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import {
+  useIntegrations, useRhClientes, useColaboradores, useDeleteIntegration,
+  useIntegrationShares, useSaveIntegrationShares, useSaveIntegration,
+} from "@/hooks/rh/useRh";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
@@ -42,9 +50,45 @@ export default function MatrizIntegracoesPage() {
   const [statusFilter, setStatusFilter] = useState("all");
   const del = useDeleteIntegration();
   const [toDelete, setToDelete] = useState<{ id: string; nome: string } | null>(null);
+  const saveShares = useSaveIntegrationShares();
+  const saveIntegration = useSaveIntegration();
+  const [extendId, setExtendId] = useState<string | null>(null);
+  const [extendSearch, setExtendSearch] = useState("");
+  const [extendSelected, setExtendSelected] = useState<string[]>([]);
+  const [savingExtend, setSavingExtend] = useState(false);
 
   const clientMap = useMemo(() => new Map(clientes.map((c) => [c.id, c])), [clientes]);
   const colabMap = useMemo(() => new Map(colabs.map((c) => [c.id, c])), [colabs]);
+
+  const extendIntegration = extendId ? integrations.find((i) => i.id === extendId) ?? null : null;
+  const extendCandidates = useMemo(() => {
+    const s = extendSearch.trim().toLowerCase();
+    return clientes
+      .filter((c) => c.id !== extendIntegration?.client_id)
+      .filter((c) => (s ? c.nome.toLowerCase().includes(s) : true))
+      .slice(0, 80);
+  }, [clientes, extendSearch, extendIntegration]);
+
+  const openExtend = (id: string) => {
+    setExtendId(id);
+    setExtendSearch("");
+    setExtendSelected(shares.filter((s) => s.integration_id === id).map((s) => s.client_id));
+  };
+
+  const confirmExtend = async () => {
+    if (!extendId) return;
+    setSavingExtend(true);
+    try {
+      await saveIntegration.mutateAsync({
+        id: extendId,
+        abrangencia: extendSelected.length ? "compartilhada" : "exclusiva",
+      });
+      await saveShares.mutateAsync({ integration_id: extendId, client_ids: extendSelected });
+      setExtendId(null);
+    } finally {
+      setSavingExtend(false);
+    }
+  };
 
   const rows = useMemo(() => {
     const s = search.trim().toLowerCase();
@@ -113,6 +157,20 @@ export default function MatrizIntegracoesPage() {
               <TableRow key={i.id}>
                 <TableCell className="text-xs">
                   <div className="uppercase font-medium">{i.nome || "INTEGRAÇÃO"}</div>
+                  {i.ressalva && (
+                    <TooltipProvider>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Badge variant="destructive" className="text-[10px] mt-1 mr-1 cursor-help">
+                            <AlertTriangle className="h-3 w-3 mr-1" /> RESSALVA
+                          </Badge>
+                        </TooltipTrigger>
+                        <TooltipContent className="max-w-sm whitespace-pre-wrap">
+                          {i.ressalva_motivo || "Documentos pendentes"}
+                        </TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
+                  )}
                   {i.abrangencia === "compartilhada" ? (
                     <div className="mt-1">
                       <Badge variant="secondary" className="text-[10px]">COMPARTILHADA</Badge>
@@ -139,6 +197,14 @@ export default function MatrizIntegracoesPage() {
                 <TableCell className="text-xs">{i.integration_valid_until ?? "—"}</TableCell>
                 <TableCell className="text-right">
                   <div className="flex justify-end gap-1">
+                    <Button
+                      size="icon"
+                      variant="ghost"
+                      onClick={() => openExtend(i.id)}
+                      title="Estender para outros clientes"
+                    >
+                      <Share2 className="h-4 w-4" />
+                    </Button>
                     <Button
                       size="icon"
                       variant="ghost"
@@ -186,6 +252,49 @@ export default function MatrizIntegracoesPage() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      <Dialog open={!!extendId} onOpenChange={(o) => !o && setExtendId(null)}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Estender integração</DialogTitle>
+            <DialogDescription>
+              A mesma validação e validade valem também para os clientes marcados abaixo.
+              Sem nenhum marcado, a integração volta a ser exclusiva de{" "}
+              <b>{clientMap.get(extendIntegration?.client_id ?? "")?.nome ?? "—"}</b>.
+            </DialogDescription>
+          </DialogHeader>
+
+          <Input
+            placeholder="Buscar cliente..."
+            value={extendSearch}
+            onChange={(e) => setExtendSearch(e.target.value)}
+          />
+          <div className="max-h-72 overflow-auto border rounded-md divide-y">
+            {extendCandidates.length === 0 ? (
+              <div className="p-4 text-sm text-muted-foreground">Nenhum cliente encontrado.</div>
+            ) : extendCandidates.map((c) => (
+              <label key={c.id} className="flex items-center gap-2 px-3 py-2 text-sm cursor-pointer hover:bg-muted/50">
+                <Checkbox
+                  checked={extendSelected.includes(c.id)}
+                  onCheckedChange={(v) =>
+                    setExtendSelected((prev) => (v ? [...new Set([...prev, c.id])] : prev.filter((x) => x !== c.id)))
+                  }
+                />
+                <span className="truncate">{c.nome}</span>
+              </label>
+            ))}
+          </div>
+          <p className="text-xs text-muted-foreground">{extendSelected.length} cliente(s) abrangido(s).</p>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setExtendId(null)}>Cancelar</Button>
+            <Button onClick={confirmExtend} disabled={savingExtend}>
+              {savingExtend && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+              Salvar abrangência
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
