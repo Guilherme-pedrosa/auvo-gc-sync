@@ -1055,6 +1055,24 @@ export default function EquipamentosPreventivosPage() {
       const totalWithEquipLinks = pB?.tasks_with_equipment_links || 0;
       const windowsCovered = pB?.windows_processed || 0;
       toast.success(`Vínculos: ${totalRelUpserted} relações em ${windowsCovered} janelas (${totalWithEquipLinks} tarefas com equipamento)`);
+
+      // Janela FUTURA: tarefas agendadas/abertas (não finalizadas) — hoje → +120 dias.
+      // Sem esta passada, preventivas já agendadas no Auvo nunca chegam ao banco.
+      const futureEnd = new Date(today);
+      futureEnd.setDate(futureEnd.getDate() + 120);
+      const futureEndDate = futureEnd.toISOString().slice(0, 10);
+      setSyncProgress({ current: 2, total: 3, label: `Fase 2b: agendadas ${endDate} → ${futureEndDate}...` });
+      const { data: dF } = await supabase.functions.invoke("equipment-sync", {
+        body: {
+          phase: "2-batch",
+          windows: [{ startDate: endDate, endDate: futureEndDate }],
+          validEquipmentIds,
+          finalizedOnly: false,
+          skipEquipmentValidation: true,
+        },
+      });
+      const pF = dF?.phase2_equipment_tasks;
+      toast.success(`Agendadas: ${pF?.relationship_rows_upserted || 0} vínculos futuros`);
       refetch();
     } catch (err: any) {
       toast.error("Erro na sincronização: " + (err.message || "desconhecido"));
