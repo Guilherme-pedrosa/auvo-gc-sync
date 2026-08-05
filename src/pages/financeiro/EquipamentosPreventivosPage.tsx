@@ -2080,6 +2080,29 @@ export default function EquipamentosPreventivosPage() {
                       </TableCell>
                       <TableCell>
                         <ProximaCell eq={eq} onSave={(d) => handleSaveProxima(eq, d)} />
+                        {eq.tarefas_abertas && eq.tarefas_abertas.length > 0 && (
+                          <div className="mt-1">
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <Badge variant="secondary" className="text-[9px] h-4 px-1 bg-amber-100 text-amber-800 border-amber-200 cursor-help">
+                                  {eq.tarefas_abertas.length} agendada{eq.tarefas_abertas.length > 1 ? "s" : ""}
+                                </Badge>
+                              </TooltipTrigger>
+                              <TooltipContent className="p-0">
+                                <div className="p-2 space-y-1 bg-white border rounded shadow-lg text-[10px]">
+                                  <p className="font-bold border-b pb-1 mb-1 text-amber-900">Tarefas em aberto no Auvo:</p>
+                                  {eq.tarefas_abertas.map((t) => (
+                                    <div key={t.id} className="flex justify-between gap-4 text-slate-700">
+                                      <span className="font-medium">#{t.id}</span>
+                                      <span>{t.tipo}</span>
+                                      <span className="text-slate-400">{t.data ? format(parseISO(t.data), "dd/MM/yy") : "—"}</span>
+                                    </div>
+                                  ))}
+                                </div>
+                              </TooltipContent>
+                            </Tooltip>
+                          </div>
+                        )}
                       </TableCell>
                       <TableCell className="text-sm">{eq.ultimo_tecnico || "—"}</TableCell>
                       <TableCell className="text-right">
