@@ -38,6 +38,7 @@ import EquipamentoPecasDialog from "./EquipamentoPecasDialog";
 import ImportarPlanoExcelDialog from "./ImportarPlanoExcelDialog";
 import RevisarTiposIADialog from "./RevisarTiposIADialog";
 import GerarPlanoPreventivasDialog from "./GerarPlanoPreventivasDialog";
+import TarefasAgendadasDialog from "./TarefasAgendadasDialog";
 
 // ── Types ──
 type EquipmentRaw = {
@@ -2114,13 +2115,19 @@ export default function EquipamentosPreventivosPage() {
                           <div className="mt-1">
                             <Tooltip>
                               <TooltipTrigger asChild>
-                                <Badge variant="secondary" className="text-[9px] h-4 px-1 bg-amber-100 text-amber-800 border-amber-200 cursor-help">
-                                  {eq.tarefas_abertas.length} agendada{eq.tarefas_abertas.length > 1 ? "s" : ""}
-                                </Badge>
+                                <button
+                                  type="button"
+                                  onClick={() => setAgendadasEq(eq)}
+                                  className="focus:outline-none"
+                                >
+                                  <Badge variant="secondary" className="text-[9px] h-4 px-1 bg-amber-100 text-amber-800 border-amber-200 cursor-pointer hover:bg-amber-200">
+                                    {eq.tarefas_abertas.length} agendada{eq.tarefas_abertas.length > 1 ? "s" : ""}
+                                  </Badge>
+                                </button>
                               </TooltipTrigger>
                               <TooltipContent className="p-0">
                                 <div className="p-2 space-y-1 bg-white border rounded shadow-lg text-[10px]">
-                                  <p className="font-bold border-b pb-1 mb-1 text-amber-900">Tarefas em aberto no Auvo:</p>
+                                  <p className="font-bold border-b pb-1 mb-1 text-amber-900">Clique para ver / reagendar:</p>
                                   {eq.tarefas_abertas.map((t) => (
                                     <div key={t.id} className="flex justify-between gap-4 text-slate-700">
                                       <span className="font-medium">#{t.id}</span>
