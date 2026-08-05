@@ -21,6 +21,16 @@ function normalize(s: string) {
     .trim();
 }
 
+/** Normalização simples usada na coluna nome_normalizado (mantém o nome completo). */
+function normalizeStored(s: string) {
+  return s
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 const gcH = {
   "access-token": GC_ACCESS_TOKEN,
   "secret-access-token": GC_SECRET_TOKEN,
@@ -113,12 +123,14 @@ Deno.serve(async (req) => {
 
     let updated = 0, errors = 0, naoEncontrados = 0;
     const lista = alvo ?? [];
+    const matchedGcIds = new Set<string>();
     for (let i = 0; i < lista.length; i += 10) {
       await Promise.all(lista.slice(i, i + 10).map(async (c) => {
         try {
           const atual = c.gc_cliente_id ? String(c.gc_cliente_id) : "";
           const found = (atual ? byId.get(atual) : null) ?? byNome.get(normalize(c.nome));
           if (!found) { naoEncontrados++; return; }
+          matchedGcIds.add(String(found.id));
 
           const patch = mapCliente(found);
           const gcId = String(patch.gc_cliente_id ?? "");
@@ -140,8 +152,58 @@ Deno.serve(async (req) => {
       }));
     }
 
+    // Insere clientes que existem no GC mas ainda não estão cadastrados aqui
+    let inserted = 0;
+    if (!onlyIds?.length) {
+      const { data: todos } = await supabase
+        .from("rh_clientes").select("nome, gc_cliente_id").limit(5000);
+      const existentesIds = new Set<string>(
+        (todos ?? []).map((c) => String(c.gc_cliente_id ?? "")).filter(Boolean),
+      );
+      const existentesNomes = new Set<string>(
+        (todos ?? []).map((c) => normalize(String(c.nome ?? ""))).filter(Boolean),
+      );
+
+      const novos: Record<string, unknown>[] = [];
+      const vistos = new Set<string>();
+      const vistosNome = new Set<string>();
+      for (const g of gcAll) {
+        const gcId = String(g.id ?? "");
+        const nome = String(g.nome || g.razao_social || g.nome_fantasia || "").trim();
+        if (!gcId || !nome) continue;
+        if (vistos.has(gcId) || existentesIds.has(gcId) || matchedGcIds.has(gcId)) continue;
+        if (existentesNomes.has(normalize(nome))) continue;
+        const chaveNome = normalizeStored(nome);
+        if (vistosNome.has(chaveNome)) continue;
+        vistosNome.add(chaveNome);
+        vistos.add(gcId);
+        novos.push({
+          ...mapCliente(g),
+          nome,
+          nome_normalizado: chaveNome,
+          ativo: true,
+        });
+      }
+
+      for (let i = 0; i < novos.length; i += 200) {
+        const lote = novos.slice(i, i + 200);
+        const { data: ok, error: insErr } = await supabase
+          .from("rh_clientes")
+          .upsert(lote, { onConflict: "nome_normalizado", ignoreDuplicates: true })
+          .select("id");
+        if (!insErr) { inserted += ok?.length ?? 0; continue; }
+        // fallback linha a linha para não perder o lote inteiro
+        for (const row of lote) {
+          const { error: rowErr } = await supabase
+            .from("rh_clientes")
+            .upsert(row, { onConflict: "nome_normalizado", ignoreDuplicates: true });
+          if (rowErr) errors++; else inserted++;
+        }
+      }
+    }
+
     return new Response(JSON.stringify({
-      ok: true, updated, errors, naoEncontrados,
+      ok: true, updated, inserted, errors, naoEncontrados,
       gcTotal: gcAll.length, total: alvo?.length ?? 0,
     }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
