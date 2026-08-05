@@ -120,6 +120,7 @@ export default function OrcamentosControlePage() {
   const [activeTab, setActiveTab] = useState<"todos" | "produtos" | "servicos">("todos");
   const [expanded, setExpanded] = useState<string | null>(null);
   const [selectedCard, setSelectedCard] = useState<any | null>(null);
+  const [syncingTaskId, setSyncingTaskId] = useState<string | null>(null);
 
   // Conciliação
   const [conciliacaoCard, setConciliacaoCard] = useState<any | null>(null);
@@ -514,6 +515,27 @@ export default function OrcamentosControlePage() {
     }
   };
 
+  const handleSyncSingleTask = async (taskId: string) => {
+    if (!taskId || syncingTaskId) return;
+    setSyncingTaskId(taskId);
+    try {
+      const { data, error } = await supabase.functions.invoke("central-sync", {
+        body: {
+          task_ids: [taskId],
+          force_refresh: true,
+          wait: true
+        },
+      });
+      if (error) throw error;
+      toast.success(`Tarefa #${taskId} sincronizada com sucesso`);
+      refreshData();
+    } catch (err: any) {
+      toast.error(`Erro ao sincronizar tarefa: ${err.message || err}`);
+    } finally {
+      setSyncingTaskId(null);
+    }
+  };
+
   if (isLoading) {
     return (
       <div className="p-6 space-y-4">
@@ -725,6 +747,18 @@ export default function OrcamentosControlePage() {
                                     <TableCell>
                                       <div className="flex items-center gap-1">
                                         {item.auvo_task_id && !String(item.auvo_task_id).startsWith("gc-only::") && (
+                                          <Button 
+                                            size="icon" 
+                                            variant="ghost" 
+                                            className="h-6 w-6 text-blue-600 hover:text-blue-700 hover:bg-blue-50" 
+                                            title="Sincronizar esta tarefa" 
+                                            onClick={(e) => { e.stopPropagation(); handleSyncSingleTask(item.auvo_task_id); }}
+                                            disabled={syncingTaskId === item.auvo_task_id}
+                                          >
+                                            <RefreshCw className={cn("h-3 w-3", syncingTaskId === item.auvo_task_id && "animate-spin")} />
+                                          </Button>
+                                        )}
+                                        {item.auvo_task_id && !String(item.auvo_task_id).startsWith("gc-only::") && (
                                           <Button size="icon" variant="ghost" className="h-6 w-6" title="Editar agendamento" onClick={(e) => { e.stopPropagation(); openEditModal(item); }}>
                                             <Edit2 className="h-3 w-3" />
                                           </Button>
@@ -790,7 +824,24 @@ export default function OrcamentosControlePage() {
                 <div><Label className="text-[11px] text-muted-foreground">Vendedor</Label><p>{selectedCard.gc_orc_vendedor || "—"}</p></div>
                 <div><Label className="text-[11px] text-muted-foreground">Data Orçamento</Label><p>{selectedCard.gc_orc_data || "—"}</p></div>
                 <div><Label className="text-[11px] text-muted-foreground">Valor Total</Label><p className="font-semibold">{formatCurrency(Number(selectedCard.gc_orc_valor_total) || 0)}</p></div>
-                <div><Label className="text-[11px] text-muted-foreground">Tarefa Auvo</Label><p className="font-mono">{selectedCard.auvo_task_id || "—"}</p></div>
+                <div>
+                  <Label className="text-[11px] text-muted-foreground">Tarefa Auvo</Label>
+                  <div className="flex items-center gap-2">
+                    <p className="font-mono">{selectedCard.auvo_task_id || "—"}</p>
+                    {selectedCard.auvo_task_id && !String(selectedCard.auvo_task_id).startsWith("gc-only::") && (
+                      <Button 
+                        size="xs" 
+                        variant="outline" 
+                        className="h-6 px-2 text-[10px] gap-1"
+                        onClick={() => handleSyncSingleTask(selectedCard.auvo_task_id)}
+                        disabled={syncingTaskId === selectedCard.auvo_task_id}
+                      >
+                        <RefreshCw className={cn("h-3 w-3", syncingTaskId === selectedCard.auvo_task_id && "animate-spin")} />
+                        {syncingTaskId === selectedCard.auvo_task_id ? "Sincronizando..." : "Sincronizar"}
+                      </Button>
+                    )}
+                  </div>
+                </div>
                 <div><Label className="text-[11px] text-muted-foreground">Técnico</Label><p>{selectedCard.tecnico || "—"}</p></div>
                 <div><Label className="text-[11px] text-muted-foreground">Data Tarefa</Label><p>{selectedCard.data_tarefa || "—"}</p></div>
                 <div><Label className="text-[11px] text-muted-foreground">Status Auvo</Label><p>{selectedCard.status_auvo || "—"}</p></div>
