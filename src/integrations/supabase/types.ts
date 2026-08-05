@@ -2230,6 +2230,8 @@ export type Database = {
           integration_valid_until: string | null
           nome: string | null
           observacoes: string | null
+          ressalva: boolean
+          ressalva_motivo: string | null
           scheduled_at: string | null
           send_channel: string | null
           sent_at: string | null
@@ -2257,6 +2259,8 @@ export type Database = {
           integration_valid_until?: string | null
           nome?: string | null
           observacoes?: string | null
+          ressalva?: boolean
+          ressalva_motivo?: string | null
           scheduled_at?: string | null
           send_channel?: string | null
           sent_at?: string | null
@@ -2284,6 +2288,8 @@ export type Database = {
           integration_valid_until?: string | null
           nome?: string | null
           observacoes?: string | null
+          ressalva?: boolean
+          ressalva_motivo?: string | null
           scheduled_at?: string | null
           send_channel?: string | null
           sent_at?: string | null
