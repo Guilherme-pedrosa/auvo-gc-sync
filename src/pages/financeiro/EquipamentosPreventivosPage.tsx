@@ -1198,8 +1198,9 @@ export default function EquipamentosPreventivosPage() {
     const emDia = filtered.filter((e) => e.dias_desde !== null && e.dias_desde <= 90).length;
     const atencao = filtered.filter((e) => e.dias_desde !== null && e.dias_desde > 90 && e.dias_desde <= 120).length;
     const vencido = filtered.filter((e) => e.dias_desde !== null && e.dias_desde > 120).length;
+    const agendadas = filtered.filter((e) => e.tarefas_abertas && e.tarefas_abertas.length > 0).length;
     const semRegistro = filtered.filter((e) => e.dias_desde === null).length;
-    return { emDia, atencao, vencido, semRegistro, total: filtered.length };
+    return { emDia, atencao, vencido, agendadas, semRegistro, total: filtered.length };
   }, [filtered]);
 
   const SortButton = ({ field, children }: { field: SortField; children: React.ReactNode }) => (
