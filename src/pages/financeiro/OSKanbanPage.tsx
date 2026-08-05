@@ -332,7 +332,13 @@ export default function OSKanbanPage() {
       if (editDate) {
         const h = editHour.padStart(2, "0");
         const m = editMinute.padStart(2, "0");
-        patches.push({ op: "replace", path: "taskDate", value: format(editDate, `yyyy-MM-dd'T'${h}:${m}:00`) });
+        // Use YYYY-MM-DDTHH:mm:ss format
+        const iso = format(editDate, `yyyy-MM-dd'T'${h}:${m}:00`);
+        patches.push({ op: "replace", path: "taskDate", value: iso });
+        
+        // Ensure we also update taskEndDate if duration is known or calculate a default
+        // The Kanban currently doesn't track duration in state, so we'll just update taskDate for now
+        // to match the simpler behavior while fixing the path error.
       }
       if (editTecnicoId) {
         patches.push({ op: "replace", path: "idUserTo", value: Number(editTecnicoId) });
