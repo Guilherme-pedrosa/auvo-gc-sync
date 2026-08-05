@@ -397,13 +397,22 @@ export default function BudgetKanbanPage() {
     if (!taskId || syncingTaskId) return;
     setSyncingTaskId(taskId);
     try {
-      const { error } = await supabase.functions.invoke("central-sync", {
-        body: { task_ids: [taskId], force_refresh: true, wait: true },
+      // Não aguarda o processamento pesado da central: a função confirma o
+      // disparo imediatamente e continua a atualização no servidor.
+      const invocation = supabase.functions.invoke("central-sync", {
+        body: { task_ids: [taskId], force_refresh: true },
       });
+      const timeout = new Promise<never>((_, reject) => {
+        window.setTimeout(() => reject(new Error("Tempo limite ao iniciar a atualização")), 15_000);
+      });
+      const { data: syncData, error } = await Promise.race([invocation, timeout]);
       if (error) throw error;
-      toast.success(`Tarefa #${taskId} sincronizada`);
+      if (syncData?.success === false || syncData?.error) {
+        throw new Error(syncData?.error || "Não foi possível iniciar a atualização");
+      }
+      toast.success(`Atualização da tarefa #${taskId} iniciada`);
       setColumnsInitialized(false);
-      await refetch();
+      void refetch();
     } catch (e: any) {
       toast.error(`Erro ao sincronizar tarefa: ${e?.message || e}`);
     } finally {
