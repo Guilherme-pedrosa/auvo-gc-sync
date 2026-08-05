@@ -120,8 +120,11 @@ export default function TarefasAgendadasDialog({ open, onOpenChange, equipamento
 
       const patches: { op: string; path: string; value: any }[] = [
         { op: "replace", path: "taskDate", value: formattedStart },
-        { op: "replace", path: "taskEndDate", value: formattedEnd },
       ];
+      // Only include taskEndDate if the task supports it (preventing 400 Bad Request if field doesn't exist)
+      if (formattedEnd) {
+        patches.push({ op: "replace", path: "taskEndDate", value: formattedEnd });
+      }
       if (st.tecnicoId) patches.push({ op: "replace", path: "idUserTo", value: Number(st.tecnicoId) });
 
       const { data, error } = await supabase.functions.invoke("auvo-task-update", {
