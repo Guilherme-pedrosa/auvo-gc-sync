@@ -830,7 +830,7 @@ export default function OrcamentosControlePage() {
                     <p className="font-mono">{selectedCard.auvo_task_id || "—"}</p>
                     {selectedCard.auvo_task_id && !String(selectedCard.auvo_task_id).startsWith("gc-only::") && (
                       <Button 
-                        size="xs" 
+                        size="sm" 
                         variant="outline" 
                         className="h-6 px-2 text-[10px] gap-1"
                         onClick={() => handleSyncSingleTask(selectedCard.auvo_task_id)}
