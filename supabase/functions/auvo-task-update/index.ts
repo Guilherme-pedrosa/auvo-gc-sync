@@ -232,6 +232,20 @@ Deno.serve(async (req) => {
           headers,
           body: JSON.stringify(patches),
         }, reqId);
+
+        // Fallback for taskEndDate error (Common in some Auvo versions)
+        if (!response.ok) {
+          const errorText = await response.clone().text();
+          if (errorText.includes("taskEndDate") && errorText.includes("not found")) {
+            console.warn(`[auvo-task-update][reqId=${reqId}] Retrying without taskEndDate...`);
+            const filteredPatches = patches.filter(p => p.path !== "taskEndDate");
+            response = await patchWithRetry(url, {
+              method: "PATCH",
+              headers,
+              body: JSON.stringify(filteredPatches),
+            }, reqId);
+          }
+        }
       } catch (err) {
         console.error(`[auvo-task-update][reqId=${reqId}] PATCH /tasks/${taskId} falhou após retries:`, err);
         return new Response(

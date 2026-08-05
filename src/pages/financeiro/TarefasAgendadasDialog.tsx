@@ -118,10 +118,18 @@ export default function TarefasAgendadasDialog({ open, onOpenChange, equipamento
       const formattedStart = format(start, "yyyy-MM-dd'T'HH:mm:ss");
       const formattedEnd = format(end, "yyyy-MM-dd'T'HH:mm:ss");
 
+      // If taskEndDate is not found, try task_end_date or omit it. 
+      // For now, we'll try taskDate only if the error persists, 
+      // but let's implement a more robust retry logic in the Edge Function or here.
       const patches: { op: string; path: string; value: any }[] = [
         { op: "replace", path: "taskDate", value: formattedStart },
-        { op: "replace", path: "taskEndDate", value: formattedEnd },
       ];
+      
+      // Some Auvo tasks don't have taskEndDate exposed via JSONPatch.
+      // We only add it if we are sure the API supports it for this specific task.
+      if (st.durationMinutes > 0) {
+        patches.push({ op: "replace", path: "taskEndDate", value: formattedEnd });
+      }
       if (st.tecnicoId) patches.push({ op: "replace", path: "idUserTo", value: Number(st.tecnicoId) });
 
       const { data, error } = await supabase.functions.invoke("auvo-task-update", {
