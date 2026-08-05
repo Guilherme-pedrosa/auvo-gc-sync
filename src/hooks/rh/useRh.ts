@@ -64,6 +64,8 @@ export type Integration = {
   validity_days_snapshot: number | null;
   nome: string | null;
   abrangencia: "exclusiva" | "compartilhada";
+  ressalva: boolean;
+  ressalva_motivo: string | null;
 };
 
 // ---------- Document Types ----------
