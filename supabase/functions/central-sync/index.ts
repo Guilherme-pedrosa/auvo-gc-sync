@@ -1190,6 +1190,7 @@ async function refreshSingleTasks(
     gc_os_checked: 0,
     gc_orc_checked: 0,
     not_found: [] as string[],
+    kanban_cards_updated: 0,
     errors: 0,
   };
 
