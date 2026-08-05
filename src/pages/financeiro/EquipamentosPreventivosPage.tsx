@@ -1637,6 +1637,7 @@ export default function EquipamentosPreventivosPage() {
           { label: "Em dia", value: stats.emDia, color: "text-emerald-700 dark:text-emerald-400" },
           { label: "Atenção", value: stats.atencao, color: "text-amber-700 dark:text-amber-400" },
           { label: "Vencido", value: stats.vencido, color: "text-red-700 dark:text-red-400" },
+          { label: "Agendadas", value: stats.agendadas, color: "text-blue-700 dark:text-blue-400" },
           { label: "Sem histórico", value: stats.semRegistro, color: "text-muted-foreground" },
         ].map((s) => (
           <div key={s.label} className="bg-card border rounded-lg p-3 text-center">
