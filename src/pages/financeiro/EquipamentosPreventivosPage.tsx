@@ -545,6 +545,7 @@ export default function EquipamentosPreventivosPage() {
   const [pdfScope, setPdfScope] = useState<"selecionados" | "filtrados" | "feitos" | "atrasados" | "atencao_vencido" | "sem_registro">("filtrados");
   const [criarTarefaEq, setCriarTarefaEq] = useState<EquipmentRow | null>(null);
   const [pecasEq, setPecasEq] = useState<EquipmentRow | null>(null);
+  const [agendadasEq, setAgendadasEq] = useState<EquipmentRow | null>(null);
   const [importOpen, setImportOpen] = useState(false);
   const [revisarIaOpen, setRevisarIaOpen] = useState(false);
   const [gerarOpen, setGerarOpen] = useState(false);
@@ -2297,6 +2298,19 @@ export default function EquipamentosPreventivosPage() {
             cliente: pecasEq.cliente,
             identificador: pecasEq.identificador,
             auvo_equipment_id: pecasEq.auvo_equipment_id,
+          }}
+        />
+      )}
+      {agendadasEq && (
+        <TarefasAgendadasDialog
+          open={!!agendadasEq}
+          onOpenChange={(v) => { if (!v) setAgendadasEq(null); }}
+          equipamento={agendadasEq.nome}
+          cliente={agendadasEq.cliente}
+          tarefas={agendadasEq.tarefas_abertas ?? []}
+          onUpdated={() => {
+            queryClient.invalidateQueries({ queryKey: ["equip-preventivos"] });
+            setAgendadasEq(null);
           }}
         />
       )}
