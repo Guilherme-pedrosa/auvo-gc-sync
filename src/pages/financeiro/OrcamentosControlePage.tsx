@@ -523,11 +523,13 @@ export default function OrcamentosControlePage() {
         body: {
           task_ids: [taskId],
           force_refresh: true,
-          wait: true
         },
       });
       if (error) throw error;
-      toast.success(`Tarefa #${taskId} sincronizada com sucesso`);
+      if (data?.success === false || data?.error) {
+        throw new Error(data?.error || "Não foi possível iniciar a atualização");
+      }
+      toast.success(`Atualização da tarefa #${taskId} iniciada`);
       refreshData();
     } catch (err: any) {
       toast.error(`Erro ao sincronizar tarefa: ${err.message || err}`);
