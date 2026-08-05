@@ -958,8 +958,8 @@ function OsDetailDialog({
                   )}
                 </div>
                 <p className="text-xs text-muted-foreground">
-                  Divide 50/50 todos os valores e a contagem desta OS com um segundo técnico.
-                  Use para coifas feitas por dupla.
+                  Divide o valor e a contagem desta OS com um segundo técnico no percentual escolhido.
+                  Use para coifas feitas por dupla ou auxílios específicos.
                 </p>
                 {loadingCompart ? (
                   <div className="text-xs text-muted-foreground flex items-center gap-2">
