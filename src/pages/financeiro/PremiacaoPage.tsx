@@ -758,56 +758,62 @@ function OsDetailDialog({
     onError: (e: Error) => toast({ title: "Erro", description: e.message, variant: "destructive" }),
   });
 
-  const { data: compartAtual, isLoading: loadingCompart } = useQuery({
+  const { data: divisoes, isLoading: loadingCompart } = useQuery({
     queryKey: ["os_compartilhada", codigo],
     enabled: !!codigo,
     queryFn: async () => {
       const { data, error } = await supabase
         .from("premiacao_os_compartilhada")
-        .select("id, tecnico_secundario, percentual, observacao")
+        .select("id, tecnico_secundario, percentual")
         .eq("gc_os_codigo", codigo)
-        .maybeSingle();
+        .order("percentual", { ascending: false });
       if (error) throw error;
-      return data as { id: string; tecnico_secundario: string; percentual: number; observacao: string | null } | null;
+      return (data || []) as Array<{ id: string; tecnico_secundario: string; percentual: number }>;
     },
   });
+
+  const pctCedido = (divisoes || []).reduce((acc, d) => acc + (Number(d.percentual) || 0), 0);
+  const pctPrincipal = Math.max(0, 100 - pctCedido);
+  const pctNovo = Number(pctCompart) || 0;
+  const pctRestanteAposNovo = pctPrincipal - pctNovo;
 
   const saveCompartMut = useMutation({
     mutationFn: async () => {
       if (!codigo) throw new Error("OS inválida");
-      if (!tecCompart.trim()) throw new Error("Selecione o segundo técnico");
+      if (!tecCompart.trim()) throw new Error("Selecione o técnico");
+      if (!(pctNovo > 0)) throw new Error("Informe um percentual maior que zero");
+      if (pctNovo > pctPrincipal) {
+        throw new Error(`Restam apenas ${pctPrincipal.toFixed(2)}% disponíveis para dividir`);
+      }
       const { error } = await supabase.from("premiacao_os_compartilhada").upsert(
-        { 
-          gc_os_codigo: codigo, 
+        {
+          gc_os_codigo: codigo,
           tecnico_secundario: tecCompart.trim(),
-          percentual: Number(pctCompart) || 50
+          percentual: pctNovo,
         },
-        { onConflict: "gc_os_codigo" }
+        { onConflict: "gc_os_codigo,tecnico_secundario" }
       );
       if (error) throw error;
     },
     onSuccess: () => {
-      toast({ title: "OS compartilhada", description: `Valor dividido (${100 - (Number(pctCompart)||50)}% / ${pctCompart}%) entre os dois técnicos.` });
+      toast({ title: "Divisão adicionada", description: `${pctNovo}% atribuído a ${tecCompart}.` });
       setTecCompart("");
-      setPctCompart("50");
+      setPctCompart("");
       qc.invalidateQueries({ queryKey: ["os_compartilhada", codigo] });
       onChanged();
-      onClose();
     },
     onError: (e: Error) => toast({ title: "Erro", description: e.message, variant: "destructive" }),
   });
 
   const delCompartMut = useMutation({
-    mutationFn: async () => {
-      if (!compartAtual?.id) return;
-      const { error } = await supabase.from("premiacao_os_compartilhada").delete().eq("id", compartAtual.id);
+    mutationFn: async (id: string) => {
+      const { error } = await supabase.from("premiacao_os_compartilhada").delete().eq("id", id);
       if (error) throw error;
     },
     onSuccess: () => {
-      toast({ title: "Compartilhamento removido" });
+      toast({ title: "Divisão removida" });
       qc.invalidateQueries({ queryKey: ["os_compartilhada", codigo] });
       onChanged();
-      onClose();
     },
     onError: (e: Error) => toast({ title: "Erro", description: e.message, variant: "destructive" }),
   });
