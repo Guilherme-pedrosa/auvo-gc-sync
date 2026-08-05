@@ -156,6 +156,13 @@ export default function TarefasAgendadasDialog({ open, onOpenChange, equipamento
         throw new Error(`Erro ${status} no Auvo: ${detail}`);
       }
       toast.success(`Tarefa #${t.id} reagendada para ${format(parseISO(st.date), "dd/MM/yyyy")} às ${hh}:${mm} (${dur} min)`);
+      
+      // Update local state immediately so the user sees the change without waiting for a re-sync
+      setEdits(prev => ({
+        ...prev,
+        [t.id]: { ...st }
+      }));
+
       onUpdated?.();
     } catch (e: any) {
       toast.error(e?.message || "Falha ao reagendar tarefa");
