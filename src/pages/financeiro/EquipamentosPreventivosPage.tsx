@@ -495,6 +495,9 @@ function buildEquipmentRows(
       proxima_data_calculada: false,
       periodicidade_meses_plano: null,
       ultima_execucao_task_id: null,
+      tarefas_abertas: allEqTasks
+        .filter(t => t.status_auvo !== "Finalizada" && t.status_auvo !== "Cancelada" && t.status_auvo !== "Pausada")
+        .map(t => ({ id: t.auvo_task_id, tipo: t.auvo_task_type_description || "Sem tipo", data: t.data_tarefa || "" })),
     };
   }).sort((a, b) => {
     if (a.dias_desde === null && b.dias_desde === null) return 0;
