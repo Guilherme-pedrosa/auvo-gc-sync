@@ -1111,7 +1111,9 @@ export default function EquipamentosPreventivosPage() {
     if (statusFilter.length > 0) {
       result = result.filter((e) => {
         const info = getStatusInfo(e.dias_desde);
-        return statusFilter.includes(info.label.toLowerCase());
+        const label = info.label.toLowerCase();
+        if (statusFilter.includes("agendada") && e.tarefas_abertas && e.tarefas_abertas.length > 0) return true;
+        return statusFilter.includes(label);
       });
     }
 
