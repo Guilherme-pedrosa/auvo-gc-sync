@@ -34,6 +34,28 @@ interface MultiSelectProps extends SearchableSelectBaseProps {
 
 type SearchableSelectProps = SingleSelectProps | MultiSelectProps;
 
+
+const normalize = (v: string) =>
+  v.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
+
+/** Filtra por substring: todos os termos digitados precisam estar no rótulo. */
+function useFilteredOptions(options: SearchableSelectOption[], search: string) {
+  return React.useMemo(() => {
+    const terms = normalize(search).split(/\s+/).filter(Boolean);
+    if (!terms.length) return options;
+    const scored = options
+      .map((o) => {
+        const label = normalize(o.label);
+        if (!terms.every((t) => label.includes(t))) return null;
+        const idx = label.indexOf(terms[0]);
+        return { o, score: (label.startsWith(terms[0]) ? 0 : 1) * 1000 + idx };
+      })
+      .filter(Boolean) as { o: SearchableSelectOption; score: number }[];
+    scored.sort((a, b) => a.score - b.score || a.o.label.localeCompare(b.o.label));
+    return scored.map((s) => s.o);
+  }, [options, search]);
+}
+
 export function SearchableSelect(props: SearchableSelectProps) {
   const {
     options,
@@ -46,6 +68,12 @@ export function SearchableSelect(props: SearchableSelectProps) {
   } = props;
 
   const [open, setOpen] = React.useState(false);
+  const [search, setSearch] = React.useState("");
+  const filtered = useFilteredOptions(options, search);
+
+  React.useEffect(() => {
+    if (!open) setSearch("");
+  }, [open]);
 
   if (multiple) {
     const { value, onValueChange } = props as MultiSelectProps;
@@ -85,16 +113,16 @@ export function SearchableSelect(props: SearchableSelectProps) {
             <ChevronsUpDown className="ml-1 h-3.5 w-3.5 shrink-0 opacity-50" />
           </Button>
         </PopoverTrigger>
-        <PopoverContent className="w-[280px] p-0" align="start">
-          <Command>
-            <CommandInput placeholder={searchPlaceholder} />
-            <CommandList>
+        <PopoverContent className="w-[--radix-popover-trigger-width] min-w-[280px] p-0" align="start">
+          <Command shouldFilter={false}>
+            <CommandInput placeholder={searchPlaceholder} value={search} onValueChange={setSearch} />
+            <CommandList className="max-h-72">
               <CommandEmpty>{emptyText}</CommandEmpty>
               <CommandGroup>
-                {options.map((option) => (
+                {filtered.slice(0, 200).map((option) => (
                   <CommandItem
                     key={option.value}
-                    value={option.label}
+                    value={option.value}
                     onSelect={() => handleToggle(option.value)}
                   >
                     <Check
@@ -146,16 +174,16 @@ export function SearchableSelect(props: SearchableSelectProps) {
           <ChevronsUpDown className="ml-1 h-3.5 w-3.5 shrink-0 opacity-50" />
         </Button>
       </PopoverTrigger>
-      <PopoverContent className="w-[280px] p-0" align="start">
-        <Command>
-          <CommandInput placeholder={searchPlaceholder} />
-          <CommandList>
+      <PopoverContent className="w-[--radix-popover-trigger-width] min-w-[280px] p-0" align="start">
+        <Command shouldFilter={false}>
+          <CommandInput placeholder={searchPlaceholder} value={search} onValueChange={setSearch} />
+          <CommandList className="max-h-72">
             <CommandEmpty>{emptyText}</CommandEmpty>
             <CommandGroup>
-              {options.map((option) => (
+              {filtered.slice(0, 200).map((option) => (
                 <CommandItem
                   key={option.value}
-                  value={option.label}
+                  value={option.value}
                   onSelect={() => {
                     onValueChange(option.value);
                     setOpen(false);
