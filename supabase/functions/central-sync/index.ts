@@ -1169,6 +1169,134 @@ function mirrorUpdateFromGcPayload(fresh: any) {
   };
 }
 
+// Atualização pontual de uma ou poucas tarefas: busca o retrato atual no Auvo
+// E no GestãoClick (OS + orçamento vinculados) e grava no espelho.
+async function refreshSingleTasks(
+  sbClient: any,
+  bearerToken: string,
+  gcHeaders: Record<string, string>,
+  taskIds: string[],
+) {
+  const ids = [...new Set(taskIds.map((t) => String(t || "").trim()).filter(Boolean))].slice(0, 20);
+  const summary = {
+    success: true,
+    mode: "single-task" as const,
+    task_ids: ids,
+    auvo_updated: 0,
+    gc_os_updated: 0,
+    gc_orc_updated: 0,
+    gc_os_checked: 0,
+    gc_orc_checked: 0,
+    not_found: [] as string[],
+    errors: 0,
+  };
+
+  for (const taskId of ids) {
+    const { data: rows, error } = await sbClient
+      .from("tarefas_central")
+      .select("mirror_key,auvo_task_id,gc_os_id,gc_orcamento_id")
+      .or(`auvo_task_id.eq.${taskId},gc_os_tarefa_os.eq.${taskId},gc_os_tarefa_exec.eq.${taskId}`);
+    if (error) {
+      console.error(`[central-sync] single-task ${taskId}: falha ao ler espelho: ${error.message}`);
+      summary.errors++;
+      continue;
+    }
+    if (!rows || rows.length === 0) summary.not_found.push(taskId);
+
+    // ---- Auvo ----
+    try {
+      const snap = await fetchAuvoTaskSnapshot(bearerToken, taskId);
+      if (snap) {
+        const auvoUpdate: Record<string, unknown> = {
+          endereco: snap.address || null,
+          orientacao: snap.orientation || null,
+          tecnico: snap.technicianName || null,
+          tecnico_id: snap.technicianId || null,
+          data_tarefa: normalizeDate(snap.taskDate),
+          check_in_iso: normalizeDateTime(snap.checkInDate),
+          check_out_iso: normalizeDateTime(snap.checkOutDate),
+          check_in: !!snap.checkInDate,
+          check_out: !!snap.checkOutDate,
+          duracao_decimal: computeAuvoWorkedHours({
+            duration: snap.duration,
+            durationDecimal: snap.durationDecimal,
+            timeControl: snap.timeControl,
+            checkInDate: snap.checkInDate,
+            checkOutDate: snap.checkOutDate,
+            displacementStart: snap.displacementStart,
+          }),
+          atualizado_em: new Date().toISOString(),
+        };
+        if (snap.equipmentName) auvoUpdate.equipamento_nome = snap.equipmentName;
+        if (snap.equipmentSerial) auvoUpdate.equipamento_id_serie = snap.equipmentSerial;
+        if (snap.questionnaires?.length) {
+          auvoUpdate.questionario_respostas = snap.questionnaires;
+          auvoUpdate.questionario_preenchido = true;
+        }
+        const { error: upErr, count } = await sbClient
+          .from("tarefas_central")
+          .update(auvoUpdate, { count: "exact" })
+          .eq("auvo_task_id", taskId);
+        if (upErr) { summary.errors++; console.error(`[central-sync] single-task ${taskId} auvo: ${upErr.message}`); }
+        else summary.auvo_updated += count || 0;
+      }
+    } catch (e) {
+      summary.errors++;
+      console.error(`[central-sync] single-task ${taskId} auvo: ${(e as Error).message}`);
+    }
+
+    // ---- GestãoClick: OS ----
+    const osIds = [...new Set((rows || []).map((r: any) => String(r.gc_os_id || "").trim()).filter(Boolean))];
+    for (const osId of osIds) {
+      summary.gc_os_checked++;
+      try {
+        const resp = await rateLimitedFetch(`${GC_BASE_URL}/api/ordens_servicos/${osId}`, { headers: gcHeaders }, "gc");
+        if (!resp.ok) { summary.errors++; continue; }
+        const json = await resp.json().catch(() => null);
+        const os = json?.data || json;
+        if (!os?.id) continue;
+        const { error: osErr, count } = await sbClient
+          .from("tarefas_central")
+          .update(mirrorUpdateFromGcPayload(mapGcOsToMirrorPayload(os)), { count: "exact" })
+          .eq("gc_os_id", osId);
+        if (osErr) { summary.errors++; console.error(`[central-sync] single-task OS ${osId}: ${osErr.message}`); }
+        else summary.gc_os_updated += count || 0;
+      } catch (e) {
+        summary.errors++;
+        console.error(`[central-sync] single-task OS ${osId}: ${(e as Error).message}`);
+      }
+    }
+
+    // ---- GestãoClick: Orçamento ----
+    const orcIds = [...new Set((rows || []).map((r: any) => String(r.gc_orcamento_id || "").trim()).filter(Boolean))];
+    for (const orcId of orcIds) {
+      summary.gc_orc_checked++;
+      try {
+        const resp = await rateLimitedFetch(`${GC_BASE_URL}/api/orcamentos/${orcId}`, { headers: gcHeaders }, "gc");
+        if (!resp.ok) { summary.errors++; continue; }
+        const json = await resp.json().catch(() => null);
+        const orc = json?.data || json;
+        if (!orc?.id) continue;
+        const payload: Record<string, unknown> = { ...buildGcOrcPayload(orc), atualizado_em: new Date().toISOString() };
+        const tipo = String(orc?.tipo || "").toLowerCase();
+        if (tipo === "produto" || tipo === "servico") payload.gc_orc_tipo = tipo;
+        const { error: orcErr, count } = await sbClient
+          .from("tarefas_central")
+          .update(payload, { count: "exact" })
+          .eq("gc_orcamento_id", orcId);
+        if (orcErr) { summary.errors++; console.error(`[central-sync] single-task ORC ${orcId}: ${orcErr.message}`); }
+        else summary.gc_orc_updated += count || 0;
+      } catch (e) {
+        summary.errors++;
+        console.error(`[central-sync] single-task ORC ${orcId}: ${(e as Error).message}`);
+      }
+    }
+  }
+
+  console.log(`[central-sync] single-task: ${JSON.stringify(summary)}`);
+  return summary;
+}
+
 async function reconcileOpenOsMirror(
   sbClient: any,
   gcHeaders: Record<string, string>,
