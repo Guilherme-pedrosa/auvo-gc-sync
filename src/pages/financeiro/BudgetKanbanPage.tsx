@@ -171,6 +171,7 @@ export default function BudgetKanbanPage() {
   const [editingColumnId, setEditingColumnId] = useState<string | null>(null);
   const [editingColumnTitle, setEditingColumnTitle] = useState("");
   const [selectedCard, setSelectedCard] = useState<KanbanItem | null>(null);
+  const [syncingTaskId, setSyncingTaskId] = useState<string | null>(null);
   const [pecasCard, setPecasCard] = useState<KanbanItem | null>(null);
   const [sortBy, setSortBy] = useState<"manual" | "data" | "cliente" | "tecnico" | "valor">("manual");
   const [editingSection, setEditingSection] = useState<string | null>(null);
@@ -390,6 +391,25 @@ export default function BudgetKanbanPage() {
       setIsSyncing(false);
     }
   }, [data?.ultimo_sync, dateRange, refetch]);
+
+  // Sincronização local de uma única tarefa (Auvo + GC)
+  const handleSyncSingleTask = useCallback(async (taskId: string) => {
+    if (!taskId || syncingTaskId) return;
+    setSyncingTaskId(taskId);
+    try {
+      const { error } = await supabase.functions.invoke("central-sync", {
+        body: { task_ids: [taskId], force_refresh: true, wait: true },
+      });
+      if (error) throw error;
+      toast.success(`Tarefa #${taskId} sincronizada`);
+      setColumnsInitialized(false);
+      await refetch();
+    } catch (e: any) {
+      toast.error(`Erro ao sincronizar tarefa: ${e?.message || e}`);
+    } finally {
+      setSyncingTaskId(null);
+    }
+  }, [syncingTaskId, refetch]);
 
   // All unique clients
   const allClientes = useMemo(() => {
@@ -2763,6 +2783,18 @@ export default function BudgetKanbanPage() {
                     <Wrench className="h-4 w-4" />
                     Rastreio de Peças
                   </button>
+                  {selectedCard.auvo_task_id && !String(selectedCard.auvo_task_id).startsWith("gc-only::") && (
+                    <button
+                      type="button"
+                      onClick={() => handleSyncSingleTask(String(selectedCard.auvo_task_id))}
+                      disabled={syncingTaskId === String(selectedCard.auvo_task_id)}
+                      title="Buscar evolução no Auvo e no GestãoClick apenas desta tarefa"
+                      className="inline-flex items-center gap-1.5 text-sm text-amber-600 hover:underline font-medium disabled:opacity-60"
+                    >
+                      <RefreshCw className={`h-4 w-4 ${syncingTaskId === String(selectedCard.auvo_task_id) ? "animate-spin" : ""}`} />
+                      {syncingTaskId === String(selectedCard.auvo_task_id) ? "Atualizando..." : "Atualizar localmente"}
+                    </button>
+                  )}
                   {selectedCard.gc_orcamento && (
                     <a
                       href={selectedCard.gc_orcamento.gc_link}
