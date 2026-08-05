@@ -205,7 +205,11 @@ export default function TarefasAgendadasDialog({ open, onOpenChange, equipamento
                   </div>
                   <div className="flex items-center gap-3 text-xs text-muted-foreground">
                     <span>
-                      {t.data ? format(parseISO(t.data), "dd/MM/yyyy", { locale: ptBR }) : "Sem data"}
+                      {st?.date
+                        ? format(parseISO(st.date), "dd/MM/yyyy", { locale: ptBR })
+                        : t.data
+                          ? format(parseISO(t.data), "dd/MM/yyyy", { locale: ptBR })
+                          : "Sem data"}
                     </span>
                     {t.link && (
                       <a href={t.link} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline flex items-center gap-1">
