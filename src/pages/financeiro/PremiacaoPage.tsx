@@ -50,6 +50,8 @@ type OsRow = {
   tecnico_execucao?: string | null;
   divergente_execucao?: boolean;
   compartilhada_com?: string | null;
+  percentual_split?: number | null;
+  divisao?: Array<{ tecnico: string; percentual: number }> | null;
 };
 type Tech = {
   tecnico: string;
@@ -655,8 +657,21 @@ export default function PremiacaoPage() {
                                   </Badge>
                                 )}
                                 {o.compartilhada_com && (
-                                  <Badge variant="secondary" className="text-[10px] shrink-0" title={`Compartilhada com ${o.compartilhada_com}`}>
-                                    <Users2 className="h-3 w-3 mr-0.5" /> 50% c/ {o.compartilhada_com.split(/\s+/)[0]}
+                                  <Badge
+                                    variant="secondary"
+                                    className="text-[10px] shrink-0"
+                                    title={
+                                      o.divisao?.length
+                                        ? o.divisao
+                                            .map((d) => `${d.tecnico}: ${d.percentual}%`)
+                                            .join(" · ")
+                                        : `Dividida com ${o.compartilhada_com}`
+                                    }
+                                  >
+                                    <Users2 className="h-3 w-3 mr-0.5" />
+                                    {o.percentual_split != null
+                                      ? `${Number(o.percentual_split).toLocaleString("pt-BR", { maximumFractionDigits: 2 })}%`
+                                      : "Dividida"}
                                   </Badge>
                                 )}
                               </div>
