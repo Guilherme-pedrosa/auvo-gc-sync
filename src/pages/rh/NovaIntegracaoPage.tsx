@@ -145,9 +145,15 @@ export default function NovaIntegracaoPage() {
     setSharedClientIds(shares.filter((s) => s.integration_id === editingId).map((s) => s.client_id));
   }, [editingId, shares]);
 
+  // Abrangência é derivada dos clientes vinculados
+  useEffect(() => {
+    const extras = sharedClientIds.filter((c) => c !== clientId);
+    setAbrangencia(extras.length ? "compartilhada" : "exclusiva");
+  }, [sharedClientIds, clientId]);
+
   /** Persiste nome/abrangência + relacionamentos (sem duplicar integrações). */
   const persistAbrangencia = async (integrationId: string) => {
-    const ids = abrangencia === "compartilhada" ? sharedClientIds.filter((c) => c !== clientId) : [];
+    const ids = sharedClientIds.filter((c) => c !== clientId);
     await saveShares.mutateAsync({ integration_id: integrationId, client_ids: ids });
   };
 
@@ -158,9 +164,14 @@ export default function NovaIntegracaoPage() {
     }
     setSavingShares(true);
     try {
-      await save.mutateAsync({ id: editingId, nome: nome || null, abrangencia });
+      const extras = sharedClientIds.filter((c) => c !== clientId);
+      await save.mutateAsync({
+        id: editingId,
+        nome: nome || null,
+        abrangencia: extras.length ? "compartilhada" : "exclusiva",
+      });
       await persistAbrangencia(editingId);
-      toast.success("Abrangência atualizada");
+      toast.success("Clientes vinculados atualizados");
     } catch (e) {
       toast.error((e as Error).message);
     } finally {
