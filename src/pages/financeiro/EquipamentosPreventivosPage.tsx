@@ -1631,7 +1631,7 @@ export default function EquipamentosPreventivosPage() {
       )}
 
       {/* Stats */}
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+      <div className="grid grid-cols-2 md:grid-cols-6 gap-3">
         {[
           { label: "Total", value: stats.total, color: "text-foreground" },
           { label: "Em dia", value: stats.emDia, color: "text-emerald-700 dark:text-emerald-400" },
