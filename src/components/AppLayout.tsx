@@ -90,6 +90,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
             { label: "Colaboradores", icon: UserCog, path: "/rh/colaboradores" },
             { label: "Treinamentos", icon: GraduationCap, path: "/rh/treinamentos" },
             { label: "Clientes", icon: Building2, path: "/rh/clientes" },
+            { label: "Matriz de Integrações", icon: Share2, path: "/rh/integracoes" },
             { label: "Documentos da Empresa", icon: FileText, path: "/rh/documentos-empresa" },
             {
               label: "Configurações",
