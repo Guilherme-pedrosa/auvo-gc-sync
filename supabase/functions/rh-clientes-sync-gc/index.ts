@@ -106,22 +106,38 @@ Deno.serve(async (req) => {
       }
     }
 
-    let updated = 0, errors = 0, naoEncontrados = 0;
-    for (const c of alvo ?? []) {
-      try {
-        const found =
-          (c.gc_cliente_id ? byId.get(String(c.gc_cliente_id)) : null) ??
-          byNome.get(normalize(c.nome));
-        if (!found) { naoEncontrados++; continue; }
+    // IDs GC já ocupados por outra linha (evita violar o índice único)
+    const idsOcupados = new Set<string>(
+      (alvo ?? []).map((c) => String(c.gc_cliente_id ?? "")).filter(Boolean),
+    );
 
-        const { error: upErr } = await supabase
-          .from("rh_clientes").update(mapCliente(found)).eq("id", c.id);
-        if (upErr) throw upErr;
-        updated++;
-      } catch (err) {
-        console.error("sync-gc failed for", c.id, err);
-        errors++;
-      }
+    let updated = 0, errors = 0, naoEncontrados = 0;
+    const lista = alvo ?? [];
+    for (let i = 0; i < lista.length; i += 10) {
+      await Promise.all(lista.slice(i, i + 10).map(async (c) => {
+        try {
+          const atual = c.gc_cliente_id ? String(c.gc_cliente_id) : "";
+          const found = (atual ? byId.get(atual) : null) ?? byNome.get(normalize(c.nome));
+          if (!found) { naoEncontrados++; return; }
+
+          const patch = mapCliente(found);
+          const gcId = String(patch.gc_cliente_id ?? "");
+          if (gcId && gcId !== atual && idsOcupados.has(gcId)) {
+            // outro cadastro já usa esse ID: enriquece os dados sem duplicar o vínculo
+            delete patch.gc_cliente_id;
+          } else if (gcId) {
+            idsOcupados.add(gcId);
+          }
+
+          const { error: upErr } = await supabase
+            .from("rh_clientes").update(patch).eq("id", c.id);
+          if (upErr) throw upErr;
+          updated++;
+        } catch (err) {
+          console.error("sync-gc failed for", c.id, err);
+          errors++;
+        }
+      }));
     }
 
     return new Response(JSON.stringify({
