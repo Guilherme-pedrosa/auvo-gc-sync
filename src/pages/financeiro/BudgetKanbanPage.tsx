@@ -2783,6 +2783,18 @@ export default function BudgetKanbanPage() {
                     <Wrench className="h-4 w-4" />
                     Rastreio de Peças
                   </button>
+                  {selectedCard.auvo_task_id && !String(selectedCard.auvo_task_id).startsWith("gc-only::") && (
+                    <button
+                      type="button"
+                      onClick={() => handleSyncSingleTask(String(selectedCard.auvo_task_id))}
+                      disabled={syncingTaskId === String(selectedCard.auvo_task_id)}
+                      title="Buscar evolução no Auvo e no GestãoClick apenas desta tarefa"
+                      className="inline-flex items-center gap-1.5 text-sm text-amber-600 hover:underline font-medium disabled:opacity-60"
+                    >
+                      <RefreshCw className={`h-4 w-4 ${syncingTaskId === String(selectedCard.auvo_task_id) ? "animate-spin" : ""}`} />
+                      {syncingTaskId === String(selectedCard.auvo_task_id) ? "Atualizando..." : "Atualizar localmente"}
+                    </button>
+                  )}
                   {selectedCard.gc_orcamento && (
                     <a
                       href={selectedCard.gc_orcamento.gc_link}
