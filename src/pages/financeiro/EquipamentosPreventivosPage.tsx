@@ -121,7 +121,7 @@ type EquipmentRow = {
   proxima_data_calculada?: boolean;
   periodicidade_meses_plano?: number | null;
   ultima_execucao_task_id?: string | null;
-  tarefas_abertas?: Array<{ id: string; tipo: string; data: string }>;
+  tarefas_abertas?: Array<{ id: string; tipo: string; data: string; tecnico?: string | null; status?: string | null; link?: string | null }>;
 };
 
 type SyncWindow = {
@@ -497,7 +497,14 @@ function buildEquipmentRows(
       ultima_execucao_task_id: null,
       tarefas_abertas: allEqTasks
         .filter(t => t.status_auvo !== "Finalizada" && t.status_auvo !== "Cancelada" && t.status_auvo !== "Pausada")
-        .map(t => ({ id: t.auvo_task_id, tipo: t.auvo_task_type_description || "Sem tipo", data: t.data_tarefa || "" })),
+        .map(t => ({
+          id: t.auvo_task_id,
+          tipo: t.auvo_task_type_description || "Sem tipo",
+          data: t.data_tarefa || "",
+          tecnico: t.tecnico || null,
+          status: t.status_auvo || null,
+          link: getTaskDigitalLink(t),
+        })),
     };
   }).sort((a, b) => {
     if (a.dias_desde === null && b.dias_desde === null) return 0;
