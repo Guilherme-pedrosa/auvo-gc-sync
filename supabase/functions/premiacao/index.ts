@@ -690,109 +690,145 @@ Deno.serve(async (req) => {
     for (const t of tecnicos) t.ordens.sort((a, b) => b.comissao_total - a.comissao_total);
 
     // ============================================================
-    // OS COMPARTILHADAS (higienização de coifa feita por 2 técnicos)
-    // Divide 50/50 todos os valores e a contagem da OS entre o
-    // técnico principal (vendedor/retorno) e um técnico secundário
-    // escolhido manualmente na tela de Premiação.
+    // OS COMPARTILHADAS (divisão percentual entre N técnicos)
+    // Cada linha em premiacao_os_compartilhada é uma fatia
+    // (técnico secundário + percentual). O técnico principal
+    // (vendedor/retorno) fica com o percentual restante.
     // ============================================================
     try {
       const { data: compartilhadas, error: compartilhadasError } = await supabase
         .from("premiacao_os_compartilhada")
         .select("gc_os_codigo, tecnico_secundario, percentual");
       if (compartilhadasError) throw compartilhadasError;
-      const sharedMap = new Map<string, { tecnico: string; pct: number }>();
+
+      const sharedMap = new Map<string, Array<{ tecnico: string; pct: number }>>();
       for (const r of (compartilhadas || [])) {
         const cod = String((r as any).gc_os_codigo || "").trim();
         const sec = String((r as any).tecnico_secundario || "").trim();
-        const pct = toNum((r as any).percentual) || 50;
-        if (cod && sec) sharedMap.set(cod, { tecnico: sec, pct });
+        const pct = toNum((r as any).percentual);
+        if (!cod || !sec || pct <= 0) continue;
+        const list = sharedMap.get(cod) || [];
+        list.push({ tecnico: sec, pct });
+        sharedMap.set(cod, list);
       }
 
       if (sharedMap.size > 0) {
-        const splitOrdem = (o: any, pctSec: number) => {
-          const factorSec = pctSec / 100;
-          o.valor_pecas = (o.valor_pecas || 0) * (1 - factorSec);
-          o.valor_servicos = (o.valor_servicos || 0) * (1 - factorSec);
-          if (o.faturamento !== undefined) o.faturamento = (o.faturamento || 0) * (1 - factorSec);
-          o.comissao_pecas = (o.comissao_pecas || 0) * (1 - factorSec);
-          o.comissao_servicos = (o.comissao_servicos || 0) * (1 - factorSec);
-          o.comissao_total = (o.comissao_total || 0) * (1 - factorSec);
+        const findOrCreateAgg = (nome: string, key: string): any => {
+          let agg: any = tecnicos.find(
+            (x: any) => normalize(x.tecnico).split(/\s+/)[0] === key
+          );
+          if (!agg) {
+            agg = {
+              tecnico: nome,
+              tecnico_id: "",
+              os_count: 0,
+              valor_pecas: 0,
+              valor_servicos: 0,
+              faturamento: 0,
+              comissao_pecas: 0,
+              comissao_servicos: 0,
+              comissao_total: 0,
+              ordens: [],
+            };
+            tecnicos.push(agg);
+            techMap.set(key, agg);
+          }
+          return agg;
         };
 
-        for (const t of tecnicos) {
-          for (let i = 0; i < t.ordens.length; i++) {
-            const o: any = t.ordens[i];
-            const sharedInfo = sharedMap.get(String(o.gc_os_codigo || ""));
-            if (!sharedInfo) continue;
+        // Snapshot: apenas as OS já existentes antes de criar fatias novas.
+        const baseTecnicos = [...tecnicos];
 
-            const secNome = sharedInfo.tecnico;
-            const pctSec = sharedInfo.pct;
-            const factorSec = pctSec / 100;
+        for (const t of baseTecnicos) {
+          for (const o of [...t.ordens] as any[]) {
+            const splits = sharedMap.get(String(o.gc_os_codigo || ""));
+            if (!splits || splits.length === 0) continue;
 
-            // Se o secundário é o próprio principal, ignora (não duplica)
             const mainKey = normalize(t.tecnico).split(/\s+/)[0];
-            const secKey = normalize(secNome).split(/\s+/)[0];
-            if (!secKey || secKey === mainKey) continue;
 
-            // Calcula valores antes do split no principal
-            const beforeServ = o.comissao_servicos || 0;
-            const beforePec = o.comissao_pecas || 0;
-            const beforeTot = o.comissao_total || 0;
-            const beforeFat = o.faturamento ?? (o.valor_pecas + o.valor_servicos);
-            const beforeValPec = o.valor_pecas || 0;
-            const beforeValServ = o.valor_servicos || 0;
-
-            splitOrdem(o, pctSec);
-            o.compartilhada_com = secNome;
-            o.percentual_split = 100 - pctSec;
-
-            // Ajusta totais do técnico principal
-            t.os_count -= (pctSec / 100);
-            t.valor_pecas -= beforeValPec * factorSec;
-            t.valor_servicos -= beforeValServ * factorSec;
-            (t as any).faturamento = ((t as any).faturamento || 0) - beforeFat * factorSec;
-            t.comissao_pecas -= beforePec * factorSec;
-            t.comissao_servicos -= beforeServ * factorSec;
-            t.comissao_total -= beforeTot * factorSec;
-
-            // Localiza/cria agg secundário
-            let secAgg: any = tecnicos.find(
-              (x: any) => normalize(x.tecnico).split(/\s+/)[0] === secKey
-            );
-            if (!secAgg) {
-              secAgg = {
-                tecnico: secNome,
-                tecnico_id: "",
-                os_count: 0,
-                valor_pecas: 0,
-                valor_servicos: 0,
-                faturamento: 0,
-                comissao_pecas: 0,
-                comissao_servicos: 0,
-                comissao_total: 0,
-                ordens: [],
-              };
-              tecnicos.push(secAgg);
-              techMap.set(secKey, secAgg);
-            }
-            secAgg.os_count += factorSec;
-            secAgg.valor_pecas += beforeValPec * factorSec;
-            secAgg.valor_servicos += beforeValServ * factorSec;
-            secAgg.faturamento = (secAgg.faturamento || 0) + beforeFat * factorSec;
-            secAgg.comissao_pecas += beforePec * factorSec;
-            secAgg.comissao_servicos += beforeServ * factorSec;
-            secAgg.comissao_total += beforeTot * factorSec;
-            secAgg.ordens.push({ 
-              ...o, 
-              valor_pecas: beforeValPec * factorSec,
-              valor_servicos: beforeValServ * factorSec,
-              faturamento: beforeFat * factorSec,
-              comissao_pecas: beforePec * factorSec,
-              comissao_servicos: beforeServ * factorSec,
-              comissao_total: beforeTot * factorSec,
-              compartilhada_com: t.tecnico,
-              percentual_split: pctSec
+            // Ignora fatias inválidas (mesmo técnico principal ou duplicadas)
+            const seen = new Set<string>();
+            const validSplits = splits.filter((s) => {
+              const k = normalize(s.tecnico).split(/\s+/)[0];
+              if (!k || k === mainKey || seen.has(k)) return false;
+              seen.add(k);
+              return true;
             });
+            if (validSplits.length === 0) continue;
+
+            // Percentual total cedido — limitado a 100%
+            let pctCedido = validSplits.reduce((acc, s) => acc + s.pct, 0);
+            let escala = 1;
+            if (pctCedido > 100) {
+              escala = 100 / pctCedido;
+              pctCedido = 100;
+            }
+
+            // Valores originais (100% da OS)
+            const baseValPec = o.valor_pecas || 0;
+            const baseValServ = o.valor_servicos || 0;
+            const baseFat = o.faturamento ?? (baseValPec + baseValServ);
+            const basePec = o.comissao_pecas || 0;
+            const baseServ = o.comissao_servicos || 0;
+            const baseTot = o.comissao_total || 0;
+
+            const fatorPrincipal = (100 - pctCedido) / 100;
+            const round2 = (n: number) => Math.round(n * 100) / 100;
+
+            const divisao = [
+              { tecnico: t.tecnico, percentual: round2(100 - pctCedido) },
+              ...validSplits.map((s) => ({
+                tecnico: s.tecnico,
+                percentual: round2(s.pct * escala),
+              })),
+            ];
+
+            // Ajusta o card e os totais do técnico principal
+            o.valor_pecas = baseValPec * fatorPrincipal;
+            o.valor_servicos = baseValServ * fatorPrincipal;
+            o.faturamento = baseFat * fatorPrincipal;
+            o.comissao_pecas = basePec * fatorPrincipal;
+            o.comissao_servicos = baseServ * fatorPrincipal;
+            o.comissao_total = baseTot * fatorPrincipal;
+            o.compartilhada_com = validSplits.map((s) => s.tecnico).join(", ");
+            o.percentual_split = round2(100 - pctCedido);
+            o.divisao = divisao;
+
+            const cedido = 1 - fatorPrincipal;
+            t.os_count -= cedido;
+            t.valor_pecas -= baseValPec * cedido;
+            t.valor_servicos -= baseValServ * cedido;
+            (t as any).faturamento = ((t as any).faturamento || 0) - baseFat * cedido;
+            t.comissao_pecas -= basePec * cedido;
+            t.comissao_servicos -= baseServ * cedido;
+            t.comissao_total -= baseTot * cedido;
+
+            // Distribui as fatias para cada técnico secundário
+            for (const s of validSplits) {
+              const fator = (s.pct * escala) / 100;
+              const secKey = normalize(s.tecnico).split(/\s+/)[0];
+              const secAgg = findOrCreateAgg(s.tecnico, secKey);
+
+              secAgg.os_count += fator;
+              secAgg.valor_pecas += baseValPec * fator;
+              secAgg.valor_servicos += baseValServ * fator;
+              secAgg.faturamento = (secAgg.faturamento || 0) + baseFat * fator;
+              secAgg.comissao_pecas += basePec * fator;
+              secAgg.comissao_servicos += baseServ * fator;
+              secAgg.comissao_total += baseTot * fator;
+              secAgg.ordens.push({
+                ...o,
+                valor_pecas: baseValPec * fator,
+                valor_servicos: baseValServ * fator,
+                faturamento: baseFat * fator,
+                comissao_pecas: basePec * fator,
+                comissao_servicos: baseServ * fator,
+                comissao_total: baseTot * fator,
+                compartilhada_com: [t.tecnico, ...validSplits.filter((x) => x !== s).map((x) => x.tecnico)].join(", "),
+                percentual_split: round2(s.pct * escala),
+                divisao,
+              });
+            }
           }
         }
 
