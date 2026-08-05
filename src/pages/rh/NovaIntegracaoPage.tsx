@@ -488,7 +488,7 @@ export default function NovaIntegracaoPage() {
               {editingId && (
                 <Button variant="outline" size="sm" className="w-full" onClick={salvarAbrangencia} disabled={savingShares}>
                   {savingShares ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Save className="h-4 w-4 mr-2" />}
-                  Salvar abrangência
+                  Salvar clientes vinculados
                 </Button>
               )}
               <p className="text-[11px] text-muted-foreground">
