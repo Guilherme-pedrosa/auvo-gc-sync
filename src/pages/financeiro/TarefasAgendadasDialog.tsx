@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { format, parseISO } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { supabase } from "@/integrations/supabase/client";
@@ -7,6 +8,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Calendar, ExternalLink, Loader2, Save } from "lucide-react";
 
 export type TarefaAgendada = {
@@ -27,37 +29,93 @@ interface Props {
   onUpdated?: () => void;
 }
 
+type EditState = { date: string; hour: string; minute: string; tecnicoId: string };
+
 export default function TarefasAgendadasDialog({ open, onOpenChange, equipamento, cliente, tarefas, onUpdated }: Props) {
-  const [dates, setDates] = useState<Record<string, string>>({});
+  const [edits, setEdits] = useState<Record<string, EditState>>({});
   const [savingId, setSavingId] = useState<string | null>(null);
+  const [loadingDetails, setLoadingDetails] = useState(false);
 
-  const dateValue = (t: TarefaAgendada) =>
-    dates[t.id] ?? (t.data ? t.data.substring(0, 10) : "");
-
-  const reagendar = async (t: TarefaAgendada) => {
-    const novaData = dateValue(t);
-    if (!novaData) return toast.error("Informe a nova data");
-    setSavingId(t.id);
-    try {
-      // Preserva o horário atual da tarefa no Auvo
-      const { data: taskData } = await supabase.functions.invoke("auvo-task-update", {
-        body: { action: "get", taskId: Number(t.id) },
-      });
-      const taskResult = taskData?.data?.result;
-      const hora = String(taskResult?.taskDate || "").substring(11, 19) || "08:00:00";
-
-      const { data: patchResult, error } = await supabase.functions.invoke("auvo-task-update", {
-        body: {
-          action: "edit",
-          taskId: Number(t.id),
-          patches: [{ op: "replace", path: "/taskDate", value: `${novaData}T${hora}` }],
-        },
+  const { data: auvoUsers = [] } = useQuery({
+    queryKey: ["auvo-users"],
+    queryFn: async () => {
+      const { data, error } = await supabase.functions.invoke("auvo-task-update", {
+        body: { action: "list-users" },
       });
       if (error) throw error;
-      if (patchResult?.status && patchResult.status >= 400) {
-        throw new Error(patchResult?.data?.message || `Erro ${patchResult.status}`);
+      return (data?.data || []) as { userID: number; name: string }[];
+    },
+    enabled: open,
+    staleTime: 1000 * 60 * 30,
+  });
+
+  // Carrega hora e técnico atuais direto do Auvo (igual ao Kanban de OS)
+  useEffect(() => {
+    if (!open || tarefas.length === 0) return;
+    let cancelled = false;
+    setLoadingDetails(true);
+    (async () => {
+      const next: Record<string, EditState> = {};
+      for (const t of tarefas) {
+        const fallbackDate = t.data ? t.data.substring(0, 10) : "";
+        let hour = "08";
+        let minute = "00";
+        let tecnicoId = "";
+        let date = fallbackDate;
+        try {
+          const { data } = await supabase.functions.invoke("auvo-task-update", {
+            body: { action: "get", taskId: Number(t.id) },
+          });
+          const task = data?.data?.result ?? data?.data ?? null;
+          const raw = task?.taskDate || task?.task_date || null;
+          if (raw) {
+            const parsed = new Date(raw);
+            if (!isNaN(parsed.getTime())) {
+              date = format(parsed, "yyyy-MM-dd");
+              hour = String(parsed.getHours()).padStart(2, "0");
+              minute = String(parsed.getMinutes()).padStart(2, "0");
+            }
+          }
+          const userTo = task?.idUserTo ?? task?.id_user_to ?? null;
+          if (userTo) tecnicoId = String(userTo);
+        } catch {
+          // mantém fallback
+        }
+        next[t.id] = { date, hour, minute, tecnicoId };
       }
-      toast.success(`Tarefa #${t.id} reagendada para ${format(parseISO(novaData), "dd/MM/yyyy")}`);
+      if (!cancelled) {
+        setEdits(next);
+        setLoadingDetails(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [open, tarefas]);
+
+  const setField = (id: string, patch: Partial<EditState>) =>
+    setEdits((p) => ({ ...p, [id]: { ...(p[id] || { date: "", hour: "08", minute: "00", tecnicoId: "" }), ...patch } }));
+
+  const reagendar = async (t: TarefaAgendada) => {
+    const st = edits[t.id];
+    if (!st?.date) return toast.error("Informe a nova data");
+    setSavingId(t.id);
+    try {
+      const patches: { op: string; path: string; value: any }[] = [
+        {
+          op: "replace",
+          path: "taskDate",
+          value: `${st.date}T${st.hour.padStart(2, "0")}:${st.minute.padStart(2, "0")}:00`,
+        },
+      ];
+      if (st.tecnicoId) patches.push({ op: "replace", path: "idUserTo", value: Number(st.tecnicoId) });
+
+      const { data, error } = await supabase.functions.invoke("auvo-task-update", {
+        body: { action: "edit", taskId: Number(t.id), patches },
+      });
+      if (error) throw error;
+      if (data?.status && data.status >= 400) {
+        throw new Error(JSON.stringify(data?.data || `Erro ${data.status}`));
+      }
+      toast.success(`Tarefa #${t.id} reagendada para ${format(parseISO(st.date), "dd/MM/yyyy")} às ${st.hour}:${st.minute}`);
       onUpdated?.();
     } catch (e: any) {
       toast.error(e?.message || "Falha ao reagendar tarefa");
@@ -79,48 +137,92 @@ export default function TarefasAgendadasDialog({ open, onOpenChange, equipamento
         </DialogHeader>
 
         <div className="space-y-2 max-h-[60vh] overflow-auto">
+          {loadingDetails && (
+            <p className="text-sm text-muted-foreground flex items-center gap-2">
+              <Loader2 className="h-4 w-4 animate-spin" /> Carregando dados do Auvo...
+            </p>
+          )}
           {tarefas.length === 0 && (
             <p className="text-sm text-muted-foreground">Nenhuma tarefa em aberto.</p>
           )}
-          {tarefas.map((t) => (
-            <div key={t.id} className="border rounded-lg p-3 space-y-2">
-              <div className="flex items-center justify-between gap-2 flex-wrap">
-                <div className="flex items-center gap-2">
-                  <Badge variant="outline" className="font-mono text-xs">#{t.id}</Badge>
-                  <span className="text-sm font-medium">{t.tipo}</span>
-                  {t.status && <Badge variant="secondary" className="text-[10px]">{t.status}</Badge>}
+          {tarefas.map((t) => {
+            const st = edits[t.id];
+            return (
+              <div key={t.id} className="border rounded-lg p-3 space-y-3">
+                <div className="flex items-center justify-between gap-2 flex-wrap">
+                  <div className="flex items-center gap-2">
+                    <Badge variant="outline" className="font-mono text-xs">#{t.id}</Badge>
+                    <span className="text-sm font-medium">{t.tipo}</span>
+                    {t.status && <Badge variant="secondary" className="text-[10px]">{t.status}</Badge>}
+                  </div>
+                  <div className="flex items-center gap-3 text-xs text-muted-foreground">
+                    <span>
+                      {t.data ? format(parseISO(t.data), "dd/MM/yyyy", { locale: ptBR }) : "Sem data"}
+                    </span>
+                    {t.link && (
+                      <a href={t.link} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline flex items-center gap-1">
+                        Abrir <ExternalLink className="h-3 w-3" />
+                      </a>
+                    )}
+                  </div>
                 </div>
-                <div className="flex items-center gap-3 text-xs text-muted-foreground">
-                  {t.tecnico && <span>{t.tecnico}</span>}
-                  <span>
-                    {t.data ? format(parseISO(t.data), "dd/MM/yyyy", { locale: ptBR }) : "Sem data"}
-                  </span>
-                  {t.link && (
-                    <a href={t.link} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline flex items-center gap-1">
-                      Abrir <ExternalLink className="h-3 w-3" />
-                    </a>
-                  )}
+
+                <div className="grid grid-cols-1 sm:grid-cols-[1fr_auto_auto] gap-2 items-end">
+                  <div>
+                    <label className="text-[11px] text-muted-foreground">Nova data</label>
+                    <Input
+                      type="date"
+                      value={st?.date ?? ""}
+                      onChange={(e) => setField(t.id, { date: e.target.value })}
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[11px] text-muted-foreground">Hora</label>
+                    <div className="flex items-center gap-1">
+                      <Select value={st?.hour ?? "08"} onValueChange={(v) => setField(t.id, { hour: v })}>
+                        <SelectTrigger className="w-[72px]"><SelectValue /></SelectTrigger>
+                        <SelectContent className="max-h-64">
+                          {Array.from({ length: 24 }, (_, i) => String(i).padStart(2, "0")).map((h) => (
+                            <SelectItem key={h} value={h}>{h}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <span className="text-muted-foreground">:</span>
+                      <Select value={st?.minute ?? "00"} onValueChange={(v) => setField(t.id, { minute: v })}>
+                        <SelectTrigger className="w-[72px]"><SelectValue /></SelectTrigger>
+                        <SelectContent className="max-h-64">
+                          {["00", "15", "30", "45"].map((m) => (
+                            <SelectItem key={m} value={m}>{m}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+                  <Button
+                    size="sm"
+                    onClick={() => reagendar(t)}
+                    disabled={savingId === t.id || loadingDetails || !st?.date}
+                  >
+                    {savingId === t.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <><Save className="h-4 w-4 mr-1" />Salvar no Auvo</>}
+                  </Button>
+                </div>
+
+                <div>
+                  <label className="text-[11px] text-muted-foreground">Técnico responsável</label>
+                  <Select value={st?.tecnicoId ?? ""} onValueChange={(v) => setField(t.id, { tecnicoId: v })}>
+                    <SelectTrigger>
+                      <SelectValue placeholder={t.tecnico || "Selecionar técnico"} />
+                    </SelectTrigger>
+                    <SelectContent className="max-h-64">
+                      {auvoUsers.map((u) => (
+                        <SelectItem key={u.userID} value={String(u.userID)}>{u.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
               </div>
-              <div className="flex items-end gap-2">
-                <div className="flex-1">
-                  <label className="text-[11px] text-muted-foreground">Nova data</label>
-                  <Input
-                    type="date"
-                    value={dateValue(t)}
-                    onChange={(e) => setDates((p) => ({ ...p, [t.id]: e.target.value }))}
-                  />
-                </div>
-                <Button
-                  size="sm"
-                  onClick={() => reagendar(t)}
-                  disabled={savingId === t.id || dateValue(t) === (t.data ? t.data.substring(0, 10) : "")}
-                >
-                  {savingId === t.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <><Save className="h-4 w-4 mr-1" />Reagendar</>}
-                </Button>
-              </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       </DialogContent>
     </Dialog>
