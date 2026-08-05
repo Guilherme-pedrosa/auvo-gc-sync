@@ -1190,6 +1190,7 @@ async function refreshSingleTasks(
     gc_os_checked: 0,
     gc_orc_checked: 0,
     not_found: [] as string[],
+    kanban_cards_updated: 0,
     errors: 0,
   };
 
@@ -1293,10 +1294,80 @@ async function refreshSingleTasks(
         console.error(`[central-sync] single-task ORC ${orcId}: ${(e as Error).message}`);
       }
     }
+
+    try {
+      if (await syncBudgetKanbanCardFromMirror(sbClient, taskId)) summary.kanban_cards_updated++;
+    } catch (e) {
+      console.error(`[central-sync] cache kanban ${taskId}: ${(e as Error).message}`);
+    }
   }
 
   console.log(`[central-sync] single-task: ${JSON.stringify(summary)}`);
   return summary;
+}
+
+// Depois de atualizar o espelho, reflete os vínculos GC no card do Kanban de
+// orçamentos (o cache guarda um snapshot próprio em `dados`).
+async function syncBudgetKanbanCardFromMirror(sbClient: any, taskId: string) {
+  const { data: rows } = await sbClient
+    .from("tarefas_central")
+    .select("*")
+    .eq("auvo_task_id", taskId);
+  const row = (rows || []).find((r: any) => r.gc_orcamento_id || r.gc_os_id) || (rows || [])[0];
+  if (!row) return false;
+
+  const { data: cacheRows } = await sbClient
+    .from("kanban_orcamentos_cache")
+    .select("auvo_task_id,dados")
+    .eq("auvo_task_id", taskId)
+    .limit(1);
+  const cached = (cacheRows || [])[0];
+  if (!cached) return false;
+
+  const dados = { ...(cached.dados || {}) };
+  if (row.gc_orcamento_id) {
+    dados.gc_orcamento = {
+      gc_orcamento_id: String(row.gc_orcamento_id),
+      gc_orcamento_codigo: String(row.gc_orcamento_codigo || ""),
+      gc_cliente: String(row.gc_orc_cliente || row.cliente || ""),
+      gc_situacao: String(row.gc_orc_situacao || ""),
+      gc_situacao_id: String(row.gc_orc_situacao_id || ""),
+      gc_cor_situacao: String(row.gc_orc_cor_situacao || ""),
+      gc_valor_total: String(row.gc_orc_valor_total ?? "0"),
+      gc_vendedor: String(row.gc_orc_vendedor || ""),
+      gc_data: String(row.gc_orc_data || ""),
+      gc_link: String(row.gc_orc_link || ""),
+    };
+    dados.orcamento_realizado = true;
+  }
+  if (row.gc_os_id) {
+    dados.gc_os = {
+      gc_os_id: String(row.gc_os_id),
+      gc_os_codigo: String(row.gc_os_codigo || ""),
+      gc_cliente: String(row.gc_os_cliente || row.cliente || ""),
+      gc_situacao: String(row.gc_os_situacao || ""),
+      gc_situacao_id: String(row.gc_os_situacao_id || ""),
+      gc_cor_situacao: String(row.gc_os_cor_situacao || ""),
+      gc_valor_total: String(row.gc_os_valor_total ?? "0"),
+      gc_vendedor: String(row.gc_os_vendedor || ""),
+      gc_data: String(row.gc_os_data || ""),
+      gc_link: String(row.gc_os_link || ""),
+    };
+    dados.os_realizada = true;
+  }
+  if (row.status_auvo) dados.status_auvo = String(row.status_auvo);
+  if (row.data_tarefa) dados.data_tarefa = String(row.data_tarefa).split("T")[0];
+  if (row.tecnico) dados.tecnico = String(row.tecnico);
+
+  const { error } = await sbClient
+    .from("kanban_orcamentos_cache")
+    .update({ dados, atualizado_em: new Date().toISOString() })
+    .eq("auvo_task_id", taskId);
+  if (error) {
+    console.error(`[central-sync] cache kanban ${taskId}: ${error.message}`);
+    return false;
+  }
+  return true;
 }
 
 async function reconcileOpenOsMirror(
