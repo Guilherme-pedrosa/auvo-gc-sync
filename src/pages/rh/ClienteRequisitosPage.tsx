@@ -487,6 +487,116 @@ export default function ClienteRequisitosPage() {
     </>
   );
 
+  // ---------- Quadros de aptidão (Integrados / Agendados / Aptos / Inaptos) ----------
+  const quadros = useMemo(() => ({
+    integrados: aptidao.filter((r) => r.integrado),
+    agendados: aptidao.filter((r) => !r.integrado && r.agendada),
+    aptos: aptidao.filter((r) => !r.integrado && !r.agendada && r.apto),
+    inaptos: aptidao.filter((r) => !r.integrado && !r.apto),
+  }), [aptidao]);
+
+  const renderAptidaoTable = (rows: AptidaoRow[], empty: string) =>
+    rows.length === 0 ? (
+      <p className="text-sm text-muted-foreground text-center py-6">{empty}</p>
+    ) : (
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead>Colaborador</TableHead>
+            <TableHead className="w-32">Situação</TableHead>
+            <TableHead>Pendências</TableHead>
+            <TableHead className="w-24 text-center">Pack</TableHead>
+            <TableHead className="w-36 text-right">Ação</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {rows.map((row) => (
+            <TableRow key={row.colaborador.id}>
+              <TableCell>
+                <div className="uppercase font-medium">{row.colaborador.nome}</div>
+                {row.colaborador.cargo && (
+                  <div className="text-xs text-muted-foreground">{row.colaborador.cargo}</div>
+                )}
+              </TableCell>
+              <TableCell>
+                {row.integrado ? (
+                  <Badge className="bg-blue-500 text-white">INTEGRADO</Badge>
+                ) : row.agendada ? (
+                  <div className="flex flex-col gap-1">
+                    <Badge className="bg-amber-500 text-white gap-1 w-fit">
+                      <CalendarClock className="h-3 w-3" /> AGENDADA
+                    </Badge>
+                    {row.agendada.scheduled_at && (
+                      <span className="text-[11px] text-muted-foreground">
+                        {new Date(row.agendada.scheduled_at).toLocaleString("pt-BR", {
+                          day: "2-digit", month: "2-digit", year: "numeric",
+                          hour: "2-digit", minute: "2-digit",
+                        })}
+                      </span>
+                    )}
+                  </div>
+                ) : row.apto ? (
+                  <Badge className="bg-green-500 text-white gap-1">
+                    <CheckCircle2 className="h-3 w-3" /> APTO
+                  </Badge>
+                ) : (
+                  <Badge variant="destructive" className="gap-1">
+                    <XCircle className="h-3 w-3" /> INAPTO
+                  </Badge>
+                )}
+              </TableCell>
+              <TableCell>
+                {row.faltantes.length === 0 ? (
+                  <span className="text-xs text-muted-foreground">—</span>
+                ) : (
+                  <div className="flex flex-wrap gap-1">
+                    {row.faltantes.map((f, i) => (
+                      <Badge
+                        key={i}
+                        variant="outline"
+                        className={
+                          f.reason === "expired"
+                            ? "border-orange-500 text-orange-600 text-xs"
+                            : "border-destructive text-destructive text-xs"
+                        }
+                      >
+                        {f.name} {f.reason === "expired" ? "(vencido)" : "(faltando)"}
+                      </Badge>
+                    ))}
+                  </div>
+                )}
+              </TableCell>
+              <TableCell className="text-center">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={packLoadingId === row.colaborador.id}
+                  onClick={() => downloadPack(row)}
+                  title="Baixar documentos compactados (ZIP)"
+                >
+                  {packLoadingId === row.colaborador.id ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <><Package className="h-4 w-4 mr-1" /> ZIP</>
+                  )}
+                </Button>
+              </TableCell>
+              <TableCell className="text-right">
+                <Button
+                  size="sm"
+                  disabled={!row.apto || row.integrado}
+                  onClick={() => openIntegrar(row.colaborador, row.agendada ?? undefined)}
+                >
+                  <PlayCircle className="h-4 w-4 mr-1" />
+                  {row.integrado ? "Integrado" : row.agendada ? "Realizar" : "Integrar"}
+                </Button>
+              </TableCell>
+            </TableRow>
+          ))}
+        </TableBody>
+      </Table>
+    );
+
   return (
     <div className="p-6 max-w-6xl mx-auto space-y-6">
       <Button variant="ghost" size="sm" onClick={() => navigate("/rh/clientes")}>
@@ -763,123 +873,77 @@ export default function ClienteRequisitosPage() {
           </Card>
         </TabsContent>
 
-        <TabsContent value="aptos" className="mt-4">
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between">
-              <CardTitle className="text-base flex items-center gap-2">
-                <UserCheck className="h-4 w-4 text-muted-foreground" /> Integrações — funcionários
-              </CardTitle>
-              <Button size="sm" onClick={openAgendar} disabled={aptidao.filter((r) => r.apto && !r.integrado).length === 0}>
-                <CalendarPlus className="h-4 w-4 mr-1" /> Agendar integração
-              </Button>
-            </CardHeader>
-            <CardContent className="p-0">
-              {techReqs.filter((r) => r.is_required).length === 0 ? (
-                <p className="text-sm text-muted-foreground text-center py-8">
-                  Nenhum requisito de <b>técnico</b> obrigatório cadastrado. Adicione requisitos na aba "Requisitos" para avaliar aptidão.
-                </p>
-              ) : aptidao.length === 0 ? (
-                <p className="text-sm text-muted-foreground text-center py-8">Nenhum colaborador ativo.</p>
-              ) : (
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Colaborador</TableHead>
-                      <TableHead className="w-32">Situação</TableHead>
-                      <TableHead>Pendências</TableHead>
-                      <TableHead className="w-28 text-center">Pack</TableHead>
-                      <TableHead className="w-40 text-right">Ação</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {aptidao.map((row) => (
-                      <TableRow key={row.colaborador.id}>
-                        <TableCell>
-                          <div className="uppercase font-medium">{row.colaborador.nome}</div>
-                          {row.colaborador.cargo && (
-                            <div className="text-xs text-muted-foreground">{row.colaborador.cargo}</div>
-                          )}
-                        </TableCell>
-                        <TableCell>
-                          {row.integrado ? (
-                            <Badge className="bg-blue-500 text-white">INTEGRADO</Badge>
-                          ) : row.agendada ? (
-                            <div className="flex flex-col gap-1">
-                              <Badge className="bg-amber-500 text-white gap-1 w-fit">
-                                <CalendarClock className="h-3 w-3" /> AGENDADA
-                              </Badge>
-                              {row.agendada.scheduled_at && (
-                                <span className="text-[11px] text-muted-foreground">
-                                  {new Date(row.agendada.scheduled_at).toLocaleString("pt-BR", {
-                                    day: "2-digit", month: "2-digit", year: "numeric",
-                                    hour: "2-digit", minute: "2-digit",
-                                  })}
-                                </span>
-                              )}
-                            </div>
-                          ) : row.apto ? (
-                            <Badge className="bg-green-500 text-white gap-1">
-                              <CheckCircle2 className="h-3 w-3" /> APTO
-                            </Badge>
-                          ) : (
-                            <Badge variant="destructive" className="gap-1">
-                              <XCircle className="h-3 w-3" /> INAPTO
-                            </Badge>
-                          )}
-                        </TableCell>
-                        <TableCell>
-                          {row.faltantes.length === 0 ? (
-                            <span className="text-xs text-muted-foreground">—</span>
-                          ) : (
-                            <div className="flex flex-wrap gap-1">
-                              {row.faltantes.map((f, i) => (
-                                <Badge
-                                  key={i}
-                                  variant="outline"
-                                  className={
-                                    f.reason === "expired"
-                                      ? "border-orange-500 text-orange-600 text-xs"
-                                      : "border-destructive text-destructive text-xs"
-                                  }
-                                >
-                                  {f.name} {f.reason === "expired" ? "(vencido)" : "(faltando)"}
-                                </Badge>
-                              ))}
-                            </div>
-                          )}
-                        </TableCell>
-                        <TableCell className="text-center">
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            disabled={packLoadingId === row.colaborador.id}
-                            onClick={() => downloadPack(row)}
-                            title="Baixar documentos compactados (ZIP)"
-                          >
-                            {packLoadingId === row.colaborador.id ? (
-                              <Loader2 className="h-4 w-4 animate-spin" />
-                            ) : (
-                              <><Package className="h-4 w-4 mr-1" /> ZIP</>
-                            )}
-                          </Button>
-                        </TableCell>
-                        <TableCell className="text-right">
-                          <Button
-                            size="sm"
-                            disabled={!row.apto || row.integrado}
-                            onClick={() => openIntegrar(row.colaborador, row.agendada ?? undefined)}
-                          >
-                            <PlayCircle className="h-4 w-4 mr-1" />
-                            {row.integrado ? "Integrado" : "Integrar"}
-                          </Button>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              )}
-            </CardContent>
-          </Card>
+        <TabsContent value="aptos" className="mt-4 space-y-4">
+          <div className="flex items-center justify-between flex-wrap gap-2">
+            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+              <UserCheck className="h-4 w-4" /> Integrações — funcionários
+            </div>
+            <Button size="sm" onClick={openAgendar} disabled={quadros.aptos.length === 0}>
+              <CalendarPlus className="h-4 w-4 mr-1" /> Agendar integração
+            </Button>
+          </div>
+
+          {techReqs.filter((r) => r.is_required).length === 0 ? (
+            <Card><CardContent className="py-8">
+              <p className="text-sm text-muted-foreground text-center">
+                Nenhum requisito de <b>técnico</b> obrigatório cadastrado. Adicione requisitos na aba "Requisitos" para avaliar aptidão.
+              </p>
+            </CardContent></Card>
+          ) : aptidao.length === 0 ? (
+            <Card><CardContent className="py-8">
+              <p className="text-sm text-muted-foreground text-center">Nenhum colaborador ativo.</p>
+            </CardContent></Card>
+          ) : (
+            <div className="space-y-4">
+              <Card className="border-l-4 border-l-blue-500">
+                <CardHeader className="py-3">
+                  <CardTitle className="text-base flex items-center gap-2">
+                    <UserCheck className="h-4 w-4 text-blue-600" /> Integrados
+                    <Badge variant="secondary">{quadros.integrados.length}</Badge>
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="p-0">
+                  {renderAptidaoTable(quadros.integrados, "Nenhum colaborador integrado neste cliente.")}
+                </CardContent>
+              </Card>
+
+              <Card className="border-l-4 border-l-amber-500">
+                <CardHeader className="py-3">
+                  <CardTitle className="text-base flex items-center gap-2">
+                    <CalendarClock className="h-4 w-4 text-amber-600" /> Integração agendada
+                    <Badge variant="secondary">{quadros.agendados.length}</Badge>
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="p-0">
+                  {renderAptidaoTable(quadros.agendados, "Nenhuma integração agendada.")}
+                </CardContent>
+              </Card>
+
+              <Card className="border-l-4 border-l-green-500">
+                <CardHeader className="py-3">
+                  <CardTitle className="text-base flex items-center gap-2">
+                    <CheckCircle2 className="h-4 w-4 text-green-600" /> Aptos (aguardando integração)
+                    <Badge variant="secondary">{quadros.aptos.length}</Badge>
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="p-0">
+                  {renderAptidaoTable(quadros.aptos, "Nenhum colaborador apto disponível.")}
+                </CardContent>
+              </Card>
+
+              <Card className="border-l-4 border-l-destructive">
+                <CardHeader className="py-3">
+                  <CardTitle className="text-base flex items-center gap-2">
+                    <XCircle className="h-4 w-4 text-destructive" /> Inaptos (com pendências)
+                    <Badge variant="secondary">{quadros.inaptos.length}</Badge>
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="p-0">
+                  {renderAptidaoTable(quadros.inaptos, "Nenhum colaborador inapto. Tudo em dia!")}
+                </CardContent>
+              </Card>
+            </div>
+          )}
         </TabsContent>
       </Tabs>
 
