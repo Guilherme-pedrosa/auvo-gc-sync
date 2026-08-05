@@ -143,9 +143,16 @@ export default function TarefasAgendadasDialog({ open, onOpenChange, equipamento
       
       const status = data?.status ?? 200;
       if (status >= 400) {
-        const detail = data?.data?.error ?? data?.data ?? JSON.stringify(data);
+        let detail = data?.data?.error ?? data?.data ?? JSON.stringify(data);
+        if (typeof detail === 'object' && detail !== null) {
+          if (detail.message) {
+            detail = detail.message + (detail.errors ? ": " + detail.errors.join(", ") : "");
+          } else {
+            detail = JSON.stringify(detail);
+          }
+        }
         console.error("[TarefasAgendadasDialog] Auvo API error:", detail);
-        throw new Error(`Erro ${status} no Auvo: ${typeof detail === 'string' ? detail : 'Verifique o console'}`);
+        throw new Error(`Erro ${status} no Auvo: ${detail}`);
       }
       toast.success(`Tarefa #${t.id} reagendada para ${format(parseISO(st.date), "dd/MM/yyyy")} às ${hh}:${mm} (${dur} min)`);
       onUpdated?.();
