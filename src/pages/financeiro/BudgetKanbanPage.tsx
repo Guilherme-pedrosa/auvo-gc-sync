@@ -412,7 +412,7 @@ export default function BudgetKanbanPage() {
       }
       toast.success(`Atualização da tarefa #${taskId} iniciada`);
       setColumnsInitialized(false);
-      await refetch();
+      void refetch();
     } catch (e: any) {
       toast.error(`Erro ao sincronizar tarefa: ${e?.message || e}`);
     } finally {
