@@ -392,6 +392,25 @@ export default function BudgetKanbanPage() {
     }
   }, [data?.ultimo_sync, dateRange, refetch]);
 
+  // Sincronização local de uma única tarefa (Auvo + GC)
+  const handleSyncSingleTask = useCallback(async (taskId: string) => {
+    if (!taskId || syncingTaskId) return;
+    setSyncingTaskId(taskId);
+    try {
+      const { error } = await supabase.functions.invoke("central-sync", {
+        body: { task_ids: [taskId], force_refresh: true, wait: true },
+      });
+      if (error) throw error;
+      toast.success(`Tarefa #${taskId} sincronizada`);
+      setColumnsInitialized(false);
+      await refetch();
+    } catch (e: any) {
+      toast.error(`Erro ao sincronizar tarefa: ${e?.message || e}`);
+    } finally {
+      setSyncingTaskId(null);
+    }
+  }, [syncingTaskId, refetch]);
+
   // All unique clients
   const allClientes = useMemo(() => {
     if (!data?.items) return [];
