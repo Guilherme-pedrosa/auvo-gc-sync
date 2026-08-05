@@ -987,6 +987,8 @@ type CentralSyncBody = {
   reports_only?: unknown;
   reconcile_open_os?: unknown;
   gc_status_only?: unknown;
+  task_ids?: unknown;
+  force_refresh?: unknown;
 };
 
 async function refreshOrcamentosOnly(
