@@ -171,6 +171,7 @@ export default function BudgetKanbanPage() {
   const [editingColumnId, setEditingColumnId] = useState<string | null>(null);
   const [editingColumnTitle, setEditingColumnTitle] = useState("");
   const [selectedCard, setSelectedCard] = useState<KanbanItem | null>(null);
+  const [syncingTaskId, setSyncingTaskId] = useState<string | null>(null);
   const [pecasCard, setPecasCard] = useState<KanbanItem | null>(null);
   const [sortBy, setSortBy] = useState<"manual" | "data" | "cliente" | "tecnico" | "valor">("manual");
   const [editingSection, setEditingSection] = useState<string | null>(null);
