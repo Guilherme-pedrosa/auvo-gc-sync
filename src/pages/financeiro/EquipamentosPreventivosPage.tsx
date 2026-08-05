@@ -294,7 +294,26 @@ async function fetchRawData(): Promise<{
   const relationsPromise = fetchRawDataPaginated<EquipTaskRel>(
     "equipamento_tarefas_auvo",
     "auvo_equipment_id, auvo_task_id, auvo_task_type_id, auvo_task_type_description, status_auvo, data_tarefa, data_conclusao, cliente, tecnico, auvo_link, source",
-    (q) => q.order("data_conclusao", { ascending: false, nullsFirst: false }),
+    // Ordenação DETERMINÍSTICA: sem desempate, o range/offset do PostgREST pode
+    // pular linhas (muitas datas repetidas) — era isso que fazia tarefas abertas
+    // sumirem da tela mesmo estando no banco.
+    (q) =>
+      q
+        .order("data_conclusao", { ascending: false, nullsFirst: false })
+        .order("auvo_task_id", { ascending: false })
+        .order("auvo_equipment_id", { ascending: false }),
+  );
+
+  // Rede de segurança: tarefas NÃO finalizadas (agendadas/abertas) são poucas e
+  // críticas para a coluna "Agendadas" — buscamos separadamente para garantir
+  // que nunca sejam perdidas por paginação.
+  const openRelationsPromise = fetchRawDataPaginated<EquipTaskRel>(
+    "equipamento_tarefas_auvo",
+    "auvo_equipment_id, auvo_task_id, auvo_task_type_id, auvo_task_type_description, status_auvo, data_tarefa, data_conclusao, cliente, tecnico, auvo_link, source",
+    (q) =>
+      q
+        .not("status_auvo", "in", '("Finalizada","Cancelada")')
+        .order("auvo_task_id", { ascending: false }),
   );
 
   const consolidadoPromise = fetchRawDataPaginated<ConsolidadoRow>(
@@ -302,11 +321,18 @@ async function fetchRawData(): Promise<{
     "equip_id, auvo_equipment_id, ultima_preventiva, ultima_preventiva_task_id, ultima_preventiva_tecnico, ultima_preventiva_link, proxima_preventiva, proxima_source, status_preventiva, total_tarefas, tipo_nome, atualizado_em",
   );
 
-  const [equipamentosRaw, relations, consolidadoRows] = await Promise.all([
+  const [equipamentosRaw, relationsBase, openRelations, consolidadoRows] = await Promise.all([
     equipamentosPromise,
     relationsPromise,
+    openRelationsPromise,
     consolidadoPromise,
   ]);
+
+  const relKey = (r: EquipTaskRel) => `${r.auvo_equipment_id}::${r.auvo_task_id}`;
+  const relMap = new Map<string, EquipTaskRel>();
+  for (const r of relationsBase) relMap.set(relKey(r), r);
+  for (const r of openRelations) relMap.set(relKey(r), r);
+  const relations = Array.from(relMap.values());
 
   // Guarda defensiva: nunca incluir equipamento inativo na lista
   const equipamentos = equipamentosRaw.filter(
