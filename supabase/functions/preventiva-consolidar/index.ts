@@ -27,6 +27,7 @@ type Tarefa = {
   auvo_equipment_id: string;
   auvo_task_id: string;
   auvo_task_type_id: string | null;
+  status_auvo: string | null;
   data_tarefa: string | null;
   data_conclusao: string | null;
   tecnico: string | null;
@@ -157,7 +158,7 @@ Deno.serve(async (req) => {
         const { data, error } = await supa
           .from("equipamento_tarefas_auvo")
           .select(
-            "auvo_equipment_id, auvo_task_id, auvo_task_type_id, data_tarefa, data_conclusao, tecnico, auvo_link",
+            "auvo_equipment_id, auvo_task_id, auvo_task_type_id, status_auvo, data_tarefa, data_conclusao, tecnico, auvo_link",
           )
           .range(from, from + step - 1);
         if (error) throw error;
@@ -219,6 +220,9 @@ Deno.serve(async (req) => {
       for (const t of tarefas) {
         if (t.auvo_equipment_id !== eq.auvo_equipment_id) continue;
         if (!t.auvo_task_type_id || !tiposValidos.has(String(t.auvo_task_type_id))) continue;
+        // Só conta como EXECUTADA quando a tarefa está Finalizada.
+        // Agendada/Aberta/Em andamento/Pausada NÃO é preventiva realizada.
+        if (String(t.status_auvo || "").trim().toLowerCase() !== "finalizada") continue;
         const d = t.data_conclusao || t.data_tarefa;
         if (!d) continue;
         total += 1;
