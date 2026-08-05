@@ -242,11 +242,17 @@ Deno.serve(async (req) => {
 
       const responseText = await response.text();
       let data;
-      try { data = JSON.parse(responseText); } catch { data = { raw: responseText }; }
+      try { 
+        data = JSON.parse(responseText); 
+      } catch { 
+        data = { raw: responseText }; 
+      }
+
+      console.log(`[auvo-task-update][reqId=${reqId}] action=edit status=${response.status} response=`, responseText.substring(0, 500));
 
       return new Response(
         JSON.stringify({ data, status: response.status, reqId }),
-        { status: response.ok ? 200 : response.status, headers: respHeaders }
+        { status: 200, headers: respHeaders }
       );
     }
 

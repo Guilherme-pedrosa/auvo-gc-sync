@@ -127,9 +127,17 @@ export default function TarefasAgendadasDialog({ open, onOpenChange, equipamento
       const { data, error } = await supabase.functions.invoke("auvo-task-update", {
         body: { action: "edit", taskId: Number(t.id), patches },
       });
-      if (error) throw error;
-      if (data?.status && data.status >= 400) {
-        throw new Error(JSON.stringify(data?.data || `Erro ${data.status}`));
+
+      if (error) {
+        console.error("[TarefasAgendadasDialog] invoke error:", error);
+        throw error;
+      }
+      
+      const status = data?.status ?? 200;
+      if (status >= 400) {
+        const detail = data?.data?.error ?? data?.data ?? JSON.stringify(data);
+        console.error("[TarefasAgendadasDialog] Auvo API error:", detail);
+        throw new Error(`Erro ${status} no Auvo: ${typeof detail === 'string' ? detail : 'Verifique o console'}`);
       }
       toast.success(`Tarefa #${t.id} reagendada para ${format(parseISO(st.date), "dd/MM/yyyy")} às ${hh}:${mm} (${dur} min)`);
       onUpdated?.();
