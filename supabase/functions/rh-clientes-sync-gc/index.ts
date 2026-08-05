@@ -27,17 +27,29 @@ const gcH = {
   "Content-Type": "application/json",
 };
 
-/** Baixa TODOS os clientes do GC (paginado). */
+async function gcPage(pagina: number): Promise<{ rows: any[]; proxima: boolean }> {
+  const res = await fetch(`${GC_BASE}/clientes?pagina=${pagina}`, { headers: gcH });
+  if (!res.ok) return { rows: [], proxima: false };
+  const json = await res.json().catch(() => null);
+  const rows = Array.isArray(json?.data) ? json.data : [];
+  return { rows, proxima: Boolean(json?.meta?.proxima_pagina) && rows.length > 0 };
+}
+
+/** Baixa TODOS os clientes do GC (paginado, em lotes concorrentes). */
 async function gcFetchAll(): Promise<any[]> {
   const all: any[] = [];
-  for (let pagina = 1; pagina <= 200; pagina++) {
-    const res = await fetch(`${GC_BASE}/clientes?pagina=${pagina}`, { headers: gcH });
-    if (!res.ok) break;
-    const json = await res.json().catch(() => null);
-    const rows = Array.isArray(json?.data) ? json.data : [];
-    all.push(...rows);
-    const meta = json?.meta;
-    if (!rows.length || !meta?.proxima_pagina) break;
+  const CONC = 6;
+  let pagina = 1;
+  for (let bloco = 0; bloco < 40; bloco++) {
+    const pages = Array.from({ length: CONC }, (_, i) => pagina + i);
+    const res = await Promise.all(pages.map(gcPage));
+    let continua = false;
+    for (const r of res) {
+      all.push(...r.rows);
+      if (r.proxima) continua = true;
+    }
+    pagina += CONC;
+    if (!continua) break;
   }
   return all;
 }
