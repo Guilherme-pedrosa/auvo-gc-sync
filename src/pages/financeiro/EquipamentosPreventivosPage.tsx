@@ -121,6 +121,7 @@ type EquipmentRow = {
   proxima_data_calculada?: boolean;
   periodicidade_meses_plano?: number | null;
   ultima_execucao_task_id?: string | null;
+  tarefas_abertas?: Array<{ id: string; tipo: string; data: string }>;
 };
 
 type SyncWindow = {
@@ -494,6 +495,9 @@ function buildEquipmentRows(
       proxima_data_calculada: false,
       periodicidade_meses_plano: null,
       ultima_execucao_task_id: null,
+      tarefas_abertas: allEqTasks
+        .filter(t => t.status_auvo !== "Finalizada" && t.status_auvo !== "Cancelada" && t.status_auvo !== "Pausada")
+        .map(t => ({ id: t.auvo_task_id, tipo: t.auvo_task_type_description || "Sem tipo", data: t.data_tarefa || "" })),
     };
   }).sort((a, b) => {
     if (a.dias_desde === null && b.dias_desde === null) return 0;
@@ -1107,7 +1111,9 @@ export default function EquipamentosPreventivosPage() {
     if (statusFilter.length > 0) {
       result = result.filter((e) => {
         const info = getStatusInfo(e.dias_desde);
-        return statusFilter.includes(info.label.toLowerCase());
+        const label = info.label.toLowerCase();
+        if (statusFilter.includes("agendada") && e.tarefas_abertas && e.tarefas_abertas.length > 0) return true;
+        return statusFilter.includes(label);
       });
     }
 
@@ -1192,8 +1198,9 @@ export default function EquipamentosPreventivosPage() {
     const emDia = filtered.filter((e) => e.dias_desde !== null && e.dias_desde <= 90).length;
     const atencao = filtered.filter((e) => e.dias_desde !== null && e.dias_desde > 90 && e.dias_desde <= 120).length;
     const vencido = filtered.filter((e) => e.dias_desde !== null && e.dias_desde > 120).length;
+    const agendadas = filtered.filter((e) => e.tarefas_abertas && e.tarefas_abertas.length > 0).length;
     const semRegistro = filtered.filter((e) => e.dias_desde === null).length;
-    return { emDia, atencao, vencido, semRegistro, total: filtered.length };
+    return { emDia, atencao, vencido, agendadas, semRegistro, total: filtered.length };
   }, [filtered]);
 
   const SortButton = ({ field, children }: { field: SortField; children: React.ReactNode }) => (
@@ -1624,12 +1631,13 @@ export default function EquipamentosPreventivosPage() {
       )}
 
       {/* Stats */}
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+      <div className="grid grid-cols-2 md:grid-cols-6 gap-3">
         {[
           { label: "Total", value: stats.total, color: "text-foreground" },
           { label: "Em dia", value: stats.emDia, color: "text-emerald-700 dark:text-emerald-400" },
           { label: "Atenção", value: stats.atencao, color: "text-amber-700 dark:text-amber-400" },
           { label: "Vencido", value: stats.vencido, color: "text-red-700 dark:text-red-400" },
+          { label: "Agendadas", value: stats.agendadas, color: "text-blue-700 dark:text-blue-400" },
           { label: "Sem histórico", value: stats.semRegistro, color: "text-muted-foreground" },
         ].map((s) => (
           <div key={s.label} className="bg-card border rounded-lg p-3 text-center">
@@ -1661,6 +1669,7 @@ export default function EquipamentosPreventivosPage() {
             { value: "em dia", label: "🟢 Em dia" },
             { value: "atenção", label: "🟡 Atenção" },
             { value: "vencido", label: "🔴 Vencido" },
+            { value: "agendada", label: "📅 Agendada" },
             { value: "sem registro", label: "⏳ Sem histórico" },
           ].filter((o) => statusFilter.includes(o.value) || statusDisponiveis.has(o.value))}
           placeholder="Status"
@@ -2076,6 +2085,29 @@ export default function EquipamentosPreventivosPage() {
                       </TableCell>
                       <TableCell>
                         <ProximaCell eq={eq} onSave={(d) => handleSaveProxima(eq, d)} />
+                        {eq.tarefas_abertas && eq.tarefas_abertas.length > 0 && (
+                          <div className="mt-1">
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <Badge variant="secondary" className="text-[9px] h-4 px-1 bg-amber-100 text-amber-800 border-amber-200 cursor-help">
+                                  {eq.tarefas_abertas.length} agendada{eq.tarefas_abertas.length > 1 ? "s" : ""}
+                                </Badge>
+                              </TooltipTrigger>
+                              <TooltipContent className="p-0">
+                                <div className="p-2 space-y-1 bg-white border rounded shadow-lg text-[10px]">
+                                  <p className="font-bold border-b pb-1 mb-1 text-amber-900">Tarefas em aberto no Auvo:</p>
+                                  {eq.tarefas_abertas.map((t) => (
+                                    <div key={t.id} className="flex justify-between gap-4 text-slate-700">
+                                      <span className="font-medium">#{t.id}</span>
+                                      <span>{t.tipo}</span>
+                                      <span className="text-slate-400">{t.data ? format(parseISO(t.data), "dd/MM/yy") : "—"}</span>
+                                    </div>
+                                  ))}
+                                </div>
+                              </TooltipContent>
+                            </Tooltip>
+                          </div>
+                        )}
                       </TableCell>
                       <TableCell className="text-sm">{eq.ultimo_tecnico || "—"}</TableCell>
                       <TableCell className="text-right">
