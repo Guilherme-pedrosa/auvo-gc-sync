@@ -29,7 +29,7 @@ interface Props {
   onUpdated?: () => void;
 }
 
-type EditState = { date: string; hour: string; minute: string; tecnicoId: string };
+type EditState = { date: string; hour: string; minute: string; tecnicoId: string; durationMinutes: number };
 
 export default function TarefasAgendadasDialog({ open, onOpenChange, equipamento, cliente, tarefas, onUpdated }: Props) {
   const [edits, setEdits] = useState<Record<string, EditState>>({});
@@ -62,6 +62,7 @@ export default function TarefasAgendadasDialog({ open, onOpenChange, equipamento
         let minute = "00";
         let tecnicoId = "";
         let date = fallbackDate;
+        let durationMinutes = 120;
         try {
           const { data } = await supabase.functions.invoke("auvo-task-update", {
             body: { action: "get", taskId: Number(t.id) },
@@ -76,12 +77,19 @@ export default function TarefasAgendadasDialog({ open, onOpenChange, equipamento
               minute = String(parsed.getMinutes()).padStart(2, "0");
             }
           }
+          const rawEnd = task?.taskEndDate || task?.task_end_date || null;
+          if (raw && rawEnd) {
+            const s0 = new Date(raw).getTime();
+            const e0 = new Date(rawEnd).getTime();
+            const diff = Math.round((e0 - s0) / 60000);
+            if (Number.isFinite(diff) && diff > 0) durationMinutes = diff;
+          }
           const userTo = task?.idUserTo ?? task?.id_user_to ?? null;
           if (userTo) tecnicoId = String(userTo);
         } catch {
           // mantém fallback
         }
-        next[t.id] = { date, hour, minute, tecnicoId };
+        next[t.id] = { date, hour, minute, tecnicoId, durationMinutes };
       }
       if (!cancelled) {
         setEdits(next);
@@ -92,19 +100,23 @@ export default function TarefasAgendadasDialog({ open, onOpenChange, equipamento
   }, [open, tarefas]);
 
   const setField = (id: string, patch: Partial<EditState>) =>
-    setEdits((p) => ({ ...p, [id]: { ...(p[id] || { date: "", hour: "08", minute: "00", tecnicoId: "" }), ...patch } }));
+    setEdits((p) => ({ ...p, [id]: { ...(p[id] || { date: "", hour: "08", minute: "00", tecnicoId: "", durationMinutes: 120 }), ...patch } }));
 
   const reagendar = async (t: TarefaAgendada) => {
     const st = edits[t.id];
     if (!st?.date) return toast.error("Informe a nova data");
     setSavingId(t.id);
     try {
+      const hh = st.hour.padStart(2, "0");
+      const mm = st.minute.padStart(2, "0");
+      const startISO = `${st.date}T${hh}:${mm}:00`;
+      const dur = Math.max(15, Number(st.durationMinutes) || 120);
+      const end = new Date(new Date(startISO).getTime() + dur * 60_000);
+      const endISO = format(end, "yyyy-MM-dd'T'HH:mm:ss");
+
       const patches: { op: string; path: string; value: any }[] = [
-        {
-          op: "replace",
-          path: "taskDate",
-          value: `${st.date}T${st.hour.padStart(2, "0")}:${st.minute.padStart(2, "0")}:00`,
-        },
+        { op: "replace", path: "taskDate", value: startISO },
+        { op: "replace", path: "taskEndDate", value: endISO },
       ];
       if (st.tecnicoId) patches.push({ op: "replace", path: "idUserTo", value: Number(st.tecnicoId) });
 
@@ -115,7 +127,7 @@ export default function TarefasAgendadasDialog({ open, onOpenChange, equipamento
       if (data?.status && data.status >= 400) {
         throw new Error(JSON.stringify(data?.data || `Erro ${data.status}`));
       }
-      toast.success(`Tarefa #${t.id} reagendada para ${format(parseISO(st.date), "dd/MM/yyyy")} às ${st.hour}:${st.minute}`);
+      toast.success(`Tarefa #${t.id} reagendada para ${format(parseISO(st.date), "dd/MM/yyyy")} às ${hh}:${mm} (${dur} min)`);
       onUpdated?.();
     } catch (e: any) {
       toast.error(e?.message || "Falha ao reagendar tarefa");
@@ -167,7 +179,7 @@ export default function TarefasAgendadasDialog({ open, onOpenChange, equipamento
                   </div>
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-[1fr_auto_auto] gap-2 items-end">
+                <div className="grid grid-cols-1 sm:grid-cols-[1fr_auto_auto_auto] gap-2 items-end">
                   <div>
                     <label className="text-[11px] text-muted-foreground">Nova data</label>
                     <Input
@@ -197,6 +209,28 @@ export default function TarefasAgendadasDialog({ open, onOpenChange, equipamento
                         </SelectContent>
                       </Select>
                     </div>
+                  </div>
+                  <div>
+                    <label className="text-[11px] text-muted-foreground">Duração (min)</label>
+                    <Input
+                      type="number"
+                      min={15}
+                      step={15}
+                      className="w-[110px]"
+                      value={st?.durationMinutes ?? 120}
+                      onChange={(e) => setField(t.id, { durationMinutes: Number(e.target.value) })}
+                    />
+                    <p className="text-[10px] text-muted-foreground mt-1">
+                      Fim: {st?.date
+                        ? format(
+                            new Date(
+                              new Date(`${st.date}T${(st.hour || "08").padStart(2, "0")}:${(st.minute || "00").padStart(2, "0")}:00`).getTime()
+                              + Math.max(15, Number(st?.durationMinutes) || 120) * 60_000,
+                            ),
+                            "dd/MM HH:mm",
+                          )
+                        : "—"}
+                    </p>
                   </div>
                   <Button
                     size="sm"
