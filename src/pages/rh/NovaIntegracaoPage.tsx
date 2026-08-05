@@ -10,7 +10,7 @@ import { SearchableSelect } from "@/components/ui/searchable-select";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
   ArrowLeft, ShieldCheck, ShieldX, Download, Building2, Users,
-  CheckCircle, Clock, FileX, FileCheck, AlertCircle, Loader2, Save, Send, Calendar, PlayCircle,
+  CheckCircle, Clock, FileX, FileCheck, AlertCircle, Loader2, Save, Send, Calendar, PlayCircle, Plus, X,
 } from "lucide-react";
 import JSZip from "jszip";
 import { format } from "date-fns";
