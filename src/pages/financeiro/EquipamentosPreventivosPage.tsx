@@ -1667,6 +1667,7 @@ export default function EquipamentosPreventivosPage() {
             { value: "em dia", label: "🟢 Em dia" },
             { value: "atenção", label: "🟡 Atenção" },
             { value: "vencido", label: "🔴 Vencido" },
+            { value: "agendada", label: "📅 Agendada" },
             { value: "sem registro", label: "⏳ Sem histórico" },
           ].filter((o) => statusFilter.includes(o.value) || statusDisponiveis.has(o.value))}
           placeholder="Status"
