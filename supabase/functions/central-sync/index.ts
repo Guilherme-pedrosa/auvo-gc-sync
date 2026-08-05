@@ -3118,7 +3118,8 @@ Deno.serve(async (req) => {
   try {
     const body = await req.json().catch(() => ({}));
 
-    if (body?.wait === true || body?.fast === true || body?.lite === true) {
+    const hasTaskIds = Array.isArray(body?.task_ids) && body.task_ids.length > 0;
+    if (hasTaskIds || body?.wait === true || body?.fast === true || body?.lite === true) {
       const result = await runCentralSync(body);
       return new Response(JSON.stringify(result), {
         status: 200,
