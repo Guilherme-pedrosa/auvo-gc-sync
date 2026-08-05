@@ -121,6 +121,7 @@ type EquipmentRow = {
   proxima_data_calculada?: boolean;
   periodicidade_meses_plano?: number | null;
   ultima_execucao_task_id?: string | null;
+  tarefas_abertas?: Array<{ id: string; tipo: string; data: string }>;
 };
 
 type SyncWindow = {
