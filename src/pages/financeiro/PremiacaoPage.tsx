@@ -956,57 +956,116 @@ function OsDetailDialog({
 
               <div className="border rounded-md p-3 bg-muted/30 space-y-2">
                 <div className="flex items-center gap-2 text-sm font-medium">
-                  <Users2 className="h-4 w-4" /> Compartilhar serviço (higienização de coifa)
-                  {compartAtual && (
+                  <Users2 className="h-4 w-4" /> Dividir OS entre técnicos
+                  {(divisoes?.length ?? 0) > 0 && (
                     <Badge variant="outline" className="text-[10px]">
-                      {100 - (compartAtual.percentual || 50)}% / {compartAtual.percentual || 50}% com {compartAtual.tecnico_secundario}
+                      {divisoes!.length + 1} técnicos
                     </Badge>
                   )}
                 </div>
                 <p className="text-xs text-muted-foreground">
-                  Divide o valor e a contagem desta OS com um segundo técnico no percentual escolhido.
-                  Use para coifas feitas por dupla ou auxílios específicos.
+                  Adicione quantas divisões quiser. O técnico principal fica com o percentual restante.
                 </p>
+
                 {loadingCompart ? (
                   <div className="text-xs text-muted-foreground flex items-center gap-2">
-                    <Loader2 className="h-3 w-3 animate-spin" /> Carregando…
-                  </div>
-                ) : compartAtual ? (
-                  <div className="flex items-center justify-end gap-2">
-                    <Button size="sm" variant="ghost" onClick={() => delCompartMut.mutate()} disabled={delCompartMut.isPending}>
-                      <Trash2 className="h-4 w-4 text-destructive mr-1" /> Remover divisão
-                    </Button>
+                    <Loader2 className="h-3 w-3 animate-spin" /> Carregando divisões…
                   </div>
                 ) : (
-                  <div className="grid grid-cols-1 md:grid-cols-[1fr_80px_auto] gap-2 items-end">
-                    <div>
-                      <label className="text-xs text-muted-foreground block mb-1">Segundo técnico</label>
-                      <SearchableSelect
-                        options={tecnicos}
-                        value={tecCompart}
-                        onValueChange={setTecCompart}
-                        placeholder="Selecionar técnico…"
-                        searchPlaceholder="Buscar técnico…"
-                        emptyText="Nenhum técnico encontrado."
-                        className="w-full"
-                      />
+                  <>
+                    <div className="border rounded bg-background divide-y">
+                      <div className="flex items-center justify-between px-3 py-2 text-sm">
+                        <span className="truncate">
+                          Técnico principal
+                          <span className="text-xs text-muted-foreground ml-1">(restante)</span>
+                        </span>
+                        <span className={cn("font-medium tabular-nums", pctPrincipal <= 0 && "text-destructive")}>
+                          {pctPrincipal.toLocaleString("pt-BR", { maximumFractionDigits: 2 })}%
+                        </span>
+                      </div>
+                      {(divisoes || []).map((d) => (
+                        <div key={d.id} className="flex items-center justify-between px-3 py-2 text-sm gap-2">
+                          <span className="truncate">{d.tecnico_secundario}</span>
+                          <div className="flex items-center gap-2 shrink-0">
+                            <span className="font-medium tabular-nums">
+                              {Number(d.percentual).toLocaleString("pt-BR", { maximumFractionDigits: 2 })}%
+                            </span>
+                            <span className="text-xs text-muted-foreground tabular-nums">
+                              {brl((os.comissao_total || 0) * (Number(d.percentual) / 100))}
+                            </span>
+                            <Button
+                              size="icon"
+                              variant="ghost"
+                              className="h-7 w-7"
+                              aria-label={`Remover divisão de ${d.tecnico_secundario}`}
+                              onClick={() => delCompartMut.mutate(d.id)}
+                              disabled={delCompartMut.isPending}
+                            >
+                              <Trash2 className="h-4 w-4 text-destructive" />
+                            </Button>
+                          </div>
+                        </div>
+                      ))}
+                      {(divisoes?.length ?? 0) === 0 && (
+                        <div className="px-3 py-2 text-xs text-muted-foreground italic">
+                          Nenhuma divisão cadastrada — 100% do valor fica com o técnico principal.
+                        </div>
+                      )}
                     </div>
-                    <div>
-                      <label className="text-xs text-muted-foreground block mb-1">% Sec.</label>
-                      <Input 
-                        type="number" 
-                        min="1" 
-                        max="99" 
-                        value={pctCompart} 
-                        onChange={(e) => setPctCompart(e.target.value)} 
-                        className="w-full"
-                      />
+
+                    <div className="grid grid-cols-1 md:grid-cols-[1fr_100px_auto] gap-2 items-end">
+                      <div>
+                        <label className="text-xs text-muted-foreground block mb-1">Adicionar técnico</label>
+                        <SearchableSelect
+                          options={tecnicos}
+                          value={tecCompart}
+                          onValueChange={setTecCompart}
+                          placeholder="Selecionar técnico…"
+                          searchPlaceholder="Buscar técnico…"
+                          emptyText="Nenhum técnico encontrado."
+                          className="w-full"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-xs text-muted-foreground block mb-1">
+                          % (máx {pctPrincipal.toLocaleString("pt-BR", { maximumFractionDigits: 2 })})
+                        </label>
+                        <Input
+                          type="number"
+                          min="0.01"
+                          max={pctPrincipal}
+                          step="0.01"
+                          placeholder="Ex: 30"
+                          value={pctCompart}
+                          onChange={(e) => setPctCompart(e.target.value)}
+                          className="w-full"
+                        />
+                      </div>
+                      <Button
+                        onClick={() => saveCompartMut.mutate()}
+                        disabled={
+                          saveCompartMut.isPending ||
+                          !tecCompart ||
+                          !(pctNovo > 0) ||
+                          pctNovo > pctPrincipal
+                        }
+                      >
+                        {saveCompartMut.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Users2 className="h-4 w-4" />}
+                        Adicionar
+                      </Button>
                     </div>
-                    <Button onClick={() => saveCompartMut.mutate()} disabled={saveCompartMut.isPending || !tecCompart}>
-                      {saveCompartMut.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Users2 className="h-4 w-4" />}
-                      Dividir
-                    </Button>
-                  </div>
+                    {pctNovo > pctPrincipal && (
+                      <p className="text-xs text-destructive">
+                        Percentual acima do disponível ({pctPrincipal.toLocaleString("pt-BR", { maximumFractionDigits: 2 })}%).
+                      </p>
+                    )}
+                    {tecCompart && pctNovo > 0 && pctNovo <= pctPrincipal && (
+                      <p className="text-xs text-muted-foreground">
+                        Após adicionar, o técnico principal fica com{" "}
+                        <b>{pctRestanteAposNovo.toLocaleString("pt-BR", { maximumFractionDigits: 2 })}%</b>.
+                      </p>
+                    )}
+                  </>
                 )}
               </div>
             </div>
