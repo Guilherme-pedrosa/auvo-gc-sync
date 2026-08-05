@@ -126,7 +126,8 @@ export default function TarefasAgendadasDialog({ open, onOpenChange, equipamento
       ];
       
       // Some Auvo tasks don't have taskEndDate exposed via JSONPatch.
-      // We only add it if we are sure the API supports it for this specific task.
+      // We'll omit it for now as a baseline and rely on taskDate only if needed,
+      // but let's try to include it if the user changed the duration.
       if (st.durationMinutes > 0) {
         patches.push({ op: "replace", path: "taskEndDate", value: formattedEnd });
       }
