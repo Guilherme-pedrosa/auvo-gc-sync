@@ -698,37 +698,43 @@ Deno.serve(async (req) => {
     try {
       const { data: compartilhadas, error: compartilhadasError } = await supabase
         .from("premiacao_os_compartilhada")
-        .select("gc_os_codigo, tecnico_secundario");
+        .select("gc_os_codigo, tecnico_secundario, percentual");
       if (compartilhadasError) throw compartilhadasError;
-      const sharedMap = new Map<string, string>();
+      const sharedMap = new Map<string, { tecnico: string; pct: number }>();
       for (const r of (compartilhadas || [])) {
         const cod = String((r as any).gc_os_codigo || "").trim();
         const sec = String((r as any).tecnico_secundario || "").trim();
-        if (cod && sec) sharedMap.set(cod, sec);
+        const pct = toNum((r as any).percentual) || 50;
+        if (cod && sec) sharedMap.set(cod, { tecnico: sec, pct });
       }
 
       if (sharedMap.size > 0) {
-        const halveOrdem = (o: any) => {
-          o.valor_pecas = (o.valor_pecas || 0) / 2;
-          o.valor_servicos = (o.valor_servicos || 0) / 2;
-          if (o.faturamento !== undefined) o.faturamento = (o.faturamento || 0) / 2;
-          o.comissao_pecas = (o.comissao_pecas || 0) / 2;
-          o.comissao_servicos = (o.comissao_servicos || 0) / 2;
-          o.comissao_total = (o.comissao_total || 0) / 2;
+        const splitOrdem = (o: any, pctSec: number) => {
+          const factorSec = pctSec / 100;
+          o.valor_pecas = (o.valor_pecas || 0) * (1 - factorSec);
+          o.valor_servicos = (o.valor_servicos || 0) * (1 - factorSec);
+          if (o.faturamento !== undefined) o.faturamento = (o.faturamento || 0) * (1 - factorSec);
+          o.comissao_pecas = (o.comissao_pecas || 0) * (1 - factorSec);
+          o.comissao_servicos = (o.comissao_servicos || 0) * (1 - factorSec);
+          o.comissao_total = (o.comissao_total || 0) * (1 - factorSec);
         };
 
         for (const t of tecnicos) {
           for (let i = 0; i < t.ordens.length; i++) {
             const o: any = t.ordens[i];
-            const secNome = sharedMap.get(String(o.gc_os_codigo || ""));
-            if (!secNome) continue;
+            const sharedInfo = sharedMap.get(String(o.gc_os_codigo || ""));
+            if (!sharedInfo) continue;
+
+            const secNome = sharedInfo.tecnico;
+            const pctSec = sharedInfo.pct;
+            const factorSec = pctSec / 100;
 
             // Se o secundário é o próprio principal, ignora (não duplica)
             const mainKey = normalize(t.tecnico).split(/\s+/)[0];
             const secKey = normalize(secNome).split(/\s+/)[0];
             if (!secKey || secKey === mainKey) continue;
 
-            // Halve no principal
+            // Calcula valores antes do split no principal
             const beforeServ = o.comissao_servicos || 0;
             const beforePec = o.comissao_pecas || 0;
             const beforeTot = o.comissao_total || 0;
@@ -736,15 +742,18 @@ Deno.serve(async (req) => {
             const beforeValPec = o.valor_pecas || 0;
             const beforeValServ = o.valor_servicos || 0;
 
-            halveOrdem(o);
+            splitOrdem(o, pctSec);
             o.compartilhada_com = secNome;
-            t.os_count -= 0.5;
-            t.valor_pecas -= beforeValPec / 2;
-            t.valor_servicos -= beforeValServ / 2;
-            (t as any).faturamento = ((t as any).faturamento || 0) - beforeFat / 2;
-            t.comissao_pecas -= beforePec / 2;
-            t.comissao_servicos -= beforeServ / 2;
-            t.comissao_total -= beforeTot / 2;
+            o.percentual_split = 100 - pctSec;
+
+            // Ajusta totais do técnico principal
+            t.os_count -= (pctSec / 100);
+            t.valor_pecas -= beforeValPec * factorSec;
+            t.valor_servicos -= beforeValServ * factorSec;
+            (t as any).faturamento = ((t as any).faturamento || 0) - beforeFat * factorSec;
+            t.comissao_pecas -= beforePec * factorSec;
+            t.comissao_servicos -= beforeServ * factorSec;
+            t.comissao_total -= beforeTot * factorSec;
 
             // Localiza/cria agg secundário
             let secAgg: any = tecnicos.find(
@@ -766,14 +775,24 @@ Deno.serve(async (req) => {
               tecnicos.push(secAgg);
               techMap.set(secKey, secAgg);
             }
-            secAgg.os_count += 0.5;
-            secAgg.valor_pecas += beforeValPec / 2;
-            secAgg.valor_servicos += beforeValServ / 2;
-            secAgg.faturamento = (secAgg.faturamento || 0) + beforeFat / 2;
-            secAgg.comissao_pecas += beforePec / 2;
-            secAgg.comissao_servicos += beforeServ / 2;
-            secAgg.comissao_total += beforeTot / 2;
-            secAgg.ordens.push({ ...o, compartilhada_com: t.tecnico });
+            secAgg.os_count += factorSec;
+            secAgg.valor_pecas += beforeValPec * factorSec;
+            secAgg.valor_servicos += beforeValServ * factorSec;
+            secAgg.faturamento = (secAgg.faturamento || 0) + beforeFat * factorSec;
+            secAgg.comissao_pecas += beforePec * factorSec;
+            secAgg.comissao_servicos += beforeServ * factorSec;
+            secAgg.comissao_total += beforeTot * factorSec;
+            secAgg.ordens.push({ 
+              ...o, 
+              valor_pecas: beforeValPec * factorSec,
+              valor_servicos: beforeValServ * factorSec,
+              faturamento: beforeFat * factorSec,
+              comissao_pecas: beforePec * factorSec,
+              comissao_servicos: beforeServ * factorSec,
+              comissao_total: beforeTot * factorSec,
+              compartilhada_com: t.tecnico,
+              percentual_split: pctSec
+            });
           }
         }
 

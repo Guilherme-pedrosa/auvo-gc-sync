@@ -1746,6 +1746,7 @@ export type Database = {
           gc_os_codigo: string
           id: string
           observacao: string | null
+          percentual: number | null
           tecnico_secundario: string
         }
         Insert: {
@@ -1754,6 +1755,7 @@ export type Database = {
           gc_os_codigo: string
           id?: string
           observacao?: string | null
+          percentual?: number | null
           tecnico_secundario: string
         }
         Update: {
@@ -1762,6 +1764,7 @@ export type Database = {
           gc_os_codigo?: string
           id?: string
           observacao?: string | null
+          percentual?: number | null
           tecnico_secundario?: string
         }
         Relationships: []

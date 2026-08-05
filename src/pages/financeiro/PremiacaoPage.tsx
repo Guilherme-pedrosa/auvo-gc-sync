@@ -704,6 +704,8 @@ function OsDetailDialog({
   const [tecRetorno, setTecRetorno] = useState("");
   const [obsRetorno, setObsRetorno] = useState("");
   const [tecCompart, setTecCompart] = useState("");
+  const [pctCompart, setPctCompart] = useState("50");
+
 
   const codigo = os?.gc_os_codigo || os?.gc_os_id || "";
 
@@ -762,11 +764,11 @@ function OsDetailDialog({
     queryFn: async () => {
       const { data, error } = await supabase
         .from("premiacao_os_compartilhada")
-        .select("id, tecnico_secundario, observacao")
+        .select("id, tecnico_secundario, percentual, observacao")
         .eq("gc_os_codigo", codigo)
         .maybeSingle();
       if (error) throw error;
-      return data as { id: string; tecnico_secundario: string; observacao: string | null } | null;
+      return data as { id: string; tecnico_secundario: string; percentual: number; observacao: string | null } | null;
     },
   });
 
@@ -775,14 +777,19 @@ function OsDetailDialog({
       if (!codigo) throw new Error("OS inválida");
       if (!tecCompart.trim()) throw new Error("Selecione o segundo técnico");
       const { error } = await supabase.from("premiacao_os_compartilhada").upsert(
-        { gc_os_codigo: codigo, tecnico_secundario: tecCompart.trim() },
+        { 
+          gc_os_codigo: codigo, 
+          tecnico_secundario: tecCompart.trim(),
+          percentual: Number(pctCompart) || 50
+        },
         { onConflict: "gc_os_codigo" }
       );
       if (error) throw error;
     },
     onSuccess: () => {
-      toast({ title: "OS compartilhada", description: "Valor dividido 50/50 entre os dois técnicos." });
+      toast({ title: "OS compartilhada", description: `Valor dividido (${100 - (Number(pctCompart)||50)}% / ${pctCompart}%) entre os dois técnicos.` });
       setTecCompart("");
+      setPctCompart("50");
       qc.invalidateQueries({ queryKey: ["os_compartilhada", codigo] });
       onChanged();
       onClose();
@@ -946,13 +953,13 @@ function OsDetailDialog({
                   <Users2 className="h-4 w-4" /> Compartilhar serviço (higienização de coifa)
                   {compartAtual && (
                     <Badge variant="outline" className="text-[10px]">
-                      50% com {compartAtual.tecnico_secundario}
+                      {100 - (compartAtual.percentual || 50)}% / {compartAtual.percentual || 50}% com {compartAtual.tecnico_secundario}
                     </Badge>
                   )}
                 </div>
                 <p className="text-xs text-muted-foreground">
-                  Divide 50/50 todos os valores e a contagem desta OS com um segundo técnico.
-                  Use para coifas feitas por dupla.
+                  Divide o valor e a contagem desta OS com um segundo técnico no percentual escolhido.
+                  Use para coifas feitas por dupla ou auxílios específicos.
                 </p>
                 {loadingCompart ? (
                   <div className="text-xs text-muted-foreground flex items-center gap-2">
@@ -965,7 +972,7 @@ function OsDetailDialog({
                     </Button>
                   </div>
                 ) : (
-                  <div className="grid grid-cols-1 md:grid-cols-[1fr_auto] gap-2 items-end">
+                  <div className="grid grid-cols-1 md:grid-cols-[1fr_80px_auto] gap-2 items-end">
                     <div>
                       <label className="text-xs text-muted-foreground block mb-1">Segundo técnico</label>
                       <SearchableSelect
@@ -978,9 +985,20 @@ function OsDetailDialog({
                         className="w-full"
                       />
                     </div>
+                    <div>
+                      <label className="text-xs text-muted-foreground block mb-1">% Sec.</label>
+                      <Input 
+                        type="number" 
+                        min="1" 
+                        max="99" 
+                        value={pctCompart} 
+                        onChange={(e) => setPctCompart(e.target.value)} 
+                        className="w-full"
+                      />
+                    </div>
                     <Button onClick={() => saveCompartMut.mutate()} disabled={saveCompartMut.isPending || !tecCompart}>
                       {saveCompartMut.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Users2 className="h-4 w-4" />}
-                      Dividir 50/50
+                      Dividir
                     </Button>
                   </div>
                 )}
