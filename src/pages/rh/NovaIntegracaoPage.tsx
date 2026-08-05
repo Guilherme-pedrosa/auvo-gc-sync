@@ -423,48 +423,56 @@ export default function NovaIntegracaoPage() {
             </div>
 
             <div className="rounded-lg border p-3 space-y-3">
-              <Label className="block">Abrangência</Label>
-              <RadioGroup
-                value={abrangencia}
-                onValueChange={(v) => setAbrangencia(v as "exclusiva" | "compartilhada")}
-                className="space-y-2"
-              >
-                <div className="flex items-center space-x-2">
-                  <RadioGroupItem value="exclusiva" id="ab-excl" />
-                  <Label htmlFor="ab-excl" className="font-normal cursor-pointer">Exclusiva (apenas este cliente)</Label>
-                </div>
-                <div className="flex items-center space-x-2">
-                  <RadioGroupItem value="compartilhada" id="ab-comp" />
-                  <Label htmlFor="ab-comp" className="font-normal cursor-pointer">Compartilhada com outros clientes</Label>
-                </div>
-              </RadioGroup>
+              <div className="flex items-center justify-between">
+                <Label className="block">Clientes desta integração</Label>
+                <Badge variant={sharedClientIds.filter((c) => c !== clientId).length ? "secondary" : "outline"} className="text-[10px]">
+                  {1 + sharedClientIds.filter((c) => c !== clientId).length} cliente(s)
+                </Badge>
+              </div>
 
-              {abrangencia === "compartilhada" && (
-                <div className="space-y-2">
-                  <Label>Clientes abrangidos</Label>
-                  <SearchableSelect
-                    multiple
-                    options={clienteOptions.filter((o) => o.value !== clientId)}
-                    value={sharedClientIds}
-                    onValueChange={setSharedClientIds}
-                    placeholder="Selecione os clientes..."
-                    searchPlaceholder="Buscar cliente..."
-                    className="w-full"
-                  />
-                  <div>
-                    <p className="text-xs font-medium mb-1">Empresas Abrangidas</p>
-                    <ul className="text-xs text-muted-foreground space-y-0.5">
-                      <li className="uppercase">• {cliente?.nome ?? "—"} <span className="normal-case">(anfitrião)</span></li>
-                      {sharedClientIds.filter((c) => c !== clientId).map((cid) => (
-                        <li key={cid} className="uppercase">• {clientes.find((c) => c.id === cid)?.nome ?? cid}</li>
-                      ))}
-                      {sharedClientIds.filter((c) => c !== clientId).length === 0 && (
-                        <li className="italic">Nenhuma empresa adicional selecionada.</li>
-                      )}
-                    </ul>
-                  </div>
+              <div className="flex items-center gap-2 rounded-md border bg-muted/40 px-2 py-1.5">
+                <Building2 className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                <span className="text-xs uppercase truncate flex-1">{cliente?.nome ?? "Selecione o cliente acima"}</span>
+                <Badge variant="outline" className="text-[10px]">Principal</Badge>
+              </div>
+
+              {sharedClientIds.filter((c) => c !== clientId).map((cid) => (
+                <div key={cid} className="flex items-center gap-2 rounded-md border px-2 py-1.5">
+                  <Building2 className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                  <span className="text-xs uppercase truncate flex-1">
+                    {clientes.find((c) => c.id === cid)?.nome ?? cid}
+                  </span>
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    className="h-6 w-6 text-muted-foreground hover:text-destructive"
+                    onClick={() => setSharedClientIds((prev) => prev.filter((x) => x !== cid))}
+                    title="Remover cliente"
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </Button>
                 </div>
-              )}
+              ))}
+
+              <div className="space-y-1">
+                <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                  <Plus className="h-3.5 w-3.5" /> Vincular outro cliente
+                </div>
+                <SearchableSelect
+                  options={clienteOptions.filter(
+                    (o) => o.value !== clientId && !sharedClientIds.includes(o.value),
+                  )}
+                  value=""
+                  onValueChange={(v) => {
+                    if (!v) return;
+                    setSharedClientIds((prev) => [...new Set([...prev, v])]);
+                    setAbrangencia("compartilhada");
+                  }}
+                  placeholder="Buscar cliente para vincular..."
+                  searchPlaceholder="Digite o nome..."
+                  className="w-full"
+                />
+              </div>
 
               {editingId && (
                 <Button variant="outline" size="sm" className="w-full" onClick={salvarAbrangencia} disabled={savingShares}>
@@ -473,7 +481,7 @@ export default function NovaIntegracaoPage() {
                 </Button>
               )}
               <p className="text-[11px] text-muted-foreground">
-                A integração continua única: os clientes abrangidos apenas referenciam este mesmo registro, arquivos e histórico.
+                A integração continua única: os clientes vinculados compartilham este mesmo registro, arquivos, validade e histórico.
               </p>
             </div>
 
