@@ -2,7 +2,7 @@ import { useNavigate, useLocation } from "react-router-dom";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/hooks/useAuth";
 import {
- RefreshCw, BarChart3, Kanban, LayoutDashboard, ListChecks, Radio, Wrench, CalendarDays, ChevronDown, Users, LogOut, Shield, FileText, PanelLeftClose, PanelLeft, Thermometer, ArrowLeftRight, Trophy, Settings, UserCog, FileCheck, Building2, GraduationCap, HeartPulse, Stethoscope, Brain
+ RefreshCw, BarChart3, Kanban, LayoutDashboard, ListChecks, Radio, Wrench, CalendarDays, ChevronDown, Users, LogOut, Shield, FileText, PanelLeftClose, PanelLeft, Thermometer, ArrowLeftRight, Trophy, Settings, UserCog, FileCheck, Building2, GraduationCap, HeartPulse, Stethoscope, Brain, Share2
 } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useState } from "react";
@@ -90,6 +90,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
             { label: "Colaboradores", icon: UserCog, path: "/rh/colaboradores" },
             { label: "Treinamentos", icon: GraduationCap, path: "/rh/treinamentos" },
             { label: "Clientes", icon: Building2, path: "/rh/clientes" },
+            { label: "Matriz de Integrações", icon: Share2, path: "/rh/integracoes" },
             { label: "Documentos da Empresa", icon: FileText, path: "/rh/documentos-empresa" },
             {
               label: "Configurações",
