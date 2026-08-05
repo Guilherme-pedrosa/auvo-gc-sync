@@ -38,6 +38,7 @@ import EquipamentoPecasDialog from "./EquipamentoPecasDialog";
 import ImportarPlanoExcelDialog from "./ImportarPlanoExcelDialog";
 import RevisarTiposIADialog from "./RevisarTiposIADialog";
 import GerarPlanoPreventivasDialog from "./GerarPlanoPreventivasDialog";
+import TarefasAgendadasDialog from "./TarefasAgendadasDialog";
 
 // ── Types ──
 type EquipmentRaw = {
@@ -121,7 +122,7 @@ type EquipmentRow = {
   proxima_data_calculada?: boolean;
   periodicidade_meses_plano?: number | null;
   ultima_execucao_task_id?: string | null;
-  tarefas_abertas?: Array<{ id: string; tipo: string; data: string }>;
+  tarefas_abertas?: Array<{ id: string; tipo: string; data: string; tecnico?: string | null; status?: string | null; link?: string | null }>;
 };
 
 type SyncWindow = {
@@ -497,7 +498,14 @@ function buildEquipmentRows(
       ultima_execucao_task_id: null,
       tarefas_abertas: allEqTasks
         .filter(t => t.status_auvo !== "Finalizada" && t.status_auvo !== "Cancelada" && t.status_auvo !== "Pausada")
-        .map(t => ({ id: t.auvo_task_id, tipo: t.auvo_task_type_description || "Sem tipo", data: t.data_tarefa || "" })),
+        .map(t => ({
+          id: t.auvo_task_id,
+          tipo: t.auvo_task_type_description || "Sem tipo",
+          data: t.data_tarefa || "",
+          tecnico: t.tecnico || null,
+          status: t.status_auvo || null,
+          link: getTaskDigitalLink(t),
+        })),
     };
   }).sort((a, b) => {
     if (a.dias_desde === null && b.dias_desde === null) return 0;
@@ -537,6 +545,7 @@ export default function EquipamentosPreventivosPage() {
   const [pdfScope, setPdfScope] = useState<"selecionados" | "filtrados" | "feitos" | "atrasados" | "atencao_vencido" | "sem_registro">("filtrados");
   const [criarTarefaEq, setCriarTarefaEq] = useState<EquipmentRow | null>(null);
   const [pecasEq, setPecasEq] = useState<EquipmentRow | null>(null);
+  const [agendadasEq, setAgendadasEq] = useState<EquipmentRow | null>(null);
   const [importOpen, setImportOpen] = useState(false);
   const [revisarIaOpen, setRevisarIaOpen] = useState(false);
   const [gerarOpen, setGerarOpen] = useState(false);
@@ -2107,13 +2116,19 @@ export default function EquipamentosPreventivosPage() {
                           <div className="mt-1">
                             <Tooltip>
                               <TooltipTrigger asChild>
-                                <Badge variant="secondary" className="text-[9px] h-4 px-1 bg-amber-100 text-amber-800 border-amber-200 cursor-help">
-                                  {eq.tarefas_abertas.length} agendada{eq.tarefas_abertas.length > 1 ? "s" : ""}
-                                </Badge>
+                                <button
+                                  type="button"
+                                  onClick={() => setAgendadasEq(eq)}
+                                  className="focus:outline-none"
+                                >
+                                  <Badge variant="secondary" className="text-[9px] h-4 px-1 bg-amber-100 text-amber-800 border-amber-200 cursor-pointer hover:bg-amber-200">
+                                    {eq.tarefas_abertas.length} agendada{eq.tarefas_abertas.length > 1 ? "s" : ""}
+                                  </Badge>
+                                </button>
                               </TooltipTrigger>
                               <TooltipContent className="p-0">
                                 <div className="p-2 space-y-1 bg-white border rounded shadow-lg text-[10px]">
-                                  <p className="font-bold border-b pb-1 mb-1 text-amber-900">Tarefas em aberto no Auvo:</p>
+                                  <p className="font-bold border-b pb-1 mb-1 text-amber-900">Clique para ver / reagendar:</p>
                                   {eq.tarefas_abertas.map((t) => (
                                     <div key={t.id} className="flex justify-between gap-4 text-slate-700">
                                       <span className="font-medium">#{t.id}</span>
@@ -2283,6 +2298,19 @@ export default function EquipamentosPreventivosPage() {
             cliente: pecasEq.cliente,
             identificador: pecasEq.identificador,
             auvo_equipment_id: pecasEq.auvo_equipment_id,
+          }}
+        />
+      )}
+      {agendadasEq && (
+        <TarefasAgendadasDialog
+          open={!!agendadasEq}
+          onOpenChange={(v) => { if (!v) setAgendadasEq(null); }}
+          equipamento={agendadasEq.nome}
+          cliente={agendadasEq.cliente}
+          tarefas={agendadasEq.tarefas_abertas ?? []}
+          onUpdated={() => {
+            queryClient.invalidateQueries({ queryKey: ["equipamentos-preventivos-raw", "v3-consolidado"] });
+            setAgendadasEq(null);
           }}
         />
       )}
