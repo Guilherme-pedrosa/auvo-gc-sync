@@ -163,6 +163,7 @@ export default function TarefasAgendadasDialog({ open, onOpenChange, equipamento
         [t.id]: { ...st }
       }));
 
+      // Invalidate queries so the main table refreshes when the dialog is closed
       onUpdated?.();
     } catch (e: any) {
       toast.error(e?.message || "Falha ao reagendar tarefa");
