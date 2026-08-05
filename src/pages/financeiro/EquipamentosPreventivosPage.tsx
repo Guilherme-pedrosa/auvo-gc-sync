@@ -2336,7 +2336,7 @@ export default function EquipamentosPreventivosPage() {
           tarefas={agendadasEq.tarefas_abertas ?? []}
           onUpdated={() => {
             queryClient.invalidateQueries({ queryKey: ["equipamentos-preventivos-raw", "v3-consolidado"] });
-            setAgendadasEq(null);
+            // Do NOT close the dialog here, so the user can see the "Saved" state or edit other tasks
           }}
         />
       )}
