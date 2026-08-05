@@ -111,12 +111,16 @@ export default function TarefasAgendadasDialog({ open, onOpenChange, equipamento
       const mm = st.minute.padStart(2, "0");
       const startISO = `${st.date}T${hh}:${mm}:00`;
       const dur = Math.max(15, Number(st.durationMinutes) || 120);
-      const end = new Date(new Date(startISO).getTime() + dur * 60_000);
-      const endISO = format(end, "yyyy-MM-dd'T'HH:mm:ss");
+      const start = new Date(startISO);
+      const end = new Date(start.getTime() + dur * 60_000);
+      
+      // Formatar exatamente como o Auvo espera: YYYY-MM-DDTHH:mm:ss
+      const formattedStart = format(start, "yyyy-MM-dd'T'HH:mm:ss");
+      const formattedEnd = format(end, "yyyy-MM-dd'T'HH:mm:ss");
 
       const patches: { op: string; path: string; value: any }[] = [
-        { op: "replace", path: "taskDate", value: startISO },
-        { op: "replace", path: "taskEndDate", value: endISO },
+        { op: "replace", path: "taskDate", value: formattedStart },
+        { op: "replace", path: "taskEndDate", value: formattedEnd },
       ];
       if (st.tecnicoId) patches.push({ op: "replace", path: "idUserTo", value: Number(st.tecnicoId) });
 
