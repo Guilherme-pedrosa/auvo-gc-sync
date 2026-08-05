@@ -2309,7 +2309,7 @@ export default function EquipamentosPreventivosPage() {
           cliente={agendadasEq.cliente}
           tarefas={agendadasEq.tarefas_abertas ?? []}
           onUpdated={() => {
-            queryClient.invalidateQueries({ queryKey: ["equip-preventivos"] });
+            queryClient.invalidateQueries({ queryKey: ["equipamentos-preventivos-raw", "v3-consolidado"] });
             setAgendadasEq(null);
           }}
         />
