@@ -20,6 +20,3 @@ verify_jwt = false
 
 [functions.genspark-ai]
 verify_jwt = false
-
-[functions.pick-pack-controle-os]
-verify_jwt = false
