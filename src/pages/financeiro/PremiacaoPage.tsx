@@ -704,7 +704,7 @@ function OsDetailDialog({
   const [tecRetorno, setTecRetorno] = useState("");
   const [obsRetorno, setObsRetorno] = useState("");
   const [tecCompart, setTecCompart] = useState("");
-  const [pctCompart, setPctCompart] = useState("50");
+  const [pctCompart, setPctCompart] = useState("");
 
 
   const codigo = os?.gc_os_codigo || os?.gc_os_id || "";
