@@ -88,6 +88,7 @@ export type TechnicianData = TechnicianQualityInput & {
   dias_trabalhados: number;
   dias_uteis: number;
   horas_disponiveis: number;
+  horas_produtivas_liquidas: number;
   produtividade_pct: number;
   valor_total: number;
   faturamento_hora: number;
@@ -105,6 +106,7 @@ export type TechnicianDashboardData = {
     total_deslocamento_horas: number;
     dias_uteis: number;
     horas_disponiveis: number;
+    horas_produtivas_liquidas: number;
     produtividade_pct: number;
     total_pendencias: number;
     total_sem_questionario: number;
