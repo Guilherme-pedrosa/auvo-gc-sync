@@ -72,9 +72,15 @@ function periodicidadeToMeses(p: string | null | undefined): number | null {
 }
 
 function addMonthsISO(iso: string, months: number): string {
-  const d = new Date(iso + "T12:00:00Z");
-  d.setUTCMonth(d.getUTCMonth() + months);
-  return d.toISOString().slice(0, 10);
+  // Soma meses com clamp no último dia do mês de destino:
+  // 31/01 + 3 meses = 30/04 (e não 01/05, como no overflow nativo do JS).
+  const [y, m, day] = iso.slice(0, 10).split("-").map(Number);
+  const total = (y * 12) + (m - 1) + months;
+  const ny = Math.floor(total / 12);
+  const nm = (total % 12) + 1;
+  const lastDay = new Date(Date.UTC(ny, nm, 0)).getUTCDate();
+  const nd = Math.min(day, lastDay);
+  return `${ny}-${String(nm).padStart(2, "0")}-${String(nd).padStart(2, "0")}`;
 }
 
 function normalizeClienteName(name: string | null | undefined): string {

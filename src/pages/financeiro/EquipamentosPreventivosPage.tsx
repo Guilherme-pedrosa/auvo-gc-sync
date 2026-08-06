@@ -288,7 +288,7 @@ async function fetchRawData(): Promise<{
   const equipamentosPromise = fetchRawDataPaginated<EquipmentRaw>(
     "equipamentos_auvo",
     "id, auvo_equipment_id, nome, identificador, cliente, status, categoria, descricao, marca, marca_source, marca_manual_override, tipo_id, override_horas_por_tecnico, override_qtd_tecnicos, override_periodicidade",
-    (q) => q.eq("status", "Ativo").order("nome"),
+    (q) => q.order("nome"),
   );
 
   const relationsPromise = fetchRawDataPaginated<EquipTaskRel>(
@@ -334,10 +334,8 @@ async function fetchRawData(): Promise<{
   for (const r of openRelations) relMap.set(relKey(r), r);
   const relations = Array.from(relMap.values());
 
-  // Guarda defensiva: nunca incluir equipamento inativo na lista
-  const equipamentos = equipamentosRaw.filter(
-    (e) => (e.status || "").toLowerCase() === "ativo",
-  );
+  // Ativos e inativos são carregados; a situação é exibida/filtrada na tela.
+  const equipamentos = equipamentosRaw;
 
   const consolidated = new Map<string, ConsolidadoRow>();
   let latest: string | null = null;
@@ -550,6 +548,7 @@ export default function EquipamentosPreventivosPage() {
   const queryClient = useQueryClient();
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<string[]>([]);
+  const [situacaoFilter, setSituacaoFilter] = useState<string[]>(["ativo"]);
   const [marcaFilter, setMarcaFilter] = useState<string[]>([]);
   const [clienteFilter, setClienteFilter] = useState<string[]>([]);
   const [tipoTarefaFilter, setTipoTarefaFilter] = useState<string[]>([]);
@@ -853,6 +852,7 @@ export default function EquipamentosPreventivosPage() {
   type FilterKey =
     | "search"
     | "status"
+    | "situacao"
     | "marca"
     | "cliente"
     | "tipoEquip"
@@ -875,6 +875,10 @@ export default function EquipamentosPreventivosPage() {
       if (!exclude.has("status") && statusFilter.length > 0) {
         const info = getStatusInfo(e.dias_desde);
         if (!statusFilter.includes(info.label.toLowerCase())) return false;
+      }
+      if (!exclude.has("situacao") && situacaoFilter.length > 0) {
+        const sit = (e.equipStatus || "").toLowerCase() === "inativo" ? "inativo" : "ativo";
+        if (!situacaoFilter.includes(sit)) return false;
       }
       if (!exclude.has("marca") && marcaFilter.length > 0) {
         if (marcaFilter.includes("__sem_marca__") && !e.marca) {
@@ -944,7 +948,7 @@ export default function EquipamentosPreventivosPage() {
       }
       return true;
     },
-    [search, statusFilter, marcaFilter, clienteFilter, tipoEquipFilter, grupoFilter, grupoClienteMap, proximaMesFilter, syncStartDate, syncEndDate, applyDateFilter, intervencaoFilter]
+    [search, statusFilter, situacaoFilter, marcaFilter, clienteFilter, tipoEquipFilter, grupoFilter, grupoClienteMap, proximaMesFilter, syncStartDate, syncEndDate, applyDateFilter, intervencaoFilter]
   );
 
   // Opções em cascata: para cada filtro, considera o universo já reduzido pelos OUTROS filtros
@@ -1170,6 +1174,13 @@ export default function EquipamentosPreventivosPage() {
       });
     }
 
+    if (situacaoFilter.length > 0) {
+      result = result.filter((e) => {
+        const sit = (e.equipStatus || "").toLowerCase() === "inativo" ? "inativo" : "ativo";
+        return situacaoFilter.includes(sit);
+      });
+    }
+
     if (marcaFilter.length > 0) {
       result = result.filter((e) => {
         if (marcaFilter.includes("__sem_marca__") && !e.marca) return true;
@@ -1232,7 +1243,7 @@ export default function EquipamentosPreventivosPage() {
     });
 
     return result;
-  }, [equipments, search, statusFilter, marcaFilter, clienteFilter, tipoEquipFilter, grupoFilter, grupoClienteMap, sortField, sortDir, syncStartDate, syncEndDate, proximaMesFilter]);
+  }, [equipments, search, statusFilter, situacaoFilter, marcaFilter, clienteFilter, tipoEquipFilter, grupoFilter, grupoClienteMap, sortField, sortDir, syncStartDate, syncEndDate, proximaMesFilter]);
 
   // Pagination
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
@@ -1240,7 +1251,7 @@ export default function EquipamentosPreventivosPage() {
   const paginatedItems = filtered.slice((safeCurrentPage - 1) * PAGE_SIZE, safeCurrentPage * PAGE_SIZE);
 
   // Reset to page 1 when filters change
-  const filterKey = `${search}|${statusFilter.join(",")}|${marcaFilter.join(",")}|${clienteFilter.join(",")}|${tipoEquipFilter.join(",")}|${grupoFilter}|${tipoTarefaFilter.join(",")}|${sortField}|${sortDir}|${syncStartDate}|${syncEndDate}|${proximaMesFilter.join(",")}`;
+  const filterKey = `${search}|${statusFilter.join(",")}|${situacaoFilter.join(",")}|${marcaFilter.join(",")}|${clienteFilter.join(",")}|${tipoEquipFilter.join(",")}|${grupoFilter}|${tipoTarefaFilter.join(",")}|${sortField}|${sortDir}|${syncStartDate}|${syncEndDate}|${proximaMesFilter.join(",")}`;
   const [prevFilterKey, setPrevFilterKey] = useState(filterKey);
   if (filterKey !== prevFilterKey) {
     setPrevFilterKey(filterKey);
@@ -1732,6 +1743,19 @@ export default function EquipamentosPreventivosPage() {
         />
 
         <SearchableSelect
+          multiple
+          value={situacaoFilter}
+          onValueChange={setSituacaoFilter}
+          options={[
+            { value: "ativo", label: "✅ Ativo no Auvo" },
+            { value: "inativo", label: "🚫 Inativo no Auvo" },
+          ]}
+          placeholder="Situação Auvo"
+          searchPlaceholder="Buscar situação..."
+          className="w-[170px]"
+        />
+
+        <SearchableSelect
           value={intervencaoFilter}
           onValueChange={(v) => setIntervencaoFilter(v === intervencaoFilter ? "" : v)}
           options={[
@@ -2058,6 +2082,11 @@ export default function EquipamentosPreventivosPage() {
                         )}
                       </TableCell>
                       <TableCell className="font-medium max-w-[280px] truncate" title={eq.nome}>
+                        {(eq.equipStatus || "").toLowerCase() === "inativo" && (
+                          <Badge variant="outline" className="mr-2 border-destructive/40 text-destructive text-[10px]">
+                            Inativo
+                          </Badge>
+                        )}
                         {eq.auvo_equipment_id ? (
                           <a
                             href={`https://app2.auvo.com.br/gerenciarEquipamentos/equipamento/${eq.auvo_equipment_id}`}
