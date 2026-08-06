@@ -29,6 +29,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import LastSyncBadge from "@/components/LastSyncBadge";
+import { useTechnicianDashboard } from "@/hooks/useTechnicianDashboard";
 import { supabase } from "@/integrations/supabase/client";
 import {
   findTechnicianGoal,
@@ -37,47 +38,6 @@ import {
   technicianQualityIssues,
   type TechnicianGoal,
 } from "@/lib/technicianDashboard";
-
-type TechnicianData = {
-  id: string;
-  nome: string;
-  tarefas_total: number;
-  tarefas_finalizadas: number;
-  tarefas_abertas: number;
-  tarefas_com_pendencia: number;
-  tarefas_sem_questionario: number;
-  checkins_sem_checkout: number;
-  tarefas_com_os: number;
-  qualidade_pct: number;
-  taxa_finalizacao: number;
-  media_execucoes_dia: number;
-  tempo_horas: number;
-  deslocamento_horas: number;
-  tempo_atividade_pct: number;
-  dias_trabalhados: number;
-  valor_total: number;
-  faturamento_hora: number;
-  tarefas_por_dia: Record<string, number>;
-  finalizadas_por_dia: Record<string, number>;
-};
-
-type DashboardData = {
-  resumo: {
-    periodo: { inicio: string; fim: string };
-    total_tarefas: number;
-    total_finalizadas: number;
-    total_tecnicos: number;
-    total_horas: number;
-    total_deslocamento_horas: number;
-    total_pendencias: number;
-    total_sem_questionario: number;
-    total_checkins_sem_checkout: number;
-    valor_total: number;
-  };
-  tecnicos: TechnicianData[];
-  auvo_error?: string | null;
-  error?: string;
-};
 
 type Period = "hoje" | "semana" | "mes" | "custom";
 type SortKey = "score" | "finalizadas" | "horas" | "qualidade" | "valor";
@@ -127,19 +87,7 @@ export default function TechDashboardPage() {
     return { start: format(startOfMonth(today), "yyyy-MM-dd"), end: format(today, "yyyy-MM-dd") };
   }, [customEnd, customStart, period]);
 
-  const dashboardQuery = useQuery({
-    queryKey: ["tech-dashboard", dates.start, dates.end],
-    queryFn: async () => {
-      const { data, error } = await supabase.functions.invoke("tech-dashboard", {
-        body: { start_date: dates.start, end_date: dates.end },
-      });
-      if (error) throw error;
-      if (data?.error) throw new Error(data.error);
-      return data as DashboardData;
-    },
-    refetchInterval: 120_000,
-    retry: false,
-  });
+  const dashboardQuery = useTechnicianDashboard(dates.start, dates.end);
 
   const goalsQuery = useQuery({
     queryKey: ["metas-tecnicos-dashboard"],

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { buildOperationsDashboardSnapshot, dedupeTasks } from "@/lib/operationsDashboard";
-import { findTechnicianGoal, technicianGoalProgress, technicianOperationalScore } from "@/lib/technicianDashboard";
+import { buildTechnicianDashboardData, findTechnicianGoal, technicianGoalProgress, technicianOperationalScore } from "@/lib/technicianDashboard";
 
 describe("operations dashboard aggregation", () => {
   it("keeps the newest task snapshot and does not double business totals", () => {
@@ -81,6 +81,52 @@ describe("operations dashboard aggregation", () => {
 });
 
 describe("technician dashboard rules", () => {
+  it("deduplicates tasks and splits a shared GC document between technicians", () => {
+    const dashboard = buildTechnicianDashboardData([
+      {
+        auvo_task_id: "1",
+        atualizado_em: "2026-08-06T10:00:00Z",
+        tecnico_id: "a",
+        tecnico: "Ana",
+        data_tarefa: "2026-08-06",
+        status_auvo: "Finalizada",
+        questionario_preenchido: true,
+        gc_os_id: "os-1",
+        gc_os_valor_total: 1000,
+        os_realizada: true,
+      },
+      {
+        auvo_task_id: "1",
+        atualizado_em: "2026-08-06T11:00:00Z",
+        tecnico_id: "a",
+        tecnico: "Ana",
+        data_tarefa: "2026-08-06",
+        status_auvo: "Finalizada",
+        questionario_preenchido: true,
+        gc_os_id: "os-1",
+        gc_os_valor_total: 1000,
+        os_realizada: true,
+      },
+      {
+        auvo_task_id: "2",
+        atualizado_em: "2026-08-06T10:00:00Z",
+        tecnico_id: "b",
+        tecnico: "Beto",
+        data_tarefa: "2026-08-06",
+        status_auvo: "Finalizada",
+        questionario_preenchido: true,
+        gc_os_id: "os-1",
+        gc_os_valor_total: 1000,
+        os_realizada: true,
+      },
+    ], "2026-08-01", "2026-08-06");
+
+    expect(dashboard.resumo.total_tarefas).toBe(2);
+    expect(dashboard.resumo.valor_total).toBe(1000);
+    expect(dashboard.tecnicos.find((tech) => tech.id === "a")?.valor_total).toBe(500);
+    expect(dashboard.tecnicos.find((tech) => tech.id === "b")?.valor_total).toBe(500);
+  });
+
   it("matches abbreviated goals and only scores clean quality when all issues are zero", () => {
     const goal = findTechnicianGoal("Ayrton Carvalho", [
       { nome_tecnico: "Ayrton", meta_faturamento: 21600, ativo: true },
