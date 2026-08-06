@@ -10,7 +10,7 @@ import {
   ArrowLeft, ExternalLink, RefreshCw, Search, AlertTriangle,
   CheckCircle2, Clock, Flame, Loader2, SlidersHorizontal,
   ArrowUpDown, Download, ListFilter, Pencil, Check, X, CalendarDays,
-  ChevronLeft, ChevronRight,
+  ChevronLeft, ChevronRight, Power,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -1747,12 +1747,13 @@ export default function EquipamentosPreventivosPage() {
           value={situacaoFilter}
           onValueChange={setSituacaoFilter}
           options={[
-            { value: "ativo", label: "✅ Ativo no Auvo" },
-            { value: "inativo", label: "🚫 Inativo no Auvo" },
+            { value: "ativo", label: "✅ Ativo" },
+            { value: "inativo", label: "🚫 Inativo" },
           ]}
           placeholder="Situação Auvo"
           searchPlaceholder="Buscar situação..."
-          className="w-[170px]"
+          className="w-[180px]"
+          icon={<Power className="h-4 w-4" />}
         />
 
         <SearchableSelect
