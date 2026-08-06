@@ -1109,6 +1109,33 @@ export default function ClienteRequisitosPage() {
                 {agTechs.length} selecionado(s).
               </p>
             </div>
+            <div>
+              <Label className="mb-2 block">Espelhar esta integração para outros clientes (opcional)</Label>
+              <Input
+                placeholder="Buscar cliente..."
+                value={agShareSearch}
+                onChange={(e) => setAgShareSearch(e.target.value)}
+              />
+              <div className="max-h-56 overflow-y-auto border rounded-md divide-y mt-2">
+                {agShareCandidates.length === 0 ? (
+                  <div className="p-3 text-sm text-muted-foreground">Nenhum cliente encontrado.</div>
+                ) : agShareCandidates.map((c) => (
+                  <label key={c.id} className="flex items-center gap-2 px-3 py-2 text-sm cursor-pointer hover:bg-muted/50">
+                    <Checkbox
+                      checked={agShareClients.includes(c.id)}
+                      onCheckedChange={(v) =>
+                        setAgShareClients((prev) => (v ? [...new Set([...prev, c.id])] : prev.filter((x) => x !== c.id)))
+                      }
+                    />
+                    <span className="truncate uppercase">{c.nome}</span>
+                  </label>
+                ))}
+              </div>
+              <p className="text-xs text-muted-foreground mt-1">
+                {agShareClients.length} cliente(s) abrangido(s). Com ao menos um marcado, a integração fica{" "}
+                <b>COMPARTILHADA</b> — mesma validação e validade valem para eles.
+              </p>
+            </div>
             <p className="text-xs text-muted-foreground">
               Ao confirmar, será criada uma integração com status <b>AGENDADA</b> vinculada aos funcionários
               selecionados. Após a realização, use "Integrar" na lista para formalizar.
