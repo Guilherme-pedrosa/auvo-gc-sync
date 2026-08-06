@@ -325,8 +325,9 @@ export function buildTechnicianDashboardData(
       total_deslocamento_horas: Math.round(data.reduce((total, tech) => total + tech.deslocamento_horas, 0) * 10) / 10,
       dias_uteis: businessDays,
       horas_disponiveis: Math.round(availableHours * data.length * 10) / 10,
+      horas_produtivas_liquidas: Math.round(data.reduce((total, tech) => total + tech.horas_produtivas_liquidas, 0) * 10) / 10,
       produtividade_pct: availableHours > 0 && data.length > 0
-        ? Math.round((data.reduce((total, tech) => total + tech.tempo_horas, 0) / (availableHours * data.length)) * 100)
+        ? Math.round((data.reduce((total, tech) => total + tech.horas_produtivas_liquidas, 0) / (availableHours * data.length)) * 100)
         : 0,
       total_pendencias: data.reduce((total, tech) => total + tech.tarefas_com_pendencia, 0),
       total_sem_questionario: data.reduce((total, tech) => total + (tech.tarefas_sem_questionario || 0), 0),
