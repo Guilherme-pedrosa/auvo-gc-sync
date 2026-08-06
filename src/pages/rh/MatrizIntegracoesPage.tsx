@@ -536,6 +536,75 @@ export default function MatrizIntegracoesPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <Dialog open={agOpen} onOpenChange={setAgOpen}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Agendar integração</DialogTitle>
+            <DialogDescription>
+              Programe a integração de um ou mais funcionários em um cliente. Opcionalmente espelhe para outros clientes.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div>
+              <Label className="mb-1 block">Cliente</Label>
+              <SearchableSelect
+                options={clienteOptions}
+                value={agClient}
+                onValueChange={setAgClient}
+                placeholder="Selecione o cliente..."
+                searchPlaceholder="Buscar cliente..."
+              />
+            </div>
+            <div className="grid grid-cols-3 gap-3">
+              <div>
+                <Label>Data</Label>
+                <Input type="date" value={agData} onChange={(e) => setAgData(e.target.value)} />
+              </div>
+              <div>
+                <Label>Hora início</Label>
+                <Input type="time" value={agHoraIni} onChange={(e) => setAgHoraIni(e.target.value)} />
+              </div>
+              <div>
+                <Label>Hora fim</Label>
+                <Input type="time" value={agHoraFim} onChange={(e) => setAgHoraFim(e.target.value)} />
+              </div>
+            </div>
+            <div>
+              <Label className="mb-1 block">Funcionários</Label>
+              <SearchableSelect
+                multiple
+                options={tecnicoOptions}
+                value={agTechs}
+                onValueChange={setAgTechs}
+                placeholder="Selecione os funcionários..."
+                searchPlaceholder="Buscar funcionário..."
+              />
+            </div>
+            <div>
+              <Label className="mb-1 block">Espelhar para outros clientes (opcional)</Label>
+              <SearchableSelect
+                multiple
+                options={clienteOptions.filter((o) => o.value !== agClient)}
+                value={agShareClients}
+                onValueChange={setAgShareClients}
+                placeholder="Nenhum (exclusiva)"
+                searchPlaceholder="Buscar cliente..."
+              />
+              <p className="text-xs text-muted-foreground mt-1">
+                Com ao menos um marcado, a integração fica <b>COMPARTILHADA</b>.
+              </p>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setAgOpen(false)} disabled={agendando}>Cancelar</Button>
+            <Button onClick={confirmarAgendamento} disabled={agendando}>
+              {agendando && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+              Confirmar agendamento
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
