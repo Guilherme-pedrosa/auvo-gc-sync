@@ -1,4 +1,41 @@
-import { DAILY_WORK_HOURS, countBusinessDays } from "./businessDays";
+import { DAILY_WORK_HOURS, countBusinessDays, isBusinessDay } from "./businessDays";
+
+type Interval = { start: number; end: number };
+
+/** Horas realmente em execução: une intervalos sobrepostos por dia útil e limita à jornada de 8h. */
+function productiveHoursFromIntervals(intervals: Interval[]): number {
+  const byDay = new Map<string, Interval[]>();
+  for (const interval of intervals) {
+    if (!(interval.end > interval.start)) continue;
+    for (let cursor = interval.start; cursor < interval.end; ) {
+      const day = new Date(cursor).toISOString().slice(0, 10);
+      const dayEnd = Date.parse(`${day}T00:00:00Z`) + 86_400_000;
+      const slice = { start: cursor, end: Math.min(interval.end, dayEnd) };
+      if (isBusinessDay(day)) {
+        const list = byDay.get(day) || [];
+        list.push(slice);
+        byDay.set(day, list);
+      }
+      cursor = slice.end;
+    }
+  }
+  let total = 0;
+  for (const list of byDay.values()) {
+    const sorted = [...list].sort((a, b) => a.start - b.start);
+    let dayTotal = 0;
+    let current = sorted[0];
+    for (const item of sorted.slice(1)) {
+      if (item.start <= current.end) current = { start: current.start, end: Math.max(current.end, item.end) };
+      else {
+        dayTotal += current.end - current.start;
+        current = item;
+      }
+    }
+    dayTotal += current.end - current.start;
+    total += Math.min(dayTotal / 3_600_000, DAILY_WORK_HOURS);
+  }
+  return total;
+}
 
 export type TechnicianQualityInput = {
   tarefas_total: number;
@@ -51,6 +88,7 @@ export type TechnicianData = TechnicianQualityInput & {
   dias_trabalhados: number;
   dias_uteis: number;
   horas_disponiveis: number;
+  horas_produtivas_liquidas: number;
   produtividade_pct: number;
   valor_total: number;
   faturamento_hora: number;
@@ -68,6 +106,7 @@ export type TechnicianDashboardData = {
     total_deslocamento_horas: number;
     dias_uteis: number;
     horas_disponiveis: number;
+    horas_produtivas_liquidas: number;
     produtividade_pct: number;
     total_pendencias: number;
     total_sem_questionario: number;
@@ -160,6 +199,7 @@ export function buildTechnicianDashboardData(
     withOs: number;
     qualityFailures: number;
     hours: number;
+    intervals: Interval[];
     travelHours: number;
     value: number;
     days: Set<string>;
@@ -187,6 +227,7 @@ export function buildTechnicianDashboardData(
       withOs: 0,
       qualityFailures: 0,
       hours: 0,
+      intervals: [],
       travelHours: 0,
       value: 0,
       days: new Set<string>(),
@@ -209,6 +250,11 @@ export function buildTechnicianDashboardData(
     if (task.os_realizada || task.gc_os_id) accumulator.withOs++;
     if (pending || missingQuestionnaire || openCheckin) accumulator.qualityFailures++;
     accumulator.hours += Number(task.duracao_decimal) || 0;
+    if (task.check_in_iso && task.check_out_iso) {
+      const start = Date.parse(task.check_in_iso);
+      const end = Date.parse(task.check_out_iso);
+      if (Number.isFinite(start) && Number.isFinite(end) && end > start) accumulator.intervals.push({ start, end });
+    }
     accumulator.travelHours += Number(task.duracao_deslocamento) || 0;
     accumulator.days.add(taskDate);
     accumulator.tasksByDay[taskDate] = (accumulator.tasksByDay[taskDate] || 0) + 1;
@@ -239,6 +285,7 @@ export function buildTechnicianDashboardData(
   const data = [...technicians.values()].map<TechnicianData>((tech) => {
     const days = Math.max(tech.days.size, 1);
     const hours = Math.round(tech.hours * 10) / 10;
+    const productiveHours = Math.round(productiveHoursFromIntervals(tech.intervals) * 10) / 10;
     const value = Math.round(tech.value * 100) / 100;
     return {
       id: tech.id,
@@ -259,7 +306,8 @@ export function buildTechnicianDashboardData(
       dias_trabalhados: days,
       dias_uteis: businessDays,
       horas_disponiveis: availableHours,
-      produtividade_pct: availableHours > 0 ? Math.round((hours / availableHours) * 100) : 0,
+      horas_produtivas_liquidas: productiveHours,
+      produtividade_pct: availableHours > 0 ? Math.round((productiveHours / availableHours) * 100) : 0,
       valor_total: value,
       faturamento_hora: hours > 0 ? Math.round((value / hours) * 100) / 100 : 0,
       tarefas_por_dia: tech.tasksByDay,
@@ -277,8 +325,9 @@ export function buildTechnicianDashboardData(
       total_deslocamento_horas: Math.round(data.reduce((total, tech) => total + tech.deslocamento_horas, 0) * 10) / 10,
       dias_uteis: businessDays,
       horas_disponiveis: Math.round(availableHours * data.length * 10) / 10,
+      horas_produtivas_liquidas: Math.round(data.reduce((total, tech) => total + tech.horas_produtivas_liquidas, 0) * 10) / 10,
       produtividade_pct: availableHours > 0 && data.length > 0
-        ? Math.round((data.reduce((total, tech) => total + tech.tempo_horas, 0) / (availableHours * data.length)) * 100)
+        ? Math.round((data.reduce((total, tech) => total + tech.horas_produtivas_liquidas, 0) / (availableHours * data.length)) * 100)
         : 0,
       total_pendencias: data.reduce((total, tech) => total + tech.tarefas_com_pendencia, 0),
       total_sem_questionario: data.reduce((total, tech) => total + (tech.tarefas_sem_questionario || 0), 0),

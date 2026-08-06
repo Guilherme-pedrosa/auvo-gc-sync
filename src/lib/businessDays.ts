@@ -53,3 +53,8 @@ export function countBusinessDays(startDate: string, endDate: string): number {
 }
 
 export const DAILY_WORK_HOURS = 8;
+
+/** Verifica se a data (yyyy-MM-dd) é dia útil no Brasil. */
+export function isBusinessDay(date: string): boolean {
+  return countBusinessDays(date, date) === 1;
+}

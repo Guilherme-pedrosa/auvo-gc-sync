@@ -227,7 +227,7 @@ export default function TechDashboardPage() {
               <SummaryCard
                 label="% horas produtivas"
                 value={`${data.resumo.produtividade_pct}%`}
-                detail={`${data.resumo.dias_uteis} dia(s) útil(eis) · ${decimal(data.resumo.horas_disponiveis)}h disponíveis`}
+                detail={`${decimal(data.resumo.horas_produtivas_liquidas)}h líquidas de ${decimal(data.resumo.horas_disponiveis)}h · ${data.resumo.dias_uteis} dia(s) útil(eis)`}
                 icon={Gauge}
                 alert={data.resumo.produtividade_pct < 70}
               />
@@ -300,7 +300,7 @@ export default function TechDashboardPage() {
                             <TableCell>
                               <p className="font-semibold tabular-nums">{decimal(tech.tempo_horas)}h</p>
                               <p className="text-xs text-muted-foreground">{decimal(tech.deslocamento_horas)}h desloc.</p>
-                              <p className="mt-1 text-[10px] text-muted-foreground">{tech.produtividade_pct}% de {decimal(tech.horas_disponiveis)}h úteis</p>
+                              <p className="mt-1 text-[10px] text-muted-foreground">{decimal(tech.horas_produtivas_liquidas)}h líq. · {tech.produtividade_pct}% de {decimal(tech.horas_disponiveis)}h</p>
                               <Progress value={Math.min(tech.produtividade_pct, 100)} className="mt-1 h-1.5" />
                             </TableCell>
                             <TableCell>
