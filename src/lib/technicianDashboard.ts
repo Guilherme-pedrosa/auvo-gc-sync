@@ -283,6 +283,7 @@ export function buildTechnicianDashboardData(
   const data = [...technicians.values()].map<TechnicianData>((tech) => {
     const days = Math.max(tech.days.size, 1);
     const hours = Math.round(tech.hours * 10) / 10;
+    const productiveHours = Math.round(productiveHoursFromIntervals(tech.intervals) * 10) / 10;
     const value = Math.round(tech.value * 100) / 100;
     return {
       id: tech.id,
@@ -303,7 +304,8 @@ export function buildTechnicianDashboardData(
       dias_trabalhados: days,
       dias_uteis: businessDays,
       horas_disponiveis: availableHours,
-      produtividade_pct: availableHours > 0 ? Math.round((hours / availableHours) * 100) : 0,
+      horas_produtivas_liquidas: productiveHours,
+      produtividade_pct: availableHours > 0 ? Math.round((productiveHours / availableHours) * 100) : 0,
       valor_total: value,
       faturamento_hora: hours > 0 ? Math.round((value / hours) * 100) / 100 : 0,
       tarefas_por_dia: tech.tasksByDay,
