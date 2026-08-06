@@ -307,6 +307,7 @@ export default function TechDashboardPage() {
                         <TableHead className="min-w-[150px]">Execução</TableHead>
                         <TableHead className="text-center">Ritmo</TableHead>
                         <TableHead className="min-w-[150px]">Horas produtivas</TableHead>
+                        <TableHead className="min-w-[160px]">Contratos</TableHead>
                         <TableHead className="min-w-[155px]">Qualidade</TableHead>
                         <TableHead className="min-w-[130px]">Vínculo OS</TableHead>
                         <TableHead className="min-w-[190px]">Valor / meta</TableHead>
