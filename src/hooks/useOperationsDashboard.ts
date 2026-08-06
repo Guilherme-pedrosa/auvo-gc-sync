@@ -42,6 +42,7 @@ export function useOperationsDashboard() {
         followupCards,
         followupColumnsResult,
         preventiveRows,
+        plannedRows,
         analysisResult,
         missedActivitiesResult,
         syncMetaResult,
@@ -80,7 +81,14 @@ export function useOperationsDashboard() {
         fetchAllPages<PreventiveSnapshotRow>((from, to) =>
           supabase
             .from("equipamento_preventiva_consolidado")
-            .select("status_preventiva,proxima_preventiva,atualizado_em")
+            .select("identificador,status_preventiva,proxima_preventiva,atualizado_em")
+            .range(from, to),
+        ),
+        fetchAllPages<{ codigo_barras_auvo: string | null }>((from, to) =>
+          supabase
+            .from("equipamento_plano_preventivo")
+            .select("codigo_barras_auvo")
+            .eq("ativo", true)
             .range(from, to),
         ),
         supabase
@@ -111,6 +119,7 @@ export function useOperationsDashboard() {
           followupCards,
           followupColumns: (followupColumnsResult.data || []) as FollowupColumnRow[],
           preventiveRows,
+          plannedPreventiveIds: plannedRows.map((row) => row.codigo_barras_auvo || "").filter(Boolean),
           analysisRows: (analysisResult.data || []) as AnalysisSnapshotRow[],
           missedActivities: missedActivitiesResult.count || 0,
           syncMeta: syncMetaResult.data as SyncMetaRow | null,
