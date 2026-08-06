@@ -1,3 +1,5 @@
+import { DAILY_WORK_HOURS, countBusinessDays } from "./businessDays";
+
 export type TechnicianQualityInput = {
   tarefas_total: number;
   tarefas_finalizadas: number;
@@ -47,6 +49,9 @@ export type TechnicianData = TechnicianQualityInput & {
   tempo_horas: number;
   deslocamento_horas: number;
   dias_trabalhados: number;
+  dias_uteis: number;
+  horas_disponiveis: number;
+  produtividade_pct: number;
   valor_total: number;
   faturamento_hora: number;
   tarefas_por_dia: Record<string, number>;
@@ -61,6 +66,9 @@ export type TechnicianDashboardData = {
     total_tecnicos: number;
     total_horas: number;
     total_deslocamento_horas: number;
+    dias_uteis: number;
+    horas_disponiveis: number;
+    produtividade_pct: number;
     total_pendencias: number;
     total_sem_questionario: number;
     total_checkins_sem_checkout: number;
