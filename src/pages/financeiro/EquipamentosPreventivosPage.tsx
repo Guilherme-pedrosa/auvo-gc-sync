@@ -288,7 +288,7 @@ async function fetchRawData(): Promise<{
   const equipamentosPromise = fetchRawDataPaginated<EquipmentRaw>(
     "equipamentos_auvo",
     "id, auvo_equipment_id, nome, identificador, cliente, status, categoria, descricao, marca, marca_source, marca_manual_override, tipo_id, override_horas_por_tecnico, override_qtd_tecnicos, override_periodicidade",
-    (q) => q.eq("status", "Ativo").order("nome"),
+    (q) => q.order("nome"),
   );
 
   const relationsPromise = fetchRawDataPaginated<EquipTaskRel>(
@@ -334,10 +334,8 @@ async function fetchRawData(): Promise<{
   for (const r of openRelations) relMap.set(relKey(r), r);
   const relations = Array.from(relMap.values());
 
-  // Guarda defensiva: nunca incluir equipamento inativo na lista
-  const equipamentos = equipamentosRaw.filter(
-    (e) => (e.status || "").toLowerCase() === "ativo",
-  );
+  // Ativos e inativos são carregados; a situação é exibida/filtrada na tela.
+  const equipamentos = equipamentosRaw;
 
   const consolidated = new Map<string, ConsolidadoRow>();
   let latest: string | null = null;
