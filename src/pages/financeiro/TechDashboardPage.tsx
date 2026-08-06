@@ -269,7 +269,7 @@ export default function TechDashboardPage() {
                         <TableHead className="min-w-[210px] pl-6">Técnico</TableHead>
                         <TableHead className="min-w-[150px]">Execução</TableHead>
                         <TableHead className="text-center">Ritmo</TableHead>
-                        <TableHead className="min-w-[130px]">Horas</TableHead>
+                        <TableHead className="min-w-[150px]">Horas produtivas</TableHead>
                         <TableHead className="min-w-[155px]">Qualidade</TableHead>
                         <TableHead className="min-w-[130px]">Vínculo OS</TableHead>
                         <TableHead className="min-w-[190px]">Valor / meta</TableHead>
@@ -297,7 +297,12 @@ export default function TechDashboardPage() {
                               <Progress value={completion} className="h-1.5" />
                             </TableCell>
                             <TableCell className="text-center"><p className="font-bold tabular-nums">{decimal(tech.media_execucoes_dia)}</p><p className="text-[10px] text-muted-foreground">exec./dia</p></TableCell>
-                            <TableCell><p className="font-semibold tabular-nums">{decimal(tech.tempo_horas)}h</p><p className="text-xs text-muted-foreground">{decimal(tech.deslocamento_horas)}h desloc.</p></TableCell>
+                            <TableCell>
+                              <p className="font-semibold tabular-nums">{decimal(tech.tempo_horas)}h</p>
+                              <p className="text-xs text-muted-foreground">{decimal(tech.deslocamento_horas)}h desloc.</p>
+                              <p className="mt-1 text-[10px] text-muted-foreground">{tech.produtividade_pct}% de {decimal(tech.horas_disponiveis)}h úteis</p>
+                              <Progress value={Math.min(tech.produtividade_pct, 100)} className="mt-1 h-1.5" />
+                            </TableCell>
                             <TableCell>
                               <div className="flex items-center justify-between"><span className="font-semibold">{tech.qualidade_pct}%</span>{qualityIssues > 0 && <Badge variant="outline" className="border-amber-200 text-[10px] text-amber-700">{qualityIssues} alerta(s)</Badge>}</div>
                               <p className="mt-1 text-[10px] text-muted-foreground">{tech.tarefas_sem_questionario} sem form. · {tech.checkins_sem_checkout} em aberto</p>
@@ -327,7 +332,7 @@ export default function TechDashboardPage() {
               <CardContent className="grid gap-4 p-4 text-sm md:grid-cols-4">
                 <div className="flex gap-2"><Gauge className="mt-0.5 h-4 w-4 shrink-0 text-blue-600" /><div><strong>Fechamento</strong><p className="text-xs text-muted-foreground">Meta operacional de 70% das tarefas.</p></div></div>
                 <div className="flex gap-2"><Target className="mt-0.5 h-4 w-4 shrink-0 text-blue-600" /><div><strong>Ritmo</strong><p className="text-xs text-muted-foreground">Ao menos 1 execução concluída por dia ativo.</p></div></div>
-                <div className="flex gap-2"><Clock3 className="mt-0.5 h-4 w-4 shrink-0 text-blue-600" /><div><strong>Ocupação</strong><p className="text-xs text-muted-foreground">70% da jornada registrada em atividade.</p></div></div>
+                <div className="flex gap-2"><Clock3 className="mt-0.5 h-4 w-4 shrink-0 text-blue-600" /><div><strong>Ocupação</strong><p className="text-xs text-muted-foreground">Jornada de 8h por dia útil (sem fins de semana e feriados nacionais).</p></div></div>
                 <div className="flex gap-2"><ClipboardCheck className="mt-0.5 h-4 w-4 shrink-0 text-blue-600" /><div><strong>Qualidade</strong><p className="text-xs text-muted-foreground">Sem pendência, formulário ausente ou check-in aberto.</p></div></div>
               </CardContent>
             </Card>
