@@ -97,6 +97,15 @@ export default function TechDashboardPage() {
   }, [dates.end, dates.start]);
   const premiacaoQuery = usePremiacaoFaturamento(premiacaoMonth);
   const faturamento = premiacaoQuery.data;
+  const isRefreshing = dashboardQuery.isFetching || premiacaoQuery.isFetching;
+
+  const refreshIndicators = async () => {
+    await Promise.all([
+      dashboardQuery.refetch(),
+      premiacaoMonth ? premiacaoQuery.refetch() : Promise.resolve(),
+      goalsQuery.refetch(),
+    ]);
+  };
 
   const valorDoTecnico = (nome: string, fallback: number) => {
     if (!faturamento) return fallback;
@@ -162,8 +171,8 @@ export default function TechDashboardPage() {
               Produtividade, capacidade, qualidade dos apontamentos e valor vinculado por técnico — com tarefas e documentos GC sem duplicidade.
             </p>
           </div>
-          <Button variant="outline" onClick={() => dashboardQuery.refetch()} disabled={dashboardQuery.isFetching}>
-            <RefreshCw className={`mr-2 h-4 w-4 ${dashboardQuery.isFetching ? "animate-spin" : ""}`} /> Atualizar indicadores
+          <Button variant="outline" onClick={() => void refreshIndicators()} disabled={isRefreshing}>
+            <RefreshCw className={`mr-2 h-4 w-4 ${isRefreshing ? "animate-spin" : ""}`} /> Atualizar indicadores
           </Button>
         </header>
 
@@ -227,6 +236,15 @@ export default function TechDashboardPage() {
           </Card>
         )}
 
+        {premiacaoQuery.error && (
+          <Card className="border-rose-200 bg-rose-50/50 dark:border-rose-900 dark:bg-rose-950/20">
+            <CardContent className="flex items-start gap-3 p-4 text-rose-700 dark:text-rose-300">
+              <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0" />
+              <div><p className="font-semibold">Falha ao consultar o faturamento da Premiação</p><p className="text-sm">{(premiacaoQuery.error as Error).message}</p></div>
+            </CardContent>
+          </Card>
+        )}
+
         {dashboardQuery.isLoading ? (
           <>
             <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-6">{[0, 1, 2, 3, 4, 5].map((item) => <Skeleton key={item} className="h-32 rounded-xl" />)}</div>
@@ -249,7 +267,7 @@ export default function TechDashboardPage() {
               <SummaryCard label="Check-ins em aberto" value={String(data.resumo.total_checkins_sem_checkout)} detail="sem checkout correspondente" icon={Navigation} alert={data.resumo.total_checkins_sem_checkout > 0} />
               <SummaryCard
                 label="Faturamento"
-                value={brl(faturamento ? faturamento.total : data.resumo.valor_total)}
+                value={premiacaoQuery.isLoading ? "Atualizando…" : brl(faturamento ? faturamento.total : data.resumo.valor_total)}
                 detail={faturamento ? `base Premiação · OS com saída em ${faturamento.month}` : "documentos GC únicos e rateados"}
                 icon={DollarSign}
               />
