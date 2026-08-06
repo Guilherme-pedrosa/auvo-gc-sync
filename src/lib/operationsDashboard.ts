@@ -322,7 +322,7 @@ export function buildOperationsDashboardSnapshot(
     },
     preventive: {
       total: preventiveTotal,
-      overdue: source.preventiveRows.filter((row) => normalize(row.status_preventiva) === "vencido").length,
+      overdue: overdueRows.length,
       dueNext30Days,
       never: source.preventiveRows.filter((row) => normalize(row.status_preventiva) === "nunca").length,
       upToDate: source.preventiveRows.filter((row) => normalize(row.status_preventiva) === "em_dia").length,
