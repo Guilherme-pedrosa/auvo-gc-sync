@@ -220,10 +220,17 @@ export default function TechDashboardPage() {
           </>
         ) : data ? (
           <>
-            <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
+            <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4 2xl:grid-cols-7">
               <SummaryCard label="Técnicos ativos" value={String(data.resumo.total_tecnicos)} detail={`${data.resumo.total_tarefas} tarefas no recorte`} icon={Users} />
               <SummaryCard label="Finalizadas" value={`${pct(data.resumo.total_finalizadas, data.resumo.total_tarefas)}%`} detail={`${data.resumo.total_finalizadas} tarefas concluídas`} icon={CheckCircle2} />
               <SummaryCard label="Horas produtivas" value={`${decimal(data.resumo.total_horas)}h`} detail={`${decimal(data.resumo.total_deslocamento_horas)}h em deslocamento`} icon={Clock3} />
+              <SummaryCard
+                label="% horas produtivas"
+                value={`${data.resumo.produtividade_pct}%`}
+                detail={`${data.resumo.dias_uteis} dia(s) útil(eis) · ${decimal(data.resumo.horas_disponiveis)}h disponíveis`}
+                icon={Gauge}
+                alert={data.resumo.produtividade_pct < 70}
+              />
               <SummaryCard label="Sem questionário" value={String(data.resumo.total_sem_questionario)} detail="finalizadas sem evidência completa" icon={ClipboardCheck} alert={data.resumo.total_sem_questionario > 0} />
               <SummaryCard label="Check-ins em aberto" value={String(data.resumo.total_checkins_sem_checkout)} detail="sem checkout correspondente" icon={Navigation} alert={data.resumo.total_checkins_sem_checkout > 0} />
               <SummaryCard label="Valor vinculado" value={brl(data.resumo.valor_total)} detail="documentos GC únicos e rateados" icon={DollarSign} />
