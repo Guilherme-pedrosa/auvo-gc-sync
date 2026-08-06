@@ -134,6 +134,45 @@ export function findTechnicianGoal(name: string, goals: TechnicianGoal[]) {
   });
 }
 
+/** Técnicos válidos = colaboradores do RH com cargo/função de técnico ou auxiliar técnico. */
+export type TechnicianAllowlist = { ids: Set<string>; names: string[] };
+
+export function buildTechnicianAllowlist(
+  people: { nome?: string | null; auvo_user_id?: string | null }[],
+): TechnicianAllowlist {
+  const ids = new Set<string>();
+  const names: string[] = [];
+  for (const person of people) {
+    const id = String(person.auvo_user_id || "").trim();
+    if (id) ids.add(id);
+    const name = normalizeName(String(person.nome || ""));
+    if (name) names.push(name);
+  }
+  return { ids, names };
+}
+
+export function isAllowedTechnician(id: string, name: string, allowed: TechnicianAllowlist) {
+  if (allowed.ids.has(String(id).trim())) return true;
+  const normalized = normalizeName(name);
+  if (!normalized) return false;
+  return allowed.names.some((allowedName) =>
+    normalized === allowedName
+    || normalized.startsWith(`${allowedName} `)
+    || allowedName.startsWith(`${normalized} `),
+  );
+}
+
+function legacyFindTechnicianGoal(name: string, goals: TechnicianGoal[]) {
+  const normalizedName = normalizeName(name);
+  return goals.find((goal) => {
+    if (goal.ativo === false) return false;
+    const normalizedGoal = normalizeName(goal.nome_tecnico);
+    return normalizedName === normalizedGoal
+      || normalizedName.startsWith(`${normalizedGoal} `)
+      || normalizedGoal.startsWith(`${normalizedName} `);
+  });
+}
+
 export function technicianOperationalScore(technician: TechnicianQualityInput) {
   const checks = [
     technician.taxa_finalizacao >= 70,
