@@ -27,6 +27,7 @@ import {
   useColaboradores,
   useSaveIntegration,
   useIntegrationShares,
+  useSaveIntegrationShares,
   computeDocStatus,
 } from "@/hooks/rh/useRh";
 import { useQueryClient } from "@tanstack/react-query";
@@ -52,6 +53,7 @@ export default function ClienteRequisitosPage() {
   const removeReq = useRemoveRequirement();
   const setRequired = useSetRequirementRequired();
   const saveIntegration = useSaveIntegration();
+  const saveShares = useSaveIntegrationShares();
 
   const cliente = useMemo(() => clientes.find((c) => c.id === id), [clientes, id]);
 
@@ -322,12 +324,26 @@ export default function ClienteRequisitosPage() {
   const [agHoraFim, setAgHoraFim] = useState("09:00");
   const [agTechs, setAgTechs] = useState<string[]>([]);
   const [agendando, setAgendando] = useState(false);
+  const [agShareClients, setAgShareClients] = useState<string[]>([]);
+  const [agShareSearch, setAgShareSearch] = useState("");
+
+  const agShareCandidates = useMemo(() => {
+    const norm = (s: string) =>
+      s.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+    const terms = norm(agShareSearch.trim()).split(/\s+/).filter(Boolean);
+    return clientes
+      .filter((c) => c.id !== id)
+      .filter((c) => terms.every((t) => norm(c.nome).includes(t)))
+      .slice(0, 80);
+  }, [clientes, agShareSearch, id]);
 
   const openAgendar = () => {
     setAgData(todayIso);
     setAgHoraIni("08:00");
     setAgHoraFim("09:00");
     setAgTechs(aptidao.filter((r) => r.apto && !r.integrado).map((r) => r.colaborador.id));
+    setAgShareClients([]);
+    setAgShareSearch("");
     setAgendarOpen(true);
   };
 
@@ -339,17 +355,22 @@ export default function ClienteRequisitosPage() {
     setAgendando(true);
     try {
       const startIso = new Date(`${agData}T${agHoraIni}:00`).toISOString();
-      await saveIntegration.mutateAsync({
+      const newId = await saveIntegration.mutateAsync({
         client_id: id,
         technician_ids: agTechs,
         status: "agendada",
         send_channel: cliente?.integration_send_channel ?? null,
         scheduled_at: startIso,
+        abrangencia: agShareClients.length ? "compartilhada" : "exclusiva",
         observacoes: `Integração agendada para ${agData} das ${agHoraIni} às ${agHoraFim}.`,
       });
+      if (newId && agShareClients.length) {
+        await saveShares.mutateAsync({ integration_id: newId, client_ids: agShareClients });
+      }
       toast.success("Integração agendada");
       setAgendarOpen(false);
       qc.invalidateQueries({ queryKey: ["rh_integrations"] });
+      qc.invalidateQueries({ queryKey: ["rh_integration_clients"] });
     } catch (e) {
       toast.error((e as Error).message);
     } finally {
