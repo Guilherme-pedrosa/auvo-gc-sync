@@ -5,8 +5,11 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Plus, Search, Pencil, Trash2, Share2, AlertTriangle, Loader2, CalendarClock, UserCheck } from "lucide-react";
+import { Plus, Search, Pencil, Trash2, Share2, AlertTriangle, Loader2, CalendarClock, UserCheck, CalendarPlus } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
+import { Label } from "@/components/ui/label";
+import { SearchableSelect } from "@/components/ui/searchable-select";
+import { toast } from "sonner";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
   Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
@@ -76,6 +79,66 @@ export default function MatrizIntegracoesPage() {
   const [extendSelected, setExtendSelected] = useState<string[]>([]);
   const [savingExtend, setSavingExtend] = useState(false);
   const [drill, setDrill] = useState<null | "agendadas" | "ressalvas" | "tecnicos_ressalva">(null);
+
+  // ---------- Agendar integração ----------
+  const todayIso = new Date().toISOString().slice(0, 10);
+  const [agOpen, setAgOpen] = useState(false);
+  const [agClient, setAgClient] = useState("");
+  const [agData, setAgData] = useState(todayIso);
+  const [agHoraIni, setAgHoraIni] = useState("08:00");
+  const [agHoraFim, setAgHoraFim] = useState("09:00");
+  const [agTechs, setAgTechs] = useState<string[]>([]);
+  const [agShareClients, setAgShareClients] = useState<string[]>([]);
+  const [agendando, setAgendando] = useState(false);
+
+  const clienteOptions = useMemo(
+    () => clientes.map((c) => ({ value: c.id, label: c.nome })),
+    [clientes],
+  );
+  const tecnicoOptions = useMemo(
+    () => colabs.map((c) => ({ value: c.id, label: c.nome })),
+    [colabs],
+  );
+
+  const openAgendar = () => {
+    setAgClient("");
+    setAgData(todayIso);
+    setAgHoraIni("08:00");
+    setAgHoraFim("09:00");
+    setAgTechs([]);
+    setAgShareClients([]);
+    setAgOpen(true);
+  };
+
+  const confirmarAgendamento = async () => {
+    if (!agClient) { toast.error("Selecione o cliente."); return; }
+    if (agTechs.length === 0) { toast.error("Selecione ao menos um funcionário."); return; }
+    if (!agData || !agHoraIni || !agHoraFim) { toast.error("Preencha data e horários."); return; }
+    if (agHoraFim <= agHoraIni) { toast.error("Hora fim deve ser maior que hora início."); return; }
+    setAgendando(true);
+    try {
+      const startIso = new Date(`${agData}T${agHoraIni}:00`).toISOString();
+      const cli = clientes.find((c) => c.id === agClient);
+      const newId = await saveIntegration.mutateAsync({
+        client_id: agClient,
+        technician_ids: agTechs,
+        status: "agendada",
+        send_channel: cli?.integration_send_channel ?? null,
+        scheduled_at: startIso,
+        abrangencia: agShareClients.length ? "compartilhada" : "exclusiva",
+        observacoes: `Integração agendada para ${agData} das ${agHoraIni} às ${agHoraFim}.`,
+      });
+      if (newId && agShareClients.length) {
+        await saveShares.mutateAsync({ integration_id: newId, client_ids: agShareClients });
+      }
+      toast.success("Integração agendada");
+      setAgOpen(false);
+    } catch (e) {
+      toast.error((e as Error).message);
+    } finally {
+      setAgendando(false);
+    }
+  };
 
   const clientMap = useMemo(() => new Map(clientes.map((c) => [c.id, c])), [clientes]);
   const colabMap = useMemo(() => new Map(colabs.map((c) => [c.id, c])), [colabs]);
@@ -197,9 +260,14 @@ export default function MatrizIntegracoesPage() {
           <h1 className="text-2xl font-semibold">Matriz de Integrações</h1>
           <p className="text-sm text-muted-foreground">Kits de documentação por cliente e técnico.</p>
         </div>
-        <Button onClick={() => navigate("/rh/integracoes/nova")}>
-          <Plus className="h-4 w-4 mr-2" /> Nova integração
-        </Button>
+        <div className="flex gap-2">
+          <Button variant="outline" onClick={openAgendar}>
+            <CalendarPlus className="h-4 w-4 mr-2" /> Agendar integração
+          </Button>
+          <Button onClick={() => navigate("/rh/integracoes/nova")}>
+            <Plus className="h-4 w-4 mr-2" /> Nova integração
+          </Button>
+        </div>
       </div>
 
       <div className="grid gap-3 sm:grid-cols-3 mb-5">
