@@ -30,6 +30,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import LastSyncBadge from "@/components/LastSyncBadge";
 import { useTechnicianDashboard } from "@/hooks/useTechnicianDashboard";
+import { usePremiacaoFaturamento, normalizeTechKey } from "@/hooks/usePremiacaoFaturamento";
 import { supabase } from "@/integrations/supabase/client";
 import {
   findTechnicianGoal,
@@ -88,6 +89,19 @@ export default function TechDashboardPage() {
   }, [customEnd, customStart, period]);
 
   const dashboardQuery = useTechnicianDashboard(dates.start, dates.end);
+
+  // Mês de referência para o faturamento oficial (mesma base da tela de Premiação)
+  const premiacaoMonth = useMemo(() => {
+    const startMonth = dates.start.slice(0, 7);
+    return startMonth === dates.end.slice(0, 7) ? startMonth : null;
+  }, [dates.end, dates.start]);
+  const premiacaoQuery = usePremiacaoFaturamento(premiacaoMonth);
+  const faturamento = premiacaoQuery.data;
+
+  const valorDoTecnico = (nome: string, fallback: number) => {
+    if (!faturamento) return fallback;
+    return faturamento.porTecnico.get(normalizeTechKey(nome))?.faturamento ?? 0;
+  };
 
   const goalsQuery = useQuery({
     queryKey: ["metas-tecnicos-dashboard"],
@@ -233,7 +247,12 @@ export default function TechDashboardPage() {
               />
               <SummaryCard label="Sem questionário" value={String(data.resumo.total_sem_questionario)} detail="finalizadas sem evidência completa" icon={ClipboardCheck} alert={data.resumo.total_sem_questionario > 0} />
               <SummaryCard label="Check-ins em aberto" value={String(data.resumo.total_checkins_sem_checkout)} detail="sem checkout correspondente" icon={Navigation} alert={data.resumo.total_checkins_sem_checkout > 0} />
-              <SummaryCard label="Valor vinculado" value={brl(data.resumo.valor_total)} detail="documentos GC únicos e rateados" icon={DollarSign} />
+              <SummaryCard
+                label="Faturamento"
+                value={brl(faturamento ? faturamento.total : data.resumo.valor_total)}
+                detail={faturamento ? `base Premiação · OS com saída em ${faturamento.month}` : "documentos GC únicos e rateados"}
+                icon={DollarSign}
+              />
             </section>
 
             <section className="grid gap-3 md:grid-cols-3">
@@ -282,8 +301,9 @@ export default function TechDashboardPage() {
                         const osCoverage = pct(tech.tarefas_com_os, tech.tarefas_total);
                         const qualityIssues = technicianQualityIssues(tech);
                         const score = technicianOperationalScore(tech);
-                        const goal = period === "mes" ? findTechnicianGoal(tech.nome, goals) : undefined;
-                        const goalProgress = technicianGoalProgress(tech.valor_total, goal);
+                        const techValue = valorDoTecnico(tech.nome, tech.valor_total);
+                        const goal = premiacaoMonth ? findTechnicianGoal(tech.nome, goals) : undefined;
+                        const goalProgress = technicianGoalProgress(techValue, goal);
                         return (
                           <TableRow key={tech.id}>
                             <TableCell className="pl-6">
@@ -312,10 +332,10 @@ export default function TechDashboardPage() {
                               <Progress value={osCoverage} className="h-1.5" />
                             </TableCell>
                             <TableCell>
-                              <p className="font-semibold tabular-nums">{brl(tech.valor_total)}</p>
+                              <p className="font-semibold tabular-nums">{brl(techValue)}</p>
                               {goalProgress !== null ? (
                                 <><div className="mt-1 flex justify-between text-[10px] text-muted-foreground"><span>Meta {brl(goal!.meta_faturamento)}</span><span>{goalProgress}%</span></div><Progress value={Math.min(goalProgress, 100)} className="mt-1 h-1.5" /></>
-                              ) : <p className="text-[10px] text-muted-foreground">{period === "mes" ? "Meta não cadastrada" : "Meta mensal não aplicada ao recorte"}</p>}
+                              ) : <p className="text-[10px] text-muted-foreground">{premiacaoMonth ? "Meta não cadastrada" : "Meta mensal não aplicada ao recorte"}</p>}
                             </TableCell>
                             <TableCell className="pr-6 text-center">{scoreBadge(score)}</TableCell>
                           </TableRow>
