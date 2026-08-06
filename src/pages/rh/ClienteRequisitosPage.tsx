@@ -27,6 +27,7 @@ import {
   useColaboradores,
   useSaveIntegration,
   useIntegrationShares,
+  useSaveIntegrationShares,
   computeDocStatus,
 } from "@/hooks/rh/useRh";
 import { useQueryClient } from "@tanstack/react-query";
@@ -52,6 +53,7 @@ export default function ClienteRequisitosPage() {
   const removeReq = useRemoveRequirement();
   const setRequired = useSetRequirementRequired();
   const saveIntegration = useSaveIntegration();
+  const saveShares = useSaveIntegrationShares();
 
   const cliente = useMemo(() => clientes.find((c) => c.id === id), [clientes, id]);
 
@@ -322,12 +324,26 @@ export default function ClienteRequisitosPage() {
   const [agHoraFim, setAgHoraFim] = useState("09:00");
   const [agTechs, setAgTechs] = useState<string[]>([]);
   const [agendando, setAgendando] = useState(false);
+  const [agShareClients, setAgShareClients] = useState<string[]>([]);
+  const [agShareSearch, setAgShareSearch] = useState("");
+
+  const agShareCandidates = useMemo(() => {
+    const norm = (s: string) =>
+      s.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+    const terms = norm(agShareSearch.trim()).split(/\s+/).filter(Boolean);
+    return clientes
+      .filter((c) => c.id !== id)
+      .filter((c) => terms.every((t) => norm(c.nome).includes(t)))
+      .slice(0, 80);
+  }, [clientes, agShareSearch, id]);
 
   const openAgendar = () => {
     setAgData(todayIso);
     setAgHoraIni("08:00");
     setAgHoraFim("09:00");
     setAgTechs(aptidao.filter((r) => r.apto && !r.integrado).map((r) => r.colaborador.id));
+    setAgShareClients([]);
+    setAgShareSearch("");
     setAgendarOpen(true);
   };
 
@@ -339,17 +355,22 @@ export default function ClienteRequisitosPage() {
     setAgendando(true);
     try {
       const startIso = new Date(`${agData}T${agHoraIni}:00`).toISOString();
-      await saveIntegration.mutateAsync({
+      const newId = await saveIntegration.mutateAsync({
         client_id: id,
         technician_ids: agTechs,
         status: "agendada",
         send_channel: cliente?.integration_send_channel ?? null,
         scheduled_at: startIso,
+        abrangencia: agShareClients.length ? "compartilhada" : "exclusiva",
         observacoes: `Integração agendada para ${agData} das ${agHoraIni} às ${agHoraFim}.`,
       });
+      if (newId && agShareClients.length) {
+        await saveShares.mutateAsync({ integration_id: newId, client_ids: agShareClients });
+      }
       toast.success("Integração agendada");
       setAgendarOpen(false);
       qc.invalidateQueries({ queryKey: ["rh_integrations"] });
+      qc.invalidateQueries({ queryKey: ["rh_integration_clients"] });
     } catch (e) {
       toast.error((e as Error).message);
     } finally {
@@ -1086,6 +1107,33 @@ export default function ClienteRequisitosPage() {
               </div>
               <p className="text-xs text-muted-foreground mt-1">
                 {agTechs.length} selecionado(s).
+              </p>
+            </div>
+            <div>
+              <Label className="mb-2 block">Espelhar esta integração para outros clientes (opcional)</Label>
+              <Input
+                placeholder="Buscar cliente..."
+                value={agShareSearch}
+                onChange={(e) => setAgShareSearch(e.target.value)}
+              />
+              <div className="max-h-56 overflow-y-auto border rounded-md divide-y mt-2">
+                {agShareCandidates.length === 0 ? (
+                  <div className="p-3 text-sm text-muted-foreground">Nenhum cliente encontrado.</div>
+                ) : agShareCandidates.map((c) => (
+                  <label key={c.id} className="flex items-center gap-2 px-3 py-2 text-sm cursor-pointer hover:bg-muted/50">
+                    <Checkbox
+                      checked={agShareClients.includes(c.id)}
+                      onCheckedChange={(v) =>
+                        setAgShareClients((prev) => (v ? [...new Set([...prev, c.id])] : prev.filter((x) => x !== c.id)))
+                      }
+                    />
+                    <span className="truncate uppercase">{c.nome}</span>
+                  </label>
+                ))}
+              </div>
+              <p className="text-xs text-muted-foreground mt-1">
+                {agShareClients.length} cliente(s) abrangido(s). Com ao menos um marcado, a integração fica{" "}
+                <b>COMPARTILHADA</b> — mesma validação e validade valem para eles.
               </p>
             </div>
             <p className="text-xs text-muted-foreground">
