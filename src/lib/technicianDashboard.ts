@@ -197,6 +197,7 @@ export function buildTechnicianDashboardData(
     withOs: number;
     qualityFailures: number;
     hours: number;
+    intervals: Interval[];
     travelHours: number;
     value: number;
     days: Set<string>;
@@ -224,6 +225,7 @@ export function buildTechnicianDashboardData(
       withOs: 0,
       qualityFailures: 0,
       hours: 0,
+      intervals: [],
       travelHours: 0,
       value: 0,
       days: new Set<string>(),
@@ -246,6 +248,11 @@ export function buildTechnicianDashboardData(
     if (task.os_realizada || task.gc_os_id) accumulator.withOs++;
     if (pending || missingQuestionnaire || openCheckin) accumulator.qualityFailures++;
     accumulator.hours += Number(task.duracao_decimal) || 0;
+    if (task.check_in_iso && task.check_out_iso) {
+      const start = Date.parse(task.check_in_iso);
+      const end = Date.parse(task.check_out_iso);
+      if (Number.isFinite(start) && Number.isFinite(end) && end > start) accumulator.intervals.push({ start, end });
+    }
     accumulator.travelHours += Number(task.duracao_deslocamento) || 0;
     accumulator.days.add(taskDate);
     accumulator.tasksByDay[taskDate] = (accumulator.tasksByDay[taskDate] || 0) + 1;
