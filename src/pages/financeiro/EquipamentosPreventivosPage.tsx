@@ -1743,6 +1743,19 @@ export default function EquipamentosPreventivosPage() {
         />
 
         <SearchableSelect
+          multiple
+          value={situacaoFilter}
+          onValueChange={setSituacaoFilter}
+          options={[
+            { value: "ativo", label: "✅ Ativo no Auvo" },
+            { value: "inativo", label: "🚫 Inativo no Auvo" },
+          ]}
+          placeholder="Situação Auvo"
+          searchPlaceholder="Buscar situação..."
+          className="w-[170px]"
+        />
+
+        <SearchableSelect
           value={intervencaoFilter}
           onValueChange={(v) => setIntervencaoFilter(v === intervencaoFilter ? "" : v)}
           options={[
@@ -2069,6 +2082,11 @@ export default function EquipamentosPreventivosPage() {
                         )}
                       </TableCell>
                       <TableCell className="font-medium max-w-[280px] truncate" title={eq.nome}>
+                        {(eq.equipStatus || "").toLowerCase() === "inativo" && (
+                          <Badge variant="outline" className="mr-2 border-destructive/40 text-destructive text-[10px]">
+                            Inativo
+                          </Badge>
+                        )}
                         {eq.auvo_equipment_id ? (
                           <a
                             href={`https://app2.auvo.com.br/gerenciarEquipamentos/equipamento/${eq.auvo_equipment_id}`}
