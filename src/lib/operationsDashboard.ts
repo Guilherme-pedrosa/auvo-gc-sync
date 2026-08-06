@@ -24,6 +24,7 @@ export type KanbanSnapshotRow = {
 };
 
 export type PreventiveSnapshotRow = {
+  identificador?: string | null;
   status_preventiva?: string | null;
   proxima_preventiva?: string | null;
   atualizado_em?: string | null;
@@ -56,6 +57,7 @@ export type OperationsDashboardSource = {
   followupCards: KanbanSnapshotRow[];
   followupColumns: FollowupColumnRow[];
   preventiveRows: PreventiveSnapshotRow[];
+  plannedPreventiveIds?: string[];
   analysisRows: AnalysisSnapshotRow[];
   missedActivities: number;
   syncMeta?: SyncMetaRow | null;
