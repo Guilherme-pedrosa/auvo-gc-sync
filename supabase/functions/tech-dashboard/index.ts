@@ -54,7 +54,7 @@ Deno.serve(async (req) => {
       if (chunk.length < 1000) break;
     }
 
-    // Merge, dedup by auvo_task_id
+    // Merge cross-month rows first.
     const seen = new Set(allTasks.map((t: any) => t.auvo_task_id));
     for (const t of crossMonthTasks) {
       if (!seen.has(t.auvo_task_id)) {
@@ -62,6 +62,19 @@ Deno.serve(async (req) => {
         seen.add(t.auvo_task_id);
       }
     }
+
+    // The mirror can temporarily contain more than one row for the same Auvo task.
+    // Keep the newest snapshot so productivity, hours and value are never doubled.
+    const taskSnapshots = new Map<string, any>();
+    for (const task of allTasks) {
+      const taskId = String(task.auvo_task_id || task.mirror_key || "").trim();
+      if (!taskId) continue;
+      const current = taskSnapshots.get(taskId);
+      const currentTime = current?.atualizado_em ? Date.parse(current.atualizado_em) : 0;
+      const candidateTime = task.atualizado_em ? Date.parse(task.atualizado_em) : 0;
+      if (!current || candidateTime >= currentTime) taskSnapshots.set(taskId, task);
+    }
+    allTasks.splice(0, allTasks.length, ...taskSnapshots.values());
 
     console.log(`[tech-dashboard] Total tasks from DB: ${allTasks.length} (${crossMonthTasks.length} cross-month)`);
 
@@ -122,6 +135,10 @@ Deno.serve(async (req) => {
       tarefas_finalizadas: number;
       tarefas_abertas: number;
       tarefas_com_pendencia: number;
+      tarefas_sem_questionario: number;
+      checkins_sem_checkout: number;
+      tarefas_com_os: number;
+      tarefas_com_falha_qualidade: number;
       tempo_total_minutos: number;
       deslocamento_total_minutos: number;
       valor_total: number;
@@ -130,6 +147,7 @@ Deno.serve(async (req) => {
     };
 
     const techMap: Record<string, TechAccum> = {};
+    const documentContributors = new Map<string, { value: number; techIds: Set<string> }>();
 
     for (const t of allTasks) {
       const techId = String(t.tecnico_id || "").trim();
@@ -144,6 +162,10 @@ Deno.serve(async (req) => {
           tarefas_finalizadas: 0,
           tarefas_abertas: 0,
           tarefas_com_pendencia: 0,
+          tarefas_sem_questionario: 0,
+          checkins_sem_checkout: 0,
+          tarefas_com_os: 0,
+          tarefas_com_falha_qualidade: 0,
           tempo_total_minutos: 0,
           deslocamento_total_minutos: 0,
           valor_total: 0,
@@ -155,14 +177,26 @@ Deno.serve(async (req) => {
       const tech = techMap[techId];
       tech.tarefas_total++;
 
-      const finished = t.check_out === true;
+      const normalizedStatus = String(t.status_auvo || "")
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .trim()
+        .toLowerCase();
+      const finished = t.check_out === true || normalizedStatus === "finalizada" || normalizedStatus === "concluida";
       if (finished) tech.tarefas_finalizadas++;
       else tech.tarefas_abertas++;
 
       const pendencia = String(t.pendencia || "").trim();
-      if (pendencia && pendencia.toLowerCase() !== "nenhuma" && pendencia !== "0") {
+      const hasPendingIssue = Boolean(pendencia && pendencia.toLowerCase() !== "nenhuma" && pendencia !== "0");
+      const missingQuestionnaire = finished && t.questionario_preenchido !== true;
+      const openCheckIn = Boolean(t.check_in_iso && !t.check_out_iso);
+      if (hasPendingIssue) {
         tech.tarefas_com_pendencia++;
       }
+      if (missingQuestionnaire) tech.tarefas_sem_questionario++;
+      if (openCheckIn) tech.checkins_sem_checkout++;
+      if (t.os_realizada === true || t.gc_os_id) tech.tarefas_com_os++;
+      if (hasPendingIssue || missingQuestionnaire || openCheckIn) tech.tarefas_com_falha_qualidade++;
 
       // Hours from duracao_decimal
       const duracao = Number(t.duracao_decimal) || 0;
@@ -179,10 +213,17 @@ Deno.serve(async (req) => {
       // Value: use GC OS value first, then GC orçamento, then hourly rate as fallback
       const gcOsValor = Number(t.gc_os_valor_total) || 0;
       const gcOrcValor = Number(t.gc_orc_valor_total) || 0;
-      if (gcOsValor > 0) {
-        tech.valor_total += gcOsValor;
-      } else if (gcOrcValor > 0) {
-        tech.valor_total += gcOrcValor;
+      const documentKey = t.gc_os_id
+        ? `os:${String(t.gc_os_id)}`
+        : t.gc_orcamento_id
+          ? `orc:${String(t.gc_orcamento_id)}`
+          : "";
+      const documentValue = gcOsValor > 0 ? gcOsValor : gcOrcValor;
+      if (documentKey && documentValue > 0) {
+        const contribution = documentContributors.get(documentKey) || { value: documentValue, techIds: new Set<string>() };
+        contribution.value = Math.max(contribution.value, documentValue);
+        contribution.techIds.add(techId);
+        documentContributors.set(documentKey, contribution);
       } else {
         const cliente = t.cliente || t.gc_os_cliente || "";
         const clienteGc = t.gc_os_cliente || "";
@@ -197,6 +238,15 @@ Deno.serve(async (req) => {
       tech.tarefas_por_dia[taskDate] = (tech.tarefas_por_dia[taskDate] || 0) + 1;
       if (finished) {
         tech.finalizadas_por_dia[taskDate] = (tech.finalizadas_por_dia[taskDate] || 0) + 1;
+      }
+    }
+
+    // Split shared documents across their technicians. The dashboard total now
+    // reconciles with unique GC documents instead of multiplying their value.
+    for (const contribution of documentContributors.values()) {
+      const allocation = contribution.techIds.size > 0 ? contribution.value / contribution.techIds.size : 0;
+      for (const techId of contribution.techIds) {
+        if (techMap[techId]) techMap[techId].valor_total += allocation;
       }
     }
 
@@ -215,6 +265,9 @@ Deno.serve(async (req) => {
 
       const valorTotal = Math.round(tech.valor_total * 100) / 100;
       const faturamentoHora = tempoHoras > 0 ? Math.round((valorTotal / tempoHoras) * 100) / 100 : 0;
+      const qualidadePct = tech.tarefas_total > 0
+        ? Math.max(0, Math.round(((tech.tarefas_total - tech.tarefas_com_falha_qualidade) / tech.tarefas_total) * 100))
+        : 0;
 
       return {
         id: tech.id,
@@ -223,6 +276,10 @@ Deno.serve(async (req) => {
         tarefas_finalizadas: tech.tarefas_finalizadas,
         tarefas_abertas: tech.tarefas_abertas,
         tarefas_com_pendencia: tech.tarefas_com_pendencia,
+        tarefas_sem_questionario: tech.tarefas_sem_questionario,
+        checkins_sem_checkout: tech.checkins_sem_checkout,
+        tarefas_com_os: tech.tarefas_com_os,
+        qualidade_pct: qualidadePct,
         taxa_finalizacao: taxaFinalizacao,
         media_execucoes_dia: mediaExecucoesDia,
         tempo_horas: tempoHoras,
@@ -239,8 +296,14 @@ Deno.serve(async (req) => {
     const resumo = {
       periodo: { inicio: startDate, fim: endDate },
       total_tarefas: allTasks.length,
-      total_finalizadas: allTasks.filter((t: any) => t.check_out === true).length,
+      total_finalizadas: tecnicos.reduce((total, tech) => total + tech.tarefas_finalizadas, 0),
       total_tecnicos: tecnicos.length,
+      total_horas: Math.round(tecnicos.reduce((total, tech) => total + tech.tempo_horas, 0) * 10) / 10,
+      total_deslocamento_horas: Math.round(tecnicos.reduce((total, tech) => total + tech.deslocamento_horas, 0) * 10) / 10,
+      total_pendencias: tecnicos.reduce((total, tech) => total + tech.tarefas_com_pendencia, 0),
+      total_sem_questionario: tecnicos.reduce((total, tech) => total + tech.tarefas_sem_questionario, 0),
+      total_checkins_sem_checkout: tecnicos.reduce((total, tech) => total + tech.checkins_sem_checkout, 0),
+      valor_total: Math.round(tecnicos.reduce((total, tech) => total + tech.valor_total, 0) * 100) / 100,
     };
 
     return new Response(JSON.stringify({ resumo, tecnicos }), {

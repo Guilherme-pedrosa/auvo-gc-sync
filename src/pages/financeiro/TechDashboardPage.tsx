@@ -1,27 +1,54 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Progress } from "@/components/ui/progress";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Calendar } from "@/components/ui/calendar";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { ArrowLeft, CalendarIcon, RefreshCw, Users, CheckCircle, Clock, TrendingUp, AlertTriangle, DollarSign, Navigation } from "lucide-react";
-import { format, subDays, startOfWeek, startOfMonth } from "date-fns";
+import { format, startOfMonth, startOfWeek } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import { useNavigate } from "react-router-dom";
+import {
+  AlertTriangle,
+  CalendarIcon,
+  CheckCircle2,
+  ClipboardCheck,
+  Clock3,
+  DollarSign,
+  Gauge,
+  Medal,
+  Navigation,
+  RefreshCw,
+  Search,
+  Target,
+  Trophy,
+  Users,
+} from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Calendar } from "@/components/ui/calendar";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Progress } from "@/components/ui/progress";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import LastSyncBadge from "@/components/LastSyncBadge";
+import { supabase } from "@/integrations/supabase/client";
+import {
+  findTechnicianGoal,
+  technicianGoalProgress,
+  technicianOperationalScore,
+  technicianQualityIssues,
+  type TechnicianGoal,
+} from "@/lib/technicianDashboard";
 
-type TecnicoData = {
+type TechnicianData = {
   id: string;
   nome: string;
   tarefas_total: number;
   tarefas_finalizadas: number;
   tarefas_abertas: number;
   tarefas_com_pendencia: number;
+  tarefas_sem_questionario: number;
+  checkins_sem_checkout: number;
+  tarefas_com_os: number;
+  qualidade_pct: number;
   taxa_finalizacao: number;
   media_execucoes_dia: number;
   tempo_horas: number;
@@ -40,45 +67,67 @@ type DashboardData = {
     total_tarefas: number;
     total_finalizadas: number;
     total_tecnicos: number;
+    total_horas: number;
+    total_deslocamento_horas: number;
+    total_pendencias: number;
+    total_sem_questionario: number;
+    total_checkins_sem_checkout: number;
+    valor_total: number;
   };
-  tecnicos: TecnicoData[];
+  tecnicos: TechnicianData[];
   auvo_error?: string | null;
   error?: string;
 };
 
-const METAS = {
-  taxa_finalizacao: 70,
-  execucoes_dia: 1,
-  tempo_atividade: 70,
-};
+type Period = "hoje" | "semana" | "mes" | "custom";
+type SortKey = "score" | "finalizadas" | "horas" | "qualidade" | "valor";
 
-const TechDashboardPage = () => {
-  const navigate = useNavigate();
-  const [lastFetchTime, setLastFetchTime] = useState<string | null>(null);
-  const [periodo, setPeriodo] = useState<"hoje" | "semana" | "mes" | "custom">("hoje");
-  const [customStart, setCustomStart] = useState<Date | undefined>(undefined);
-  const [customEnd, setCustomEnd] = useState<Date | undefined>(undefined);
+const brl = (value: number) => new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 }).format(value || 0);
+const decimal = (value: number) => new Intl.NumberFormat("pt-BR", { maximumFractionDigits: 1 }).format(value || 0);
+const pct = (part: number, total: number) => (total > 0 ? Math.round((part / total) * 100) : 0);
 
-  const getDates = () => {
+function SummaryCard({ label, value, detail, icon: Icon, alert = false }: { label: string; value: string; detail: string; icon: typeof Users; alert?: boolean }) {
+  return (
+    <Card className={alert ? "border-amber-200 bg-amber-50/60 dark:border-amber-900 dark:bg-amber-950/20" : "shadow-sm"}>
+      <CardContent className="p-4">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <p className="text-xs font-medium text-muted-foreground">{label}</p>
+            <p className="mt-1 text-2xl font-bold tracking-tight">{value}</p>
+            <p className="mt-1 text-[11px] text-muted-foreground">{detail}</p>
+          </div>
+          <div className="rounded-lg border bg-background/80 p-2"><Icon className="h-4 w-4" /></div>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function scoreBadge(score: number) {
+  if (score >= 75) return <Badge className="bg-emerald-600 hover:bg-emerald-600">{score}%</Badge>;
+  if (score >= 50) return <Badge className="bg-amber-500 hover:bg-amber-500">{score}%</Badge>;
+  return <Badge variant="destructive">{score}%</Badge>;
+}
+
+export default function TechDashboardPage() {
+  const [period, setPeriod] = useState<Period>("mes");
+  const [customStart, setCustomStart] = useState<Date>();
+  const [customEnd, setCustomEnd] = useState<Date>();
+  const [search, setSearch] = useState("");
+  const [sortBy, setSortBy] = useState<SortKey>("score");
+
+  const dates = useMemo(() => {
     const today = new Date();
-    switch (periodo) {
-      case "hoje":
-        return { start: format(today, "yyyy-MM-dd"), end: format(today, "yyyy-MM-dd") };
-      case "semana":
-        return { start: format(startOfWeek(today, { weekStartsOn: 1 }), "yyyy-MM-dd"), end: format(today, "yyyy-MM-dd") };
-      case "mes":
-        return { start: format(startOfMonth(today), "yyyy-MM-dd"), end: format(today, "yyyy-MM-dd") };
-      case "custom":
-        return {
-          start: customStart ? format(customStart, "yyyy-MM-dd") : format(today, "yyyy-MM-dd"),
-          end: customEnd ? format(customEnd, "yyyy-MM-dd") : format(today, "yyyy-MM-dd"),
-        };
-    }
-  };
+    if (period === "hoje") return { start: format(today, "yyyy-MM-dd"), end: format(today, "yyyy-MM-dd") };
+    if (period === "semana") return { start: format(startOfWeek(today, { weekStartsOn: 1 }), "yyyy-MM-dd"), end: format(today, "yyyy-MM-dd") };
+    if (period === "custom") return {
+      start: format(customStart || today, "yyyy-MM-dd"),
+      end: format(customEnd || customStart || today, "yyyy-MM-dd"),
+    };
+    return { start: format(startOfMonth(today), "yyyy-MM-dd"), end: format(today, "yyyy-MM-dd") };
+  }, [customEnd, customStart, period]);
 
-  const dates = getDates();
-
-  const { data, isLoading, error: queryError, refetch } = useQuery({
+  const dashboardQuery = useQuery({
     queryKey: ["tech-dashboard", dates.start, dates.end],
     queryFn: async () => {
       const { data, error } = await supabase.functions.invoke("tech-dashboard", {
@@ -86,339 +135,254 @@ const TechDashboardPage = () => {
       });
       if (error) throw error;
       if (data?.error) throw new Error(data.error);
-      setLastFetchTime(new Date().toISOString());
       return data as DashboardData;
     },
-    refetchInterval: 60000,
+    refetchInterval: 120_000,
     retry: false,
   });
 
-  const metaBadge = (valor: number, meta: number) => {
-    if (valor >= meta) return <Badge variant="default" className="text-xs">✅ {valor}%</Badge>;
-    if (valor >= meta * 0.7) return <Badge variant="secondary" className="text-xs">⚠️ {valor}%</Badge>;
-    return <Badge variant="destructive" className="text-xs">❌ {valor}%</Badge>;
-  };
+  const goalsQuery = useQuery({
+    queryKey: ["metas-tecnicos-dashboard"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("metas_tecnicos")
+        .select("nome_tecnico,meta_faturamento,ativo")
+        .eq("ativo", true);
+      if (error) throw error;
+      return (data || []) as TechnicianGoal[];
+    },
+    staleTime: 300_000,
+  });
 
-  const atingimento = (tecnico: TecnicoData) => {
-    let pontos = 0;
-    let total = 0;
+  const technicians = useMemo(() => {
+    const rows = [...(dashboardQuery.data?.tecnicos || [])];
+    const query = search.trim().toLocaleLowerCase("pt-BR");
+    const filtered = query ? rows.filter((tech) => tech.nome.toLocaleLowerCase("pt-BR").includes(query)) : rows;
+    return filtered.sort((a, b) => {
+      if (sortBy === "finalizadas") return b.tarefas_finalizadas - a.tarefas_finalizadas;
+      if (sortBy === "horas") return b.tempo_horas - a.tempo_horas;
+      if (sortBy === "qualidade") return b.qualidade_pct - a.qualidade_pct || b.tarefas_finalizadas - a.tarefas_finalizadas;
+      if (sortBy === "valor") return b.valor_total - a.valor_total;
+      return technicianOperationalScore(b) - technicianOperationalScore(a) || b.tarefas_finalizadas - a.tarefas_finalizadas;
+    });
+  }, [dashboardQuery.data?.tecnicos, search, sortBy]);
 
-    // Taxa finalização ≥ 70%
-    total++;
-    if (tecnico.taxa_finalizacao >= METAS.taxa_finalizacao) pontos++;
+  const highlights = useMemo(() => {
+    const rows = dashboardQuery.data?.tecnicos || [];
+    if (!rows.length) return [];
+    const mostFinished = [...rows].sort((a, b) => b.tarefas_finalizadas - a.tarefas_finalizadas)[0];
+    const bestPace = [...rows].sort((a, b) => b.media_execucoes_dia - a.media_execucoes_dia || b.tarefas_finalizadas - a.tarefas_finalizadas)[0];
+    const bestQuality = [...rows].sort((a, b) => b.qualidade_pct - a.qualidade_pct || b.tarefas_finalizadas - a.tarefas_finalizadas)[0];
+    return [
+      { title: "Maior volume concluído", tech: mostFinished, value: `${mostFinished.tarefas_finalizadas} tarefas`, icon: Trophy },
+      { title: "Melhor ritmo", tech: bestPace, value: `${decimal(bestPace.media_execucoes_dia)} exec./dia`, icon: Medal },
+      { title: "Melhor qualidade", tech: bestQuality, value: `${bestQuality.qualidade_pct}% sem falhas`, icon: ClipboardCheck },
+    ];
+  }, [dashboardQuery.data?.tecnicos]);
 
-    // Execuções/dia > 1
-    total++;
-    if (tecnico.media_execucoes_dia >= METAS.execucoes_dia) pontos++;
-
-    // Tempo atividade > 70%
-    total++;
-    if (tecnico.tempo_atividade_pct >= METAS.tempo_atividade) pontos++;
-
-    // Sem pendências (0 pendências = bom)
-    total++;
-    if (tecnico.tarefas_com_pendencia === 0) pontos++;
-
-    return Math.round((pontos / total) * 100);
-  };
+  const periodLabel = dates.start === dates.end
+    ? format(new Date(`${dates.start}T12:00:00`), "dd/MM/yyyy")
+    : `${format(new Date(`${dates.start}T12:00:00`), "dd/MM")} → ${format(new Date(`${dates.end}T12:00:00`), "dd/MM/yyyy")}`;
+  const data = dashboardQuery.data;
+  const goals = goalsQuery.data || [];
 
   return (
-    <div className="min-h-screen bg-background p-6 max-w-7xl mx-auto space-y-6">
-      {/* Header */}
-      <div className="flex items-center gap-4">
-        <Button variant="ghost" size="icon" onClick={() => navigate("/")}>
-          <ArrowLeft className="h-5 w-5" />
-        </Button>
-        <div className="flex-1">
-          <h1 className="text-3xl font-bold tracking-tight">📊 Dashboard de Técnicos</h1>
-          <p className="text-muted-foreground">Indicadores de desempenho em tempo real via Auvo</p>
-          <LastSyncBadge className="mt-1" overrideTimestamp={lastFetchTime} />
-        </div>
-        <Button variant="ghost" size="icon" onClick={() => refetch()} disabled={isLoading}>
-          <RefreshCw className={`h-4 w-4 ${isLoading ? "animate-spin" : ""}`} />
-        </Button>
-      </div>
+    <div className="min-h-screen bg-muted/30 p-4 md:p-6 xl:p-8">
+      <div className="mx-auto max-w-[1600px] space-y-6">
+        <header className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+          <div>
+            <div className="mb-2 flex items-center gap-2">
+              <Badge variant="outline" className="bg-background"><Users className="mr-1 h-3 w-3" /> Performance de campo</Badge>
+              <LastSyncBadge overrideTimestamp={dashboardQuery.dataUpdatedAt ? new Date(dashboardQuery.dataUpdatedAt).toISOString() : null} />
+            </div>
+            <h1 className="text-3xl font-bold tracking-tight md:text-4xl">Dashboard Técnicos</h1>
+            <p className="mt-2 max-w-3xl text-sm text-muted-foreground md:text-base">
+              Produtividade, capacidade, qualidade dos apontamentos e valor vinculado por técnico — com tarefas e documentos GC sem duplicidade.
+            </p>
+          </div>
+          <Button variant="outline" onClick={() => dashboardQuery.refetch()} disabled={dashboardQuery.isFetching}>
+            <RefreshCw className={`mr-2 h-4 w-4 ${dashboardQuery.isFetching ? "animate-spin" : ""}`} /> Atualizar indicadores
+          </Button>
+        </header>
 
-      {/* Filtros */}
-      <div className="flex flex-wrap gap-3 items-end">
-        <div className="space-y-1.5">
-          <label className="text-sm font-medium text-muted-foreground">Período</label>
-          <Select value={periodo} onValueChange={(v) => setPeriodo(v as any)}>
-            <SelectTrigger className="w-40">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="hoje">Hoje</SelectItem>
-              <SelectItem value="semana">Esta Semana</SelectItem>
-              <SelectItem value="mes">Este Mês</SelectItem>
-              <SelectItem value="custom">Personalizado</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-        {periodo === "custom" && (
-          <>
+        <Card className="shadow-sm">
+          <CardContent className="flex flex-col gap-3 p-4 lg:flex-row lg:items-end">
             <div className="space-y-1.5">
-              <label className="text-sm font-medium text-muted-foreground">Início</label>
-              <Popover>
-                <PopoverTrigger asChild>
-                  <Button variant="outline" className="w-36 justify-start text-left font-normal">
-                    <CalendarIcon className="mr-2 h-4 w-4" />
-                    {customStart ? format(customStart, "dd/MM/yy") : "Início"}
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent className="w-auto p-0" align="start">
-                  <Calendar mode="single" selected={customStart} onSelect={setCustomStart} locale={ptBR} />
-                </PopoverContent>
-              </Popover>
+              <label className="text-xs font-medium text-muted-foreground">Período de análise</label>
+              <Select value={period} onValueChange={(value) => setPeriod(value as Period)}>
+                <SelectTrigger className="w-full bg-background lg:w-44"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="hoje">Hoje</SelectItem>
+                  <SelectItem value="semana">Esta semana</SelectItem>
+                  <SelectItem value="mes">Este mês</SelectItem>
+                  <SelectItem value="custom">Personalizado</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
-            <div className="space-y-1.5">
-              <label className="text-sm font-medium text-muted-foreground">Fim</label>
-              <Popover>
-                <PopoverTrigger asChild>
-                  <Button variant="outline" className="w-36 justify-start text-left font-normal">
-                    <CalendarIcon className="mr-2 h-4 w-4" />
-                    {customEnd ? format(customEnd, "dd/MM/yy") : "Fim"}
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent className="w-auto p-0" align="start">
-                  <Calendar mode="single" selected={customEnd} onSelect={setCustomEnd} locale={ptBR} />
-                </PopoverContent>
-              </Popover>
+            {period === "custom" && (
+              <>
+                <div className="space-y-1.5">
+                  <label className="text-xs font-medium text-muted-foreground">Início</label>
+                  <Popover>
+                    <PopoverTrigger asChild><Button variant="outline" className="w-full justify-start bg-background font-normal lg:w-40"><CalendarIcon className="mr-2 h-4 w-4" />{customStart ? format(customStart, "dd/MM/yyyy") : "Selecionar"}</Button></PopoverTrigger>
+                    <PopoverContent className="w-auto p-0"><Calendar mode="single" selected={customStart} onSelect={setCustomStart} locale={ptBR} /></PopoverContent>
+                  </Popover>
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-xs font-medium text-muted-foreground">Fim</label>
+                  <Popover>
+                    <PopoverTrigger asChild><Button variant="outline" className="w-full justify-start bg-background font-normal lg:w-40"><CalendarIcon className="mr-2 h-4 w-4" />{customEnd ? format(customEnd, "dd/MM/yyyy") : "Selecionar"}</Button></PopoverTrigger>
+                    <PopoverContent className="w-auto p-0"><Calendar mode="single" selected={customEnd} onSelect={setCustomEnd} disabled={(date) => Boolean(customStart && date < customStart)} locale={ptBR} /></PopoverContent>
+                  </Popover>
+                </div>
+              </>
+            )}
+            <Badge variant="outline" className="h-10 justify-center bg-background px-3">{periodLabel}</Badge>
+            <div className="flex-1" />
+            <div className="relative w-full lg:w-64">
+              <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+              <Input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Buscar técnico..." className="bg-background pl-9" />
             </div>
-          </>
+            <Select value={sortBy} onValueChange={(value) => setSortBy(value as SortKey)}>
+              <SelectTrigger className="w-full bg-background lg:w-48"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="score">Saúde operacional</SelectItem>
+                <SelectItem value="finalizadas">Mais finalizadas</SelectItem>
+                <SelectItem value="horas">Mais horas</SelectItem>
+                <SelectItem value="qualidade">Melhor qualidade</SelectItem>
+                <SelectItem value="valor">Maior valor vinculado</SelectItem>
+              </SelectContent>
+            </Select>
+          </CardContent>
+        </Card>
+
+        {dashboardQuery.error && (
+          <Card className="border-rose-200 bg-rose-50/50 dark:border-rose-900 dark:bg-rose-950/20">
+            <CardContent className="flex items-start gap-3 p-4 text-rose-700 dark:text-rose-300">
+              <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0" />
+              <div><p className="font-semibold">Falha ao consultar os indicadores</p><p className="text-sm">{(dashboardQuery.error as Error).message}</p></div>
+            </CardContent>
+          </Card>
         )}
-        <Badge variant="outline" className="h-9 px-3">
-          {dates.start === dates.end ? format(new Date(dates.start + "T12:00:00"), "dd/MM/yyyy") : `${format(new Date(dates.start + "T12:00:00"), "dd/MM")} → ${format(new Date(dates.end + "T12:00:00"), "dd/MM/yyyy")}`}
-        </Badge>
+
+        {dashboardQuery.isLoading ? (
+          <>
+            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-6">{[0, 1, 2, 3, 4, 5].map((item) => <Skeleton key={item} className="h-32 rounded-xl" />)}</div>
+            <Skeleton className="h-96 rounded-xl" />
+          </>
+        ) : data ? (
+          <>
+            <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
+              <SummaryCard label="Técnicos ativos" value={String(data.resumo.total_tecnicos)} detail={`${data.resumo.total_tarefas} tarefas no recorte`} icon={Users} />
+              <SummaryCard label="Finalizadas" value={`${pct(data.resumo.total_finalizadas, data.resumo.total_tarefas)}%`} detail={`${data.resumo.total_finalizadas} tarefas concluídas`} icon={CheckCircle2} />
+              <SummaryCard label="Horas produtivas" value={`${decimal(data.resumo.total_horas)}h`} detail={`${decimal(data.resumo.total_deslocamento_horas)}h em deslocamento`} icon={Clock3} />
+              <SummaryCard label="Sem questionário" value={String(data.resumo.total_sem_questionario)} detail="finalizadas sem evidência completa" icon={ClipboardCheck} alert={data.resumo.total_sem_questionario > 0} />
+              <SummaryCard label="Check-ins em aberto" value={String(data.resumo.total_checkins_sem_checkout)} detail="sem checkout correspondente" icon={Navigation} alert={data.resumo.total_checkins_sem_checkout > 0} />
+              <SummaryCard label="Valor vinculado" value={brl(data.resumo.valor_total)} detail="documentos GC únicos e rateados" icon={DollarSign} />
+            </section>
+
+            <section className="grid gap-3 md:grid-cols-3">
+              {highlights.map((highlight) => (
+                <Card key={highlight.title} className="overflow-hidden shadow-sm">
+                  <CardContent className="flex items-center gap-4 p-4">
+                    <div className="rounded-xl bg-primary/10 p-3 text-primary"><highlight.icon className="h-5 w-5" /></div>
+                    <div className="min-w-0">
+                      <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{highlight.title}</p>
+                      <p className="truncate font-bold">{highlight.tech.nome}</p>
+                      <p className="text-sm text-muted-foreground">{highlight.value}</p>
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
+            </section>
+
+            <Card className="shadow-sm">
+              <CardHeader>
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                  <div>
+                    <CardTitle>Desempenho por técnico</CardTitle>
+                    <CardDescription className="mt-1">Saúde operacional combina fechamento, ritmo, ocupação e ausência de falhas de qualidade.</CardDescription>
+                  </div>
+                  <Badge variant="outline">{technicians.length} técnico(s)</Badge>
+                </div>
+              </CardHeader>
+              <CardContent className="p-0">
+                <div className="overflow-x-auto">
+                  <Table>
+                    <TableHeader>
+                      <TableRow className="bg-muted/40">
+                        <TableHead className="min-w-[210px] pl-6">Técnico</TableHead>
+                        <TableHead className="min-w-[150px]">Execução</TableHead>
+                        <TableHead className="text-center">Ritmo</TableHead>
+                        <TableHead className="min-w-[130px]">Horas</TableHead>
+                        <TableHead className="min-w-[155px]">Qualidade</TableHead>
+                        <TableHead className="min-w-[130px]">Vínculo OS</TableHead>
+                        <TableHead className="min-w-[190px]">Valor / meta</TableHead>
+                        <TableHead className="pr-6 text-center">Saúde</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {technicians.map((tech, index) => {
+                        const completion = pct(tech.tarefas_finalizadas, tech.tarefas_total);
+                        const osCoverage = pct(tech.tarefas_com_os, tech.tarefas_total);
+                        const qualityIssues = technicianQualityIssues(tech);
+                        const score = technicianOperationalScore(tech);
+                        const goal = period === "mes" ? findTechnicianGoal(tech.nome, goals) : undefined;
+                        const goalProgress = technicianGoalProgress(tech.valor_total, goal);
+                        return (
+                          <TableRow key={tech.id}>
+                            <TableCell className="pl-6">
+                              <div className="flex items-center gap-3">
+                                <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-bold text-muted-foreground">{index + 1}</span>
+                                <div><p className="font-semibold">{tech.nome}</p><p className="text-xs text-muted-foreground">{tech.dias_trabalhados} dia(s) com atividade</p></div>
+                              </div>
+                            </TableCell>
+                            <TableCell>
+                              <div className="mb-1.5 flex justify-between text-xs"><span>{tech.tarefas_finalizadas}/{tech.tarefas_total}</span><strong>{completion}%</strong></div>
+                              <Progress value={completion} className="h-1.5" />
+                            </TableCell>
+                            <TableCell className="text-center"><p className="font-bold tabular-nums">{decimal(tech.media_execucoes_dia)}</p><p className="text-[10px] text-muted-foreground">exec./dia</p></TableCell>
+                            <TableCell><p className="font-semibold tabular-nums">{decimal(tech.tempo_horas)}h</p><p className="text-xs text-muted-foreground">{decimal(tech.deslocamento_horas)}h desloc.</p></TableCell>
+                            <TableCell>
+                              <div className="flex items-center justify-between"><span className="font-semibold">{tech.qualidade_pct}%</span>{qualityIssues > 0 && <Badge variant="outline" className="border-amber-200 text-[10px] text-amber-700">{qualityIssues} alerta(s)</Badge>}</div>
+                              <p className="mt-1 text-[10px] text-muted-foreground">{tech.tarefas_sem_questionario} sem form. · {tech.checkins_sem_checkout} em aberto</p>
+                            </TableCell>
+                            <TableCell>
+                              <div className="mb-1.5 flex justify-between text-xs"><span>{tech.tarefas_com_os}/{tech.tarefas_total}</span><strong>{osCoverage}%</strong></div>
+                              <Progress value={osCoverage} className="h-1.5" />
+                            </TableCell>
+                            <TableCell>
+                              <p className="font-semibold tabular-nums">{brl(tech.valor_total)}</p>
+                              {goalProgress !== null ? (
+                                <><div className="mt-1 flex justify-between text-[10px] text-muted-foreground"><span>Meta {brl(goal!.meta_faturamento)}</span><span>{goalProgress}%</span></div><Progress value={Math.min(goalProgress, 100)} className="mt-1 h-1.5" /></>
+                              ) : <p className="text-[10px] text-muted-foreground">{period === "mes" ? "Meta não cadastrada" : "Meta mensal não aplicada ao recorte"}</p>}
+                            </TableCell>
+                            <TableCell className="pr-6 text-center">{scoreBadge(score)}</TableCell>
+                          </TableRow>
+                        );
+                      })}
+                      {technicians.length === 0 && <TableRow><TableCell colSpan={8} className="h-28 text-center text-muted-foreground">Nenhum técnico encontrado no período ou na busca.</TableCell></TableRow>}
+                    </TableBody>
+                  </Table>
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card className="border-blue-200 bg-blue-50/50 dark:border-blue-900 dark:bg-blue-950/20">
+              <CardContent className="grid gap-4 p-4 text-sm md:grid-cols-4">
+                <div className="flex gap-2"><Gauge className="mt-0.5 h-4 w-4 shrink-0 text-blue-600" /><div><strong>Fechamento</strong><p className="text-xs text-muted-foreground">Meta operacional de 70% das tarefas.</p></div></div>
+                <div className="flex gap-2"><Target className="mt-0.5 h-4 w-4 shrink-0 text-blue-600" /><div><strong>Ritmo</strong><p className="text-xs text-muted-foreground">Ao menos 1 execução concluída por dia ativo.</p></div></div>
+                <div className="flex gap-2"><Clock3 className="mt-0.5 h-4 w-4 shrink-0 text-blue-600" /><div><strong>Ocupação</strong><p className="text-xs text-muted-foreground">70% da jornada registrada em atividade.</p></div></div>
+                <div className="flex gap-2"><ClipboardCheck className="mt-0.5 h-4 w-4 shrink-0 text-blue-600" /><div><strong>Qualidade</strong><p className="text-xs text-muted-foreground">Sem pendência, formulário ausente ou check-in aberto.</p></div></div>
+              </CardContent>
+            </Card>
+
+            <p className="pb-2 text-center text-xs text-muted-foreground">
+              Uma tarefa Auvo conta uma vez. Uma OS compartilhada conta uma vez e seu valor é rateado entre os técnicos vinculados.
+            </p>
+          </>
+        ) : null}
       </div>
-
-      {/* Error display */}
-      {queryError && (
-        <Card className="border-destructive">
-          <CardContent className="pt-6">
-            <div className="flex items-center gap-2 text-destructive">
-              <AlertTriangle className="h-5 w-5" />
-              <span className="font-medium">Erro ao consultar Auvo:</span>
-              <span className="text-sm">{(queryError as Error).message}</span>
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {data?.auvo_error && (
-        <Card className="border-yellow-500">
-          <CardContent className="pt-6">
-            <div className="flex items-center gap-2 text-yellow-600">
-              <AlertTriangle className="h-5 w-5" />
-              <span className="font-medium">Aviso Auvo:</span>
-              <span className="text-sm truncate">{data.auvo_error}</span>
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Resumo Cards */}
-      {data?.resumo && (
-        <div className="grid gap-4 md:grid-cols-6">
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Técnicos Ativos</CardTitle>
-              <Users className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">{data.resumo.total_tecnicos}</div>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Total Tarefas</CardTitle>
-              <TrendingUp className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">{data.resumo.total_tarefas}</div>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Finalizadas</CardTitle>
-              <CheckCircle className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">{data.resumo.total_finalizadas}</div>
-              <p className="text-xs text-muted-foreground">
-                {data.resumo.total_tarefas > 0 ? Math.round((data.resumo.total_finalizadas / data.resumo.total_tarefas) * 100) : 0}% do total
-              </p>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Horas Deslocamento</CardTitle>
-              <Navigation className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">
-                {data.tecnicos.reduce((sum, t) => sum + (t.deslocamento_horas || 0), 0).toFixed(1)}h
-              </div>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Pendentes</CardTitle>
-              <AlertTriangle className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">{data.resumo.total_tarefas - data.resumo.total_finalizadas}</div>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Valor Total</CardTitle>
-              <DollarSign className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">
-                {(() => {
-                  const total = data.tecnicos.reduce((sum, t) => sum + (t.valor_total || 0), 0);
-                  return total > 0 ? `R$ ${total.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}` : "—";
-                })()}
-              </div>
-              <p className="text-xs text-muted-foreground">
-                {(() => {
-                  const totalHoras = data.tecnicos.reduce((sum, t) => sum + (t.tempo_horas || 0), 0);
-                  const totalValor = data.tecnicos.reduce((sum, t) => sum + (t.valor_total || 0), 0);
-                  const mediaHora = totalHoras > 0 ? (totalValor / totalHoras) : 0;
-                  return mediaHora > 0 ? `R$ ${mediaHora.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}/h média` : "";
-                })()}
-              </p>
-            </CardContent>
-          </Card>
-        </div>
-      )}
-
-      {/* Tabela de técnicos */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-lg">Desempenho por Técnico</CardTitle>
-          <CardDescription>
-            Metas: Finalização ≥ 70% | Execuções &gt; 1/dia | Tempo atividade &gt; 70% | 0 pendências
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          {isLoading ? (
-            <p className="text-sm text-muted-foreground">Carregando dados do Auvo...</p>
-          ) : !data?.tecnicos?.length ? (
-            <p className="text-sm text-muted-foreground">Nenhum técnico encontrado no período</p>
-          ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Técnico</TableHead>
-                  <TableHead className="text-center">Tarefas</TableHead>
-                  <TableHead className="text-center">Finalizadas</TableHead>
-                  <TableHead className="text-center">Taxa Final.</TableHead>
-                  <TableHead className="text-center">Exec/Dia</TableHead>
-                  <TableHead className="text-center">Tempo (h)</TableHead>
-                  <TableHead className="text-center">Desloc. (h)</TableHead>
-                  <TableHead className="text-center">% Atividade</TableHead>
-                   <TableHead className="text-center">Pendências</TableHead>
-                   <TableHead className="text-right">Valor</TableHead>
-                   <TableHead className="text-right">R$/Hora</TableHead>
-                   <TableHead className="text-center">Atingimento</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {data.tecnicos.map((tech) => {
-                  const pct = atingimento(tech);
-                  return (
-                    <TableRow key={tech.id}>
-                      <TableCell>
-                        <div>
-                          <span className="font-medium text-sm">{tech.nome}</span>
-                          <span className="text-xs text-muted-foreground block">{tech.dias_trabalhados} dia(s)</span>
-                        </div>
-                      </TableCell>
-                      <TableCell className="text-center font-mono">{tech.tarefas_total}</TableCell>
-                      <TableCell className="text-center font-mono font-medium">{tech.tarefas_finalizadas}</TableCell>
-                      <TableCell className="text-center">
-                        {metaBadge(tech.taxa_finalizacao, METAS.taxa_finalizacao)}
-                      </TableCell>
-                      <TableCell className="text-center">
-                        <span className={`font-mono text-sm ${tech.media_execucoes_dia >= METAS.execucoes_dia ? "text-foreground" : "text-destructive"}`}>
-                          {tech.media_execucoes_dia}
-                        </span>
-                      </TableCell>
-                      <TableCell className="text-center font-mono text-sm">{tech.tempo_horas}h</TableCell>
-                      <TableCell className="text-center font-mono text-sm text-muted-foreground">
-                        {(tech.deslocamento_horas || 0) > 0 ? `${tech.deslocamento_horas}h` : "—"}
-                      </TableCell>
-                      <TableCell className="text-center">
-                        {metaBadge(tech.tempo_atividade_pct, METAS.tempo_atividade)}
-                      </TableCell>
-                      <TableCell className="text-center">
-                        {tech.tarefas_com_pendencia === 0 ? (
-                          <Badge variant="default" className="text-xs">✅ 0</Badge>
-                        ) : (
-                          <Badge variant="destructive" className="text-xs">⚠️ {tech.tarefas_com_pendencia}</Badge>
-                        )}
-                      </TableCell>
-                      <TableCell className="text-right font-mono text-sm">
-                        {tech.valor_total > 0 ? `R$ ${tech.valor_total.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}` : "—"}
-                      </TableCell>
-                      <TableCell className="text-right font-mono text-sm">
-                        {tech.faturamento_hora > 0 ? `R$ ${tech.faturamento_hora.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}` : "—"}
-                      </TableCell>
-                      <TableCell className="text-center">
-                        <div className="flex items-center gap-2 justify-center">
-                          <Progress value={pct} className="w-16 h-2" />
-                          <span className={`text-xs font-bold ${pct >= 70 ? "text-foreground" : "text-destructive"}`}>
-                            {pct}%
-                          </span>
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  );
-                })}
-              </TableBody>
-            </Table>
-          )}
-        </CardContent>
-      </Card>
-
-      {/* Legenda de metas */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-lg">📋 Critérios de Avaliação</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="grid gap-3 md:grid-cols-2 text-sm">
-            <div className="space-y-2">
-              <div className="flex items-start gap-2">
-                <Badge variant="outline" className="shrink-0">Taxa Finalização</Badge>
-                <span className="text-muted-foreground">Tarefas finalizadas / total ≥ 70%. Retornos por falha técnica impactam negativamente.</span>
-              </div>
-              <div className="flex items-start gap-2">
-                <Badge variant="outline" className="shrink-0">Execuções/Dia</Badge>
-                <span className="text-muted-foreground">Serviços realizados &gt; 1 por dia. Mede produtividade.</span>
-              </div>
-            </div>
-            <div className="space-y-2">
-              <div className="flex items-start gap-2">
-                <Badge variant="outline" className="shrink-0">Tempo Atividade</Badge>
-                <span className="text-muted-foreground">Tempo entre check-in e check-out acima de 70% da jornada (8h).</span>
-              </div>
-              <div className="flex items-start gap-2">
-                <Badge variant="outline" className="shrink-0">Pendências</Badge>
-                <span className="text-muted-foreground">0 pendências registradas. Mede comprometimento com padrões operacionais.</span>
-              </div>
-            </div>
-          </div>
-          <div className="mt-4 pt-4 border-t text-xs text-muted-foreground">
-            <strong>Atingimento geral:</strong> ≥70% = percentual atingido | &lt;70% = 0 (não atinge meta mínima)
-          </div>
-        </CardContent>
-      </Card>
     </div>
   );
-};
-
-export default TechDashboardPage;
+}

@@ -1,713 +1,469 @@
-import { useState, useMemo } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Calendar } from "@/components/ui/calendar";
-import { Badge } from "@/components/ui/badge";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import {
-  CalendarIcon, RefreshCw, DollarSign, FileText,
-  ClipboardList, CheckCircle2, XCircle, TrendingUp, BarChart3, Wrench,
-  ChevronLeft, ChevronRight
-} from "lucide-react";
-import { format, startOfMonth, startOfYear, endOfMonth, isWithinInterval, parseISO, subMonths, addMonths } from "date-fns";
+import { useMemo, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
+import { useNavigate } from "react-router-dom";
+import { format, formatDistanceToNow, startOfMonth } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import { toast } from "sonner";
-import LastSyncBadge from "@/components/LastSyncBadge";
 import {
-  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
-  PieChart, Pie, Cell, Legend
-} from "recharts";
+  Activity,
+  AlertCircle,
+  AlertTriangle,
+  ArrowRight,
+  BarChart3,
+  CalendarDays,
+  CheckCircle2,
+  ClipboardCheck,
+  Clock3,
+  Database,
+  FileWarning,
+  Gauge,
+  RefreshCw,
+  Route,
+  ShieldAlert,
+  Sparkles,
+  TimerReset,
+  Users,
+  Wrench,
+} from "lucide-react";
+import { toast } from "sonner";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Progress } from "@/components/ui/progress";
+import { Skeleton } from "@/components/ui/skeleton";
+import { supabase } from "@/integrations/supabase/client";
+import { useOperationsDashboard } from "@/hooks/useOperationsDashboard";
+import type { FreshnessItem } from "@/lib/operationsDashboard";
 
-type GcDocData = {
-  gc_orcamento_id?: string;
-  gc_orcamento_codigo?: string;
-  gc_os_id?: string;
-  gc_os_codigo?: string;
-  gc_cliente: string;
-  gc_situacao: string;
-  gc_situacao_id: string;
-  gc_cor_situacao: string;
-  gc_valor_total: string;
-  gc_vendedor: string;
-  gc_data: string;
-  gc_data_saida?: string;
-  gc_link: string;
+const number = (value: number) => new Intl.NumberFormat("pt-BR").format(value || 0);
+const decimal = (value: number) => new Intl.NumberFormat("pt-BR", { maximumFractionDigits: 1 }).format(value || 0);
+const percent = (part: number, total: number) => (total > 0 ? Math.round((part / total) * 100) : 0);
+
+type Tone = "neutral" | "success" | "warning" | "danger" | "info";
+
+const toneClasses: Record<Tone, string> = {
+  neutral: "border-border bg-card",
+  success: "border-emerald-200/80 bg-emerald-50/60 dark:border-emerald-900 dark:bg-emerald-950/20",
+  warning: "border-amber-200/80 bg-amber-50/60 dark:border-amber-900 dark:bg-amber-950/20",
+  danger: "border-rose-200/80 bg-rose-50/60 dark:border-rose-900 dark:bg-rose-950/20",
+  info: "border-blue-200/80 bg-blue-50/60 dark:border-blue-900 dark:bg-blue-950/20",
 };
 
-type KanbanItem = {
-  auvo_task_id: string;
-  auvo_link: string;
-  cliente: string;
-  tecnico: string;
-  data_tarefa: string;
-  orientacao: string;
-  status_auvo: string;
-  questionario_respostas: { question: string; reply: string }[];
-  orcamento_realizado: boolean;
-  os_realizada: boolean;
-  gc_orcamento: GcDocData | null;
-  gc_os: GcDocData | null;
-};
+function HighlightCard({
+  label,
+  value,
+  detail,
+  icon: Icon,
+  tone = "neutral",
+}: {
+  label: string;
+  value: string;
+  detail: string;
+  icon: typeof Activity;
+  tone?: Tone;
+}) {
+  return (
+    <Card className={`${toneClasses[tone]} shadow-sm`}>
+      <CardContent className="p-5">
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <p className="text-sm font-medium text-muted-foreground">{label}</p>
+            <p className="mt-2 text-3xl font-bold tracking-tight text-foreground">{value}</p>
+            <p className="mt-1 text-xs leading-relaxed text-muted-foreground">{detail}</p>
+          </div>
+          <div className="rounded-xl border bg-background/80 p-2.5 shadow-sm">
+            <Icon className="h-5 w-5 text-foreground" />
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
 
-const COLORS = [
-  "hsl(142, 71%, 45%)", "hsl(217, 91%, 60%)", "hsl(38, 92%, 50%)",
-  "hsl(0, 84%, 60%)", "hsl(262, 83%, 58%)", "hsl(180, 70%, 45%)",
-  "hsl(330, 80%, 55%)", "hsl(45, 93%, 47%)", "hsl(190, 90%, 50%)"
-];
+function MetricLine({ label, value, emphasis = false }: { label: string; value: string | number; emphasis?: boolean }) {
+  return (
+    <div className="flex items-center justify-between gap-4 border-b border-border/60 py-2.5 last:border-0">
+      <span className="text-sm text-muted-foreground">{label}</span>
+      <span className={`text-sm tabular-nums ${emphasis ? "font-bold text-foreground" : "font-semibold text-foreground"}`}>{value}</span>
+    </div>
+  );
+}
 
-const pieColors = ["hsl(38, 92%, 50%)", "hsl(142, 71%, 45%)", "hsl(217, 91%, 60%)", "hsl(262, 83%, 58%)"];
+function OperationCard({
+  title,
+  description,
+  icon: Icon,
+  route,
+  children,
+}: {
+  title: string;
+  description: string;
+  icon: typeof Activity;
+  route: string;
+  children: React.ReactNode;
+}) {
+  const navigate = useNavigate();
+  return (
+    <Card className="flex h-full flex-col shadow-sm transition-shadow hover:shadow-md">
+      <CardHeader className="pb-3">
+        <div className="flex items-start justify-between gap-3">
+          <div className="flex gap-3">
+            <div className="mt-0.5 rounded-xl bg-primary/10 p-2.5 text-primary">
+              <Icon className="h-5 w-5" />
+            </div>
+            <div>
+              <CardTitle className="text-base">{title}</CardTitle>
+              <CardDescription className="mt-1 text-xs leading-relaxed">{description}</CardDescription>
+            </div>
+          </div>
+          <Button variant="ghost" size="icon" className="shrink-0" onClick={() => navigate(route)} aria-label={`Abrir ${title}`}>
+            <ArrowRight className="h-4 w-4" />
+          </Button>
+        </div>
+      </CardHeader>
+      <CardContent className="flex-1 pt-0">{children}</CardContent>
+    </Card>
+  );
+}
 
-const fmtBRL = (v: number) => v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+function FreshnessRow({ item }: { item: FreshnessItem }) {
+  const styles = {
+    healthy: { dot: "bg-emerald-500", badge: "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900 dark:bg-emerald-950 dark:text-emerald-300", label: "Atualizado" },
+    attention: { dot: "bg-amber-500", badge: "border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-300", label: "Verificar" },
+    error: { dot: "bg-rose-500", badge: "border-rose-200 bg-rose-50 text-rose-700 dark:border-rose-900 dark:bg-rose-950 dark:text-rose-300", label: "Falhou" },
+    unknown: { dot: "bg-slate-400", badge: "", label: "Sem registro" },
+  }[item.status];
 
+  const relative = item.timestamp
+    ? formatDistanceToNow(new Date(item.timestamp), { addSuffix: true, locale: ptBR })
+    : "sem data disponível";
 
-function computeMetrics(items: KanbanItem[], monthItems: KanbanItem[], source: "orc" | "exec") {
-  const total = items.length;
-
-  const comMatch = source === "orc"
-    ? items.filter((i) => i.orcamento_realizado)
-    : items.filter((i) => i.os_realizada);
-  const comOs = items.filter((i) => i.os_realizada);
-  const semMatch = source === "orc"
-    ? items.filter((i) => !i.orcamento_realizado && !i.os_realizada)
-    : items.filter((i) => !i.os_realizada);
-
-  const valorMatch = comMatch.reduce((acc, i) => {
-    if (source === "orc") return acc + parseFloat(i.gc_orcamento?.gc_valor_total || "0");
-    return acc + parseFloat(i.gc_os?.gc_valor_total || "0");
-  }, 0);
-  const valorOs = comOs.reduce((acc, i) => acc + parseFloat(i.gc_os?.gc_valor_total || "0"), 0);
-
-  // Monthly
-  const mesComMatch = source === "orc"
-    ? monthItems.filter((i) => i.orcamento_realizado)
-    : monthItems.filter((i) => i.os_realizada);
-  const mesSemMatch = source === "orc"
-    ? monthItems.filter((i) => !i.orcamento_realizado && !i.os_realizada)
-    : monthItems.filter((i) => !i.os_realizada);
-  const mesValorMatch = mesComMatch.reduce((acc, i) => {
-    if (source === "orc") return acc + parseFloat(i.gc_orcamento?.gc_valor_total || "0");
-    return acc + parseFloat(i.gc_os?.gc_valor_total || "0");
-  }, 0);
-
-  // By situation — deduplicate by GC document ID to avoid counting the same OS/Orç multiple times
-  const situacaoMap: Record<string, { count: number; valor: number; cor: string }> = {};
-  const seenDocIds = new Set<string>();
-  for (const item of comMatch) {
-    const doc = source === "orc" ? item.gc_orcamento : item.gc_os;
-    if (!doc) continue;
-    const docId = source === "orc" ? (doc.gc_orcamento_id || "") : (doc.gc_os_id || "");
-    if (!docId || seenDocIds.has(docId)) continue;
-    seenDocIds.add(docId);
-    const sit = doc.gc_situacao || "Sem situação";
-    const cor = doc.gc_cor_situacao || "#888";
-    if (!situacaoMap[sit]) situacaoMap[sit] = { count: 0, valor: 0, cor };
-    situacaoMap[sit].count++;
-    situacaoMap[sit].valor += parseFloat(doc.gc_valor_total || "0");
-  }
-
-  // By technician — green = has match, yellow = no match
-  const tecnicoMap: Record<string, { total: number; comMatch: number; valorMatch: number }> = {};
-  for (const item of items) {
-    const t = item.tecnico || "Sem técnico";
-    if (!tecnicoMap[t]) tecnicoMap[t] = { total: 0, comMatch: 0, valorMatch: 0 };
-    tecnicoMap[t].total++;
-    const hasMatch = source === "orc"
-      ? (item.orcamento_realizado || item.os_realizada)
-      : item.os_realizada;
-    if (hasMatch) {
-      tecnicoMap[t].comMatch++;
-      const valorOrc = parseFloat(item.gc_orcamento?.gc_valor_total || "0");
-      const valorOs = parseFloat(item.gc_os?.gc_valor_total || "0");
-      tecnicoMap[t].valorMatch += valorOrc + valorOs;
-    }
-  }
-
-  const taxaMatch = total > 0 ? ((comMatch.length / total) * 100).toFixed(1) : "0";
-
-  return {
-    total, comMatch: comMatch.length, semMatch: semMatch.length,
-    valorMatch, valorOs,
-    mesTotal: monthItems.length, mesComMatch: mesComMatch.length,
-    mesSemMatch: mesSemMatch.length, mesValorMatch,
-    situacaoMap, tecnicoMap, taxaMatch,
-  };
+  return (
+    <div className="flex items-center gap-3 rounded-lg border bg-background px-3 py-3">
+      <span className={`h-2.5 w-2.5 shrink-0 rounded-full ${styles.dot}`} />
+      <div className="min-w-0 flex-1">
+        <div className="flex flex-wrap items-center gap-2">
+          <p className="text-sm font-semibold text-foreground">{item.label}</p>
+          <Badge variant="outline" className={`h-5 text-[10px] ${styles.badge}`}>{styles.label}</Badge>
+        </div>
+        <p className="truncate text-xs text-muted-foreground">{item.detail}</p>
+      </div>
+      <span className="shrink-0 text-right text-xs text-muted-foreground">{relative}</span>
+    </div>
+  );
 }
 
 export default function Index() {
+  const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const today = new Date();
-  const [dateRange, setDateRange] = useState({
-    from: startOfYear(today),
-    to: today,
-  });
-  const [selectedMonth, setSelectedMonth] = useState(today);
-  const monthRange = useMemo(() => ({
-    from: startOfMonth(selectedMonth),
-    to: endOfMonth(selectedMonth),
-  }), [selectedMonth]);
+  const { data, isLoading, isFetching, error, refetch } = useOperationsDashboard();
+  const [isSyncing, setIsSyncing] = useState(false);
+  const now = new Date();
+  const monthLabel = format(now, "MMMM 'de' yyyy", { locale: ptBR });
 
-  // Fetch orçamentos data
-  const { data: orcData, isLoading: orcLoading, refetch: refetchOrc } = useQuery({
-    queryKey: ["dash-orc", format(dateRange.from, "yyyy-MM-dd"), format(dateRange.to, "yyyy-MM-dd")],
-    queryFn: async () => {
-      const { data, error } = await supabase.functions.invoke("budget-kanban", {
-        body: {
-          mode: "cache",
-          start_date: format(dateRange.from, "yyyy-MM-dd"),
-          end_date: format(dateRange.to, "yyyy-MM-dd"),
-        },
-      });
-      if (error) throw error;
-      return data as { items: KanbanItem[]; ultimo_sync?: string };
-    },
-    staleTime: 60_000,
-  });
+  const priorities = useMemo(() => {
+    if (!data) return [];
+    return [
+      {
+        label: "Análises de alta prioridade",
+        value: data.analyses.critical + data.analyses.high,
+        detail: `${data.analyses.critical} críticas e ${data.analyses.high} altas ainda abertas`,
+        route: "/financeiro/analises-operacionais",
+        tone: "danger" as Tone,
+        icon: ShieldAlert,
+      },
+      {
+        label: "Preventivas vencidas",
+        value: data.preventive.overdue,
+        detail: `${data.preventive.dueNext30Days} vencem nos próximos 30 dias`,
+        route: "/financeiro/equipamentos-preventivos",
+        tone: "danger" as Tone,
+        icon: TimerReset,
+      },
+      {
+        label: "Orçamentos sem preenchimento",
+        value: data.budget.missingForm,
+        detail: `${data.budget.toDo} tarefas ainda estão na coluna A fazer`,
+        route: "/financeiro/kanban-orcamentos",
+        tone: "warning" as Tone,
+        icon: FileWarning,
+      },
+      {
+        label: "Finalizadas sem questionário",
+        value: data.month.finishedWithoutQuestionnaire,
+        detail: "Qualidade e rastreabilidade comprometidas no mês",
+        route: "/financeiro/acompanhamento",
+        tone: "warning" as Tone,
+        icon: ClipboardCheck,
+      },
+      {
+        label: "Check-in sem checkout",
+        value: data.month.checkInWithoutCheckout,
+        detail: "Apontamentos que precisam ser encerrados ou conferidos",
+        route: "/financeiro/acompanhamento",
+        tone: "warning" as Tone,
+        icon: Clock3,
+      },
+      {
+        label: "Oficina aguardando OS",
+        value: data.workshop.awaitingOs,
+        detail: `${data.workshop.active} equipamentos seguem no fluxo ativo`,
+        route: "/financeiro/kanban-oficina",
+        tone: "info" as Tone,
+        icon: Wrench,
+      },
+    ].filter((item) => item.value > 0);
+  }, [data]);
 
-  // Fetch execução data from central mirror table (all tasks + OS)
-  const { data: execData, isLoading: execLoading, refetch: refetchExec } = useQuery({
-    queryKey: ["dash-exec", format(dateRange.from, "yyyy-MM-dd"), format(dateRange.to, "yyyy-MM-dd")],
-    queryFn: async () => {
-      const startDate = format(dateRange.from, "yyyy-MM-dd");
-      const endDate = format(dateRange.to, "yyyy-MM-dd");
-      const pageSize = 1000;
-      let from = 0;
-      const rows: any[] = [];
+  const handleSync = async () => {
+    const today = format(new Date(), "yyyy-MM-dd");
+    const startDate = format(startOfMonth(new Date()), "yyyy-MM-dd");
+    setIsSyncing(true);
+    const toastId = toast.loading("Sincronizando Central Auvo e kanban de orçamentos...");
 
-      while (true) {
-        const { data, error } = await supabase
-          .from("tarefas_central")
-          .select("auvo_task_id,auvo_link,cliente,tecnico,data_tarefa,orientacao,status_auvo,questionario_respostas,orcamento_realizado,os_realizada,gc_orcamento_id,gc_orcamento_codigo,gc_orc_cliente,gc_orc_situacao,gc_orc_situacao_id,gc_orc_cor_situacao,gc_orc_valor_total,gc_orc_vendedor,gc_orc_data,gc_orc_link,gc_os_id,gc_os_codigo,gc_os_cliente,gc_os_situacao,gc_os_situacao_id,gc_os_cor_situacao,gc_os_valor_total,gc_os_vendedor,gc_os_data,gc_os_data_saida,gc_os_link,atualizado_em")
-          .gte("data_tarefa", startDate)
-          .lte("data_tarefa", endDate)
-          .order("data_tarefa", { ascending: false })
-          .range(from, from + pageSize - 1);
+    try {
+      const [central, budget] = await Promise.all([
+        supabase.functions.invoke("central-sync", {
+          body: { start_date: startDate, end_date: today, wait: true },
+        }),
+        supabase.functions.invoke("budget-kanban", {
+          body: { mode: "sync", start_date: startDate, end_date: today },
+        }),
+      ]);
 
-        if (error) throw error;
-        if (!data?.length) break;
-
-        rows.push(...data);
-        if (data.length < pageSize) break;
-        from += pageSize;
+      if (central.error || central.data?.error || central.data?.success === false) {
+        throw new Error(central.data?.error || central.error?.message || "Falha na Central Auvo");
+      }
+      if (budget.error || budget.data?.error || budget.data?.success === false) {
+        throw new Error(budget.data?.error || budget.error?.message || "Falha no kanban de orçamentos");
       }
 
-      const items: KanbanItem[] = rows.map((row: any) => ({
-        auvo_task_id: String(row.auvo_task_id || ""),
-        auvo_link: String(row.auvo_link || ""),
-        cliente: String(row.cliente || "Cliente não identificado"),
-        tecnico: String(row.tecnico || "Sem técnico"),
-        data_tarefa: String(row.data_tarefa || ""),
-        orientacao: String(row.orientacao || ""),
-        status_auvo: String(row.status_auvo || ""),
-        questionario_respostas: Array.isArray(row.questionario_respostas)
-          ? row.questionario_respostas
-          : [],
-        orcamento_realizado: !!row.orcamento_realizado,
-        os_realizada: !!row.os_realizada,
-        gc_orcamento: row.gc_orcamento_id
-          ? {
-              gc_orcamento_id: String(row.gc_orcamento_id || ""),
-              gc_orcamento_codigo: String(row.gc_orcamento_codigo || ""),
-              gc_os_id: "",
-              gc_os_codigo: "",
-              gc_cliente: String(row.gc_orc_cliente || ""),
-              gc_situacao: String(row.gc_orc_situacao || ""),
-              gc_situacao_id: String(row.gc_orc_situacao_id || ""),
-              gc_cor_situacao: String(row.gc_orc_cor_situacao || ""),
-              gc_valor_total: String(row.gc_orc_valor_total ?? "0"),
-              gc_vendedor: String(row.gc_orc_vendedor || ""),
-              gc_data: String(row.gc_orc_data || ""),
-              gc_link: String(row.gc_orc_link || ""),
-            }
-          : null,
-        gc_os: row.gc_os_id
-          ? {
-              gc_orcamento_id: "",
-              gc_orcamento_codigo: "",
-              gc_os_id: String(row.gc_os_id || ""),
-              gc_os_codigo: String(row.gc_os_codigo || ""),
-              gc_cliente: String(row.gc_os_cliente || ""),
-              gc_situacao: String(row.gc_os_situacao || ""),
-              gc_situacao_id: String(row.gc_os_situacao_id || ""),
-              gc_cor_situacao: String(row.gc_os_cor_situacao || ""),
-              gc_valor_total: String(row.gc_os_valor_total ?? "0"),
-              gc_vendedor: String(row.gc_os_vendedor || ""),
-              gc_data: String(row.gc_os_data_saida || row.gc_os_data || ""),
-              gc_data_saida: String(row.gc_os_data_saida || ""),
-              gc_link: String(row.gc_os_link || ""),
-            }
-          : null,
-      }));
-
-      const ultimo_sync = rows
-        .map((row) => row.atualizado_em)
-        .filter(Boolean)
-        .sort()
-        .at(-1);
-
-      return { items, ultimo_sync } as { items: KanbanItem[]; ultimo_sync?: string };
-    },
-    staleTime: 60_000,
-  });
-
-  const [isSyncing, setIsSyncing] = useState(false);
-  const [syncStatus, setSyncStatus] = useState("");
-  const handleSync = async () => {
-    setIsSyncing(true);
-    setSyncStatus("Iniciando sincronização...");
-    try {
-      const kanbanPromise = supabase.functions.invoke("budget-kanban", {
-        body: {
-          mode: "sync",
-          start_date: format(dateRange.from, "yyyy-MM-dd"),
-          end_date: format(dateRange.to, "yyyy-MM-dd"),
-        },
-      }).then(() => setSyncStatus(prev => prev.includes("Central") ? "Tudo pronto!" : "Kanban ✓ — Aguardando Central..."));
-
-      const centralPromise = supabase.functions.invoke("central-sync")
-        .then(() => setSyncStatus(prev => prev.includes("Kanban") ? "Tudo pronto!" : "Central ✓ — Aguardando Kanban..."));
-
-      await Promise.all([kanbanPromise, centralPromise]);
-      setSyncStatus("Atualizando dados...");
-      toast.success("Dados sincronizados (Kanban + Central)!");
-      await Promise.all([refetchOrc(), refetchExec()]);
-      queryClient.invalidateQueries({ queryKey: ["last-sync-timestamp"] });
-      setSyncStatus("");
-    } catch {
-      toast.warning("Sincronização em processamento...");
-      setSyncStatus("");
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["operations-dashboard"] }),
+        queryClient.invalidateQueries({ queryKey: ["last-sync-timestamp"] }),
+      ]);
+      await refetch();
+      toast.success("Bases operacionais atualizadas", { id: toastId });
+    } catch (syncError) {
+      toast.error("A sincronização não concluiu", {
+        id: toastId,
+        description: syncError instanceof Error ? syncError.message : "Tente novamente em alguns instantes.",
+      });
     } finally {
       setIsSyncing(false);
     }
   };
 
-  const isLoading = orcLoading || execLoading;
-
-  const orcItems = useMemo(() => orcData?.items || [], [orcData]);
-  const execItems = useMemo(() => execData?.items || [], [execData]);
-
-  const filterMonth = (items: KanbanItem[]) =>
-    items.filter((item) => {
-      if (!item.data_tarefa) return false;
-      try { return isWithinInterval(parseISO(item.data_tarefa), { start: monthRange.from, end: monthRange.to }); }
-      catch { return false; }
-    });
-
-  const orcMonthItems = useMemo(() => filterMonth(orcItems), [orcItems, monthRange]);
-  const execMonthItems = useMemo(() => filterMonth(execItems), [execItems, monthRange]);
-
-  const orcMetrics = useMemo(() => computeMetrics(orcItems, orcMonthItems, "orc"), [orcItems, orcMonthItems]);
-  const execMetrics = useMemo(() => computeMetrics(execItems, execMonthItems, "exec"), [execItems, execMonthItems]);
-
-  // Month-only metrics for charts and table
-  const orcMonthMetrics = useMemo(() => computeMetrics(orcMonthItems, orcMonthItems, "orc"), [orcMonthItems]);
-  const execMonthMetrics = useMemo(() => computeMetrics(execMonthItems, execMonthItems, "exec"), [execMonthItems]);
-
-  // Combined totals
-  const combined = useMemo(() => ({
-    totalTarefas: orcMetrics.total + execMetrics.total,
-    valorTotal: orcMetrics.valorMatch + execMetrics.valorMatch,
-    mesTotalTarefas: orcMetrics.mesTotal + execMetrics.mesTotal,
-    mesValorTotal: orcMetrics.mesValorMatch + execMetrics.mesValorMatch,
-  }), [orcMetrics, execMetrics]);
-
-  const renderKPIs = (m: ReturnType<typeof computeMetrics>, label: { match: string; sem: string }) => (
-    <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
-      <Card>
-        <CardContent className="pt-4 pb-3 px-4">
-          <div className="flex items-center gap-2 text-muted-foreground text-xs mb-1">
-            <ClipboardList className="h-3.5 w-3.5" /> Total Tarefas
-          </div>
-          <p className="text-2xl font-bold text-foreground">{m.total}</p>
-        </CardContent>
-      </Card>
-      <Card>
-        <CardContent className="pt-4 pb-3 px-4">
-          <div className="flex items-center gap-2 text-xs mb-1 text-amber-600">
-            <XCircle className="h-3.5 w-3.5" /> {label.sem}
-          </div>
-          <p className="text-2xl font-bold text-amber-600">{m.semMatch}</p>
-          <p className="text-[10px] text-muted-foreground">{m.total > 0 ? ((m.semMatch / m.total) * 100).toFixed(0) : 0}%</p>
-        </CardContent>
-      </Card>
-      <Card>
-        <CardContent className="pt-4 pb-3 px-4">
-          <div className="flex items-center gap-2 text-xs mb-1 text-emerald-600">
-            <CheckCircle2 className="h-3.5 w-3.5" /> {label.match}
-          </div>
-          <p className="text-2xl font-bold text-emerald-600">{m.comMatch}</p>
-          <p className="text-[10px] text-muted-foreground">{fmtBRL(m.valorMatch)}</p>
-        </CardContent>
-      </Card>
-      <Card>
-        <CardContent className="pt-4 pb-3 px-4">
-          <div className="flex items-center gap-2 text-xs mb-1 text-primary">
-            <TrendingUp className="h-3.5 w-3.5" /> Taxa
-          </div>
-          <p className="text-2xl font-bold text-primary">{m.taxaMatch}%</p>
-          <p className="text-[10px] text-muted-foreground">Match GC</p>
-        </CardContent>
-      </Card>
-      <Card>
-        <CardContent className="pt-4 pb-3 px-4">
-          <div className="flex items-center gap-2 text-xs mb-1 text-foreground">
-            <DollarSign className="h-3.5 w-3.5" /> Valor Total
-          </div>
-          <p className="text-xl font-bold text-foreground">{fmtBRL(m.valorMatch)}</p>
-        </CardContent>
-      </Card>
-    </div>
-  );
-
-  const renderMonthKPIs = (m: ReturnType<typeof computeMetrics>, label: { match: string; sem: string }) => (
-    <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-      <Card className="border-l-4 border-l-foreground/20">
-        <CardContent className="pt-3 pb-2 px-4">
-          <p className="text-xs text-muted-foreground mb-1">Tarefas no mês</p>
-          <p className="text-xl font-bold">{m.mesTotal}</p>
-        </CardContent>
-      </Card>
-      <Card className="border-l-4 border-l-amber-400">
-        <CardContent className="pt-3 pb-2 px-4">
-          <p className="text-xs text-amber-600 mb-1">{label.sem}</p>
-          <p className="text-xl font-bold text-amber-600">{m.mesSemMatch}</p>
-        </CardContent>
-      </Card>
-      <Card className="border-l-4 border-l-emerald-500">
-        <CardContent className="pt-3 pb-2 px-4">
-          <p className="text-xs text-emerald-600 mb-1">{label.match}</p>
-          <p className="text-xl font-bold text-emerald-600">{m.mesComMatch}</p>
-          <p className="text-[10px] text-muted-foreground">{fmtBRL(m.mesValorMatch)}</p>
-        </CardContent>
-      </Card>
-      <Card className="border-l-4 border-l-primary">
-        <CardContent className="pt-3 pb-2 px-4">
-          <p className="text-xs text-primary mb-1">Valor mês</p>
-          <p className="text-xl font-bold text-primary">{fmtBRL(m.mesValorMatch)}</p>
-        </CardContent>
-      </Card>
-    </div>
-  );
-
-  const renderSituacaoChart = (m: ReturnType<typeof computeMetrics>, title: string) => {
-    const chartData = Object.entries(m.situacaoMap)
-      .sort(([, a], [, b]) => b.valor - a.valor)
-      .map(([name, d]) => ({ name, valor: Math.round(d.valor * 100) / 100, count: d.count, cor: d.cor }));
-
+  if (isLoading) {
     return (
-      <Card>
-        <CardHeader className="pb-2">
-          <CardTitle className="text-sm flex items-center gap-2">
-            <BarChart3 className="h-4 w-4" /> {title}
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          {chartData.length > 0 ? (
-            <ResponsiveContainer width="100%" height={250}>
-              <BarChart data={chartData} layout="vertical" margin={{ left: 10, right: 30 }}>
-                <CartesianGrid strokeDasharray="3 3" horizontal={false} />
-                <XAxis type="number" tickFormatter={(v) => `R$${(v / 1000).toFixed(0)}k`} />
-                <YAxis type="category" dataKey="name" width={120} tick={{ fontSize: 11 }} />
-                <Tooltip formatter={(v: number) => fmtBRL(v)} />
-                <Bar dataKey="valor" radius={[0, 4, 4, 0]}>
-                  {chartData.map((entry, i) => (
-                    <Cell key={i} fill={entry.cor || COLORS[i % COLORS.length]} />
-                  ))}
-                </Bar>
-              </BarChart>
-            </ResponsiveContainer>
-          ) : (
-            <p className="text-muted-foreground text-sm text-center py-8">Sem dados</p>
-          )}
-        </CardContent>
-      </Card>
+      <div className="min-h-screen space-y-6 bg-muted/30 p-4 md:p-6 xl:p-8">
+        <div className="space-y-2"><Skeleton className="h-9 w-72" /><Skeleton className="h-5 w-[32rem] max-w-full" /></div>
+        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">{[0, 1, 2, 3].map((item) => <Skeleton key={item} className="h-40 rounded-xl" />)}</div>
+        <Skeleton className="h-72 rounded-xl" />
+        <div className="grid gap-4 lg:grid-cols-2 xl:grid-cols-3">{[0, 1, 2, 3, 4, 5].map((item) => <Skeleton key={item} className="h-72 rounded-xl" />)}</div>
+      </div>
     );
-  };
+  }
 
-  const renderTecnicoChart = (m: ReturnType<typeof computeMetrics>, labels: { match: string; sem: string }) => {
-    const chartData = Object.entries(m.tecnicoMap)
-      .sort(([, a], [, b]) => b.valorMatch - a.valorMatch)
-      .slice(0, 10)
-      .map(([name, d]) => ({
-        name: name.length > 15 ? name.substring(0, 15) + "..." : name,
-        [labels.match]: d.comMatch,
-        [labels.sem]: d.total - d.comMatch,
-      }));
-
+  if (error || !data) {
     return (
-      <Card>
-        <CardHeader className="pb-2">
-          <CardTitle className="text-sm">Tarefas por Técnico</CardTitle>
-        </CardHeader>
-        <CardContent>
-          {chartData.length > 0 ? (
-            <ResponsiveContainer width="100%" height={300}>
-              <BarChart data={chartData} margin={{ bottom: 20 }}>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                <XAxis dataKey="name" angle={-25} textAnchor="end" height={60} tick={{ fontSize: 11 }} />
-                <YAxis />
-                <Tooltip />
-                <Legend />
-                <Bar dataKey={labels.sem} stackId="a" fill="hsl(38, 92%, 50%)" />
-                <Bar dataKey={labels.match} stackId="a" fill="hsl(142, 71%, 45%)" radius={[4, 4, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
-          ) : (
-            <p className="text-muted-foreground text-sm text-center py-8">Sem dados</p>
-          )}
-        </CardContent>
-      </Card>
+      <div className="flex min-h-[60vh] items-center justify-center p-6">
+        <Card className="w-full max-w-lg border-rose-200">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2"><AlertCircle className="h-5 w-5 text-rose-600" /> Não foi possível montar a central</CardTitle>
+            <CardDescription>{error instanceof Error ? error.message : "Falha ao consultar os dados operacionais."}</CardDescription>
+          </CardHeader>
+          <CardContent><Button onClick={() => refetch()}><RefreshCw className="mr-2 h-4 w-4" /> Tentar novamente</Button></CardContent>
+        </Card>
+      </div>
     );
-  };
+  }
 
-  const renderSituacaoTable = (m: ReturnType<typeof computeMetrics>) => (
-    <Card>
-      <CardHeader className="pb-2">
-        <CardTitle className="text-sm">Detalhamento por Situação</CardTitle>
-      </CardHeader>
-      <CardContent>
-        <div className="relative w-full overflow-auto">
-          <table className="w-full caption-bottom text-sm">
-            <thead>
-              <tr className="border-b">
-                <th className="h-9 px-3 text-left font-medium text-muted-foreground text-xs">Situação</th>
-                <th className="h-9 px-3 text-right font-medium text-muted-foreground text-xs">Qtd</th>
-                <th className="h-9 px-3 text-right font-medium text-muted-foreground text-xs">Valor Total</th>
-                <th className="h-9 px-3 text-right font-medium text-muted-foreground text-xs">Ticket Médio</th>
-                <th className="h-9 px-3 text-right font-medium text-muted-foreground text-xs">%</th>
-              </tr>
-            </thead>
-            <tbody>
-              {Object.entries(m.situacaoMap)
-                .sort(([, a], [, b]) => b.valor - a.valor)
-                .map(([sit, data]) => (
-                  <tr key={sit} className="border-b hover:bg-muted/50">
-                    <td className="p-3">
-                      <div className="flex items-center gap-2">
-                        <div className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: data.cor }} />
-                        <span className="font-medium text-sm">{sit}</span>
-                      </div>
-                    </td>
-                    <td className="p-3 text-right text-sm">{data.count}</td>
-                    <td className="p-3 text-right font-medium text-sm">{fmtBRL(data.valor)}</td>
-                    <td className="p-3 text-right text-muted-foreground text-sm">
-                      {fmtBRL(data.count > 0 ? data.valor / data.count : 0)}
-                    </td>
-                    <td className="p-3 text-right text-muted-foreground text-sm">
-                      {m.valorMatch > 0 ? ((data.valor / m.valorMatch) * 100).toFixed(1) : 0}%
-                    </td>
-                  </tr>
-                ))}
-              {Object.keys(m.situacaoMap).length === 0 && (
-                <tr><td colSpan={5} className="p-3 text-center text-muted-foreground text-sm">Sem dados</td></tr>
-              )}
-            </tbody>
-            {Object.keys(m.situacaoMap).length > 0 && (
-              <tfoot>
-                <tr className="border-t bg-muted/50 font-medium">
-                  <td className="p-3 text-sm">Total</td>
-                  <td className="p-3 text-right text-sm">{m.comMatch}</td>
-                  <td className="p-3 text-right text-sm">{fmtBRL(m.valorMatch)}</td>
-                  <td className="p-3 text-right text-muted-foreground text-sm">
-                    {fmtBRL(m.comMatch > 0 ? m.valorMatch / m.comMatch : 0)}
-                  </td>
-                  <td className="p-3 text-right text-sm">100%</td>
-                </tr>
-              </tfoot>
-            )}
-          </table>
-        </div>
-      </CardContent>
-    </Card>
-  );
-
-  const orcLabels = { match: "Com Orçamento", sem: "Sem Orçamento" };
-  const execLabels = { match: "Com OS", sem: "Sem OS" };
+  const completionRate = percent(data.month.finished, data.month.total);
+  const gcCoverage = percent(data.month.withOs, data.month.total);
 
   return (
-    <div>
-      {/* Header */}
-      <div className="border-b bg-card px-6 py-4">
-        <div className="flex items-center justify-between">
+    <div className="min-h-screen bg-muted/30 p-4 md:p-6 xl:p-8">
+      <div className="mx-auto max-w-[1600px] space-y-7">
+        <header className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
           <div>
-            <h1 className="text-lg font-semibold text-foreground">Dashboard</h1>
-            <p className="text-xs text-muted-foreground">
-              Orçamentos e Execução de Serviços — Auvo × GestãoClick
-            </p>
-            <LastSyncBadge className="mt-0.5" />
-          </div>
-          <div className="flex items-center gap-3">
-            <Popover>
-              <PopoverTrigger asChild>
-                <Button variant="outline" size="sm" className="gap-2 text-xs h-8">
-                  <CalendarIcon className="h-3.5 w-3.5" />
-                  {format(dateRange.from, "dd/MM/yy")}
-                </Button>
-              </PopoverTrigger>
-              <PopoverContent className="w-auto p-0" align="end">
-                <Calendar
-                  mode="single"
-                  selected={dateRange.from}
-                  onSelect={(d) => {
-                    if (!d) return;
-                    setDateRange((prev) => ({
-                      from: d,
-                      to: prev.to >= d ? prev.to : d,
-                    }));
-                  }}
-                  locale={ptBR}
-                  className="p-3 pointer-events-auto"
-                />
-              </PopoverContent>
-            </Popover>
-            <span className="text-xs text-muted-foreground">até</span>
-            <Popover>
-              <PopoverTrigger asChild>
-                <Button variant="outline" size="sm" className="gap-2 text-xs h-8">
-                  <CalendarIcon className="h-3.5 w-3.5" />
-                  {format(dateRange.to, "dd/MM/yy")}
-                </Button>
-              </PopoverTrigger>
-              <PopoverContent className="w-auto p-0" align="end">
-                <Calendar
-                  mode="single"
-                  selected={dateRange.to}
-                  onSelect={(d) => {
-                    if (!d) return;
-                    setDateRange((prev) => ({
-                      from: prev.from <= d ? prev.from : d,
-                      to: d,
-                    }));
-                  }}
-                  locale={ptBR}
-                  className="p-3 pointer-events-auto"
-                />
-              </PopoverContent>
-            </Popover>
-            <div className="flex items-center gap-2">
-              <Button variant="outline" size="sm" onClick={handleSync} disabled={isSyncing} className="h-8 text-xs">
-                <RefreshCw className={`h-3.5 w-3.5 mr-1.5 ${isSyncing ? "animate-spin" : ""}`} />
-                {isSyncing ? "Sincronizando..." : "Sincronizar"}
-              </Button>
-              {syncStatus && (
-                <span className="text-xs text-muted-foreground animate-pulse">{syncStatus}</span>
-              )}
+            <div className="mb-2 flex flex-wrap items-center gap-2">
+              <Badge variant="outline" className="bg-background"><Sparkles className="mr-1 h-3 w-3" /> Central de decisão</Badge>
+              <span className="text-xs capitalize text-muted-foreground">{monthLabel}</span>
             </div>
+            <h1 className="text-3xl font-bold tracking-tight text-foreground md:text-4xl">Operações Auvo ↔ GestãoClick</h1>
+            <p className="mt-2 max-w-3xl text-sm leading-relaxed text-muted-foreground md:text-base">
+              O que está acontecendo hoje, onde a operação travou e quais filas exigem ação — sem somar a mesma tarefa duas vezes.
+            </p>
           </div>
-        </div>
+          <div className="flex flex-wrap gap-2">
+            <Button variant="outline" onClick={() => refetch()} disabled={isFetching || isSyncing}>
+              <RefreshCw className={`mr-2 h-4 w-4 ${isFetching && !isSyncing ? "animate-spin" : ""}`} /> Recarregar painel
+            </Button>
+            <Button onClick={handleSync} disabled={isSyncing}>
+              <Database className={`mr-2 h-4 w-4 ${isSyncing ? "animate-pulse" : ""}`} /> {isSyncing ? "Sincronizando..." : "Sincronizar bases"}
+            </Button>
+          </div>
+        </header>
+
+        <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+          <HighlightCard
+            label="Agenda de hoje"
+            value={number(data.today.total)}
+            detail={`${data.today.open} abertas · ${data.today.inProgress} em curso · ${data.today.finished} finalizadas`}
+            icon={CalendarDays}
+            tone={data.today.unassigned > 0 ? "warning" : "info"}
+          />
+          <HighlightCard
+            label="Execução no mês"
+            value={`${completionRate}%`}
+            detail={`${data.month.finished} de ${data.month.total} tarefas encerradas`}
+            icon={Gauge}
+            tone={completionRate >= 70 ? "success" : "warning"}
+          />
+          <HighlightCard
+            label="Horas registradas"
+            value={`${decimal(data.month.hours)}h`}
+            detail={`${decimal(data.month.travelHours)}h em deslocamento · ${data.month.activeTechnicians} técnicos`}
+            icon={Clock3}
+          />
+          <HighlightCard
+            label="Alertas gerenciais"
+            value={number(data.analyses.critical + data.analyses.high)}
+            detail={`${data.analyses.critical} críticos · ${data.analyses.open} análises abertas no total`}
+            icon={ShieldAlert}
+            tone={data.analyses.critical + data.analyses.high > 0 ? "danger" : "success"}
+          />
+        </section>
+
+        <section>
+          <div className="mb-3 flex items-end justify-between gap-3">
+            <div>
+              <h2 className="text-xl font-bold tracking-tight">Prioridades agora</h2>
+              <p className="text-sm text-muted-foreground">Filas que merecem tratamento antes de virarem atraso, retrabalho ou perda de rastreabilidade.</p>
+            </div>
+            <Badge variant="outline" className="hidden bg-background sm:inline-flex">{priorities.length} frentes com ação</Badge>
+          </div>
+          <Card className="shadow-sm">
+            <CardContent className="grid gap-3 p-4 md:grid-cols-2 xl:grid-cols-3">
+              {priorities.map((item) => (
+                <button
+                  key={item.label}
+                  type="button"
+                  onClick={() => navigate(item.route)}
+                  className={`group flex items-center gap-3 rounded-xl border p-4 text-left transition-all hover:-translate-y-0.5 hover:shadow-sm ${toneClasses[item.tone]}`}
+                >
+                  <div className="rounded-lg bg-background/80 p-2 shadow-sm"><item.icon className="h-4 w-4" /></div>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center justify-between gap-3">
+                      <p className="truncate text-sm font-semibold">{item.label}</p>
+                      <span className="text-xl font-bold tabular-nums">{number(item.value)}</span>
+                    </div>
+                    <p className="mt-0.5 truncate text-xs text-muted-foreground">{item.detail}</p>
+                  </div>
+                  <ArrowRight className="h-4 w-4 shrink-0 text-muted-foreground transition-transform group-hover:translate-x-0.5" />
+                </button>
+              ))}
+            </CardContent>
+          </Card>
+        </section>
+
+        <section>
+          <div className="mb-3">
+            <h2 className="text-xl font-bold tracking-tight">Fluxo completo da operação</h2>
+            <p className="text-sm text-muted-foreground">Cada bloco abre diretamente a rotina responsável por aquele indicador.</p>
+          </div>
+          <div className="grid gap-4 lg:grid-cols-2 xl:grid-cols-3">
+            <OperationCard title="Agenda e campo" description="Carga de hoje e andamento das tarefas no Auvo." icon={Route} route="/financeiro/agenda-semanal">
+              <MetricLine label="Programadas hoje" value={number(data.today.total)} emphasis />
+              <MetricLine label="Abertas / em andamento" value={`${data.today.open} / ${data.today.inProgress}`} />
+              <MetricLine label="Pausadas" value={number(data.today.paused)} />
+              <MetricLine label="Sem técnico" value={number(data.today.unassigned)} />
+              <MetricLine label="Não atendidas no mês" value={number(data.month.missedActivities)} />
+            </OperationCard>
+
+            <OperationCard title="Execução e vínculo GC" description="Cobertura por OS e integridade dos apontamentos do mês." icon={BarChart3} route="/financeiro/dashboard-tecnicos">
+              <div className="mb-3 rounded-lg border bg-muted/30 p-3">
+                <div className="mb-2 flex justify-between text-xs"><span className="text-muted-foreground">Tarefas com OS vinculada</span><strong>{gcCoverage}%</strong></div>
+                <Progress value={gcCoverage} className="h-2" />
+              </div>
+              <MetricLine label="Com OS no GestãoClick" value={number(data.month.withOs)} />
+              <MetricLine label="Sem documento GC" value={number(data.month.withoutGc)} emphasis />
+              <MetricLine label="Com pendência registrada" value={number(data.month.withPendingIssue)} />
+              <MetricLine label="Check-in sem checkout" value={number(data.month.checkInWithoutCheckout)} />
+            </OperationCard>
+
+            <OperationCard title="Orçamentos" description="Backlog técnico, aprovação e geração de OS." icon={FileWarning} route="/financeiro/kanban-orcamentos">
+              <MetricLine label="Backlog aberto" value={number(data.budget.open)} emphasis />
+              <MetricLine label="Falta preenchimento" value={number(data.budget.missingForm)} />
+              <MetricLine label="A fazer" value={number(data.budget.toDo)} />
+              <MetricLine label="Aguardando aprovação" value={number(data.budget.awaitingApproval)} />
+              <MetricLine label="Aprovados / OS gerada" value={number(data.budget.osGenerated)} />
+            </OperationCard>
+
+            <OperationCard title="Follow-up comercial" description="Orçamentos esperando avanço no GestãoClick." icon={Users} route="/financeiro/kanban-followup">
+              <MetricLine label="Em acompanhamento" value={number(data.followup.open)} emphasis />
+              {data.followup.stages.slice(0, 4).map((stage) => (
+                <MetricLine key={stage.id} label={stage.label} value={number(stage.count)} />
+              ))}
+            </OperationCard>
+
+            <OperationCard title="Oficina" description="Equipamentos dentro do galpão e gargalos do fluxo." icon={Wrench} route="/financeiro/kanban-oficina">
+              <MetricLine label="Fluxo ativo" value={number(data.workshop.active)} emphasis />
+              <MetricLine label="Aguardando OS" value={number(data.workshop.awaitingOs)} />
+              <MetricLine label="Em orçamento" value={number(data.workshop.quotation)} />
+              <MetricLine label="Peças solicitadas" value={number(data.workshop.partsRequested)} />
+              <MetricLine label="Em execução" value={number(data.workshop.inProgress)} />
+            </OperationCard>
+
+            <OperationCard title="Preventivas" description="Cobertura da base instalada e próximos vencimentos." icon={TimerReset} route="/financeiro/equipamentos-preventivos">
+              <MetricLine label="Equipamentos monitorados" value={number(data.preventive.total)} emphasis />
+              <MetricLine label="Vencidos" value={number(data.preventive.overdue)} />
+              <MetricLine label="Vencem em até 30 dias" value={number(data.preventive.dueNext30Days)} />
+              <MetricLine label="Nunca atendidos" value={number(data.preventive.never)} />
+              <MetricLine label="Em dia" value={number(data.preventive.upToDate)} />
+            </OperationCard>
+          </div>
+        </section>
+
+        <section className="grid gap-4 xl:grid-cols-[1.1fr_0.9fr]">
+          <Card className="shadow-sm">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-lg"><AlertTriangle className="h-5 w-5 text-amber-500" /> Qualidade e risco operacional</CardTitle>
+              <CardDescription>Os indicadores abaixo não são volume: são pontos que podem invalidar medição, cobrança ou histórico.</CardDescription>
+            </CardHeader>
+            <CardContent className="grid gap-3 sm:grid-cols-2">
+              {[
+                ["Questionário ausente", data.month.finishedWithoutQuestionnaire, "tarefas finalizadas no mês"],
+                ["Check-in em aberto", data.month.checkInWithoutCheckout, "sem checkout correspondente"],
+                ["Sem documento GC", data.month.withoutGc, "tarefas sem OS nem orçamento"],
+                ["Sem próxima preventiva", data.preventive.withoutNextDate, "equipamentos sem data futura"],
+              ].map(([label, value, detail]) => (
+                <div key={String(label)} className="rounded-xl border bg-muted/20 p-4">
+                  <div className="flex items-center justify-between gap-3">
+                    <p className="text-sm font-medium text-muted-foreground">{label}</p>
+                    <p className="text-2xl font-bold tabular-nums">{number(Number(value))}</p>
+                  </div>
+                  <p className="mt-1 text-xs text-muted-foreground">{detail}</p>
+                </div>
+              ))}
+            </CardContent>
+          </Card>
+
+          <Card className="shadow-sm">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-lg"><Database className="h-5 w-5 text-primary" /> Saúde das fontes</CardTitle>
+              <CardDescription>Recência de cada operação; “verificar” indica dado antigo ou falha explícita.</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-2">
+              {data.freshness.map((item) => <FreshnessRow key={item.key} item={item} />)}
+            </CardContent>
+          </Card>
+        </section>
+
+        <p className="pb-2 text-center text-xs text-muted-foreground">
+          Central calculada sobre tarefas únicas do mês atual. Atualização automática a cada 2 minutos.
+        </p>
       </div>
-
-      {isLoading ? (
-        <div className="flex items-center justify-center h-64">
-          <RefreshCw className="h-5 w-5 animate-spin text-muted-foreground" />
-        </div>
-      ) : (
-        <div className="p-6 space-y-6">
-          {/* Combined summary bar */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-            <Card className="bg-primary/5 border-primary/20">
-              <CardContent className="pt-4 pb-3 px-4">
-                <p className="text-xs text-muted-foreground mb-1">Total Geral de Tarefas</p>
-                <p className="text-2xl font-bold text-foreground">{combined.totalTarefas}</p>
-              </CardContent>
-            </Card>
-            <Card className="bg-primary/5 border-primary/20">
-              <CardContent className="pt-4 pb-3 px-4">
-                <p className="text-xs text-muted-foreground mb-1">Valor Total (Orç + Exec)</p>
-                <p className="text-2xl font-bold text-foreground">{fmtBRL(combined.valorTotal)}</p>
-              </CardContent>
-            </Card>
-            <Card className="bg-primary/5 border-primary/20">
-              <CardContent className="pt-4 pb-3 px-4">
-                <p className="text-xs text-muted-foreground mb-1">Tarefas no Mês</p>
-                <p className="text-2xl font-bold text-foreground">{combined.mesTotalTarefas}</p>
-              </CardContent>
-            </Card>
-            <Card className="bg-primary/5 border-primary/20">
-              <CardContent className="pt-4 pb-3 px-4">
-                <p className="text-xs text-muted-foreground mb-1">Valor Mês (Orç + Exec)</p>
-                <p className="text-2xl font-bold text-foreground">{fmtBRL(combined.mesValorTotal)}</p>
-              </CardContent>
-            </Card>
-          </div>
-
-          {/* Tabs */}
-          <Tabs defaultValue="orcamentos" className="space-y-4">
-            <TabsList className="h-9">
-              <TabsTrigger value="orcamentos" className="text-xs gap-1.5">
-                <FileText className="h-3.5 w-3.5" /> Orçamentos
-                <Badge variant="secondary" className="text-[10px] h-4 px-1.5 ml-1">{orcMetrics.total}</Badge>
-              </TabsTrigger>
-              <TabsTrigger value="execucao" className="text-xs gap-1.5">
-                <Wrench className="h-3.5 w-3.5" /> Execução de Serviços
-                <Badge variant="secondary" className="text-[10px] h-4 px-1.5 ml-1">{execMetrics.total}</Badge>
-              </TabsTrigger>
-            </TabsList>
-
-            <TabsContent value="orcamentos" className="space-y-5">
-              <div>
-                <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">Período Total</h2>
-                {renderKPIs(orcMetrics, orcLabels)}
-              </div>
-              <div>
-                <div className="flex items-center gap-2 mb-3">
-                  <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Mês</h2>
-                  <div className="flex items-center gap-1">
-                    <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => setSelectedMonth(prev => subMonths(prev, 1))}>
-                      <ChevronLeft className="h-3.5 w-3.5" />
-                    </Button>
-                    <Badge variant="outline" className="text-[10px] min-w-[100px] justify-center">{format(monthRange.from, "MMMM yyyy", { locale: ptBR })}</Badge>
-                    <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => setSelectedMonth(prev => addMonths(prev, 1))}>
-                      <ChevronRight className="h-3.5 w-3.5" />
-                    </Button>
-                  </div>
-                </div>
-                {renderMonthKPIs(orcMetrics, orcLabels)}
-              </div>
-              <div className="grid lg:grid-cols-2 gap-4">
-                {renderSituacaoChart(orcMonthMetrics, "Valor por Situação do Orçamento")}
-                {renderTecnicoChart(orcMonthMetrics, orcLabels)}
-              </div>
-              {renderSituacaoTable(orcMonthMetrics)}
-            </TabsContent>
-
-            <TabsContent value="execucao" className="space-y-5">
-              <div>
-                <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">Período Total</h2>
-                {renderKPIs(execMetrics, execLabels)}
-              </div>
-              <div>
-                <div className="flex items-center gap-2 mb-3">
-                  <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Mês</h2>
-                  <div className="flex items-center gap-1">
-                    <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => setSelectedMonth(prev => subMonths(prev, 1))}>
-                      <ChevronLeft className="h-3.5 w-3.5" />
-                    </Button>
-                    <Badge variant="outline" className="text-[10px] min-w-[100px] justify-center">{format(monthRange.from, "MMMM yyyy", { locale: ptBR })}</Badge>
-                    <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => setSelectedMonth(prev => addMonths(prev, 1))}>
-                      <ChevronRight className="h-3.5 w-3.5" />
-                    </Button>
-                  </div>
-                </div>
-                {renderMonthKPIs(execMetrics, execLabels)}
-              </div>
-              <div className="grid lg:grid-cols-2 gap-4">
-                {renderSituacaoChart(execMonthMetrics, "Valor por Situação da OS")}
-                {renderTecnicoChart(execMonthMetrics, execLabels)}
-              </div>
-              {renderSituacaoTable(execMonthMetrics)}
-            </TabsContent>
-          </Tabs>
-
-          {/* Sync info */}
-          <div className="flex items-center gap-4 text-[10px] text-muted-foreground">
-            {orcData?.ultimo_sync && <span>Orçamentos sync: {new Date(orcData.ultimo_sync).toLocaleString("pt-BR")}</span>}
-            {execData?.ultimo_sync && <span>Execução sync: {new Date(execData.ultimo_sync).toLocaleString("pt-BR")}</span>}
-          </div>
-        </div>
-      )}
     </div>
   );
 }
