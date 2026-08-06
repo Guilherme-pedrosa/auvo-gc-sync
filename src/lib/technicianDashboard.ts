@@ -134,6 +134,34 @@ export function findTechnicianGoal(name: string, goals: TechnicianGoal[]) {
   });
 }
 
+/** Técnicos válidos = colaboradores do RH com cargo/função de técnico ou auxiliar técnico. */
+export type TechnicianAllowlist = { ids: Set<string>; names: string[] };
+
+export function buildTechnicianAllowlist(
+  people: { nome?: string | null; auvo_user_id?: string | null }[],
+): TechnicianAllowlist {
+  const ids = new Set<string>();
+  const names: string[] = [];
+  for (const person of people) {
+    const id = String(person.auvo_user_id || "").trim();
+    if (id) ids.add(id);
+    const name = normalizeName(String(person.nome || ""));
+    if (name) names.push(name);
+  }
+  return { ids, names };
+}
+
+export function isAllowedTechnician(id: string, name: string, allowed: TechnicianAllowlist) {
+  if (allowed.ids.has(String(id).trim())) return true;
+  const normalized = normalizeName(name);
+  if (!normalized) return false;
+  return allowed.names.some((allowedName) =>
+    normalized === allowedName
+    || normalized.startsWith(`${allowedName} `)
+    || allowedName.startsWith(`${normalized} `),
+  );
+}
+
 export function technicianOperationalScore(technician: TechnicianQualityInput) {
   const checks = [
     technician.taxa_finalizacao >= 70,
@@ -176,6 +204,7 @@ export function buildTechnicianDashboardData(
   rows: TechnicianTaskRow[],
   startDate: string,
   endDate: string,
+  allowed?: TechnicianAllowlist | null,
 ): TechnicianDashboardData {
   const snapshots = new Map<string, TechnicianTaskRow>();
   for (const row of rows) {
@@ -216,6 +245,7 @@ export function buildTechnicianDashboardData(
     const technicianId = String(task.tecnico_id || task.tecnico || "").trim();
     const name = String(task.tecnico || "").trim();
     if (!technicianId || !name) continue;
+    if (allowed && !isAllowedTechnician(technicianId, name, allowed)) continue;
     const accumulator = technicians.get(technicianId) || {
       id: technicianId,
       nome: name,
