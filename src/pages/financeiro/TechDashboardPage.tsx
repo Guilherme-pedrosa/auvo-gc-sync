@@ -264,6 +264,12 @@ export default function TechDashboardPage() {
                 alert={data.resumo.produtividade_pct < 70}
               />
               <SummaryCard label="Sem questionário" value={String(data.resumo.total_sem_questionario)} detail="finalizadas sem evidência completa" icon={ClipboardCheck} alert={data.resumo.total_sem_questionario > 0} />
+              <SummaryCard
+                label="Valor em contratos"
+                value={brl(data.resumo.total_valor_contratos)}
+                detail={`${decimal(data.resumo.total_horas_contrato)}h em atividades finalizadas × valor/hora do contrato`}
+                icon={DollarSign}
+              />
               <SummaryCard label="Check-ins em aberto" value={String(data.resumo.total_checkins_sem_checkout)} detail="sem checkout correspondente" icon={Navigation} alert={data.resumo.total_checkins_sem_checkout > 0} />
               <SummaryCard
                 label="Faturamento"
