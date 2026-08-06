@@ -548,6 +548,7 @@ export default function EquipamentosPreventivosPage() {
   const queryClient = useQueryClient();
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<string[]>([]);
+  const [situacaoFilter, setSituacaoFilter] = useState<string[]>(["ativo"]);
   const [marcaFilter, setMarcaFilter] = useState<string[]>([]);
   const [clienteFilter, setClienteFilter] = useState<string[]>([]);
   const [tipoTarefaFilter, setTipoTarefaFilter] = useState<string[]>([]);
@@ -851,6 +852,7 @@ export default function EquipamentosPreventivosPage() {
   type FilterKey =
     | "search"
     | "status"
+    | "situacao"
     | "marca"
     | "cliente"
     | "tipoEquip"
@@ -873,6 +875,10 @@ export default function EquipamentosPreventivosPage() {
       if (!exclude.has("status") && statusFilter.length > 0) {
         const info = getStatusInfo(e.dias_desde);
         if (!statusFilter.includes(info.label.toLowerCase())) return false;
+      }
+      if (!exclude.has("situacao") && situacaoFilter.length > 0) {
+        const sit = (e.equipStatus || "").toLowerCase() === "inativo" ? "inativo" : "ativo";
+        if (!situacaoFilter.includes(sit)) return false;
       }
       if (!exclude.has("marca") && marcaFilter.length > 0) {
         if (marcaFilter.includes("__sem_marca__") && !e.marca) {
@@ -942,7 +948,7 @@ export default function EquipamentosPreventivosPage() {
       }
       return true;
     },
-    [search, statusFilter, marcaFilter, clienteFilter, tipoEquipFilter, grupoFilter, grupoClienteMap, proximaMesFilter, syncStartDate, syncEndDate, applyDateFilter, intervencaoFilter]
+    [search, statusFilter, situacaoFilter, marcaFilter, clienteFilter, tipoEquipFilter, grupoFilter, grupoClienteMap, proximaMesFilter, syncStartDate, syncEndDate, applyDateFilter, intervencaoFilter]
   );
 
   // Opções em cascata: para cada filtro, considera o universo já reduzido pelos OUTROS filtros
