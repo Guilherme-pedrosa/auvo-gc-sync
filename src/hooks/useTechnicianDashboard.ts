@@ -3,13 +3,14 @@ import { supabase } from "@/integrations/supabase/client";
 import {
   buildTechnicianDashboardData,
   buildTechnicianAllowlist,
+  buildContractRates,
   type TechnicianTaskRow,
 } from "@/lib/technicianDashboard";
 
 const PAGE_SIZE = 1000;
 const TECH_ROLE_PATTERN = /(tecnic|técnic)/i;
 const AUX_PATTERN = /auxiliar/i;
-const TASK_FIELDS = "auvo_task_id,mirror_key,atualizado_em,tecnico_id,tecnico,data_tarefa,data_conclusao,status_auvo,check_out,check_in_iso,check_out_iso,pendencia,questionario_preenchido,duracao_decimal,duracao_deslocamento,gc_os_id,gc_os_valor_total,gc_orcamento_id,gc_orc_valor_total,os_realizada";
+const TASK_FIELDS = "auvo_task_id,mirror_key,atualizado_em,tecnico_id,tecnico,cliente,data_tarefa,data_conclusao,status_auvo,check_out,check_in_iso,check_out_iso,pendencia,questionario_preenchido,duracao_decimal,duracao_deslocamento,gc_os_id,gc_os_valor_total,gc_orcamento_id,gc_orc_valor_total,os_realizada";
 
 async function fetchAllPages<T>(
   fetchPage: (from: number, to: number) => PromiseLike<{ data: T[] | null; error: { message?: string } | null }>,
@@ -29,7 +30,7 @@ export function useTechnicianDashboard(startDate: string, endDate: string) {
   return useQuery({
     queryKey: ["tech-dashboard-direct", startDate, endDate],
     queryFn: async () => {
-      const [scheduledTasks, completedFromOtherPeriods, staff] = await Promise.all([
+      const [scheduledTasks, completedFromOtherPeriods, staff, contracts, groupMembers] = await Promise.all([
         fetchAllPages<TechnicianTaskRow>((from, to) =>
           supabase
             .from("tarefas_central")
@@ -58,6 +59,15 @@ export function useTechnicianDashboard(startDate: string, endDate: string) {
             if (error) throw new Error(error.message || "Falha ao carregar colaboradores do RH");
             return data || [];
           }),
+        supabase
+          .from("contratos")
+          .select("valor_hora,cliente_nome,grupo_id,ativo,vigencia_inicio,vigencia_fim")
+          .eq("ativo", true)
+          .then(({ data }) => data || []),
+        supabase
+          .from("grupo_cliente_membros")
+          .select("grupo_id,cliente_nome")
+          .then(({ data }) => data || []),
       ]);
 
       // Somente colaboradores do RH cadastrados como técnico ou auxiliar técnico
@@ -67,11 +77,18 @@ export function useTechnicianDashboard(startDate: string, endDate: string) {
         return TECH_ROLE_PATTERN.test(cargo) || AUX_PATTERN.test(cargo);
       });
 
+      const vigentes = contracts.filter((contract) => {
+        if (contract.vigencia_inicio && contract.vigencia_inicio > endDate) return false;
+        if (contract.vigencia_fim && contract.vigencia_fim < startDate) return false;
+        return true;
+      });
+
       return buildTechnicianDashboardData(
         [...scheduledTasks, ...completedFromOtherPeriods],
         startDate,
         endDate,
         buildTechnicianAllowlist(tecnicos),
+        buildContractRates(vigentes, groupMembers),
       );
     },
     staleTime: 60_000,
