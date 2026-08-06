@@ -1,4 +1,41 @@
-import { DAILY_WORK_HOURS, countBusinessDays } from "./businessDays";
+import { DAILY_WORK_HOURS, countBusinessDays, isBusinessDay } from "./businessDays";
+
+type Interval = { start: number; end: number };
+
+/** Horas realmente em execução: une intervalos sobrepostos por dia útil e limita à jornada de 8h. */
+function productiveHoursFromIntervals(intervals: Interval[]): number {
+  const byDay = new Map<string, Interval[]>();
+  for (const interval of intervals) {
+    if (!(interval.end > interval.start)) continue;
+    for (let cursor = interval.start; cursor < interval.end; ) {
+      const day = new Date(cursor).toISOString().slice(0, 10);
+      const dayEnd = Date.parse(`${day}T00:00:00Z`) + 86_400_000;
+      const slice = { start: cursor, end: Math.min(interval.end, dayEnd) };
+      if (isBusinessDay(day)) {
+        const list = byDay.get(day) || [];
+        list.push(slice);
+        byDay.set(day, list);
+      }
+      cursor = slice.end;
+    }
+  }
+  let total = 0;
+  for (const list of byDay.values()) {
+    const sorted = [...list].sort((a, b) => a.start - b.start);
+    let dayTotal = 0;
+    let current = sorted[0];
+    for (const item of sorted.slice(1)) {
+      if (item.start <= current.end) current = { start: current.start, end: Math.max(current.end, item.end) };
+      else {
+        dayTotal += current.end - current.start;
+        current = item;
+      }
+    }
+    dayTotal += current.end - current.start;
+    total += Math.min(dayTotal / 3_600_000, DAILY_WORK_HOURS);
+  }
+  return total;
+}
 
 export type TechnicianQualityInput = {
   tarefas_total: number;
