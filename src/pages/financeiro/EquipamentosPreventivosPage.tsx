@@ -1747,12 +1747,14 @@ export default function EquipamentosPreventivosPage() {
           value={situacaoFilter}
           onValueChange={setSituacaoFilter}
           options={[
-            { value: "ativo", label: "✅ Ativo no Auvo" },
-            { value: "inativo", label: "🚫 Inativo no Auvo" },
+            { value: "ativo", label: "✅ Ativo" },
+            { value: "inativo", label: "🚫 Inativo" },
           ]}
           placeholder="Situação Auvo"
+          label="Situação Auvo"
           searchPlaceholder="Buscar situação..."
-          className="w-[170px]"
+          className="w-[180px]"
+          icon={<Power className="h-4 w-4" />}
         />
 
         <SearchableSelect
