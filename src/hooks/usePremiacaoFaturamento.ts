@@ -29,13 +29,16 @@ export function usePremiacaoFaturamento(month: string | null) {
       if (error) throw error;
       const resp = data as {
         ok?: boolean;
+        error?: string;
         tecnicos?: Array<{ tecnico: string; os_count: number; faturamento?: number; valor_pecas: number; valor_servicos: number }>;
+        totais?: { faturamento?: number };
       };
+      if (resp?.ok === false) throw new Error(resp.error || "Falha ao carregar o faturamento da Premiação");
       const porTecnico = new Map<string, { faturamento: number; os_count: number; nome: string }>();
-      let total = 0;
+      let calculatedTotal = 0;
       for (const tech of resp?.tecnicos || []) {
         const value = Number(tech.faturamento ?? (tech.valor_pecas || 0) + (tech.valor_servicos || 0)) || 0;
-        total += value;
+        calculatedTotal += value;
         const key = normalizeTechKey(tech.tecnico);
         const current = porTecnico.get(key);
         porTecnico.set(key, {
@@ -44,6 +47,8 @@ export function usePremiacaoFaturamento(month: string | null) {
           os_count: (current?.os_count || 0) + (Number(tech.os_count) || 0),
         });
       }
+      const officialTotal = Number(resp?.totais?.faturamento);
+      const total = Number.isFinite(officialTotal) ? officialTotal : calculatedTotal;
       return { month: month as string, total: Math.round(total * 100) / 100, porTecnico };
     },
   });
