@@ -1174,6 +1174,13 @@ export default function EquipamentosPreventivosPage() {
       });
     }
 
+    if (situacaoFilter.length > 0) {
+      result = result.filter((e) => {
+        const sit = (e.equipStatus || "").toLowerCase() === "inativo" ? "inativo" : "ativo";
+        return situacaoFilter.includes(sit);
+      });
+    }
+
     if (marcaFilter.length > 0) {
       result = result.filter((e) => {
         if (marcaFilter.includes("__sem_marca__") && !e.marca) return true;
@@ -1236,7 +1243,7 @@ export default function EquipamentosPreventivosPage() {
     });
 
     return result;
-  }, [equipments, search, statusFilter, marcaFilter, clienteFilter, tipoEquipFilter, grupoFilter, grupoClienteMap, sortField, sortDir, syncStartDate, syncEndDate, proximaMesFilter]);
+  }, [equipments, search, statusFilter, situacaoFilter, marcaFilter, clienteFilter, tipoEquipFilter, grupoFilter, grupoClienteMap, sortField, sortDir, syncStartDate, syncEndDate, proximaMesFilter]);
 
   // Pagination
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
@@ -1244,7 +1251,7 @@ export default function EquipamentosPreventivosPage() {
   const paginatedItems = filtered.slice((safeCurrentPage - 1) * PAGE_SIZE, safeCurrentPage * PAGE_SIZE);
 
   // Reset to page 1 when filters change
-  const filterKey = `${search}|${statusFilter.join(",")}|${marcaFilter.join(",")}|${clienteFilter.join(",")}|${tipoEquipFilter.join(",")}|${grupoFilter}|${tipoTarefaFilter.join(",")}|${sortField}|${sortDir}|${syncStartDate}|${syncEndDate}|${proximaMesFilter.join(",")}`;
+  const filterKey = `${search}|${statusFilter.join(",")}|${situacaoFilter.join(",")}|${marcaFilter.join(",")}|${clienteFilter.join(",")}|${tipoEquipFilter.join(",")}|${grupoFilter}|${tipoTarefaFilter.join(",")}|${sortField}|${sortDir}|${syncStartDate}|${syncEndDate}|${proximaMesFilter.join(",")}`;
   const [prevFilterKey, setPrevFilterKey] = useState(filterKey);
   if (filterKey !== prevFilterKey) {
     setPrevFilterKey(filterKey);
