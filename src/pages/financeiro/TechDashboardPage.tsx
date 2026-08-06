@@ -343,6 +343,11 @@ export default function TechDashboardPage() {
                               <Progress value={Math.min(tech.produtividade_pct, 100)} className="mt-1 h-1.5" />
                             </TableCell>
                             <TableCell>
+                              <p className="font-semibold tabular-nums">{brl(tech.valor_contratos)}</p>
+                              <p className="text-xs text-muted-foreground">{decimal(tech.horas_contrato)}h em contratos</p>
+                              <p className="mt-1 text-[10px] text-muted-foreground">horas finalizadas × valor/hora</p>
+                            </TableCell>
+                            <TableCell>
                               <div className="flex items-center justify-between"><span className="font-semibold">{tech.qualidade_pct}%</span>{qualityIssues > 0 && <Badge variant="outline" className="border-amber-200 text-[10px] text-amber-700">{qualityIssues} alerta(s)</Badge>}</div>
                               <p className="mt-1 text-[10px] text-muted-foreground">{tech.tarefas_sem_questionario} sem form. · {tech.checkins_sem_checkout} em aberto</p>
                             </TableCell>
@@ -360,7 +365,7 @@ export default function TechDashboardPage() {
                           </TableRow>
                         );
                       })}
-                      {technicians.length === 0 && <TableRow><TableCell colSpan={8} className="h-28 text-center text-muted-foreground">Nenhum técnico encontrado no período ou na busca.</TableCell></TableRow>}
+                      {technicians.length === 0 && <TableRow><TableCell colSpan={9} className="h-28 text-center text-muted-foreground">Nenhum técnico encontrado no período ou na busca.</TableCell></TableRow>}
                     </TableBody>
                   </Table>
                 </div>
