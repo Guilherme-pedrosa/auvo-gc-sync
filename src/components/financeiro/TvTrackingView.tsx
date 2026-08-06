@@ -1,10 +1,22 @@
-import { useState, useEffect, useRef, useCallback } from "react";
-import { Badge } from "@/components/ui/badge";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { ReactNode } from "react";
 import {
-  CheckCircle2, PlayCircle, CalendarClock, AlertTriangle,
-  Clock, User, Minimize2
+  AlertTriangle,
+  CalendarClock,
+  CheckCircle2,
+  ChevronLeft,
+  ChevronRight,
+  CircleDollarSign,
+  Clock,
+  Minimize2,
+  Pause,
+  Play,
+  PlayCircle,
+  RefreshCw,
+  Users,
+  Wifi,
 } from "lucide-react";
-import { format } from "date-fns";
+import { format, isToday } from "date-fns";
 import { ptBR } from "date-fns/locale";
 
 type TaskItem = {
@@ -47,324 +59,498 @@ type TrackingData = {
   tecnicos: TecnicoGroup[];
 };
 
-const statusColor: Record<string, string> = {
-  "Finalizada": "text-emerald-400",
-  "Em andamento": "text-sky-400",
-  "Agendada": "text-amber-400",
-  "Cancelada": "text-red-400",
-};
-
-const statusDot: Record<string, string> = {
-  "Finalizada": "bg-emerald-400",
-  "Em andamento": "bg-sky-400",
-  "Agendada": "bg-amber-400",
-  "Cancelada": "bg-red-400",
-};
-
 interface TvTrackingViewProps {
   data: TrackingData;
   selectedDate: Date;
+  lastFetchTime?: string | null;
+  isRefreshing?: boolean;
+  onRefresh?: () => void;
   onExit: () => void;
 }
 
-export default function TvTrackingView({ data, selectedDate, onExit }: TvTrackingViewProps) {
-  const containerRef = useRef<HTMLDivElement>(null);
-  const scrollRef = useRef<HTMLDivElement>(null);
-  const animationFrameRef = useRef<number | null>(null);
-  const directionRef = useRef<1 | -1>(1);
-  const positionRef = useRef(0);
-  const [autoScroll, setAutoScroll] = useState(true);
+type WakeLockSentinelLike = {
+  release?: () => Promise<void>;
+};
 
-  // Sort technicians by total value desc
-  const sortedTechs = [...data.tecnicos].sort((a, b) => {
-    const valA = a.tarefas.reduce((s, t) => s + (parseFloat(t.gcOsValor) || 0), 0);
-    const valB = b.tarefas.reduce((s, t) => s + (parseFloat(t.gcOsValor) || 0), 0);
-    return valB - valA;
-  });
+type NavigatorWithWakeLock = Navigator & {
+  wakeLock?: {
+    request?: (type: "screen") => Promise<WakeLockSentinelLike>;
+  };
+};
 
-  // Totals
-  let totalAgendado = 0;
-  let totalExecutado = 0;
-  for (const tech of data.tecnicos) {
-    for (const task of tech.tarefas) {
-      const val = parseFloat(task.gcOsValor || "0");
-      if (!val) continue;
-      totalAgendado += val;
-      if (task.status === "Finalizada") totalExecutado += val;
-    }
+const TECHS_PER_PAGE = 6;
+const ROTATION_MS = 18_000;
+
+const statusConfig: Record<string, { label: string; dot: string; text: string; surface: string }> = {
+  "Finalizada": {
+    label: "Concluída",
+    dot: "bg-emerald-400",
+    text: "text-emerald-300",
+    surface: "bg-emerald-500/10 border-emerald-500/20",
+  },
+  "Em andamento": {
+    label: "Em andamento",
+    dot: "bg-sky-400",
+    text: "text-sky-300",
+    surface: "bg-sky-500/10 border-sky-500/25",
+  },
+  "Agendada": {
+    label: "Agendada",
+    dot: "bg-amber-400",
+    text: "text-amber-300",
+    surface: "bg-amber-500/10 border-amber-500/20",
+  },
+  "Cancelada": {
+    label: "Cancelada",
+    dot: "bg-zinc-500",
+    text: "text-zinc-400",
+    surface: "bg-zinc-800/60 border-zinc-700/60",
+  },
+};
+
+function parseValue(value: string): number {
+  const parsed = Number.parseFloat(value || "0");
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function timeToMinutes(value: string): number {
+  const [hour, minute] = String(value || "").split(":").map(Number);
+  if (!Number.isFinite(hour)) return Number.MAX_SAFE_INTEGER;
+  return hour * 60 + (Number.isFinite(minute) ? minute : 0);
+}
+
+function taskPriority(task: TaskItem): number {
+  if (task.atrasada) return 0;
+  if (task.status === "Em andamento") return 1;
+  if (task.status === "Agendada") return 2;
+  if (task.status === "Finalizada") return 3;
+  return 4;
+}
+
+function hasPendingIssue(task: TaskItem): boolean {
+  const pending = String(task.pendencia || "").trim().toLowerCase();
+  return Boolean(pending && pending !== "nenhuma" && pending !== "0");
+}
+
+function getTechState(tech: TecnicoGroup) {
+  if (tech.resumo.atrasadas > 0) {
+    return { label: "Requer atenção", text: "text-red-300", badge: "bg-red-500/15 border-red-500/30", ring: "border-red-500/45" };
   }
+  if (tech.resumo.emAndamento > 0) {
+    return { label: "Em atendimento", text: "text-sky-300", badge: "bg-sky-500/15 border-sky-500/30", ring: "border-sky-500/45" };
+  }
+  if (tech.resumo.agendadas > 0) {
+    return { label: "Próximos atendimentos", text: "text-amber-300", badge: "bg-amber-500/15 border-amber-500/30", ring: "border-zinc-700" };
+  }
+  return { label: "Roteiro concluído", text: "text-emerald-300", badge: "bg-emerald-500/15 border-emerald-500/30", ring: "border-emerald-500/25" };
+}
 
-  // Fullscreen
+export default function TvTrackingView({
+  data,
+  selectedDate,
+  lastFetchTime,
+  isRefreshing = false,
+  onRefresh,
+  onExit,
+}: TvTrackingViewProps) {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const onExitRef = useRef(onExit);
+  const [currentPage, setCurrentPage] = useState(0);
+  const [paused, setPaused] = useState(false);
+  const [rotationProgress, setRotationProgress] = useState(0);
+  const [now, setNow] = useState(() => new Date());
+  const [compactTv, setCompactTv] = useState(() => window.innerHeight < 850);
+
   useEffect(() => {
-    const el = containerRef.current;
-    if (el && document.fullscreenElement !== el) {
-      el.requestFullscreen?.().catch(() => {});
-    }
-    const onFsChange = () => {
-      if (!document.fullscreenElement) onExit();
-    };
-    document.addEventListener("fullscreenchange", onFsChange);
-    return () => document.removeEventListener("fullscreenchange", onFsChange);
+    onExitRef.current = onExit;
   }, [onExit]);
 
-  // Keyboard
-  useEffect(() => {
-    const handler = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onExit();
-    };
-    window.addEventListener("keydown", handler);
-    return () => window.removeEventListener("keydown", handler);
-  }, [onExit]);
+  const sortedTechs = useMemo(() => {
+    return [...data.tecnicos].sort((a, b) => {
+      const priorityA = (a.resumo.atrasadas * 1_000) + (a.resumo.emAndamento * 100) + (a.resumo.agendadas * 10);
+      const priorityB = (b.resumo.atrasadas * 1_000) + (b.resumo.emAndamento * 100) + (b.resumo.agendadas * 10);
+      if (priorityA !== priorityB) return priorityB - priorityA;
+      return a.nome.localeCompare(b.nome, "pt-BR");
+    });
+  }, [data.tecnicos]);
 
-  // Auto-scroll with continuous position (avoids float rounding lock at bottom/top)
-  useEffect(() => {
-    const el = scrollRef.current;
-    if (!el) return;
+  const totalPages = Math.max(1, Math.ceil(sortedTechs.length / TECHS_PER_PAGE));
+  const visibleTechs = sortedTechs.slice(currentPage * TECHS_PER_PAGE, (currentPage + 1) * TECHS_PER_PAGE);
 
-    if (animationFrameRef.current) {
-      cancelAnimationFrame(animationFrameRef.current);
-      animationFrameRef.current = null;
-    }
+  const totals = useMemo(() => {
+    let scheduledValue = 0;
+    let completedValue = 0;
+    let finished = 0;
+    let inProgress = 0;
+    let scheduled = 0;
+    let activeTechs = 0;
+    let pendingIssues = 0;
 
-    if (!autoScroll) return;
+    for (const tech of data.tecnicos) {
+      finished += tech.resumo.finalizadas;
+      inProgress += tech.resumo.emAndamento;
+      scheduled += tech.resumo.agendadas;
+      if (tech.resumo.emAndamento > 0) activeTechs += 1;
 
-    positionRef.current = el.scrollTop;
-    let lastTime = performance.now();
-    const speedPxPerSecond = 35;
-
-    const tick = (time: number) => {
-      const deltaMs = Math.min(64, time - lastTime);
-      lastTime = time;
-
-      const maxScroll = Math.max(0, el.scrollHeight - el.clientHeight);
-      if (maxScroll > 0) {
-        positionRef.current += directionRef.current * (speedPxPerSecond * deltaMs) / 1000;
-
-        if (positionRef.current >= maxScroll) {
-          positionRef.current = maxScroll;
-          directionRef.current = -1;
-        } else if (positionRef.current <= 0) {
-          positionRef.current = 0;
-          directionRef.current = 1;
-        }
-
-        el.scrollTop = Math.round(positionRef.current);
+      for (const task of tech.tarefas) {
+        const value = parseValue(task.gcOsValor);
+        scheduledValue += value;
+        if (task.status === "Finalizada") completedValue += value;
+        if (hasPendingIssue(task)) pendingIssues += 1;
       }
+    }
 
-      animationFrameRef.current = requestAnimationFrame(tick);
+    const executionRate = data.total_tarefas > 0 ? Math.round((finished / data.total_tarefas) * 100) : 0;
+    return { scheduledValue, completedValue, finished, inProgress, scheduled, activeTechs, pendingIssues, executionRate };
+  }, [data]);
+
+  const goToPage = useCallback((direction: number) => {
+    setCurrentPage((page) => (page + direction + totalPages) % totalPages);
+    setRotationProgress(0);
+  }, [totalPages]);
+
+  useEffect(() => {
+    if (currentPage >= totalPages) setCurrentPage(0);
+  }, [currentPage, totalPages]);
+
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(new Date()), 1_000);
+    return () => window.clearInterval(timer);
+  }, []);
+
+  useEffect(() => {
+    const handleResize = () => setCompactTv(window.innerHeight < 850);
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, []);
+
+  useEffect(() => {
+    if (paused || totalPages <= 1) {
+      setRotationProgress(0);
+      return;
+    }
+
+    const startedAt = Date.now();
+    const timer = window.setInterval(() => {
+      const elapsed = Date.now() - startedAt;
+      if (elapsed >= ROTATION_MS) {
+        window.clearInterval(timer);
+        setCurrentPage((page) => (page + 1) % totalPages);
+        setRotationProgress(0);
+        return;
+      }
+      setRotationProgress((elapsed / ROTATION_MS) * 100);
+    }, 250);
+
+    return () => window.clearInterval(timer);
+  }, [currentPage, paused, totalPages]);
+
+  useEffect(() => {
+    const element = containerRef.current;
+    let enteredFullscreen = false;
+
+    if (element && !document.fullscreenElement) {
+      element.requestFullscreen?.()
+        .then(() => { enteredFullscreen = true; })
+        .catch(() => {});
+    } else if (document.fullscreenElement) {
+      enteredFullscreen = true;
+    }
+
+    const handleFullscreenChange = () => {
+      if (enteredFullscreen && !document.fullscreenElement) onExitRef.current();
+    };
+    document.addEventListener("fullscreenchange", handleFullscreenChange);
+    return () => document.removeEventListener("fullscreenchange", handleFullscreenChange);
+  }, []);
+
+  useEffect(() => {
+    let wakeLock: WakeLockSentinelLike | null = null;
+    const requestWakeLock = async () => {
+      try {
+        wakeLock = await (navigator as NavigatorWithWakeLock).wakeLock?.request?.("screen") || null;
+      } catch {
+        wakeLock = null;
+      }
+    };
+    const handleVisibility = () => {
+      if (document.visibilityState === "visible" && !wakeLock) void requestWakeLock();
     };
 
-    animationFrameRef.current = requestAnimationFrame(tick);
-
+    void requestWakeLock();
+    document.addEventListener("visibilitychange", handleVisibility);
     return () => {
-      if (animationFrameRef.current) {
-        cancelAnimationFrame(animationFrameRef.current);
-        animationFrameRef.current = null;
-      }
+      document.removeEventListener("visibilitychange", handleVisibility);
+      void wakeLock?.release?.();
     };
-  }, [autoScroll, data.tecnicos.length]);
+  }, []);
 
-  const now = new Date();
+  useEffect(() => {
+    const handleKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") onExitRef.current();
+      if (event.key === "ArrowRight") goToPage(1);
+      if (event.key === "ArrowLeft") goToPage(-1);
+      if (event.code === "Space") {
+        event.preventDefault();
+        setPaused((value) => !value);
+      }
+      if (event.key.toLowerCase() === "r") onRefresh?.();
+    };
+    window.addEventListener("keydown", handleKey);
+    return () => window.removeEventListener("keydown", handleKey);
+  }, [goToPage, onRefresh]);
 
-  // Dynamic grid columns based on tech count
-  const techCount = sortedTechs.length;
-  const gridCols =
-    techCount <= 3 ? "grid-cols-3" :
-    techCount <= 6 ? "grid-cols-3" :
-    techCount <= 9 ? "grid-cols-3" :
-    "grid-cols-4";
+  const updatedAt = lastFetchTime ? new Date(lastFetchTime) : null;
+  const isLive = isToday(selectedDate);
+  const gridLayout = visibleTechs.length <= 1
+    ? "grid-cols-1 grid-rows-1"
+    : visibleTechs.length === 2
+      ? "grid-cols-2 grid-rows-1"
+      : visibleTechs.length === 3
+        ? "grid-cols-3 grid-rows-1"
+        : "grid-cols-3 grid-rows-2";
 
   return (
     <div
       ref={containerRef}
-      className="fixed inset-0 z-[9999] bg-zinc-950 text-zinc-100 flex flex-col select-none"
+      className="fixed inset-0 z-[9999] flex cursor-none select-none flex-col overflow-hidden bg-[#070a10] text-zinc-100"
       style={{ fontFamily: "'Inter', system-ui, sans-serif" }}
     >
-      {/* ── TV Header ── */}
-      <div className="flex-shrink-0 px-6 py-2.5 flex items-center justify-between border-b border-zinc-800/60">
-        <div className="flex items-center gap-5">
-          <h1 className="text-xl font-bold tracking-tight text-zinc-50">
-            Agenda de Técnicos
-          </h1>
-          <span className="text-base text-zinc-400">
-            {format(selectedDate, "EEEE, dd 'de' MMMM", { locale: ptBR })}
-          </span>
-          <Badge className="bg-red-600/20 text-red-400 border-red-600/40 text-xs px-2.5 py-0.5 animate-pulse">
-            🔴 AO VIVO
-          </Badge>
+      <header className="shrink-0 border-b border-white/10 bg-[#0b1019] px-6 pb-4 pt-4">
+        <div className="flex items-start justify-between gap-6">
+          <div className="flex min-w-0 items-center gap-4">
+            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-blue-500/15 text-blue-300 ring-1 ring-blue-400/25">
+              <Users className="h-6 w-6" />
+            </div>
+            <div className="min-w-0">
+              <div className="flex flex-wrap items-center gap-3">
+                <h1 className="text-2xl font-bold tracking-tight text-white">Operação em campo</h1>
+                <span className={`inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs font-bold tracking-[0.18em] ${
+                  isLive ? "border-red-500/40 bg-red-500/15 text-red-300" : "border-zinc-600 bg-zinc-800 text-zinc-300"
+                }`}>
+                  <span className={`h-2 w-2 rounded-full ${isLive ? "animate-pulse bg-red-400" : "bg-zinc-500"}`} />
+                  {isLive ? "AO VIVO" : "HISTÓRICO"}
+                </span>
+              </div>
+              <p className="mt-1 text-lg capitalize text-zinc-400">
+                {format(selectedDate, "EEEE, dd 'de' MMMM", { locale: ptBR })}
+              </p>
+            </div>
+          </div>
+
+          <div className="flex shrink-0 items-center gap-5">
+            <div className="text-right">
+              <p className="font-mono text-3xl font-semibold tabular-nums tracking-tight text-white">{format(now, "HH:mm")}</p>
+              <p className="mt-0.5 flex items-center justify-end gap-1.5 text-xs text-zinc-500">
+                <Wifi className={`h-3 w-3 ${isRefreshing ? "animate-pulse text-sky-400" : "text-emerald-400"}`} />
+                {isRefreshing
+                  ? "Atualizando dados"
+                  : updatedAt && !Number.isNaN(updatedAt.getTime())
+                    ? `Atualizado às ${format(updatedAt, "HH:mm:ss")}`
+                    : "Atualização automática ativa"}
+              </p>
+            </div>
+            <button
+              onClick={() => { void document.exitFullscreen?.(); onExitRef.current(); }}
+              className="cursor-pointer rounded-lg border border-white/10 bg-white/5 p-2 text-zinc-400 transition-colors hover:bg-white/10 hover:text-white"
+              title="Sair do Painel TV"
+            >
+              <Minimize2 className="h-5 w-5" />
+            </button>
+          </div>
         </div>
 
-        <div className="flex items-center gap-4 text-sm flex-shrink-0">
-          <span className="flex items-center gap-1.5 whitespace-nowrap">
-            <User className="h-4 w-4 text-zinc-500" />
-            <strong className="text-zinc-200">{data.total_tecnicos}</strong>
-            <span className="text-zinc-500">téc.</span>
-          </span>
-          <span className="flex items-center gap-1.5 whitespace-nowrap">
-            <Clock className="h-4 w-4 text-zinc-500" />
-            <strong className="text-zinc-200">{data.total_tarefas}</strong>
-            <span className="text-zinc-500">tarefas</span>
-          </span>
+        <div className="mt-4 grid grid-cols-6 gap-3">
+          <TvMetric icon={<Users className="h-4 w-4" />} label="Técnicos em campo" value={`${totals.activeTechs}/${data.total_tecnicos}`} tone="sky" />
+          <TvMetric icon={<PlayCircle className="h-4 w-4" />} label="Em atendimento" value={String(totals.inProgress)} tone="sky" />
+          <TvMetric icon={<CheckCircle2 className="h-4 w-4" />} label="Concluídas" value={`${totals.finished}/${data.total_tarefas}`} detail={`${totals.executionRate}% executado`} tone="emerald" />
+          <TvMetric icon={<CalendarClock className="h-4 w-4" />} label="Aguardando" value={String(totals.scheduled)} tone="amber" />
+          <TvMetric icon={<AlertTriangle className="h-4 w-4" />} label="Atrasos" value={String(data.total_atrasadas || 0)} detail={totals.pendingIssues > 0 ? `${totals.pendingIssues} pendência(s)` : "Sem pendências"} tone={data.total_atrasadas > 0 ? "red" : "slate"} />
+          <TvMetric icon={<CircleDollarSign className="h-4 w-4" />} label="Valor executado" value={totals.completedValue.toLocaleString("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 })} detail={`de ${totals.scheduledValue.toLocaleString("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 })}`} tone="emerald" />
+        </div>
+      </header>
 
-          <span className="border-l border-zinc-700 pl-3 flex items-center gap-1.5 whitespace-nowrap">
-            📋 <span className="text-zinc-400">Agend:</span>
-            <strong className="text-zinc-100">R$ {totalAgendado.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}</strong>
-          </span>
-          <span className="flex items-center gap-1.5 whitespace-nowrap">
-            ✅ <span className="text-zinc-400">Exec:</span>
-            <strong className="text-emerald-400">R$ {totalExecutado.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}</strong>
-          </span>
+      <main className="min-h-0 flex-1 p-4">
+        {visibleTechs.length > 0 ? (
+          <div className={`grid h-full gap-3 ${gridLayout}`}>
+            {visibleTechs.map((tech) => (
+              <TechnicianTvCard key={tech.id} tech={tech} maxTasks={compactTv ? 2 : 4} />
+            ))}
+          </div>
+        ) : (
+          <div className="flex h-full flex-col items-center justify-center text-zinc-500">
+            <CalendarClock className="mb-3 h-12 w-12" />
+            <p className="text-xl font-semibold text-zinc-300">Nenhum atendimento programado</p>
+            <p className="mt-1 text-sm">A tela será atualizada automaticamente.</p>
+          </div>
+        )}
+      </main>
 
-          <span className="border-l border-zinc-700 pl-3 flex items-center gap-3">
-            <span className="flex items-center gap-1">
-              <span className="h-2 w-2 rounded-full bg-emerald-400" />
-              <strong className="text-emerald-400">{data.tecnicos.reduce((s, t) => s + t.resumo.finalizadas, 0)}</strong>
-            </span>
-            <span className="flex items-center gap-1">
-              <span className="h-2 w-2 rounded-full bg-sky-400 animate-pulse" />
-              <strong className="text-sky-400">{data.tecnicos.reduce((s, t) => s + t.resumo.emAndamento, 0)}</strong>
-            </span>
-            <span className="flex items-center gap-1">
-              <span className="h-2 w-2 rounded-full bg-amber-400" />
-              <strong className="text-amber-400">{data.tecnicos.reduce((s, t) => s + t.resumo.agendadas, 0)}</strong>
-            </span>
-            {data.total_atrasadas > 0 && (
-              <span className="flex items-center gap-1">
-                <span className="h-2 w-2 rounded-full bg-red-500" />
-                <strong className="text-red-400">{data.total_atrasadas}</strong>
+      <footer className="relative flex h-12 shrink-0 items-center border-t border-white/10 bg-[#0b1019] px-5 text-xs text-zinc-500">
+        <div className="flex items-center gap-4">
+          <Legend dot="bg-sky-400" label="Em atendimento" />
+          <Legend dot="bg-amber-400" label="Agendada" />
+          <Legend dot="bg-emerald-400" label="Concluída" />
+          <Legend dot="bg-red-400" label="Atrasada" />
+        </div>
+
+        <div className="ml-auto flex items-center gap-3">
+          {totalPages > 1 && (
+            <>
+              <button onClick={() => goToPage(-1)} className="cursor-pointer rounded p-1 text-zinc-500 hover:bg-white/5 hover:text-white">
+                <ChevronLeft className="h-4 w-4" />
+              </button>
+              <span className="font-medium tabular-nums text-zinc-300">Equipe {currentPage + 1} de {totalPages}</span>
+              <button onClick={() => goToPage(1)} className="cursor-pointer rounded p-1 text-zinc-500 hover:bg-white/5 hover:text-white">
+                <ChevronRight className="h-4 w-4" />
+              </button>
+              <button onClick={() => setPaused((value) => !value)} className="cursor-pointer rounded p-1 text-zinc-500 hover:bg-white/5 hover:text-white" title={paused ? "Retomar rotação" : "Pausar rotação"}>
+                {paused ? <Play className="h-4 w-4" /> : <Pause className="h-4 w-4" />}
+              </button>
+            </>
+          )}
+          {onRefresh && (
+            <button onClick={onRefresh} className="cursor-pointer rounded p-1 text-zinc-500 hover:bg-white/5 hover:text-white" title="Atualizar agora">
+              <RefreshCw className={`h-4 w-4 ${isRefreshing ? "animate-spin" : ""}`} />
+            </button>
+          )}
+          <span className="hidden text-zinc-600 2xl:inline">Espaço pausa · Setas navegam · R atualiza · Esc sai</span>
+        </div>
+
+        {totalPages > 1 && !paused && (
+          <div className="absolute inset-x-0 bottom-0 h-0.5 bg-white/5">
+            <div className="h-full bg-blue-400 transition-[width] duration-200 ease-linear" style={{ width: `${rotationProgress}%` }} />
+          </div>
+        )}
+      </footer>
+    </div>
+  );
+}
+
+function TechnicianTvCard({ tech, maxTasks }: { tech: TecnicoGroup; maxTasks: number }) {
+  const state = getTechState(tech);
+  const tasks = useMemo(() => {
+    return [...tech.tarefas].sort((a, b) => {
+      const priority = taskPriority(a) - taskPriority(b);
+      return priority !== 0 ? priority : timeToMinutes(a.horaInicio) - timeToMinutes(b.horaInicio);
+    });
+  }, [tech.tarefas]);
+  const visibleTasks = tasks.slice(0, maxTasks);
+  const hiddenTasks = Math.max(0, tasks.length - visibleTasks.length);
+  const progress = tech.resumo.total > 0 ? Math.round((tech.resumo.finalizadas / tech.resumo.total) * 100) : 0;
+
+  return (
+    <section className={`flex min-h-0 flex-col overflow-hidden rounded-2xl border bg-[#101620] shadow-2xl shadow-black/20 ${state.ring}`}>
+      <div className="shrink-0 border-b border-white/8 bg-white/[0.025] px-4 py-3">
+        <div className="flex items-start gap-3">
+          <div className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl text-sm font-extrabold ${
+            tech.resumo.emAndamento > 0 ? "bg-sky-500 text-white" : tech.resumo.atrasadas > 0 ? "bg-red-500 text-white" : "bg-zinc-800 text-zinc-200"
+          }`}>
+            {tech.nome.split(" ").filter(Boolean).map((name) => name[0]).slice(0, 2).join("")}
+          </div>
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-2">
+              <h2 className="truncate text-lg font-bold text-white" title={tech.nome}>{tech.nome}</h2>
+              <span className={`ml-auto shrink-0 rounded-full border px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider ${state.badge} ${state.text}`}>
+                {state.label}
               </span>
-            )}
-          </span>
-        </div>
-
-        <div className="flex items-center gap-3">
-          <span className="text-xs text-zinc-600 tabular-nums">
-            {format(now, "HH:mm")}
-          </span>
-          <button
-            onClick={() => { document.exitFullscreen?.(); onExit(); }}
-            className="text-zinc-500 hover:text-zinc-300 transition-colors p-1"
-            title="Sair do modo TV (Esc)"
-          >
-            <Minimize2 className="h-4 w-4" />
-          </button>
+            </div>
+            <div className="mt-2 flex items-center gap-3">
+              <div className="h-2 flex-1 overflow-hidden rounded-full bg-zinc-800">
+                <div className="h-full rounded-full bg-emerald-400 transition-all duration-700" style={{ width: `${progress}%` }} />
+              </div>
+              <span className="text-xs font-semibold tabular-nums text-zinc-400">{tech.resumo.finalizadas}/{tech.resumo.total}</span>
+            </div>
+          </div>
         </div>
       </div>
 
-      {/* ── All technician cards ── */}
-      <div
-        ref={scrollRef}
-        className="flex-1 overflow-auto p-4"
-        onMouseEnter={() => setAutoScroll(false)}
-        onMouseLeave={() => setAutoScroll(true)}
-      >
-        <div className={`grid ${gridCols} gap-3 auto-rows-min`}>
-          {sortedTechs.map((tech) => {
-            const sortedTasks = [...tech.tarefas].sort((a, b) => (parseFloat(b.gcOsValor) || 0) - (parseFloat(a.gcOsValor) || 0));
-            const hasActive = tech.resumo.emAndamento > 0;
-            const progress = tech.resumo.total > 0 ? Math.round((tech.resumo.finalizadas / tech.resumo.total) * 100) : 0;
-            const totalValor = sortedTasks.reduce((sum, t) => sum + (parseFloat(t.gcOsValor) || 0), 0);
+      <div className="min-h-0 flex-1 divide-y divide-white/[0.06] px-3">
+        {visibleTasks.map((task, index) => {
+          const config = task.atrasada
+            ? { label: "Atrasada", dot: "bg-red-400", text: "text-red-300", surface: "bg-red-500/10 border-red-500/25" }
+            : statusConfig[task.status] || statusConfig.Agendada;
+          const important = task.atrasada || task.status === "Em andamento";
 
-            return (
-              <div
-                key={tech.id}
-                className={`rounded-lg border overflow-hidden flex flex-col ${
-                  hasActive
-                    ? "border-sky-600/40 bg-zinc-900/80"
-                    : "border-zinc-800/60 bg-zinc-900/40"
-                }`}
-              >
-                {/* Tech header — compact */}
-                <div className={`px-3 py-2 flex items-center gap-2 flex-shrink-0 ${
-                  hasActive ? "bg-sky-950/30" : "bg-zinc-800/30"
-                }`}>
-                  <div className={`h-7 w-7 rounded-full flex items-center justify-center text-[10px] font-bold flex-shrink-0 ${
-                    hasActive ? "bg-sky-500 text-white" : "bg-zinc-700 text-zinc-300"
-                  }`}>
-                    {tech.nome.split(" ").map(n => n[0]).slice(0, 2).join("")}
-                  </div>
-                  <div className="flex-1 min-w-0 overflow-hidden">
-                    <p className="font-semibold text-sm text-zinc-100 whitespace-nowrap overflow-hidden text-ellipsis" title={tech.nome}>
-                      {tech.nome.split(" ")[0]}
-                    </p>
-                    <div className="flex items-center gap-2 mt-0.5">
-                      <span className="text-[11px] text-zinc-500">
-                        {tech.resumo.finalizadas}/{tech.resumo.total}
-                      </span>
-                      {hasActive && (
-                        <span className="text-[10px] text-sky-400 font-medium animate-pulse">● Ativo</span>
-                      )}
-                      {tech.resumo.atrasadas > 0 && (
-                        <span className="text-[10px] text-red-400 font-medium">
-                          {tech.resumo.atrasadas} atr
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                  <div className="text-right flex-shrink-0">
-                    {totalValor > 0 && (
-                      <p className="text-sm font-bold text-emerald-400 tabular-nums">
-                        R$ {totalValor.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
-                      </p>
-                    )}
-                    <div className="flex items-center gap-1.5 mt-0.5 justify-end">
-                      <div className="w-16 h-1.5 bg-zinc-800 rounded-full overflow-hidden">
-                        <div className="h-full bg-emerald-500 rounded-full transition-all duration-700" style={{ width: `${progress}%` }} />
-                      </div>
-                      <span className="text-[10px] text-zinc-600 tabular-nums">{progress}%</span>
-                    </div>
-                  </div>
+          return (
+            <div key={task.taskId || index} className={`flex items-center gap-3 py-2.5 ${important ? `-mx-1 rounded-lg border px-2 ${config.surface}` : ""}`}>
+              <div className="w-12 shrink-0 text-center">
+                <p className="font-mono text-sm font-bold tabular-nums text-zinc-200">{task.horaInicio || "--:--"}</p>
+                {task.horaFim && <p className="mt-0.5 font-mono text-[10px] tabular-nums text-zinc-600">até {task.horaFim}</p>}
+              </div>
+              <span className={`h-2.5 w-2.5 shrink-0 rounded-full ${config.dot} ${task.status === "Em andamento" ? "animate-pulse" : ""}`} />
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-2">
+                  <p className="truncate text-sm font-semibold text-zinc-100" title={task.cliente}>{task.cliente || "Cliente não informado"}</p>
+                  {hasPendingIssue(task) && <AlertTriangle className="h-3.5 w-3.5 shrink-0 text-red-400" />}
                 </div>
-
-                {/* Tasks — compact list */}
-                <div className="px-2.5 py-1.5">
-                  {sortedTasks.map((task, idx) => {
-                    const isLate = task.atrasada;
-                    const label = isLate ? "Atrasada" : task.status;
-                    const dotClass = isLate ? "bg-red-500" : (statusDot[task.status] || "bg-zinc-600");
-                    const textClass = isLate ? "text-red-400" : (statusColor[task.status] || "text-zinc-400");
-
-                    return (
-                      <div
-                        key={task.taskId || idx}
-                        className={`flex items-center gap-2 py-1.5 ${idx > 0 ? "border-t border-zinc-800/40" : ""} ${isLate ? "bg-red-950/20 -mx-1 px-1 rounded" : ""}`}
-                      >
-                        <div className={`h-2 w-2 rounded-full flex-shrink-0 ${dotClass}`} />
-                        <div className="flex-1 min-w-0">
-                          <p className="text-xs font-medium text-zinc-200 truncate">
-                            {task.cliente || "Sem cliente"}
-                          </p>
-                          <div className="flex items-center gap-2">
-                            <span className={`text-[10px] font-medium ${textClass}`}>{label}</span>
-                            {task.gcOsCodigo && (
-                              <span className="text-[10px] text-zinc-600 font-mono">
-                                {task.gcOsTipo || "OS"} {task.gcOsCodigo}
-                              </span>
-                            )}
-                            {task.horaInicio && (
-                              <span className="text-[10px] text-zinc-600">
-                                {task.horaInicio}{task.horaFim ? `–${task.horaFim}` : ""}
-                              </span>
-                            )}
-                          </div>
-                        </div>
-                        {task.gcOsValor && task.gcOsValor !== "0" && (
-                          <span className="text-[11px] font-semibold text-emerald-400 flex-shrink-0 tabular-nums">
-                            R$ {parseFloat(task.gcOsValor).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
-                          </span>
-                        )}
-                        {task.pendencia && task.pendencia.toLowerCase() !== "nenhuma" && task.pendencia !== "0" && (
-                          <span className="text-[10px] text-red-400 flex-shrink-0">⚠</span>
-                        )}
-                      </div>
-                    );
-                  })}
+                <div className="mt-0.5 flex items-center gap-2 text-[11px]">
+                  <span className={`font-semibold ${config.text}`}>{config.label}</span>
+                  {task.gcOsCodigo && <span className="truncate font-mono text-zinc-500">{task.gcOsTipo || "OS"} {task.gcOsCodigo}</span>}
                 </div>
               </div>
-            );
-          })}
-        </div>
+              {parseValue(task.gcOsValor) > 0 && (
+                <span className="shrink-0 text-xs font-semibold tabular-nums text-emerald-300">
+                  {parseValue(task.gcOsValor).toLocaleString("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 })}
+                </span>
+              )}
+            </div>
+          );
+        })}
+
+        {visibleTasks.length === 0 && (
+          <div className="flex h-full items-center justify-center py-8 text-sm text-zinc-600">Nenhuma tarefa para exibir</div>
+        )}
+      </div>
+
+      <div className="flex h-9 shrink-0 items-center border-t border-white/[0.06] bg-black/10 px-4 text-[11px] text-zinc-500">
+        <span>{progress}% do roteiro concluído</span>
+        {hiddenTasks > 0 && <span className="ml-auto font-medium text-zinc-400">+{hiddenTasks} tarefa{hiddenTasks === 1 ? "" : "s"} no roteiro</span>}
+      </div>
+    </section>
+  );
+}
+
+function TvMetric({
+  icon,
+  label,
+  value,
+  detail,
+  tone,
+}: {
+  icon: ReactNode;
+  label: string;
+  value: string;
+  detail?: string;
+  tone: "sky" | "emerald" | "amber" | "red" | "slate";
+}) {
+  const tones = {
+    sky: "border-sky-500/20 bg-sky-500/8 text-sky-300",
+    emerald: "border-emerald-500/20 bg-emerald-500/8 text-emerald-300",
+    amber: "border-amber-500/20 bg-amber-500/8 text-amber-300",
+    red: "border-red-500/30 bg-red-500/12 text-red-300",
+    slate: "border-white/10 bg-white/[0.035] text-zinc-300",
+  };
+
+  return (
+    <div className={`rounded-xl border px-3 py-2.5 ${tones[tone]}`}>
+      <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wider text-zinc-500">
+        <span className={tone === "slate" ? "text-zinc-400" : ""}>{icon}</span>
+        <span className="truncate">{label}</span>
+      </div>
+      <div className="mt-1 flex items-baseline gap-2">
+        <strong className="truncate text-xl font-bold tabular-nums text-current">{value}</strong>
+        {detail && <span className="truncate text-[10px] text-zinc-500">{detail}</span>}
       </div>
     </div>
+  );
+}
+
+function Legend({ dot, label }: { dot: string; label: string }) {
+  return (
+    <span className="flex items-center gap-1.5">
+      <span className={`h-2 w-2 rounded-full ${dot}`} />
+      {label}
+    </span>
   );
 }

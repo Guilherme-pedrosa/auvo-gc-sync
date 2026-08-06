@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback } from "react";
+import { useState, useMemo, useCallback, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -104,9 +104,22 @@ export default function RealtimeTrackingPage() {
       setLastFetchTime(new Date().toISOString());
       return data as TrackingData;
     },
-    refetchInterval: 60_000,
+    refetchInterval: tvMode ? 30_000 : 60_000,
     staleTime: 15_000,
   });
+
+  useEffect(() => {
+    if (!tvMode) return;
+
+    const keepCurrentDay = () => {
+      const today = new Date();
+      if (format(today, "yyyy-MM-dd") !== dateStr) setSelectedDate(today);
+    };
+
+    keepCurrentDay();
+    const timer = window.setInterval(keepCurrentDay, 30_000);
+    return () => window.clearInterval(timer);
+  }, [dateStr, tvMode]);
 
   // Monthly late tasks query
   const getDivDates = () => {
@@ -253,6 +266,11 @@ export default function RealtimeTrackingPage() {
   }, [divEnd, divStart, isSyncingDivergencias, refetchAtrasadas, refetchPendencias]);
 
   const goDay = (dir: number) => setSelectedDate((d) => (dir > 0 ? addDays(d, 1) : subDays(d, 1)));
+
+  const enterTvMode = useCallback(() => {
+    setSelectedDate(new Date());
+    setTvMode(true);
+  }, []);
 
   const exportPDF = useCallback(() => {
     const doc = new jsPDF({ orientation: "landscape", unit: "mm", format: "a4" });
@@ -434,8 +452,27 @@ export default function RealtimeTrackingPage() {
     toast.success("PDF gerado com sucesso!");
   }, [atrasadasMes, pendenciasMes, selectedDate]);
 
-  if (tvMode && data) {
-    return <TvTrackingView data={data} selectedDate={selectedDate} onExit={() => setTvMode(false)} />;
+  if (tvMode) {
+    if (data) {
+      return (
+        <TvTrackingView
+          data={data}
+          selectedDate={selectedDate}
+          lastFetchTime={lastFetchTime}
+          isRefreshing={isFetching}
+          onRefresh={() => { void refetch(); }}
+          onExit={() => setTvMode(false)}
+        />
+      );
+    }
+
+    return (
+      <div className="fixed inset-0 z-[9999] flex flex-col items-center justify-center bg-[#070a10] text-zinc-200">
+        <RefreshCw className="h-8 w-8 animate-spin text-sky-400" />
+        <p className="mt-4 text-lg font-semibold">Preparando o Painel TV</p>
+        <p className="mt-1 text-sm text-zinc-500">Carregando a operação de hoje...</p>
+      </div>
+    );
   }
 
   return (
@@ -476,7 +513,7 @@ export default function RealtimeTrackingPage() {
                 <RefreshCw className={`h-3 w-3 ${isFetching ? "animate-spin" : ""}`} />
               </Button>
 
-              <Button variant="outline" size="sm" className="h-7 text-[11px] px-2" onClick={() => setTvMode(true)} disabled={!data} title="Modo TV">
+              <Button variant="outline" size="sm" className="h-7 text-[11px] px-2" onClick={enterTvMode} disabled={!data} title="Abrir Painel TV">
                 <Monitor className="h-3 w-3" />
               </Button>
 
@@ -797,12 +834,12 @@ export default function RealtimeTrackingPage() {
                     variant="outline"
                     size="sm"
                     className="h-8 text-xs gap-1.5"
-                    onClick={() => setTvMode(true)}
+                    onClick={enterTvMode}
                     disabled={!data}
                     title="Modo TV — tela cheia otimizada para televisão"
                   >
                     <Monitor className="h-3.5 w-3.5" />
-                    TV
+                    Painel TV
                   </Button>
 
                   {/* Minimize button */}
