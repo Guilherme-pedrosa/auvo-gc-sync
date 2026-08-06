@@ -424,6 +424,50 @@ export default function MatrizIntegracoesPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <Dialog open={!!drill} onOpenChange={(o) => !o && setDrill(null)}>
+        <DialogContent className="max-w-3xl">
+          <DialogHeader>
+            <DialogTitle>{drillData.titulo}</DialogTitle>
+            <DialogDescription>{drillData.descricao}</DialogDescription>
+          </DialogHeader>
+          <div className="max-h-[60vh] overflow-auto border rounded-md">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>{drill === "tecnicos_ressalva" ? "Funcionário" : "Integração"}</TableHead>
+                  <TableHead>Cliente(s)</TableHead>
+                  <TableHead>{drill === "agendadas" ? "Técnicos" : "Motivo"}</TableHead>
+                  <TableHead className="text-right">Aging</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {drillData.rows.length === 0 ? (
+                  <TableRow><TableCell colSpan={4} className="text-center py-8 text-muted-foreground">Nada aqui.</TableCell></TableRow>
+                ) : drillData.rows
+                  .slice()
+                  .sort((a, b) => (b.agingDays ?? -Infinity) - (a.agingDays ?? -Infinity))
+                  .map((r) => (
+                    <TableRow key={r.key}>
+                      <TableCell className="text-xs font-medium uppercase">{r.titulo}</TableCell>
+                      <TableCell className="text-xs uppercase">{r.cliente}</TableCell>
+                      <TableCell className="text-xs whitespace-pre-wrap">{r.detalhe}</TableCell>
+                      <TableCell className="text-right text-xs">
+                        <Badge variant={(r.agingDays ?? 0) > 30 ? "destructive" : "secondary"}>
+                          {agingLabel(r.agingDays)}
+                        </Badge>
+                        <div className="text-[10px] text-muted-foreground mt-1">{r.agingBase}</div>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+              </TableBody>
+            </Table>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDrill(null)}>Fechar</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
