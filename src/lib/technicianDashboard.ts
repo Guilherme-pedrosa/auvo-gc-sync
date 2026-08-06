@@ -162,17 +162,6 @@ export function isAllowedTechnician(id: string, name: string, allowed: Technicia
   );
 }
 
-function legacyFindTechnicianGoal(name: string, goals: TechnicianGoal[]) {
-  const normalizedName = normalizeName(name);
-  return goals.find((goal) => {
-    if (goal.ativo === false) return false;
-    const normalizedGoal = normalizeName(goal.nome_tecnico);
-    return normalizedName === normalizedGoal
-      || normalizedName.startsWith(`${normalizedGoal} `)
-      || normalizedGoal.startsWith(`${normalizedName} `);
-  });
-}
-
 export function technicianOperationalScore(technician: TechnicianQualityInput) {
   const checks = [
     technician.taxa_finalizacao >= 70,
