@@ -233,6 +233,22 @@ export function buildOperationsDashboardSnapshot(
     return next >= todayKey && next <= dueLimitKey;
   }).length;
 
+  // Atraso só conta para equipamentos com plano de preventivas ativo,
+  // e apenas após 30 dias de atraso (mês vigente nunca é atraso).
+  const plannedIds = new Set((source.plannedPreventiveIds || []).map((id) => String(id || "").trim()).filter(Boolean));
+  const monthStartKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-01`;
+  const graceDate = new Date(now);
+  graceDate.setDate(graceDate.getDate() - 30);
+  const graceKey = graceDate.toISOString().slice(0, 10);
+  const overdueCutoff = graceKey < monthStartKey ? graceKey : monthStartKey;
+  const overdueRows = source.preventiveRows.filter((row) => {
+    const id = String(row.identificador || "").trim();
+    if (!id || !plannedIds.has(id)) return false;
+    const next = String(row.proxima_preventiva || "").slice(0, 10);
+    if (!next) return false;
+    return next < overdueCutoff;
+  });
+
   const openAnalyses = source.analysisRows.filter((row) => !["resolvida", "concluida", "arquivada"].includes(normalize(row.status_analise)));
   const analysisPriority = (priority: string) => openAnalyses.filter((row) => normalize(row.prioridade) === priority).length;
 
