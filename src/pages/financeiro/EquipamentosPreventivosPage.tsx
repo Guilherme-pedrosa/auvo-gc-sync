@@ -10,7 +10,7 @@ import {
   ArrowLeft, ExternalLink, RefreshCw, Search, AlertTriangle,
   CheckCircle2, Clock, Flame, Loader2, SlidersHorizontal,
   ArrowUpDown, Download, ListFilter, Pencil, Check, X, CalendarDays,
-  ChevronLeft, ChevronRight,
+  ChevronLeft, ChevronRight, Power,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -1751,7 +1751,6 @@ export default function EquipamentosPreventivosPage() {
             { value: "inativo", label: "🚫 Inativo" },
           ]}
           placeholder="Situação Auvo"
-          label="Situação Auvo"
           searchPlaceholder="Buscar situação..."
           className="w-[180px]"
           icon={<Power className="h-4 w-4" />}
