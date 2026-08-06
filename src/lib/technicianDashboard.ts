@@ -70,6 +70,7 @@ export type TechnicianTaskRow = {
   questionario_preenchido?: boolean | null;
   duracao_decimal?: number | null;
   duracao_deslocamento?: number | null;
+  cliente?: string | null;
   gc_os_id?: string | null;
   gc_os_valor_total?: number | null;
   gc_orcamento_id?: string | null;
@@ -92,6 +93,8 @@ export type TechnicianData = TechnicianQualityInput & {
   produtividade_pct: number;
   valor_total: number;
   faturamento_hora: number;
+  horas_contrato: number;
+  valor_contratos: number;
   tarefas_por_dia: Record<string, number>;
   finalizadas_por_dia: Record<string, number>;
 };
@@ -112,6 +115,8 @@ export type TechnicianDashboardData = {
     total_sem_questionario: number;
     total_checkins_sem_checkout: number;
     valor_total: number;
+    total_horas_contrato: number;
+    total_valor_contratos: number;
   };
   tecnicos: TechnicianData[];
 };
@@ -162,6 +167,29 @@ export function isAllowedTechnician(id: string, name: string, allowed: Technicia
   );
 }
 
+/** Valor/hora de contrato por cliente normalizado. */
+export type ContractRates = Map<string, number>;
+
+export function buildContractRates(
+  contracts: { valor_hora?: number | null; cliente_nome?: string | null; grupo_id?: string | null }[],
+  groupMembers: { grupo_id?: string | null; cliente_nome?: string | null }[] = [],
+): ContractRates {
+  const rates: ContractRates = new Map();
+  for (const contract of contracts) {
+    const rate = Number(contract.valor_hora) || 0;
+    if (rate <= 0) continue;
+    if (contract.cliente_nome) rates.set(normalizeName(contract.cliente_nome), rate);
+    if (contract.grupo_id) {
+      for (const member of groupMembers) {
+        if (member.grupo_id === contract.grupo_id && member.cliente_nome) {
+          rates.set(normalizeName(member.cliente_nome), rate);
+        }
+      }
+    }
+  }
+  return rates;
+}
+
 export function technicianOperationalScore(technician: TechnicianQualityInput) {
   const checks = [
     technician.taxa_finalizacao >= 70,
@@ -205,6 +233,7 @@ export function buildTechnicianDashboardData(
   startDate: string,
   endDate: string,
   allowed?: TechnicianAllowlist | null,
+  contractRates?: ContractRates | null,
 ): TechnicianDashboardData {
   const snapshots = new Map<string, TechnicianTaskRow>();
   for (const row of rows) {
@@ -229,6 +258,8 @@ export function buildTechnicianDashboardData(
     qualityFailures: number;
     hours: number;
     intervals: Interval[];
+    contractHours: number;
+    contractValue: number;
     travelHours: number;
     value: number;
     days: Set<string>;
@@ -258,6 +289,8 @@ export function buildTechnicianDashboardData(
       qualityFailures: 0,
       hours: 0,
       intervals: [],
+      contractHours: 0,
+      contractValue: 0,
       travelHours: 0,
       value: 0,
       days: new Set<string>(),
@@ -280,6 +313,14 @@ export function buildTechnicianDashboardData(
     if (task.os_realizada || task.gc_os_id) accumulator.withOs++;
     if (pending || missingQuestionnaire || openCheckin) accumulator.qualityFailures++;
     accumulator.hours += Number(task.duracao_decimal) || 0;
+    if (finished && contractRates?.size) {
+      const rate = contractRates.get(normalizeName(String(task.cliente || ""))) || 0;
+      const taskHours = Number(task.duracao_decimal) || 0;
+      if (rate > 0 && taskHours > 0) {
+        accumulator.contractHours += taskHours;
+        accumulator.contractValue += taskHours * rate;
+      }
+    }
     if (task.check_in_iso && task.check_out_iso) {
       const start = Date.parse(task.check_in_iso);
       const end = Date.parse(task.check_out_iso);
@@ -340,6 +381,8 @@ export function buildTechnicianDashboardData(
       produtividade_pct: availableHours > 0 ? Math.round((productiveHours / availableHours) * 100) : 0,
       valor_total: value,
       faturamento_hora: hours > 0 ? Math.round((value / hours) * 100) / 100 : 0,
+      horas_contrato: Math.round(tech.contractHours * 10) / 10,
+      valor_contratos: Math.round(tech.contractValue * 100) / 100,
       tarefas_por_dia: tech.tasksByDay,
       finalizadas_por_dia: tech.finishedByDay,
     };
@@ -363,6 +406,8 @@ export function buildTechnicianDashboardData(
       total_sem_questionario: data.reduce((total, tech) => total + (tech.tarefas_sem_questionario || 0), 0),
       total_checkins_sem_checkout: data.reduce((total, tech) => total + (tech.checkins_sem_checkout || 0), 0),
       valor_total: Math.round(data.reduce((total, tech) => total + tech.valor_total, 0) * 100) / 100,
+      total_horas_contrato: Math.round(data.reduce((total, tech) => total + tech.horas_contrato, 0) * 10) / 10,
+      total_valor_contratos: Math.round(data.reduce((total, tech) => total + tech.valor_contratos, 0) * 100) / 100,
     },
     tecnicos: data,
   };
