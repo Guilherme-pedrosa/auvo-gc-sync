@@ -176,6 +176,7 @@ export function buildTechnicianDashboardData(
   rows: TechnicianTaskRow[],
   startDate: string,
   endDate: string,
+  allowed?: TechnicianAllowlist | null,
 ): TechnicianDashboardData {
   const snapshots = new Map<string, TechnicianTaskRow>();
   for (const row of rows) {
@@ -216,6 +217,7 @@ export function buildTechnicianDashboardData(
     const technicianId = String(task.tecnico_id || task.tecnico || "").trim();
     const name = String(task.tecnico || "").trim();
     if (!technicianId || !name) continue;
+    if (allowed && !isAllowedTechnician(technicianId, name, allowed)) continue;
     const accumulator = technicians.get(technicianId) || {
       id: technicianId,
       nome: name,
