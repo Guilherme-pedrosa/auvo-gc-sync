@@ -5,7 +5,8 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Plus, Search, Pencil, Trash2, Share2, AlertTriangle, Loader2 } from "lucide-react";
+import { Plus, Search, Pencil, Trash2, Share2, AlertTriangle, Loader2, CalendarClock, UserCheck } from "lucide-react";
+import { Card, CardContent } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
   Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
@@ -40,6 +41,24 @@ const statusLabel: Record<string, string> = {
   expirada: "Expirada",
 };
 
+const DAY_MS = 86_400_000;
+const daysBetween = (iso: string | null) =>
+  iso ? Math.round((Date.now() - new Date(iso).getTime()) / DAY_MS) : null;
+const agingLabel = (days: number | null) => {
+  if (days == null) return "—";
+  if (days === 0) return "hoje";
+  return days > 0 ? `há ${days} dia(s)` : `em ${Math.abs(days)} dia(s)`;
+};
+
+type DrillRow = {
+  key: string;
+  titulo: string;
+  cliente: string;
+  detalhe: string;
+  agingDays: number | null;
+  agingBase: string;
+};
+
 export default function MatrizIntegracoesPage() {
   const navigate = useNavigate();
   const { data: integrations = [], isLoading } = useIntegrations();
@@ -56,6 +75,7 @@ export default function MatrizIntegracoesPage() {
   const [extendSearch, setExtendSearch] = useState("");
   const [extendSelected, setExtendSelected] = useState<string[]>([]);
   const [savingExtend, setSavingExtend] = useState(false);
+  const [drill, setDrill] = useState<null | "agendadas" | "ressalvas" | "tecnicos_ressalva">(null);
 
   const clientMap = useMemo(() => new Map(clientes.map((c) => [c.id, c])), [clientes]);
   const colabMap = useMemo(() => new Map(colabs.map((c) => [c.id, c])), [colabs]);
@@ -100,6 +120,76 @@ export default function MatrizIntegracoesPage() {
     });
   }, [integrations, search, statusFilter, clientMap]);
 
+  const nomeCliente = (cid: string) => clientMap.get(cid)?.nome ?? "—";
+  const nomeTec = (tid: string) => colabMap.get(tid)?.nome ?? tid;
+
+  const agendadas = useMemo(() => integrations.filter((i) => i.status === "agendada"), [integrations]);
+  const comRessalva = useMemo(() => integrations.filter((i) => i.ressalva), [integrations]);
+  const tecnicosComRessalva = useMemo(() => {
+    const map = new Map<string, { tid: string; integracoes: typeof integrations }>();
+    for (const i of integrations) {
+      if (!i.ressalva || i.status !== "realizada") continue;
+      for (const tid of i.technician_ids) {
+        const cur = map.get(tid) ?? { tid, integracoes: [] as typeof integrations };
+        cur.integracoes.push(i);
+        map.set(tid, cur);
+      }
+    }
+    return [...map.values()];
+  }, [integrations]);
+
+  const drillData = useMemo<{ titulo: string; descricao: string; rows: DrillRow[] }>(() => {
+    if (drill === "agendadas") {
+      return {
+        titulo: "Integrações agendadas",
+        descricao: "Aging calculado a partir da data agendada.",
+        rows: agendadas.map((i) => ({
+          key: i.id,
+          titulo: i.nome || "INTEGRAÇÃO",
+          cliente: nomeCliente(i.client_id),
+          detalhe: i.technician_ids.map(nomeTec).join(", ") || "—",
+          agingDays: daysBetween(i.scheduled_at),
+          agingBase: i.scheduled_at ? new Date(i.scheduled_at).toLocaleDateString("pt-BR") : "sem data",
+        })),
+      };
+    }
+    if (drill === "ressalvas") {
+      return {
+        titulo: "Integrações com ressalva",
+        descricao: "Aging calculado desde a criação da integração.",
+        rows: comRessalva.map((i) => ({
+          key: i.id,
+          titulo: i.nome || "INTEGRAÇÃO",
+          cliente: nomeCliente(i.client_id),
+          detalhe: i.ressalva_motivo || "Documentos pendentes",
+          agingDays: daysBetween(i.completed_at ?? i.criado_em),
+          agingBase: new Date(i.completed_at ?? i.criado_em).toLocaleDateString("pt-BR"),
+        })),
+      };
+    }
+    if (drill === "tecnicos_ressalva") {
+      return {
+        titulo: "Funcionários integrados com ressalva",
+        descricao: "Aging desde a integração mais antiga com ressalva.",
+        rows: tecnicosComRessalva.map(({ tid, integracoes }) => {
+          const base = integracoes
+            .map((i) => i.completed_at ?? i.criado_em)
+            .sort()[0];
+          return {
+            key: tid,
+            titulo: nomeTec(tid),
+            cliente: [...new Set(integracoes.map((i) => nomeCliente(i.client_id)))].join(", "),
+            detalhe: [...new Set(integracoes.map((i) => i.ressalva_motivo || "Documentos pendentes"))].join(" | "),
+            agingDays: daysBetween(base),
+            agingBase: new Date(base).toLocaleDateString("pt-BR"),
+          };
+        }),
+      };
+    }
+    return { titulo: "", descricao: "", rows: [] };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [drill, agendadas, comRessalva, tecnicosComRessalva, clientMap, colabMap]);
+
   return (
     <div className="p-6 max-w-6xl mx-auto">
       <div className="flex items-center justify-between mb-6">
@@ -110,6 +200,45 @@ export default function MatrizIntegracoesPage() {
         <Button onClick={() => navigate("/rh/integracoes/nova")}>
           <Plus className="h-4 w-4 mr-2" /> Nova integração
         </Button>
+      </div>
+
+      <div className="grid gap-3 sm:grid-cols-3 mb-5">
+        <Card
+          className="cursor-pointer transition-colors hover:border-primary"
+          onClick={() => setDrill("agendadas")}
+        >
+          <CardContent className="p-4">
+            <div className="flex items-center gap-2 text-xs text-muted-foreground uppercase">
+              <CalendarClock className="h-4 w-4" /> Integrações agendadas
+            </div>
+            <div className="text-3xl font-semibold mt-1">{agendadas.length}</div>
+            <div className="text-[11px] text-muted-foreground">clique para ver a lista</div>
+          </CardContent>
+        </Card>
+        <Card
+          className="cursor-pointer transition-colors hover:border-destructive"
+          onClick={() => setDrill("ressalvas")}
+        >
+          <CardContent className="p-4">
+            <div className="flex items-center gap-2 text-xs text-muted-foreground uppercase">
+              <AlertTriangle className="h-4 w-4" /> Integrações com ressalva
+            </div>
+            <div className="text-3xl font-semibold mt-1">{comRessalva.length}</div>
+            <div className="text-[11px] text-muted-foreground">clique para ver a lista</div>
+          </CardContent>
+        </Card>
+        <Card
+          className="cursor-pointer transition-colors hover:border-destructive"
+          onClick={() => setDrill("tecnicos_ressalva")}
+        >
+          <CardContent className="p-4">
+            <div className="flex items-center gap-2 text-xs text-muted-foreground uppercase">
+              <UserCheck className="h-4 w-4" /> Funcionários integrados c/ ressalva
+            </div>
+            <div className="text-3xl font-semibold mt-1">{tecnicosComRessalva.length}</div>
+            <div className="text-[11px] text-muted-foreground">clique para ver a lista</div>
+          </CardContent>
+        </Card>
       </div>
 
       <div className="flex gap-2 mb-3">
