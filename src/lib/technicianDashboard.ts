@@ -1,3 +1,5 @@
+import { DAILY_WORK_HOURS, countBusinessDays } from "./businessDays";
+
 export type TechnicianQualityInput = {
   tarefas_total: number;
   tarefas_finalizadas: number;
@@ -47,6 +49,9 @@ export type TechnicianData = TechnicianQualityInput & {
   tempo_horas: number;
   deslocamento_horas: number;
   dias_trabalhados: number;
+  dias_uteis: number;
+  horas_disponiveis: number;
+  produtividade_pct: number;
   valor_total: number;
   faturamento_hora: number;
   tarefas_por_dia: Record<string, number>;
@@ -61,6 +66,9 @@ export type TechnicianDashboardData = {
     total_tecnicos: number;
     total_horas: number;
     total_deslocamento_horas: number;
+    dias_uteis: number;
+    horas_disponiveis: number;
+    produtividade_pct: number;
     total_pendencias: number;
     total_sem_questionario: number;
     total_checkins_sem_checkout: number;
@@ -161,6 +169,8 @@ export function buildTechnicianDashboardData(
 
   const technicians = new Map<string, Accumulator>();
   const documents = new Map<string, { value: number; technicianIds: Set<string> }>();
+  const businessDays = countBusinessDays(startDate, endDate);
+  const availableHours = businessDays * DAILY_WORK_HOURS;
 
   for (const task of tasks) {
     const technicianId = String(task.tecnico_id || task.tecnico || "").trim();
@@ -247,6 +257,9 @@ export function buildTechnicianDashboardData(
       deslocamento_horas: Math.round(tech.travelHours * 10) / 10,
       tempo_atividade_pct: Math.round((tech.hours / (days * 8)) * 100),
       dias_trabalhados: days,
+      dias_uteis: businessDays,
+      horas_disponiveis: availableHours,
+      produtividade_pct: availableHours > 0 ? Math.round((hours / availableHours) * 100) : 0,
       valor_total: value,
       faturamento_hora: hours > 0 ? Math.round((value / hours) * 100) / 100 : 0,
       tarefas_por_dia: tech.tasksByDay,
@@ -262,6 +275,11 @@ export function buildTechnicianDashboardData(
       total_tecnicos: data.length,
       total_horas: Math.round(data.reduce((total, tech) => total + tech.tempo_horas, 0) * 10) / 10,
       total_deslocamento_horas: Math.round(data.reduce((total, tech) => total + tech.deslocamento_horas, 0) * 10) / 10,
+      dias_uteis: businessDays,
+      horas_disponiveis: Math.round(availableHours * data.length * 10) / 10,
+      produtividade_pct: availableHours > 0 && data.length > 0
+        ? Math.round((data.reduce((total, tech) => total + tech.tempo_horas, 0) / (availableHours * data.length)) * 100)
+        : 0,
       total_pendencias: data.reduce((total, tech) => total + tech.tarefas_com_pendencia, 0),
       total_sem_questionario: data.reduce((total, tech) => total + (tech.tarefas_sem_questionario || 0), 0),
       total_checkins_sem_checkout: data.reduce((total, tech) => total + (tech.checkins_sem_checkout || 0), 0),
