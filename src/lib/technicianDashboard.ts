@@ -70,6 +70,7 @@ export type TechnicianTaskRow = {
   questionario_preenchido?: boolean | null;
   duracao_decimal?: number | null;
   duracao_deslocamento?: number | null;
+  cliente?: string | null;
   gc_os_id?: string | null;
   gc_os_valor_total?: number | null;
   gc_orcamento_id?: string | null;
@@ -92,6 +93,8 @@ export type TechnicianData = TechnicianQualityInput & {
   produtividade_pct: number;
   valor_total: number;
   faturamento_hora: number;
+  horas_contrato: number;
+  valor_contratos: number;
   tarefas_por_dia: Record<string, number>;
   finalizadas_por_dia: Record<string, number>;
 };
@@ -112,6 +115,8 @@ export type TechnicianDashboardData = {
     total_sem_questionario: number;
     total_checkins_sem_checkout: number;
     valor_total: number;
+    total_horas_contrato: number;
+    total_valor_contratos: number;
   };
   tecnicos: TechnicianData[];
 };
@@ -160,6 +165,29 @@ export function isAllowedTechnician(id: string, name: string, allowed: Technicia
     || normalized.startsWith(`${allowedName} `)
     || allowedName.startsWith(`${normalized} `),
   );
+}
+
+/** Valor/hora de contrato por cliente normalizado. */
+export type ContractRates = Map<string, number>;
+
+export function buildContractRates(
+  contracts: { valor_hora?: number | null; cliente_nome?: string | null; grupo_id?: string | null }[],
+  groupMembers: { grupo_id?: string | null; cliente_nome?: string | null }[] = [],
+): ContractRates {
+  const rates: ContractRates = new Map();
+  for (const contract of contracts) {
+    const rate = Number(contract.valor_hora) || 0;
+    if (rate <= 0) continue;
+    if (contract.cliente_nome) rates.set(normalizeName(contract.cliente_nome), rate);
+    if (contract.grupo_id) {
+      for (const member of groupMembers) {
+        if (member.grupo_id === contract.grupo_id && member.cliente_nome) {
+          rates.set(normalizeName(member.cliente_nome), rate);
+        }
+      }
+    }
+  }
+  return rates;
 }
 
 export function technicianOperationalScore(technician: TechnicianQualityInput) {
