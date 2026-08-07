@@ -35,6 +35,7 @@ const FALLBACK_PREVENTIVE_TASK_TYPES = [
 export default function CriarTarefaAuvoDialog({ open, onOpenChange, equipamento, onCreated }: Props) {
   const [taskTypeId, setTaskTypeId] = useState<string>("");
   const [idUserTo, setIdUserTo] = useState<string>("");
+  const [questionnaireId, setQuestionnaireId] = useState<string>("");
   const [dateISO, setDateISO] = useState<string>(() => {
     const base = equipamento.proxima_data?.slice(0, 10) || new Date().toISOString().slice(0, 10);
     return base;
@@ -91,6 +92,29 @@ export default function CriarTarefaAuvoDialog({ open, onOpenChange, equipamento,
       return (data?.data || []) as any[];
     },
   });
+
+  const { data: questionnaires = [], isLoading: loadingQuestionnaires } = useQuery({
+    queryKey: ["auvo-questionnaires"],
+    enabled: open,
+    staleTime: 30 * 60 * 1000,
+    queryFn: async () => {
+      const { data, error } = await supabase.functions.invoke("auvo-task-update", {
+        body: { action: "list-questionnaires" },
+      });
+      if (error) throw error;
+      return (data?.data || []) as any[];
+    },
+  });
+
+  const questionnaireOptions = useMemo(() => {
+    return questionnaires
+      .map((q: any) => ({
+        value: String(q.id ?? q.questionnaireId ?? q.questionnaireID ?? ""),
+        label: String(q.description ?? q.name ?? q.questionnaireDescription ?? `Questionário ${q.id ?? "?"}`),
+      }))
+      .filter((o) => o.value)
+      .sort((a, b) => a.label.localeCompare(b.label));
+  }, [questionnaires]);
 
   const taskTypeOptions = useMemo(() => {
     const byId = new Map<string, { value: string; label: string }>();
@@ -154,6 +178,7 @@ export default function CriarTarefaAuvoDialog({ open, onOpenChange, equipamento,
           durationMinutes,
           orientation,
           priority: 1,
+          questionnaireId: questionnaireId || null,
         },
       });
       if (error) throw error;
@@ -213,6 +238,23 @@ export default function CriarTarefaAuvoDialog({ open, onOpenChange, equipamento,
               onValueChange={(v) => setIdUserTo(v as string)}
               placeholder={loadingUsers ? "Carregando..." : "Selecione o técnico"}
               searchPlaceholder="Buscar técnico..."
+            />
+          </div>
+
+          <div>
+            <Label className="text-xs">Questionário (opcional)</Label>
+            <SearchableSelect
+              options={questionnaireOptions}
+              value={questionnaireId}
+              onValueChange={(v) => setQuestionnaireId(v as string)}
+              placeholder={
+                loadingQuestionnaires
+                  ? "Carregando..."
+                  : questionnaireOptions.length === 0
+                    ? "Nenhum questionário disponível"
+                    : "Sem questionário"
+              }
+              searchPlaceholder="Buscar questionário..."
             />
           </div>
 
