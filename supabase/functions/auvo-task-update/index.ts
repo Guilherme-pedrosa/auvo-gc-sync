@@ -77,7 +77,8 @@ function sanitizeCentralRow(row: any) {
   // This prevents partial updates (drag/edit) from nulling GC values and other fields.
   const result: any = {
     auvo_task_id: taskId,
-    mirror_key: `${taskId}::os:${String(row?.gc_os_id || "")}::orc:${String(row?.gc_orcamento_id || "")}`,
+    mirror_key: String(row?.mirror_key || "").trim()
+      || `${taskId}::os:${String(row?.gc_os_id || "")}::orc:${String(row?.gc_orcamento_id || "")}`,
     atualizado_em: new Date().toISOString(),
   };
 
@@ -170,19 +171,31 @@ Deno.serve(async (req) => {
       if (isSingleRowPatch && rows.length === 1) {
         const row = rows[0];
         const { auvo_task_id, mirror_key, ...patch } = row;
-        const targetMirrorKey = mirror_key || `${auvo_task_id}::os:${String(row?.gc_os_id || "")}::orc:${String(row?.gc_orcamento_id || "")}`;
+        const explicitMirrorKey = String(rowsInput[0]?.mirror_key || "").trim();
+        const targetMirrorKey = mirror_key;
 
-        const { data: updatedRow, error: updateError } = await admin
+        let { data: updatedRows, error: updateError } = await admin
           .from("tarefas_central")
           .update(patch)
           .eq("mirror_key", targetMirrorKey)
-          .select("mirror_key")
-          .limit(1)
-          .maybeSingle();
+          .select("mirror_key");
 
         if (updateError) throw updateError;
 
-        if (!updatedRow) {
+        // Fallback: quando o chamador não informou mirror_key/gc ids, a chave
+        // derivada não existe. Atualiza todos os espelhos da mesma tarefa Auvo
+        // em vez de criar uma linha fantasma.
+        if ((!updatedRows || updatedRows.length === 0) && !explicitMirrorKey) {
+          const fallback = await admin
+            .from("tarefas_central")
+            .update(patch)
+            .eq("auvo_task_id", auvo_task_id)
+            .select("mirror_key");
+          if (fallback.error) throw fallback.error;
+          updatedRows = fallback.data;
+        }
+
+        if (!updatedRows || updatedRows.length === 0) {
           const { error: insertError } = await admin
             .from("tarefas_central")
             .insert({ ...row, mirror_key: targetMirrorKey });
@@ -190,7 +203,7 @@ Deno.serve(async (req) => {
         }
 
         return new Response(
-          JSON.stringify({ success: true, count: 1, status: 200 }),
+          JSON.stringify({ success: true, count: updatedRows?.length || 1, status: 200 }),
           { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
       }
