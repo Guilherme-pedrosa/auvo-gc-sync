@@ -1149,27 +1149,54 @@ export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, o
           </PopoverContent>
         </Popover>
 
-        {/* Exec status filter */}
-        <div className="flex items-center gap-1.5">
-          {[
-            { value: "all", label: "Todas", icon: null },
-            { value: "em_andamento", label: "🔄 Em andamento", icon: null },
-            { value: "pausada", label: "⏸ Pausada", icon: null },
-            { value: "finalizada", label: "✅ Finalizada", icon: null },
-            { value: "sem_exec", label: "Sem execução", icon: null },
-            { value: "excluidas", label: `🗑 Excluídas${deletedOsIds.size ? ` (${deletedOsIds.size})` : ""}`, icon: null },
-          ].map((opt) => (
-            <Button
-              key={opt.value}
-              variant={execStatusFilter === opt.value ? "default" : "outline"}
-              size="sm"
-              className="text-xs h-7 px-2.5"
-              onClick={() => setExecStatusFilter(opt.value)}
-            >
-              {opt.label}
+        {/* Exec status filter — lista com seleção múltipla */}
+        <Popover>
+          <PopoverTrigger asChild>
+            <Button variant="outline" size="sm" className="gap-1.5 text-xs h-7 px-2.5">
+              <Filter className="h-3.5 w-3.5" />
+              {execStatusFilter.size === 0
+                ? "Execução: todas"
+                : `Execução (${execStatusFilter.size})`}
             </Button>
-          ))}
-        </div>
+          </PopoverTrigger>
+          <PopoverContent className="w-60" align="start">
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-medium">Status de execução</span>
+                {execStatusFilter.size > 0 && (
+                  <Button variant="ghost" size="sm" className="h-6 px-2 text-xs" onClick={() => setExecStatusFilter(new Set())}>
+                    Limpar
+                  </Button>
+                )}
+              </div>
+              <div className="space-y-1">
+                {[
+                  { value: "em_andamento", label: "🔄 Em andamento" },
+                  { value: "pausada", label: "⏸ Pausada" },
+                  { value: "finalizada", label: "✅ Finalizada" },
+                  { value: "sem_exec", label: "Sem execução" },
+                  { value: "excluidas", label: `🗑 Excluídas${deletedOsIds.size ? ` (${deletedOsIds.size})` : ""}` },
+                ].map((opt) => (
+                  <label key={opt.value} className="flex items-center gap-2 cursor-pointer py-0.5">
+                    <Checkbox
+                      checked={execStatusFilter.has(opt.value)}
+                      onCheckedChange={() => {
+                        setExecStatusFilter((prev) => {
+                          const next = new Set(prev);
+                          if (next.has(opt.value)) next.delete(opt.value);
+                          else next.add(opt.value);
+                          return next;
+                        });
+                      }}
+                    />
+                    <span className="text-xs">{opt.label}</span>
+                  </label>
+                ))}
+              </div>
+              <p className="text-[10px] text-muted-foreground">Nenhum selecionado = todas as OS.</p>
+            </div>
+          </PopoverContent>
+        </Popover>
 
         {/* Local do reparo (campo GC 68658) */}
         <div className="flex items-center gap-1.5">
