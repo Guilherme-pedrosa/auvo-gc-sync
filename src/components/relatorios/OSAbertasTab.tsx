@@ -427,17 +427,16 @@ export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, o
       });
     }
 
-    // Apply exec status filter
-    if (execStatusFilter === "excluidas") {
-      items = items.filter((item) => deletedOsIds.has(String(item.gc_os_id || "")));
-    } else if (execStatusFilter !== "all") {
+    // Apply exec status filter (multisseleção; vazio = todas)
+    if (execStatusFilter.size > 0) {
       items = items.filter((item) => {
+        if (execStatusFilter.has("excluidas") && deletedOsIds.has(String(item.gc_os_id || ""))) return true;
         const status = getItemExecStatus(item).toLowerCase();
-        if (execStatusFilter === "em_andamento") return status.includes("andamento") || status.includes("deslocamento");
-        if (execStatusFilter === "pausada") return status.includes("pausa");
-        if (execStatusFilter === "finalizada") return status.includes("finalizada");
-        if (execStatusFilter === "sem_exec") return !status || status === "agendada" || status === "aberta";
-        return true;
+        if (execStatusFilter.has("em_andamento") && (status.includes("andamento") || status.includes("deslocamento"))) return true;
+        if (execStatusFilter.has("pausada") && status.includes("pausa")) return true;
+        if (execStatusFilter.has("finalizada") && status.includes("finalizada")) return true;
+        if (execStatusFilter.has("sem_exec") && (!status || status === "agendada" || status === "aberta")) return true;
+        return false;
       });
     }
 
@@ -469,7 +468,7 @@ export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, o
       }
       if (encontradas.length > 0) {
         toast.warning(`${encontradas.length} OS não existem mais no GestãoClick — marcadas como ${SITUACAO_EXCLUIDA}`);
-        if (!opts?.silent) setExecStatusFilter("excluidas");
+        if (!opts?.silent) setExecStatusFilter(new Set(["excluidas"]));
       } else if (!opts?.silent) {
         toast.success("Nenhuma OS excluída encontrada");
       }
