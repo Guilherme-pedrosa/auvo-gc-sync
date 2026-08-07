@@ -441,6 +441,39 @@ Deno.serve(async (req) => {
       );
     }
 
+    if (action === "list-questionnaires") {
+      // Lista questionários disponíveis no Auvo (v2: GET /questionnaires/)
+      const candidates = ["questionnaires", "questionnaire"];
+      const all: any[] = [];
+      let lastErr = "";
+      let usedPath = "";
+      for (const path of candidates) {
+        let page = 1;
+        let gotAny = false;
+        while (page <= 10) {
+          const url = `${AUVO_BASE_URL}/${path}/?paramFilter=${encodeURIComponent(JSON.stringify({}))}&page=${page}&pageSize=100`;
+          const response = await fetch(url, { headers });
+          if (!response.ok) {
+            lastErr = `${path} p${page} HTTP ${response.status}`;
+            break;
+          }
+          const json = await response.json();
+          const items = json?.result?.entityList || json?.result || json?.data || [];
+          if (!Array.isArray(items) || items.length === 0) break;
+          all.push(...items);
+          gotAny = true;
+          if (items.length < 100) break;
+          page++;
+        }
+        if (gotAny) { usedPath = path; break; }
+      }
+      console.log(`[auvo-task-update] list-questionnaires: path=${usedPath} count=${all.length} lastErr=${lastErr}`);
+      return new Response(
+        JSON.stringify({ data: all, status: 200, _debug: { path: usedPath, count: all.length, lastErr } }),
+        { status: 200, headers: respHeaders }
+      );
+    }
+
     if (action === "create-preventive-task") {
       // Cria uma tarefa de preventiva no Auvo a partir de um equipamento
       // body: { auvoEquipmentId, idUserTo, taskTypeId, dateISO ("YYYY-MM-DD"),
@@ -454,6 +487,7 @@ Deno.serve(async (req) => {
         durationMinutes = 120,
         orientation = "",
         priority = 1,
+        questionnaireId = null,
       } = body || {};
 
       if (!auvoEquipmentId || !idUserTo || !taskTypeId || !dateISO) {
@@ -511,6 +545,10 @@ Deno.serve(async (req) => {
         longitude: Number(cust?.longitude ?? eq?.longitude ?? 0),
         sendSatisfactionSurvey: false,
       };
+
+      if (questionnaireId != null && String(questionnaireId).trim() !== "") {
+        taskPayload.questionnaireId = Number(questionnaireId);
+      }
 
       const url = `${AUVO_BASE_URL}/tasks`;
       let response: Response;
