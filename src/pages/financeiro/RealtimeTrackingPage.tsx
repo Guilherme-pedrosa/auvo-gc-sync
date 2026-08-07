@@ -41,6 +41,7 @@ type TaskItem = {
   gcOsCodigo: string;
   gcOsValor: string;
   gcOsTipo?: string;
+  gcVendedor?: string;
 };
 
 type TecnicoGroup = {

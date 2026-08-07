@@ -1,4 +1,5 @@
 import { installGcUsuarioId } from "../_shared/gc-user.ts";
+import { resolveAuvoTaskAssignee } from "../_shared/auvo-task-assignee.ts";
 installGcUsuarioId();
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
@@ -303,13 +304,13 @@ Deno.serve(async (req) => {
       id: string;
       nome: string;
       tarefas: any[];
-      auvoTechIds: Set<string>;
     }> = {};
 
     for (const task of tasks) {
-      const techId = String(task.idUserTo || task.userToId || task.collaboratorId || "");
-      const techName = String(task.userToName || task.collaboratorName || "Desconhecido").trim();
-      if (!techId || techName === "Desconhecido") continue;
+      const assignee = resolveAuvoTaskAssignee(task);
+      if (!assignee) continue;
+      const techId = assignee.id;
+      const techName = assignee.nome;
 
       // Determine status label
       let statusLabel = "Agendada";
@@ -375,16 +376,14 @@ Deno.serve(async (req) => {
       const finalValor = gcValorNum > 0 ? gcDoc!.valor : (dbValorNum > 0 ? dbFallback!.valor : (gcDoc?.valor || ""));
       const finalTipo = (gcValorNum > 0 ? gcDocTipo : null) || dbFallback?.tipo || gcDocTipo || "";
 
-      // ── Group by GC VENDOR name (gc_os_vendedor / gc_orc_vendedor) ──
-      // GC seller owns the OS for meta/commission purposes; fallback to Auvo executor only when GC vendor missing.
+      // O cartão representa a agenda do responsável real no Auvo. O vendedor do
+      // GestãoClick é apenas uma informação comercial da OS e nunca define o grupo.
       const gcVendedor = (gcDoc?.vendedor || dbFallback?.vendedor || "").trim();
-      const groupName = gcVendedor || techName;
-      const groupKey = (gcVendedor ? `vend::${gcVendedor.toLowerCase()}` : `auvo::${techId}`);
+      const groupKey = techId;
 
       if (!techMap[groupKey]) {
-        techMap[groupKey] = { id: groupKey, nome: groupName, tarefas: [], auvoTechIds: new Set() };
+        techMap[groupKey] = { id: techId, nome: techName, tarefas: [] };
       }
-      techMap[groupKey].auvoTechIds.add(techId);
 
       techMap[groupKey].tarefas.push({
         taskId: auvoTaskId,
@@ -403,8 +402,7 @@ Deno.serve(async (req) => {
         gcOsCodigo: finalCodigo,
         gcOsValor: finalValor,
         gcOsTipo: finalTipo,
-        _auvoTechId: techId,
-        _auvoTechName: techName,
+        gcVendedor,
       });
     }
 
@@ -451,9 +449,8 @@ Deno.serve(async (req) => {
             if (isLateNow || isEndOfDayPending) {
               naoExecutadas.push({
                 auvo_task_id: task.taskId,
-                // Persist using AUVO executor (who didn't execute), not GC vendor
-                tecnico_id: (task as any)._auvoTechId || tech.id,
-                tecnico_nome: (task as any)._auvoTechName || tech.nome,
+                tecnico_id: tech.id,
+                tecnico_nome: tech.nome,
                 cliente: task.cliente || null,
                 descricao: task.descricao || null,
                 data_planejada: targetDate,
