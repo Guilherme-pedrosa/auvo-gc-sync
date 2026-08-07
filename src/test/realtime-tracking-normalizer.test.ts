@@ -80,6 +80,6 @@ describe("regroupTrackingByAuvoAssignee", () => {
     });
 
     expect(result.tecnicos[0].nome).toBe("Sem técnico");
-    expect(result.tecnicos[0].tarefas[0].gcVendedor).toBe("Maria Eduarda");
+    expect((result.tecnicos[0].tarefas[0] as { gcVendedor?: string }).gcVendedor).toBe("Maria Eduarda");
   });
 });
