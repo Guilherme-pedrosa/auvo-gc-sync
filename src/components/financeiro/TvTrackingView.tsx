@@ -25,6 +25,8 @@ type TaskItem = {
   gcOsValor: string;
   gcOsTipo?: string;
   gcVendedor?: string;
+  _auvoTechId?: string;
+  _auvoTechName?: string;
 };
 
 type TecnicoGroup = {

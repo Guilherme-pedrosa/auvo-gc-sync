@@ -21,6 +21,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { ptBR } from "date-fns/locale";
 import { toast } from "sonner";
 import LastSyncBadge from "@/components/LastSyncBadge";
+import { regroupTrackingByAuvoAssignee } from "@/lib/realtime-tracking-normalizer";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 
@@ -42,6 +43,8 @@ type TaskItem = {
   gcOsValor: string;
   gcOsTipo?: string;
   gcVendedor?: string;
+  _auvoTechId?: string;
+  _auvoTechName?: string;
 };
 
 type TecnicoGroup = {
@@ -103,7 +106,7 @@ export default function RealtimeTrackingPage() {
       if (error) throw error;
       if (data?.error) throw new Error(data.error);
       setLastFetchTime(new Date().toISOString());
-      return data as TrackingData;
+      return regroupTrackingByAuvoAssignee(data as TrackingData);
     },
     refetchInterval: 60_000,
     staleTime: 15_000,
