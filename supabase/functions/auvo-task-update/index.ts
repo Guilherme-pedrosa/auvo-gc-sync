@@ -77,7 +77,8 @@ function sanitizeCentralRow(row: any) {
   // This prevents partial updates (drag/edit) from nulling GC values and other fields.
   const result: any = {
     auvo_task_id: taskId,
-    mirror_key: `${taskId}::os:${String(row?.gc_os_id || "")}::orc:${String(row?.gc_orcamento_id || "")}`,
+    mirror_key: String(row?.mirror_key || "").trim()
+      || `${taskId}::os:${String(row?.gc_os_id || "")}::orc:${String(row?.gc_orcamento_id || "")}`,
     atualizado_em: new Date().toISOString(),
   };
 
