@@ -146,7 +146,8 @@ export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, o
   const [search, setSearch] = useState("");
   const [excludedSituacoes, setExcludedSituacoes] = useState<Set<string>>(new Set());
   const [searchSituacao, setSearchSituacao] = useState("");
-  const [execStatusFilter, setExecStatusFilter] = useState<string>("all"); // all | em_andamento | pausada | finalizada | sem_exec
+  // Multisseleção: vazio = todas
+  const [execStatusFilter, setExecStatusFilter] = useState<Set<string>>(new Set()); // em_andamento | pausada | finalizada | sem_exec | excluidas
   const [localReparoFilter, setLocalReparoFilter] = useState<string>("all"); // all | galpao | cliente | sem_info
   const [expanded, setExpanded] = useState<string | null>(null);
 
@@ -426,17 +427,16 @@ export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, o
       });
     }
 
-    // Apply exec status filter
-    if (execStatusFilter === "excluidas") {
-      items = items.filter((item) => deletedOsIds.has(String(item.gc_os_id || "")));
-    } else if (execStatusFilter !== "all") {
+    // Apply exec status filter (multisseleção; vazio = todas)
+    if (execStatusFilter.size > 0) {
       items = items.filter((item) => {
+        if (execStatusFilter.has("excluidas") && deletedOsIds.has(String(item.gc_os_id || ""))) return true;
         const status = getItemExecStatus(item).toLowerCase();
-        if (execStatusFilter === "em_andamento") return status.includes("andamento") || status.includes("deslocamento");
-        if (execStatusFilter === "pausada") return status.includes("pausa");
-        if (execStatusFilter === "finalizada") return status.includes("finalizada");
-        if (execStatusFilter === "sem_exec") return !status || status === "agendada" || status === "aberta";
-        return true;
+        if (execStatusFilter.has("em_andamento") && (status.includes("andamento") || status.includes("deslocamento"))) return true;
+        if (execStatusFilter.has("pausada") && status.includes("pausa")) return true;
+        if (execStatusFilter.has("finalizada") && status.includes("finalizada")) return true;
+        if (execStatusFilter.has("sem_exec") && (!status || status === "agendada" || status === "aberta")) return true;
+        return false;
       });
     }
 
@@ -468,7 +468,7 @@ export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, o
       }
       if (encontradas.length > 0) {
         toast.warning(`${encontradas.length} OS não existem mais no GestãoClick — marcadas como ${SITUACAO_EXCLUIDA}`);
-        if (!opts?.silent) setExecStatusFilter("excluidas");
+        if (!opts?.silent) setExecStatusFilter(new Set(["excluidas"]));
       } else if (!opts?.silent) {
         toast.success("Nenhuma OS excluída encontrada");
       }
@@ -1149,27 +1149,54 @@ export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, o
           </PopoverContent>
         </Popover>
 
-        {/* Exec status filter */}
-        <div className="flex items-center gap-1.5">
-          {[
-            { value: "all", label: "Todas", icon: null },
-            { value: "em_andamento", label: "🔄 Em andamento", icon: null },
-            { value: "pausada", label: "⏸ Pausada", icon: null },
-            { value: "finalizada", label: "✅ Finalizada", icon: null },
-            { value: "sem_exec", label: "Sem execução", icon: null },
-            { value: "excluidas", label: `🗑 Excluídas${deletedOsIds.size ? ` (${deletedOsIds.size})` : ""}`, icon: null },
-          ].map((opt) => (
-            <Button
-              key={opt.value}
-              variant={execStatusFilter === opt.value ? "default" : "outline"}
-              size="sm"
-              className="text-xs h-7 px-2.5"
-              onClick={() => setExecStatusFilter(opt.value)}
-            >
-              {opt.label}
+        {/* Exec status filter — lista com seleção múltipla */}
+        <Popover>
+          <PopoverTrigger asChild>
+            <Button variant="outline" size="sm" className="gap-1.5 text-xs h-7 px-2.5">
+              <Filter className="h-3.5 w-3.5" />
+              {execStatusFilter.size === 0
+                ? "Execução: todas"
+                : `Execução (${execStatusFilter.size})`}
             </Button>
-          ))}
-        </div>
+          </PopoverTrigger>
+          <PopoverContent className="w-60" align="start">
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-medium">Status de execução</span>
+                {execStatusFilter.size > 0 && (
+                  <Button variant="ghost" size="sm" className="h-6 px-2 text-xs" onClick={() => setExecStatusFilter(new Set())}>
+                    Limpar
+                  </Button>
+                )}
+              </div>
+              <div className="space-y-1">
+                {[
+                  { value: "em_andamento", label: "🔄 Em andamento" },
+                  { value: "pausada", label: "⏸ Pausada" },
+                  { value: "finalizada", label: "✅ Finalizada" },
+                  { value: "sem_exec", label: "Sem execução" },
+                  { value: "excluidas", label: `🗑 Excluídas${deletedOsIds.size ? ` (${deletedOsIds.size})` : ""}` },
+                ].map((opt) => (
+                  <label key={opt.value} className="flex items-center gap-2 cursor-pointer py-0.5">
+                    <Checkbox
+                      checked={execStatusFilter.has(opt.value)}
+                      onCheckedChange={() => {
+                        setExecStatusFilter((prev) => {
+                          const next = new Set(prev);
+                          if (next.has(opt.value)) next.delete(opt.value);
+                          else next.add(opt.value);
+                          return next;
+                        });
+                      }}
+                    />
+                    <span className="text-xs">{opt.label}</span>
+                  </label>
+                ))}
+              </div>
+              <p className="text-[10px] text-muted-foreground">Nenhum selecionado = todas as OS.</p>
+            </div>
+          </PopoverContent>
+        </Popover>
 
         {/* Local do reparo (campo GC 68658) */}
         <div className="flex items-center gap-1.5">
