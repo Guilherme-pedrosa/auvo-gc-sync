@@ -454,6 +454,7 @@ Deno.serve(async (req) => {
         durationMinutes = 120,
         orientation = "",
         priority = 1,
+        questionnaireId = null,
       } = body || {};
 
       if (!auvoEquipmentId || !idUserTo || !taskTypeId || !dateISO) {
@@ -511,6 +512,10 @@ Deno.serve(async (req) => {
         longitude: Number(cust?.longitude ?? eq?.longitude ?? 0),
         sendSatisfactionSurvey: false,
       };
+
+      if (questionnaireId != null && String(questionnaireId).trim() !== "") {
+        taskPayload.questionnaireId = Number(questionnaireId);
+      }
 
       const url = `${AUVO_BASE_URL}/tasks`;
       let response: Response;
