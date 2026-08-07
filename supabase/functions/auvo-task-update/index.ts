@@ -528,6 +528,9 @@ Deno.serve(async (req) => {
       const end = new Date(start.getTime() + Number(durationMinutes) * 60_000);
       const pad = (n: number) => String(n).padStart(2, "0");
       const endISO = `${end.getFullYear()}-${pad(end.getMonth() + 1)}-${pad(end.getDate())}T${pad(end.getHours())}:${pad(end.getMinutes())}:00`;
+      // Auvo expõe a duração da tarefa como "estimatedDuration" no formato HH:mm:ss
+      const totalMinutes = Math.max(1, Math.round(Number(durationMinutes) || 0));
+      const estimatedDuration = `${pad(Math.floor(totalMinutes / 60))}:${pad(totalMinutes % 60)}:00`;
 
       // 4) Payload Auvo (PUT /tasks)
       const taskPayload: any = {
@@ -537,6 +540,7 @@ Deno.serve(async (req) => {
         taskType: Number(taskTypeId),
         taskDate: startISO,
         taskEndDate: endISO,
+        estimatedDuration,
         priority: Number(priority),
         orientation: String(orientation || "Preventiva programada").substring(0, 500),
         equipmentsId: [String(auvoEquipmentId)],
