@@ -43,9 +43,7 @@ Deno.serve(async (req) => {
         url.searchParams.set(key, String(value));
       }
     }
-    if (!url.searchParams.get("usuario_id")) {
-      url.searchParams.set("usuario_id", GC_API_USER_ID);
-    }
+    url.searchParams.set("usuario_id", GC_API_USER_ID);
 
     const gcHeaders: Record<string, string> = {
       "access-token": gcAccessToken,
@@ -60,7 +58,10 @@ Deno.serve(async (req) => {
     };
 
     if (payload && ["POST", "PUT", "PATCH"].includes(method.toUpperCase())) {
-      fetchOptions.body = JSON.stringify(payload);
+      const protectedPayload = typeof payload === "object" && !Array.isArray(payload)
+        ? { ...payload, usuario_id: GC_API_USER_ID }
+        : payload;
+      fetchOptions.body = JSON.stringify(protectedPayload);
     }
 
     const response = await fetch(url.toString(), fetchOptions);

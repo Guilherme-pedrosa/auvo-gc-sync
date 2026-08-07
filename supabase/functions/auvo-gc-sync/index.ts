@@ -1,4 +1,4 @@
-import { installGcUsuarioId } from "../_shared/gc-user.ts";
+import { GC_API_USER_ID, installGcUsuarioId } from "../_shared/gc-user.ts";
 installGcUsuarioId();
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
@@ -664,7 +664,6 @@ type AtualizarSituacaoOptions = {
   vendedorId?: string | null;
   vendedorNome?: string | null;
   dataSaida?: string | null; // Data de saída da OS (formato yyyy-MM-dd), preenchida com data de execução da tarefa Auvo
-  gcUsuarioId?: string | null; // ID do usuário GC que está executando a ação (para atribuição correta no histórico)
 };
 
 async function executarPutOs(
@@ -979,10 +978,8 @@ async function atualizarSituacaoOsGC(
       situacao_id: SITUACAO_TRANSITORIA,
     };
 
-    // Atribuir ação ao usuário GC correto (para histórico de situações)
-    if (options.gcUsuarioId) {
-      payloadTransitorio.usuario_id = options.gcUsuarioId;
-    }
+    // Atribuir sempre ao usuário técnico da API, nunca ao perfil humano logado.
+    payloadTransitorio.usuario_id = GC_API_USER_ID;
 
     // Aplicar vendedor mapeado já na etapa transitória
     if (options.vendedorId) {
@@ -1014,10 +1011,7 @@ async function atualizarSituacaoOsGC(
       situacao_id: situacaoId,
     };
 
-    // Atribuir ação ao usuário GC correto
-    if (options.gcUsuarioId) {
-      payloadFinal.usuario_id = options.gcUsuarioId;
-    }
+    payloadFinal.usuario_id = GC_API_USER_ID;
 
     // Garantir vendedor no payload final também
     if (options.vendedorId) {
@@ -1068,6 +1062,7 @@ Deno.serve(async (req) => {
     const supabase = createClient(supabaseUrl, supabaseKey);
     const gcHeaders: Record<string, string> = {
       "access-token": gcAccessToken, "secret-access-token": gcSecretToken, "Content-Type": "application/json",
+      "usuario-id": GC_API_USER_ID,
     };
 
     let body: any = {};
@@ -1261,8 +1256,7 @@ Deno.serve(async (req) => {
         }
 
         // ── STEP 1: PUT para situação TRANSITÓRIA ──
-        const payloadTransit: Record<string, unknown> = { ...os, situacao_id: SITUACAO_TRANSITORIA };
-        if (body?.gc_usuario_id) payloadTransit.usuario_id = String(body.gc_usuario_id);
+        const payloadTransit: Record<string, unknown> = { ...os, situacao_id: SITUACAO_TRANSITORIA, usuario_id: GC_API_USER_ID };
         const putTransit = await executarPutOs(gcOsId, payloadTransit, gcHeaders, "BUMP_RECALC_TRANSITORIA");
         if (!putTransit.success) {
           results.push({
@@ -1283,8 +1277,7 @@ Deno.serve(async (req) => {
           });
           continue;
         }
-        const payloadRevert: Record<string, unknown> = { ...osTransit, situacao_id: situacaoOriginal };
-        if (body?.gc_usuario_id) payloadRevert.usuario_id = String(body.gc_usuario_id);
+        const payloadRevert: Record<string, unknown> = { ...osTransit, situacao_id: situacaoOriginal, usuario_id: GC_API_USER_ID };
         const putRevert = await executarPutOs(gcOsId, payloadRevert, gcHeaders, "BUMP_RECALC_REVERT");
         if (!putRevert.success) {
           results.push({
@@ -1379,8 +1372,7 @@ Deno.serve(async (req) => {
           continue;
         }
 
-        const payload: Record<string, unknown> = { ...osAtual, data_saida: novaData };
-        if (body?.gc_usuario_id) payload.usuario_id = String(body.gc_usuario_id);
+        const payload: Record<string, unknown> = { ...osAtual, data_saida: novaData, usuario_id: GC_API_USER_ID };
         const putResult = await executarPutOs(gcOsId, payload, gcHeaders, "FIX_DATA_SAIDA");
         results.push({
           gc_os_id: gcOsId, gc_os_codigo: gcOsCodigo,
@@ -1508,7 +1500,6 @@ Deno.serve(async (req) => {
       const gcOsId = String(body.gc_os_id || "");
       const situacaoAnteriorId = String(body.situacao_id_antes || "");
       const gcOsCodigo = String(body.gc_os_codigo || "");
-      const gcUsuarioId = body.gc_usuario_id ? String(body.gc_usuario_id) : null;
       if (!gcOsId || !situacaoAnteriorId) {
         return new Response(JSON.stringify({ error: "gc_os_id e situacao_id_antes são obrigatórios" }), {
           status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -1553,8 +1544,8 @@ Deno.serve(async (req) => {
         }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
       }
 
-      console.log(`[auvo-gc-sync] REVERT: OS ${gcOsCodigo} (${gcOsId}) → situação ${situacaoAnteriorId} | executor: ${resolvida.tecnicoNome || "N/A"} (${resolvida.tecnicoId || "N/A"}) | vendedor GC: ${vendedorNome || "N/A"} (${vendedorId || "N/A"}) | data_saida_execucao: ${dataSaida} (${resolvida.origem}, task ${resolvida.execTaskId || "N/A"}) | gc_usuario_id: ${gcUsuarioId || "N/A"}`);
-      const revertResult = await atualizarSituacaoOsGC(gcOsId, situacaoAnteriorId, gcHeaders, { vendedorId, vendedorNome, dataSaida, gcUsuarioId });
+      console.log(`[auvo-gc-sync] REVERT: OS ${gcOsCodigo} (${gcOsId}) → situação ${situacaoAnteriorId} | executor: ${resolvida.tecnicoNome || "N/A"} (${resolvida.tecnicoId || "N/A"}) | vendedor GC: ${vendedorNome || "N/A"} (${vendedorId || "N/A"}) | data_saida_execucao: ${dataSaida} (${resolvida.origem}, task ${resolvida.execTaskId || "N/A"}) | gc_usuario_id: ${GC_API_USER_ID}`);
+      const revertResult = await atualizarSituacaoOsGC(gcOsId, situacaoAnteriorId, gcHeaders, { vendedorId, vendedorNome, dataSaida });
       const mirrorResult = revertResult.success
         ? await atualizarEspelhoDaOs(supabase, gcOsId, gcHeaders)
         : { updated: 0, error: null };
@@ -1628,7 +1619,6 @@ Deno.serve(async (req) => {
       const gcOrcId = String(body.gc_orcamento_id || "");
       const novaSituacaoId = String(body.situacao_id || "");
       const gcOrcCodigo = String(body.gc_orcamento_codigo || "");
-      const gcUsuarioId = body.gc_usuario_id ? String(body.gc_usuario_id) : null;
       if (!gcOrcId || !novaSituacaoId) {
         return new Response(JSON.stringify({ error: "gc_orcamento_id e situacao_id são obrigatórios" }), {
           status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -1644,8 +1634,7 @@ Deno.serve(async (req) => {
             status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
           });
         }
-        const payload: Record<string, unknown> = { ...orcAtual, situacao_id: novaSituacaoId };
-        if (gcUsuarioId) payload.usuario_id = gcUsuarioId;
+        const payload: Record<string, unknown> = { ...orcAtual, situacao_id: novaSituacaoId, usuario_id: GC_API_USER_ID };
         // Remove read-only fields
         for (const f of ["id", "codigo", "nome_situacao", "cor_situacao", "hash", "cadastrado_em", "modificado_em"]) {
           delete (payload as any)[f];
@@ -2361,12 +2350,10 @@ Deno.serve(async (req) => {
         continue;
       }
 
-      const gcUsuarioIdSync = body?.gc_usuario_id ? String(body.gc_usuario_id) : null;
       const gcResult = await atualizarSituacaoOsGC(os.gc_os_id, "7116099", gcHeaders, {
         vendedorId: gcVendedorId,
         vendedorNome: gcVendedorNome,
         dataSaida: auvoTaskDate,
-        gcUsuarioId: gcUsuarioIdSync,
       });
 
       if (gcResult.success) {

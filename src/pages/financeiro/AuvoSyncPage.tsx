@@ -19,7 +19,6 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { useNavigate } from "react-router-dom";
-import { useAuth } from "@/hooks/useAuth";
 
 type ConciliacaoItem = {
   gc_os_id: string;
@@ -107,7 +106,6 @@ const auvoTaskUrl = (taskId: string) => `https://app.auvo.com.br/relatorioTarefa
 
 const AuvoSyncPage = () => {
   const navigate = useNavigate();
-  const { profile } = useAuth();
   const queryClient = useQueryClient();
 
   // ─── Conciliação state ───
@@ -262,7 +260,6 @@ const AuvoSyncPage = () => {
           auvo_task_id: item.auvo_task_id,
           situacao_id_antes: situacaoId,
           gc_vendedor_id: item.gc_vendedor_id || null, gc_vendedor_nome: item.gc_vendedor_nome || null,
-          gc_usuario_id: profile?.gc_user_id || null,
         },
       });
       if (error) throw error;
@@ -295,7 +292,6 @@ const AuvoSyncPage = () => {
             auvo_task_id: item.auvo_task_id,
             situacao_id_antes: situacaoDestino,
             gc_vendedor_id: item.gc_vendedor_id || null, gc_vendedor_nome: item.gc_vendedor_nome || null,
-            gc_usuario_id: profile?.gc_user_id || null,
           },
         });
         if (error) throw error;
