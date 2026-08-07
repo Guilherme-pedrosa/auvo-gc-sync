@@ -100,7 +100,28 @@ const hasPendingText = (value: unknown) => {
 
 function answersFrom(value: unknown): QuestionnaireAnswer[] {
   if (!Array.isArray(value)) return [];
-  return value.filter((answer): answer is QuestionnaireAnswer => Boolean(answer && typeof answer === "object"));
+  const answers: QuestionnaireAnswer[] = [];
+  for (const item of value) {
+    if (!item || typeof item !== "object") continue;
+    const record = item as Record<string, unknown>;
+    const nested = Array.isArray(record.answers) ? record.answers : null;
+    if (nested) {
+      for (const nestedAnswer of nested) {
+        if (!nestedAnswer || typeof nestedAnswer !== "object") continue;
+        const answer = nestedAnswer as Record<string, unknown>;
+        answers.push({
+          question: answer.question ?? answer.questionDescription,
+          reply: answer.reply,
+        });
+      }
+      continue;
+    }
+    answers.push({
+      question: record.question ?? record.questionDescription,
+      reply: record.reply,
+    });
+  }
+  return answers;
 }
 
 function urlsFrom(value: unknown) {
@@ -109,6 +130,7 @@ function urlsFrom(value: unknown) {
 
 const isPhotoAnswer = (answer: QuestionnaireAnswer, url: string) => {
   const question = normalize(answer.question);
+  if (/assinatura/.test(question)) return false;
   return /(foto|imagem|evidencia)/.test(question)
     || /\.(jpe?g|png|webp|heic)(?:\?|$)/i.test(url)
     || /auvo-producao\.s3\./i.test(url);

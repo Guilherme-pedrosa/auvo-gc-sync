@@ -2,6 +2,7 @@ import { GC_API_USER_ID, installGcUsuarioId } from "../_shared/gc-user.ts";
 installGcUsuarioId();
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { resolveQuestionnaireData } from "./questionnaire-normalizer.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -1231,9 +1232,11 @@ async function refreshSingleTasks(
         };
         if (snap.equipmentName) auvoUpdate.equipamento_nome = snap.equipmentName;
         if (snap.equipmentSerial) auvoUpdate.equipamento_id_serie = snap.equipmentSerial;
-        if (snap.questionnaires?.length) {
-          auvoUpdate.questionario_respostas = snap.questionnaires;
-          auvoUpdate.questionario_preenchido = true;
+        const questionnaire = resolveQuestionnaireData(QUESTIONNAIRE_ID, snap.questionnaires);
+        if (questionnaire.answers.length) {
+          auvoUpdate.questionario_id = questionnaire.questionnaireId;
+          auvoUpdate.questionario_respostas = questionnaire.answers;
+          auvoUpdate.questionario_preenchido = questionnaire.filled;
         }
         const { error: upErr, count } = await sbClient
           .from("tarefas_central")
@@ -1694,13 +1697,13 @@ async function runReportsOnlySync(
         }
       : task;
 
-    const questionnairesSource = Array.isArray(task.questionnaires) ? task.questionnaires : [];
-    const targetQ = questionnairesSource.find((q: any) => String(q.questionnaireId) === QUESTIONNAIRE_ID);
-    const answers = (targetQ?.answers || []).map((a: any) => ({
-      question: String(a.questionDescription || ""),
-      reply: String(a.reply || ""),
-    }));
-    const hasFilledQ = answers.some((r: any) => r.reply && r.reply.trim() !== "" && !r.reply.startsWith("http"));
+    const questionnaire = resolveQuestionnaireData(
+      QUESTIONNAIRE_ID,
+      task.questionnaires,
+      snapshot?.questionnaires,
+    );
+    const answers = questionnaire.answers;
+    const hasFilledQ = questionnaire.filled;
 
     const statusCode = typeof task.taskStatus === "number" ? task.taskStatus
       : typeof task.taskStatus?.id === "number" ? task.taskStatus.id
@@ -1766,7 +1769,7 @@ async function runReportsOnlySync(
       auvo_link: `https://app2.auvo.com.br/relatorioTarefas/DetalheTarefa/${taskId}`,
       auvo_task_url: String(task.taskUrl || ""),
       auvo_survey_url: String(task.survey || ""),
-      questionario_id: targetQ ? String(targetQ.questionnaireId) : null,
+      questionario_id: questionnaire.questionnaireId,
       questionario_respostas: answers,
       questionario_preenchido: hasFilledQ,
       atualizado_em: new Date().toISOString(),
@@ -2556,24 +2559,18 @@ async function runCentralSync(body: CentralSyncBody = {}) {
       const nameGc = gcOrc?.gc_orc_cliente || gcOs?.gc_os_cliente || "";
       const cliente = desc || nameRaw || nameGc || "Cliente não identificado";
 
-      // Auvo é fonte de verdade. Array vazio = "ainda não preencheu";
-      // não cair em snapshot antigo, isso congela o questionário no banco.
-      const questionnairesSource = Array.isArray(task.questionnaires)
-        ? task.questionnaires
-        : [];
-      const targetQ = questionnairesSource.find(
-        (q: any) => String(q.questionnaireId) === QUESTIONNAIRE_ID
+      // A listagem do Auvo pode omitir respostas que existem no detalhe da tarefa.
+      // Mesclamos as duas fontes e guardamos todas as respostas em formato plano.
+      const snapshot = taskSnapshotById.get(taskId);
+      const questionnaire = resolveQuestionnaireData(
+        QUESTIONNAIRE_ID,
+        task.questionnaires,
+        snapshot?.questionnaires,
       );
-      const answers = (targetQ?.answers || []).map((a: any) => ({
-        question: String(a.questionDescription || ""),
-        reply: String(a.reply || ""),
-      }));
-      const hasFilledQ = answers.some(
-        (r: any) => r.reply && r.reply.trim() !== "" && !r.reply.startsWith("http")
-      );
+      const answers = questionnaire.answers;
+      const hasFilledQ = questionnaire.filled;
 
       const baseAddress = resolveTaskAddress(task);
-      const snapshot = taskSnapshotById.get(taskId);
       const taskWithDetail = snapshot
         ? {
             ...task,
@@ -2670,7 +2667,7 @@ async function runCentralSync(body: CentralSyncBody = {}) {
         auvo_link: `https://app2.auvo.com.br/relatorioTarefas/DetalheTarefa/${taskId}`,
         auvo_task_url: String(task.taskUrl || ""),
         auvo_survey_url: String(task.survey || ""),
-        questionario_id: targetQ ? String(targetQ.questionnaireId) : null,
+        questionario_id: questionnaire.questionnaireId,
         questionario_respostas: answers,
         questionario_preenchido: hasFilledQ,
         orcamento_realizado: !!gcOrc,

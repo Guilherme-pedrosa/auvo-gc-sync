@@ -26,6 +26,28 @@ describe("auditoria de divergências dos técnicos", () => {
     ])).toBe(false);
   });
 
+  it("interpreta o formato aninhado retornado pelo detalhe da tarefa Auvo", () => {
+    const questionnaire = [{
+      questionnaireId: 214757,
+      questionnaireDescription: "EXECUÇÃO DE SERVIÇOS",
+      answers: [
+        { questionDescription: "SERVIÇOS REALIZADOS", reply: "Higienização técnica, lubrificação e troca de peças do equipamento." },
+        ...photos(4).map((answer, index) => ({ questionDescription: answer.question, reply: answer.reply, replyId: index + 1 })),
+        { questionDescription: "ASSINATURA TÉCNICO", reply: "https://cdn.test/assinatura.png" },
+        { questionDescription: "OBSERVAÇÕES", reply: "Equipamento testado em todas as condições de operação e entregue funcionando corretamente." },
+      ],
+    }];
+
+    expect(countExecutionPhotos(questionnaire)).toBe(4);
+    expect(hasComprehensibleExecutionReport(questionnaire)).toBe(true);
+    expect(auditTechnicianTask({
+      auvo_task_id: "nested-1",
+      status_auvo: "Finalizada",
+      questionario_preenchido: true,
+      questionario_respostas: questionnaire,
+    })).toMatchObject({ formIssue: false, reportIssue: false, photoIssue: false, photoCount: 4 });
+  });
+
   it("classifica formulário, relato e fotos de uma tarefa finalizada", () => {
     const audit = auditTechnicianTask({
       auvo_task_id: "100",
