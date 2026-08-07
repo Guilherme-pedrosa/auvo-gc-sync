@@ -5,12 +5,16 @@ import { ptBR } from "date-fns/locale";
 import {
   AlertTriangle,
   CalendarIcon,
+  CalendarX2,
+  Camera,
   CheckCircle2,
   ClipboardCheck,
+  ClipboardX,
   Clock3,
   DollarSign,
   Gauge,
   Medal,
+  MessageSquareWarning,
   Navigation,
   RefreshCw,
   Search,
@@ -263,7 +267,13 @@ export default function TechDashboardPage() {
                 icon={Gauge}
                 alert={data.resumo.produtividade_pct < 70}
               />
-              <SummaryCard label="Sem questionário" value={String(data.resumo.total_sem_questionario)} detail="finalizadas sem evidência completa" icon={ClipboardCheck} alert={data.resumo.total_sem_questionario > 0} />
+              <SummaryCard
+                label="Alertas de qualidade"
+                value={String(data.resumo.total_nao_atendidas + data.resumo.total_formularios_incompletos + data.resumo.total_sem_relato + data.resumo.total_poucas_fotos)}
+                detail="agenda, formulário, relato e fotos"
+                icon={ClipboardCheck}
+                alert={data.resumo.total_nao_atendidas + data.resumo.total_formularios_incompletos + data.resumo.total_sem_relato + data.resumo.total_poucas_fotos > 0}
+              />
               <SummaryCard
                 label="Valor em contratos"
                 value={brl(data.resumo.total_valor_contratos)}
@@ -277,6 +287,21 @@ export default function TechDashboardPage() {
                 detail={faturamento ? `base Premiação · OS com saída em ${faturamento.month}` : "documentos GC únicos e rateados"}
                 icon={DollarSign}
               />
+            </section>
+
+            <section>
+              <div className="mb-2 flex items-end justify-between gap-3">
+                <div>
+                  <h2 className="text-sm font-semibold">Divergências de execução</h2>
+                  <p className="text-xs text-muted-foreground">Os mesmos critérios da Agenda de Técnicos, consolidados no período selecionado.</p>
+                </div>
+              </div>
+              <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                <SummaryCard label="Não atendidas" value={String(data.resumo.total_nao_atendidas)} detail="fora do dia planejado" icon={CalendarX2} alert={data.resumo.total_nao_atendidas > 0} />
+                <SummaryCard label="Formulários incompletos" value={String(data.resumo.total_formularios_incompletos)} detail="ausentes, incompletos ou com pendência" icon={ClipboardX} alert={data.resumo.total_formularios_incompletos > 0} />
+                <SummaryCard label="Relatos insuficientes" value={String(data.resumo.total_sem_relato)} detail="sem relato técnico compreensível" icon={MessageSquareWarning} alert={data.resumo.total_sem_relato > 0} />
+                <SummaryCard label="Poucas/sem fotos" value={String(data.resumo.total_poucas_fotos)} detail="menos de 3 evidências na execução" icon={Camera} alert={data.resumo.total_poucas_fotos > 0} />
+              </div>
             </section>
 
             <section className="grid gap-3 md:grid-cols-3">
@@ -355,7 +380,8 @@ export default function TechDashboardPage() {
                             </TableCell>
                             <TableCell>
                               <div className="flex items-center justify-between"><span className="font-semibold">{tech.qualidade_pct}%</span>{qualityIssues > 0 && <Badge variant="outline" className="border-amber-200 text-[10px] text-amber-700">{qualityIssues} alerta(s)</Badge>}</div>
-                              <p className="mt-1 text-[10px] text-muted-foreground">{tech.tarefas_sem_questionario} sem form. · {tech.checkins_sem_checkout} em aberto</p>
+                              <p className="mt-1 text-[10px] text-muted-foreground">{tech.tarefas_nao_atendidas || 0} não atend. · {tech.tarefas_com_formulario_incompleto || 0} formulário(s)</p>
+                              <p className="text-[10px] text-muted-foreground">{tech.tarefas_sem_relato || 0} sem relato · {tech.tarefas_com_poucas_fotos || 0} fotos · {tech.checkins_sem_checkout || 0} check-in(s) aberto(s)</p>
                             </TableCell>
                             <TableCell>
                               <div className="mb-1.5 flex justify-between text-xs"><span>{tech.tarefas_com_os}/{tech.tarefas_total}</span><strong>{osCoverage}%</strong></div>
@@ -383,7 +409,7 @@ export default function TechDashboardPage() {
                 <div className="flex gap-2"><Gauge className="mt-0.5 h-4 w-4 shrink-0 text-blue-600" /><div><strong>Fechamento</strong><p className="text-xs text-muted-foreground">Meta operacional de 70% das tarefas.</p></div></div>
                 <div className="flex gap-2"><Target className="mt-0.5 h-4 w-4 shrink-0 text-blue-600" /><div><strong>Ritmo</strong><p className="text-xs text-muted-foreground">Ao menos 1 execução concluída por dia ativo.</p></div></div>
                 <div className="flex gap-2"><Clock3 className="mt-0.5 h-4 w-4 shrink-0 text-blue-600" /><div><strong>Ocupação</strong><p className="text-xs text-muted-foreground">Jornada de 8h por dia útil (sem fins de semana e feriados nacionais).</p></div></div>
-                <div className="flex gap-2"><ClipboardCheck className="mt-0.5 h-4 w-4 shrink-0 text-blue-600" /><div><strong>Qualidade</strong><p className="text-xs text-muted-foreground">Sem pendência, formulário ausente ou check-in aberto.</p></div></div>
+                <div className="flex gap-2"><ClipboardCheck className="mt-0.5 h-4 w-4 shrink-0 text-blue-600" /><div><strong>Qualidade</strong><p className="text-xs text-muted-foreground">Sem não atendimento, pendência de formulário, relato insuficiente, poucas fotos ou check-in aberto.</p></div></div>
               </CardContent>
             </Card>
 

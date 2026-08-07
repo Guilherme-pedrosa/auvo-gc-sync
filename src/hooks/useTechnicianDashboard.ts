@@ -6,11 +6,12 @@ import {
   buildContractRates,
   type TechnicianTaskRow,
 } from "@/lib/technicianDashboard";
+import type { TechnicianScheduleIssue } from "@/lib/technicianDivergences";
 
 const PAGE_SIZE = 1000;
 const TECH_ROLE_PATTERN = /(tecnic|técnic)/i;
 const AUX_PATTERN = /auxiliar/i;
-const TASK_FIELDS = "auvo_task_id,mirror_key,atualizado_em,tecnico_id,tecnico,cliente,data_tarefa,data_conclusao,status_auvo,check_out,check_in_iso,check_out_iso,pendencia,questionario_preenchido,duracao_decimal,duracao_deslocamento,gc_os_id,gc_os_valor_total,gc_orcamento_id,gc_orc_valor_total,os_realizada";
+const TASK_FIELDS = "auvo_task_id,mirror_key,atualizado_em,tecnico_id,tecnico,cliente,data_tarefa,data_conclusao,status_auvo,check_out,check_in_iso,check_out_iso,pendencia,descricao,orientacao,questionario_preenchido,questionario_respostas,gc_os_codigo,auvo_link,duracao_decimal,duracao_deslocamento,gc_os_id,gc_os_valor_total,gc_orcamento_id,gc_orc_valor_total,os_realizada";
 
 async function fetchAllPages<T>(
   fetchPage: (from: number, to: number) => PromiseLike<{ data: T[] | null; error: { message?: string } | null }>,
@@ -30,7 +31,7 @@ export function useTechnicianDashboard(startDate: string, endDate: string) {
   return useQuery({
     queryKey: ["tech-dashboard-direct", startDate, endDate],
     queryFn: async () => {
-      const [scheduledTasks, completedFromOtherPeriods, staff, contracts, groupMembers] = await Promise.all([
+      const [scheduledTasks, completedFromOtherPeriods, scheduleIssues, staff, contracts, groupMembers] = await Promise.all([
         fetchAllPages<TechnicianTaskRow>((from, to) =>
           supabase
             .from("tarefas_central")
@@ -49,6 +50,15 @@ export function useTechnicianDashboard(startDate: string, endDate: string) {
             .lte("data_conclusao", endDate)
             .or(`data_tarefa.lt.${startDate},data_tarefa.gt.${endDate},data_tarefa.is.null`)
             .order("atualizado_em", { ascending: false })
+            .range(from, to),
+        ),
+        fetchAllPages<TechnicianScheduleIssue>((from, to) =>
+          supabase
+            .from("atividades_nao_executadas")
+            .select("id,auvo_task_id,tecnico_id,tecnico_nome,cliente,data_planejada,descricao,motivo")
+            .gte("data_planejada", startDate)
+            .lte("data_planejada", endDate)
+            .order("data_planejada", { ascending: false })
             .range(from, to),
         ),
         supabase
@@ -89,6 +99,7 @@ export function useTechnicianDashboard(startDate: string, endDate: string) {
         endDate,
         buildTechnicianAllowlist(tecnicos),
         buildContractRates(vigentes, groupMembers),
+        scheduleIssues,
       );
     },
     staleTime: 60_000,

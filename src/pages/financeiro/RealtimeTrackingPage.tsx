@@ -6,24 +6,27 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import {
   RefreshCw, CalendarIcon, MapPin, Clock, User,
   CheckCircle2, PlayCircle, CalendarClock, AlertTriangle,
-  ChevronLeft, ChevronRight, FileWarning, ChevronDown, Download,
+  ChevronLeft, ChevronRight, FileWarning, ChevronDown,
   LayoutGrid, List, ChevronsUpDown, Monitor
 } from "lucide-react";
 import TvTrackingView from "@/components/financeiro/TvTrackingView";
+import TechnicianDivergencesPanel from "@/components/financeiro/TechnicianDivergencesPanel";
 import { format, addDays, subDays, isToday, startOfMonth, endOfMonth, startOfWeek, startOfYear } from "date-fns";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ptBR } from "date-fns/locale";
 import { toast } from "sonner";
 import LastSyncBadge from "@/components/LastSyncBadge";
 import { regroupTrackingByAuvoAssignee } from "@/lib/realtime-tracking-normalizer";
-import jsPDF from "jspdf";
-import autoTable from "jspdf-autotable";
+import {
+  auditTechnicianTasks,
+  buildTechnicianDivergenceRecords,
+  type TechnicianTaskAuditInput,
+} from "@/lib/technicianDivergences";
+import { exportTechnicianDivergencesPdf } from "@/lib/technicianDivergencePdf";
 
 type TaskItem = {
   taskId: string;
@@ -157,65 +160,50 @@ export default function RealtimeTrackingPage() {
     enabled: sheetOpen,
   });
 
-  // Monthly pendências from tarefas_central
+  // Evidências de execução do período: formulário, relato e fotos.
   const { data: pendenciasMesRaw, refetch: refetchPendencias } = useQuery({
-    queryKey: ["pendencias-mes", divStart, divEnd],
+    queryKey: ["divergencias-execucao", divStart, divEnd],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from("tarefas_central")
-        .select("auvo_task_id, cliente, tecnico, data_tarefa, pendencia, descricao, gc_os_codigo, status_auvo, questionario_respostas")
-        .gte("data_tarefa", divStart)
-        .lte("data_tarefa", divEnd)
-        .neq("pendencia", "")
-        .not("pendencia", "is", null)
-        .order("data_tarefa", { ascending: false });
-      if (error) throw error;
-      return data || [];
+      const rows: TechnicianTaskAuditInput[] = [];
+      const fields = "auvo_task_id, atualizado_em, tecnico_id, tecnico, cliente, data_tarefa, data_conclusao, status_auvo, check_out, pendencia, descricao, orientacao, questionario_preenchido, questionario_respostas, gc_os_codigo, auvo_link";
+      for (let from = 0; ; from += 1000) {
+        const { data, error } = await supabase
+          .from("tarefas_central")
+          .select(fields)
+          .gte("data_tarefa", divStart)
+          .lte("data_tarefa", divEnd)
+          .order("atualizado_em", { ascending: false })
+          .range(from, from + 999);
+        if (error) throw error;
+        if (!data?.length) break;
+        rows.push(...(data as TechnicianTaskAuditInput[]));
+        if (data.length < 1000) break;
+      }
+      for (let from = 0; ; from += 1000) {
+        const { data, error } = await supabase
+          .from("tarefas_central")
+          .select(fields)
+          .not("data_conclusao", "is", null)
+          .gte("data_conclusao", divStart)
+          .lte("data_conclusao", divEnd)
+          .or(`data_tarefa.lt.${divStart},data_tarefa.gt.${divEnd},data_tarefa.is.null`)
+          .order("atualizado_em", { ascending: false })
+          .range(from, from + 999);
+        if (error) throw error;
+        if (!data?.length) break;
+        rows.push(...(data as TechnicianTaskAuditInput[]));
+        if (data.length < 1000) break;
+      }
+      return rows;
     },
     enabled: sheetOpen,
   });
 
-  const isBlankChecklistReply = (value: unknown) => {
-    if (value === null || value === undefined) return true;
-    const text = String(value).trim().toLowerCase();
-    return !text || [".", "-", "na", "n/a", "null", "undefined"].includes(text);
-  };
-
-  const pendenciasMes = useMemo(() => {
-    return (pendenciasMesRaw || []).map((item) => {
-      const pendenciaRaw = item.pendencia || "";
-      const formName = pendenciaRaw.startsWith("Checklist: ")
-        ? pendenciaRaw.replace("Checklist: ", "")
-        : pendenciaRaw;
-
-      const respostas = Array.isArray(item.questionario_respostas)
-        ? (item.questionario_respostas as Array<Record<string, unknown>>)
-            .filter((r) => typeof r === "object" && r !== null)
-        : [];
-
-      const camposVazios = respostas
-        .filter((r) => isBlankChecklistReply(r.reply))
-        .map((r) => (typeof r.question === "string" ? r.question.trim() : ""))
-        .filter(Boolean);
-
-      const motivosPendencia = [
-        ...(respostas.length === 0 ? ["Formulário sem respostas enviadas"] : []),
-        ...(camposVazios.length > 0 ? [`Sem preenchimento: ${camposVazios.join(", ")}`] : []),
-      ];
-
-      return {
-        taskId: item.auvo_task_id,
-        cliente: item.cliente || "",
-        tecnico: item.tecnico || "",
-        data: item.data_tarefa || "",
-        pendencia: pendenciaRaw,
-        formName,
-        motivosPendencia,
-        descricao: item.descricao || "",
-        gcOsCodigo: item.gc_os_codigo || "",
-      };
-    });
-  }, [pendenciasMesRaw]);
+  const taskAudits = useMemo(() => auditTechnicianTasks(pendenciasMesRaw || []), [pendenciasMesRaw]);
+  const divergenceRecords = useMemo(
+    () => buildTechnicianDivergenceRecords(atrasadasMes || [], taskAudits),
+    [atrasadasMes, taskAudits],
+  );
 
   const atualizarDivergencias = useCallback(async () => {
     if (isSyncingDivergencias) return;
@@ -256,187 +244,12 @@ export default function RealtimeTrackingPage() {
     }
   }, [divEnd, divStart, isSyncingDivergencias, refetchAtrasadas, refetchPendencias]);
 
+  const exportUnifiedDivergences = useCallback(() => {
+    exportTechnicianDivergencesPdf(divergenceRecords, divLabel);
+    toast.success("PDF de divergências gerado");
+  }, [divLabel, divergenceRecords]);
+
   const goDay = (dir: number) => setSelectedDate((d) => (dir > 0 ? addDays(d, 1) : subDays(d, 1)));
-
-  const exportPDF = useCallback(() => {
-    const doc = new jsPDF({ orientation: "landscape", unit: "mm", format: "a4" });
-    const now = format(new Date(), "dd/MM/yyyy HH:mm");
-    const pageW = doc.internal.pageSize.getWidth();
-
-    doc.setFontSize(14);
-    doc.text(`Divergências — ${divLabel}`, 14, 15);
-    doc.setFontSize(8);
-    doc.text(`Gerado em ${now}`, 14, 21);
-
-    let startY = 28;
-
-    // ── Group atrasos by technician ──
-    const atrasosByTech: Record<string, typeof atrasadasMes> = {};
-    (atrasadasMes || []).forEach((item) => {
-      const key = item.tecnico_nome || "Sem técnico";
-      if (!atrasosByTech[key]) atrasosByTech[key] = [];
-      atrasosByTech[key].push(item);
-    });
-
-    const techNamesAtrasos = Object.keys(atrasosByTech).sort();
-
-    if (techNamesAtrasos.length > 0) {
-      doc.setFontSize(12);
-      doc.setTextColor(220, 53, 69);
-      doc.text("Não Atendidas no Dia Planejado", 14, startY);
-      doc.setTextColor(0, 0, 0);
-      startY += 2;
-
-      doc.setFontSize(8);
-      doc.text(
-        `Total: ${(atrasadasMes || []).length} ocorrência(s) · ${techNamesAtrasos.length} técnico(s)`,
-        14,
-        startY + 4
-      );
-      startY += 8;
-
-      for (const techName of techNamesAtrasos) {
-        const items = atrasosByTech[techName];
-        if (startY > 170) { doc.addPage(); startY = 15; }
-
-        doc.setFontSize(9);
-        doc.setTextColor(80, 80, 80);
-        doc.text(`${techName}  (${items.length})`, 14, startY);
-        doc.setTextColor(0, 0, 0);
-        startY += 2;
-
-        const rows = items.map((item) => [
-          item.data_planejada ? format(new Date(item.data_planejada + "T12:00:00"), "dd/MM/yyyy") : "—",
-          item.cliente || "Sem cliente",
-          item.descricao || "",
-          item.motivo || "",
-          item.auvo_task_id,
-        ]);
-
-        autoTable(doc, {
-          startY,
-          head: [["Data", "Cliente", "Descrição", "Motivo", "Task ID"]],
-          body: rows,
-          styles: { fontSize: 7, cellPadding: 2 },
-          headStyles: { fillColor: [220, 53, 69], textColor: 255 },
-          columnStyles: {
-            0: { cellWidth: 22 },
-            2: { cellWidth: 60 },
-            3: { cellWidth: 50 },
-            4: { cellWidth: 22 },
-          },
-        });
-
-        startY = (doc as any).lastAutoTable.finalY + 6;
-      }
-    }
-
-    // ── Group pendências by technician ──
-    const pendByTech: Record<string, typeof pendenciasMes> = {};
-    pendenciasMes.forEach((item) => {
-      const key = item.tecnico || "Sem técnico";
-      if (!pendByTech[key]) pendByTech[key] = [];
-      pendByTech[key].push(item);
-    });
-
-    const techNamesPend = Object.keys(pendByTech).sort();
-
-    if (techNamesPend.length > 0) {
-      if (startY > 160) { doc.addPage(); startY = 15; }
-
-      doc.setFontSize(12);
-      doc.setTextColor(217, 149, 24);
-      doc.text("OS com Pendência", 14, startY);
-      doc.setTextColor(0, 0, 0);
-      startY += 2;
-
-      doc.setFontSize(8);
-      doc.text(
-        `Total: ${pendenciasMes.length} ocorrência(s) · ${techNamesPend.length} técnico(s)`,
-        14,
-        startY + 4
-      );
-      startY += 8;
-
-      for (const techName of techNamesPend) {
-        const items = pendByTech[techName];
-        if (startY > 170) { doc.addPage(); startY = 15; }
-
-        doc.setFontSize(9);
-        doc.setTextColor(80, 80, 80);
-        doc.text(`${techName}  (${items.length})`, 14, startY);
-        doc.setTextColor(0, 0, 0);
-        startY += 2;
-
-        const rows = items.map((item) => [
-          item.data ? format(new Date(item.data + "T12:00:00"), "dd/MM/yyyy") : "—",
-          item.cliente || "Sem cliente",
-          item.formName || "",
-          item.motivosPendencia.length > 0
-            ? item.motivosPendencia.join("; ")
-            : "Motivo não detalhado",
-          item.gcOsCodigo ? `OS #${item.gcOsCodigo}` : item.taskId,
-        ]);
-
-        autoTable(doc, {
-          startY,
-          head: [["Data", "Cliente", "Formulário", "Motivo", "Ref"]],
-          body: rows,
-          styles: { fontSize: 7, cellPadding: 2 },
-          headStyles: { fillColor: [217, 149, 24], textColor: 255 },
-          columnStyles: {
-            0: { cellWidth: 22 },
-            2: { cellWidth: 38 },
-            3: { cellWidth: 70 },
-            4: { cellWidth: 22 },
-          },
-        });
-
-        startY = (doc as any).lastAutoTable.finalY + 6;
-      }
-    }
-
-    // ── Summary page ──
-    doc.addPage();
-    doc.setFontSize(14);
-    doc.text(`Resumo por Técnico — ${divLabel}`, 14, 15);
-
-    const summaryRows: string[][] = [];
-    const allTechNames = [...new Set([...techNamesAtrasos, ...techNamesPend])].sort();
-    for (const name of allTechNames) {
-      const nAtrasos = (atrasosByTech[name] || []).length;
-      const nPend = (pendByTech[name] || []).length;
-      summaryRows.push([name, String(nAtrasos), String(nPend), String(nAtrasos + nPend)]);
-    }
-    // Total row
-    const totalAtrasos = (atrasadasMes || []).length;
-    const totalPend = pendenciasMes.length;
-    summaryRows.push(["TOTAL", String(totalAtrasos), String(totalPend), String(totalAtrasos + totalPend)]);
-
-    autoTable(doc, {
-      startY: 22,
-      head: [["Técnico", "Não Atendidas", "Pendências", "Total"]],
-      body: summaryRows,
-      styles: { fontSize: 8, cellPadding: 3 },
-      headStyles: { fillColor: [60, 60, 60], textColor: 255 },
-      columnStyles: {
-        0: { cellWidth: 70 },
-        1: { halign: "center" as const },
-        2: { halign: "center" as const },
-        3: { halign: "center" as const, fontStyle: "bold" as const },
-      },
-      didParseCell: (data: any) => {
-        // Bold the total row
-        if (data.row.index === summaryRows.length - 1) {
-          data.cell.styles.fontStyle = "bold";
-          data.cell.styles.fillColor = [240, 240, 240];
-        }
-      },
-    });
-
-    doc.save(`divergencias-${format(selectedDate, "yyyy-MM")}.pdf`);
-    toast.success("PDF gerado com sucesso!");
-  }, [atrasadasMes, pendenciasMes, selectedDate]);
 
   if (tvMode && data) {
     return <TvTrackingView data={data} selectedDate={selectedDate} onExit={() => setTvMode(false)} />;
@@ -560,7 +373,7 @@ export default function RealtimeTrackingPage() {
                         </SheetTitle>
                       </SheetHeader>
                       <div className="mt-3 flex flex-wrap gap-2 items-end">
-                        <Select value={divPeriodo} onValueChange={(v) => setDivPeriodo(v as any)}>
+                        <Select value={divPeriodo} onValueChange={(v) => setDivPeriodo(v as "mes" | "semana" | "ano" | "custom")}>
                           <SelectTrigger className="w-36 h-8 text-xs">
                             <SelectValue />
                           </SelectTrigger>
@@ -598,196 +411,13 @@ export default function RealtimeTrackingPage() {
                           </>
                         )}
                       </div>
-                      <div className="mt-4">
-                        {loadingAtrasadas ? (
-                          <div className="flex items-center justify-center py-8">
-                            <RefreshCw className="h-5 w-5 animate-spin text-muted-foreground" />
-                          </div>
-                        ) : (
-                          <>
-                            <div className="flex items-center justify-between mb-3">
-                              <div className="flex items-center gap-2">
-                                {atrasadasMes && atrasadasMes.length > 0 && (
-                                  <Badge variant="destructive" className="text-xs">
-                                    {atrasadasMes.length} atraso(s)
-                                  </Badge>
-                                )}
-                                {pendenciasMes.length > 0 && (
-                                  <Badge className="text-xs bg-amber-100 text-amber-800 border border-amber-300">
-                                    {pendenciasMes.length} pendência(s)
-                                  </Badge>
-                                )}
-                                {(!atrasadasMes || atrasadasMes.length === 0) && pendenciasMes.length === 0 && (
-                                  <div className="flex items-center gap-2 text-muted-foreground">
-                                    <CheckCircle2 className="h-5 w-5 text-emerald-500" />
-                                    <span className="text-sm">Nenhuma divergência neste mês!</span>
-                                  </div>
-                                )}
-                              </div>
-                              <div className="flex items-center gap-1">
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  className="h-7 text-xs"
-                                  onClick={exportPDF}
-                                  disabled={(!atrasadasMes || atrasadasMes.length === 0) && pendenciasMes.length === 0}
-                                >
-                                  <Download className="h-3 w-3 mr-1" /> PDF
-                                </Button>
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  className="h-7 text-xs"
-                                  onClick={() => void atualizarDivergencias()}
-                                  disabled={isSyncingDivergencias}
-                                >
-                                  <RefreshCw className={`h-3 w-3 mr-1 ${isSyncingDivergencias ? "animate-spin" : ""}`} /> Atualizar
-                                </Button>
-                              </div>
-                            </div>
-                            <ScrollArea className="h-[calc(100vh-12rem)]">
-                              <div className="space-y-4">
-                                {atrasadasMes && atrasadasMes.length > 0 && (
-                                  <div>
-                                    <h3 className="text-xs font-semibold text-red-700 uppercase tracking-wide mb-2 flex items-center gap-1.5">
-                                      <AlertTriangle className="h-3.5 w-3.5" />
-                                      Não Atendidas no Dia Planejado
-                                    </h3>
-                                    <div className="space-y-2">
-                                      {(() => {
-                                        const byTech: Record<string, { nome: string; items: typeof atrasadasMes }> = {};
-                                        for (const item of atrasadasMes) {
-                                          const key = item.tecnico_id;
-                                          if (!byTech[key]) byTech[key] = { nome: item.tecnico_nome, items: [] };
-                                          byTech[key].items.push(item);
-                                        }
-                                        const sorted = Object.entries(byTech).sort((a, b) => b[1].items.length - a[1].items.length);
-
-                                        return sorted.map(([techId, group]) => (
-                                          <Collapsible key={techId}>
-                                            <CollapsibleTrigger className="w-full flex items-center justify-between px-3 py-2.5 rounded-lg border bg-card hover:bg-muted/50 transition-colors">
-                                              <div className="flex items-center gap-3">
-                                                <div className="h-8 w-8 rounded-full bg-red-100 text-red-700 flex items-center justify-center text-xs font-bold flex-shrink-0">
-                                                  {group.nome.split(" ").map(n => n[0]).slice(0, 2).join("")}
-                                                </div>
-                                                <div className="text-left">
-                                                  <p className="text-sm font-semibold">{group.nome}</p>
-                                                  <p className="text-[10px] text-muted-foreground">
-                                                    {group.items.length} atraso(s) no mês
-                                                  </p>
-                                                </div>
-                                              </div>
-                                              <div className="flex items-center gap-2">
-                                                <Badge variant="destructive" className="text-[10px] h-5 px-2">
-                                                  {group.items.length}
-                                                </Badge>
-                                                <ChevronDown className="h-4 w-4 text-muted-foreground transition-transform data-[state=open]:rotate-180" />
-                                              </div>
-                                            </CollapsibleTrigger>
-                                            <CollapsibleContent>
-                                              <div className="mt-1 ml-4 border-l-2 border-red-200 pl-3 space-y-1.5 py-1.5">
-                                                {group.items.map((item) => (
-                                                  <div key={item.id} className="flex items-start gap-2 text-xs py-1">
-                                                    <span className="font-mono text-muted-foreground whitespace-nowrap min-w-[40px]">
-                                                      {item.data_planejada ? format(new Date(item.data_planejada + "T12:00:00"), "dd/MM") : "—"}
-                                                    </span>
-                                                    <div className="flex-1 min-w-0">
-                                                      <p className="font-medium truncate">{item.cliente || "Sem cliente"}</p>
-                                                      {item.descricao && (
-                                                        <p className="text-[10px] text-muted-foreground truncate">{item.descricao}</p>
-                                                      )}
-                                                    </div>
-                                                    <span className="text-[10px] text-muted-foreground font-mono">#{item.auvo_task_id}</span>
-                                                  </div>
-                                                ))}
-                                              </div>
-                                            </CollapsibleContent>
-                                          </Collapsible>
-                                        ));
-                                      })()}
-                                    </div>
-                                  </div>
-                                )}
-
-                                {pendenciasMes.length > 0 && (
-                                  <div>
-                                    <h3 className="text-xs font-semibold text-amber-700 uppercase tracking-wide mb-2 flex items-center gap-1.5">
-                                      <FileWarning className="h-3.5 w-3.5" />
-                                      OS com Pendência
-                                    </h3>
-                                    <div className="space-y-2">
-                                      {(() => {
-                                        const byTech: Record<string, { nome: string; items: typeof pendenciasMes }> = {};
-                                        for (const item of pendenciasMes) {
-                                          const key = item.tecnico;
-                                          if (!byTech[key]) byTech[key] = { nome: item.tecnico, items: [] };
-                                          byTech[key].items.push(item);
-                                        }
-                                        const sorted = Object.entries(byTech).sort((a, b) => b[1].items.length - a[1].items.length);
-
-                                        return sorted.map(([techName, group]) => (
-                                          <Collapsible key={techName}>
-                                            <CollapsibleTrigger className="w-full flex items-center justify-between px-3 py-2.5 rounded-lg border bg-card hover:bg-muted/50 transition-colors">
-                                              <div className="flex items-center gap-3">
-                                                <div className="h-8 w-8 rounded-full bg-amber-100 text-amber-700 flex items-center justify-center text-xs font-bold flex-shrink-0">
-                                                  {group.nome.split(" ").map(n => n[0]).slice(0, 2).join("")}
-                                                </div>
-                                                <div className="text-left">
-                                                  <p className="text-sm font-semibold">{group.nome}</p>
-                                                  <p className="text-[10px] text-muted-foreground">
-                                                    {group.items.length} pendência(s)
-                                                  </p>
-                                                </div>
-                                              </div>
-                                              <div className="flex items-center gap-2">
-                                                <Badge className="text-[10px] h-5 px-2 bg-amber-100 text-amber-800 border border-amber-300">
-                                                  {group.items.length}
-                                                </Badge>
-                                                <ChevronDown className="h-4 w-4 text-muted-foreground transition-transform data-[state=open]:rotate-180" />
-                                              </div>
-                                            </CollapsibleTrigger>
-                                            <CollapsibleContent>
-                                              <div className="mt-1 ml-4 border-l-2 border-amber-300 pl-3 space-y-1.5 py-1.5">
-                                                {group.items.map((item) => (
-                                                  <div key={item.taskId} className="flex items-start gap-2 text-xs py-1.5">
-                                                    <span className="font-mono text-muted-foreground whitespace-nowrap min-w-[40px]">
-                                                      {item.data ? format(new Date(item.data + "T12:00:00"), "dd/MM") : "—"}
-                                                    </span>
-                                                    <div className="flex-1 min-w-0">
-                                                      <p className="font-medium truncate">{item.cliente || "Sem cliente"}</p>
-                                                      <p className="text-[10px] text-amber-700 font-medium">
-                                                        📋 {item.formName}
-                                                      </p>
-                                                      {item.motivosPendencia.length > 0 ? (
-                                                        item.motivosPendencia.map((motivo: string, idx: number) => (
-                                                          <p key={`${item.taskId}-motivo-${idx}`} className="text-[10px] text-destructive mt-0.5">
-                                                            ❌ {motivo}
-                                                          </p>
-                                                        ))
-                                                      ) : (
-                                                        <p className="text-[10px] text-muted-foreground mt-0.5">
-                                                          ⚠️ Motivo da pendência não detalhado pelo formulário
-                                                        </p>
-                                                      )}
-                                                    </div>
-                                                    {item.gcOsCodigo && (
-                                                      <span className="text-[10px] text-muted-foreground font-mono">OS #{item.gcOsCodigo}</span>
-                                                    )}
-                                                  </div>
-                                                ))}
-                                              </div>
-                                            </CollapsibleContent>
-                                          </Collapsible>
-                                        ));
-                                      })()}
-                                    </div>
-                                  </div>
-                                )}
-                              </div>
-                            </ScrollArea>
-                          </>
-                        )}
-                      </div>
+                      <TechnicianDivergencesPanel
+                        records={divergenceRecords}
+                        loading={loadingAtrasadas || pendenciasMesRaw === undefined}
+                        syncing={isSyncingDivergencias}
+                        onRefresh={() => void atualizarDivergencias()}
+                        onExport={exportUnifiedDivergences}
+                      />
                     </SheetContent>
                   </Sheet>
 

@@ -1,4 +1,5 @@
 import { DAILY_WORK_HOURS, countBusinessDays, isBusinessDay } from "./businessDays";
+import { auditTechnicianTask, type TechnicianScheduleIssue } from "./technicianDivergences";
 
 type Interval = { start: number; end: number };
 
@@ -43,6 +44,10 @@ export type TechnicianQualityInput = {
   tarefas_com_pendencia: number;
   tarefas_sem_questionario?: number;
   checkins_sem_checkout?: number;
+  tarefas_nao_atendidas?: number;
+  tarefas_com_formulario_incompleto?: number;
+  tarefas_sem_relato?: number;
+  tarefas_com_poucas_fotos?: number;
   taxa_finalizacao: number;
   media_execucoes_dia: number;
   tempo_atividade_pct: number;
@@ -68,6 +73,11 @@ export type TechnicianTaskRow = {
   check_out_iso?: string | null;
   pendencia?: string | null;
   questionario_preenchido?: boolean | null;
+  questionario_respostas?: unknown;
+  descricao?: string | null;
+  orientacao?: string | null;
+  gc_os_codigo?: string | null;
+  auvo_link?: string | null;
   duracao_decimal?: number | null;
   duracao_deslocamento?: number | null;
   cliente?: string | null;
@@ -114,6 +124,10 @@ export type TechnicianDashboardData = {
     total_pendencias: number;
     total_sem_questionario: number;
     total_checkins_sem_checkout: number;
+    total_nao_atendidas: number;
+    total_formularios_incompletos: number;
+    total_sem_relato: number;
+    total_poucas_fotos: number;
     valor_total: number;
     total_horas_contrato: number;
     total_valor_contratos: number;
@@ -197,14 +211,22 @@ export function technicianOperationalScore(technician: TechnicianQualityInput) {
     technician.tempo_atividade_pct >= 70,
     technician.tarefas_com_pendencia === 0
       && (technician.tarefas_sem_questionario || 0) === 0
-      && (technician.checkins_sem_checkout || 0) === 0,
+      && (technician.checkins_sem_checkout || 0) === 0
+      && (technician.tarefas_nao_atendidas || 0) === 0
+      && (technician.tarefas_com_formulario_incompleto || 0) === 0
+      && (technician.tarefas_sem_relato || 0) === 0
+      && (technician.tarefas_com_poucas_fotos || 0) === 0,
   ];
   return checks.filter(Boolean).length * 25;
 }
 
 export function technicianQualityIssues(technician: TechnicianQualityInput) {
-  return technician.tarefas_com_pendencia
-    + (technician.tarefas_sem_questionario || 0)
+  const formIssues = technician.tarefas_com_formulario_incompleto
+    ?? (technician.tarefas_com_pendencia + (technician.tarefas_sem_questionario || 0));
+  return formIssues
+    + (technician.tarefas_nao_atendidas || 0)
+    + (technician.tarefas_sem_relato || 0)
+    + (technician.tarefas_com_poucas_fotos || 0)
     + (technician.checkins_sem_checkout || 0);
 }
 
@@ -234,6 +256,7 @@ export function buildTechnicianDashboardData(
   endDate: string,
   allowed?: TechnicianAllowlist | null,
   contractRates?: ContractRates | null,
+  scheduleIssues: TechnicianScheduleIssue[] = [],
 ): TechnicianDashboardData {
   const snapshots = new Map<string, TechnicianTaskRow>();
   for (const row of rows) {
@@ -254,8 +277,12 @@ export function buildTechnicianDashboardData(
     pending: number;
     missingQuestionnaire: number;
     openCheckins: number;
+    scheduleIssues: number;
+    formIssues: number;
+    reportIssues: number;
+    photoIssues: number;
     withOs: number;
-    qualityFailures: number;
+    qualityFailureTaskIds: Set<string>;
     hours: number;
     intervals: Interval[];
     contractHours: number;
@@ -285,8 +312,12 @@ export function buildTechnicianDashboardData(
       pending: 0,
       missingQuestionnaire: 0,
       openCheckins: 0,
+      scheduleIssues: 0,
+      formIssues: 0,
+      reportIssues: 0,
+      photoIssues: 0,
       withOs: 0,
-      qualityFailures: 0,
+      qualityFailureTaskIds: new Set<string>(),
       hours: 0,
       intervals: [],
       contractHours: 0,
@@ -303,6 +334,10 @@ export function buildTechnicianDashboardData(
     const pending = hasPendingIssue(task);
     const missingQuestionnaire = finished && task.questionario_preenchido !== true;
     const openCheckin = Boolean(task.check_in_iso && !task.check_out_iso);
+    const executionAudit = auditTechnicianTask(task);
+    const formIssue = executionAudit?.formIssue === true;
+    const reportIssue = executionAudit?.reportIssue === true;
+    const photoIssue = executionAudit?.photoIssue === true;
     const taskDate = String(task.data_conclusao || task.data_tarefa || startDate).slice(0, 10);
 
     accumulator.total++;
@@ -310,8 +345,13 @@ export function buildTechnicianDashboardData(
     if (pending) accumulator.pending++;
     if (missingQuestionnaire) accumulator.missingQuestionnaire++;
     if (openCheckin) accumulator.openCheckins++;
+    if (formIssue) accumulator.formIssues++;
+    if (reportIssue) accumulator.reportIssues++;
+    if (photoIssue) accumulator.photoIssues++;
     if (task.os_realizada || task.gc_os_id) accumulator.withOs++;
-    if (pending || missingQuestionnaire || openCheckin) accumulator.qualityFailures++;
+    if (pending || missingQuestionnaire || openCheckin || formIssue || reportIssue || photoIssue) {
+      accumulator.qualityFailureTaskIds.add(String(task.auvo_task_id || task.mirror_key || ""));
+    }
     accumulator.hours += Number(task.duracao_decimal) || 0;
     if (finished && contractRates?.size) {
       const rate = contractRates.get(normalizeName(String(task.cliente || ""))) || 0;
@@ -345,6 +385,20 @@ export function buildTechnicianDashboardData(
     }
   }
 
+  const seenScheduleIssues = new Set<string>();
+  for (const issue of scheduleIssues) {
+    const issueKey = `${issue.tecnico_id || issue.tecnico_nome || ""}::${issue.auvo_task_id}`;
+    if (seenScheduleIssues.has(issueKey)) continue;
+    seenScheduleIssues.add(issueKey);
+    const technicianId = String(issue.tecnico_id || "").trim();
+    const technicianName = String(issue.tecnico_nome || "").trim();
+    const technician = technicians.get(technicianId)
+      || [...technicians.values()].find((item) => normalizeName(item.nome) === normalizeName(technicianName));
+    if (!technician) continue;
+    technician.scheduleIssues++;
+    technician.qualityFailureTaskIds.add(String(issue.auvo_task_id || issueKey));
+  }
+
   for (const document of documents.values()) {
     const allocation = document.technicianIds.size ? document.value / document.technicianIds.size : 0;
     for (const technicianId of document.technicianIds) {
@@ -367,8 +421,12 @@ export function buildTechnicianDashboardData(
       tarefas_com_pendencia: tech.pending,
       tarefas_sem_questionario: tech.missingQuestionnaire,
       checkins_sem_checkout: tech.openCheckins,
+      tarefas_nao_atendidas: tech.scheduleIssues,
+      tarefas_com_formulario_incompleto: tech.formIssues,
+      tarefas_sem_relato: tech.reportIssues,
+      tarefas_com_poucas_fotos: tech.photoIssues,
       tarefas_com_os: tech.withOs,
-      qualidade_pct: tech.total > 0 ? Math.max(0, Math.round(((tech.total - tech.qualityFailures) / tech.total) * 100)) : 0,
+      qualidade_pct: tech.total > 0 ? Math.max(0, Math.round(((tech.total - tech.qualityFailureTaskIds.size) / tech.total) * 100)) : 0,
       taxa_finalizacao: tech.total > 0 ? Math.round((tech.finished / tech.total) * 100) : 0,
       media_execucoes_dia: Math.round((tech.finished / days) * 10) / 10,
       tempo_horas: hours,
@@ -405,6 +463,10 @@ export function buildTechnicianDashboardData(
       total_pendencias: data.reduce((total, tech) => total + tech.tarefas_com_pendencia, 0),
       total_sem_questionario: data.reduce((total, tech) => total + (tech.tarefas_sem_questionario || 0), 0),
       total_checkins_sem_checkout: data.reduce((total, tech) => total + (tech.checkins_sem_checkout || 0), 0),
+      total_nao_atendidas: data.reduce((total, tech) => total + (tech.tarefas_nao_atendidas || 0), 0),
+      total_formularios_incompletos: data.reduce((total, tech) => total + (tech.tarefas_com_formulario_incompleto || 0), 0),
+      total_sem_relato: data.reduce((total, tech) => total + (tech.tarefas_sem_relato || 0), 0),
+      total_poucas_fotos: data.reduce((total, tech) => total + (tech.tarefas_com_poucas_fotos || 0), 0),
       valor_total: Math.round(data.reduce((total, tech) => total + tech.valor_total, 0) * 100) / 100,
       total_horas_contrato: Math.round(data.reduce((total, tech) => total + tech.horas_contrato, 0) * 10) / 10,
       total_valor_contratos: Math.round(data.reduce((total, tech) => total + tech.valor_contratos, 0) * 100) / 100,

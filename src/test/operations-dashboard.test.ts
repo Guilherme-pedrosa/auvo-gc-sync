@@ -145,4 +145,40 @@ describe("technician dashboard rules", () => {
       tempo_atividade_pct: 75,
     })).toBe(75);
   });
+
+  it("feeds schedule, form, report and photo divergences into the technician dashboard", () => {
+    const dashboard = buildTechnicianDashboardData([{
+      auvo_task_id: "quality-1",
+      tecnico_id: "a",
+      tecnico: "Ana",
+      cliente: "Cliente",
+      data_tarefa: "2026-08-06",
+      status_auvo: "Finalizada",
+      questionario_preenchido: true,
+      questionario_respostas: [
+        { question: "OBSERVAÇÕES", reply: "ok" },
+        { question: "FOTOS DA EXECUÇÃO", reply: "https://auvo-producao.s3.amazonaws.com/foto-1.jpg" },
+      ],
+    }], "2026-08-01", "2026-08-06", null, null, [{
+      auvo_task_id: "schedule-1",
+      tecnico_id: "a",
+      tecnico_nome: "Ana",
+      data_planejada: "2026-08-05",
+      motivo: "Não realizou atendimento no dia planejado",
+    }]);
+
+    expect(dashboard.tecnicos[0]).toMatchObject({
+      tarefas_nao_atendidas: 1,
+      tarefas_com_formulario_incompleto: 0,
+      tarefas_sem_relato: 1,
+      tarefas_com_poucas_fotos: 1,
+      qualidade_pct: 0,
+    });
+    expect(dashboard.resumo).toMatchObject({
+      total_nao_atendidas: 1,
+      total_formularios_incompletos: 0,
+      total_sem_relato: 1,
+      total_poucas_fotos: 1,
+    });
+  });
 });
