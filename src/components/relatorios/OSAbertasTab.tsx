@@ -1022,6 +1022,9 @@ export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, o
           action: "persist-central",
           row: {
             auvo_task_id: editingCard.auvo_task_id,
+            mirror_key: editingCard.mirror_key,
+            gc_os_id: editingCard.gc_os_id,
+            gc_orcamento_id: editingCard.gc_orcamento_id,
             data_tarefa: editDate ? format(editDate, "yyyy-MM-dd") : editingCard.data_tarefa,
             tecnico_id: editTecnicoId || editingCard.tecnico_id,
             tecnico: tecnicoSelecionado?.name || tecnicoSelecionado?.login || editingCard.tecnico,
