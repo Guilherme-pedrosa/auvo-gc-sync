@@ -24,7 +24,6 @@ import {
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import LastSyncBadge from "@/components/LastSyncBadge";
-import { useAuth } from "@/hooks/useAuth";
 
 const PAGE_SIZE = 1000;
 const formatCurrency = (val: number) =>
@@ -107,7 +106,6 @@ const fetchOrcamentosNoPeriodo = async (fromDate: Date, toDate: Date) => {
 
 export default function OrcamentosControlePage() {
   const queryClient = useQueryClient();
-  const { profile } = useAuth();
   const today = new Date();
   // Default: últimos 12 meses até fim do mês atual (pega antigos + novos)
   const [dateFrom, setDateFrom] = useState<Date>(startOfMonth(subMonths(today, 12)));
@@ -426,7 +424,6 @@ export default function OrcamentosControlePage() {
           gc_orcamento_id: conciliacaoCard.gc_orcamento_id,
           gc_orcamento_codigo: conciliacaoCard.gc_orcamento_codigo,
           situacao_id: conciliacaoSituacao,
-          gc_usuario_id: profile?.gc_user_id || null,
         },
       });
       if (error) throw error;

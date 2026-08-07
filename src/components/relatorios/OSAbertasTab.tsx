@@ -32,7 +32,6 @@ import {
   isOpenOsSituation,
 } from "@/lib/osOpenStatuses";
 import { toast } from "sonner";
-import { useAuth } from "@/hooks/useAuth";
 import {
   SITUACAO_EXCLUIDA,
   isGcOsMissingResponse,
@@ -144,7 +143,6 @@ const extractLiveTaskResolution = (taskData: any, taskId: string): LiveTaskResol
 };
 
 export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, onRefresh, onSync, syncing, execTaskStatusMap, equipamentoTaskMap = {} }: Props) {
-  const { profile } = useAuth();
   const [search, setSearch] = useState("");
   const [excludedSituacoes, setExcludedSituacoes] = useState<Set<string>>(new Set());
   const [searchSituacao, setSearchSituacao] = useState("");
@@ -259,7 +257,6 @@ export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, o
           gc_os_codigo: item.gc_os_codigo,
           auvo_task_id: item.auvo_task_id,
           situacao_id_antes: situacaoId,
-          gc_usuario_id: profile?.gc_user_id || null,
         },
       });
       if (error) throw error;
@@ -281,7 +278,7 @@ export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, o
       setConciliacaoCard(null);
       setConciliacaoSituacao("");
     }
-  }, [profile?.gc_user_id, onRefresh]);
+  }, [onRefresh]);
 
   const allSituacoes = useMemo(() => {
     const set = new Set(
