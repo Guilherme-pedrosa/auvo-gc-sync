@@ -146,7 +146,8 @@ export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, o
   const [search, setSearch] = useState("");
   const [excludedSituacoes, setExcludedSituacoes] = useState<Set<string>>(new Set());
   const [searchSituacao, setSearchSituacao] = useState("");
-  const [execStatusFilter, setExecStatusFilter] = useState<string>("all"); // all | em_andamento | pausada | finalizada | sem_exec
+  // Multisseleção: vazio = todas
+  const [execStatusFilter, setExecStatusFilter] = useState<Set<string>>(new Set()); // em_andamento | pausada | finalizada | sem_exec | excluidas
   const [localReparoFilter, setLocalReparoFilter] = useState<string>("all"); // all | galpao | cliente | sem_info
   const [expanded, setExpanded] = useState<string | null>(null);
 
