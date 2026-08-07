@@ -4,6 +4,7 @@ import {
   buildTechnicianDivergenceRecords,
   countExecutionPhotos,
   hasComprehensibleExecutionReport,
+  hasQuestionnaireResponses,
   summarizeDivergenceRecords,
 } from "@/lib/technicianDivergences";
 
@@ -40,6 +41,7 @@ describe("auditoria de divergências dos técnicos", () => {
 
     expect(countExecutionPhotos(questionnaire)).toBe(4);
     expect(hasComprehensibleExecutionReport(questionnaire)).toBe(true);
+    expect(hasQuestionnaireResponses(questionnaire)).toBe(true);
     expect(auditTechnicianTask({
       auvo_task_id: "nested-1",
       status_auvo: "Finalizada",

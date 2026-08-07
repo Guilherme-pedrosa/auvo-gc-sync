@@ -24,6 +24,7 @@ import { regroupTrackingByAuvoAssignee } from "@/lib/realtime-tracking-normalize
 import {
   auditTechnicianTasks,
   buildTechnicianDivergenceRecords,
+  hasQuestionnaireResponses,
   type TechnicianTaskAuditInput,
 } from "@/lib/technicianDivergences";
 import { exportTechnicianDivergencesPdf } from "@/lib/technicianDivergencePdf";
@@ -225,12 +226,36 @@ export default function RealtimeTrackingPage() {
         throw new Error(syncResult?.error || "Falha ao sincronizar pendências");
       }
 
-      await Promise.all([refetchAtrasadas(), refetchPendencias()]);
+      const [, refreshedTasks] = await Promise.all([refetchAtrasadas(), refetchPendencias()]);
+      const detailTaskIds = [...new Set((refreshedTasks.data || [])
+        .filter((task) => {
+          const status = String(task.status_auvo || "")
+            .normalize("NFD")
+            .replace(/[\u0300-\u036f]/g, "")
+            .toLowerCase();
+          const finished = task.check_out === true || ["finalizada", "concluida"].includes(status);
+          return finished && (task.questionario_preenchido !== true || !hasQuestionnaireResponses(task.questionario_respostas));
+        })
+        .map((task) => String(task.auvo_task_id || "").trim())
+        .filter(Boolean))];
+
+      for (let index = 0; index < detailTaskIds.length; index += 20) {
+        const batch = detailTaskIds.slice(index, index + 20);
+        const { data: detailResult, error: detailError } = await supabase.functions.invoke("central-sync", {
+          body: { task_ids: batch, wait: true },
+        });
+        if (detailError) throw detailError;
+        if (detailResult?.success === false || detailResult?.errors > 0) {
+          throw new Error(detailResult?.error || `Falha ao buscar detalhes de ${batch.length} tarefa(s) no Auvo`);
+        }
+      }
+
+      if (detailTaskIds.length > 0) await refetchPendencias();
 
       toast.success("Pendências atualizadas", {
         id: toastId,
         description: syncResult?.auvo_tarefas
-          ? `${syncResult.auvo_tarefas} tarefa(s) conferida(s) no período.`
+          ? `${syncResult.auvo_tarefas} tarefa(s) conferida(s) no período · ${detailTaskIds.length} detalhe(s) recuperado(s).`
           : "Dados recarregados com sucesso.",
       });
     } catch (err) {

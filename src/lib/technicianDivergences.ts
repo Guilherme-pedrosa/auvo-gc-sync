@@ -124,6 +124,10 @@ function answersFrom(value: unknown): QuestionnaireAnswer[] {
   return answers;
 }
 
+export function hasQuestionnaireResponses(value: unknown) {
+  return answersFrom(value).some((answer) => !isBlankReply(answer.reply));
+}
+
 function urlsFrom(value: unknown) {
   return String(value ?? "").match(/https?:\/\/[^\s<>"']+/gi) || [];
 }
