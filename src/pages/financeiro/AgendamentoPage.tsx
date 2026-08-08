@@ -244,7 +244,7 @@ export default function AgendamentoPage() {
     return (
       <div key={chave} className="rounded-md border border-border bg-card p-2.5">
         <div className="flex items-start justify-between gap-2">
-          <div className="min-w-0">
+          <div className="min-w-0 flex-1">
             <div className="flex items-center gap-1.5">
               <p className="truncate text-xs font-bold text-primary">
                 {i.documento_link ? (
@@ -302,9 +302,14 @@ export default function AgendamentoPage() {
         )}
 
         <div className="mt-2 flex flex-wrap items-center gap-1">
+          {status === "atrasada" && (
+            <Badge variant="outline" className="text-[10px] border-destructive bg-destructive/10 text-destructive">
+              Atrasada · {formatDiaBR(i.data_chegada)}
+            </Badge>
+          )}
           <Badge variant="outline" className={cn("text-[10px]", style.chip)}>
             {i.pedidos_todos_chegaram ? "Todos os PCs chegaram" : style.label}
-            {i.data_chegada ? ` · ${formatDiaBR(i.data_chegada)}` : ""}
+            {i.data_chegada && status !== "atrasada" ? ` · ${formatDiaBR(i.data_chegada)}` : ""}
           </Badge>
           <Badge variant="secondary" className="text-[10px]">{i.situacao}</Badge>
           {i.fornecedor && <Badge variant="outline" className="max-w-[160px] truncate text-[10px]">{i.fornecedor}</Badge>}
@@ -335,7 +340,7 @@ export default function AgendamentoPage() {
   };
 
   return (
-    <div className="flex h-full min-h-0 flex-col gap-3 p-4">
+    <div className="flex h-screen min-h-0 flex-col gap-3 p-4 overflow-hidden bg-background">
       <header className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-lg font-semibold text-foreground">Calendário de Agendamento</h1>
@@ -494,8 +499,8 @@ export default function AgendamentoPage() {
           </div>
         </div>
       ) : (
-        <div className="grid min-h-0 flex-1 grid-cols-1 gap-3 xl:grid-cols-[minmax(0,1fr)_340px]">
-          <div className="flex min-h-0 flex-col gap-3 overflow-y-auto pr-1">
+        <div className="grid min-h-0 flex-1 grid-cols-1 gap-3 xl:grid-cols-[minmax(0,1fr)_340px] overflow-hidden">
+          <div className="flex min-h-0 flex-col gap-3 overflow-y-auto pr-1 scrollbar-thin">
             {/* Calendário */}
             <section className="rounded-lg border border-border bg-card p-3">
               <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
@@ -612,7 +617,7 @@ export default function AgendamentoPage() {
             </div>
           </div>
 
-          <div className="min-h-0 xl:h-full">
+          <div className="min-h-0 xl:h-full overflow-y-auto scrollbar-thin">
             <AgendamentoAiPanel
               boardSummary={boardSummary}
               contexto={{
