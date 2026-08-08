@@ -88,12 +88,13 @@ export default function AgendamentoPage() {
   const handleAtualizar = async () => {
     const t = toast.loading("Atualizando orçamentos e pedidos...");
     try {
-      // Força limpeza do cache do React Query
+      console.log("[AgendamentoPage] Forçando atualização manual...");
       queryClient.invalidateQueries({ queryKey: ["compras-chegadas"] });
       const res = await refetch();
       if (res.error) throw res.error;
       toast.success(`Atualizado: ${res.data?.length ?? 0} documentos`, { id: t });
     } catch (e) {
+      console.error("[AgendamentoPage] Erro na atualização manual:", e);
       toast.error(`Falha ao atualizar: ${(e as Error).message}`, { id: t });
     }
   };
@@ -143,10 +144,11 @@ export default function AgendamentoPage() {
 
   // Forçar recarga ao montar se estiver vazio
   useEffect(() => {
+    console.log("[AgendamentoPage] Montado. Itens:", itens.length, "Loading:", isLoading);
     if (itens.length === 0 && !isLoading && !isFetching) {
       refetch();
     }
-  }, []);
+  }, [itens.length, isLoading, isFetching, refetch]);
 
   const porDia = useMemo(() => {
     const map = new Map<string, ChegadaItem[]>();
