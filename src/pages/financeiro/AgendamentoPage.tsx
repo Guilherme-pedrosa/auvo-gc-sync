@@ -1,4 +1,4 @@
-import { useMemo, useState, useEffect } from "react";
+import { useMemo, useState, useEffect, useCallback } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import {
@@ -84,7 +84,7 @@ export default function AgendamentoPage() {
     staleTime: 5 * 60 * 1000,
   });
 
-  const handleAtualizar = async () => {
+  const handleAtualizar = useCallback(async () => {
     const t = toast.loading("Atualizando orçamentos e pedidos...");
     try {
       console.log("[AgendamentoPage] Forçando atualização manual...");
@@ -96,7 +96,7 @@ export default function AgendamentoPage() {
       console.error("[AgendamentoPage] Erro na atualização manual:", e);
       toast.error(`Falha ao atualizar: ${(e as Error).message}`, { id: t });
     }
-  };
+  }, [queryClient, refetch]);
 
   const termo = busca.trim().toLowerCase();
   const filtrados = useMemo(() => {
@@ -312,9 +312,9 @@ export default function AgendamentoPage() {
     <div className="flex h-full min-h-0 flex-col gap-3 p-4">
       <header className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-lg font-semibold text-foreground">Agendamento · Calendário de Compras e Orçamentos</h1>
+          <h1 className="text-lg font-semibold text-foreground">Calendário de Agendamento</h1>
           <p className="text-xs text-muted-foreground">
-            Acompanhamento de orçamentos pendentes e prazos de chegada de pedidos de compra.
+            Acompanhamento de orçamentos e prazos de entrega baseados nos pedidos de compra do GestãoClick.
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -481,7 +481,7 @@ export default function AgendamentoPage() {
                   <span className="flex items-center gap-1"><i className="h-2 w-2 rounded-full bg-destructive" /> Atrasada ({atrasadas.length})</span>
                   <span className="flex items-center gap-1"><i className="h-2 w-2 rounded-full bg-amber-500" /> Hoje</span>
                   <span className="flex items-center gap-1"><i className="h-2 w-2 rounded-full bg-emerald-500" /> Prevista</span>
-                  <span className="flex items-center gap-1"><i className="h-2 w-2 rounded-full bg-muted-foreground" /> Sem data ({semData.length})</span>
+                  <span className="flex items-center gap-1"><i className="h-2 w-2 rounded-full bg-muted-foreground" /> Sem previsão ({semData.length})</span>
                 </div>
               </div>
 
@@ -551,7 +551,7 @@ export default function AgendamentoPage() {
                 </div>
               </section>
 
-              {/* Sem data */}
+              {/* Sem previsão */}
               <section className="rounded-lg border border-border bg-muted/20 p-2">
                 <h2 className="mb-2 text-xs font-semibold">Sem previsão de chegada ({semData.length})</h2>
                 <div className="max-h-[420px] space-y-2 overflow-y-auto">
