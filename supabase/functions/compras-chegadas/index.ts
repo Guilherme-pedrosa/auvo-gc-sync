@@ -248,8 +248,8 @@ async function handleRequest(req: Request) {
         .flatMap(({ doc }) => parsePedidosCompra(extra(doc, ...CAMPO_PEDIDO_COMPRA))),
     )];
     const pedidoDetalhes = new Map<string, PedidoDetalhe>();
-    for (let inicio = 0; inicio < pedidosReferenciados.length; inicio += 8) {
-      const lote = pedidosReferenciados.slice(inicio, inicio + 8);
+    for (let inicio = 0; inicio < pedidosReferenciados.length; inicio += 5) {
+      const lote = pedidosReferenciados.slice(inicio, inicio + 5);
       const encontrados = await Promise.all(lote.map(fetchPedidoPorCodigo));
       for (const pedido of encontrados) if (pedido) pedidoDetalhes.set(pedido.codigo, pedido);
     }
