@@ -67,6 +67,18 @@ export type ChegadaItem = {
   compra_id: string;
   compra_codigo: string;
   pedidos_compra?: string[];
+  pedidos_detalhes?: {
+    codigo: string;
+    id: string;
+    situacao_id: string;
+    situacao: string;
+    data_chegada: string | null;
+    data_chegada_texto: string;
+    estado: "pendente" | "chegou" | "cancelado" | "desconhecido";
+    gc_link: string;
+  }[];
+  pedidos_todos_chegaram?: boolean;
+  data_chegada_orcamento?: string | null;
   fornecedor: string;
   situacao_id: string;
   situacao: string;

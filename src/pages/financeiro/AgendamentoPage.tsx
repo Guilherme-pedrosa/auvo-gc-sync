@@ -96,7 +96,8 @@ export default function AgendamentoPage() {
     // Filtro por busca textual
     if (termo) {
       result = result.filter((i) =>
-        [i.compra_codigo, i.cliente, i.fornecedor, i.vinculo_texto, i.situacao, i.equipamento,
+         [i.compra_codigo, i.cliente, i.fornecedor, i.vinculo_texto, i.situacao, i.equipamento,
+          ...(i.pedidos_compra ?? []), ...((i.pedidos_detalhes ?? []).map((p) => p.situacao)),
          ...i.produtos.map((p) => p.nome)]
           .some((v) => String(v || "").toLowerCase().includes(termo)),
       );
@@ -153,7 +154,7 @@ export default function AgendamentoPage() {
 
   const boardSummary = useMemo(() => {
     const linha = (i: ChegadaItem) =>
-      `- Orçamento ${i.orcamento_codigo || i.vinculo_codigo} | ${i.compra_codigo ? `PC ${i.compra_codigo} | ` : ""}chegada: ${i.data_chegada ? formatDiaBR(i.data_chegada) : "sem data"}` +
+      `- Orçamento ${i.orcamento_codigo || i.vinculo_codigo} | ${(i.pedidos_detalhes ?? []).map((p) => `PC ${p.codigo}: ${p.situacao}${p.data_chegada ? ` (${formatDiaBR(p.data_chegada)})` : ""}`).join("; ") || (i.compra_codigo ? `PC ${i.compra_codigo}` : "sem PC")} | chegada final: ${i.data_chegada ? formatDiaBR(i.data_chegada) : "sem data"}` +
       ` | cliente: ${i.cliente || "?"} | fornecedor: ${i.fornecedor}` +
       ` | ${formatBRL(i.documento_valor || i.valor_total)} | situação: ${i.situacao}` +
       ` | peças: ${i.produtos.slice(0, 4).map((p) => p.nome).join(", ") || "-"}`;
@@ -207,10 +208,6 @@ export default function AgendamentoPage() {
               <p className="truncate text-xs font-bold text-primary">
                 {ehPedido ? "Pedido de Compra" : "Orçamento"} {i.orcamento_codigo || i.vinculo_codigo || i.compra_codigo}
               </p>
-              {!ehPedido &&
-                (i.pedidos_compra?.length ? i.pedidos_compra : i.compra_codigo ? [i.compra_codigo] : []).map((pc) => (
-                  <Badge key={pc} variant="outline" className="h-4 px-1 text-[9px] font-normal">PC {pc}</Badge>
-                ))}
             </div>
             <p className="truncate text-[11px] text-muted-foreground mt-0.5">
               {i.cliente || "Cliente não identificado"}
@@ -223,9 +220,37 @@ export default function AgendamentoPage() {
           {i.produtos.map((p) => `${p.quantidade > 1 ? `${p.quantidade}x ` : ""}${p.nome}`).join(" · ") || "Sem itens"}
         </p>
 
+        {!ehPedido && (i.pedidos_detalhes?.length ?? 0) > 0 && (
+          <div className="mt-2 space-y-1 border-l-2 border-border pl-2">
+            {i.pedidos_detalhes?.map((pedido) => (
+              <div key={pedido.codigo} className="flex flex-wrap items-center gap-1 text-[10px]">
+                {pedido.gc_link ? (
+                  <a href={pedido.gc_link} target="_blank" rel="noreferrer" className="font-semibold text-primary hover:underline">
+                    PC {pedido.codigo}
+                  </a>
+                ) : <span className="font-semibold">PC {pedido.codigo}</span>}
+                <Badge
+                  variant="outline"
+                  className={cn(
+                    "h-4 px-1 text-[9px]",
+                    pedido.estado === "chegou" && "border-emerald-300 bg-emerald-50 text-emerald-800",
+                    pedido.estado === "pendente" && "border-amber-300 bg-amber-50 text-amber-900",
+                    pedido.estado === "cancelado" && "border-destructive/40 bg-destructive/10 text-destructive",
+                  )}
+                >
+                  {pedido.estado === "chegou" ? "Peças chegaram" : pedido.situacao}
+                </Badge>
+                <span className="text-muted-foreground">
+                  {pedido.data_chegada ? `Chegada ${formatDiaBR(pedido.data_chegada)}` : "Sem previsão"}
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
+
         <div className="mt-2 flex flex-wrap items-center gap-1">
           <Badge variant="outline" className={cn("text-[10px]", style.chip)}>
-            {style.label}
+            {i.pedidos_todos_chegaram ? "Todos os PCs chegaram" : style.label}
             {i.data_chegada ? ` · ${formatDiaBR(i.data_chegada)}` : ""}
           </Badge>
           <Badge variant="secondary" className="text-[10px]">{i.situacao}</Badge>
@@ -244,7 +269,7 @@ export default function AgendamentoPage() {
               </a>
             </Button>
           )}
-          {i.gc_link && i.compra_codigo && (
+          {ehPedido && i.gc_link && i.compra_codigo && (
             <Button size="icon" variant="ghost" className="h-7 w-7" asChild>
               <a href={i.gc_link} target="_blank" rel="noreferrer" aria-label="Abrir pedido de compra no GestãoClick">
                 <PackageSearch className="h-3 w-3" />

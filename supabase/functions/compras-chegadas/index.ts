@@ -66,6 +66,42 @@ const CAMPO_PEDIDO_COMPRA = [
   "PC GC",
 ];
 
+const CAMPOS_DATA_PEDIDO = [
+  ...CAMPO_DATA_CHEGADA,
+  "PREVISÃO DE ENTREGA",
+  "PREVISAO DE ENTREGA",
+  "DATA PREVISTA DE ENTREGA",
+  "DATA DE ENTREGA",
+];
+
+type PedidoDetalhe = {
+  codigo: string;
+  id: string;
+  situacao_id: string;
+  situacao: string;
+  data_chegada: string | null;
+  data_chegada_texto: string;
+  estado: "pendente" | "chegou" | "cancelado" | "desconhecido";
+  gc_link: string;
+};
+
+function normalize(value: unknown): string {
+  return String(value ?? "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toUpperCase()
+    .trim();
+}
+
+/** O campo aceita vários PCs (ex.: "PC 1234 / 5678, PC-9012"). */
+function parsePedidosCompra(raw: string): string[] {
+  const codigos = String(raw || "")
+    .match(/\d{3,}/g)
+    ?.map((codigo) => codigo.replace(/^0+(?=\d)/, ""))
+    .filter(Boolean) ?? [];
+  return [...new Set(codigos)];
+}
+
 /** Aceita 10/08, 10/08/2026, 10-08-2026, 2026-08-10. Retorna YYYY-MM-DD. */
 function parseChegada(raw: string, referencia: string): string | null {
   const txt = String(raw || "").trim();
@@ -87,6 +123,53 @@ function parseChegada(raw: string, referencia: string): string | null {
     if (mes < base.getMonth() + 1 - 6) ano += 1;
   }
   return `${ano}-${String(mes).padStart(2, "0")}-${String(dia).padStart(2, "0")}`;
+}
+
+function dataPedidoRaw(doc: any): string {
+  const campoExtra = extra(doc, ...CAMPOS_DATA_PEDIDO);
+  if (campoExtra) return campoExtra;
+  for (const key of [
+    "data_chegada", "data_previsao_entrega", "previsao_entrega", "data_entrega",
+    "data_prevista", "previsao", "data_recebimento",
+  ]) {
+    const value = String(doc?.[key] ?? "").trim();
+    if (value) return value;
+  }
+  return "";
+}
+
+function estadoPedido(doc: any): PedidoDetalhe["estado"] {
+  const situacaoId = String(doc?.situacao_id ?? "");
+  const situacao = normalize(doc?.nome_situacao);
+  if (SITUACOES_PEDIDOS.some((item) => item.id === situacaoId)) return "pendente";
+  if (/CANCEL|REPROV|DEVOLVID/.test(situacao)) return "cancelado";
+  if (/CHEG|RECEB|ENTREG|CONCLUID|FINALIZ|ESTOQUE/.test(situacao)) return "chegou";
+  return "desconhecido";
+}
+
+async function fetchPedidoPorCodigo(codigo: string): Promise<PedidoDetalhe | null> {
+  const url = new URL(`${GC_BASE}/compras`);
+  url.searchParams.set("codigo", codigo);
+  url.searchParams.set("limite", "20");
+  const res = await fetch(url.toString(), { headers: gcHeaders() });
+  if (!res.ok) return null;
+  const json = await res.json().catch(() => null);
+  const rows = Array.isArray(json?.data) ? json.data : [];
+  const docs = rows.map((row: any) => row?.Compra ?? row).filter(Boolean);
+  const doc = docs.find((item: any) => String(item?.codigo ?? "").replace(/\D/g, "") === codigo) ?? null;
+  if (!doc) return null;
+  const raw = dataPedidoRaw(doc);
+  const referencia = String(doc?.data_emissao ?? doc?.data ?? new Date().toISOString().slice(0, 10));
+  return {
+    codigo,
+    id: String(doc?.id ?? ""),
+    situacao_id: String(doc?.situacao_id ?? ""),
+    situacao: String(doc?.nome_situacao ?? "Situação não informada"),
+    data_chegada: parseChegada(raw, referencia),
+    data_chegada_texto: raw,
+    estado: estadoPedido(doc),
+    gc_link: doc?.id ? `https://app.gestaoclick.com/compras/visualizar/${doc.id}` : "",
+  };
 }
 
 function parseVinculo(raw: string): { tipo: "os" | "orcamento" | "texto"; codigo: string; original: string } {
@@ -130,16 +213,46 @@ async function handleRequest(req: Request) {
     ]);
     const brutos = [...pedidosResults.flat(), ...orcamentosResults.flat()];
 
+    const pedidosReferenciados = [...new Set(
+      brutos
+        .filter(({ tipo }) => tipo === "orcamento")
+        .flatMap(({ doc }) => parsePedidosCompra(extra(doc, ...CAMPO_PEDIDO_COMPRA))),
+    )];
+    const pedidoDetalhes = new Map<string, PedidoDetalhe>();
+    for (let inicio = 0; inicio < pedidosReferenciados.length; inicio += 8) {
+      const lote = pedidosReferenciados.slice(inicio, inicio + 8);
+      const encontrados = await Promise.all(lote.map(fetchPedidoPorCodigo));
+      for (const pedido of encontrados) if (pedido) pedidoDetalhes.set(pedido.codigo, pedido);
+    }
+
     const itens = brutos.map(({ doc, situacao, tipo }) => {
       const vinculoRaw = extra(doc, "OS GC");
       const vinculo = parseVinculo(vinculoRaw);
       const dataChegadaRaw = extra(doc, ...CAMPO_DATA_CHEGADA);
-      const dataChegada = parseChegada(dataChegadaRaw, doc?.data_emissao || doc?.data);
+      const dataChegadaOrcamento = parseChegada(dataChegadaRaw, doc?.data_emissao || doc?.data);
       // No orçamento, o campo "PEDIDO DE COMPRA GC" diz quais PCs abastecem aquela OS.
-      const pedidosCompra = extra(doc, ...CAMPO_PEDIDO_COMPRA)
-        .split(/[\/,;+\s]+/)
-        .map((s) => s.replace(/\D/g, ""))
-        .filter((s) => s.length >= 3);
+      const pedidosCompra = parsePedidosCompra(extra(doc, ...CAMPO_PEDIDO_COMPRA));
+      const detalhes = pedidosCompra.map((codigo) => pedidoDetalhes.get(codigo) ?? {
+        codigo,
+        id: "",
+        situacao_id: "",
+        situacao: "Pedido não localizado",
+        data_chegada: null,
+        data_chegada_texto: "",
+        estado: "desconhecido" as const,
+        gc_link: "",
+      });
+      const validos = detalhes.filter((pedido) => pedido.estado !== "cancelado");
+      const todosChegaram = validos.length > 0 && validos.every((pedido) => pedido.estado === "chegou");
+      const algumSemPrevisao = validos.some(
+        (pedido) => pedido.estado !== "chegou" && !pedido.data_chegada,
+      );
+      const datasPedidos = validos.map((pedido) => pedido.data_chegada).filter((data): data is string => Boolean(data));
+      // A OS só pode ser agendada quando o último PC chegar. Se um PC pendente não tem
+      // previsão, não exibimos uma data enganosa; a data do orçamento vira apenas fallback.
+      const dataChegada = tipo === "orcamento" && detalhes.length
+        ? (algumSemPrevisao ? null : (datasPedidos.sort().at(-1) ?? dataChegadaOrcamento))
+        : dataChegadaOrcamento;
       
       const produtos = (Array.isArray(doc?.produtos) ? doc.produtos : []).map((p: any) => {
         const prod = p?.produto ?? p;
@@ -158,6 +271,9 @@ async function handleRequest(req: Request) {
         orcamento_id: tipo === "orcamento" ? String(doc?.id ?? "") : "",
         compra_codigo: tipo === "compra" ? String(doc?.codigo ?? "") : (pedidosCompra[0] ?? ""),
         pedidos_compra: pedidosCompra,
+        pedidos_detalhes: detalhes,
+        pedidos_todos_chegaram: todosChegaram,
+        data_chegada_orcamento: dataChegadaOrcamento,
         fornecedor: String(doc?.nome_fornecedor || doc?.nome_vendedor || ""),
         situacao_id: situacao.id,
         situacao: String(doc?.nome_situacao ?? situacao.nome),
