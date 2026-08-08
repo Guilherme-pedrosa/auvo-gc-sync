@@ -1,7 +1,7 @@
 // Lê os pedidos de compra e orçamentos do GestãoClick que ainda NÃO chegaram/foram aprovados
 // e devolve a agenda de chegada de peças (campo extra "DATA DA CHEGADA DAS PEÇAS"),
 // vinculada à OS / orçamento informados no campo extra "OS GC".
-import { createClient } from "npm:@supabase/supabase-js@2.45.0";
+import { createClient } from "npm:@supabase/supabase-js@2";
 import { corsHeaders } from "npm:@supabase/supabase-js@2/cors";
 import { installGcUsuarioId, gcHeaders } from "../_shared/gc-user.ts";
 
@@ -9,28 +9,18 @@ installGcUsuarioId();
 
 const GC_BASE = "https://api.gestaoclick.com";
 
-// Situações de compra que ainda estão pendentes (peça não chegou).
+// O calendário considera exclusivamente estas três situações de orçamento.
+const SITUACOES_ORCAMENTOS = [
+  { id: "8743484", nome: "Aprovada - AG COMPRA", grupo: "ag_compra" },
+  { id: "8743485", nome: "COMPRADO - AG CHEGADA", grupo: "ag_chegada" },
+  { id: "8894381", nome: "SOLICITADO - GARANTIA", grupo: "garantia" },
+];
+
+// Situações de pedidos usadas somente para interpretar os PCs informados nos orçamentos.
 const SITUACOES_PEDIDOS = [
   { id: "1670366", nome: "Aprovada - AG COMPRA", grupo: "ag_compra" },
   { id: "1675083", nome: "COMPRADO - AG CHEGADA", grupo: "ag_chegada" },
-  { id: "2072608", nome: "COMPRADO - AG CHEGADA PARA ESTOQUE", grupo: "ag_chegada" },
   { id: "1775065", nome: "SOLICITADO - GARANTIA", grupo: "garantia" },
-  { id: "2120816", nome: "AGUARDANDO PEDIDO MINIMO", grupo: "ag_compra" },
-];
-
-const SITUACOES_ORCAMENTOS = [
-  { id: "8743484", nome: "APROVADO - AG COMPRA", grupo: "ag_compra" },
-  { id: "8743485", nome: "COMPRADO - AG CHEGADA", grupo: "ag_chegada" },
-  { id: "8894381", nome: "Aguardando chegada - peça em garantia", grupo: "garantia" },
-  { id: "7063588", nome: "Aguardando Aprovação", grupo: "ag_aprovacao" },
-  { id: "2039849", nome: "Aguardando Correção / informações solicitadas", grupo: "ag_aprovacao" },
-  { id: "7084340", nome: "Aguardando Resposta Cliente", grupo: "ag_aprovacao" },
-  { id: "7063587", nome: "Aguardando Chegada de Peças", grupo: "ag_chegada" },
-  { id: "7063589", nome: "Aguardando Fabricação", grupo: "ag_fabricacao" },
-  { id: "7219959", nome: "Pedido Conferido - Aguardando Execução", grupo: "ag_execucao" },
-  { id: "2138148", nome: "Pedido em Conferência", grupo: "conferencia" },
-  { id: "7106316", nome: "Retirada pelo Técnico", grupo: "retirada" },
-  { id: "7253507", nome: "Serviço Aguardando Execução", grupo: "ag_execucao" },
 ];
 
 function extra(doc: any, ...descricoes: string[]): string {
@@ -219,13 +209,12 @@ async function handleRequest(req: Request) {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
   try {
-    const [pedidosResults, orcamentosResults] = await Promise.all([
-      Promise.all(SITUACOES_PEDIDOS.map((s) => fetchSituacao(s, "compras"))),
-      Promise.all(SITUACOES_ORCAMENTOS.map((s) => fetchSituacao(s, "orcamentos"))),
-    ]);
-    const brutos = [...pedidosResults.flat(), ...orcamentosResults.flat()];
+    const orcamentosResults = await Promise.all(
+      SITUACOES_ORCAMENTOS.map((s) => fetchSituacao(s, "orcamentos")),
+    );
+    const brutos = orcamentosResults.flat();
     console.log(
-      `[compras-chegadas] encontrados ${orcamentosResults.flat().length} orçamentos e ${pedidosResults.flat().length} pedidos`,
+      `[compras-chegadas] encontrados ${brutos.length} orçamentos nas 3 situações solicitadas`,
     );
 
     const pedidosReferenciados = [...new Set(
