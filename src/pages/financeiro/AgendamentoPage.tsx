@@ -291,7 +291,7 @@ export default function AgendamentoPage() {
                               {Number(dia.slice(8, 10))}
                             </span>
                             {lista.length > 0 && (
-                              <span className="text-[9px] text-muted-foreground">{formatBRL(total)}</span>
+                              <span className="text-[9px] text-muted-foreground">{formatBRL(lista.reduce((s, i) => s + (i.documento_valor || i.valor_total), 0))}</span>
                             )}
                           </div>
                           <div className="space-y-0.5">
