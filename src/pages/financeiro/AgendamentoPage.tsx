@@ -160,9 +160,9 @@ export default function AgendamentoPage() {
           key={i.compra_id}
           onClick={() => setDiaSelecionado(String(i.data_chegada).slice(0, 10))}
           className={cn("w-full truncate rounded border px-1 py-0.5 text-left text-[10px] leading-tight", style.chip)}
-          title={`Orçamento ${i.orcamento_codigo || i.vinculo_codigo} · ${i.cliente || i.fornecedor} · ${formatBRL(i.valor_total)}`}
+          title={`${i.vinculo_tipo === "orcamento" ? "OR" : "PC"} ${i.orcamento_codigo || i.vinculo_codigo || i.compra_codigo} · ${i.cliente || i.fornecedor} · ${formatBRL(i.valor_total)}`}
         >
-          OR {i.orcamento_codigo || i.vinculo_codigo} · {i.cliente || i.fornecedor}
+          {i.vinculo_tipo === "orcamento" ? "OR" : "PC"} {i.orcamento_codigo || i.vinculo_codigo || i.compra_codigo} · {i.cliente || i.fornecedor}
         </button>
       );
     }
