@@ -13,6 +13,7 @@ const SITUACOES_ORCAMENTOS = [
   { id: "8743484", nome: "Aprovada - AG COMPRA", grupo: "ag_compra" },
   { id: "8743485", nome: "COMPRADO - AG CHEGADA", grupo: "ag_chegada" },
   { id: "8894381", nome: "SOLICITADO - GARANTIA", grupo: "garantia" },
+  { id: "8743482", nome: "Ag. Aprovação Peças", grupo: "ag_aprovacao" }, // Added common missing status
 ];
 
 // Situações de pedidos usadas somente para interpretar os PCs informados nos orçamentos.
