@@ -481,7 +481,7 @@ export default function AgendamentoPage() {
                   <span className="flex items-center gap-1"><i className="h-2 w-2 rounded-full bg-destructive" /> Atrasada ({atrasadas.length})</span>
                   <span className="flex items-center gap-1"><i className="h-2 w-2 rounded-full bg-amber-500" /> Hoje</span>
                   <span className="flex items-center gap-1"><i className="h-2 w-2 rounded-full bg-emerald-500" /> Prevista</span>
-                  <span className="flex items-center gap-1"><i className="h-2 w-2 rounded-full bg-muted-foreground" /> Sem data ({semData.length})</span>
+                  <span className="flex items-center gap-1"><i className="h-2 w-2 rounded-full bg-muted-foreground" /> Sem previsão ({semData.length})</span>
                 </div>
               </div>
 
