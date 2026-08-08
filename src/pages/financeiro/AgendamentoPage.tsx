@@ -31,25 +31,24 @@ const STATUS_STYLE: Record<ChegadaStatus, { chip: string; dot: string; label: st
 
 async function fetchChegadas(): Promise<ChegadaItem[]> {
   console.log("[AgendamentoPage] chamando compras-chegadas...");
-  const { data, error } = await supabase.functions.invoke("compras-chegadas", { body: {} });
-  if (error) {
-    console.error("[AgendamentoPage] erro invoke:", error);
-    throw error;
-  }
-  if (data?.ok === false) {
-    console.error("[AgendamentoPage] erro backend:", data?.error);
-    throw new Error(data?.error || "Falha ao consultar compras");
-  }
-
-  // Log para debug de rastreamento
   try {
-    const { data: trackData } = await supabase.functions.invoke("compras-rastreamento", { body: {} });
-    console.log("[AgendamentoPage] Dados de rastreamento integrados:", trackData);
-  } catch (e) {
-    console.warn("[AgendamentoPage] Falha opcional no rastreamento:", e);
-  }
+    const { data, error } = await supabase.functions.invoke("compras-chegadas", { body: {} });
+    if (error) {
+      console.error("[AgendamentoPage] erro invoke:", error);
+      throw error;
+    }
+    if (data?.ok === false) {
+      console.error("[AgendamentoPage] erro backend:", data?.error);
+      throw new Error(data?.error || "Falha ao consultar compras");
+    }
 
-  return (data?.itens || []) as ChegadaItem[];
+    const itens = (data?.itens || []) as ChegadaItem[];
+    console.log("[AgendamentoPage] Itens recebidos:", itens.length);
+    return itens;
+  } catch (e) {
+    console.error("[AgendamentoPage] Erro fatal no fetchChegadas:", e);
+    throw e;
+  }
 }
 
 function documentoLabel(item: ChegadaItem): string {
