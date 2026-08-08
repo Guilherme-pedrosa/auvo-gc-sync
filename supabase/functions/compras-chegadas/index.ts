@@ -386,6 +386,7 @@ async function handleRequest(req: Request) {
       { headers: { ...corsHeaders, "Content-Type": "application/json" } },
     );
   } catch (e) {
+    console.error("[compras-chegadas] fatal error:", e);
     return new Response(JSON.stringify({ ok: false, error: (e as Error).message, itens: [] }), {
       status: 200,
       headers: { ...corsHeaders, "Content-Type": "application/json" },

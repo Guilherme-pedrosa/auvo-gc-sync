@@ -1,5 +1,5 @@
-import { useMemo, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useMemo, useState, useEffect } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import {
   AlertTriangle, CalendarClock, ChevronLeft, ChevronRight, ExternalLink, Filter, Loader2,
@@ -30,15 +30,25 @@ const STATUS_STYLE: Record<ChegadaStatus, { chip: string; dot: string; label: st
 };
 
 async function fetchChegadas(): Promise<ChegadaItem[]> {
-  const { data, error } = await supabase.functions.invoke("compras-chegadas", { body: {} });
-  if (error) throw error;
-  if (data?.ok === false) throw new Error(data?.error || "Falha ao consultar compras");
-  
-  // Enriquecimento com dados de rastreamento (simulando a lógica coesa solicitada)
-  const { data: trackData } = await supabase.functions.invoke("compras-rastreamento", { body: {} });
-  console.log("Dados de rastreamento integrados:", trackData);
+  console.log("[AgendamentoPage] chamando compras-chegadas...");
+  try {
+    const { data, error } = await supabase.functions.invoke("compras-chegadas", { body: {} });
+    if (error) {
+      console.error("[AgendamentoPage] erro invoke:", error);
+      throw error;
+    }
+    if (data?.ok === false) {
+      console.error("[AgendamentoPage] erro backend:", data?.error);
+      throw new Error(data?.error || "Falha ao consultar compras");
+    }
 
-  return (data?.itens || []) as ChegadaItem[];
+    const itens = (data?.itens || []) as ChegadaItem[];
+    console.log("[AgendamentoPage] Itens recebidos:", itens.length);
+    return itens;
+  } catch (e) {
+    console.error("[AgendamentoPage] Erro fatal no fetchChegadas:", e);
+    throw e;
+  }
 }
 
 function documentoLabel(item: ChegadaItem): string {
@@ -54,6 +64,7 @@ function isPedidoCompra(i: ChegadaItem): boolean {
 }
 
 export default function AgendamentoPage() {
+  const queryClient = useQueryClient();
   const hoje = todayISO();
   const [ano, setAno] = useState(() => new Date().getFullYear());
   const [mes, setMes] = useState(() => new Date().getMonth());
@@ -62,7 +73,7 @@ export default function AgendamentoPage() {
   const [excludedSituacoes, setExcludedSituacoes] = useState<Set<string>>(new Set());
   const [searchSituacao, setSearchSituacao] = useState("");
   const [tipoDoc, setTipoDoc] = useState<"todos" | "orcamentos" | "pedidos">(
-    () => (localStorage.getItem("agendamento:tipoDoc") as "todos" | "orcamentos" | "pedidos") || "todos",
+    () => (localStorage.getItem("agendamento:tipoDoc") as "todos" | "orcamentos" | "pedidos") || "orcamentos",
   );
   const [alvo, setAlvo] = useState<AgendarAlvo | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -76,10 +87,13 @@ export default function AgendamentoPage() {
   const handleAtualizar = async () => {
     const t = toast.loading("Atualizando orçamentos e pedidos...");
     try {
+      console.log("[AgendamentoPage] Forçando atualização manual...");
+      queryClient.invalidateQueries({ queryKey: ["compras-chegadas"] });
       const res = await refetch();
       if (res.error) throw res.error;
       toast.success(`Atualizado: ${res.data?.length ?? 0} documentos`, { id: t });
     } catch (e) {
+      console.error("[AgendamentoPage] Erro na atualização manual:", e);
       toast.error(`Falha ao atualizar: ${(e as Error).message}`, { id: t });
     }
   };
@@ -126,6 +140,14 @@ export default function AgendamentoPage() {
     const s = searchSituacao.toLowerCase();
     return allSituacoes.filter((sit) => sit.toLowerCase().includes(s));
   }, [allSituacoes, searchSituacao]);
+
+  // Forçar recarga ao montar se estiver vazio
+  useEffect(() => {
+    console.log("[AgendamentoPage] Montado. Itens:", itens.length, "Loading:", isLoading);
+    if (itens.length === 0 && !isLoading && !isFetching) {
+      refetch();
+    }
+  }, [itens.length, isLoading, isFetching, refetch]);
 
   const porDia = useMemo(() => {
     const map = new Map<string, ChegadaItem[]>();
@@ -408,6 +430,24 @@ export default function AgendamentoPage() {
       {isLoading ? (
         <div className="flex flex-1 items-center justify-center text-sm text-muted-foreground">
           <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Carregando calendário de compras e orçamentos...
+        </div>
+      ) : filtrados.length === 0 ? (
+        <div className="flex flex-1 items-center justify-center border-2 border-dashed rounded-lg p-12 text-center bg-muted/20">
+          <div className="max-w-md space-y-4">
+            <div className="mx-auto w-12 h-12 rounded-full bg-muted flex items-center justify-center">
+              <CalendarClock className="h-6 w-6 text-muted-foreground" />
+            </div>
+            <div>
+              <h2 className="text-lg font-semibold">Nenhum orçamento encontrado</h2>
+              <p className="text-sm text-muted-foreground mt-1">
+                Não há orçamentos pendentes nas situações de compra/chegada para os filtros selecionados.
+              </p>
+            </div>
+            <Button variant="outline" onClick={handleAtualizar} className="gap-2">
+              <RefreshCw className="h-4 w-4" />
+              Tentar novamente
+            </Button>
+          </div>
         </div>
       ) : (
         <div className="grid min-h-0 flex-1 grid-cols-1 gap-3 xl:grid-cols-[minmax(0,1fr)_340px]">
