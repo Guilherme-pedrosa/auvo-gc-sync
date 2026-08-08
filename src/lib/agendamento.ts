@@ -59,3 +59,75 @@ export function parseExecTaskId(raw: unknown): string | null {
   const first = txt.split(/[\/,;\s]+/).map((s) => s.replace(/\D/g, "")).find((s) => s.length >= 4);
   return first || null;
 }
+
+/** Chegada de peças vinda do módulo de compras do GestãoClick. */
+export type ChegadaItem = {
+  compra_id: string;
+  compra_codigo: string;
+  fornecedor: string;
+  situacao_id: string;
+  situacao: string;
+  grupo: string;
+  data_emissao: string | null;
+  data_chegada: string | null;
+  data_chegada_texto: string;
+  vinculo_tipo: "os" | "orcamento" | "texto";
+  vinculo_codigo: string;
+  vinculo_texto: string;
+  auvo_task_id: string;
+  observacao_extra: string;
+  valor_total: number;
+  produtos: { nome: string; quantidade: number; valor_total: number }[];
+  gc_link: string;
+  cliente: string;
+  equipamento: string;
+  os_codigo: string;
+  orcamento_codigo: string;
+  documento_valor: number;
+  documento_situacao: string;
+  documento_link: string;
+  auvo_link: string;
+};
+
+export type ChegadaStatus = "atrasada" | "hoje" | "futura" | "sem_data";
+
+export function getChegadaStatus(dataChegada: string | null | undefined): ChegadaStatus {
+  const dia = String(dataChegada ?? "").slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(dia)) return "sem_data";
+  const hoje = todayISO();
+  if (dia < hoje) return "atrasada";
+  if (dia === hoje) return "hoje";
+  return "futura";
+}
+
+export function formatDiaBR(iso: string | null | undefined): string {
+  const dia = String(iso ?? "").slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(dia)) return "—";
+  const [a, m, d] = dia.split("-");
+  return `${d}/${m}/${a}`;
+}
+
+export function monthLabel(ano: number, mes: number): string {
+  return new Date(ano, mes, 1)
+    .toLocaleDateString("pt-BR", { month: "long", year: "numeric" })
+    .replace(/^./, (c) => c.toUpperCase());
+}
+
+/** Semanas (domingo a sábado) que cobrem o mês informado. */
+export function buildMonthGrid(ano: number, mes: number): string[][] {
+  const pad = (n: number) => String(n).padStart(2, "0");
+  const primeiro = new Date(ano, mes, 1);
+  const inicio = new Date(ano, mes, 1 - primeiro.getDay());
+  const semanas: string[][] = [];
+  const cursor = new Date(inicio);
+  for (let s = 0; s < 6; s++) {
+    const semana: string[] = [];
+    for (let d = 0; d < 7; d++) {
+      semana.push(`${cursor.getFullYear()}-${pad(cursor.getMonth() + 1)}-${pad(cursor.getDate())}`);
+      cursor.setDate(cursor.getDate() + 1);
+    }
+    semanas.push(semana);
+    if (cursor.getMonth() !== mes && cursor.getDate() > 7) break;
+  }
+  return semanas;
+}

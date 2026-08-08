@@ -2,240 +2,188 @@ import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import {
-  CalendarClock, ExternalLink, Loader2, Package, RefreshCw, Search, Wrench,
+  AlertTriangle, CalendarClock, ChevronLeft, ChevronRight, ExternalLink, Loader2,
+  PackageSearch, RefreshCw, Search,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
-import { isOpenOsSituation } from "@/lib/osOpenStatuses";
 import {
-  AGENDA_BUCKETS, ORC_PECA_SITUACOES, ORC_PECA_SITUACAO_IDS, diasDesde, formatBRL,
-  getAgendaBucket, parseExecTaskId, parseValor, type AgendaBucket,
+  buildMonthGrid, formatBRL, formatDiaBR, getChegadaStatus, monthLabel, todayISO,
+  type ChegadaItem, type ChegadaStatus,
 } from "@/lib/agendamento";
 import AgendarTarefaDialog, { type AgendarAlvo } from "@/components/financeiro/AgendarTarefaDialog";
 import AgendamentoAiPanel from "@/components/financeiro/AgendamentoAiPanel";
 
-const COLS =
-  "auvo_task_id, mirror_key, cliente, tecnico, tecnico_id, data_tarefa, auvo_link, equipamento_nome, equipamento_id_serie," +
-  " gc_os_id, gc_os_codigo, gc_os_cliente, gc_os_situacao, gc_os_situacao_id, gc_os_valor_total, gc_os_data, gc_os_link," +
-  " gc_os_tarefa_exec, gc_os_local_reparo, gc_orcamento_id, gc_orcamento_codigo, gc_orc_cliente, gc_orc_situacao," +
-  " gc_orc_situacao_id, gc_orc_valor_total, gc_orc_data, gc_orc_link";
+const DIAS = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
 
-type Row = Record<string, any>;
-
-type Card = {
-  key: string;
-  tipo: "orcamento" | "os";
-  cliente: string;
-  codigo: string;
-  valor: number;
-  equipamento: string;
-  situacao: string;
-  situacaoId: string;
-  data: string | null;
-  tecnico: string;
-  local: string;
-  link: string;
-  auvoLink: string;
-  alvo: AgendarAlvo;
+const STATUS_STYLE: Record<ChegadaStatus, { chip: string; dot: string; label: string }> = {
+  atrasada: { chip: "bg-destructive/10 text-destructive border-destructive/40", dot: "bg-destructive", label: "Atrasada" },
+  hoje: { chip: "bg-amber-100 text-amber-900 border-amber-300", dot: "bg-amber-500", label: "Chega hoje" },
+  futura: { chip: "bg-emerald-50 text-emerald-800 border-emerald-300", dot: "bg-emerald-500", label: "Prevista" },
+  sem_data: { chip: "bg-muted text-muted-foreground border-border", dot: "bg-muted-foreground", label: "Sem data" },
 };
 
-function nomeEquipamento(r: Row): string {
-  const nome = String(r.equipamento_nome ?? "").trim();
-  const serie = String(r.equipamento_id_serie ?? "").trim();
-  if (nome && serie) return `${nome} · ${serie}`;
-  return nome || serie || "Equipamento não informado";
+async function fetchChegadas(): Promise<ChegadaItem[]> {
+  const { data, error } = await supabase.functions.invoke("compras-chegadas", { body: {} });
+  if (error) throw error;
+  if (data?.ok === false) throw new Error(data?.error || "Falha ao consultar compras");
+  return (data?.itens || []) as ChegadaItem[];
 }
 
-function toAlvo(r: Row): AgendarAlvo {
-  return {
-    auvo_task_id: r.auvo_task_id ? String(r.auvo_task_id) : null,
-    mirror_key: r.mirror_key ?? null,
-    exec_task_id: parseExecTaskId(r.gc_os_tarefa_exec) || (r.auvo_task_id ? String(r.auvo_task_id) : null),
-    gc_os_id: r.gc_os_id ?? null,
-    gc_orcamento_id: r.gc_orcamento_id ?? null,
-    gc_os_codigo: r.gc_os_codigo ?? null,
-    cliente: String(r.gc_os_cliente || r.gc_orc_cliente || r.cliente || "Cliente não informado"),
-    equipamento: nomeEquipamento(r),
-    data_tarefa: r.data_tarefa ?? null,
-    tecnico_id: r.tecnico_id ?? null,
-  };
-}
-
-async function fetchRows() {
-  const [orc, os] = await Promise.all([
-    supabase.from("tarefas_central").select(COLS).in("gc_orc_situacao_id", ORC_PECA_SITUACAO_IDS).limit(1000),
-    supabase.from("tarefas_central").select(COLS).not("gc_os_id", "is", null)
-      .order("gc_os_data", { ascending: false }).limit(3000),
-  ]);
-  if (orc.error) throw orc.error;
-  if (os.error) throw os.error;
-  return { orcamentos: (orc.data || []) as Row[], os: (os.data || []) as Row[] };
+function documentoLabel(item: ChegadaItem): string {
+  if (item.vinculo_tipo === "orcamento") return `Orçamento ${item.vinculo_codigo}`;
+  if (item.vinculo_tipo === "os") return `OS ${item.vinculo_codigo}`;
+  return item.vinculo_texto ? item.vinculo_texto.slice(0, 40) : "Sem vínculo";
 }
 
 export default function AgendamentoPage() {
+  const hoje = todayISO();
+  const [ano, setAno] = useState(() => new Date().getFullYear());
+  const [mes, setMes] = useState(() => new Date().getMonth());
+  const [diaSelecionado, setDiaSelecionado] = useState<string>(hoje);
   const [busca, setBusca] = useState("");
   const [alvo, setAlvo] = useState<AgendarAlvo | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
-  const [overrides, setOverrides] = useState<Record<string, { data: string; tecnico: string }>>({});
 
-  const { data, isLoading, isFetching, refetch } = useQuery({
-    queryKey: ["agendamento-board"],
-    queryFn: fetchRows,
-    staleTime: 60_000,
+  const { data: itens = [], isLoading, isFetching, refetch, error } = useQuery({
+    queryKey: ["compras-chegadas"],
+    queryFn: fetchChegadas,
+    staleTime: 5 * 60 * 1000,
   });
 
-  const { orcCards, osCards } = useMemo(() => {
-    const orcMap = new Map<string, Card>();
-    (data?.orcamentos || []).forEach((r) => {
-      const id = String(r.gc_orcamento_id || r.gc_orcamento_codigo || r.auvo_task_id || "");
-      if (!id || orcMap.has(id)) return;
-      orcMap.set(id, {
-        key: `orc-${id}`,
-        tipo: "orcamento",
-        cliente: String(r.gc_orc_cliente || r.cliente || "Cliente não informado"),
-        codigo: String(r.gc_orcamento_codigo || id),
-        valor: parseValor(r.gc_orc_valor_total),
-        equipamento: nomeEquipamento(r),
-        situacao: String(r.gc_orc_situacao || ""),
-        situacaoId: String(r.gc_orc_situacao_id || ""),
-        data: r.gc_orc_data || null,
-        tecnico: String(r.tecnico || ""),
-        local: String(r.gc_os_local_reparo || ""),
-        link: String(r.gc_orc_link || ""),
-        auvoLink: String(r.auvo_link || ""),
-        alvo: toAlvo(r),
-      });
-    });
-
-    const osMap = new Map<string, Card>();
-    (data?.os || []).forEach((r) => {
-      if (!isOpenOsSituation(r)) return;
-      const id = String(r.gc_os_id || "");
-      if (!id || osMap.has(id)) return;
-      const ov = overrides[id];
-      osMap.set(id, {
-        key: `os-${id}`,
-        tipo: "os",
-        cliente: String(r.gc_os_cliente || r.cliente || "Cliente não informado"),
-        codigo: String(r.gc_os_codigo || id),
-        valor: parseValor(r.gc_os_valor_total),
-        equipamento: nomeEquipamento(r),
-        situacao: String(r.gc_os_situacao || ""),
-        situacaoId: String(r.gc_os_situacao_id || ""),
-        data: ov?.data || r.data_tarefa || null,
-        tecnico: ov?.tecnico || String(r.tecnico || ""),
-        local: String(r.gc_os_local_reparo || ""),
-        link: String(r.gc_os_link || ""),
-        auvoLink: String(r.auvo_link || ""),
-        alvo: toAlvo(r),
-      });
-    });
-
-    return { orcCards: Array.from(orcMap.values()), osCards: Array.from(osMap.values()) };
-  }, [data, overrides]);
-
   const termo = busca.trim().toLowerCase();
-  const filtra = (c: Card) =>
-    !termo ||
-    [c.cliente, c.codigo, c.equipamento, c.tecnico, c.situacao].some((v) => v.toLowerCase().includes(termo));
+  const filtrados = useMemo(
+    () =>
+      itens.filter((i) =>
+        !termo ||
+        [i.compra_codigo, i.cliente, i.fornecedor, i.vinculo_texto, i.situacao, i.equipamento,
+         ...i.produtos.map((p) => p.nome)]
+          .some((v) => String(v || "").toLowerCase().includes(termo)),
+      ),
+    [itens, termo],
+  );
 
-  const orcFiltrados = orcCards.filter(filtra);
-  const osFiltrados = osCards.filter(filtra);
+  const porDia = useMemo(() => {
+    const map = new Map<string, ChegadaItem[]>();
+    filtrados.forEach((i) => {
+      const dia = String(i.data_chegada ?? "").slice(0, 10);
+      if (!dia) return;
+      const arr = map.get(dia) ?? [];
+      arr.push(i);
+      map.set(dia, arr);
+    });
+    map.forEach((arr) => arr.sort((a, b) => b.valor_total - a.valor_total));
+    return map;
+  }, [filtrados]);
 
-  const orcPorSituacao = ORC_PECA_SITUACOES.map((s) => ({
-    ...s,
-    cards: orcFiltrados
-      .filter((c) => c.situacaoId === s.id)
-      .sort((a, b) => b.valor - a.valor),
-  }));
+  const semData = useMemo(() => filtrados.filter((i) => !i.data_chegada), [filtrados]);
+  const atrasadas = useMemo(
+    () => filtrados.filter((i) => getChegadaStatus(i.data_chegada) === "atrasada")
+      .sort((a, b) => String(a.data_chegada).localeCompare(String(b.data_chegada))),
+    [filtrados],
+  );
 
-  const osPorBucket = AGENDA_BUCKETS.map((b) => ({
-    ...b,
-    cards: osFiltrados
-      .filter((c) => getAgendaBucket(c.data, c.tecnico) === b.id)
-      .sort((a, b2) => b2.valor - a.valor),
-  }));
+  const semanas = useMemo(() => buildMonthGrid(ano, mes), [ano, mes]);
+
+  const navegar = (delta: number) => {
+    const d = new Date(ano, mes + delta, 1);
+    setAno(d.getFullYear());
+    setMes(d.getMonth());
+  };
+
+  const itensDoDia = porDia.get(diaSelecionado) ?? [];
 
   const boardSummary = useMemo(() => {
-    const linha = (c: Card) =>
-      `- ${c.tipo === "os" ? "OS" : "ORC"} ${c.codigo} | ${c.cliente} | ${formatBRL(c.valor)} | ${c.equipamento} | situação: ${c.situacao}` +
-      `${c.data ? ` | data: ${String(c.data).slice(0, 10)}` : " | sem data"}${c.tecnico ? ` | téc: ${c.tecnico}` : ""}`;
-    const partes: string[] = [];
-    orcPorSituacao.forEach((g) => {
-      partes.push(`\n[ORÇAMENTOS · ${g.label}] (${g.cards.length})`);
-      partes.push(...g.cards.slice(0, 25).map(linha));
-    });
-    osPorBucket.forEach((g) => {
-      partes.push(`\n[OS ABERTAS · ${g.label}] (${g.cards.length})`);
-      partes.push(...g.cards.slice(0, 30).map(linha));
-    });
-    return partes.join("\n");
-  }, [orcPorSituacao, osPorBucket]);
+    const linha = (i: ChegadaItem) =>
+      `- Pedido de compra ${i.compra_codigo} | chegada: ${i.data_chegada ? formatDiaBR(i.data_chegada) : "sem data"}` +
+      ` | ${documentoLabel(i)} | cliente: ${i.cliente || "?"} | fornecedor: ${i.fornecedor}` +
+      ` | ${formatBRL(i.valor_total)} | situação: ${i.situacao}` +
+      ` | peças: ${i.produtos.slice(0, 4).map((p) => p.nome).join(", ") || "-"}`;
+    return [
+      `[ATRASADAS] (${atrasadas.length})`,
+      ...atrasadas.slice(0, 30).map(linha),
+      `\n[SEM DATA DE CHEGADA] (${semData.length})`,
+      ...semData.slice(0, 30).map(linha),
+      `\n[PREVISTAS] (${filtrados.length - atrasadas.length - semData.length})`,
+      ...filtrados
+        .filter((i) => ["hoje", "futura"].includes(getChegadaStatus(i.data_chegada)))
+        .slice(0, 40)
+        .map(linha),
+    ].join("\n");
+  }, [filtrados, atrasadas, semData]);
 
-  const totalOrc = orcFiltrados.reduce((s, c) => s + c.valor, 0);
-  const totalOs = osFiltrados.reduce((s, c) => s + c.valor, 0);
-
-  const abrirAgendamento = (c: Card) => {
-    setAlvo(c.alvo);
+  const abrirAgendamento = (i: ChegadaItem) => {
+    setAlvo({
+      auvo_task_id: i.auvo_task_id || null,
+      exec_task_id: i.auvo_task_id || null,
+      gc_os_codigo: i.os_codigo || (i.vinculo_tipo === "os" ? i.vinculo_codigo : null),
+      cliente: i.cliente || i.fornecedor,
+      equipamento: i.equipamento,
+      data_tarefa: i.data_chegada,
+      tecnico_id: null,
+    });
     setDialogOpen(true);
   };
 
-  const bucketTone: Record<AgendaBucket, string> = {
-    nao_agendada: "border-slate-300",
-    atrasada: "border-amber-400",
-    hoje: "border-emerald-300",
-    futura: "border-green-500",
-  };
-
-  const renderCard = (c: Card, tone?: string) => {
-    const idade = diasDesde(c.tipo === "os" ? c.data : c.data);
+  const renderItem = (i: ChegadaItem, compacto = false) => {
+    const status = getChegadaStatus(i.data_chegada);
+    const style = STATUS_STYLE[status];
+    if (compacto) {
+      return (
+        <button
+          key={i.compra_id}
+          onClick={() => setDiaSelecionado(String(i.data_chegada).slice(0, 10))}
+          className={cn("w-full truncate rounded border px-1 py-0.5 text-left text-[10px] leading-tight", style.chip)}
+          title={`Pedido ${i.compra_codigo} · ${documentoLabel(i)} · ${i.cliente || i.fornecedor} · ${formatBRL(i.valor_total)}`}
+        >
+          PC {i.compra_codigo} · {i.cliente || i.fornecedor}
+        </button>
+      );
+    }
     return (
-      <div
-        key={c.key}
-        className={cn(
-          "rounded-md border-l-4 border border-border bg-card p-2.5 shadow-sm transition hover:shadow-md",
-          tone,
-        )}
-      >
+      <div key={i.compra_id} className="rounded-md border border-border bg-card p-2.5">
         <div className="flex items-start justify-between gap-2">
           <div className="min-w-0">
-            <p className="truncate text-xs font-semibold text-foreground">{c.cliente}</p>
+            <p className="truncate text-xs font-semibold">Pedido de compra {i.compra_codigo}</p>
             <p className="truncate text-[11px] text-muted-foreground">
-              {c.tipo === "os" ? "OS" : "Orçamento"} {c.codigo}
+              {documentoLabel(i)}
+              {i.cliente ? ` · ${i.cliente}` : ""}
             </p>
           </div>
-          <span className="shrink-0 text-xs font-semibold tabular-nums">{formatBRL(c.valor)}</span>
+          <span className="shrink-0 text-xs font-semibold tabular-nums">{formatBRL(i.valor_total)}</span>
         </div>
 
-        <p className="mt-1 line-clamp-2 text-[11px] text-muted-foreground">{c.equipamento}</p>
+        <p className="mt-1 line-clamp-2 text-[11px] text-muted-foreground">
+          {i.produtos.map((p) => `${p.quantidade > 1 ? `${p.quantidade}x ` : ""}${p.nome}`).join(" · ") || "Sem itens"}
+        </p>
 
         <div className="mt-2 flex flex-wrap items-center gap-1">
-          {c.situacao && (
-            <Badge variant="outline" className="text-[10px]">
-              {c.situacao}
-            </Badge>
-          )}
-          {c.tecnico && <Badge variant="secondary" className="text-[10px]">{c.tecnico}</Badge>}
-          {c.data && (
-            <Badge variant="outline" className="text-[10px]">
-              {String(c.data).slice(0, 10).split("-").reverse().join("/")}
-            </Badge>
-          )}
-          {idade !== null && idade > 30 && (
-            <Badge variant="destructive" className="text-[10px]">{idade}d parado</Badge>
-          )}
+          <Badge variant="outline" className={cn("text-[10px]", style.chip)}>
+            {style.label}
+            {i.data_chegada ? ` · ${formatDiaBR(i.data_chegada)}` : ""}
+          </Badge>
+          <Badge variant="secondary" className="text-[10px]">{i.situacao}</Badge>
+          {i.fornecedor && <Badge variant="outline" className="max-w-[160px] truncate text-[10px]">{i.fornecedor}</Badge>}
+          {i.equipamento && <Badge variant="outline" className="max-w-[180px] truncate text-[10px]">{i.equipamento}</Badge>}
         </div>
 
         <div className="mt-2 flex items-center gap-1">
-          <Button size="sm" variant="secondary" className="h-7 flex-1 text-[11px]" onClick={() => abrirAgendamento(c)}>
-            <CalendarClock className="mr-1 h-3 w-3" /> Agendar
+          <Button size="sm" variant="secondary" className="h-7 flex-1 text-[11px]" onClick={() => abrirAgendamento(i)}>
+            <CalendarClock className="mr-1 h-3 w-3" /> Agendar execução
           </Button>
-          {c.link && (
+          {i.gc_link && (
             <Button size="icon" variant="ghost" className="h-7 w-7" asChild>
-              <a href={c.link} target="_blank" rel="noreferrer" aria-label="Abrir no GestãoClick">
+              <a href={i.gc_link} target="_blank" rel="noreferrer" aria-label="Abrir pedido no GestãoClick">
                 <ExternalLink className="h-3 w-3" />
+              </a>
+            </Button>
+          )}
+          {i.documento_link && (
+            <Button size="icon" variant="ghost" className="h-7 w-7" asChild>
+              <a href={i.documento_link} target="_blank" rel="noreferrer" aria-label="Abrir documento vinculado">
+                <PackageSearch className="h-3 w-3" />
               </a>
             </Button>
           )}
@@ -248,9 +196,9 @@ export default function AgendamentoPage() {
     <div className="flex h-full min-h-0 flex-col gap-3 p-4">
       <header className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-lg font-semibold text-foreground">Agendamento</h1>
+          <h1 className="text-lg font-semibold text-foreground">Agendamento · chegada de peças</h1>
           <p className="text-xs text-muted-foreground">
-            Peças em compra/chegada e OS prontas para execução, com copiloto de decisão.
+            Calendário dos pedidos de compra pendentes. Pedidos já concretizados (peça chegou) não aparecem.
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -259,7 +207,7 @@ export default function AgendamentoPage() {
             <Input
               value={busca}
               onChange={(e) => setBusca(e.target.value)}
-              placeholder="Cliente, OS, equipamento..."
+              placeholder="Cliente, OS, peça, fornecedor..."
               className="h-8 w-64 pl-7 text-xs"
             />
           </div>
@@ -270,95 +218,146 @@ export default function AgendamentoPage() {
         </div>
       </header>
 
+      {error ? (
+        <div className="flex items-center gap-2 rounded-md border border-destructive/40 bg-destructive/10 p-3 text-xs text-destructive">
+          <AlertTriangle className="h-4 w-4" /> Não consegui carregar os pedidos de compra: {String((error as Error).message)}
+        </div>
+      ) : null}
+
       {isLoading ? (
         <div className="flex flex-1 items-center justify-center text-sm text-muted-foreground">
-          <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Carregando quadro...
+          <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Carregando pedidos de compra...
         </div>
       ) : (
-        <div className="grid min-h-0 flex-1 grid-cols-1 gap-3 xl:grid-cols-[minmax(0,1fr)_360px]">
-          <div className="min-h-0 space-y-4 overflow-y-auto pr-1">
-            {/* Faixa 1 — orçamentos aguardando peça */}
-            <section>
-              <div className="mb-2 flex items-center gap-2">
-                <Package className="h-4 w-4 text-primary" />
-                <h2 className="text-sm font-semibold">Peças · orçamentos aprovados</h2>
-                <Badge variant="secondary" className="text-[10px]">
-                  {orcFiltrados.length} · {formatBRL(totalOrc)}
-                </Badge>
+        <div className="grid min-h-0 flex-1 grid-cols-1 gap-3 xl:grid-cols-[minmax(0,1fr)_340px]">
+          <div className="flex min-h-0 flex-col gap-3 overflow-y-auto pr-1">
+            {/* Calendário */}
+            <section className="rounded-lg border border-border bg-card p-3">
+              <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+                <div className="flex items-center gap-1">
+                  <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => navegar(-1)} aria-label="Mês anterior">
+                    <ChevronLeft className="h-4 w-4" />
+                  </Button>
+                  <span className="min-w-[150px] text-center text-sm font-semibold">{monthLabel(ano, mes)}</span>
+                  <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => navegar(1)} aria-label="Próximo mês">
+                    <ChevronRight className="h-4 w-4" />
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="h-7 text-[11px]"
+                    onClick={() => {
+                      const d = new Date();
+                      setAno(d.getFullYear());
+                      setMes(d.getMonth());
+                      setDiaSelecionado(hoje);
+                    }}
+                  >
+                    Hoje
+                  </Button>
+                </div>
+                <div className="flex flex-wrap items-center gap-2 text-[11px] text-muted-foreground">
+                  <span className="flex items-center gap-1"><i className="h-2 w-2 rounded-full bg-destructive" /> Atrasada ({atrasadas.length})</span>
+                  <span className="flex items-center gap-1"><i className="h-2 w-2 rounded-full bg-amber-500" /> Hoje</span>
+                  <span className="flex items-center gap-1"><i className="h-2 w-2 rounded-full bg-emerald-500" /> Prevista</span>
+                  <span className="flex items-center gap-1"><i className="h-2 w-2 rounded-full bg-muted-foreground" /> Sem data ({semData.length})</span>
+                </div>
               </div>
-              <div className="grid gap-3 md:grid-cols-3">
-                {orcPorSituacao.map((col) => (
-                  <div key={col.id} className="rounded-lg border border-border bg-muted/30 p-2">
-                    <div className="mb-2 flex items-center justify-between">
-                      <span className="text-xs font-semibold">{col.short}</span>
-                      <Badge variant="outline" className="text-[10px]">{col.cards.length}</Badge>
-                    </div>
-                    <div className="max-h-[320px] space-y-2 overflow-y-auto">
-                      {col.cards.length === 0 ? (
-                        <p className="py-6 text-center text-[11px] text-muted-foreground">Nada aqui</p>
-                      ) : (
-                        col.cards.map((c) => renderCard(c, "border-l-primary"))
-                      )}
-                    </div>
+
+              <div className="grid grid-cols-7 gap-1 text-center text-[10px] font-semibold uppercase text-muted-foreground">
+                {DIAS.map((d) => <div key={d}>{d}</div>)}
+              </div>
+
+              <div className="mt-1 space-y-1">
+                {semanas.map((semana, idx) => (
+                  <div key={idx} className="grid grid-cols-7 gap-1">
+                    {semana.map((dia) => {
+                      const doMes = Number(dia.slice(5, 7)) - 1 === mes;
+                      const lista = porDia.get(dia) ?? [];
+                      const temAtraso = lista.some((i) => getChegadaStatus(i.data_chegada) === "atrasada");
+                      const total = lista.reduce((s, i) => s + i.valor_total, 0);
+                      return (
+                        <button
+                          key={dia}
+                          onClick={() => setDiaSelecionado(dia)}
+                          className={cn(
+                            "min-h-[92px] rounded-md border p-1 text-left align-top transition",
+                            doMes ? "bg-background" : "bg-muted/30 opacity-60",
+                            diaSelecionado === dia ? "border-primary ring-1 ring-primary" : "border-border",
+                            temAtraso && "border-destructive/60",
+                          )}
+                        >
+                          <div className="mb-1 flex items-center justify-between">
+                            <span className={cn("text-[11px] font-semibold", dia === hoje && "rounded bg-primary px-1 text-primary-foreground")}>
+                              {Number(dia.slice(8, 10))}
+                            </span>
+                            {lista.length > 0 && (
+                              <span className="text-[9px] text-muted-foreground">{formatBRL(total)}</span>
+                            )}
+                          </div>
+                          <div className="space-y-0.5">
+                            {lista.slice(0, 3).map((i) => renderItem(i, true))}
+                            {lista.length > 3 && (
+                              <span className="block text-[9px] text-muted-foreground">+{lista.length - 3} pedidos</span>
+                            )}
+                          </div>
+                        </button>
+                      );
+                    })}
                   </div>
                 ))}
               </div>
             </section>
 
-            {/* Faixa 2 — OS disponíveis */}
-            <section>
-              <div className="mb-2 flex items-center gap-2">
-                <Wrench className="h-4 w-4 text-primary" />
-                <h2 className="text-sm font-semibold">OS disponíveis para agendar</h2>
-                <Badge variant="secondary" className="text-[10px]">
-                  {osFiltrados.length} · {formatBRL(totalOs)}
-                </Badge>
-              </div>
-              <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-                {osPorBucket.map((col) => (
-                  <div key={col.id} className="rounded-lg border border-border bg-muted/30 p-2">
-                    <div className="mb-2 flex items-center justify-between">
-                      <span className="text-xs font-semibold" title={col.hint}>{col.label}</span>
-                      <Badge variant="outline" className="text-[10px]">{col.cards.length}</Badge>
-                    </div>
-                    <div className="max-h-[420px] space-y-2 overflow-y-auto">
-                      {col.cards.length === 0 ? (
-                        <p className="py-6 text-center text-[11px] text-muted-foreground">Nada aqui</p>
-                      ) : (
-                        col.cards.map((c) => renderCard(c, bucketTone[col.id]))
-                      )}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </section>
+            <div className="grid gap-3 lg:grid-cols-3">
+              {/* Dia selecionado */}
+              <section className="rounded-lg border border-border bg-muted/20 p-2">
+                <h2 className="mb-2 text-xs font-semibold">Chegadas em {formatDiaBR(diaSelecionado)} ({itensDoDia.length})</h2>
+                <div className="space-y-2">
+                  {itensDoDia.length === 0
+                    ? <p className="py-6 text-center text-[11px] text-muted-foreground">Nenhuma peça prevista neste dia.</p>
+                    : itensDoDia.map((i) => renderItem(i))}
+                </div>
+              </section>
+
+              {/* Atrasadas */}
+              <section className="rounded-lg border border-destructive/40 bg-destructive/5 p-2">
+                <h2 className="mb-2 text-xs font-semibold text-destructive">Peças atrasadas ({atrasadas.length})</h2>
+                <div className="max-h-[420px] space-y-2 overflow-y-auto">
+                  {atrasadas.length === 0
+                    ? <p className="py-6 text-center text-[11px] text-muted-foreground">Nada atrasado. 🎉</p>
+                    : atrasadas.map((i) => renderItem(i))}
+                </div>
+              </section>
+
+              {/* Sem data */}
+              <section className="rounded-lg border border-border bg-muted/20 p-2">
+                <h2 className="mb-2 text-xs font-semibold">Sem previsão de chegada ({semData.length})</h2>
+                <div className="max-h-[420px] space-y-2 overflow-y-auto">
+                  {semData.length === 0
+                    ? <p className="py-6 text-center text-[11px] text-muted-foreground">Todos os pedidos têm data.</p>
+                    : semData.map((i) => renderItem(i))}
+                </div>
+              </section>
+            </div>
           </div>
 
           <div className="min-h-0 xl:h-full">
             <AgendamentoAiPanel
               boardSummary={boardSummary}
               contexto={{
-                orcamentos_aguardando_peca: orcFiltrados.length,
-                valor_orcamentos: totalOrc,
-                os_disponiveis: osFiltrados.length,
-                valor_os: totalOs,
+                modulo: "chegada_de_pecas",
+                pedidos_pendentes: filtrados.length,
+                atrasados: atrasadas.length,
+                sem_data: semData.length,
+                valor_total: filtrados.reduce((s, i) => s + i.valor_total, 0),
               }}
             />
           </div>
         </div>
       )}
 
-      <AgendarTarefaDialog
-        open={dialogOpen}
-        onOpenChange={setDialogOpen}
-        alvo={alvo}
-        onSaved={({ dataTarefa, tecnico }) => {
-          if (alvo?.gc_os_id) {
-            setOverrides((prev) => ({ ...prev, [String(alvo.gc_os_id)]: { data: dataTarefa, tecnico } }));
-          }
-          refetch();
-        }}
-      />
+      <AgendarTarefaDialog open={dialogOpen} onOpenChange={setDialogOpen} alvo={alvo} onSaved={() => refetch()} />
     </div>
   );
 }
