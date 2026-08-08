@@ -269,7 +269,7 @@ export default function AgendamentoPage() {
               </a>
             </Button>
           )}
-          {i.gc_link && i.compra_codigo && (
+          {ehPedido && i.gc_link && i.compra_codigo && (
             <Button size="icon" variant="ghost" className="h-7 w-7" asChild>
               <a href={i.gc_link} target="_blank" rel="noreferrer" aria-label="Abrir pedido de compra no GestãoClick">
                 <PackageSearch className="h-3 w-3" />
