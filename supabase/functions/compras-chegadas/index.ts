@@ -265,6 +265,20 @@ async function handleRequest(req: Request) {
       `[compras-chegadas] encontrados ${brutos.length} orçamentos nas 3 situações solicitadas`,
     );
 
+    // A listagem do GC não devolve campos_extras (é lá que ficam "PEDIDO DE COMPRA GC",
+    // "DATA DA CHEGADA DE PEÇAS" e "OS GC"). Buscamos o documento completo de cada orçamento.
+    for (let inicio = 0; inicio < brutos.length; inicio += 6) {
+      const lote = brutos.slice(inicio, inicio + 6);
+      const completos = await Promise.all(
+        lote.map((item) =>
+          fetchDocumentoCompleto(item.tipo === "compra" ? "compras" : "orcamentos", String(item.doc?.id ?? "")),
+        ),
+      );
+      completos.forEach((completo, idx) => {
+        if (completo) lote[idx].doc = { ...lote[idx].doc, ...completo };
+      });
+    }
+
     const pedidosReferenciados = [...new Set(
       brutos
         .filter(({ tipo }) => tipo === "orcamento")
