@@ -67,6 +67,17 @@ export default function AgendamentoPage() {
     staleTime: 5 * 60 * 1000,
   });
 
+  const handleAtualizar = async () => {
+    const t = toast.loading("Atualizando orçamentos e pedidos...");
+    try {
+      const res = await refetch();
+      if (res.error) throw res.error;
+      toast.success(`Atualizado: ${res.data?.length ?? 0} documentos`, { id: t });
+    } catch (e) {
+      toast.error(`Falha ao atualizar: ${(e as Error).message}`, { id: t });
+    }
+  };
+
   const termo = busca.trim().toLowerCase();
   const filtrados = useMemo(() => {
     let result = itens;
