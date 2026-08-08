@@ -331,6 +331,7 @@ async function handleRequest(req: Request) {
         pedidos_compra: pedidosCompra,
         pedidos_detalhes: detalhes,
         pedidos_todos_chegaram: todosChegaram,
+        pedidos_sem_previsao: semPrevisaoConfiavel,
         data_chegada_orcamento: dataChegadaOrcamento,
         fornecedor: String(doc?.nome_fornecedor || doc?.nome_vendedor || ""),
         situacao_id: situacao.id,
