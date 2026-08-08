@@ -197,7 +197,7 @@ export default function AgendamentoPage() {
         <div>
           <h1 className="text-lg font-semibold text-foreground">Agendamento · Calendário de Orçamentos</h1>
           <p className="text-xs text-muted-foreground">
-            Acompanhamento de orçamentos aprovados aguardando compra ou chegada de peças.
+            Acompanhamento de orçamentos pendentes ou aguardando peças.
           </p>
         </div>
         <div className="flex items-center gap-2">
