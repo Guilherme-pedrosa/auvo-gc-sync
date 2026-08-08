@@ -1,5 +1,5 @@
-import { useMemo, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useMemo, useState, useEffect } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import {
   AlertTriangle, CalendarClock, ChevronLeft, ChevronRight, ExternalLink, Filter, Loader2,
@@ -65,6 +65,7 @@ function isPedidoCompra(i: ChegadaItem): boolean {
 }
 
 export default function AgendamentoPage() {
+  const queryClient = useQueryClient();
   const hoje = todayISO();
   const [ano, setAno] = useState(() => new Date().getFullYear());
   const [mes, setMes] = useState(() => new Date().getMonth());
@@ -73,7 +74,7 @@ export default function AgendamentoPage() {
   const [excludedSituacoes, setExcludedSituacoes] = useState<Set<string>>(new Set());
   const [searchSituacao, setSearchSituacao] = useState("");
   const [tipoDoc, setTipoDoc] = useState<"todos" | "orcamentos" | "pedidos">(
-    () => (localStorage.getItem("agendamento:tipoDoc") as "todos" | "orcamentos" | "pedidos") || "todos",
+    () => (localStorage.getItem("agendamento:tipoDoc") as "todos" | "orcamentos" | "pedidos") || "orcamentos",
   );
   const [alvo, setAlvo] = useState<AgendarAlvo | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -87,6 +88,8 @@ export default function AgendamentoPage() {
   const handleAtualizar = async () => {
     const t = toast.loading("Atualizando orçamentos e pedidos...");
     try {
+      // Força limpeza do cache do React Query
+      queryClient.invalidateQueries({ queryKey: ["compras-chegadas"] });
       const res = await refetch();
       if (res.error) throw res.error;
       toast.success(`Atualizado: ${res.data?.length ?? 0} documentos`, { id: t });
@@ -137,6 +140,13 @@ export default function AgendamentoPage() {
     const s = searchSituacao.toLowerCase();
     return allSituacoes.filter((sit) => sit.toLowerCase().includes(s));
   }, [allSituacoes, searchSituacao]);
+
+  // Forçar recarga ao montar se estiver vazio
+  useEffect(() => {
+    if (itens.length === 0 && !isLoading && !isFetching) {
+      refetch();
+    }
+  }, []);
 
   const porDia = useMemo(() => {
     const map = new Map<string, ChegadaItem[]>();
