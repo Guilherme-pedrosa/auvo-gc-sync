@@ -49,6 +49,9 @@ export default function AgendamentoPage() {
   const [busca, setBusca] = useState("");
   const [excludedSituacoes, setExcludedSituacoes] = useState<Set<string>>(new Set());
   const [searchSituacao, setSearchSituacao] = useState("");
+  const [tipoDoc, setTipoDoc] = useState<"todos" | "orcamentos" | "pedidos">(
+    () => (localStorage.getItem("agendamento:tipoDoc") as "todos" | "orcamentos" | "pedidos") || "todos",
+  );
   const [alvo, setAlvo] = useState<AgendarAlvo | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
 
@@ -61,7 +64,12 @@ export default function AgendamentoPage() {
   const termo = busca.trim().toLowerCase();
   const filtrados = useMemo(() => {
     let result = itens;
-    
+
+    // Filtro por tipo de documento (Orçamento GC x Pedido de Compra GC)
+    if (tipoDoc !== "todos") {
+      result = result.filter((i) => (tipoDoc === "pedidos" ? Boolean(i.compra_id) : !i.compra_id));
+    }
+
     // Filtro por situação
     if (excludedSituacoes.size > 0) {
       result = result.filter((i) => !excludedSituacoes.has(i.situacao));
@@ -77,7 +85,13 @@ export default function AgendamentoPage() {
     }
 
     return result;
-  }, [itens, termo, excludedSituacoes]);
+  }, [itens, termo, excludedSituacoes, tipoDoc]);
+
+  const totaisTipo = useMemo(() => ({
+    todos: itens.length,
+    orcamentos: itens.filter((i) => !i.compra_id).length,
+    pedidos: itens.filter((i) => Boolean(i.compra_id)).length,
+  }), [itens]);
 
   const allSituacoes = useMemo(() => {
     return Array.from(new Set(itens.map((i) => i.situacao).filter(Boolean))).sort();
