@@ -97,7 +97,7 @@ export default function AgendamentoPage() {
 
   const boardSummary = useMemo(() => {
     const linha = (i: ChegadaItem) =>
-      `- Orçamento ${i.orcamento_codigo || i.vinculo_codigo} | PC ${i.compra_codigo} | chegada: ${i.data_chegada ? formatDiaBR(i.data_chegada) : "sem data"}` +
+      `- Orçamento ${i.orcamento_codigo || i.vinculo_codigo} | ${i.compra_codigo ? `PC ${i.compra_codigo} | ` : ""}chegada: ${i.data_chegada ? formatDiaBR(i.data_chegada) : "sem data"}` +
       ` | cliente: ${i.cliente || "?"} | fornecedor: ${i.fornecedor}` +
       ` | ${formatBRL(i.documento_valor || i.valor_total)} | situação: ${i.situacao}` +
       ` | peças: ${i.produtos.slice(0, 4).map((p) => p.nome).join(", ") || "-"}`;
@@ -148,7 +148,7 @@ export default function AgendamentoPage() {
           <div className="min-w-0">
             <p className="truncate text-xs font-semibold">Orçamento {i.orcamento_codigo || i.vinculo_codigo}</p>
             <p className="truncate text-[11px] text-muted-foreground">
-              PC {i.compra_codigo} · {i.cliente || "Cliente não identificado"}
+              {i.compra_codigo ? `PC ${i.compra_codigo} · ` : ""}{i.cliente || "Cliente não identificado"}
             </p>
           </div>
           <span className="shrink-0 text-xs font-semibold tabular-nums">{formatBRL(i.documento_valor || i.valor_total)}</span>
@@ -179,7 +179,7 @@ export default function AgendamentoPage() {
               </a>
             </Button>
           )}
-          {i.gc_link && (
+          {i.gc_link && i.compra_codigo && (
             <Button size="icon" variant="ghost" className="h-7 w-7" asChild>
               <a href={i.gc_link} target="_blank" rel="noreferrer" aria-label="Abrir pedido de compra no GestãoClick">
                 <PackageSearch className="h-3 w-3" />
@@ -219,7 +219,7 @@ export default function AgendamentoPage() {
 
       {error ? (
         <div className="flex items-center gap-2 rounded-md border border-destructive/40 bg-destructive/10 p-3 text-xs text-destructive">
-          <AlertTriangle className="h-4 w-4" /> Não consegui carregar os pedidos de compra: {String((error as Error).message)}
+          <AlertTriangle className="h-4 w-4" /> Não consegui carregar os orçamentos: {String((error as Error).message)}
         </div>
       ) : null}
 

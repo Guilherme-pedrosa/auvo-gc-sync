@@ -1,5 +1,5 @@
-// Lê os pedidos de compra do GestãoClick que ainda NÃO chegaram e devolve
-// a agenda de chegada de peças (campo extra "DATA DA CHEGADA DAS PEÇAS"),
+// Lê os pedidos de compra e orçamentos do GestãoClick que ainda NÃO chegaram/foram aprovados
+// e devolve a agenda de chegada de peças (campo extra "DATA DA CHEGADA DAS PEÇAS"),
 // vinculada à OS / orçamento informados no campo extra "OS GC".
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 import { installGcUsuarioId, gcHeaders } from "../_shared/gc-user.ts";
@@ -15,18 +15,22 @@ const corsHeaders = {
 const GC_BASE = "https://api.gestaoclick.com";
 
 // Situações de compra que ainda estão pendentes (peça não chegou).
-const SITUACOES_PENDENTES = [
+const SITUACOES_PEDIDOS = [
   { id: "1670366", nome: "Aprovada - AG COMPRA", grupo: "ag_compra" },
   { id: "1675083", nome: "COMPRADO - AG CHEGADA", grupo: "ag_chegada" },
   { id: "2072608", nome: "COMPRADO - AG CHEGADA PARA ESTOQUE", grupo: "ag_chegada" },
   { id: "1775065", nome: "SOLICITADO - GARANTIA", grupo: "garantia" },
   { id: "2120816", nome: "AGUARDANDO PEDIDO MINIMO", grupo: "ag_compra" },
-  { id: "1670365", nome: "Aguardando Aprovação", grupo: "ag_aprovacao" },
-  { id: "2039849", nome: "Aguardando Correção / informações solicitadas", grupo: "ag_aprovacao" },
 ];
 
-function extra(compra: any, descricao: string): string {
-  const list = Array.isArray(compra?.campos_extras) ? compra.campos_extras : [];
+const SITUACOES_ORCAMENTOS = [
+  { id: "7063588", nome: "Aguardando Aprovação", grupo: "ag_aprovacao" },
+  { id: "2039849", nome: "Aguardando Correção / informações solicitadas", grupo: "ag_aprovacao" },
+  { id: "7084340", nome: "Aguardando Resposta Cliente", grupo: "ag_aprovacao" },
+];
+
+function extra(doc: any, descricao: string): string {
+  const list = Array.isArray(doc?.campos_extras) ? doc.campos_extras : [];
   for (const item of list) {
     const e = item?.extras ?? item;
     if (String(e?.descricao ?? "").trim().toUpperCase() === descricao) {
@@ -52,7 +56,6 @@ function parseChegada(raw: string, referencia: string): string | null {
     ano = Number(br[3]);
     if (ano < 100) ano += 2000;
   } else {
-    // Sem ano: usa o ano da emissão do pedido, virando o ano se o mês retroceder.
     const base = new Date(`${referencia || new Date().toISOString().slice(0, 10)}T00:00:00`);
     ano = base.getFullYear();
     if (mes < base.getMonth() + 1 - 6) ano += 1;
@@ -60,7 +63,6 @@ function parseChegada(raw: string, referencia: string): string | null {
   return `${ano}-${String(mes).padStart(2, "0")}-${String(dia).padStart(2, "0")}`;
 }
 
-/** "OR 6159" -> orçamento 6159; "6203" -> OS 6203. */
 function parseVinculo(raw: string): { tipo: "os" | "orcamento" | "texto"; codigo: string; original: string } {
   const txt = String(raw || "").trim();
   if (!txt) return { tipo: "texto", codigo: "", original: "" };
@@ -71,10 +73,10 @@ function parseVinculo(raw: string): { tipo: "os" | "orcamento" | "texto"; codigo
   return { tipo: "texto", codigo: "", original: txt };
 }
 
-async function fetchSituacao(sit: { id: string; nome: string; grupo: string }) {
+async function fetchSituacao(sit: { id: string; nome: string; grupo: string }, endpoint = "compras") {
   const out: any[] = [];
   for (let pagina = 1; pagina <= 12; pagina++) {
-    const url = new URL(`${GC_BASE}/compras`);
+    const url = new URL(`${GC_BASE}/${endpoint}`);
     url.searchParams.set("situacao_id", sit.id);
     url.searchParams.set("limite", "100");
     url.searchParams.set("pagina", String(pagina));
@@ -83,65 +85,73 @@ async function fetchSituacao(sit: { id: string; nome: string; grupo: string }) {
     const json = await res.json().catch(() => null);
     const rows = Array.isArray(json?.data) ? json.data : [];
     for (const r of rows) {
-      const c = r?.Compra ?? r;
+      const c = r?.Compra ?? r?.Orcamento ?? r;
       if (!c) continue;
-      out.push({ compra: c, situacao: sit });
+      out.push({ doc: c, situacao: sit, tipo: endpoint === "orcamentos" ? "orcamento" : "compra" });
     }
     if (!json?.meta?.proxima_pagina) break;
   }
   return out;
 }
 
-Deno.serve(async (req) => {
+async function handleRequest(req: Request) {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   try {
-    const results = await Promise.all(SITUACOES_PENDENTES.map((s) => fetchSituacao(s)));
-    const brutos = results.flat();
+    const [pedidosResults, orcamentosResults] = await Promise.all([
+      Promise.all(SITUACOES_PEDIDOS.map((s) => fetchSituacao(s, "compras"))),
+      Promise.all(SITUACOES_ORCAMENTOS.map((s) => fetchSituacao(s, "orcamentos"))),
+    ]);
+    const brutos = [...pedidosResults.flat(), ...orcamentosResults.flat()];
 
-    const itens = brutos.map(({ compra, situacao }) => {
-      const vinculoRaw = extra(compra, "OS GC");
+    const itens = brutos.map(({ doc, situacao, tipo }) => {
+      const vinculoRaw = extra(doc, "OS GC");
       const vinculo = parseVinculo(vinculoRaw);
-      const dataChegada = parseChegada(extra(compra, "DATA DA CHEGADA DAS PEÇAS"), compra?.data_emissao);
-      const produtos = (Array.isArray(compra?.produtos) ? compra.produtos : []).map((p: any) => {
+      const dataChegadaRaw = extra(doc, "DATA DA CHEGADA DAS PEÇAS");
+      const dataChegada = parseChegada(dataChegadaRaw, doc?.data_emissao || doc?.data);
+      
+      const produtos = (Array.isArray(doc?.produtos) ? doc.produtos : []).map((p: any) => {
         const prod = p?.produto ?? p;
         return {
-          nome: String(prod?.nome_produto ?? "").trim(),
+          nome: String(prod?.nome_produto ?? prod?.nome ?? "").trim(),
           quantidade: Number(prod?.quantidade ?? 0) || 0,
           valor_total: Number(prod?.valor_total ?? 0) || 0,
         };
       });
+
+      const orcCodigo = tipo === "orcamento" ? String(doc?.codigo ?? "") : (vinculo.tipo === "orcamento" ? vinculo.codigo : "");
+
       return {
-        compra_id: String(compra?.id ?? ""),
-        compra_codigo: String(compra?.codigo ?? ""),
-        fornecedor: String(compra?.nome_fornecedor ?? ""),
+        compra_id: tipo === "compra" ? String(doc?.id ?? "") : "",
+        compra_codigo: tipo === "compra" ? String(doc?.codigo ?? "") : "",
+        fornecedor: String(doc?.nome_fornecedor || doc?.nome_vendedor || ""),
         situacao_id: situacao.id,
-        situacao: String(compra?.nome_situacao ?? situacao.nome),
+        situacao: String(doc?.nome_situacao ?? situacao.nome),
         grupo: situacao.grupo,
-        data_emissao: compra?.data_emissao ?? null,
+        data_emissao: doc?.data_emissao || doc?.data || null,
         data_chegada: dataChegada,
-        data_chegada_texto: extra(compra, "DATA DA CHEGADA DAS PEÇAS"),
-        vinculo_tipo: vinculo.tipo,
-        vinculo_codigo: vinculo.codigo,
-        vinculo_texto: vinculo.original,
-        auvo_task_id: extra(compra, "OS TAREFA"),
-        observacao_extra: extra(compra, "PRODUTO"),
-        valor_total: Number(compra?.valor_total ?? 0) || 0,
+        data_chegada_texto: dataChegadaRaw,
+        vinculo_tipo: tipo === "orcamento" ? "orcamento" : vinculo.tipo,
+        vinculo_codigo: orcCodigo,
+        vinculo_texto: tipo === "orcamento" ? `Orçamento ${doc.codigo}` : vinculo.original,
+        auvo_task_id: extra(doc, "OS TAREFA") || extra(doc, "TAREFA OS"),
+        observacao_extra: extra(doc, "PRODUTO"),
+        valor_total: Number(doc?.valor_total ?? 0) || 0,
         produtos,
-        gc_link: compra?.id ? `https://app.gestaoclick.com/compras/visualizar/${compra.id}` : "",
-        // preenchidos abaixo
-        cliente: "",
+        gc_link: tipo === "compra" 
+          ? (doc?.id ? `https://app.gestaoclick.com/compras/visualizar/${doc.id}` : "")
+          : (doc?.id ? `https://app.gestaoclick.com/orcamentos_servicos/visualizar/${doc.id}` : ""),
+        cliente: String(doc?.nome_cliente || ""),
         equipamento: "",
         os_codigo: "",
-        orcamento_codigo: "",
-        documento_valor: 0,
-        documento_situacao: "",
-        documento_link: "",
+        orcamento_codigo: orcCodigo,
+        documento_valor: Number(doc?.valor_total ?? 0) || 0,
+        documento_situacao: String(doc?.nome_situacao ?? ""),
+        documento_link: tipo === "orcamento" ? `https://app.gestaoclick.com/orcamentos_servicos/visualizar/${doc.id}` : "",
         auvo_link: "",
       };
     });
 
-    // Enriquecimento com os dados locais (cliente, equipamento, valores do documento).
     const osCods = [...new Set(itens.filter((i) => i.vinculo_tipo === "os").map((i) => i.vinculo_codigo))];
     const orcCods = [...new Set(itens.filter((i) => i.vinculo_tipo === "orcamento").map((i) => i.vinculo_codigo))];
 
@@ -174,14 +184,14 @@ Deno.serve(async (req) => {
       if (k && !orcMap.has(k)) orcMap.set(k, r);
     }
 
-    const equipamento = (r: any) =>
+    const getEquip = (r: any) =>
       [r?.equipamento_nome, r?.equipamento_id_serie].filter(Boolean).join(" · ");
 
     for (const item of itens) {
       const r = item.vinculo_tipo === "os" ? osMap.get(item.vinculo_codigo) : orcMap.get(item.vinculo_codigo);
       if (!r) continue;
-      item.cliente = String(r.gc_os_cliente || r.gc_orc_cliente || r.cliente || "");
-      item.equipamento = equipamento(r);
+      if (!item.cliente) item.cliente = String(r.gc_os_cliente || r.gc_orc_cliente || r.cliente || "");
+      item.equipamento = getEquip(r);
       item.os_codigo = String(r.gc_os_codigo ?? "");
       item.orcamento_codigo = String(r.gc_orcamento_codigo ?? "");
       item.documento_valor =
@@ -206,4 +216,6 @@ Deno.serve(async (req) => {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   }
-});
+}
+
+Deno.serve(handleRequest);
