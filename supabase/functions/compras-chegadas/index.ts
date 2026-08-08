@@ -142,8 +142,6 @@ function dataPedidoRaw(doc: any): string {
   return "";
 }
 
-function estadoPedido(doc: any): PedidoDetalhe["estado"] {
-
 /** Busca o documento completo (traz campos_extras e datas que a listagem omite). */
 async function fetchDocumentoCompleto(endpoint: string, id: string): Promise<any | null> {
   if (!id) return null;
@@ -158,17 +156,13 @@ async function fetchDocumentoCompleto(endpoint: string, id: string): Promise<any
   }
 }
 
-function estadoPedidoImpl(doc: any): PedidoDetalhe["estado"] {
+function estadoPedido(doc: any): PedidoDetalhe["estado"] {
   const situacaoId = String(doc?.situacao_id ?? "");
   const situacao = normalize(doc?.nome_situacao);
   if (SITUACOES_PEDIDOS.some((item) => item.id === situacaoId)) return "pendente";
   if (/CANCEL|REPROV|DEVOLVID/.test(situacao)) return "cancelado";
   if (/CHEG|RECEB|ENTREG|CONCLUID|FINALIZ|ESTOQUE/.test(situacao)) return "chegou";
   return "desconhecido";
-}
-
-function estadoPedido(doc: any): PedidoDetalhe["estado"] {
-  return estadoPedidoImpl(doc);
 }
 
 async function fetchPedidoPorCodigo(codigo: string): Promise<PedidoDetalhe | null> {
