@@ -212,7 +212,6 @@ export default function AgendamentoPage() {
       data_tarefa: i.data_chegada,
       tecnico_id: null,
     });
-    setAlvo(newAlvo);
     setDetalhesDialog({ open: false, dia: "" });
     setDialogOpen(true);
   };
