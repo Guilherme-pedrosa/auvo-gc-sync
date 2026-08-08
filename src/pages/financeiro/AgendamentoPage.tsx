@@ -84,7 +84,7 @@ export default function AgendamentoPage() {
     staleTime: 5 * 60 * 1000,
   });
 
-  const handleAtualizar = async () => {
+  const handleAtualizar = useCallback(async () => {
     const t = toast.loading("Atualizando orçamentos e pedidos...");
     try {
       console.log("[AgendamentoPage] Forçando atualização manual...");
@@ -96,7 +96,7 @@ export default function AgendamentoPage() {
       console.error("[AgendamentoPage] Erro na atualização manual:", e);
       toast.error(`Falha ao atualizar: ${(e as Error).message}`, { id: t });
     }
-  };
+  }, [queryClient, refetch]);
 
   const termo = busca.trim().toLowerCase();
   const filtrados = useMemo(() => {
