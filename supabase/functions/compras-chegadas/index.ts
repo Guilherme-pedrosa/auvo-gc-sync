@@ -1,6 +1,5 @@
-// Lê os pedidos de compra e orçamentos do GestãoClick que ainda NÃO chegaram/foram aprovados
-// e devolve a agenda de chegada de peças (campo extra "DATA DA CHEGADA DAS PEÇAS"),
-// vinculada à OS / orçamento informados no campo extra "OS GC".
+// Lê os pedidos de compra e orçamentos do GestãoClick que ainda NÃO chegaram
+// Integra lógica de rastreamento inspirada no "WeDo Pick & Pack" para datas de chegada coesas.
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { corsHeaders } from "npm:@supabase/supabase-js@2/cors";
 import { installGcUsuarioId, gcHeaders } from "../_shared/gc-user.ts";
