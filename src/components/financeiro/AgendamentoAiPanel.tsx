@@ -84,7 +84,7 @@ export default function AgendamentoAiPanel({ boardSummary, contexto }: Props) {
           {messages.length === 0 && (
             <p className="text-xs text-muted-foreground">
               Peça um plano do dia ou pergunte livremente — a IA consulta Controle OS, preventivas, peças do
-              GestãoClick, equipamentos e observações antes de responder.
+              GestãoClick (incluindo rastreamento Pick & Pack), equipamentos e observações antes de responder.
             </p>
           )}
           {messages.map((m, i) => (

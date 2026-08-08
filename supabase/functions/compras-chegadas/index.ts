@@ -274,10 +274,14 @@ async function handleRequest(req: Request) {
       
       const produtos = (Array.isArray(doc?.produtos) ? doc.produtos : []).map((p: any) => {
         const prod = p?.produto ?? p;
+        const nome = String(prod?.nome_produto ?? prod?.nome ?? "").trim();
+        // Lógica inspirada no Pick & Pack: destacar se o item é crítico ou recorrente
+        const eCritico = /PLACA|MOTOR|COMPRESSOR|BOMBA|INVERSOR/i.test(nome);
         return {
-          nome: String(prod?.nome_produto ?? prod?.nome ?? "").trim(),
+          nome,
           quantidade: Number(prod?.quantidade ?? 0) || 0,
           valor_total: Number(prod?.valor_total ?? 0) || 0,
+          critico: eCritico
         };
       });
 
