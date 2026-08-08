@@ -12,6 +12,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { cn } from "@/lib/utils";
+import { toast } from "sonner";
 import {
   buildMonthGrid, formatBRL, formatDiaBR, getChegadaStatus, monthLabel, todayISO,
   type ChegadaItem, type ChegadaStatus,
