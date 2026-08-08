@@ -73,6 +73,7 @@ export default function AgendamentoPage() {
   const [mes, setMes] = useState(() => new Date().getMonth());
   const [diaSelecionado, setDiaSelecionado] = useState<string>(hoje);
   const [busca, setBusca] = useState("");
+  const [buscaCliente, setBuscaCliente] = useState("");
   const [excludedSituacoes, setExcludedSituacoes] = useState<Set<string>>(new Set());
   const [searchSituacao, setSearchSituacao] = useState("");
   const [tipoDoc, setTipoDoc] = useState<"todos" | "orcamentos" | "pedidos">(
@@ -103,6 +104,7 @@ export default function AgendamentoPage() {
   }, [queryClient, refetch]);
 
   const termo = busca.trim().toLowerCase();
+  const termoCliente = buscaCliente.trim().toLowerCase();
   const filtrados = useMemo(() => {
     let result = itens;
 
@@ -116,7 +118,14 @@ export default function AgendamentoPage() {
       result = result.filter((i) => !excludedSituacoes.has(i.situacao));
     }
 
-    // Filtro por busca textual
+    // Filtro por busca de cliente
+    if (termoCliente) {
+      result = result.filter((i) =>
+        String(i.cliente || "").toLowerCase().includes(termoCliente)
+      );
+    }
+
+    // Filtro por busca textual geral
     if (termo) {
       result = result.filter((i) =>
          [i.compra_codigo, i.cliente, i.fornecedor, i.vinculo_texto, i.situacao, i.equipamento,
@@ -127,7 +136,7 @@ export default function AgendamentoPage() {
     }
 
     return result;
-  }, [itens, termo, excludedSituacoes, tipoDoc]);
+  }, [itens, termo, termoCliente, excludedSituacoes, tipoDoc]);
 
   const totaisTipo = useMemo(() => ({
     todos: itens.length,
@@ -238,7 +247,19 @@ export default function AgendamentoPage() {
           <div className="min-w-0">
             <div className="flex items-center gap-1.5">
               <p className="truncate text-xs font-bold text-primary">
-                {ehPedido ? "Pedido de Compra" : "Orçamento"} {i.orcamento_codigo || i.vinculo_codigo || i.compra_codigo}
+                {i.documento_link ? (
+                  <a
+                    href={i.documento_link}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="hover:underline flex items-center gap-1"
+                  >
+                    {ehPedido ? "Pedido de Compra" : "Orçamento"} {i.orcamento_codigo || i.vinculo_codigo || i.compra_codigo}
+                    <ExternalLink className="h-2 w-2" />
+                  </a>
+                ) : (
+                  `${ehPedido ? "Pedido de Compra" : "Orçamento"} ${i.orcamento_codigo || i.vinculo_codigo || i.compra_codigo}`
+                )}
               </p>
             </div>
             <p className="truncate text-[11px] text-muted-foreground mt-0.5">
@@ -323,6 +344,24 @@ export default function AgendamentoPage() {
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
+          <div className="relative">
+            <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              placeholder="Buscar cliente..."
+              value={buscaCliente}
+              onChange={(e) => setBuscaCliente(e.target.value)}
+              className="h-8 w-48 pl-8 text-xs"
+            />
+          </div>
+          <div className="relative">
+            <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              placeholder="Geral..."
+              value={busca}
+              onChange={(e) => setBusca(e.target.value)}
+              className="h-8 w-40 pl-8 text-xs"
+            />
+          </div>
           <div className="flex items-center rounded-md border border-border p-0.5">
             {([
               { id: "todos", label: "Todos" },
