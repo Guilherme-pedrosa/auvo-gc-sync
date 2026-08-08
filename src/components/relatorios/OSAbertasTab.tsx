@@ -689,19 +689,45 @@ export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, o
       ...(expandedRow?.items ?? []),
       ...filtered.flatMap((r: any) => (r.cliente === expanded ? [] : r.items)),
     ];
-    const itemsToResolve = ordered
-      .filter((item: any) => item.gc_os_id && !liveExecMap.has(String(item.gc_os_id)))
-      .slice(0, 12); // lotes progressivos — o efeito reexecuta até concluir
+    // 1) Semeia do cache local (tarefas_central) — sem chamada de API.
+    const seeded = new Map<string, { execTaskId: string; tecnico: string; dataTarefa: string; status: string }>();
+    const needsApi: any[] = [];
+    for (const item of ordered) {
+      const gcId = String(item?.gc_os_id || "");
+      if (!gcId || liveExecMap.has(gcId)) continue;
+      const ids = parseExecIds(item.gc_os_tarefa_exec);
+      const row = ids
+        .map((eid) => allTasks.find((t: any) => String(t.auvo_task_id) === eid))
+        .find((r: any) => r && (r.data_tarefa || r.tecnico));
+      if (row) {
+        seeded.set(gcId, {
+          execTaskId: ids.join("/"),
+          tecnico: row.tecnico || "",
+          dataTarefa: row.data_tarefa || "",
+          status: row.status_auvo || "",
+        });
+      } else {
+        needsApi.push(item);
+      }
+    }
+    if (seeded.size > 0) {
+      setLiveExecMap((prev) => {
+        const next = new Map(prev);
+        seeded.forEach((v, k) => { if (!next.has(k)) next.set(k, v); });
+        return next;
+      });
+      return; // efeito reexecuta e segue com os que realmente precisam de API
+    }
+
+    const itemsToResolve = needsApi.slice(0, 6); // lotes pequenos, em paralelo
     if (itemsToResolve.length === 0) return;
 
     let cancelled = false;
 
     (async () => {
-      const updates = new Map(liveExecMap);
+      const updates = new Map<string, { execTaskId: string; tecnico: string; dataTarefa: string; status: string }>();
 
-      for (const item of itemsToResolve) {
-        if (cancelled) break;
-
+      await Promise.all(itemsToResolve.map(async (item: any) => {
         try {
           let rawExecValue = String(item.gc_os_tarefa_exec || "").trim();
 
@@ -709,12 +735,12 @@ export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, o
             const { data: gcData, error } = await supabase.functions.invoke("gc-proxy", {
               body: { endpoint: `/api/ordens_servicos/${item.gc_os_id}`, method: "GET" },
             });
-            if (error || cancelled) continue;
+            if (error || cancelled) return;
 
             if (isGcOsMissingResponse(gcData)) {
               markOsDeleted(String(item.gc_os_id));
               updates.set(String(item.gc_os_id), { execTaskId: "", tecnico: "", dataTarefa: "", status: "" });
-              continue;
+              return;
             }
 
             const osObj = gcData?.data?.data ?? gcData?.data ?? null;
@@ -732,7 +758,7 @@ export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, o
 
           if (allExecIds.length === 0) {
             updates.set(String(item.gc_os_id), { execTaskId: "", tecnico: "", dataTarefa: "", status: "" });
-            continue;
+            return;
           }
 
           // Resolve each exec task and pick best data
@@ -771,15 +797,21 @@ export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, o
         } catch {
           // ignore individual failures
         }
-      }
+      }));
 
-      if (!cancelled) setLiveExecMap(updates);
+      if (!cancelled && updates.size > 0) {
+        setLiveExecMap((prev) => {
+          const next = new Map(prev);
+          updates.forEach((v, k) => next.set(k, v));
+          return next;
+        });
+      }
     })();
 
     return () => {
       cancelled = true;
     };
-  }, [expanded, filtered, liveExecMap, resolveAuvoTaskLive]);
+  }, [allTasks, expanded, filtered, liveExecMap, resolveAuvoTaskLive]);
 
   useEffect(() => {
     if (!expanded) return;
@@ -1070,6 +1102,21 @@ export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, o
       }
 
       toast.success(`Tarefa de execução #${execTaskId} atualizada no Auvo!`);
+      // Atualiza o cache local imediatamente (sem esperar novo fetch do Auvo)
+      if (editingCard.gc_os_id) {
+        const novaData = editDate ? format(editDate, "yyyy-MM-dd") : null;
+        setLiveExecMap((prev) => {
+          const next = new Map(prev);
+          const atual = next.get(String(editingCard.gc_os_id));
+          next.set(String(editingCard.gc_os_id), {
+            execTaskId: atual?.execTaskId || String(execTaskId),
+            tecnico: tecnicoSelecionado?.name || tecnicoSelecionado?.login || atual?.tecnico || "",
+            dataTarefa: novaData || atual?.dataTarefa || "",
+            status: atual?.status || "",
+          });
+          return next;
+        });
+      }
       onRefresh?.();
       setShowEditModal(false);
       setEditingCard(null);
