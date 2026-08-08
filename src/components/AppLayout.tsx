@@ -2,7 +2,7 @@ import { useNavigate, useLocation } from "react-router-dom";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/hooks/useAuth";
 import {
- RefreshCw, BarChart3, Kanban, LayoutDashboard, ListChecks, Radio, Wrench, CalendarDays, ChevronDown, Users, LogOut, Shield, FileText, PanelLeftClose, PanelLeft, Thermometer, ArrowLeftRight, Trophy, Settings, UserCog, FileCheck, Building2, GraduationCap, HeartPulse, Stethoscope, Brain, Share2
+ RefreshCw, BarChart3, Kanban, LayoutDashboard, ListChecks, Radio, Wrench, CalendarDays, CalendarClock, ChevronDown, Users, LogOut, Shield, FileText, PanelLeftClose, PanelLeft, Thermometer, ArrowLeftRight, Trophy, Settings, UserCog, FileCheck, Building2, GraduationCap, HeartPulse, Stethoscope, Brain, Share2
 } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useState } from "react";
@@ -33,6 +33,7 @@ const navGroups: NavGroup[] = [
       { label: "Dashboard Técnicos", icon: BarChart3, path: "/financeiro/dashboard-tecnicos" },
       { label: "Acompanhamento", icon: Radio, path: "/financeiro/acompanhamento" },
       { label: "Agenda Semanal", icon: CalendarDays, path: "/financeiro/agenda-semanal" },
+      { label: "Agendamento", icon: CalendarClock, path: "/financeiro/agendamento" },
       { label: "Controle OS", icon: FileText, path: "/financeiro/relatorios" },
       { label: "Controle Orçamentos", icon: FileText, path: "/financeiro/controle-orcamentos" },
       { label: "OS Cruzadas", icon: ArrowLeftRight, path: "/financeiro/os-cruzadas" },
