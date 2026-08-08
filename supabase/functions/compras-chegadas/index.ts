@@ -179,8 +179,6 @@ function estadoPedido(doc: any): PedidoDetalhe["estado"] {
 }
 
 function parseVinculo(raw: string): { tipo: "os" | "orcamento" | "texto"; codigo: string; original: string } {
-
-function parseVinculo(raw: string): { tipo: "os" | "orcamento" | "texto"; codigo: string; original: string } {
   const txt = String(raw || "").trim();
   if (!txt) return { tipo: "texto", codigo: "", original: "" };
   const orc = txt.match(/^(?:OR|OR[ÇC]|OR[ÇC]AMENTO)\s*[:.\-]?\s*(\d{3,8})/i);
