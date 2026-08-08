@@ -146,6 +146,7 @@ function estadoPedido(doc: any): PedidoDetalhe["estado"] {
   return "desconhecido";
 }
 
+async function fetchPedidoPorCodigo(codigo: string): Promise<PedidoDetalhe | null> {
   // Buscamos em /compras (Pedidos de Compra) mas também em /orcamentos e /pedidos_servicos
   // pois o usuário pode ter digitado qualquer tipo de referência no campo extra.
   const endpoints = ["compras", "pedidos", "orcamentos"];
