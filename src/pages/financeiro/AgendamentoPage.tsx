@@ -340,7 +340,7 @@ export default function AgendamentoPage() {
   };
 
   return (
-    <div className="flex h-screen min-h-0 flex-col gap-3 p-4 overflow-hidden">
+    <div className="flex h-screen min-h-0 flex-col gap-3 p-4 overflow-hidden bg-background">
       <header className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-lg font-semibold text-foreground">Calendário de Agendamento</h1>
