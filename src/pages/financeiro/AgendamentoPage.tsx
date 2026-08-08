@@ -207,9 +207,10 @@ export default function AgendamentoPage() {
               <p className="truncate text-xs font-bold text-primary">
                 {ehPedido ? "Pedido de Compra" : "Orçamento"} {i.orcamento_codigo || i.vinculo_codigo || i.compra_codigo}
               </p>
-              {!ehPedido && i.compra_codigo && (
-                <Badge variant="outline" className="h-4 px-1 text-[9px] font-normal">PC {i.compra_codigo}</Badge>
-              )}
+              {!ehPedido &&
+                (i.pedidos_compra?.length ? i.pedidos_compra : i.compra_codigo ? [i.compra_codigo] : []).map((pc) => (
+                  <Badge key={pc} variant="outline" className="h-4 px-1 text-[9px] font-normal">PC {pc}</Badge>
+                ))}
             </div>
             <p className="truncate text-[11px] text-muted-foreground mt-0.5">
               {i.cliente || "Cliente não identificado"}
