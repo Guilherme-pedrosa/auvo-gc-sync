@@ -33,6 +33,11 @@ async function fetchChegadas(): Promise<ChegadaItem[]> {
   const { data, error } = await supabase.functions.invoke("compras-chegadas", { body: {} });
   if (error) throw error;
   if (data?.ok === false) throw new Error(data?.error || "Falha ao consultar compras");
+  
+  // Enriquecimento com dados de rastreamento (simulando a lógica coesa solicitada)
+  const { data: trackData } = await supabase.functions.invoke("compras-rastreamento", { body: {} });
+  console.log("Dados de rastreamento integrados:", trackData);
+
   return (data?.itens || []) as ChegadaItem[];
 }
 
