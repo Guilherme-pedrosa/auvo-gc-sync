@@ -97,9 +97,9 @@ export default function AgendamentoPage() {
 
   const boardSummary = useMemo(() => {
     const linha = (i: ChegadaItem) =>
-      `- Pedido de compra ${i.compra_codigo} | chegada: ${i.data_chegada ? formatDiaBR(i.data_chegada) : "sem data"}` +
-      ` | ${documentoLabel(i)} | cliente: ${i.cliente || "?"} | fornecedor: ${i.fornecedor}` +
-      ` | ${formatBRL(i.valor_total)} | situação: ${i.situacao}` +
+      `- Orçamento ${i.orcamento_codigo || i.vinculo_codigo} | PC ${i.compra_codigo} | chegada: ${i.data_chegada ? formatDiaBR(i.data_chegada) : "sem data"}` +
+      ` | cliente: ${i.cliente || "?"} | fornecedor: ${i.fornecedor}` +
+      ` | ${formatBRL(i.documento_valor || i.valor_total)} | situação: ${i.situacao}` +
       ` | peças: ${i.produtos.slice(0, 4).map((p) => p.nome).join(", ") || "-"}`;
     return [
       `[ATRASADAS] (${atrasadas.length})`,
