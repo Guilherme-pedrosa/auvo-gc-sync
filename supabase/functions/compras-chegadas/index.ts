@@ -197,6 +197,10 @@ async function fetchSituacao(sit: { id: string; nome: string; grupo: string }, e
     for (const r of rows) {
       const c = r?.Compra ?? r?.Orcamento ?? r;
       if (!c) continue;
+      // A API do GC pode ignorar situacao_id e devolver a página padrão. Não aceite
+      // documentos de outra situação: isso contaminava o calendário com orçamentos
+      // que não pertenciam aos três estados solicitados.
+      if (String(c?.situacao_id ?? "") !== sit.id) continue;
       out.push({ doc: c, situacao: sit, tipo: endpoint === "orcamentos" ? "orcamento" : "compra" });
     }
     const totalPaginas = Number(json?.meta?.total_paginas ?? json?.meta?.totalPages ?? 1);
@@ -212,7 +216,11 @@ async function handleRequest(req: Request) {
     const orcamentosResults = await Promise.all(
       SITUACOES_ORCAMENTOS.map((s) => fetchSituacao(s, "orcamentos")),
     );
-    const brutos = orcamentosResults.flat();
+    const brutos = Array.from(
+      new Map(
+        orcamentosResults.flat().map((item) => [String(item.doc?.id ?? item.doc?.codigo ?? ""), item]),
+      ).values(),
+    );
     console.log(
       `[compras-chegadas] encontrados ${brutos.length} orçamentos nas 3 situações solicitadas`,
     );
