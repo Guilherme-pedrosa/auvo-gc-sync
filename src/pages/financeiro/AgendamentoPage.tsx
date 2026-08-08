@@ -551,7 +551,7 @@ export default function AgendamentoPage() {
                 </div>
               </section>
 
-              {/* Sem data */}
+              {/* Sem previsão */}
               <section className="rounded-lg border border-border bg-muted/20 p-2">
                 <h2 className="mb-2 text-xs font-semibold">Sem previsão de chegada ({semData.length})</h2>
                 <div className="max-h-[420px] space-y-2 overflow-y-auto">
