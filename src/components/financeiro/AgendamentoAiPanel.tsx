@@ -5,7 +5,6 @@ import { Bot, Loader2, Send, Sparkles, Wrench } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { cn } from "@/lib/utils";
 
 type ChatMsg = { role: "user" | "assistant"; content: string; tools?: string[] };
