@@ -33,11 +33,11 @@ function extra(doc: any, ...descricoes: string[]): string {
     ...(Array.isArray(doc?.campos_extras) ? doc.campos_extras : []),
     ...(Array.isArray(doc?.atributos) ? doc.atributos : []),
   ];
-  const alvos = descricoes.map((d) => d.trim().toUpperCase());
+  const alvos = descricoes.map((d) => normalize(d));
   for (const alvo of alvos) {
     for (const item of list) {
       const e = item?.extras ?? item?.atributo ?? item?.campo_extra ?? item;
-      const nome = String(e?.descricao ?? "").trim().toUpperCase();
+      const nome = normalize(e?.descricao);
       if (nome === alvo) {
         const v = String(e?.conteudo ?? "").trim();
         if (v) return v;
