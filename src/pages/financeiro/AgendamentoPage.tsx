@@ -312,10 +312,9 @@ export default function AgendamentoPage() {
     <div className="flex h-full min-h-0 flex-col gap-3 p-4">
       <header className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-lg font-semibold text-foreground">CARA, VC TA BUSCANDO AS INFORMAÇÕES DO GC??????</h1>
-          <p className="text-xs text-muted-foreground whitespace-pre-wrap">
-            PQ TA SÓ CONSEGUINDO ME IRRITAR{"\n\n"}
-            OLHA A DESGRAÇA DO CALENDÁRIO!!
+          <h1 className="text-lg font-semibold text-foreground">Calendário de Agendamento</h1>
+          <p className="text-xs text-muted-foreground">
+            Acompanhamento de orçamentos e prazos de entrega baseados nos pedidos de compra do GestãoClick.
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">

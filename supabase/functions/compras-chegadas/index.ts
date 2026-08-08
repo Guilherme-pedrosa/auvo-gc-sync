@@ -252,9 +252,6 @@ async function handleRequest(req: Request) {
       const dataChegadaOrcamento = parseChegada(dataChegadaRaw, doc?.data_emissao || doc?.data);
       // No orçamento, o campo "PEDIDO DE COMPRA GC" diz quais PCs abastecem aquela OS.
       const pedidosCompra = parsePedidosCompra(extra(doc, ...CAMPO_PEDIDO_COMPRA));
-      if (pedidosCompra.length > 0) {
-        console.log(`[compras-chegadas] Orcamento ${doc.codigo} cita PCs: ${pedidosCompra.join(', ')}`);
-      }
       const detalhes = pedidosCompra.map((codigo) => pedidoDetalhes.get(codigo) ?? {
         codigo,
         id: "",
