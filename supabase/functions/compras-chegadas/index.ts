@@ -369,7 +369,14 @@ async function handleRequest(req: Request) {
     }
 
     return new Response(
-      JSON.stringify({ ok: true, total: itens.length, itens, gerado_em: new Date().toISOString() }),
+      JSON.stringify({
+        ok: true,
+        total: itens.length,
+        total_orcamentos: itens.filter((item) => item.doc_tipo === "orcamento").length,
+        total_pedidos: itens.filter((item) => item.doc_tipo === "compra").length,
+        itens,
+        gerado_em: new Date().toISOString(),
+      }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } },
     );
   } catch (e) {
