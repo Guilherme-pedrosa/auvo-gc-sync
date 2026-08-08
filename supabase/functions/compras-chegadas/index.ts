@@ -15,14 +15,18 @@ const corsHeaders = {
 const GC_BASE = "https://api.gestaoclick.com";
 
 // Situações de compra que ainda estão pendentes (peça não chegou).
-const SITUACOES_PENDENTES = [
+const SITUACOES_PEDIDOS = [
   { id: "1670366", nome: "Aprovada - AG COMPRA", grupo: "ag_compra" },
   { id: "1675083", nome: "COMPRADO - AG CHEGADA", grupo: "ag_chegada" },
   { id: "2072608", nome: "COMPRADO - AG CHEGADA PARA ESTOQUE", grupo: "ag_chegada" },
   { id: "1775065", nome: "SOLICITADO - GARANTIA", grupo: "garantia" },
   { id: "2120816", nome: "AGUARDANDO PEDIDO MINIMO", grupo: "ag_compra" },
-  { id: "1670365", nome: "Aguardando Aprovação", grupo: "ag_aprovacao" },
+];
+
+const SITUACOES_ORCAMENTOS = [
+  { id: "7063588", nome: "Aguardando Aprovação", grupo: "ag_aprovacao" },
   { id: "2039849", nome: "Aguardando Correção / informações solicitadas", grupo: "ag_aprovacao" },
+  { id: "7084340", nome: "Aguardando Resposta Cliente", grupo: "ag_aprovacao" },
 ];
 
 function extra(compra: any, descricao: string): string {
@@ -71,10 +75,10 @@ function parseVinculo(raw: string): { tipo: "os" | "orcamento" | "texto"; codigo
   return { tipo: "texto", codigo: "", original: txt };
 }
 
-async function fetchSituacao(sit: { id: string; nome: string; grupo: string }) {
+async function fetchSituacao(sit: { id: string; nome: string; grupo: string }, endpoint = "compras") {
   const out: any[] = [];
   for (let pagina = 1; pagina <= 12; pagina++) {
-    const url = new URL(`${GC_BASE}/compras`);
+    const url = new URL(`${GC_BASE}/${endpoint}`);
     url.searchParams.set("situacao_id", sit.id);
     url.searchParams.set("limite", "100");
     url.searchParams.set("pagina", String(pagina));
@@ -83,60 +87,72 @@ async function fetchSituacao(sit: { id: string; nome: string; grupo: string }) {
     const json = await res.json().catch(() => null);
     const rows = Array.isArray(json?.data) ? json.data : [];
     for (const r of rows) {
-      const c = r?.Compra ?? r;
+      const c = r?.Compra ?? r?.Orcamento ?? r;
       if (!c) continue;
-      out.push({ compra: c, situacao: sit });
+      out.push({ doc: c, situacao: sit, tipo: endpoint === "orcamentos" ? "orcamento" : "compra" });
     }
     if (!json?.meta?.proxima_pagina) break;
   }
   return out;
 }
 
-Deno.serve(async (req) => {
+async function handleRequest(req: Request) {
+
+Deno.serve(handleRequest);
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   try {
-    const results = await Promise.all(SITUACOES_PENDENTES.map((s) => fetchSituacao(s)));
-    const brutos = results.flat();
+    const [pedidosResults, orcamentosResults] = await Promise.all([
+      Promise.all(SITUACOES_PEDIDOS.map((s) => fetchSituacao(s, "compras"))),
+      Promise.all(SITUACOES_ORCAMENTOS.map((s) => fetchSituacao(s, "orcamentos"))),
+    ]);
+    const brutos = [...pedidosResults.flat(), ...orcamentosResults.flat()];
 
-    const itens = brutos.map(({ compra, situacao }) => {
-      const vinculoRaw = extra(compra, "OS GC");
+    const itens = brutos.map(({ doc, situacao, tipo }) => {
+      const vinculoRaw = extra(doc, "OS GC");
       const vinculo = parseVinculo(vinculoRaw);
-      const dataChegada = parseChegada(extra(compra, "DATA DA CHEGADA DAS PEÇAS"), compra?.data_emissao);
-      const produtos = (Array.isArray(compra?.produtos) ? compra.produtos : []).map((p: any) => {
+      const dataChegadaRaw = extra(doc, "DATA DA CHEGADA DAS PEÇAS");
+      const dataChegada = parseChegada(dataChegadaRaw, doc?.data_emissao || doc?.data);
+      
+      const produtos = (Array.isArray(doc?.produtos) ? doc.produtos : []).map((p: any) => {
         const prod = p?.produto ?? p;
         return {
-          nome: String(prod?.nome_produto ?? "").trim(),
+          nome: String(prod?.nome_produto ?? prod?.nome ?? "").trim(),
           quantidade: Number(prod?.quantidade ?? 0) || 0,
           valor_total: Number(prod?.valor_total ?? 0) || 0,
         };
       });
+
+      const orcCodigo = tipo === "orcamento" ? String(doc?.codigo ?? "") : (vinculo.tipo === "orcamento" ? vinculo.codigo : "");
+
       return {
-        compra_id: String(compra?.id ?? ""),
-        compra_codigo: String(compra?.codigo ?? ""),
-        fornecedor: String(compra?.nome_fornecedor ?? ""),
+        compra_id: tipo === "compra" ? String(doc?.id ?? "") : "",
+        compra_codigo: tipo === "compra" ? String(doc?.codigo ?? "") : "",
+        fornecedor: String(doc?.nome_fornecedor || doc?.nome_vendedor || ""),
         situacao_id: situacao.id,
-        situacao: String(compra?.nome_situacao ?? situacao.nome),
+        situacao: String(doc?.nome_situacao ?? situacao.nome),
         grupo: situacao.grupo,
-        data_emissao: compra?.data_emissao ?? null,
+        data_emissao: doc?.data_emissao || doc?.data || null,
         data_chegada: dataChegada,
-        data_chegada_texto: extra(compra, "DATA DA CHEGADA DAS PEÇAS"),
-        vinculo_tipo: vinculo.tipo,
-        vinculo_codigo: vinculo.codigo,
-        vinculo_texto: vinculo.original,
-        auvo_task_id: extra(compra, "OS TAREFA"),
-        observacao_extra: extra(compra, "PRODUTO"),
-        valor_total: Number(compra?.valor_total ?? 0) || 0,
+        data_chegada_texto: dataChegadaRaw,
+        vinculo_tipo: tipo === "orcamento" ? "orcamento" : vinculo.tipo,
+        vinculo_codigo: orcCodigo,
+        vinculo_texto: tipo === "orcamento" ? `Orçamento ${doc.codigo}` : vinculo.original,
+        auvo_task_id: extra(doc, "OS TAREFA") || extra(doc, "TAREFA OS"),
+        observacao_extra: extra(doc, "PRODUTO"),
+        valor_total: Number(doc?.valor_total ?? 0) || 0,
         produtos,
-        gc_link: compra?.id ? `https://app.gestaoclick.com/compras/visualizar/${compra.id}` : "",
+        gc_link: tipo === "compra" 
+          ? (doc?.id ? `https://app.gestaoclick.com/compras/visualizar/${doc.id}` : "")
+          : (doc?.id ? `https://app.gestaoclick.com/orcamentos_servicos/visualizar/${doc.id}` : ""),
         // preenchidos abaixo
-        cliente: "",
+        cliente: String(doc?.nome_cliente || ""),
         equipamento: "",
         os_codigo: "",
-        orcamento_codigo: "",
-        documento_valor: 0,
-        documento_situacao: "",
-        documento_link: "",
+        orcamento_codigo: orcCodigo,
+        documento_valor: Number(doc?.valor_total ?? 0) || 0,
+        documento_situacao: String(doc?.nome_situacao ?? ""),
+        documento_link: tipo === "orcamento" ? `https://app.gestaoclick.com/orcamentos_servicos/visualizar/${doc.id}` : "",
         auvo_link: "",
       };
     });
