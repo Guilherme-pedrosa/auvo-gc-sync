@@ -136,9 +136,9 @@ export default function AgendamentoPage() {
           key={i.compra_id}
           onClick={() => setDiaSelecionado(String(i.data_chegada).slice(0, 10))}
           className={cn("w-full truncate rounded border px-1 py-0.5 text-left text-[10px] leading-tight", style.chip)}
-          title={`Pedido ${i.compra_codigo} · ${documentoLabel(i)} · ${i.cliente || i.fornecedor} · ${formatBRL(i.valor_total)}`}
+          title={`Orçamento ${i.orcamento_codigo || i.vinculo_codigo} · ${i.cliente || i.fornecedor} · ${formatBRL(i.valor_total)}`}
         >
-          PC {i.compra_codigo} · {i.cliente || i.fornecedor}
+          OR {i.orcamento_codigo || i.vinculo_codigo} · {i.cliente || i.fornecedor}
         </button>
       );
     }
@@ -196,9 +196,9 @@ export default function AgendamentoPage() {
     <div className="flex h-full min-h-0 flex-col gap-3 p-4">
       <header className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-lg font-semibold text-foreground">Agendamento · chegada de peças</h1>
+          <h1 className="text-lg font-semibold text-foreground">Agendamento · Calendário de Orçamentos</h1>
           <p className="text-xs text-muted-foreground">
-            Calendário dos pedidos de compra pendentes. Pedidos já concretizados (peça chegou) não aparecem.
+            Acompanhamento de orçamentos aprovados aguardando compra ou chegada de peças.
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -226,7 +226,7 @@ export default function AgendamentoPage() {
 
       {isLoading ? (
         <div className="flex flex-1 items-center justify-center text-sm text-muted-foreground">
-          <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Carregando pedidos de compra...
+          <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Carregando calendário de orçamentos...
         </div>
       ) : (
         <div className="grid min-h-0 flex-1 grid-cols-1 gap-3 xl:grid-cols-[minmax(0,1fr)_340px]">
@@ -312,7 +312,7 @@ export default function AgendamentoPage() {
             <div className="grid gap-3 lg:grid-cols-3">
               {/* Dia selecionado */}
               <section className="rounded-lg border border-border bg-muted/20 p-2">
-                <h2 className="mb-2 text-xs font-semibold">Chegadas em {formatDiaBR(diaSelecionado)} ({itensDoDia.length})</h2>
+                <h2 className="mb-2 text-xs font-semibold">Orçamentos em {formatDiaBR(diaSelecionado)} ({itensDoDia.length})</h2>
                 <div className="space-y-2">
                   {itensDoDia.length === 0
                     ? <p className="py-6 text-center text-[11px] text-muted-foreground">Nenhuma peça prevista neste dia.</p>
@@ -322,7 +322,7 @@ export default function AgendamentoPage() {
 
               {/* Atrasadas */}
               <section className="rounded-lg border border-destructive/40 bg-destructive/5 p-2">
-                <h2 className="mb-2 text-xs font-semibold text-destructive">Peças atrasadas ({atrasadas.length})</h2>
+                <h2 className="mb-2 text-xs font-semibold text-destructive">Orçamentos atrasados ({atrasadas.length})</h2>
                 <div className="max-h-[420px] space-y-2 overflow-y-auto">
                   {atrasadas.length === 0
                     ? <p className="py-6 text-center text-[11px] text-muted-foreground">Nada atrasado. 🎉</p>
