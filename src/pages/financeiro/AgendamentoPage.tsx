@@ -97,9 +97,9 @@ export default function AgendamentoPage() {
 
   const boardSummary = useMemo(() => {
     const linha = (i: ChegadaItem) =>
-      `- Pedido de compra ${i.compra_codigo} | chegada: ${i.data_chegada ? formatDiaBR(i.data_chegada) : "sem data"}` +
-      ` | ${documentoLabel(i)} | cliente: ${i.cliente || "?"} | fornecedor: ${i.fornecedor}` +
-      ` | ${formatBRL(i.valor_total)} | situação: ${i.situacao}` +
+      `- Orçamento ${i.orcamento_codigo || i.vinculo_codigo} | PC ${i.compra_codigo} | chegada: ${i.data_chegada ? formatDiaBR(i.data_chegada) : "sem data"}` +
+      ` | cliente: ${i.cliente || "?"} | fornecedor: ${i.fornecedor}` +
+      ` | ${formatBRL(i.documento_valor || i.valor_total)} | situação: ${i.situacao}` +
       ` | peças: ${i.produtos.slice(0, 4).map((p) => p.nome).join(", ") || "-"}`;
     return [
       `[ATRASADAS] (${atrasadas.length})`,
@@ -136,9 +136,9 @@ export default function AgendamentoPage() {
           key={i.compra_id}
           onClick={() => setDiaSelecionado(String(i.data_chegada).slice(0, 10))}
           className={cn("w-full truncate rounded border px-1 py-0.5 text-left text-[10px] leading-tight", style.chip)}
-          title={`Pedido ${i.compra_codigo} · ${documentoLabel(i)} · ${i.cliente || i.fornecedor} · ${formatBRL(i.valor_total)}`}
+          title={`Orçamento ${i.orcamento_codigo || i.vinculo_codigo} · ${i.cliente || i.fornecedor} · ${formatBRL(i.valor_total)}`}
         >
-          PC {i.compra_codigo} · {i.cliente || i.fornecedor}
+          OR {i.orcamento_codigo || i.vinculo_codigo} · {i.cliente || i.fornecedor}
         </button>
       );
     }
@@ -146,13 +146,12 @@ export default function AgendamentoPage() {
       <div key={i.compra_id} className="rounded-md border border-border bg-card p-2.5">
         <div className="flex items-start justify-between gap-2">
           <div className="min-w-0">
-            <p className="truncate text-xs font-semibold">Pedido de compra {i.compra_codigo}</p>
+            <p className="truncate text-xs font-semibold">Orçamento {i.orcamento_codigo || i.vinculo_codigo}</p>
             <p className="truncate text-[11px] text-muted-foreground">
-              {documentoLabel(i)}
-              {i.cliente ? ` · ${i.cliente}` : ""}
+              PC {i.compra_codigo} · {i.cliente || "Cliente não identificado"}
             </p>
           </div>
-          <span className="shrink-0 text-xs font-semibold tabular-nums">{formatBRL(i.valor_total)}</span>
+          <span className="shrink-0 text-xs font-semibold tabular-nums">{formatBRL(i.documento_valor || i.valor_total)}</span>
         </div>
 
         <p className="mt-1 line-clamp-2 text-[11px] text-muted-foreground">
@@ -173,16 +172,16 @@ export default function AgendamentoPage() {
           <Button size="sm" variant="secondary" className="h-7 flex-1 text-[11px]" onClick={() => abrirAgendamento(i)}>
             <CalendarClock className="mr-1 h-3 w-3" /> Agendar execução
           </Button>
-          {i.gc_link && (
+          {i.documento_link && (
             <Button size="icon" variant="ghost" className="h-7 w-7" asChild>
-              <a href={i.gc_link} target="_blank" rel="noreferrer" aria-label="Abrir pedido no GestãoClick">
+              <a href={i.documento_link} target="_blank" rel="noreferrer" aria-label="Abrir orçamento no GestãoClick">
                 <ExternalLink className="h-3 w-3" />
               </a>
             </Button>
           )}
-          {i.documento_link && (
+          {i.gc_link && (
             <Button size="icon" variant="ghost" className="h-7 w-7" asChild>
-              <a href={i.documento_link} target="_blank" rel="noreferrer" aria-label="Abrir documento vinculado">
+              <a href={i.gc_link} target="_blank" rel="noreferrer" aria-label="Abrir pedido de compra no GestãoClick">
                 <PackageSearch className="h-3 w-3" />
               </a>
             </Button>
@@ -196,9 +195,9 @@ export default function AgendamentoPage() {
     <div className="flex h-full min-h-0 flex-col gap-3 p-4">
       <header className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-lg font-semibold text-foreground">Agendamento · chegada de peças</h1>
+          <h1 className="text-lg font-semibold text-foreground">Agendamento · Calendário de Orçamentos</h1>
           <p className="text-xs text-muted-foreground">
-            Calendário dos pedidos de compra pendentes. Pedidos já concretizados (peça chegou) não aparecem.
+            Acompanhamento de orçamentos aprovados aguardando compra ou chegada de peças.
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -207,7 +206,7 @@ export default function AgendamentoPage() {
             <Input
               value={busca}
               onChange={(e) => setBusca(e.target.value)}
-              placeholder="Cliente, OS, peça, fornecedor..."
+              placeholder="Nº Orçamento, Cliente, PC, Peça..."
               className="h-8 w-64 pl-7 text-xs"
             />
           </div>
@@ -226,7 +225,7 @@ export default function AgendamentoPage() {
 
       {isLoading ? (
         <div className="flex flex-1 items-center justify-center text-sm text-muted-foreground">
-          <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Carregando pedidos de compra...
+          <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Carregando calendário de orçamentos...
         </div>
       ) : (
         <div className="grid min-h-0 flex-1 grid-cols-1 gap-3 xl:grid-cols-[minmax(0,1fr)_340px]">
@@ -292,7 +291,7 @@ export default function AgendamentoPage() {
                               {Number(dia.slice(8, 10))}
                             </span>
                             {lista.length > 0 && (
-                              <span className="text-[9px] text-muted-foreground">{formatBRL(total)}</span>
+                              <span className="text-[9px] text-muted-foreground">{formatBRL(lista.reduce((s, i) => s + (i.documento_valor || i.valor_total), 0))}</span>
                             )}
                           </div>
                           <div className="space-y-0.5">
@@ -312,7 +311,7 @@ export default function AgendamentoPage() {
             <div className="grid gap-3 lg:grid-cols-3">
               {/* Dia selecionado */}
               <section className="rounded-lg border border-border bg-muted/20 p-2">
-                <h2 className="mb-2 text-xs font-semibold">Chegadas em {formatDiaBR(diaSelecionado)} ({itensDoDia.length})</h2>
+                <h2 className="mb-2 text-xs font-semibold">Orçamentos em {formatDiaBR(diaSelecionado)} ({itensDoDia.length})</h2>
                 <div className="space-y-2">
                   {itensDoDia.length === 0
                     ? <p className="py-6 text-center text-[11px] text-muted-foreground">Nenhuma peça prevista neste dia.</p>
@@ -322,7 +321,7 @@ export default function AgendamentoPage() {
 
               {/* Atrasadas */}
               <section className="rounded-lg border border-destructive/40 bg-destructive/5 p-2">
-                <h2 className="mb-2 text-xs font-semibold text-destructive">Peças atrasadas ({atrasadas.length})</h2>
+                <h2 className="mb-2 text-xs font-semibold text-destructive">Orçamentos atrasados ({atrasadas.length})</h2>
                 <div className="max-h-[420px] space-y-2 overflow-y-auto">
                   {atrasadas.length === 0
                     ? <p className="py-6 text-center text-[11px] text-muted-foreground">Nada atrasado. 🎉</p>
@@ -346,11 +345,11 @@ export default function AgendamentoPage() {
             <AgendamentoAiPanel
               boardSummary={boardSummary}
               contexto={{
-                modulo: "chegada_de_pecas",
-                pedidos_pendentes: filtrados.length,
+                modulo: "agendamento_orcamentos",
+                orcamentos_pendentes: filtrados.length,
                 atrasados: atrasadas.length,
                 sem_data: semData.length,
-                valor_total: filtrados.reduce((s, i) => s + i.valor_total, 0),
+                valor_total: filtrados.reduce((s, i) => s + (i.documento_valor || i.valor_total), 0),
               }}
             />
           </div>
