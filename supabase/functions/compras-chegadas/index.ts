@@ -190,7 +190,7 @@ function parseVinculo(raw: string): { tipo: "os" | "orcamento" | "texto"; codigo
   return { tipo: "texto", codigo: "", original: txt };
 }
 
-async function fetchSituacao(sit: { id: string; nome: string; grupo: string }, endpoint = "compras") {
+async function fetchSituacao(sit: { id: string; nome: string; grupo: string }, endpoint = "orcamentos") {
   const out: any[] = [];
   for (let pagina = 1; pagina <= 12; pagina++) {
     const url = new URL(`${GC_BASE}/api/${endpoint}`);
