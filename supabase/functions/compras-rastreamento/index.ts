@@ -6,7 +6,7 @@ const GC_BASE = "https://api.gestaoclick.com/api";
 
 async function fetchAllPages(endpoint: string, params: Record<string, string> = {}): Promise<any[]> {
   const all: any[] = [];
-  for (let pagina = 1; pagina <= 10; pagina++) {
+  for (let pagina = 1; pagina <= 12; pagina++) {
     const url = new URL(`${GC_BASE}/${endpoint}`);
     url.searchParams.set("limite", "100");
     url.searchParams.set("pagina", String(pagina));
@@ -27,30 +27,91 @@ Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
   try {
-    const supabase = createClient(
-      Deno.env.get("SUPABASE_URL")!,
-      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
-    );
+    const sb = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
 
-    // 1. Pegar orçamentos nas situações de interesse
-    const situacoes = ["8743484", "8743485", "8894381"];
-    const orcamentosProm = Promise.all(situacoes.map(s => fetchAllPages("orcamentos", { situacao_id: s })));
+    // 1. Orçamentos nas situações de agendamento
+    const situacoesOrc = ["8743484", "8743485", "8894381"];
+    const orcamentosLists = await Promise.all(situacoesOrc.map(s => fetchAllPages("orcamentos", { situacao_id: s })));
+    const orcamentos = orcamentosLists.flat();
+
+    // 2. Extrair códigos de Pedido de Compra citados nos orçamentos (campos extras)
+    const pcRegex = /(?:PC|PEDIDO COMPRA|COMPRA)\s*[:.\-]?\s*(\d{3,})/gi;
+    const pcCodigos = new Set<string>();
     
-    // 2. Pegar pedidos de compra abertos
-    const comprasProm = fetchAllPages("compras", { situacao_id: "1675083" }); // COMPRADO - AG CHEGADA
+    orcamentos.forEach(orc => {
+      const extras = Array.isArray(orc.campos_extras) ? orc.campos_extras : [];
+      extras.forEach((e: any) => {
+        const conteudo = String(e.conteudo || "");
+        let match;
+        while ((match = pcRegex.exec(conteudo)) !== null) {
+          pcCodigos.add(match[1]);
+        }
+      });
+    });
 
-    const [orcLists, compras] = await Promise.all([orcamentosProm, comprasProm]);
-    const orcamentos = orcLists.flat();
+    // 3. Buscar Pedidos de Compra vinculados para ver data de chegada
+    const comprasMap = new Map();
+    if (pcCodigos.size > 0) {
+      const codigosArr = Array.from(pcCodigos);
+      // Busca em lotes para evitar timeouts se forem muitos
+      for (let i = 0; i < codigosArr.length; i += 10) {
+        const lote = codigosArr.slice(i, i + 10);
+        await Promise.all(lote.map(async (cod) => {
+          const res = await fetch(`${GC_BASE}/compras?codigo=${cod}`, { headers: gcHeaders() });
+          if (res.ok) {
+            const json = await res.json();
+            const docs = Array.isArray(json.data) ? json.data : [];
+            const doc = docs.find((d: any) => String((d.Compra || d).codigo) === cod);
+            if (doc) {
+              const data = doc.Compra || doc;
+              comprasMap.set(cod, {
+                id: data.id,
+                situacao: data.nome_situacao,
+                data_chegada: data.data_saida || data.data_previsao_entrega || data.previsao_entrega || null
+              });
+            }
+          }
+        }));
+      }
+    }
 
-    // 3. Cruzamento e enriquecimento com "WeDo Pick & Pack" logic (rastreamento de estoque/compras)
-    // Aqui simulamos a busca de informações de rastreamento que seriam integradas.
-    
-    return new Response(JSON.stringify({ 
-      ok: true, 
-      orcamentosCount: orcamentos.length,
-      comprasCount: compras.length,
-      itens: [...orcamentos, ...compras] 
-    }), {
+    // 4. Mapear disponibilidade
+    const itens = orcamentos.map(orc => {
+      const orcExtras = Array.isArray(orc.campos_extras) ? orc.campos_extras : [];
+      const pcVinc = [];
+      let maxData: string | null = null;
+      let temPendente = false;
+
+      // Procura PCs citados
+      orcExtras.forEach((e: any) => {
+        const conteudo = String(e.conteudo || "");
+        let match;
+        while ((match = pcRegex.exec(conteudo)) !== null) {
+          const cod = match[1];
+          const compra = comprasMap.get(cod);
+          if (compra) {
+            pcVinc.push({ codigo: cod, ...compra });
+            if (compra.data_chegada) {
+              if (!maxData || compra.data_chegada > maxData) maxData = compra.data_chegada;
+            } else {
+              temPendente = true; // PC sem data trava o orçamento
+            }
+          }
+        }
+      });
+
+      return {
+        id: orc.id,
+        codigo: orc.codigo,
+        cliente: orc.nome_cliente,
+        valor: orc.valor_total,
+        situacao: orc.nome_situacao,
+        data_disponivel: temPendente ? null : maxData,
+        pcs: pcVinc
+      };
+    });
+
+    return new Response(JSON.stringify({ ok: true, itens }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" }
     });
   } catch (e) {
