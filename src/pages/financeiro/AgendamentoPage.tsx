@@ -5,6 +5,9 @@ import {
   AlertTriangle, CalendarClock, ChevronLeft, ChevronRight, ExternalLink, Filter, Loader2,
   PackageSearch, RefreshCw, Search,
 } from "lucide-react";
+import {
+  Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle,
+} from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -77,6 +80,7 @@ export default function AgendamentoPage() {
   );
   const [alvo, setAlvo] = useState<AgendarAlvo | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [detalhesDialog, setDetalhesDialog] = useState<{ open: boolean; dia: string }>({ open: false, dia: "" });
 
   const { data: itens = [], isLoading, isFetching, refetch, error } = useQuery({
     queryKey: ["compras-chegadas"],
@@ -208,6 +212,7 @@ export default function AgendamentoPage() {
       data_tarefa: i.data_chegada,
       tecnico_id: null,
     });
+    setDetalhesDialog({ open: false, dia: "" });
     setDialogOpen(true);
   };
 
@@ -500,9 +505,14 @@ export default function AgendamentoPage() {
                       return (
                         <button
                           key={dia}
-                          onClick={() => setDiaSelecionado(dia)}
+                          onClick={() => {
+                            setDiaSelecionado(dia);
+                            if (lista.length > 0) {
+                              setDetalhesDialog({ open: true, dia });
+                            }
+                          }}
                           className={cn(
-                            "min-h-[92px] rounded-md border p-1 text-left align-top transition",
+                            "group relative min-h-[92px] rounded-md border p-1 text-left align-top transition hover:border-primary/50 hover:bg-muted/10",
                             doMes ? "bg-background" : "bg-muted/30 opacity-60",
                             diaSelecionado === dia ? "border-primary ring-1 ring-primary" : "border-border",
                             temAtraso && "border-destructive/60",
@@ -578,7 +588,31 @@ export default function AgendamentoPage() {
         </div>
       )}
 
-      <AgendarTarefaDialog open={dialogOpen} onOpenChange={setDialogOpen} alvo={alvo} onSaved={() => refetch()} />
+      <AgendarTarefaDialog 
+        open={dialogOpen} 
+        onOpenChange={setDialogOpen} 
+        alvo={alvo} 
+        onSaved={() => refetch()} 
+      />
+
+      <Dialog open={detalhesDialog.open} onOpenChange={(open) => setDetalhesDialog(prev => ({ ...prev, open }))}>
+        <DialogContent className="max-w-2xl max-h-[85vh] flex flex-col p-0">
+          <DialogHeader className="p-4 border-b">
+            <DialogTitle className="flex items-center gap-2">
+              <CalendarClock className="h-5 w-5 text-primary" />
+              Documentos em {formatDiaBR(detalhesDialog.dia)}
+            </DialogTitle>
+            <DialogDescription>
+              {porDia.get(detalhesDialog.dia)?.length || 0} itens previstos para este dia.
+            </DialogDescription>
+          </DialogHeader>
+          <ScrollArea className="flex-1 p-4">
+            <div className="grid gap-3 sm:grid-cols-2">
+              {(porDia.get(detalhesDialog.dia) || []).map((i) => renderItem(i))}
+            </div>
+          </ScrollArea>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
