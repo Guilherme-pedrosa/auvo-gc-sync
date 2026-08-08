@@ -1,8 +1,13 @@
 // Lê os pedidos de compra e orçamentos do GestãoClick que ainda NÃO chegaram
 // Integra lógica de rastreamento inspirada no "WeDo Pick & Pack" para datas de chegada coesas.
 import { createClient } from "npm:@supabase/supabase-js@2";
-import { corsHeaders } from "npm:@supabase/supabase-js@2/cors";
 import { installGcUsuarioId, gcHeaders } from "../_shared/gc-user.ts";
+
+const corsHeaders = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Methods": "POST, GET, OPTIONS",
+};
 
 installGcUsuarioId();
 
@@ -28,11 +33,11 @@ function extra(doc: any, ...descricoes: string[]): string {
     ...(Array.isArray(doc?.campos_extras) ? doc.campos_extras : []),
     ...(Array.isArray(doc?.atributos) ? doc.atributos : []),
   ];
-  const alvos = descricoes.map((d) => d.trim().toUpperCase());
+  const alvos = descricoes.map((d) => normalize(d));
   for (const alvo of alvos) {
     for (const item of list) {
-      const e = item?.extras ?? item;
-      const nome = String(e?.descricao ?? "").trim().toUpperCase();
+      const e = item?.extras ?? item?.atributo ?? item?.campo_extra ?? item;
+      const nome = normalize(e?.descricao);
       if (nome === alvo) {
         const v = String(e?.conteudo ?? "").trim();
         if (v) return v;
@@ -137,6 +142,20 @@ function dataPedidoRaw(doc: any): string {
   return "";
 }
 
+/** Busca o documento completo (traz campos_extras e datas que a listagem omite). */
+async function fetchDocumentoCompleto(endpoint: string, id: string): Promise<any | null> {
+  if (!id) return null;
+  try {
+    const res = await fetch(`${GC_BASE}/api/${endpoint}/${id}`, { headers: gcHeaders() });
+    if (!res.ok) return null;
+    const json = await res.json().catch(() => null);
+    const raw = json?.data ?? json;
+    return raw?.Compra ?? raw?.Orcamento ?? raw?.Pedido ?? raw ?? null;
+  } catch {
+    return null;
+  }
+}
+
 function estadoPedido(doc: any): PedidoDetalhe["estado"] {
   const situacaoId = String(doc?.situacao_id ?? "");
   const situacao = normalize(doc?.nome_situacao);
@@ -147,8 +166,8 @@ function estadoPedido(doc: any): PedidoDetalhe["estado"] {
 }
 
 async function fetchPedidoPorCodigo(codigo: string): Promise<PedidoDetalhe | null> {
-  // Buscamos em /compras (Pedidos de Compra) mas também em /orcamentos e /pedidos_servicos
-  // pois o usuário pode ter digitado qualquer tipo de referência no campo extra.
+  // Pedido de Compra vive em /compras. Mantemos /pedidos e /orcamentos como fallback
+  // porque o campo extra do orçamento aceita qualquer tipo de referência.
   const endpoints = ["compras", "pedidos", "orcamentos"];
   for (const endpoint of endpoints) {
     const url = new URL(`${GC_BASE}/api/${endpoint}`);
@@ -159,9 +178,14 @@ async function fetchPedidoPorCodigo(codigo: string): Promise<PedidoDetalhe | nul
     const json = await res.json().catch(() => null);
     const rows = Array.isArray(json?.data) ? json.data : [];
     const docs = rows.map((row: any) => row?.Compra ?? row?.Orcamento ?? row?.Pedido ?? row).filter(Boolean);
-    const doc = docs.find((item: any) => String(item?.codigo ?? "").replace(/\D/g, "") === codigo);
+    let doc = docs.find(
+      (item: any) => String(item?.codigo ?? "").replace(/\D/g, "").replace(/^0+(?=\d)/, "") === codigo,
+    );
     
     if (doc) {
+      // A listagem do GC não traz campos_extras nem todas as datas: buscamos o documento completo.
+      const detalhe = await fetchDocumentoCompleto(endpoint, String(doc?.id ?? ""));
+      if (detalhe) doc = { ...doc, ...detalhe };
       const raw = dataPedidoRaw(doc);
       const referencia = String(doc?.data_emissao ?? doc?.data ?? new Date().toISOString().slice(0, 10));
       return {
@@ -241,6 +265,20 @@ async function handleRequest(req: Request) {
       `[compras-chegadas] encontrados ${brutos.length} orçamentos nas 3 situações solicitadas`,
     );
 
+    // A listagem do GC não devolve campos_extras (é lá que ficam "PEDIDO DE COMPRA GC",
+    // "DATA DA CHEGADA DE PEÇAS" e "OS GC"). Buscamos o documento completo de cada orçamento.
+    for (let inicio = 0; inicio < brutos.length; inicio += 6) {
+      const lote = brutos.slice(inicio, inicio + 6);
+      const completos = await Promise.all(
+        lote.map((item) =>
+          fetchDocumentoCompleto(item.tipo === "compra" ? "compras" : "orcamentos", String(item.doc?.id ?? "")),
+        ),
+      );
+      completos.forEach((completo, idx) => {
+        if (completo) lote[idx].doc = { ...lote[idx].doc, ...completo };
+      });
+    }
+
     const pedidosReferenciados = [...new Set(
       brutos
         .filter(({ tipo }) => tipo === "orcamento")
@@ -276,10 +314,13 @@ async function handleRequest(req: Request) {
         (pedido) => pedido.estado !== "chegou" && !pedido.data_chegada,
       );
       const datasPedidos = validos.map((pedido) => pedido.data_chegada).filter((data): data is string => Boolean(data));
-      // Se houver algum PC pendente sem data, o orçamento fica "Sem previsão"
+      // Rastreamento (Pick & Pack): a data segura é a MAIOR previsão entre os PCs válidos.
+      // Se nenhum PC informou data, caímos para a data escrita no próprio orçamento.
+      const maiorDataPedido = datasPedidos.sort().at(-1) ?? null;
       const dataChegada = tipo === "orcamento" && validos.length > 0
-        ? (algumSemPrevisao ? null : (datasPedidos.sort().at(-1) ?? dataChegadaOrcamento))
+        ? (maiorDataPedido ?? dataChegadaOrcamento)
         : dataChegadaOrcamento;
+      const semPrevisaoConfiavel = tipo === "orcamento" && algumSemPrevisao && !maiorDataPedido && !dataChegadaOrcamento;
       
       const produtos = (Array.isArray(doc?.produtos) ? doc.produtos : []).map((p: any) => {
         const prod = p?.produto ?? p;
@@ -304,6 +345,7 @@ async function handleRequest(req: Request) {
         pedidos_compra: pedidosCompra,
         pedidos_detalhes: detalhes,
         pedidos_todos_chegaram: todosChegaram,
+        pedidos_sem_previsao: semPrevisaoConfiavel,
         data_chegada_orcamento: dataChegadaOrcamento,
         fornecedor: String(doc?.nome_fornecedor || doc?.nome_vendedor || ""),
         situacao_id: situacao.id,
