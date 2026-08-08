@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import {
-  CalendarClock, ExternalLink, Filter, Loader2, Package, RefreshCw, Search, Wrench,
+  CalendarClock, ExternalLink, Loader2, Package, RefreshCw, Search, Wrench,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
