@@ -1646,7 +1646,7 @@ async function runBudgetKanbanSync(opts: {
   let legacyFallbackUsed = false;
   for (let i = 0; i < syncRows.length; i += 50) {
     const batch = syncRows.slice(i, i + 50);
-    const { error } = await sbClient.rpc("upsert_budget_kanban_sync_items", {
+    const { error } = await sbClient.rpc("upsert_budget_kanban_sync_items_v2", {
       p_items: batch,
     });
     if (error) {
