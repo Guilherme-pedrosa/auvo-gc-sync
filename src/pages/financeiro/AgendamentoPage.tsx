@@ -430,6 +430,24 @@ export default function AgendamentoPage() {
         <div className="flex flex-1 items-center justify-center text-sm text-muted-foreground">
           <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Carregando calendário de compras e orçamentos...
         </div>
+      ) : filtrados.length === 0 ? (
+        <div className="flex flex-1 items-center justify-center border-2 border-dashed rounded-lg p-12 text-center bg-muted/20">
+          <div className="max-w-md space-y-4">
+            <div className="mx-auto w-12 h-12 rounded-full bg-muted flex items-center justify-center">
+              <CalendarClock className="h-6 w-6 text-muted-foreground" />
+            </div>
+            <div>
+              <h2 className="text-lg font-semibold">Nenhum orçamento encontrado</h2>
+              <p className="text-sm text-muted-foreground mt-1">
+                Não há orçamentos pendentes nas situações de compra/chegada para os filtros selecionados.
+              </p>
+            </div>
+            <Button variant="outline" onClick={handleAtualizar} className="gap-2">
+              <RefreshCw className="h-4 w-4" />
+              Tentar novamente
+            </Button>
+          </div>
+        </div>
       ) : (
         <div className="grid min-h-0 flex-1 grid-cols-1 gap-3 xl:grid-cols-[minmax(0,1fr)_340px]">
           <div className="flex min-h-0 flex-col gap-3 overflow-y-auto pr-1">
