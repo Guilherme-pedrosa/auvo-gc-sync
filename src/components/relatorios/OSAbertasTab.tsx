@@ -681,15 +681,17 @@ export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, o
     };
   }, [expanded, filtered, liveOsMap, osTaskByGcOsId, resolveAuvoTaskLive]);
 
-  // Fetch live exec task info when client row is expanded
+  // Resolve live exec info em background para TODAS as OS listadas (não só a linha expandida),
+  // para que os filtros de agenda/execução funcionem sem precisar abrir cada cliente.
   useEffect(() => {
-    if (!expanded) return;
-    const row = filtered.find((r) => r.cliente === expanded);
-    if (!row) return;
-
-    const itemsToResolve = row.items.filter(
-      (item: any) => item.gc_os_id && !liveExecMap.has(String(item.gc_os_id))
-    );
+    const expandedRow = expanded ? filtered.find((r) => r.cliente === expanded) : null;
+    const ordered: any[] = [
+      ...(expandedRow?.items ?? []),
+      ...filtered.flatMap((r: any) => (r.cliente === expanded ? [] : r.items)),
+    ];
+    const itemsToResolve = ordered
+      .filter((item: any) => item.gc_os_id && !liveExecMap.has(String(item.gc_os_id)))
+      .slice(0, 12); // lotes progressivos — o efeito reexecuta até concluir
     if (itemsToResolve.length === 0) return;
 
     let cancelled = false;
