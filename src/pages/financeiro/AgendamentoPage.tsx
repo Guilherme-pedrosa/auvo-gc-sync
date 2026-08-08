@@ -244,7 +244,7 @@ export default function AgendamentoPage() {
     return (
       <div key={chave} className="rounded-md border border-border bg-card p-2.5">
         <div className="flex items-start justify-between gap-2">
-          <div className="min-w-0">
+          <div className="min-w-0 flex-1">
             <div className="flex items-center gap-1.5">
               <p className="truncate text-xs font-bold text-primary">
                 {i.documento_link ? (
@@ -302,9 +302,14 @@ export default function AgendamentoPage() {
         )}
 
         <div className="mt-2 flex flex-wrap items-center gap-1">
+          {status === "atrasada" && (
+            <Badge variant="outline" className="text-[10px] border-destructive bg-destructive/10 text-destructive">
+              Atrasada · {formatDiaBR(i.data_chegada)}
+            </Badge>
+          )}
           <Badge variant="outline" className={cn("text-[10px]", style.chip)}>
             {i.pedidos_todos_chegaram ? "Todos os PCs chegaram" : style.label}
-            {i.data_chegada ? ` · ${formatDiaBR(i.data_chegada)}` : ""}
+            {i.data_chegada && status !== "atrasada" ? ` · ${formatDiaBR(i.data_chegada)}` : ""}
           </Badge>
           <Badge variant="secondary" className="text-[10px]">{i.situacao}</Badge>
           {i.fornecedor && <Badge variant="outline" className="max-w-[160px] truncate text-[10px]">{i.fornecedor}</Badge>}
