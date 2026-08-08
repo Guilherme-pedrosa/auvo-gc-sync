@@ -2933,6 +2933,10 @@ export type Database = {
         Args: { p_items: Json }
         Returns: number
       }
+      upsert_budget_kanban_sync_items_v2: {
+        Args: { p_items: Json }
+        Returns: undefined
+      }
     }
     Enums: {
       app_role: "admin" | "user" | "cliente"
