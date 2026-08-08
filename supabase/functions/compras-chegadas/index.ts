@@ -1,16 +1,11 @@
 // Lê os pedidos de compra e orçamentos do GestãoClick que ainda NÃO chegaram/foram aprovados
 // e devolve a agenda de chegada de peças (campo extra "DATA DA CHEGADA DAS PEÇAS"),
 // vinculada à OS / orçamento informados no campo extra "OS GC".
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
+import { createClient } from "npm:@supabase/supabase-js@2.45.0";
+import { corsHeaders } from "npm:@supabase/supabase-js@2/cors";
 import { installGcUsuarioId, gcHeaders } from "../_shared/gc-user.ts";
 
 installGcUsuarioId();
-
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers":
-    "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
-};
 
 const GC_BASE = "https://api.gestaoclick.com";
 
@@ -36,7 +31,10 @@ const SITUACOES_ORCAMENTOS = [
 ];
 
 function extra(doc: any, ...descricoes: string[]): string {
-  const list = Array.isArray(doc?.campos_extras) ? doc.campos_extras : [];
+  const list = [
+    ...(Array.isArray(doc?.campos_extras) ? doc.campos_extras : []),
+    ...(Array.isArray(doc?.atributos) ? doc.atributos : []),
+  ];
   const alvos = descricoes.map((d) => d.trim().toUpperCase());
   for (const alvo of alvos) {
     for (const item of list) {
@@ -148,7 +146,7 @@ function estadoPedido(doc: any): PedidoDetalhe["estado"] {
 }
 
 async function fetchPedidoPorCodigo(codigo: string): Promise<PedidoDetalhe | null> {
-  const url = new URL(`${GC_BASE}/compras`);
+  const url = new URL(`${GC_BASE}/api/compras`);
   url.searchParams.set("codigo", codigo);
   url.searchParams.set("limite", "20");
   const res = await fetch(url.toString(), { headers: gcHeaders() });
@@ -185,12 +183,22 @@ function parseVinculo(raw: string): { tipo: "os" | "orcamento" | "texto"; codigo
 async function fetchSituacao(sit: { id: string; nome: string; grupo: string }, endpoint = "compras") {
   const out: any[] = [];
   for (let pagina = 1; pagina <= 12; pagina++) {
-    const url = new URL(`${GC_BASE}/${endpoint}`);
+    const url = new URL(`${GC_BASE}/api/${endpoint}`);
     url.searchParams.set("situacao_id", sit.id);
     url.searchParams.set("limite", "100");
     url.searchParams.set("pagina", String(pagina));
-    const res = await fetch(url.toString(), { headers: gcHeaders() });
-    if (!res.ok) break;
+    let res: Response | null = null;
+    for (let tentativa = 0; tentativa < 3; tentativa++) {
+      res = await fetch(url.toString(), { headers: gcHeaders() });
+      if (res.status !== 429) break;
+      await new Promise((resolve) => setTimeout(resolve, 2000 * (tentativa + 1)));
+    }
+    if (!res?.ok) {
+      const body = await res?.text().catch(() => "");
+      throw new Error(
+        `Falha ao consultar ${endpoint} na situação ${sit.id} (HTTP ${res?.status ?? "sem resposta"}): ${body?.slice(0, 180) ?? ""}`,
+      );
+    }
     const json = await res.json().catch(() => null);
     const rows = Array.isArray(json?.data) ? json.data : [];
     for (const r of rows) {
@@ -198,13 +206,14 @@ async function fetchSituacao(sit: { id: string; nome: string; grupo: string }, e
       if (!c) continue;
       out.push({ doc: c, situacao: sit, tipo: endpoint === "orcamentos" ? "orcamento" : "compra" });
     }
-    if (!json?.meta?.proxima_pagina) break;
+    const totalPaginas = Number(json?.meta?.total_paginas ?? json?.meta?.totalPages ?? 1);
+    if (pagina >= totalPaginas || rows.length === 0) break;
   }
   return out;
 }
 
 async function handleRequest(req: Request) {
-  if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
+  if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
   try {
     const [pedidosResults, orcamentosResults] = await Promise.all([
@@ -212,6 +221,9 @@ async function handleRequest(req: Request) {
       Promise.all(SITUACOES_ORCAMENTOS.map((s) => fetchSituacao(s, "orcamentos"))),
     ]);
     const brutos = [...pedidosResults.flat(), ...orcamentosResults.flat()];
+    console.log(
+      `[compras-chegadas] encontrados ${orcamentosResults.flat().length} orçamentos e ${pedidosResults.flat().length} pedidos`,
+    );
 
     const pedidosReferenciados = [...new Set(
       brutos
