@@ -1444,9 +1444,34 @@ export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, o
                                             const live = liveExecMap.get(String(item.gc_os_id));
                                             const execDate = live?.dataTarefa || execRow?.data_tarefa;
                                             const execStatus = live?.status || (execId && execTaskStatusMap?.get(execId));
+                                            const execTecnico = live?.tecnico || execRow?.tecnico || null;
+                                            // Sem data e sem técnico => OS ainda não agendada: não exibe nada
+                                            if (!execDate && !execTecnico) return <span className="text-muted-foreground">—</span>;
+                                            const parseDay = (v: any): Date | null => {
+                                              const s = String(v || "").trim();
+                                              if (!s) return null;
+                                              const br = s.match(/^(\d{2})\/(\d{2})\/(\d{4})/);
+                                              if (br) return new Date(Number(br[3]), Number(br[2]) - 1, Number(br[1]));
+                                              const iso = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+                                              if (iso) return new Date(Number(iso[1]), Number(iso[2]) - 1, Number(iso[3]));
+                                              return null;
+                                            };
+                                            const d = parseDay(execDate);
+                                            let dateClass = "";
+                                            if (d) {
+                                              const today = new Date();
+                                              today.setHours(0, 0, 0, 0);
+                                              const diff = d.getTime() - today.getTime();
+                                              dateClass =
+                                                diff < 0
+                                                  ? "text-amber-700 dark:text-amber-300 bg-amber-100 dark:bg-amber-900/40 rounded px-1"
+                                                  : diff === 0
+                                                    ? "text-emerald-600 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-900/30 rounded px-1"
+                                                    : "text-green-700 dark:text-green-300 bg-green-100 dark:bg-green-900/40 rounded px-1";
+                                            }
                                             return (
                                               <>
-                                                <span>{execDate || "—"}</span>
+                                                <span className={dateClass}>{execDate || "—"}</span>
                                                 {execStatus === "Finalizada" && (
                                                   <Badge variant="outline" className="text-[9px] px-1 py-0 bg-green-100 text-green-700 border-green-300 dark:bg-green-900/50 dark:text-green-300 dark:border-green-700 whitespace-nowrap">
                                                     ✅ Exec. Finalizada
