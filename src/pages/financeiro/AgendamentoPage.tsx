@@ -167,12 +167,19 @@ export default function AgendamentoPage() {
       );
     }
     return (
-      <div key={i.compra_id} className="rounded-md border border-border bg-card p-2.5">
+      <div key={i.compra_id || i.compra_codigo || Math.random()} className="rounded-md border border-border bg-card p-2.5">
         <div className="flex items-start justify-between gap-2">
           <div className="min-w-0">
-            <p className="truncate text-xs font-semibold">Orçamento {i.orcamento_codigo || i.vinculo_codigo}</p>
-            <p className="truncate text-[11px] text-muted-foreground">
-              {i.compra_codigo ? `PC ${i.compra_codigo} · ` : ""}{i.cliente || "Cliente não identificado"}
+            <div className="flex items-center gap-1.5">
+              <p className="truncate text-xs font-bold text-primary">
+                {i.vinculo_tipo === "orcamento" ? "Orçamento" : "Pedido de Compra"} {i.orcamento_codigo || i.vinculo_codigo || i.compra_codigo}
+              </p>
+              {i.vinculo_tipo === "orcamento" && i.compra_codigo && (
+                <Badge variant="outline" className="h-4 px-1 text-[9px] font-normal">PC {i.compra_codigo}</Badge>
+              )}
+            </div>
+            <p className="truncate text-[11px] text-muted-foreground mt-0.5">
+              {i.cliente || "Cliente não identificado"}
             </p>
           </div>
           <span className="shrink-0 text-xs font-semibold tabular-nums">{formatBRL(i.documento_valor || i.valor_total)}</span>
