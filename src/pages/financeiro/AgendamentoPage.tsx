@@ -2,12 +2,15 @@ import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import {
-  AlertTriangle, CalendarClock, ChevronLeft, ChevronRight, ExternalLink, Loader2,
+  AlertTriangle, CalendarClock, ChevronLeft, ChevronRight, ExternalLink, Filter, Loader2,
   PackageSearch, RefreshCw, Search,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import { cn } from "@/lib/utils";
 import {
   buildMonthGrid, formatBRL, formatDiaBR, getChegadaStatus, monthLabel, todayISO,
@@ -44,6 +47,8 @@ export default function AgendamentoPage() {
   const [mes, setMes] = useState(() => new Date().getMonth());
   const [diaSelecionado, setDiaSelecionado] = useState<string>(hoje);
   const [busca, setBusca] = useState("");
+  const [excludedSituacoes, setExcludedSituacoes] = useState<Set<string>>(new Set());
+  const [searchSituacao, setSearchSituacao] = useState("");
   const [alvo, setAlvo] = useState<AgendarAlvo | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
 
@@ -54,16 +59,35 @@ export default function AgendamentoPage() {
   });
 
   const termo = busca.trim().toLowerCase();
-  const filtrados = useMemo(
-    () =>
-      itens.filter((i) =>
-        !termo ||
+  const filtrados = useMemo(() => {
+    let result = itens;
+    
+    // Filtro por situação
+    if (excludedSituacoes.size > 0) {
+      result = result.filter((i) => !excludedSituacoes.has(i.situacao));
+    }
+
+    // Filtro por busca textual
+    if (termo) {
+      result = result.filter((i) =>
         [i.compra_codigo, i.cliente, i.fornecedor, i.vinculo_texto, i.situacao, i.equipamento,
          ...i.produtos.map((p) => p.nome)]
           .some((v) => String(v || "").toLowerCase().includes(termo)),
-      ),
-    [itens, termo],
-  );
+      );
+    }
+
+    return result;
+  }, [itens, termo, excludedSituacoes]);
+
+  const allSituacoes = useMemo(() => {
+    return Array.from(new Set(itens.map((i) => i.situacao).filter(Boolean))).sort();
+  }, [itens]);
+
+  const filteredSituacoes = useMemo(() => {
+    if (!searchSituacao) return allSituacoes;
+    const s = searchSituacao.toLowerCase();
+    return allSituacoes.filter((sit) => sit.toLowerCase().includes(s));
+  }, [allSituacoes, searchSituacao]);
 
   const porDia = useMemo(() => {
     const map = new Map<string, ChegadaItem[]>();
@@ -200,7 +224,72 @@ export default function AgendamentoPage() {
             Acompanhamento de orçamentos pendentes ou aguardando peças.
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <Popover>
+            <PopoverTrigger asChild>
+              <Button variant="outline" size="sm" className="h-8 gap-2 text-xs">
+                <Filter className="h-3.5 w-3.5" />
+                Situações
+                {excludedSituacoes.size > 0 && (
+                  <Badge variant="secondary" className="h-4 px-1 text-[10px]">
+                    {allSituacoes.length - excludedSituacoes.size}
+                  </Badge>
+                )}
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent className="w-64 p-2" align="end">
+              <div className="space-y-2">
+                <div className="flex items-center justify-between px-2 pb-1 border-b">
+                  <span className="text-xs font-semibold">Filtrar Situações</span>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-6 px-1.5 text-[10px]"
+                    onClick={() => setExcludedSituacoes(new Set())}
+                  >
+                    Limpar
+                  </Button>
+                </div>
+                <div className="relative">
+                  <Search className="absolute left-2 top-1/2 h-3 w-3 -translate-y-1/2 text-muted-foreground" />
+                  <Input
+                    placeholder="Buscar situação..."
+                    value={searchSituacao}
+                    onChange={(e) => setSearchSituacao(e.target.value)}
+                    className="h-7 pl-7 text-[10px]"
+                  />
+                </div>
+                <ScrollArea className="h-64 pr-2">
+                  <div className="space-y-1">
+                    {filteredSituacoes.map((sit) => (
+                      <div
+                        key={sit}
+                        className="flex items-center gap-2 rounded-md px-2 py-1 hover:bg-muted/50 transition-colors"
+                      >
+                        <Checkbox
+                          id={`sit-${sit}`}
+                          checked={!excludedSituacoes.has(sit)}
+                          onCheckedChange={(checked) => {
+                            const next = new Set(excludedSituacoes);
+                            if (checked) next.delete(sit);
+                            else next.add(sit);
+                            setExcludedSituacoes(next);
+                          }}
+                        />
+                        <label
+                          htmlFor={`sit-${sit}`}
+                          className="flex-1 cursor-pointer truncate text-[11px] font-medium leading-none"
+                        >
+                          {sit}
+                        </label>
+                      </div>
+                    ))}
+                  </div>
+                </ScrollArea>
+              </div>
+            </PopoverContent>
+          </Popover>
+
           <div className="relative">
             <Search className="absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
             <Input
