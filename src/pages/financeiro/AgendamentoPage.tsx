@@ -30,13 +30,24 @@ const STATUS_STYLE: Record<ChegadaStatus, { chip: string; dot: string; label: st
 };
 
 async function fetchChegadas(): Promise<ChegadaItem[]> {
+  console.log("[AgendamentoPage] chamando compras-chegadas...");
   const { data, error } = await supabase.functions.invoke("compras-chegadas", { body: {} });
-  if (error) throw error;
-  if (data?.ok === false) throw new Error(data?.error || "Falha ao consultar compras");
-  
-  // Enriquecimento com dados de rastreamento (simulando a lógica coesa solicitada)
-  const { data: trackData } = await supabase.functions.invoke("compras-rastreamento", { body: {} });
-  console.log("Dados de rastreamento integrados:", trackData);
+  if (error) {
+    console.error("[AgendamentoPage] erro invoke:", error);
+    throw error;
+  }
+  if (data?.ok === false) {
+    console.error("[AgendamentoPage] erro backend:", data?.error);
+    throw new Error(data?.error || "Falha ao consultar compras");
+  }
+
+  // Log para debug de rastreamento
+  try {
+    const { data: trackData } = await supabase.functions.invoke("compras-rastreamento", { body: {} });
+    console.log("[AgendamentoPage] Dados de rastreamento integrados:", trackData);
+  } catch (e) {
+    console.warn("[AgendamentoPage] Falha opcional no rastreamento:", e);
+  }
 
   return (data?.itens || []) as ChegadaItem[];
 }
