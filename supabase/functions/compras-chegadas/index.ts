@@ -128,7 +128,9 @@ async function handleRequest(req: Request) {
       const orcCodigo = tipo === "orcamento" ? String(doc?.codigo ?? "") : (vinculo.tipo === "orcamento" ? vinculo.codigo : "");
 
       return {
+        doc_tipo: tipo === "orcamento" ? "orcamento" : "compra",
         compra_id: tipo === "compra" ? String(doc?.id ?? "") : "",
+        orcamento_id: tipo === "orcamento" ? String(doc?.id ?? "") : "",
         compra_codigo: tipo === "compra" ? String(doc?.codigo ?? "") : "",
         fornecedor: String(doc?.nome_fornecedor || doc?.nome_vendedor || ""),
         situacao_id: situacao.id,
