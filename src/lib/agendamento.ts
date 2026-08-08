@@ -62,6 +62,8 @@ export function parseExecTaskId(raw: unknown): string | null {
 
 /** Chegada de peças vinda do módulo de compras do GestãoClick. */
 export type ChegadaItem = {
+  doc_tipo?: "orcamento" | "compra";
+  orcamento_id?: string;
   compra_id: string;
   compra_codigo: string;
   fornecedor: string;
