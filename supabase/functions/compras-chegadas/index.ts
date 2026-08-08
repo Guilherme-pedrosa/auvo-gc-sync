@@ -19,6 +19,9 @@ const SITUACOES_PEDIDOS = [
 ];
 
 const SITUACOES_ORCAMENTOS = [
+  { id: "8743484", nome: "APROVADO - AG COMPRA", grupo: "ag_compra" },
+  { id: "8743485", nome: "COMPRADO - AG CHEGADA", grupo: "ag_chegada" },
+  { id: "8894381", nome: "Aguardando chegada - peça em garantia", grupo: "garantia" },
   { id: "7063588", nome: "Aguardando Aprovação", grupo: "ag_aprovacao" },
   { id: "2039849", nome: "Aguardando Correção / informações solicitadas", grupo: "ag_aprovacao" },
   { id: "7084340", nome: "Aguardando Resposta Cliente", grupo: "ag_aprovacao" },
