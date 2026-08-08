@@ -1102,6 +1102,21 @@ export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, o
       }
 
       toast.success(`Tarefa de execução #${execTaskId} atualizada no Auvo!`);
+      // Atualiza o cache local imediatamente (sem esperar novo fetch do Auvo)
+      if (editingCard.gc_os_id) {
+        const novaData = editDate ? format(editDate, "yyyy-MM-dd") : null;
+        setLiveExecMap((prev) => {
+          const next = new Map(prev);
+          const atual = next.get(String(editingCard.gc_os_id));
+          next.set(String(editingCard.gc_os_id), {
+            execTaskId: atual?.execTaskId || String(execTaskId),
+            tecnico: tecnicoSelecionado?.name || tecnicoSelecionado?.login || atual?.tecnico || "",
+            dataTarefa: novaData || atual?.dataTarefa || "",
+            status: atual?.status || "",
+          });
+          return next;
+        });
+      }
       onRefresh?.();
       setShowEditModal(false);
       setEditingCard(null);
