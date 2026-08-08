@@ -148,6 +148,7 @@ export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, o
   const [searchSituacao, setSearchSituacao] = useState("");
   // Multisseleção: vazio = todas
   const [execStatusFilter, setExecStatusFilter] = useState<Set<string>>(new Set()); // em_andamento | pausada | finalizada | sem_exec | excluidas
+  const [agendaFilter, setAgendaFilter] = useState<Set<string>>(new Set()); // nao_agendada | atrasada | hoje | agendada
   const [localReparoFilter, setLocalReparoFilter] = useState<string>("all"); // all | galpao | cliente | sem_info
   const [expanded, setExpanded] = useState<string | null>(null);
 
@@ -342,6 +343,31 @@ export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, o
     return "";
   }, [liveExecMap, execTaskStatusMap, allTasks]);
 
+  // Bucket de agendamento da execução: nao_agendada | atrasada | hoje | agendada
+  const getItemAgendaBucket = useCallback((item: any): string => {
+    const execId = parseExecIds(item.gc_os_tarefa_exec)[0] || null;
+    const execRow = execId ? allTasks.find((t: any) => String(t.auvo_task_id) === execId) : null;
+    const live = liveExecMap.get(String(item.gc_os_id));
+    const execDate = live?.dataTarefa || execRow?.data_tarefa;
+    const execTecnico = live?.tecnico || execRow?.tecnico;
+    if (!execDate && !execTecnico) return "nao_agendada";
+    const s = String(execDate || "").trim();
+    const br = s.match(/^(\d{2})\/(\d{2})\/(\d{4})/);
+    const iso = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    const d = br
+      ? new Date(Number(br[3]), Number(br[2]) - 1, Number(br[1]))
+      : iso
+        ? new Date(Number(iso[1]), Number(iso[2]) - 1, Number(iso[3]))
+        : null;
+    if (!d) return "nao_agendada";
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const diff = d.getTime() - today.getTime();
+    if (diff < 0) return "atrasada";
+    if (diff === 0) return "hoje";
+    return "agendada";
+  }, [allTasks, liveExecMap]);
+
   const getItemEquipamento = useCallback((item: any) => {
     const live = liveEquipmentMap.get(String(item?.gc_os_id));
     if (live?.nome || live?.serie) return live;
@@ -440,8 +466,13 @@ export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, o
       });
     }
 
+    // Filtro de agendamento da execução (multisseleção; vazio = todos)
+    if (agendaFilter.size > 0) {
+      items = items.filter((item) => agendaFilter.has(getItemAgendaBucket(item)));
+    }
+
     return items;
-  }, [data, deletedOsIds, excludedSituacoes, execStatusFilter, getItemExecStatus, localReparoFilter, movedOsIds, removedOsIds]);
+  }, [agendaFilter, data, deletedOsIds, excludedSituacoes, execStatusFilter, getItemAgendaBucket, getItemExecStatus, localReparoFilter, movedOsIds, removedOsIds]);
 
   // Verifica no GC quais OS listadas foram apagadas
   const checkedOsIdsRef = useRef<Set<string>>(new Set());
