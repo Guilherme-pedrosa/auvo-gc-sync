@@ -300,10 +300,13 @@ async function handleRequest(req: Request) {
         (pedido) => pedido.estado !== "chegou" && !pedido.data_chegada,
       );
       const datasPedidos = validos.map((pedido) => pedido.data_chegada).filter((data): data is string => Boolean(data));
-      // Se houver algum PC pendente sem data, o orçamento fica "Sem previsão"
+      // Rastreamento (Pick & Pack): a data segura é a MAIOR previsão entre os PCs válidos.
+      // Se nenhum PC informou data, caímos para a data escrita no próprio orçamento.
+      const maiorDataPedido = datasPedidos.sort().at(-1) ?? null;
       const dataChegada = tipo === "orcamento" && validos.length > 0
-        ? (algumSemPrevisao ? null : (datasPedidos.sort().at(-1) ?? dataChegadaOrcamento))
+        ? (maiorDataPedido ?? dataChegadaOrcamento)
         : dataChegadaOrcamento;
+      const semPrevisaoConfiavel = tipo === "orcamento" && algumSemPrevisao && !maiorDataPedido && !dataChegadaOrcamento;
       
       const produtos = (Array.isArray(doc?.produtos) ? doc.produtos : []).map((p: any) => {
         const prod = p?.produto ?? p;
