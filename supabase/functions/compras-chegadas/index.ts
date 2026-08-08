@@ -118,12 +118,20 @@ function parseChegada(raw: string, referencia: string): string | null {
 function dataPedidoRaw(doc: any): string {
   const campoExtra = extra(doc, ...CAMPOS_DATA_PEDIDO);
   if (campoExtra) return campoExtra;
-  for (const key of [
-    "data_chegada", "data_previsao_entrega", "previsao_entrega", "data_entrega",
-    "data_prevista", "previsao", "data_recebimento",
-  ]) {
+  // Campos nativos do GC em ordem de prioridade
+  const keys = [
+    "data_chegada", 
+    "data_previsao_entrega", 
+    "previsao_entrega", 
+    "data_entrega",
+    "data_prevista", 
+    "previsao", 
+    "data_recebimento",
+    "data_saida"
+  ];
+  for (const key of keys) {
     const value = String(doc?.[key] ?? "").trim();
-    if (value) return value;
+    if (value && value !== "0000-00-00" && value !== "null") return value;
   }
   return "";
 }
@@ -259,9 +267,8 @@ async function handleRequest(req: Request) {
         (pedido) => pedido.estado !== "chegou" && !pedido.data_chegada,
       );
       const datasPedidos = validos.map((pedido) => pedido.data_chegada).filter((data): data is string => Boolean(data));
-      // A OS só pode ser agendada quando o último PC chegar. Se um PC pendente não tem
-      // previsão, não exibimos uma data enganosa; a data do orçamento vira apenas fallback.
-      const dataChegada = tipo === "orcamento" && detalhes.length
+      // Se houver algum PC pendente sem data, o orçamento fica "Sem previsão"
+      const dataChegada = tipo === "orcamento" && validos.length > 0
         ? (algumSemPrevisao ? null : (datasPedidos.sort().at(-1) ?? dataChegadaOrcamento))
         : dataChegadaOrcamento;
       
