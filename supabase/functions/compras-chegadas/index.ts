@@ -152,8 +152,8 @@ function estadoPedido(doc: any): PedidoDetalhe["estado"] {
 }
 
 async function fetchPedidoPorCodigo(codigo: string): Promise<PedidoDetalhe | null> {
-  // Buscamos em /compras (Pedidos de Compra) mas também em /orcamentos e /pedidos_servicos
-  // pois o usuário pode ter digitado qualquer tipo de referência no campo extra.
+  // Pedido de Compra vive em /compras. Mantemos /pedidos e /orcamentos como fallback
+  // porque o campo extra do orçamento aceita qualquer tipo de referência.
   const endpoints = ["compras", "pedidos", "orcamentos"];
   for (const endpoint of endpoints) {
     const url = new URL(`${GC_BASE}/api/${endpoint}`);
@@ -164,9 +164,14 @@ async function fetchPedidoPorCodigo(codigo: string): Promise<PedidoDetalhe | nul
     const json = await res.json().catch(() => null);
     const rows = Array.isArray(json?.data) ? json.data : [];
     const docs = rows.map((row: any) => row?.Compra ?? row?.Orcamento ?? row?.Pedido ?? row).filter(Boolean);
-    const doc = docs.find((item: any) => String(item?.codigo ?? "").replace(/\D/g, "") === codigo);
+    let doc = docs.find(
+      (item: any) => String(item?.codigo ?? "").replace(/\D/g, "").replace(/^0+(?=\d)/, "") === codigo,
+    );
     
     if (doc) {
+      // A listagem do GC não traz campos_extras nem todas as datas: buscamos o documento completo.
+      const detalhe = await fetchDocumentoCompleto(endpoint, String(doc?.id ?? ""));
+      if (detalhe) doc = { ...doc, ...detalhe };
       const raw = dataPedidoRaw(doc);
       const referencia = String(doc?.data_emissao ?? doc?.data ?? new Date().toISOString().slice(0, 10));
       return {
