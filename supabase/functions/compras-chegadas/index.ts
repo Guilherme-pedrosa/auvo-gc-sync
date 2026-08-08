@@ -27,6 +27,12 @@ const SITUACOES_ORCAMENTOS = [
   { id: "7063588", nome: "Aguardando Aprovação", grupo: "ag_aprovacao" },
   { id: "2039849", nome: "Aguardando Correção / informações solicitadas", grupo: "ag_aprovacao" },
   { id: "7084340", nome: "Aguardando Resposta Cliente", grupo: "ag_aprovacao" },
+  { id: "7063587", nome: "Aguardando Chegada de Peças", grupo: "ag_chegada" },
+  { id: "7063589", nome: "Aguardando Fabricação", grupo: "ag_fabricacao" },
+  { id: "7219959", nome: "Pedido Conferido - Aguardando Execução", grupo: "ag_execucao" },
+  { id: "2138148", nome: "Pedido em Conferência", grupo: "conferencia" },
+  { id: "7106316", nome: "Retirada pelo Técnico", grupo: "retirada" },
+  { id: "7253507", nome: "Serviço Aguardando Execução", grupo: "ag_execucao" },
 ];
 
 function extra(doc: any, descricao: string): string {
