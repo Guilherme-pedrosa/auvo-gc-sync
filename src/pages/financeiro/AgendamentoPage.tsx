@@ -12,6 +12,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { cn } from "@/lib/utils";
+import { toast } from "sonner";
 import {
   buildMonthGrid, formatBRL, formatDiaBR, getChegadaStatus, monthLabel, todayISO,
   type ChegadaItem, type ChegadaStatus,
@@ -41,6 +42,12 @@ function documentoLabel(item: ChegadaItem): string {
   return item.vinculo_texto ? item.vinculo_texto.slice(0, 40) : "Sem vínculo";
 }
 
+/** Tipo real do documento: preferimos o campo do backend, com fallback pelo código de compra. */
+function isPedidoCompra(i: ChegadaItem): boolean {
+  if (i.doc_tipo) return i.doc_tipo === "compra";
+  return Boolean(i.compra_id || i.compra_codigo);
+}
+
 export default function AgendamentoPage() {
   const hoje = todayISO();
   const [ano, setAno] = useState(() => new Date().getFullYear());
@@ -61,13 +68,24 @@ export default function AgendamentoPage() {
     staleTime: 5 * 60 * 1000,
   });
 
+  const handleAtualizar = async () => {
+    const t = toast.loading("Atualizando orçamentos e pedidos...");
+    try {
+      const res = await refetch();
+      if (res.error) throw res.error;
+      toast.success(`Atualizado: ${res.data?.length ?? 0} documentos`, { id: t });
+    } catch (e) {
+      toast.error(`Falha ao atualizar: ${(e as Error).message}`, { id: t });
+    }
+  };
+
   const termo = busca.trim().toLowerCase();
   const filtrados = useMemo(() => {
     let result = itens;
 
     // Filtro por tipo de documento (Orçamento GC x Pedido de Compra GC)
     if (tipoDoc !== "todos") {
-      result = result.filter((i) => (tipoDoc === "pedidos" ? Boolean(i.compra_id) : !i.compra_id));
+      result = result.filter((i) => (tipoDoc === "pedidos" ? isPedidoCompra(i) : !isPedidoCompra(i)));
     }
 
     // Filtro por situação
@@ -89,8 +107,8 @@ export default function AgendamentoPage() {
 
   const totaisTipo = useMemo(() => ({
     todos: itens.length,
-    orcamentos: itens.filter((i) => !i.compra_id).length,
-    pedidos: itens.filter((i) => Boolean(i.compra_id)).length,
+    orcamentos: itens.filter((i) => !isPedidoCompra(i)).length,
+    pedidos: itens.filter((i) => isPedidoCompra(i)).length,
   }), [itens]);
 
   const allSituacoes = useMemo(() => {
@@ -168,8 +186,8 @@ export default function AgendamentoPage() {
   const renderItem = (i: ChegadaItem, compacto = false) => {
     const status = getChegadaStatus(i.data_chegada);
     const style = STATUS_STYLE[status];
-    const ehPedido = Boolean(i.compra_id);
-    const chave = `${ehPedido ? "pc" : "or"}-${i.compra_id || i.compra_codigo || i.orcamento_codigo || i.vinculo_codigo}`;
+    const ehPedido = isPedidoCompra(i);
+    const chave = `${ehPedido ? "pc" : "or"}-${i.compra_id || i.compra_codigo || i.orcamento_id || i.orcamento_codigo || i.vinculo_codigo}`;
     if (compacto) {
       return (
         <span
@@ -343,7 +361,7 @@ export default function AgendamentoPage() {
               className="h-8 w-64 pl-7 text-xs"
             />
           </div>
-          <Button size="sm" variant="outline" onClick={() => refetch()} disabled={isFetching}>
+          <Button size="sm" variant="outline" onClick={handleAtualizar} disabled={isFetching}>
             {isFetching ? <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="mr-1 h-3.5 w-3.5" />}
             Atualizar
           </Button>
