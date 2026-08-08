@@ -35,16 +35,36 @@ const SITUACOES_ORCAMENTOS = [
   { id: "7253507", nome: "Serviço Aguardando Execução", grupo: "ag_execucao" },
 ];
 
-function extra(doc: any, descricao: string): string {
+function extra(doc: any, ...descricoes: string[]): string {
   const list = Array.isArray(doc?.campos_extras) ? doc.campos_extras : [];
-  for (const item of list) {
-    const e = item?.extras ?? item;
-    if (String(e?.descricao ?? "").trim().toUpperCase() === descricao) {
-      return String(e?.conteudo ?? "").trim();
+  const alvos = descricoes.map((d) => d.trim().toUpperCase());
+  for (const alvo of alvos) {
+    for (const item of list) {
+      const e = item?.extras ?? item;
+      const nome = String(e?.descricao ?? "").trim().toUpperCase();
+      if (nome === alvo) {
+        const v = String(e?.conteudo ?? "").trim();
+        if (v) return v;
+      }
     }
   }
   return "";
 }
+
+// Campos preenchidos no ORÇAMENTO do GC que norteiam o agendamento.
+const CAMPO_DATA_CHEGADA = [
+  "DATA DA CHEGADA DE PEÇAS",
+  "DATA DA CHEGADA DAS PEÇAS",
+  "DATA CHEGADA DE PEÇAS",
+  "DATA CHEGADA DAS PEÇAS",
+  "DATA DE CHEGADA DAS PEÇAS",
+];
+const CAMPO_PEDIDO_COMPRA = [
+  "PEDIDO DE COMPRA GC",
+  "PEDIDO DE COMPRA",
+  "PEDIDO COMPRA GC",
+  "PC GC",
+];
 
 /** Aceita 10/08, 10/08/2026, 10-08-2026, 2026-08-10. Retorna YYYY-MM-DD. */
 function parseChegada(raw: string, referencia: string): string | null {
@@ -113,8 +133,13 @@ async function handleRequest(req: Request) {
     const itens = brutos.map(({ doc, situacao, tipo }) => {
       const vinculoRaw = extra(doc, "OS GC");
       const vinculo = parseVinculo(vinculoRaw);
-      const dataChegadaRaw = extra(doc, "DATA DA CHEGADA DAS PEÇAS");
+      const dataChegadaRaw = extra(doc, ...CAMPO_DATA_CHEGADA);
       const dataChegada = parseChegada(dataChegadaRaw, doc?.data_emissao || doc?.data);
+      // No orçamento, o campo "PEDIDO DE COMPRA GC" diz quais PCs abastecem aquela OS.
+      const pedidosCompra = extra(doc, ...CAMPO_PEDIDO_COMPRA)
+        .split(/[\/,;+\s]+/)
+        .map((s) => s.replace(/\D/g, ""))
+        .filter((s) => s.length >= 3);
       
       const produtos = (Array.isArray(doc?.produtos) ? doc.produtos : []).map((p: any) => {
         const prod = p?.produto ?? p;
@@ -131,7 +156,8 @@ async function handleRequest(req: Request) {
         doc_tipo: tipo === "orcamento" ? "orcamento" : "compra",
         compra_id: tipo === "compra" ? String(doc?.id ?? "") : "",
         orcamento_id: tipo === "orcamento" ? String(doc?.id ?? "") : "",
-        compra_codigo: tipo === "compra" ? String(doc?.codigo ?? "") : "",
+        compra_codigo: tipo === "compra" ? String(doc?.codigo ?? "") : (pedidosCompra[0] ?? ""),
+        pedidos_compra: pedidosCompra,
         fornecedor: String(doc?.nome_fornecedor || doc?.nome_vendedor || ""),
         situacao_id: situacao.id,
         situacao: String(doc?.nome_situacao ?? situacao.nome),
