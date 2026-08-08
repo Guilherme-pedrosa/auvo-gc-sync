@@ -172,16 +172,16 @@ export default function AgendamentoPage() {
           <Button size="sm" variant="secondary" className="h-7 flex-1 text-[11px]" onClick={() => abrirAgendamento(i)}>
             <CalendarClock className="mr-1 h-3 w-3" /> Agendar execução
           </Button>
-          {i.gc_link && (
+          {i.documento_link && (
             <Button size="icon" variant="ghost" className="h-7 w-7" asChild>
-              <a href={i.gc_link} target="_blank" rel="noreferrer" aria-label="Abrir pedido no GestãoClick">
+              <a href={i.documento_link} target="_blank" rel="noreferrer" aria-label="Abrir orçamento no GestãoClick">
                 <ExternalLink className="h-3 w-3" />
               </a>
             </Button>
           )}
-          {i.documento_link && (
+          {i.gc_link && (
             <Button size="icon" variant="ghost" className="h-7 w-7" asChild>
-              <a href={i.documento_link} target="_blank" rel="noreferrer" aria-label="Abrir documento vinculado">
+              <a href={i.gc_link} target="_blank" rel="noreferrer" aria-label="Abrir pedido de compra no GestãoClick">
                 <PackageSearch className="h-3 w-3" />
               </a>
             </Button>
