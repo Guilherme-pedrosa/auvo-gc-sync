@@ -226,9 +226,9 @@ export default function AgendamentoPage() {
     <div className="flex h-full min-h-0 flex-col gap-3 p-4">
       <header className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-lg font-semibold text-foreground">Agendamento · Calendário de Orçamentos</h1>
+          <h1 className="text-lg font-semibold text-foreground">Agendamento · Calendário de Compras e Orçamentos</h1>
           <p className="text-xs text-muted-foreground">
-            Acompanhamento de orçamentos pendentes ou aguardando peças.
+            Acompanhamento de orçamentos pendentes e prazos de chegada de pedidos de compra.
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
