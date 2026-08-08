@@ -178,21 +178,7 @@ function estadoPedido(doc: any): PedidoDetalhe["estado"] {
   return null;
 }
 
-// Lógica de fallback original simplificada
-async function fetchPedidoPorCodigoLegacy(codigo: string): Promise<PedidoDetalhe | null> {
-  const raw = dataPedidoRaw(doc);
-  const referencia = String(doc?.data_emissao ?? doc?.data ?? new Date().toISOString().slice(0, 10));
-  return {
-    codigo,
-    id: String(doc?.id ?? ""),
-    situacao_id: String(doc?.situacao_id ?? ""),
-    situacao: String(doc?.nome_situacao ?? "Situação não informada"),
-    data_chegada: parseChegada(raw, referencia),
-    data_chegada_texto: raw,
-    estado: estadoPedido(doc),
-    gc_link: doc?.id ? `https://app.gestaoclick.com/compras/visualizar/${doc.id}` : "",
-  };
-}
+function parseVinculo(raw: string): { tipo: "os" | "orcamento" | "texto"; codigo: string; original: string } {
 
 function parseVinculo(raw: string): { tipo: "os" | "orcamento" | "texto"; codigo: string; original: string } {
   const txt = String(raw || "").trim();
