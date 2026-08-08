@@ -147,28 +147,36 @@ function estadoPedido(doc: any): PedidoDetalhe["estado"] {
 }
 
 async function fetchPedidoPorCodigo(codigo: string): Promise<PedidoDetalhe | null> {
-  const url = new URL(`${GC_BASE}/api/compras`);
-  url.searchParams.set("codigo", codigo);
-  url.searchParams.set("limite", "20");
-  const res = await fetch(url.toString(), { headers: gcHeaders() });
-  if (!res.ok) return null;
-  const json = await res.json().catch(() => null);
-  const rows = Array.isArray(json?.data) ? json.data : [];
-  const docs = rows.map((row: any) => row?.Compra ?? row).filter(Boolean);
-  const doc = docs.find((item: any) => String(item?.codigo ?? "").replace(/\D/g, "") === codigo) ?? null;
-  if (!doc) return null;
-  const raw = dataPedidoRaw(doc);
-  const referencia = String(doc?.data_emissao ?? doc?.data ?? new Date().toISOString().slice(0, 10));
-  return {
-    codigo,
-    id: String(doc?.id ?? ""),
-    situacao_id: String(doc?.situacao_id ?? ""),
-    situacao: String(doc?.nome_situacao ?? "Situação não informada"),
-    data_chegada: parseChegada(raw, referencia),
-    data_chegada_texto: raw,
-    estado: estadoPedido(doc),
-    gc_link: doc?.id ? `https://app.gestaoclick.com/compras/visualizar/${doc.id}` : "",
-  };
+  // Buscamos em /compras (Pedidos de Compra) mas também em /orcamentos e /pedidos_servicos
+  // pois o usuário pode ter digitado qualquer tipo de referência no campo extra.
+  const endpoints = ["compras", "pedidos", "orcamentos"];
+  for (const endpoint of endpoints) {
+    const url = new URL(`${GC_BASE}/api/${endpoint}`);
+    url.searchParams.set("codigo", codigo);
+    url.searchParams.set("limite", "10");
+    const res = await fetch(url.toString(), { headers: gcHeaders() });
+    if (!res.ok) continue;
+    const json = await res.json().catch(() => null);
+    const rows = Array.isArray(json?.data) ? json.data : [];
+    const docs = rows.map((row: any) => row?.Compra ?? row?.Orcamento ?? row?.Pedido ?? row).filter(Boolean);
+    const doc = docs.find((item: any) => String(item?.codigo ?? "").replace(/\D/g, "") === codigo);
+    
+    if (doc) {
+      const raw = dataPedidoRaw(doc);
+      const referencia = String(doc?.data_emissao ?? doc?.data ?? new Date().toISOString().slice(0, 10));
+      return {
+        codigo,
+        id: String(doc?.id ?? ""),
+        situacao_id: String(doc?.situacao_id ?? ""),
+        situacao: String(doc?.nome_situacao ?? "Situação não informada"),
+        data_chegada: parseChegada(raw, referencia),
+        data_chegada_texto: raw,
+        estado: estadoPedido(doc),
+        gc_link: doc?.id ? `https://app.gestaoclick.com/${endpoint}/visualizar/${doc.id}` : "",
+      };
+    }
+  }
+  return null;
 }
 
 function parseVinculo(raw: string): { tipo: "os" | "orcamento" | "texto"; codigo: string; original: string } {
@@ -181,7 +189,7 @@ function parseVinculo(raw: string): { tipo: "os" | "orcamento" | "texto"; codigo
   return { tipo: "texto", codigo: "", original: txt };
 }
 
-async function fetchSituacao(sit: { id: string; nome: string; grupo: string }, endpoint = "compras") {
+async function fetchSituacao(sit: { id: string; nome: string; grupo: string }, endpoint = "orcamentos") {
   const out: any[] = [];
   for (let pagina = 1; pagina <= 12; pagina++) {
     const url = new URL(`${GC_BASE}/api/${endpoint}`);
@@ -239,8 +247,8 @@ async function handleRequest(req: Request) {
         .flatMap(({ doc }) => parsePedidosCompra(extra(doc, ...CAMPO_PEDIDO_COMPRA))),
     )];
     const pedidoDetalhes = new Map<string, PedidoDetalhe>();
-    for (let inicio = 0; inicio < pedidosReferenciados.length; inicio += 8) {
-      const lote = pedidosReferenciados.slice(inicio, inicio + 8);
+    for (let inicio = 0; inicio < pedidosReferenciados.length; inicio += 5) {
+      const lote = pedidosReferenciados.slice(inicio, inicio + 5);
       const encontrados = await Promise.all(lote.map(fetchPedidoPorCodigo));
       for (const pedido of encontrados) if (pedido) pedidoDetalhes.set(pedido.codigo, pedido);
     }
