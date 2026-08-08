@@ -368,15 +368,16 @@ async function handleRequest(req: Request) {
       if (!item.auvo_task_id) item.auvo_task_id = String(r.auvo_task_id ?? "");
     }
 
+    const totais = {
+      ok: true,
+      total: itens.length,
+      total_orcamentos: itens.filter((item) => item.doc_tipo === "orcamento").length,
+      total_pedidos: itens.filter((item) => item.doc_tipo === "compra").length,
+      gerado_em: new Date().toISOString(),
+    };
+    const apenasResumo = new URL(req.url).searchParams.get("resumo") === "1";
     return new Response(
-      JSON.stringify({
-        ok: true,
-        total: itens.length,
-        total_orcamentos: itens.filter((item) => item.doc_tipo === "orcamento").length,
-        total_pedidos: itens.filter((item) => item.doc_tipo === "compra").length,
-        itens,
-        gerado_em: new Date().toISOString(),
-      }),
+      JSON.stringify(apenasResumo ? totais : { ...totais, itens }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } },
     );
   } catch (e) {
