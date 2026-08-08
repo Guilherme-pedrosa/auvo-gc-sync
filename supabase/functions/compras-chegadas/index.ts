@@ -36,7 +36,7 @@ function extra(doc: any, ...descricoes: string[]): string {
   const alvos = descricoes.map((d) => d.trim().toUpperCase());
   for (const alvo of alvos) {
     for (const item of list) {
-      const e = item?.extras ?? item;
+      const e = item?.extras ?? item?.atributo ?? item?.campo_extra ?? item;
       const nome = String(e?.descricao ?? "").trim().toUpperCase();
       if (nome === alvo) {
         const v = String(e?.conteudo ?? "").trim();
