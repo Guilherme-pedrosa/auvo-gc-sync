@@ -345,11 +345,11 @@ export default function AgendamentoPage() {
             <AgendamentoAiPanel
               boardSummary={boardSummary}
               contexto={{
-                modulo: "chegada_de_pecas",
-                pedidos_pendentes: filtrados.length,
+                modulo: "agendamento_orcamentos",
+                orcamentos_pendentes: filtrados.length,
                 atrasados: atrasadas.length,
                 sem_data: semData.length,
-                valor_total: filtrados.reduce((s, i) => s + i.valor_total, 0),
+                valor_total: filtrados.reduce((s, i) => s + (i.documento_valor || i.valor_total), 0),
               }}
             />
           </div>
