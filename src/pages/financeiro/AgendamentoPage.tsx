@@ -168,27 +168,28 @@ export default function AgendamentoPage() {
   const renderItem = (i: ChegadaItem, compacto = false) => {
     const status = getChegadaStatus(i.data_chegada);
     const style = STATUS_STYLE[status];
+    const ehPedido = Boolean(i.compra_id);
+    const chave = `${ehPedido ? "pc" : "or"}-${i.compra_id || i.compra_codigo || i.orcamento_codigo || i.vinculo_codigo}`;
     if (compacto) {
       return (
-        <button
-          key={i.compra_id}
-          onClick={() => setDiaSelecionado(String(i.data_chegada).slice(0, 10))}
-          className={cn("w-full truncate rounded border px-1 py-0.5 text-left text-[10px] leading-tight", style.chip)}
-          title={`${i.vinculo_tipo === "orcamento" ? "OR" : "PC"} ${i.orcamento_codigo || i.vinculo_codigo || i.compra_codigo} · ${i.cliente || i.fornecedor} · ${formatBRL(i.valor_total)}`}
+        <span
+          key={chave}
+          className={cn("block w-full truncate rounded border px-1 py-0.5 text-left text-[10px] leading-tight", style.chip)}
+          title={`${ehPedido ? "PC" : "OR"} ${i.orcamento_codigo || i.vinculo_codigo || i.compra_codigo} · ${i.cliente || i.fornecedor} · ${formatBRL(i.valor_total)}`}
         >
-          {i.vinculo_tipo === "orcamento" ? "OR" : "PC"} {i.orcamento_codigo || i.vinculo_codigo || i.compra_codigo} · {i.cliente || i.fornecedor}
-        </button>
+          {ehPedido ? "PC" : "OR"} {i.orcamento_codigo || i.vinculo_codigo || i.compra_codigo} · {i.cliente || i.fornecedor}
+        </span>
       );
     }
     return (
-      <div key={i.compra_id || i.compra_codigo || Math.random()} className="rounded-md border border-border bg-card p-2.5">
+      <div key={chave} className="rounded-md border border-border bg-card p-2.5">
         <div className="flex items-start justify-between gap-2">
           <div className="min-w-0">
             <div className="flex items-center gap-1.5">
               <p className="truncate text-xs font-bold text-primary">
-                {i.vinculo_tipo === "orcamento" ? "Orçamento" : "Pedido de Compra"} {i.orcamento_codigo || i.vinculo_codigo || i.compra_codigo}
+                {ehPedido ? "Pedido de Compra" : "Orçamento"} {i.orcamento_codigo || i.vinculo_codigo || i.compra_codigo}
               </p>
-              {i.vinculo_tipo === "orcamento" && i.compra_codigo && (
+              {!ehPedido && i.compra_codigo && (
                 <Badge variant="outline" className="h-4 px-1 text-[9px] font-normal">PC {i.compra_codigo}</Badge>
               )}
             </div>
@@ -246,6 +247,28 @@ export default function AgendamentoPage() {
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
+          <div className="flex items-center rounded-md border border-border p-0.5">
+            {([
+              { id: "todos", label: "Todos" },
+              { id: "orcamentos", label: "Orçamentos" },
+              { id: "pedidos", label: "Pedidos" },
+            ] as const).map((opt) => (
+              <button
+                key={opt.id}
+                type="button"
+                onClick={() => {
+                  setTipoDoc(opt.id);
+                  localStorage.setItem("agendamento:tipoDoc", opt.id);
+                }}
+                className={cn(
+                  "rounded px-2 py-1 text-[11px] font-medium transition",
+                  tipoDoc === opt.id ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted",
+                )}
+              >
+                {opt.label} ({totaisTipo[opt.id]})
+              </button>
+            ))}
+          </div>
           <Popover>
             <PopoverTrigger asChild>
               <Button variant="outline" size="sm" className="h-8 gap-2 text-xs">
