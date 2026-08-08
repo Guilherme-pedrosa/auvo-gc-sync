@@ -1,8 +1,13 @@
 // Lê os pedidos de compra e orçamentos do GestãoClick que ainda NÃO chegaram
 // Integra lógica de rastreamento inspirada no "WeDo Pick & Pack" para datas de chegada coesas.
 import { createClient } from "npm:@supabase/supabase-js@2";
-import { corsHeaders } from "npm:@supabase/supabase-js@2/cors";
 import { installGcUsuarioId, gcHeaders } from "../_shared/gc-user.ts";
+
+const corsHeaders = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Methods": "POST, GET, OPTIONS",
+};
 
 installGcUsuarioId();
 
