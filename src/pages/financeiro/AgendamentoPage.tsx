@@ -79,6 +79,7 @@ export default function AgendamentoPage() {
     () => (localStorage.getItem("agendamento:tipoDoc") as "todos" | "orcamentos" | "pedidos") || "orcamentos",
   );
   const [alvo, setAlvo] = useState<AgendarAlvo | null>(null);
+  const [dialogOpen, setDialogOpen] = useState(false);
   const [detalhesDialog, setDetalhesDialog] = useState<{ open: boolean; dia: string }>({ open: false, dia: "" });
 
   const { data: itens = [], isLoading, isFetching, refetch, error } = useQuery({
