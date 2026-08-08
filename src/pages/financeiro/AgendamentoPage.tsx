@@ -340,7 +340,7 @@ export default function AgendamentoPage() {
   };
 
   return (
-    <div className="flex flex-col gap-3 p-4 bg-background overflow-visible">
+    <div className="flex min-h-max w-full min-w-[980px] flex-col gap-3 overflow-visible bg-background p-4">
       <header className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-lg font-semibold text-foreground">Calendário de Agendamento</h1>
@@ -640,8 +640,8 @@ export default function AgendamentoPage() {
       />
 
       <Dialog open={detalhesDialog.open} onOpenChange={(open) => setDetalhesDialog(prev => ({ ...prev, open }))}>
-        <DialogContent className="max-w-4xl max-h-[90vh] flex flex-col p-0 overflow-hidden">
-          <DialogHeader className="p-4 border-b">
+        <DialogContent className="grid h-[90dvh] max-h-[90dvh] w-[calc(100vw-2rem)] max-w-4xl grid-rows-[auto_minmax(0,1fr)] gap-0 overflow-hidden p-0">
+          <DialogHeader className="border-b p-4">
             <DialogTitle className="flex items-center gap-2">
               <CalendarClock className="h-5 w-5 text-primary" />
               Documentos em {formatDiaBR(detalhesDialog.dia)}
@@ -650,11 +650,11 @@ export default function AgendamentoPage() {
               {porDia.get(detalhesDialog.dia)?.length || 0} itens previstos para este dia.
             </DialogDescription>
           </DialogHeader>
-          <ScrollArea className="flex-1 p-4">
-            <div className="grid gap-3 sm:grid-cols-2">
+          <div className="min-h-0 overflow-auto p-4">
+            <div className="grid min-w-[720px] gap-3 sm:grid-cols-2">
               {(porDia.get(detalhesDialog.dia) || []).map((i) => renderItem(i))}
             </div>
-          </ScrollArea>
+          </div>
         </DialogContent>
       </Dialog>
     </div>
