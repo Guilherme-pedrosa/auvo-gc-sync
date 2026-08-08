@@ -1229,6 +1229,52 @@ export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, o
           </PopoverContent>
         </Popover>
 
+        {/* Agendamento da execução */}
+        <Popover>
+          <PopoverTrigger asChild>
+            <Button variant="outline" size="sm" className="gap-1.5 text-xs h-7 px-2.5">
+              <Filter className="h-3.5 w-3.5" />
+              {agendaFilter.size === 0 ? "Agenda: todas" : `Agenda (${agendaFilter.size})`}
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent className="w-60" align="start">
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-medium">Agendamento</span>
+                {agendaFilter.size > 0 && (
+                  <Button variant="ghost" size="sm" className="h-6 px-2 text-xs" onClick={() => setAgendaFilter(new Set())}>
+                    Limpar
+                  </Button>
+                )}
+              </div>
+              <div className="space-y-1">
+                {[
+                  { value: "nao_agendada", label: "Não agendadas" },
+                  { value: "atrasada", label: "🟡 Atrasadas" },
+                  { value: "hoje", label: "🟢 Hoje" },
+                  { value: "agendada", label: "🟩 Agendadas (futuro)" },
+                ].map((opt) => (
+                  <label key={opt.value} className="flex items-center gap-2 cursor-pointer py-0.5">
+                    <Checkbox
+                      checked={agendaFilter.has(opt.value)}
+                      onCheckedChange={() => {
+                        setAgendaFilter((prev) => {
+                          const next = new Set(prev);
+                          if (next.has(opt.value)) next.delete(opt.value);
+                          else next.add(opt.value);
+                          return next;
+                        });
+                      }}
+                    />
+                    <span className="text-xs">{opt.label}</span>
+                  </label>
+                ))}
+              </div>
+              <p className="text-[10px] text-muted-foreground">Nenhum selecionado = todas as OS.</p>
+            </div>
+          </PopoverContent>
+        </Popover>
+
         {/* Local do reparo (campo GC 68658) */}
         <div className="flex items-center gap-1.5">
           {[
