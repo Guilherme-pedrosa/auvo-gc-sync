@@ -29,8 +29,8 @@ const SITUACOES_ORCAMENTOS = [
   { id: "7084340", nome: "Aguardando Resposta Cliente", grupo: "ag_aprovacao" },
 ];
 
-function extra(compra: any, descricao: string): string {
-  const list = Array.isArray(compra?.campos_extras) ? compra.campos_extras : [];
+function extra(doc: any, descricao: string): string {
+  const list = Array.isArray(doc?.campos_extras) ? doc.campos_extras : [];
   for (const item of list) {
     const e = item?.extras ?? item;
     if (String(e?.descricao ?? "").trim().toUpperCase() === descricao) {
@@ -97,8 +97,6 @@ async function fetchSituacao(sit: { id: string; nome: string; grupo: string }, e
 }
 
 async function handleRequest(req: Request) {
-
-Deno.serve(handleRequest);
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   try {
@@ -222,4 +220,6 @@ Deno.serve(handleRequest);
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   }
-});
+}
+
+Deno.serve(handleRequest);
