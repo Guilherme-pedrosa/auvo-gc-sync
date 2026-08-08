@@ -66,6 +66,7 @@ export type ChegadaItem = {
   orcamento_id?: string;
   compra_id: string;
   compra_codigo: string;
+  pedidos_compra?: string[];
   fornecedor: string;
   situacao_id: string;
   situacao: string;
