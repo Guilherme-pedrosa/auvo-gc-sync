@@ -160,19 +160,26 @@ export default function AgendamentoPage() {
           key={i.compra_id}
           onClick={() => setDiaSelecionado(String(i.data_chegada).slice(0, 10))}
           className={cn("w-full truncate rounded border px-1 py-0.5 text-left text-[10px] leading-tight", style.chip)}
-          title={`Orçamento ${i.orcamento_codigo || i.vinculo_codigo} · ${i.cliente || i.fornecedor} · ${formatBRL(i.valor_total)}`}
+          title={`${i.vinculo_tipo === "orcamento" ? "OR" : "PC"} ${i.orcamento_codigo || i.vinculo_codigo || i.compra_codigo} · ${i.cliente || i.fornecedor} · ${formatBRL(i.valor_total)}`}
         >
-          OR {i.orcamento_codigo || i.vinculo_codigo} · {i.cliente || i.fornecedor}
+          {i.vinculo_tipo === "orcamento" ? "OR" : "PC"} {i.orcamento_codigo || i.vinculo_codigo || i.compra_codigo} · {i.cliente || i.fornecedor}
         </button>
       );
     }
     return (
-      <div key={i.compra_id} className="rounded-md border border-border bg-card p-2.5">
+      <div key={i.compra_id || i.compra_codigo || Math.random()} className="rounded-md border border-border bg-card p-2.5">
         <div className="flex items-start justify-between gap-2">
           <div className="min-w-0">
-            <p className="truncate text-xs font-semibold">Orçamento {i.orcamento_codigo || i.vinculo_codigo}</p>
-            <p className="truncate text-[11px] text-muted-foreground">
-              {i.compra_codigo ? `PC ${i.compra_codigo} · ` : ""}{i.cliente || "Cliente não identificado"}
+            <div className="flex items-center gap-1.5">
+              <p className="truncate text-xs font-bold text-primary">
+                {i.vinculo_tipo === "orcamento" ? "Orçamento" : "Pedido de Compra"} {i.orcamento_codigo || i.vinculo_codigo || i.compra_codigo}
+              </p>
+              {i.vinculo_tipo === "orcamento" && i.compra_codigo && (
+                <Badge variant="outline" className="h-4 px-1 text-[9px] font-normal">PC {i.compra_codigo}</Badge>
+              )}
+            </div>
+            <p className="truncate text-[11px] text-muted-foreground mt-0.5">
+              {i.cliente || "Cliente não identificado"}
             </p>
           </div>
           <span className="shrink-0 text-xs font-semibold tabular-nums">{formatBRL(i.documento_valor || i.valor_total)}</span>
@@ -219,9 +226,9 @@ export default function AgendamentoPage() {
     <div className="flex h-full min-h-0 flex-col gap-3 p-4">
       <header className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-lg font-semibold text-foreground">Agendamento · Calendário de Orçamentos</h1>
+          <h1 className="text-lg font-semibold text-foreground">Agendamento · Calendário de Compras e Orçamentos</h1>
           <p className="text-xs text-muted-foreground">
-            Acompanhamento de orçamentos pendentes ou aguardando peças.
+            Acompanhamento de orçamentos pendentes e prazos de chegada de pedidos de compra.
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -314,7 +321,7 @@ export default function AgendamentoPage() {
 
       {isLoading ? (
         <div className="flex flex-1 items-center justify-center text-sm text-muted-foreground">
-          <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Carregando calendário de orçamentos...
+          <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Carregando calendário de compras e orçamentos...
         </div>
       ) : (
         <div className="grid min-h-0 flex-1 grid-cols-1 gap-3 xl:grid-cols-[minmax(0,1fr)_340px]">
