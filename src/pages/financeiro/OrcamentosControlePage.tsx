@@ -29,8 +29,18 @@ const PAGE_SIZE = 1000;
 const formatCurrency = (val: number) =>
   (val || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 
-/** Apenas orçamentos aguardando aprovação devem aparecer aqui */
-const SITUACAO_ABERTA_REGEX = /aguardando\s*aprova/i;
+/** Orçamentos que devem aparecer no controle */
+const SITUACAO_ABERTA_IDS = [
+  "7063588", // Aguardando Aprovação
+  "2039849", // Aguardando Correção
+  "7084340", // Aguardando Resposta Cliente
+  "7063587", // Aguardando Chegada de Peças
+  "7063589", // Aguardando Fabricação
+  "7219959", // Pedido Conferido - Aguardando Execução
+  "2138148", // Pedido em Conferência
+  "7106316", // Retirada pelo Técnico
+  "7253507", // Serviço Aguardando Execução
+];
 
 /** Mesma heurística usada no Controle de OS para extrair equipamento da orientação */
 const extractEquipmentFromOrientation = (raw: unknown): string => {
@@ -69,13 +79,12 @@ const fetchOrcamentosNoPeriodo = async (fromDate: Date, toDate: Date) => {
     from += PAGE_SIZE;
   }
 
-  // Merge com followup_kanban_cache (fonte de verdade "Aguardando Aprovação")
-  // para incluir orçamentos que ainda NÃO têm tarefa Auvo vinculada.
+  // Merge com followup_kanban_cache para incluir orçamentos que ainda NÃO têm tarefa Auvo vinculada.
   const seen = new Set(rows.map((r: any) => String(r.gc_orcamento_id || "")));
   const { data: cache } = await supabase
     .from("followup_kanban_cache")
     .select("gc_orcamento_id, atualizado_em, dados")
-    .eq("coluna", "7063588");
+    .in("coluna", SITUACAO_ABERTA_IDS);
   for (const c of cache || []) {
     const id = String((c as any).gc_orcamento_id || "");
     if (!id || seen.has(id)) continue;
@@ -279,10 +288,10 @@ export default function OrcamentosControlePage() {
         byId.set(id, r);
       }
     }
-    // Filtra "fechados"
+    // Filtra orçamentos abertos/pendentes baseados na lista de IDs permitidos
     return Array.from(byId.values()).filter((t) => {
-      const sit = t.gc_orc_situacao || "";
-      return SITUACAO_ABERTA_REGEX.test(sit);
+      const sitId = String(t.gc_orc_situacao_id || "");
+      return SITUACAO_ABERTA_IDS.includes(sitId);
     });
   }, [rows]);
 
