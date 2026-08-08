@@ -349,7 +349,7 @@ export default function AgendamentoPage() {
               className="h-8 w-64 pl-7 text-xs"
             />
           </div>
-          <Button size="sm" variant="outline" onClick={() => refetch()} disabled={isFetching}>
+          <Button size="sm" variant="outline" onClick={handleAtualizar} disabled={isFetching}>
             {isFetching ? <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="mr-1 h-3.5 w-3.5" />}
             Atualizar
           </Button>
