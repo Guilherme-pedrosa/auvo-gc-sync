@@ -206,7 +206,7 @@ export default function AgendamentoPage() {
             <Input
               value={busca}
               onChange={(e) => setBusca(e.target.value)}
-              placeholder="Cliente, OS, peça, fornecedor..."
+              placeholder="Nº Orçamento, Cliente, PC, Peça..."
               className="h-8 w-64 pl-7 text-xs"
             />
           </div>
