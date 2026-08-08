@@ -80,7 +80,7 @@ export default function AgendamentoAiPanel({ boardSummary, contexto }: Props) {
         </Button>
       </div>
 
-      <ScrollArea className="min-h-0 flex-1" viewportRef={scrollRef as any}>
+      <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto">
         <div className="space-y-3 p-3">
           {messages.length === 0 && (
             <p className="text-xs text-muted-foreground">
@@ -114,7 +114,7 @@ export default function AgendamentoAiPanel({ boardSummary, contexto }: Props) {
             </div>
           )}
         </div>
-      </ScrollArea>
+      </div>
 
       <form
         className="flex items-center gap-2 border-t border-border p-2"
