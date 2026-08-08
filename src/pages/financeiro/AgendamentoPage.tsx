@@ -146,13 +146,12 @@ export default function AgendamentoPage() {
       <div key={i.compra_id} className="rounded-md border border-border bg-card p-2.5">
         <div className="flex items-start justify-between gap-2">
           <div className="min-w-0">
-            <p className="truncate text-xs font-semibold">Pedido de compra {i.compra_codigo}</p>
+            <p className="truncate text-xs font-semibold">Orçamento {i.orcamento_codigo || i.vinculo_codigo}</p>
             <p className="truncate text-[11px] text-muted-foreground">
-              {documentoLabel(i)}
-              {i.cliente ? ` · ${i.cliente}` : ""}
+              PC {i.compra_codigo} · {i.cliente || "Cliente não identificado"}
             </p>
           </div>
-          <span className="shrink-0 text-xs font-semibold tabular-nums">{formatBRL(i.valor_total)}</span>
+          <span className="shrink-0 text-xs font-semibold tabular-nums">{formatBRL(i.documento_valor || i.valor_total)}</span>
         </div>
 
         <p className="mt-1 line-clamp-2 text-[11px] text-muted-foreground">
