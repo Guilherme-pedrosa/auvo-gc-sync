@@ -314,7 +314,7 @@ export default function AgendamentoPage() {
         <div>
           <h1 className="text-lg font-semibold text-foreground">Calendário de Agendamento</h1>
           <p className="text-xs text-muted-foreground">
-            Acompanhamento de orçamentos e prazos de entrega baseados nos pedidos de compra do GestãoClick.
+            NÃO QUERO QUE MEXA NO FRONT END, É NO BACK END
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
