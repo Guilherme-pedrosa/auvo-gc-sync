@@ -640,7 +640,7 @@ export default function AgendamentoPage() {
       />
 
       <Dialog open={detalhesDialog.open} onOpenChange={(open) => setDetalhesDialog(prev => ({ ...prev, open }))}>
-        <DialogContent className="max-w-2xl max-h-[85vh] flex flex-col p-0">
+        <DialogContent className="max-w-4xl max-h-[90vh] flex flex-col p-0 overflow-hidden">
           <DialogHeader className="p-4 border-b">
             <DialogTitle className="flex items-center gap-2">
               <CalendarClock className="h-5 w-5 text-primary" />
