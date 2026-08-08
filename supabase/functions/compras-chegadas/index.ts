@@ -1,5 +1,5 @@
-// Lê os pedidos de compra do GestãoClick que ainda NÃO chegaram e devolve
-// a agenda de chegada de peças (campo extra "DATA DA CHEGADA DAS PEÇAS"),
+// Lê os pedidos de compra e orçamentos do GestãoClick que ainda NÃO chegaram/foram aprovados
+// e devolve a agenda de chegada de peças (campo extra "DATA DA CHEGADA DAS PEÇAS"),
 // vinculada à OS / orçamento informados no campo extra "OS GC".
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 import { installGcUsuarioId, gcHeaders } from "../_shared/gc-user.ts";
@@ -56,7 +56,6 @@ function parseChegada(raw: string, referencia: string): string | null {
     ano = Number(br[3]);
     if (ano < 100) ano += 2000;
   } else {
-    // Sem ano: usa o ano da emissão do pedido, virando o ano se o mês retroceder.
     const base = new Date(`${referencia || new Date().toISOString().slice(0, 10)}T00:00:00`);
     ano = base.getFullYear();
     if (mes < base.getMonth() + 1 - 6) ano += 1;
@@ -64,7 +63,6 @@ function parseChegada(raw: string, referencia: string): string | null {
   return `${ano}-${String(mes).padStart(2, "0")}-${String(dia).padStart(2, "0")}`;
 }
 
-/** "OR 6159" -> orçamento 6159; "6203" -> OS 6203. */
 function parseVinculo(raw: string): { tipo: "os" | "orcamento" | "texto"; codigo: string; original: string } {
   const txt = String(raw || "").trim();
   if (!txt) return { tipo: "texto", codigo: "", original: "" };
@@ -143,7 +141,6 @@ async function handleRequest(req: Request) {
         gc_link: tipo === "compra" 
           ? (doc?.id ? `https://app.gestaoclick.com/compras/visualizar/${doc.id}` : "")
           : (doc?.id ? `https://app.gestaoclick.com/orcamentos_servicos/visualizar/${doc.id}` : ""),
-        // preenchidos abaixo
         cliente: String(doc?.nome_cliente || ""),
         equipamento: "",
         os_codigo: "",
@@ -155,7 +152,6 @@ async function handleRequest(req: Request) {
       };
     });
 
-    // Enriquecimento com os dados locais (cliente, equipamento, valores do documento).
     const osCods = [...new Set(itens.filter((i) => i.vinculo_tipo === "os").map((i) => i.vinculo_codigo))];
     const orcCods = [...new Set(itens.filter((i) => i.vinculo_tipo === "orcamento").map((i) => i.vinculo_codigo))];
 
@@ -188,14 +184,14 @@ async function handleRequest(req: Request) {
       if (k && !orcMap.has(k)) orcMap.set(k, r);
     }
 
-    const equipamento = (r: any) =>
+    const getEquip = (r: any) =>
       [r?.equipamento_nome, r?.equipamento_id_serie].filter(Boolean).join(" · ");
 
     for (const item of itens) {
       const r = item.vinculo_tipo === "os" ? osMap.get(item.vinculo_codigo) : orcMap.get(item.vinculo_codigo);
       if (!r) continue;
-      item.cliente = String(r.gc_os_cliente || r.gc_orc_cliente || r.cliente || "");
-      item.equipamento = equipamento(r);
+      if (!item.cliente) item.cliente = String(r.gc_os_cliente || r.gc_orc_cliente || r.cliente || "");
+      item.equipamento = getEquip(r);
       item.os_codigo = String(r.gc_os_codigo ?? "");
       item.orcamento_codigo = String(r.gc_orcamento_codigo ?? "");
       item.documento_valor =
