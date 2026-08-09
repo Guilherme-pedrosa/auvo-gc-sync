@@ -405,7 +405,7 @@ export default function AgendamentoEquipePage() {
       const { error: errDel } = await supabase
         .from("agenda_agendamentos")
         .delete()
-        .or(`origem.eq.AUVO,and(origem.eq.MANUAL,cliente.in.(${linhas.map(l => `'${l.cliente}'`).join(",")}),data.in.(${linhas.map(l => `'${l.data}'`).join(",")}))`)
+        .or(`origem.eq.AUVO,and(origem.eq.MANUAL,cliente.ilike.${linhas.map(l => `'${l.cliente.replace(/'/g, "''")}'`).join(",")}),data.in.(${linhas.map(l => `'${l.data}'`).join(",")}))`)
         .gte("data", dias[0])
         .lte("data", dias[dias.length - 1]);
       if (errDel) throw errDel;
