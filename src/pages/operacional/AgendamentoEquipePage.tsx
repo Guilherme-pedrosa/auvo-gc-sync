@@ -18,6 +18,7 @@ import {
 import { useQueryClient } from "@tanstack/react-query";
 import AgendamentoEquipeDialog from "@/components/operacional/AgendamentoEquipeDialog";
 import TarefaAuvoDetalheDialog from "@/components/operacional/TarefaAuvoDetalheDialog";
+import CriarTarefaGeralDialog from "@/components/operacional/CriarTarefaGeralDialog";
 import { toast } from "sonner";
 
 const DIAS_TRADUZIDOS = ["Segunda-feira", "Terça-feira", "Quarta-feira", "Quinta-feira", "Sexta-feira", "Sábado", "Domingo"];
@@ -230,6 +231,7 @@ export default function AgendamentoEquipePage() {
   const [selectedColabId, setSelectedColabId] = useState<string | null>(null);
   const [tarefaId, setTarefaId] = useState<string | null>(null);
   const [dialogEditOpen, setDialogEditOpen] = useState(false);
+  const [dialogCreateTaskOpen, setDialogCreateTaskOpen] = useState(false);
   const dragItem = useRef<AgendaAgendamento | null>(null);
   const saveAgendamento = useSaveAgendamento();
 
@@ -545,6 +547,9 @@ export default function AgendamentoEquipePage() {
           <Button variant="outline" size="icon" onClick={() => refetch()} disabled={isFetching || isSyncing}>
             <RefreshCw className={cn("h-4 w-4", (isFetching || isSyncing) && "animate-spin")} />
           </Button>
+          <Button className="gap-2" size="sm" onClick={() => setDialogCreateTaskOpen(true)}>
+            <Plus className="h-4 w-4" /> Nova Tarefa Auvo
+          </Button>
         </div>
       </header>
 
@@ -729,6 +734,12 @@ export default function AgendamentoEquipePage() {
             setTarefaId(null);
           }
         }}
+      />
+
+      <CriarTarefaGeralDialog
+        open={dialogCreateTaskOpen}
+        onOpenChange={setDialogCreateTaskOpen}
+        onSuccess={() => refetch()}
       />
     </div>
   );

@@ -600,9 +600,70 @@ Deno.serve(async (req) => {
       );
     }
 
+    if (action === "list-customers") {
+      let page = 1;
+      const all: any[] = [];
+      while (page <= 5) {
+        const url = `${AUVO_BASE_URL}/customers/?page=${page}&pageSize=100`;
+        const resp = await fetch(url, { headers });
+        if (!resp.ok) break;
+        const json = await resp.json();
+        const items = json?.result?.entityList || json?.result || [];
+        if (!Array.isArray(items) || items.length === 0) break;
+        all.push(...items);
+        if (items.length < 100) break;
+        page++;
+      }
+      return new Response(JSON.stringify({ data: all, status: 200 }), { status: 200, headers: respHeaders });
+    }
+
+    if (action === "list-customer-equipments") {
+      const { customerId } = body;
+      if (!customerId) return new Response(JSON.stringify({ error: "customerId obrigatório" }), { status: 400, headers: respHeaders });
+      const url = `${AUVO_BASE_URL}/equipments/?paramFilter=${encodeURIComponent(JSON.stringify({ customerId: Number(customerId) }))}&page=1&pageSize=100`;
+      const resp = await fetch(url, { headers });
+      const json = await resp.json().catch(() => ({}));
+      return new Response(JSON.stringify({ data: json?.result?.entityList || json?.result || [], status: resp.status }), { status: 200, headers: respHeaders });
+    }
+
+    if (action === "create-task") {
+      const {
+        customerId, idUserTo, taskTypeId, dateISO, startTime = "08:00", durationMinutes = 60, orientation = "",
+        questionnaireId = null, equipmentId = null
+      } = body;
+
+      const custUrl = `${AUVO_BASE_URL}/customers/${customerId}`;
+      const custResp = await fetch(custUrl, { headers });
+      const cust = (await custResp.json())?.result || {};
+
+      const startISO = `${dateISO}T${startTime}:00`;
+      const start = new Date(startISO);
+      const end = new Date(start.getTime() + Number(durationMinutes) * 60_000);
+      const pad = (n: number) => String(n).padStart(2, "0");
+      const endISO = `${end.getFullYear()}-${pad(end.getMonth() + 1)}-${pad(end.getDate())}T${pad(end.getHours())}:${pad(end.getMinutes())}:00`;
+      const estimatedDuration = `${pad(Math.floor(durationMinutes / 60))}:${pad(durationMinutes % 60)}:00`;
+
+      const taskPayload: any = {
+        idUserFrom: Number(idUserTo), idUserTo: Number(idUserTo), customerId: Number(customerId),
+        taskType: Number(taskTypeId), taskDate: startISO, taskEndDate: endISO, estimatedDuration,
+        priority: 1, orientation: orientation.substring(0, 500),
+        address: cust?.address || "Endereço não informado",
+        latitude: Number(cust?.latitude ?? 0), longitude: Number(cust?.longitude ?? 0),
+        sendSatisfactionSurvey: false
+      };
+      if (equipmentId) taskPayload.equipmentsId = [String(equipmentId)];
+      if (questionnaireId) taskPayload.questionnaireId = Number(questionnaireId);
+
+      const response = await fetch(`${AUVO_BASE_URL}/tasks`, { method: "PUT", headers, body: JSON.stringify(taskPayload) });
+      const data = await response.json().catch(() => ({}));
+      const newId = data?.result?.taskID || data?.taskId || null;
+
+      return new Response(JSON.stringify({ success: response.ok, status: response.status, taskId: newId, data }), { status: 200, headers: respHeaders });
+    }
+
     return new Response(
-      JSON.stringify({ error: `action inválida: ${action}. Use: edit, upsert, get, get-equipment, list-users, list-task-types, create-preventive-task, persist-central` }),
-      { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      JSON.stringify({ error: `action inválida: ${action}. Use: edit, upsert, get, get-equipment, list-users, list-task-types, list-questionnaires, list-customers, list-customer-equipments, create-task, create-preventive-task, persist-central` }),
+      { status: 400, headers: respHeaders }
     );
   } catch (error) {
     console.error(`[auvo-task-update][reqId=${reqId}] Erro:`, error);
