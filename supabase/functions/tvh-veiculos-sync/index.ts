@@ -124,12 +124,12 @@ Deno.serve(async (req) => {
     const porVeiculo = new Map<string, Ticket>();
     for (const t of tickets) {
       const titulo = String(t.titulo || "");
+      const desc = String(t.descricao || "");
+      // Descarta alertas de "rodou X km sem checklist" / veículo bloqueado por checklist
       if (IGNORAR_TITULO.test(titulo)) continue;
-      
-      // Filtragem adicional: se o título contiver "Checklist NC" mas não for manutenção,
-      // ele pode ser ignorado, mas por enquanto vamos confiar no tipo=nao_conformidade.
-      // A pedido do usuário, focamos em não conformidades de manutenção do checklist.
-      
+      // Exige menção a problema/avaria/manutenção no título ou na descrição
+      if (!PROBLEMA_KEYWORDS.test(titulo) && !PROBLEMA_KEYWORDS.test(desc)) continue;
+
       if (!porVeiculo.has(t.vehicle_id)) porVeiculo.set(t.vehicle_id, t);
     }
 
