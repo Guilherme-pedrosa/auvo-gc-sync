@@ -133,9 +133,15 @@ export default function AgendamentoEquipeDialog({
         const patches = [];
         
         // Data e Hora (Início e Fim)
-        if (data !== agendamento.data || horaInicio !== agendamento.hora_inicio.slice(0, 5) || horaFim !== agendamento.hora_fim.slice(0, 5)) {
+        const horaFimCalc = minutesToClock(clockToMinutes(horaInicio) + duracaoMin);
+        if (
+          data !== agendamento.data ||
+          horaInicio !== agendamento.hora_inicio.slice(0, 5) ||
+          horaFimCalc !== agendamento.hora_fim.slice(0, 5)
+        ) {
           patches.push({ op: "replace", path: "taskDate", value: `${data}T${horaInicio}:00` });
-          patches.push({ op: "replace", path: "taskEndDate", value: `${data}T${horaFim}:00` });
+          patches.push({ op: "replace", path: "taskEndDate", value: `${data}T${horaFimCalc}:00` });
+          patches.push({ op: "replace", path: "estimatedDuration", value: minutesToClock(duracaoMin) });
         }
         
         // Técnico
@@ -166,7 +172,7 @@ export default function AgendamentoEquipeDialog({
         id: agendamento?.id,
         data,
         hora_inicio: horaInicio.includes(":") ? (horaInicio.length === 5 ? `${horaInicio}:00` : horaInicio) : "08:00:00",
-        hora_fim: horaFim.includes(":") ? (horaFim.length === 5 ? `${horaFim}:00` : horaFim) : "09:00:00",
+        hora_fim: `${minutesToClock(clockToMinutes(horaInicio) + duracaoMin)}:00`,
         colaborador_id: colaboradorId,
         colaborador_nome: nome,
         veiculo_id: veiculoId || null,
@@ -213,8 +219,14 @@ export default function AgendamentoEquipeDialog({
               <Input id="start" type="time" value={horaInicio} onChange={(e) => setHoraInicio(e.target.value)} />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="end">Hora Fim</Label>
-              <Input id="end" type="time" value={horaFim} onChange={(e) => setHoraFim(e.target.value)} />
+              <Label htmlFor="end">Duração (HH:mm)</Label>
+              <Input
+                id="end"
+                type="time"
+                step={300}
+                value={minutesToClock(duracaoMin)}
+                onChange={(e) => setDuracaoMin(clockToMinutes(e.target.value))}
+              />
             </div>
           </div>
 
