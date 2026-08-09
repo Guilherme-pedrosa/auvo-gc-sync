@@ -72,32 +72,38 @@ export default function AgendaRelatorioDialog({ open, onOpenChange, agendamentos
         nomeVeiculo.set(v.id, [v.nome, v.placa].filter(Boolean).join(" - ") || v.id);
       });
 
-      // Observações livres por veículo/dia — busca direto no banco para cobrir
-      // períodos fora da semana carregada na tela
+      // Texto livre por veículo/dia. Esta é a fonte da primeira página do PDF:
+      // não depende de tarefa, técnico ou vínculo de agendamento.
       const inicioISO = format(inicio, "yyyy-MM-dd");
       const fimISO = format(fim, "yyyy-MM-dd");
-      let diasVeiculo: any[] = [];
-      try {
-        const { data: vdData } = await supabase
-          .from("agenda_veiculo_dia")
-          .select("*")
-          .gte("data", inicioISO)
-          .lte("data", fimISO);
-        diasVeiculo = vdData ?? [];
-      } catch {
-        diasVeiculo = [];
-      }
-      if (diasVeiculo.length === 0) {
-        diasVeiculo = (veiculoDias ?? []).filter(
-          (vd) => vd.data >= inicioISO && vd.data <= fimISO
-        );
-      }
-      const obsVeiculo = new Map<string, string>();
-      diasVeiculo.forEach((vd) => {
-        if (vd.texto && String(vd.texto).trim()) {
-          obsVeiculo.set(`${vd.data}|${vd.veiculo_id}`, String(vd.texto).trim());
+      const { data: vdData, error: vdError } = await supabase
+        .from("agenda_veiculo_dia")
+        .select("veiculo_id,data,texto")
+        .gte("data", inicioISO)
+        .lte("data", fimISO)
+        .order("data");
+      if (vdError) throw vdError;
+
+      const diasVeiculo = new Map<string, { veiculo_id: string; data: string; texto: string }>();
+      for (const vd of veiculoDias ?? []) {
+        if (vd.data >= inicioISO && vd.data <= fimISO && String(vd.texto ?? "").trim()) {
+          diasVeiculo.set(`${vd.data}|${vd.veiculo_id}`, {
+            veiculo_id: vd.veiculo_id,
+            data: vd.data,
+            texto: String(vd.texto).trim(),
+          });
         }
-      });
+      }
+      for (const vd of vdData ?? []) {
+        const texto = String(vd.texto ?? "").trim();
+        if (texto) {
+          diasVeiculo.set(`${vd.data}|${vd.veiculo_id}`, {
+            veiculo_id: vd.veiculo_id,
+            data: vd.data,
+            texto,
+          });
+        }
+      }
 
       const itens: AgendaRelatorioItem[] = filtrados.map((a) => {
         // Tenta encontrar se o técnico está associado a algum veículo nesse dia
@@ -122,42 +128,11 @@ export default function AgendaRelatorioDialog({ open, onOpenChange, agendamentos
       // Ordena por data e depois por técnico
       itens.sort((x, y) => x.data.localeCompare(y.data) || x.tecnico.localeCompare(y.tecnico));
 
-      // Tabela de veículos: agrupa por data + veículo com os técnicos alocados
-      const mapaVeic = new Map<string, AgendaVeiculoLinha>();
-      filtrados.forEach((a) => {
-        if (!a.veiculo_id) return;
-        const chave = `${a.data}|${a.veiculo_id}`;
-        const atual = mapaVeic.get(chave);
-        if (atual) {
-          const nomes = new Set(atual.tecnicos.split(", ").filter(Boolean));
-          nomes.add(a.colaborador_nome);
-          atual.tecnicos = Array.from(nomes).join(", ");
-        } else {
-          mapaVeic.set(chave, {
-            data: a.data,
-            veiculo: nomeVeiculo.get(a.veiculo_id) || a.veiculo_id,
-            tecnicos: a.colaborador_nome,
-            observacao: obsVeiculo.get(chave) || undefined,
-          });
-        }
-      });
-      // Inclui o texto digitado no campo do veículo (grade), com ou sem agendamento
-      obsVeiculo.forEach((texto, chave) => {
-        const [dataISO, veicId] = chave.split("|");
-        const existente = mapaVeic.get(chave);
-        if (existente) {
-          existente.observacao = texto;
-          if (!existente.tecnicos || existente.tecnicos === "—") existente.tecnicos = texto;
-          return;
-        }
-        mapaVeic.set(chave, {
-          data: dataISO,
-          veiculo: nomeVeiculo.get(veicId) || veicId,
-          tecnicos: texto,
-          observacao: texto,
-        });
-      });
-      const linhasVeiculos = Array.from(mapaVeic.values()).sort(
+      const linhasVeiculos: AgendaVeiculoLinha[] = Array.from(diasVeiculo.values()).map((vd) => ({
+        data: vd.data,
+        veiculo: nomeVeiculo.get(vd.veiculo_id) || vd.veiculo_id,
+        texto: vd.texto,
+      })).sort(
         (a, b) => a.data.localeCompare(b.data) || a.veiculo.localeCompare(b.veiculo)
       );
 
