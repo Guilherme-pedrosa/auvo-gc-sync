@@ -118,7 +118,13 @@ Deno.serve(async (req) => {
     // Apenas a não conformidade mais recente de cada veículo (último checklist)
     const porVeiculo = new Map<string, Ticket>();
     for (const t of tickets) {
-      if (IGNORAR_TITULO.test(String(t.titulo || ""))) continue;
+      const titulo = String(t.titulo || "");
+      if (IGNORAR_TITULO.test(titulo)) continue;
+      
+      // Filtragem adicional: se o título contiver "Checklist NC" mas não for manutenção,
+      // ele pode ser ignorado, mas por enquanto vamos confiar no tipo=nao_conformidade.
+      // A pedido do usuário, focamos em não conformidades de manutenção do checklist.
+      
       if (!porVeiculo.has(t.vehicle_id)) porVeiculo.set(t.vehicle_id, t);
     }
 
