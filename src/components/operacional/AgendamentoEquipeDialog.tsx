@@ -107,7 +107,7 @@ export default function AgendamentoEquipeDialog({
         
         // Técnico
         if (colaboradorId !== agendamento.colaborador_id && colab?.auvo_user_id) {
-          patches.push({ op: "replace", path: "idUserTo", value: Number(colab.auvo_user_id) });
+          patches.push({ op: "replace", path: "idUserTo", value: String(colab.auvo_user_id) });
         }
 
         // Descrição (Orientação no Auvo)
