@@ -236,7 +236,7 @@ export default function AgendamentoEquipePage() {
                     ))}
                     {tecnicos.length === 0 && (
                       <tr>
-                        <td colSpan={8} className="p-6 text-center text-sm text-muted-foreground">
+                        <td colSpan={dias.length + 1} className="p-6 text-center text-sm text-muted-foreground">
                           Nenhum técnico ativo cadastrado no RH.
                         </td>
                       </tr>
