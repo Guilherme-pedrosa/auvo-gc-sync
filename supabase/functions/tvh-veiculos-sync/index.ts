@@ -16,9 +16,10 @@ const TVH_FALLBACK_URL = "https://qfmpyrekjbbqekxrjgov.supabase.co";
 // Chave pública (anon) do Technician & Vehicle Hub — leitura apenas, segura em código.
 const TVH_ANON_KEY =
   "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFmbXB5cmVramJicWVreHJqZ292Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM4Njc5NzMsImV4cCI6MjA4OTQ0Mzk3M30.ac7r6m5dLzMrEQxMQr74Bo38bgeupr5-bs0Ja4CCo2s";
-const CRITICAL_PRIORITIES = ["critica", "alta"];
-const NON_CONFORMITY_KEYWORDS = ["PNEU CARECA", "FREIO", "VAZAMENTO", "MOTOR", "SUSPENSAO", "LUZ", "FAROL", "NÃO ANDA", "IMPEDE"];
+// Só interessam não conformidades de manutenção do último checklist.
+// Alertas de "veículo rodou X km sem checklist" são ruído e ficam de fora.
 const OPEN_STATUSES = ["aberto", "em_andamento", "aguardando_peca"];
+const IGNORAR_TITULO = /sem\s+checklist/i;
 
 const STATUS_LABEL: Record<string, string> = {
   disponivel: "Disponível",
@@ -40,7 +41,38 @@ type Ticket = {
   titulo: string;
   prioridade: string;
   status: string;
+  descricao?: string | null;
+  created_at?: string | null;
 };
+
+// Extrai os itens não conformes descritos no checklist
+function detalharNaoConformidade(t: Ticket): string {
+  const desc = String(t.descricao || "");
+  const linhas = desc.split("\n").map((l) => l.trim()).filter(Boolean);
+
+  const itens: string[] = [];
+  let coletando = false;
+  for (const l of linhas) {
+    if (/itens? com problema/i.test(l)) { coletando = true; continue; }
+    if (coletando) {
+      if (/^(observa|resultado|t[ée]cnico|ve[íi]culo|data)\b/i.test(l)) { coletando = false; continue; }
+      itens.push(l.replace(/^[•\-*]\s*/, "").replace(/:\s*nao_conforme/i, " (NÃO CONFORME)"));
+    }
+  }
+
+  const resultado = linhas.find((l) => /^resultado:/i.test(l))?.replace(/^resultado:\s*/i, "") || "";
+  const obs = linhas.find((l) => /^observa/i.test(l))?.replace(/^observa[çc][õo]es:\s*/i, "") || "";
+  const data = linhas.find((l) => /^data:/i.test(l))?.replace(/^data:\s*/i, "") || "";
+
+  const partes: string[] = [];
+  if (data) partes.push(`Checklist ${data}`);
+  if (resultado) partes.push(`Resultado: ${resultado}`);
+  if (itens.length) partes.push(itens.map((i) => `• ${i}`).join("\n"));
+  else partes.push(t.titulo);
+  if (obs) partes.push(`Obs.: ${obs}`);
+  partes.push(`Situação: ${String(t.status).replace(/_/g, " ")} · prioridade ${String(t.prioridade).toUpperCase()}`);
+  return partes.join("\n");
+}
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
@@ -80,20 +112,14 @@ Deno.serve(async (req) => {
     )) as Vehicle[];
 
     const tickets = (await hub(
-      `maintenance_tickets?select=vehicle_id,titulo,prioridade,status&status=in.(${OPEN_STATUSES.join(",")})&order=created_at.desc`,
+      `maintenance_tickets?select=vehicle_id,titulo,prioridade,status,descricao,created_at,tipo&tipo=eq.nao_conformidade&status=in.(${OPEN_STATUSES.join(",")})&order=created_at.desc`,
     )) as Ticket[];
 
-    const porVeiculo = new Map<string, Ticket[]>();
+    // Apenas a não conformidade mais recente de cada veículo (último checklist)
+    const porVeiculo = new Map<string, Ticket>();
     for (const t of tickets) {
-      const tituloUpper = String(t.titulo || "").toUpperCase();
-      const isCriticalPriority = CRITICAL_PRIORITIES.includes(String(t.prioridade));
-      const hasCriticalKeyword = NON_CONFORMITY_KEYWORDS.some(k => tituloUpper.includes(k));
-
-      if (isCriticalPriority || hasCriticalKeyword) {
-        const arr = porVeiculo.get(t.vehicle_id) ?? [];
-        arr.push(t);
-        porVeiculo.set(t.vehicle_id, arr);
-      }
+      if (IGNORAR_TITULO.test(String(t.titulo || ""))) continue;
+      if (!porVeiculo.has(t.vehicle_id)) porVeiculo.set(t.vehicle_id, t);
     }
 
     const admin = createClient(
@@ -120,12 +146,8 @@ Deno.serve(async (req) => {
     let comAlerta = 0;
 
     for (const v of vehicles) {
-      const criticos = porVeiculo.get(v.id) ?? [];
-      const observacao = criticos.length
-        ? criticos
-            .map((t) => `⚠️ ${String(t.prioridade).toUpperCase()}: ${t.titulo} (${t.status.replace(/_/g, " ")})`)
-            .join(" · ")
-        : null;
+      const nc = porVeiculo.get(v.id);
+      const observacao = nc ? detalharNaoConformidade(nc) : null;
       if (observacao) comAlerta++;
 
       const placaNorm = String(v.placa || "").toUpperCase().replace(/[^A-Z0-9]/g, "");
