@@ -15,7 +15,7 @@ export interface AgendaRelatorioItem {
 
 const brDate = (iso: string) => iso.split("-").reverse().join("/");
 
-export async function gerarPdfAgenda(
+export function gerarPdfAgenda(
   titulo: string,
   periodo: string,
   itens: AgendaRelatorioItem[]
@@ -78,9 +78,5 @@ export async function gerarPdfAgenda(
   }
 
   // Retorna uma Promise para permitir que o chamador aguarde a conclusão.
-  return new Promise<void>((resolve) => {
-    doc.save(`agenda-coletiva-${new Date().getTime()}.pdf`);
-    // Pequeno delay para garantir que o processo de salvamento iniciou no navegador
-    setTimeout(resolve, 500);
-  });
+  doc.save(`agenda-coletiva-${new Date().getTime()}.pdf`);
 }
