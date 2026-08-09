@@ -158,6 +158,7 @@ function Celula({ itens, onSalvar, onAbrirTarefa, onAbrirAgendamento, onDragStar
                 title={a.auvo_task_id ? `Tarefa Auvo #${a.auvo_task_id}` : "Agendamento manual"}
                 onClick={() => (a.auvo_task_id ? onAbrirTarefa(a) : onAbrirAgendamento(a))}
                 onAuxClick={(e) => {
+                  // Clique com botão do meio ou scroll abre edição mesmo se tiver tarefa
                   if (e.button === 1 && a.auvo_task_id) {
                     onAbrirAgendamento(a);
                   }
