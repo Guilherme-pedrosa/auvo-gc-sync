@@ -657,6 +657,16 @@ export default function AgendamentoEquipePage() {
           </Button>
         </div>
         <div className="flex items-center gap-2">
+          <Button 
+            variant="outline" 
+            size="sm" 
+            className="gap-2" 
+            onClick={atualizarClientesAuvo}
+            disabled={isUpdatingCustomers}
+          >
+            <Users className={cn("h-4 w-4", isUpdatingCustomers && "animate-spin")} />
+            {isUpdatingCustomers ? "Atualizando..." : "Atualizar Clientes"}
+          </Button>
           <Button variant="outline" size="sm" className="gap-2" onClick={() => setDialogRelatorioOpen(true)}>
             <Printer className="h-4 w-4" /> Exportar PDF
           </Button>
