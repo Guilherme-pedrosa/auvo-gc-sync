@@ -16,6 +16,7 @@ import {
 } from "@/hooks/operacional/useAgendamentoEquipe";
 import { useQueryClient } from "@tanstack/react-query";
 import AgendamentoEquipeDialog from "@/components/operacional/AgendamentoEquipeDialog";
+import TarefaAuvoDetalheDialog from "@/components/operacional/TarefaAuvoDetalheDialog";
 import { toast } from "sonner";
 
 const DIAS_TRADUZIDOS = ["Segunda-feira", "Terça-feira", "Quarta-feira", "Quinta-feira", "Sexta-feira", "Sábado", "Domingo"];
@@ -136,6 +137,50 @@ function Celula({ itens, onSalvar, onAbrirTarefa, onAbrirAgendamento, colorir = 
   );
 }
 
+function CelulaTexto({ valor, onSalvar }: { valor: string; onSalvar: (v: string) => void }) {
+  const [editando, setEditando] = useState(false);
+  const [rascunho, setRascunho] = useState(valor);
+
+  if (editando) {
+    return (
+      <td className="border border-border p-0 align-top">
+        <textarea
+          autoFocus
+          value={rascunho}
+          onChange={(e) => setRascunho(e.target.value)}
+          onBlur={() => {
+            setEditando(false);
+            if (rascunho.trim() !== valor.trim()) onSalvar(rascunho);
+          }}
+          onKeyDown={(e) => {
+            if (e.key === "Escape") {
+              setRascunho(valor);
+              setEditando(false);
+            }
+            if (e.key === "Enter" && !e.shiftKey) {
+              e.preventDefault();
+              (e.target as HTMLTextAreaElement).blur();
+            }
+          }}
+          className="w-full h-16 resize-none bg-background p-1.5 text-[11px] font-medium uppercase outline-none ring-2 ring-primary"
+        />
+      </td>
+    );
+  }
+
+  return (
+    <td
+      onClick={() => {
+        setRascunho(valor);
+        setEditando(true);
+      }}
+      className="border border-border p-1.5 align-top text-[11px] font-semibold uppercase leading-tight cursor-pointer h-16 min-w-[130px] hover:ring-1 hover:ring-primary/50"
+    >
+      {valor || <span className="opacity-25 normal-case font-normal">—</span>}
+    </td>
+  );
+}
+
 export default function AgendamentoEquipePage() {
   const qc = useQueryClient();
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -187,67 +232,51 @@ export default function AgendamentoEquipePage() {
         return porNome.get(n) ?? porPrimeiroNome.get(n.split(" ")[0]);
       };
 
-      // Agrupa por técnico + dia (a grade tem 1 linha por dia)
-      const grupos = new Map<string, { colab: any; data: string; clientes: string[]; descricoes: string[]; horaIni: string; horaFim: string }>();
+      // 1 linha por tarefa (cliente por linha, clicável)
+      const linhas: any[] = [];
       let semTecnico = 0;
+      const vistos = new Set<string>();
       for (const t of tarefas) {
         if (!t.data_tarefa) continue;
         const colab = resolver(t);
         if (!colab) { semTecnico++; continue; }
-        const key = `${colab.id}|${t.data_tarefa}`;
-        const g = grupos.get(key) ?? {
-          colab,
+        const taskId = String(t.auvo_task_id ?? t.taskID ?? t.id ?? "");
+        if (!taskId) continue;
+        const key = `${taskId}|${t.data_tarefa}|${colab.id}`;
+        if (vistos.has(key)) continue;
+        vistos.add(key);
+        linhas.push({
           data: t.data_tarefa,
-          clientes: [] as string[],
-          descricoes: [] as string[],
-          horaIni: t.hora_inicio || "08:00",
-          horaFim: t.hora_fim || "18:00",
-        };
-        const cli = String(t.cliente || "").trim().toUpperCase();
-        if (cli && !g.clientes.includes(cli)) g.clientes.push(cli);
-        if (t.descricao) g.descricoes.push(`${cli}: ${t.descricao}`);
-        if (t.hora_inicio && t.hora_inicio < g.horaIni) g.horaIni = t.hora_inicio;
-        if (t.hora_fim && t.hora_fim > g.horaFim) g.horaFim = t.hora_fim;
-        grupos.set(key, g);
+          hora_inicio: t.hora_inicio || "08:00",
+          hora_fim: t.hora_fim || "18:00",
+          colaborador_id: colab.id,
+          colaborador_nome: colab.nome,
+          cliente: String(t.cliente || "SEM CLIENTE").trim().toUpperCase(),
+          descricao: t.descricao || t.orientacao || null,
+          status: "AGENDADO",
+          auvo_task_id: taskId,
+          origem: "AUVO",
+        });
       }
 
-      // Carrega o que já existe no período (evita N consultas)
-      const { data: existentes } = await supabase
+      // Remove sincronizados antigos do período e regrava
+      const { error: errDel } = await supabase
         .from("agenda_agendamentos")
-        .select("id,data,colaborador_id")
+        .delete()
+        .eq("origem", "AUVO")
         .gte("data", dias[0])
         .lte("data", dias[dias.length - 1]);
-      const mapExist = new Map<string, string>();
-      for (const e of existentes ?? []) mapExist.set(`${e.colaborador_id}|${e.data}`, e.id);
+      if (errDel) throw errDel;
 
-      const inserts: any[] = [];
-      const updates: { id: string; payload: any }[] = [];
-      for (const [key, g] of grupos) {
-        const payload = {
-          data: g.data,
-          hora_inicio: g.horaIni,
-          hora_fim: g.horaFim,
-          colaborador_id: g.colab.id,
-          colaborador_nome: g.colab.nome,
-          cliente: g.clientes.join(" / "),
-          descricao: g.descricoes.join("\n\n").slice(0, 4000) || null,
-          status: "AGENDADO",
-        };
-        const id = mapExist.get(key);
-        if (id) updates.push({ id, payload });
-        else inserts.push(payload);
-      }
-
-      if (inserts.length) {
-        const { error: errIns } = await supabase.from("agenda_agendamentos").insert(inserts as never);
+      for (let i = 0; i < linhas.length; i += 500) {
+        const { error: errIns } = await supabase
+          .from("agenda_agendamentos")
+          .insert(linhas.slice(i, i + 500) as never);
         if (errIns) throw errIns;
-      }
-      for (const u of updates) {
-        await supabase.from("agenda_agendamentos").update(u.payload).eq("id", u.id);
       }
 
       await refetchLocal();
-      toast.success(`Escala atualizada: ${grupos.size} dias preenchidos (${tarefas.length} tarefas)`, {
+      toast.success(`Escala atualizada: ${linhas.length} agendamentos (${tarefas.length} tarefas)`, {
         id: toastId,
         description: semTecnico > 0 ? `${semTecnico} tarefas sem técnico vinculado no RH.` : undefined,
       });
@@ -460,16 +489,9 @@ export default function AgendamentoEquipePage() {
                           {v.placa && <div className="text-[10px] font-normal opacity-60">{v.placa}</div>}
                         </td>
                         {dias.map((dia) => (
-                          <Celula
+                          <CelulaTexto
                             key={dia}
                             valor={mapVei.get(`${v.id}|${dia}`) ?? ""}
-                            colorir={false}
-                             onClick={() => {
-                               setSelectedAgendamento(null);
-                               setSelectedDate(new Date(dia + "T12:00:00"));
-                               setSelectedColabId(null);
-                               setDialogOpen(true);
-                             }}
                             onSalvar={(texto) => salvarVeiculo.mutate({ veiculo_id: v.id, data: dia, texto })}
                           />
                         ))}
@@ -497,6 +519,8 @@ export default function AgendamentoEquipePage() {
         initialColaboradorId={selectedColabId}
         agendamento={selectedAgendamento}
       />
+
+      <TarefaAuvoDetalheDialog taskId={tarefaId} onOpenChange={(open) => !open && setTarefaId(null)} />
     </div>
   );
 }
