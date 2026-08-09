@@ -1,4 +1,5 @@
 import { installGcUsuarioId } from "../_shared/gc-user.ts";
+import { createClient } from "npm:@supabase/supabase-js@2";
 installGcUsuarioId();
 
 const corsHeaders = {
@@ -261,10 +262,45 @@ Deno.serve(async (req) => {
       hasGc ? fetchGcOrcMap(gcHeaders, gcStart, endDate) : Promise.resolve(new Map<string, any>()),
     ]);
 
-    // Filtra tarefas duplicadas ou inconsistentes se necessário
     const allTasks = allTasksFetched;
 
-    console.log(`[auvo-agenda] ${allTasks.length} tasks, ${gcOsMap.size} OS, ${gcOrcMap.size} orçamentos`);
+    // A mesma fonte do Controle OS é a autoridade para o vínculo tarefa → OS principal.
+    // O documento pode ser antigo e não aparecer na janela consultada na API do GC.
+    const localDocumentMap = new Map<string, { gc_os_codigo: string | null; gc_orcamento_codigo: string | null }>();
+    const backendUrl = Deno.env.get("SUPABASE_URL");
+    const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+    const taskIds = allTasks
+      .map((task: any) => String(task.taskID || task.taskId || task.id || "").trim())
+      .filter(Boolean);
+
+    if (backendUrl && serviceRoleKey && taskIds.length > 0) {
+      const backend = createClient(backendUrl, serviceRoleKey);
+      for (let index = 0; index < taskIds.length; index += 500) {
+        const batch = taskIds.slice(index, index + 500);
+        const { data: localRows, error: localError } = await backend
+          .from("tarefas_central")
+          .select("auvo_task_id,gc_os_codigo,gc_orcamento_codigo")
+          .in("auvo_task_id", batch)
+          .not("gc_os_codigo", "is", null);
+
+        if (localError) {
+          console.error(`[auvo-agenda] falha ao consultar vínculos do Controle OS: ${localError.message}`);
+          break;
+        }
+
+        for (const row of localRows ?? []) {
+          const id = String(row.auvo_task_id || "").trim();
+          if (!id) continue;
+          const existing = localDocumentMap.get(id);
+          localDocumentMap.set(id, {
+            gc_os_codigo: existing?.gc_os_codigo || row.gc_os_codigo || null,
+            gc_orcamento_codigo: existing?.gc_orcamento_codigo || row.gc_orcamento_codigo || null,
+          });
+        }
+      }
+    }
+
+    console.log(`[auvo-agenda] ${allTasks.length} tasks, ${gcOsMap.size} OS, ${gcOrcMap.size} orçamentos, ${localDocumentMap.size} vínculos locais`);
 
     // For finished tasks, the list endpoint usually omits checkInDate/checkOutDate.
     // Fetch the per-task snapshot in parallel (limited concurrency) so the agenda
@@ -350,6 +386,7 @@ Deno.serve(async (req) => {
       const description = String(t.orientation || t.description || "").substring(0, 500);
 
       // GC enrichment
+      const localDocument = localDocumentMap.get(taskId);
       const os = gcOsMap.get(taskId);
       const orc = gcOrcMap.get(taskId);
 
@@ -367,11 +404,13 @@ Deno.serve(async (req) => {
         check_in: !!t.checkIn,
         check_out: !!t.checkOut,
         auvo_link: `https://app2.auvo.com.br/relatorioTarefas/DetalheTarefa/${taskId}`,
-        gc_os_codigo: os?.gc_os_codigo ?? null,
+        gc_os_codigo: localDocument?.gc_os_codigo ?? os?.gc_os_codigo ?? null,
         gc_os_situacao: os?.gc_os_situacao ?? null,
         gc_os_valor_total: os?.gc_os_valor_total ?? null,
         gc_os_link: os?.gc_os_link ?? null,
-        gc_orcamento_codigo: orc?.gc_orcamento_codigo ?? null,
+        gc_orcamento_codigo: localDocument?.gc_os_codigo
+          ? null
+          : (localDocument?.gc_orcamento_codigo ?? orc?.gc_orcamento_codigo ?? null),
         gc_orc_situacao: orc?.gc_orc_situacao ?? null,
         gc_orc_valor_total: orc?.gc_orc_valor_total ?? null,
         gc_orc_link: orc?.gc_orc_link ?? null,
