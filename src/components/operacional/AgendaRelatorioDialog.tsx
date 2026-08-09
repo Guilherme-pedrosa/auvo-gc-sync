@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -120,6 +120,9 @@ export default function AgendaRelatorioDialog({ open, onOpenChange, agendamentos
             <FileText className="h-5 w-5 text-primary" />
             Exportar Agendamento
           </DialogTitle>
+          <DialogDescription>
+            Escolha a data e o período que serão incluídos no PDF coletivo.
+          </DialogDescription>
         </DialogHeader>
 
         <div className="py-4 space-y-4">
