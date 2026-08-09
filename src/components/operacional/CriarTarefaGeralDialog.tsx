@@ -84,11 +84,46 @@ export default function CriarTarefaGeralDialog({ open, onOpenChange, onSuccess }
     },
   });
 
-  const customerOptions = useMemo(() => customers.map(c => ({ value: String(c.customerId || c.id || ""), label: String(c.name || "") })).filter(o => o.value), [customers]);
-  const equipmentOptions = useMemo(() => equipments.map(e => ({ value: String(e.equipmentId || e.id || ""), label: `${e.name} ${e.idSerie ? `(${e.idSerie})` : ""}` })).filter(o => o.value), [equipments]);
-  const taskTypeOptions = useMemo(() => taskTypes.map(t => ({ value: String(t.taskTypeId || t.id || ""), label: String(t.description || t.name || "") })).filter(o => o.value), [taskTypes]);
-  const userOptions = useMemo(() => users.map(u => ({ value: String(u.userID || u.id || ""), label: String(u.name || "") })).filter(o => o.value), [users]);
-  const questionnaireOptions = useMemo(() => questionnaires.map(q => ({ value: String(q.questionnaireId || q.id || ""), label: String(q.description || q.name || "") })).filter(o => o.value), [questionnaires]);
+  const customerOptions = useMemo(() => 
+    customers
+      .map(c => ({ value: String(c.customerId || c.id || ""), label: String(c.name || "") }))
+      .filter(o => o.value)
+      .sort((a, b) => a.label.localeCompare(b.label))
+  , [customers]);
+
+  const equipmentOptions = useMemo(() => 
+    equipments
+      .map(e => ({ 
+        value: String(e.equipmentId || e.id || ""), 
+        label: `${e.name} ${e.idSerie ? `(${e.idSerie})` : ""}` 
+      }))
+      .filter(o => o.value)
+      .sort((a, b) => a.label.localeCompare(b.label))
+  , [equipments]);
+
+  const taskTypeOptions = useMemo(() => 
+    taskTypes
+      .map(t => ({ value: String(t.taskTypeId || t.id || ""), label: String(t.description || t.name || "") }))
+      .filter(o => o.value)
+      .sort((a, b) => a.label.localeCompare(b.label))
+  , [taskTypes]);
+
+  const userOptions = useMemo(() => 
+    users
+      .map(u => ({ value: String(u.userID || u.id || ""), label: String(u.name || "") }))
+      .filter(o => o.value)
+      .sort((a, b) => a.label.localeCompare(b.label))
+  , [users]);
+
+  const questionnaireOptions = useMemo(() => 
+    questionnaires
+      .map(q => ({ 
+        value: String(q.id ?? q.questionnaireId ?? q.questionnaireID ?? ""), 
+        label: String(q.description ?? q.name ?? q.questionnaireDescription ?? `Questionário ${q.id ?? "?"}`) 
+      }))
+      .filter(o => o.value)
+      .sort((a, b) => a.label.localeCompare(b.label))
+  , [questionnaires]);
 
   const handleSubmit = async () => {
     if (!customerId || !idUserTo || !taskTypeId || !dateISO || !startTime) {
@@ -130,27 +165,27 @@ export default function CriarTarefaGeralDialog({ open, onOpenChange, onSuccess }
         <div className="space-y-4 py-4">
           <div className="grid gap-2">
             <Label className="text-xs">Cliente</Label>
-            <SearchableSelect options={customerOptions} value={customerId} onValueChange={setCustomerId} placeholder={loadingCustomers ? "Carregando..." : "Selecione o cliente"} />
+            <SearchableSelect options={customerOptions} value={customerId} onValueChange={setCustomerId} placeholder={loadingCustomers ? "Carregando..." : "Selecione o cliente"} searchPlaceholder="Buscar cliente..." />
           </div>
           {customerId && (
             <div className="grid gap-2">
               <Label className="text-xs">Equipamento (opcional)</Label>
-              <SearchableSelect options={equipmentOptions} value={equipmentId} onValueChange={setEquipmentId} placeholder={loadingEquipments ? "Carregando..." : "Selecione o equipamento"} />
+              <SearchableSelect options={equipmentOptions} value={equipmentId} onValueChange={setEquipmentId} placeholder={loadingEquipments ? "Carregando..." : "Selecione o equipamento"} searchPlaceholder="Buscar equipamento..." />
             </div>
           )}
           <div className="grid grid-cols-2 gap-4">
             <div className="grid gap-2">
               <Label className="text-xs">Tipo de Tarefa</Label>
-              <SearchableSelect options={taskTypeOptions} value={taskTypeId} onValueChange={setTaskTypeId} placeholder={loadingTypes ? "Carregando..." : "Selecione o tipo"} />
+              <SearchableSelect options={taskTypeOptions} value={taskTypeId} onValueChange={setTaskTypeId} placeholder={loadingTypes ? "Carregando..." : "Selecione o tipo"} searchPlaceholder="Buscar tipo..." />
             </div>
             <div className="grid gap-2">
               <Label className="text-xs">Técnico</Label>
-              <SearchableSelect options={userOptions} value={idUserTo} onValueChange={setIdUserTo} placeholder={loadingUsers ? "Carregando..." : "Selecione o técnico"} />
+              <SearchableSelect options={userOptions} value={idUserTo} onValueChange={setIdUserTo} placeholder={loadingUsers ? "Carregando..." : "Selecione o técnico"} searchPlaceholder="Buscar técnico..." />
             </div>
           </div>
           <div className="grid gap-2">
             <Label className="text-xs">Questionário (opcional)</Label>
-            <SearchableSelect options={questionnaireOptions} value={questionnaireId} onValueChange={setQuestionnaireId} placeholder={loadingQuestionnaires ? "Carregando..." : "Sem questionário"} />
+            <SearchableSelect options={questionnaireOptions} value={questionnaireId} onValueChange={setQuestionnaireId} placeholder={loadingQuestionnaires ? "Carregando..." : questionnaireOptions.length === 0 ? "Nenhum questionário disponível" : "Sem questionário"} searchPlaceholder="Buscar questionário..." />
           </div>
           <div className="grid grid-cols-3 gap-4">
             <div className="grid gap-2 col-span-1">
