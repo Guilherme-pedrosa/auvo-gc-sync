@@ -45,7 +45,7 @@ export async function gerarPdfAgenda(
       it.gc_codigo || "—",
       it.cliente,
       it.descricao || "—",
-      it.auvo_task_id ? "Ver no Auvo" : "—",
+      it.auvo_task_id ? "ABRIR TAREFA" : "—",
     ]),
     styles: { fontSize: 8, cellPadding: 3 },
     headStyles: { fillColor: [37, 99, 235], textColor: 255, fontStyle: "bold" },
@@ -55,7 +55,7 @@ export async function gerarPdfAgenda(
       2: { cellWidth: 70 },
       3: { cellWidth: 50 },
       4: { cellWidth: 120 },
-      6: { halign: "center", textColor: [37, 99, 235] },
+      6: { halign: "center", textColor: [37, 99, 235], fontStyle: 'bold' },
     },
     didDrawCell: (data: any) => {
       if (data.section !== "body") return;
@@ -76,5 +76,14 @@ export async function gerarPdfAgenda(
     doc.text(`Página ${i} de ${totalPages}`, pageW - 40, pageH - 20, { align: "right" });
   }
 
-  doc.save(`agenda-coletiva-${new Date().getTime()}.pdf`);
+  // Usamos blob + URL.createObjectURL para garantir o download em navegadores modernos
+  const pdfBlob = doc.output('blob');
+  const url = URL.createObjectURL(pdfBlob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = `agenda-coletiva-${new Date().getTime()}.pdf`;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
 }
