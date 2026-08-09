@@ -534,6 +534,7 @@ export default function AgendamentoEquipePage() {
       });
 
       toast.success("Agendamento movido com sucesso!", { id: toastId });
+      refetchLocal();
     } catch (err: any) {
       console.error("Erro ao mover agendamento:", err);
       toast.error(err.message || "Erro ao mover agendamento", { id: toastId });
