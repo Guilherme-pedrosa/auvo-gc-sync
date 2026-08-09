@@ -224,7 +224,7 @@ function Celula({
   );
 }
 
-function CelulaTexto({ valor, onSalvar }: { valor: string; onSalvar: (v: string) => void }) {
+function CelulaTexto({ valor, onSalvar, onExcluir }: { valor: string; onSalvar: (v: string) => void; onExcluir?: () => void }) {
   const [editando, setEditando] = useState(false);
   const [rascunho, setRascunho] = useState(valor);
 
@@ -261,7 +261,7 @@ function CelulaTexto({ valor, onSalvar }: { valor: string; onSalvar: (v: string)
         setRascunho(valor);
         setEditando(true);
       }}
-      className="border border-border p-1.5 align-top text-[11px] font-semibold uppercase leading-tight cursor-pointer h-16 min-w-[130px] hover:ring-1 hover:ring-primary/50"
+      className="group relative border border-border p-1.5 align-top text-[11px] font-semibold uppercase leading-tight cursor-pointer h-16 min-w-[130px] hover:ring-1 hover:ring-primary/50"
     >
       {valor || <span className="opacity-25 normal-case font-normal">—</span>}
     </td>
