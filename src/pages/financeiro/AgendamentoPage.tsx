@@ -279,10 +279,11 @@ export default function AgendamentoPage() {
             {i.pedidos_detalhes?.map((pedido) => (
               <div key={pedido.codigo} className="flex flex-wrap items-center gap-1 text-[10px]">
                 {pedido.gc_link ? (
-                  <a href={pedido.gc_link} target="_blank" rel="noreferrer" className="font-semibold text-primary hover:underline">
+                  <a href={pedido.gc_link.replace("/visualizar/", "/editar/")} target="_blank" rel="noreferrer" className="font-semibold text-primary hover:underline">
                     PC {pedido.codigo}
                   </a>
                 ) : <span className="font-semibold">PC {pedido.codigo}</span>}
+
                 <Badge
                   variant="outline"
                   className={cn(
@@ -330,12 +331,13 @@ export default function AgendamentoPage() {
           )}
 
           {ehPedido && i.gc_link && i.compra_codigo && (
-            <Button size="icon" variant="ghost" className="h-7 w-7" asChild>
-              <a href={i.gc_link} target="_blank" rel="noreferrer" aria-label="Abrir pedido de compra no GestãoClick">
+            <Button size="icon" variant="ghost" className="h-7 w-7" asChild title="Editar no GestãoClick">
+              <a href={i.gc_link.replace("/visualizar/", "/editar/")} target="_blank" rel="noreferrer">
                 <PackageSearch className="h-3 w-3" />
               </a>
             </Button>
           )}
+
         </div>
       </div>
     );
