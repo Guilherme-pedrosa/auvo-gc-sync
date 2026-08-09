@@ -57,14 +57,11 @@ Deno.serve(async (req) => {
     const tvhKey = Deno.env.get("TVH_SERVICE_ROLE_KEY");
     if (!tvhKey) return json({ ok: false, error: "TVH_SERVICE_ROLE_KEY não configurada" });
 
-    if (new URL(req.url).searchParams.get("diag") === "1") {
+    if (!/^(eyJ|sb_)/.test(tvhKey)) {
       return json({
-        ok: true,
-        diag: {
-          url: tvhUrl,
-          key_prefix: tvhKey.slice(0, 10),
-          key_len: tvhKey.length,
-        },
+        ok: false,
+        error:
+          "O valor salvo em TVH_SERVICE_ROLE_KEY não é uma chave do Hub (começa com 'sk-proj-', que é chave da OpenAI). Salve a chave de serviço do projeto Technician & Vehicle Hub.",
       });
     }
 
