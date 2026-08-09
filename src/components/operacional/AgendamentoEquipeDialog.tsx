@@ -19,6 +19,8 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import { useColaboradores } from "@/hooks/rh/useRh";
+import { Skeleton } from "@/components/ui/skeleton";
 
 interface AgendamentoEquipeDialogProps {
   open: boolean;
@@ -27,6 +29,8 @@ interface AgendamentoEquipeDialogProps {
 }
 
 export default function AgendamentoEquipeDialog({ open, onOpenChange, initialDate }: AgendamentoEquipeDialogProps) {
+  const { data: colaboradores = [], isLoading } = useColaboradores();
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-[500px]">
@@ -59,16 +63,29 @@ export default function AgendamentoEquipeDialog({ open, onOpenChange, initialDat
 
           <div className="space-y-2">
             <Label htmlFor="tech">Técnico</Label>
-            <Select>
-              <SelectTrigger id="tech">
-                <SelectValue placeholder="Selecione um técnico" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="1">Filipe Carvalho</SelectItem>
-                <SelectItem value="2">João Silva</SelectItem>
-                <SelectItem value="3">Ricardo Oliveira</SelectItem>
-              </SelectContent>
-            </Select>
+            {isLoading ? (
+              <Skeleton className="h-10 w-full" />
+            ) : (
+              <Select>
+                <SelectTrigger id="tech">
+                  <SelectValue placeholder="Selecione um técnico" />
+                </SelectTrigger>
+                <SelectContent>
+                  {colaboradores
+                    .filter((c) => c.ativo)
+                    .map((c) => (
+                      <SelectItem key={c.id} value={c.id}>
+                        {c.nome}
+                      </SelectItem>
+                    ))}
+                  {colaboradores.filter((c) => c.ativo).length === 0 && (
+                    <SelectItem value="none" disabled>
+                      Nenhum técnico ativo encontrado
+                    </SelectItem>
+                  )}
+                </SelectContent>
+              </Select>
+            )}
           </div>
 
           <div className="space-y-2">
