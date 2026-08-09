@@ -318,9 +318,7 @@ export default function AgendamentoEquipePage() {
           status: "AGENDADO",
           auvo_task_id: taskId,
           origem: "AUVO",
-          // Mapeando dados extras para exibição nos cards
           gc_os_codigo: osCodigo,
-          // Orçamento só entra quando não há OS (é apenas previsão)
           gc_orcamento_codigo: osCodigo ? null : orcCodigo,
         });
       }
