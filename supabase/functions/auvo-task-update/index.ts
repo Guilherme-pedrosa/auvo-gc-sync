@@ -64,6 +64,13 @@ function hasOwn(obj: any, key: string): boolean {
   return Object.prototype.hasOwnProperty.call(obj, key);
 }
 
+// A API v2 do Auvo NÃO aceita estimatedDuration/taskEndDate em nenhuma escrita:
+// - PATCH /tasks/{id} devolve 400 "The target location specified by path segment ... was not found"
+// - PUT /tasks (upsert) ignora silenciosamente o campo (verificado em produção)
+// A duração da tarefa no Auvo vem do "standardTime" do Tipo de Tarefa (/taskTypes).
+// Portanto esses caminhos são descartados antes do PATCH para não quebrar a edição.
+const PATCH_UNSUPPORTED_PATHS = ["estimatedDuration", "taskEndDate"];
+
 function setIfProvided(result: any, row: any, key: string, targetKey: string = key) {
   if (!hasOwn(row, key)) return;
   result[targetKey] = row[key] ?? null;
@@ -237,28 +244,31 @@ Deno.serve(async (req) => {
       }
 
       const url = `${AUVO_BASE_URL}/tasks/${taskId}`;
+
+      // Descarta campos que a API v2 não aceita em escrita (duração / data fim)
+      const patchable = patches.filter((p: any) => !PATCH_UNSUPPORTED_PATHS.includes(p?.path));
+      const ignoredPaths = patches
+        .filter((p: any) => PATCH_UNSUPPORTED_PATHS.includes(p?.path))
+        .map((p: any) => p.path);
+      if (ignoredPaths.length > 0) {
+        console.warn(`[auvo-task-update][reqId=${reqId}] campos não suportados pela API Auvo ignorados: ${ignoredPaths.join(", ")}`);
+      }
+
+      if (patchable.length === 0) {
+        return new Response(
+          JSON.stringify({ data: null, status: 200, ignoredPaths, reqId }),
+          { status: 200, headers: respHeaders }
+        );
+      }
+
       // PATCH é idempotente para os campos enviados → retry seguro em 502/503/timeout
       let response: Response;
       try {
         response = await patchWithRetry(url, {
           method: "PATCH",
           headers,
-          body: JSON.stringify(patches),
+          body: JSON.stringify(patchable),
         }, reqId);
-
-        // Fallback for taskEndDate error (Common in some Auvo versions)
-        if (!response.ok) {
-          const errorText = await response.clone().text();
-          if (errorText.toLowerCase().includes("taskenddate") && errorText.toLowerCase().includes("not found")) {
-            console.warn(`[auvo-task-update][reqId=${reqId}] Retrying without taskEndDate...`);
-            const filteredPatches = patches.filter(p => p.path !== "taskEndDate");
-            response = await patchWithRetry(url, {
-              method: "PATCH",
-              headers,
-              body: JSON.stringify(filteredPatches),
-            }, reqId);
-          }
-        }
       } catch (err) {
         console.error(`[auvo-task-update][reqId=${reqId}] PATCH /tasks/${taskId} falhou após retries:`, err);
         return new Response(
@@ -278,7 +288,7 @@ Deno.serve(async (req) => {
       console.log(`[auvo-task-update][reqId=${reqId}] action=edit status=${response.status} response=`, responseText.substring(0, 500));
 
       return new Response(
-        JSON.stringify({ data, status: response.status, reqId }),
+        JSON.stringify({ data, status: response.status, ignoredPaths, reqId }),
         { status: 200, headers: respHeaders }
       );
     }

@@ -172,8 +172,8 @@ export default function AgendamentoEquipeDialog({
           horaFimCalc !== agendamento.hora_fim.slice(0, 5)
         ) {
           patches.push({ op: "replace", path: "taskDate", value: `${data}T${horaInicio}:00` });
-          patches.push({ op: "replace", path: "taskEndDate", value: `${data}T${horaFimCalc}:00` });
-          patches.push({ op: "replace", path: "estimatedDuration", value: minutesToClock(duracaoMin) });
+          // A API v2 do Auvo não aceita taskEndDate/estimatedDuration na escrita.
+          // A duração é definida pelo Tipo de Tarefa no Auvo; aqui ela é apenas local (agenda/PDF).
         }
         
         // Técnico
@@ -251,7 +251,7 @@ export default function AgendamentoEquipeDialog({
               <Input id="start" type="time" value={horaInicio} onChange={(e) => setHoraInicio(e.target.value)} />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="end">Duração (HH:mm)</Label>
+              <Label htmlFor="end">Duração (HH:mm) — local</Label>
               <Input
                 id="end"
                 type="time"
