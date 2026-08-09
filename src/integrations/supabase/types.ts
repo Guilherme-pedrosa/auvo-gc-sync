@@ -132,6 +132,7 @@ export type Database = {
           ativo: boolean
           atualizado_em: string
           criado_em: string
+          deletado_em: string | null
           id: string
           marca: string | null
           modelo: string | null
@@ -147,6 +148,7 @@ export type Database = {
           ativo?: boolean
           atualizado_em?: string
           criado_em?: string
+          deletado_em?: string | null
           id?: string
           marca?: string | null
           modelo?: string | null
@@ -162,6 +164,7 @@ export type Database = {
           ativo?: boolean
           atualizado_em?: string
           criado_em?: string
+          deletado_em?: string | null
           id?: string
           marca?: string | null
           modelo?: string | null
