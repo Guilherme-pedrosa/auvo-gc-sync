@@ -280,6 +280,14 @@ export default function AgendamentoEquipePage() {
   const dragItem = useRef<AgendaAgendamento | null>(null);
   const saveAgendamento = useSaveAgendamento();
 
+  // Expõe o queryClient globalmente para uso no diálogo de criação de tarefa
+  useEffect(() => {
+    (window as any).queryClient = qc;
+    return () => {
+      delete (window as any).queryClient;
+    };
+  }, [qc]);
+
   const inicioEscala = useMemo(() => new Date(), []);
   
   const dias = useMemo(
