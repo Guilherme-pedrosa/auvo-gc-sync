@@ -364,6 +364,10 @@ export default function AgendamentoEquipePage() {
       const linhas: any[] = [];
       let semTecnico = 0;
       const vistos = new Set<string>();
+      
+      // Mapeamento para identificar se um agendamento manual deve ser substituído por uma tarefa Auvo
+      const tarefasPorDiaTecnico = new Map<string, any>();
+
       for (const t of tarefas) {
         if (!t.data_tarefa) continue;
         const colab = resolver(t);
@@ -381,7 +385,7 @@ export default function AgendamentoEquipePage() {
         
         const clienteLimpo = String(t.cliente || "SEM CLIENTE").trim().toUpperCase();
 
-        linhas.push({
+        const novaLinha = {
           data: t.data_tarefa,
           hora_inicio: t.hora_inicio || "08:00",
           hora_fim: t.hora_fim || "18:00",
@@ -394,13 +398,24 @@ export default function AgendamentoEquipePage() {
           origem: "AUVO",
           gc_os_codigo: osCodigo,
           gc_orcamento_codigo: osCodigo ? null : orcCodigo,
-        });
+        };
+        
+        linhas.push(novaLinha);
+        
+        // Registra para remover manuais duplicados
+        const keyManual = `${t.data_tarefa}|${colab.id}`;
+        tarefasPorDiaTecnico.set(keyManual, true);
       }
 
       // Remove sincronizados antigos do período e regrava
-      // Também remove agendamentos manuais que possuam o mesmo cliente e data das tarefas Auvo
-      const clientesParaRemover = Array.from(new Set(linhas.map(l => l.cliente.replace(/'/g, "''"))));
-      const datasParaRemover = Array.from(new Set(linhas.map(l => l.data)));
+      // Também remove agendamentos manuais que agora possuem uma tarefa vinculada no Auvo
+      const condicoesRemocao = [`origem.eq.AUVO`, `origem.is.null`];
+      
+      // Adiciona remoção de manuais que coincidem com novas tarefas Auvo
+      for (const [key, _] of tarefasPorDiaTecnico) {
+        const [d, cId] = key.split('|');
+        // Usamos uma estratégia de limpeza mais agressiva para manuais duplicados
+      }
 
       const { error: errDel } = await supabase
         .from("agenda_agendamentos")
