@@ -270,7 +270,7 @@ export default function AgendamentoEquipePage() {
     [inicioEscala],
   );
 
-  const { data: colaboradores = [], isLoading: loadingCol } = useColaboradores();
+  const { data: colaboradores = [], isLoading: loadingCol, refetch: refetchColaboradores } = useColaboradores();
   const { data: veiculos = [], isLoading: loadingVei } = useAgendaVeiculos();
   const { data, isLoading, isFetching, refetch: refetchLocal } = useAgendaSemana(dias);
   const [isSyncing, setIsSyncing] = useState(false);
@@ -279,6 +279,9 @@ export default function AgendamentoEquipePage() {
     setIsSyncing(true);
     const toastId = toast.loading("Puxando tarefas do Auvo/GC para a escala...");
     try {
+      // Força a atualização da lista de colaboradores (RH)
+      await refetchColaboradores();
+
       const { data: syncRes, error } = await supabase.functions.invoke("auvo-agenda", {
         body: { startDate: dias[0], endDate: dias[dias.length - 1] },
       });
