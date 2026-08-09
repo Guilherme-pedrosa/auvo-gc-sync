@@ -889,9 +889,9 @@ export default function AgendamentoEquipePage() {
                               >
                                 <div className="flex items-center gap-1 font-bold uppercase text-[9px]">
                                   <AlertTriangle className="h-3 w-3 shrink-0" />
-                                  <span>Crítica: Urgente</span>
+                                  <span>Não conformidade — último checklist</span>
                                 </div>
-                                <span className="line-clamp-3">{v.observacao}</span>
+                                <span className="whitespace-pre-line leading-snug">{v.observacao}</span>
                               </div>
                             )}
                           </td>
