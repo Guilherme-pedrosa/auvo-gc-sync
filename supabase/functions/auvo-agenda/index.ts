@@ -247,10 +247,18 @@ Deno.serve(async (req) => {
     };
 
     // Run in parallel: Auvo tasks + GC OS + GC Orçamentos
+    // OS/Orçamentos do GC costumam ter data de emissão MUITO anterior à data
+    // agendada da tarefa (escala futura de 90 dias). Por isso ampliamos a janela
+    // de busca no GC: 18 meses antes do início até o fim do período.
+    const gcStart = (() => {
+      const d = new Date(`${startDate}T00:00:00Z`);
+      d.setUTCMonth(d.getUTCMonth() - 18);
+      return d.toISOString().substring(0, 10);
+    })();
     const [allTasks, gcOsMap, gcOrcMap] = await Promise.all([
       fetchTasks(),
-      hasGc ? fetchGcOsMap(gcHeaders, startDate, endDate) : Promise.resolve(new Map<string, any>()),
-      hasGc ? fetchGcOrcMap(gcHeaders, startDate, endDate) : Promise.resolve(new Map<string, any>()),
+      hasGc ? fetchGcOsMap(gcHeaders, gcStart, endDate) : Promise.resolve(new Map<string, any>()),
+      hasGc ? fetchGcOrcMap(gcHeaders, gcStart, endDate) : Promise.resolve(new Map<string, any>()),
     ]);
 
     console.log(`[auvo-agenda] ${allTasks.length} tasks, ${gcOsMap.size} OS, ${gcOrcMap.size} orçamentos`);
