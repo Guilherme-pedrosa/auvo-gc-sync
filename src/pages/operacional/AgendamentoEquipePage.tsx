@@ -117,20 +117,37 @@ function Celula({ itens, onSalvar, onAbrirTarefa, onAbrirAgendamento, colorir = 
         </button>
       ) : (
         <div className="flex flex-col gap-0.5">
-          {itens.map((a) => (
-            <button
-              key={a.id}
-              type="button"
-              title={a.auvo_task_id ? `Tarefa Auvo #${a.auvo_task_id}` : "Agendamento manual"}
-              onClick={() => (a.auvo_task_id ? onAbrirTarefa(a) : onAbrirAgendamento(a))}
-              className={cn(
-                "w-full text-left rounded-sm px-1.5 py-1 text-[11px] font-semibold uppercase leading-tight hover:ring-1 hover:ring-primary/60 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary",
-                colorir && corCliente(a.cliente),
-              )}
-            >
-              {a.cliente}
-            </button>
-          ))}
+          {itens.map((a) => {
+            let prefix = "";
+            let idText = "";
+            if (a.gc_os_codigo) {
+              prefix = "OS";
+              idText = a.gc_os_codigo;
+            } else if (a.gc_orcamento_codigo) {
+              prefix = "OR";
+              idText = a.gc_orcamento_codigo;
+            } else if (a.auvo_task_id) {
+              prefix = "T";
+              idText = a.auvo_task_id;
+            }
+
+            const label = idText ? `${prefix} ${idText} - ${a.cliente}` : a.cliente;
+
+            return (
+              <button
+                key={a.id}
+                type="button"
+                title={a.auvo_task_id ? `Tarefa Auvo #${a.auvo_task_id}` : "Agendamento manual"}
+                onClick={() => (a.auvo_task_id ? onAbrirTarefa(a) : onAbrirAgendamento(a))}
+                className={cn(
+                  "w-full text-left rounded-sm px-1.5 py-1 text-[11px] font-semibold uppercase leading-tight hover:ring-1 hover:ring-primary/60 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary",
+                  colorir && corCliente(a.cliente),
+                )}
+              >
+                {label}
+              </button>
+            );
+          })}
         </div>
       )}
     </td>
@@ -242,6 +259,11 @@ export default function AgendamentoEquipePage() {
         if (!colab) { semTecnico++; continue; }
         const taskId = String(t.auvo_task_id ?? t.taskID ?? t.id ?? "");
         if (!taskId) continue;
+        
+        // Critério: Só mostrar se tiver OS ou Orçamento, OU se for tarefa pura sem vínculos
+        // A lógica do usuário diz: "SÓ COLOCAR A TAREFA NA LINHA QUANDO NÃO TIVER ORÇAMENTO NEM OS"
+        // No contexto de sincronização, cada tarefa enriquecida já traz esses campos se existirem.
+        
         const key = `${taskId}|${t.data_tarefa}|${colab.id}`;
         if (vistos.has(key)) continue;
         vistos.add(key);
@@ -256,6 +278,9 @@ export default function AgendamentoEquipePage() {
           status: "AGENDADO",
           auvo_task_id: taskId,
           origem: "AUVO",
+          // Mapeando dados extras para exibição nos cards
+          gc_os_codigo: t.gc_os_codigo || null,
+          gc_orcamento_codigo: t.gc_orcamento_codigo || null,
         });
       }
 
