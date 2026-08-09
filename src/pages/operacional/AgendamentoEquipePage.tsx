@@ -58,15 +58,17 @@ const corCliente = (texto: string) => {
 };
 
 interface CelulaProps {
-  valor: string;
+  itens: AgendaAgendamento[];
   onSalvar: (v: string) => void;
-  onClick: () => void;
+  onAbrirTarefa: (a: AgendaAgendamento) => void;
+  onAbrirAgendamento: (a: AgendaAgendamento | null) => void;
   colorir?: boolean;
 }
 
-function Celula({ valor, onSalvar, onClick, colorir = true }: CelulaProps) {
+function Celula({ itens, onSalvar, onAbrirTarefa, onAbrirAgendamento, colorir = true }: CelulaProps) {
   const [editando, setEditando] = useState(false);
-  const [rascunho, setRascunho] = useState(valor);
+  const manual = itens.find((i) => !i.auvo_task_id);
+  const [rascunho, setRascunho] = useState(manual?.cliente ?? "");
 
   if (editando) {
     return (
@@ -77,11 +79,11 @@ function Celula({ valor, onSalvar, onClick, colorir = true }: CelulaProps) {
           onChange={(e) => setRascunho(e.target.value)}
           onBlur={() => {
             setEditando(false);
-            if (rascunho.trim() !== valor.trim()) onSalvar(rascunho);
+            if (rascunho.trim() !== (manual?.cliente ?? "").trim()) onSalvar(rascunho);
           }}
           onKeyDown={(e) => {
             if (e.key === "Escape") {
-              setRascunho(valor);
+              setRascunho(manual?.cliente ?? "");
               setEditando(false);
             }
             if (e.key === "Enter" && !e.shiftKey) {
@@ -97,20 +99,39 @@ function Celula({ valor, onSalvar, onClick, colorir = true }: CelulaProps) {
 
   return (
     <td
-      onClick={(e) => {
-        if (e.detail === 2) {
-          setRascunho(valor);
-          setEditando(true);
-        } else {
-          onClick();
-        }
+      onDoubleClick={() => {
+        setRascunho(manual?.cliente ?? "");
+        setEditando(true);
       }}
-      className={cn(
-        "border border-border p-1.5 align-top text-[11px] font-semibold uppercase leading-tight cursor-pointer h-16 min-w-[130px] hover:ring-1 hover:ring-primary/50",
-        colorir && corCliente(valor),
-      )}
+      className="border border-border p-0.5 align-top h-16 min-w-[150px]"
     >
-      {valor || <span className="opacity-25 normal-case font-normal">—</span>}
+      {itens.length === 0 ? (
+        <button
+          type="button"
+          onClick={() => onAbrirAgendamento(null)}
+          className="w-full h-full min-h-[3.5rem] text-[11px] opacity-25 hover:opacity-60"
+          aria-label="Adicionar agendamento"
+        >
+          —
+        </button>
+      ) : (
+        <div className="flex flex-col gap-0.5">
+          {itens.map((a) => (
+            <button
+              key={a.id}
+              type="button"
+              title={a.auvo_task_id ? `Tarefa Auvo #${a.auvo_task_id}` : "Agendamento manual"}
+              onClick={() => (a.auvo_task_id ? onAbrirTarefa(a) : onAbrirAgendamento(a))}
+              className={cn(
+                "w-full text-left rounded-sm px-1.5 py-1 text-[11px] font-semibold uppercase leading-tight hover:ring-1 hover:ring-primary/60 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary",
+                colorir && corCliente(a.cliente),
+              )}
+            >
+              {a.cliente}
+            </button>
+          ))}
+        </div>
+      )}
     </td>
   );
 }
@@ -121,6 +142,7 @@ export default function AgendamentoEquipePage() {
   const [selectedAgendamento, setSelectedAgendamento] = useState<AgendaAgendamento | null>(null);
   const [selectedDate, setSelectedDate] = useState<Date | undefined>();
   const [selectedColabId, setSelectedColabId] = useState<string | null>(null);
+  const [tarefaId, setTarefaId] = useState<string | null>(null);
 
   const inicioEscala = useMemo(() => new Date(), []);
   
@@ -249,9 +271,15 @@ export default function AgendamentoEquipePage() {
   }, [colaboradores]);
 
   const mapTec = useMemo(() => {
-    const m = new Map<string, AgendaAgendamento>();
+    const m = new Map<string, AgendaAgendamento[]>();
     for (const a of data?.agendamentos ?? []) {
-      m.set(`${a.colaborador_id}|${a.data}`, a);
+      const k = `${a.colaborador_id}|${a.data}`;
+      const arr = m.get(k) ?? [];
+      arr.push(a);
+      m.set(k, arr);
+    }
+    for (const arr of m.values()) {
+      arr.sort((x, y) => (x.hora_inicio ?? "").localeCompare(y.hora_inicio ?? "") || x.cliente.localeCompare(y.cliente));
     }
     return m;
   }, [data]);
@@ -348,20 +376,22 @@ export default function AgendamentoEquipePage() {
                           {t.nome}
                         </td>
                         {dias.map((dia) => {
-                          const atual = mapTec.get(`${t.id}|${dia}`);
+                          const itens = mapTec.get(`${t.id}|${dia}`) ?? [];
+                          const manual = itens.find((i) => !i.auvo_task_id);
                           return (
                             <Celula
                               key={dia}
-                              valor={atual?.cliente ?? ""}
-                              onClick={() => {
-                                setSelectedAgendamento(atual || null);
+                              itens={itens}
+                              onAbrirTarefa={(a) => setTarefaId(a.auvo_task_id ?? null)}
+                              onAbrirAgendamento={(a) => {
+                                setSelectedAgendamento(a);
                                 setSelectedDate(new Date(dia + "T12:00:00"));
                                 setSelectedColabId(t.id);
                                 setDialogOpen(true);
                               }}
                               onSalvar={(v) =>
                                 salvarTecnico.mutate({
-                                  id: atual?.id ?? null,
+                                  id: manual?.id ?? null,
                                   data: dia,
                                   colaborador_id: t.id,
                                   colaborador_nome: t.nome,
