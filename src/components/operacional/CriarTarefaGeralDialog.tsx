@@ -1,3 +1,4 @@
+import { minutesToClock, clockToMinutes } from "@/lib/auvoDuration";
 import { useState, useEffect, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
@@ -59,7 +60,6 @@ export default function CriarTarefaGeralDialog({
       setCustomerId(""); setEquipmentIds([]); setQuestionnaireId("");
       setOrientation(""); setTaskTypeId(""); setPriority("1"); setCheckinType("1");
       setStartTime("08:00");
-      setEndTime("12:00");
       setDurationMinutes(240);
     }
   }, [open]);
