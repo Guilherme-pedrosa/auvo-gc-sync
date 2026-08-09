@@ -41,7 +41,7 @@ const isTecnico = (c: { cargo?: string | null; funcao?: string | null }) => {
     .toLowerCase()
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "");
-  return txt.includes("tecnico");
+  return txt.includes("tecnico") || txt.includes("auxiliar");
 };
 
 export default function AgendamentoEquipeDialog({
