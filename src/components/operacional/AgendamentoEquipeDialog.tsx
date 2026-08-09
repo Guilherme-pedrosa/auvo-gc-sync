@@ -251,7 +251,7 @@ export default function AgendamentoEquipeDialog({
               <Input id="start" type="time" value={horaInicio} onChange={(e) => setHoraInicio(e.target.value)} />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="end">Duração (HH:mm)</Label>
+              <Label htmlFor="end">Duração (HH:mm) — local</Label>
               <Input
                 id="end"
                 type="time"
