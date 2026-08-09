@@ -601,10 +601,36 @@ Deno.serve(async (req) => {
     }
 
     if (action === "list-customers") {
+      const { forceRefresh = false } = body;
+      const admin = getAdminClient();
+
+      if (!forceRefresh) {
+        // Tenta buscar do cache primeiro
+        const { data: cache, error: cacheErr } = await admin
+          .from("auvo_clientes_cache")
+          .select("auvo_id, nome, endereco")
+          .eq("ativo", true)
+          .order("nome");
+
+        if (!cacheErr && cache && cache.length > 0) {
+          console.log(`[auvo-task-update][reqId=${reqId}] list-customers returning from cache (count=${cache.length})`);
+          return new Response(
+            JSON.stringify({ 
+              data: cache.map(c => ({ id: c.auvo_id, name: c.nome, address: c.endereco })), 
+              status: 200,
+              cached: true
+            }), 
+            { status: 200, headers: respHeaders }
+          );
+        }
+      }
+
+      // Se forceRefresh ou cache vazio, busca da API
+      console.log(`[auvo-task-update][reqId=${reqId}] list-customers fetching from API (forceRefresh=${forceRefresh})`);
       let page = 1;
       const all: any[] = [];
-      while (page <= 30) {
-        const url = `${AUVO_BASE_URL}/customers/?paramFilter=${encodeURIComponent(JSON.stringify({}))}&page=${page}&pageSize=100`;
+      while (page <= 50) { 
+        const url = `${AUVO_BASE_URL}/customers/?paramFilter=${encodeURIComponent(JSON.stringify({ active: true }))}&page=${page}&pageSize=100`;
         const resp = await fetch(url, { headers });
         if (!resp.ok) break;
         const json = await resp.json();
@@ -614,8 +640,27 @@ Deno.serve(async (req) => {
         if (items.length < 100) break;
         page++;
       }
-      console.log(`[auvo-task-update][reqId=${reqId}] list-customers count=${all.length}`);
-      return new Response(JSON.stringify({ data: all, status: 200 }), { status: 200, headers: respHeaders });
+
+      if (all.length > 0) {
+        const rows = all.map(c => ({
+          auvo_id: Number(c.id ?? c.customerId),
+          nome: String(c.description ?? c.name ?? "Sem Nome"),
+          endereco: c.address ?? null,
+          cidade: c.city ?? null,
+          estado: c.state ?? null,
+          bairro: c.neighborhood ?? null,
+          cep: c.zipCode ?? null,
+          atualizado_em: new Date().toISOString()
+        })).filter(r => !isNaN(r.auvo_id));
+
+        const { error: upsertErr } = await admin
+          .from("auvo_clientes_cache")
+          .upsert(rows, { onConflict: "auvo_id" });
+        
+        if (upsertErr) console.error(`[auvo-task-update][reqId=${reqId}] cache upsert error:`, upsertErr);
+      }
+
+      return new Response(JSON.stringify({ data: all, status: 200, cached: false }), { status: 200, headers: respHeaders });
     }
 
     if (action === "list-customer-equipments") {
