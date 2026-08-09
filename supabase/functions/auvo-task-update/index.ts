@@ -528,16 +528,9 @@ Deno.serve(async (req) => {
       const end = new Date(start.getTime() + Number(durationMinutes) * 60_000);
       const pad = (n: number) => String(n).padStart(2, "0");
       const endISO = `${end.getFullYear()}-${pad(end.getMonth() + 1)}-${pad(end.getDate())}T${pad(end.getHours())}:${pad(end.getMinutes())}:00`;
-      // Auvo expõe a duração da tarefa como "estimatedDuration" no formato HH:mm:ss
-      // O usuário relatou que o sistema espera "horas de duração" e que minutos estavam indo zerados.
-      // Entretanto, a API v2 do Auvo costuma aceitar o formato HH:mm:ss para estimatedDuration.
-      // Se o usuário diz que estamos mandando minutos e lá recebe horas, talvez ele se refira a um campo numérico,
-      // mas o payload abaixo usa a string formatted.
+      // Auvo lê a duração SEMPRE como relógio "HH:mm" (ex.: 20 min => "00:20", 2h => "02:00").
       const totalMinutes = Math.max(1, Math.round(Number(durationMinutes) || 0));
-      const hours = totalMinutes / 60;
-      const estimatedDuration = hours.toFixed(2); // Mudando para formato decimal de horas como tentativa de correção baseada no feedback.
-      // Se a API v2 exigir HH:mm:ss, isso pode falhar. Mas o relato do usuário sugere que o valor atual (minutos ou formato errado) resulta em zero.
-
+      const estimatedDuration = `${pad(Math.floor(totalMinutes / 60))}:${pad(totalMinutes % 60)}`;
 
       // 4) Payload Auvo (PUT /tasks)
       const taskPayload: any = {
