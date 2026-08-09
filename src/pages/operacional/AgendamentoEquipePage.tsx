@@ -253,16 +253,33 @@ export default function AgendamentoEquipePage() {
         .map((t) => String(t.auvo_task_id ?? t.taskID ?? t.id ?? ""))
         .filter(Boolean);
       const codigosLocais = new Map<string, { os: string | null; orc: string | null }>();
-      for (let i = 0; i < taskIds.length; i += 300) {
+      for (let i = 0; i < taskIds.length; i += 100) {
+        const batch = taskIds.slice(i, i + 100);
+        // Busca enriquecida: tenta encontrar o vínculo em qualquer uma das colunas mapeadas
         const { data: rows } = await supabase
           .from("tarefas_central")
-          .select("auvo_task_id, gc_os_codigo, gc_orcamento_codigo")
-          .in("auvo_task_id", taskIds.slice(i, i + 300));
+          .select("auvo_task_id, gc_os_codigo, gc_orcamento_codigo, gc_os_tarefa_os, gc_os_tarefa_exec")
+          .or(`auvo_task_id.in.(${batch.join(",")}),gc_os_tarefa_os.in.(${batch.join(",")}),gc_os_tarefa_exec.in.(${batch.join(",")})`);
+        
         for (const r of rows ?? []) {
-          codigosLocais.set(String((r as any).auvo_task_id), {
+          const keys = [
+            String(r.auvo_task_id || ""),
+            String(r.gc_os_tarefa_os || ""),
+            String(r.gc_os_tarefa_exec || "")
+          ].filter(k => k && batch.includes(k));
+
+          const data = {
             os: (r as any).gc_os_codigo || null,
             orc: (r as any).gc_orcamento_codigo || null,
-          });
+          };
+
+          for (const k of keys) {
+            const existing = codigosLocais.get(k);
+            // Preserva o que for mais rico (prioridade OS > ORC)
+            if (!existing || (!existing.os && data.os) || (!existing.orc && data.orc)) {
+              codigosLocais.set(k, data);
+            }
+          }
         }
       }
 
