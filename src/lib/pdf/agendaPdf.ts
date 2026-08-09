@@ -16,8 +16,7 @@ export interface AgendaRelatorioItem {
 export interface AgendaVeiculoLinha {
   data: string;
   veiculo: string;
-  tecnicos: string;
-  observacao?: string;
+  texto: string;
 }
 
 const brDate = (iso: string) => iso.split("-").reverse().join("/");
@@ -55,24 +54,22 @@ export function gerarPdfAgenda(
     columns: [
       { header: "Data", dataKey: "data" },
       { header: "Veículo", dataKey: "veiculo" },
-      { header: "Técnico(s)", dataKey: "tecnicos" },
-      { header: "Observações", dataKey: "observacao" },
+      { header: "Texto inserido no dia", dataKey: "texto" },
     ],
     body: veiculos.length
       ? veiculos.map((v) => ({
           data: brDate(v.data),
           veiculo: v.veiculo,
-          tecnicos: v.tecnicos || "—",
-          observacao: v.observacao || "—",
+          texto: v.texto,
         }))
-      : [{ data: "—", veiculo: "Nenhum veículo alocado no período", tecnicos: "—", observacao: "—" }],
+      : [{ data: "—", veiculo: "Nenhum texto de veículo salvo neste dia", texto: "—" }],
     rowPageBreak: "avoid",
     styles: { fontSize: 8, cellPadding: 3 },
     headStyles: { fillColor: [15, 118, 110], textColor: 255, fontStyle: "bold" },
     columnStyles: {
       0: { cellWidth: 55 },
-      1: { cellWidth: 150 },
-      2: { cellWidth: 200 },
+      1: { cellWidth: 220 },
+      2: { cellWidth: 490 },
     },
   });
 
