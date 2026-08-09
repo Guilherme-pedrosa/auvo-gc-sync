@@ -37,7 +37,7 @@ export async function gerarPdfAgenda(
   // Tabela
   autoTable(doc, {
     startY: 70,
-    head: [["Data", "Técnico", "Veículo", "Horário", "Código", "Cliente", "Descrição", "Auvo"]],
+    head: [["Data", "Técnico", "Veículo", "Horário", "Código", "Cliente", "Descrição", "Link Auvo"]],
     body: itens.map((it) => [
       brDate(it.data),
       it.tecnico,
@@ -46,7 +46,7 @@ export async function gerarPdfAgenda(
       it.gc_codigo || "—",
       it.cliente,
       it.descricao || "—",
-      it.auvo_task_id ? "Abrir" : "—",
+      it.auvo_task_id ? "Ver no Auvo" : "—",
     ]),
     styles: { fontSize: 8, cellPadding: 3 },
     headStyles: { fillColor: [37, 99, 235], textColor: 255, fontStyle: "bold" },

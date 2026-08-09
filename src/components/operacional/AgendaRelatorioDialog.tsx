@@ -57,7 +57,10 @@ export default function AgendaRelatorioDialog({ open, onOpenChange, agendamentos
 
       const filtrados = agendamentos.filter((a) => {
         const d = parseISO(a.data);
-        return isWithinInterval(d, { start: inicio, end: fim });
+        // Ajustamos para considerar apenas a data (sem hora) para evitar problemas de fuso no início/fim do dia
+        const start = new Date(inicio.getFullYear(), inicio.getMonth(), inicio.getDate(), 0, 0, 0);
+        const end = new Date(fim.getFullYear(), fim.getMonth(), fim.getDate(), 23, 59, 59);
+        return isWithinInterval(d, { start, end });
       });
 
       // Mapeia veículos por técnico e dia
@@ -76,7 +79,7 @@ export default function AgendaRelatorioDialog({ open, onOpenChange, agendamentos
         return {
           data: a.data,
           tecnico: a.colaborador_nome,
-          horario: `${a.hora_inicio.slice(0, 5)} - ${a.hora_fim.slice(0, 5)}`,
+          horario: a.hora_inicio && a.hora_fim ? `${a.hora_inicio.slice(0, 5)} - ${a.hora_fim.slice(0, 5)}` : "08:00 - 18:00",
           cliente: a.cliente,
           descricao: a.descricao || undefined,
           auvo_task_id: a.auvo_task_id || undefined,
