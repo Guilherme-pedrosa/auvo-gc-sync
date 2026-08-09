@@ -11,6 +11,7 @@ import { AgendaAgendamento } from "@/hooks/operacional/useAgendamentoEquipe";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
 import { cn } from "@/lib/utils";
+import { toast } from "sonner";
 
 interface Props {
   open: boolean;
@@ -91,14 +92,21 @@ export default function AgendaRelatorioDialog({ open, onOpenChange, agendamentos
       // Ordena por data e depois por técnico
       itens.sort((x, y) => x.data.localeCompare(y.data) || x.tecnico.localeCompare(y.tecnico));
 
-      await gerarPdfAgenda(
+      if (itens.length === 0) {
+        toast.warning("Não há agendamentos no período selecionado.");
+        return;
+      }
+
+      gerarPdfAgenda(
         `Relatório Coletivo de Agendamento — ${tipo.toUpperCase()}`,
         labelPeriodo,
         itens
       );
+      toast.success("PDF coletivo gerado com sucesso.");
       onOpenChange(false);
     } catch (err) {
       console.error(err);
+      toast.error("Não foi possível gerar o PDF coletivo. Tente novamente.");
     } finally {
       setLoading(false);
     }

@@ -61,7 +61,8 @@ export async function gerarPdfAgenda(
       if (data.section !== "body") return;
       const it = itens[data.row.index];
       if (data.column.index === 6 && it.auvo_task_id) {
-        const url = `https://app2.auvo.com.br/gerenciarTarefas/tarefa/${it.auvo_task_id}`;
+        // Mesmo endereço usado no espelho de Premiação e nas demais telas.
+        const url = `https://app2.auvo.com.br/relatorioTarefas/DetalheTarefa/${it.auvo_task_id}`;
         doc.link(data.cell.x, data.cell.y, data.cell.width, data.cell.height, { url });
       }
     },
@@ -76,14 +77,6 @@ export async function gerarPdfAgenda(
     doc.text(`Página ${i} de ${totalPages}`, pageW - 40, pageH - 20, { align: "right" });
   }
 
-  // Usamos blob + URL.createObjectURL para garantir o download em navegadores modernos
-  const pdfBlob = doc.output('blob');
-  const url = URL.createObjectURL(pdfBlob);
-  const link = document.createElement('a');
-  link.href = url;
-  link.download = `agenda-coletiva-${new Date().getTime()}.pdf`;
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
-  URL.revokeObjectURL(url);
+  // Mantém exatamente o fluxo de download já validado no PDF de Premiação.
+  doc.save(`agenda-coletiva-${new Date().getTime()}.pdf`);
 }
