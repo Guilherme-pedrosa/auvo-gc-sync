@@ -121,7 +121,8 @@ export default function CriarTarefaGeralDialog({ open, onOpenChange, onSuccess }
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-xl max-h-[90vh] overflow-y-auto">
+      <DialogContent className="max-w-xl max-h-[90vh] flex flex-col p-0">
+        <div className="overflow-y-auto p-6 flex-1">
         <DialogHeader>
           <DialogTitle>Nova Tarefa Auvo</DialogTitle>
           <DialogDescription>Abra uma tarefa do zero sincronizada com o Auvo.</DialogDescription>
@@ -177,6 +178,7 @@ export default function CriarTarefaGeralDialog({ open, onOpenChange, onSuccess }
             Criar no Auvo
           </Button>
         </DialogFooter>
+        </div>
       </DialogContent>
     </Dialog>
   );
