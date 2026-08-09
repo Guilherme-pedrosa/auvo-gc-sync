@@ -151,7 +151,8 @@ export default function AgendamentoEquipeDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[500px]">
+      <DialogContent className="sm:max-w-[500px] max-h-[90vh] flex flex-col p-0">
+        <div className="overflow-y-auto p-6 flex-1">
         <DialogHeader>
           <DialogTitle>{agendamento ? "Editar Agendamento" : "Adicionar Novo Agendamento"}</DialogTitle>
         </DialogHeader>
@@ -266,6 +267,7 @@ export default function AgendamentoEquipeDialog({
             </Button>
           </div>
         </DialogFooter>
+        </div>
       </DialogContent>
     </Dialog>
   );

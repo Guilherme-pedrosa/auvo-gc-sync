@@ -40,7 +40,8 @@ export default function TarefaAuvoDetalheDialog({ taskId, onOpenChange, onEdit }
 
   return (
     <Dialog open={!!taskId} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+      <DialogContent className="max-w-3xl max-h-[90vh] flex flex-col p-0">
+        <div className="overflow-y-auto p-6 flex-1">
         <DialogHeader>
           <DialogTitle className="flex flex-wrap items-center gap-2">
             <span>{tarefa?.cliente || "Tarefa Auvo"}</span>
@@ -230,6 +231,7 @@ export default function TarefaAuvoDetalheDialog({ taskId, onOpenChange, onEdit }
             </div>
           </div>
         )}
+        </div>
       </DialogContent>
     </Dialog>
   );
