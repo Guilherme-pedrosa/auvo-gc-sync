@@ -16,8 +16,17 @@ import {
 } from "@/hooks/operacional/useAgendamentoEquipe";
 import { useQueryClient } from "@tanstack/react-query";
 import AgendamentoEquipeDialog from "@/components/operacional/AgendamentoEquipeDialog";
+import { toast } from "sonner";
 
 const DIAS_TRADUZIDOS = ["Segunda-feira", "Terça-feira", "Quarta-feira", "Quinta-feira", "Sexta-feira", "Sábado", "Domingo"];
+
+const norm = (s: string) =>
+  (s ?? "")
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
 
 const isTecnico = (c: { cargo?: string | null; funcao?: string | null }) => {
   const txt = `${c.cargo ?? ""} ${c.funcao ?? ""}`
