@@ -3,11 +3,14 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { FileText, Loader2 } from "lucide-react";
-import { format, startOfWeek, endOfWeek, startOfMonth, endOfMonth, isWithinInterval, parseISO } from "date-fns";
+import { FileText, Loader2, Calendar as CalendarIcon } from "lucide-react";
+import { format, startOfWeek, endOfWeek, startOfMonth, endOfMonth, isWithinInterval, parseISO, addDays } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { gerarPdfAgenda, AgendaRelatorioItem } from "@/lib/pdf/agendaPdf";
 import { AgendaAgendamento } from "@/hooks/operacional/useAgendamentoEquipe";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Calendar } from "@/components/ui/calendar";
+import { cn } from "@/lib/utils";
 
 interface Props {
   open: boolean;
@@ -17,7 +20,8 @@ interface Props {
 }
 
 export default function AgendaRelatorioDialog({ open, onOpenChange, agendamentos, veiculoDias }: Props) {
-  const [tipo, setTipo] = useState<"diario" | "semanal" | "mensal">("semanal");
+  const [tipo, setTipo] = useState<"diario" | "amanha" | "semanal" | "mensal" | "selecionar">("semanal");
+  const [dataSelecionada, setDataSelecionada] = useState<Date | undefined>(new Date());
   const [loading, setLoading] = useState(false);
 
   const handleExport = async () => {
@@ -32,6 +36,15 @@ export default function AgendaRelatorioDialog({ open, onOpenChange, agendamentos
         inicio = hoje;
         fim = hoje;
         labelPeriodo = format(hoje, "dd/MM/yyyy");
+      } else if (tipo === "amanha") {
+        inicio = addDays(hoje, 1);
+        fim = addDays(hoje, 1);
+        labelPeriodo = format(inicio, "dd/MM/yyyy");
+      } else if (tipo === "selecionar") {
+        const data = dataSelecionada || hoje;
+        inicio = data;
+        fim = data;
+        labelPeriodo = format(data, "dd/MM/yyyy");
       } else if (tipo === "semanal") {
         inicio = startOfWeek(hoje, { weekStartsOn: 1 });
         fim = endOfWeek(hoje, { weekStartsOn: 1 });
@@ -107,11 +120,41 @@ export default function AgendaRelatorioDialog({ open, onOpenChange, agendamentos
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="diario">Diário (Hoje)</SelectItem>
+                <SelectItem value="amanha">Diário (Amanhã)</SelectItem>
+                <SelectItem value="selecionar">Selecionar Dia</SelectItem>
                 <SelectItem value="semanal">Semanal (Esta semana)</SelectItem>
                 <SelectItem value="mensal">Mensal (Este mês)</SelectItem>
               </SelectContent>
             </Select>
           </div>
+
+          {tipo === "selecionar" && (
+            <div className="space-y-2 animate-in fade-in slide-in-from-top-1">
+              <Label>Escolha a data</Label>
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant={"outline"}
+                    className={cn(
+                      "w-full justify-start text-left font-normal",
+                      !dataSelecionada && "text-muted-foreground"
+                    )}
+                  >
+                    <CalendarIcon className="mr-2 h-4 w-4" />
+                    {dataSelecionada ? format(dataSelecionada, "PPP", { locale: ptBR }) : <span>Selecione uma data</span>}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0">
+                  <Calendar
+                    mode="single"
+                    selected={dataSelecionada}
+                    onSelect={setDataSelecionada}
+                    initialFocus
+                  />
+                </PopoverContent>
+              </Popover>
+            </div>
+          )}
           <p className="text-xs text-muted-foreground">
             O arquivo PDF conterá a escala de todos os técnicos no período selecionado, seguindo o modelo do espelho de premiação.
           </p>
