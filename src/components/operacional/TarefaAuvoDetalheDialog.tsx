@@ -1,10 +1,10 @@
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { ExternalLink, MapPin, Navigation, ClipboardList, Package } from "lucide-react";
+import { ExternalLink, MapPin, Navigation, ClipboardList, Package, Edit } from "lucide-react";
 
 const formatCurrency = (v: number) =>
   new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(v || 0);
@@ -12,9 +12,11 @@ const formatCurrency = (v: number) =>
 interface Props {
   taskId: string | null;
   onOpenChange: (open: boolean) => void;
+  onEdit?: () => void;
 }
 
-export default function TarefaAuvoDetalheDialog({ taskId, onOpenChange }: Props) {
+export default function TarefaAuvoDetalheDialog({ taskId, onOpenChange, onEdit }: Props) {
+  const qc = useQueryClient();
   const { data: tarefa, isLoading, isError } = useQuery({
     queryKey: ["tarefa_central_detalhe", taskId],
     enabled: !!taskId,
@@ -49,7 +51,14 @@ export default function TarefaAuvoDetalheDialog({ taskId, onOpenChange }: Props)
               </Badge>
             )}
           </DialogTitle>
-          <p className="text-sm text-muted-foreground">Tarefa Auvo #{taskId}</p>
+          <div className="flex items-center justify-between">
+            <p className="text-sm text-muted-foreground">Tarefa Auvo #{taskId}</p>
+            {onEdit && (
+              <Button size="sm" variant="ghost" className="gap-2 h-7" onClick={onEdit}>
+                <Edit className="h-3.5 w-3.5" /> Editar
+              </Button>
+            )}
+          </div>
         </DialogHeader>
 
         {isLoading && (

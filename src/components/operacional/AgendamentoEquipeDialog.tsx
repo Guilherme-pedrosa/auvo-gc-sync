@@ -27,6 +27,8 @@ import {
   type AgendaAgendamento,
 } from "@/hooks/operacional/useAgendamentoEquipe";
 import { Trash2 } from "lucide-react";
+import { supabase } from "@/integrations/supabase/client";
+import { toast } from "sonner";
 
 interface AgendamentoEquipeDialogProps {
   open: boolean;
@@ -90,19 +92,60 @@ export default function AgendamentoEquipeDialog({
 
   const handleSave = async () => {
     const nome = lista.find((c) => c.id === colaboradorId)?.nome ?? "";
+    const colab = lista.find((c) => c.id === colaboradorId);
     if (!data || !colaboradorId || !cliente.trim()) return;
-    await save.mutateAsync({
-      id: agendamento?.id,
-      data,
-      hora_inicio: horaInicio,
-      hora_fim: horaFim,
-      colaborador_id: colaboradorId,
-      colaborador_nome: nome,
-      veiculo_id: veiculoId || null,
-      cliente: cliente.trim(),
-      descricao: descricao.trim() || null,
-    });
-    onOpenChange(false);
+
+    try {
+      // 1. Se for AUVO, atualiza data/técnico/orientação no Auvo
+      if (agendamento?.auvo_task_id && agendamento.origem === "AUVO") {
+        const patches = [];
+        
+        // Data e Hora
+        if (data !== agendamento.data || horaInicio !== agendamento.hora_inicio.slice(0, 5)) {
+          patches.push({ op: "replace", path: "taskDate", value: `${data}T${horaInicio}:00` });
+        }
+        
+        // Técnico
+        if (colaboradorId !== agendamento.colaborador_id && colab?.auvo_user_id) {
+          patches.push({ op: "replace", path: "idUserTo", value: String(colab.auvo_user_id) });
+        }
+
+        // Descrição (Orientação no Auvo)
+        if (descricao !== (agendamento.descricao || "")) {
+          patches.push({ op: "replace", path: "orientation", value: descricao });
+        }
+
+        if (patches.length > 0) {
+          const { data: res, error } = await supabase.functions.invoke("auvo-task-update", {
+            body: { action: "edit", taskId: agendamento.auvo_task_id, patches }
+          });
+          if (error || res?.status >= 400) throw new Error(res?.data?.message || "Erro ao sincronizar com Auvo");
+        }
+      }
+
+      // 2. Salva localmente
+      await save.mutateAsync({
+        id: agendamento?.id,
+        data,
+        hora_inicio: horaInicio,
+        hora_fim: horaFim,
+        colaborador_id: colaboradorId,
+        colaborador_nome: nome,
+        veiculo_id: veiculoId || null,
+        cliente: cliente.trim(),
+        descricao: descricao.trim() || null,
+        // Preserva os campos técnicos se for edição
+        auvo_task_id: agendamento?.auvo_task_id,
+        origem: agendamento?.origem,
+        gc_os_codigo: agendamento?.gc_os_codigo,
+        gc_orcamento_codigo: agendamento?.gc_orcamento_codigo,
+      });
+
+      onOpenChange(false);
+    } catch (err: any) {
+      console.error("Erro ao salvar:", err);
+      toast.error(err.message || "Erro ao salvar agendamento");
+    }
   };
 
   return (

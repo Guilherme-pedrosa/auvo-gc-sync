@@ -1,5 +1,5 @@
-import { useMemo, useState, useEffect } from "react";
-import { format, addDays } from "date-fns";
+import { useMemo, useState, useEffect, useRef } from "react";
+import { format, addDays, parseISO } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { ChevronLeft, ChevronRight, RefreshCw, Printer, Plus, Truck, Users } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -12,6 +12,7 @@ import {
   useAgendaSemana,
   useSalvarCelulaTecnico,
   useSalvarCelulaVeiculo,
+  useSaveAgendamento,
   type AgendaAgendamento,
 } from "@/hooks/operacional/useAgendamentoEquipe";
 import { useQueryClient } from "@tanstack/react-query";
@@ -63,10 +64,12 @@ interface CelulaProps {
   onSalvar: (v: string) => void;
   onAbrirTarefa: (a: AgendaAgendamento) => void;
   onAbrirAgendamento: (a: AgendaAgendamento | null) => void;
+  onDragStart: (a: AgendaAgendamento) => void;
+  onDrop: () => void;
   colorir?: boolean;
 }
 
-function Celula({ itens, onSalvar, onAbrirTarefa, onAbrirAgendamento, colorir = true }: CelulaProps) {
+function Celula({ itens, onSalvar, onAbrirTarefa, onAbrirAgendamento, onDragStart, onDrop, colorir = true }: CelulaProps) {
   const [editando, setEditando] = useState(false);
   const manual = itens.find((i) => !i.auvo_task_id && i.origem !== "AUVO");
   const [rascunho, setRascunho] = useState(manual?.cliente ?? "");
@@ -104,7 +107,19 @@ function Celula({ itens, onSalvar, onAbrirTarefa, onAbrirAgendamento, colorir = 
         setRascunho(manual?.cliente ?? "");
         setEditando(true);
       }}
-      className="border border-border p-0.5 align-top h-16 min-w-[150px]"
+      onDragOver={(e) => {
+        e.preventDefault();
+        e.currentTarget.classList.add("bg-primary/5");
+      }}
+      onDragLeave={(e) => {
+        e.currentTarget.classList.remove("bg-primary/5");
+      }}
+      onDrop={(e) => {
+        e.preventDefault();
+        e.currentTarget.classList.remove("bg-primary/5");
+        onDrop();
+      }}
+      className="border border-border p-0.5 align-top h-16 min-w-[150px] transition-colors"
     >
       {itens.length === 0 ? (
         <button
@@ -137,10 +152,12 @@ function Celula({ itens, onSalvar, onAbrirTarefa, onAbrirAgendamento, colorir = 
               <button
                 key={a.id}
                 type="button"
+                draggable
+                onDragStart={() => onDragStart(a)}
                 title={a.auvo_task_id ? `Tarefa Auvo #${a.auvo_task_id}` : "Agendamento manual"}
                 onClick={() => (a.auvo_task_id ? onAbrirTarefa(a) : onAbrirAgendamento(a))}
                 className={cn(
-                  "w-full text-left rounded-sm px-1.5 py-1 text-[11px] font-semibold uppercase leading-tight hover:ring-1 hover:ring-primary/60 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary",
+                  "w-full text-left rounded-sm px-1.5 py-1 text-[11px] font-semibold uppercase leading-tight hover:ring-1 hover:ring-primary/60 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary cursor-grab active:cursor-grabbing",
                   colorir && corCliente(a.cliente),
                 )}
               >
@@ -205,6 +222,8 @@ export default function AgendamentoEquipePage() {
   const [selectedDate, setSelectedDate] = useState<Date | undefined>();
   const [selectedColabId, setSelectedColabId] = useState<string | null>(null);
   const [tarefaId, setTarefaId] = useState<string | null>(null);
+  const dragItem = useRef<AgendaAgendamento | null>(null);
+  const saveAgendamento = useSaveAgendamento();
 
   const inicioEscala = useMemo(() => new Date(), []);
   
@@ -361,6 +380,65 @@ export default function AgendamentoEquipePage() {
   const salvarTecnico = useSalvarCelulaTecnico();
   const salvarVeiculo = useSalvarCelulaVeiculo();
 
+  const handleDragDrop = async (date: string, colabId: string) => {
+    const item = dragItem.current;
+    if (!item) return;
+
+    // Se mudou de técnico ou data
+    if (item.data === date && item.colaborador_id === colabId) return;
+
+    const colab = colaboradores.find((c) => c.id === colabId);
+    if (!colab) return;
+
+    const toastId = toast.loading("Atualizando agendamento...");
+    try {
+      // 1. Atualiza no Auvo se for origem AUVO
+      if (item.auvo_task_id && item.origem === "AUVO") {
+        const patches = [
+          { op: "replace", path: "taskDate", value: `${date}T${item.hora_inicio.slice(0, 5)}:00` },
+        ];
+        
+        if (colab.auvo_user_id) {
+          patches.push({ op: "replace", path: "idUserTo", value: String(colab.auvo_user_id) });
+        }
+
+        const { data: auvoRes, error: auvoErr } = await supabase.functions.invoke("auvo-task-update", {
+          body: { action: "edit", taskId: item.auvo_task_id, patches },
+        });
+
+        if (auvoErr || auvoRes?.status >= 400) {
+          throw new Error(auvoRes?.data?.message || "Erro ao atualizar no Auvo");
+        }
+      }
+
+      // 2. Atualiza localmente
+      await saveAgendamento.mutateAsync({
+        id: item.id,
+        data: date,
+        colaborador_id: colabId,
+        colaborador_nome: colab.nome,
+        // Mantém o resto
+        hora_inicio: item.hora_inicio,
+        hora_fim: item.hora_fim,
+        veiculo_id: item.veiculo_id,
+        cliente: item.cliente,
+        descricao: item.descricao,
+        status: item.status,
+        auvo_task_id: item.auvo_task_id,
+        origem: item.origem,
+        gc_os_codigo: item.gc_os_codigo,
+        gc_orcamento_codigo: item.gc_orcamento_codigo
+      });
+
+      toast.success("Agendamento movido com sucesso!", { id: toastId });
+    } catch (err: any) {
+      console.error("Erro ao mover agendamento:", err);
+      toast.error(err.message || "Erro ao mover agendamento", { id: toastId });
+    } finally {
+      dragItem.current = null;
+    }
+  };
+
   const tecnicos = useMemo(() => {
     const ativos = colaboradores.filter((c) => c.ativo);
     const t = ativos.filter(isTecnico);
@@ -394,7 +472,7 @@ export default function AgendamentoEquipePage() {
     await supabase.from("agenda_veiculos").insert({ 
       nome: nome.trim().toUpperCase(), 
       placa: placa?.trim()?.toUpperCase() || null,
-      ordem: veiculos.length + 1, 
+      ordem: String(veiculos.length + 1), 
       ativo: true 
     } as never);
     qc.invalidateQueries({ queryKey: ["agenda_veiculos"] });
@@ -495,6 +573,8 @@ export default function AgendamentoEquipePage() {
                                   texto: v,
                                 })
                               }
+                              onDragStart={(a) => { dragItem.current = a; }}
+                              onDrop={() => handleDragDrop(dia, t.id)}
                             />
                           );
                         })}
