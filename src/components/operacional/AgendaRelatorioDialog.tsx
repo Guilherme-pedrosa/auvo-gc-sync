@@ -72,10 +72,31 @@ export default function AgendaRelatorioDialog({ open, onOpenChange, agendamentos
         nomeVeiculo.set(v.id, [v.nome, v.placa].filter(Boolean).join(" - ") || v.id);
       });
 
-      // Observações livres por veículo/dia
+      // Observações livres por veículo/dia — busca direto no banco para cobrir
+      // períodos fora da semana carregada na tela
+      const inicioISO = format(inicio, "yyyy-MM-dd");
+      const fimISO = format(fim, "yyyy-MM-dd");
+      let diasVeiculo: any[] = [];
+      try {
+        const { data: vdData } = await supabase
+          .from("agenda_veiculo_dia")
+          .select("*")
+          .gte("data", inicioISO)
+          .lte("data", fimISO);
+        diasVeiculo = vdData ?? [];
+      } catch {
+        diasVeiculo = [];
+      }
+      if (diasVeiculo.length === 0) {
+        diasVeiculo = (veiculoDias ?? []).filter(
+          (vd) => vd.data >= inicioISO && vd.data <= fimISO
+        );
+      }
       const obsVeiculo = new Map<string, string>();
-      veiculoDias.forEach((vd) => {
-        obsVeiculo.set(`${vd.data}|${vd.veiculo_id}`, vd.texto);
+      diasVeiculo.forEach((vd) => {
+        if (vd.texto && String(vd.texto).trim()) {
+          obsVeiculo.set(`${vd.data}|${vd.veiculo_id}`, String(vd.texto).trim());
+        }
       });
 
       const itens: AgendaRelatorioItem[] = filtrados.map((a) => {
