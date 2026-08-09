@@ -52,7 +52,7 @@ async function fetchGcOsMap(
   const map = new Map<string, any>();
   let page = 1;
   let totalPages = 1;
-  const MAX_PAGES = 50;
+  const MAX_PAGES = 120;
   const dateQs = (startDate && endDate) ? `&data_inicio=${startDate}&data_fim=${endDate}` : "";
 
   while (page <= totalPages && page <= MAX_PAGES) {
@@ -110,7 +110,7 @@ async function fetchGcOrcMap(
   const map = new Map<string, any>();
   let page = 1;
   let totalPages = 1;
-  const MAX_PAGES = 50;
+  const MAX_PAGES = 120;
   const dateQs = (startDate && endDate) ? `&data_inicio=${startDate}&data_fim=${endDate}` : "";
 
   while (page <= totalPages && page <= MAX_PAGES) {
