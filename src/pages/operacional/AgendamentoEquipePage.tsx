@@ -399,7 +399,7 @@ export default function AgendamentoEquipePage() {
         ];
         
         if (colab.auvo_user_id) {
-          patches.push({ op: "replace", path: "idUserTo", value: Number(colab.auvo_user_id) });
+          patches.push({ op: "replace", path: "idUserTo", value: String(colab.auvo_user_id) });
         }
 
         const { data: auvoRes, error: auvoErr } = await supabase.functions.invoke("auvo-task-update", {
