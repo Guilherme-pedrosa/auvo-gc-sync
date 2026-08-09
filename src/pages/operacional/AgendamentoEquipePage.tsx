@@ -162,15 +162,15 @@ export default function AgendamentoEquipePage() {
         <div className="min-w-[1200px] border rounded-xl bg-card shadow-sm overflow-hidden">
           <div
             className="grid border-b bg-muted/30"
-            style={{ gridTemplateColumns: `100px repeat(${VEHICLES.length}, 1fr)` }}
+            style={{ gridTemplateColumns: `120px repeat(${listToDisplay.length}, 1fr)` }}
           >
-            <div className="p-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground border-r flex items-center justify-center">
+            <div className="p-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground border-r flex items-center justify-center bg-muted/50">
               Horário
             </div>
-            {VEHICLES.map((v) => (
-              <div key={v.id} className="p-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground border-r last:border-r-0 text-center">
-                {v.nome}
-                {v.placa ? ` (${v.placa})` : ""}
+            {listToDisplay.map((t) => (
+              <div key={t.id} className="p-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground border-r last:border-r-0 text-center flex flex-col items-center justify-center gap-1">
+                <span className="truncate w-full">{t.nome}</span>
+                <span className="text-[10px] font-normal opacity-70 truncate w-full">{t.cargo || t.funcao || "Colaborador"}</span>
               </div>
             ))}
           </div>
@@ -182,13 +182,13 @@ export default function AgendamentoEquipePage() {
                 <div
                   key={hour}
                   className="grid h-20"
-                  style={{ gridTemplateColumns: `100px repeat(${VEHICLES.length}, 1fr)` }}
+                  style={{ gridTemplateColumns: `120px repeat(${listToDisplay.length}, 1fr)` }}
                 >
                   <div className="p-3 text-xs font-medium border-r bg-muted/5 flex items-start justify-center pt-2 text-muted-foreground">
                     {String(hour).padStart(2, '0')}:00
                   </div>
-                  {VEHICLES.map((v) => (
-                    <div key={v.id} className="border-r last:border-r-0 relative hover:bg-muted/10 transition-colors" />
+                  {listToDisplay.map((t) => (
+                    <div key={t.id} className="border-r last:border-r-0 relative hover:bg-muted/10 transition-colors" />
                   ))}
                 </div>
               ))}
