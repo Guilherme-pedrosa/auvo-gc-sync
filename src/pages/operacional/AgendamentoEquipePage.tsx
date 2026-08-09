@@ -434,7 +434,12 @@ export default function AgendamentoEquipePage() {
                             key={dia}
                             valor={mapVei.get(`${v.id}|${dia}`) ?? ""}
                             colorir={false}
-                            onClick={() => {}}
+                             onClick={() => {
+                               setSelectedAgendamento(null);
+                               setSelectedDate(new Date(dia + "T12:00:00"));
+                               setSelectedColabId(null);
+                               setDialogOpen(true);
+                             }}
                             onSalvar={(texto) => salvarVeiculo.mutate({ veiculo_id: v.id, data: dia, texto })}
                           />
                         ))}
