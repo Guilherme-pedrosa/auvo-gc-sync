@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, useEffect } from "react";
 import { format, addDays } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { ChevronLeft, ChevronRight, RefreshCw, Printer, Plus, Truck, Users } from "lucide-react";
@@ -68,7 +68,7 @@ interface CelulaProps {
 
 function Celula({ itens, onSalvar, onAbrirTarefa, onAbrirAgendamento, colorir = true }: CelulaProps) {
   const [editando, setEditando] = useState(false);
-  const manual = itens.find((i) => !i.auvo_task_id);
+  const manual = itens.find((i) => !i.auvo_task_id && i.origem !== "AUVO");
   const [rascunho, setRascunho] = useState(manual?.cliente ?? "");
 
   if (editando) {
@@ -290,6 +290,26 @@ export default function AgendamentoEquipePage() {
       setIsSyncing(false);
     }
   };
+
+  useEffect(() => {
+    const cleanOldConcatenatedEntries = async () => {
+      // Remove entradas que contêm "/" no cliente, pois eram as antigas concatenadas
+      const { error } = await supabase
+        .from("agenda_agendamentos")
+        .delete()
+        .like("cliente", "%/%");
+      
+      if (error) {
+        console.error("Erro ao limpar agendamentos antigos:", error);
+      } else {
+        // Recarrega os dados locais se houver deleção (embora o refetch inicial já deva lidar com isso se as tabelas estiverem limpas)
+        refetchLocal();
+      }
+    };
+    
+    cleanOldConcatenatedEntries();
+  }, []);
+
   const salvarTecnico = useSalvarCelulaTecnico();
   const salvarVeiculo = useSalvarCelulaVeiculo();
 
@@ -406,7 +426,7 @@ export default function AgendamentoEquipePage() {
                         </td>
                         {dias.map((dia) => {
                           const itens = mapTec.get(`${t.id}|${dia}`) ?? [];
-                          const manual = itens.find((i) => !i.auvo_task_id);
+                          const manual = itens.find((i) => !i.auvo_task_id && i.origem !== "AUVO");
                           return (
                             <Celula
                               key={dia}
