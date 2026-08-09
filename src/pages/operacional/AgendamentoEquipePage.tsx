@@ -854,7 +854,12 @@ export default function AgendamentoEquipePage() {
         initialDate={createTaskPrefill.data}
         initialUserAuvoId={createTaskPrefill.auvoUserId}
         initialUserNome={createTaskPrefill.nome}
-        onSuccess={() => refetch()}
+        onSuccess={() => {
+          refetchLocal();
+          // Além do refetch local, forçamos o refresh do queryClient para garantir sincronia em todos os componentes
+          qc.invalidateQueries({ queryKey: ["agenda_semana"] });
+          qc.invalidateQueries({ queryKey: ["agenda_agendamentos"] });
+        }}
       />
     </div>
   );
