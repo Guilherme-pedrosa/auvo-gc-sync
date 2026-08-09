@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { format, addDays, startOfWeek, subWeeks, addWeeks, getISOWeek } from "date-fns";
+import { format, addDays } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { ChevronLeft, ChevronRight, RefreshCw, Printer, Plus, Truck, Users } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -12,8 +12,10 @@ import {
   useAgendaSemana,
   useSalvarCelulaTecnico,
   useSalvarCelulaVeiculo,
+  type AgendaAgendamento,
 } from "@/hooks/operacional/useAgendamentoEquipe";
 import { useQueryClient } from "@tanstack/react-query";
+import AgendamentoEquipeDialog from "@/components/operacional/AgendamentoEquipeDialog";
 
 const DIAS_TRADUZIDOS = ["Segunda-feira", "Terça-feira", "Quarta-feira", "Quinta-feira", "Sexta-feira", "Sábado", "Domingo"];
 
@@ -49,10 +51,11 @@ const corCliente = (texto: string) => {
 interface CelulaProps {
   valor: string;
   onSalvar: (v: string) => void;
+  onClick: () => void;
   colorir?: boolean;
 }
 
-function Celula({ valor, onSalvar, colorir = true }: CelulaProps) {
+function Celula({ valor, onSalvar, onClick, colorir = true }: CelulaProps) {
   const [editando, setEditando] = useState(false);
   const [rascunho, setRascunho] = useState(valor);
 
@@ -85,12 +88,16 @@ function Celula({ valor, onSalvar, colorir = true }: CelulaProps) {
 
   return (
     <td
-      onClick={() => {
-        setRascunho(valor);
-        setEditando(true);
+      onClick={(e) => {
+        if (e.detail === 2) {
+          setRascunho(valor);
+          setEditando(true);
+        } else {
+          onClick();
+        }
       }}
       className={cn(
-        "border border-border p-1.5 align-top text-[11px] font-semibold uppercase leading-tight cursor-text h-16 min-w-[130px] hover:ring-1 hover:ring-primary/50",
+        "border border-border p-1.5 align-top text-[11px] font-semibold uppercase leading-tight cursor-pointer h-16 min-w-[130px] hover:ring-1 hover:ring-primary/50",
         colorir && corCliente(valor),
       )}
     >
@@ -101,7 +108,11 @@ function Celula({ valor, onSalvar, colorir = true }: CelulaProps) {
 
 export default function AgendamentoEquipePage() {
   const qc = useQueryClient();
-  const [refDate, setRefDate] = useState<Date>(new Date());
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const [selectedAgendamento, setSelectedAgendamento] = useState<AgendaAgendamento | null>(null);
+  const [selectedDate, setSelectedDate] = useState<Date | undefined>();
+  const [selectedColabId, setSelectedColabId] = useState<string | null>(null);
+
   const inicioEscala = useMemo(() => new Date(), []);
   
   const dias = useMemo(
@@ -122,9 +133,9 @@ export default function AgendamentoEquipePage() {
   }, [colaboradores]);
 
   const mapTec = useMemo(() => {
-    const m = new Map<string, { id: string; cliente: string }>();
+    const m = new Map<string, AgendaAgendamento>();
     for (const a of data?.agendamentos ?? []) {
-      m.set(`${a.colaborador_id}|${a.data}`, { id: a.id, cliente: a.cliente });
+      m.set(`${a.colaborador_id}|${a.data}`, a);
     }
     return m;
   }, [data]);
@@ -220,6 +231,12 @@ export default function AgendamentoEquipePage() {
                             <Celula
                               key={dia}
                               valor={atual?.cliente ?? ""}
+                              onClick={() => {
+                                setSelectedAgendamento(atual || null);
+                                setSelectedDate(new Date(dia + "T12:00:00"));
+                                setSelectedColabId(t.id);
+                                setDialogOpen(true);
+                              }}
                               onSalvar={(v) =>
                                 salvarTecnico.mutate({
                                   id: atual?.id ?? null,
@@ -295,6 +312,7 @@ export default function AgendamentoEquipePage() {
                             key={dia}
                             valor={mapVei.get(`${v.id}|${dia}`) ?? ""}
                             colorir={false}
+                            onClick={() => {}}
                             onSalvar={(texto) => salvarVeiculo.mutate({ veiculo_id: v.id, data: dia, texto })}
                           />
                         ))}
@@ -314,6 +332,14 @@ export default function AgendamentoEquipePage() {
           </>
         )}
       </div>
+
+      <AgendamentoEquipeDialog
+        open={dialogOpen}
+        onOpenChange={setDialogOpen}
+        initialDate={selectedDate}
+        initialColaboradorId={selectedColabId}
+        agendamento={selectedAgendamento}
+      />
     </div>
   );
 }
