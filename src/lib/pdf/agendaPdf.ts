@@ -34,19 +34,30 @@ export function gerarPdfAgenda(
   doc.text(`Período: ${periodo}`, 40, 58);
   doc.text(`Emitido em: ${new Date().toLocaleString("pt-BR")}`, pageW - 40, 58, { align: "right" });
 
+  const linhas = itens.map((it) => ({
+    data: brDate(it.data),
+    tecnico: it.tecnico,
+    horario: it.horario || "08:00 - 18:00",
+    codigo: it.gc_codigo || "—",
+    cliente: it.cliente,
+    descricao: it.descricao || "—",
+    link: it.auvo_task_id ? "ABRIR TAREFA" : "—",
+    taskId: it.auvo_task_id,
+  }));
+
   // Tabela
   autoTable(doc, {
     startY: 70,
-    head: [["Data", "Técnico", "Horário", "Código", "Cliente", "Descrição", "Link Auvo"]],
-    body: itens.map((it) => [
-      brDate(it.data),
-      it.tecnico,
-      it.horario || "08:00 - 18:00",
-      it.gc_codigo || "—",
-      it.cliente,
-      it.descricao || "—",
-      it.auvo_task_id ? "ABRIR TAREFA" : "—",
-    ]),
+    columns: [
+      { header: "Data", dataKey: "data" },
+      { header: "Técnico", dataKey: "tecnico" },
+      { header: "Horário", dataKey: "horario" },
+      { header: "Código", dataKey: "codigo" },
+      { header: "Cliente", dataKey: "cliente" },
+      { header: "Descrição", dataKey: "descricao" },
+      { header: "Link Auvo", dataKey: "link" },
+    ],
+    body: linhas,
     styles: { fontSize: 8, cellPadding: 3 },
     headStyles: { fillColor: [37, 99, 235], textColor: 255, fontStyle: "bold" },
     columnStyles: {
@@ -59,10 +70,10 @@ export function gerarPdfAgenda(
     },
     didDrawCell: (data: any) => {
       if (data.section !== "body") return;
-      const it = itens[data.row.index];
-      if (data.column.index === 6 && it.auvo_task_id) {
+      const linha = data.row.raw as { taskId?: string } | undefined;
+      if (data.column.dataKey === "link" && linha?.taskId) {
         // Mesmo endereço usado no espelho de Premiação e nas demais telas.
-        const url = `https://app2.auvo.com.br/relatorioTarefas/DetalheTarefa/${it.auvo_task_id}`;
+        const url = `https://app2.auvo.com.br/relatorioTarefas/DetalheTarefa/${linha.taskId}`;
         doc.link(data.cell.x, data.cell.y, data.cell.width, data.cell.height, { url });
       }
     },
@@ -77,7 +88,7 @@ export function gerarPdfAgenda(
     doc.text(`Página ${i} de ${totalPages}`, pageW - 40, pageH - 20, { align: "right" });
   }
 
-  // Retorna uma Promise para permitir que o chamador aguarde a conclusão.
-  // Força o download imediato
+  // O save ocorre ainda dentro do clique do usuário, preservando a permissão
+  // de download exigida pelo navegador.
   doc.save(`agenda-coletiva-${new Date().getTime()}.pdf`);
 }
