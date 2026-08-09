@@ -133,30 +133,45 @@ export type Database = {
           atualizado_em: string
           criado_em: string
           id: string
+          marca: string | null
           modelo: string | null
           nome: string
+          observacao: string | null
           ordem: number
           placa: string | null
+          sincronizado_em: string | null
+          status: string | null
+          tvh_vehicle_id: string | null
         }
         Insert: {
           ativo?: boolean
           atualizado_em?: string
           criado_em?: string
           id?: string
+          marca?: string | null
           modelo?: string | null
           nome: string
+          observacao?: string | null
           ordem?: number
           placa?: string | null
+          sincronizado_em?: string | null
+          status?: string | null
+          tvh_vehicle_id?: string | null
         }
         Update: {
           ativo?: boolean
           atualizado_em?: string
           criado_em?: string
           id?: string
+          marca?: string | null
           modelo?: string | null
           nome?: string
+          observacao?: string | null
           ordem?: number
           placa?: string | null
+          sincronizado_em?: string | null
+          status?: string | null
+          tvh_vehicle_id?: string | null
         }
         Relationships: []
       }
