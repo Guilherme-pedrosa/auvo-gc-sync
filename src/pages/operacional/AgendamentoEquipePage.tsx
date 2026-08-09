@@ -885,9 +885,12 @@ export default function AgendamentoEquipePage() {
                             {v.observacao && (
                               <div
                                 title={v.observacao}
-                                className="mt-1 flex items-start gap-1 rounded border border-destructive/40 bg-destructive/10 p-1 text-[10px] font-normal normal-case text-destructive"
+                                className="mt-1 flex flex-col gap-1 rounded border border-destructive/40 bg-destructive/10 p-1 text-[10px] font-normal normal-case text-destructive"
                               >
-                                <AlertTriangle className="mt-0.5 h-3 w-3 shrink-0" />
+                                <div className="flex items-center gap-1 font-bold uppercase text-[9px]">
+                                  <AlertTriangle className="h-3 w-3 shrink-0" />
+                                  <span>Crítica: Urgente</span>
+                                </div>
                                 <span className="line-clamp-3">{v.observacao}</span>
                               </div>
                             )}
