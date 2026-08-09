@@ -19,6 +19,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import AgendamentoEquipeDialog from "@/components/operacional/AgendamentoEquipeDialog";
 import TarefaAuvoDetalheDialog from "@/components/operacional/TarefaAuvoDetalheDialog";
 import CriarTarefaGeralDialog from "@/components/operacional/CriarTarefaGeralDialog";
+import AgendaRelatorioDialog from "@/components/operacional/AgendaRelatorioDialog";
 import { toast } from "sonner";
 
 const DIAS_TRADUZIDOS = ["Segunda-feira", "Terça-feira", "Quarta-feira", "Quinta-feira", "Sexta-feira", "Sábado", "Domingo"];
@@ -276,6 +277,7 @@ export default function AgendamentoEquipePage() {
   const [tarefaId, setTarefaId] = useState<string | null>(null);
   const [dialogEditOpen, setDialogEditOpen] = useState(false);
   const [dialogCreateTaskOpen, setDialogCreateTaskOpen] = useState(false);
+  const [dialogRelatorioOpen, setDialogRelatorioOpen] = useState(false);
   const [createTaskPrefill, setCreateTaskPrefill] = useState<{ data: string | null; auvoUserId: string | null; nome: string | null }>({ data: null, auvoUserId: null, nome: null });
   const dragItem = useRef<AgendaAgendamento | null>(null);
   const saveAgendamento = useSaveAgendamento();
