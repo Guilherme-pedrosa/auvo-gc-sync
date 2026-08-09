@@ -741,7 +741,8 @@ Deno.serve(async (req) => {
       const end = new Date(start.getTime() + dur * 60_000);
       const pad = (n: number) => String(n).padStart(2, "0");
       const endISO = `${end.getFullYear()}-${pad(end.getMonth() + 1)}-${pad(end.getDate())}T${pad(end.getHours())}:${pad(end.getMinutes())}:00`;
-      const estimatedDuration = (dur / 60).toFixed(2);
+      // Auvo lê a duração como relógio "HH:mm"
+      const estimatedDuration = `${pad(Math.floor(dur / 60))}:${pad(dur % 60)}`;
 
       const eqList: number[] = (Array.isArray(equipmentIds) ? equipmentIds : equipmentId ? [equipmentId] : [])
         .map((v: unknown) => Number(v))
