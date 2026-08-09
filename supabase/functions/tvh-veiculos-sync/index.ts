@@ -57,6 +57,17 @@ Deno.serve(async (req) => {
     const tvhKey = Deno.env.get("TVH_SERVICE_ROLE_KEY");
     if (!tvhKey) return json({ ok: false, error: "TVH_SERVICE_ROLE_KEY não configurada" });
 
+    if (new URL(req.url).searchParams.get("diag") === "1") {
+      return json({
+        ok: true,
+        diag: {
+          url: tvhUrl,
+          key_prefix: tvhKey.slice(0, 10),
+          key_len: tvhKey.length,
+        },
+      });
+    }
+
     async function hub(path: string) {
       const isOpaque = tvhKey!.startsWith("sb_");
       const headers: Record<string, string> = { apikey: tvhKey! };
