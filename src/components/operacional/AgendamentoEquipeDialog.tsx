@@ -100,9 +100,10 @@ export default function AgendamentoEquipeDialog({
       if (agendamento?.auvo_task_id && agendamento.origem === "AUVO") {
         const patches = [];
         
-        // Data e Hora
-        if (data !== agendamento.data || horaInicio !== agendamento.hora_inicio.slice(0, 5)) {
+        // Data e Hora (Início e Fim)
+        if (data !== agendamento.data || horaInicio !== agendamento.hora_inicio.slice(0, 5) || horaFim !== agendamento.hora_fim.slice(0, 5)) {
           patches.push({ op: "replace", path: "taskDate", value: `${data}T${horaInicio}:00` });
+          patches.push({ op: "replace", path: "taskEndDate", value: `${data}T${horaFim}:00` });
         }
         
         // Técnico
@@ -127,8 +128,8 @@ export default function AgendamentoEquipeDialog({
       await save.mutateAsync({
         id: agendamento?.id,
         data,
-        hora_inicio: horaInicio,
-        hora_fim: horaFim,
+        hora_inicio: horaInicio.includes(":") ? (horaInicio.length === 5 ? `${horaInicio}:00` : horaInicio) : "08:00:00",
+        hora_fim: horaFim.includes(":") ? (horaFim.length === 5 ? `${horaFim}:00` : horaFim) : "09:00:00",
         colaborador_id: colaboradorId,
         colaborador_nome: nome,
         veiculo_id: veiculoId || null,
