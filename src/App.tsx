@@ -54,6 +54,7 @@ import PortalOrcamentosPage from "./pages/portal/PortalOrcamentosPage.tsx";
 import PortalPlanosPreventivosPage from "./pages/portal/PortalPlanosPreventivosPage.tsx";
 import PortalNegociacaoPage from "./pages/portal/PortalNegociacaoPage.tsx";
 import AgendamentoEquipePage from "./pages/operacional/AgendamentoEquipePage.tsx";
+import ProdutividadeTecnicosPage from "./pages/financeiro/ProdutividadeTecnicosPage.tsx";
 import { Loader2 } from "lucide-react";
 
 const queryClient = new QueryClient({
@@ -111,6 +112,7 @@ const AppRoutes = () => {
                 <Route path="/" element={<Index />} />
                 <Route path="/financeiro/auvo-sync" element={<AuvoSyncPage />} />
                 <Route path="/financeiro/dashboard-tecnicos" element={<TechDashboardPage />} />
+                <Route path="/financeiro/produtividade-tecnicos" element={<ProdutividadeTecnicosPage />} />
                 <Route path="/financeiro/kanban-orcamentos" element={<BudgetKanbanPage />} />
                 <Route path="/financeiro/kanban-personalizado" element={<CustomKanbanPage />} />
                 <Route path="/financeiro/acompanhamento" element={<RealtimeTrackingPage />} />
