@@ -58,6 +58,7 @@ export function gerarPdfAgenda(
       { header: "Link Auvo", dataKey: "link" },
     ],
     body: linhas,
+    rowPageBreak: "avoid",
     styles: { fontSize: 8, cellPadding: 3 },
     headStyles: { fillColor: [37, 99, 235], textColor: 255, fontStyle: "bold" },
     columnStyles: {
