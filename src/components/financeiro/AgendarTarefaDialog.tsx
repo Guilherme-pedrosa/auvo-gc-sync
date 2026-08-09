@@ -88,7 +88,6 @@ export default function AgendarTarefaDialog({ open, onOpenChange, alvo, onSaved 
     try {
       const patches = [
         { op: "replace", path: "taskDate", value: `${dateISO}T${hora}:00` },
-        { op: "replace", path: "estimatedDuration", value: minutesToClock(durationMinutes) },
         { op: "replace", path: "idUserTo", value: Number(tecnicoId) },
       ];
       const { data, error } = await supabase.functions.invoke("auvo-task-update", {
