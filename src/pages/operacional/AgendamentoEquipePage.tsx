@@ -142,6 +142,7 @@ function Celula({ itens, onSalvar, onAbrirTarefa, onAbrirAgendamento, onDragStar
               prefix = "OR";
               idText = a.gc_orcamento_codigo;
             } else if (a.auvo_task_id) {
+              // Só colocamos a tarefa se não houver OS nem Orçamento
               prefix = "T";
               idText = a.auvo_task_id;
             }
@@ -156,6 +157,12 @@ function Celula({ itens, onSalvar, onAbrirTarefa, onAbrirAgendamento, onDragStar
                 onDragStart={() => onDragStart(a)}
                 title={a.auvo_task_id ? `Tarefa Auvo #${a.auvo_task_id}` : "Agendamento manual"}
                 onClick={() => (a.auvo_task_id ? onAbrirTarefa(a) : onAbrirAgendamento(a))}
+                onAuxClick={(e) => {
+                  // Clique com botão do meio ou scroll abre edição mesmo se tiver tarefa
+                  if (e.button === 1 && a.auvo_task_id) {
+                    onAbrirAgendamento(a);
+                  }
+                }}
                 className={cn(
                   "w-full text-left rounded-sm px-1.5 py-1 text-[11px] font-semibold uppercase leading-tight hover:ring-1 hover:ring-primary/60 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary cursor-grab active:cursor-grabbing",
                   colorir && corCliente(a.cliente),
@@ -254,16 +261,33 @@ export default function AgendamentoEquipePage() {
         .map((t) => String(t.auvo_task_id ?? t.taskID ?? t.id ?? ""))
         .filter(Boolean);
       const codigosLocais = new Map<string, { os: string | null; orc: string | null }>();
-      for (let i = 0; i < taskIds.length; i += 300) {
+      for (let i = 0; i < taskIds.length; i += 100) {
+        const batch = taskIds.slice(i, i + 100);
+        // Busca enriquecida: tenta encontrar o vínculo em qualquer uma das colunas mapeadas
         const { data: rows } = await supabase
           .from("tarefas_central")
-          .select("auvo_task_id, gc_os_codigo, gc_orcamento_codigo")
-          .in("auvo_task_id", taskIds.slice(i, i + 300));
+          .select("auvo_task_id, gc_os_codigo, gc_orcamento_codigo, gc_os_tarefa_os, gc_os_tarefa_exec")
+          .or(`auvo_task_id.in.(${batch.join(",")}),gc_os_tarefa_os.in.(${batch.join(",")}),gc_os_tarefa_exec.in.(${batch.join(",")})`);
+        
         for (const r of rows ?? []) {
-          codigosLocais.set(String((r as any).auvo_task_id), {
+          const keys = [
+            String(r.auvo_task_id || ""),
+            String(r.gc_os_tarefa_os || ""),
+            String(r.gc_os_tarefa_exec || "")
+          ].filter(k => k && batch.includes(k));
+
+          const data = {
             os: (r as any).gc_os_codigo || null,
             orc: (r as any).gc_orcamento_codigo || null,
-          });
+          };
+
+          for (const k of keys) {
+            const existing = codigosLocais.get(k);
+            // Preserva o que for mais rico (prioridade OS > ORC)
+            if (!existing || (!existing.os && data.os) || (!existing.orc && data.orc)) {
+              codigosLocais.set(k, data);
+            }
+          }
         }
       }
 
@@ -319,9 +343,7 @@ export default function AgendamentoEquipePage() {
           status: "AGENDADO",
           auvo_task_id: taskId,
           origem: "AUVO",
-          // Mapeando dados extras para exibição nos cards
           gc_os_codigo: osCodigo,
-          // Orçamento só entra quando não há OS (é apenas previsão)
           gc_orcamento_codigo: osCodigo ? null : orcCodigo,
         });
       }
