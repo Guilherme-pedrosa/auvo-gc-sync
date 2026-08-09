@@ -50,8 +50,12 @@ type Ticket = {
   created_at?: string | null;
 };
 
+// Itens que são ruído de auditoria de foto/IA — não são dano no veículo.
+const ITEM_RUIDO =
+  /(foto|imagem|selfie|reprovad[ao] pela ia|tire uma nova|refa[çc]a a foto|qualidade da (foto|imagem)|enquadr|ilegív|nítid)/i;
+
 // Extrai os itens não conformes descritos no checklist
-function detalharNaoConformidade(t: Ticket): string {
+function detalharNaoConformidade(t: Ticket): string | null {
   const desc = String(t.descricao || "");
   const linhas = desc.split("\n").map((l) => l.trim()).filter(Boolean);
 
@@ -68,9 +72,13 @@ function detalharNaoConformidade(t: Ticket): string {
         .replace(/:\s*nao\b/i, " (NÃO CONFORME)")
         .replace(/\s+—\s+"/, ' — "')
         .trim();
-      if (item) itens.push(item);
+      // Ignora reprovação de foto pela IA — só interessa avaria/manutenção
+      if (item && !ITEM_RUIDO.test(item)) itens.push(item);
     }
   }
+
+  // Sem item de dano real → nada a exibir
+  if (!itens.length) return null;
 
   const resultado = linhas.find((l) => /^resultado:/i.test(l))?.replace(/^resultado:\s*/i, "") || "";
   const obs = linhas.find((l) => /^observa/i.test(l))?.replace(/^observa[çc][õo]es:\s*/i, "") || "";
@@ -79,9 +87,8 @@ function detalharNaoConformidade(t: Ticket): string {
   const partes: string[] = [];
   if (data) partes.push(`Checklist ${data}`);
   if (resultado) partes.push(`Resultado: ${resultado}`);
-  if (itens.length) partes.push(itens.map((i) => `• ${i}`).join("\n"));
-  else partes.push(t.titulo);
-  if (obs) partes.push(`Obs.: ${obs}`);
+  partes.push(itens.map((i) => `• ${i}`).join("\n"));
+  if (obs && !ITEM_RUIDO.test(obs)) partes.push(`Obs.: ${obs}`);
   partes.push(`Situação: ${String(t.status).replace(/_/g, " ")} · prioridade ${String(t.prioridade).toUpperCase()}`);
   return partes.join("\n");
 }
