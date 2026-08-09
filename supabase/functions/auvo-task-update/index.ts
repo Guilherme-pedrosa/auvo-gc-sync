@@ -302,28 +302,56 @@ Deno.serve(async (req) => {
       }
 
       const url = `${AUVO_BASE_URL}/tasks/${taskId}`;
+
+      // Separa campos que a API v2 não aceita via PATCH (duração / data fim)
+      const patchable = patches.filter((p: any) => !PATCH_UNSUPPORTED_PATHS.includes(p?.path));
+      const upsertOnly = patches.filter((p: any) => PATCH_UNSUPPORTED_PATHS.includes(p?.path));
+
+      let durationResult: any = null;
+      if (upsertOnly.length > 0) {
+        const fields: Record<string, unknown> = {};
+        for (const p of upsertOnly) {
+          if (p.path === "estimatedDuration") {
+            const d = normalizeDuration(p.value);
+            if (d) fields.estimatedDuration = d;
+          } else if (p.path === "taskEndDate" && p.value) {
+            fields.taskEndDate = p.value;
+          }
+        }
+        // taskDate pode estar sendo alterado no mesmo request → aplicar junto no upsert
+        const datePatch = patchable.find((p: any) => p.path === "taskDate");
+        if (datePatch?.value) fields.taskDate = datePatch.value;
+
+        if (Object.keys(fields).length > 0) {
+          try {
+            durationResult = await upsertTaskFields(taskId, fields, headers, reqId);
+          } catch (err) {
+            console.error(`[auvo-task-update][reqId=${reqId}] upsert duração falhou:`, err);
+            durationResult = { ok: false, status: 503, body: { message: String(err) } };
+          }
+        }
+      }
+
+      if (patchable.length === 0) {
+        return new Response(
+          JSON.stringify({
+            data: durationResult?.body ?? null,
+            status: durationResult?.ok ? 200 : (durationResult?.status ?? 200),
+            duration: durationResult,
+            reqId,
+          }),
+          { status: 200, headers: respHeaders }
+        );
+      }
+
       // PATCH é idempotente para os campos enviados → retry seguro em 502/503/timeout
       let response: Response;
       try {
         response = await patchWithRetry(url, {
           method: "PATCH",
           headers,
-          body: JSON.stringify(patches),
+          body: JSON.stringify(patchable),
         }, reqId);
-
-        // Fallback for taskEndDate error (Common in some Auvo versions)
-        if (!response.ok) {
-          const errorText = await response.clone().text();
-          if (errorText.toLowerCase().includes("taskenddate") && errorText.toLowerCase().includes("not found")) {
-            console.warn(`[auvo-task-update][reqId=${reqId}] Retrying without taskEndDate...`);
-            const filteredPatches = patches.filter(p => p.path !== "taskEndDate");
-            response = await patchWithRetry(url, {
-              method: "PATCH",
-              headers,
-              body: JSON.stringify(filteredPatches),
-            }, reqId);
-          }
-        }
       } catch (err) {
         console.error(`[auvo-task-update][reqId=${reqId}] PATCH /tasks/${taskId} falhou após retries:`, err);
         return new Response(
@@ -343,7 +371,7 @@ Deno.serve(async (req) => {
       console.log(`[auvo-task-update][reqId=${reqId}] action=edit status=${response.status} response=`, responseText.substring(0, 500));
 
       return new Response(
-        JSON.stringify({ data, status: response.status, reqId }),
+        JSON.stringify({ data, status: response.status, duration: durationResult, reqId }),
         { status: 200, headers: respHeaders }
       );
     }
