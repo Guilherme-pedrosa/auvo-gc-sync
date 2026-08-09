@@ -230,6 +230,24 @@ export default function AgendamentoEquipePage() {
 
       const tarefas: any[] = Array.isArray(syncRes?.data) ? syncRes.data : [];
 
+      // Fallback: completa códigos de OS/Orçamento a partir da base local
+      const taskIds = tarefas
+        .map((t) => String(t.auvo_task_id ?? t.taskID ?? t.id ?? ""))
+        .filter(Boolean);
+      const codigosLocais = new Map<string, { os: string | null; orc: string | null }>();
+      for (let i = 0; i < taskIds.length; i += 300) {
+        const { data: rows } = await supabase
+          .from("tarefas_central")
+          .select("auvo_task_id, gc_os_codigo, gc_orcamento_codigo")
+          .in("auvo_task_id", taskIds.slice(i, i + 300));
+        for (const r of rows ?? []) {
+          codigosLocais.set(String((r as any).auvo_task_id), {
+            os: (r as any).gc_os_codigo || null,
+            orc: (r as any).gc_orcamento_codigo || null,
+          });
+        }
+      }
+
       // Resolução do técnico: auvo_user_id (fonte da verdade) → nome → primeiro nome
       const porAuvoId = new Map<string, any>();
       const porNome = new Map<string, any>();
@@ -264,6 +282,10 @@ export default function AgendamentoEquipePage() {
         // A lógica do usuário diz: "SÓ COLOCAR A TAREFA NA LINHA QUANDO NÃO TIVER ORÇAMENTO NEM OS"
         // No contexto de sincronização, cada tarefa enriquecida já traz esses campos se existirem.
         
+        const local = codigosLocais.get(taskId);
+        const osCodigo = t.gc_os_codigo || local?.os || null;
+        const orcCodigo = t.gc_orcamento_codigo || local?.orc || null;
+
         const key = `${taskId}|${t.data_tarefa}|${colab.id}`;
         if (vistos.has(key)) continue;
         vistos.add(key);
@@ -279,8 +301,9 @@ export default function AgendamentoEquipePage() {
           auvo_task_id: taskId,
           origem: "AUVO",
           // Mapeando dados extras para exibição nos cards
-          gc_os_codigo: t.gc_os_codigo || null,
-          gc_orcamento_codigo: t.gc_orcamento_codigo || null,
+          gc_os_codigo: osCodigo,
+          // Orçamento só entra quando não há OS (é apenas previsão)
+          gc_orcamento_codigo: osCodigo ? null : orcCodigo,
         });
       }
 
