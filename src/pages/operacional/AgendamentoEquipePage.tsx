@@ -703,14 +703,33 @@ export default function AgendamentoEquipePage() {
       </div>
 
       <AgendamentoEquipeDialog
-        open={dialogOpen}
-        onOpenChange={setDialogOpen}
+        open={dialogOpen || dialogEditOpen}
+        onOpenChange={(open) => {
+          setDialogOpen(open);
+          setDialogEditOpen(open);
+          if (!open) {
+            setSelectedAgendamento(null);
+            setSelectedDate(undefined);
+            setSelectedColabId(null);
+          }
+        }}
         initialDate={selectedDate}
         initialColaboradorId={selectedColabId}
         agendamento={selectedAgendamento}
       />
 
-      <TarefaAuvoDetalheDialog taskId={tarefaId} onOpenChange={(open) => !open && setTarefaId(null)} />
+      <TarefaAuvoDetalheDialog 
+        taskId={tarefaId} 
+        onOpenChange={(open) => !open && setTarefaId(null)} 
+        onEdit={() => {
+          const item = data?.find(i => i.auvo_task_id === tarefaId);
+          if (item) {
+            setSelectedAgendamento(item);
+            setDialogEditOpen(true);
+            setTarefaId(null);
+          }
+        }}
+      />
     </div>
   );
 }
