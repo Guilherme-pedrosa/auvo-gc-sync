@@ -29,6 +29,8 @@ import {
 import { Trash2 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
+import { SearchableSelect } from "@/components/ui/searchable-select";
+import { useQuery } from "@tanstack/react-query";
 
 interface AgendamentoEquipeDialogProps {
   open: boolean;
@@ -65,6 +67,30 @@ export default function AgendamentoEquipeDialog({
   const [veiculoId, setVeiculoId] = useState("");
   const [cliente, setCliente] = useState("");
   const [descricao, setDescricao] = useState("");
+  const [questionnaireId, setQuestionnaireId] = useState("");
+
+  const { data: questionnaires = [] } = useQuery({
+    queryKey: ["auvo-questionnaires"],
+    enabled: open && !!agendamento?.auvo_task_id,
+    staleTime: 30 * 60 * 1000,
+    queryFn: async () => {
+      const { data, error } = await supabase.functions.invoke("auvo-task-update", {
+        body: { action: "list-questionnaires" },
+      });
+      if (error) throw error;
+      return (data?.data || []) as any[];
+    },
+  });
+
+  const questionnaireOptions = useMemo(() => {
+    return questionnaires
+      .map((q: any) => ({
+        value: String(q.id ?? q.questionnaireId ?? ""),
+        label: String(q.description ?? q.name ?? `Questionário ${q.id ?? "?"}`),
+      }))
+      .filter((o) => o.value)
+      .sort((a, b) => a.label.localeCompare(b.label));
+  }, [questionnaires]);
 
   useEffect(() => {
     if (!open) return;
@@ -76,6 +102,7 @@ export default function AgendamentoEquipeDialog({
       setVeiculoId(agendamento.veiculo_id ?? "");
       setCliente(agendamento.cliente);
       setDescricao(agendamento.descricao ?? "");
+      setQuestionnaireId(""); // Reset or fetch current if needed, but Auvo API for tasks doesn't always return current QID easily in list
     } else {
       setData(initialDate ? format(initialDate, "yyyy-MM-dd") : "");
       setHoraInicio("08:00");
@@ -114,6 +141,11 @@ export default function AgendamentoEquipeDialog({
         // Descrição (Orientação no Auvo)
         if (descricao !== (agendamento.descricao || "")) {
           patches.push({ op: "replace", path: "orientation", value: descricao });
+        }
+
+        // Questionário
+        if (questionnaireId) {
+          patches.push({ op: "replace", path: "questionnaireId", value: Number(questionnaireId) });
         }
 
         if (patches.length > 0) {
@@ -243,6 +275,22 @@ export default function AgendamentoEquipeDialog({
               className="resize-none"
             />
           </div>
+
+          {agendamento?.auvo_task_id && (
+            <div className="space-y-2">
+              <Label className="text-xs text-primary font-bold">Vincular/Alterar Questionário Auvo</Label>
+              <SearchableSelect
+                options={questionnaireOptions}
+                value={questionnaireId}
+                onValueChange={setQuestionnaireId}
+                placeholder="Selecione um questionário para aplicar"
+                searchPlaceholder="Buscar questionário..."
+              />
+              <p className="text-[10px] text-muted-foreground italic">
+                Nota: Isso aplicará o questionário à tarefa no Auvo ao salvar.
+              </p>
+            </div>
+          )}
         </div>
 
         <DialogFooter className="gap-2 sm:justify-between">
