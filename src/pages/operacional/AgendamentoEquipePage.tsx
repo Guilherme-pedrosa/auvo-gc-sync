@@ -472,7 +472,7 @@ export default function AgendamentoEquipePage() {
     await supabase.from("agenda_veiculos").insert({ 
       nome: nome.trim().toUpperCase(), 
       placa: placa?.trim()?.toUpperCase() || null,
-      ordem: veiculos.length + 1, 
+      ordem: String(veiculos.length + 1), 
       ativo: true 
     } as never);
     qc.invalidateQueries({ queryKey: ["agenda_veiculos"] });
@@ -573,6 +573,8 @@ export default function AgendamentoEquipePage() {
                                   texto: v,
                                 })
                               }
+                              onDragStart={(a) => { dragItem.current = a; }}
+                              onDrop={() => handleDragDrop(dia, t.id)}
                             />
                           );
                         })}
