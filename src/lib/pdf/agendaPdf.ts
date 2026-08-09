@@ -78,5 +78,6 @@ export function gerarPdfAgenda(
   }
 
   // Retorna uma Promise para permitir que o chamador aguarde a conclusão.
+  // Força o download imediato
   doc.save(`agenda-coletiva-${new Date().getTime()}.pdf`);
 }
