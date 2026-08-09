@@ -19,7 +19,7 @@ const TVH_ANON_KEY =
 // Só interessam não conformidades de manutenção do último checklist.
 // Alertas de "veículo rodou X km sem checklist" são ruído e ficam de fora.
 const OPEN_STATUSES = ["aberto", "em_andamento", "aguardando_peca"];
-const IGNORAR_TITULO = /sem\s+checklist/i;
+const IGNORAR_TITULO = /rodou.*sem\s+checklist|ve[íi]culo\s+rodou/i;
 
 const STATUS_LABEL: Record<string, string> = {
   disponivel: "Disponível",
