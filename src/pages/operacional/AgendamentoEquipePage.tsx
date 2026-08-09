@@ -33,7 +33,7 @@ const isTecnico = (c: { cargo?: string | null; funcao?: string | null }) => {
     .toLowerCase()
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "");
-  return txt.includes("tecnico");
+  return txt.includes("tecnico") || txt.includes("auxiliar");
 };
 
 const PALETA = [
@@ -265,7 +265,13 @@ export default function AgendamentoEquipePage() {
   const adicionarVeiculo = async () => {
     const nome = window.prompt("Nome do veículo (ex: ETIOS PRATA)");
     if (!nome?.trim()) return;
-    await supabase.from("agenda_veiculos").insert({ nome: nome.trim().toUpperCase(), ordem: veiculos.length + 1, ativo: true } as never);
+    const placa = window.prompt("Placa do veículo (opcional)");
+    await supabase.from("agenda_veiculos").insert({ 
+      nome: nome.trim().toUpperCase(), 
+      placa: placa?.trim()?.toUpperCase() || null,
+      ordem: veiculos.length + 1, 
+      ativo: true 
+    } as never);
     qc.invalidateQueries({ queryKey: ["agenda_veiculos"] });
   };
 
