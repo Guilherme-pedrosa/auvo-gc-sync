@@ -77,6 +77,10 @@ export async function gerarPdfAgenda(
     doc.text(`Página ${i} de ${totalPages}`, pageW - 40, pageH - 20, { align: "right" });
   }
 
-  // Mantém exatamente o fluxo de download já validado no PDF de Premiação.
-  doc.save(`agenda-coletiva-${new Date().getTime()}.pdf`);
+  // Retorna uma Promise para permitir que o chamador aguarde a conclusão.
+  return new Promise<void>((resolve) => {
+    doc.save(`agenda-coletiva-${new Date().getTime()}.pdf`);
+    // Pequeno delay para garantir que o processo de salvamento iniciou no navegador
+    setTimeout(resolve, 500);
+  });
 }
