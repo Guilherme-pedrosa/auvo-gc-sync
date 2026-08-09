@@ -46,13 +46,13 @@ export default function AgendaRelatorioDialog({ open, onOpenChange, agendamentos
         fim = data;
         labelPeriodo = format(data, "dd/MM/yyyy");
       } else if (tipo === "semanal") {
-        inicio = startOfWeek(hoje, { weekStartsOn: 1 });
-        fim = endOfWeek(hoje, { weekStartsOn: 1 });
+        inicio = startOfWeek(dataSelecionada || hoje, { weekStartsOn: 1 });
+        fim = endOfWeek(dataSelecionada || hoje, { weekStartsOn: 1 });
         labelPeriodo = `${format(inicio, "dd/MM")} a ${format(fim, "dd/MM/yyyy")}`;
       } else {
-        inicio = startOfMonth(hoje);
-        fim = endOfMonth(hoje);
-        labelPeriodo = format(hoje, "MMMM yyyy", { locale: ptBR });
+        inicio = startOfMonth(dataSelecionada || hoje);
+        fim = endOfMonth(dataSelecionada || hoje);
+        labelPeriodo = format(dataSelecionada || hoje, "MMMM yyyy", { locale: ptBR });
       }
 
       const filtrados = agendamentos.filter((a) => {
@@ -116,48 +116,49 @@ export default function AgendaRelatorioDialog({ open, onOpenChange, agendamentos
 
         <div className="py-4 space-y-4">
           <div className="space-y-2">
+            <Label>Selecione a Data Referência</Label>
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button
+                  variant={"outline"}
+                  className={cn(
+                    "w-full justify-start text-left font-normal",
+                    !dataSelecionada && "text-muted-foreground"
+                  )}
+                >
+                  <CalendarIcon className="mr-2 h-4 w-4" />
+                  {dataSelecionada ? format(dataSelecionada, "PPP", { locale: ptBR }) : <span>Selecione uma data</span>}
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-auto p-0">
+                <Calendar
+                  mode="single"
+                  selected={dataSelecionada}
+                  onSelect={setDataSelecionada}
+                  initialFocus
+                />
+              </PopoverContent>
+            </Popover>
+            <p className="text-[10px] text-muted-foreground">
+              Esta data servirá como base para os cálculos de "Semana" ou "Mês" abaixo.
+            </p>
+          </div>
+
+          <div className="space-y-2">
             <Label>Tipo de Exportação</Label>
             <Select value={tipo} onValueChange={(v: any) => setTipo(v)}>
               <SelectTrigger>
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="diario">Diário (Hoje)</SelectItem>
-                <SelectItem value="amanha">Diário (Amanhã)</SelectItem>
-                <SelectItem value="selecionar">Selecionar Dia</SelectItem>
-                <SelectItem value="semanal">Semanal (Esta semana)</SelectItem>
-                <SelectItem value="mensal">Mensal (Este mês)</SelectItem>
+                <SelectItem value="selecionar">O Dia Selecionado</SelectItem>
+                <SelectItem value="diario">Hoje ({format(new Date(), "dd/MM")})</SelectItem>
+                <SelectItem value="amanha">Amanhã ({format(addDays(new Date(), 1), "dd/MM")})</SelectItem>
+                <SelectItem value="semanal">A Semana da data acima</SelectItem>
+                <SelectItem value="mensal">O Mês da data acima</SelectItem>
               </SelectContent>
             </Select>
           </div>
-
-          {tipo === "selecionar" && (
-            <div className="space-y-2 animate-in fade-in slide-in-from-top-1">
-              <Label>Escolha a data</Label>
-              <Popover>
-                <PopoverTrigger asChild>
-                  <Button
-                    variant={"outline"}
-                    className={cn(
-                      "w-full justify-start text-left font-normal",
-                      !dataSelecionada && "text-muted-foreground"
-                    )}
-                  >
-                    <CalendarIcon className="mr-2 h-4 w-4" />
-                    {dataSelecionada ? format(dataSelecionada, "PPP", { locale: ptBR }) : <span>Selecione uma data</span>}
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent className="w-auto p-0">
-                  <Calendar
-                    mode="single"
-                    selected={dataSelecionada}
-                    onSelect={setDataSelecionada}
-                    initialFocus
-                  />
-                </PopoverContent>
-              </Popover>
-            </div>
-          )}
           <p className="text-xs text-muted-foreground">
             O arquivo PDF conterá a escala de todos os técnicos no período selecionado, seguindo o modelo do espelho de premiação.
           </p>
