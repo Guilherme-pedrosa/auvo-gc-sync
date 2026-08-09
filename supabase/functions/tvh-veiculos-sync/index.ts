@@ -172,8 +172,7 @@ Deno.serve(async (req) => {
     let comAlerta = 0;
 
     for (const v of vehicles) {
-      const nc = porVeiculo.get(v.id);
-      const observacao = nc ? detalharNaoConformidade(nc) : null;
+      const observacao = porVeiculo.get(v.id) ?? null;
       if (observacao) comAlerta++;
 
       const placaNorm = String(v.placa || "").toUpperCase().replace(/[^A-Z0-9]/g, "");
