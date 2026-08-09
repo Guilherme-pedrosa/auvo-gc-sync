@@ -100,9 +100,10 @@ export default function AgendamentoEquipeDialog({
       if (agendamento?.auvo_task_id && agendamento.origem === "AUVO") {
         const patches = [];
         
-        // Data e Hora
-        if (data !== agendamento.data || horaInicio !== agendamento.hora_inicio.slice(0, 5)) {
+        // Data e Hora (Início e Fim)
+        if (data !== agendamento.data || horaInicio !== agendamento.hora_inicio.slice(0, 5) || horaFim !== agendamento.hora_fim.slice(0, 5)) {
           patches.push({ op: "replace", path: "taskDate", value: `${data}T${horaInicio}:00` });
+          patches.push({ op: "replace", path: "taskEndDate", value: `${data}T${horaFim}:00` });
         }
         
         // Técnico
