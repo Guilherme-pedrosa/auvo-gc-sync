@@ -64,70 +64,12 @@ function hasOwn(obj: any, key: string): boolean {
   return Object.prototype.hasOwnProperty.call(obj, key);
 }
 
-// A API v2 do Auvo NÃO aceita estimatedDuration/taskEndDate em PATCH /tasks/{id}
-// (retorna 400 "The target location specified by path segment ... was not found").
-// Esses campos só podem ser gravados via PUT /tasks (upsert do objeto completo).
+// A API v2 do Auvo NÃO aceita estimatedDuration/taskEndDate em nenhuma escrita:
+// - PATCH /tasks/{id} devolve 400 "The target location specified by path segment ... was not found"
+// - PUT /tasks (upsert) ignora silenciosamente o campo (verificado em produção)
+// A duração da tarefa no Auvo vem do "standardTime" do Tipo de Tarefa (/taskTypes).
+// Portanto esses caminhos são descartados antes do PATCH para não quebrar a edição.
 const PATCH_UNSUPPORTED_PATHS = ["estimatedDuration", "taskEndDate"];
-
-// Auvo espera "HH:mm:ss" no upsert.
-function normalizeDuration(value: unknown): string | null {
-  const raw = String(value ?? "").trim();
-  if (!raw) return null;
-  if (/^\d{1,3}:\d{2}:\d{2}$/.test(raw)) return raw.padStart(8, "0");
-  if (/^\d{1,3}:\d{2}$/.test(raw)) return `${raw.padStart(5, "0")}:00`;
-  const minutes = Number(raw);
-  if (Number.isFinite(minutes) && minutes > 0) {
-    const h = Math.floor(minutes / 60);
-    const m = Math.round(minutes % 60);
-    return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:00`;
-  }
-  return null;
-}
-
-// GET completo → merge → PUT (upsert), preservando os campos obrigatórios da tarefa.
-async function upsertTaskFields(
-  taskId: string | number,
-  fields: Record<string, unknown>,
-  headers: Record<string, string>,
-  reqId: string,
-): Promise<{ ok: boolean; status: number; body: unknown }> {
-  const getResp = await fetch(`${AUVO_BASE_URL}/tasks/${taskId}`, { headers });
-  const getJson = await getResp.json().catch(() => ({}));
-  const t = (getJson as any)?.result ?? {};
-  if (!getResp.ok || !t?.taskID) {
-    return { ok: false, status: getResp.status, body: getJson };
-  }
-
-  const payload: Record<string, unknown> = {
-    id: t.taskID,
-    externalId: t.externalId ?? "",
-    taskType: t.taskType ?? 0,
-    idUserFrom: t.idUserFrom,
-    idUserTo: t.idUserTo,
-    taskDate: t.taskDate,
-    latitude: t.latitude ?? 0,
-    longitude: t.longitude ?? 0,
-    address: t.address ?? "",
-    orientation: t.orientation ?? "",
-    priority: t.priority ?? 1,
-    customerId: t.customerId ?? 0,
-    checkinType: t.checkinType ?? 1,
-    keyWords: Array.isArray(t.keyWords) ? t.keyWords : [],
-    ...fields,
-  };
-  if (t.questionnaireId) payload.questionnaireId = t.questionnaireId;
-
-  const putResp = await fetch(`${AUVO_BASE_URL}/tasks`, {
-    method: "PUT",
-    headers,
-    body: JSON.stringify(payload),
-  });
-  const text = await putResp.text();
-  let body: unknown;
-  try { body = JSON.parse(text); } catch { body = { raw: text }; }
-  console.log(`[auvo-task-update][reqId=${reqId}] upsert duração status=${putResp.status} ${text.substring(0, 300)}`);
-  return { ok: putResp.ok, status: putResp.status, body };
-}
 
 function setIfProvided(result: any, row: any, key: string, targetKey: string = key) {
   if (!hasOwn(row, key)) return;
