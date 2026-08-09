@@ -102,7 +102,7 @@ export default function AgendaRelatorioDialog({ open, onOpenChange, agendamentos
         labelPeriodo,
         itens
       );
-      toast.success("PDF coletivo gerado com sucesso.");
+      toast.success("PDF coletivo gerado e download iniciado.");
       onOpenChange(false);
     } catch (err) {
       console.error(err);

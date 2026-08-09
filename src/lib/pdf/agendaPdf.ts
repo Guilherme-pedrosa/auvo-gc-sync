@@ -15,7 +15,7 @@ export interface AgendaRelatorioItem {
 
 const brDate = (iso: string) => iso.split("-").reverse().join("/");
 
-export async function gerarPdfAgenda(
+export function gerarPdfAgenda(
   titulo: string,
   periodo: string,
   itens: AgendaRelatorioItem[]
@@ -77,6 +77,7 @@ export async function gerarPdfAgenda(
     doc.text(`Página ${i} de ${totalPages}`, pageW - 40, pageH - 20, { align: "right" });
   }
 
-  // Mantém exatamente o fluxo de download já validado no PDF de Premiação.
+  // Retorna uma Promise para permitir que o chamador aguarde a conclusão.
+  // Força o download imediato
   doc.save(`agenda-coletiva-${new Date().getTime()}.pdf`);
 }
