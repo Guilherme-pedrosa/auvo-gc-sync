@@ -109,17 +109,30 @@ export default function TarefaAuvoDetalheDialog({ taskId, onOpenChange, onEdit }
                 <span className="text-muted-foreground text-xs">Status Auvo</span>
                 <p className="font-medium">{tarefa.status_auvo || "—"}</p>
               </div>
-              <div>
+              <div className="flex flex-col gap-1">
                 <span className="text-muted-foreground text-xs">Check-in / Check-out</span>
-                <p className="font-medium">
-                  {tarefa.check_in ? "✅" : "❌"} In{tarefa.hora_inicio ? ` ${tarefa.hora_inicio}` : ""}
-                  {" → "}
-                  {tarefa.check_out ? "✅" : "❌"} Out{tarefa.hora_fim ? ` ${tarefa.hora_fim}` : ""}
-                </p>
+                <div className="flex items-center gap-2 font-medium">
+                  <div className="flex items-center gap-1">
+                    {tarefa.check_in ? "✅" : "❌"} In{tarefa.hora_inicio ? ` ${tarefa.hora_inicio}` : ""}
+                  </div>
+                  <span>→</span>
+                  <div className="flex items-center gap-1">
+                    {tarefa.check_out ? "✅" : "❌"} Out{tarefa.hora_fim ? ` ${tarefa.hora_fim}` : ""}
+                  </div>
+                </div>
                 {Number(tarefa.duracao_decimal) > 0 && (
                   <p className="text-xs text-muted-foreground">
                     Duração: {Number(tarefa.duracao_decimal).toFixed(1)}h
                   </p>
+                )}
+                {onEdit && (
+                  <Button 
+                    variant="link" 
+                    className="h-auto p-0 text-[10px] text-primary justify-start"
+                    onClick={onEdit}
+                  >
+                    Alterar horário/duração
+                  </Button>
                 )}
               </div>
               {tarefa.equipamento_nome && (
