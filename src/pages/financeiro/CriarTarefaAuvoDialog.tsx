@@ -41,7 +41,6 @@ export default function CriarTarefaAuvoDialog({ open, onOpenChange, equipamento,
     return base;
   });
   const [startTime, setStartTime] = useState<string>("08:00");
-  const [endTime, setEndTime] = useState<string>("10:00");
   const defaultDuration = (() => {
     const h = Number(equipamento.htHoras);
     if (Number.isFinite(h) && h > 0) return Math.round(h * 60);
@@ -70,22 +69,6 @@ export default function CriarTarefaAuvoDialog({ open, onOpenChange, equipamento,
       setEndTime(`${String(hEnd).padStart(2, "0")}:${String(mEnd).padStart(2, "0")}`);
     }
   }, [open, equipamento.id, equipamento.htHoras]);
-
-  // Atualiza duração quando hora início ou fim muda
-  useEffect(() => {
-    if (!startTime || !endTime) return;
-    const [hStart, mStart] = startTime.split(":").map(Number);
-    const [hEnd, mEnd] = endTime.split(":").map(Number);
-    
-    let startTotal = hStart * 60 + mStart;
-    let endTotal = hEnd * 60 + mEnd;
-    
-    if (endTotal <= startTotal) {
-      endTotal += 24 * 60;
-    }
-    
-    setDurationMinutes(endTotal - startTotal);
-  }, [startTime, endTime]);
 
   const { data: taskTypes = [], isLoading: loadingTypes } = useQuery({
     queryKey: ["auvo-task-types", "preventiva-v2"],
@@ -283,26 +266,22 @@ export default function CriarTarefaAuvoDialog({ open, onOpenChange, equipamento,
             />
           </div>
 
-          <div className="grid grid-cols-4 gap-2">
+          <div className="grid grid-cols-3 gap-2">
             <div className="col-span-1">
               <Label className="text-xs">Data</Label>
               <Input type="date" value={dateISO} onChange={(e) => setDateISO(e.target.value)} />
             </div>
             <div>
-              <Label className="text-xs">Início</Label>
+              <Label className="text-xs">Hora</Label>
               <Input type="time" value={startTime} onChange={(e) => setStartTime(e.target.value)} />
             </div>
             <div>
-              <Label className="text-xs">Fim</Label>
-              <Input type="time" value={endTime} onChange={(e) => setEndTime(e.target.value)} />
-            </div>
-            <div>
-              <Label className="text-xs">Duração (h)</Label>
+              <Label className="text-xs">Duração (HH:mm)</Label>
               <Input
-                type="text"
-                readOnly
-                value={(durationMinutes / 60).toFixed(2)}
-                className="bg-muted"
+                type="time"
+                step={300}
+                value={minutesToClock(durationMinutes)}
+                onChange={(e) => setDurationMinutes(clockToMinutes(e.target.value))}
               />
             </div>
           </div>
