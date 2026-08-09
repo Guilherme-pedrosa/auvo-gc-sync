@@ -22,6 +22,8 @@ export interface AgendaAgendamento {
   cliente: string;
   descricao: string | null;
   status: string;
+  auvo_task_id?: string | null;
+  origem?: string | null;
 }
 
 export function useAgendaVeiculos() {
