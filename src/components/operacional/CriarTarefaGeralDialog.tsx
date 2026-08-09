@@ -155,6 +155,12 @@ export default function CriarTarefaGeralDialog({
           } : undefined,
         });
         onSuccess?.(tid);
+        // Após criar a tarefa, invalidamos os caches para forçar a atualização da escala
+        const qc = (window as any).queryClient;
+        if (qc) {
+          qc.invalidateQueries({ queryKey: ["agenda_semana"] });
+          qc.invalidateQueries({ queryKey: ["agenda_agendamentos"] });
+        }
         onOpenChange(false);
       } else {
         toast.error("Auvo recusou: " + (data?.error || "erro desconhecido"));
