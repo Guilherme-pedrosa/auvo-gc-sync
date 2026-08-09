@@ -137,9 +137,9 @@ function Celula({
       {itens.length === 0 ? (
         <button
           type="button"
-          onClick={() => onAbrirAgendamento(null)}
+          onClick={() => onNovaTarefaAuvo()}
           className="w-full h-full min-h-[3.5rem] text-[11px] opacity-25 hover:opacity-60"
-          aria-label="Adicionar agendamento"
+          aria-label="Nova tarefa Auvo"
         >
           —
         </button>
