@@ -14,6 +14,102 @@ export type Database = {
   }
   public: {
     Tables: {
+      agenda_agendamentos: {
+        Row: {
+          atualizado_em: string
+          cliente: string
+          colaborador_id: string | null
+          colaborador_nome: string
+          criado_em: string
+          criado_por: string | null
+          data: string
+          descricao: string | null
+          hora_fim: string
+          hora_inicio: string
+          id: string
+          status: string
+          veiculo_id: string | null
+        }
+        Insert: {
+          atualizado_em?: string
+          cliente: string
+          colaborador_id?: string | null
+          colaborador_nome: string
+          criado_em?: string
+          criado_por?: string | null
+          data: string
+          descricao?: string | null
+          hora_fim: string
+          hora_inicio: string
+          id?: string
+          status?: string
+          veiculo_id?: string | null
+        }
+        Update: {
+          atualizado_em?: string
+          cliente?: string
+          colaborador_id?: string | null
+          colaborador_nome?: string
+          criado_em?: string
+          criado_por?: string | null
+          data?: string
+          descricao?: string | null
+          hora_fim?: string
+          hora_inicio?: string
+          id?: string
+          status?: string
+          veiculo_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "agenda_agendamentos_colaborador_id_fkey"
+            columns: ["colaborador_id"]
+            isOneToOne: false
+            referencedRelation: "rh_colaboradores"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "agenda_agendamentos_veiculo_id_fkey"
+            columns: ["veiculo_id"]
+            isOneToOne: false
+            referencedRelation: "agenda_veiculos"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      agenda_veiculos: {
+        Row: {
+          ativo: boolean
+          atualizado_em: string
+          criado_em: string
+          id: string
+          modelo: string | null
+          nome: string
+          ordem: number
+          placa: string | null
+        }
+        Insert: {
+          ativo?: boolean
+          atualizado_em?: string
+          criado_em?: string
+          id?: string
+          modelo?: string | null
+          nome: string
+          ordem?: number
+          placa?: string | null
+        }
+        Update: {
+          ativo?: boolean
+          atualizado_em?: string
+          criado_em?: string
+          id?: string
+          modelo?: string | null
+          nome?: string
+          ordem?: number
+          placa?: string | null
+        }
+        Relationships: []
+      }
       alertas_horas_config: {
         Row: {
           atualizado_em: string

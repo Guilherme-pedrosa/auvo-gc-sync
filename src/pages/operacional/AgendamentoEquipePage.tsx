@@ -20,18 +20,14 @@ import {
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import AgendamentoEquipeDialog from "@/components/operacional/AgendamentoEquipeDialog";
-import { useColaboradores } from "@/hooks/rh/useRh";
+import {
+  useAgendaVeiculos,
+  useAgendamentos,
+  type AgendaAgendamento,
+} from "@/hooks/operacional/useAgendamentoEquipe";
+import { Skeleton } from "@/components/ui/skeleton";
 
 const HOURS = Array.from({ length: 12 }, (_, i) => i + 7); // 07:00 to 18:00
-
-// Mock data for vehicles and initial assignments
-const VEHICLES = [
-  { id: "1", label: "ABC-1234 (Hilux)" },
-  { id: "2", label: "DEF-5678 (Saveiro)" },
-  { id: "3", label: "GHI-9012 (Strada)" },
-  { id: "4", label: "JKL-3456 (Van)" },
-  { id: "5", label: "MNO-7890 (Mobi)" },
-];
 
 const COLORS = [
   "#3B82F6", // Blue
@@ -55,39 +51,31 @@ const getClientColor = (clientName: string) => {
 export default function AgendamentoEquipePage() {
   const [date, setDate] = useState<Date>(new Date());
   const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [selected, setSelected] = useState<AgendaAgendamento | null>(null);
   const [search, setSearch] = useState("");
-  
-  // In a real scenario, these would come from the database
-  const [agendamentos, setAgendamentos] = useState<any[]>([
-    {
-      id: "1",
-      data: format(new Date(), "yyyy-MM-dd"),
-      horaInicio: "08:00",
-      horaFim: "10:30",
-      tecnicoId: "tech-1",
-      tecnicoNome: "FILIPE CARVALHO",
-      veiculoId: "1",
-      cliente: "REDE IZ - MANUTENÇÃO",
-    },
-    {
-      id: "2",
-      data: format(new Date(), "yyyy-MM-dd"),
-      horaInicio: "08:00",
-      horaFim: "12:00",
-      tecnicoId: "tech-2",
-      tecnicoNome: "JOÃO SILVA",
-      veiculoId: "1",
-      cliente: "REDE IZ - MANUTENÇÃO",
-    }
-  ]);
+
+  const dateStr = format(date, "yyyy-MM-dd");
+  const { data: VEHICLES = [], isLoading: loadingVeiculos } = useAgendaVeiculos();
+  const { data: agendamentos = [], isLoading, refetch, isFetching } = useAgendamentos(dateStr);
 
   const nextDay = () => setDate(prev => addDays(prev, 1));
   const prevDay = () => setDate(prev => subDays(prev, 1));
 
   const filteredAgendamentos = useMemo(() => {
-    const dateStr = format(date, "yyyy-MM-dd");
-    return agendamentos.filter(a => a.data === dateStr);
-  }, [agendamentos, date]);
+    const q = search.trim().toLowerCase();
+    if (!q) return agendamentos;
+    return agendamentos.filter(
+      (a) =>
+        a.cliente.toLowerCase().includes(q) ||
+        a.colaborador_nome.toLowerCase().includes(q) ||
+        (a.descricao ?? "").toLowerCase().includes(q),
+    );
+  }, [agendamentos, search]);
+
+  const openNew = () => {
+    setSelected(null);
+    setIsDialogOpen(true);
+  };
 
   return (
     <div className="flex flex-col h-screen bg-background">
@@ -140,23 +128,33 @@ export default function AgendamentoEquipePage() {
               className="h-9 pl-9 text-sm"
             />
           </div>
-          <Button onClick={() => setIsDialogOpen(true)} className="gap-2">
+          <Button onClick={openNew} className="gap-2">
             <Plus className="h-4 w-4" />
             Novo Agendamento
+          </Button>
+          <Button variant="outline" size="icon" onClick={() => refetch()} disabled={isFetching}>
+            <RefreshCw className={cn("h-4 w-4", isFetching && "animate-spin")} />
           </Button>
         </div>
       </header>
 
       {/* Main Content - Scrollable Grid */}
       <div className="flex-1 overflow-auto p-6">
+        {loadingVeiculos ? (
+          <Skeleton className="h-96 w-full" />
+        ) : (
         <div className="min-w-[1200px] border rounded-xl bg-card shadow-sm overflow-hidden">
-          <div className={`grid grid-cols-[100px_repeat(${VEHICLES.length},1fr)] border-b bg-muted/30`}>
+          <div
+            className="grid border-b bg-muted/30"
+            style={{ gridTemplateColumns: `100px repeat(${VEHICLES.length}, 1fr)` }}
+          >
             <div className="p-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground border-r flex items-center justify-center">
               Horário
             </div>
             {VEHICLES.map((v) => (
               <div key={v.id} className="p-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground border-r last:border-r-0 text-center">
-                {v.label}
+                {v.nome}
+                {v.placa ? ` (${v.placa})` : ""}
               </div>
             ))}
           </div>
@@ -165,7 +163,11 @@ export default function AgendamentoEquipePage() {
             {/* Grid background lines */}
             <div className="divide-y">
               {HOURS.map((hour) => (
-                <div key={hour} className={`grid grid-cols-[100px_repeat(${VEHICLES.length},1fr)] h-20`}>
+                <div
+                  key={hour}
+                  className="grid h-20"
+                  style={{ gridTemplateColumns: `100px repeat(${VEHICLES.length}, 1fr)` }}
+                >
                   <div className="p-3 text-xs font-medium border-r bg-muted/5 flex items-start justify-center pt-2 text-muted-foreground">
                     {String(hour).padStart(2, '0')}:00
                   </div>
@@ -178,15 +180,15 @@ export default function AgendamentoEquipePage() {
 
             {/* Overlaid Agendamentos */}
             {filteredAgendamentos.map((a) => {
-              const startHour = parseInt(a.horaInicio.split(":")[0]);
-              const startMin = parseInt(a.horaInicio.split(":")[1]);
-              const endHour = parseInt(a.horaFim.split(":")[0]);
-              const endMin = parseInt(a.horaFim.split(":")[1]);
+              const startHour = parseInt(a.hora_inicio.split(":")[0]);
+              const startMin = parseInt(a.hora_inicio.split(":")[1]);
+              const endHour = parseInt(a.hora_fim.split(":")[0]);
+              const endMin = parseInt(a.hora_fim.split(":")[1]);
               
               const startOffset = (startHour - 7) * 80 + (startMin / 60) * 80;
               const duration = ((endHour - startHour) * 80) + ((endMin - startMin) / 60 * 80);
               
-              const vehicleIndex = VEHICLES.findIndex(v => v.id === a.veiculoId);
+              const vehicleIndex = VEHICLES.findIndex(v => v.id === a.veiculo_id);
               if (vehicleIndex === -1) return null;
 
               const color = getClientColor(a.cliente);
@@ -204,22 +206,32 @@ export default function AgendamentoEquipePage() {
                     borderColor: color,
                     color: color,
                   }}
-                  onClick={() => setIsDialogOpen(true)}
+                  onClick={() => {
+                    setSelected(a);
+                    setIsDialogOpen(true);
+                  }}
                 >
                   <div className="font-bold truncate uppercase">{a.cliente}</div>
-                  <div className="font-medium truncate opacity-90">{a.tecnicoNome}</div>
-                  <div className="mt-1 opacity-80 text-[10px]">{a.horaInicio} - {a.horaFim}</div>
+                  <div className="font-medium truncate opacity-90">{a.colaborador_nome}</div>
+                  <div className="mt-1 opacity-80 text-[10px]">
+                    {a.hora_inicio.slice(0, 5)} - {a.hora_fim.slice(0, 5)}
+                  </div>
                 </div>
               );
             })}
           </div>
         </div>
+        )}
+        {!isLoading && filteredAgendamentos.length === 0 && (
+          <p className="mt-4 text-sm text-muted-foreground">Nenhum agendamento para esta data.</p>
+        )}
       </div>
 
       <AgendamentoEquipeDialog 
         open={isDialogOpen} 
         onOpenChange={setIsDialogOpen} 
         initialDate={date} 
+        agendamento={selected}
       />
     </div>
   );
