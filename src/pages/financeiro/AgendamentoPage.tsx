@@ -249,7 +249,7 @@ export default function AgendamentoPage() {
               <p className="truncate text-xs font-bold text-primary">
                 {i.documento_link ? (
                   <a
-                    href={i.documento_link}
+                    href={i.documento_link.replace("/visualizar/", "/editar/")}
                     target="_blank"
                     rel="noreferrer"
                     className="hover:underline flex items-center gap-1"
@@ -257,6 +257,7 @@ export default function AgendamentoPage() {
                     {ehPedido ? "Pedido de Compra" : "Orçamento"} {i.orcamento_codigo || i.vinculo_codigo || i.compra_codigo}
                     <ExternalLink className="h-2 w-2" />
                   </a>
+
                 ) : (
                   `${ehPedido ? "Pedido de Compra" : "Orçamento"} ${i.orcamento_codigo || i.vinculo_codigo || i.compra_codigo}`
                 )}
@@ -321,12 +322,13 @@ export default function AgendamentoPage() {
             <CalendarClock className="mr-1 h-3 w-3" /> Agendar execução
           </Button>
           {i.documento_link && (
-            <Button size="icon" variant="ghost" className="h-7 w-7" asChild>
-              <a href={i.documento_link} target="_blank" rel="noreferrer" aria-label="Abrir orçamento no GestãoClick">
+            <Button size="icon" variant="ghost" className="h-7 w-7" asChild title="Editar no GestãoClick">
+              <a href={i.documento_link.replace("/visualizar/", "/editar/")} target="_blank" rel="noreferrer">
                 <ExternalLink className="h-3 w-3" />
               </a>
             </Button>
           )}
+
           {ehPedido && i.gc_link && i.compra_codigo && (
             <Button size="icon" variant="ghost" className="h-7 w-7" asChild>
               <a href={i.gc_link} target="_blank" rel="noreferrer" aria-label="Abrir pedido de compra no GestãoClick">
