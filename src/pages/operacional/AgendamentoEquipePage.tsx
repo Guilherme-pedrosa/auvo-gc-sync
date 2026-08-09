@@ -364,6 +364,7 @@ export default function AgendamentoEquipePage() {
       const linhas: any[] = [];
       let semTecnico = 0;
       const vistos = new Set<string>();
+      
       for (const t of tarefas) {
         if (!t.data_tarefa) continue;
         const colab = resolver(t);
@@ -397,19 +398,29 @@ export default function AgendamentoEquipePage() {
         });
       }
 
-      // Remove sincronizados antigos do período e regrava
-      // Também remove agendamentos manuais que possuam o mesmo cliente e data das tarefas Auvo
-      const clientesParaRemover = Array.from(new Set(linhas.map(l => l.cliente.replace(/'/g, "''"))));
-      const datasParaRemover = Array.from(new Set(linhas.map(l => l.data)));
-
-      const { error: errDel } = await supabase
+      // 1. Limpa TODOS os agendamentos de origem AUVO ou nula no período para refletir mudanças do Auvo
+      const { error: errDelAuvo } = await supabase
         .from("agenda_agendamentos")
         .delete()
-        .or(`origem.eq.AUVO,and(origem.eq.MANUAL,cliente.in.(${clientesParaRemover.map(c => `'${c}'`).join(",")}),data.in.(${datasParaRemover.map(d => `'${d}'`).join(",")}))`)
+        .or(`origem.eq.AUVO,origem.is.null`)
         .gte("data", dias[0])
         .lte("data", dias[dias.length - 1]);
-      if (errDel) throw errDel;
+      
+      if (errDelAuvo) throw errDelAuvo;
 
+      // 2. Remove agendamentos manuais que agora coincidem com tarefas do Auvo (evita duplicidade)
+      if (linhas.length > 0) {
+        const uniqueKeys = Array.from(new Set(linhas.map(l => `${l.data}|${l.colaborador_id}`)));
+        for (const key of uniqueKeys) {
+          const [d, cId] = key.split('|');
+          await supabase
+            .from("agenda_agendamentos")
+            .delete()
+            .match({ data: d, colaborador_id: cId, origem: "MANUAL" });
+        }
+      }
+
+      // 3. Insere as novas tarefas sincronizadas
       for (let i = 0; i < linhas.length; i += 500) {
         const { error: errIns } = await supabase
           .from("agenda_agendamentos")
