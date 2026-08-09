@@ -345,6 +345,7 @@ export default function AgendamentoEquipePage() {
         const osCodigo = t.gc_os_codigo || local?.os || null;
         const orcCodigo = t.gc_orcamento_codigo || local?.orc || null;
 
+
         const key = `${taskId}|${t.data_tarefa}|${colab.id}`;
         if (vistos.has(key)) continue;
         vistos.add(key);

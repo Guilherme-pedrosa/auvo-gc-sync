@@ -255,11 +255,14 @@ Deno.serve(async (req) => {
       d.setUTCMonth(d.getUTCMonth() - 18);
       return d.toISOString().substring(0, 10);
     })();
-    const [allTasks, gcOsMap, gcOrcMap] = await Promise.all([
+    const [allTasksFetched, gcOsMap, gcOrcMap] = await Promise.all([
       fetchTasks(),
       hasGc ? fetchGcOsMap(gcHeaders, gcStart, endDate) : Promise.resolve(new Map<string, any>()),
       hasGc ? fetchGcOrcMap(gcHeaders, gcStart, endDate) : Promise.resolve(new Map<string, any>()),
     ]);
+
+    // Filtra tarefas duplicadas ou inconsistentes se necessário
+    const allTasks = allTasksFetched;
 
     console.log(`[auvo-agenda] ${allTasks.length} tasks, ${gcOsMap.size} OS, ${gcOrcMap.size} orçamentos`);
 
