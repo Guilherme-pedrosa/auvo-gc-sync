@@ -134,89 +134,91 @@ function Celula({
       }}
       className="group relative border border-border p-0.5 align-top h-16 min-w-[150px] transition-colors"
     >
-      {itens.length === 0 ? (
-        <button
-          type="button"
-          onClick={() => onNovaTarefaAuvo()}
-          className="w-full h-full min-h-[3.5rem] text-[11px] opacity-25 hover:opacity-60"
-          aria-label="Nova tarefa Auvo"
-        >
-          —
-        </button>
-      ) : (
-        <div className="flex flex-col gap-0.5">
-          {itens.map((a) => {
-            let prefix = "";
-            let idText = "";
-            if (a.gc_os_codigo) {
-              prefix = "OS";
-              idText = a.gc_os_codigo;
-            } else if (a.gc_orcamento_codigo) {
-              prefix = "OR";
-              idText = a.gc_orcamento_codigo;
-            } else if (a.auvo_task_id) {
-              // Só colocamos a tarefa se não houver OS nem Orçamento
-              prefix = "T";
-              idText = a.auvo_task_id;
-            }
+      <div className="flex flex-col gap-0.5 h-full">
+        {itens.map((a) => {
+          let prefix = "";
+          let idText = "";
+          if (a.gc_os_codigo) {
+            prefix = "OS";
+            idText = a.gc_os_codigo;
+          } else if (a.gc_orcamento_codigo) {
+            prefix = "OR";
+            idText = a.gc_orcamento_codigo;
+          } else if (a.auvo_task_id) {
+            // Só colocamos a tarefa se não houver OS nem Orçamento
+            prefix = "T";
+            idText = a.auvo_task_id;
+          }
 
-            const label = idText ? `${prefix} ${idText} - ${a.cliente}` : a.cliente;
+          const label = idText ? `${prefix} ${idText} - ${a.cliente}` : a.cliente;
 
-            return (
-              <div key={a.id} className="group/item relative flex items-center">
+          return (
+            <div key={a.id} className="group/item relative flex items-center">
+              <button
+                type="button"
+                draggable
+                onDragStart={() => onDragStart(a)}
+                title={a.auvo_task_id ? `Tarefa Auvo #${a.auvo_task_id}` : "Agendamento manual"}
+                onClick={() => (a.auvo_task_id ? onAbrirTarefa(a) : onAbrirAgendamento(a))}
+                onAuxClick={(e) => {
+                  if (e.button === 1 && a.auvo_task_id) {
+                    onAbrirAgendamento(a);
+                  }
+                }}
+                className={cn(
+                  "w-full text-left rounded-sm px-1.5 py-1 text-[11px] font-semibold uppercase leading-tight hover:ring-1 hover:ring-primary/60 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary cursor-grab active:cursor-grabbing",
+                  a.previsao_continuidade && "border border-dashed border-primary/50 opacity-80",
+                  colorir && corCliente(a.cliente),
+                )}
+              >
+                {label}
+                {a.previsao_continuidade && (
+                  <span className="ml-1 text-[9px] lowercase italic text-primary-foreground/70">(previsão)</span>
+                )}
+              </button>
+              <div className="absolute -right-1 top-1/2 -translate-y-1/2 z-20 hidden group-hover/item:flex items-center gap-0.5">
                 <button
                   type="button"
-                  draggable
-                  onDragStart={() => onDragStart(a)}
-                  title={a.auvo_task_id ? `Tarefa Auvo #${a.auvo_task_id}` : "Agendamento manual"}
-                  onClick={() => (a.auvo_task_id ? onAbrirTarefa(a) : onAbrirAgendamento(a))}
-                  onAuxClick={(e) => {
-                    if (e.button === 1 && a.auvo_task_id) {
-                      onAbrirAgendamento(a);
-                    }
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onPreverProximoDia(a);
                   }}
-                  className={cn(
-                    "w-full text-left rounded-sm px-1.5 py-1 text-[11px] font-semibold uppercase leading-tight hover:ring-1 hover:ring-primary/60 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary cursor-grab active:cursor-grabbing",
-                    a.previsao_continuidade && "border border-dashed border-primary/50 opacity-80",
-                    colorir && corCliente(a.cliente),
-                  )}
+                  title="Prever continuação no próximo dia"
+                  className="flex items-center justify-center h-4 w-4 rounded-full bg-primary text-primary-foreground text-[10px] shadow-sm hover:scale-110 transition-transform"
                 >
-                  {label}
-                  {a.previsao_continuidade && (
-                    <span className="ml-1 text-[9px] lowercase italic text-primary-foreground/70">(previsão)</span>
-                  )}
+                  +
                 </button>
-                <div className="absolute -right-1 top-1/2 -translate-y-1/2 z-20 hidden group-hover/item:flex items-center gap-0.5">
+                {a.previsao_continuidade && (
                   <button
                     type="button"
                     onClick={(e) => {
                       e.stopPropagation();
-                      onPreverProximoDia(a);
+                      onAbrirAgendamento(a);
                     }}
-                    title="Prever continuação no próximo dia"
-                    className="flex items-center justify-center h-4 w-4 rounded-full bg-primary text-primary-foreground text-[10px] shadow-sm hover:scale-110 transition-transform"
+                    title="Excluir previsão"
+                    className="flex items-center justify-center h-4 w-4 rounded-full bg-destructive text-destructive-foreground text-[10px] shadow-sm hover:scale-110 transition-transform"
                   >
-                    +
+                    ×
                   </button>
-                  {a.previsao_continuidade && (
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        onAbrirAgendamento(a);
-                      }}
-                      title="Excluir previsão"
-                      className="flex items-center justify-center h-4 w-4 rounded-full bg-destructive text-destructive-foreground text-[10px] shadow-sm hover:scale-110 transition-transform"
-                    >
-                      ×
-                    </button>
-                  )}
-                </div>
+                )}
               </div>
-            );
-          })}
-        </div>
-      )}
+            </div>
+          );
+        })}
+        
+        {/* Espaço clicável para nova tarefa sempre disponível, mesmo com itens */}
+        <button
+          type="button"
+          onClick={() => onNovaTarefaAuvo()}
+          className={cn(
+            "w-full text-[11px] opacity-25 hover:opacity-60 transition-opacity min-h-[1.5rem] flex-1",
+            itens.length > 0 && "mt-auto py-1"
+          )}
+          aria-label="Nova tarefa Auvo"
+        >
+          —
+        </button>
+      </div>
     </td>
   );
 }
