@@ -63,6 +63,7 @@ export default function AgendamentoEquipePage() {
   const [date, setDate] = useState<Date>(new Date());
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [selected, setSelected] = useState<AgendaAgendamento | null>(null);
+  const [selectedColaboradorId, setSelectedColaboradorId] = useState<string | null>(null);
   const [search, setSearch] = useState("");
 
   const dateStr = format(date, "yyyy-MM-dd");
@@ -92,6 +93,7 @@ export default function AgendamentoEquipePage() {
 
   const openNew = () => {
     setSelected(null);
+    setSelectedColaboradorId(null);
     setIsDialogOpen(true);
   };
 
@@ -240,7 +242,7 @@ export default function AgendamentoEquipePage() {
                       className="w-full text-[10px] h-8 gap-1.5"
                       onClick={() => {
                         setSelected(null);
-                        // We could pass the technician ID here if the dialog supported it
+                        setSelectedColaboradorId(t.id);
                         setIsDialogOpen(true);
                       }}
                     >
@@ -262,6 +264,7 @@ export default function AgendamentoEquipePage() {
         open={isDialogOpen} 
         onOpenChange={setIsDialogOpen} 
         initialDate={date} 
+        initialColaboradorId={selectedColaboradorId}
         agendamento={selected}
       />
     </div>

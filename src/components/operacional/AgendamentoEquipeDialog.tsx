@@ -32,6 +32,7 @@ interface AgendamentoEquipeDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   initialDate?: Date;
+  initialColaboradorId?: string | null;
   agendamento?: AgendaAgendamento | null;
 }
 
@@ -47,6 +48,7 @@ export default function AgendamentoEquipeDialog({
   open,
   onOpenChange,
   initialDate,
+  initialColaboradorId,
   agendamento,
 }: AgendamentoEquipeDialogProps) {
   const { data: colaboradores = [], isLoading } = useColaboradores();
@@ -76,7 +78,7 @@ export default function AgendamentoEquipeDialog({
       setData(initialDate ? format(initialDate, "yyyy-MM-dd") : "");
       setHoraInicio("08:00");
       setHoraFim("09:00");
-      setColaboradorId("");
+      setColaboradorId(initialColaboradorId || "");
       setVeiculoId("");
       setCliente("");
       setDescricao("");
