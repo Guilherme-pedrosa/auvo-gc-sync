@@ -157,6 +157,11 @@ function Celula({ itens, onSalvar, onAbrirTarefa, onAbrirAgendamento, onDragStar
                 onDragStart={() => onDragStart(a)}
                 title={a.auvo_task_id ? `Tarefa Auvo #${a.auvo_task_id}` : "Agendamento manual"}
                 onClick={() => (a.auvo_task_id ? onAbrirTarefa(a) : onAbrirAgendamento(a))}
+                onAuxClick={(e) => {
+                  if (e.button === 1 && a.auvo_task_id) {
+                    onAbrirAgendamento(a);
+                  }
+                }}
                 className={cn(
                   "w-full text-left rounded-sm px-1.5 py-1 text-[11px] font-semibold uppercase leading-tight hover:ring-1 hover:ring-primary/60 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary cursor-grab active:cursor-grabbing",
                   colorir && corCliente(a.cliente),
