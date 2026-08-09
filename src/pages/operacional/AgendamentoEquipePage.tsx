@@ -371,25 +371,23 @@ export default function AgendamentoEquipePage() {
         const taskId = String(t.auvo_task_id ?? t.taskID ?? t.id ?? "");
         if (!taskId) continue;
         
-        // Critério: Só mostrar se tiver OS ou Orçamento, OU se for tarefa pura sem vínculos
-        // A lógica do usuário diz: "SÓ COLOCAR A TAREFA NA LINHA QUANDO NÃO TIVER ORÇAMENTO NEM OS"
-        // No contexto de sincronização, cada tarefa enriquecida já traz esses campos se existirem.
-        
         const local = codigosLocais.get(taskId);
         const osCodigo = t.gc_os_codigo || local?.os || null;
         const orcCodigo = t.gc_orcamento_codigo || local?.orc || null;
 
-
         const key = `${taskId}|${t.data_tarefa}|${colab.id}`;
         if (vistos.has(key)) continue;
         vistos.add(key);
+        
+        const clienteLimpo = String(t.cliente || "SEM CLIENTE").trim().toUpperCase();
+
         linhas.push({
           data: t.data_tarefa,
           hora_inicio: t.hora_inicio || "08:00",
           hora_fim: t.hora_fim || "18:00",
           colaborador_id: colab.id,
           colaborador_nome: colab.nome,
-          cliente: String(t.cliente || "SEM CLIENTE").trim().toUpperCase(),
+          cliente: clienteLimpo,
           descricao: t.descricao || t.orientacao || null,
           status: "AGENDADO",
           auvo_task_id: taskId,
@@ -400,12 +398,14 @@ export default function AgendamentoEquipePage() {
       }
 
       // Remove sincronizados antigos do período e regrava
-      // Também remove agendamentos manuais que agora possuem uma tarefa vinculada no Auvo
-      // para evitar duplicidade (ex: Dener com OS e Dener sem nada)
+      // Também remove agendamentos manuais que possuam o mesmo cliente e data das tarefas Auvo
+      const clientesParaRemover = Array.from(new Set(linhas.map(l => l.cliente.replace(/'/g, "''"))));
+      const datasParaRemover = Array.from(new Set(linhas.map(l => l.data)));
+
       const { error: errDel } = await supabase
         .from("agenda_agendamentos")
         .delete()
-        .or(`origem.eq.AUVO,and(origem.eq.MANUAL,cliente.ilike.${linhas.map(l => `'${l.cliente.replace(/'/g, "''")}'`).join(",")}),data.in.(${linhas.map(l => `'${l.data}'`).join(",")}))`)
+        .or(`origem.eq.AUVO,and(origem.eq.MANUAL,cliente.in.(${clientesParaRemover.map(c => `'${c}'`).join(",")}),data.in.(${datasParaRemover.map(d => `'${d}'`).join(",")}))`)
         .gte("data", dias[0])
         .lte("data", dias[dias.length - 1]);
       if (errDel) throw errDel;
