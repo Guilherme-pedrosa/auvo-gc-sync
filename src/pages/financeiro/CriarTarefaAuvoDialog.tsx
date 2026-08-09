@@ -60,13 +60,6 @@ export default function CriarTarefaAuvoDialog({ open, onOpenChange, equipamento,
       const h = Number(equipamento.htHoras);
       const minutes = Number.isFinite(h) && h > 0 ? Math.round(h * 60) : 120;
       setDurationMinutes(minutes);
-      
-      const [hStart, mStart] = startTime.split(":").map(Number);
-      const totalStart = hStart * 60 + mStart;
-      const totalEnd = totalStart + minutes;
-      const hEnd = Math.floor((totalEnd % (24 * 60)) / 60);
-      const mEnd = totalEnd % 60;
-      setEndTime(`${String(hEnd).padStart(2, "0")}:${String(mEnd).padStart(2, "0")}`);
     }
   }, [open, equipamento.id, equipamento.htHoras]);
 
