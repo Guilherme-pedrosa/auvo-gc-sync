@@ -134,8 +134,8 @@ Deno.serve(async (req) => {
       `maintenance_tickets?select=vehicle_id,titulo,prioridade,status,descricao,created_at,tipo&tipo=eq.nao_conformidade&status=in.(${OPEN_STATUSES.join(",")})&order=created_at.desc`,
     )) as Ticket[];
 
-    // Apenas a não conformidade mais recente de cada veículo (último checklist)
-    const porVeiculo = new Map<string, Ticket>();
+    // Não conformidade mais recente de cada veículo que contenha dano/manutenção real
+    const porVeiculo = new Map<string, string>();
     for (const t of tickets) {
       const titulo = String(t.titulo || "");
       const desc = String(t.descricao || "");
@@ -143,8 +143,9 @@ Deno.serve(async (req) => {
       if (IGNORAR_TITULO.test(titulo)) continue;
       // Exige menção a problema/avaria/manutenção no título ou na descrição
       if (!PROBLEMA_KEYWORDS.test(titulo) && !PROBLEMA_KEYWORDS.test(desc)) continue;
-
-      if (!porVeiculo.has(t.vehicle_id)) porVeiculo.set(t.vehicle_id, t);
+      if (porVeiculo.has(t.vehicle_id)) continue;
+      const detalhe = detalharNaoConformidade(t);
+      if (detalhe) porVeiculo.set(t.vehicle_id, detalhe);
     }
 
     const admin = createClient(
