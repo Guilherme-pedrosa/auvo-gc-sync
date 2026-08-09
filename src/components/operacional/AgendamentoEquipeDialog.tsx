@@ -93,6 +93,37 @@ export default function AgendamentoEquipeDialog({
       .sort((a, b) => a.label.localeCompare(b.label));
   }, [questionnaires]);
 
+  // Questionário atualmente vinculado à tarefa no Auvo
+  const { data: currentQuestionnaireId, isLoading: loadingCurrentQ } = useQuery({
+    queryKey: ["auvo-task-questionnaire", agendamento?.auvo_task_id],
+    enabled: open && !!agendamento?.auvo_task_id,
+    staleTime: 60 * 1000,
+    queryFn: async () => {
+      const { data, error } = await supabase.functions.invoke("auvo-task-update", {
+        body: { action: "get", taskId: agendamento?.auvo_task_id },
+      });
+      if (error) throw error;
+      const task = data?.data?.result ?? data?.data ?? {};
+      const qid =
+        task?.questionnaireId ??
+        task?.questionnaire?.id ??
+        (Array.isArray(task?.questionnaires) ? task.questionnaires[0]?.id : null);
+      return qid ? String(qid) : "";
+    },
+  });
+
+  useEffect(() => {
+    if (currentQuestionnaireId) setQuestionnaireId(currentQuestionnaireId);
+  }, [currentQuestionnaireId]);
+
+  const currentQuestionnaireLabel = useMemo(() => {
+    if (!currentQuestionnaireId) return null;
+    return (
+      questionnaireOptions.find((o) => o.value === currentQuestionnaireId)?.label ??
+      `Questionário ${currentQuestionnaireId}`
+    );
+  }, [currentQuestionnaireId, questionnaireOptions]);
+
   useEffect(() => {
     if (!open) return;
     if (agendamento) {
@@ -297,6 +328,17 @@ export default function AgendamentoEquipeDialog({
           {agendamento?.auvo_task_id && (
             <div className="space-y-2">
               <Label className="text-xs text-primary font-bold">Vincular/Alterar Questionário Auvo</Label>
+              <div className="text-[11px]">
+                {loadingCurrentQ ? (
+                  <span className="text-muted-foreground">Verificando questionário vinculado...</span>
+                ) : currentQuestionnaireLabel ? (
+                  <span className="text-emerald-600 font-medium">
+                    Já vinculado: {currentQuestionnaireLabel}
+                  </span>
+                ) : (
+                  <span className="text-amber-600 font-medium">Nenhum questionário vinculado</span>
+                )}
+              </div>
               <SearchableSelect
                 options={questionnaireOptions}
                 value={questionnaireId}
