@@ -256,39 +256,55 @@ export default function AgendamentoEquipePage() {
 
       const tarefas: any[] = Array.isArray(syncRes?.data) ? syncRes.data : [];
 
-      // Fallback: completa códigos de OS/Orçamento a partir da base local
-      const taskIds = tarefas
-        .map((t) => String(t.auvo_task_id ?? t.taskID ?? t.id ?? ""))
-        .filter(Boolean);
+      // Fallback: completa códigos de OS/Orçamento a partir da base local (mesma fonte do Controle OS)
+      const taskIds = new Set(
+        tarefas.map((t) => String(t.auvo_task_id ?? t.taskID ?? t.id ?? "")).filter(Boolean)
+      );
+      // IDs podem vir concatenados no GC ("123 / 456"), então normalizamos
+      const parseIds = (v: unknown): string[] =>
+        String(v ?? "")
+          .split(/[^0-9]+/)
+          .map((s) => s.trim())
+          .filter((s) => s.length >= 4);
+
       const codigosLocais = new Map<string, { os: string | null; orc: string | null }>();
-      for (let i = 0; i < taskIds.length; i += 100) {
-        const batch = taskIds.slice(i, i + 100);
-        // Busca enriquecida: tenta encontrar o vínculo em qualquer uma das colunas mapeadas
-        const { data: rows } = await supabase
+      const registrar = (key: string, os: string | null, orc: string | null) => {
+        if (!key || !taskIds.has(key)) return;
+        const existing = codigosLocais.get(key);
+        if (!existing) {
+          codigosLocais.set(key, { os, orc });
+          return;
+        }
+        // Preserva o vínculo mais rico (prioridade OS > Orçamento)
+        codigosLocais.set(key, {
+          os: existing.os || os,
+          orc: existing.orc || orc,
+        });
+      };
+
+      // Varre a base local paginada procurando vínculos de OS/Orçamento
+      const PAGE = 1000;
+      for (let page = 0; page < 40; page++) {
+        const { data: rows, error: errRows } = await supabase
           .from("tarefas_central")
           .select("auvo_task_id, gc_os_codigo, gc_orcamento_codigo, gc_os_tarefa_os, gc_os_tarefa_exec")
-          .or(`auvo_task_id.in.(${batch.join(",")}),gc_os_tarefa_os.in.(${batch.join(",")}),gc_os_tarefa_exec.in.(${batch.join(",")})`);
-        
-        for (const r of rows ?? []) {
+          .or("gc_os_codigo.not.is.null,gc_orcamento_codigo.not.is.null")
+          .order("data_tarefa", { ascending: false })
+          .range(page * PAGE, page * PAGE + PAGE - 1);
+        if (errRows) break;
+        const list = rows ?? [];
+        for (const r of list) {
+          const os = (r as any).gc_os_codigo || null;
+          const orc = (r as any).gc_orcamento_codigo || null;
+          if (!os && !orc) continue;
           const keys = [
-            String(r.auvo_task_id || ""),
-            String(r.gc_os_tarefa_os || ""),
-            String(r.gc_os_tarefa_exec || "")
-          ].filter(k => k && batch.includes(k));
-
-          const data = {
-            os: (r as any).gc_os_codigo || null,
-            orc: (r as any).gc_orcamento_codigo || null,
-          };
-
-          for (const k of keys) {
-            const existing = codigosLocais.get(k);
-            // Preserva o que for mais rico (prioridade OS > ORC)
-            if (!existing || (!existing.os && data.os) || (!existing.orc && data.orc)) {
-              codigosLocais.set(k, data);
-            }
-          }
+            String((r as any).auvo_task_id || ""),
+            ...parseIds((r as any).gc_os_tarefa_os),
+            ...parseIds((r as any).gc_os_tarefa_exec),
+          ];
+          for (const k of keys) registrar(k, os, orc);
         }
+        if (list.length < PAGE) break;
       }
 
       // Resolução do técnico: auvo_user_id (fonte da verdade) → nome → primeiro nome
