@@ -134,15 +134,6 @@ function Celula({
       }}
       className="group relative border border-border p-0.5 align-top h-16 min-w-[150px] transition-colors"
     >
-      <button
-        type="button"
-        onClick={(e) => { e.stopPropagation(); onNovaTarefaAuvo(); }}
-        title="Abrir nova tarefa no Auvo para este técnico neste dia"
-        aria-label="Nova tarefa Auvo"
-        className="absolute top-0.5 right-0.5 z-10 hidden group-hover:flex items-center justify-center h-4 w-4 rounded-sm bg-primary text-primary-foreground text-[10px] leading-none"
-      >
-        +
-      </button>
       {itens.length === 0 ? (
         <button
           type="button"
