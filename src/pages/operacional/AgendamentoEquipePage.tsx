@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, useEffect } from "react";
 import { format, addDays } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { ChevronLeft, ChevronRight, RefreshCw, Printer, Plus, Truck, Users } from "lucide-react";
@@ -290,6 +290,26 @@ export default function AgendamentoEquipePage() {
       setIsSyncing(false);
     }
   };
+
+  useEffect(() => {
+    const cleanOldConcatenatedEntries = async () => {
+      // Remove entradas que contêm "/" no cliente, pois eram as antigas concatenadas
+      const { error } = await supabase
+        .from("agenda_agendamentos")
+        .delete()
+        .like("cliente", "%/%");
+      
+      if (error) {
+        console.error("Erro ao limpar agendamentos antigos:", error);
+      } else {
+        // Recarrega os dados locais se houver deleção (embora o refetch inicial já deva lidar com isso se as tabelas estiverem limpas)
+        refetchLocal();
+      }
+    };
+    
+    cleanOldConcatenatedEntries();
+  }, []);
+
   const salvarTecnico = useSalvarCelulaTecnico();
   const salvarVeiculo = useSalvarCelulaVeiculo();
 
