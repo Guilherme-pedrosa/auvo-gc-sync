@@ -19,7 +19,7 @@ const TVH_ANON_KEY =
 // Só interessam não conformidades de manutenção do último checklist.
 // Alertas de "veículo rodou X km sem checklist" são ruído e ficam de fora.
 const OPEN_STATUSES = ["aberto", "em_andamento", "aguardando_peca"];
-const IGNORAR_TITULO = /sem\s+checklist/i;
+const IGNORAR_TITULO = /rodou.*sem\s+checklist|ve[íi]culo\s+rodou/i;
 
 const STATUS_LABEL: Record<string, string> = {
   disponivel: "Disponível",
@@ -118,7 +118,13 @@ Deno.serve(async (req) => {
     // Apenas a não conformidade mais recente de cada veículo (último checklist)
     const porVeiculo = new Map<string, Ticket>();
     for (const t of tickets) {
-      if (IGNORAR_TITULO.test(String(t.titulo || ""))) continue;
+      const titulo = String(t.titulo || "");
+      if (IGNORAR_TITULO.test(titulo)) continue;
+      
+      // Filtragem adicional: se o título contiver "Checklist NC" mas não for manutenção,
+      // ele pode ser ignorado, mas por enquanto vamos confiar no tipo=nao_conformidade.
+      // A pedido do usuário, focamos em não conformidades de manutenção do checklist.
+      
       if (!porVeiculo.has(t.vehicle_id)) porVeiculo.set(t.vehicle_id, t);
     }
 
