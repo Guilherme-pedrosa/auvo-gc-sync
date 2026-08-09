@@ -172,7 +172,6 @@ function Celula({
             const label = idText ? `${prefix} ${idText} - ${a.cliente}` : a.cliente;
 
             return (
-            return (
               <div key={a.id} className="group/item relative">
                 <button
                   type="button"
@@ -208,7 +207,6 @@ function Celula({
                   +
                 </button>
               </div>
-            );
             );
           })}
         </div>
@@ -668,6 +666,32 @@ export default function AgendamentoEquipePage() {
                                   nome: t.nome,
                                 });
                                 setDialogCreateTaskOpen(true);
+                              }}
+                              onPreverProximoDia={async (a) => {
+                                const proximoDia = format(addDays(parseISO(a.data), 1), "yyyy-MM-dd");
+                                const toastId = toast.loading("Gerando previsão...");
+                                try {
+                                  const payload = {
+                                    ...a,
+                                    id: undefined, // Novo registro
+                                    data: proximoDia,
+                                    status: "PREVISAO",
+                                    previsao_continuidade: true,
+                                    origem: "MANUAL",
+                                  };
+                                  delete (payload as any).id;
+                                  delete (payload as any).criado_em;
+                                  delete (payload as any).atualizado_em;
+
+                                  const { error } = await supabase.from("agenda_agendamentos").insert(payload as any);
+                                  if (error) throw error;
+
+                                  qc.invalidateQueries({ queryKey: ["agenda_semana"] });
+                                  toast.success("Previsão gerada para o dia seguinte", { id: toastId });
+                                } catch (err) {
+                                  console.error("Erro ao prever:", err);
+                                  toast.error("Erro ao gerar previsão", { id: toastId });
+                                }
                               }}
                             />
                           );
