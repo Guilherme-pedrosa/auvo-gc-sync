@@ -146,7 +146,7 @@ export default function AgendaRelatorioDialog({ open, onOpenChange, agendamentos
         (a, b) => a.data.localeCompare(b.data) || a.veiculo.localeCompare(b.veiculo)
       );
 
-      if (itens.length === 0) {
+      if (itens.length === 0 && linhasVeiculos.length === 0) {
         toast.warning("Não há agendamentos no período selecionado.");
         return;
       }
