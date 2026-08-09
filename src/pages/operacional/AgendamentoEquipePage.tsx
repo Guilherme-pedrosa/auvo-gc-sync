@@ -8,8 +8,10 @@ import {
   Plus, 
   Search,
   Filter,
-  RefreshCw
+  RefreshCw,
+  Users
 } from "lucide-react";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
 import {
@@ -61,6 +63,7 @@ export default function AgendamentoEquipePage() {
   const [date, setDate] = useState<Date>(new Date());
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [selected, setSelected] = useState<AgendaAgendamento | null>(null);
+  const [selectedColaboradorId, setSelectedColaboradorId] = useState<string | null>(null);
   const [search, setSearch] = useState("");
 
   const dateStr = format(date, "yyyy-MM-dd");
@@ -90,6 +93,7 @@ export default function AgendamentoEquipePage() {
 
   const openNew = () => {
     setSelected(null);
+    setSelectedColaboradorId(null);
     setIsDialogOpen(true);
   };
 
@@ -154,94 +158,105 @@ export default function AgendamentoEquipePage() {
         </div>
       </header>
 
-      {/* Main Content - Scrollable Grid */}
+      {/* Main Content - Per Technician Cards */}
       <div className="flex-1 overflow-auto p-6">
         {loadingVeiculos ? (
           <Skeleton className="h-96 w-full" />
         ) : (
-        <div className="min-w-[1200px] border rounded-xl bg-card shadow-sm overflow-hidden">
-          <div
-            className="grid border-b bg-muted/30"
-            style={{ gridTemplateColumns: `120px repeat(${listToDisplay.length}, 1fr)` }}
-          >
-            <div className="p-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground border-r flex items-center justify-center bg-muted/50">
-              Horário
-            </div>
-            {listToDisplay.map((t) => (
-              <div key={t.id} className="p-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground border-r last:border-r-0 text-center flex flex-col items-center justify-center gap-1">
-                <span className="truncate w-full">{t.nome}</span>
-                <span className="text-[10px] font-normal opacity-70 truncate w-full">{t.cargo || t.funcao || "Colaborador"}</span>
-              </div>
-            ))}
-          </div>
-
-          <div className="relative">
-            {/* Grid background lines */}
-            <div className="divide-y">
-              {HOURS.map((hour) => (
-                <div
-                  key={hour}
-                  className="grid h-20"
-                  style={{ gridTemplateColumns: `120px repeat(${listToDisplay.length}, 1fr)` }}
-                >
-                  <div className="p-3 text-xs font-medium border-r bg-muted/5 flex items-start justify-center pt-2 text-muted-foreground">
-                    {String(hour).padStart(2, '0')}:00
-                  </div>
-                  {listToDisplay.map((t) => (
-                    <div key={t.id} className="border-r last:border-r-0 relative hover:bg-muted/10 transition-colors" />
-                  ))}
-                </div>
-              ))}
-            </div>
-
-            {/* Overlaid Agendamentos */}
-            {filteredAgendamentos.map((a) => {
-              const startHour = parseInt(a.hora_inicio.split(":")[0]);
-              const startMin = parseInt(a.hora_inicio.split(":")[1]);
-              const endHour = parseInt(a.hora_fim.split(":")[0]);
-              const endMin = parseInt(a.hora_fim.split(":")[1]);
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-6">
+            {listToDisplay.map((t) => {
+              const techAgendamentos = filteredAgendamentos.filter(a => a.colaborador_id === t.id);
               
-              const startOffset = (startHour - 7) * 80 + (startMin / 60) * 80;
-              const duration = ((endHour - startHour) * 80) + ((endMin - startMin) / 60 * 80);
-              
-              const techIndex = listToDisplay.findIndex(t => t.id === a.colaborador_id);
-              if (techIndex === -1) return null;
-
-              const vehicle = VEHICLES.find(v => v.id === a.veiculo_id);
-              const color = getClientColor(a.cliente);
-
               return (
-                <div
-                  key={a.id}
-                  className="absolute z-10 rounded-md border-l-4 p-2 text-xs shadow-sm cursor-pointer hover:brightness-95 transition-all overflow-hidden flex flex-col justify-between"
-                  style={{
-                    top: `${startOffset}px`,
-                    height: `${duration}px`,
-                    left: `calc(120px + (${techIndex} * (100% - 120px) / ${listToDisplay.length}) + 4px)`,
-                    width: `calc(((100% - 120px) / ${listToDisplay.length}) - 8px)`,
-                    backgroundColor: `${color}15`,
-                    borderColor: color,
-                    color: color,
-                  }}
-                  onClick={() => {
-                    setSelected(a);
-                    setIsDialogOpen(true);
-                  }}
+                <Card 
+                  key={t.id} 
+                  className="flex flex-col h-[400px] shadow-sm hover:shadow-md transition-shadow border-t-4 border-t-primary"
                 >
-                  <div className="font-bold truncate uppercase">{a.cliente}</div>
-                  <div className="mt-1 font-medium truncate opacity-90">{a.descricao || "Sem descrição"}</div>
-                  <div className="mt-auto flex items-center justify-between gap-1 opacity-80 text-[10px] font-medium border-t border-current/20 pt-1">
-                    <span className="truncate">{vehicle ? `${vehicle.nome} (${vehicle.placa || 'Sem placa'})` : 'Sem veículo'}</span>
-                    <span className="shrink-0">{a.hora_inicio.slice(0, 5)} - {a.hora_fim.slice(0, 5)}</span>
+                  <CardHeader className="pb-3 bg-muted/30">
+                    <div className="flex items-center gap-3">
+                      <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center">
+                        <Users className="h-5 w-5 text-primary" />
+                      </div>
+                      <div className="min-w-0">
+                        <CardTitle className="text-sm font-bold truncate">{t.nome}</CardTitle>
+                        <p className="text-[10px] text-muted-foreground truncate uppercase tracking-wider font-medium">
+                          {t.cargo || t.funcao || "Colaborador"}
+                        </p>
+                      </div>
+                    </div>
+                  </CardHeader>
+                  <CardContent className="flex-1 overflow-y-auto p-4 space-y-3">
+                    {techAgendamentos.length > 0 ? (
+                      techAgendamentos.sort((a, b) => a.hora_inicio.localeCompare(b.hora_inicio)).map((a) => {
+                        const vehicle = VEHICLES.find(v => v.id === a.veiculo_id);
+                        const color = getClientColor(a.cliente);
+                        
+                        return (
+                          <div
+                            key={a.id}
+                            className="group relative rounded-lg border p-3 hover:bg-muted/50 transition-colors cursor-pointer"
+                            onClick={() => {
+                              setSelected(a);
+                              setIsDialogOpen(true);
+                            }}
+                          >
+                            <div className="flex items-start justify-between gap-2">
+                              <div className="min-w-0">
+                                <div 
+                                  className="text-xs font-bold uppercase truncate"
+                                  style={{ color }}
+                                >
+                                  {a.cliente}
+                                </div>
+                                <div className="text-[11px] font-medium mt-1 line-clamp-2 text-foreground/80">
+                                  {a.descricao || "Sem descrição"}
+                                </div>
+                              </div>
+                              <div className="shrink-0 text-[10px] font-bold bg-muted px-1.5 py-0.5 rounded">
+                                {a.hora_inicio.slice(0, 5)}
+                              </div>
+                            </div>
+                            
+                            <div className="mt-2 flex items-center gap-2 text-[10px] text-muted-foreground border-t pt-2">
+                              <div className="truncate flex-1">
+                                {vehicle ? `${vehicle.nome} (${vehicle.placa || 'S/P'})` : 'Sem veículo'}
+                              </div>
+                              <div className="shrink-0">
+                                {a.hora_fim.slice(0, 5)}
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })
+                    ) : (
+                      <div className="h-full flex flex-col items-center justify-center text-center opacity-40 py-10">
+                        <CalendarIcon className="h-8 w-8 mb-2" />
+                        <p className="text-xs">Nenhum cliente agendado</p>
+                      </div>
+                    )}
+                  </CardContent>
+                  <div className="p-3 border-t bg-muted/5">
+                    <Button 
+                      variant="ghost" 
+                      size="sm" 
+                      className="w-full text-[10px] h-8 gap-1.5"
+                      onClick={() => {
+                        setSelected(null);
+                        setSelectedColaboradorId(t.id);
+                        setIsDialogOpen(true);
+                      }}
+                    >
+                      <Plus className="h-3 w-3" />
+                      Agendar Cliente
+                    </Button>
                   </div>
-                </div>
+                </Card>
               );
             })}
           </div>
-        </div>
         )}
-        {!isLoading && filteredAgendamentos.length === 0 && (
-          <p className="mt-4 text-sm text-muted-foreground">Nenhum agendamento para esta data.</p>
+        {!isLoading && listToDisplay.length === 0 && (
+          <p className="mt-4 text-sm text-muted-foreground text-center">Nenhum técnico disponível para esta data.</p>
         )}
       </div>
 
@@ -249,6 +264,7 @@ export default function AgendamentoEquipePage() {
         open={isDialogOpen} 
         onOpenChange={setIsDialogOpen} 
         initialDate={date} 
+        initialColaboradorId={selectedColaboradorId}
         agendamento={selected}
       />
     </div>
