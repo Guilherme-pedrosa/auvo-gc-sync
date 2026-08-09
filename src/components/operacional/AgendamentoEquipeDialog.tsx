@@ -62,7 +62,7 @@ export default function AgendamentoEquipeDialog({
 
   const [data, setData] = useState("");
   const [horaInicio, setHoraInicio] = useState("08:00");
-  const [horaFim, setHoraFim] = useState("09:00");
+  const [duracaoMin, setDuracaoMin] = useState(60);
   const [colaboradorId, setColaboradorId] = useState("");
   const [veiculoId, setVeiculoId] = useState("");
   const [cliente, setCliente] = useState("");
@@ -97,7 +97,12 @@ export default function AgendamentoEquipeDialog({
     if (agendamento) {
       setData(agendamento.data);
       setHoraInicio(agendamento.hora_inicio.slice(0, 5));
-      setHoraFim(agendamento.hora_fim.slice(0, 5));
+      setDuracaoMin(
+        Math.max(
+          15,
+          clockToMinutes(agendamento.hora_fim.slice(0, 5)) - clockToMinutes(agendamento.hora_inicio.slice(0, 5)),
+        ),
+      );
       setColaboradorId(agendamento.colaborador_id ?? "");
       setVeiculoId(agendamento.veiculo_id ?? "");
       setCliente(agendamento.cliente);
@@ -106,7 +111,7 @@ export default function AgendamentoEquipeDialog({
     } else {
       setData(initialDate ? format(initialDate, "yyyy-MM-dd") : "");
       setHoraInicio("08:00");
-      setHoraFim("09:00");
+      setDuracaoMin(60);
       setColaboradorId(initialColaboradorId || "");
       setVeiculoId("");
       setCliente("");
