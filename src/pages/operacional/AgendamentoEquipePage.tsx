@@ -186,18 +186,31 @@ function Celula({
                     <span className="ml-1 text-[9px] lowercase italic text-primary-foreground/70">(previsão)</span>
                   )}
                 </button>
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onPreverProximoDia(a);
-                  }}
-                  title="Prever continuação no próximo dia"
-                  className="absolute -right-1 top-1/2 -translate-y-1/2 z-20 hidden group-hover/item:flex items-center justify-center h-4 w-4 rounded-full bg-primary text-primary-foreground text-[10px] shadow-sm hover:scale-110 transition-transform"
-                >
-                  +
-                </button>
-              </div>
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onPreverProximoDia(a);
+                    }}
+                    title="Prever continuação no próximo dia"
+                    className="absolute -right-1 top-1/2 -translate-y-1/2 z-20 hidden group-hover/item:flex items-center justify-center h-4 w-4 rounded-full bg-primary text-primary-foreground text-[10px] shadow-sm hover:scale-110 transition-transform"
+                  >
+                    +
+                  </button>
+                  {a.previsao_continuidade && (
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onAbrirAgendamento(a); // Abre o dialog que já tem o botão de excluir
+                      }}
+                      title="Excluir previsão"
+                      className="absolute -left-1 top-1/2 -translate-y-1/2 z-20 hidden group-hover/item:flex items-center justify-center h-4 w-4 rounded-full bg-destructive text-destructive-foreground text-[10px] shadow-sm hover:scale-110 transition-transform"
+                    >
+                      ×
+                    </button>
+                  )}
+                </div>
             );
           })}
         </div>
@@ -398,13 +411,15 @@ export default function AgendamentoEquipePage() {
         });
       }
 
-      // 1. Limpa TODOS os agendamentos de origem AUVO ou nula no período para refletir mudanças do Auvo
+      // 1. Limpa agendamentos de origem AUVO ou nula no período, mas PRESERVA os que têm código de Orçamento ou são Previsões
       const { error: errDelAuvo } = await supabase
         .from("agenda_agendamentos")
         .delete()
         .or(`origem.eq.AUVO,origem.is.null`)
         .gte("data", dias[0])
-        .lte("data", dias[dias.length - 1]);
+        .lte("data", dias[dias.length - 1])
+        .is("gc_orcamento_codigo", null)
+        .eq("previsao_continuidade", false);
       
       if (errDelAuvo) throw errDelAuvo;
 
@@ -646,13 +661,13 @@ export default function AgendamentoEquipePage() {
                             <Celula
                               key={dia}
                               itens={itens}
-                              onAbrirTarefa={(a) => setTarefaId(a.auvo_task_id ?? null)}
-                              onAbrirAgendamento={(a) => {
-                                setSelectedAgendamento(a);
-                                setSelectedDate(new Date(dia + "T12:00:00"));
-                                setSelectedColabId(t.id);
-                                setDialogOpen(true);
-                              }}
+                               onAbrirTarefa={(a) => setTarefaId(a.auvo_task_id ?? null)}
+                               onAbrirAgendamento={(a) => {
+                                 setSelectedAgendamento(a);
+                                 setSelectedDate(parseISO(dia));
+                                 setSelectedColabId(t.id);
+                                 setDialogOpen(true);
+                               }}
                               onSalvar={(v) =>
                                 salvarTecnico.mutate({
                                   id: manual?.id ?? null,
