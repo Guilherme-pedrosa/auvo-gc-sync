@@ -121,24 +121,32 @@ export default function AgendaRelatorioDialog({ open, onOpenChange, agendamentos
       });
       // Inclui observações de veículos sem agendamento no período
       veiculoDias.forEach((vd) => {
+        const texto = (vd.texto || "").trim();
+        if (!texto) return;
         const chave = `${vd.data}|${vd.veiculo_id}`;
-        if (mapaVeic.has(chave) || !vd.texto) return;
         const d = parseISO(vd.data);
         const start = new Date(inicio.getFullYear(), inicio.getMonth(), inicio.getDate(), 0, 0, 0);
         const end = new Date(fim.getFullYear(), fim.getMonth(), fim.getDate(), 23, 59, 59);
         if (!isWithinInterval(d, { start, end })) return;
+        const existente = mapaVeic.get(chave);
+        if (existente) {
+          // Garante que o texto digitado no campo do veículo apareça no PDF
+          existente.observacao = texto;
+          if (!existente.tecnicos || existente.tecnicos === "—") existente.tecnicos = texto;
+          return;
+        }
         mapaVeic.set(chave, {
           data: vd.data,
           veiculo: nomeVeiculo.get(vd.veiculo_id) || vd.veiculo_id,
-          tecnicos: "—",
-          observacao: vd.texto,
+          tecnicos: texto,
+          observacao: texto,
         });
       });
       const linhasVeiculos = Array.from(mapaVeic.values()).sort(
         (a, b) => a.data.localeCompare(b.data) || a.veiculo.localeCompare(b.veiculo)
       );
 
-      if (itens.length === 0) {
+      if (itens.length === 0 && linhasVeiculos.length === 0) {
         toast.warning("Não há agendamentos no período selecionado.");
         return;
       }
