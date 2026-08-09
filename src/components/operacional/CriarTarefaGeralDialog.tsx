@@ -41,7 +41,6 @@ export default function CriarTarefaGeralDialog({
   const [questionnaireId, setQuestionnaireId] = useState("");
   const [dateISO, setDateISO] = useState(new Date().toISOString().slice(0, 10));
   const [startTime, setStartTime] = useState("08:00");
-  const [endTime, setEndTime] = useState("12:00");
   const [durationMinutes, setDurationMinutes] = useState(240);
   const [priority, setPriority] = useState("1");
   const [checkinType, setCheckinType] = useState("1");
@@ -64,23 +63,6 @@ export default function CriarTarefaGeralDialog({
       setDurationMinutes(240);
     }
   }, [open]);
-
-  // Atualiza duração quando hora início ou fim muda
-  useEffect(() => {
-    if (!startTime || !endTime) return;
-    const [hStart, mStart] = startTime.split(":").map(Number);
-    const [hEnd, mEnd] = endTime.split(":").map(Number);
-    
-    let startTotal = hStart * 60 + mStart;
-    let endTotal = hEnd * 60 + mEnd;
-    
-    // Se a hora fim for menor que a início, assume que é no dia seguinte
-    if (endTotal <= startTotal) {
-      endTotal += 24 * 60;
-    }
-    
-    setDurationMinutes(endTotal - startTotal);
-  }, [startTime, endTime]);
 
   const { data: customers = [], isLoading: loadingCustomers, isError: errCustomers } = useQuery({
     queryKey: ["auvo-customers"],
@@ -286,7 +268,7 @@ export default function CriarTarefaGeralDialog({
             />
           </div>
 
-          <div className="grid grid-cols-4 gap-4">
+          <div className="grid grid-cols-3 gap-4">
             <div className="grid gap-2">
               <Label className="text-xs">Data *</Label>
               <Input type="date" value={dateISO} onChange={e => setDateISO(e.target.value)} />
@@ -296,16 +278,12 @@ export default function CriarTarefaGeralDialog({
               <Input type="time" value={startTime} onChange={e => setStartTime(e.target.value)} />
             </div>
             <div className="grid gap-2">
-              <Label className="text-xs">Hora Fim *</Label>
-              <Input type="time" value={endTime} onChange={e => setEndTime(e.target.value)} />
-            </div>
-            <div className="grid gap-2">
-              <Label className="text-xs">Duração (hrs)</Label>
+              <Label className="text-xs">Duração (HH:mm) *</Label>
               <Input
-                type="text"
-                readOnly
-                value={(durationMinutes / 60).toFixed(2)}
-                className="bg-muted"
+                type="time"
+                step={300}
+                value={minutesToClock(durationMinutes)}
+                onChange={e => setDurationMinutes(clockToMinutes(e.target.value))}
               />
             </div>
           </div>
