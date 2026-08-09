@@ -3,7 +3,6 @@ import { format, addDays, startOfWeek, subWeeks, addWeeks, getISOWeek } from "da
 import { ptBR } from "date-fns/locale";
 import { ChevronLeft, ChevronRight, RefreshCw, Printer, Plus, Truck, Users } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
