@@ -113,3 +113,98 @@ export function useDeleteAgendamento() {
     onError: (e: Error) => toast.error(e.message),
   });
 }
+
+/* ===================== Escala semanal (grade estilo planilha) ===================== */
+
+export interface AgendaVeiculoDia {
+  id: string;
+  veiculo_id: string;
+  data: string;
+  texto: string;
+}
+
+export function useAgendaSemana(dias: string[]) {
+  const inicio = dias[0];
+  const fim = dias[dias.length - 1];
+  return useQuery({
+    queryKey: ["agenda_semana", inicio, fim],
+    enabled: !!inicio && !!fim,
+    queryFn: async () => {
+      const [ag, vd] = await Promise.all([
+        sb.from("agenda_agendamentos").select("*").gte("data", inicio).lte("data", fim),
+        sb.from("agenda_veiculo_dia").select("*").gte("data", inicio).lte("data", fim),
+      ]);
+      if (ag.error) throw ag.error;
+      if (vd.error) throw vd.error;
+      return {
+        agendamentos: (ag.data ?? []) as AgendaAgendamento[],
+        veiculoDias: (vd.data ?? []) as AgendaVeiculoDia[],
+      };
+    },
+  });
+}
+
+export function useSalvarCelulaTecnico() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (p: {
+      id?: string | null;
+      data: string;
+      colaborador_id: string;
+      colaborador_nome: string;
+      texto: string;
+    }) => {
+      const texto = p.texto.trim();
+      if (p.id && !texto) {
+        const { error } = await sb.from("agenda_agendamentos").delete().eq("id", p.id);
+        if (error) throw error;
+        return;
+      }
+      if (!texto) return;
+      if (p.id) {
+        const { error } = await sb
+          .from("agenda_agendamentos")
+          .update({ cliente: texto })
+          .eq("id", p.id);
+        if (error) throw error;
+        return;
+      }
+      const { error } = await sb.from("agenda_agendamentos").insert({
+        data: p.data,
+        hora_inicio: "08:00",
+        hora_fim: "18:00",
+        colaborador_id: p.colaborador_id,
+        colaborador_nome: p.colaborador_nome,
+        cliente: texto,
+        status: "AGENDADO",
+      } as never);
+      if (error) throw error;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["agenda_semana"] }),
+    onError: (e: Error) => toast.error(e.message),
+  });
+}
+
+export function useSalvarCelulaVeiculo() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (p: { veiculo_id: string; data: string; texto: string }) => {
+      const texto = p.texto.trim();
+      if (!texto) {
+        const { error } = await sb
+          .from("agenda_veiculo_dia")
+          .delete()
+          .eq("veiculo_id", p.veiculo_id)
+          .eq("data", p.data);
+        if (error) throw error;
+        return;
+      }
+      const { error } = await sb
+        .from("agenda_veiculo_dia")
+        .upsert({ veiculo_id: p.veiculo_id, data: p.data, texto }, { onConflict: "veiculo_id,data" });
+      if (error) throw error;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["agenda_semana"] }),
+    onError: (e: Error) => toast.error(e.message),
+  });
+}

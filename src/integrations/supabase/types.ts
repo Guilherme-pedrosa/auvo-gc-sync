@@ -77,6 +77,41 @@ export type Database = {
           },
         ]
       }
+      agenda_veiculo_dia: {
+        Row: {
+          created_at: string
+          data: string
+          id: string
+          texto: string
+          updated_at: string
+          veiculo_id: string
+        }
+        Insert: {
+          created_at?: string
+          data: string
+          id?: string
+          texto?: string
+          updated_at?: string
+          veiculo_id: string
+        }
+        Update: {
+          created_at?: string
+          data?: string
+          id?: string
+          texto?: string
+          updated_at?: string
+          veiculo_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "agenda_veiculo_dia_veiculo_id_fkey"
+            columns: ["veiculo_id"]
+            isOneToOne: false
+            referencedRelation: "agenda_veiculos"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       agenda_veiculos: {
         Row: {
           ativo: boolean

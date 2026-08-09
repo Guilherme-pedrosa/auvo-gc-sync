@@ -1,36 +1,21 @@
-import { useState, useMemo } from "react";
-import { format, addDays, subDays } from "date-fns";
+import { useMemo, useState } from "react";
+import { format, addDays, startOfWeek, subWeeks, addWeeks, getISOWeek } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import { 
-  ChevronLeft, 
-  ChevronRight, 
-  Calendar as CalendarIcon, 
-  Plus, 
-  Search,
-  Filter,
-  RefreshCw,
-  Users
-} from "lucide-react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { ChevronLeft, ChevronRight, RefreshCw, Printer, Plus, Truck, Users } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Calendar } from "@/components/ui/calendar";
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover";
-import { Input } from "@/components/ui/input";
+import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
-import AgendamentoEquipeDialog from "@/components/operacional/AgendamentoEquipeDialog";
+import { supabase } from "@/integrations/supabase/client";
+import { useColaboradores } from "@/hooks/rh/useRh";
 import {
   useAgendaVeiculos,
-  useAgendamentos,
-  type AgendaAgendamento,
+  useAgendaSemana,
+  useSalvarCelulaTecnico,
+  useSalvarCelulaVeiculo,
 } from "@/hooks/operacional/useAgendamentoEquipe";
-import { useColaboradores } from "@/hooks/rh/useRh";
-import { Skeleton } from "@/components/ui/skeleton";
+import { useQueryClient } from "@tanstack/react-query";
 
-const HOURS = Array.from({ length: 12 }, (_, i) => i + 7); // 07:00 to 18:00
+const DIAS = ["Segunda-feira", "Terça-feira", "Quarta-feira", "Quinta-feira", "Sexta-feira", "Sábado", "Domingo"];
 
 const isTecnico = (c: { cargo?: string | null; funcao?: string | null }) => {
   const txt = `${c.cargo ?? ""} ${c.funcao ?? ""}`
@@ -40,117 +25,147 @@ const isTecnico = (c: { cargo?: string | null; funcao?: string | null }) => {
   return txt.includes("tecnico");
 };
 
-const COLORS = [
-  "#3B82F6", // Blue
-  "#10B981", // Green
-  "#F59E0B", // Amber
-  "#EF4444", // Red
-  "#8B5CF6", // Violet
-  "#EC4899", // Pink
-  "#06B6D4", // Cyan
+const PALETA = [
+  "bg-blue-100 text-blue-900",
+  "bg-emerald-100 text-emerald-900",
+  "bg-amber-100 text-amber-900",
+  "bg-rose-100 text-rose-900",
+  "bg-violet-100 text-violet-900",
+  "bg-cyan-100 text-cyan-900",
+  "bg-lime-100 text-lime-900",
+  "bg-orange-100 text-orange-900",
 ];
 
-// Helper to get color based on client name
-const getClientColor = (clientName: string) => {
+const corCliente = (texto: string) => {
+  const t = texto.trim().toUpperCase();
+  if (!t) return "";
+  if (t === "X" || t === "FOLGA") return "bg-muted text-muted-foreground";
+  if (t.startsWith("OFICINA")) return "bg-slate-200 text-slate-800";
   let hash = 0;
-  for (let i = 0; i < clientName.length; i++) {
-    hash = clientName.charCodeAt(i) + ((hash << 5) - hash);
-  }
-  return COLORS[Math.abs(hash) % COLORS.length];
+  for (let i = 0; i < t.length; i++) hash = t.charCodeAt(i) + ((hash << 5) - hash);
+  return PALETA[Math.abs(hash) % PALETA.length];
 };
 
+interface CelulaProps {
+  valor: string;
+  onSalvar: (v: string) => void;
+  colorir?: boolean;
+}
+
+function Celula({ valor, onSalvar, colorir = true }: CelulaProps) {
+  const [editando, setEditando] = useState(false);
+  const [rascunho, setRascunho] = useState(valor);
+
+  if (editando) {
+    return (
+      <td className="border border-border p-0 align-top">
+        <textarea
+          autoFocus
+          value={rascunho}
+          onChange={(e) => setRascunho(e.target.value)}
+          onBlur={() => {
+            setEditando(false);
+            if (rascunho.trim() !== valor.trim()) onSalvar(rascunho);
+          }}
+          onKeyDown={(e) => {
+            if (e.key === "Escape") {
+              setRascunho(valor);
+              setEditando(false);
+            }
+            if (e.key === "Enter" && !e.shiftKey) {
+              e.preventDefault();
+              (e.target as HTMLTextAreaElement).blur();
+            }
+          }}
+          className="w-full h-16 resize-none bg-background p-1.5 text-[11px] font-medium uppercase outline-none ring-2 ring-primary"
+        />
+      </td>
+    );
+  }
+
+  return (
+    <td
+      onClick={() => {
+        setRascunho(valor);
+        setEditando(true);
+      }}
+      className={cn(
+        "border border-border p-1.5 align-top text-[11px] font-semibold uppercase leading-tight cursor-text h-16 min-w-[130px] hover:ring-1 hover:ring-primary/50",
+        colorir && corCliente(valor),
+      )}
+    >
+      {valor || <span className="opacity-25 normal-case font-normal">—</span>}
+    </td>
+  );
+}
+
 export default function AgendamentoEquipePage() {
-  const [date, setDate] = useState<Date>(new Date());
-  const [isDialogOpen, setIsDialogOpen] = useState(false);
-  const [selected, setSelected] = useState<AgendaAgendamento | null>(null);
-  const [selectedColaboradorId, setSelectedColaboradorId] = useState<string | null>(null);
-  const [search, setSearch] = useState("");
+  const qc = useQueryClient();
+  const [refDate, setRefDate] = useState<Date>(new Date());
+  const inicioSemana = useMemo(() => startOfWeek(refDate, { weekStartsOn: 1 }), [refDate]);
+  const dias = useMemo(
+    () => Array.from({ length: 7 }, (_, i) => format(addDays(inicioSemana, i), "yyyy-MM-dd")),
+    [inicioSemana],
+  );
 
-  const dateStr = format(date, "yyyy-MM-dd");
-  const { data: VEHICLES = [], isLoading: loadingVeiculos } = useAgendaVeiculos();
-  const { data: colaboradores = [] } = useColaboradores();
-  const { data: agendamentos = [], isLoading, refetch, isFetching } = useAgendamentos(dateStr);
+  const { data: colaboradores = [], isLoading: loadingCol } = useColaboradores();
+  const { data: veiculos = [], isLoading: loadingVei } = useAgendaVeiculos();
+  const { data, isLoading, isFetching, refetch } = useAgendaSemana(dias);
+  const salvarTecnico = useSalvarCelulaTecnico();
+  const salvarVeiculo = useSalvarCelulaVeiculo();
 
-  const activeTechnicians = useMemo(() => {
-    return colaboradores.filter(c => c.ativo && isTecnico(c));
+  const tecnicos = useMemo(() => {
+    const ativos = colaboradores.filter((c) => c.ativo);
+    const t = ativos.filter(isTecnico);
+    return (t.length > 0 ? t : ativos).sort((a, b) => a.nome.localeCompare(b.nome));
   }, [colaboradores]);
 
-  const listToDisplay = activeTechnicians.length > 0 ? activeTechnicians : colaboradores.filter(c => c.ativo);
+  const mapTec = useMemo(() => {
+    const m = new Map<string, { id: string; cliente: string }>();
+    for (const a of data?.agendamentos ?? []) {
+      m.set(`${a.colaborador_id}|${a.data}`, { id: a.id, cliente: a.cliente });
+    }
+    return m;
+  }, [data]);
 
-  const nextDay = () => setDate(prev => addDays(prev, 1));
-  const prevDay = () => setDate(prev => subDays(prev, 1));
+  const mapVei = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const v of data?.veiculoDias ?? []) m.set(`${v.veiculo_id}|${v.data}`, v.texto);
+    return m;
+  }, [data]);
 
-  const filteredAgendamentos = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    if (!q) return agendamentos;
-    return agendamentos.filter(
-      (a) =>
-        a.cliente.toLowerCase().includes(q) ||
-        a.colaborador_nome.toLowerCase().includes(q) ||
-        (a.descricao ?? "").toLowerCase().includes(q),
-    );
-  }, [agendamentos, search]);
-
-  const openNew = () => {
-    setSelected(null);
-    setSelectedColaboradorId(null);
-    setIsDialogOpen(true);
+  const adicionarVeiculo = async () => {
+    const nome = window.prompt("Nome do veículo (ex: ETIOS PRATA)");
+    if (!nome?.trim()) return;
+    await supabase.from("agenda_veiculos").insert({ nome: nome.trim().toUpperCase(), ordem: veiculos.length + 1, ativo: true } as never);
+    qc.invalidateQueries({ queryKey: ["agenda_veiculos"] });
   };
+
+  const carregando = isLoading || loadingCol || loadingVei;
+  const semana = getISOWeek(inicioSemana);
+  const rotulo = `SEMANA ${semana} — ${format(inicioSemana, "dd/MM", { locale: ptBR })} a ${format(addDays(inicioSemana, 6), "dd/MM/yyyy", { locale: ptBR })}`;
 
   return (
     <div className="flex flex-col h-screen bg-background">
-      {/* Fixed Header */}
-      <header className="flex items-center justify-between px-6 py-4 border-b bg-card shrink-0">
-        <div className="flex items-center gap-4">
-          <h1 className="text-xl font-bold text-foreground">Escala Diária de Técnicos</h1>
+      <header className="flex flex-wrap items-center justify-between gap-3 px-6 py-4 border-b bg-card shrink-0">
+        <div className="flex items-center gap-3">
+          <h1 className="text-xl font-bold">Controle de Agendamento Semanal</h1>
           <div className="flex items-center bg-muted rounded-md p-1 gap-1">
-            <Button variant="ghost" size="icon" className="h-8 w-8" onClick={prevDay}>
+            <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setRefDate((d) => subWeeks(d, 1))}>
               <ChevronLeft className="h-4 w-4" />
             </Button>
-            
-            <Popover>
-              <PopoverTrigger asChild>
-                <Button
-                  variant="ghost"
-                  className={cn(
-                    "h-8 justify-start text-left font-normal px-2 text-sm",
-                    !date && "text-muted-foreground"
-                  )}
-                >
-                  <CalendarIcon className="mr-2 h-3.5 w-3.5" />
-                  {date ? format(date, "PPP", { locale: ptBR }) : <span>Selecione uma data</span>}
-                </Button>
-              </PopoverTrigger>
-              <PopoverContent className="w-auto p-0" align="start">
-                <Calendar
-                  mode="single"
-                  selected={date}
-                  onSelect={(d) => d && setDate(d)}
-                  initialFocus
-                  locale={ptBR}
-                />
-              </PopoverContent>
-            </Popover>
-
-            <Button variant="ghost" size="icon" className="h-8 w-8" onClick={nextDay}>
+            <span className="px-2 text-xs font-semibold uppercase">{rotulo}</span>
+            <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setRefDate((d) => addWeeks(d, 1))}>
               <ChevronRight className="h-4 w-4" />
             </Button>
           </div>
+          <Button variant="outline" size="sm" onClick={() => setRefDate(new Date())}>
+            Semana atual
+          </Button>
         </div>
-
-        <div className="flex items-center gap-3">
-          <div className="relative w-64">
-            <Search className="absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-            <Input
-              placeholder="Buscar agendamento..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="h-9 pl-9 text-sm"
-            />
-          </div>
-          <Button onClick={openNew} className="gap-2">
-            <Plus className="h-4 w-4" />
-            Novo Agendamento
+        <div className="flex items-center gap-2">
+          <Button variant="outline" size="sm" className="gap-2" onClick={() => window.print()}>
+            <Printer className="h-4 w-4" /> Imprimir
           </Button>
           <Button variant="outline" size="icon" onClick={() => refetch()} disabled={isFetching}>
             <RefreshCw className={cn("h-4 w-4", isFetching && "animate-spin")} />
@@ -158,115 +173,129 @@ export default function AgendamentoEquipePage() {
         </div>
       </header>
 
-      {/* Main Content - Per Technician Cards */}
-      <div className="flex-1 overflow-auto p-6">
-        {loadingVeiculos ? (
+      <div className="flex-1 overflow-auto p-6 space-y-8">
+        {carregando ? (
           <Skeleton className="h-96 w-full" />
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-6">
-            {listToDisplay.map((t) => {
-              const techAgendamentos = filteredAgendamentos.filter(a => a.colaborador_id === t.id);
-              
-              return (
-                <Card 
-                  key={t.id} 
-                  className="flex flex-col h-[400px] shadow-sm hover:shadow-md transition-shadow border-t-4 border-t-primary"
-                >
-                  <CardHeader className="pb-3 bg-muted/30">
-                    <div className="flex items-center gap-3">
-                      <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center">
-                        <Users className="h-5 w-5 text-primary" />
-                      </div>
-                      <div className="min-w-0">
-                        <CardTitle className="text-sm font-bold truncate">{t.nome}</CardTitle>
-                        <p className="text-[10px] text-muted-foreground truncate uppercase tracking-wider font-medium">
-                          {t.cargo || t.funcao || "Colaborador"}
-                        </p>
-                      </div>
-                    </div>
-                  </CardHeader>
-                  <CardContent className="flex-1 overflow-y-auto p-4 space-y-3">
-                    {techAgendamentos.length > 0 ? (
-                      techAgendamentos.sort((a, b) => a.hora_inicio.localeCompare(b.hora_inicio)).map((a) => {
-                        const vehicle = VEHICLES.find(v => v.id === a.veiculo_id);
-                        const color = getClientColor(a.cliente);
-                        
-                        return (
-                          <div
-                            key={a.id}
-                            className="group relative rounded-lg border p-3 hover:bg-muted/50 transition-colors cursor-pointer"
-                            onClick={() => {
-                              setSelected(a);
-                              setIsDialogOpen(true);
-                            }}
-                          >
-                            <div className="flex items-start justify-between gap-2">
-                              <div className="min-w-0">
-                                <div 
-                                  className="text-xs font-bold uppercase truncate"
-                                  style={{ color }}
-                                >
-                                  {a.cliente}
-                                </div>
-                                <div className="text-[11px] font-medium mt-1 line-clamp-2 text-foreground/80">
-                                  {a.descricao || "Sem descrição"}
-                                </div>
-                              </div>
-                              <div className="shrink-0 text-[10px] font-bold bg-muted px-1.5 py-0.5 rounded">
-                                {a.hora_inicio.slice(0, 5)}
-                              </div>
-                            </div>
-                            
-                            <div className="mt-2 flex items-center gap-2 text-[10px] text-muted-foreground border-t pt-2">
-                              <div className="truncate flex-1">
-                                {vehicle ? `${vehicle.nome} (${vehicle.placa || 'S/P'})` : 'Sem veículo'}
-                              </div>
-                              <div className="shrink-0">
-                                {a.hora_fim.slice(0, 5)}
-                              </div>
-                            </div>
+          <>
+            <section>
+              <div className="flex items-center gap-2 mb-2">
+                <Users className="h-4 w-4 text-primary" />
+                <h2 className="text-sm font-bold uppercase tracking-wide">Técnicos</h2>
+              </div>
+              <div className="overflow-x-auto border rounded-md">
+                <table className="w-full border-collapse">
+                  <thead>
+                    <tr className="bg-muted">
+                      <th className="border border-border p-2 text-left text-[11px] font-bold uppercase w-40 sticky left-0 bg-muted z-10">
+                        Técnico
+                      </th>
+                      {DIAS.map((d, i) => (
+                        <th key={d} className="border border-border p-2 text-center text-[11px] font-bold uppercase">
+                          {d}
+                          <div className="text-[10px] font-normal opacity-60">
+                            {format(addDays(inicioSemana, i), "dd/MM")}
                           </div>
-                        );
-                      })
-                    ) : (
-                      <div className="h-full flex flex-col items-center justify-center text-center opacity-40 py-10">
-                        <CalendarIcon className="h-8 w-8 mb-2" />
-                        <p className="text-xs">Nenhum cliente agendado</p>
-                      </div>
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {tecnicos.map((t) => (
+                      <tr key={t.id}>
+                        <td className="border border-border p-2 text-[11px] font-bold uppercase bg-card sticky left-0 z-10">
+                          {t.nome}
+                        </td>
+                        {dias.map((dia) => {
+                          const atual = mapTec.get(`${t.id}|${dia}`);
+                          return (
+                            <Celula
+                              key={dia}
+                              valor={atual?.cliente ?? ""}
+                              onSalvar={(v) =>
+                                salvarTecnico.mutate({
+                                  id: atual?.id ?? null,
+                                  data: dia,
+                                  colaborador_id: t.id,
+                                  colaborador_nome: t.nome,
+                                  texto: v,
+                                })
+                              }
+                            />
+                          );
+                        })}
+                      </tr>
+                    ))}
+                    {tecnicos.length === 0 && (
+                      <tr>
+                        <td colSpan={8} className="p-6 text-center text-sm text-muted-foreground">
+                          Nenhum técnico ativo cadastrado no RH.
+                        </td>
+                      </tr>
                     )}
-                  </CardContent>
-                  <div className="p-3 border-t bg-muted/5">
-                    <Button 
-                      variant="ghost" 
-                      size="sm" 
-                      className="w-full text-[10px] h-8 gap-1.5"
-                      onClick={() => {
-                        setSelected(null);
-                        setSelectedColaboradorId(t.id);
-                        setIsDialogOpen(true);
-                      }}
-                    >
-                      <Plus className="h-3 w-3" />
-                      Agendar Cliente
-                    </Button>
-                  </div>
-                </Card>
-              );
-            })}
-          </div>
-        )}
-        {!isLoading && listToDisplay.length === 0 && (
-          <p className="mt-4 text-sm text-muted-foreground text-center">Nenhum técnico disponível para esta data.</p>
+                  </tbody>
+                </table>
+              </div>
+            </section>
+
+            <section>
+              <div className="flex items-center justify-between mb-2">
+                <div className="flex items-center gap-2">
+                  <Truck className="h-4 w-4 text-primary" />
+                  <h2 className="text-sm font-bold uppercase tracking-wide">Veículos</h2>
+                </div>
+                <Button variant="outline" size="sm" className="gap-2" onClick={adicionarVeiculo}>
+                  <Plus className="h-3.5 w-3.5" /> Veículo
+                </Button>
+              </div>
+              <div className="overflow-x-auto border rounded-md">
+                <table className="w-full border-collapse">
+                  <thead>
+                    <tr className="bg-muted">
+                      <th className="border border-border p-2 text-left text-[11px] font-bold uppercase w-40 sticky left-0 bg-muted z-10">
+                        Veículo
+                      </th>
+                      {DIAS.map((d, i) => (
+                        <th key={d} className="border border-border p-2 text-center text-[11px] font-bold uppercase">
+                          {d}
+                          <div className="text-[10px] font-normal opacity-60">
+                            {format(addDays(inicioSemana, i), "dd/MM")}
+                          </div>
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {veiculos.map((v) => (
+                      <tr key={v.id}>
+                        <td className="border border-border p-2 text-[11px] font-bold uppercase bg-card sticky left-0 z-10">
+                          {v.nome}
+                          {v.placa && <div className="text-[10px] font-normal opacity-60">{v.placa}</div>}
+                        </td>
+                        {dias.map((dia) => (
+                          <Celula
+                            key={dia}
+                            valor={mapVei.get(`${v.id}|${dia}`) ?? ""}
+                            colorir={false}
+                            onSalvar={(texto) => salvarVeiculo.mutate({ veiculo_id: v.id, data: dia, texto })}
+                          />
+                        ))}
+                      </tr>
+                    ))}
+                    {veiculos.length === 0 && (
+                      <tr>
+                        <td colSpan={8} className="p-6 text-center text-sm text-muted-foreground">
+                          Nenhum veículo cadastrado.
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </section>
+          </>
         )}
       </div>
-
-      <AgendamentoEquipeDialog 
-        open={isDialogOpen} 
-        onOpenChange={setIsDialogOpen} 
-        initialDate={date} 
-        initialColaboradorId={selectedColaboradorId}
-        agendamento={selected}
-      />
     </div>
   );
 }
