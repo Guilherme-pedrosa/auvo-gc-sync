@@ -13,6 +13,9 @@ function json(body: unknown, status = 200) {
 }
 
 const TVH_FALLBACK_URL = "https://qfmpyrekjbbqekxrjgov.supabase.co";
+// Chave pública (anon) do Technician & Vehicle Hub — leitura apenas, segura em código.
+const TVH_ANON_KEY =
+  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFmbXB5cmVramJicWVreHJqZ292Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM4Njc5NzMsImV4cCI6MjA4OTQ0Mzk3M30.ac7r6m5dLzMrEQxMQr74Bo38bgeupr5-bs0Ja4CCo2s";
 const CRITICAL_PRIORITIES = ["critica", "alta"];
 const OPEN_STATUSES = ["aberto", "em_andamento", "aguardando_peca"];
 
@@ -54,29 +57,17 @@ Deno.serve(async (req) => {
     if (userError || !userData.user) return json({ ok: false, error: "Não autenticado" });
 
     const tvhUrl = (Deno.env.get("TVH_SUPABASE_URL") || TVH_FALLBACK_URL).replace(/\/$/, "");
-    const tvhKey = Deno.env.get("TVH_SERVICE_ROLE_KEY");
-    if (!tvhKey) return json({ ok: false, error: "TVH_SERVICE_ROLE_KEY não configurada" });
-
-    if (!/^(eyJ|sb_)/.test(tvhKey)) {
-      return json({
-        ok: false,
-        error:
-          "O valor salvo em TVH_SERVICE_ROLE_KEY não é uma chave do Hub (começa com 'sk-proj-', que é chave da OpenAI). Salve a chave de serviço do projeto Technician & Vehicle Hub.",
-      });
-    }
+    const tvhKey = TVH_ANON_KEY;
 
     async function hub(path: string) {
-      const isOpaque = tvhKey!.startsWith("sb_");
-      const headers: Record<string, string> = { apikey: tvhKey! };
-      if (!isOpaque) headers.Authorization = `Bearer ${tvhKey}`;
       const res = await fetch(`${tvhUrl}/rest/v1/${path}`, {
-        headers,
+        headers: { apikey: tvhKey, Authorization: `Bearer ${tvhKey}` },
       });
       const text = await res.text();
       if (!res.ok) {
         throw new Error(
           res.status === 401
-            ? "Chave de acesso ao Technician & Vehicle Hub inválida ou expirada (401). Atualize o segredo TVH_SERVICE_ROLE_KEY."
+            ? "O Technician & Vehicle Hub recusou a leitura pública (401). Verifique as políticas de leitura das tabelas vehicles e maintenance_tickets."
             : `Hub respondeu ${res.status}: ${text.slice(0, 200)}`,
         );
       }
