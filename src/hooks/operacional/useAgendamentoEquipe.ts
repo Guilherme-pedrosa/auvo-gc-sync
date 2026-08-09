@@ -9,6 +9,11 @@ export interface AgendaVeiculo {
   modelo: string | null;
   ordem: number;
   ativo: boolean;
+  marca?: string | null;
+  status?: string | null;
+  observacao?: string | null;
+  tvh_vehicle_id?: string | null;
+  sincronizado_em?: string | null;
 }
 
 export interface AgendaAgendamento {

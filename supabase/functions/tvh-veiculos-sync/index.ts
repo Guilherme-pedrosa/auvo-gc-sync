@@ -1,0 +1,155 @@
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
+
+const corsHeaders = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+};
+
+function json(body: unknown, status = 200) {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { ...corsHeaders, "Content-Type": "application/json" },
+  });
+}
+
+const TVH_FALLBACK_URL = "https://qfmpyrekjbbqekxrjgov.supabase.co";
+const CRITICAL_PRIORITIES = ["critica", "alta"];
+const OPEN_STATUSES = ["aberto", "em_andamento", "aguardando_peca"];
+
+const STATUS_LABEL: Record<string, string> = {
+  disponivel: "Disponível",
+  em_uso: "Em uso",
+  manutencao: "Em manutenção",
+};
+
+type Vehicle = {
+  id: string;
+  placa: string;
+  modelo: string | null;
+  marca: string | null;
+  status: string | null;
+  km_atual: number | null;
+};
+
+type Ticket = {
+  vehicle_id: string;
+  titulo: string;
+  prioridade: string;
+  status: string;
+};
+
+Deno.serve(async (req) => {
+  if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
+
+  try {
+    const authHeader = req.headers.get("Authorization") || "";
+    if (!authHeader.startsWith("Bearer ")) return json({ ok: false, error: "Não autenticado" });
+
+    const localAuth = createClient(
+      Deno.env.get("SUPABASE_URL")!,
+      Deno.env.get("SUPABASE_ANON_KEY")!,
+      { global: { headers: { Authorization: authHeader } } },
+    );
+    const { data: userData, error: userError } = await localAuth.auth.getUser();
+    if (userError || !userData.user) return json({ ok: false, error: "Não autenticado" });
+
+    const tvhUrl = (Deno.env.get("TVH_SUPABASE_URL") || TVH_FALLBACK_URL).replace(/\/$/, "");
+    const tvhKey = Deno.env.get("TVH_SERVICE_ROLE_KEY");
+    if (!tvhKey) return json({ ok: false, error: "TVH_SERVICE_ROLE_KEY não configurada" });
+
+    async function hub(path: string) {
+      const res = await fetch(`${tvhUrl}/rest/v1/${path}`, {
+        headers: { apikey: tvhKey!, Authorization: `Bearer ${tvhKey}` },
+      });
+      const text = await res.text();
+      if (!res.ok) {
+        throw new Error(
+          res.status === 401
+            ? "Chave de acesso ao Technician & Vehicle Hub inválida ou expirada (401). Atualize o segredo TVH_SERVICE_ROLE_KEY."
+            : `Hub respondeu ${res.status}: ${text.slice(0, 200)}`,
+        );
+      }
+      return JSON.parse(text || "[]");
+    }
+
+    const vehicles = (await hub(
+      "vehicles?select=id,placa,modelo,marca,status,km_atual&order=placa.asc",
+    )) as Vehicle[];
+
+    const tickets = (await hub(
+      `maintenance_tickets?select=vehicle_id,titulo,prioridade,status&status=in.(${OPEN_STATUSES.join(",")})&order=created_at.desc`,
+    )) as Ticket[];
+
+    const porVeiculo = new Map<string, Ticket[]>();
+    for (const t of tickets) {
+      if (!CRITICAL_PRIORITIES.includes(String(t.prioridade))) continue;
+      const arr = porVeiculo.get(t.vehicle_id) ?? [];
+      arr.push(t);
+      porVeiculo.set(t.vehicle_id, arr);
+    }
+
+    const admin = createClient(
+      Deno.env.get("SUPABASE_URL")!,
+      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
+    );
+
+    const { data: existentes } = await admin
+      .from("agenda_veiculos")
+      .select("id,placa,tvh_vehicle_id,ordem");
+
+    const porPlaca = new Map<string, { id: string; ordem: number | null }>();
+    for (const v of existentes ?? []) {
+      if (v.placa) porPlaca.set(String(v.placa).toUpperCase().replace(/[^A-Z0-9]/g, ""), v as never);
+    }
+    const porTvh = new Map<string, { id: string; ordem: number | null }>();
+    for (const v of existentes ?? []) {
+      if (v.tvh_vehicle_id) porTvh.set(String(v.tvh_vehicle_id), v as never);
+    }
+
+    let ordem = (existentes ?? []).reduce((m, v: any) => Math.max(m, Number(v.ordem) || 0), 0);
+    let criados = 0;
+    let atualizados = 0;
+    let comAlerta = 0;
+
+    for (const v of vehicles) {
+      const criticos = porVeiculo.get(v.id) ?? [];
+      const observacao = criticos.length
+        ? criticos
+            .map((t) => `⚠️ ${String(t.prioridade).toUpperCase()}: ${t.titulo} (${t.status.replace(/_/g, " ")})`)
+            .join(" · ")
+        : null;
+      if (observacao) comAlerta++;
+
+      const placaNorm = String(v.placa || "").toUpperCase().replace(/[^A-Z0-9]/g, "");
+      const alvo = porTvh.get(v.id) ?? porPlaca.get(placaNorm);
+
+      const payload = {
+        nome: [v.marca, v.modelo].filter(Boolean).join(" ").toUpperCase() || String(v.placa || "").toUpperCase(),
+        placa: String(v.placa || "").toUpperCase() || null,
+        modelo: v.modelo,
+        marca: v.marca,
+        status: STATUS_LABEL[String(v.status)] ?? v.status,
+        observacao,
+        tvh_vehicle_id: v.id,
+        ativo: true,
+        sincronizado_em: new Date().toISOString(),
+      };
+
+      if (alvo) {
+        const { error } = await admin.from("agenda_veiculos").update(payload).eq("id", alvo.id);
+        if (error) throw error;
+        atualizados++;
+      } else {
+        ordem++;
+        const { error } = await admin.from("agenda_veiculos").insert({ ...payload, ordem } as never);
+        if (error) throw error;
+        criados++;
+      }
+    }
+
+    return json({ ok: true, total: vehicles.length, criados, atualizados, com_alerta: comAlerta });
+  } catch (err) {
+    console.error("[tvh-veiculos-sync]", err);
+    return json({ ok: false, error: (err as Error).message });
+  }
+});

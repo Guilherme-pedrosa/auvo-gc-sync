@@ -1,7 +1,7 @@
 import { useMemo, useState, useEffect, useRef } from "react";
 import { format, addDays, parseISO } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import { ChevronLeft, ChevronRight, RefreshCw, Printer, Plus, Truck, Users } from "lucide-react";
+import { ChevronLeft, ChevronRight, RefreshCw, Printer, Plus, Truck, Users, AlertTriangle, Download } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
@@ -599,6 +599,26 @@ export default function AgendamentoEquipePage() {
     qc.invalidateQueries({ queryKey: ["agenda_veiculos"] });
   };
 
+  const [syncFrota, setSyncFrota] = useState(false);
+  const sincronizarFrota = async () => {
+    setSyncFrota(true);
+    const toastId = toast.loading("Buscando veículos na Frota (Technician & Vehicle Hub)...");
+    try {
+      const { data: res, error } = await supabase.functions.invoke("tvh-veiculos-sync", { body: {} });
+      if (error) throw error;
+      if (!(res as any)?.ok) throw new Error((res as any)?.error || "Falha na sincronização");
+      await qc.invalidateQueries({ queryKey: ["agenda_veiculos"] });
+      toast.success(
+        `Frota sincronizada: ${(res as any).total} veículos (${(res as any).criados} novos, ${(res as any).com_alerta} com tarefa crítica aberta)`,
+        { id: toastId },
+      );
+    } catch (e: any) {
+      toast.error(`Não foi possível sincronizar a frota: ${e?.message || String(e)}`, { id: toastId });
+    } finally {
+      setSyncFrota(false);
+    }
+  };
+
   const carregando = isLoading || loadingCol || loadingVei;
   const rotulo = `ESCALA PRÓXIMOS 90 DIAS — A partir de ${format(new Date(), "dd/MM/yyyy", { locale: ptBR })}`;
 
@@ -756,9 +776,20 @@ export default function AgendamentoEquipePage() {
                   <Truck className="h-4 w-4 text-primary" />
                   <h2 className="text-sm font-bold uppercase tracking-wide">Veículos</h2>
                 </div>
-                <Button variant="outline" size="sm" className="gap-2" onClick={adicionarVeiculo}>
-                  <Plus className="h-3.5 w-3.5" /> Veículo
-                </Button>
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="gap-2"
+                    onClick={sincronizarFrota}
+                    disabled={syncFrota}
+                  >
+                    <Download className={cn("h-3.5 w-3.5", syncFrota && "animate-pulse")} /> Sincronizar Frota
+                  </Button>
+                  <Button variant="outline" size="sm" className="gap-2" onClick={adicionarVeiculo}>
+                    <Plus className="h-3.5 w-3.5" /> Veículo
+                  </Button>
+                </div>
               </div>
               <div className="overflow-x-auto border rounded-md">
                 <table className="w-full border-collapse">
@@ -790,9 +821,21 @@ export default function AgendamentoEquipePage() {
                   <tbody>
                     {veiculos.map((v) => (
                       <tr key={v.id}>
-                        <td className="border border-border p-2 text-[11px] font-bold uppercase bg-card sticky left-0 z-10">
+                        <td className="border border-border p-2 text-[11px] font-bold uppercase bg-card sticky left-0 z-10 align-top">
                           {v.nome}
                           {v.placa && <div className="text-[10px] font-normal opacity-60">{v.placa}</div>}
+                          {v.status && (
+                            <div className="text-[10px] font-normal normal-case opacity-70">{v.status}</div>
+                          )}
+                          {v.observacao && (
+                            <div
+                              title={v.observacao}
+                              className="mt-1 flex items-start gap-1 rounded border border-destructive/40 bg-destructive/10 p-1 text-[10px] font-normal normal-case text-destructive"
+                            >
+                              <AlertTriangle className="mt-0.5 h-3 w-3 shrink-0" />
+                              <span className="line-clamp-3">{v.observacao}</span>
+                            </div>
+                          )}
                         </td>
                         {dias.map((dia) => (
                           <CelulaTexto
