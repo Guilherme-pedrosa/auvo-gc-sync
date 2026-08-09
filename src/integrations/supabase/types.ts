@@ -17,6 +17,7 @@ export type Database = {
       agenda_agendamentos: {
         Row: {
           atualizado_em: string
+          auvo_task_id: string | null
           cliente: string
           colaborador_id: string | null
           colaborador_nome: string
@@ -27,11 +28,13 @@ export type Database = {
           hora_fim: string
           hora_inicio: string
           id: string
+          origem: string
           status: string
           veiculo_id: string | null
         }
         Insert: {
           atualizado_em?: string
+          auvo_task_id?: string | null
           cliente: string
           colaborador_id?: string | null
           colaborador_nome: string
@@ -42,11 +45,13 @@ export type Database = {
           hora_fim: string
           hora_inicio: string
           id?: string
+          origem?: string
           status?: string
           veiculo_id?: string | null
         }
         Update: {
           atualizado_em?: string
+          auvo_task_id?: string | null
           cliente?: string
           colaborador_id?: string | null
           colaborador_nome?: string
@@ -57,6 +62,7 @@ export type Database = {
           hora_fim?: string
           hora_inicio?: string
           id?: string
+          origem?: string
           status?: string
           veiculo_id?: string | null
         }
