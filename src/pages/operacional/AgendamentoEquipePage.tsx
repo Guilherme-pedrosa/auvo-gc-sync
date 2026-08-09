@@ -141,9 +141,11 @@ function Celula({ itens, onSalvar, onAbrirTarefa, onAbrirAgendamento, onDragStar
             } else if (a.gc_orcamento_codigo) {
               prefix = "OR";
               idText = a.gc_orcamento_codigo;
+            } else if (a.auvo_task_id) {
+              // Só colocamos a tarefa se não houver OS nem Orçamento
+              prefix = "T";
+              idText = a.auvo_task_id;
             }
-            // Não incluímos o prefixo 'T' (Tarefa) na linha principal por padrão, 
-            // seguindo a regra: "na parte externa vai ficar o número da OS ou do Orçamento"
 
             const label = idText ? `${prefix} ${idText} - ${a.cliente}` : a.cliente;
 
