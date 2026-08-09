@@ -163,7 +163,7 @@ function Celula({
             const label = idText ? `${prefix} ${idText} - ${a.cliente}` : a.cliente;
 
             return (
-              <div key={a.id} className="group/item relative">
+              <div key={a.id} className="group/item relative flex items-center">
                 <button
                   type="button"
                   draggable
@@ -186,6 +186,7 @@ function Celula({
                     <span className="ml-1 text-[9px] lowercase italic text-primary-foreground/70">(previsão)</span>
                   )}
                 </button>
+                <div className="absolute -right-1 top-1/2 -translate-y-1/2 z-20 hidden group-hover/item:flex items-center gap-0.5">
                   <button
                     type="button"
                     onClick={(e) => {
@@ -193,7 +194,7 @@ function Celula({
                       onPreverProximoDia(a);
                     }}
                     title="Prever continuação no próximo dia"
-                    className="absolute -right-1 top-1/2 -translate-y-1/2 z-20 hidden group-hover/item:flex items-center justify-center h-4 w-4 rounded-full bg-primary text-primary-foreground text-[10px] shadow-sm hover:scale-110 transition-transform"
+                    className="flex items-center justify-center h-4 w-4 rounded-full bg-primary text-primary-foreground text-[10px] shadow-sm hover:scale-110 transition-transform"
                   >
                     +
                   </button>
@@ -202,15 +203,16 @@ function Celula({
                       type="button"
                       onClick={(e) => {
                         e.stopPropagation();
-                        onAbrirAgendamento(a); // Abre o dialog que já tem o botão de excluir
+                        onAbrirAgendamento(a);
                       }}
                       title="Excluir previsão"
-                      className="absolute -left-1 top-1/2 -translate-y-1/2 z-20 hidden group-hover/item:flex items-center justify-center h-4 w-4 rounded-full bg-destructive text-destructive-foreground text-[10px] shadow-sm hover:scale-110 transition-transform"
+                      className="flex items-center justify-center h-4 w-4 rounded-full bg-destructive text-destructive-foreground text-[10px] shadow-sm hover:scale-110 transition-transform"
                     >
                       ×
                     </button>
                   )}
                 </div>
+              </div>
             );
           })}
         </div>
