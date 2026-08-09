@@ -122,7 +122,65 @@ export default function AgendamentoEquipePage() {
 
   const { data: colaboradores = [], isLoading: loadingCol } = useColaboradores();
   const { data: veiculos = [], isLoading: loadingVei } = useAgendaVeiculos();
-  const { data, isLoading, isFetching, refetch } = useAgendaSemana(dias);
+  const { data, isLoading, isFetching, refetch: refetchLocal } = useAgendaSemana(dias);
+  const [isSyncing, setIsSyncing] = useState(false);
+
+  const refetch = async () => {
+    setIsSyncing(true);
+    try {
+      // 1. Sincroniza com o Auvo/GC (Backend)
+      const { data: syncRes, error } = await supabase.functions.invoke("auvo-agenda", {
+        body: { startDate: dias[0], endDate: dias[dias.length - 1] },
+      });
+      
+      if (error) throw error;
+
+      if (syncRes?.data && Array.isArray(syncRes.data)) {
+        // 2. Mapeia os dados do Auvo para a nossa tabela local agenda_agendamentos
+        for (const task of syncRes.data) {
+          // Busca o colaborador no nosso RH pelo nome ou ID se disponível
+          const colab = colaboradores.find(c => 
+            c.nome.toLowerCase() === task.tecnico.toLowerCase() || 
+            (task.tecnico_id && c.id === task.tecnico_id)
+          );
+
+          if (colab) {
+            const payload = {
+              data: task.data_tarefa,
+              hora_inicio: task.hora_inicio || "08:00",
+              hora_fim: task.hora_fim || "18:00",
+              colaborador_id: colab.id,
+              colaborador_nome: colab.nome,
+              cliente: task.cliente,
+              descricao: task.descricao,
+              status: task.status_auvo,
+            };
+
+            // Upsert baseado em data e colaborador (regra de negócio: 1 cliente principal por dia na grade)
+            const { data: exist } = await supabase
+              .from("agenda_agendamentos")
+              .select("id")
+              .eq("data", payload.data)
+              .eq("colaborador_id", payload.colaborador_id)
+              .maybeSingle();
+
+            if (exist) {
+              await supabase.from("agenda_agendamentos").update(payload).eq("id", exist.id);
+            } else {
+              await supabase.from("agenda_agendamentos").insert(payload as never);
+            }
+          }
+        }
+      }
+
+      // 3. Recarrega os dados locais
+      await refetchLocal();
+    } catch (err) {
+      console.error("Erro ao sincronizar escala:", err);
+    } finally {
+      setIsSyncing(false);
+    }
+  };
   const salvarTecnico = useSalvarCelulaTecnico();
   const salvarVeiculo = useSalvarCelulaVeiculo();
 
@@ -175,8 +233,8 @@ export default function AgendamentoEquipePage() {
           <Button variant="outline" size="sm" className="gap-2" onClick={() => window.print()}>
             <Printer className="h-4 w-4" /> Imprimir
           </Button>
-          <Button variant="outline" size="icon" onClick={() => refetch()} disabled={isFetching}>
-            <RefreshCw className={cn("h-4 w-4", isFetching && "animate-spin")} />
+          <Button variant="outline" size="icon" onClick={() => refetch()} disabled={isFetching || isSyncing}>
+            <RefreshCw className={cn("h-4 w-4", (isFetching || isSyncing) && "animate-spin")} />
           </Button>
         </div>
       </header>
