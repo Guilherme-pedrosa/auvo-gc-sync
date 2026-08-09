@@ -77,6 +77,7 @@ export function useSaveAgendamento() {
     onSuccess: () => {
       toast.success("Agendamento salvo");
       qc.invalidateQueries({ queryKey: ["agenda_agendamentos"] });
+      qc.invalidateQueries({ queryKey: ["agenda_semana"] });
     },
     onError: (e: Error) => toast.error(e.message),
   });
@@ -92,6 +93,7 @@ export function useDeleteAgendamento() {
     onSuccess: () => {
       toast.success("Agendamento excluído");
       qc.invalidateQueries({ queryKey: ["agenda_agendamentos"] });
+      qc.invalidateQueries({ queryKey: ["agenda_semana"] });
     },
     onError: (e: Error) => toast.error(e.message),
   });
