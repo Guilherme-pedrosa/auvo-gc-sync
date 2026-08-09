@@ -15,7 +15,7 @@ import {
 } from "@/hooks/operacional/useAgendamentoEquipe";
 import { useQueryClient } from "@tanstack/react-query";
 
-const DIAS = ["Segunda-feira", "Terça-feira", "Quarta-feira", "Quinta-feira", "Sexta-feira", "Sábado", "Domingo"];
+const DIAS_TRADUZIDOS = ["Segunda-feira", "Terça-feira", "Quarta-feira", "Quinta-feira", "Sexta-feira", "Sábado", "Domingo"];
 
 const isTecnico = (c: { cargo?: string | null; funcao?: string | null }) => {
   const txt = `${c.cargo ?? ""} ${c.funcao ?? ""}`
@@ -102,10 +102,11 @@ function Celula({ valor, onSalvar, colorir = true }: CelulaProps) {
 export default function AgendamentoEquipePage() {
   const qc = useQueryClient();
   const [refDate, setRefDate] = useState<Date>(new Date());
-  const inicioSemana = useMemo(() => startOfWeek(refDate, { weekStartsOn: 1 }), [refDate]);
+  const inicioEscala = useMemo(() => new Date(), []);
+  
   const dias = useMemo(
-    () => Array.from({ length: 7 }, (_, i) => format(addDays(inicioSemana, i), "yyyy-MM-dd")),
-    [inicioSemana],
+    () => Array.from({ length: 90 }, (_, i) => format(addDays(inicioEscala, i), "yyyy-MM-dd")),
+    [inicioEscala],
   );
 
   const { data: colaboradores = [], isLoading: loadingCol } = useColaboradores();
@@ -142,25 +143,21 @@ export default function AgendamentoEquipePage() {
   };
 
   const carregando = isLoading || loadingCol || loadingVei;
-  const semana = getISOWeek(inicioSemana);
-  const rotulo = `SEMANA ${semana} — ${format(inicioSemana, "dd/MM", { locale: ptBR })} a ${format(addDays(inicioSemana, 6), "dd/MM/yyyy", { locale: ptBR })}`;
+  const rotulo = `ESCALA PRÓXIMOS 90 DIAS — A partir de ${format(new Date(), "dd/MM/yyyy", { locale: ptBR })}`;
 
   return (
     <div className="flex flex-col h-screen bg-background">
       <header className="flex flex-wrap items-center justify-between gap-3 px-6 py-4 border-b bg-card shrink-0">
         <div className="flex items-center gap-3">
-          <h1 className="text-xl font-bold">Controle de Agendamento Semanal</h1>
+          <h1 className="text-xl font-bold">Escala de Técnicos (90 Dias)</h1>
           <div className="flex items-center bg-muted rounded-md p-1 gap-1">
-            <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setRefDate((d) => subWeeks(d, 1))}>
-              <ChevronLeft className="h-4 w-4" />
-            </Button>
             <span className="px-2 text-xs font-semibold uppercase">{rotulo}</span>
-            <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setRefDate((d) => addWeeks(d, 1))}>
-              <ChevronRight className="h-4 w-4" />
-            </Button>
           </div>
-          <Button variant="outline" size="sm" onClick={() => setRefDate(new Date())}>
-            Semana atual
+          <Button variant="outline" size="sm" onClick={() => {
+            const el = document.getElementById("hoje-col");
+            if (el) el.scrollIntoView({ behavior: 'smooth', inline: 'start' });
+          }}>
+            Ir para Hoje
           </Button>
         </div>
         <div className="flex items-center gap-2">
@@ -190,14 +187,25 @@ export default function AgendamentoEquipePage() {
                       <th className="border border-border p-2 text-left text-[11px] font-bold uppercase w-40 sticky left-0 bg-muted z-10">
                         Técnico
                       </th>
-                      {DIAS.map((d, i) => (
-                        <th key={d} className="border border-border p-2 text-center text-[11px] font-bold uppercase">
-                          {d}
-                          <div className="text-[10px] font-normal opacity-60">
-                            {format(addDays(inicioSemana, i), "dd/MM")}
-                          </div>
-                        </th>
-                      ))}
+                      {dias.map((diaStr) => {
+                        const date = new Date(diaStr + "T00:00:00");
+                        const isHoje = format(new Date(), "yyyy-MM-dd") === diaStr;
+                        return (
+                          <th 
+                            key={diaStr} 
+                            id={isHoje ? "hoje-col" : undefined}
+                            className={cn(
+                              "border border-border p-2 text-center text-[10px] font-bold uppercase min-w-[130px]",
+                              isHoje && "bg-primary/10 ring-1 ring-primary/30"
+                            )}
+                          >
+                            {DIAS_TRADUZIDOS[date.getDay() === 0 ? 6 : date.getDay() - 1]}
+                            <div className="text-[10px] font-normal opacity-60">
+                              {format(date, "dd/MM")}
+                            </div>
+                          </th>
+                        );
+                      })}
                     </tr>
                   </thead>
                   <tbody>
@@ -228,7 +236,7 @@ export default function AgendamentoEquipePage() {
                     ))}
                     {tecnicos.length === 0 && (
                       <tr>
-                        <td colSpan={8} className="p-6 text-center text-sm text-muted-foreground">
+                        <td colSpan={dias.length + 1} className="p-6 text-center text-sm text-muted-foreground">
                           Nenhum técnico ativo cadastrado no RH.
                         </td>
                       </tr>
@@ -255,14 +263,24 @@ export default function AgendamentoEquipePage() {
                       <th className="border border-border p-2 text-left text-[11px] font-bold uppercase w-40 sticky left-0 bg-muted z-10">
                         Veículo
                       </th>
-                      {DIAS.map((d, i) => (
-                        <th key={d} className="border border-border p-2 text-center text-[11px] font-bold uppercase">
-                          {d}
-                          <div className="text-[10px] font-normal opacity-60">
-                            {format(addDays(inicioSemana, i), "dd/MM")}
-                          </div>
-                        </th>
-                      ))}
+                      {dias.map((diaStr) => {
+                        const date = new Date(diaStr + "T00:00:00");
+                        const isHoje = format(new Date(), "yyyy-MM-dd") === diaStr;
+                        return (
+                          <th 
+                            key={diaStr}
+                            className={cn(
+                              "border border-border p-2 text-center text-[10px] font-bold uppercase min-w-[130px]",
+                              isHoje && "bg-primary/10"
+                            )}
+                          >
+                            {DIAS_TRADUZIDOS[date.getDay() === 0 ? 6 : date.getDay() - 1]}
+                            <div className="text-[10px] font-normal opacity-60">
+                              {format(date, "dd/MM")}
+                            </div>
+                          </th>
+                        );
+                      })}
                     </tr>
                   </thead>
                   <tbody>
@@ -284,7 +302,7 @@ export default function AgendamentoEquipePage() {
                     ))}
                     {veiculos.length === 0 && (
                       <tr>
-                        <td colSpan={8} className="p-6 text-center text-sm text-muted-foreground">
+                        <td colSpan={dias.length + 1} className="p-6 text-center text-sm text-muted-foreground">
                           Nenhum veículo cadastrado.
                         </td>
                       </tr>

@@ -373,7 +373,7 @@ export default function Index() {
             <p className="text-sm text-muted-foreground">Cada bloco abre diretamente a rotina responsável por aquele indicador.</p>
           </div>
           <div className="grid gap-4 lg:grid-cols-2 xl:grid-cols-3">
-            <OperationCard title="Agenda e campo" description="Carga de hoje e andamento das tarefas no Auvo." icon={Route} route="/financeiro/agenda-semanal">
+            <OperationCard title="Escala e campo" description="Escala de técnicos e andamento das tarefas no Auvo." icon={Route} route="/operacional/agendamento-equipe">
               <MetricLine label="Programadas hoje" value={number(data.today.total)} emphasis />
               <MetricLine label="Abertas / em andamento" value={`${data.today.open} / ${data.today.inProgress}`} />
               <MetricLine label="Pausadas" value={number(data.today.paused)} />
