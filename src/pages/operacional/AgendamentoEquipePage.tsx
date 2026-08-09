@@ -65,12 +65,13 @@ interface CelulaProps {
   onSalvar: (v: string) => void;
   onAbrirTarefa: (a: AgendaAgendamento) => void;
   onAbrirAgendamento: (a: AgendaAgendamento | null) => void;
+  onNovaTarefaAuvo: () => void;
   onDragStart: (a: AgendaAgendamento) => void;
   onDrop: () => void;
   colorir?: boolean;
 }
 
-function Celula({ itens, onSalvar, onAbrirTarefa, onAbrirAgendamento, onDragStart, onDrop, colorir = true }: CelulaProps) {
+function Celula({ itens, onSalvar, onAbrirTarefa, onAbrirAgendamento, onNovaTarefaAuvo, onDragStart, onDrop, colorir = true }: CelulaProps) {
   const [editando, setEditando] = useState(false);
   const manual = itens.find((i) => !i.auvo_task_id && i.origem !== "AUVO");
   const [rascunho, setRascunho] = useState(manual?.cliente ?? "");
@@ -120,8 +121,17 @@ function Celula({ itens, onSalvar, onAbrirTarefa, onAbrirAgendamento, onDragStar
         e.currentTarget.classList.remove("bg-primary/5");
         onDrop();
       }}
-      className="border border-border p-0.5 align-top h-16 min-w-[150px] transition-colors"
+      className="group relative border border-border p-0.5 align-top h-16 min-w-[150px] transition-colors"
     >
+      <button
+        type="button"
+        onClick={(e) => { e.stopPropagation(); onNovaTarefaAuvo(); }}
+        title="Abrir nova tarefa no Auvo para este técnico neste dia"
+        aria-label="Nova tarefa Auvo"
+        className="absolute top-0.5 right-0.5 z-10 hidden group-hover:flex items-center justify-center h-4 w-4 rounded-sm bg-primary text-primary-foreground text-[10px] leading-none"
+      >
+        +
+      </button>
       {itens.length === 0 ? (
         <button
           type="button"
@@ -232,6 +242,7 @@ export default function AgendamentoEquipePage() {
   const [tarefaId, setTarefaId] = useState<string | null>(null);
   const [dialogEditOpen, setDialogEditOpen] = useState(false);
   const [dialogCreateTaskOpen, setDialogCreateTaskOpen] = useState(false);
+  const [createTaskPrefill, setCreateTaskPrefill] = useState<{ data: string | null; auvoUserId: string | null; nome: string | null }>({ data: null, auvoUserId: null, nome: null });
   const dragItem = useRef<AgendaAgendamento | null>(null);
   const saveAgendamento = useSaveAgendamento();
 
@@ -622,6 +633,14 @@ export default function AgendamentoEquipePage() {
                               }
                               onDragStart={(a) => { dragItem.current = a; }}
                               onDrop={() => handleDragDrop(dia, t.id)}
+                              onNovaTarefaAuvo={() => {
+                                setCreateTaskPrefill({
+                                  data: dia,
+                                  auvoUserId: (t as any).auvo_user_id ? String((t as any).auvo_user_id) : null,
+                                  nome: t.nome,
+                                });
+                                setDialogCreateTaskOpen(true);
+                              }}
                             />
                           );
                         })}
@@ -738,7 +757,13 @@ export default function AgendamentoEquipePage() {
 
       <CriarTarefaGeralDialog
         open={dialogCreateTaskOpen}
-        onOpenChange={setDialogCreateTaskOpen}
+        onOpenChange={(o) => {
+          setDialogCreateTaskOpen(o);
+          if (!o) setCreateTaskPrefill({ data: null, auvoUserId: null, nome: null });
+        }}
+        initialDate={createTaskPrefill.data}
+        initialUserAuvoId={createTaskPrefill.auvoUserId}
+        initialUserNome={createTaskPrefill.nome}
         onSuccess={() => refetch()}
       />
     </div>
