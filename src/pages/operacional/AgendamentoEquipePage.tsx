@@ -68,7 +68,7 @@ interface CelulaProps {
 
 function Celula({ itens, onSalvar, onAbrirTarefa, onAbrirAgendamento, colorir = true }: CelulaProps) {
   const [editando, setEditando] = useState(false);
-  const manual = itens.find((i) => !i.auvo_task_id);
+  const manual = itens.find((i) => !i.auvo_task_id && i.origem !== "AUVO");
   const [rascunho, setRascunho] = useState(manual?.cliente ?? "");
 
   if (editando) {
@@ -406,7 +406,7 @@ export default function AgendamentoEquipePage() {
                         </td>
                         {dias.map((dia) => {
                           const itens = mapTec.get(`${t.id}|${dia}`) ?? [];
-                          const manual = itens.find((i) => !i.auvo_task_id);
+                          const manual = itens.find((i) => !i.auvo_task_id && i.origem !== "AUVO");
                           return (
                             <Celula
                               key={dia}
