@@ -301,6 +301,25 @@ export default function AgendamentoEquipePage() {
   const { data: veiculos = [], isLoading: loadingVei } = useAgendaVeiculos();
   const { data, isLoading, isFetching, refetch: refetchLocal } = useAgendaSemana(dias);
   const [isSyncing, setIsSyncing] = useState(false);
+  const [isUpdatingCustomers, setIsUpdatingCustomers] = useState(false);
+
+  const atualizarClientesAuvo = async () => {
+    setIsUpdatingCustomers(true);
+    const toastId = toast.loading("Atualizando cache de clientes do Auvo...");
+    try {
+      const { data: res, error } = await supabase.functions.invoke("auvo-task-update", {
+        body: { action: "list-customers", forceRefresh: true },
+      });
+      if (error) throw error;
+      toast.success("Cache de clientes atualizado com sucesso!", { id: toastId });
+      qc.invalidateQueries({ queryKey: ["auvo-customers"] });
+    } catch (err: any) {
+      console.error("Erro ao atualizar clientes:", err);
+      toast.error("Falha ao atualizar clientes: " + (err.message || String(err)), { id: toastId });
+    } finally {
+      setIsUpdatingCustomers(false);
+    }
+  };
 
   const refetch = async () => {
     setIsSyncing(true);
@@ -309,10 +328,10 @@ export default function AgendamentoEquipePage() {
       // Força a atualização da lista de colaboradores (RH)
       await refetchColaboradores();
 
-      // Força a atualização do cache de clientes do Auvo
-      await supabase.functions.invoke("auvo-task-update", {
-        body: { action: "list-customers", forceRefresh: true },
-      });
+      // Atualiza a lista de colaboradores (RH)
+      await refetchColaboradores();
+
+      // Sincroniza agenda (Auvo -> Local)
 
       const { data: syncRes, error } = await supabase.functions.invoke("auvo-agenda", {
         body: { startDate: dias[0], endDate: dias[dias.length - 1] },
