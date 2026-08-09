@@ -127,8 +127,8 @@ export default function AgendamentoEquipeDialog({
       await save.mutateAsync({
         id: agendamento?.id,
         data,
-        hora_inicio: horaInicio,
-        hora_fim: horaFim,
+        hora_inicio: horaInicio.includes(":") ? (horaInicio.length === 5 ? `${horaInicio}:00` : horaInicio) : "08:00:00",
+        hora_fim: horaFim.includes(":") ? (horaFim.length === 5 ? `${horaFim}:00` : horaFim) : "09:00:00",
         colaborador_id: colaboradorId,
         colaborador_nome: nome,
         veiculo_id: veiculoId || null,
