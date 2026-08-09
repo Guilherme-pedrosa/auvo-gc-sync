@@ -29,7 +29,8 @@ export default function AgendaRelatorioDialog({ open, onOpenChange, agendamentos
       let labelPeriodo = "";
 
       if (tipo === "diario") {
-        inicio = hojefim = hoje;
+        inicio = hoje;
+        fim = hoje;
         labelPeriodo = format(hoje, "dd/MM/yyyy");
       } else if (tipo === "semanal") {
         inicio = startOfWeek(hoje, { weekStartsOn: 1 });
