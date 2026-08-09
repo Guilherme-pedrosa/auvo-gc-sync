@@ -66,12 +66,23 @@ interface CelulaProps {
   onAbrirTarefa: (a: AgendaAgendamento) => void;
   onAbrirAgendamento: (a: AgendaAgendamento | null) => void;
   onNovaTarefaAuvo: () => void;
+  onPreverProximoDia: (a: AgendaAgendamento) => void;
   onDragStart: (a: AgendaAgendamento) => void;
   onDrop: () => void;
   colorir?: boolean;
 }
 
-function Celula({ itens, onSalvar, onAbrirTarefa, onAbrirAgendamento, onNovaTarefaAuvo, onDragStart, onDrop, colorir = true }: CelulaProps) {
+function Celula({
+  itens,
+  onSalvar,
+  onAbrirTarefa,
+  onAbrirAgendamento,
+  onNovaTarefaAuvo,
+  onPreverProximoDia,
+  onDragStart,
+  onDrop,
+  colorir = true,
+}: CelulaProps) {
   const [editando, setEditando] = useState(false);
   const manual = itens.find((i) => !i.auvo_task_id && i.origem !== "AUVO");
   const [rascunho, setRascunho] = useState(manual?.cliente ?? "");
@@ -161,26 +172,41 @@ function Celula({ itens, onSalvar, onAbrirTarefa, onAbrirAgendamento, onNovaTare
             const label = idText ? `${prefix} ${idText} - ${a.cliente}` : a.cliente;
 
             return (
-              <button
-                key={a.id}
-                type="button"
-                draggable
-                onDragStart={() => onDragStart(a)}
-                title={a.auvo_task_id ? `Tarefa Auvo #${a.auvo_task_id}` : "Agendamento manual"}
-                onClick={() => (a.auvo_task_id ? onAbrirTarefa(a) : onAbrirAgendamento(a))}
-                onAuxClick={(e) => {
-                  // Clique com botão do meio ou scroll abre edição mesmo se tiver tarefa
-                  if (e.button === 1 && a.auvo_task_id) {
-                    onAbrirAgendamento(a);
-                  }
-                }}
-                className={cn(
-                  "w-full text-left rounded-sm px-1.5 py-1 text-[11px] font-semibold uppercase leading-tight hover:ring-1 hover:ring-primary/60 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary cursor-grab active:cursor-grabbing",
-                  colorir && corCliente(a.cliente),
-                )}
-              >
-                {label}
-              </button>
+              <div key={a.id} className="group/item relative">
+                <button
+                  type="button"
+                  draggable
+                  onDragStart={() => onDragStart(a)}
+                  title={a.auvo_task_id ? `Tarefa Auvo #${a.auvo_task_id}` : "Agendamento manual"}
+                  onClick={() => (a.auvo_task_id ? onAbrirTarefa(a) : onAbrirAgendamento(a))}
+                  onAuxClick={(e) => {
+                    if (e.button === 1 && a.auvo_task_id) {
+                      onAbrirAgendamento(a);
+                    }
+                  }}
+                  className={cn(
+                    "w-full text-left rounded-sm px-1.5 py-1 text-[11px] font-semibold uppercase leading-tight hover:ring-1 hover:ring-primary/60 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary cursor-grab active:cursor-grabbing",
+                    a.previsao_continuidade && "border border-dashed border-primary/50 opacity-80",
+                    colorir && corCliente(a.cliente),
+                  )}
+                >
+                  {label}
+                  {a.previsao_continuidade && (
+                    <span className="ml-1 text-[9px] lowercase italic text-primary-foreground/70">(previsão)</span>
+                  )}
+                </button>
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onPreverProximoDia(a);
+                  }}
+                  title="Prever continuação no próximo dia"
+                  className="absolute -right-1 top-1/2 -translate-y-1/2 z-20 hidden group-hover/item:flex items-center justify-center h-4 w-4 rounded-full bg-primary text-primary-foreground text-[10px] shadow-sm hover:scale-110 transition-transform"
+                >
+                  +
+                </button>
+              </div>
             );
           })}
         </div>
@@ -640,6 +666,32 @@ export default function AgendamentoEquipePage() {
                                   nome: t.nome,
                                 });
                                 setDialogCreateTaskOpen(true);
+                              }}
+                              onPreverProximoDia={async (a) => {
+                                const proximoDia = format(addDays(parseISO(a.data), 1), "yyyy-MM-dd");
+                                const toastId = toast.loading("Gerando previsão...");
+                                try {
+                                  const payload = {
+                                    ...a,
+                                    id: undefined, // Novo registro
+                                    data: proximoDia,
+                                    status: "PREVISAO",
+                                    previsao_continuidade: true,
+                                    origem: "MANUAL",
+                                  };
+                                  delete (payload as any).id;
+                                  delete (payload as any).criado_em;
+                                  delete (payload as any).atualizado_em;
+
+                                  const { error } = await supabase.from("agenda_agendamentos").insert(payload as any);
+                                  if (error) throw error;
+
+                                  qc.invalidateQueries({ queryKey: ["agenda_semana"] });
+                                  toast.success("Previsão gerada para o dia seguinte", { id: toastId });
+                                } catch (err) {
+                                  console.error("Erro ao prever:", err);
+                                  toast.error("Erro ao gerar previsão", { id: toastId });
+                                }
                               }}
                             />
                           );

@@ -31,6 +31,7 @@ export type Database = {
           hora_inicio: string
           id: string
           origem: string
+          previsao_continuidade: boolean | null
           status: string
           veiculo_id: string | null
         }
@@ -50,6 +51,7 @@ export type Database = {
           hora_inicio: string
           id?: string
           origem?: string
+          previsao_continuidade?: boolean | null
           status?: string
           veiculo_id?: string | null
         }
@@ -69,6 +71,7 @@ export type Database = {
           hora_inicio?: string
           id?: string
           origem?: string
+          previsao_continuidade?: boolean | null
           status?: string
           veiculo_id?: string | null
         }
