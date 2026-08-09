@@ -65,8 +65,8 @@ export default function CriarTarefaGeralDialog({
   const { data: customers = [], isLoading: loadingCustomers, isError: errCustomers } = useQuery({
     queryKey: ["auvo-customers"],
     enabled: open,
-    staleTime: 10 * 60 * 1000,
-    queryFn: () => invokeAuvo({ action: "list-customers" }),
+    staleTime: 60 * 60 * 1000,
+    queryFn: () => invokeAuvo({ action: "list-customers", forceRefresh: false }),
   });
 
   const { data: equipments = [], isLoading: loadingEquipments } = useQuery({

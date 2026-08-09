@@ -294,10 +294,15 @@ export default function AgendamentoEquipePage() {
 
   const refetch = async () => {
     setIsSyncing(true);
-    const toastId = toast.loading("Puxando tarefas do Auvo/GC para a escala...");
+    const toastId = toast.loading("Puxando tarefas e atualizando clientes do Auvo...");
     try {
       // Força a atualização da lista de colaboradores (RH)
       await refetchColaboradores();
+
+      // Força a atualização do cache de clientes do Auvo
+      await supabase.functions.invoke("auvo-task-update", {
+        body: { action: "list-customers", forceRefresh: true },
+      });
 
       const { data: syncRes, error } = await supabase.functions.invoke("auvo-agenda", {
         body: { startDate: dias[0], endDate: dias[dias.length - 1] },

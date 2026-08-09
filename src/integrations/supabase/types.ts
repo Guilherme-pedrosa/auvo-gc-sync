@@ -375,6 +375,45 @@ export type Database = {
         }
         Relationships: []
       }
+      auvo_clientes_cache: {
+        Row: {
+          ativo: boolean | null
+          atualizado_em: string | null
+          auvo_id: number
+          bairro: string | null
+          cep: string | null
+          cidade: string | null
+          endereco: string | null
+          estado: string | null
+          id: string
+          nome: string
+        }
+        Insert: {
+          ativo?: boolean | null
+          atualizado_em?: string | null
+          auvo_id: number
+          bairro?: string | null
+          cep?: string | null
+          cidade?: string | null
+          endereco?: string | null
+          estado?: string | null
+          id?: string
+          nome: string
+        }
+        Update: {
+          ativo?: boolean | null
+          atualizado_em?: string | null
+          auvo_id?: number
+          bairro?: string | null
+          cep?: string | null
+          cidade?: string | null
+          endereco?: string | null
+          estado?: string | null
+          id?: string
+          nome?: string
+        }
+        Relationships: []
+      }
       auvo_gc_sync_log: {
         Row: {
           detalhes: Json | null
