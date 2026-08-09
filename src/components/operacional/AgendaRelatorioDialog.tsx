@@ -97,7 +97,7 @@ export default function AgendaRelatorioDialog({ open, onOpenChange, agendamentos
         return;
       }
 
-      gerarPdfAgenda(
+      await gerarPdfAgenda(
         `Relatório Coletivo de Agendamento — ${tipo.toUpperCase()}`,
         labelPeriodo,
         itens
