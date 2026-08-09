@@ -63,36 +63,9 @@ export function useSaveAgendamento() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (payload: Partial<AgendaAgendamento> & { id?: string }) => {
-      // Validação de disponibilidade (técnico e veículo no mesmo intervalo)
-      const { data: existentes, error: errList } = await sb
-        .from("agenda_agendamentos")
-        .select("*")
-        .eq("data", payload.data!);
-      if (errList) throw errList;
-
-      const overlap = (existentes ?? []).filter((e: AgendaAgendamento) => {
-        // Ignora a si mesmo (edição da mesma linha)
-        if (payload.id && e.id === payload.id) return false;
-        
-        // Se for a mesma tarefa Auvo, não é um conflito, é uma edição/atualização
-        if (payload.auvo_task_id && e.auvo_task_id === payload.auvo_task_id) return false;
-
-        const conflitaHorario =
-          payload.hora_inicio! < e.hora_fim && payload.hora_fim! > e.hora_inicio;
-        if (!conflitaHorario) return false;
-        return (
-          (payload.colaborador_id && e.colaborador_id === payload.colaborador_id) ||
-          (payload.veiculo_id && e.veiculo_id === payload.veiculo_id)
-        );
-      });
-
-      if (overlap.length > 0) {
-        const o = overlap[0];
-        throw new Error(
-          `Conflito de agenda: ${o.colaborador_nome} / ${o.cliente} (${o.hora_inicio.slice(0, 5)} - ${o.hora_fim.slice(0, 5)})`,
-        );
-      }
-
+      // O usuário solicitou remover a validação de conflito de agenda, 
+      // pois o Auvo permite tarefas sobrepostas.
+      
       if (payload.id) {
         const { error } = await sb.from("agenda_agendamentos").update(payload).eq("id", payload.id);
         if (error) throw error;
