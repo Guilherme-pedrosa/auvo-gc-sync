@@ -136,56 +136,105 @@ export default function AgendamentoEquipePage() {
 
   const refetch = async () => {
     setIsSyncing(true);
+    const toastId = toast.loading("Puxando tarefas do Auvo/GC para a escala...");
     try {
-      // 1. Sincroniza com o Auvo/GC (Backend)
       const { data: syncRes, error } = await supabase.functions.invoke("auvo-agenda", {
         body: { startDate: dias[0], endDate: dias[dias.length - 1] },
       });
-      
       if (error) throw error;
+      if ((syncRes as any)?.error) throw new Error((syncRes as any).error);
 
-      if (syncRes?.data && Array.isArray(syncRes.data)) {
-        // 2. Mapeia os dados do Auvo para a nossa tabela local agenda_agendamentos
-        for (const task of syncRes.data) {
-          // Busca o colaborador no nosso RH pelo nome ou ID se disponível
-          const colab = colaboradores.find(c => 
-            c.nome.toLowerCase() === task.tecnico.toLowerCase() || 
-            (task.tecnico_id && c.id === task.tecnico_id)
-          );
+      const tarefas: any[] = Array.isArray(syncRes?.data) ? syncRes.data : [];
 
-          if (colab) {
-            const payload = {
-              data: task.data_tarefa,
-              hora_inicio: task.hora_inicio || "08:00",
-              hora_fim: task.hora_fim || "18:00",
-              colaborador_id: colab.id,
-              colaborador_nome: colab.nome,
-              cliente: task.cliente,
-              descricao: task.descricao,
-              status: task.status_auvo,
-            };
+      // Resolução do técnico: auvo_user_id (fonte da verdade) → nome → primeiro nome
+      const porAuvoId = new Map<string, any>();
+      const porNome = new Map<string, any>();
+      const porPrimeiroNome = new Map<string, any>();
+      for (const c of colaboradores) {
+        if (!c.ativo) continue;
+        if (c.auvo_user_id) porAuvoId.set(String(c.auvo_user_id), c);
+        const n = norm(c.nome);
+        porNome.set(n, c);
+        const p = n.split(" ")[0];
+        if (p && !porPrimeiroNome.has(p)) porPrimeiroNome.set(p, c);
+      }
+      const resolver = (t: any) => {
+        if (t.tecnico_id && porAuvoId.has(String(t.tecnico_id))) return porAuvoId.get(String(t.tecnico_id));
+        const n = norm(t.tecnico || "");
+        if (!n) return undefined;
+        return porNome.get(n) ?? porPrimeiroNome.get(n.split(" ")[0]);
+      };
 
-            // Upsert baseado em data e colaborador (regra de negócio: 1 cliente principal por dia na grade)
-            const { data: exist } = await supabase
-              .from("agenda_agendamentos")
-              .select("id")
-              .eq("data", payload.data)
-              .eq("colaborador_id", payload.colaborador_id)
-              .maybeSingle();
-
-            if (exist) {
-              await supabase.from("agenda_agendamentos").update(payload).eq("id", exist.id);
-            } else {
-              await supabase.from("agenda_agendamentos").insert(payload as never);
-            }
-          }
-        }
+      // Agrupa por técnico + dia (a grade tem 1 linha por dia)
+      const grupos = new Map<string, { colab: any; data: string; clientes: string[]; descricoes: string[]; horaIni: string; horaFim: string }>();
+      let semTecnico = 0;
+      for (const t of tarefas) {
+        if (!t.data_tarefa) continue;
+        const colab = resolver(t);
+        if (!colab) { semTecnico++; continue; }
+        const key = `${colab.id}|${t.data_tarefa}`;
+        const g = grupos.get(key) ?? {
+          colab,
+          data: t.data_tarefa,
+          clientes: [] as string[],
+          descricoes: [] as string[],
+          horaIni: t.hora_inicio || "08:00",
+          horaFim: t.hora_fim || "18:00",
+        };
+        const cli = String(t.cliente || "").trim().toUpperCase();
+        if (cli && !g.clientes.includes(cli)) g.clientes.push(cli);
+        if (t.descricao) g.descricoes.push(`${cli}: ${t.descricao}`);
+        if (t.hora_inicio && t.hora_inicio < g.horaIni) g.horaIni = t.hora_inicio;
+        if (t.hora_fim && t.hora_fim > g.horaFim) g.horaFim = t.hora_fim;
+        grupos.set(key, g);
       }
 
-      // 3. Recarrega os dados locais
+      // Carrega o que já existe no período (evita N consultas)
+      const { data: existentes } = await supabase
+        .from("agenda_agendamentos")
+        .select("id,data,colaborador_id")
+        .gte("data", dias[0])
+        .lte("data", dias[dias.length - 1]);
+      const mapExist = new Map<string, string>();
+      for (const e of existentes ?? []) mapExist.set(`${e.colaborador_id}|${e.data}`, e.id);
+
+      const inserts: any[] = [];
+      const updates: { id: string; payload: any }[] = [];
+      for (const [key, g] of grupos) {
+        const payload = {
+          data: g.data,
+          hora_inicio: g.horaIni,
+          hora_fim: g.horaFim,
+          colaborador_id: g.colab.id,
+          colaborador_nome: g.colab.nome,
+          cliente: g.clientes.join(" / "),
+          descricao: g.descricoes.join("\n\n").slice(0, 4000) || null,
+          status: "AGENDADO",
+        };
+        const id = mapExist.get(key);
+        if (id) updates.push({ id, payload });
+        else inserts.push(payload);
+      }
+
+      if (inserts.length) {
+        const { error: errIns } = await supabase.from("agenda_agendamentos").insert(inserts as never);
+        if (errIns) throw errIns;
+      }
+      for (const u of updates) {
+        await supabase.from("agenda_agendamentos").update(u.payload).eq("id", u.id);
+      }
+
       await refetchLocal();
+      toast.success(`Escala atualizada: ${grupos.size} dias preenchidos (${tarefas.length} tarefas)`, {
+        id: toastId,
+        description: semTecnico > 0 ? `${semTecnico} tarefas sem técnico vinculado no RH.` : undefined,
+      });
     } catch (err) {
-      console.error("Erro ao sincronizar escala:", err);
+      console.error("[agendamento-equipe] erro na sincronização:", err);
+      toast.error("Não foi possível atualizar a escala", {
+        id: toastId,
+        description: err instanceof Error ? err.message : "Tente novamente.",
+      });
     } finally {
       setIsSyncing(false);
     }
