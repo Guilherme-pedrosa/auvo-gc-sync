@@ -224,7 +224,7 @@ function Celula({
   );
 }
 
-function CelulaTexto({ valor, onSalvar }: { valor: string; onSalvar: (v: string) => void }) {
+function CelulaTexto({ valor, onSalvar, onExcluir }: { valor: string; onSalvar: (v: string) => void; onExcluir?: () => void }) {
   const [editando, setEditando] = useState(false);
   const [rascunho, setRascunho] = useState(valor);
 
@@ -261,7 +261,7 @@ function CelulaTexto({ valor, onSalvar }: { valor: string; onSalvar: (v: string)
         setRascunho(valor);
         setEditando(true);
       }}
-      className="border border-border p-1.5 align-top text-[11px] font-semibold uppercase leading-tight cursor-pointer h-16 min-w-[130px] hover:ring-1 hover:ring-primary/50"
+      className="group relative border border-border p-1.5 align-top text-[11px] font-semibold uppercase leading-tight cursor-pointer h-16 min-w-[130px] hover:ring-1 hover:ring-primary/50"
     >
       {valor || <span className="opacity-25 normal-case font-normal">—</span>}
     </td>
@@ -848,33 +848,59 @@ export default function AgendamentoEquipePage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {veiculos.map((v) => (
-                      <tr key={v.id}>
-                        <td className="border border-border p-2 text-[11px] font-bold uppercase bg-card sticky left-0 z-10 align-top">
-                          {v.nome}
-                          {v.placa && <div className="text-[10px] font-normal opacity-60">{v.placa}</div>}
-                          {v.status && (
-                            <div className="text-[10px] font-normal normal-case opacity-70">{v.status}</div>
-                          )}
-                          {v.observacao && (
-                            <div
-                              title={v.observacao}
-                              className="mt-1 flex items-start gap-1 rounded border border-destructive/40 bg-destructive/10 p-1 text-[10px] font-normal normal-case text-destructive"
-                            >
-                              <AlertTriangle className="mt-0.5 h-3 w-3 shrink-0" />
-                              <span className="line-clamp-3">{v.observacao}</span>
+                     {veiculos.map((v) => (
+                        <tr key={v.id} className="group/row">
+                          <td className="group border border-border p-2 text-[11px] font-bold uppercase bg-card sticky left-0 z-10 align-top">
+                            <div className="flex items-center justify-between gap-2">
+                              <div className="min-w-0 flex-1">
+                                <span className="truncate">{v.nome}</span>
+                                {v.placa && <div className="text-[10px] font-normal opacity-60">{v.placa}</div>}
+                                {v.status && (
+                                  <div className="text-[10px] font-normal normal-case opacity-70">{v.status}</div>
+                                )}
+                              </div>
+                              <button
+                                onClick={async (e) => {
+                                  e.stopPropagation();
+                                  if (!window.confirm(`Deseja realmente excluir o veículo ${v.nome}? Ele não retornará na próxima sincronização.`)) return;
+                                  
+                                  const { error } = await supabase
+                                    .from("agenda_veiculos")
+                                    .update({ deletado_em: new Date().toISOString(), ativo: false } as any)
+                                    .eq("id", v.id);
+                                  
+                                  if (error) {
+                                    toast.error("Erro ao excluir veículo");
+                                  } else {
+                                    toast.success("Veículo excluído");
+                                    qc.invalidateQueries({ queryKey: ["agenda_veiculos"] });
+                                  }
+                                }}
+                                className="opacity-0 group-hover:opacity-100 p-1 hover:bg-destructive/10 hover:text-destructive rounded transition-all"
+                                title="Excluir veículo permanentemente"
+                              >
+                                <Plus className="h-3 w-3 rotate-45" />
+                              </button>
                             </div>
-                          )}
-                        </td>
-                        {dias.map((dia) => (
-                          <CelulaTexto
-                            key={dia}
-                            valor={mapVei.get(`${v.id}|${dia}`) ?? ""}
-                            onSalvar={(texto) => salvarVeiculo.mutate({ veiculo_id: v.id, data: dia, texto })}
-                          />
-                        ))}
-                      </tr>
-                    ))}
+                            {v.observacao && (
+                              <div
+                                title={v.observacao}
+                                className="mt-1 flex items-start gap-1 rounded border border-destructive/40 bg-destructive/10 p-1 text-[10px] font-normal normal-case text-destructive"
+                              >
+                                <AlertTriangle className="mt-0.5 h-3 w-3 shrink-0" />
+                                <span className="line-clamp-3">{v.observacao}</span>
+                              </div>
+                            )}
+                          </td>
+                          {dias.map((dia) => (
+                            <CelulaTexto
+                              key={dia}
+                              valor={mapVei.get(`${v.id}|${dia}`) ?? ""}
+                              onSalvar={(texto) => salvarVeiculo.mutate({ veiculo_id: v.id, data: dia, texto })}
+                            />
+                          ))}
+                        </tr>
+                      ))}
                     {veiculos.length === 0 && (
                       <tr>
                         <td colSpan={dias.length + 1} className="p-6 text-center text-sm text-muted-foreground">

@@ -1,0 +1,1 @@
+ALTER TABLE public.agenda_veiculos ADD COLUMN IF NOT EXISTS deletado_em timestamptz;

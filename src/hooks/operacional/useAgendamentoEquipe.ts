@@ -42,6 +42,7 @@ export function useAgendaVeiculos() {
         .from("agenda_veiculos")
         .select("*")
         .eq("ativo", true)
+        .is("deletado_em", null)
         .order("ordem");
       if (error) throw error;
       return (data ?? []) as AgendaVeiculo[];
