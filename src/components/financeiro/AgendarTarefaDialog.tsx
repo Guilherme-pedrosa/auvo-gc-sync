@@ -35,7 +35,6 @@ type Props = {
 export default function AgendarTarefaDialog({ open, onOpenChange, alvo, onSaved }: Props) {
   const [dateISO, setDateISO] = useState<string>(todayISO());
   const [hora, setHora] = useState("08:00");
-  const [horaFim, setHoraFim] = useState("10:00");
   const [durationMinutes, setDurationMinutes] = useState(120);
   const [tecnicoId, setTecnicoId] = useState("");
   const [saving, setSaving] = useState(false);
@@ -44,26 +43,9 @@ export default function AgendarTarefaDialog({ open, onOpenChange, alvo, onSaved 
     if (!open || !alvo) return;
     setDateISO(alvo.data_tarefa?.slice(0, 10) || todayISO());
     setHora("08:00");
-    setHoraFim("10:00");
     setDurationMinutes(120);
     setTecnicoId(alvo.tecnico_id ? String(alvo.tecnico_id) : "");
   }, [open, alvo?.exec_task_id, alvo?.auvo_task_id]);
-
-  // Atualiza duração quando hora início ou fim muda
-  useEffect(() => {
-    if (!hora || !horaFim) return;
-    const [hStart, mStart] = hora.split(":").map(Number);
-    const [hEnd, mEnd] = horaFim.split(":").map(Number);
-    
-    let startTotal = hStart * 60 + mStart;
-    let endTotal = hEnd * 60 + mEnd;
-    
-    if (endTotal <= startTotal) {
-      endTotal += 24 * 60;
-    }
-    
-    setDurationMinutes(endTotal - startTotal);
-  }, [hora, horaFim]);
 
   const { data: users = [], isLoading: loadingUsers } = useQuery({
     queryKey: ["auvo-users"],
@@ -105,7 +87,7 @@ export default function AgendarTarefaDialog({ open, onOpenChange, alvo, onSaved 
     try {
       const patches = [
         { op: "replace", path: "taskDate", value: `${dateISO}T${hora}:00` },
-        { op: "replace", path: "estimatedDuration", value: (durationMinutes / 60).toFixed(2) },
+        { op: "replace", path: "estimatedDuration", value: minutesToClock(durationMinutes) },
         { op: "replace", path: "idUserTo", value: Number(tecnicoId) },
       ];
       const { data, error } = await supabase.functions.invoke("auvo-task-update", {
@@ -178,26 +160,22 @@ export default function AgendarTarefaDialog({ open, onOpenChange, alvo, onSaved 
                 searchPlaceholder="Buscar técnico..."
               />
             </div>
-            <div className="grid grid-cols-4 gap-2">
+            <div className="grid grid-cols-3 gap-2">
               <div className="col-span-1">
                 <Label className="text-xs">Data</Label>
                 <Input type="date" value={dateISO} onChange={(e) => setDateISO(e.target.value)} />
               </div>
               <div>
-                <Label className="text-xs">Início</Label>
+                <Label className="text-xs">Hora</Label>
                 <Input type="time" value={hora} onChange={(e) => setHora(e.target.value)} />
               </div>
               <div>
-                <Label className="text-xs">Fim</Label>
-                <Input type="time" value={horaFim} onChange={(e) => setHoraFim(e.target.value)} />
-              </div>
-              <div>
-                <Label className="text-xs">Duração (h)</Label>
+                <Label className="text-xs">Duração (HH:mm)</Label>
                 <Input
-                  type="text"
-                  readOnly
-                  value={(durationMinutes / 60).toFixed(2)}
-                  className="bg-muted"
+                  type="time"
+                  step={300}
+                  value={minutesToClock(durationMinutes)}
+                  onChange={(e) => setDurationMinutes(clockToMinutes(e.target.value))}
                 />
               </div>
             </div>
