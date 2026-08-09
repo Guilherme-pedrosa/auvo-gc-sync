@@ -6,8 +6,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { FileText, Loader2, Calendar as CalendarIcon } from "lucide-react";
 import { format, startOfWeek, endOfWeek, startOfMonth, endOfMonth, isWithinInterval, parseISO, addDays } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import { gerarPdfAgenda, AgendaRelatorioItem } from "@/lib/pdf/agendaPdf";
-import { AgendaAgendamento } from "@/hooks/operacional/useAgendamentoEquipe";
+import { gerarPdfAgenda, AgendaRelatorioItem, AgendaVeiculoLinha } from "@/lib/pdf/agendaPdf";
+import { AgendaAgendamento, useAgendaVeiculos } from "@/hooks/operacional/useAgendamentoEquipe";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
 import { cn } from "@/lib/utils";
@@ -24,6 +24,7 @@ export default function AgendaRelatorioDialog({ open, onOpenChange, agendamentos
   const [tipo, setTipo] = useState<"diario" | "amanha" | "semanal" | "mensal" | "selecionar">("semanal");
   const [dataSelecionada, setDataSelecionada] = useState<Date | undefined>(new Date());
   const [loading, setLoading] = useState(false);
+  const { data: veiculosCad } = useAgendaVeiculos();
 
   const handleExport = async () => {
     setLoading(true);
@@ -64,10 +65,16 @@ export default function AgendaRelatorioDialog({ open, onOpenChange, agendamentos
         return isWithinInterval(d, { start, end });
       });
 
-      // Mapeia veículos por técnico e dia
-      const mapVei = new Map<string, string>();
+      // Nome do veículo por id
+      const nomeVeiculo = new Map<string, string>();
+      (veiculosCad ?? []).forEach((v: any) => {
+        nomeVeiculo.set(v.id, [v.nome, v.placa].filter(Boolean).join(" - ") || v.id);
+      });
+
+      // Observações livres por veículo/dia
+      const obsVeiculo = new Map<string, string>();
       veiculoDias.forEach((vd) => {
-        mapVei.set(`${vd.data}|${vd.veiculo_id}`, vd.texto);
+        obsVeiculo.set(`${vd.data}|${vd.veiculo_id}`, vd.texto);
       });
 
       const itens: AgendaRelatorioItem[] = filtrados.map((a) => {
@@ -80,6 +87,7 @@ export default function AgendaRelatorioDialog({ open, onOpenChange, agendamentos
         return {
           data: a.data,
           tecnico: a.colaborador_nome,
+          veiculo: a.veiculo_id ? nomeVeiculo.get(a.veiculo_id) || undefined : undefined,
           horario: a.hora_inicio && a.hora_fim ? `${a.hora_inicio.slice(0, 5)} - ${a.hora_fim.slice(0, 5)}` : "08:00 - 18:00",
           cliente: a.cliente,
           descricao: a.descricao || undefined,
@@ -92,6 +100,44 @@ export default function AgendaRelatorioDialog({ open, onOpenChange, agendamentos
       // Ordena por data e depois por técnico
       itens.sort((x, y) => x.data.localeCompare(y.data) || x.tecnico.localeCompare(y.tecnico));
 
+      // Tabela de veículos: agrupa por data + veículo com os técnicos alocados
+      const mapaVeic = new Map<string, AgendaVeiculoLinha>();
+      filtrados.forEach((a) => {
+        if (!a.veiculo_id) return;
+        const chave = `${a.data}|${a.veiculo_id}`;
+        const atual = mapaVeic.get(chave);
+        if (atual) {
+          const nomes = new Set(atual.tecnicos.split(", ").filter(Boolean));
+          nomes.add(a.colaborador_nome);
+          atual.tecnicos = Array.from(nomes).join(", ");
+        } else {
+          mapaVeic.set(chave, {
+            data: a.data,
+            veiculo: nomeVeiculo.get(a.veiculo_id) || a.veiculo_id,
+            tecnicos: a.colaborador_nome,
+            observacao: obsVeiculo.get(chave) || undefined,
+          });
+        }
+      });
+      // Inclui observações de veículos sem agendamento no período
+      veiculoDias.forEach((vd) => {
+        const chave = `${vd.data}|${vd.veiculo_id}`;
+        if (mapaVeic.has(chave) || !vd.texto) return;
+        const d = parseISO(vd.data);
+        const start = new Date(inicio.getFullYear(), inicio.getMonth(), inicio.getDate(), 0, 0, 0);
+        const end = new Date(fim.getFullYear(), fim.getMonth(), fim.getDate(), 23, 59, 59);
+        if (!isWithinInterval(d, { start, end })) return;
+        mapaVeic.set(chave, {
+          data: vd.data,
+          veiculo: nomeVeiculo.get(vd.veiculo_id) || vd.veiculo_id,
+          tecnicos: "—",
+          observacao: vd.texto,
+        });
+      });
+      const linhasVeiculos = Array.from(mapaVeic.values()).sort(
+        (a, b) => a.data.localeCompare(b.data) || a.veiculo.localeCompare(b.veiculo)
+      );
+
       if (itens.length === 0) {
         toast.warning("Não há agendamentos no período selecionado.");
         return;
@@ -100,7 +146,8 @@ export default function AgendaRelatorioDialog({ open, onOpenChange, agendamentos
       gerarPdfAgenda(
         `Relatório Coletivo de Agendamento — ${tipo.toUpperCase()}`,
         labelPeriodo,
-        itens
+        itens,
+        linhasVeiculos
       );
       toast.success("PDF coletivo gerado e download iniciado.");
       onOpenChange(false);
