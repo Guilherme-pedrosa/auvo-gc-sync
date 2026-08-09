@@ -722,7 +722,7 @@ export default function AgendamentoEquipePage() {
         taskId={tarefaId} 
         onOpenChange={(open) => !open && setTarefaId(null)} 
         onEdit={() => {
-          const item = data?.find(i => i.auvo_task_id === tarefaId);
+          const item = data?.agendamentos?.find(i => i.auvo_task_id === tarefaId);
           if (item) {
             setSelectedAgendamento(item);
             setDialogEditOpen(true);
