@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
-import { format, addDays, ptBR } from "date-fns";
+import { format, addDays } from "date-fns";
+import { ptBR } from "date-fns/locale";
 import { ChevronLeft, ChevronRight, RefreshCw, Printer, Plus, Truck, Users } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
