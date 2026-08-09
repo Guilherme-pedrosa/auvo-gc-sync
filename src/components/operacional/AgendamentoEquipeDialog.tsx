@@ -1,3 +1,4 @@
+import { minutesToClock, clockToMinutes } from "@/lib/auvoDuration";
 import { useEffect, useState, useMemo } from "react";
 import { format } from "date-fns";
 import {
@@ -62,7 +63,7 @@ export default function AgendamentoEquipeDialog({
 
   const [data, setData] = useState("");
   const [horaInicio, setHoraInicio] = useState("08:00");
-  const [horaFim, setHoraFim] = useState("09:00");
+  const [duracaoMin, setDuracaoMin] = useState(60);
   const [colaboradorId, setColaboradorId] = useState("");
   const [veiculoId, setVeiculoId] = useState("");
   const [cliente, setCliente] = useState("");
@@ -97,7 +98,12 @@ export default function AgendamentoEquipeDialog({
     if (agendamento) {
       setData(agendamento.data);
       setHoraInicio(agendamento.hora_inicio.slice(0, 5));
-      setHoraFim(agendamento.hora_fim.slice(0, 5));
+      setDuracaoMin(
+        Math.max(
+          15,
+          clockToMinutes(agendamento.hora_fim.slice(0, 5)) - clockToMinutes(agendamento.hora_inicio.slice(0, 5)),
+        ),
+      );
       setColaboradorId(agendamento.colaborador_id ?? "");
       setVeiculoId(agendamento.veiculo_id ?? "");
       setCliente(agendamento.cliente);
@@ -106,7 +112,7 @@ export default function AgendamentoEquipeDialog({
     } else {
       setData(initialDate ? format(initialDate, "yyyy-MM-dd") : "");
       setHoraInicio("08:00");
-      setHoraFim("09:00");
+      setDuracaoMin(60);
       setColaboradorId(initialColaboradorId || "");
       setVeiculoId("");
       setCliente("");
@@ -128,9 +134,15 @@ export default function AgendamentoEquipeDialog({
         const patches = [];
         
         // Data e Hora (Início e Fim)
-        if (data !== agendamento.data || horaInicio !== agendamento.hora_inicio.slice(0, 5) || horaFim !== agendamento.hora_fim.slice(0, 5)) {
+        const horaFimCalc = minutesToClock(clockToMinutes(horaInicio) + duracaoMin);
+        if (
+          data !== agendamento.data ||
+          horaInicio !== agendamento.hora_inicio.slice(0, 5) ||
+          horaFimCalc !== agendamento.hora_fim.slice(0, 5)
+        ) {
           patches.push({ op: "replace", path: "taskDate", value: `${data}T${horaInicio}:00` });
-          patches.push({ op: "replace", path: "taskEndDate", value: `${data}T${horaFim}:00` });
+          patches.push({ op: "replace", path: "taskEndDate", value: `${data}T${horaFimCalc}:00` });
+          patches.push({ op: "replace", path: "estimatedDuration", value: minutesToClock(duracaoMin) });
         }
         
         // Técnico
@@ -161,7 +173,7 @@ export default function AgendamentoEquipeDialog({
         id: agendamento?.id,
         data,
         hora_inicio: horaInicio.includes(":") ? (horaInicio.length === 5 ? `${horaInicio}:00` : horaInicio) : "08:00:00",
-        hora_fim: horaFim.includes(":") ? (horaFim.length === 5 ? `${horaFim}:00` : horaFim) : "09:00:00",
+        hora_fim: `${minutesToClock(clockToMinutes(horaInicio) + duracaoMin)}:00`,
         colaborador_id: colaboradorId,
         colaborador_nome: nome,
         veiculo_id: veiculoId || null,
@@ -208,8 +220,14 @@ export default function AgendamentoEquipeDialog({
               <Input id="start" type="time" value={horaInicio} onChange={(e) => setHoraInicio(e.target.value)} />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="end">Hora Fim</Label>
-              <Input id="end" type="time" value={horaFim} onChange={(e) => setHoraFim(e.target.value)} />
+              <Label htmlFor="end">Duração (HH:mm)</Label>
+              <Input
+                id="end"
+                type="time"
+                step={300}
+                value={minutesToClock(duracaoMin)}
+                onChange={(e) => setDuracaoMin(clockToMinutes(e.target.value))}
+              />
             </div>
           </div>
 
