@@ -229,6 +229,7 @@ export default function AgendamentoEquipePage() {
   const [selectedDate, setSelectedDate] = useState<Date | undefined>();
   const [selectedColabId, setSelectedColabId] = useState<string | null>(null);
   const [tarefaId, setTarefaId] = useState<string | null>(null);
+  const [dialogEditOpen, setDialogEditOpen] = useState(false);
   const dragItem = useRef<AgendaAgendamento | null>(null);
   const saveAgendamento = useSaveAgendamento();
 
