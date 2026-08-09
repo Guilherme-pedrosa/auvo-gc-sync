@@ -8,7 +8,8 @@ import {
   Plus, 
   Search,
   Filter,
-  RefreshCw
+  RefreshCw,
+  Users
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
