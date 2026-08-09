@@ -618,8 +618,8 @@ export default function AgendamentoEquipePage() {
           </Button>
         </div>
         <div className="flex items-center gap-2">
-          <Button variant="outline" size="sm" className="gap-2" onClick={() => window.print()}>
-            <Printer className="h-4 w-4" /> Imprimir
+          <Button variant="outline" size="sm" className="gap-2" onClick={() => setDialogRelatorioOpen(true)}>
+            <Printer className="h-4 w-4" /> Exportar PDF
           </Button>
           <Button variant="outline" size="icon" onClick={() => refetch()} disabled={isFetching || isSyncing}>
             <RefreshCw className={cn("h-4 w-4", (isFetching || isSyncing) && "animate-spin")} />
@@ -862,6 +862,13 @@ export default function AgendamentoEquipePage() {
           qc.invalidateQueries({ queryKey: ["agenda_semana"] });
           qc.invalidateQueries({ queryKey: ["agenda_agendamentos"] });
         }}
+      />
+
+      <AgendaRelatorioDialog
+        open={dialogRelatorioOpen}
+        onOpenChange={setDialogRelatorioOpen}
+        agendamentos={data?.agendamentos ?? []}
+        veiculoDias={data?.veiculoDias ?? []}
       />
     </div>
   );
