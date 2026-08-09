@@ -128,7 +128,7 @@ export default function AgendamentoEquipePage() {
               className="h-9 pl-9 text-sm"
             />
           </div>
-          <Button onClick={() => setIsDialogOpen(true)} className="gap-2">
+          <Button onClick={openNew} className="gap-2">
             <Plus className="h-4 w-4" />
             Novo Agendamento
           </Button>
