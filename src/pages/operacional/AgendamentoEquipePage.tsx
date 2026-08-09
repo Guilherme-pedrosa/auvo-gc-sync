@@ -365,9 +365,6 @@ export default function AgendamentoEquipePage() {
       let semTecnico = 0;
       const vistos = new Set<string>();
       
-      // Mapeamento para identificar se um agendamento manual deve ser substituído por uma tarefa Auvo
-      const tarefasPorDiaTecnico = new Map<string, any>();
-
       for (const t of tarefas) {
         if (!t.data_tarefa) continue;
         const colab = resolver(t);
@@ -385,7 +382,7 @@ export default function AgendamentoEquipePage() {
         
         const clienteLimpo = String(t.cliente || "SEM CLIENTE").trim().toUpperCase();
 
-        const novaLinha = {
+        linhas.push({
           data: t.data_tarefa,
           hora_inicio: t.hora_inicio || "08:00",
           hora_fim: t.hora_fim || "18:00",
@@ -398,33 +395,32 @@ export default function AgendamentoEquipePage() {
           origem: "AUVO",
           gc_os_codigo: osCodigo,
           gc_orcamento_codigo: osCodigo ? null : orcCodigo,
-        };
-        
-        linhas.push(novaLinha);
-        
-        // Registra para remover manuais duplicados
-        const keyManual = `${t.data_tarefa}|${colab.id}`;
-        tarefasPorDiaTecnico.set(keyManual, true);
+        });
       }
 
-      // Remove sincronizados antigos do período e regrava
-      // Também remove agendamentos manuais que agora possuem uma tarefa vinculada no Auvo
-      const condicoesRemocao = [`origem.eq.AUVO`, `origem.is.null`];
-      
-      // Adiciona remoção de manuais que coincidem com novas tarefas Auvo
-      for (const [key, _] of tarefasPorDiaTecnico) {
-        const [d, cId] = key.split('|');
-        // Usamos uma estratégia de limpeza mais agressiva para manuais duplicados
-      }
-
-      const { error: errDel } = await supabase
+      // 1. Limpa TODOS os agendamentos de origem AUVO ou nula no período para refletir mudanças do Auvo
+      const { error: errDelAuvo } = await supabase
         .from("agenda_agendamentos")
         .delete()
         .or(`origem.eq.AUVO,origem.is.null`)
         .gte("data", dias[0])
         .lte("data", dias[dias.length - 1]);
-      if (errDel) throw errDel;
+      
+      if (errDelAuvo) throw errDelAuvo;
 
+      // 2. Remove agendamentos manuais que agora coincidem com tarefas do Auvo (evita duplicidade)
+      if (linhas.length > 0) {
+        const uniqueKeys = Array.from(new Set(linhas.map(l => `${l.data}|${l.colaborador_id}`)));
+        for (const key of uniqueKeys) {
+          const [d, cId] = key.split('|');
+          await supabase
+            .from("agenda_agendamentos")
+            .delete()
+            .match({ data: d, colaborador_id: cId, origem: "MANUAL" });
+        }
+      }
+
+      // 3. Insere as novas tarefas sincronizadas
       for (let i = 0; i < linhas.length; i += 500) {
         const { error: errIns } = await supabase
           .from("agenda_agendamentos")
