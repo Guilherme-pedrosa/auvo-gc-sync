@@ -59,9 +59,16 @@ function detalharNaoConformidade(t: Ticket): string {
   let coletando = false;
   for (const l of linhas) {
     if (/itens? com problema/i.test(l)) { coletando = true; continue; }
-    if (coletando) {
-      if (/^(observa|resultado|t[ée]cnico|ve[íi]culo|data)\b/i.test(l)) { coletando = false; continue; }
-      itens.push(l.replace(/^[•\-*]\s*/, "").replace(/:\s*nao_conforme/i, " (NÃO CONFORME)"));
+    const ehBullet = /^[•\-*]\s+/.test(l);
+    if (coletando && /^(observa|resultado|t[ée]cnico|ve[íi]culo|data)\b/i.test(l)) { coletando = false; continue; }
+    if (coletando || ehBullet) {
+      const item = l
+        .replace(/^[•\-*]\s*/, "")
+        .replace(/:\s*nao_conforme/i, " (NÃO CONFORME)")
+        .replace(/:\s*nao\b/i, " (NÃO CONFORME)")
+        .replace(/\s+—\s+"/, ' — "')
+        .trim();
+      if (item) itens.push(item);
     }
   }
 
