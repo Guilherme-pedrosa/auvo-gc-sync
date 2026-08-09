@@ -71,7 +71,12 @@ export function useSaveAgendamento() {
       if (errList) throw errList;
 
       const overlap = (existentes ?? []).filter((e: AgendaAgendamento) => {
+        // Ignora a si mesmo (edição da mesma linha)
         if (payload.id && e.id === payload.id) return false;
+        
+        // Se for a mesma tarefa Auvo, não é um conflito, é uma edição/atualização
+        if (payload.auvo_task_id && e.auvo_task_id === payload.auvo_task_id) return false;
+
         const conflitaHorario =
           payload.hora_inicio! < e.hora_fim && payload.hora_fim! > e.hora_inicio;
         if (!conflitaHorario) return false;
