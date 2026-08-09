@@ -58,8 +58,11 @@ Deno.serve(async (req) => {
     if (!tvhKey) return json({ ok: false, error: "TVH_SERVICE_ROLE_KEY não configurada" });
 
     async function hub(path: string) {
+      const isOpaque = tvhKey!.startsWith("sb_");
+      const headers: Record<string, string> = { apikey: tvhKey! };
+      if (!isOpaque) headers.Authorization = `Bearer ${tvhKey}`;
       const res = await fetch(`${tvhUrl}/rest/v1/${path}`, {
-        headers: { apikey: tvhKey!, Authorization: `Bearer ${tvhKey}` },
+        headers,
       });
       const text = await res.text();
       if (!res.ok) {
