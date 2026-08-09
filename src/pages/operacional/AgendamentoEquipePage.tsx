@@ -366,10 +366,12 @@ export default function AgendamentoEquipePage() {
       }
 
       // Remove sincronizados antigos do período e regrava
+      // Também remove agendamentos manuais que agora possuem uma tarefa vinculada no Auvo
+      // para evitar duplicidade (ex: Dener com OS e Dener sem nada)
       const { error: errDel } = await supabase
         .from("agenda_agendamentos")
         .delete()
-        .eq("origem", "AUVO")
+        .or(`origem.eq.AUVO,and(origem.eq.MANUAL,cliente.in.(${linhas.map(l => `'${l.cliente}'`).join(",")}),data.in.(${linhas.map(l => `'${l.data}'`).join(",")}))`)
         .gte("data", dias[0])
         .lte("data", dias[dias.length - 1]);
       if (errDel) throw errDel;
