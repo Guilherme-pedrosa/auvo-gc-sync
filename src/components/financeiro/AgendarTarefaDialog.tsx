@@ -170,7 +170,7 @@ export default function AgendarTarefaDialog({ open, onOpenChange, alvo, onSaved 
                 <Input type="time" value={hora} onChange={(e) => setHora(e.target.value)} />
               </div>
               <div>
-                <Label className="text-xs">Duração (HH:mm)</Label>
+                <Label className="text-xs">Duração (HH:mm) — local</Label>
                 <Input
                   type="time"
                   step={300}
