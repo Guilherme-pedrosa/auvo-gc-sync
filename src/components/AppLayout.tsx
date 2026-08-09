@@ -32,6 +32,7 @@ const navGroups: NavGroup[] = [
     items: [
       { label: "Agendamento Equipe", icon: CalendarClock, path: "/operacional/agendamento-equipe" },
       { label: "Dashboard Técnicos", icon: BarChart3, path: "/financeiro/dashboard-tecnicos" },
+      { label: "Produtividade Técnicos", icon: BarChart3, path: "/financeiro/produtividade-tecnicos" },
       { label: "Acompanhamento", icon: Radio, path: "/financeiro/acompanhamento" },
       { label: "Agenda Semanal (Antiga)", icon: CalendarDays, path: "/financeiro/agenda-semanal" },
       { label: "Agendamento (Antiga)", icon: CalendarClock, path: "/financeiro/agendamento" },
