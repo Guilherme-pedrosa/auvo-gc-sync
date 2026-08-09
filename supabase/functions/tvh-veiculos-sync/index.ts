@@ -17,6 +17,7 @@ const TVH_FALLBACK_URL = "https://qfmpyrekjbbqekxrjgov.supabase.co";
 const TVH_ANON_KEY =
   "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFmbXB5cmVramJicWVreHJqZ292Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM4Njc5NzMsImV4cCI6MjA4OTQ0Mzk3M30.ac7r6m5dLzMrEQxMQr74Bo38bgeupr5-bs0Ja4CCo2s";
 const CRITICAL_PRIORITIES = ["critica", "alta"];
+const NON_CONFORMITY_KEYWORDS = ["PNEU CARECA", "FREIO", "VAZAMENTO", "MOTOR", "SUSPENSAO", "LUZ", "FAROL", "NÃO ANDA", "IMPEDE"];
 const OPEN_STATUSES = ["aberto", "em_andamento", "aguardando_peca"];
 
 const STATUS_LABEL: Record<string, string> = {
@@ -84,10 +85,15 @@ Deno.serve(async (req) => {
 
     const porVeiculo = new Map<string, Ticket[]>();
     for (const t of tickets) {
-      if (!CRITICAL_PRIORITIES.includes(String(t.prioridade))) continue;
-      const arr = porVeiculo.get(t.vehicle_id) ?? [];
-      arr.push(t);
-      porVeiculo.set(t.vehicle_id, arr);
+      const tituloUpper = String(t.titulo || "").toUpperCase();
+      const isCriticalPriority = CRITICAL_PRIORITIES.includes(String(t.prioridade));
+      const hasCriticalKeyword = NON_CONFORMITY_KEYWORDS.some(k => tituloUpper.includes(k));
+
+      if (isCriticalPriority || hasCriticalKeyword) {
+        const arr = porVeiculo.get(t.vehicle_id) ?? [];
+        arr.push(t);
+        porVeiculo.set(t.vehicle_id, arr);
+      }
     }
 
     const admin = createClient(
