@@ -19,7 +19,12 @@ const TVH_ANON_KEY =
 // Só interessam não conformidades de manutenção do último checklist.
 // Alertas de "veículo rodou X km sem checklist" são ruído e ficam de fora.
 const OPEN_STATUSES = ["aberto", "em_andamento", "aguardando_peca"];
-const IGNORAR_TITULO = /rodou.*sem\s+checklist|ve[íi]culo\s+rodou/i;
+// Ruído: qualquer alerta de quilometragem/checklist não preenchido ou veículo bloqueado por falta de checklist.
+const IGNORAR_TITULO =
+  /rodou|sem\s+checklist|checklist\s*(n[ãa]o|vencid|atrasad|pendent|em\s+atraso|obrigat)|bloquead|\d+([.,]\d+)?\s*km/i;
+// Só interessam problemas reais de manutenção apontados no checklist.
+const PROBLEMA_KEYWORDS =
+  /(n[ãa]o[\s_-]?conform|avaria|dano|quebrad|trincad|rachad|vazamento|[óo]leo|freio|pneu|careca|suspens[ãa]o|farol|lanterna|luz|bateria|motor|embreagem|escapamento|amortecedor|correia|filtro|radiador|arrefec|limpador|palheta|retrovisor|para-?brisa|estepe|extintor|revis[ãa]o|troca|manuten|desgaste|folga|barulho|ru[íi]do|fum[aç]|superaquec|painel|alinhamento|balanceamento)/i;
 
 const STATUS_LABEL: Record<string, string> = {
   disponivel: "Disponível",
