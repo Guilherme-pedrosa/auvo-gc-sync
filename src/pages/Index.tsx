@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, useEffect } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import { format, formatDistanceToNow, startOfMonth } from "date-fns";
@@ -153,6 +153,11 @@ function FreshnessRow({ item }: { item: FreshnessItem }) {
 }
 
 export default function Index() {
+  useEffect(() => {
+    // Redireciona para a escala de equipe, que é o ponto central da operação agora
+    window.location.href = "/operacional/agendamento-equipe";
+  }, []);
+
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { data, isLoading, isFetching, error, refetch } = useOperationsDashboard();
