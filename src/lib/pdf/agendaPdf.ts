@@ -37,11 +37,10 @@ export async function gerarPdfAgenda(
   // Tabela
   autoTable(doc, {
     startY: 70,
-    head: [["Data", "Técnico", "Veículo", "Horário", "Código", "Cliente", "Descrição", "Link Auvo"]],
+    head: [["Data", "Técnico", "Horário", "Código", "Cliente", "Descrição", "Link Auvo"]],
     body: itens.map((it) => [
       brDate(it.data),
       it.tecnico,
-      it.veiculo || "—",
       it.horario || "08:00 - 18:00",
       it.gc_codigo || "—",
       it.cliente,
@@ -53,16 +52,15 @@ export async function gerarPdfAgenda(
     columnStyles: {
       0: { cellWidth: 55 },
       1: { cellWidth: 100 },
-      2: { cellWidth: 80 },
-      3: { cellWidth: 70 },
-      4: { cellWidth: 50 },
-      5: { cellWidth: 120 },
-      7: { halign: "center", textColor: [37, 99, 235] },
+      2: { cellWidth: 70 },
+      3: { cellWidth: 50 },
+      4: { cellWidth: 120 },
+      6: { halign: "center", textColor: [37, 99, 235] },
     },
     didDrawCell: (data: any) => {
       if (data.section !== "body") return;
       const it = itens[data.row.index];
-      if (data.column.index === 7 && it.auvo_task_id) {
+      if (data.column.index === 6 && it.auvo_task_id) {
         const url = `https://app2.auvo.com.br/gerenciarTarefas/tarefa/${it.auvo_task_id}`;
         doc.link(data.cell.x, data.cell.y, data.cell.width, data.cell.height, { url });
       }
