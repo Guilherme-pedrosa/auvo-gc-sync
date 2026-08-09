@@ -50,8 +50,12 @@ type Ticket = {
   created_at?: string | null;
 };
 
+// Itens que são ruído de auditoria de foto/IA — não são dano no veículo.
+const ITEM_RUIDO =
+  /(foto|imagem|selfie|reprovad[ao] pela ia|tire uma nova|refa[çc]a a foto|qualidade da (foto|imagem)|enquadr|ilegív|nítid)/i;
+
 // Extrai os itens não conformes descritos no checklist
-function detalharNaoConformidade(t: Ticket): string {
+function detalharNaoConformidade(t: Ticket): string | null {
   const desc = String(t.descricao || "");
   const linhas = desc.split("\n").map((l) => l.trim()).filter(Boolean);
 
@@ -68,9 +72,13 @@ function detalharNaoConformidade(t: Ticket): string {
         .replace(/:\s*nao\b/i, " (NÃO CONFORME)")
         .replace(/\s+—\s+"/, ' — "')
         .trim();
-      if (item) itens.push(item);
+      // Ignora reprovação de foto pela IA — só interessa avaria/manutenção
+      if (item && !ITEM_RUIDO.test(item)) itens.push(item);
     }
   }
+
+  // Sem item de dano real → nada a exibir
+  if (!itens.length) return null;
 
   const resultado = linhas.find((l) => /^resultado:/i.test(l))?.replace(/^resultado:\s*/i, "") || "";
   const obs = linhas.find((l) => /^observa/i.test(l))?.replace(/^observa[çc][õo]es:\s*/i, "") || "";
@@ -79,9 +87,8 @@ function detalharNaoConformidade(t: Ticket): string {
   const partes: string[] = [];
   if (data) partes.push(`Checklist ${data}`);
   if (resultado) partes.push(`Resultado: ${resultado}`);
-  if (itens.length) partes.push(itens.map((i) => `• ${i}`).join("\n"));
-  else partes.push(t.titulo);
-  if (obs) partes.push(`Obs.: ${obs}`);
+  partes.push(itens.map((i) => `• ${i}`).join("\n"));
+  if (obs && !ITEM_RUIDO.test(obs)) partes.push(`Obs.: ${obs}`);
   partes.push(`Situação: ${String(t.status).replace(/_/g, " ")} · prioridade ${String(t.prioridade).toUpperCase()}`);
   return partes.join("\n");
 }
@@ -127,8 +134,8 @@ Deno.serve(async (req) => {
       `maintenance_tickets?select=vehicle_id,titulo,prioridade,status,descricao,created_at,tipo&tipo=eq.nao_conformidade&status=in.(${OPEN_STATUSES.join(",")})&order=created_at.desc`,
     )) as Ticket[];
 
-    // Apenas a não conformidade mais recente de cada veículo (último checklist)
-    const porVeiculo = new Map<string, Ticket>();
+    // Não conformidade mais recente de cada veículo que contenha dano/manutenção real
+    const porVeiculo = new Map<string, string>();
     for (const t of tickets) {
       const titulo = String(t.titulo || "");
       const desc = String(t.descricao || "");
@@ -136,8 +143,9 @@ Deno.serve(async (req) => {
       if (IGNORAR_TITULO.test(titulo)) continue;
       // Exige menção a problema/avaria/manutenção no título ou na descrição
       if (!PROBLEMA_KEYWORDS.test(titulo) && !PROBLEMA_KEYWORDS.test(desc)) continue;
-
-      if (!porVeiculo.has(t.vehicle_id)) porVeiculo.set(t.vehicle_id, t);
+      if (porVeiculo.has(t.vehicle_id)) continue;
+      const detalhe = detalharNaoConformidade(t);
+      if (detalhe) porVeiculo.set(t.vehicle_id, detalhe);
     }
 
     const admin = createClient(
@@ -164,8 +172,7 @@ Deno.serve(async (req) => {
     let comAlerta = 0;
 
     for (const v of vehicles) {
-      const nc = porVeiculo.get(v.id);
-      const observacao = nc ? detalharNaoConformidade(nc) : null;
+      const observacao = porVeiculo.get(v.id) ?? null;
       if (observacao) comAlerta++;
 
       const placaNorm = String(v.placa || "").toUpperCase().replace(/[^A-Z0-9]/g, "");
