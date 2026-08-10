@@ -223,10 +223,11 @@ export default function VisitasContratuaisPage() {
       const rows = forecastsByConfig.get(config.id) || [];
       map.set(config.id, MONTHS.map((_, monthIndex) => {
         const competence = monthCompetence(year, monthIndex);
+        const hoursContratadas = Number(contract.horas_mes_contratadas || 0);
         return summarizeContractVisitMonth({
           competencia: competence,
           visitasContratadas: config.qtd_visitas,
-          horasContratadas: Number(contract.horas_mes_contratadas),
+          horasContratadas: hoursContratadas,
           vigenciaInicio: contract.vigencia_inicio,
           vigenciaFim: contract.vigencia_fim,
           forecasts: rows.filter((row) => row.data.slice(0, 7) === competence),
@@ -492,7 +493,19 @@ export default function VisitasContratuaisPage() {
                             {config ? <div className="space-y-1"><p>Semanas {(config.semanas_mes || [1, 2, 3, 4, 5]).join(", ")} · {WEEKDAYS.filter((day) => config.dias_semana.includes(day.value)).map((day) => day.label).join(", ")}</p><p className="text-muted-foreground">Início preferencial: {config.hora_inicio.slice(0, 5)}</p>{config.observacao && <p className="line-clamp-2 text-muted-foreground">{config.observacao}</p>}</div> : "—"}
                           </TableCell>
                           <TableCell className="min-w-[210px] text-xs">
-                            {!config ? <Badge variant="outline">Aguardando configuração</Badge> : config.planejamento_pendente ? <Badge variant="outline" className="border-blue-300 bg-blue-50 text-blue-800">Atualização pendente</Badge> : control?.excessMonths ? <div><Badge variant="destructive">Excedente</Badge><p className="mt-1 text-muted-foreground">{control.excessVisits > 0 ? `${control.excessVisits} visita(s) a mais` : `${hoursLabel(control.excessHours)} acima`} em {control.excessMonths} mês(es)</p></div> : control?.missingMonths ? <div><Badge variant="outline" className="border-amber-300 bg-amber-50 text-amber-800">Faltando</Badge><p className="mt-1 text-muted-foreground">{control.missingVisits > 0 ? `Faltam ${control.missingVisits} visita(s)` : `Faltam ${hoursLabel(control.missingHours)}`} em {control.missingMonths} mês(es)</p></div> : <Badge className="bg-emerald-600">Agenda abastecida</Badge>}
+                            {!config ? (
+                              <Badge variant="outline" className={!Number(contract.horas_mes_contratadas || 0) ? "border-amber-300 bg-amber-50 text-amber-800" : ""}>
+                                {!Number(contract.horas_mes_contratadas || 0) ? "Cadastre as horas no contrato" : "Aguardando configuração"}
+                              </Badge>
+                            ) : config.planejamento_pendente ? (
+                              <Badge variant="outline" className="border-blue-300 bg-blue-50 text-blue-800">Atualização pendente</Badge>
+                            ) : control?.excessMonths ? (
+                              <div><Badge variant="destructive">Excedente</Badge><p className="mt-1 text-muted-foreground">{control.excessVisits > 0 ? `${control.excessVisits} visita(s) a mais` : `${hoursLabel(control.excessHours)} acima`} em {control.excessMonths} mês(es)</p></div>
+                            ) : control?.missingMonths ? (
+                              <div><Badge variant="outline" className="border-amber-300 bg-amber-50 text-amber-800">Faltando</Badge><p className="mt-1 text-muted-foreground">{control.missingVisits > 0 ? `Faltam ${control.missingVisits} visita(s)` : `Faltam ${hoursLabel(control.missingHours)}`} em {control.missingMonths} mês(es)</p></div>
+                            ) : (
+                              <Badge className="bg-emerald-600">Agenda abastecida</Badge>
+                            )}
                           </TableCell>
                           <TableCell className="min-w-[150px] text-right">
                             <div className="flex justify-end gap-1">
