@@ -35,11 +35,15 @@ type Props = {
 };
 
 export default function AgendarTarefaDialog({ open, onOpenChange, alvo, onSaved }: Props) {
+  const qc = useQueryClient();
   const [dateISO, setDateISO] = useState<string>(todayISO());
   const [hora, setHora] = useState("08:00");
   const [durationMinutes, setDurationMinutes] = useState(120);
   const [tecnicoId, setTecnicoId] = useState("");
   const [saving, setSaving] = useState(false);
+  const [savingForecast, setSavingForecast] = useState(false);
+
+  const { data: colaboradores = [] } = useColaboradores();
 
   useEffect(() => {
     if (!open || !alvo) return;
