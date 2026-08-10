@@ -32,15 +32,34 @@ export default function TarefaAuvoDetalheDialog({ taskId, onOpenChange, onEdit }
   const { data: tarefa, isLoading, isError, refetch } = useQuery({
     queryKey: ["tarefa_central_detalhe", taskId],
     enabled: !!taskId,
+    staleTime: 0,
+    refetchOnMount: "always",
+    refetchOnWindowFocus: true,
     queryFn: async () => {
       const { data, error } = await supabase
         .from("tarefas_central")
         .select("*")
         .eq("auvo_task_id", taskId as string)
         .order("atualizado_em", { ascending: false })
-        .limit(1);
+        .limit(20);
       if (error) throw error;
-      return (data?.[0] ?? null) as Record<string, any> | null;
+      const latest = data?.[0] as Record<string, any> | undefined;
+      if (!latest) return null;
+      const linked = data?.find((row: Record<string, any>) =>
+        row.gc_os_id || row.gc_os_codigo || row.gc_orcamento_id || row.gc_orcamento_codigo
+      ) as Record<string, any> | undefined;
+      if (!linked || linked === latest) return latest;
+
+      const merged = { ...linked, ...latest };
+      for (const [key, value] of Object.entries(linked)) {
+        const preservesDocument = key.startsWith("gc_")
+          || key === "os_realizada"
+          || key === "orcamento_realizado";
+        if (preservesDocument && (merged[key] == null || merged[key] === "")) {
+          merged[key] = value;
+        }
+      }
+      return merged;
     },
   });
 
@@ -73,16 +92,20 @@ export default function TarefaAuvoDetalheDialog({ taskId, onOpenChange, onEdit }
         body: { action: "sync-local", taskId: Number(taskId) },
       });
       if (error) throw error;
+      if ((data as any)?.success === false || Number((data as any)?.status || 200) >= 400) {
+        throw new Error((data as any)?.error || "A tarefa não pôde ser sincronizada.");
+      }
       return data;
     },
-    onSuccess: () => {
-      refetch();
-      qc.invalidateQueries({ queryKey: ["agenda_semana"] });
+    onSuccess: async () => {
+      await qc.invalidateQueries({ queryKey: ["tarefa_central_detalhe", taskId] });
+      await refetch();
+      await qc.invalidateQueries({ queryKey: ["agenda_semana"] });
       toast.success("Tarefa sincronizada com sucesso!");
     },
-    onError: (err) => {
+    onError: (err: any) => {
       console.error("Erro ao sincronizar tarefa:", err);
-      toast.error("Erro ao sincronizar dados da tarefa.");
+      toast.error(err?.message || "Erro ao sincronizar dados da tarefa.");
     },
   });
 

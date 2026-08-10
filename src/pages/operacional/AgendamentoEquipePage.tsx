@@ -27,6 +27,12 @@ import AgendamentoEquipeDialog from "@/components/operacional/AgendamentoEquipeD
 import TarefaAuvoDetalheDialog from "@/components/operacional/TarefaAuvoDetalheDialog";
 import CriarTarefaGeralDialog from "@/components/operacional/CriarTarefaGeralDialog";
 import AgendaRelatorioDialog from "@/components/operacional/AgendaRelatorioDialog";
+import {
+  AGENDA_TASK_SYNC_FIELDS,
+  agendaTaskSnapshotChanged,
+  mergeAgendaTaskSnapshot,
+} from "@/lib/agendaIncrementalSync";
+import { agendaVisualStatus } from "@/lib/agendaTaskStatus";
 import { toast } from "sonner";
 
 const DIAS_TRADUZIDOS = ["Segunda-feira", "Terça-feira", "Quarta-feira", "Quinta-feira", "Sexta-feira", "Sábado", "Domingo"];
@@ -122,73 +128,17 @@ const corCliente = (texto: string) => {
   return PALETA[colorIndex];
 };
 
-// Remove a cor de texto da paleta do cliente para não competir com a cor de status
-const semCorTexto = (classe: string) =>
-  classe
-    .split(" ")
-    .filter((c) => !c.startsWith("text-"))
-    .join(" ");
-
-const semAcento = (v: string | null | undefined) =>
-  String(v ?? "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase();
-
-// Situações do GC que realmente indicam pendência técnica após a execução.
-// "EXECUTADO - AG. NEGOCIAÇÃO" é o destino normal da sync e NÃO é pendência.
-const PENDENCIA_TOKENS = ["PENDENTE", "PENDENCIA", "RETORNO", "CORRECAO", "REFAZER"];
-
-// Converte "YYYY-MM-DD" em data local (new Date(str) interpreta como UTC e
-// fazia tarefas futuras parecerem atrasadas).
-const dataLocal = (iso: string | null | undefined) => {
-  const m = String(iso ?? "").match(/^(\d{4})-(\d{2})-(\d{2})/);
-  if (!m) return null;
-  return new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
-};
-
 const getStatusColor = (a: AgendaAgendamento) => {
-  const statusAuvo = semAcento(a.status_auvo);
-  const finalizado = statusAuvo.includes("FINALIZ") || Boolean(a.check_out_iso);
-  const pausada = statusAuvo.includes("PAUSAD") || a.pausada === true;
-  const situacao = semAcento(a.gc_os_situacao);
-  const temPendencia = PENDENCIA_TOKENS.some((t) => situacao.includes(t));
-
-  // Verde: executada/finalizada sem pendência técnica no GC
-  if (finalizado && !temPendencia) {
-    return "text-green-700 dark:text-green-500 font-bold";
+  const status = agendaVisualStatus(a);
+  if (status === "finalizada") {
+    return "bg-green-100 text-green-800 border-green-300 dark:bg-green-950/50 dark:text-green-300 dark:border-green-800 font-bold";
   }
-
-  // Amarelo escuro: finalizada, porém com pendência registrada no GC
-  if (finalizado) {
-    return "text-yellow-700 dark:text-yellow-500 font-bold";
+  if (status === "pausada") {
+    return "bg-amber-200 text-amber-950 border-amber-500 dark:bg-amber-900/60 dark:text-amber-200 dark:border-amber-700 font-bold";
   }
-
-  if (pausada) {
-    return "text-red-600 dark:text-red-500 font-bold";
+  if (status === "atrasada") {
+    return "bg-red-100 text-red-800 border-red-300 dark:bg-red-950/50 dark:text-red-300 dark:border-red-800 font-bold";
   }
-
-  // Vermelho: só quando a data/hora já passou (nunca para agendamentos futuros)
-  const isAtrasado = () => {
-    const dAg = dataLocal(a.data);
-    if (!dAg) return false;
-    const now = new Date();
-    const dNow = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-
-    if (dAg.getTime() > dNow.getTime()) return false;
-    if (dAg.getTime() < dNow.getTime()) return true;
-
-    // Hoje: só fica vermelho 2h após o fim previsto
-    if (a.hora_fim) {
-      const [h, m] = a.hora_fim.split(":").map(Number);
-      const fim = new Date(dNow);
-      fim.setHours(h || 0, m || 0, 0, 0);
-      return now.getTime() > fim.getTime() + 2 * 60 * 60 * 1000;
-    }
-    return false;
-  };
-
-  if (!statusAuvo.includes("ANDAMENTO") && isAtrasado()) {
-    return "text-red-600 dark:text-red-500 font-bold";
-  }
-
   return "";
 };
 
@@ -270,6 +220,7 @@ function Celula({
     >
       <div className="flex flex-col gap-0.5 h-full">
         {itens.map((a) => {
+          const statusColor = getStatusColor(a);
           const identificadores = [
             a.gc_os_codigo ? `OS ${a.gc_os_codigo}` : (a.auvo_task_id ? `${a.previsao_tipo || "SEM OS"}` : null),
             a.auvo_task_id ? `Tarefa ${a.auvo_task_id}` : null,
@@ -303,11 +254,8 @@ function Celula({
                 className={cn(
                   "w-full text-left rounded-sm px-1.5 py-1 text-[11px] font-semibold uppercase leading-tight hover:ring-1 hover:ring-primary/60 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary cursor-grab active:cursor-grabbing border border-transparent",
                   a.previsao_continuidade && "border border-dashed border-primary/50 opacity-80",
-                  colorir &&
-                    (getStatusColor(a)
-                      ? semCorTexto(corCliente(a.cliente))
-                      : corCliente(a.cliente)),
-                  getStatusColor(a)
+                  colorir && !statusColor && corCliente(a.cliente),
+                  statusColor,
                 )}
               >
                 <div className="flex flex-col">
@@ -544,7 +492,7 @@ export default function AgendamentoEquipePage() {
         const taskId = String(t.auvo_task_id ?? t.taskID ?? t.id ?? "");
         if (!taskId) continue;
         
-        const key = `${taskId}|${t.data_tarefa}|${colab.id}`;
+        const key = taskId;
         if (vistos.has(key)) continue;
         vistos.add(key);
         
@@ -552,8 +500,8 @@ export default function AgendamentoEquipePage() {
 
         linhas.push({
           data: t.data_tarefa,
-          hora_inicio: t.hora_inicio || "08:00",
-          hora_fim: t.hora_fim || "18:00",
+          hora_inicio: t.hora_inicio || null,
+          hora_fim: t.hora_fim || null,
           colaborador_id: colab.id,
           colaborador_nome: colab.nome,
           cliente: clienteLimpo,
@@ -578,26 +526,22 @@ export default function AgendamentoEquipePage() {
         : { data: [], error: null };
       if (existingReadError) throw existingReadError;
 
-      const taskKey = (row: { auvo_task_id?: string | null; data: string; colaborador_id?: string | null }) =>
-        `${String(row.auvo_task_id || "")}|${row.data}|${String(row.colaborador_id || "")}`;
+      const taskIdKey = (row: { auvo_task_id?: string | null }) => String(row.auvo_task_id || "").trim();
       const slotKey = (row: { data: string; colaborador_id?: string | null }) =>
         `${row.data}|${String(row.colaborador_id || "")}`;
-      const sourceKeys = new Set(linhas.map(taskKey));
       const occupiedSlots = new Set(linhas.map(slotKey));
-      const existingByKey = new Map((existingTaskRows || []).map((row) => [taskKey(row), row]));
+      const existingByTaskId = new Map<string, any>();
+      for (const row of existingTaskRows || []) {
+        const taskId = taskIdKey(row);
+        if (taskId && !existingByTaskId.has(taskId)) existingByTaskId.set(taskId, row);
+      }
 
       const protectedForecast = (row: any) =>
         row.previsao_tipo === "ORCAMENTO_EXECUCAO" || row.conversao_status === "CONVERTIDA";
       const previousRows = data?.agendamentos ?? [];
-      const rowsForCleanup = [...previousRows, ...(existingTaskRows || [])];
-      const deleteIds = [...new Set(rowsForCleanup
+      const deleteIds = [...new Set(previousRows
         .filter((row: any) => {
           if (protectedForecast(row)) return false;
-          if (row.auvo_task_id && (row.origem === "AUVO" || row.origem == null)) {
-            return row.data >= dias[0]
-              && row.data <= dias[dias.length - 1]
-              && !sourceKeys.has(taskKey(row));
-          }
           return !row.auvo_task_id
             && row.origem === "MANUAL"
             && !row.previsao_continuidade
@@ -606,7 +550,8 @@ export default function AgendamentoEquipePage() {
         .map((row: any) => String(row.id))
         .filter(Boolean))];
 
-      // Exclusão em lote dos poucos registros que realmente ficaram obsoletos.
+      // Uma listagem do Auvo pode vir parcial. Nunca apagamos card Auvo por
+      // ausência na rodada; só retiramos o rascunho manual substituído.
       for (let i = 0; i < deleteIds.length; i += 500) {
         const { error: deleteError } = await supabase
           .from("agenda_agendamentos")
@@ -615,23 +560,20 @@ export default function AgendamentoEquipePage() {
         if (deleteError) throw deleteError;
       }
 
-      // Atualiza pelo ID estável; novas linhas recebem UUID no cliente. Assim,
-      // tarefas inalteradas não são apagadas e previsões promovidas mantêm o ID.
-      const syncFields = [
-        "data", "hora_inicio", "hora_fim", "colaborador_id", "colaborador_nome",
-        "cliente", "descricao", "status", "origem", "gc_os_codigo", "gc_orcamento_codigo",
-      ] as const;
-      const equalValue = (value: unknown) => value == null ? "" : String(value);
+      // auvo_task_id é a identidade estável. Mudança de data/técnico atualiza o
+      // mesmo UUID; campo omitido preserva o último valor conhecido.
       const upsertRows = linhas.flatMap((line) => {
-        const existing = existingByKey.get(taskKey(line));
-        const changed = !existing || syncFields.some((field) =>
-          equalValue((existing as any)[field]) !== equalValue(line[field]),
-        );
-        if (!changed) return [];
-        return [{
+        const existing = existingByTaskId.get(taskIdKey(line));
+        const merged = mergeAgendaTaskSnapshot(existing, {
           ...line,
           id: existing?.id ?? crypto.randomUUID(),
-        }];
+        });
+        if (!agendaTaskSnapshotChanged(existing, merged)) return [];
+        return [Object.fromEntries([
+          ["id", merged.id],
+          ["auvo_task_id", merged.auvo_task_id],
+          ...AGENDA_TASK_SYNC_FIELDS.map((field) => [field, merged[field]]),
+        ])];
       });
       for (let i = 0; i < upsertRows.length; i += 500) {
         const { error: upsertError } = await supabase
@@ -824,6 +766,13 @@ export default function AgendamentoEquipePage() {
       </header>
 
       <div className="flex-1 overflow-auto p-6 space-y-8">
+        <div className="flex flex-wrap items-center gap-2 text-[11px]" aria-label="Legenda dos status da agenda">
+          <span className="font-semibold text-muted-foreground uppercase">Legenda:</span>
+          <span className="rounded border border-green-300 bg-green-100 px-2 py-1 font-semibold text-green-800">Finalizada sem pendência</span>
+          <span className="rounded border border-amber-500 bg-amber-200 px-2 py-1 font-semibold text-amber-950">Pausada</span>
+          <span className="rounded border border-red-300 bg-red-100 px-2 py-1 font-semibold text-red-800">Atrasada há mais de 2h</span>
+          <span className="rounded border bg-card px-2 py-1 text-muted-foreground">Demais: cor do cliente</span>
+        </div>
         {carregando ? (
           <Skeleton className="h-96 w-full" />
         ) : (

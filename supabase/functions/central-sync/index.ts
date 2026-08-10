@@ -2142,36 +2142,11 @@ async function runCentralSync(body: CentralSyncBody = {}) {
       console.log(`[central-sync] Auvo fetch iniciado em paralelo: ${startDate} → ${endDate}`);
     }
 
-    // Remove vínculos antigos/duplicados de OS que não aparecem mais pelo campo 73343.
-    // A chave válida é sempre tarefa Auvo + OS GC vinda de gcOsResult.byTaskIdAll (somente 73343).
-    const validOsTaskKeys = new Set<string>();
-    for (const [taskId, osList] of Object.entries(gcOsByTaskIdAll)) {
-      for (const osPayload of osList as any[]) {
-        if (taskId && osPayload?.gc_os_id) validOsTaskKeys.add(`${taskId}::${String(osPayload.gc_os_id)}`);
-      }
-    }
-    const fetchedOsIds = [...new Set(Object.values(gcOsByCodigo).map((os: any) => String(os?.gc_os_id || "")).filter(Boolean))];
-    let staleOsLinksDeleted = 0;
-    for (let i = 0; i < fetchedOsIds.length; i += 100) {
-      const batchIds = fetchedOsIds.slice(i, i + 100);
-      const { data: linkedRows } = await sbClient
-        .from("tarefas_central")
-        .select("mirror_key, auvo_task_id, gc_os_id")
-        .in("gc_os_id", batchIds);
-      const staleKeys = (linkedRows || [])
-        .filter((row: any) => !validOsTaskKeys.has(`${String(row.auvo_task_id)}::${String(row.gc_os_id)}`))
-        .map((row: any) => String(row.mirror_key || ""))
-        .filter(Boolean);
-      if (staleKeys.length === 0) continue;
-      const { count } = await sbClient
-        .from("tarefas_central")
-        .delete({ count: "exact" })
-        .in("mirror_key", staleKeys);
-      staleOsLinksDeleted += count || 0;
-    }
-    if (staleOsLinksDeleted > 0) {
-      console.log(`[central-sync] Removidos ${staleOsLinksDeleted} vínculos de OS inválidos (não-73343)`);
-    }
+    // O retorno do GC também pode ser parcial. Nunca apagamos a linha inteira
+    // tarefa + OS por ausência do vínculo em uma rodada: isso transformava o
+    // card em uma OS isolada e eliminava a referência estável da tarefa Auvo.
+    // Alterações explícitas de dados/status continuam sendo aplicadas abaixo.
+    const staleOsLinksDeleted = 0;
 
     const isGcSolicitadasOnly = situacaoIds.length > 0;
     let gcFirstUpserted = 0;
@@ -3025,6 +3000,9 @@ async function runCentralSync(body: CentralSyncBody = {}) {
       gc_os_data: string | null;
       gc_os_data_saida: string | null;
       gc_os_link: string | null;
+      gc_os_link_cobranca: string | null;
+      gc_os_tarefa_exec: string | null;
+      gc_os_tarefa_os: string | null;
       gc_orcamento_id: string | null;
       gc_orcamento_codigo: string | null;
       gc_orc_cliente: string | null;
@@ -3044,11 +3022,12 @@ async function runCentralSync(body: CentralSyncBody = {}) {
       const batch = rowTaskIds.slice(i, i + 200);
       const { data: dbRows } = await sbClient
         .from("tarefas_central")
-        .select("auvo_task_id, equipamento_nome, equipamento_id_serie, gc_os_id, gc_os_codigo, gc_os_cliente, gc_os_situacao, gc_os_situacao_id, gc_os_cor_situacao, gc_os_valor_total, gc_os_vendedor, gc_os_data, gc_os_data_saida, gc_os_link, gc_orcamento_id, gc_orcamento_codigo, gc_orc_cliente, gc_orc_situacao, gc_orc_situacao_id, gc_orc_cor_situacao, gc_orc_valor_total, gc_orc_vendedor, gc_orc_data, gc_orc_link, os_realizada, orcamento_realizado")
-        .in("auvo_task_id", batch);
+        .select("auvo_task_id, equipamento_nome, equipamento_id_serie, gc_os_id, gc_os_codigo, gc_os_cliente, gc_os_situacao, gc_os_situacao_id, gc_os_cor_situacao, gc_os_valor_total, gc_os_vendedor, gc_os_data, gc_os_data_saida, gc_os_link, gc_os_link_cobranca, gc_os_tarefa_exec, gc_os_tarefa_os, gc_orcamento_id, gc_orcamento_codigo, gc_orc_cliente, gc_orc_situacao, gc_orc_situacao_id, gc_orc_cor_situacao, gc_orc_valor_total, gc_orc_vendedor, gc_orc_data, gc_orc_link, os_realizada, orcamento_realizado")
+        .in("auvo_task_id", batch)
+        .order("atualizado_em", { ascending: false });
 
       for (const r of dbRows || []) {
-        existingTaskMap[r.auvo_task_id] = {
+        const candidate: ExistingTaskData = {
           equipamento_nome: r.equipamento_nome || null,
           equipamento_id_serie: r.equipamento_id_serie || null,
           gc_os_id: r.gc_os_id || null,
@@ -3062,6 +3041,9 @@ async function runCentralSync(body: CentralSyncBody = {}) {
           gc_os_data: r.gc_os_data || null,
           gc_os_data_saida: r.gc_os_data_saida || null,
           gc_os_link: r.gc_os_link || null,
+          gc_os_link_cobranca: r.gc_os_link_cobranca || null,
+          gc_os_tarefa_exec: r.gc_os_tarefa_exec || null,
+          gc_os_tarefa_os: r.gc_os_tarefa_os || null,
           gc_orcamento_id: r.gc_orcamento_id || null,
           gc_orcamento_codigo: r.gc_orcamento_codigo || null,
           gc_orc_cliente: r.gc_orc_cliente || null,
@@ -3075,6 +3057,14 @@ async function runCentralSync(body: CentralSyncBody = {}) {
           os_realizada: r.os_realizada ?? null,
           orcamento_realizado: r.orcamento_realizado ?? null,
         };
+        const current = existingTaskMap[r.auvo_task_id];
+        const currentLinks = Number(!!current?.gc_os_id) + Number(!!current?.gc_orcamento_id);
+        const candidateLinks = Number(!!candidate.gc_os_id) + Number(!!candidate.gc_orcamento_id);
+        // O resultado vem do mais novo para o mais antigo. Só trocamos o mais
+        // novo quando uma linha antiga conserva mais referências de documento.
+        if (!current || candidateLinks > currentLinks) {
+          existingTaskMap[r.auvo_task_id] = candidate;
+        }
       }
     }
 
@@ -3086,9 +3076,25 @@ async function runCentralSync(body: CentralSyncBody = {}) {
       if (!row.equipamento_nome && existing.equipamento_nome) row.equipamento_nome = existing.equipamento_nome;
       if (!row.equipamento_id_serie && existing.equipamento_id_serie) row.equipamento_id_serie = existing.equipamento_id_serie;
 
-      // Não preservar OS antiga quando a sync atual não encontrou 73343 para esta tarefa.
-      // Isso evita ressuscitar vínculo contaminado pelo 73344 (TAREFA EXECUÇÃO).
-      if (row.gc_os_id && (row.gc_os_valor_total === null || row.gc_os_valor_total === undefined) && existing.gc_os_valor_total !== null) {
+      // Ausência na rodada não é alteração. Mantemos o último vínculo completo
+      // tarefa ↔ OS e só o substituímos quando a leitura atual trouxer outro.
+      if (!row.gc_os_id && existing.gc_os_id) {
+        row.gc_os_id = existing.gc_os_id;
+        row.gc_os_codigo = existing.gc_os_codigo;
+        row.gc_os_cliente = existing.gc_os_cliente;
+        row.gc_os_situacao = existing.gc_os_situacao;
+        row.gc_os_situacao_id = existing.gc_os_situacao_id;
+        row.gc_os_cor_situacao = existing.gc_os_cor_situacao;
+        row.gc_os_valor_total = existing.gc_os_valor_total;
+        row.gc_os_vendedor = existing.gc_os_vendedor;
+        row.gc_os_data = existing.gc_os_data;
+        row.gc_os_data_saida = existing.gc_os_data_saida;
+        row.gc_os_link = existing.gc_os_link;
+        row.gc_os_link_cobranca = existing.gc_os_link_cobranca;
+        row.gc_os_tarefa_exec = existing.gc_os_tarefa_exec;
+        row.gc_os_tarefa_os = existing.gc_os_tarefa_os;
+        row.os_realizada = existing.os_realizada ?? true;
+      } else if (row.gc_os_id && (row.gc_os_valor_total === null || row.gc_os_valor_total === undefined) && existing.gc_os_valor_total !== null) {
         row.gc_os_valor_total = existing.gc_os_valor_total;
       }
 
@@ -3276,56 +3282,10 @@ async function runCentralSync(body: CentralSyncBody = {}) {
 
     console.log(`[central-sync] Concluído: ${upserted} upserted, ${errors} erros, ${deleted || 0} removidos (> 6 meses)`);
 
-    // Mirror Auvo: remover tarefas do período que não voltaram mais do Auvo
-    // Só executa se o Auvo respondeu (length > 0) e somente apaga linhas SEM vínculo GC
-    // (gc_os_id e gc_orcamento_id nulos) — GC-only nunca é removida por este passo.
-    let ghostsDeleted = 0;
-    try {
-      if (auvoTasks.length > 0) {
-        const auvoIdSet = new Set(auvoTasks.map((t: any) => String(t?.taskID ?? t?.taskId ?? t?.id ?? "")).filter(Boolean));
-
-        // Carrega rows do período (Auvo-only) para comparar
-        const periodRows: { mirror_key: string; auvo_task_id: string }[] = [];
-        for (let from = 0; ; from += 1000) {
-          const { data: chunk, error: chunkErr } = await sbClient
-            .from("tarefas_central")
-            .select("mirror_key, auvo_task_id, gc_os_id, gc_orcamento_id")
-            .gte("data_tarefa", startDate)
-            .lte("data_tarefa", endDate)
-            .range(from, from + 999);
-          if (chunkErr || !chunk || chunk.length === 0) break;
-          for (const row of chunk as any[]) {
-            if (!row?.auvo_task_id) continue;
-            if (row.gc_os_id || row.gc_orcamento_id) continue; // preserva qualquer linha com vínculo GC
-            if (!auvoIdSet.has(String(row.auvo_task_id))) {
-              periodRows.push({ mirror_key: String(row.mirror_key), auvo_task_id: String(row.auvo_task_id) });
-            }
-          }
-          if (chunk.length < 1000) break;
-        }
-
-        // Apaga em batches por mirror_key
-        for (let i = 0; i < periodRows.length; i += 200) {
-          const batchKeys = periodRows.slice(i, i + 200).map((r) => r.mirror_key);
-          const { count: delCount, error: delErr } = await sbClient
-            .from("tarefas_central")
-            .delete({ count: "exact" })
-            .in("mirror_key", batchKeys);
-          if (delErr) {
-            console.warn(`[central-sync] mirror-delete erro:`, delErr.message);
-          } else {
-            ghostsDeleted += delCount || 0;
-          }
-        }
-        if (ghostsDeleted > 0) {
-          console.log(`[central-sync] Mirror Auvo: removidas ${ghostsDeleted} tarefas Auvo-only que não existem mais (período ${startDate}..${endDate})`);
-        }
-      } else {
-        console.warn(`[central-sync] Mirror Auvo pulado: Auvo retornou 0 tarefas (não vamos apagar nada por segurança)`);
-      }
-    } catch (mirrorErr) {
-      console.warn(`[central-sync] Mirror Auvo falhou:`, (mirrorErr as Error).message);
-    }
+    // Ausência em uma listagem não prova exclusão: paginação, janela, filtro ou
+    // instabilidade podem omitir tarefas válidas. O espelho é incremental e
+    // preserva o último estado conhecido até uma atualização explícita.
+    const ghostsDeleted = 0;
 
     const pending = (globalThis as any).__centralSyncPending || { os_individuais: 0, lookups_auvo: 0 };
     console.log(`[central-sync] Pendentes para próximo ciclo: OS individuais=${pending.os_individuais}, lookups Auvo=${pending.lookups_auvo}`);
