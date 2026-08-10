@@ -234,9 +234,21 @@ export default function TarefaAuvoDetalheDialog({ taskId, onOpenChange, onEdit }
                       ))}
                     </div>
                   )}
-                </div>
-              </div>
-            )}
+              {tarefa && (
+                <Button 
+                  size="sm" 
+                  variant="ghost" 
+                  onClick={() => syncMutation.mutate()} 
+                  disabled={syncMutation.isPending}
+                  className="gap-1 text-xs text-muted-foreground ml-auto"
+                >
+                  <RefreshCw className={cn("h-3 w-3", syncMutation.isPending && "animate-spin")} />
+                  Atualizar dados
+                </Button>
+              )}
+            </div>
+          </div>
+        )}
 
             <div className="flex flex-wrap gap-2">
               {taskId && (
