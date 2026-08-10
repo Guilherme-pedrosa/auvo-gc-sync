@@ -75,12 +75,11 @@ const corCliente = (texto: string, cidade?: string | null) => {
   if (t.startsWith("OFICINA")) return "bg-slate-200 text-slate-800";
 
   // 1. Cor baseada na cidade (para agrupar tons parecidos)
+  // Se não houver cidade, tratamos como se fosse uma cidade única para agrupar clientes sem info
+  const cid = (cidade || "DESCONHECIDO").trim().toUpperCase();
   let cidadeHash = 0;
-  if (cidade) {
-    const c = cidade.trim().toUpperCase();
-    for (let i = 0; i < c.length; i++) {
-      cidadeHash = c.charCodeAt(i) + ((cidadeHash << 5) - cidadeHash);
-    }
+  for (let i = 0; i < cid.length; i++) {
+    cidadeHash = cid.charCodeAt(i) + ((cidadeHash << 5) - cidadeHash);
   }
 
   // 2. Cor baseada no cliente (para ser único/consistente)
@@ -89,10 +88,12 @@ const corCliente = (texto: string, cidade?: string | null) => {
     clienteHash = t.charCodeAt(i) + ((clienteHash << 5) - clienteHash);
   }
 
-  // Se houver cidade, usamos o hash da cidade como base e o hash do cliente para uma pequena variação
-  const colorIndex = cidade 
-    ? (Math.abs(cidadeHash) + Math.abs(clienteHash % 3)) % PALETA.length
-    : Math.abs(clienteHash) % PALETA.length;
+  // Mapeamos a cidade para um índice da paleta
+  // E usamos o hash do cliente para uma pequena variação dentro desse índice (+0, +1, ou +2)
+  // Isso garante que clientes da mesma cidade fiquem "perto" na paleta
+  const baseIndex = Math.abs(cidadeHash) % PALETA.length;
+  const variation = Math.abs(clienteHash) % 3;
+  const colorIndex = (baseIndex + variation) % PALETA.length;
 
   return PALETA[colorIndex];
 };
