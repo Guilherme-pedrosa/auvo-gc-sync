@@ -55,7 +55,7 @@ async function fetchChegadas(): Promise<ChegadaItem[]> {
     if (orcCodigos.length > 0 || osCodigos.length > 0) {
       const { data: previsoes } = await supabase
         .from("agenda_agendamentos")
-        .select("data, colaborador_nome, gc_orcamento_codigo, gc_os_codigo")
+        .select("data, colaborador_nome, colaborador_id, gc_orcamento_codigo, gc_os_codigo, previsao_detalhes, hora_inicio, hora_fim")
         .or(`gc_orcamento_codigo.in.(${orcCodigos.join(",")}),gc_os_codigo.in.(${osCodigos.join(",")})`)
         .eq("previsao_continuidade", true);
 
