@@ -365,21 +365,21 @@ export default function AgendamentoPage() {
               {i.previsao_data ? "Alterar previsão" : "Agendar execução (Previsão)"}
             </Button>
             {i.documento_link && (
-            <Button size="icon" variant="ghost" className="h-7 w-7" asChild title="Editar no GestãoClick">
-              <a href={i.documento_link.replace("/visualizar/", "/editar/")} target="_blank" rel="noreferrer">
-                <ExternalLink className="h-3 w-3" />
-              </a>
-            </Button>
-          )}
+              <Button size="icon" variant="ghost" className="h-7 w-7" asChild title="Editar no GestãoClick">
+                <a href={i.documento_link.replace("/visualizar/", "/editar/")} target="_blank" rel="noreferrer">
+                  <ExternalLink className="h-3 w-3" />
+                </a>
+              </Button>
+            )}
 
-          {ehPedido && i.gc_link && i.compra_codigo && (
-            <Button size="icon" variant="ghost" className="h-7 w-7" asChild title="Editar no GestãoClick">
-              <a href={i.gc_link.replace("/visualizar/", "/editar/")} target="_blank" rel="noreferrer">
-                <PackageSearch className="h-3 w-3" />
-              </a>
-            </Button>
-          )}
-
+            {ehPedido && i.gc_link && i.compra_codigo && (
+              <Button size="icon" variant="ghost" className="h-7 w-7" asChild title="Editar no GestãoClick">
+                <a href={i.gc_link.replace("/visualizar/", "/editar/")} target="_blank" rel="noreferrer">
+                  <PackageSearch className="h-3 w-3" />
+                </a>
+              </Button>
+            )}
+          </div>
         </div>
       </div>
     );
