@@ -195,6 +195,37 @@ export default function TarefaAuvoDetalheDialog({ taskId, onOpenChange, onEdit }
     tarefaOrigem: vinculoOs?.auvo_task_id || null,
   };
 
+  const orcamentoId = tarefa?.gc_orcamento_id || vinculoOs?.gc_orcamento_id || null;
+  const vendedorGc = tarefa?.gc_os_vendedor || vinculoOs?.gc_os_vendedor || tarefa?.gc_orc_vendedor || null;
+  const dataAberturaGc = tarefa?.gc_os_data || vinculoOs?.gc_os_data || tarefa?.gc_orc_data || null;
+
+  // Detalhe financeiro completo do documento no GestãoClick (mesmo padrão do Controle OS)
+  const docEndpoint = os.id
+    ? `/api/ordens_servicos/${os.id}`
+    : orcamentoId
+      ? `/api/orcamentos/${orcamentoId}`
+      : null;
+
+  const { data: gcDoc, isLoading: gcDocLoading } = useQuery({
+    queryKey: ["tarefa_gc_doc_detalhe", docEndpoint],
+    enabled: !!docEndpoint,
+    staleTime: 1000 * 60 * 5,
+    queryFn: async () => {
+      const { data, error } = await supabase.functions.invoke("gc-proxy", {
+        body: { endpoint: docEndpoint, method: "GET" },
+      });
+      if (error) return null;
+      return (data?.data?.data ?? data?.data ?? null) as Record<string, any> | null;
+    },
+  });
+
+  const gcProdutos: any[] = (gcDoc?.produtos || []).map((p: any) => p?.produto || p);
+  const gcServicos: any[] = (gcDoc?.servicos || []).map((s: any) => s?.servico || s);
+  const gcValorProdutos = Number(gcDoc?.valor_produtos || gcDoc?.total_produtos || 0);
+  const gcValorServicos = Number(gcDoc?.valor_servicos || gcDoc?.total_servicos || 0);
+  const gcValorDesconto = Number(gcDoc?.desconto || gcDoc?.valor_desconto || 0);
+  const gcValorTotal = Number(gcDoc?.valor_total || os.valor || 0);
+
   const respostas: any[] = Array.isArray(tarefa?.questionario_respostas)
     ? (tarefa!.questionario_respostas as any[])
     : [];
