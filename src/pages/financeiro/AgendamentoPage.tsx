@@ -3,7 +3,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import {
   AlertTriangle, CalendarClock, ChevronLeft, ChevronRight, ExternalLink, Filter, Loader2,
-  PackageSearch, RefreshCw, Search,
+  Package, PackageSearch, RefreshCw, Search,
 } from "lucide-react";
 import {
   Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle,
@@ -305,6 +305,11 @@ export default function AgendamentoPage() {
             <p className="truncate text-[11px] text-muted-foreground mt-0.5">
               {i.cliente || "Cliente não identificado"}
             </p>
+            {i.equipamento && (
+              <p className="truncate text-[10px] font-medium text-amber-700 bg-amber-50 px-1 rounded mt-0.5 border border-amber-100 w-fit">
+                {i.equipamento}
+              </p>
+            )}
           </div>
           <span className="shrink-0 text-xs font-semibold tabular-nums">{formatBRL(i.documento_valor || i.valor_total)}</span>
         </div>
@@ -363,6 +368,12 @@ export default function AgendamentoPage() {
         </div>
 
         <div className="mt-2 flex flex-col gap-2">
+          {i.equipamento && (
+             <div className="flex items-center gap-1.5 rounded border border-amber-200 bg-amber-50 p-1.5 text-[10px] text-amber-800">
+               <Package className="h-3 w-3 shrink-0" />
+               <span className="font-medium truncate">{i.equipamento}</span>
+             </div>
+          )}
           {osJaLancada && (
             <div className="flex items-start gap-2 rounded border border-destructive/40 bg-destructive/10 p-1.5 text-[10px] text-destructive">
               <AlertTriangle className="mt-0.5 h-3 w-3 shrink-0" />
