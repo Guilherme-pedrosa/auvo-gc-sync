@@ -317,7 +317,7 @@ export default function AgendamentoPage() {
       );
     }
     return (
-      <div key={chave} className="rounded-md border border-border bg-card p-2.5">
+      <div key={chave} className="flex flex-col rounded-md border border-border bg-card p-2.5">
         <div className="flex items-start justify-between gap-2">
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-1.5">
