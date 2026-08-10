@@ -815,7 +815,7 @@ export default function AgendamentoEquipePage() {
                   </Button>
                 </div>
               </div>
-              <div className="overflow-x-auto border rounded-md">
+              <div className="overflow-x-auto border rounded-md max-h-[400px] overflow-y-auto">
                 <table className="w-full border-collapse">
                   <thead>
                     <tr className="bg-muted">
