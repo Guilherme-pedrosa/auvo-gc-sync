@@ -1,11 +1,20 @@
+import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { cn } from "@/lib/utils";
-import { ExternalLink, MapPin, Navigation, ClipboardList, Package, Edit, FileText, RefreshCw } from "lucide-react";
+import { ExternalLink, MapPin, Navigation, ClipboardList, Package, Edit, FileText, RefreshCw, ArrowRightLeft } from "lucide-react";
+import { RECONCILIATION_OS_SITUATIONS } from "@/lib/osOpenStatuses";
 import { toast } from "sonner";
 
 const formatCurrency = (v: number) =>
@@ -19,6 +28,7 @@ interface Props {
 
 export default function TarefaAuvoDetalheDialog({ taskId, onOpenChange, onEdit }: Props) {
   const qc = useQueryClient();
+  const [novaSituacao, setNovaSituacao] = useState("");
   const { data: tarefa, isLoading, isError, refetch } = useQuery({
     queryKey: ["tarefa_central_detalhe", taskId],
     enabled: !!taskId,
@@ -51,6 +61,43 @@ export default function TarefaAuvoDetalheDialog({ taskId, onOpenChange, onEdit }
     onError: (err) => {
       console.error("Erro ao sincronizar tarefa:", err);
       toast.error("Erro ao sincronizar dados da tarefa.");
+    },
+  });
+
+  const statusMutation = useMutation({
+    mutationFn: async (situacaoId: string) => {
+      const { data, error } = await supabase.functions.invoke("auvo-gc-sync", {
+        body: {
+          action: "revert_os",
+          gc_os_id: tarefa?.gc_os_id,
+          gc_os_codigo: tarefa?.gc_os_codigo,
+          auvo_task_id: taskId,
+          situacao_id_antes: situacaoId,
+        },
+      });
+      if (error) throw error;
+      if (!(data as any)?.success) {
+        throw new Error(
+          JSON.stringify((data as any)?.body || (data as any)?.error || data),
+        );
+      }
+      return data as any;
+    },
+    onSuccess: (data, situacaoId) => {
+      const label =
+        RECONCILIATION_OS_SITUATIONS.find((s) => s.id === situacaoId)?.label || situacaoId;
+      toast.success(`OS ${tarefa?.gc_os_codigo || ""} → ${label}`);
+      if (data?.mirror_error) {
+        toast.warning(
+          "A OS foi alterada no GestãoClick, mas o espelho local será corrigido na próxima sincronização.",
+        );
+      }
+      setNovaSituacao("");
+      refetch();
+      qc.invalidateQueries({ queryKey: ["agenda_semana"] });
+    },
+    onError: (err: any) => {
+      toast.error(`Não foi possível alterar a situação: ${err?.message || err}`);
     },
   });
 
@@ -178,6 +225,64 @@ export default function TarefaAuvoDetalheDialog({ taskId, onOpenChange, onEdit }
                 </div>
               )}
             </div>
+
+            {tarefa.gc_os_id && (
+              <div className="border rounded-md">
+                <div className="flex items-center gap-2 px-3 py-2 bg-muted/50 border-b">
+                  <ArrowRightLeft className="h-4 w-4 text-muted-foreground" />
+                  <span className="text-sm font-semibold">Situação da OS no GestãoClick</span>
+                </div>
+                <div className="p-3 space-y-2">
+                  <p className="text-xs text-muted-foreground">
+                    Situação atual:{" "}
+                    <Badge
+                      variant="outline"
+                      className="text-[10px] ml-1"
+                      style={{
+                        borderColor: tarefa.gc_os_cor_situacao || undefined,
+                        color: tarefa.gc_os_cor_situacao || undefined,
+                      }}
+                    >
+                      {tarefa.gc_os_situacao || "—"}
+                    </Badge>
+                  </p>
+                  <div className="flex flex-col sm:flex-row gap-2">
+                    <Select
+                      value={novaSituacao}
+                      onValueChange={setNovaSituacao}
+                      disabled={statusMutation.isPending}
+                    >
+                      <SelectTrigger className="h-9 text-xs flex-1">
+                        <SelectValue placeholder="Selecione a nova situação..." />
+                      </SelectTrigger>
+                      <SelectContent className="bg-popover z-50">
+                        {RECONCILIATION_OS_SITUATIONS.map((s) => (
+                          <SelectItem key={s.id} value={s.id} className="text-xs">
+                            {s.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <Button
+                      size="sm"
+                      className="gap-2"
+                      disabled={!novaSituacao || statusMutation.isPending}
+                      onClick={() => statusMutation.mutate(novaSituacao)}
+                    >
+                      {statusMutation.isPending ? (
+                        <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+                      ) : (
+                        <ArrowRightLeft className="h-3.5 w-3.5" />
+                      )}
+                      Alterar situação
+                    </Button>
+                  </div>
+                  <p className="text-[10px] text-muted-foreground">
+                    A alteração é aplicada diretamente na OS {tarefa.gc_os_codigo || ""} do GestãoClick.
+                  </p>
+                </div>
+              </div>
+            )}
 
             {tarefa.endereco && (
               <div className="flex items-start gap-2 bg-muted/50 rounded-md p-3">
