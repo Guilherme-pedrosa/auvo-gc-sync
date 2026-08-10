@@ -13,6 +13,7 @@ import { Loader2, Plus, Calendar, Edit, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { Database } from "@/integrations/supabase/types";
 
+// @ts-ignore
 type ContratoVisitaConfig = Database['public']['Tables']['contratos_visitas_config']['Row'];
 
 export default function VisitasContratuaisPage() {
