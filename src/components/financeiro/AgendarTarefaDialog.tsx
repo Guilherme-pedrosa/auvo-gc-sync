@@ -227,21 +227,35 @@ export default function AgendarTarefaDialog({ open, onOpenChange, alvo, onSaved 
         origem: "MANUAL"
       };
 
-      // Se já tiver uma previsão (previsao_data), atualizamos em vez de inserir
-      if (alvo.data_tarefa && (alvo.gc_orcamento_codigo || alvo.gc_os_codigo)) {
+      // Procura previsão existente para este documento (independente da data já salva)
+      let existenteId: string | null = null;
+      if (alvo.gc_orcamento_codigo || alvo.gc_os_codigo) {
+        let q = supabase
+          .from("agenda_agendamentos")
+          .select("id")
+          .eq("previsao_continuidade", true)
+          .limit(1);
+        q = alvo.gc_orcamento_codigo
+          ? q.eq("gc_orcamento_codigo", alvo.gc_orcamento_codigo)
+          : q.eq("gc_os_codigo", alvo.gc_os_codigo as string);
+        const { data: found, error: findErr } = await q;
+        if (findErr) throw findErr;
+        existenteId = found?.[0]?.id ?? null;
+      }
+
+      if (existenteId) {
         const { error } = await supabase
           .from("agenda_agendamentos")
           .update(payload)
-          .match({
-            data: alvo.data_tarefa.slice(0, 10),
-            gc_orcamento_codigo: alvo.gc_orcamento_codigo,
-            gc_os_codigo: alvo.gc_os_codigo,
-            previsao_continuidade: true
-          });
+          .eq("id", existenteId);
         if (error) throw error;
       } else {
-        const { error } = await supabase.from("agenda_agendamentos").insert(payload as any);
+        const { data: inserted, error } = await supabase
+          .from("agenda_agendamentos")
+          .insert(payload as any)
+          .select("id");
         if (error) throw error;
+        if (!inserted?.length) throw new Error("A previsão não foi salva (nenhuma linha gravada).");
       }
 
       toast.success(`Previsão criada na agenda para ${dateISO} às ${hora}`);
