@@ -228,14 +228,20 @@ export default function AgendarTarefaDialog({ open, onOpenChange, alvo, onSaved 
           </div>
         )}
 
-        <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={saving}>
+        <DialogFooter className="gap-2 sm:gap-0">
+          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={saving || savingForecast}>
             Cancelar
           </Button>
-          <Button onClick={handleSave} disabled={saving || !taskId}>
-            {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <CalendarClock className="mr-2 h-4 w-4" />}
-            Agendar no Auvo
-          </Button>
+          <div className="flex flex-col sm:flex-row gap-2">
+            <Button variant="secondary" onClick={handleSaveForecast} disabled={saving || savingForecast}>
+              {savingForecast ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Eye className="mr-2 h-4 w-4" />}
+              Apenas Previsão
+            </Button>
+            <Button onClick={handleSave} disabled={saving || savingForecast || !taskId}>
+              {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <CalendarClock className="mr-2 h-4 w-4" />}
+              Agendar no Auvo
+            </Button>
+          </div>
         </DialogFooter>
       </DialogContent>
     </Dialog>
