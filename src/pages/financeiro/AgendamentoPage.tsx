@@ -264,7 +264,7 @@ export default function AgendamentoPage() {
   };
 
   const previstaFiltrada = useMemo(() => 
-    filterByKanbanSearch(filtrados.filter(i => i.data_chegada), buscaPrevista), 
+    filterByKanbanSearch(filtrados.filter(i => i.data_chegada && ["hoje", "futura"].includes(getChegadaStatus(i.data_chegada))), buscaPrevista), 
     [filtrados, buscaPrevista]
   );
   const atrasadaFiltrada = useMemo(() => 
