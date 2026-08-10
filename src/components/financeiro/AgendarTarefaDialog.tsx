@@ -154,7 +154,7 @@ export default function AgendarTarefaDialog({ open, onOpenChange, alvo, onSaved 
         status: "AGENDADO",
         auvo_task_id: taskId,
         gc_os_codigo: alvo.gc_os_codigo,
-        gc_orcamento_codigo: alvo.gc_orcamento_id,
+        gc_orcamento_codigo: alvo.gc_orcamento_codigo,
         previsao_continuidade: true,
         origem: "MANUAL"
       } as any);
