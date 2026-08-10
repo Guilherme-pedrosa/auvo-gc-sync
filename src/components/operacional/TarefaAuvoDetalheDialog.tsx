@@ -219,9 +219,14 @@ export default function TarefaAuvoDetalheDialog({ taskId, onOpenChange, onEdit }
                   </a>
                 </Button>
               )}
-              {(tarefa.auvo_task_url || tarefa.auvo_link) && (
+              {taskId && (
                 <Button size="sm" variant="outline" asChild>
-                  <a href={tarefa.auvo_task_url || tarefa.auvo_link} target="_blank" rel="noopener noreferrer" className="gap-1">
+                  <a
+                    href={`https://app2.auvo.com.br/relatorioTarefas/DetalheTarefa/${taskId}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="gap-1"
+                  >
                     <FileText className="h-3.5 w-3.5" /> Relatório PDF
                   </a>
                 </Button>
