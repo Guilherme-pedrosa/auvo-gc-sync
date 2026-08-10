@@ -657,7 +657,7 @@ export default function AgendamentoPage() {
           </div>
         </div>
       ) : (
-        <div className="grid grid-cols-1 gap-3 xl:grid-cols-[minmax(0,1fr)_340px] overflow-visible">
+        <div className="flex flex-col gap-3 xl:flex-row overflow-visible">
           <div className="flex flex-col gap-3 pr-1 overflow-visible">
             {/* Calendário */}
             <section className="rounded-lg border border-border bg-card p-3">
