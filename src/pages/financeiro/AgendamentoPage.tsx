@@ -160,7 +160,11 @@ export default function AgendamentoPage() {
       const t = toast.loading("Atualizando orçamentos e pedidos...");
     try {
       console.log("[AgendamentoPage] Forçando atualização manual...");
-      const res = await refetch();
+      const res = await queryClient.fetchQuery({
+        queryKey: ["compras-chegadas"],
+        queryFn: fetchChegadas,
+        staleTime: 0, // Força bypass do cache
+      });
       if (res.error) throw res.error;
       toast.success(`Atualizado: ${res.data?.length ?? 0} documentos`, { id: t });
     } catch (e) {
