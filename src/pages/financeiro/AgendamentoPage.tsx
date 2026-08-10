@@ -256,15 +256,16 @@ export default function AgendamentoPage() {
     const status = getChegadaStatus(i.data_chegada);
     const style = STATUS_STYLE[status];
     const ehPedido = isPedidoCompra(i);
+    const osJaLancada = !ehPedido && Boolean(String(i.os_codigo || "").trim());
     const chave = `${ehPedido ? "pc" : "or"}-${i.compra_id || i.compra_codigo || i.orcamento_id || i.orcamento_codigo || i.vinculo_codigo}`;
     if (compacto) {
       return (
         <span
           key={chave}
           className={cn("block w-full truncate rounded border px-1 py-0.5 text-left text-[10px] leading-tight", style.chip)}
-          title={`${ehPedido ? "PC" : "OR"} ${i.orcamento_codigo || i.vinculo_codigo || i.compra_codigo} · ${i.cliente || i.fornecedor} · ${formatBRL(i.valor_total)}`}
+          title={`${ehPedido ? "PC" : "OR"} ${i.orcamento_codigo || i.vinculo_codigo || i.compra_codigo} · ${i.cliente || i.fornecedor} · ${formatBRL(i.valor_total)}${osJaLancada ? ` · OS já lançada: ${i.os_codigo}` : ""}`}
         >
-          {ehPedido ? "PC" : "OR"} {i.orcamento_codigo || i.vinculo_codigo || i.compra_codigo} · {i.cliente || i.fornecedor}
+          {osJaLancada ? "⚠ " : ""}{ehPedido ? "PC" : "OR"} {i.orcamento_codigo || i.vinculo_codigo || i.compra_codigo} · {i.cliente || i.fornecedor}
         </span>
       );
     }
@@ -346,6 +347,14 @@ export default function AgendamentoPage() {
         </div>
 
         <div className="mt-2 flex flex-col gap-2">
+          {osJaLancada && (
+            <div className="flex items-start gap-2 rounded border border-destructive/40 bg-destructive/10 p-1.5 text-[10px] text-destructive">
+              <AlertTriangle className="mt-0.5 h-3 w-3 shrink-0" />
+              <span>
+                <strong>Atenção: OS já lançada</strong> para este orçamento (OS {i.os_codigo}). Confirme antes de lançar novamente para não duplicar.
+              </span>
+            </div>
+          )}
           {i.previsao_data && (
             <div className="flex items-center gap-2 rounded border border-emerald-200 bg-emerald-50 p-1.5 text-[10px] text-emerald-800">
               <CalendarClock className="h-3 w-3" />
