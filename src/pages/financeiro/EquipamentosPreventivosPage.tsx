@@ -1090,9 +1090,10 @@ export default function EquipamentosPreventivosPage() {
       if (eB) throw eB;
       const pB = dB?.phase2_equipment_tasks;
       const totalRelUpserted = pB?.relationship_rows_upserted || 0;
+      const totalRelDeleted = pB?.relationship_rows_deleted || 0;
       const totalWithEquipLinks = pB?.tasks_with_equipment_links || 0;
       const windowsCovered = pB?.windows_processed || 0;
-      toast.success(`Vínculos: ${totalRelUpserted} relações em ${windowsCovered} janelas (${totalWithEquipLinks} tarefas com equipamento)`);
+      toast.success(`Vínculos: ${totalRelUpserted} atualizados, ${totalRelDeleted} removidos em ${windowsCovered} janelas (${totalWithEquipLinks} tarefas com equipamento)`);
 
       // Janela FUTURA: tarefas agendadas/abertas (não finalizadas) — hoje → +120 dias.
       // Sem esta passada, preventivas já agendadas no Auvo nunca chegam ao banco.
@@ -1112,7 +1113,7 @@ export default function EquipamentosPreventivosPage() {
       });
       if (eF) throw eF;
       const pF = dF?.phase2_equipment_tasks;
-      toast.success(`Agendadas: ${pF?.relationship_rows_upserted || 0} vínculos futuros`);
+      toast.success(`Agendadas: ${pF?.relationship_rows_upserted || 0} atualizadas, ${pF?.relationship_rows_deleted || 0} removidas`);
       await Promise.all([
         refetch(),
         queryClient.invalidateQueries({ queryKey: ["plano-proximas-by-eq"] }),
