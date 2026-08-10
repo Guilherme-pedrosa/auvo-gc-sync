@@ -101,6 +101,7 @@ interface CelulaProps {
   onDragStart: (a: AgendaAgendamento) => void;
   onDrop: () => void;
   colorir?: boolean;
+  clientesInfo?: any[];
 }
 
 function Celula({
