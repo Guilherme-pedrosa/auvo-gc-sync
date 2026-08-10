@@ -61,6 +61,7 @@ type Props = {
     hora?: string;
     horaFim?: string;
     detalhes?: string | null;
+    previsaoId?: string;
   }) => void;
 };
 
@@ -185,6 +186,7 @@ export default function AgendarTarefaDialog({ open, onOpenChange, alvo, onSaved 
         }
       }
 
+      const wasUpdate = Boolean(previsaoId);
       if (previsaoId) {
         const { error } = await supabase
           .from("agenda_agendamentos")
@@ -192,11 +194,17 @@ export default function AgendarTarefaDialog({ open, onOpenChange, alvo, onSaved 
           .eq("id", previsaoId);
         if (error) throw error;
       } else {
-        const { error } = await supabase.from("agenda_agendamentos").insert(payload);
+        const { data: inserted, error } = await supabase
+          .from("agenda_agendamentos")
+          .insert(payload)
+          .select("id")
+          .maybeSingle();
         if (error) throw error;
+        if (!inserted?.id) throw new Error("A previsão não foi salva (nenhuma linha gravada).");
+        previsaoId = inserted.id;
       }
 
-      toast.success(previsaoId ? "Previsão atualizada." : "Previsão criada na agenda da equipe.");
+      toast.success(wasUpdate ? "Previsão atualizada." : "Previsão criada na agenda da equipe.");
       await Promise.all([
         qc.invalidateQueries({ queryKey: ["compras-chegadas"] }),
         qc.invalidateQueries({ queryKey: ["agenda_agendamentos"] }),
@@ -209,6 +217,7 @@ export default function AgendarTarefaDialog({ open, onOpenChange, alvo, onSaved 
         hora,
         horaFim: payload.hora_fim,
         detalhes: payload.previsao_detalhes,
+        previsaoId: previsaoId || undefined,
       });
       onOpenChange(false);
     } catch (error) {
