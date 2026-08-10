@@ -2,6 +2,12 @@
 // Integra lógica de rastreamento inspirada no "WeDo Pick & Pack" para datas de chegada coesas.
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { installGcUsuarioId, gcHeaders } from "../_shared/gc-user.ts";
+import {
+  normalizePartialBudgetCode,
+  pendingProductsFromPickPack,
+  shouldUsePickPackPartialBalance,
+  type PickPackPendingItem,
+} from "../_shared/partial-writeoff-balance.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -12,6 +18,8 @@ const corsHeaders = {
 installGcUsuarioId();
 
 const GC_BASE = "https://api.gestaoclick.com";
+const PICK_PACK_PARTIAL_BALANCE_URL = Deno.env.get("PICK_PACK_PARTIAL_BALANCE_URL")
+  || "https://yfqbhyadogytswelopsl.supabase.co/functions/v1/partial-writeoff-balances";
 
 // O calendário considera exclusivamente estas situações de orçamento.
 const SITUACOES_ORCAMENTOS = [
@@ -132,6 +140,16 @@ function produtosDocumento(doc: any): ProdutoDocumento[] {
     .filter((produto) => produto.nome || produto.produto_id);
 }
 
+function unwrapGcDocument(value: any): any {
+  return value?.Compra
+    ?? value?.Orcamento
+    ?? value?.Pedido
+    ?? value?.Venda
+    ?? value?.OrdemServico
+    ?? value?.ordem_servico
+    ?? value;
+}
+
 async function fetchProductStock(produtoId: string, variacaoId?: string | null): Promise<EstoqueProduto> {
   if (!produtoId) return { estoque: 0, verificado: false };
   for (let attempt = 0; attempt < 3; attempt++) {
@@ -229,9 +247,51 @@ async function fetchDocumentoCompleto(endpoint: string, id: string): Promise<any
     if (!res.ok) return null;
     const json = await res.json().catch(() => null);
     const raw = json?.data ?? json;
-    return raw?.Compra ?? raw?.Orcamento ?? raw?.Pedido ?? raw ?? null;
+    return unwrapGcDocument(raw) ?? null;
   } catch {
     return null;
+  }
+}
+
+type PartialBalanceStatus = "verified" | "not_found" | "unavailable" | "not_applicable";
+type PickPackBalance = {
+  budget_id: string;
+  budget_code: string;
+  operation_status: string;
+  updated_at: string;
+  items: PickPackPendingItem[];
+};
+
+async function fetchPickPackPartialBalances(
+  budgets: { id: string; code: string }[],
+): Promise<{ available: boolean; balances: PickPackBalance[] }> {
+  if (budgets.length === 0) return { available: true, balances: [] };
+  const token = Deno.env.get("PICK_PACK_PARTIAL_BALANCE_TOKEN")?.trim();
+  if (!token) {
+    console.warn("[compras-chegadas] PICK_PACK_PARTIAL_BALANCE_TOKEN não configurado");
+    return { available: false, balances: [] };
+  }
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 8_000);
+  try {
+    const response = await fetch(PICK_PACK_PARTIAL_BALANCE_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "x-internal-token": token },
+      body: JSON.stringify({ budgets }),
+      signal: controller.signal,
+    });
+    const payload = await response.json().catch(() => null);
+    if (!response.ok || payload?.ok !== true || !Array.isArray(payload?.balances)) {
+      console.warn(`[compras-chegadas] saldo do Pick & Pack indisponível: HTTP ${response.status}`);
+      return { available: false, balances: [] };
+    }
+    return { available: true, balances: payload.balances as PickPackBalance[] };
+  } catch (error) {
+    console.warn("[compras-chegadas] falha ao consultar saldo do Pick & Pack", error);
+    return { available: false, balances: [] };
+  } finally {
+    clearTimeout(timeout);
   }
 }
 
@@ -358,10 +418,60 @@ async function handleRequest(req: Request) {
       });
     }
 
+    const partialBudgets = brutos
+      .filter(({ situacao }) => shouldUsePickPackPartialBalance(situacao.grupo))
+      .map(({ doc }) => ({
+        id: String(doc?.id ?? "").trim(),
+        code: String(doc?.codigo ?? "").trim(),
+      }))
+      .filter((budget) => budget.id || budget.code);
+    const pickPackResult = await fetchPickPackPartialBalances(partialBudgets);
+    const balancesById = new Map(
+      pickPackResult.balances
+        .filter((balance) => balance.budget_id)
+        .map((balance) => [String(balance.budget_id).trim(), balance]),
+    );
+    const balancesByCode = new Map(
+      pickPackResult.balances
+        .filter((balance) => balance.budget_code)
+        .map((balance) => [normalizePartialBudgetCode(balance.budget_code), balance]),
+    );
+    const pendingProductsByDocument = new Map<string, ProdutoDocumento[]>();
+    const partialBalanceStatusByDocument = new Map<string, PartialBalanceStatus>();
+    for (const { doc, situacao } of brutos) {
+      const documentKey = String(doc?.id ?? doc?.codigo ?? "");
+      if (!shouldUsePickPackPartialBalance(situacao.grupo)) {
+        pendingProductsByDocument.set(documentKey, produtosDocumento(doc));
+        partialBalanceStatusByDocument.set(documentKey, "not_applicable");
+        continue;
+      }
+
+      const balance = balancesById.get(String(doc?.id ?? "").trim())
+        ?? balancesByCode.get(normalizePartialBudgetCode(doc?.codigo));
+      if (balance) {
+        pendingProductsByDocument.set(
+          documentKey,
+          pendingProductsFromPickPack(produtosDocumento(doc), balance.items),
+        );
+        partialBalanceStatusByDocument.set(documentKey, "verified");
+      } else {
+        // Não volte aos itens originais: isso faria reaparecer uma peça já baixada.
+        pendingProductsByDocument.set(documentKey, []);
+        partialBalanceStatusByDocument.set(
+          documentKey,
+          pickPackResult.available ? "not_found" : "unavailable",
+        );
+      }
+    }
+    console.log(
+      `[compras-chegadas] saldos Pick & Pack: ${pickPackResult.balances.length}/${partialBudgets.length} orçamento(s) localizado(s)`,
+    );
+
     const productReferences = new Map<string, { produto_id: string; variacao_id: string | null }>();
     const openDemandByProduct = new Map<string, { quantidade: number; documentos: Set<string> }>();
     for (const { doc } of brutos) {
-      for (const produto of produtosDocumento(doc)) {
+      const documentKey = String(doc?.id ?? doc?.codigo ?? "");
+      for (const produto of pendingProductsByDocument.get(documentKey) ?? produtosDocumento(doc)) {
         if (!produto.produto_id) continue;
         const key = `${produto.produto_id}::${produto.variacao_id ?? ""}`;
         productReferences.set(key, { produto_id: produto.produto_id, variacao_id: produto.variacao_id });
@@ -464,7 +574,10 @@ async function handleRequest(req: Request) {
         estado: "desconhecido" as const,
         gc_link: "",
       });
-      const produtos = produtosDocumento(doc).map((product) => {
+      const documentKey = String(doc?.id ?? doc?.codigo ?? "");
+      const produtosPendentes = pendingProductsByDocument.get(documentKey) ?? produtosDocumento(doc);
+      const partialBalanceStatus = partialBalanceStatusByDocument.get(documentKey) ?? "not_applicable";
+      const produtos = produtosPendentes.map((product) => {
         const key = `${product.produto_id}::${product.variacao_id ?? ""}`;
         const stock = stockByProduct.get(key) ?? { estoque: 0, verificado: false };
         const openDemand = openDemandByProduct.get(key) ?? { quantidade: product.quantidade, documentos: new Set<string>() };
@@ -486,8 +599,12 @@ async function handleRequest(req: Request) {
         };
       });
 
-      const estoqueVerificado = produtos.length > 0 && produtos.every((product) => product.estoque_verificado);
-      const todosEmEstoque = estoqueVerificado && produtos.every((product) => product.deficit <= 0 && !product.conflito_estoque);
+      const saldoParcialVerificado = partialBalanceStatus === "verified";
+      const semSaldoParcialConfiavel = shouldUsePickPackPartialBalance(situacao.grupo) && !saldoParcialVerificado;
+      const estoqueVerificado = !semSaldoParcialConfiavel
+        && (produtos.length === 0 ? saldoParcialVerificado : produtos.every((product) => product.estoque_verificado));
+      const todosEmEstoque = estoqueVerificado
+        && produtos.every((product) => product.deficit <= 0 && !product.conflito_estoque);
       const pecasEmFalta = produtos.filter((product) => !product.estoque_verificado || product.deficit > 0 || product.conflito_estoque);
 
       // O calendário deve refletir o prazo mais distante entre todos os lotes abertos
@@ -515,7 +632,11 @@ async function handleRequest(req: Request) {
         ? today
         : (proximaReposicao ?? maiorDataPedido ?? dataChegadaOrcamento);
       const semPrevisaoConfiavel = !todosEmEstoque && !dataChegada;
-      const motivoBloqueio = todosEmEstoque
+      const motivoBloqueio = semSaldoParcialConfiavel
+        ? partialBalanceStatus === "not_found"
+          ? "O saldo desta baixa parcial não foi localizado no Pick & Pack."
+          : "Não foi possível consultar agora o saldo da baixa parcial no Pick & Pack."
+        : todosEmEstoque
         ? null
         : !estoqueVerificado
           ? "Não foi possível confirmar o saldo de todas as peças no GestãoClick."
@@ -533,6 +654,7 @@ async function handleRequest(req: Request) {
         pedidos_detalhes: detalhes,
         pedidos_todos_chegaram: todosChegaram,
         pedidos_sem_previsao: semPrevisaoConfiavel,
+        saldo_baixa_parcial_status: partialBalanceStatus,
         estoque_verificado: estoqueVerificado,
         todos_em_estoque: todosEmEstoque,
         pode_agendar: todosEmEstoque,
