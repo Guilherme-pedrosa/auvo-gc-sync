@@ -359,7 +359,7 @@ export default function AgendamentoPage() {
               <p className="truncate text-xs font-bold text-primary">
                 {i.os_codigo && i.auvo_task_id ? (
                   <a
-                    href={`https://app.auvo.com.br/tarefas/editar/${i.auvo_task_id}`}
+                    href={`https://app2.auvo.com.br/gerenciarTarefas/tarefa/${i.auvo_task_id}`}
                     target="_blank"
                     rel="noreferrer"
                     className="hover:underline flex items-center gap-1"
@@ -528,7 +528,7 @@ export default function AgendamentoPage() {
             
             {i.auvo_task_id && (
               <Button size="icon" variant="ghost" className="h-7 w-7" asChild title="Relatório PDF (Auvo)">
-                <a href={`https://app.auvo.com.br/tarefas/relatorio-pdf/${i.auvo_task_id}`} target="_blank" rel="noreferrer">
+                <a href={`https://app2.auvo.com.br/relatorioTarefas/DetalheTarefa/${i.auvo_task_id}`} target="_blank" rel="noreferrer">
                   <FileText className="h-3 w-3" />
                 </a>
               </Button>
