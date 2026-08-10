@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
-import { useColaboradores } from "@/hooks/rh/useRh";
+import { useColaboradores, useRhClientes } from "@/hooks/rh/useRh";
 import {
   Dialog,
   DialogContent,
@@ -48,24 +48,47 @@ const isTecnico = (c: { cargo?: string | null; funcao?: string | null }) => {
 };
 
 const PALETA = [
-  "bg-blue-100 text-blue-900",
-  "bg-emerald-100 text-emerald-900",
-  "bg-amber-100 text-amber-900",
-  "bg-rose-100 text-rose-900",
-  "bg-violet-100 text-violet-900",
-  "bg-cyan-100 text-cyan-900",
-  "bg-lime-100 text-lime-900",
-  "bg-orange-100 text-orange-900",
+  "bg-blue-100 text-blue-900 border-blue-200",
+  "bg-emerald-100 text-emerald-900 border-emerald-200",
+  "bg-amber-100 text-amber-900 border-amber-200",
+  "bg-rose-100 text-rose-900 border-rose-200",
+  "bg-violet-100 text-violet-900 border-violet-200",
+  "bg-cyan-100 text-cyan-900 border-cyan-200",
+  "bg-lime-100 text-lime-900 border-lime-200",
+  "bg-orange-100 text-orange-900 border-orange-200",
+  "bg-indigo-100 text-indigo-900 border-indigo-200",
+  "bg-teal-100 text-teal-900 border-teal-200",
+  "bg-fuchsia-100 text-fuchsia-900 border-fuchsia-200",
+  "bg-sky-100 text-sky-900 border-sky-200",
 ];
 
-const corCliente = (texto: string) => {
+const corCliente = (texto: string, cidade?: string | null) => {
   const t = texto.trim().toUpperCase();
   if (!t) return "";
   if (t === "X" || t === "FOLGA") return "bg-muted text-muted-foreground";
   if (t.startsWith("OFICINA")) return "bg-slate-200 text-slate-800";
-  let hash = 0;
-  for (let i = 0; i < t.length; i++) hash = t.charCodeAt(i) + ((hash << 5) - hash);
-  return PALETA[Math.abs(hash) % PALETA.length];
+
+  // 1. Cor baseada na cidade (para agrupar tons parecidos)
+  let cidadeHash = 0;
+  if (cidade) {
+    const c = cidade.trim().toUpperCase();
+    for (let i = 0; i < c.length; i++) {
+      cidadeHash = c.charCodeAt(i) + ((cidadeHash << 5) - cidadeHash);
+    }
+  }
+
+  // 2. Cor baseada no cliente (para ser único/consistente)
+  let clienteHash = 0;
+  for (let i = 0; i < t.length; i++) {
+    clienteHash = t.charCodeAt(i) + ((clienteHash << 5) - clienteHash);
+  }
+
+  // Se houver cidade, usamos o hash da cidade como base e o hash do cliente para uma pequena variação
+  const colorIndex = cidade 
+    ? (Math.abs(cidadeHash) + Math.abs(clienteHash % 3)) % PALETA.length
+    : Math.abs(clienteHash) % PALETA.length;
+
+  return PALETA[colorIndex];
 };
 
 interface CelulaProps {
@@ -78,6 +101,7 @@ interface CelulaProps {
   onDragStart: (a: AgendaAgendamento) => void;
   onDrop: () => void;
   colorir?: boolean;
+  clientesInfo?: any[];
 }
 
 function Celula({
@@ -90,6 +114,7 @@ function Celula({
   onDragStart,
   onDrop,
   colorir = true,
+  clientesInfo = [],
 }: CelulaProps) {
   const [editando, setEditando] = useState(false);
   const manual = itens.find((i) => !i.auvo_task_id && i.origem !== "AUVO");
@@ -180,9 +205,9 @@ function Celula({
                   }
                 }}
                 className={cn(
-                  "w-full text-left rounded-sm px-1.5 py-1 text-[11px] font-semibold uppercase leading-tight hover:ring-1 hover:ring-primary/60 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary cursor-grab active:cursor-grabbing",
+                  "w-full text-left rounded-sm px-1.5 py-1 text-[11px] font-semibold uppercase leading-tight hover:ring-1 hover:ring-primary/60 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary cursor-grab active:cursor-grabbing border border-transparent",
                   a.previsao_continuidade && "border border-dashed border-primary/50 opacity-80",
-                  colorir && corCliente(a.cliente),
+                  colorir && corCliente(a.cliente, clientesInfo.find(c => c.nome_normalizado === a.cliente.toLowerCase())?.cidade),
                 )}
               >
                 <div className="flex flex-col">
@@ -331,6 +356,7 @@ export default function AgendamentoEquipePage() {
 
   const { data: colaboradores = [], isLoading: loadingCol, refetch: refetchColaboradores } = useColaboradores();
   const { data: veiculos = [], isLoading: loadingVei } = useAgendaVeiculos();
+  const { data: rhClientes = [] } = useRhClientes();
   const { data, isLoading, isFetching, refetch: refetchLocal } = useAgendaSemana(dias);
   const [isSyncing, setIsSyncing] = useState(false);
   const customerSyncPromise = useRef<Promise<void> | null>(null);
@@ -743,6 +769,7 @@ export default function AgendamentoEquipePage() {
                             <Celula
                               key={dia}
                               itens={itens}
+                              clientesInfo={rhClientes}
                                onAbrirTarefa={(a) => setTarefaId(a.auvo_task_id ?? null)}
                                onAbrirAgendamento={(a) => {
                                  setSelectedAgendamento(a);
