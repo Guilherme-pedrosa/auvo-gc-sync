@@ -692,6 +692,21 @@ Deno.serve(async (req) => {
       const technician = String(task?.userToName ?? task?.userTo?.name ?? "").trim();
       const technicianId = String(task?.idUserTo ?? task?.userTo?.id ?? "").trim();
       const orientation = String(task?.orientation ?? task?.description ?? "").trim();
+      const currentTaskTypeId = taskTypeId(task);
+      let currentTaskTypeDescription = String(
+        task?.taskTypeDescription
+        ?? task?.taskType?.description
+        ?? task?.taskType?.name
+        ?? "",
+      ).trim();
+      if (currentTaskTypeId && !currentTaskTypeDescription) {
+        try {
+          const taskType = await fetchTaskTypeById(currentTaskTypeId, headers);
+          currentTaskTypeDescription = String(taskType?.description ?? taskType?.name ?? "").trim();
+        } catch (error) {
+          console.warn(`[auvo-task-update][reqId=${reqId}] tipo ${currentTaskTypeId} não resolvido: ${(error as Error).message}`);
+        }
+      }
       const durationMinutes = parseAuvoDurationMinutes(task?.estimatedDuration ?? task?.estimated_duration);
       const timePart = (value: string) => value.length >= 16 ? value.slice(11, 16) : "";
       const patch: Record<string, unknown> = {
@@ -711,6 +726,8 @@ Deno.serve(async (req) => {
       setKnown("hora_fim", timePart(checkOutDate) || timePart(taskEndDate) || agenda?.hora_fim);
       setKnown("status_auvo", status);
       setKnown("orientacao", orientation || agenda?.descricao);
+      setKnown("task_type_id", currentTaskTypeId);
+      setKnown("descricao", currentTaskTypeDescription);
       setKnown("gc_os_codigo", agenda?.gc_os_codigo || existing?.gc_os_codigo);
       setKnown("gc_orcamento_codigo", agenda?.gc_orcamento_codigo || existing?.gc_orcamento_codigo);
       if (durationMinutes > 0) patch.duracao_decimal = durationMinutes / 60;

@@ -33,6 +33,7 @@ import {
   mergeAgendaTaskSnapshot,
 } from "@/lib/agendaIncrementalSync";
 import { agendaVisualStatus } from "@/lib/agendaTaskStatus";
+import { taskTypeRequiresGcOs } from "@/lib/agendaTaskType";
 import { toast } from "sonner";
 
 const DIAS_TRADUZIDOS = ["Segunda-feira", "Terça-feira", "Quarta-feira", "Quinta-feira", "Sexta-feira", "Sábado", "Domingo"];
@@ -205,8 +206,18 @@ function Celula({
       <div className="flex flex-col gap-0.5 h-full">
         {itens.map((a) => {
           const statusColor = getStatusColor(a);
+          const tipoTarefa = a.auvo_task_id
+            ? (a.tipo_tarefa_auvo || "TIPO NÃO INFORMADO")
+            : null;
+          const exigeOs = Boolean(
+            a.auvo_task_id
+            && tipoTarefa
+            && taskTypeRequiresGcOs(a.tipo_tarefa_auvo_descricao, tipoTarefa, a.tipo_tarefa_auvo_id),
+          );
+          const osNaoVinculada = exigeOs && !a.gc_os_codigo;
           const identificadores = [
-            a.gc_os_codigo ? `OS ${a.gc_os_codigo}` : (a.auvo_task_id ? `${a.previsao_tipo || "SEM OS"}` : null),
+            tipoTarefa,
+            a.gc_os_codigo ? `OS ${a.gc_os_codigo}` : null,
             a.auvo_task_id ? `Tarefa ${a.auvo_task_id}` : null,
             !a.gc_os_codigo && !a.auvo_task_id && a.gc_orcamento_codigo
               ? `Orç ${a.gc_orcamento_codigo}`
@@ -227,7 +238,7 @@ function Celula({
                   : a.previsao_continuidade
                   ? `Previsão interna${a.previsao_detalhes ? ` · ${a.previsao_detalhes}` : ""}`
                   : a.auvo_task_id
-                    ? `Tarefa Auvo #${a.auvo_task_id}`
+                    ? `Tipo: ${a.tipo_tarefa_auvo_descricao || tipoTarefa} · Tarefa Auvo #${a.auvo_task_id}`
                     : "Agendamento manual"}
                 onClick={() => (a.auvo_task_id ? onAbrirTarefa(a) : onAbrirAgendamento(a))}
                 onAuxClick={(e) => {
@@ -244,6 +255,11 @@ function Celula({
               >
                 <div className="flex flex-col">
                   <span className="truncate">{label}</span>
+                  {osNaoVinculada && (
+                    <span className="text-[9px] font-bold normal-case text-red-700 dark:text-red-300 truncate">
+                      OS do GestãoClick não vinculada
+                    </span>
+                  )}
                   {a.previsao_detalhes && (
                     <span className="text-[9px] font-normal lowercase opacity-80 truncate">
                       {a.previsao_detalhes}
@@ -489,7 +505,7 @@ export default function AgendamentoEquipePage() {
           colaborador_id: colab.id,
           colaborador_nome: colab.nome,
           cliente: clienteLimpo,
-          descricao: t.descricao || t.orientacao || null,
+          descricao: t.orientacao || t.descricao || null,
           status: "AGENDADO",
           auvo_task_id: taskId,
           origem: "AUVO",
@@ -755,6 +771,7 @@ export default function AgendamentoEquipePage() {
           <span className="rounded border border-green-300 bg-green-100 px-2 py-1 font-semibold text-green-800">Finalizada sem pendência</span>
           <span className="rounded border border-amber-500 bg-amber-200 px-2 py-1 font-semibold text-amber-950">Pausada</span>
           <span className="rounded border border-red-300 bg-red-100 px-2 py-1 font-semibold text-red-800">Atrasada há mais de 2h</span>
+          <span className="rounded border border-red-300 bg-card px-2 py-1 font-semibold text-red-700">OS do GC não vinculada: revisar cadastro</span>
           <span className="rounded border bg-card px-2 py-1 text-muted-foreground">Demais: cor do cliente</span>
         </div>
         {carregando ? (

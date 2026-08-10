@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase as sb } from "@/integrations/supabase/client";
 import { toast } from "sonner";
+import { resolveAgendaTaskType } from "@/lib/agendaTaskType";
 
 export interface AgendaVeiculo {
   id: string;
@@ -47,6 +48,9 @@ export interface AgendaAgendamento {
   pausada?: boolean | null;
   check_in_iso?: string | null;
   check_out_iso?: string | null;
+  tipo_tarefa_auvo?: string | null;
+  tipo_tarefa_auvo_id?: string | null;
+  tipo_tarefa_auvo_descricao?: string | null;
 }
 
 async function preencherDocumentosGc(agendamentos: AgendaAgendamento[]) {
@@ -64,7 +68,10 @@ async function preencherDocumentosGc(agendamentos: AgendaAgendamento[]) {
     status_auvo: string | null;
     check_in: string | null;
     check_out: string | null;
-    tipo: string | null;
+    tipo_id: string | null;
+    tipo_descricao: string | null;
+    tarefa_os: string | null;
+    tarefa_execucao: string | null;
   }>();
   const estadoPorTarefa = new Map<string, {
     status_auvo: string | null;
@@ -83,7 +90,7 @@ async function preencherDocumentosGc(agendamentos: AgendaAgendamento[]) {
   for (let index = 0; index < taskIds.length; index += 500) {
     const { data, error } = await sb
       .from("tarefas_central")
-      .select("auvo_task_id,gc_os_codigo,gc_orcamento_codigo,gc_os_situacao,status_auvo,check_in_iso,check_out_iso,task_type_id,atualizado_em")
+      .select("auvo_task_id,gc_os_codigo,gc_orcamento_codigo,gc_os_situacao,gc_os_tarefa_os,gc_os_tarefa_exec,status_auvo,check_in_iso,check_out_iso,task_type_id,descricao,atualizado_em")
       .in("auvo_task_id", taskIds.slice(index, index + 500))
       .order("atualizado_em", { ascending: false });
     if (error) throw error;
@@ -112,10 +119,6 @@ async function preencherDocumentosGc(agendamentos: AgendaAgendamento[]) {
         });
       }
       const atual = documentosPorTarefa.get(taskId);
-      const tipoId = String(row.task_type_id || "");
-      const tipoNome = tipoId === "180175" || tipoId === "180176" ? "PREVENTIVA" : 
-                       tipoId === "180177" ? "EXECUÇÃO" : null;
-
       documentosPorTarefa.set(taskId, {
         os: atual?.os || row.gc_os_codigo || null,
         orcamento: atual?.orcamento || row.gc_orcamento_codigo || null,
@@ -123,7 +126,10 @@ async function preencherDocumentosGc(agendamentos: AgendaAgendamento[]) {
         status_auvo: atual?.status_auvo || row.status_auvo || null,
         check_in: atual?.check_in || row.check_in_iso || null,
         check_out: atual?.check_out || row.check_out_iso || null,
-        tipo: tipoNome,
+        tipo_id: atual?.tipo_id || row.task_type_id || null,
+        tipo_descricao: atual?.tipo_descricao || row.descricao || null,
+        tarefa_os: atual?.tarefa_os || row.gc_os_tarefa_os || null,
+        tarefa_execucao: atual?.tarefa_execucao || row.gc_os_tarefa_exec || null,
       });
     }
   }
@@ -157,7 +163,10 @@ async function preencherDocumentosGc(agendamentos: AgendaAgendamento[]) {
           status_auvo: estadoPorTarefa.get(taskId)?.status_auvo || null,
           check_in: estadoPorTarefa.get(taskId)?.check_in || null,
           check_out: estadoPorTarefa.get(taskId)?.check_out || null,
-          tipo: atual?.tipo || null,
+          tipo_id: atual?.tipo_id || null,
+          tipo_descricao: atual?.tipo_descricao || null,
+          tarefa_os: atual?.tarefa_os || row.gc_os_tarefa_os || null,
+          tarefa_execucao: atual?.tarefa_execucao || row.gc_os_tarefa_exec || null,
         });
       }
     }
@@ -170,6 +179,13 @@ async function preencherDocumentosGc(agendamentos: AgendaAgendamento[]) {
     const documento = documentosPorTarefa.get(String(item.auvo_task_id || "").trim());
     const estado = estadoPorTarefa.get(String(item.auvo_task_id || "").trim());
     if (!documento) return item;
+    const tipoTarefa = resolveAgendaTaskType({
+      taskId: item.auvo_task_id,
+      taskTypeId: documento.tipo_id,
+      taskTypeDescription: documento.tipo_descricao,
+      gcOsTaskIds: documento.tarefa_os,
+      gcExecutionTaskIds: documento.tarefa_execucao,
+    });
     return {
       ...item,
       gc_os_codigo: documento.os || item.gc_os_codigo || null,
@@ -178,7 +194,9 @@ async function preencherDocumentosGc(agendamentos: AgendaAgendamento[]) {
       status_auvo: estado?.status_auvo || documento.status_auvo || item.status_auvo || null,
       check_in_iso: estado?.check_in || documento.check_in || item.check_in_iso || null,
       check_out_iso: estado?.check_out || documento.check_out || item.check_out_iso || null,
-      previsao_tipo: documento.tipo || item.previsao_tipo || null,
+      tipo_tarefa_auvo: tipoTarefa,
+      tipo_tarefa_auvo_id: documento.tipo_id,
+      tipo_tarefa_auvo_descricao: documento.tipo_descricao,
     };
   });
 }
