@@ -66,7 +66,15 @@ async function fetchChegadas(): Promise<ChegadaItem[]> {
             (item.os_codigo && p.gc_os_codigo === item.os_codigo)
           );
           if (prev) {
-            return { ...item, previsao_data: prev.data, previsao_tecnico: prev.colaborador_nome };
+            return { 
+              ...item, 
+              previsao_data: prev.data, 
+              previsao_tecnico: prev.colaborador_nome,
+              previsao_colab_id: prev.colaborador_id,
+              previsao_detalhes: prev.previsao_detalhes,
+              previsao_hora: prev.hora_inicio,
+              previsao_hora_fim: prev.hora_fim
+            };
           }
           return item;
         });
