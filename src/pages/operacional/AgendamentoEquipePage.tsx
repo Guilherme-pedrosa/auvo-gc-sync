@@ -122,6 +122,51 @@ const corCliente = (texto: string) => {
   return PALETA[colorIndex];
 };
 
+const getStatusColor = (a: AgendaAgendamento) => {
+  const finalizado = a.status_auvo === "Finalizada";
+  const emAndamento = a.status_auvo === "Em andamento";
+  
+  // Amarelo escuro: Finalizada com pendência (Pendente ou Em negociação)
+  if (finalizado && (a.gc_os_situacao?.toUpperCase().includes("PENDENTE") || a.gc_os_situacao?.toUpperCase().includes("NEGOCIAÇÃO"))) {
+    return "text-amber-700 dark:text-amber-500 font-bold";
+  }
+  
+  // Verde: Finalizada sem pendência
+  if (finalizado) {
+    return "text-green-600 dark:text-green-500 font-bold";
+  }
+
+  // Vermelho: Pausada ou Não feita com atraso
+  // Lógica de atraso: se a data do agendamento é anterior a hoje ou se hoje e já passou 2 horas do fim (aproximado)
+  const isAtrasado = () => {
+    if (!a.data) return false;
+    const agDate = new Date(a.data);
+    const now = new Date();
+    
+    // Zera horas para comparar apenas datas
+    const dAg = new Date(agDate.getFullYear(), agDate.getMonth(), agDate.getDate());
+    const dNow = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    
+    if (dAg < dNow) return true;
+    if (dAg > dNow) return false;
+    
+    // Se for hoje, checa se passou 2 horas do fim
+    if (a.hora_fim) {
+      const [h, m] = a.hora_fim.split(":").map(Number);
+      const endDateTime = new Date(dNow);
+      endDateTime.setHours(h, m, 0);
+      return now.getTime() > (endDateTime.getTime() + 2 * 60 * 60 * 1000);
+    }
+    return false;
+  };
+
+  if (a.pausada || (a.status_auvo !== "Finalizada" && a.status_auvo !== "Em andamento" && isAtrasado())) {
+    return "text-red-600 dark:text-red-500 font-bold";
+  }
+
+  return "";
+};
+
 interface CelulaProps {
   itens: AgendaAgendamento[];
   onSalvar: (v: string) => void;
@@ -239,6 +284,7 @@ function Celula({
                   "w-full text-left rounded-sm px-1.5 py-1 text-[11px] font-semibold uppercase leading-tight hover:ring-1 hover:ring-primary/60 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary cursor-grab active:cursor-grabbing border border-transparent",
                   a.previsao_continuidade && "border border-dashed border-primary/50 opacity-80",
                   colorir && corCliente(a.cliente),
+                  getStatusColor(a)
                 )}
               >
                 <div className="flex flex-col">
