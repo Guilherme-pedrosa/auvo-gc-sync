@@ -44,6 +44,59 @@ function durationBetweenTimes(start: string, end: string): number {
   return diff > 0 ? diff : 0;
 }
 
+function taskTypeId(task: any): string {
+  const value = task?.taskType?.id ?? task?.taskTypeId ?? task?.taskType ?? task?.TaskType;
+  return String(value ?? "").trim();
+}
+
+function inlineTaskTypeDescription(task: any): string {
+  const candidates = [
+    task?.taskTypeDescription,
+    task?.taskType?.description,
+    task?.taskType?.name,
+    task?.typeDescription,
+    task?.serviceTypeDescription,
+  ];
+  for (const candidate of candidates) {
+    const value = String(candidate ?? "").trim();
+    if (value && value !== "null" && value !== "undefined") return value.substring(0, 500);
+  }
+  return "";
+}
+
+async function fetchMissingTaskTypes(
+  headers: Record<string, string>,
+  taskTypeIds: string[],
+): Promise<Map<string, string>> {
+  const result = new Map<string, string>();
+  const uniqueIds = [...new Set(taskTypeIds.map((id) => String(id || "").trim()).filter(Boolean))];
+  const concurrency = 6;
+  for (let index = 0; index < uniqueIds.length; index += concurrency) {
+    const batch = uniqueIds.slice(index, index + concurrency);
+    await Promise.all(batch.map(async (id) => {
+      try {
+        for (const path of ["tasktypes", "taskTypes"]) {
+          const response = await fetchWithRetry(`${AUVO_BASE_URL}/${path}/${encodeURIComponent(id)}`, { headers }, {
+            retryStatuses: [502, 503],
+            delaysMs: [1500, 3000],
+            label: `Auvo task type ${id}`,
+          });
+          if (response.status === 404) continue;
+          if (!response.ok) break;
+          const json = await response.json().catch(() => ({}));
+          const item = json?.result || json?.data || json;
+          const description = String(item?.description ?? item?.name ?? "").trim();
+          if (description) result.set(id, description.substring(0, 500));
+          break;
+        }
+      } catch (error) {
+        console.warn(`[auvo-agenda] tipo ${id} não resolvido: ${(error as Error).message}`);
+      }
+    }));
+  }
+  return result;
+}
+
 async function auvoLogin(apiKey: string, apiToken: string): Promise<string> {
   const url = `${AUVO_BASE_URL}/login/?apiKey=${encodeURIComponent(apiKey)}&apiToken=${encodeURIComponent(apiToken)}`;
   const response = await fetch(url, { method: "GET", headers: { "Content-Type": "application/json" } });
@@ -338,6 +391,8 @@ Deno.serve(async (req) => {
       gc_orc_situacao: string | null;
       gc_orc_valor_total: number | null;
       gc_orc_link: string | null;
+      task_type_id: string | null;
+      task_type_description: string | null;
     }>();
     const backendUrl = Deno.env.get("SUPABASE_URL");
     const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
@@ -353,7 +408,7 @@ Deno.serve(async (req) => {
         const batch = taskIds.slice(index, index + 500);
         const { data: localRows, error: localError } = await backend
           .from("tarefas_central")
-          .select("mirror_key,auvo_task_id,gc_os_codigo,gc_orcamento_codigo,gc_os_tarefa_exec,gc_os_tarefa_os,gc_os_data,gc_os_situacao,gc_os_valor_total,gc_os_link,gc_orc_situacao,gc_orc_valor_total,gc_orc_link")
+          .select("mirror_key,auvo_task_id,gc_os_codigo,gc_orcamento_codigo,gc_os_tarefa_exec,gc_os_tarefa_os,gc_os_data,gc_os_situacao,gc_os_valor_total,gc_os_link,gc_orc_situacao,gc_orc_valor_total,gc_orc_link,task_type_id,descricao")
           .in("auvo_task_id", batch);
 
         if (localError) {
@@ -378,6 +433,8 @@ Deno.serve(async (req) => {
             gc_orc_situacao: existing?.gc_orc_situacao || row.gc_orc_situacao || null,
             gc_orc_valor_total: existing?.gc_orc_valor_total ?? row.gc_orc_valor_total ?? null,
             gc_orc_link: existing?.gc_orc_link || row.gc_orc_link || null,
+            task_type_id: existing?.task_type_id || row.task_type_id || null,
+            task_type_description: existing?.task_type_description || row.descricao || null,
           });
         }
 
@@ -407,11 +464,24 @@ Deno.serve(async (req) => {
               gc_orc_situacao: existing?.gc_orc_situacao || null,
               gc_orc_valor_total: existing?.gc_orc_valor_total ?? null,
               gc_orc_link: existing?.gc_orc_link || null,
+              task_type_id: existing?.task_type_id || null,
+              task_type_description: existing?.task_type_description || null,
             });
           }
         }
       }
     }
+
+    // A listagem semanal normalmente já devolve a descrição. Só consulta
+    // /taskTypes/{id} para os poucos tipos realmente ausentes, sem varrer todo
+    // o cadastro de tipos e sem tornar a sincronização lenta.
+    const unresolvedTaskTypeIds = allTasks
+      .filter((task: any) => {
+        const id = String(task.taskID || task.taskId || task.id || "").trim();
+        return !inlineTaskTypeDescription(task) && !localDocumentMap.get(id)?.task_type_description;
+      })
+      .map((task: any) => taskTypeId(task));
+    const taskTypesMap = await fetchMissingTaskTypes(headers, unresolvedTaskTypeIds);
 
     console.log(`[auvo-agenda] mode=${fastMode ? "fast" : "full"}, ${allTasks.length} tasks, ${gcOsMap.size} OS, ${gcOrcMap.size} orçamentos, ${localDocumentMap.size} vínculos locais`);
 
@@ -513,6 +583,11 @@ Deno.serve(async (req) => {
       const localDocument = localDocumentMap.get(taskId);
       const os = gcOsMap.get(taskId);
       const orc = gcOrcMap.get(taskId);
+      const resolvedTaskTypeId = taskTypeId(t);
+      const taskTypeDescription = inlineTaskTypeDescription(t)
+        || taskTypesMap.get(resolvedTaskTypeId)
+        || localDocument?.task_type_description
+        || (resolvedTaskTypeId ? `Tipo ${resolvedTaskTypeId}` : "");
 
       return {
         mirror_key: localDocument?.mirror_key || `${taskId}::os:::orc:`,
@@ -525,10 +600,13 @@ Deno.serve(async (req) => {
         hora_fim: endTime,
         duracao_decimal: resolvedDurationMinutes > 0 ? resolvedDurationMinutes / 60 : null,
         duracao_estimada_minutos: estimatedDurationMinutes || null,
-        auvo_task_type_id: String(t.taskType?.id ?? t.taskTypeId ?? t.taskType ?? "") || null,
+        auvo_task_type_id: resolvedTaskTypeId || null,
+        task_type_id: resolvedTaskTypeId || localDocument?.task_type_id || null,
+        task_type_description: taskTypeDescription || null,
         status_auvo: status,
         endereco: address,
         descricao: description,
+        orientacao: description,
         check_in: !!t.checkIn,
         check_out: !!t.checkOut,
         auvo_link: `https://app2.auvo.com.br/relatorioTarefas/DetalheTarefa/${taskId}`,
@@ -577,6 +655,8 @@ Deno.serve(async (req) => {
         if (task.duracao_decimal != null) row.duracao_decimal = task.duracao_decimal;
         if (task.endereco) row.endereco = task.endereco;
         if (task.descricao) row.orientacao = task.descricao;
+        if (task.task_type_id) row.task_type_id = task.task_type_id;
+        if (task.task_type_description) row.descricao = task.task_type_description;
         if (task.gc_os_codigo) row.gc_os_codigo = task.gc_os_codigo;
         if (task.gc_os_situacao) row.gc_os_situacao = task.gc_os_situacao;
         if (task.gc_os_valor_total != null) row.gc_os_valor_total = task.gc_os_valor_total;
