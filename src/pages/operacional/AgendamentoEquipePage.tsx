@@ -871,7 +871,7 @@ export default function AgendamentoEquipePage() {
                 <table className="w-full border-collapse">
                   <thead>
                     <tr className="bg-muted">
-                      <th className="border border-border p-2 text-left text-[11px] font-bold uppercase w-40 sticky left-0 top-0 bg-muted z-20">
+                      <th className="border border-border p-2 text-left text-[11px] font-bold uppercase w-60 sticky left-0 top-0 bg-muted z-20">
                         Veículo
                       </th>
                       {dias.map((diaStr) => {
