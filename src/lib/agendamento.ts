@@ -61,6 +61,31 @@ export function parseExecTaskId(raw: unknown): string | null {
 }
 
 /** Chegada de peças vinda do módulo de compras do GestãoClick. */
+export type PrevisaoAgendamento = {
+  id: string;
+  data: string;
+  colaborador_nome: string;
+  colaborador_id: string | null;
+  gc_orcamento_codigo: string | null;
+  gc_os_codigo: string | null;
+  previsao_detalhes: string | null;
+  hora_inicio: string;
+  hora_fim: string;
+  atualizado_em: string;
+};
+
+export type PedidoDetalheProduto = {
+  codigo: string;
+  id: string;
+  situacao_id: string;
+  situacao: string;
+  data_chegada: string | null;
+  data_chegada_texto: string;
+  estado: "pendente" | "chegou" | "cancelado" | "desconhecido";
+  gc_link: string;
+  quantidade?: number;
+};
+
 export type ChegadaItem = {
   doc_tipo?: "orcamento" | "compra";
   orcamento_id?: string;
@@ -78,7 +103,21 @@ export type ChegadaItem = {
     gc_link: string;
   }[];
   pedidos_todos_chegaram?: boolean;
+  estoque_verificado?: boolean;
   todos_em_estoque?: boolean;
+  pode_agendar?: boolean;
+  motivo_bloqueio?: string | null;
+  proxima_reposicao?: string | null;
+  pecas_em_falta?: {
+    produto_id: string;
+    nome: string;
+    quantidade: number;
+    estoque_atual: number;
+    deficit: number;
+    demanda_total_aberta?: number;
+    conflito_estoque?: boolean;
+    pedidos_compra: PedidoDetalheProduto[];
+  }[];
   data_chegada_orcamento?: string | null;
   fornecedor: string;
   situacao_id: string;
@@ -93,7 +132,20 @@ export type ChegadaItem = {
   auvo_task_id: string;
   observacao_extra: string;
   valor_total: number;
-  produtos: { nome: string; quantidade: number; valor_total: number }[];
+  produtos: {
+    produto_id: string;
+    variacao_id: string | null;
+    nome: string;
+    quantidade: number;
+    valor_total: number;
+    estoque_atual: number;
+    estoque_verificado: boolean;
+    deficit: number;
+    demanda_total_aberta?: number;
+    conflito_estoque?: boolean;
+    critico: boolean;
+    pedidos_compra: PedidoDetalheProduto[];
+  }[];
   gc_link: string;
   cliente: string;
   equipamento: string;
@@ -104,12 +156,32 @@ export type ChegadaItem = {
   documento_link: string;
   auvo_link: string;
   previsao_data?: string | null;
+  previsao_id?: string | null;
+  previsao_atualizado_em?: string | null;
   previsao_tecnico?: string | null;
   previsao_colab_id?: string | null;
   previsao_detalhes?: string | null;
   previsao_hora?: string | null;
   previsao_hora_fim?: string | null;
 };
+
+/** Seleciona sempre a previsão mais recentemente atualizada para o documento. */
+export function latestForecastForDocument(
+  item: Pick<ChegadaItem, "orcamento_codigo" | "vinculo_codigo" | "vinculo_tipo" | "os_codigo">,
+  forecasts: PrevisaoAgendamento[],
+): PrevisaoAgendamento | null {
+  const orcamento = String(
+    item.orcamento_codigo || (item.vinculo_tipo === "orcamento" ? item.vinculo_codigo : "") || "",
+  );
+  const os = String(item.os_codigo || (item.vinculo_tipo === "os" ? item.vinculo_codigo : "") || "");
+
+  return forecasts
+    .filter((forecast) =>
+      (orcamento && String(forecast.gc_orcamento_codigo || "") === orcamento)
+      || (os && String(forecast.gc_os_codigo || "") === os),
+    )
+    .sort((a, b) => String(b.atualizado_em).localeCompare(String(a.atualizado_em)))[0] ?? null;
+}
 
 export type ChegadaStatus = "atrasada" | "hoje" | "futura" | "sem_data";
 

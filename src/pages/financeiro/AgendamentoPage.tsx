@@ -18,7 +18,8 @@ import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import {
   buildMonthGrid, formatBRL, formatDiaBR, getChegadaStatus, monthLabel, todayISO,
-  parseExecTaskId, type ChegadaItem, type ChegadaStatus,
+  latestForecastForDocument, type ChegadaItem, type ChegadaStatus,
+  type PrevisaoAgendamento,
 } from "@/lib/agendamento";
 import AgendarTarefaDialog, { type AgendarAlvo } from "@/components/financeiro/AgendarTarefaDialog";
 import AgendamentoAiPanel from "@/components/financeiro/AgendamentoAiPanel";
@@ -31,6 +32,27 @@ const STATUS_STYLE: Record<ChegadaStatus, { chip: string; dot: string; label: st
   futura: { chip: "bg-emerald-50 text-emerald-800 border-emerald-300", dot: "bg-emerald-500", label: "Prevista" },
   sem_data: { chip: "bg-muted text-muted-foreground border-border", dot: "bg-muted-foreground", label: "Sem data" },
 };
+
+async function fetchForecastsByDocument(
+  field: "gc_orcamento_codigo" | "gc_os_codigo",
+  codes: string[],
+): Promise<PrevisaoAgendamento[]> {
+  const uniqueCodes = [...new Set(codes.map(String).map((code) => code.trim()).filter(Boolean))];
+  const rows: PrevisaoAgendamento[] = [];
+
+  for (let start = 0; start < uniqueCodes.length; start += 100) {
+    const { data, error } = await supabase
+      .from("agenda_agendamentos")
+      .select("id, data, colaborador_nome, colaborador_id, gc_orcamento_codigo, gc_os_codigo, previsao_detalhes, hora_inicio, hora_fim, atualizado_em")
+      .eq("previsao_continuidade", true)
+      .in(field, uniqueCodes.slice(start, start + 100))
+      .order("atualizado_em", { ascending: false });
+    if (error) throw error;
+    rows.push(...((data ?? []) as PrevisaoAgendamento[]));
+  }
+
+  return rows;
+}
 
 async function fetchChegadas(): Promise<ChegadaItem[]> {
   console.log("[AgendamentoPage] chamando compras-chegadas...");
@@ -49,26 +71,31 @@ async function fetchChegadas(): Promise<ChegadaItem[]> {
     console.log("[AgendamentoPage] Itens recebidos:", itens.length);
 
     // Buscar previsões locais para marcar nos cards
-    const orcCodigos = itens.map(i => i.orcamento_codigo || i.vinculo_codigo).filter(Boolean);
-    const osCodigos = itens.map(i => i.os_codigo).filter(Boolean);
+    const orcCodigos = itens
+      .map((item) => item.orcamento_codigo || (item.vinculo_tipo === "orcamento" ? item.vinculo_codigo : ""))
+      .filter(Boolean);
+    const osCodigos = itens
+      .map((item) => item.os_codigo || (item.vinculo_tipo === "os" ? item.vinculo_codigo : ""))
+      .filter(Boolean);
 
     if (orcCodigos.length > 0 || osCodigos.length > 0) {
-      const { data: previsoes } = await supabase
-        .from("agenda_agendamentos")
-        .select("data, colaborador_nome, colaborador_id, gc_orcamento_codigo, gc_os_codigo, previsao_detalhes, hora_inicio, hora_fim")
-        .or(`gc_orcamento_codigo.in.(${orcCodigos.join(",")}),gc_os_codigo.in.(${osCodigos.join(",")})`)
-        .eq("previsao_continuidade", true);
+      const [porOrcamento, porOs] = await Promise.all([
+        fetchForecastsByDocument("gc_orcamento_codigo", orcCodigos),
+        fetchForecastsByDocument("gc_os_codigo", osCodigos),
+      ]);
+      const previsoes = [...new Map(
+        [...porOrcamento, ...porOs].map((previsao) => [previsao.id, previsao]),
+      ).values()];
 
-      if (previsoes && previsoes.length > 0) {
+      if (previsoes.length > 0) {
         itens = itens.map(item => {
-          const prev = previsoes.find(p => 
-            (item.orcamento_codigo && p.gc_orcamento_codigo === item.orcamento_codigo) ||
-            (item.os_codigo && p.gc_os_codigo === item.os_codigo)
-          );
+          const prev = latestForecastForDocument(item, previsoes);
           if (prev) {
             return { 
               ...item, 
+              previsao_id: prev.id,
               previsao_data: prev.data, 
+              previsao_atualizado_em: prev.atualizado_em,
               previsao_tecnico: prev.colaborador_nome,
               previsao_colab_id: prev.colaborador_id,
               previsao_detalhes: prev.previsao_detalhes,
@@ -246,15 +273,23 @@ export default function AgendamentoPage() {
   }, [filtrados, atrasadas, semData]);
 
   const abrirAgendamento = (i: ChegadaItem) => {
+    if (!i.previsao_id && i.pode_agendar === false) {
+      toast.error(i.motivo_bloqueio || "Não é possível criar uma previsão enquanto faltar estoque.");
+      return;
+    }
+
     setAlvo({
-      auvo_task_id: parseExecTaskId(i.auvo_task_id) || null,
-      exec_task_id: parseExecTaskId(i.auvo_task_id) || null,
+      previsao_id: i.previsao_id || null,
+      auvo_task_id: null,
+      exec_task_id: null,
       gc_os_codigo: i.os_codigo || (i.vinculo_tipo === "os" ? i.vinculo_codigo : null),
       gc_orcamento_codigo: i.orcamento_codigo || (i.vinculo_tipo === "orcamento" ? i.vinculo_codigo : null),
       cliente: i.cliente || i.fornecedor,
       equipamento: i.equipamento,
-      data_tarefa: i.previsao_data || i.data_chegada,
+      data_tarefa: i.previsao_data || null,
+      data_sugerida: i.data_chegada,
       tecnico_id: i.previsao_colab_id ? String(i.previsao_colab_id) : null,
+      tecnico_nome: i.previsao_tecnico || null,
       previsao_detalhes: i.previsao_detalhes,
       hora: i.previsao_hora || "08:00",
       hora_fim: i.previsao_hora_fim,
@@ -353,13 +388,24 @@ export default function AgendamentoPage() {
               Atrasada · {formatDiaBR(i.data_chegada)}
             </Badge>
           )}
-          <Badge variant="outline" className={cn("text-[10px]", style.chip)}>
-            {i.pedidos_todos_chegaram ? (i.todos_em_estoque ? "Disponível em Estoque" : "Peças chegaram (Estoque OK)") : style.label}
+          <Badge variant="outline" className={cn(
+            "text-[10px]",
+            i.pode_agendar
+              ? "border-emerald-300 bg-emerald-50 text-emerald-800"
+              : i.estoque_verificado === false
+                ? "border-slate-300 bg-slate-50 text-slate-700"
+                : "border-amber-300 bg-amber-50 text-amber-900",
+          )}>
+            {i.pode_agendar
+              ? "Disponível em estoque"
+              : i.estoque_verificado === false
+                ? "Estoque não confirmado"
+                : "Sem estoque · aguarda reposição"}
             {i.data_chegada && status !== "atrasada" ? ` · ${formatDiaBR(i.data_chegada)}` : ""}
           </Badge>
-          {!i.todos_em_estoque && !ehPedido && (
+          {!i.pode_agendar && !ehPedido && (
             <Badge variant="outline" className="text-[9px] border-amber-500 bg-amber-50 text-amber-700">
-              Aguardando Reposição
+              {i.proxima_reposicao ? `Reposição ${formatDiaBR(i.proxima_reposicao)}` : "Reposição sem data"}
             </Badge>
           )}
           <Badge variant="secondary" className="text-[10px]">{i.situacao}</Badge>
@@ -368,6 +414,32 @@ export default function AgendamentoPage() {
         </div>
 
         <div className="mt-2 flex flex-col gap-2">
+          {(i.pecas_em_falta?.length ?? 0) > 0 && (
+            <div className="rounded border border-amber-300 bg-amber-50 p-2 text-[10px] text-amber-950">
+              <p className="font-semibold">Peças sem saldo para este orçamento</p>
+              <div className="mt-1 space-y-1">
+                {i.pecas_em_falta?.map((peca) => (
+                  <div key={`${peca.produto_id}-${peca.nome}`}>
+                    <span>
+                      {peca.nome}: precisa {peca.quantidade}, saldo {peca.estoque_atual}, faltam {peca.deficit}
+                      {peca.conflito_estoque && peca.demanda_total_aberta
+                        ? ` para atender a demanda aberta total de ${peca.demanda_total_aberta}`
+                        : ""}.
+                    </span>
+                    {peca.pedidos_compra.length > 0 ? (
+                      <span className="ml-1 text-muted-foreground">
+                        {peca.pedidos_compra.map((pedido) =>
+                          `PC ${pedido.codigo}${pedido.data_chegada ? ` · ${formatDiaBR(pedido.data_chegada)}` : " · sem data"}`,
+                        ).join("; ")}
+                      </span>
+                    ) : (
+                      <span className="ml-1 font-medium">Nenhum pedido de compra em aberto localizado.</span>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
           {i.equipamento && (
              <div className="flex items-center gap-1.5 rounded border border-amber-200 bg-amber-50 p-1.5 text-[10px] text-amber-800">
                <Package className="h-3 w-3 shrink-0" />
@@ -396,6 +468,8 @@ export default function AgendamentoPage() {
               variant={i.previsao_data ? "outline" : "secondary"} 
               className="h-7 flex-1 text-[11px]" 
               onClick={() => abrirAgendamento(i)}
+              disabled={!i.previsao_id && i.pode_agendar === false}
+              title={!i.previsao_id && i.pode_agendar === false ? (i.motivo_bloqueio || "Sem estoque disponível") : undefined}
             >
               <CalendarClock className="mr-1 h-3 w-3" /> 
               {i.previsao_data ? "Alterar previsão" : "Agendar previsão"}
@@ -425,7 +499,7 @@ export default function AgendamentoPage() {
     <div className="flex min-h-max w-full min-w-[980px] flex-col gap-3 overflow-visible bg-background p-4">
       <header className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-lg font-semibold text-foreground">Calendário de Agendamento</h1>
+          <h1 className="text-lg font-semibold text-foreground">Chegada Orçamentos</h1>
           <p className="text-xs text-muted-foreground">
             Acompanhamento de orçamentos e prazos de entrega baseados nos pedidos de compra do GestãoClick.
           </p>
@@ -730,6 +804,7 @@ export default function AgendamentoPage() {
                 return {
                   ...item,
                   previsao_data: patch.dataTarefa,
+                  previsao_id: patch.previsaoId ?? item.previsao_id,
                   previsao_tecnico: patch.tecnico,
                   previsao_colab_id: patch.tecnicoId,
                   previsao_detalhes: patch.detalhes ?? null,
@@ -740,7 +815,7 @@ export default function AgendamentoPage() {
             );
           }
           refetch();
-        }} 
+        }}
       />
 
       <Dialog open={detalhesDialog.open} onOpenChange={(open) => setDetalhesDialog(prev => ({ ...prev, open }))}>

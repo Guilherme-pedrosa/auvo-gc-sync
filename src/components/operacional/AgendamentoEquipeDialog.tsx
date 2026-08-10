@@ -254,7 +254,13 @@ export default function AgendamentoEquipeDialog({
       <DialogContent className="sm:max-w-[500px] max-h-[90vh] flex flex-col p-0">
         <div className="overflow-y-auto p-6 flex-1">
         <DialogHeader>
-          <DialogTitle>{agendamento ? "Editar Agendamento" : "Adicionar Novo Agendamento"}</DialogTitle>
+          <DialogTitle>
+            {agendamento?.previsao_continuidade
+              ? "Editar previsão"
+              : agendamento
+                ? "Editar agendamento"
+                : "Adicionar novo agendamento"}
+          </DialogTitle>
         </DialogHeader>
         
         <div className="grid gap-4 py-4">
@@ -370,12 +376,12 @@ export default function AgendamentoEquipeDialog({
           {agendamento?.previsao_continuidade && (
             <div className="space-y-2 p-3 bg-primary/5 rounded-md border border-primary/20">
               <Label htmlFor="prev_det" className="text-xs font-bold text-primary">Detalhes da Previsão</Label>
-              <Input 
+              <Textarea
                 id="prev_det"
                 value={previsaoDetalhes}
                 onChange={(e) => setPrevisaoDetalhes(e.target.value)}
                 placeholder="Observações exclusivas desta previsão..."
-                className="text-xs"
+                className="min-h-20 resize-y text-xs"
               />
             </div>
           )}
@@ -426,7 +432,7 @@ export default function AgendamentoEquipeDialog({
           <div className="flex gap-2">
             <Button variant="outline" onClick={() => onOpenChange(false)}>Cancelar</Button>
             <Button onClick={handleSave} disabled={save.isPending || !data || !colaboradorId || !cliente.trim()}>
-              {save.isPending ? "Salvando..." : "Salvar Agendamento"}
+              {save.isPending ? "Salvando..." : agendamento?.previsao_continuidade ? "Salvar previsão" : "Salvar agendamento"}
             </Button>
           </div>
         </DialogFooter>
