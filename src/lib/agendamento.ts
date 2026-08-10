@@ -125,6 +125,7 @@ export type ChegadaItem = {
     gc_link: string;
   }[];
   pedidos_todos_chegaram?: boolean;
+  saldo_baixa_parcial_status?: "verified" | "not_found" | "unavailable" | "not_applicable";
   estoque_verificado?: boolean;
   todos_em_estoque?: boolean;
   pode_agendar?: boolean;

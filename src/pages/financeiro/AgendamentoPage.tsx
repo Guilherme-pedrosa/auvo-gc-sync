@@ -303,6 +303,8 @@ export default function AgendamentoPage() {
     const status = getChegadaStatus(i.data_chegada);
     const style = STATUS_STYLE[status];
     const ehPedido = isPedidoCompra(i);
+    const saldoParcialNaoConfirmado = i.grupo === "baixa_parcial"
+      && i.saldo_baixa_parcial_status !== "verified";
     const osJaLancada = !ehPedido && Boolean(String(i.os_codigo || "").trim());
     const chave = `${ehPedido ? "pc" : "or"}-${i.compra_id || i.compra_codigo || i.orcamento_id || i.orcamento_codigo || i.vinculo_codigo}`;
     if (compacto) {
@@ -391,13 +393,17 @@ export default function AgendamentoPage() {
           )}
           <Badge variant="outline" className={cn(
             "text-[10px]",
-            i.pode_agendar
+            saldoParcialNaoConfirmado
+              ? "border-destructive/40 bg-destructive/10 text-destructive"
+              : i.pode_agendar
               ? "border-emerald-300 bg-emerald-50 text-emerald-800"
               : i.estoque_verificado === false
                 ? "border-slate-300 bg-slate-50 text-slate-700"
                 : "border-amber-300 bg-amber-50 text-amber-900",
           )}>
-            {i.pode_agendar
+            {saldoParcialNaoConfirmado
+              ? "Saldo do Pick & Pack não confirmado"
+              : i.pode_agendar
               ? "Disponível em estoque"
               : i.estoque_verificado === false
                 ? "Estoque não confirmado"
@@ -415,6 +421,12 @@ export default function AgendamentoPage() {
         </div>
 
         <div className="mt-2 flex flex-col gap-2">
+          {saldoParcialNaoConfirmado && (
+            <div className="flex items-start gap-2 rounded border border-destructive/40 bg-destructive/10 p-1.5 text-[10px] text-destructive">
+              <AlertTriangle className="mt-0.5 h-3 w-3 shrink-0" />
+              <span>{i.motivo_bloqueio || "O saldo pendente da baixa parcial não pôde ser confirmado no Pick & Pack."}</span>
+            </div>
+          )}
           {(i.pecas_em_falta?.length ?? 0) > 0 && (
             <div className="rounded border border-amber-300 bg-amber-50 p-2 text-[10px] text-amber-950">
               <p className="font-semibold">Peças faltantes e chegada</p>
