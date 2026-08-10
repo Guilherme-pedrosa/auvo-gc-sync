@@ -141,6 +141,9 @@ export default function AgendamentoPage() {
   const [diaSelecionado, setDiaSelecionado] = useState<string>(hoje);
   const [busca, setBusca] = useState("");
   const [buscaCliente, setBuscaCliente] = useState("");
+  const [buscaPrevista, setBuscaPrevista] = useState("");
+  const [buscaAtrasada, setBuscaAtrasada] = useState("");
+  const [buscaSemPrevisao, setBuscaSemPrevisao] = useState("");
   const [excludedSituacoes, setExcludedSituacoes] = useState<Set<string>>(new Set());
   const [searchSituacao, setSearchSituacao] = useState("");
   const [tipoDoc, setTipoDoc] = useState<"todos" | "orcamentos" | "pedidos">(
@@ -241,6 +244,28 @@ export default function AgendamentoPage() {
     () => filtrados.filter((i) => getChegadaStatus(i.data_chegada) === "atrasada")
       .sort((a, b) => String(a.data_chegada).localeCompare(String(b.data_chegada))),
     [filtrados],
+  );
+
+  const filterByKanbanSearch = (list: ChegadaItem[], term: string) => {
+    if (!term.trim()) return list;
+    const s = term.toLowerCase();
+    return list.filter(i => 
+      [i.orcamento_codigo, i.vinculo_codigo, i.compra_codigo, i.cliente, i.fornecedor, i.equipamento]
+        .some(v => String(v || "").toLowerCase().includes(s))
+    );
+  };
+
+  const previstaFiltrada = useMemo(() => 
+    filterByKanbanSearch(filtrados.filter(i => i.data_chegada), buscaPrevista), 
+    [filtrados, buscaPrevista]
+  );
+  const atrasadaFiltrada = useMemo(() => 
+    filterByKanbanSearch(atrasadas, buscaAtrasada), 
+    [atrasadas, buscaAtrasada]
+  );
+  const semDataFiltrada = useMemo(() => 
+    filterByKanbanSearch(semData, buscaSemPrevisao), 
+    [semData, buscaSemPrevisao]
   );
 
   const semanas = useMemo(() => buildMonthGrid(ano, mes), [ano, mes]);
@@ -651,10 +676,10 @@ export default function AgendamentoPage() {
           </div>
         </div>
       ) : (
-        <div className="flex w-full flex-col gap-3 xl:flex-row overflow-visible">
+        <div className="flex w-full flex-col gap-3 overflow-visible">
           <div className="flex w-full flex-1 flex-col gap-3 pr-1 overflow-visible">
             {/* Calendário */}
-            <section className="flex flex-col rounded-lg border border-border bg-card p-3">
+            <section className="flex flex-col rounded-lg border border-border bg-card p-3 w-full">
               <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
                 <div className="flex items-center gap-1">
                   <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => navegar(-1)} aria-label="Mês anterior">
@@ -736,52 +761,86 @@ export default function AgendamentoPage() {
               </div>
             </section>
 
-            <div className="grid w-full gap-3 lg:grid-cols-3">
+            <div className="flex w-full gap-3 overflow-x-auto pb-4 custom-scrollbar">
               {/* Orçamentos com data de chegada */}
-              <section className="flex min-h-[70vh] flex-col rounded-lg border border-border bg-muted/20 p-2">
-                <h2 className="mb-2 text-xs font-semibold">Orçamentos com chegada prevista ({filtrados.filter(i => i.data_chegada).length})</h2>
-                <div className="flex flex-col flex-1 space-y-2 overflow-y-auto">
-                  {filtrados.filter(i => i.data_chegada).length === 0
-                    ? <p className="py-6 text-center text-[11px] text-muted-foreground">Nenhum orçamento com data de chegada.</p>
-                    : filtrados.filter(i => i.data_chegada)
+              <section className="flex h-[750px] w-[380px] shrink-0 flex-col rounded-lg border border-border bg-muted/20 p-2">
+                <div className="mb-2 flex items-center justify-between">
+                  <h2 className="text-xs font-semibold">Orçamentos com chegada prevista ({previstaFiltrada.length})</h2>
+                </div>
+                <div className="relative mb-2">
+                  <Search className="absolute left-2 top-1/2 h-3 w-3 -translate-y-1/2 text-muted-foreground" />
+                  <Input 
+                    placeholder="Pesquisar..." 
+                    className="h-7 pl-7 text-[10px]" 
+                    value={buscaPrevista}
+                    onChange={(e) => setBuscaPrevista(e.target.value)}
+                  />
+                </div>
+                <div className="flex flex-1 flex-col space-y-2 overflow-y-auto pr-1">
+                  {previstaFiltrada.length === 0
+                    ? <p className="py-6 text-center text-[11px] text-muted-foreground">Nenhum orçamento encontrado.</p>
+                    : previstaFiltrada
                         .sort((a, b) => String(a.data_chegada).localeCompare(String(b.data_chegada)))
                         .map((i) => renderItem(i))}
                 </div>
               </section>
 
               {/* Atrasadas */}
-              <section className="flex min-h-[70vh] flex-col rounded-lg border border-destructive/40 bg-destructive/5 p-2">
-                <h2 className="mb-2 text-xs font-semibold text-destructive">Orçamentos atrasados ({atrasadas.length})</h2>
-                <div className="flex flex-col flex-1 space-y-2 overflow-y-auto">
-                  {atrasadas.length === 0
+              <section className="flex h-[750px] w-[380px] shrink-0 flex-col rounded-lg border border-destructive/40 bg-destructive/5 p-2">
+                <div className="mb-2 flex items-center justify-between">
+                  <h2 className="text-xs font-semibold text-destructive">Orçamentos atrasados ({atrasadaFiltrada.length})</h2>
+                </div>
+                <div className="relative mb-2">
+                  <Search className="absolute left-2 top-1/2 h-3 w-3 -translate-y-1/2 text-muted-foreground" />
+                  <Input 
+                    placeholder="Pesquisar..." 
+                    className="h-7 pl-7 text-[10px]" 
+                    value={buscaAtrasada}
+                    onChange={(e) => setBuscaAtrasada(e.target.value)}
+                  />
+                </div>
+                <div className="flex flex-1 flex-col space-y-2 overflow-y-auto pr-1">
+                  {atrasadaFiltrada.length === 0
                     ? <p className="py-6 text-center text-[11px] text-muted-foreground">Nada atrasado. 🎉</p>
-                    : atrasadas.map((i) => renderItem(i))}
+                    : atrasadaFiltrada.map((i) => renderItem(i))}
                 </div>
               </section>
 
               {/* Sem previsão */}
-              <section className="flex min-h-[70vh] flex-col rounded-lg border border-border bg-muted/20 p-2">
-                <h2 className="mb-2 text-xs font-semibold">Sem previsão de chegada ({semData.length})</h2>
-                <div className="flex flex-col flex-1 space-y-2 overflow-y-auto">
-                  {semData.length === 0
+              <section className="flex h-[750px] w-[380px] shrink-0 flex-col rounded-lg border border-border bg-muted/20 p-2">
+                <div className="mb-2 flex items-center justify-between">
+                  <h2 className="text-xs font-semibold">Sem previsão de chegada ({semDataFiltrada.length})</h2>
+                </div>
+                <div className="relative mb-2">
+                  <Search className="absolute left-2 top-1/2 h-3 w-3 -translate-y-1/2 text-muted-foreground" />
+                  <Input 
+                    placeholder="Pesquisar..." 
+                    className="h-7 pl-7 text-[10px]" 
+                    value={buscaSemPrevisao}
+                    onChange={(e) => setBuscaSemPrevisao(e.target.value)}
+                  />
+                </div>
+                <div className="flex flex-1 flex-col space-y-2 overflow-y-auto pr-1">
+                  {semDataFiltrada.length === 0
                     ? <p className="py-6 text-center text-[11px] text-muted-foreground">Todos os pedidos têm data.</p>
-                    : semData.map((i) => renderItem(i))}
+                    : semDataFiltrada.map((i) => renderItem(i))}
                 </div>
               </section>
-            </div>
-          </div>
 
-          <div className="xl:h-full xl:w-[340px] shrink-0 overflow-visible">
-            <AgendamentoAiPanel
-              boardSummary={boardSummary}
-              contexto={{
-                modulo: "agendamento_orcamentos",
-                orcamentos_pendentes: filtrados.length,
-                atrasados: atrasadas.length,
-                sem_data: semData.length,
-                valor_total: filtrados.reduce((s, i) => s + (i.documento_valor || i.valor_total), 0),
-              }}
-            />
+              {/* IA Panel integrado ao final do scroll horizontal */}
+              <div className="h-[750px] w-[340px] shrink-0">
+                <AgendamentoAiPanel
+                  boardSummary={boardSummary}
+                  contexto={{
+                    modulo: "agendamento_orcamentos",
+                    orcamentos_pendentes: filtrados.length,
+                    atrasados: atrasadas.length,
+                    sem_data: semData.length,
+                    valor_total: filtrados.reduce((s, i) => s + (i.documento_valor || i.valor_total), 0),
+                  }}
+                />
+              </div>
+            </div>
           </div>
         </div>
       )}
