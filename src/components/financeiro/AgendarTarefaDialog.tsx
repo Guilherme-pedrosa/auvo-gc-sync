@@ -50,7 +50,14 @@ type Props = {
   open: boolean;
   onOpenChange: (v: boolean) => void;
   alvo: AgendarAlvo | null;
-  onSaved?: (patch: { dataTarefa: string; tecnico: string; tecnicoId: string }) => void;
+  onSaved?: (patch: {
+    dataTarefa: string;
+    tecnico: string;
+    tecnicoId: string;
+    hora?: string;
+    horaFim?: string;
+    detalhes?: string | null;
+  }) => void;
 };
 
 export default function AgendarTarefaDialog({ open, onOpenChange, alvo, onSaved }: Props) {
@@ -240,6 +247,14 @@ export default function AgendarTarefaDialog({ open, onOpenChange, alvo, onSaved 
       toast.success(`Previsão criada na agenda para ${dateISO} às ${hora}`);
       qc.invalidateQueries({ queryKey: ["agenda_agendamentos"] });
       qc.invalidateQueries({ queryKey: ["agenda_semana"] });
+      onSaved?.({
+        dataTarefa: dateISO,
+        tecnico,
+        tecnicoId: String(payload.colaborador_id || tecnicoId),
+        hora,
+        horaFim: payload.hora_fim,
+        detalhes: payload.previsao_detalhes,
+      });
       onOpenChange(false);
     } catch (e: any) {
       toast.error(`Erro ao criar previsão: ${e?.message || String(e)}`);
