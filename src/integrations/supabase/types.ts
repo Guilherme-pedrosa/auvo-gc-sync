@@ -21,6 +21,14 @@ export type Database = {
           cliente: string
           colaborador_id: string | null
           colaborador_nome: string
+          contrato_id: string | null
+          contrato_visita_competencia: string | null
+          contrato_visita_config_id: string | null
+          contrato_visita_numero: number | null
+          conversao_erro: string | null
+          conversao_status: string | null
+          conversao_tentada_em: string | null
+          convertida_em: string | null
           criado_em: string
           criado_por: string | null
           data: string
@@ -33,6 +41,7 @@ export type Database = {
           origem: string
           previsao_continuidade: boolean | null
           previsao_detalhes: string | null
+          previsao_tipo: string | null
           status: string
           veiculo_id: string | null
         }
@@ -42,6 +51,14 @@ export type Database = {
           cliente: string
           colaborador_id?: string | null
           colaborador_nome: string
+          contrato_id?: string | null
+          contrato_visita_competencia?: string | null
+          contrato_visita_config_id?: string | null
+          contrato_visita_numero?: number | null
+          conversao_erro?: string | null
+          conversao_status?: string | null
+          conversao_tentada_em?: string | null
+          convertida_em?: string | null
           criado_em?: string
           criado_por?: string | null
           data: string
@@ -54,6 +71,7 @@ export type Database = {
           origem?: string
           previsao_continuidade?: boolean | null
           previsao_detalhes?: string | null
+          previsao_tipo?: string | null
           status?: string
           veiculo_id?: string | null
         }
@@ -63,6 +81,14 @@ export type Database = {
           cliente?: string
           colaborador_id?: string | null
           colaborador_nome?: string
+          contrato_id?: string | null
+          contrato_visita_competencia?: string | null
+          contrato_visita_config_id?: string | null
+          contrato_visita_numero?: number | null
+          conversao_erro?: string | null
+          conversao_status?: string | null
+          conversao_tentada_em?: string | null
+          convertida_em?: string | null
           criado_em?: string
           criado_por?: string | null
           data?: string
@@ -75,6 +101,7 @@ export type Database = {
           origem?: string
           previsao_continuidade?: boolean | null
           previsao_detalhes?: string | null
+          previsao_tipo?: string | null
           status?: string
           veiculo_id?: string | null
         }
@@ -577,6 +604,54 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      contratos_visitas_config: {
+        Row: {
+          ativo: boolean
+          atualizado_em: string
+          contrato_id: string
+          criado_em: string
+          criado_por: string | null
+          dias_semana: number[] | null
+          duracao_minutos: number
+          hora_inicio: string
+          id: string
+          observacao: string | null
+          qtd_tecnicos: number
+          qtd_visitas: number
+          tecnico_ids: string[] | null
+        }
+        Insert: {
+          ativo?: boolean
+          atualizado_em?: string
+          contrato_id: string
+          criado_em?: string
+          criado_por?: string | null
+          dias_semana?: number[] | null
+          duracao_minutos?: number
+          hora_inicio?: string
+          id?: string
+          observacao?: string | null
+          qtd_tecnicos?: number
+          qtd_visitas?: number
+          tecnico_ids?: string[] | null
+        }
+        Update: {
+          ativo?: boolean
+          atualizado_em?: string
+          contrato_id?: string
+          criado_em?: string
+          criado_por?: string | null
+          dias_semana?: number[] | null
+          duracao_minutos?: number
+          hora_inicio?: string
+          id?: string
+          observacao?: string | null
+          qtd_tecnicos?: number
+          qtd_visitas?: number
+          tecnico_ids?: string[] | null
+        }
+        Relationships: []
       }
       demerito_lancamentos: {
         Row: {
