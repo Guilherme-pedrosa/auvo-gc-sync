@@ -736,11 +736,11 @@ export default function AgendamentoPage() {
               </div>
             </section>
 
-            <div className="grid gap-3 lg:grid-cols-3 xl:grid-cols-3">
+            <div className="grid w-full gap-3 lg:grid-cols-3">
               {/* Dia selecionado */}
               <section className="flex flex-col rounded-lg border border-border bg-muted/20 p-2">
                 <h2 className="mb-2 text-xs font-semibold">Orçamentos em {formatDiaBR(diaSelecionado)} ({itensDoDia.length})</h2>
-                <div className="flex flex-col flex-1 space-y-2">
+                <div className="flex flex-col flex-1 space-y-2 overflow-y-auto">
                   {itensDoDia.length === 0
                     ? <p className="py-6 text-center text-[11px] text-muted-foreground">Nenhuma peça prevista neste dia.</p>
                     : itensDoDia.map((i) => renderItem(i))}
@@ -750,7 +750,7 @@ export default function AgendamentoPage() {
               {/* Atrasadas */}
               <section className="flex flex-col rounded-lg border border-destructive/40 bg-destructive/5 p-2">
                 <h2 className="mb-2 text-xs font-semibold text-destructive">Orçamentos atrasados ({atrasadas.length})</h2>
-                <div className="flex flex-col flex-1 max-h-[600px] space-y-2 overflow-y-auto">
+                <div className="flex flex-col flex-1 space-y-2 overflow-y-auto">
                   {atrasadas.length === 0
                     ? <p className="py-6 text-center text-[11px] text-muted-foreground">Nada atrasado. 🎉</p>
                     : atrasadas.map((i) => renderItem(i))}
@@ -760,7 +760,7 @@ export default function AgendamentoPage() {
               {/* Sem previsão */}
               <section className="flex flex-col rounded-lg border border-border bg-muted/20 p-2">
                 <h2 className="mb-2 text-xs font-semibold">Sem previsão de chegada ({semData.length})</h2>
-                <div className="flex flex-col flex-1 max-h-[600px] space-y-2 overflow-y-auto">
+                <div className="flex flex-col flex-1 space-y-2 overflow-y-auto">
                   {semData.length === 0
                     ? <p className="py-6 text-center text-[11px] text-muted-foreground">Todos os pedidos têm data.</p>
                     : semData.map((i) => renderItem(i))}
