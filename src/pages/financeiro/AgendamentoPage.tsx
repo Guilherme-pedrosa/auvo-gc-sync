@@ -775,7 +775,7 @@ export default function AgendamentoPage() {
             </div>
           </div>
 
-          <div className="xl:h-full overflow-visible">
+          <div className="xl:h-full xl:w-[340px] shrink-0 overflow-visible">
             <AgendamentoAiPanel
               boardSummary={boardSummary}
               contexto={{
