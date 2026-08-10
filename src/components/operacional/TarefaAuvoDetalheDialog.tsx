@@ -226,6 +226,64 @@ export default function TarefaAuvoDetalheDialog({ taskId, onOpenChange, onEdit }
               )}
             </div>
 
+            {tarefa.gc_os_id && (
+              <div className="border rounded-md">
+                <div className="flex items-center gap-2 px-3 py-2 bg-muted/50 border-b">
+                  <ArrowRightLeft className="h-4 w-4 text-muted-foreground" />
+                  <span className="text-sm font-semibold">Situação da OS no GestãoClick</span>
+                </div>
+                <div className="p-3 space-y-2">
+                  <p className="text-xs text-muted-foreground">
+                    Situação atual:{" "}
+                    <Badge
+                      variant="outline"
+                      className="text-[10px] ml-1"
+                      style={{
+                        borderColor: tarefa.gc_os_cor_situacao || undefined,
+                        color: tarefa.gc_os_cor_situacao || undefined,
+                      }}
+                    >
+                      {tarefa.gc_os_situacao || "—"}
+                    </Badge>
+                  </p>
+                  <div className="flex flex-col sm:flex-row gap-2">
+                    <Select
+                      value={novaSituacao}
+                      onValueChange={setNovaSituacao}
+                      disabled={statusMutation.isPending}
+                    >
+                      <SelectTrigger className="h-9 text-xs flex-1">
+                        <SelectValue placeholder="Selecione a nova situação..." />
+                      </SelectTrigger>
+                      <SelectContent className="bg-popover z-50">
+                        {RECONCILIATION_OS_SITUATIONS.map((s) => (
+                          <SelectItem key={s.id} value={s.id} className="text-xs">
+                            {s.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <Button
+                      size="sm"
+                      className="gap-2"
+                      disabled={!novaSituacao || statusMutation.isPending}
+                      onClick={() => statusMutation.mutate(novaSituacao)}
+                    >
+                      {statusMutation.isPending ? (
+                        <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+                      ) : (
+                        <ArrowRightLeft className="h-3.5 w-3.5" />
+                      )}
+                      Alterar situação
+                    </Button>
+                  </div>
+                  <p className="text-[10px] text-muted-foreground">
+                    A alteração é aplicada diretamente na OS {tarefa.gc_os_codigo || ""} do GestãoClick.
+                  </p>
+                </div>
+              </div>
+            )}
+
             {tarefa.endereco && (
               <div className="flex items-start gap-2 bg-muted/50 rounded-md p-3">
                 <MapPin className="h-4 w-4 text-muted-foreground mt-0.5 shrink-0" />
