@@ -258,6 +258,13 @@ function hasOwn(obj: any, key: string): boolean {
   return Object.prototype.hasOwnProperty.call(obj, key);
 }
 
+// A API v2 do Auvo NÃO aceita estimatedDuration/taskEndDate em nenhuma escrita:
+// - PATCH /tasks/{id} devolve 400 "The target location specified by path segment ... was not found"
+// - PUT /tasks (upsert) ignora silenciosamente o campo (verificado em produção)
+// A duração da tarefa no Auvo vem do "standardTime" do Tipo de Tarefa (/taskTypes).
+// Portanto esses caminhos são descartados antes do PATCH para não quebrar a edição.
+const PATCH_UNSUPPORTED_PATHS = ["estimatedDuration", "taskEndDate"];
+
 function setIfProvided(result: any, row: any, key: string, targetKey: string = key) {
   if (!hasOwn(row, key)) return;
   result[targetKey] = row[key] ?? null;
@@ -271,7 +278,8 @@ function sanitizeCentralRow(row: any) {
   // This prevents partial updates (drag/edit) from nulling GC values and other fields.
   const result: any = {
     auvo_task_id: taskId,
-    mirror_key: `${taskId}::os:${String(row?.gc_os_id || "")}::orc:${String(row?.gc_orcamento_id || "")}`,
+    mirror_key: String(row?.mirror_key || "").trim()
+      || `${taskId}::os:${String(row?.gc_os_id || "")}::orc:${String(row?.gc_orcamento_id || "")}`,
     atualizado_em: new Date().toISOString(),
   };
 
@@ -365,49 +373,31 @@ Deno.serve(async (req) => {
       if (isSingleRowPatch && rows.length === 1) {
         const row = rows[0];
         const { auvo_task_id, mirror_key, ...patch } = row;
-        const sourceRow = rowsInput[0] || {};
-        const hasExplicitMirror = !!String(sourceRow?.mirror_key || "").trim()
-          || !!String(sourceRow?.gc_os_id || "").trim()
-          || !!String(sourceRow?.gc_orcamento_id || "").trim();
+        const explicitMirrorKey = String(rowsInput[0]?.mirror_key || "").trim();
+        const targetMirrorKey = mirror_key;
 
-        // Agenda/editors normally know only the Auvo task id. Updating a
-        // fabricated "task::os:::orc:" key created duplicate snapshots and
-        // left the real linked row stale. In that case, patch every mirror of
-        // the same Auvo task and insert only when none exists.
-        if (!hasExplicitMirror) {
-          const { data: updatedRows, error: updateByTaskError } = await admin
+        let { data: updatedRows, error: updateError } = await admin
+          .from("tarefas_central")
+          .update(patch)
+          .eq("mirror_key", targetMirrorKey)
+          .select("mirror_key");
+
+        if (updateError) throw updateError;
+
+        // Fallback: quando o chamador não informou mirror_key/gc ids, a chave
+        // derivada não existe. Atualiza todos os espelhos da mesma tarefa Auvo
+        // em vez de criar uma linha fantasma.
+        if ((!updatedRows || updatedRows.length === 0) && !explicitMirrorKey) {
+          const fallback = await admin
             .from("tarefas_central")
             .update(patch)
             .eq("auvo_task_id", auvo_task_id)
             .select("mirror_key");
-          if (updateByTaskError) throw updateByTaskError;
-
-          if (!updatedRows || updatedRows.length === 0) {
-            const { error: insertError } = await admin
-              .from("tarefas_central")
-              .insert({ ...row, mirror_key: `${auvo_task_id}::os:::orc:` });
-            if (insertError) throw insertError;
-          }
-
-          return new Response(
-            JSON.stringify({ success: true, count: Math.max(1, updatedRows?.length || 0), status: 200 }),
-            { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
-          );
+          if (fallback.error) throw fallback.error;
+          updatedRows = fallback.data;
         }
 
-        const targetMirrorKey = mirror_key || `${auvo_task_id}::os:${String(row?.gc_os_id || "")}::orc:${String(row?.gc_orcamento_id || "")}`;
-
-        const { data: updatedRow, error: updateError } = await admin
-          .from("tarefas_central")
-          .update(patch)
-          .eq("mirror_key", targetMirrorKey)
-          .select("mirror_key")
-          .limit(1)
-          .maybeSingle();
-
-        if (updateError) throw updateError;
-
-        if (!updatedRow) {
+        if (!updatedRows || updatedRows.length === 0) {
           const { error: insertError } = await admin
             .from("tarefas_central")
             .insert({ ...row, mirror_key: targetMirrorKey });
@@ -415,7 +405,7 @@ Deno.serve(async (req) => {
         }
 
         return new Response(
-          JSON.stringify({ success: true, count: 1, status: 200 }),
+          JSON.stringify({ success: true, count: updatedRows?.length || 1, status: 200 }),
           { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
       }
@@ -465,13 +455,30 @@ Deno.serve(async (req) => {
       }
 
       const url = `${AUVO_BASE_URL}/tasks/${taskId}`;
+
+      // Descarta campos que a API v2 não aceita em escrita (duração / data fim)
+      const patchable = patches.filter((p: any) => !PATCH_UNSUPPORTED_PATHS.includes(p?.path));
+      const ignoredPaths = patches
+        .filter((p: any) => PATCH_UNSUPPORTED_PATHS.includes(p?.path))
+        .map((p: any) => p.path);
+      if (ignoredPaths.length > 0) {
+        console.warn(`[auvo-task-update][reqId=${reqId}] campos não suportados pela API Auvo ignorados: ${ignoredPaths.join(", ")}`);
+      }
+
+      if (patchable.length === 0) {
+        return new Response(
+          JSON.stringify({ data: null, status: 200, ignoredPaths, reqId }),
+          { status: 200, headers: respHeaders }
+        );
+      }
+
       // PATCH é idempotente para os campos enviados → retry seguro em 502/503/timeout
       let response: Response;
       try {
         response = await patchWithRetry(url, {
           method: "PATCH",
           headers,
-          body: JSON.stringify(patches),
+          body: JSON.stringify(patchable),
         }, reqId);
       } catch (err) {
         console.error(`[auvo-task-update][reqId=${reqId}] PATCH /tasks/${taskId} falhou após retries:`, err);
@@ -492,7 +499,7 @@ Deno.serve(async (req) => {
       console.log(`[auvo-task-update][reqId=${reqId}] action=edit status=${response.status} response=`, responseText.substring(0, 500));
 
       return new Response(
-        JSON.stringify({ data, status: response.status, reqId }),
+        JSON.stringify({ data, status: response.status, ignoredPaths, reqId }),
         { status: 200, headers: respHeaders }
       );
     }
@@ -712,6 +719,39 @@ Deno.serve(async (req) => {
       );
     }
 
+    if (action === "list-questionnaires") {
+      // Lista questionários disponíveis no Auvo (v2: GET /questionnaires/)
+      const candidates = ["questionnaires", "questionnaire"];
+      const all: any[] = [];
+      let lastErr = "";
+      let usedPath = "";
+      for (const path of candidates) {
+        let page = 1;
+        let gotAny = false;
+        while (page <= 10) {
+          const url = `${AUVO_BASE_URL}/${path}/?paramFilter=${encodeURIComponent(JSON.stringify({}))}&page=${page}&pageSize=100`;
+          const response = await fetch(url, { headers });
+          if (!response.ok) {
+            lastErr = `${path} p${page} HTTP ${response.status}`;
+            break;
+          }
+          const json = await response.json();
+          const items = json?.result?.entityList || json?.result || json?.data || [];
+          if (!Array.isArray(items) || items.length === 0) break;
+          all.push(...items);
+          gotAny = true;
+          if (items.length < 100) break;
+          page++;
+        }
+        if (gotAny) { usedPath = path; break; }
+      }
+      console.log(`[auvo-task-update] list-questionnaires: path=${usedPath} count=${all.length} lastErr=${lastErr}`);
+      return new Response(
+        JSON.stringify({ data: all, status: 200, _debug: { path: usedPath, count: all.length, lastErr } }),
+        { status: 200, headers: respHeaders }
+      );
+    }
+
     if (action === "create-preventive-task") {
       // Cria uma tarefa de preventiva no Auvo a partir de um equipamento
       // body: { auvoEquipmentId, idUserTo, taskTypeId, dateISO ("YYYY-MM-DD"),
@@ -725,6 +765,7 @@ Deno.serve(async (req) => {
         durationMinutes = 120,
         orientation = "",
         priority = 1,
+        questionnaireId = null,
       } = body || {};
 
       if (!auvoEquipmentId || !idUserTo || !taskTypeId || !dateISO) {
@@ -795,7 +836,10 @@ Deno.serve(async (req) => {
         durationResolution.raw?.standardQuestionnaireId ??
         0,
       );
-      if (defaultQuestionnaireId > 0) taskPayload.questionnaireId = defaultQuestionnaireId;
+      const selectedQuestionnaireId = questionnaireId != null && String(questionnaireId).trim() !== ""
+        ? Number(questionnaireId)
+        : defaultQuestionnaireId;
+      if (selectedQuestionnaireId > 0) taskPayload.questionnaireId = selectedQuestionnaireId;
 
       const url = `${AUVO_BASE_URL}/tasks/`;
       let response: Response;
@@ -869,9 +913,257 @@ Deno.serve(async (req) => {
       );
     }
 
+    if (action === "list-customers") {
+      const { forceRefresh = false } = body;
+      const admin = getAdminClient();
+
+      if (!forceRefresh) {
+        // Tenta buscar do cache primeiro
+        const { data: cache, error: cacheErr } = await admin
+          .from("auvo_clientes_cache")
+          .select("auvo_id, nome, endereco")
+          .eq("ativo", true)
+          .order("nome");
+
+        if (!cacheErr && cache && cache.length > 0) {
+          console.log(`[auvo-task-update][reqId=${reqId}] list-customers returning from cache (count=${cache.length})`);
+          return new Response(
+            JSON.stringify({
+              data: cache.map(c => ({ id: c.auvo_id, name: c.nome, address: c.endereco })),
+              status: 200,
+              cached: true
+            }),
+            { status: 200, headers: respHeaders }
+          );
+        }
+      }
+
+      // Se forceRefresh ou cache vazio, busca da API
+      console.log(`[auvo-task-update][reqId=${reqId}] list-customers fetching from API (forceRefresh=${forceRefresh})`);
+      let page = 1;
+      const all: any[] = [];
+      while (page <= 50) {
+        const url = `${AUVO_BASE_URL}/customers/?paramFilter=${encodeURIComponent(JSON.stringify({ active: true }))}&page=${page}&pageSize=100`;
+        const resp = await fetch(url, { headers });
+        if (!resp.ok) break;
+        const json = await resp.json();
+        const items = json?.result?.entityList || json?.result || [];
+        if (!Array.isArray(items) || items.length === 0) break;
+        all.push(...items);
+        if (items.length < 100) break;
+        page++;
+      }
+
+      if (all.length > 0) {
+        const rows = all.map(c => ({
+          auvo_id: Number(c.id ?? c.customerId),
+          nome: String(c.description ?? c.name ?? "Sem Nome"),
+          endereco: c.address ?? null,
+          cidade: c.city ?? null,
+          estado: c.state ?? null,
+          bairro: c.neighborhood ?? null,
+          cep: c.zipCode ?? null,
+          atualizado_em: new Date().toISOString()
+        })).filter(r => !isNaN(r.auvo_id));
+
+        const { error: upsertErr } = await admin
+          .from("auvo_clientes_cache")
+          .upsert(rows, { onConflict: "auvo_id" });
+
+        if (upsertErr) console.error(`[auvo-task-update][reqId=${reqId}] cache upsert error:`, upsertErr);
+      }
+
+      return new Response(JSON.stringify({ data: all, status: 200, cached: false }), { status: 200, headers: respHeaders });
+    }
+
+    if (action === "list-customer-equipments") {
+      const { customerId } = body;
+      if (!customerId) {
+        return new Response(JSON.stringify({ error: "customerId obrigatório" }), { status: 400, headers: respHeaders });
+      }
+      // API v2: o filtro correto é associatedCustomerId (customerId é ignorado e devolve tudo)
+      const all: any[] = [];
+      let page = 1;
+      let lastStatus = 200;
+      while (page <= 10) {
+        const filter = JSON.stringify({ associatedCustomerId: Number(customerId), active: true });
+        const url = `${AUVO_BASE_URL}/equipments/?paramFilter=${encodeURIComponent(filter)}&page=${page}&pageSize=100`;
+        const resp = await fetch(url, { headers });
+        lastStatus = resp.status;
+        if (!resp.ok) break;
+        const json = await resp.json().catch(() => ({}));
+        const items = json?.result?.entityList || json?.result || [];
+        if (!Array.isArray(items) || items.length === 0) break;
+        all.push(...items);
+        if (items.length < 100) break;
+        page++;
+      }
+      const filtered = all.filter((e: any) =>
+        String(e?.associatedCustomerId ?? e?.customerId ?? "") === String(customerId)
+      );
+      console.log(`[auvo-task-update][reqId=${reqId}] list-customer-equipments customer=${customerId} total=${all.length} filtrados=${filtered.length}`);
+      return new Response(
+        JSON.stringify({ data: filtered.length > 0 ? filtered : all, status: lastStatus }),
+        { status: 200, headers: respHeaders }
+      );
+    }
+
+    if (action === "create-task") {
+      const {
+        customerId,
+        idUserTo,
+        idUserFrom = null,
+        taskTypeId,
+        dateISO,
+        startTime = "08:00",
+        durationMinutes = 60,
+        orientation = "",
+        questionnaireId = null,
+        equipmentId = null,
+        equipmentIds = null,
+        priority = 1,
+        checkinType = 1,
+        externalId = null,
+        sendSatisfactionSurvey = false,
+      } = body || {};
+
+      if (!customerId || !idUserTo || !taskTypeId || !dateISO || !startTime) {
+        return new Response(
+          JSON.stringify({ success: false, error: "customerId, idUserTo, taskTypeId, dateISO e startTime são obrigatórios" }),
+          { status: 200, headers: respHeaders }
+        );
+      }
+      const dur = Math.max(15, Math.round(Number(durationMinutes) || 60));
+
+      // Endereço/geolocalização vêm preferencialmente do cliente (regra Auvo)
+      const custResp = await fetch(`${AUVO_BASE_URL}/customers/${customerId}`, { headers });
+      const custJson = await custResp.json().catch(() => ({}));
+      const cust = custJson?.result || custJson || {};
+      if (!custResp.ok) {
+        console.error(`[auvo-task-update][reqId=${reqId}] create-task cliente ${customerId} HTTP ${custResp.status}`);
+      }
+
+      const startISO = `${dateISO}T${startTime}:00`;
+      const start = new Date(startISO);
+      if (Number.isNaN(start.getTime())) {
+        return new Response(
+          JSON.stringify({ success: false, error: "Data/hora inválida" }),
+          { status: 200, headers: respHeaders }
+        );
+      }
+
+      // A API v2 calcula estimatedDuration a partir de tasktypes.standartTime.
+      // Resolve uma variante gerenciada para que a duração escolhida pelo
+      // usuário seja realmente aplicada também nas tarefas gerais.
+      const durationResolution = await ensureTaskTypeDuration(
+        Number(taskTypeId),
+        dur,
+        headers,
+        reqId,
+      );
+
+      const eqList: number[] = (Array.isArray(equipmentIds) ? equipmentIds : equipmentId ? [equipmentId] : [])
+        .map((v: unknown) => Number(v))
+        .filter((n: number) => Number.isFinite(n) && n > 0);
+
+      const taskPayload: any = {
+        idUserFrom: Number(idUserFrom || idUserTo),
+        idUserTo: Number(idUserTo),
+        customerId: Number(customerId),
+        taskType: durationResolution.id,
+        taskDate: startISO,
+        priority: Number(priority) || 1,
+        checkinType: Number(checkinType) || 1,
+        orientation: String(orientation || "Tarefa agendada").substring(0, 500),
+        address: cust?.address || "Endereço não informado",
+        latitude: Number(cust?.latitude ?? 0),
+        longitude: Number(cust?.longitude ?? 0),
+        sendSatisfactionSurvey: Boolean(sendSatisfactionSurvey || durationResolution.raw?.sendSatisfactionSurvey),
+      };
+      if (eqList.length > 0) taskPayload.equipmentsId = eqList;
+      const defaultQuestionnaireId = Number(
+        durationResolution.raw?.standartQuestionnaireId ??
+        durationResolution.raw?.standardQuestionnaireId ??
+        0,
+      );
+      const selectedQuestionnaireId = questionnaireId != null && String(questionnaireId).trim() !== ""
+        ? Number(questionnaireId)
+        : defaultQuestionnaireId;
+      if (selectedQuestionnaireId > 0) taskPayload.questionnaireId = selectedQuestionnaireId;
+      if (externalId) taskPayload.externalId = String(externalId);
+
+      let response: Response;
+      try {
+        response = await fetch(`${AUVO_BASE_URL}/tasks/`, {
+          method: "POST",
+          headers,
+          body: JSON.stringify(taskPayload),
+        });
+      } catch (err) {
+        console.error(`[auvo-task-update][reqId=${reqId}] create-task erro de rede:`, err);
+        return new Response(
+          JSON.stringify({ success: false, retryable: true, error: "Auvo instável. Tente novamente." }),
+          { status: 200, headers: respHeaders }
+        );
+      }
+
+      const respText = await response.text();
+      let data: any;
+      try { data = JSON.parse(respText); } catch { data = { raw: respText }; }
+      const r = data?.result ?? {};
+      const newId =
+        r?.taskID ?? r?.taskId ?? r?.id ??
+        r?.entity?.taskID ?? r?.entity?.taskId ??
+        data?.taskID ?? data?.taskId ?? null;
+
+      if (!response.ok) {
+        console.error(`[auvo-task-update][reqId=${reqId}] create-task Auvo ${response.status}:`, respText.substring(0, 800));
+      }
+      console.log(`[auvo-task-update][reqId=${reqId}] create-task status=${response.status} taskId=${newId}`);
+
+      let actualDurationMinutes = parseAuvoDurationMinutes(
+        r?.estimatedDuration ?? r?.estimated_duration,
+      );
+      if (response.ok && newId && !actualDurationMinutes) {
+        try {
+          const verifiedTask = await fetchTaskById(Number(newId), headers);
+          actualDurationMinutes = parseAuvoDurationMinutes(
+            verifiedTask?.estimatedDuration ?? verifiedTask?.estimated_duration,
+          );
+        } catch (verifyError) {
+          console.warn(`[auvo-task-update][reqId=${reqId}] não foi possível verificar duração da tarefa ${newId}:`, verifyError);
+        }
+      }
+      const durationVerified = actualDurationMinutes === durationResolution.durationMinutes;
+
+      return new Response(
+        JSON.stringify({
+          success: response.ok,
+          status: response.status,
+          taskId: newId ? String(newId) : null,
+          error: response.ok ? null : (data?.message || data?.error || data?.raw || `HTTP ${response.status}`),
+          data,
+          payload: taskPayload,
+          duration: {
+            requestedMinutes: durationResolution.durationMinutes,
+            actualMinutes: actualDurationMinutes || null,
+            verified: durationVerified,
+            taskTypeId: durationResolution.id,
+            baseTaskTypeId: durationResolution.baseId,
+            managedTaskType: durationResolution.managed,
+          },
+          warning: response.ok && !durationVerified
+            ? `Tarefa criada, mas o Auvo não confirmou ${durationResolution.durationMinutes} min de duração`
+            : null,
+          reqId,
+        }),
+        { status: 200, headers: respHeaders }
+      );
+    }
+
     return new Response(
-      JSON.stringify({ error: `action inválida: ${action}. Use: edit, edit-schedule, set-task-duration, upsert, get, get-equipment, list-users, list-task-types, create-preventive-task, persist-central` }),
-      { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      JSON.stringify({ error: `action inválida: ${action}. Use: edit, edit-schedule, set-task-duration, upsert, get, get-equipment, list-users, list-task-types, list-questionnaires, list-customers, list-customer-equipments, create-task, create-preventive-task, persist-central` }),
+      { status: 400, headers: respHeaders }
     );
   } catch (error) {
     console.error(`[auvo-task-update][reqId=${reqId}] Erro:`, error);

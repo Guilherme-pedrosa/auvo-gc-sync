@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, useEffect } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import { format, formatDistanceToNow, startOfMonth } from "date-fns";
@@ -153,6 +153,11 @@ function FreshnessRow({ item }: { item: FreshnessItem }) {
 }
 
 export default function Index() {
+  useEffect(() => {
+    // Redireciona para a escala de equipe, que é o ponto central da operação agora
+    window.location.href = "/operacional/agendamento-equipe";
+  }, []);
+
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { data, isLoading, isFetching, error, refetch } = useOperationsDashboard();
@@ -373,7 +378,7 @@ export default function Index() {
             <p className="text-sm text-muted-foreground">Cada bloco abre diretamente a rotina responsável por aquele indicador.</p>
           </div>
           <div className="grid gap-4 lg:grid-cols-2 xl:grid-cols-3">
-            <OperationCard title="Agenda e campo" description="Carga de hoje e andamento das tarefas no Auvo." icon={Route} route="/financeiro/agenda-semanal">
+            <OperationCard title="Escala e campo" description="Escala de técnicos e andamento das tarefas no Auvo." icon={Route} route="/operacional/agendamento-equipe">
               <MetricLine label="Programadas hoje" value={number(data.today.total)} emphasis />
               <MetricLine label="Abertas / em andamento" value={`${data.today.open} / ${data.today.inProgress}`} />
               <MetricLine label="Pausadas" value={number(data.today.paused)} />

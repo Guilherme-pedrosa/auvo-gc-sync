@@ -681,6 +681,27 @@ function budgetColumnForItem(item: any): string {
   if (item.os_realizada) return "os_realizada";
   if (item.orcamento_realizado) {
     const situacao = String(item.gc_orcamento?.gc_situacao || "sem_situacao").trim() || "sem_situacao";
+    const sitId = String(item.gc_orcamento?.gc_situacao_id || "");
+
+    // Lista de IDs que mantêm o card no Kanban de Orçamentos
+    const ORC_PENDENTE_IDS = [
+      "7063588", // Aguardando Aprovação
+      "2039849", // Aguardando Correção
+      "7084340", // Aguardando Resposta Cliente
+      "7063587", // Aguardando Chegada de Peças
+      "7063589", // Aguardando Fabricação
+      "7219959", // Pedido Conferido - Aguardando Execução
+      "2138148", // Pedido em Conferência
+      "7106316", // Retirada pelo Técnico
+      "7253507", // Serviço Aguardando Execução
+    ];
+
+    if (!sitId || !ORC_PENDENTE_IDS.includes(sitId)) {
+      // Se a situação não for uma das pendentes acima, o orçamento "já foi resolvido" (ex: Venda Faturada, Cancelado)
+      // e o card não deve mais aparecer no Kanban de Orçamentos (a menos que seja movido para os_realizada via TAREFA OS)
+      return "resolvido_finalizado"; // Status interno para indicar saída do Kanban
+    }
+
     return `orc_${situacao.replace(/\s+/g, "_").toLowerCase()}`;
   }
   if (!hasFilledQuestionnaireAnswers(item)) return "falta_preenchimento";
@@ -1625,7 +1646,7 @@ async function runBudgetKanbanSync(opts: {
   let legacyFallbackUsed = false;
   for (let i = 0; i < syncRows.length; i += 50) {
     const batch = syncRows.slice(i, i + 50);
-    const { error } = await sbClient.rpc("upsert_budget_kanban_sync_items", {
+    const { error } = await sbClient.rpc("upsert_budget_kanban_sync_items_v2", {
       p_items: batch,
     });
     if (error) {

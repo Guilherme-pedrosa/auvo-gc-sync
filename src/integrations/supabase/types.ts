@@ -14,6 +14,173 @@ export type Database = {
   }
   public: {
     Tables: {
+      agenda_agendamentos: {
+        Row: {
+          atualizado_em: string
+          auvo_task_id: string | null
+          cliente: string
+          colaborador_id: string | null
+          colaborador_nome: string
+          criado_em: string
+          criado_por: string | null
+          data: string
+          descricao: string | null
+          gc_orcamento_codigo: string | null
+          gc_os_codigo: string | null
+          hora_fim: string
+          hora_inicio: string
+          id: string
+          origem: string
+          previsao_continuidade: boolean | null
+          previsao_detalhes: string | null
+          status: string
+          veiculo_id: string | null
+        }
+        Insert: {
+          atualizado_em?: string
+          auvo_task_id?: string | null
+          cliente: string
+          colaborador_id?: string | null
+          colaborador_nome: string
+          criado_em?: string
+          criado_por?: string | null
+          data: string
+          descricao?: string | null
+          gc_orcamento_codigo?: string | null
+          gc_os_codigo?: string | null
+          hora_fim: string
+          hora_inicio: string
+          id?: string
+          origem?: string
+          previsao_continuidade?: boolean | null
+          previsao_detalhes?: string | null
+          status?: string
+          veiculo_id?: string | null
+        }
+        Update: {
+          atualizado_em?: string
+          auvo_task_id?: string | null
+          cliente?: string
+          colaborador_id?: string | null
+          colaborador_nome?: string
+          criado_em?: string
+          criado_por?: string | null
+          data?: string
+          descricao?: string | null
+          gc_orcamento_codigo?: string | null
+          gc_os_codigo?: string | null
+          hora_fim?: string
+          hora_inicio?: string
+          id?: string
+          origem?: string
+          previsao_continuidade?: boolean | null
+          previsao_detalhes?: string | null
+          status?: string
+          veiculo_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "agenda_agendamentos_colaborador_id_fkey"
+            columns: ["colaborador_id"]
+            isOneToOne: false
+            referencedRelation: "rh_colaboradores"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "agenda_agendamentos_veiculo_id_fkey"
+            columns: ["veiculo_id"]
+            isOneToOne: false
+            referencedRelation: "agenda_veiculos"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      agenda_veiculo_dia: {
+        Row: {
+          created_at: string
+          data: string
+          id: string
+          texto: string
+          updated_at: string
+          veiculo_id: string
+        }
+        Insert: {
+          created_at?: string
+          data: string
+          id?: string
+          texto?: string
+          updated_at?: string
+          veiculo_id: string
+        }
+        Update: {
+          created_at?: string
+          data?: string
+          id?: string
+          texto?: string
+          updated_at?: string
+          veiculo_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "agenda_veiculo_dia_veiculo_id_fkey"
+            columns: ["veiculo_id"]
+            isOneToOne: false
+            referencedRelation: "agenda_veiculos"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      agenda_veiculos: {
+        Row: {
+          ativo: boolean
+          atualizado_em: string
+          criado_em: string
+          deletado_em: string | null
+          id: string
+          marca: string | null
+          modelo: string | null
+          nome: string
+          observacao: string | null
+          ordem: number
+          placa: string | null
+          sincronizado_em: string | null
+          status: string | null
+          tvh_vehicle_id: string | null
+        }
+        Insert: {
+          ativo?: boolean
+          atualizado_em?: string
+          criado_em?: string
+          deletado_em?: string | null
+          id?: string
+          marca?: string | null
+          modelo?: string | null
+          nome: string
+          observacao?: string | null
+          ordem?: number
+          placa?: string | null
+          sincronizado_em?: string | null
+          status?: string | null
+          tvh_vehicle_id?: string | null
+        }
+        Update: {
+          ativo?: boolean
+          atualizado_em?: string
+          criado_em?: string
+          deletado_em?: string | null
+          id?: string
+          marca?: string | null
+          modelo?: string | null
+          nome?: string
+          observacao?: string | null
+          ordem?: number
+          placa?: string | null
+          sincronizado_em?: string | null
+          status?: string | null
+          tvh_vehicle_id?: string | null
+        }
+        Relationships: []
+      }
       alertas_horas_config: {
         Row: {
           atualizado_em: string
@@ -226,6 +393,45 @@ export type Database = {
           status_original?: string
           tecnico_id?: string
           tecnico_nome?: string
+        }
+        Relationships: []
+      }
+      auvo_clientes_cache: {
+        Row: {
+          ativo: boolean | null
+          atualizado_em: string | null
+          auvo_id: number
+          bairro: string | null
+          cep: string | null
+          cidade: string | null
+          endereco: string | null
+          estado: string | null
+          id: string
+          nome: string
+        }
+        Insert: {
+          ativo?: boolean | null
+          atualizado_em?: string | null
+          auvo_id: number
+          bairro?: string | null
+          cep?: string | null
+          cidade?: string | null
+          endereco?: string | null
+          estado?: string | null
+          id?: string
+          nome: string
+        }
+        Update: {
+          ativo?: boolean | null
+          atualizado_em?: string | null
+          auvo_id?: number
+          bairro?: string | null
+          cep?: string | null
+          cidade?: string | null
+          endereco?: string | null
+          estado?: string | null
+          id?: string
+          nome?: string
         }
         Relationships: []
       }
@@ -2932,6 +3138,10 @@ export type Database = {
       upsert_budget_kanban_sync_items: {
         Args: { p_items: Json }
         Returns: number
+      }
+      upsert_budget_kanban_sync_items_v2: {
+        Args: { p_items: Json }
+        Returns: undefined
       }
     }
     Enums: {

@@ -25,6 +25,7 @@ import AnalisesOperacionaisPage from "./pages/financeiro/AnalisesOperacionaisPag
 import PlanosPreventivosPage from "./pages/financeiro/PlanosPreventivosPage.tsx";
 import FollowUpKanbanPage from "./pages/financeiro/FollowUpKanbanPage.tsx";
 import PremiacaoPage from "./pages/financeiro/PremiacaoPage.tsx";
+import AgendamentoPage from "./pages/financeiro/AgendamentoPage.tsx";
 import ContratosPage from "./pages/configuracoes/ContratosPage.tsx";
 import TiposEquipamentoPage from "./pages/configuracoes/TiposEquipamentoPage.tsx";
 import TiposTarefaPreventivaPage from "./pages/configuracoes/TiposTarefaPreventivaPage.tsx";
@@ -52,6 +53,8 @@ import PortalHorasPage from "./pages/portal/PortalHorasPage.tsx";
 import PortalOrcamentosPage from "./pages/portal/PortalOrcamentosPage.tsx";
 import PortalPlanosPreventivosPage from "./pages/portal/PortalPlanosPreventivosPage.tsx";
 import PortalNegociacaoPage from "./pages/portal/PortalNegociacaoPage.tsx";
+import AgendamentoEquipePage from "./pages/operacional/AgendamentoEquipePage.tsx";
+import ProdutividadeTecnicosPage from "./pages/financeiro/ProdutividadeTecnicosPage.tsx";
 import { Loader2 } from "lucide-react";
 
 const queryClient = new QueryClient({
@@ -109,6 +112,7 @@ const AppRoutes = () => {
                 <Route path="/" element={<Index />} />
                 <Route path="/financeiro/auvo-sync" element={<AuvoSyncPage />} />
                 <Route path="/financeiro/dashboard-tecnicos" element={<TechDashboardPage />} />
+                <Route path="/financeiro/produtividade-tecnicos" element={<ProdutividadeTecnicosPage />} />
                 <Route path="/financeiro/kanban-orcamentos" element={<BudgetKanbanPage />} />
                 <Route path="/financeiro/kanban-personalizado" element={<CustomKanbanPage />} />
                 <Route path="/financeiro/acompanhamento" element={<RealtimeTrackingPage />} />
@@ -123,6 +127,7 @@ const AppRoutes = () => {
                 <Route path="/financeiro/planos-preventivos" element={<PlanosPreventivosPage />} />
                 <Route path="/financeiro/kanban-followup" element={<FollowUpKanbanPage />} />
                 <Route path="/financeiro/premiacao" element={<PremiacaoPage />} />
+                <Route path="/financeiro/agendamento" element={<AgendamentoPage />} />
                 <Route path="/configuracoes/contratos" element={<ContratosPage />} />
                 <Route path="/configuracoes/tipos-equipamento" element={<TiposEquipamentoPage />} />
                 <Route path="/configuracoes/tipos-tarefa-preventiva" element={<TiposTarefaPreventivaPage />} />
@@ -147,6 +152,7 @@ const AppRoutes = () => {
                 <Route path="/med-seg/config/tipos-aso" element={<TiposASOPage />} />
                 <Route path="/med-seg/config/periodicidade" element={<TiposASOPage />} />
                 <Route path="/med-seg/config/clinicas" element={<ClinicasPage />} />
+                <Route path="/operacional/agendamento-equipe" element={<AgendamentoEquipePage />} />
                 <Route path="/admin/usuarios" element={<UsersPage />} />
                 <Route path="*" element={<NotFound />} />
               </Routes>

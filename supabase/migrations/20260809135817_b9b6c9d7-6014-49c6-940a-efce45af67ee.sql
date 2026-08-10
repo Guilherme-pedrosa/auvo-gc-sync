@@ -1,0 +1,1 @@
+delete from public.agenda_agendamentos where id = '04a8b434-588e-405b-8e21-75568aea52bc';

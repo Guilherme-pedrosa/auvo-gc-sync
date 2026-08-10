@@ -2,7 +2,7 @@ import { useNavigate, useLocation } from "react-router-dom";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/hooks/useAuth";
 import {
- RefreshCw, BarChart3, Kanban, LayoutDashboard, ListChecks, Radio, Wrench, CalendarDays, ChevronDown, Users, LogOut, Shield, FileText, PanelLeftClose, PanelLeft, Thermometer, ArrowLeftRight, Trophy, Settings, UserCog, FileCheck, Building2, GraduationCap, HeartPulse, Stethoscope, Brain, Share2
+ RefreshCw, BarChart3, Kanban, LayoutDashboard, ListChecks, Radio, Wrench, CalendarDays, CalendarClock, ChevronDown, Users, LogOut, Shield, FileText, PanelLeftClose, PanelLeft, Thermometer, ArrowLeftRight, Trophy, Settings, UserCog, FileCheck, Building2, GraduationCap, HeartPulse, Stethoscope, Brain, Share2
 } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useState } from "react";
@@ -28,11 +28,19 @@ const navGroups: NavGroup[] = [
     ],
   },
   {
+    label: "Agendamento",
+    items: [
+      { label: "Agendamento Equipe", icon: CalendarClock, path: "/operacional/agendamento-equipe" },
+      { label: "Chegada Orçamentos", icon: CalendarClock, path: "/financeiro/agendamento" },
+    ],
+  },
+  {
     label: "Operacional",
     items: [
       { label: "Dashboard Técnicos", icon: BarChart3, path: "/financeiro/dashboard-tecnicos" },
+      { label: "Produtividade Técnicos", icon: BarChart3, path: "/financeiro/produtividade-tecnicos" },
       { label: "Acompanhamento", icon: Radio, path: "/financeiro/acompanhamento" },
-      { label: "Agenda Semanal", icon: CalendarDays, path: "/financeiro/agenda-semanal" },
+      { label: "Agenda Semanal (Antiga)", icon: CalendarDays, path: "/financeiro/agenda-semanal" },
       { label: "Controle OS", icon: FileText, path: "/financeiro/relatorios" },
       { label: "Controle Orçamentos", icon: FileText, path: "/financeiro/controle-orcamentos" },
       { label: "OS Cruzadas", icon: ArrowLeftRight, path: "/financeiro/os-cruzadas" },
@@ -214,8 +222,8 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
                 )}
 
                 <div className={cn(
-                  "space-y-0.5 mt-0.5 overflow-hidden transition-all duration-200",
-                  !collapsed && !isExpanded ? "max-h-0 opacity-0" : "max-h-96 opacity-100"
+                  "space-y-0.5 mt-0.5 transition-all duration-200",
+                  !collapsed && !isExpanded ? "max-h-0 opacity-0 overflow-hidden" : "max-h-[1000px] opacity-100"
                 )}>
                   {group.items.map((item) => {
                     if (item.children) {
@@ -249,8 +257,8 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
                           </Tooltip>
                           {!collapsed && (
                             <div className={cn(
-                              "ml-3 pl-2 border-l border-sidebar-border/50 space-y-0.5 mt-0.5 overflow-hidden transition-all duration-200",
-                              subOpen ? "max-h-96 opacity-100" : "max-h-0 opacity-0"
+                              "ml-3 pl-2 border-l border-sidebar-border/50 space-y-0.5 mt-0.5 transition-all duration-200",
+                              subOpen ? "max-h-[500px] opacity-100" : "max-h-0 opacity-0 overflow-hidden"
                             )}>
                               {item.children.map((child) => {
                                 const isActive = location.pathname === child.path;

@@ -1,3 +1,4 @@
+import { minutesToClock, clockToMinutes } from "@/lib/auvoDuration";
 import { useState, useEffect, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
@@ -48,6 +49,7 @@ function formatDuration(minutes: number): string {
 export default function CriarTarefaAuvoDialog({ open, onOpenChange, equipamento, onCreated }: Props) {
   const [taskTypeId, setTaskTypeId] = useState<string>("");
   const [idUserTo, setIdUserTo] = useState<string>("");
+  const [questionnaireId, setQuestionnaireId] = useState<string>("");
   const [dateISO, setDateISO] = useState<string>(() => {
     const base = equipamento.proxima_data?.slice(0, 10) || new Date().toISOString().slice(0, 10);
     return base;
@@ -70,7 +72,8 @@ export default function CriarTarefaAuvoDialog({ open, onOpenChange, equipamento,
       setDateISO(base);
       setOrientation(`Preventiva — ${equipamento.nome}${equipamento.cliente ? ` (${equipamento.cliente})` : ""}`);
       const h = Number(equipamento.htHoras);
-      setDurationMinutes(Number.isFinite(h) && h > 0 ? Math.round(h * 60) : 120);
+      const minutes = Number.isFinite(h) && h > 0 ? Math.round(h * 60) : 120;
+      setDurationMinutes(minutes);
     }
   }, [open, equipamento.id, equipamento.htHoras]);
 
@@ -103,6 +106,29 @@ export default function CriarTarefaAuvoDialog({ open, onOpenChange, equipamento,
       return (data?.data || []) as any[];
     },
   });
+
+  const { data: questionnaires = [], isLoading: loadingQuestionnaires } = useQuery({
+    queryKey: ["auvo-questionnaires"],
+    enabled: open,
+    staleTime: 30 * 60 * 1000,
+    queryFn: async () => {
+      const { data, error } = await supabase.functions.invoke("auvo-task-update", {
+        body: { action: "list-questionnaires" },
+      });
+      if (error) throw error;
+      return (data?.data || []) as any[];
+    },
+  });
+
+  const questionnaireOptions = useMemo(() => {
+    return questionnaires
+      .map((q: any) => ({
+        value: String(q.id ?? q.questionnaireId ?? q.questionnaireID ?? ""),
+        label: String(q.description ?? q.name ?? q.questionnaireDescription ?? `Questionário ${q.id ?? "?"}`),
+      }))
+      .filter((o) => o.value)
+      .sort((a, b) => a.label.localeCompare(b.label));
+  }, [questionnaires]);
 
   const taskTypeOptions = useMemo(() => {
     const byId = new Map<string, { value: string; label: string; durationMinutes: number }>();
@@ -172,6 +198,7 @@ export default function CriarTarefaAuvoDialog({ open, onOpenChange, equipamento,
           durationMinutes,
           orientation,
           priority: 1,
+          questionnaireId: questionnaireId || null,
         },
       });
       if (error) throw error;
@@ -239,8 +266,25 @@ export default function CriarTarefaAuvoDialog({ open, onOpenChange, equipamento,
             />
           </div>
 
+          <div>
+            <Label className="text-xs">Questionário (opcional)</Label>
+            <SearchableSelect
+              options={questionnaireOptions}
+              value={questionnaireId}
+              onValueChange={(v) => setQuestionnaireId(v as string)}
+              placeholder={
+                loadingQuestionnaires
+                  ? "Carregando..."
+                  : questionnaireOptions.length === 0
+                    ? "Nenhum questionário disponível"
+                    : "Sem questionário"
+              }
+              searchPlaceholder="Buscar questionário..."
+            />
+          </div>
+
           <div className="grid grid-cols-3 gap-2">
-            <div className="col-span-2">
+            <div className="col-span-1">
               <Label className="text-xs">Data</Label>
               <Input type="date" value={dateISO} onChange={(e) => setDateISO(e.target.value)} />
             </div>
@@ -248,21 +292,19 @@ export default function CriarTarefaAuvoDialog({ open, onOpenChange, equipamento,
               <Label className="text-xs">Hora</Label>
               <Input type="time" value={startTime} onChange={(e) => setStartTime(e.target.value)} />
             </div>
+            <div>
+              <Label className="text-xs">Duração (HH:mm)</Label>
+              <Input
+                type="time"
+                step={300}
+                value={minutesToClock(durationMinutes)}
+                onChange={(e) => setDurationMinutes(clockToMinutes(e.target.value))}
+              />
+            </div>
           </div>
-
-          <div>
-            <Label className="text-xs">Duração (min)</Label>
-            <Input
-              type="number"
-              min={15}
-              step={15}
-              value={durationMinutes}
-              onChange={(e) => setDurationMinutes(Number(e.target.value) || 60)}
-            />
-            <p className="mt-1 text-[11px] text-muted-foreground">
-              A duração será gravada no Auvo pelo tempo padrão de uma variante do tipo selecionado e conferida após a criação.
-            </p>
-          </div>
+          <p className="-mt-2 text-[11px] text-muted-foreground">
+            A duração será gravada e conferida no Auvo pelo tempo padrão do tipo de tarefa correspondente.
+          </p>
 
           <div>
             <Label className="text-xs">Orientação</Label>

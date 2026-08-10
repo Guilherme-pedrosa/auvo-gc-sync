@@ -146,7 +146,9 @@ export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, o
   const [search, setSearch] = useState("");
   const [excludedSituacoes, setExcludedSituacoes] = useState<Set<string>>(new Set());
   const [searchSituacao, setSearchSituacao] = useState("");
-  const [execStatusFilter, setExecStatusFilter] = useState<string>("all"); // all | em_andamento | pausada | finalizada | sem_exec
+  // Multisseleção: vazio = todas
+  const [execStatusFilter, setExecStatusFilter] = useState<Set<string>>(new Set()); // em_andamento | pausada | finalizada | sem_exec | excluidas
+  const [agendaFilter, setAgendaFilter] = useState<Set<string>>(new Set()); // nao_agendada | atrasada | hoje | agendada
   const [localReparoFilter, setLocalReparoFilter] = useState<string>("all"); // all | galpao | cliente | sem_info
   const [expanded, setExpanded] = useState<string | null>(null);
 
@@ -341,6 +343,31 @@ export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, o
     return "";
   }, [liveExecMap, execTaskStatusMap, allTasks]);
 
+  // Bucket de agendamento da execução: nao_agendada | atrasada | hoje | agendada
+  const getItemAgendaBucket = useCallback((item: any): string => {
+    const execId = parseExecIds(item.gc_os_tarefa_exec)[0] || null;
+    const execRow = execId ? allTasks.find((t: any) => String(t.auvo_task_id) === execId) : null;
+    const live = liveExecMap.get(String(item.gc_os_id));
+    const execDate = live?.dataTarefa || execRow?.data_tarefa;
+    const execTecnico = live?.tecnico || execRow?.tecnico;
+    if (!execDate && !execTecnico) return "nao_agendada";
+    const s = String(execDate || "").trim();
+    const br = s.match(/^(\d{2})\/(\d{2})\/(\d{4})/);
+    const iso = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    const d = br
+      ? new Date(Number(br[3]), Number(br[2]) - 1, Number(br[1]))
+      : iso
+        ? new Date(Number(iso[1]), Number(iso[2]) - 1, Number(iso[3]))
+        : null;
+    if (!d) return "nao_agendada";
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const diff = d.getTime() - today.getTime();
+    if (diff < 0) return "atrasada";
+    if (diff === 0) return "hoje";
+    return "agendada";
+  }, [allTasks, liveExecMap]);
+
   const getItemEquipamento = useCallback((item: any) => {
     const live = liveEquipmentMap.get(String(item?.gc_os_id));
     if (live?.nome || live?.serie) return live;
@@ -426,22 +453,26 @@ export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, o
       });
     }
 
-    // Apply exec status filter
-    if (execStatusFilter === "excluidas") {
-      items = items.filter((item) => deletedOsIds.has(String(item.gc_os_id || "")));
-    } else if (execStatusFilter !== "all") {
+    // Apply exec status filter (multisseleção; vazio = todas)
+    if (execStatusFilter.size > 0) {
       items = items.filter((item) => {
+        if (execStatusFilter.has("excluidas") && deletedOsIds.has(String(item.gc_os_id || ""))) return true;
         const status = getItemExecStatus(item).toLowerCase();
-        if (execStatusFilter === "em_andamento") return status.includes("andamento") || status.includes("deslocamento");
-        if (execStatusFilter === "pausada") return status.includes("pausa");
-        if (execStatusFilter === "finalizada") return status.includes("finalizada");
-        if (execStatusFilter === "sem_exec") return !status || status === "agendada" || status === "aberta";
-        return true;
+        if (execStatusFilter.has("em_andamento") && (status.includes("andamento") || status.includes("deslocamento"))) return true;
+        if (execStatusFilter.has("pausada") && status.includes("pausa")) return true;
+        if (execStatusFilter.has("finalizada") && status.includes("finalizada")) return true;
+        if (execStatusFilter.has("sem_exec") && (!status || status === "agendada" || status === "aberta")) return true;
+        return false;
       });
     }
 
+    // Filtro de agendamento da execução (multisseleção; vazio = todos)
+    if (agendaFilter.size > 0) {
+      items = items.filter((item) => agendaFilter.has(getItemAgendaBucket(item)));
+    }
+
     return items;
-  }, [data, deletedOsIds, excludedSituacoes, execStatusFilter, getItemExecStatus, localReparoFilter, movedOsIds, removedOsIds]);
+  }, [agendaFilter, data, deletedOsIds, excludedSituacoes, execStatusFilter, getItemAgendaBucket, getItemExecStatus, localReparoFilter, movedOsIds, removedOsIds]);
 
   // Verifica no GC quais OS listadas foram apagadas
   const checkedOsIdsRef = useRef<Set<string>>(new Set());
@@ -468,7 +499,7 @@ export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, o
       }
       if (encontradas.length > 0) {
         toast.warning(`${encontradas.length} OS não existem mais no GestãoClick — marcadas como ${SITUACAO_EXCLUIDA}`);
-        if (!opts?.silent) setExecStatusFilter("excluidas");
+        if (!opts?.silent) setExecStatusFilter(new Set(["excluidas"]));
       } else if (!opts?.silent) {
         toast.success("Nenhuma OS excluída encontrada");
       }
@@ -650,25 +681,53 @@ export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, o
     };
   }, [expanded, filtered, liveOsMap, osTaskByGcOsId, resolveAuvoTaskLive]);
 
-  // Fetch live exec task info when client row is expanded
+  // Resolve live exec info em background para TODAS as OS listadas (não só a linha expandida),
+  // para que os filtros de agenda/execução funcionem sem precisar abrir cada cliente.
   useEffect(() => {
-    if (!expanded) return;
-    const row = filtered.find((r) => r.cliente === expanded);
-    if (!row) return;
+    const expandedRow = expanded ? filtered.find((r) => r.cliente === expanded) : null;
+    const ordered: any[] = [
+      ...(expandedRow?.items ?? []),
+      ...filtered.flatMap((r: any) => (r.cliente === expanded ? [] : r.items)),
+    ];
+    // 1) Semeia do cache local (tarefas_central) — sem chamada de API.
+    const seeded = new Map<string, { execTaskId: string; tecnico: string; dataTarefa: string; status: string }>();
+    const needsApi: any[] = [];
+    for (const item of ordered) {
+      const gcId = String(item?.gc_os_id || "");
+      if (!gcId || liveExecMap.has(gcId)) continue;
+      const ids = parseExecIds(item.gc_os_tarefa_exec);
+      const row = ids
+        .map((eid) => allTasks.find((t: any) => String(t.auvo_task_id) === eid))
+        .find((r: any) => r && (r.data_tarefa || r.tecnico));
+      if (row) {
+        seeded.set(gcId, {
+          execTaskId: ids.join("/"),
+          tecnico: row.tecnico || "",
+          dataTarefa: row.data_tarefa || "",
+          status: row.status_auvo || "",
+        });
+      } else {
+        needsApi.push(item);
+      }
+    }
+    if (seeded.size > 0) {
+      setLiveExecMap((prev) => {
+        const next = new Map(prev);
+        seeded.forEach((v, k) => { if (!next.has(k)) next.set(k, v); });
+        return next;
+      });
+      return; // efeito reexecuta e segue com os que realmente precisam de API
+    }
 
-    const itemsToResolve = row.items.filter(
-      (item: any) => item.gc_os_id && !liveExecMap.has(String(item.gc_os_id))
-    );
+    const itemsToResolve = needsApi.slice(0, 6); // lotes pequenos, em paralelo
     if (itemsToResolve.length === 0) return;
 
     let cancelled = false;
 
     (async () => {
-      const updates = new Map(liveExecMap);
+      const updates = new Map<string, { execTaskId: string; tecnico: string; dataTarefa: string; status: string }>();
 
-      for (const item of itemsToResolve) {
-        if (cancelled) break;
-
+      await Promise.all(itemsToResolve.map(async (item: any) => {
         try {
           let rawExecValue = String(item.gc_os_tarefa_exec || "").trim();
 
@@ -676,12 +735,12 @@ export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, o
             const { data: gcData, error } = await supabase.functions.invoke("gc-proxy", {
               body: { endpoint: `/api/ordens_servicos/${item.gc_os_id}`, method: "GET" },
             });
-            if (error || cancelled) continue;
+            if (error || cancelled) return;
 
             if (isGcOsMissingResponse(gcData)) {
               markOsDeleted(String(item.gc_os_id));
               updates.set(String(item.gc_os_id), { execTaskId: "", tecnico: "", dataTarefa: "", status: "" });
-              continue;
+              return;
             }
 
             const osObj = gcData?.data?.data ?? gcData?.data ?? null;
@@ -699,7 +758,7 @@ export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, o
 
           if (allExecIds.length === 0) {
             updates.set(String(item.gc_os_id), { execTaskId: "", tecnico: "", dataTarefa: "", status: "" });
-            continue;
+            return;
           }
 
           // Resolve each exec task and pick best data
@@ -738,15 +797,21 @@ export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, o
         } catch {
           // ignore individual failures
         }
-      }
+      }));
 
-      if (!cancelled) setLiveExecMap(updates);
+      if (!cancelled && updates.size > 0) {
+        setLiveExecMap((prev) => {
+          const next = new Map(prev);
+          updates.forEach((v, k) => next.set(k, v));
+          return next;
+        });
+      }
     })();
 
     return () => {
       cancelled = true;
     };
-  }, [expanded, filtered, liveExecMap, resolveAuvoTaskLive]);
+  }, [allTasks, expanded, filtered, liveExecMap, resolveAuvoTaskLive]);
 
   useEffect(() => {
     if (!expanded) return;
@@ -1024,6 +1089,9 @@ export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, o
           action: "persist-central",
           row: {
             auvo_task_id: execTaskId,
+            mirror_key: editingCard.mirror_key,
+            gc_os_id: editingCard.gc_os_id,
+            gc_orcamento_id: editingCard.gc_orcamento_id,
             data_tarefa: editDate ? format(editDate, "yyyy-MM-dd") : editingCard.data_tarefa,
             hora_inicio: `${h}:${m}:00`,
             hora_fim: `${endHour}:${endMinute}:00`,
@@ -1039,6 +1107,21 @@ export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, o
       }
 
       toast.success(`Tarefa de execução #${execTaskId} atualizada no Auvo!`);
+      // Atualiza o cache local imediatamente (sem esperar novo fetch do Auvo)
+      if (editingCard.gc_os_id) {
+        const novaData = editDate ? format(editDate, "yyyy-MM-dd") : null;
+        setLiveExecMap((prev) => {
+          const next = new Map(prev);
+          const atual = next.get(String(editingCard.gc_os_id));
+          next.set(String(editingCard.gc_os_id), {
+            execTaskId: atual?.execTaskId || String(execTaskId),
+            tecnico: tecnicoSelecionado?.name || tecnicoSelecionado?.login || atual?.tecnico || "",
+            dataTarefa: novaData || atual?.dataTarefa || "",
+            status: atual?.status || "",
+          });
+          return next;
+        });
+      }
       onRefresh?.();
       setShowEditModal(false);
       setEditingCard(null);
@@ -1151,27 +1234,100 @@ export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, o
           </PopoverContent>
         </Popover>
 
-        {/* Exec status filter */}
-        <div className="flex items-center gap-1.5">
-          {[
-            { value: "all", label: "Todas", icon: null },
-            { value: "em_andamento", label: "🔄 Em andamento", icon: null },
-            { value: "pausada", label: "⏸ Pausada", icon: null },
-            { value: "finalizada", label: "✅ Finalizada", icon: null },
-            { value: "sem_exec", label: "Sem execução", icon: null },
-            { value: "excluidas", label: `🗑 Excluídas${deletedOsIds.size ? ` (${deletedOsIds.size})` : ""}`, icon: null },
-          ].map((opt) => (
-            <Button
-              key={opt.value}
-              variant={execStatusFilter === opt.value ? "default" : "outline"}
-              size="sm"
-              className="text-xs h-7 px-2.5"
-              onClick={() => setExecStatusFilter(opt.value)}
-            >
-              {opt.label}
+        {/* Exec status filter — lista com seleção múltipla */}
+        <Popover>
+          <PopoverTrigger asChild>
+            <Button variant="outline" size="sm" className="gap-1.5 text-xs h-7 px-2.5">
+              <Filter className="h-3.5 w-3.5" />
+              {execStatusFilter.size === 0
+                ? "Execução: todas"
+                : `Execução (${execStatusFilter.size})`}
             </Button>
-          ))}
-        </div>
+          </PopoverTrigger>
+          <PopoverContent className="w-60" align="start">
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-medium">Status de execução</span>
+                {execStatusFilter.size > 0 && (
+                  <Button variant="ghost" size="sm" className="h-6 px-2 text-xs" onClick={() => setExecStatusFilter(new Set())}>
+                    Limpar
+                  </Button>
+                )}
+              </div>
+              <div className="space-y-1">
+                {[
+                  { value: "em_andamento", label: "🔄 Em andamento" },
+                  { value: "pausada", label: "⏸ Pausada" },
+                  { value: "finalizada", label: "✅ Finalizada" },
+                  { value: "sem_exec", label: "Sem execução" },
+                  { value: "excluidas", label: `🗑 Excluídas${deletedOsIds.size ? ` (${deletedOsIds.size})` : ""}` },
+                ].map((opt) => (
+                  <label key={opt.value} className="flex items-center gap-2 cursor-pointer py-0.5">
+                    <Checkbox
+                      checked={execStatusFilter.has(opt.value)}
+                      onCheckedChange={() => {
+                        setExecStatusFilter((prev) => {
+                          const next = new Set(prev);
+                          if (next.has(opt.value)) next.delete(opt.value);
+                          else next.add(opt.value);
+                          return next;
+                        });
+                      }}
+                    />
+                    <span className="text-xs">{opt.label}</span>
+                  </label>
+                ))}
+              </div>
+              <p className="text-[10px] text-muted-foreground">Nenhum selecionado = todas as OS.</p>
+            </div>
+          </PopoverContent>
+        </Popover>
+
+        {/* Agendamento da execução */}
+        <Popover>
+          <PopoverTrigger asChild>
+            <Button variant="outline" size="sm" className="gap-1.5 text-xs h-7 px-2.5">
+              <Filter className="h-3.5 w-3.5" />
+              {agendaFilter.size === 0 ? "Agenda: todas" : `Agenda (${agendaFilter.size})`}
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent className="w-60" align="start">
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-medium">Agendamento</span>
+                {agendaFilter.size > 0 && (
+                  <Button variant="ghost" size="sm" className="h-6 px-2 text-xs" onClick={() => setAgendaFilter(new Set())}>
+                    Limpar
+                  </Button>
+                )}
+              </div>
+              <div className="space-y-1">
+                {[
+                  { value: "nao_agendada", label: "Não agendadas" },
+                  { value: "atrasada", label: "🟡 Atrasadas" },
+                  { value: "hoje", label: "🟢 Hoje" },
+                  { value: "agendada", label: "🟩 Agendadas (futuro)" },
+                ].map((opt) => (
+                  <label key={opt.value} className="flex items-center gap-2 cursor-pointer py-0.5">
+                    <Checkbox
+                      checked={agendaFilter.has(opt.value)}
+                      onCheckedChange={() => {
+                        setAgendaFilter((prev) => {
+                          const next = new Set(prev);
+                          if (next.has(opt.value)) next.delete(opt.value);
+                          else next.add(opt.value);
+                          return next;
+                        });
+                      }}
+                    />
+                    <span className="text-xs">{opt.label}</span>
+                  </label>
+                ))}
+              </div>
+              <p className="text-[10px] text-muted-foreground">Nenhum selecionado = todas as OS.</p>
+            </div>
+          </PopoverContent>
+        </Popover>
 
         {/* Local do reparo (campo GC 68658) */}
         <div className="flex items-center gap-1.5">
@@ -1419,9 +1575,34 @@ export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, o
                                             const live = liveExecMap.get(String(item.gc_os_id));
                                             const execDate = live?.dataTarefa || execRow?.data_tarefa;
                                             const execStatus = live?.status || (execId && execTaskStatusMap?.get(execId));
+                                            const execTecnico = live?.tecnico || execRow?.tecnico || null;
+                                            // Sem data e sem técnico => OS ainda não agendada: não exibe nada
+                                            if (!execDate && !execTecnico) return <span className="text-muted-foreground">—</span>;
+                                            const parseDay = (v: any): Date | null => {
+                                              const s = String(v || "").trim();
+                                              if (!s) return null;
+                                              const br = s.match(/^(\d{2})\/(\d{2})\/(\d{4})/);
+                                              if (br) return new Date(Number(br[3]), Number(br[2]) - 1, Number(br[1]));
+                                              const iso = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+                                              if (iso) return new Date(Number(iso[1]), Number(iso[2]) - 1, Number(iso[3]));
+                                              return null;
+                                            };
+                                            const d = parseDay(execDate);
+                                            let dateClass = "";
+                                            if (d) {
+                                              const today = new Date();
+                                              today.setHours(0, 0, 0, 0);
+                                              const diff = d.getTime() - today.getTime();
+                                              dateClass =
+                                                diff < 0
+                                                  ? "text-amber-700 dark:text-amber-300 bg-amber-100 dark:bg-amber-900/40 rounded px-1"
+                                                  : diff === 0
+                                                    ? "text-emerald-600 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-900/30 rounded px-1"
+                                                    : "text-green-700 dark:text-green-300 bg-green-100 dark:bg-green-900/40 rounded px-1";
+                                            }
                                             return (
                                               <>
-                                                <span>{execDate || "—"}</span>
+                                                <span className={dateClass}>{execDate || "—"}</span>
                                                 {execStatus === "Finalizada" && (
                                                   <Badge variant="outline" className="text-[9px] px-1 py-0 bg-green-100 text-green-700 border-green-300 dark:bg-green-900/50 dark:text-green-300 dark:border-green-700 whitespace-nowrap">
                                                     ✅ Exec. Finalizada
