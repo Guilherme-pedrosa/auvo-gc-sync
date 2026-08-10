@@ -676,10 +676,10 @@ export default function AgendamentoPage() {
           </div>
         </div>
       ) : (
-        <div className="flex w-full flex-col gap-3 xl:flex-row overflow-visible">
-          <div className="flex w-full flex-1 flex-col gap-3 pr-1 overflow-visible">
+        <div className="flex w-full flex-col gap-3 overflow-visible">
+          <div className="flex w-full flex-col gap-3 overflow-visible">
             {/* Calendário */}
-            <section className="flex flex-col rounded-lg border border-border bg-card p-3">
+            <section className="flex flex-col rounded-lg border border-border bg-card p-3 w-full">
               <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
                 <div className="flex items-center gap-1">
                   <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => navegar(-1)} aria-label="Mês anterior">
