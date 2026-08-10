@@ -469,7 +469,7 @@ export default function AgendamentoEquipePage() {
           await supabase
             .from("agenda_agendamentos")
             .delete()
-            .match({ data: d, colaborador_id: cId, origem: "MANUAL" });
+            .match({ data: d, colaborador_id: cId, origem: "MANUAL", previsao_continuidade: false });
         }
       }
 
