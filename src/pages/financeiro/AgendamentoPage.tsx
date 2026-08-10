@@ -323,7 +323,7 @@ export default function AgendamentoPage() {
       );
     }
     return (
-      <div key={chave} className="rounded-md border border-border bg-card p-2.5">
+      <div key={chave} className="flex flex-col rounded-md border border-border bg-card p-2.5">
         <div className="flex items-start justify-between gap-2">
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-1.5">
@@ -463,7 +463,7 @@ export default function AgendamentoPage() {
               </span>
             </div>
           )}
-          <div className="flex items-center gap-1">
+          <div className="mt-auto flex items-center gap-1 pt-2">
             <Button 
               size="sm" 
               variant={i.previsao_data ? "outline" : "default"}
@@ -498,7 +498,7 @@ export default function AgendamentoPage() {
   };
 
   return (
-    <div className="flex min-h-max w-full min-w-[980px] flex-col gap-3 overflow-visible bg-background p-4">
+    <div className="flex min-h-max w-full flex-col gap-3 overflow-visible bg-background p-4">
       <header className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-lg font-semibold text-foreground">Chegada Orçamentos</h1>
@@ -657,8 +657,8 @@ export default function AgendamentoPage() {
           </div>
         </div>
       ) : (
-        <div className="grid grid-cols-1 gap-3 xl:grid-cols-[minmax(0,1fr)_340px] overflow-visible">
-          <div className="flex flex-col gap-3 pr-1 overflow-visible">
+        <div className="flex flex-col gap-3 xl:flex-row overflow-visible">
+          <div className="flex flex-1 flex-col gap-3 pr-1 overflow-visible">
             {/* Calendário */}
             <section className="rounded-lg border border-border bg-card p-3">
               <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
@@ -742,11 +742,11 @@ export default function AgendamentoPage() {
               </div>
             </section>
 
-            <div className="grid gap-3 lg:grid-cols-3">
+            <div className="grid gap-3 lg:grid-cols-3 xl:grid-cols-3">
               {/* Dia selecionado */}
-              <section className="rounded-lg border border-border bg-muted/20 p-2">
+              <section className="flex flex-col rounded-lg border border-border bg-muted/20 p-2">
                 <h2 className="mb-2 text-xs font-semibold">Orçamentos em {formatDiaBR(diaSelecionado)} ({itensDoDia.length})</h2>
-                <div className="space-y-2">
+                <div className="flex flex-col flex-1 space-y-2">
                   {itensDoDia.length === 0
                     ? <p className="py-6 text-center text-[11px] text-muted-foreground">Nenhuma peça prevista neste dia.</p>
                     : itensDoDia.map((i) => renderItem(i))}
@@ -754,9 +754,9 @@ export default function AgendamentoPage() {
               </section>
 
               {/* Atrasadas */}
-              <section className="rounded-lg border border-destructive/40 bg-destructive/5 p-2">
+              <section className="flex flex-col rounded-lg border border-destructive/40 bg-destructive/5 p-2">
                 <h2 className="mb-2 text-xs font-semibold text-destructive">Orçamentos atrasados ({atrasadas.length})</h2>
-                <div className="max-h-[420px] space-y-2 overflow-y-auto">
+                <div className="flex flex-col flex-1 max-h-[600px] space-y-2 overflow-y-auto">
                   {atrasadas.length === 0
                     ? <p className="py-6 text-center text-[11px] text-muted-foreground">Nada atrasado. 🎉</p>
                     : atrasadas.map((i) => renderItem(i))}
@@ -764,9 +764,9 @@ export default function AgendamentoPage() {
               </section>
 
               {/* Sem previsão */}
-              <section className="rounded-lg border border-border bg-muted/20 p-2">
+              <section className="flex flex-col rounded-lg border border-border bg-muted/20 p-2">
                 <h2 className="mb-2 text-xs font-semibold">Sem previsão de chegada ({semData.length})</h2>
-                <div className="max-h-[420px] space-y-2 overflow-y-auto">
+                <div className="flex flex-col flex-1 max-h-[600px] space-y-2 overflow-y-auto">
                   {semData.length === 0
                     ? <p className="py-6 text-center text-[11px] text-muted-foreground">Todos os pedidos têm data.</p>
                     : semData.map((i) => renderItem(i))}
@@ -775,7 +775,7 @@ export default function AgendamentoPage() {
             </div>
           </div>
 
-          <div className="xl:h-full overflow-visible">
+          <div className="xl:h-full xl:w-[340px] shrink-0 overflow-visible">
             <AgendamentoAiPanel
               boardSummary={boardSummary}
               contexto={{
