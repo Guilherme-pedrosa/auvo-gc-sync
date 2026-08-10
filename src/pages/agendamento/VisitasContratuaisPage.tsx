@@ -21,6 +21,7 @@ import {
   contractMonthIsActive,
   contractVisitDurationMinutes,
   isFieldTechnician,
+  minimumContractVisitsPerMonth,
   summarizeContractVisitMonth,
   type ContractVisitMonthSummary,
 } from "@/lib/contractVisits";
@@ -313,6 +314,15 @@ export default function VisitasContratuaisPage() {
       if (value.semanas_mes.length < value.qtd_visitas) {
         throw new Error("Selecione ao menos uma semana diferente para cada visita mensal.");
       }
+      const minimumVisits = minimumContractVisitsPerMonth(
+        Number(contract.horas_mes_contratadas),
+        value.qtd_tecnicos,
+      );
+      if (value.qtd_visitas < minimumVisits) {
+        throw new Error(
+          `Para ${hoursLabel(Number(contract.horas_mes_contratadas))}/mês com ${value.qtd_tecnicos} pessoa(s), informe ao menos ${minimumVisits} visita(s) de até 8h.`,
+        );
+      }
       const durationMinutes = contractVisitDurationMinutes(
         Number(contract.horas_mes_contratadas),
         value.qtd_visitas,
@@ -428,6 +438,9 @@ export default function VisitasContratuaisPage() {
     }];
   })), [configs, monthlySummaries]);
   const selectedContract = contractById.get(draft.contrato_id);
+  const minimumVisits = selectedContract?.horas_mes_contratadas
+    ? minimumContractVisitsPerMonth(Number(selectedContract.horas_mes_contratadas), Math.max(1, draft.qtd_tecnicos))
+    : null;
   let calculatedDuration: number | null = null;
   try {
     calculatedDuration = selectedContract?.horas_mes_contratadas
@@ -496,6 +509,9 @@ export default function VisitasContratuaisPage() {
                       const config = configByContract.get(contract.id);
                       const control = config ? annualControlByConfig.get(config.id) : null;
                       let duration: number | null = null;
+                      const requiredVisits = config && contract.horas_mes_contratadas
+                        ? minimumContractVisitsPerMonth(Number(contract.horas_mes_contratadas), config.qtd_tecnicos)
+                        : null;
                       if (config && contract.horas_mes_contratadas) {
                         try { duration = contractVisitDurationMinutes(Number(contract.horas_mes_contratadas), config.qtd_visitas, config.qtd_tecnicos); } catch { duration = null; }
                       }
@@ -511,7 +527,7 @@ export default function VisitasContratuaisPage() {
                             <p className="text-[11px] text-muted-foreground">banco mensal</p>
                           </TableCell>
                           <TableCell className="min-w-[170px] text-xs">
-                            {config ? <div className="space-y-1"><p className="font-semibold">{config.qtd_visitas} visita(s)/mês</p><p>{config.qtd_tecnicos} pessoa(s) por visita</p><p className="text-muted-foreground">{duration ? `${durationLabel(duration)} por visita` : "Revisar horas do contrato"}</p></div> : <Badge variant="outline" className="border-amber-300 bg-amber-50 text-amber-800">Não configurado</Badge>}
+                            {config ? <div className="space-y-1"><p className="font-semibold">{config.qtd_visitas} visita(s)/mês</p><p>{config.qtd_tecnicos} pessoa(s) por visita</p><p className="text-muted-foreground">{duration ? `${durationLabel(duration)} por visita` : requiredVisits ? `Mínimo ${requiredVisits} visita(s) para jornada de 8h` : "Revisar horas do contrato"}</p></div> : <Badge variant="outline" className="border-amber-300 bg-amber-50 text-amber-800">Não configurado</Badge>}
                           </TableCell>
                           <TableCell className="min-w-[230px] text-xs">
                             {config ? <p className="font-medium">{config.tecnico_ids.map((id) => technicianById.get(id)?.nome).filter(Boolean).join(" · ") || "Equipe não localizada"}</p> : "—"}
@@ -524,6 +540,8 @@ export default function VisitasContratuaisPage() {
                               <Badge variant="outline" className={!Number(contract.horas_mes_contratadas || 0) ? "border-amber-300 bg-amber-50 text-amber-800" : ""}>
                                 {!Number(contract.horas_mes_contratadas || 0) ? "Cadastre as horas no contrato" : "Aguardando configuração"}
                               </Badge>
+                            ) : requiredVisits && config.qtd_visitas < requiredVisits ? (
+                              <div><Badge variant="destructive">Configuração inválida</Badge><p className="mt-1 text-muted-foreground">Mínimo de {requiredVisits} visita(s) para limitar a jornada a 8h.</p></div>
                             ) : config.planejamento_pendente ? (
                               <Badge variant="outline" className="border-blue-300 bg-blue-50 text-blue-800">Atualização pendente</Badge>
                             ) : control?.excessMonths ? (
@@ -556,7 +574,7 @@ export default function VisitasContratuaisPage() {
           <div className="grid gap-5 py-2">
             <div className="space-y-2"><Label>Contrato</Label><select value={draft.contrato_id} disabled={Boolean(draft.id)} onChange={(event) => setDraft((current) => ({ ...current, contrato_id: event.target.value }))} className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm disabled:opacity-60"><option value="">Selecione o contrato</option>{contracts.filter((contract) => !configByContract.has(contract.id) || contract.id === draft.contrato_id).map((contract) => <option key={contract.id} value={contract.id}>{contract.nome}</option>)}</select></div>
 
-            {selectedContract && <div className="grid gap-3 rounded-lg border bg-muted/30 p-4 sm:grid-cols-3"><div><p className="text-xs text-muted-foreground">Horas contratadas</p><p className="text-lg font-bold">{selectedContract.horas_mes_contratadas ? `${hoursLabel(Number(selectedContract.horas_mes_contratadas))}/mês` : "Não cadastradas"}</p></div><div><p className="text-xs text-muted-foreground">Visitas previstas</p><p className="text-lg font-bold">{draft.qtd_visitas}/mês</p></div><div><p className="text-xs text-muted-foreground">Carga calculada por visita</p><p className="text-lg font-bold">{calculatedDuration ? durationLabel(calculatedDuration) : "Revisar dados"}</p><p className="text-[10px] text-muted-foreground">horas ÷ visitas ÷ pessoas</p></div></div>}
+            {selectedContract && <div className="grid gap-3 rounded-lg border bg-muted/30 p-4 sm:grid-cols-3"><div><p className="text-xs text-muted-foreground">Horas contratadas</p><p className="text-lg font-bold">{selectedContract.horas_mes_contratadas ? `${hoursLabel(Number(selectedContract.horas_mes_contratadas))}/mês` : "Não cadastradas"}</p></div><div><p className="text-xs text-muted-foreground">Visitas previstas</p><p className="text-lg font-bold">{draft.qtd_visitas}/mês</p>{minimumVisits && <p className="text-[10px] text-muted-foreground">mínimo {minimumVisits} com jornada de até 8h</p>}</div><div><p className="text-xs text-muted-foreground">Carga calculada por visita</p><p className="text-lg font-bold">{calculatedDuration ? durationLabel(calculatedDuration) : minimumVisits && draft.qtd_visitas < minimumVisits ? `Mínimo ${minimumVisits} visitas` : "Revisar dados"}</p><p className="text-[10px] text-muted-foreground">horas ÷ visitas ÷ pessoas</p></div></div>}
 
             <div className="grid gap-4 sm:grid-cols-3"><div className="space-y-2"><Label>Visitas por mês</Label><Input type="number" min={1} max={31} value={draft.qtd_visitas} onChange={(event) => setDraft((current) => ({ ...current, qtd_visitas: Number(event.target.value) }))} /></div><div className="space-y-2"><Label>Pessoas por visita</Label><Input type="number" min={1} max={10} value={draft.qtd_tecnicos} onChange={(event) => setDraft((current) => ({ ...current, qtd_tecnicos: Number(event.target.value) }))} /></div><div className="space-y-2"><Label>Horário preferencial</Label><Input type="time" value={draft.hora_inicio} onChange={(event) => setDraft((current) => ({ ...current, hora_inicio: event.target.value }))} /></div></div>
 

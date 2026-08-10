@@ -9,6 +9,7 @@ import {
   eligibleContractVisitDates,
   evenlyDistributedDates,
   isFieldTechnician,
+  minimumContractVisitsPerMonth,
   rotatingVisitTeams,
   summarizeContractVisitMonth,
 } from "@/lib/contractVisits";
@@ -19,6 +20,9 @@ describe("planejamento anual de visitas contratuais", () => {
   it("calcula a carga da visita pelas horas, visitas e pessoas da planilha", () => {
     expect(contractVisitDurationMinutes(32, 2, 2)).toBe(480);
     expect(contractVisitDurationMinutes(24, 3, 1)).toBe(480);
+    expect(minimumContractVisitsPerMonth(24, 1)).toBe(3);
+    expect(minimumContractVisitsPerMonth(24, 2)).toBe(2);
+    expect(() => contractVisitDurationMinutes(24, 2, 1)).toThrow("CARGA_VISITA_EXCEDE_8H");
   });
 
   it("respeita semanas e dias permitidos", () => {

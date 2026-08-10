@@ -74,8 +74,22 @@ export function contractVisitDurationMinutes(
     throw new Error("QUANTIDADE_TECNICOS_INVALIDA");
   }
   const minutes = Math.round((contractedHoursPerMonth * 60) / (visitsPerMonth * techniciansPerVisit));
-  if (minutes < 15 || minutes > 24 * 60) throw new Error("CARGA_VISITA_INVALIDA");
+  if (minutes < 15) throw new Error("CARGA_VISITA_INVALIDA");
+  if (minutes > 8 * 60) throw new Error("CARGA_VISITA_EXCEDE_8H");
   return minutes;
+}
+
+export function minimumContractVisitsPerMonth(
+  contractedHoursPerMonth: number,
+  techniciansPerVisit: number,
+): number {
+  if (!Number.isFinite(contractedHoursPerMonth) || contractedHoursPerMonth <= 0) {
+    throw new Error("HORAS_CONTRATADAS_INVALIDAS");
+  }
+  if (!Number.isInteger(techniciansPerVisit) || techniciansPerVisit < 1) {
+    throw new Error("QUANTIDADE_TECNICOS_INVALIDA");
+  }
+  return Math.ceil(contractedHoursPerMonth / (8 * techniciansPerVisit));
 }
 
 export function addMinutesToClock(clock: string, minutes: number): string {
