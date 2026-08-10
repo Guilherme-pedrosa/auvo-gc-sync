@@ -427,6 +427,132 @@ export default function TarefaAuvoDetalheDialog({ taskId, onOpenChange, onEdit }
               </div>
             )}
 
+            {gcDocLoading && docEndpoint && (
+              <div className="border rounded-md p-4 space-y-2">
+                <Skeleton className="h-4 w-40" />
+                <Skeleton className="h-8 w-full" />
+                <Skeleton className="h-8 w-full" />
+              </div>
+            )}
+
+            {!gcDocLoading && gcDoc && (
+              <>
+                <div className="border rounded-md">
+                  <div className="flex items-center gap-2 px-3 py-2 bg-muted/50 border-b">
+                    <span className="text-sm font-semibold">
+                      💰 Resumo Financeiro {os.id ? `— OS ${os.codigo || ""}` : `— Orçamento #${os.orcamento || ""}`}
+                    </span>
+                  </div>
+                  <div className="grid grid-cols-4 gap-2 p-3 text-sm">
+                    <div className="text-center">
+                      <span className="text-muted-foreground text-xs block">Produtos</span>
+                      <p className="font-semibold">{formatCurrency(gcValorProdutos)}</p>
+                    </div>
+                    <div className="text-center">
+                      <span className="text-muted-foreground text-xs block">Serviços</span>
+                      <p className="font-semibold">{formatCurrency(gcValorServicos)}</p>
+                    </div>
+                    <div className="text-center">
+                      <span className="text-muted-foreground text-xs block">Desconto</span>
+                      <p className="font-semibold text-destructive">
+                        {gcValorDesconto > 0 ? `-${formatCurrency(gcValorDesconto)}` : "—"}
+                      </p>
+                    </div>
+                    <div className="text-center">
+                      <span className="text-muted-foreground text-xs block">Total</span>
+                      <p className="font-bold text-foreground">{formatCurrency(gcValorTotal)}</p>
+                    </div>
+                  </div>
+                </div>
+
+                {gcProdutos.length > 0 && (
+                  <div className="border rounded-md">
+                    <div className="flex items-center gap-2 px-3 py-2 bg-muted/50 border-b">
+                      <Package className="h-4 w-4 text-muted-foreground" />
+                      <span className="text-sm font-semibold">Produtos ({gcProdutos.length})</span>
+                    </div>
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead className="text-xs">Código</TableHead>
+                          <TableHead className="text-xs">Descrição</TableHead>
+                          <TableHead className="text-xs text-right">Qtd</TableHead>
+                          <TableHead className="text-xs text-right">Unit.</TableHead>
+                          <TableHead className="text-xs text-right">Total</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {gcProdutos.map((p: any, i: number) => {
+                          const qtd = Number(p.quantidade || p.qtd || 1);
+                          const unitario = Number(p.valor_venda || p.valor_unitario || p.preco || p.valor || 0);
+                          const total = Number(p.valor_total || p.subtotal || qtd * unitario);
+                          return (
+                            <TableRow key={i}>
+                              <TableCell className="text-xs font-mono py-1.5">
+                                {String(p.codigo_interno || p.codigo || p.produto_id || "—")}
+                              </TableCell>
+                              <TableCell className="text-xs py-1.5 max-w-[200px] truncate">
+                                {String(p.nome_produto || p.descricao || p.nome || "—")}
+                              </TableCell>
+                              <TableCell className="text-xs py-1.5 text-right">{qtd}</TableCell>
+                              <TableCell className="text-xs py-1.5 text-right">{formatCurrency(unitario)}</TableCell>
+                              <TableCell className="text-xs py-1.5 text-right font-medium">{formatCurrency(total)}</TableCell>
+                            </TableRow>
+                          );
+                        })}
+                      </TableBody>
+                    </Table>
+                  </div>
+                )}
+
+                {gcServicos.length > 0 && (
+                  <div className="border rounded-md">
+                    <div className="flex items-center gap-2 px-3 py-2 bg-muted/50 border-b">
+                      <ClipboardList className="h-4 w-4 text-muted-foreground" />
+                      <span className="text-sm font-semibold">Serviços ({gcServicos.length})</span>
+                    </div>
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead className="text-xs">Código</TableHead>
+                          <TableHead className="text-xs">Descrição</TableHead>
+                          <TableHead className="text-xs text-right">Qtd</TableHead>
+                          <TableHead className="text-xs text-right">Unit.</TableHead>
+                          <TableHead className="text-xs text-right">Total</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {gcServicos.map((s: any, i: number) => {
+                          const qtd = Number(s.quantidade || s.qtd || 1);
+                          const unitario = Number(s.valor_venda || s.valor_unitario || s.preco || s.valor || 0);
+                          const total = Number(s.valor_total || s.subtotal || qtd * unitario);
+                          return (
+                            <TableRow key={i}>
+                              <TableCell className="text-xs font-mono py-1.5">
+                                {String(s.codigo_interno || s.codigo || s.servico_id || "—")}
+                              </TableCell>
+                              <TableCell className="text-xs py-1.5 max-w-[200px] truncate">
+                                {String(s.nome_servico || s.descricao || s.nome || "—")}
+                              </TableCell>
+                              <TableCell className="text-xs py-1.5 text-right">{qtd}</TableCell>
+                              <TableCell className="text-xs py-1.5 text-right">{formatCurrency(unitario)}</TableCell>
+                              <TableCell className="text-xs py-1.5 text-right font-medium">{formatCurrency(total)}</TableCell>
+                            </TableRow>
+                          );
+                        })}
+                      </TableBody>
+                    </Table>
+                  </div>
+                )}
+
+                {gcProdutos.length === 0 && gcServicos.length === 0 && (
+                  <div className="border rounded-md p-3 text-sm text-muted-foreground text-center">
+                    Nenhum produto ou serviço cadastrado neste documento do GestãoClick
+                  </div>
+                )}
+              </>
+            )}
+
             {tarefa.endereco && (
               <div className="flex items-start gap-2 bg-muted/50 rounded-md p-3">
                 <MapPin className="h-4 w-4 text-muted-foreground mt-0.5 shrink-0" />
