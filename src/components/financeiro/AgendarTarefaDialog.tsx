@@ -222,8 +222,7 @@ export default function AgendarTarefaDialog({ open, onOpenChange, alvo, onSaved 
           <div className="flex items-start gap-2 rounded-md border border-blue-200 bg-blue-50 p-3 text-[11px] text-blue-800">
             <Eye className="mt-0.5 h-4 w-4 shrink-0 text-blue-600" />
             <span>
-              Ao clicar em <strong>Apenas Previsão</strong>, o registro será criado apenas na escala semanal interna.
-              Para enviar para o aplicativo do técnico, use <strong>Agendar no Auvo</strong>.
+              Ao clicar em <strong>Apenas Previsão</strong>, o registro será criado apenas na escala semanal interna para controle.
             </span>
           </div>
         )}
