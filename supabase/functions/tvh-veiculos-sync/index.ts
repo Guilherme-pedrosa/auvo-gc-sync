@@ -22,7 +22,7 @@ const OPEN_STATUSES = ["aberto", "em_andamento", "aguardando_peca"];
 // Valores confirmados no enum ticket_status do Hub. Não incluir rótulos
 // inexistentes aqui: o PostgREST converte cada item para o enum antes de
 // executar a consulta e rejeita o filtro inteiro com 22P02.
-const CLOSED_STATUSES = ["concluido"];
+const CLOSED_STATUSES = ["concluido", "encerrado"];
 
 // Ruído: qualquer alerta de quilometragem/checklist não preenchido ou veículo bloqueado por falta de checklist.
 const IGNORAR_TITULO =
