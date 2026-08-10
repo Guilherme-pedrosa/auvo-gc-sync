@@ -2,7 +2,7 @@ import { useMemo, useState, useCallback } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import {
-  AlertTriangle, CalendarClock, ChevronLeft, ChevronRight, ExternalLink, Filter, Loader2,
+  AlertTriangle, CalendarClock, ChevronLeft, ChevronRight, ExternalLink, FileText, Filter, Loader2,
   Package, PackageSearch, RefreshCw, Search,
 } from "lucide-react";
 import {
@@ -357,7 +357,17 @@ export default function AgendamentoPage() {
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-1.5">
               <p className="truncate text-xs font-bold text-primary">
-                {i.documento_link ? (
+                {i.os_codigo && i.auvo_task_id ? (
+                  <a
+                    href={`https://app.auvo.com.br/tarefas/editar/${i.auvo_task_id}`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="hover:underline flex items-center gap-1"
+                  >
+                    {ehPedido ? "Pedido de Compra" : "Orçamento"} {i.orcamento_codigo || i.vinculo_codigo || i.compra_codigo}
+                    <ExternalLink className="h-2 w-2" />
+                  </a>
+                ) : i.documento_link ? (
                   <a
                     href={i.documento_link.replace("/visualizar/", "/editar/")}
                     target="_blank"
@@ -367,7 +377,6 @@ export default function AgendamentoPage() {
                     {ehPedido ? "Pedido de Compra" : "Orçamento"} {i.orcamento_codigo || i.vinculo_codigo || i.compra_codigo}
                     <ExternalLink className="h-2 w-2" />
                   </a>
-
                 ) : (
                   `${ehPedido ? "Pedido de Compra" : "Orçamento"} ${i.orcamento_codigo || i.vinculo_codigo || i.compra_codigo}`
                 )}
@@ -516,6 +525,15 @@ export default function AgendamentoPage() {
               <CalendarClock className="mr-1 h-3 w-3" /> 
               {i.previsao_data ? "Alterar previsão" : "Criar previsão"}
             </Button>
+            
+            {i.auvo_task_id && (
+              <Button size="icon" variant="ghost" className="h-7 w-7" asChild title="Relatório PDF (Auvo)">
+                <a href={`https://app.auvo.com.br/tarefas/relatorio-pdf/${i.auvo_task_id}`} target="_blank" rel="noreferrer">
+                  <FileText className="h-3 w-3" />
+                </a>
+              </Button>
+            )}
+
             {i.documento_link && (
               <Button size="icon" variant="ghost" className="h-7 w-7" asChild title="Editar no GestãoClick">
                 <a href={i.documento_link.replace("/visualizar/", "/editar/")} target="_blank" rel="noreferrer">
