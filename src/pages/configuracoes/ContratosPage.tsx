@@ -12,6 +12,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Loader2, Plus, Trash2, Edit, Users, FileText, X } from "lucide-react";
 import { toast } from "sonner";
+import { reconcileFutureContractPlans } from "@/lib/contractVisitPlanning";
 
 type Grupo = { id: string; nome: string; criado_em: string };
 type Membro = { id: string; grupo_id: string; cliente_nome: string };
@@ -318,17 +319,28 @@ function ContratoDialog({
         ativo,
         observacao: obs || null,
       };
-      if (c) {
-        const { error } = await supabase.from("contratos").update(payload).eq("id", c.id);
-        if (error) throw error;
-      } else {
-        const { error } = await supabase.from("contratos").insert(payload);
-        if (error) throw error;
+      const response = c
+        ? await supabase.from("contratos").update(payload).eq("id", c.id).select("id").single()
+        : await supabase.from("contratos").insert(payload).select("id").single();
+      if (response.error) throw response.error;
+      let planningWarning: string | null = null;
+      try {
+        await reconcileFutureContractPlans(response.data.id);
+      } catch (error) {
+        planningWarning = (error as Error).message;
       }
+      return { planningWarning };
     },
-    onSuccess: () => {
+    onSuccess: ({ planningWarning }) => {
       qc.invalidateQueries({ queryKey: ["contratos"] });
-      toast.success("Contrato salvo");
+      qc.invalidateQueries({ queryKey: ["contractual-visits"] });
+      qc.invalidateQueries({ queryKey: ["agenda_agendamentos"] });
+      qc.invalidateQueries({ queryKey: ["agenda_semana"] });
+      if (planningWarning) {
+        toast.warning(`Contrato salvo. A agenda contratual ficou pendente: ${planningWarning}`);
+      } else {
+        toast.success(c ? "Contrato salvo e próximas visitas atualizadas" : "Contrato salvo");
+      }
       onClose();
     },
     onError: (e: any) => toast.error(e.message),
