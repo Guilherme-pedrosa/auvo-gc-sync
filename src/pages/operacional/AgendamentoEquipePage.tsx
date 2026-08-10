@@ -173,7 +173,17 @@ function Celula({
                   : a.auvo_task_id
                     ? `Tarefa Auvo #${a.auvo_task_id}`
                     : "Agendamento manual"}
-                onClick={() => (a.auvo_task_id ? onAbrirTarefa(a) : onAbrirAgendamento(a))}
+                onClick={() => {
+                  if (a.auvo_task_id) {
+                    window.open(
+                      `https://app2.auvo.com.br/gerenciarTarefas/tarefa/${a.auvo_task_id}`,
+                      "_blank",
+                      "noopener,noreferrer",
+                    );
+                    return;
+                  }
+                  onAbrirAgendamento(a);
+                }}
                 onAuxClick={(e) => {
                   if (e.button === 1 && a.auvo_task_id) {
                     onAbrirAgendamento(a);
