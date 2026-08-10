@@ -133,9 +133,16 @@ export default function AgendarTarefaDialog({ open, onOpenChange, alvo, onSaved 
     }
     setSaving(true);
     try {
+      const colab = colaboradores.find(c => c.id === tecnicoId);
+      const auvoUserId = colab?.auvo_user_id || (tecnicoId.length < 20 ? tecnicoId : null);
+
+      if (!auvoUserId) {
+        throw new Error("Este colaborador não possui um ID do Auvo vinculado.");
+      }
+
       const patches = [
         { op: "replace", path: "taskDate", value: `${dateISO}T${hora}:00` },
-        { op: "replace", path: "idUserTo", value: Number(tecnicoId) },
+        { op: "replace", path: "idUserTo", value: Number(auvoUserId) },
       ];
       const { data, error } = await supabase.functions.invoke("auvo-task-update", {
         body: { action: "edit", taskId: Number(taskId), patches },
@@ -145,7 +152,7 @@ export default function AgendarTarefaDialog({ open, onOpenChange, alvo, onSaved 
         throw new Error(typeof data?.data === "string" ? data.data : JSON.stringify(data?.data ?? "Erro no Auvo"));
       }
 
-      const tecnico = userOptions.find((o) => o.value === tecnicoId)?.label || "";
+      const tecnico = colab?.nome || userOptions.find((o) => o.value === tecnicoId)?.label || "";
 
       const { error: persistError } = await supabase.functions.invoke("auvo-task-update", {
         body: {
@@ -156,7 +163,7 @@ export default function AgendarTarefaDialog({ open, onOpenChange, alvo, onSaved 
             gc_os_id: alvo.gc_os_id,
             gc_orcamento_id: alvo.gc_orcamento_id || alvo.gc_orcamento_codigo,
             data_tarefa: dateISO,
-            tecnico_id: tecnicoId,
+            tecnico_id: String(auvoUserId),
             tecnico,
           },
         },
