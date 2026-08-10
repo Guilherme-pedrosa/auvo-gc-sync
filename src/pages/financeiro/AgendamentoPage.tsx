@@ -321,7 +321,7 @@ export default function AgendamentoPage() {
 
         <div className="mt-2 flex items-center gap-1">
           <Button size="sm" variant="secondary" className="h-7 flex-1 text-[11px]" onClick={() => abrirAgendamento(i)}>
-            <CalendarClock className="mr-1 h-3 w-3" /> Agendar execução
+            <CalendarClock className="mr-1 h-3 w-3" /> Agendar execução (Previsão)
           </Button>
           {i.documento_link && (
             <Button size="icon" variant="ghost" className="h-7 w-7" asChild title="Editar no GestãoClick">
