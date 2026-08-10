@@ -377,7 +377,8 @@ export default function AgendamentoPage() {
               {i.cliente || "Cliente não identificado"}
             </p>
             {i.equipamento && (
-              <p className="truncate text-[10px] font-medium text-amber-700 bg-amber-50 px-1 rounded mt-0.5 border border-amber-100 w-fit">
+              <p className="truncate text-[10px] font-medium text-amber-700 bg-amber-50 px-1 rounded mt-1 border border-amber-200 w-fit flex items-center gap-1">
+                <Package className="h-3 w-3" />
                 {i.equipamento}
               </p>
             )}
