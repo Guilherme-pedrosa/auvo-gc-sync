@@ -1,11 +1,20 @@
+import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { cn } from "@/lib/utils";
-import { ExternalLink, MapPin, Navigation, ClipboardList, Package, Edit, FileText, RefreshCw } from "lucide-react";
+import { ExternalLink, MapPin, Navigation, ClipboardList, Package, Edit, FileText, RefreshCw, ArrowRightLeft } from "lucide-react";
+import { RECONCILIATION_OS_SITUATIONS } from "@/lib/osOpenStatuses";
 import { toast } from "sonner";
 
 const formatCurrency = (v: number) =>
@@ -19,6 +28,7 @@ interface Props {
 
 export default function TarefaAuvoDetalheDialog({ taskId, onOpenChange, onEdit }: Props) {
   const qc = useQueryClient();
+  const [novaSituacao, setNovaSituacao] = useState("");
   const { data: tarefa, isLoading, isError, refetch } = useQuery({
     queryKey: ["tarefa_central_detalhe", taskId],
     enabled: !!taskId,
@@ -51,6 +61,43 @@ export default function TarefaAuvoDetalheDialog({ taskId, onOpenChange, onEdit }
     onError: (err) => {
       console.error("Erro ao sincronizar tarefa:", err);
       toast.error("Erro ao sincronizar dados da tarefa.");
+    },
+  });
+
+  const statusMutation = useMutation({
+    mutationFn: async (situacaoId: string) => {
+      const { data, error } = await supabase.functions.invoke("auvo-gc-sync", {
+        body: {
+          action: "revert_os",
+          gc_os_id: tarefa?.gc_os_id,
+          gc_os_codigo: tarefa?.gc_os_codigo,
+          auvo_task_id: taskId,
+          situacao_id_antes: situacaoId,
+        },
+      });
+      if (error) throw error;
+      if (!(data as any)?.success) {
+        throw new Error(
+          JSON.stringify((data as any)?.body || (data as any)?.error || data),
+        );
+      }
+      return data as any;
+    },
+    onSuccess: (data, situacaoId) => {
+      const label =
+        RECONCILIATION_OS_SITUATIONS.find((s) => s.id === situacaoId)?.label || situacaoId;
+      toast.success(`OS ${tarefa?.gc_os_codigo || ""} → ${label}`);
+      if (data?.mirror_error) {
+        toast.warning(
+          "A OS foi alterada no GestãoClick, mas o espelho local será corrigido na próxima sincronização.",
+        );
+      }
+      setNovaSituacao("");
+      refetch();
+      qc.invalidateQueries({ queryKey: ["agenda_semana"] });
+    },
+    onError: (err: any) => {
+      toast.error(`Não foi possível alterar a situação: ${err?.message || err}`);
     },
   });
 
