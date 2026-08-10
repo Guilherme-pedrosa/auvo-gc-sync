@@ -11,11 +11,13 @@
 //   1) equipamento_plano_preventivo (ano vigente ou próximo, primeira data futura)
 //   2) senão: ultima + periodicidade
 //
-// Tipos aceitos: lidos de tipos_tarefa_preventiva (Item 4).
-//   - aplica_a_categoria NULL  → conta para todas categorias
-//   - aplica_a_categoria='X'   → só conta para equipamentos categoria='X'
+// Tipos aceitos: exclusivamente 180175 (Preventiva + OS) e
+// 180176 (Preventiva Contrato), desde que ativos na configuração.
 // ═══════════════════════════════════════════════════════════════════
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { buildPreventivePlanPatch } from "./plan-reconciliation.ts";
+
+const PREVENTIVA_TASK_TYPE_IDS = ["180175", "180176"];
 
 const cors = {
   "Access-Control-Allow-Origin": "*",
@@ -56,6 +58,13 @@ type TipoEquip = {
   qtd_tecnicos: number | null;
 };
 type Plano = { codigo_barras_auvo: string; cliente_nome: string; datas_meses: any };
+type ActivePlanCacheRow = {
+  id: string;
+  equipamento_auvo_id: string;
+  ultima_execucao_data: string | null;
+  ultima_execucao_task_id: string | null;
+  proxima_data: string | null;
+};
 
 function periodicidadeToMeses(p: string | null | undefined): number | null {
   if (!p) return null;
@@ -108,7 +117,8 @@ Deno.serve(async (req) => {
     const { data: tiposRaw, error: tErr } = await supa
       .from("tipos_tarefa_preventiva")
       .select("auvo_task_type_id, aplica_a_categoria")
-      .eq("ativo", true);
+      .eq("ativo", true)
+      .in("auvo_task_type_id", PREVENTIVA_TASK_TYPE_IDS);
     if (tErr) throw tErr;
     const tipos = (tiposRaw ?? []) as Tipo[];
     if (tipos.length === 0) {
@@ -334,6 +344,34 @@ Deno.serve(async (req) => {
       if (error) throw error;
     }
 
+    // Mantém o cache dos planos alinhado à execução real. O plano não é fonte
+    // de verdade da última preventiva, mas outras telas ainda exibem esses
+    // campos e precisam receber a mesma data consolidada.
+    const rowByEquipmentId = new Map(rows.map((row) => [row.equip_id, row]));
+    const { data: activePlanRows, error: activePlanError } = await supa
+      .from("plano_preventivo_item")
+      .select("id, equipamento_auvo_id, ultima_execucao_data, ultima_execucao_task_id, proxima_data")
+      .eq("ativo", true)
+      .not("equipamento_auvo_id", "is", null);
+    if (activePlanError) throw activePlanError;
+
+    const planUpdates = ((activePlanRows ?? []) as ActivePlanCacheRow[]).flatMap((plan) => {
+      const snapshot = rowByEquipmentId.get(plan.equipamento_auvo_id);
+      if (!snapshot) return [];
+      const patch = buildPreventivePlanPatch(plan, snapshot);
+      return patch ? [{ id: plan.id, patch }] : [];
+    });
+
+    for (let i = 0; i < planUpdates.length; i += 25) {
+      const updateResults = await Promise.all(
+        planUpdates.slice(i, i + 25).map(({ id, patch }) =>
+          supa.from("plano_preventivo_item").update(patch).eq("id", id)
+        ),
+      );
+      const failedUpdate = updateResults.find((result) => result.error);
+      if (failedUpdate?.error) throw failedUpdate.error;
+    }
+
     // remove linhas de equipamentos que não existem mais
     const idsAtuais = new Set(equipamentos.map((e) => e.id));
     const { data: existentes } = await supa
@@ -356,6 +394,7 @@ Deno.serve(async (req) => {
         linhas_gravadas: rows.length,
         orfaos_removidos: orfaos.length,
         tipos_ativos: tipos.length,
+        planos_reconciliados: planUpdates.length,
         elapsed_ms: Date.now() - t0,
       }),
       { headers: { ...cors, "Content-Type": "application/json" } },

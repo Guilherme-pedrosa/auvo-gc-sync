@@ -5,6 +5,13 @@ import { useNavigate } from "react-router-dom";
 import { addMonths, format, differenceInDays, parseISO } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { cn } from "@/lib/utils";
+import {
+  PREVENTIVA_TASK_TYPE_IDS,
+  PREVENTIVA_TASK_TYPE_ID_SET,
+  isPlannedNextDateOutdated,
+  isPreventivaTaskType,
+  shouldUsePlannedLastExecution,
+} from "@/lib/preventivaPolicy";
 import { toast } from "sonner";
 import {
   ArrowLeft, ExternalLink, RefreshCw, Search, AlertTriangle,
@@ -202,17 +209,11 @@ function buildMonthlySyncWindows(startDate: string, endDate: string): SyncWindow
   return months.reverse();
 }
 
-const PREVENTIVA_TASK_TYPE_IDS = new Set(["180175", "180176"]);
-
-function isPreventivaTaskType(id: string | null | undefined): id is string {
-  return !!id && PREVENTIVA_TASK_TYPE_IDS.has(String(id));
-}
-
 function getPreventivaTaskTypeIds(tipoTarefaFilter: string[]): string[] {
   const selectedPreventiveTypes = tipoTarefaFilter.filter(isPreventivaTaskType);
   return selectedPreventiveTypes.length > 0
     ? selectedPreventiveTypes
-    : Array.from(PREVENTIVA_TASK_TYPE_IDS);
+    : [...PREVENTIVA_TASK_TYPE_IDS];
 }
 
 function splitSyncWindowByFortnight(window: SyncWindow): SyncWindow[] {
@@ -460,7 +461,7 @@ function buildEquipmentRows(
     // defasado (cron de consolidação rodou antes da ingestão da tarefa), usamos
     // a preventiva mais recente vinda de `equipamento_tarefas_auvo`.
     const preventiveTasks = allEqTasks.filter(
-      (t) => t.auvo_task_type_id && PREVENTIVA_TASK_TYPE_IDS.has(String(t.auvo_task_type_id)),
+      (t) => t.auvo_task_type_id && PREVENTIVA_TASK_TYPE_ID_SET.has(String(t.auvo_task_type_id)),
     );
     const completedTasks = preventiveTasks
       .filter((t) => t.status_auvo === "Finalizada" && (t.data_conclusao || t.data_tarefa))
@@ -521,6 +522,7 @@ function buildEquipmentRows(
       periodicidade_meses_plano: null,
       ultima_execucao_task_id: null,
       tarefas_abertas: allEqTasks
+        .filter(t => isPreventivaTaskType(t.auvo_task_type_id))
         .filter(t => t.status_auvo !== "Finalizada" && t.status_auvo !== "Cancelada" && t.status_auvo !== "Pausada")
         .map(t => ({
           id: t.auvo_task_id,
@@ -811,14 +813,17 @@ export default function EquipamentosPreventivosPage() {
         r.ultima_execucao_task_id = p.ultima_execucao_task_id;
 
         const planoLastTask = p.ultima_execucao_task_id ? taskById.get(String(p.ultima_execucao_task_id)) : null;
-        // Só aplica a última data do plano se ela for realmente MAIS RECENTE que a detectada pelos vínculos nativos do Auvo
-        const planoDate = p.ultima_execucao_data ? p.ultima_execucao_data.slice(0, 10) : "";
-        const nativeDate = r.ultima_data ? r.ultima_data.slice(0, 10) : "";
-        
-        if (planoDate && planoDate > nativeDate && planoLastTask && isPreventivaTaskType(planoLastTask.auvo_task_type_id)) {
+        const planExecutionDate = p.ultima_execucao_data;
+        // O plano é apenas fallback. Nunca pode rebaixar a data consolidada
+        // pelos vínculos nativos do Auvo, como ocorria na Everest/NIP.
+        if (planExecutionDate && planoLastTask && shouldUsePlannedLastExecution(
+          planExecutionDate,
+          r.ultima_data,
+          planoLastTask.auvo_task_type_id,
+        )) {
           const task = planoLastTask;
-          r.ultima_data = p.ultima_execucao_data;
-          r.dias_desde = differenceInDays(new Date(), parseISO(p.ultima_execucao_data));
+          r.ultima_data = planExecutionDate;
+          r.dias_desde = differenceInDays(new Date(), parseISO(planExecutionDate));
           r.ultimo_tecnico = task?.tecnico || r.ultimo_tecnico;
           r.ultimo_link = getTaskDigitalLink(task) || r.ultimo_link;
           r.tipo_tarefa = task?.auvo_task_type_description || r.tipo_tarefa || "Preventiva";
@@ -838,9 +843,7 @@ export default function EquipamentosPreventivosPage() {
       // considera a preventiva já feita e recalcula a partir da última data.
       if (r.proxima_data && r.ultima_data) {
         try {
-          const prox = parseISO(r.proxima_data);
-          const ult = parseISO(r.ultima_data);
-          if (prox.getTime() <= ult.getTime() && calculada) {
+          if (isPlannedNextDateOutdated(r.proxima_data, r.ultima_data) && calculada) {
             r.proxima_data = calculada;
             r.proxima_data_calculada = true;
           }
@@ -1029,7 +1032,10 @@ export default function EquipamentosPreventivosPage() {
       if (data && data.ok === false) throw new Error(data.error || "Falha ao recalcular");
       const elapsed = ((performance.now() - t0) / 1000).toFixed(1);
       toast.success(`Consolidado atualizado em ${elapsed}s — ${data?.linhas_gravadas ?? "?"} linhas`);
-      await queryClient.invalidateQueries({ queryKey: ["equipamentos-preventivos-raw", "v3-consolidado"] });
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["equipamentos-preventivos-raw", "v3-consolidado"] }),
+        queryClient.invalidateQueries({ queryKey: ["plano-proximas-by-eq"] }),
+      ]);
     } catch (err: any) {
       toast.error("Erro ao recalcular consolidado: " + (err?.message || String(err)));
     } finally {
@@ -1066,19 +1072,8 @@ export default function EquipamentosPreventivosPage() {
       const startDate = startRef.toISOString().slice(0, 10);
 
       const windows = [{ startDate, endDate }];
-      // Tipos de tarefa preventiva no Auvo (filtro server-side).
-      // Item 4: agora vem da tabela tipos_tarefa_preventiva (configurável em Configurações).
-      const { data: prevTiposRows } = await supabase
-        .from("tipos_tarefa_preventiva")
-        .select("auvo_task_type_id")
-        .eq("ativo", true);
-      const preventiveTaskTypes = (prevTiposRows ?? [])
-        .map((r: any) => String(r.auvo_task_type_id))
-        .filter(Boolean);
-      if (preventiveTaskTypes.length === 0) {
-        // fallback defensivo caso o seed não esteja disponível
-        preventiveTaskTypes.push("180175", "180176", "202616", "235724");
-      }
+      // Regra de negócio fixa: somente Preventiva + OS e Preventiva Contrato.
+      const preventiveTaskTypes = [...PREVENTIVA_TASK_TYPE_IDS];
       setSyncProgress({ current: 1, total: 2, label: `Fase 2: preventivas ${startDate} → ${endDate}...` });
 
       const { data: dB, error: eB } = await supabase.functions.invoke("equipment-sync", {
@@ -1105,25 +1100,30 @@ export default function EquipamentosPreventivosPage() {
       futureEnd.setDate(futureEnd.getDate() + 120);
       const futureEndDate = futureEnd.toISOString().slice(0, 10);
       setSyncProgress({ current: 2, total: 3, label: `Fase 2b: agendadas ${endDate} → ${futureEndDate}...` });
-      const { data: dF } = await supabase.functions.invoke("equipment-sync", {
+      const { data: dF, error: eF } = await supabase.functions.invoke("equipment-sync", {
         body: {
           phase: "2-batch",
           windows: [{ startDate: endDate, endDate: futureEndDate }],
           validEquipmentIds,
+          preventiveTaskTypes: [...PREVENTIVA_TASK_TYPE_IDS],
           finalizedOnly: false,
           skipEquipmentValidation: true,
         },
       });
+      if (eF) throw eF;
       const pF = dF?.phase2_equipment_tasks;
       toast.success(`Agendadas: ${pF?.relationship_rows_upserted || 0} vínculos futuros`);
-      refetch();
+      await Promise.all([
+        refetch(),
+        queryClient.invalidateQueries({ queryKey: ["plano-proximas-by-eq"] }),
+      ]);
     } catch (err: any) {
       toast.error("Erro na sincronização: " + (err.message || "desconhecido"));
     } finally {
       setSyncing(false);
       setSyncProgress(null);
     }
-  }, [rawData?.equipamentos, refetch, syncStartDate, syncEndDate]);
+  }, [queryClient, rawData?.equipamentos, refetch, syncStartDate, syncEndDate]);
 
   const handleSaveMarca = useCallback(async (eqId: string, newMarca: string) => {
     const trimmed = newMarca.trim() || null;
