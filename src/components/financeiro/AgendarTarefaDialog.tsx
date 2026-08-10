@@ -1,9 +1,9 @@
 import { minutesToClock, clockToMinutes } from "@/lib/auvoDuration";
 import { useEffect, useMemo, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
-import { Loader2, CalendarClock, AlertTriangle } from "lucide-react";
+import { Loader2, CalendarClock, AlertTriangle, Eye } from "lucide-react";
 import {
   Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog";
@@ -12,6 +12,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { SearchableSelect } from "@/components/ui/searchable-select";
 import { todayISO } from "@/lib/agendamento";
+import { useColaboradores } from "@/hooks/rh/useRh";
 
 export type AgendarAlvo = {
   auvo_task_id: string | null;
