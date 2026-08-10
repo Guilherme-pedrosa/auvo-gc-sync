@@ -45,8 +45,34 @@ async function fetchChegadas(): Promise<ChegadaItem[]> {
       throw new Error(data?.error || "Falha ao consultar compras");
     }
 
-    const itens = (data?.itens || []) as ChegadaItem[];
+    let itens = (data?.itens || []) as ChegadaItem[];
     console.log("[AgendamentoPage] Itens recebidos:", itens.length);
+
+    // Buscar previsões locais para marcar nos cards
+    const orcCodigos = itens.map(i => i.orcamento_codigo || i.vinculo_codigo).filter(Boolean);
+    const osCodigos = itens.map(i => i.os_codigo).filter(Boolean);
+
+    if (orcCodigos.length > 0 || osCodigos.length > 0) {
+      const { data: previsoes } = await supabase
+        .from("agenda_agendamentos")
+        .select("data, colaborador_nome, gc_orcamento_codigo, gc_os_codigo")
+        .or(`gc_orcamento_codigo.in.(${orcCodigos.join(",")}),gc_os_codigo.in.(${osCodigos.join(",")})`)
+        .eq("previsao_continuidade", true);
+
+      if (previsoes && previsoes.length > 0) {
+        itens = itens.map(item => {
+          const prev = previsoes.find(p => 
+            (item.orcamento_codigo && p.gc_orcamento_codigo === item.orcamento_codigo) ||
+            (item.os_codigo && p.gc_os_codigo === item.os_codigo)
+          );
+          if (prev) {
+            return { ...item, previsao_data: prev.data, previsao_tecnico: prev.colaborador_nome };
+          }
+          return item;
+        });
+      }
+    }
+
     return itens;
   } catch (e) {
     console.error("[AgendamentoPage] Erro fatal no fetchChegadas:", e);
@@ -319,26 +345,41 @@ export default function AgendamentoPage() {
           {i.equipamento && <Badge variant="outline" className="max-w-[180px] truncate text-[10px]">{i.equipamento}</Badge>}
         </div>
 
-        <div className="mt-2 flex items-center gap-1">
-          <Button size="sm" variant="secondary" className="h-7 flex-1 text-[11px]" onClick={() => abrirAgendamento(i)}>
-            <CalendarClock className="mr-1 h-3 w-3" /> Agendar execução (Previsão)
-          </Button>
-          {i.documento_link && (
-            <Button size="icon" variant="ghost" className="h-7 w-7" asChild title="Editar no GestãoClick">
-              <a href={i.documento_link.replace("/visualizar/", "/editar/")} target="_blank" rel="noreferrer">
-                <ExternalLink className="h-3 w-3" />
-              </a>
-            </Button>
+        <div className="mt-2 flex flex-col gap-2">
+          {i.previsao_data && (
+            <div className="flex items-center gap-2 rounded border border-emerald-200 bg-emerald-50 p-1.5 text-[10px] text-emerald-800">
+              <CalendarClock className="h-3 w-3" />
+              <span>
+                <strong>Previsão:</strong> {formatDiaBR(i.previsao_data)} {i.previsao_tecnico ? `com ${i.previsao_tecnico}` : ""}
+              </span>
+            </div>
           )}
-
-          {ehPedido && i.gc_link && i.compra_codigo && (
-            <Button size="icon" variant="ghost" className="h-7 w-7" asChild title="Editar no GestãoClick">
-              <a href={i.gc_link.replace("/visualizar/", "/editar/")} target="_blank" rel="noreferrer">
-                <PackageSearch className="h-3 w-3" />
-              </a>
+          <div className="flex items-center gap-1">
+            <Button 
+              size="sm" 
+              variant={i.previsao_data ? "outline" : "secondary"} 
+              className="h-7 flex-1 text-[11px]" 
+              onClick={() => abrirAgendamento(i)}
+            >
+              <CalendarClock className="mr-1 h-3 w-3" /> 
+              {i.previsao_data ? "Alterar previsão" : "Agendar execução (Previsão)"}
             </Button>
-          )}
+            {i.documento_link && (
+              <Button size="icon" variant="ghost" className="h-7 w-7" asChild title="Editar no GestãoClick">
+                <a href={i.documento_link.replace("/visualizar/", "/editar/")} target="_blank" rel="noreferrer">
+                  <ExternalLink className="h-3 w-3" />
+                </a>
+              </Button>
+            )}
 
+            {ehPedido && i.gc_link && i.compra_codigo && (
+              <Button size="icon" variant="ghost" className="h-7 w-7" asChild title="Editar no GestãoClick">
+                <a href={i.gc_link.replace("/visualizar/", "/editar/")} target="_blank" rel="noreferrer">
+                  <PackageSearch className="h-3 w-3" />
+                </a>
+              </Button>
+            )}
+          </div>
         </div>
       </div>
     );

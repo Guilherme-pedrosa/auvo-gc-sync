@@ -138,8 +138,28 @@ export default function AgendarTarefaDialog({ open, onOpenChange, alvo, onSaved 
       toast.error("Informe data e técnico.");
       return;
     }
+
+    // Verificar se já existe previsão para evitar duplicidade
     setSavingForecast(true);
     try {
+      const { data: existing } = await supabase
+        .from("agenda_agendamentos")
+        .select("id")
+        .match({
+          data: dateISO,
+          colaborador_id: colaboradores.find(c => String(c.auvo_user_id) === String(tecnicoId))?.id || null,
+          gc_orcamento_codigo: alvo.gc_orcamento_codigo,
+          gc_os_codigo: alvo.gc_os_codigo,
+          previsao_continuidade: true
+        })
+        .maybeSingle();
+
+      if (existing) {
+        toast.info("Já existe uma previsão idêntica para este técnico nesta data.");
+        setSavingForecast(false);
+        return;
+      }
+
       const tecnico = userOptions.find((o) => o.value === tecnicoId)?.label || "";
       const colab = colaboradores.find(c => String(c.auvo_user_id) === String(tecnicoId));
       
