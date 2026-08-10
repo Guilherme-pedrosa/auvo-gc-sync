@@ -382,7 +382,7 @@ export default function AgendamentoPage() {
               onClick={() => abrirAgendamento(i)}
             >
               <CalendarClock className="mr-1 h-3 w-3" /> 
-              {i.previsao_data ? "Alterar previsão" : "Agendar execução (Previsão)"}
+              {i.previsao_data ? "Alterar previsão" : "Agendar previsão"}
             </Button>
             {i.documento_link && (
               <Button size="icon" variant="ghost" className="h-7 w-7" asChild title="Editar no GestãoClick">
