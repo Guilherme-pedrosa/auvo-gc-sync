@@ -746,7 +746,7 @@ export default function AgendamentoPage() {
               {/* Dia selecionado */}
               <section className="flex flex-col rounded-lg border border-border bg-muted/20 p-2">
                 <h2 className="mb-2 text-xs font-semibold">Orçamentos em {formatDiaBR(diaSelecionado)} ({itensDoDia.length})</h2>
-                <div className="space-y-2">
+                <div className="flex flex-col flex-1 space-y-2">
                   {itensDoDia.length === 0
                     ? <p className="py-6 text-center text-[11px] text-muted-foreground">Nenhuma peça prevista neste dia.</p>
                     : itensDoDia.map((i) => renderItem(i))}
