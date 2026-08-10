@@ -973,6 +973,50 @@ export default function AgendamentoEquipePage() {
         )}
       </div>
 
+      {/* Diálogo de Escolha: Tarefa ou Previsão */}
+      <Dialog open={dialogChoiceOpen} onOpenChange={setDialogChoiceOpen}>
+        <DialogContent className="sm:max-w-[400px]">
+          <DialogHeader>
+            <DialogTitle>O que deseja lançar?</DialogTitle>
+            <DialogDescription>
+              Escolha entre criar uma tarefa real no Auvo ou apenas uma previsão interna na agenda.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid grid-cols-2 gap-4 py-4">
+            <Button
+              variant="outline"
+              className="h-24 flex flex-col gap-2 items-center justify-center border-2 hover:border-primary hover:bg-primary/5"
+              onClick={() => {
+                setDialogChoiceOpen(false);
+                setDialogCreateTaskOpen(true);
+              }}
+            >
+              <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center">
+                <Plus className="h-5 w-5 text-primary" />
+              </div>
+              <span className="font-bold">Tarefa Auvo</span>
+              <span className="text-[10px] text-muted-foreground font-normal">Sincroniza com aplicativo</span>
+            </Button>
+
+            <Button
+              variant="outline"
+              className="h-24 flex flex-col gap-2 items-center justify-center border-2 hover:border-emerald-500 hover:bg-emerald-50"
+              onClick={() => {
+                setDialogChoiceOpen(false);
+                setSelectedAgendamento(null);
+                setDialogOpen(true);
+              }}
+            >
+              <div className="h-8 w-8 rounded-full bg-emerald-100 flex items-center justify-center">
+                <CalendarClock className="h-5 w-5 text-emerald-600" />
+              </div>
+              <span className="font-bold">Previsão</span>
+              <span className="text-[10px] text-muted-foreground font-normal">Apenas escala interna</span>
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
       <AgendamentoEquipeDialog
         open={dialogOpen || dialogEditOpen}
         onOpenChange={(open) => {
