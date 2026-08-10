@@ -217,8 +217,8 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
                 )}
 
                 <div className={cn(
-                  "space-y-0.5 mt-0.5 overflow-hidden transition-all duration-200",
-                  !collapsed && !isExpanded ? "max-h-0 opacity-0" : "max-h-96 opacity-100"
+                  "space-y-0.5 mt-0.5 transition-all duration-200",
+                  !collapsed && !isExpanded ? "max-h-0 opacity-0 overflow-hidden" : "max-h-[1000px] opacity-100"
                 )}>
                   {group.items.map((item) => {
                     if (item.children) {
@@ -252,8 +252,8 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
                           </Tooltip>
                           {!collapsed && (
                             <div className={cn(
-                              "ml-3 pl-2 border-l border-sidebar-border/50 space-y-0.5 mt-0.5 overflow-hidden transition-all duration-200",
-                              subOpen ? "max-h-96 opacity-100" : "max-h-0 opacity-0"
+                              "ml-3 pl-2 border-l border-sidebar-border/50 space-y-0.5 mt-0.5 transition-all duration-200",
+                              subOpen ? "max-h-[500px] opacity-100" : "max-h-0 opacity-0 overflow-hidden"
                             )}>
                               {item.children.map((child) => {
                                 const isActive = location.pathname === child.path;
