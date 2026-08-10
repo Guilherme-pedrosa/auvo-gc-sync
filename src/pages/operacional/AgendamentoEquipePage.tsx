@@ -185,6 +185,15 @@ function Celula({
                       {a.previsao_detalhes}
                     </span>
                   )}
+                  {a.previsao_tipo === "ORCAMENTO_EXECUCAO" && a.previsao_continuidade && a.conversao_status && (
+                    <span className="text-[9px] font-normal normal-case opacity-80 truncate">
+                      {a.conversao_status === "AGUARDANDO_OS" && "Aguardando geração da OS"}
+                      {a.conversao_status === "AGUARDANDO_TAREFA" && `OS ${a.gc_os_codigo || ""} · aguardando tarefa de execução`}
+                      {a.conversao_status === "PROCESSANDO" && "Convertendo para tarefa Auvo..."}
+                      {a.conversao_status === "BLOQUEADA" && `Conversão bloqueada${a.conversao_erro ? ` · ${a.conversao_erro}` : ""}`}
+                      {a.conversao_status === "ERRO" && `Erro na conversão${a.conversao_erro ? ` · ${a.conversao_erro}` : ""}`}
+                    </span>
+                  )}
                 </div>
                 {a.previsao_continuidade && (
                   <span className="ml-1 text-[9px] lowercase italic text-primary-foreground/70">
@@ -460,19 +469,38 @@ export default function AgendamentoEquipePage() {
           auvo_task_id: taskId,
           origem: "AUVO",
           gc_os_codigo: osCodigo,
-          gc_orcamento_codigo: osCodigo ? null : orcCodigo,
+          // O orçamento é a chave que liga a previsão à OS e não pode ser descartado.
+          gc_orcamento_codigo: orcCodigo,
         });
       }
 
-      // 1. Limpa agendamentos de origem AUVO ou nula no período, mas PRESERVA os que têm código de Orçamento ou são Previsões
-      const { error: errDelAuvo } = await supabase
+      // Previsões promovidas preservam o mesmo ID. Elas são atualizadas no lugar,
+      // enquanto as demais linhas vindas do Auvo continuam sendo reconstruídas.
+      const lineTaskIds = [...new Set(linhas.map((line) => String(line.auvo_task_id)).filter(Boolean))];
+      const { data: promotedRows, error: promotedReadError } = lineTaskIds.length
+        ? await supabase
+          .from("agenda_agendamentos")
+          .select("id,auvo_task_id")
+          .eq("previsao_tipo", "ORCAMENTO_EXECUCAO")
+          .in("auvo_task_id", lineTaskIds)
+        : { data: [], error: null };
+      if (promotedReadError) throw promotedReadError;
+      const promotedByTask = new Map((promotedRows || []).map((row) => [String(row.auvo_task_id), row.id]));
+      const promotedIds = [...promotedByTask.values()];
+
+      // 1. Limpa agendamentos comuns de origem AUVO ou nula no período, mas
+      // preserva previsões e as linhas já promovidas.
+      let deleteAuvoQuery = supabase
         .from("agenda_agendamentos")
         .delete()
         .or(`origem.eq.AUVO,origem.is.null`)
         .gte("data", dias[0])
         .lte("data", dias[dias.length - 1])
-        .is("gc_orcamento_codigo", null)
         .eq("previsao_continuidade", false);
+      if (promotedIds.length) {
+        deleteAuvoQuery = deleteAuvoQuery.not("id", "in", `(${promotedIds.join(",")})`);
+      }
+      const { error: errDelAuvo } = await deleteAuvoQuery;
       
       if (errDelAuvo) throw errDelAuvo;
 
@@ -488,11 +516,24 @@ export default function AgendamentoEquipePage() {
         }
       }
 
-      // 3. Insere as novas tarefas sincronizadas
-      for (let i = 0; i < linhas.length; i += 500) {
+      // 3. Atualiza a previsão promovida no lugar e insere somente tarefas novas.
+      const insertRows: any[] = [];
+      for (const line of linhas) {
+        const promotedId = promotedByTask.get(String(line.auvo_task_id));
+        if (!promotedId) {
+          insertRows.push(line);
+          continue;
+        }
+        const { error: updateError } = await supabase
+          .from("agenda_agendamentos")
+          .update(line)
+          .eq("id", promotedId);
+        if (updateError) throw updateError;
+      }
+      for (let i = 0; i < insertRows.length; i += 500) {
         const { error: errIns } = await supabase
           .from("agenda_agendamentos")
-          .insert(linhas.slice(i, i + 500) as never);
+          .insert(insertRows.slice(i, i + 500) as never);
         if (errIns) throw errIns;
       }
 
@@ -765,6 +806,12 @@ export default function AgendamentoEquipePage() {
                                     data: proximoDia,
                                     status: "PREVISAO",
                                     previsao_continuidade: true,
+                                    previsao_tipo: "CONTINUACAO",
+                                    conversao_status: null,
+                                    conversao_erro: null,
+                                    conversao_tentada_em: null,
+                                    convertida_em: null,
+                                    auvo_task_id: null,
                                     origem: "MANUAL",
                                   };
                                   delete (payload as any).id;

@@ -32,6 +32,10 @@ import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
+import {
+  loadBudgetExecutionForecast,
+  promoteBudgetExecutionForecast,
+} from "@/lib/budgetForecastPromotion";
 import { useNavigate } from "react-router-dom";
 import { DragDropContext, Droppable, Draggable, DropResult } from "@hello-pangea/dnd";
 import { toast } from "sonner";
@@ -267,6 +271,11 @@ export default function OSKanbanPage() {
     setEditTecnicoId(currentTecnico ? String(currentTecnico.userID) : card.tecnico_id || "");
     setShowEditModal(true);
 
+    const forecast = await loadBudgetExecutionForecast(card.gc_orcamento_codigo).catch((error) => {
+      console.warn("Não foi possível carregar a previsão do orçamento:", error);
+      return null;
+    });
+
     if (card.gc_os_id) {
       const { execTaskId: fetchedExecTaskId, osTaskId } = await fetchExecTaskId(card.gc_os_id);
 
@@ -318,6 +327,14 @@ export default function OSKanbanPage() {
       }
     }
 
+    if (forecast) {
+      const [forecastHour, forecastMinute] = forecast.hora_inicio.slice(0, 5).split(":");
+      setEditDate(new Date(`${forecast.data}T12:00:00`));
+      setEditHour(forecastHour);
+      setEditMinute(forecastMinute);
+      if (forecast.auvo_user_id) setEditTecnicoId(forecast.auvo_user_id);
+    }
+
     setExecTaskLoading(false);
   }, [auvoUsers, fetchExecTaskId]);
 
@@ -359,6 +376,16 @@ export default function OSKanbanPage() {
         throw new Error(JSON.stringify(data?.data || "Erro ao atualizar tarefa"));
       }
 
+      if (editingCard.gc_orcamento_codigo) {
+        await promoteBudgetExecutionForecast({
+          budgetCode: editingCard.gc_orcamento_codigo,
+          osCode: editingCard.gc_os_codigo,
+          execTaskId,
+        });
+        void queryClient.invalidateQueries({ queryKey: ["agenda_agendamentos"] });
+        void queryClient.invalidateQueries({ queryKey: ["agenda_semana"] });
+      }
+
       toast.success(`Tarefa de execução #${execTaskId} atualizada no Auvo!`);
       setShowEditModal(false);
       setEditingCard(null);
@@ -368,7 +395,7 @@ export default function OSKanbanPage() {
     } finally {
       setEditSaving(false);
     }
-  }, [editingCard, editDate, editTecnicoId, execTaskId]);
+  }, [editingCard, editDate, editTecnicoId, execTaskId, queryClient]);
 
   useEffect(() => {
     if (!selectedCard?.gc_os_id) {

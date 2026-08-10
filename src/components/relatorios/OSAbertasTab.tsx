@@ -1,5 +1,5 @@
 import { useState, useMemo, useCallback, useEffect, useRef } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -26,6 +26,11 @@ import { ObservacoesOsDialog } from "./ObservacoesOsDialog";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { cn } from "@/lib/utils";
+import {
+  durationClock,
+  loadBudgetExecutionForecast,
+  promoteBudgetExecutionForecast,
+} from "@/lib/budgetForecastPromotion";
 import {
   OPEN_OS_SITUATIONS,
   RECONCILIATION_OS_SITUATIONS,
@@ -143,6 +148,7 @@ const extractLiveTaskResolution = (taskData: any, taskId: string): LiveTaskResol
 };
 
 export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, onRefresh, onSync, syncing, execTaskStatusMap, equipamentoTaskMap = {} }: Props) {
+  const queryClient = useQueryClient();
   const [search, setSearch] = useState("");
   const [excludedSituacoes, setExcludedSituacoes] = useState<Set<string>>(new Set());
   const [searchSituacao, setSearchSituacao] = useState("");
@@ -1007,6 +1013,11 @@ export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, o
     setEditTecnicoId(currentTecnico ? String(currentTecnico.userID) : card.tecnico_id || "");
     setShowEditModal(true);
 
+    const forecast = await loadBudgetExecutionForecast(card.gc_orcamento_codigo).catch((error) => {
+      console.warn("Não foi possível carregar a previsão do orçamento:", error);
+      return null;
+    });
+
     if (card.gc_os_id) {
       const { execTaskId: fetchedExecTaskId, osTaskId } = await fetchExecTaskId(card.gc_os_id);
       if (!fetchedExecTaskId) {
@@ -1045,6 +1056,14 @@ export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, o
           }
         }
       }
+    }
+    if (forecast) {
+      const [forecastHour, forecastMinute] = forecast.hora_inicio.slice(0, 5).split(":");
+      setEditDate(new Date(`${forecast.data}T12:00:00`));
+      setEditHour(forecastHour);
+      setEditMinute(forecastMinute);
+      setEditDuration(durationClock(forecast.hora_inicio, forecast.hora_fim));
+      if (forecast.auvo_user_id) setEditTecnicoId(forecast.auvo_user_id);
     }
     setExecTaskLoading(false);
   }, [auvoUsers, fetchExecTaskId]);
@@ -1106,6 +1125,16 @@ export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, o
         console.warn("Falha ao persistir espelho local após edição:", persistError);
       }
 
+      if (editingCard.gc_orcamento_codigo) {
+        await promoteBudgetExecutionForecast({
+          budgetCode: editingCard.gc_orcamento_codigo,
+          osCode: editingCard.gc_os_codigo,
+          execTaskId,
+        });
+        void queryClient.invalidateQueries({ queryKey: ["agenda_agendamentos"] });
+        void queryClient.invalidateQueries({ queryKey: ["agenda_semana"] });
+      }
+
       toast.success(`Tarefa de execução #${execTaskId} atualizada no Auvo!`);
       // Atualiza o cache local imediatamente (sem esperar novo fetch do Auvo)
       if (editingCard.gc_os_id) {
@@ -1130,7 +1159,7 @@ export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, o
     } finally {
       setEditSaving(false);
     }
-  }, [auvoUsers, editDate, editHour, editMinute, editTecnicoId, editDuration, editingCard, execTaskId, onRefresh]);
+  }, [auvoUsers, editDate, editHour, editMinute, editTecnicoId, editDuration, editingCard, execTaskId, onRefresh, queryClient]);
 
   if (isLoading) {
     return (

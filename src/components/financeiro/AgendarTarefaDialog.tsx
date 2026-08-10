@@ -167,6 +167,11 @@ export default function AgendarTarefaDialog({ open, onOpenChange, alvo, onSaved 
         gc_os_codigo: alvo.gc_os_codigo || null,
         gc_orcamento_codigo: alvo.gc_orcamento_codigo || null,
         previsao_continuidade: true,
+        previsao_tipo: alvo.gc_orcamento_codigo ? "ORCAMENTO_EXECUCAO" : "OS_EXECUCAO",
+        conversao_status: alvo.gc_orcamento_codigo
+          ? (alvo.gc_os_codigo ? "AGUARDANDO_TAREFA" : "AGUARDANDO_OS")
+          : null,
+        conversao_erro: null,
         previsao_detalhes: previsaoDetalhes.trim() || null,
         origem: "MANUAL",
         atualizado_em: new Date().toISOString(),
@@ -176,20 +181,26 @@ export default function AgendarTarefaDialog({ open, onOpenChange, alvo, onSaved 
       if (!previsaoId) {
         let consulta = supabase
           .from("agenda_agendamentos")
-          .select("id")
-          .eq("previsao_continuidade", true)
+          .select("id,previsao_continuidade,auvo_task_id")
           .order("atualizado_em", { ascending: false })
           .limit(1);
 
         if (alvo.gc_orcamento_codigo) {
-          consulta = consulta.eq("gc_orcamento_codigo", alvo.gc_orcamento_codigo);
+          consulta = consulta
+            .eq("gc_orcamento_codigo", alvo.gc_orcamento_codigo)
+            .eq("previsao_tipo", "ORCAMENTO_EXECUCAO");
         } else if (alvo.gc_os_codigo) {
-          consulta = consulta.eq("gc_os_codigo", alvo.gc_os_codigo);
+          consulta = consulta
+            .eq("gc_os_codigo", alvo.gc_os_codigo)
+            .eq("previsao_continuidade", true);
         }
 
         if (alvo.gc_orcamento_codigo || alvo.gc_os_codigo) {
           const { data: existente, error: readError } = await consulta.maybeSingle();
           if (readError) throw readError;
+          if (existente && !existente.previsao_continuidade && existente.auvo_task_id) {
+            throw new Error(`Este orçamento já foi convertido na tarefa Auvo ${existente.auvo_task_id}. Edite o agendamento real.`);
+          }
           previsaoId = existente?.id ?? null;
         }
       }
