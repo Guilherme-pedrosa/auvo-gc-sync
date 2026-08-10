@@ -65,6 +65,11 @@ async function preencherDocumentosGc(agendamentos: AgendaAgendamento[]) {
     check_in: string | null;
     check_out: string | null;
   }>();
+  const estadoPorTarefa = new Map<string, {
+    status_auvo: string | null;
+    check_in: string | null;
+    check_out: string | null;
+  }>();
   for (let index = 0; index < taskIds.length; index += 500) {
     const { data, error } = await sb
       .from("tarefas_central")
@@ -75,6 +80,12 @@ async function preencherDocumentosGc(agendamentos: AgendaAgendamento[]) {
     for (const row of data ?? []) {
       const taskId = String(row.auvo_task_id || "").trim();
       if (!taskId) continue;
+      const estadoAtual = estadoPorTarefa.get(taskId);
+      estadoPorTarefa.set(taskId, {
+        status_auvo: estadoAtual?.status_auvo || row.status_auvo || null,
+        check_in: estadoAtual?.check_in || row.check_in_iso || null,
+        check_out: estadoAtual?.check_out || row.check_out_iso || null,
+      });
       const atual = documentosPorTarefa.get(taskId);
       documentosPorTarefa.set(taskId, {
         os: atual?.os || row.gc_os_codigo || null,
@@ -87,17 +98,55 @@ async function preencherDocumentosGc(agendamentos: AgendaAgendamento[]) {
     }
   }
 
+  // A agenda normalmente contém a Tarefa Execução (atributo GC 73344), enquanto
+  // auvo_task_id identifica a Tarefa OS (73343). Relaciona as duas antes de renderizar.
+  let offset = 0;
+  const pageSize = 1000;
+  while (true) {
+    const { data, error } = await sb
+      .from("tarefas_central")
+      .select("auvo_task_id,gc_os_codigo,gc_orcamento_codigo,gc_os_situacao,gc_os_tarefa_exec")
+      .not("gc_os_codigo", "is", null)
+      .not("gc_os_tarefa_exec", "is", null)
+      .range(offset, offset + pageSize - 1);
+    if (error) throw error;
+
+    for (const row of data ?? []) {
+      const idsExecucao = String(row.gc_os_tarefa_exec || "")
+        .split("/")
+        .map((id) => id.trim())
+        .filter((id) => /^\d+$/.test(id) && taskIds.includes(id));
+      for (const taskId of idsExecucao) {
+        // O vínculo direto com 73343 tem precedência; 73344 só preenche o que falta.
+        const atual = documentosPorTarefa.get(taskId);
+        if (atual?.os) continue;
+        documentosPorTarefa.set(taskId, {
+          os: row.gc_os_codigo || null,
+          orcamento: row.gc_orcamento_codigo || null,
+          situacao: row.gc_os_situacao || null,
+          status_auvo: estadoPorTarefa.get(taskId)?.status_auvo || null,
+          check_in: estadoPorTarefa.get(taskId)?.check_in || null,
+          check_out: estadoPorTarefa.get(taskId)?.check_out || null,
+        });
+      }
+    }
+
+    if ((data ?? []).length < pageSize) break;
+    offset += pageSize;
+  }
+
   return agendamentos.map((item) => {
     const documento = documentosPorTarefa.get(String(item.auvo_task_id || "").trim());
+    const estado = estadoPorTarefa.get(String(item.auvo_task_id || "").trim());
     if (!documento) return item;
     return {
       ...item,
       gc_os_codigo: documento.os || item.gc_os_codigo || null,
       gc_orcamento_codigo: documento.orcamento || item.gc_orcamento_codigo || null,
       gc_os_situacao: documento.situacao || item.gc_os_situacao || null,
-      status_auvo: documento.status_auvo || item.status_auvo || null,
-      check_in_iso: documento.check_in || item.check_in_iso || null,
-      check_out_iso: documento.check_out || item.check_out_iso || null,
+      status_auvo: estado?.status_auvo || documento.status_auvo || item.status_auvo || null,
+      check_in_iso: estado?.check_in || documento.check_in || item.check_in_iso || null,
+      check_out_iso: estado?.check_out || documento.check_out || item.check_out_iso || null,
     };
   });
 }

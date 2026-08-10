@@ -44,6 +44,28 @@ export default function TarefaAuvoDetalheDialog({ taskId, onOpenChange, onEdit }
     },
   });
 
+  const { data: vinculoExecucao } = useQuery({
+    queryKey: ["tarefa_vinculo_execucao_os", taskId],
+    enabled: !!taskId && !tarefa?.gc_os_codigo,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("tarefas_central")
+        .select(
+          "auvo_task_id,gc_os_id,gc_os_codigo,gc_os_situacao,gc_os_cor_situacao,gc_os_valor_total,gc_os_link,gc_orc_link,gc_orcamento_codigo,gc_os_cliente,gc_os_tarefa_exec",
+        )
+        .not("gc_os_codigo", "is", null)
+        .not("gc_os_tarefa_exec", "is", null)
+        .limit(5000);
+      if (error) throw error;
+      return ((data ?? []).find((row) =>
+        String(row.gc_os_tarefa_exec || "")
+          .split("/")
+          .map((id) => id.trim())
+          .includes(String(taskId)),
+      ) ?? null) as Record<string, any> | null;
+    },
+  });
+
   const syncMutation = useMutation({
     mutationFn: async () => {
       if (!taskId) return;
@@ -135,18 +157,19 @@ export default function TarefaAuvoDetalheDialog({ taskId, onOpenChange, onEdit }
     },
   });
 
+  const vinculoOs = vinculoExecucao || vinculo;
   const os = {
-    id: tarefa?.gc_os_id || vinculo?.gc_os_id || null,
-    codigo: tarefa?.gc_os_codigo || vinculo?.gc_os_codigo || null,
-    situacao: tarefa?.gc_os_situacao || vinculo?.gc_os_situacao || null,
-    cor: tarefa?.gc_os_cor_situacao || vinculo?.gc_os_cor_situacao || null,
-    valor: Number(tarefa?.gc_os_valor_total || vinculo?.gc_os_valor_total || 0),
-    link: tarefa?.gc_os_link || vinculo?.gc_os_link || null,
-    orcLink: tarefa?.gc_orc_link || vinculo?.gc_orc_link || null,
-    orcamento: tarefa?.gc_orcamento_codigo || vinculo?.gc_orcamento_codigo || refOrcamento || null,
-    cliente: tarefa?.gc_os_cliente || vinculo?.gc_os_cliente || null,
-    herdado: !tarefa?.gc_os_codigo && !!vinculo?.gc_os_codigo,
-    tarefaOrigem: vinculo?.auvo_task_id || null,
+    id: tarefa?.gc_os_id || vinculoOs?.gc_os_id || null,
+    codigo: tarefa?.gc_os_codigo || vinculoOs?.gc_os_codigo || null,
+    situacao: tarefa?.gc_os_situacao || vinculoOs?.gc_os_situacao || null,
+    cor: tarefa?.gc_os_cor_situacao || vinculoOs?.gc_os_cor_situacao || null,
+    valor: Number(tarefa?.gc_os_valor_total || vinculoOs?.gc_os_valor_total || 0),
+    link: tarefa?.gc_os_link || vinculoOs?.gc_os_link || null,
+    orcLink: tarefa?.gc_orc_link || vinculoOs?.gc_orc_link || null,
+    orcamento: tarefa?.gc_orcamento_codigo || vinculoOs?.gc_orcamento_codigo || refOrcamento || null,
+    cliente: tarefa?.gc_os_cliente || vinculoOs?.gc_os_cliente || null,
+    herdado: !tarefa?.gc_os_codigo && !!vinculoOs?.gc_os_codigo,
+    tarefaOrigem: vinculoOs?.auvo_task_id || null,
   };
 
   const respostas: any[] = Array.isArray(tarefa?.questionario_respostas)
@@ -286,7 +309,7 @@ export default function TarefaAuvoDetalheDialog({ taskId, onOpenChange, onEdit }
                 <div className="p-3 space-y-2">
                   {os.herdado && (
                     <p className="text-[10px] text-muted-foreground">
-                      Vínculo identificado pela referência do orçamento #{os.orcamento} (tarefa Auvo #{os.tarefaOrigem}).
+                      Vínculo identificado pela Tarefa OS #{os.tarefaOrigem} / Tarefa Execução #{taskId}.
                     </p>
                   )}
                   <p className="text-xs text-muted-foreground">

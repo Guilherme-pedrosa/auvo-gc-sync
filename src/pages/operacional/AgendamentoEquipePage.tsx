@@ -273,21 +273,16 @@ function Celula({
     >
       <div className="flex flex-col gap-0.5 h-full">
         {itens.map((a) => {
-          let prefix = "";
-          let idText = "";
-          if (a.gc_os_codigo) {
-            prefix = "OS";
-            idText = a.gc_os_codigo;
-          } else if (a.gc_orcamento_codigo) {
-            prefix = "OR";
-            idText = a.gc_orcamento_codigo;
-          } else if (a.auvo_task_id) {
-            // Só colocamos a tarefa se não houver OS nem Orçamento
-            prefix = "T";
-            idText = a.auvo_task_id;
-          }
-
-          const label = idText ? `${prefix} ${idText} - ${a.cliente}` : a.cliente;
+          const identificadores = [
+            a.gc_os_codigo ? `OS ${a.gc_os_codigo}` : a.auvo_task_id ? "SEM OS" : null,
+            a.auvo_task_id ? `Tarefa ${a.auvo_task_id}` : null,
+            !a.gc_os_codigo && !a.auvo_task_id && a.gc_orcamento_codigo
+              ? `Orç ${a.gc_orcamento_codigo}`
+              : null,
+          ].filter(Boolean);
+          const label = identificadores.length > 0
+            ? `${identificadores.join(" · ")} - ${a.cliente}`
+            : a.cliente;
 
           return (
             <div key={a.id} className="group/item relative flex items-center">
