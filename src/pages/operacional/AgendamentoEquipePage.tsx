@@ -349,7 +349,7 @@ function CelulaTexto({ valor, onSalvar, onExcluir }: { valor: string; onSalvar: 
         setEditando(true);
       }}
       className={cn(
-        "group relative border border-border p-1.5 align-top text-[11px] font-semibold uppercase leading-tight cursor-pointer h-16 min-w-[130px] hover:ring-1 hover:ring-primary/50",
+        "group relative border border-border p-1.5 align-top text-[11px] font-semibold uppercase leading-tight cursor-pointer h-16 min-w-[240px] hover:ring-1 hover:ring-primary/50",
         corCliente(valor)
       )}
     >
@@ -777,7 +777,7 @@ export default function AgendamentoEquipePage() {
                             key={diaStr} 
                             id={isHoje ? "hoje-col" : undefined}
                             className={cn(
-                              "border border-border p-2 text-center text-[10px] font-bold uppercase min-w-[130px] sticky top-0 bg-muted z-10",
+                              "border border-border p-2 text-center text-[10px] font-bold uppercase min-w-[240px] sticky top-0 bg-muted z-10",
                               isHoje && "bg-primary/10 ring-1 ring-primary/30"
                             )}
                           >
@@ -915,7 +915,7 @@ export default function AgendamentoEquipePage() {
                           <th 
                             key={diaStr}
                             className={cn(
-                              "border border-border p-2 text-center text-[10px] font-bold uppercase min-w-[130px] sticky top-0 bg-muted z-10",
+                              "border border-border p-2 text-center text-[10px] font-bold uppercase min-w-[240px] sticky top-0 bg-muted z-10",
                               isHoje && "bg-primary/10"
                             )}
                           >
