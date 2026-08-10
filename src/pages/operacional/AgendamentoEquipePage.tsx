@@ -915,7 +915,7 @@ export default function AgendamentoEquipePage() {
                           <th 
                             key={diaStr}
                             className={cn(
-                              "border border-border p-2 text-center text-[10px] font-bold uppercase min-w-[130px] sticky top-0 bg-muted z-10",
+                              "border border-border p-2 text-center text-[10px] font-bold uppercase min-w-[240px] sticky top-0 bg-muted z-10",
                               isHoje && "bg-primary/10"
                             )}
                           >
