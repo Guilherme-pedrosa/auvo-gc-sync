@@ -183,6 +183,37 @@ export function latestForecastForDocument(
     .sort((a, b) => String(b.atualizado_em).localeCompare(String(a.atualizado_em)))[0] ?? null;
 }
 
+function isoDay(value: string | null | undefined): string | null {
+  const day = String(value ?? "").slice(0, 10);
+  return /^\d{4}-\d{2}-\d{2}$/.test(day) ? day : null;
+}
+
+export function forecastInitialDate(
+  existing: string | null | undefined,
+  suggested: string | null | undefined,
+  minimum: string | null | undefined,
+  today = todayISO(),
+): string {
+  const existingDay = isoDay(existing);
+  if (existingDay) return existingDay;
+
+  const todayDay = isoDay(today) ?? todayISO();
+  const minimumDay = isoDay(minimum);
+  let result = isoDay(suggested) ?? todayDay;
+  if (result < todayDay) result = todayDay;
+  if (minimumDay && result < minimumDay) result = minimumDay;
+  return result;
+}
+
+export function forecastDateMeetsMinimum(
+  date: string | null | undefined,
+  minimum: string | null | undefined,
+): boolean {
+  const day = isoDay(date);
+  const minimumDay = isoDay(minimum);
+  return Boolean(day) && (!minimumDay || day! >= minimumDay);
+}
+
 export type ChegadaStatus = "atrasada" | "hoje" | "futura" | "sem_data";
 
 export function getChegadaStatus(dataChegada: string | null | undefined): ChegadaStatus {

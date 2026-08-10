@@ -245,7 +245,7 @@ export default function AgendamentoEquipeDialog({
       onOpenChange(false);
     } catch (err: any) {
       console.error("Erro ao salvar:", err);
-      toast.error(err.message || "Erro ao salvar agendamento");
+      toast.error(err.message || (agendamento?.previsao_continuidade ? "Erro ao salvar previsão" : "Erro ao salvar agendamento"));
     }
   };
 

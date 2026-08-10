@@ -521,7 +521,8 @@ export default function AgendamentoEquipePage() {
     const colab = colaboradores.find((c) => c.id === colabId);
     if (!colab) return;
 
-    const toastId = toast.loading("Atualizando agendamento...");
+    const ehPrevisao = Boolean(item.previsao_continuidade);
+    const toastId = toast.loading(ehPrevisao ? "Movendo previsão..." : "Atualizando agendamento...");
     try {
       // 1. Atualiza no Auvo se for origem AUVO
       if (item.auvo_task_id && item.origem === "AUVO") {
@@ -563,7 +564,7 @@ export default function AgendamentoEquipePage() {
         previsao_detalhes: item.previsao_detalhes,
       });
 
-      toast.success("Agendamento movido com sucesso!", { id: toastId });
+      toast.success(ehPrevisao ? "Previsão movida com sucesso!" : "Agendamento movido com sucesso!", { id: toastId });
       refetchLocal();
     } catch (err: any) {
       console.error("Erro ao mover agendamento:", err);

@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { latestForecastForDocument, type ChegadaItem, type PrevisaoAgendamento } from "@/lib/agendamento";
+import {
+  forecastDateMeetsMinimum,
+  forecastInitialDate,
+  latestForecastForDocument,
+  type ChegadaItem,
+  type PrevisaoAgendamento,
+} from "@/lib/agendamento";
 
 const item = {
   vinculo_tipo: "orcamento",
@@ -25,6 +31,18 @@ function forecast(id: string, atualizadoEm: string, overrides: Partial<PrevisaoA
 }
 
 describe("previsões de agendamento", () => {
+  it("permite prever orçamento sem estoque a partir da reposição", () => {
+    expect(forecastInitialDate(null, "2026-08-15", "2026-08-20", "2026-08-10")).toBe("2026-08-20");
+    expect(forecastDateMeetsMinimum("2026-08-19", "2026-08-20")).toBe(false);
+    expect(forecastDateMeetsMinimum("2026-08-20", "2026-08-20")).toBe(true);
+    expect(forecastDateMeetsMinimum("2026-08-21", "2026-08-20")).toBe(true);
+  });
+
+  it("permite previsão manual quando a reposição ainda não tem data", () => {
+    expect(forecastInitialDate(null, null, null, "2026-08-10")).toBe("2026-08-10");
+    expect(forecastDateMeetsMinimum("2026-08-12", null)).toBe(true);
+  });
+
   it("carrega a previsão mais recentemente atualizada", () => {
     const result = latestForecastForDocument(item, [
       forecast("antiga", "2026-08-09T10:00:00Z"),

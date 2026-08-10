@@ -27,7 +27,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { todayISO } from "@/lib/agendamento";
+import { forecastDateMeetsMinimum, forecastInitialDate, todayISO } from "@/lib/agendamento";
 import { useColaboradores } from "@/hooks/rh/useRh";
 
 export type AgendarAlvo = {
@@ -43,6 +43,8 @@ export type AgendarAlvo = {
   equipamento?: string | null;
   data_tarefa?: string | null;
   data_sugerida?: string | null;
+  data_minima?: string | null;
+  aviso_estoque?: string | null;
   tecnico_id?: string | null;
   tecnico_nome?: string | null;
   previsao_detalhes?: string | null;
@@ -111,7 +113,7 @@ export default function AgendarTarefaDialog({ open, onOpenChange, alvo, onSaved 
   useEffect(() => {
     if (!open || !alvo) return;
 
-    setDateISO((alvo.data_tarefa || alvo.data_sugerida || todayISO()).slice(0, 10));
+    setDateISO(forecastInitialDate(alvo.data_tarefa, alvo.data_sugerida, alvo.data_minima));
     const targetHora = alvo.hora?.slice(0, 5) || "08:00";
     setHora(targetHora);
     setDurationMinutes(
@@ -138,6 +140,12 @@ export default function AgendarTarefaDialog({ open, onOpenChange, alvo, onSaved 
       return;
     }
 
+    const dataMinima = alvo.data_minima?.slice(0, 10);
+    if (dataMinima && !forecastDateMeetsMinimum(dateISO, dataMinima)) {
+      toast.error(`A execução deve ser prevista para ${format(parseISO(dataMinima), "dd/MM/yyyy")} ou depois, após a reposição das peças.`);
+      return;
+    }
+
     const colaborador = colaboradores.find((item) => item.id === tecnicoId);
     if (!colaborador) {
       toast.error("Selecione um técnico cadastrado no RH.");
@@ -154,7 +162,7 @@ export default function AgendarTarefaDialog({ open, onOpenChange, alvo, onSaved 
         colaborador_nome: colaborador.nome,
         cliente: alvo.cliente.trim().toUpperCase(),
         descricao: alvo.equipamento ? `Equipamento: ${alvo.equipamento}` : null,
-        status: "AGENDADO",
+        status: "PREVISAO",
         auvo_task_id: null,
         gc_os_codigo: alvo.gc_os_codigo || null,
         gc_orcamento_codigo: alvo.gc_orcamento_codigo || null,
@@ -221,7 +229,7 @@ export default function AgendarTarefaDialog({ open, onOpenChange, alvo, onSaved 
       });
       onOpenChange(false);
     } catch (error) {
-      toast.error(`Não foi possível salvar a previsão: ${(error as Error).message}`);
+      toast.error(`Não foi possível salvar a previsão interna: ${(error as Error).message}`);
     } finally {
       setSaving(false);
     }
@@ -245,8 +253,17 @@ export default function AgendarTarefaDialog({ open, onOpenChange, alvo, onSaved 
         </DialogHeader>
 
         <div className="rounded-md border border-blue-200 bg-blue-50 p-3 text-[11px] text-blue-800">
-          Esta ação cria somente uma previsão interna no Agendamento Equipe. Nenhuma tarefa será criada ou alterada no Auvo.
+          Esta ação cria somente uma previsão interna no Agendamento Equipe. Nenhuma tarefa será criada ou alterada no Auvo ou no GestãoClick.
         </div>
+
+        {alvo?.aviso_estoque && (
+          <div className="rounded-md border border-amber-300 bg-amber-50 p-3 text-[11px] text-amber-900">
+            <strong>Previsão condicionada à chegada das peças.</strong> {alvo.aviso_estoque}
+            {alvo.data_minima
+              ? ` A execução pode ser prevista para ${format(parseISO(alvo.data_minima.slice(0, 10)), "dd/MM/yyyy")} ou depois.`
+              : " Como a reposição ainda não tem data, confirme a previsão quando a compra ganhar uma data de chegada."}
+          </div>
+        )}
 
         <div className="mt-2 space-y-3">
           <div>
@@ -287,6 +304,9 @@ export default function AgendarTarefaDialog({ open, onOpenChange, alvo, onSaved 
                     mode="single"
                     selected={dateISO ? parseISO(dateISO) : undefined}
                     onSelect={(date) => date && setDateISO(format(date, "yyyy-MM-dd"))}
+                    disabled={alvo?.data_minima
+                      ? (date) => format(date, "yyyy-MM-dd") < alvo.data_minima!.slice(0, 10)
+                      : undefined}
                     initialFocus
                     locale={ptBR}
                   />

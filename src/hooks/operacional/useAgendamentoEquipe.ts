@@ -81,8 +81,8 @@ export function useSaveAgendamento() {
         if (error) throw error;
       }
     },
-    onSuccess: () => {
-      toast.success("Agendamento salvo");
+    onSuccess: (_data, variables) => {
+      toast.success(variables.previsao_continuidade ? "Previsão salva" : "Agendamento salvo");
       qc.invalidateQueries({ queryKey: ["agenda_agendamentos"] });
       qc.invalidateQueries({ queryKey: ["agenda_semana"] });
     },
