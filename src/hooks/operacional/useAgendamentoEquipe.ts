@@ -128,7 +128,7 @@ async function preencherDocumentosGc(agendamentos: AgendaAgendamento[]) {
         check_out: atual?.check_out || row.check_out_iso || null,
         tipo_id: atual?.tipo_id || row.task_type_id || null,
         tipo_descricao: atual?.tipo_descricao || row.descricao || null,
-        tarefa_os: atual?.tarefa_os || row.gc_os_tarefa_os || null,
+        tarefa_os: atual?.tarefa_os || row.auvo_task_id || null,
         tarefa_execucao: atual?.tarefa_execucao || row.gc_os_tarefa_exec || null,
       });
     }
@@ -165,7 +165,7 @@ async function preencherDocumentosGc(agendamentos: AgendaAgendamento[]) {
           check_out: estadoPorTarefa.get(taskId)?.check_out || null,
           tipo_id: atual?.tipo_id || null,
           tipo_descricao: atual?.tipo_descricao || null,
-          tarefa_os: atual?.tarefa_os || row.gc_os_tarefa_os || null,
+          tarefa_os: atual?.tarefa_os || row.auvo_task_id || null,
           tarefa_execucao: atual?.tarefa_execucao || row.gc_os_tarefa_exec || null,
         });
       }
