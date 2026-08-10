@@ -17,7 +17,7 @@ interface Props {
 
 export default function TarefaAuvoDetalheDialog({ taskId, onOpenChange, onEdit }: Props) {
   const qc = useQueryClient();
-  const { data: tarefa, isLoading, isError } = useQuery({
+  const { data: tarefa, isLoading, isError, refetch } = useQuery({
     queryKey: ["tarefa_central_detalhe", taskId],
     enabled: !!taskId,
     queryFn: async () => {
@@ -29,6 +29,26 @@ export default function TarefaAuvoDetalheDialog({ taskId, onOpenChange, onEdit }
         .limit(1);
       if (error) throw error;
       return (data?.[0] ?? null) as Record<string, any> | null;
+    },
+  });
+
+  const syncMutation = useMutation({
+    mutationFn: async () => {
+      if (!taskId) return;
+      const { data, error } = await supabase.functions.invoke("auvo-task-update", {
+        body: { action: "sync-local", taskId: Number(taskId) },
+      });
+      if (error) throw error;
+      return data;
+    },
+    onSuccess: () => {
+      refetch();
+      qc.invalidateQueries({ queryKey: ["agenda_semana"] });
+      toast.success("Tarefa sincronizada com sucesso!");
+    },
+    onError: (err) => {
+      console.error("Erro ao sincronizar tarefa:", err);
+      toast.error("Erro ao sincronizar dados da tarefa.");
     },
   });
 
