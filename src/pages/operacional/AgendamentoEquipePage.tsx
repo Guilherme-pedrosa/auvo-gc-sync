@@ -48,24 +48,43 @@ const isTecnico = (c: { cargo?: string | null; funcao?: string | null }) => {
 };
 
 const PALETA = [
-  "bg-blue-100 text-blue-900 border-blue-200",
-  "bg-emerald-100 text-emerald-900 border-emerald-200",
-  "bg-amber-100 text-amber-900 border-amber-200",
-  "bg-rose-100 text-rose-900 border-rose-200",
-  "bg-violet-100 text-violet-900 border-violet-200",
-  "bg-cyan-100 text-cyan-900 border-cyan-200",
-  "bg-lime-100 text-lime-900 border-lime-200",
-  "bg-orange-100 text-orange-900 border-orange-200",
-  "bg-indigo-100 text-indigo-900 border-indigo-200",
-  "bg-teal-100 text-teal-900 border-teal-200",
-  "bg-fuchsia-100 text-fuchsia-900 border-fuchsia-200",
-  "bg-sky-100 text-sky-900 border-sky-200",
-  "bg-red-100 text-red-900 border-red-200",
-  "bg-green-100 text-green-900 border-green-200",
-  "bg-yellow-100 text-yellow-900 border-yellow-200",
-  "bg-purple-100 text-purple-900 border-purple-200",
-  "bg-pink-100 text-pink-900 border-pink-200",
-  "bg-slate-100 text-slate-900 border-slate-200",
+  "bg-[#E0F2FE] text-[#0369A1] border-[#BAE6FD]", // Light Blue
+  "bg-[#DCFCE7] text-[#15803D] border-[#BBF7D0]", // Light Green
+  "bg-[#FEF3C7] text-[#A16207] border-[#FDE68A]", // Light Amber
+  "bg-[#FFE4E6] text-[#BE123C] border-[#FECDD3]", // Light Rose
+  "bg-[#F5F3FF] text-[#6D28D9] border-[#DDD6FE]", // Light Violet
+  "bg-[#ECFEFF] text-[#0E7490] border-[#CFFAFE]", // Light Cyan
+  "bg-[#F7FEE7] text-[#4D7C0F] border-[#ECFCCB]", // Light Lime
+  "bg-[#FFF7ED] text-[#C2410C] border-[#FFEDD5]", // Light Orange
+  "bg-[#EEF2FF] text-[#4338CA] border-[#C7D2FE]", // Light Indigo
+  "bg-[#F0FDFA] text-[#0F766E] border-[#CCFBF1]", // Light Teal
+  "bg-[#FDF4FF] text-[#A21CAF] border-[#FAE8FF]", // Light Fuchsia
+  "bg-[#F0F9FF] text-[#0369A1] border-[#E0F2FE]", // Light Sky
+  "bg-[#FFF1F2] text-[#BE123C] border-[#FFE4E6]", // Pinkish Red
+  "bg-[#F0FFF4] text-[#22543D] border-[#C6F6D5]", // Mint
+  "bg-[#FFFFF0] text-[#744210] border-[#FEFCBF]", // Light Yellow
+  "bg-[#FAF5FF] text-[#553C9A] border-[#E9D8FD]", // Deep Purple
+  "bg-[#FFF5F5] text-[#9B2C2C] border-[#FED7D7]", // Pale Red
+  "bg-[#F8FAFC] text-[#334155] border-[#E2E8F0]", // Slate
+  "bg-[#EBF8FF] text-[#2C5282] border-[#BEE3F8]", // Azure
+  "bg-[#E6FFFA] text-[#285E61] border-[#B2F5EA]", // Aquamarine
+  "bg-[#F0F5FF] text-[#2B6CB0] border-[#C3DAFE]", // Periwinkle
+  "bg-[#F5FFF5] text-[#2F855A] border-[#C6F6D5]", // Sage
+  "bg-[#FFF8E1] text-[#855B0F] border-[#FFECB3]", // Honey
+  "bg-[#EFEBE9] text-[#4E342E] border-[#D7CCC8]", // Brownish Gray
+  "bg-[#E8EAF6] text-[#1A237E] border-[#C5CAE9]", // Navy Mist
+  "bg-[#E1F5FE] text-[#01579B] border-[#B3E5FC]", // Sky Blue
+  "bg-[#F3E5F5] text-[#4A148C] border-[#E1BEE7]", // Plum
+  "bg-[#E8F5E9] text-[#1B5E20] border-[#C8E6C9]", // Forest Mist
+  "bg-[#FFF3E0] text-[#E65100] border-[#FFE0B2]", // Soft Orange
+  "bg-[#FCE4EC] text-[#880E4F] border-[#F8BBD0]", // Magenta Mist
+  "bg-[#E0F7FA] text-[#006064] border-[#B2EBF2]", // Teal Cyan
+  "bg-[#F1F8E9] text-[#33691E] border-[#DCEDC8]", // Olive Mist
+  "bg-[#FFFDE7] text-[#F57F17] border-[#FFF9C4]", // Lemon
+  "bg-[#E8F5E9] text-[#2E7D32] border-[#A5D6A7]", // Grass
+  "bg-[#F9FBE7] text-[#827717] border-[#F0F4C3]", // Lime Yellow
+  "bg-[#EFEBE9] text-[#5D4037] border-[#D7CCC8]", // Coffee Mist
+  "bg-[#ECEFF1] text-[#263238] border-[#CFD8DC]", // Blue Gray
 ];
 
 const corCliente = (texto: string, cidade?: string | null) => {
@@ -74,27 +93,13 @@ const corCliente = (texto: string, cidade?: string | null) => {
   if (t === "X" || t === "FOLGA") return "bg-muted text-muted-foreground";
   if (t.startsWith("OFICINA")) return "bg-slate-200 text-slate-800";
 
-  // 1. Cor baseada na cidade (para agrupar tons parecidos)
-  // Se não houver cidade, tratamos como se fosse uma cidade única para agrupar clientes sem info
-  const cid = (cidade || "DESCONHECIDO").trim().toUpperCase();
-  let cidadeHash = 0;
-  for (let i = 0; i < cid.length; i++) {
-    cidadeHash = cid.charCodeAt(i) + ((cidadeHash << 5) - cidadeHash);
-  }
-
-  // 2. Cor baseada no cliente (para ser único/consistente)
-  let clienteHash = 0;
+  // Hash robusto baseado apenas no nome do cliente para garantir cor única e fixa
+  let hash = 0;
   for (let i = 0; i < t.length; i++) {
-    clienteHash = t.charCodeAt(i) + ((clienteHash << 5) - clienteHash);
+    hash = t.charCodeAt(i) + ((hash << 5) - hash);
   }
 
-  // Mapeamos a cidade para um índice da paleta
-  // E usamos o hash do cliente para uma pequena variação dentro desse índice (+0, +1, ou +2)
-  // Isso garante que clientes da mesma cidade fiquem "perto" na paleta
-  const baseIndex = Math.abs(cidadeHash) % PALETA.length;
-  const variation = Math.abs(clienteHash) % 3;
-  const colorIndex = (baseIndex + variation) % PALETA.length;
-
+  const colorIndex = Math.abs(hash) % PALETA.length;
   return PALETA[colorIndex];
 };
 
