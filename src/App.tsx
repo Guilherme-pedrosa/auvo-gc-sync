@@ -54,6 +54,7 @@ import PortalOrcamentosPage from "./pages/portal/PortalOrcamentosPage.tsx";
 import PortalPlanosPreventivosPage from "./pages/portal/PortalPlanosPreventivosPage.tsx";
 import PortalNegociacaoPage from "./pages/portal/PortalNegociacaoPage.tsx";
 import AgendamentoEquipePage from "./pages/operacional/AgendamentoEquipePage.tsx";
+import VisitasContratuaisPage from "./pages/agendamento/VisitasContratuaisPage.tsx";
 import ProdutividadeTecnicosPage from "./pages/financeiro/ProdutividadeTecnicosPage.tsx";
 import { Loader2 } from "lucide-react";
 
@@ -153,6 +154,7 @@ const AppRoutes = () => {
                 <Route path="/med-seg/config/periodicidade" element={<TiposASOPage />} />
                 <Route path="/med-seg/config/clinicas" element={<ClinicasPage />} />
                 <Route path="/operacional/agendamento-equipe" element={<AgendamentoEquipePage />} />
+                <Route path="/agendamento/visitas-contratuais" element={<VisitasContratuaisPage />} />
                 <Route path="/admin/usuarios" element={<UsersPage />} />
                 <Route path="*" element={<NotFound />} />
               </Routes>

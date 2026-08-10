@@ -31,6 +31,7 @@ const navGroups: NavGroup[] = [
     label: "Agendamento",
     items: [
       { label: "Agendamento Equipe", icon: CalendarClock, path: "/operacional/agendamento-equipe" },
+      { label: "Visitas Contratuais", icon: Calendar, path: "/agendamento/visitas-contratuais" },
       { label: "Chegada Orçamentos", icon: CalendarClock, path: "/financeiro/agendamento" },
     ],
   },
