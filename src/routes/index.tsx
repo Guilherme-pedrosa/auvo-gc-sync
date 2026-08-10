@@ -35,7 +35,7 @@ export default function Index() {
       </div>
 
       <div className="bg-gray-100 p-4 rounded text-sm">
-        <p><strong>Ação tomada:</strong> Verificado no banco de dados que a tarefa está sincronizada. A "falta" no relatório é uma regra de negócio de priorização (Execução Final > Preventiva Intermediária) para evitar duplicidade de faturamento na mesma OS.</p>
+        <p><strong>Ação tomada:</strong> Verificado no banco de dados que a tarefa está sincronizada. A "falta" no relatório é uma regra de negócio de priorização (Execução Final &gt; Preventiva Intermediária) para evitar duplicidade de faturamento na mesma OS.</p>
       </div>
 
       <div className="pt-4">
