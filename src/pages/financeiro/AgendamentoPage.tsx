@@ -359,7 +359,7 @@ export default function AgendamentoPage() {
               <p className="truncate text-xs font-bold text-primary">
                 {i.os_codigo && i.auvo_task_id ? (
                   <a
-                    href={`https://app2.auvo.com.br/gerenciarTarefas/tarefa/${i.auvo_task_id}`}
+                    href={`https://app2.auvo.com.br/relatorioTarefas/DetalheTarefa/${i.auvo_task_id}`}
                     target="_blank"
                     rel="noreferrer"
                     className="hover:underline flex items-center gap-1"

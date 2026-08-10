@@ -210,7 +210,7 @@ export default function TarefaAuvoDetalheDialog({ taskId, onOpenChange, onEdit }
               {taskId && (
                 <Button size="sm" variant="outline" asChild>
                   <a
-                    href={`https://app2.auvo.com.br/gerenciarTarefas/tarefa/${taskId}`}
+                    href={`https://app2.auvo.com.br/relatorioTarefas/DetalheTarefa/${taskId}`}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="gap-1"
