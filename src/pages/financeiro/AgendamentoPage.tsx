@@ -246,6 +246,28 @@ export default function AgendamentoPage() {
     [filtrados],
   );
 
+  const filterByKanbanSearch = (list: ChegadaItem[], term: string) => {
+    if (!term.trim()) return list;
+    const s = term.toLowerCase();
+    return list.filter(i => 
+      [i.orcamento_codigo, i.vinculo_codigo, i.compra_codigo, i.cliente, i.fornecedor, i.equipamento]
+        .some(v => String(v || "").toLowerCase().includes(s))
+    );
+  };
+
+  const previstaFiltrada = useMemo(() => 
+    filterByKanbanSearch(filtrados.filter(i => i.data_chegada), buscaPrevista), 
+    [filtrados, buscaPrevista]
+  );
+  const atrasadaFiltrada = useMemo(() => 
+    filterByKanbanSearch(atrasadas, buscaAtrasada), 
+    [atrasadas, buscaAtrasada]
+  );
+  const semDataFiltrada = useMemo(() => 
+    filterByKanbanSearch(semData, buscaSemPrevisao), 
+    [semData, buscaSemPrevisao]
+  );
+
   const semanas = useMemo(() => buildMonthGrid(ano, mes), [ano, mes]);
 
   const navegar = (delta: number) => {
