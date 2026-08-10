@@ -172,12 +172,7 @@ export function interleavedVisitDates(
     .sort((left, right) => left - right);
   if (weeks.length < totalVisits) throw new Error("SEMANAS_MES_INSUFICIENTES");
 
-  const targetWeeks = totalVisits === 1
-    ? [weeks[Math.floor((weeks.length - 1) / 2)]]
-    : Array.from({ length: totalVisits }, (_, index) => {
-        const weekIndex = Math.round(index * (weeks.length - 1) / (totalVisits - 1));
-        return weeks[weekIndex];
-      });
+  const targetWeeks = weeks.slice(0, totalVisits);
   const datesByWeek = new Map<number, string[]>();
   for (const date of eligibleDates) {
     const week = weekOfMonthFromISO(date);
@@ -188,14 +183,16 @@ export function interleavedVisitDates(
   const availableWeeks = [...datesByWeek.keys()].sort((left, right) => left - right);
   let previousWeek = 0;
 
-  return visitNumbers.map((visitNumber) => {
+  const selectedDates: string[] = [];
+  for (const visitNumber of visitNumbers) {
     const targetWeek = targetWeeks[visitNumber - 1];
     const chosenWeek = availableWeeks.find((week) => week > previousWeek && week >= targetWeek)
       ?? [...availableWeeks].reverse().find((week) => week > previousWeek);
-    if (!chosenWeek) throw new Error("SEMANAS_DISPONIVEIS_INSUFICIENTES");
+    if (!chosenWeek) break;
     previousWeek = chosenWeek;
-    return datesByWeek.get(chosenWeek)![0];
-  });
+    selectedDates.push(datesByWeek.get(chosenWeek)![0]);
+  }
+  return selectedDates;
 }
 
 export function rotatingVisitTeams(
@@ -251,7 +248,7 @@ export function buildContractVisitForecasts(input: ContractVisitConfigInput): Co
   const start = input.horaInicio.slice(0, 5);
   const end = addMinutesToClock(start, durationMinutes);
 
-  return missingNumbers.map((visitaNumero, index) => ({
+  return missingNumbers.slice(0, dates.length).map((visitaNumero, index) => ({
     competencia: input.competencia,
     visitaNumero,
     data: dates[index],
