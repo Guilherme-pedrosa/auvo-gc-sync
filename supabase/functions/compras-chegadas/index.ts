@@ -680,8 +680,8 @@ async function handleRequest(req: Request) {
           ? (doc?.id ? `https://app.gestaoclick.com/compras/visualizar/${doc.id}` : "")
           : (doc?.id ? `https://app.gestaoclick.com/orcamentos_servicos/visualizar/${doc.id}` : ""),
         cliente: String(doc?.nome_cliente || ""),
-        equipamento: "",
-        os_codigo: "",
+        equipamento: extra(doc, "EQUIPAMENTO") || "",
+        os_codigo: extra(doc, "OS GC") || "",
         orcamento_codigo: orcCodigo,
         documento_valor: Number(doc?.valor_total ?? 0) || 0,
         documento_situacao: String(doc?.nome_situacao ?? ""),
