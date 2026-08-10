@@ -742,7 +742,7 @@ export default function AgendamentoPage() {
               </div>
             </section>
 
-            <div className="grid gap-3 lg:grid-cols-3">
+            <div className="grid gap-3 lg:grid-cols-3 xl:grid-cols-3">
               {/* Dia selecionado */}
               <section className="rounded-lg border border-border bg-muted/20 p-2">
                 <h2 className="mb-2 text-xs font-semibold">Orçamentos em {formatDiaBR(diaSelecionado)} ({itensDoDia.length})</h2>
