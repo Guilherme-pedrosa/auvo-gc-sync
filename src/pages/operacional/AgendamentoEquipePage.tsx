@@ -334,17 +334,19 @@ function Celula({
                 )}
               </button>
               <div className="absolute -right-1 top-1/2 -translate-y-1/2 z-20 hidden group-hover/item:flex items-center gap-0.5">
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onPreverProximoDia(a);
-                  }}
-                  title="Prever continuação no próximo dia"
-                  className="flex items-center justify-center h-4 w-4 rounded-full bg-primary text-primary-foreground text-[10px] shadow-sm hover:scale-110 transition-transform"
-                >
-                  +
-                </button>
+                {(!a.auvo_task_id || (a.auvo_task_id && a.gc_os_codigo)) && (
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onPreverProximoDia(a);
+                    }}
+                    title="Prever continuação no próximo dia"
+                    className="flex items-center justify-center h-4 w-4 rounded-full bg-primary text-primary-foreground text-[10px] shadow-sm hover:scale-110 transition-transform"
+                  >
+                    +
+                  </button>
+                )}
                 {a.previsao_continuidade && (
                   <button
                     type="button"
@@ -900,16 +902,20 @@ export default function AgendamentoEquipePage() {
                                 setDialogCreateTaskOpen(true);
                               }}
                               onPreverProximoDia={async (a) => {
-                                const proximoDia = format(addDays(parseISO(a.data), 1), "yyyy-MM-dd");
-                                const toastId = toast.loading("Gerando previsão...");
-                                try {
-                                  const payload = {
-                                    ...a,
-                                    id: undefined, // Novo registro
-                                    data: proximoDia,
-                                    status: "PREVISAO",
-                                    previsao_continuidade: true,
-                                    previsao_tipo: "CONTINUACAO",
+                                 const proximoDia = format(addDays(parseISO(a.data), 1), "yyyy-MM-dd");
+                                 const toastId = toast.loading("Gerando previsão...");
+                                 try {
+                                   if (a.auvo_task_id && !a.gc_os_codigo) {
+                                     throw new Error("Não é permitido gerar previsão para tarefas sem OS vinculada.");
+                                   }
+
+                                   const payload = {
+                                     ...a,
+                                     id: undefined, // Novo registro
+                                     data: proximoDia,
+                                     status: "PREVISAO",
+                                     previsao_continuidade: true,
+                                     previsao_tipo: "CONTINUACAO",
                                     conversao_status: null,
                                     conversao_erro: null,
                                     conversao_tentada_em: null,
