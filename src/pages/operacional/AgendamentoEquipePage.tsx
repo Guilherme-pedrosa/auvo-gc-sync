@@ -1,12 +1,19 @@
 import { useMemo, useState, useEffect, useRef } from "react";
 import { format, addDays, parseISO } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import { ChevronLeft, ChevronRight, RefreshCw, Printer, Plus, Truck, Users, AlertTriangle, Download } from "lucide-react";
+import { ChevronLeft, ChevronRight, RefreshCw, Printer, Plus, Truck, Users, AlertTriangle, Download, CalendarClock } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
 import { useColaboradores } from "@/hooks/rh/useRh";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from "@/components/ui/dialog";
 import {
   useAgendaVeiculos,
   useAgendaSemana,
@@ -236,12 +243,12 @@ function Celula({
           type="button"
           onClick={() => onNovaTarefaAuvo()}
           className={cn(
-            "w-full text-[11px] opacity-25 hover:opacity-60 transition-opacity min-h-[1.5rem] flex-1",
+            "w-full text-[11px] opacity-25 hover:opacity-100 transition-opacity min-h-[1.5rem] flex-1 flex items-center justify-center hover:bg-primary/5 rounded-sm border border-transparent hover:border-primary/20",
             itens.length > 0 && "mt-auto py-1"
           )}
-          aria-label="Nova tarefa Auvo"
+          aria-label="Nova tarefa ou previsão"
         >
-          —
+          <Plus className="h-3 w-3" />
         </button>
       </div>
     </td>
@@ -304,6 +311,7 @@ export default function AgendamentoEquipePage() {
   const [dialogRelatorioOpen, setDialogRelatorioOpen] = useState(false);
   const [createTaskPrefill, setCreateTaskPrefill] = useState<{ data: string | null; auvoUserId: string | null; nome: string | null }>({ data: null, auvoUserId: null, nome: null });
   const dragItem = useRef<AgendaAgendamento | null>(null);
+  const [dialogChoiceOpen, setDialogChoiceOpen] = useState(false);
   const saveAgendamento = useSaveAgendamento();
 
   // Expõe o queryClient globalmente para uso no diálogo de criação de tarefa
