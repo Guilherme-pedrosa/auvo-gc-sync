@@ -10,7 +10,13 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { SearchableSelect } from "@/components/ui/searchable-select";
+import { 
+  Select, 
+  SelectContent, 
+  SelectItem, 
+  SelectTrigger, 
+  SelectValue 
+} from "@/components/ui/select";
 import { todayISO } from "@/lib/agendamento";
 import { useColaboradores } from "@/hooks/rh/useRh";
 
@@ -70,9 +76,17 @@ export default function AgendarTarefaDialog({ open, onOpenChange, alvo, onSaved 
       : 120;
     setDurationMinutes(dur);
     
-    setTecnicoId(alvo.tecnico_id ? String(alvo.tecnico_id) : "");
+    // Tenta encontrar o colaborador no cache do RH para setar o ID local se for um ID de usuário Auvo
+    // Caso contrário, usa o ID como está (ex: ID UUID do Supabase)
+    if (alvo.tecnico_id) {
+      const colab = colaboradores.find(c => String(c.auvo_user_id) === String(alvo.tecnico_id));
+      setTecnicoId(colab ? colab.id : String(alvo.tecnico_id));
+    } else {
+      setTecnicoId("");
+    }
+    
     setPrevisaoDetalhes(alvo.previsao_detalhes || "");
-  }, [open, alvo]);
+  }, [open, alvo, colaboradores]);
 
   const { data: users = [], isLoading: loadingUsers } = useQuery({
     queryKey: ["auvo-users"],
@@ -87,17 +101,24 @@ export default function AgendarTarefaDialog({ open, onOpenChange, alvo, onSaved 
     },
   });
 
-  const userOptions = useMemo(
-    () =>
-      users
-        .map((u: any) => ({
-          value: String(u.userID ?? u.userId ?? u.id ?? ""),
-          label: String(u.name ?? u.userName ?? `Usuário ${u.userID ?? "?"}`),
-        }))
-        .filter((o) => o.value)
-        .sort((a, b) => a.label.localeCompare(b.label)),
-    [users],
-  );
+  const userOptions = useMemo(() => {
+    // Mesclamos a lista do RH com a do Auvo para garantir que IDs de ambos funcionem no seletor
+    const rhOpts = colaboradores
+      .filter(c => c.ativo)
+      .map(c => ({
+        value: c.id,
+        label: c.nome
+      }));
+
+    const auvoOpts = users
+      .map((u: any) => ({
+        value: String(u.userID ?? u.userId ?? u.id ?? ""),
+        label: String(u.name ?? u.userName ?? `Usuário ${u.userID ?? "?"}`),
+      }))
+      .filter(o => o.value && !rhOpts.some(r => r.label === o.label));
+
+    return [...rhOpts, ...auvoOpts].sort((a, b) => a.label.localeCompare(b.label));
+  }, [users, colaboradores]);
 
   const taskId = alvo?.exec_task_id || alvo?.auvo_task_id || null;
 
@@ -112,9 +133,16 @@ export default function AgendarTarefaDialog({ open, onOpenChange, alvo, onSaved 
     }
     setSaving(true);
     try {
+      const colab = colaboradores.find(c => c.id === tecnicoId);
+      const auvoUserId = colab?.auvo_user_id || (tecnicoId.length < 20 ? tecnicoId : null);
+
+      if (!auvoUserId) {
+        throw new Error("Este colaborador não possui um ID do Auvo vinculado.");
+      }
+
       const patches = [
         { op: "replace", path: "taskDate", value: `${dateISO}T${hora}:00` },
-        { op: "replace", path: "idUserTo", value: Number(tecnicoId) },
+        { op: "replace", path: "idUserTo", value: Number(auvoUserId) },
       ];
       const { data, error } = await supabase.functions.invoke("auvo-task-update", {
         body: { action: "edit", taskId: Number(taskId), patches },
@@ -124,7 +152,7 @@ export default function AgendarTarefaDialog({ open, onOpenChange, alvo, onSaved 
         throw new Error(typeof data?.data === "string" ? data.data : JSON.stringify(data?.data ?? "Erro no Auvo"));
       }
 
-      const tecnico = userOptions.find((o) => o.value === tecnicoId)?.label || "";
+      const tecnico = colab?.nome || userOptions.find((o) => o.value === tecnicoId)?.label || "";
 
       const { error: persistError } = await supabase.functions.invoke("auvo-task-update", {
         body: {
@@ -135,7 +163,7 @@ export default function AgendarTarefaDialog({ open, onOpenChange, alvo, onSaved 
             gc_os_id: alvo.gc_os_id,
             gc_orcamento_id: alvo.gc_orcamento_id || alvo.gc_orcamento_codigo,
             data_tarefa: dateISO,
-            tecnico_id: tecnicoId,
+            tecnico_id: String(auvoUserId),
             tecnico,
           },
         },
@@ -161,15 +189,15 @@ export default function AgendarTarefaDialog({ open, onOpenChange, alvo, onSaved 
 
     setSavingForecast(true);
     try {
-      const tecnico = userOptions.find((o) => o.value === tecnicoId)?.label || "";
-      const colab = colaboradores.find(c => String(c.auvo_user_id) === String(tecnicoId));
+      const colab = colaboradores.find(c => c.id === tecnicoId);
+      const tecnico = colab?.nome || userOptions.find((o) => o.value === tecnicoId)?.label || "";
       
       const payload = {
         data: dateISO,
         hora_inicio: hora,
         hora_fim: minutesToClock(clockToMinutes(hora) + durationMinutes),
-        colaborador_id: colab?.id || null,
-        colaborador_nome: colab?.nome || tecnico,
+        colaborador_id: colab?.id || (tecnicoId.length > 20 ? tecnicoId : null),
+        colaborador_nome: tecnico,
         cliente: alvo.cliente.toUpperCase(),
         descricao: alvo.equipamento ? `Equipamento: ${alvo.equipamento}` : null,
         status: "AGENDADO",
@@ -242,13 +270,18 @@ export default function AgendarTarefaDialog({ open, onOpenChange, alvo, onSaved 
         <div className="space-y-3 mt-2">
           <div>
             <Label className="text-xs">Técnico</Label>
-            <SearchableSelect
-              options={userOptions}
-              value={tecnicoId}
-              onValueChange={(v) => setTecnicoId(v as string)}
-              placeholder={loadingUsers ? "Carregando..." : "Selecione o técnico"}
-              searchPlaceholder="Buscar técnico..."
-            />
+            <Select value={tecnicoId} onValueChange={setTecnicoId}>
+              <SelectTrigger className="h-9 text-xs">
+                <SelectValue placeholder={loadingUsers ? "Carregando..." : "Selecione o técnico"} />
+              </SelectTrigger>
+              <SelectContent>
+                {userOptions.map((opt) => (
+                  <SelectItem key={opt.value} value={opt.value} className="text-xs">
+                    {opt.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
           <div className="grid grid-cols-3 gap-2">
             <div className="col-span-1">
