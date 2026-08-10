@@ -492,7 +492,7 @@ export default function AgendamentoPage() {
   };
 
   return (
-    <div className="flex min-h-max w-full flex-col gap-3 overflow-visible bg-background p-4">
+    <div className="flex h-screen w-full flex-col gap-3 overflow-hidden bg-background p-4">
       <header className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-lg font-semibold text-foreground">Chegada Orçamentos</h1>
