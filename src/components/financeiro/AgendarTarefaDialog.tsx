@@ -70,9 +70,16 @@ export default function AgendarTarefaDialog({ open, onOpenChange, alvo, onSaved 
       : 120;
     setDurationMinutes(dur);
     
-    setTecnicoId(alvo.tecnico_id ? String(alvo.tecnico_id) : "");
+    // Tenta encontrar o colaborador no cache do RH para setar o ID local
+    if (alvo.tecnico_id) {
+      const colab = colaboradores.find(c => String(c.auvo_user_id) === String(alvo.tecnico_id));
+      setTecnicoId(colab ? colab.id : String(alvo.tecnico_id));
+    } else {
+      setTecnicoId("");
+    }
+    
     setPrevisaoDetalhes(alvo.previsao_detalhes || "");
-  }, [open, alvo]);
+  }, [open, alvo, colaboradores]);
 
   const { data: users = [], isLoading: loadingUsers } = useQuery({
     queryKey: ["auvo-users"],
