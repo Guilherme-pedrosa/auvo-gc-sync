@@ -680,8 +680,8 @@ async function handleRequest(req: Request) {
           ? (doc?.id ? `https://app.gestaoclick.com/compras/visualizar/${doc.id}` : "")
           : (doc?.id ? `https://app.gestaoclick.com/orcamentos_servicos/visualizar/${doc.id}` : ""),
         cliente: String(doc?.nome_cliente || ""),
-        equipamento: "",
-        os_codigo: "",
+        equipamento: extra(doc, "EQUIPAMENTO") || "",
+        os_codigo: extra(doc, "OS GC") || "",
         orcamento_codigo: orcCodigo,
         documento_valor: Number(doc?.valor_total ?? 0) || 0,
         documento_situacao: String(doc?.nome_situacao ?? ""),
@@ -729,8 +729,8 @@ async function handleRequest(req: Request) {
       const r = item.vinculo_tipo === "os" ? osMap.get(item.vinculo_codigo) : orcMap.get(item.vinculo_codigo);
       if (!r) continue;
       if (!item.cliente) item.cliente = String(r.gc_os_cliente || r.gc_orc_cliente || r.cliente || "");
-      item.equipamento = getEquip(r);
-      item.os_codigo = String(r.gc_os_codigo ?? "");
+      if (!item.equipamento) item.equipamento = getEquip(r);
+      if (!item.os_codigo) item.os_codigo = String(r.gc_os_codigo ?? "");
       item.orcamento_codigo = String(r.gc_orcamento_codigo ?? "");
       item.documento_valor =
         item.vinculo_tipo === "os"
