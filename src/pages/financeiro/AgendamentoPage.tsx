@@ -18,7 +18,8 @@ import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import {
   buildMonthGrid, formatBRL, formatDiaBR, getChegadaStatus, monthLabel, todayISO,
-  latestForecastForDocument, type ChegadaItem, type ChegadaStatus,
+  latestForecastForDocument, latestMissingPartsArrival, missingPartArrivalDates,
+  type ChegadaItem, type ChegadaStatus,
   type PrevisaoAgendamento,
 } from "@/lib/agendamento";
 import AgendarTarefaDialog, { type AgendarAlvo } from "@/components/financeiro/AgendarTarefaDialog";
@@ -67,7 +68,12 @@ async function fetchChegadas(): Promise<ChegadaItem[]> {
       throw new Error(data?.error || "Falha ao consultar compras");
     }
 
-    let itens = (data?.itens || []) as ChegadaItem[];
+    let itens = ((data?.itens || []) as ChegadaItem[]).map((item) => {
+      const maiorPrazo = latestMissingPartsArrival(item.pecas_em_falta);
+      return maiorPrazo
+        ? { ...item, data_chegada: maiorPrazo, proxima_reposicao: maiorPrazo }
+        : item;
+    });
     console.log("[AgendamentoPage] Itens recebidos:", itens.length);
 
     // Buscar previsões locais para marcar nos cards
@@ -417,27 +423,21 @@ export default function AgendamentoPage() {
         <div className="mt-2 flex flex-col gap-2">
           {(i.pecas_em_falta?.length ?? 0) > 0 && (
             <div className="rounded border border-amber-300 bg-amber-50 p-2 text-[10px] text-amber-950">
-              <p className="font-semibold">Peças sem saldo para este orçamento</p>
-              <div className="mt-1 space-y-1">
-                {i.pecas_em_falta?.map((peca) => (
-                  <div key={`${peca.produto_id}-${peca.nome}`}>
-                    <span>
-                      {peca.nome}: precisa {peca.quantidade}, saldo {peca.estoque_atual}, faltam {peca.deficit}
-                      {peca.conflito_estoque && peca.demanda_total_aberta
-                        ? ` para atender a demanda aberta total de ${peca.demanda_total_aberta}`
-                        : ""}.
-                    </span>
-                    {peca.pedidos_compra.length > 0 ? (
-                      <span className="ml-1 text-muted-foreground">
-                        {peca.pedidos_compra.map((pedido) =>
-                          `PC ${pedido.codigo}${pedido.data_chegada ? ` · ${formatDiaBR(pedido.data_chegada)}` : " · sem data"}`,
-                        ).join("; ")}
-                      </span>
-                    ) : (
-                      <span className="ml-1 font-medium">Nenhum pedido de compra em aberto localizado.</span>
-                    )}
-                  </div>
-                ))}
+              <p className="font-semibold">Peças faltantes e chegada</p>
+              <div className="mt-1.5 divide-y divide-amber-200">
+                {i.pecas_em_falta?.map((peca) => {
+                  const datasChegada = missingPartArrivalDates(peca);
+                  return (
+                    <div key={`${peca.produto_id}-${peca.nome}`} className="py-1 first:pt-0 last:pb-0">
+                      <p className="font-medium leading-tight">{peca.nome}</p>
+                      <p className={cn("mt-0.5", datasChegada.length > 0 ? "text-amber-800" : "text-muted-foreground")}>
+                        {datasChegada.length > 0
+                          ? `Chegada: ${datasChegada.map(formatDiaBR).join(" · ")}`
+                          : "Sem previsão de chegada"}
+                      </p>
+                    </div>
+                  );
+                })}
               </div>
             </div>
           )}
