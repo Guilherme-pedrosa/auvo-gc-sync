@@ -156,6 +156,7 @@ export function useDeleteRhCliente() {
 export function useColaboradores() {
   return useQuery({
     queryKey: ["rh_colaboradores"],
+    staleTime: 5 * 60 * 1000,
     queryFn: async () => {
       const { data, error } = await sb.from("rh_colaboradores").select("*").order("nome");
       if (error) throw error;

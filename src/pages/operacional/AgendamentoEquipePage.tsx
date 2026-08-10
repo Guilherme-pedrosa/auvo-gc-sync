@@ -355,80 +355,27 @@ export default function AgendamentoEquipePage() {
 
   const refetch = async () => {
     setIsSyncing(true);
-    const toastId = toast.loading("Puxando tarefas e atualizando clientes do Auvo...");
+    const toastId = toast.loading("Atualizando tarefas do Auvo...");
     try {
-      // Força a atualização da lista de colaboradores (RH)
-      await refetchColaboradores();
-
-      // Atualiza a lista de colaboradores (RH)
-      await refetchColaboradores();
-
-      // Sincroniza agenda (Auvo -> Local)
+      // Uma única leitura do RH; o retorno é usado nesta sincronização para
+      // evitar trabalhar com o estado anterior do React Query.
+      const colaboradoresResult = await refetchColaboradores();
+      if (colaboradoresResult.error) throw colaboradoresResult.error;
+      const colaboradoresAtuais = colaboradoresResult.data ?? colaboradores;
 
       const { data: syncRes, error } = await supabase.functions.invoke("auvo-agenda", {
-        body: { startDate: dias[0], endDate: dias[dias.length - 1] },
+        body: { startDate: dias[0], endDate: dias[dias.length - 1], fast: true },
       });
       if (error) throw error;
       if ((syncRes as any)?.error) throw new Error((syncRes as any).error);
 
       const tarefas: any[] = Array.isArray(syncRes?.data) ? syncRes.data : [];
 
-      // Fallback: completa códigos de OS/Orçamento a partir da base local (mesma fonte do Controle OS)
-      const taskIds = new Set(
-        tarefas.map((t) => String(t.auvo_task_id ?? t.taskID ?? t.id ?? "")).filter(Boolean)
-      );
-      // IDs podem vir concatenados no GC ("123 / 456"), então normalizamos
-      const parseIds = (v: unknown): string[] =>
-        String(v ?? "")
-          .split(/[^0-9]+/)
-          .map((s) => s.trim())
-          .filter((s) => s.length >= 4);
-
-      const codigosLocais = new Map<string, { os: string | null; orc: string | null }>();
-      const registrar = (key: string, os: string | null, orc: string | null) => {
-        if (!key || !taskIds.has(key)) return;
-        const existing = codigosLocais.get(key);
-        if (!existing) {
-          codigosLocais.set(key, { os, orc });
-          return;
-        }
-        // Preserva o vínculo mais rico (prioridade OS > Orçamento)
-        codigosLocais.set(key, {
-          os: existing.os || os,
-          orc: existing.orc || orc,
-        });
-      };
-
-      // Varre a base local paginada procurando vínculos de OS/Orçamento
-      const PAGE = 1000;
-      for (let page = 0; page < 40; page++) {
-        const { data: rows, error: errRows } = await supabase
-          .from("tarefas_central")
-          .select("auvo_task_id, gc_os_codigo, gc_orcamento_codigo, gc_os_tarefa_os, gc_os_tarefa_exec")
-          .or("gc_os_codigo.not.is.null,gc_orcamento_codigo.not.is.null")
-          .order("data_tarefa", { ascending: false })
-          .range(page * PAGE, page * PAGE + PAGE - 1);
-        if (errRows) break;
-        const list = rows ?? [];
-        for (const r of list) {
-          const os = (r as any).gc_os_codigo || null;
-          const orc = (r as any).gc_orcamento_codigo || null;
-          if (!os && !orc) continue;
-          const keys = [
-            String((r as any).auvo_task_id || ""),
-            ...parseIds((r as any).gc_os_tarefa_os),
-            ...parseIds((r as any).gc_os_tarefa_exec),
-          ];
-          for (const k of keys) registrar(k, os, orc);
-        }
-        if (list.length < PAGE) break;
-      }
-
       // Resolução do técnico: auvo_user_id (fonte da verdade) → nome → primeiro nome
       const porAuvoId = new Map<string, any>();
       const porNome = new Map<string, any>();
       const porPrimeiroNome = new Map<string, any>();
-      for (const c of colaboradores) {
+      for (const c of colaboradoresAtuais) {
         if (!c.ativo) continue;
         if (c.auvo_user_id) porAuvoId.set(String(c.auvo_user_id), c);
         const n = norm(c.nome);
@@ -455,10 +402,6 @@ export default function AgendamentoEquipePage() {
         const taskId = String(t.auvo_task_id ?? t.taskID ?? t.id ?? "");
         if (!taskId) continue;
         
-        const local = codigosLocais.get(taskId);
-        const osCodigo = t.gc_os_codigo || local?.os || null;
-        const orcCodigo = t.gc_orcamento_codigo || local?.orc || null;
-
         const key = `${taskId}|${t.data_tarefa}|${colab.id}`;
         if (vistos.has(key)) continue;
         vistos.add(key);
@@ -476,73 +419,83 @@ export default function AgendamentoEquipePage() {
           status: "AGENDADO",
           auvo_task_id: taskId,
           origem: "AUVO",
-          gc_os_codigo: osCodigo,
+          gc_os_codigo: t.gc_os_codigo || null,
           // O orçamento é a chave que liga a previsão à OS e não pode ser descartado.
-          gc_orcamento_codigo: orcCodigo,
+          gc_orcamento_codigo: t.gc_orcamento_codigo || null,
         });
       }
 
-      // Previsões promovidas preservam o mesmo ID. Elas são atualizadas no lugar,
-      // enquanto as demais linhas vindas do Auvo continuam sendo reconstruídas.
+      // Reconsulta somente as tarefas retornadas. Isso captura previsões que a
+      // edge function acabou de promover sem varrer toda a tarefas_central.
       const lineTaskIds = [...new Set(linhas.map((line) => String(line.auvo_task_id)).filter(Boolean))];
-      const { data: promotedRows, error: promotedReadError } = lineTaskIds.length
+      const { data: existingTaskRows, error: existingReadError } = lineTaskIds.length
         ? await supabase
           .from("agenda_agendamentos")
-          .select("id,auvo_task_id")
-          .eq("previsao_tipo", "ORCAMENTO_EXECUCAO")
+          .select("id,auvo_task_id,data,hora_inicio,hora_fim,colaborador_id,colaborador_nome,cliente,descricao,status,origem,gc_os_codigo,gc_orcamento_codigo,previsao_continuidade,previsao_tipo,conversao_status")
           .in("auvo_task_id", lineTaskIds)
         : { data: [], error: null };
-      if (promotedReadError) throw promotedReadError;
-      const promotedByTask = new Map((promotedRows || []).map((row) => [String(row.auvo_task_id), row.id]));
-      const promotedIds = [...promotedByTask.values()];
+      if (existingReadError) throw existingReadError;
 
-      // 1. Limpa agendamentos comuns de origem AUVO ou nula no período, mas
-      // preserva previsões e as linhas já promovidas.
-      let deleteAuvoQuery = supabase
-        .from("agenda_agendamentos")
-        .delete()
-        .or(`origem.eq.AUVO,origem.is.null`)
-        .gte("data", dias[0])
-        .lte("data", dias[dias.length - 1])
-        .eq("previsao_continuidade", false);
-      if (promotedIds.length) {
-        deleteAuvoQuery = deleteAuvoQuery.not("id", "in", `(${promotedIds.join(",")})`);
-      }
-      const { error: errDelAuvo } = await deleteAuvoQuery;
-      
-      if (errDelAuvo) throw errDelAuvo;
+      const taskKey = (row: { auvo_task_id?: string | null; data: string; colaborador_id?: string | null }) =>
+        `${String(row.auvo_task_id || "")}|${row.data}|${String(row.colaborador_id || "")}`;
+      const slotKey = (row: { data: string; colaborador_id?: string | null }) =>
+        `${row.data}|${String(row.colaborador_id || "")}`;
+      const sourceKeys = new Set(linhas.map(taskKey));
+      const occupiedSlots = new Set(linhas.map(slotKey));
+      const existingByKey = new Map((existingTaskRows || []).map((row) => [taskKey(row), row]));
 
-      // 2. Remove agendamentos manuais que agora coincidem com tarefas do Auvo (evita duplicidade)
-      if (linhas.length > 0) {
-        const uniqueKeys = Array.from(new Set(linhas.map(l => `${l.data}|${l.colaborador_id}`)));
-        for (const key of uniqueKeys) {
-          const [d, cId] = key.split('|');
-          await supabase
-            .from("agenda_agendamentos")
-            .delete()
-            .match({ data: d, colaborador_id: cId, origem: "MANUAL", previsao_continuidade: false });
-        }
-      }
+      const protectedForecast = (row: any) =>
+        row.previsao_tipo === "ORCAMENTO_EXECUCAO" || row.conversao_status === "CONVERTIDA";
+      const previousRows = data?.agendamentos ?? [];
+      const rowsForCleanup = [...previousRows, ...(existingTaskRows || [])];
+      const deleteIds = [...new Set(rowsForCleanup
+        .filter((row: any) => {
+          if (protectedForecast(row)) return false;
+          if (row.auvo_task_id && (row.origem === "AUVO" || row.origem == null)) {
+            return row.data >= dias[0]
+              && row.data <= dias[dias.length - 1]
+              && !sourceKeys.has(taskKey(row));
+          }
+          return !row.auvo_task_id
+            && row.origem === "MANUAL"
+            && !row.previsao_continuidade
+            && occupiedSlots.has(slotKey(row));
+        })
+        .map((row: any) => String(row.id))
+        .filter(Boolean))];
 
-      // 3. Atualiza a previsão promovida no lugar e insere somente tarefas novas.
-      const insertRows: any[] = [];
-      for (const line of linhas) {
-        const promotedId = promotedByTask.get(String(line.auvo_task_id));
-        if (!promotedId) {
-          insertRows.push(line);
-          continue;
-        }
-        const { error: updateError } = await supabase
+      // Exclusão em lote dos poucos registros que realmente ficaram obsoletos.
+      for (let i = 0; i < deleteIds.length; i += 500) {
+        const { error: deleteError } = await supabase
           .from("agenda_agendamentos")
-          .update(line)
-          .eq("id", promotedId);
-        if (updateError) throw updateError;
+          .delete()
+          .in("id", deleteIds.slice(i, i + 500));
+        if (deleteError) throw deleteError;
       }
-      for (let i = 0; i < insertRows.length; i += 500) {
-        const { error: errIns } = await supabase
+
+      // Atualiza pelo ID estável; novas linhas recebem UUID no cliente. Assim,
+      // tarefas inalteradas não são apagadas e previsões promovidas mantêm o ID.
+      const syncFields = [
+        "data", "hora_inicio", "hora_fim", "colaborador_id", "colaborador_nome",
+        "cliente", "descricao", "status", "origem", "gc_os_codigo", "gc_orcamento_codigo",
+      ] as const;
+      const equalValue = (value: unknown) => value == null ? "" : String(value);
+      const upsertRows = linhas.flatMap((line) => {
+        const existing = existingByKey.get(taskKey(line));
+        const changed = !existing || syncFields.some((field) =>
+          equalValue((existing as any)[field]) !== equalValue(line[field]),
+        );
+        if (!changed) return [];
+        return [{
+          ...line,
+          id: existing?.id ?? crypto.randomUUID(),
+        }];
+      });
+      for (let i = 0; i < upsertRows.length; i += 500) {
+        const { error: upsertError } = await supabase
           .from("agenda_agendamentos")
-          .insert(insertRows.slice(i, i + 500) as never);
-        if (errIns) throw errIns;
+          .upsert(upsertRows.slice(i, i + 500) as never, { onConflict: "id" });
+        if (upsertError) throw upsertError;
       }
 
       await refetchLocal();
