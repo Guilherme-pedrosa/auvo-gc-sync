@@ -4,7 +4,9 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { ExternalLink, MapPin, Navigation, ClipboardList, Package, Edit, FileText } from "lucide-react";
+import { cn } from "@/lib/utils";
+import { ExternalLink, MapPin, Navigation, ClipboardList, Package, Edit, FileText, RefreshCw } from "lucide-react";
+import { toast } from "sonner";
 
 const formatCurrency = (v: number) =>
   new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(v || 0);
@@ -17,7 +19,7 @@ interface Props {
 
 export default function TarefaAuvoDetalheDialog({ taskId, onOpenChange, onEdit }: Props) {
   const qc = useQueryClient();
-  const { data: tarefa, isLoading, isError } = useQuery({
+  const { data: tarefa, isLoading, isError, refetch } = useQuery({
     queryKey: ["tarefa_central_detalhe", taskId],
     enabled: !!taskId,
     queryFn: async () => {
@@ -29,6 +31,26 @@ export default function TarefaAuvoDetalheDialog({ taskId, onOpenChange, onEdit }
         .limit(1);
       if (error) throw error;
       return (data?.[0] ?? null) as Record<string, any> | null;
+    },
+  });
+
+  const syncMutation = useMutation({
+    mutationFn: async () => {
+      if (!taskId) return;
+      const { data, error } = await supabase.functions.invoke("auvo-task-update", {
+        body: { action: "sync-local", taskId: Number(taskId) },
+      });
+      if (error) throw error;
+      return data;
+    },
+    onSuccess: () => {
+      refetch();
+      qc.invalidateQueries({ queryKey: ["agenda_semana"] });
+      toast.success("Tarefa sincronizada com sucesso!");
+    },
+    onError: (err) => {
+      console.error("Erro ao sincronizar tarefa:", err);
+      toast.error("Erro ao sincronizar dados da tarefa.");
     },
   });
 
@@ -75,9 +97,19 @@ export default function TarefaAuvoDetalheDialog({ taskId, onOpenChange, onEdit }
         )}
 
         {!isLoading && !isError && !tarefa && (
-          <p className="text-sm text-muted-foreground">
-            Tarefa ainda não sincronizada na base. Rode a sincronização para trazer os dados do Auvo.
-          </p>
+          <div className="py-8 text-center space-y-4">
+            <p className="text-sm text-muted-foreground">
+              Tarefa ainda não sincronizada na base.
+            </p>
+            <Button 
+              onClick={() => syncMutation.mutate()} 
+              disabled={syncMutation.isPending}
+              className="gap-2"
+            >
+              <RefreshCw className={cn("h-4 w-4", syncMutation.isPending && "animate-spin")} />
+              Sincronizar dados do Auvo agora
+            </Button>
+          </div>
         )}
 
         {tarefa && (
@@ -202,9 +234,21 @@ export default function TarefaAuvoDetalheDialog({ taskId, onOpenChange, onEdit }
                       ))}
                     </div>
                   )}
-                </div>
-              </div>
-            )}
+              {tarefa && (
+                <Button 
+                  size="sm" 
+                  variant="ghost" 
+                  onClick={() => syncMutation.mutate()} 
+                  disabled={syncMutation.isPending}
+                  className="gap-1 text-xs text-muted-foreground ml-auto"
+                >
+                  <RefreshCw className={cn("h-3 w-3", syncMutation.isPending && "animate-spin")} />
+                  Atualizar dados
+                </Button>
+              )}
+            </div>
+          </div>
+        )}
 
             <div className="flex flex-wrap gap-2">
               {taskId && (
