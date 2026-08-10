@@ -60,6 +60,12 @@ const PALETA = [
   "bg-teal-100 text-teal-900 border-teal-200",
   "bg-fuchsia-100 text-fuchsia-900 border-fuchsia-200",
   "bg-sky-100 text-sky-900 border-sky-200",
+  "bg-red-100 text-red-900 border-red-200",
+  "bg-green-100 text-green-900 border-green-200",
+  "bg-yellow-100 text-yellow-900 border-yellow-200",
+  "bg-purple-100 text-purple-900 border-purple-200",
+  "bg-pink-100 text-pink-900 border-pink-200",
+  "bg-slate-100 text-slate-900 border-slate-200",
 ];
 
 const corCliente = (texto: string, cidade?: string | null) => {
