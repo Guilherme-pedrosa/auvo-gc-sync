@@ -1,40 +1,42 @@
 export default function Index() {
   return (
     <div className="p-8 space-y-6">
-      <h1 className="text-2xl font-bold text-red-600">ANÁLISE E CORREÇÃO: DATA DA ÚLTIMA PREVENTIVA (#4011157)</h1>
+      <h1 className="text-2xl font-bold text-blue-600">LÓGICA DE CORES: QUADRO DE AGENDAMENTO (CHEGADA)</h1>
       
-      <div className="bg-amber-50 border-l-4 border-amber-500 p-4">
-        <p className="font-bold">Por que o sistema estava exibindo 06/02/2026 em vez de 07/07/2026?</p>
+      <div className="bg-blue-50 border-l-4 border-blue-500 p-4">
+        <p className="font-bold text-blue-900">Como as cores dos cards são definidas?</p>
+        <p className="text-sm text-blue-800">A lógica de cores no quadro "Chegada Orçamentos" baseia-se no status da entrega das peças em relação à data atual e à disponibilidade de estoque.</p>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         <div className="border p-4 rounded shadow-sm space-y-2 bg-white">
-          <h2 className="font-bold border-b pb-1 text-blue-700">Diagnóstico</h2>
-          <ul className="list-disc pl-5 text-sm space-y-2 text-slate-700">
-            <li><strong>Banco de Dados Consolidado:</strong> Já possuía a data correta (07/07/2026).</li>
-            <li><strong>Módulo de Plano:</strong> O "Plano de Preventivas" estava com uma informação defasada (06/02/2026) salvada em seu cache interno.</li>
-            <li><strong>Causa da Exibição:</strong> O código da página priorizava qualquer dado vindo do Plano sobre o dado real dos vínculos do Auvo, causando a regressão visual da data.</li>
+          <h2 className="font-bold border-b pb-1 text-slate-700">1. Status de Chegada (Bordas e Ícones)</h2>
+          <ul className="list-disc pl-5 text-sm space-y-2 text-slate-600">
+            <li><span className="text-red-600 font-bold">Vermelho (Atrasada):</span> Data de chegada prevista é anterior a hoje e as peças não foram confirmadas.</li>
+            <li><span className="text-amber-600 font-bold">Amarelo (Hoje):</span> As peças têm previsão de chegada para a data atual.</li>
+            <li><span className="text-emerald-600 font-bold">Verde (Prevista):</span> Data de chegada futura confirmada nos pedidos de compra.</li>
+            <li><span className="text-slate-400 font-bold">Cinza (Sem Data):</span> O orçamento/pedido não possui nenhuma data de previsão vinculada no ERP.</li>
           </ul>
         </div>
 
-        <div className="border p-4 rounded shadow-sm space-y-2 bg-emerald-50">
-          <h2 className="font-bold border-b pb-1 text-emerald-700">Correção Aplicada</h2>
-          <p className="text-sm text-slate-700">
-            Ajustei a lógica em <code>EquipamentosPreventivosPage.tsx</code> para que o Plano de Preventivas <strong>nunca</strong> sobrescreva a data da última execução se a data detectada nativamente no Auvo for mais recente.
-          </p>
-          <p className="text-xs font-semibold text-emerald-800">
-            Agora o sistema sempre exibirá a preventiva mais atual, independentemente de atrasos na atualização do cache do plano anual.
-          </p>
+        <div className="border p-4 rounded shadow-sm space-y-2 bg-slate-50">
+          <h2 className="font-bold border-b pb-1 text-slate-700">2. Status de Execução (Badges Internas)</h2>
+          <ul className="list-disc pl-5 text-sm space-y-2 text-slate-600">
+            <li><strong>Verde:</strong> "Disponível em estoque" (Pode agendar agora).</li>
+            <li><strong>Amarelo:</strong> "Sem estoque · aguarda reposição" (Existe pedido de compra vinculado).</li>
+            <li><strong>Cinza:</strong> "Estoque não confirmado" (Aguardando verificação técnica/administrativa).</li>
+            <li><strong>Vermelho (Alerta):</strong> "OS já lançada" (Evita duplicidade de tarefas no Auvo).</li>
+          </ul>
         </div>
       </div>
 
-      <div className="bg-gray-100 p-4 rounded text-sm italic">
-        <p>A data de 07/07/2026 agora deve ser exibida corretamente na listagem para a Máquina de Gelo do cliente NIP NAPOLI.</p>
+      <div className="bg-gray-50 border p-4 rounded text-xs text-slate-500">
+        <p><strong>Nota técnica:</strong> As cores no calendário seguem a mesma lógica (<code>STATUS_STYLE</code>), priorizando a cor de "Atraso" se houver qualquer item crítico no dia.</p>
       </div>
 
       <div className="pt-4">
-        <p className="text-sm text-gray-500 mb-2">Referência do erro relatado:</p>
-        <img src="https://sorax.lovable.app/api/public/i/800hjn6a01.png" className="max-w-full rounded shadow border" alt="Erro na data" />
+        <p className="text-sm text-gray-500 mb-2">Referência visual analisada:</p>
+        <img src="user-uploads://image-742.png" className="max-w-full rounded shadow border" alt="Quadro de Agendamento" />
       </div>
     </div>
   );
