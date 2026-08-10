@@ -96,9 +96,19 @@ export default function TarefaAuvoDetalheDialog({ taskId, onOpenChange, onEdit }
         )}
 
         {!isLoading && !isError && !tarefa && (
-          <p className="text-sm text-muted-foreground">
-            Tarefa ainda não sincronizada na base. Rode a sincronização para trazer os dados do Auvo.
-          </p>
+          <div className="py-8 text-center space-y-4">
+            <p className="text-sm text-muted-foreground">
+              Tarefa ainda não sincronizada na base.
+            </p>
+            <Button 
+              onClick={() => syncMutation.mutate()} 
+              disabled={syncMutation.isPending}
+              className="gap-2"
+            >
+              <RefreshCw className={cn("h-4 w-4", syncMutation.isPending && "animate-spin")} />
+              Sincronizar dados do Auvo agora
+            </Button>
+          </div>
         )}
 
         {tarefa && (
