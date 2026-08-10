@@ -105,6 +105,25 @@ export default function AgendaRelatorioDialog({ open, onOpenChange, agendamentos
         }
       }
 
+      // URLs públicas das tarefas (modelo /informacoes/tarefa/{uuid}?chave=...)
+      const taskIds = Array.from(
+        new Set(filtrados.map((a) => a.auvo_task_id).filter(Boolean) as string[]),
+      );
+      const urlPorTarefa = new Map<string, string>();
+      for (let i = 0; i < taskIds.length; i += 200) {
+        const lote = taskIds.slice(i, i + 200);
+        const { data: urls } = await supabase
+          .from("tarefas_central")
+          .select("auvo_task_id,auvo_task_url")
+          .in("auvo_task_id", lote);
+        for (const row of urls ?? []) {
+          const u = String((row as any).auvo_task_url || "").trim();
+          if (u.includes("/informacoes/tarefa/")) {
+            urlPorTarefa.set(String((row as any).auvo_task_id), u);
+          }
+        }
+      }
+
       const itens: AgendaRelatorioItem[] = filtrados.map((a) => {
         // Tenta encontrar se o técnico está associado a algum veículo nesse dia
         // Como o agendamento local nem sempre tem o veículo_id direto no objeto 'a' 
@@ -120,6 +139,7 @@ export default function AgendaRelatorioDialog({ open, onOpenChange, agendamentos
           cliente: a.cliente,
           descricao: a.descricao || undefined,
           auvo_task_id: a.auvo_task_id || undefined,
+          auvo_task_url: a.auvo_task_id ? urlPorTarefa.get(String(a.auvo_task_id)) : undefined,
           gc_codigo: a.gc_os_codigo || a.gc_orcamento_codigo || undefined,
           origem: a.origem || "MANUAL"
         };
