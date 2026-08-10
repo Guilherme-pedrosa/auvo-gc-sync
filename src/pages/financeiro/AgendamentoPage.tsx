@@ -756,7 +756,7 @@ export default function AgendamentoPage() {
               {/* Atrasadas */}
               <section className="flex flex-col rounded-lg border border-destructive/40 bg-destructive/5 p-2">
                 <h2 className="mb-2 text-xs font-semibold text-destructive">Orçamentos atrasados ({atrasadas.length})</h2>
-                <div className="max-h-[420px] space-y-2 overflow-y-auto">
+                <div className="flex flex-col flex-1 max-h-[600px] space-y-2 overflow-y-auto">
                   {atrasadas.length === 0
                     ? <p className="py-6 text-center text-[11px] text-muted-foreground">Nada atrasado. 🎉</p>
                     : atrasadas.map((i) => renderItem(i))}
