@@ -18,7 +18,7 @@ import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import {
   buildMonthGrid, formatBRL, formatDiaBR, getChegadaStatus, monthLabel, todayISO,
-  type ChegadaItem, type ChegadaStatus,
+  parseExecTaskId, type ChegadaItem, type ChegadaStatus,
 } from "@/lib/agendamento";
 import AgendarTarefaDialog, { type AgendarAlvo } from "@/components/financeiro/AgendarTarefaDialog";
 import AgendamentoAiPanel from "@/components/financeiro/AgendamentoAiPanel";
