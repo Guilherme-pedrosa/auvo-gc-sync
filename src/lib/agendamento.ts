@@ -102,6 +102,8 @@ export type ChegadaItem = {
   documento_situacao: string;
   documento_link: string;
   auvo_link: string;
+  previsao_data?: string | null;
+  previsao_tecnico?: string | null;
 };
 
 export type ChegadaStatus = "atrasada" | "hoje" | "futura" | "sem_data";
