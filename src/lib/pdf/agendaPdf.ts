@@ -9,6 +9,7 @@ export interface AgendaRelatorioItem {
   cliente: string;
   descricao?: string;
   auvo_task_id?: string;
+  auvo_task_url?: string;
   gc_codigo?: string;
   origem: string;
 }
@@ -98,6 +99,7 @@ export function gerarPdfAgenda(
         descricao: it.descricao || "—",
         link: it.auvo_task_id ? "ABRIR TAREFA" : "—",
         taskId: it.auvo_task_id,
+        taskUrl: it.auvo_task_url,
       }));
 
     autoTable(doc, {
@@ -125,9 +127,12 @@ export function gerarPdfAgenda(
       },
       didDrawCell: (data: any) => {
         if (data.section !== "body") return;
-        const linha = data.row.raw as { taskId?: string } | undefined;
-        if (data.column.dataKey === "link" && linha?.taskId) {
-          const url = `https://app2.auvo.com.br/relatorioTarefas/DetalheTarefa/${linha.taskId}`;
+        const linha = data.row.raw as { taskId?: string; taskUrl?: string } | undefined;
+        if (data.column.dataKey === "link" && (linha?.taskUrl || linha?.taskId)) {
+          // Link público da tarefa (modelo /informacoes/tarefa/{uuid}?chave=...)
+          const url = linha?.taskUrl
+            ? linha.taskUrl
+            : `https://app2.auvo.com.br/informacoes/tarefa/${linha!.taskId}`;
           doc.link(data.cell.x, data.cell.y, data.cell.width, data.cell.height, { url });
         }
       },
