@@ -160,18 +160,17 @@ export default function AgendamentoPage() {
       const t = toast.loading("Atualizando orçamentos e pedidos...");
     try {
       console.log("[AgendamentoPage] Forçando atualização manual...");
-      const res = await queryClient.fetchQuery({
+      const data = await queryClient.fetchQuery({
         queryKey: ["compras-chegadas"],
         queryFn: fetchChegadas,
-        staleTime: 0, // Força bypass do cache
+        staleTime: 0,
       });
-      if (res.error) throw res.error;
-      toast.success(`Atualizado: ${res.data?.length ?? 0} documentos`, { id: t });
+      toast.success(`Atualizado: ${data?.length ?? 0} documentos`, { id: t });
     } catch (e) {
       console.error("[AgendamentoPage] Erro na atualização manual:", e);
       toast.error(`Falha ao atualizar: ${(e as Error).message}`, { id: t });
     }
-  }, [queryClient, refetch]);
+  }, [queryClient]);
 
   const termo = busca.trim().toLowerCase();
   const termoCliente = buscaCliente.trim().toLowerCase();
