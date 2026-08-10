@@ -22,7 +22,7 @@ const OPEN_STATUSES = ["aberto", "em_andamento", "aguardando_peca"];
 // Valores confirmados no enum ticket_status do Hub. Não incluir rótulos
 // inexistentes aqui: o PostgREST converte cada item para o enum antes de
 // executar a consulta e rejeita o filtro inteiro com 22P02.
-const CLOSED_STATUSES = ["concluido", "encerrado"];
+const CLOSED_STATUSES = ["concluido"];
 
 // Ruído: qualquer alerta de quilometragem/checklist não preenchido ou veículo bloqueado por falta de checklist.
 const IGNORAR_TITULO =
@@ -137,9 +137,22 @@ Deno.serve(async (req) => {
       "vehicles?select=id,placa,modelo,marca,status,km_atual&order=placa.asc",
     )) as Vehicle[];
 
-    const tickets = (await hub(
-      `maintenance_tickets?select=vehicle_id,titulo,prioridade,status,descricao,created_at,tipo&tipo=eq.nao_conformidade&status=in.(${OPEN_STATUSES.join(",")},${CLOSED_STATUSES.join(",")})&order=created_at.desc`,
-    )) as Ticket[];
+    // A frota é a informação principal. Os tickets servem apenas para enriquecer
+    // os veículos com alertas e nunca podem impedir a importação dos carros.
+    // Também não enviamos filtro por enum ao PostgREST: se o Hub alterar os
+    // valores de ticket_status, a consulta continua válida e filtramos localmente.
+    let tickets: Ticket[] = [];
+    let maintenanceWarning: string | null = null;
+    try {
+      const allTickets = (await hub(
+        "maintenance_tickets?select=vehicle_id,titulo,prioridade,status,descricao,created_at,tipo&tipo=eq.nao_conformidade&order=created_at.desc",
+      )) as Ticket[];
+      const relevantStatuses = new Set([...OPEN_STATUSES, ...CLOSED_STATUSES]);
+      tickets = allTickets.filter((ticket) => relevantStatuses.has(String(ticket.status)));
+    } catch (ticketError) {
+      maintenanceWarning = `Veículos importados sem alertas de manutenção: ${(ticketError as Error).message}`;
+      console.warn(`[tvh-veiculos-sync] ${maintenanceWarning}`);
+    }
 
     // Não conformidade mais recente de cada veículo que contenha dano/manutenção real
     const porVeiculo = new Map<string, string>();
@@ -222,7 +235,14 @@ Deno.serve(async (req) => {
       }
     }
 
-    return json({ ok: true, total: vehicles.length, criados, atualizados, com_alerta: comAlerta });
+    return json({
+      ok: true,
+      total: vehicles.length,
+      criados,
+      atualizados,
+      com_alerta: comAlerta,
+      maintenance_warning: maintenanceWarning,
+    });
   } catch (err) {
     console.error("[tvh-veiculos-sync]", err);
     return json({ ok: false, error: (err as Error).message });

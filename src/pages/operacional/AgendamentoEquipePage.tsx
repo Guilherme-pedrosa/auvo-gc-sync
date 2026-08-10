@@ -651,7 +651,10 @@ export default function AgendamentoEquipePage() {
       await qc.invalidateQueries({ queryKey: ["agenda_veiculos"] });
       toast.success(
         `Frota sincronizada: ${(res as any).total} veículos (${(res as any).criados} novos, ${(res as any).com_alerta} com tarefa crítica aberta)`,
-        { id: toastId },
+        {
+          id: toastId,
+          description: (res as any).maintenance_warning || undefined,
+        },
       );
     } catch (e: any) {
       toast.error(`Não foi possível sincronizar a frota: ${e?.message || String(e)}`, { id: toastId });
