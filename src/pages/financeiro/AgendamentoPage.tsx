@@ -216,6 +216,7 @@ export default function AgendamentoPage() {
       auvo_task_id: i.auvo_task_id || null,
       exec_task_id: i.auvo_task_id || null,
       gc_os_codigo: i.os_codigo || (i.vinculo_tipo === "os" ? i.vinculo_codigo : null),
+      gc_orcamento_codigo: i.orcamento_codigo || (i.vinculo_tipo === "orcamento" ? i.vinculo_codigo : null),
       cliente: i.cliente || i.fornecedor,
       equipamento: i.equipamento,
       data_tarefa: i.data_chegada,

@@ -113,7 +113,7 @@ export default function AgendarTarefaDialog({ open, onOpenChange, alvo, onSaved 
             auvo_task_id: alvo.auvo_task_id,
             mirror_key: alvo.mirror_key,
             gc_os_id: alvo.gc_os_id,
-            gc_orcamento_id: alvo.gc_orcamento_id,
+            gc_orcamento_id: alvo.gc_orcamento_id || alvo.gc_orcamento_codigo,
             data_tarefa: dateISO,
             tecnico_id: tecnicoId,
             tecnico,
