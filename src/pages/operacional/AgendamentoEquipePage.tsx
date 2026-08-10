@@ -172,7 +172,14 @@ function Celula({
                   colorir && corCliente(a.cliente),
                 )}
               >
-                {label}
+                <div className="flex flex-col">
+                  <span className="truncate">{label}</span>
+                  {a.previsao_detalhes && (
+                    <span className="text-[9px] font-normal lowercase opacity-80 truncate">
+                      {a.previsao_detalhes}
+                    </span>
+                  )}
+                </div>
                 {a.previsao_continuidade && (
                   <span className="ml-1 text-[9px] lowercase italic text-primary-foreground/70">(previsão)</span>
                 )}

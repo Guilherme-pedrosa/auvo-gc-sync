@@ -69,6 +69,7 @@ export default function AgendamentoEquipeDialog({
   const [cliente, setCliente] = useState("");
   const [descricao, setDescricao] = useState("");
   const [questionnaireId, setQuestionnaireId] = useState("");
+  const [previsaoDetalhes, setPrevisaoDetalhes] = useState("");
 
   const { data: questionnaires = [] } = useQuery({
     queryKey: ["auvo-questionnaires"],
@@ -140,6 +141,7 @@ export default function AgendamentoEquipeDialog({
       setCliente(agendamento.cliente);
       setDescricao(agendamento.descricao ?? "");
       setQuestionnaireId(""); // Reset or fetch current if needed, but Auvo API for tasks doesn't always return current QID easily in list
+      setPrevisaoDetalhes(agendamento.previsao_detalhes ?? "");
     } else {
       setData(initialDate ? format(initialDate, "yyyy-MM-dd") : "");
       setHoraInicio("08:00");
@@ -148,6 +150,7 @@ export default function AgendamentoEquipeDialog({
       setVeiculoId("");
       setCliente("");
       setDescricao("");
+      setPrevisaoDetalhes("");
     }
   }, [open, agendamento, initialDate]);
 
@@ -215,6 +218,8 @@ export default function AgendamentoEquipeDialog({
         origem: agendamento?.origem,
         gc_os_codigo: agendamento?.gc_os_codigo,
         gc_orcamento_codigo: agendamento?.gc_orcamento_codigo,
+        previsao_continuidade: agendamento?.previsao_continuidade,
+        previsao_detalhes: previsaoDetalhes.trim() || null,
       });
 
       onOpenChange(false);
@@ -324,6 +329,19 @@ export default function AgendamentoEquipeDialog({
               className="resize-none"
             />
           </div>
+
+          {agendamento?.previsao_continuidade && (
+            <div className="space-y-2 p-3 bg-primary/5 rounded-md border border-primary/20">
+              <Label htmlFor="prev_det" className="text-xs font-bold text-primary">Detalhes da Previsão</Label>
+              <Input 
+                id="prev_det"
+                value={previsaoDetalhes}
+                onChange={(e) => setPrevisaoDetalhes(e.target.value)}
+                placeholder="Observações exclusivas desta previsão..."
+                className="text-xs"
+              />
+            </div>
+          )}
 
           {agendamento?.auvo_task_id && (
             <div className="space-y-2">
