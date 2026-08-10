@@ -13,12 +13,13 @@ installGcUsuarioId();
 
 const GC_BASE = "https://api.gestaoclick.com";
 
-// O calendário considera exclusivamente estas três situações de orçamento.
+// O calendário considera exclusivamente estas situações de orçamento.
 const SITUACOES_ORCAMENTOS = [
   { id: "8743484", nome: "Aprovada - AG COMPRA", grupo: "ag_compra" },
   { id: "8743485", nome: "COMPRADO - AG CHEGADA", grupo: "ag_chegada" },
   { id: "8894381", nome: "SOLICITADO - GARANTIA", grupo: "garantia" },
   { id: "8743482", nome: "Ag. Aprovação Peças", grupo: "ag_aprovacao" },
+  { id: "9348312", nome: "Situação 9348312", grupo: "outros" },
 ];
 
 // Situações de pedidos usadas somente para interpretar os PCs informados nos orçamentos.
