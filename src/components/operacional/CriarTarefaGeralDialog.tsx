@@ -156,6 +156,7 @@ export default function CriarTarefaGeralDialog({
             onClick: () => window.open(`https://app2.auvo.com.br/gerenciarTarefas/tarefa/${tid}`, "_blank"),
           } : undefined,
         });
+        if (data?.warning) toast.warning(data.warning);
         onSuccess?.(tid);
         // Após criar a tarefa, invalidamos os caches para forçar a atualização da escala
         const qc = (window as any).queryClient;

@@ -163,34 +163,45 @@ export default function AgendamentoEquipeDialog({
     if (!data || !colaboradorId || !cliente.trim()) return;
 
     try {
-      // 1. Se for AUVO, atualiza data/técnico/orientação no Auvo
+      // 1. Se for AUVO, atualiza primeiro agenda/duração e depois os metadados.
       if (agendamento?.auvo_task_id && agendamento.origem === "AUVO") {
-        const patches = [];
-        
-        // Data e Hora (Início e Fim)
-        const horaFimCalc = minutesToClock(clockToMinutes(horaInicio) + duracaoMin);
-        if (
-          data !== agendamento.data ||
-          horaInicio !== agendamento.hora_inicio.slice(0, 5) ||
-          horaFimCalc !== agendamento.hora_fim.slice(0, 5)
-        ) {
-          patches.push({ op: "replace", path: "taskDate", value: `${data}T${horaInicio}:00` });
-          // A API v2 do Auvo não aceita taskEndDate/estimatedDuration na escrita.
-          // A duração é definida pelo Tipo de Tarefa no Auvo; aqui ela é apenas local (agenda/PDF).
-        }
-        
-        // Técnico
-        if (colaboradorId !== agendamento.colaborador_id && colab?.auvo_user_id) {
-          patches.push({ op: "replace", path: "idUserTo", value: String(colab.auvo_user_id) });
+        const originalStart = clockToMinutes(agendamento.hora_inicio.slice(0, 5));
+        const originalEnd = clockToMinutes(agendamento.hora_fim.slice(0, 5));
+        const originalDuration = Math.max(15, originalEnd > originalStart
+          ? originalEnd - originalStart
+          : originalEnd + 24 * 60 - originalStart);
+        const technicianChanged = colaboradorId !== agendamento.colaborador_id;
+        const scheduleChanged = data !== agendamento.data
+          || horaInicio !== agendamento.hora_inicio.slice(0, 5)
+          || duracaoMin !== originalDuration
+          || technicianChanged;
+
+        if (technicianChanged && !colab?.auvo_user_id) {
+          throw new Error("O colaborador selecionado não possui vínculo de usuário com o Auvo.");
         }
 
-        // Descrição (Orientação no Auvo)
+        if (scheduleChanged) {
+          const { data: scheduleResult, error: scheduleError } = await supabase.functions.invoke("auvo-task-update", {
+            body: {
+              action: "edit-schedule",
+              taskId: agendamento.auvo_task_id,
+              taskDate: `${data}T${horaInicio}:00`,
+              durationMinutes: duracaoMin,
+              ...(technicianChanged ? { idUserTo: Number(colab?.auvo_user_id) } : {}),
+            },
+          });
+          if (scheduleError || scheduleResult?.success === false || scheduleResult?.status >= 400) {
+            throw new Error(scheduleResult?.data?.message || scheduleResult?.error || "Erro ao atualizar agenda no Auvo");
+          }
+          if (scheduleResult?.warning) toast.warning(scheduleResult.warning);
+        }
+
+        const patches = [];
         if (descricao !== (agendamento.descricao || "")) {
           patches.push({ op: "replace", path: "orientation", value: descricao });
         }
 
-        // Questionário
-        if (questionnaireId) {
+        if (questionnaireId && questionnaireId !== currentQuestionnaireId) {
           patches.push({ op: "replace", path: "questionnaireId", value: Number(questionnaireId) });
         }
 
@@ -198,7 +209,7 @@ export default function AgendamentoEquipeDialog({
           const { data: res, error } = await supabase.functions.invoke("auvo-task-update", {
             body: { action: "edit", taskId: agendamento.auvo_task_id, patches }
           });
-          if (error || res?.status >= 400) throw new Error(res?.data?.message || "Erro ao sincronizar com Auvo");
+          if (error || res?.status >= 400) throw new Error(res?.data?.message || res?.error || "Erro ao sincronizar com Auvo");
         }
       }
 

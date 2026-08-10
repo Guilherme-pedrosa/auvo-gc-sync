@@ -1056,41 +1056,46 @@ export default function OSAbertasTab({ data, allTasks, isLoading, allClientes, o
     }
     setEditSaving(true);
     try {
-      const patches: { op: string; path: string; value: any }[] = [];
-      if (editDate) {
-        const h = editHour.padStart(2, "0");
-        const m = editMinute.padStart(2, "0");
-        patches.push({ op: "replace", path: "taskDate", value: format(editDate, `yyyy-MM-dd'T'${h}:${m}:00`) });
-      }
-      if (editTecnicoId) {
-        patches.push({ op: "replace", path: "idUserTo", value: Number(editTecnicoId) });
-      }
-      // ⚠️ Auvo API NÃO aceita PATCH em estimatedDuration (campo read-only via REST).
-      // Mantemos o seletor na UI apenas como referência visual; não enviamos patch.
-      if (patches.length === 0) {
-        toast.warning("Nenhuma alteração para salvar");
-        setEditSaving(false);
-        return;
-      }
+      const h = editHour.padStart(2, "0");
+      const m = editMinute.padStart(2, "0");
+      const [durationHours, durationRemainder] = editDuration.split(":").map(Number);
+      const durationMinutes = Math.max(15, (durationHours || 0) * 60 + (durationRemainder || 0));
+      const taskDate = editDate ? format(editDate, `yyyy-MM-dd'T'${h}:${m}:00`) : undefined;
 
       const { data, error } = await supabase.functions.invoke("auvo-task-update", {
-        body: { action: "edit", taskId: Number(execTaskId), patches },
+        body: {
+          action: "edit-schedule",
+          taskId: Number(execTaskId),
+          taskDate,
+          idUserTo: editTecnicoId ? Number(editTecnicoId) : undefined,
+          durationMinutes,
+        },
       });
       if (error) throw error;
       if (data?.status && data.status >= 400) {
-        throw new Error(JSON.stringify(data?.data || "Erro ao atualizar tarefa"));
+        throw new Error(data?.error || JSON.stringify(data?.data || "Erro ao atualizar tarefa"));
       }
+      if (!data?.success) throw new Error(data?.error || "Auvo não confirmou a atualização");
+      if (data?.warning) toast.warning(data.warning);
+
+      const startMinutes = Number(h) * 60 + Number(m);
+      const endMinutes = (startMinutes + durationMinutes) % (24 * 60);
+      const endHour = String(Math.floor(endMinutes / 60)).padStart(2, "0");
+      const endMinute = String(endMinutes % 60).padStart(2, "0");
 
       const tecnicoSelecionado = auvoUsers?.find((user) => String(user.userID) === editTecnicoId);
       const { error: persistError } = await supabase.functions.invoke("auvo-task-update", {
         body: {
           action: "persist-central",
           row: {
-            auvo_task_id: editingCard.auvo_task_id,
+            auvo_task_id: execTaskId,
             mirror_key: editingCard.mirror_key,
             gc_os_id: editingCard.gc_os_id,
             gc_orcamento_id: editingCard.gc_orcamento_id,
             data_tarefa: editDate ? format(editDate, "yyyy-MM-dd") : editingCard.data_tarefa,
+            hora_inicio: `${h}:${m}:00`,
+            hora_fim: `${endHour}:${endMinute}:00`,
+            duracao_decimal: durationMinutes / 60,
             tecnico_id: editTecnicoId || editingCard.tecnico_id,
             tecnico: tecnicoSelecionado?.name || tecnicoSelecionado?.login || editingCard.tecnico,
           },
