@@ -185,48 +185,47 @@ export default function AgendarTarefaDialog({ open, onOpenChange, alvo, onSaved 
           </DialogDescription>
         </DialogHeader>
 
-        {!taskId ? (
-          <div className="flex items-start gap-2 rounded-md border border-border bg-muted/40 p-3 text-xs text-muted-foreground">
+        {!taskId && (
+          <div className="flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 p-3 text-[11px] text-amber-800">
             <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
             <span>
-              Esta OS não tem tarefa de execução (atributo 73344) vinculada no GestãoClick. Vincule a tarefa Auvo
-              primeiro para poder agendar por aqui.
+              Esta OS não tem tarefa de execução vinculada. Você pode salvar como <strong>Previsão</strong> para controle interno, mas não poderá agendar no Auvo.
             </span>
           </div>
-        ) : (
-          <div className="space-y-3">
+        )}
+
+        <div className="space-y-3 mt-2">
+          <div>
+            <Label className="text-xs">Técnico</Label>
+            <SearchableSelect
+              options={userOptions}
+              value={tecnicoId}
+              onValueChange={(v) => setTecnicoId(v as string)}
+              placeholder={loadingUsers ? "Carregando..." : "Selecione o técnico"}
+              searchPlaceholder="Buscar técnico..."
+            />
+          </div>
+          <div className="grid grid-cols-3 gap-2">
+            <div className="col-span-1">
+              <Label className="text-xs">Data</Label>
+              <Input type="date" value={dateISO} onChange={(e) => setDateISO(e.target.value)} />
+            </div>
             <div>
-              <Label className="text-xs">Técnico</Label>
-              <SearchableSelect
-                options={userOptions}
-                value={tecnicoId}
-                onValueChange={(v) => setTecnicoId(v as string)}
-                placeholder={loadingUsers ? "Carregando..." : "Selecione o técnico"}
-                searchPlaceholder="Buscar técnico..."
+              <Label className="text-xs">Hora</Label>
+              <Input type="time" value={hora} onChange={(e) => setHora(e.target.value)} />
+            </div>
+            <div>
+              <Label className="text-xs">Duração (HH:mm) — local</Label>
+              <Input
+                type="time"
+                step={300}
+                value={minutesToClock(durationMinutes)}
+                onChange={(e) => setDurationMinutes(clockToMinutes(e.target.value))}
               />
             </div>
-            <div className="grid grid-cols-3 gap-2">
-              <div className="col-span-1">
-                <Label className="text-xs">Data</Label>
-                <Input type="date" value={dateISO} onChange={(e) => setDateISO(e.target.value)} />
-              </div>
-              <div>
-                <Label className="text-xs">Hora</Label>
-                <Input type="time" value={hora} onChange={(e) => setHora(e.target.value)} />
-              </div>
-              <div>
-                <Label className="text-xs">Duração (HH:mm) — local</Label>
-                <Input
-                  type="time"
-                  step={300}
-                  value={minutesToClock(durationMinutes)}
-                  onChange={(e) => setDurationMinutes(clockToMinutes(e.target.value))}
-                />
-              </div>
-            </div>
-            <p className="text-[11px] text-muted-foreground">Tarefa Auvo #{taskId}</p>
           </div>
-        )}
+          {taskId && <p className="text-[11px] text-muted-foreground italic">Tarefa Auvo #{taskId}</p>}
+        </div>
 
         <DialogFooter className="gap-2 sm:gap-0">
           <Button variant="outline" onClick={() => onOpenChange(false)} disabled={saving || savingForecast}>
