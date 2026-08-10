@@ -44,6 +44,44 @@ export interface AgendaAgendamento {
   convertida_em?: string | null;
 }
 
+async function preencherDocumentosGc(agendamentos: AgendaAgendamento[]) {
+  const taskIds = [...new Set(
+    agendamentos
+      .map((item) => String(item.auvo_task_id || "").trim())
+      .filter(Boolean),
+  )];
+  if (taskIds.length === 0) return agendamentos;
+
+  const documentosPorTarefa = new Map<string, { os: string | null; orcamento: string | null }>();
+  for (let index = 0; index < taskIds.length; index += 500) {
+    const { data, error } = await sb
+      .from("tarefas_central")
+      .select("auvo_task_id,gc_os_codigo,gc_orcamento_codigo")
+      .in("auvo_task_id", taskIds.slice(index, index + 500));
+    if (error) throw error;
+
+    for (const row of data ?? []) {
+      const taskId = String(row.auvo_task_id || "").trim();
+      if (!taskId) continue;
+      const atual = documentosPorTarefa.get(taskId);
+      documentosPorTarefa.set(taskId, {
+        os: atual?.os || row.gc_os_codigo || null,
+        orcamento: atual?.orcamento || row.gc_orcamento_codigo || null,
+      });
+    }
+  }
+
+  return agendamentos.map((item) => {
+    const documento = documentosPorTarefa.get(String(item.auvo_task_id || "").trim());
+    if (!documento) return item;
+    return {
+      ...item,
+      gc_os_codigo: documento.os || item.gc_os_codigo || null,
+      gc_orcamento_codigo: documento.orcamento || item.gc_orcamento_codigo || null,
+    };
+  });
+}
+
 export function useAgendaVeiculos() {
   return useQuery({
     queryKey: ["agenda_veiculos"],
@@ -71,7 +109,7 @@ export function useAgendamentos(dataISO: string) {
         .eq("data", dataISO)
         .order("hora_inicio");
       if (error) throw error;
-      return (data ?? []) as AgendaAgendamento[];
+      return preencherDocumentosGc((data ?? []) as AgendaAgendamento[]);
     },
   });
 }
@@ -142,7 +180,7 @@ export function useAgendaSemana(dias: string[]) {
       if (ag.error) throw ag.error;
       if (vd.error) throw vd.error;
       return {
-        agendamentos: (ag.data ?? []) as AgendaAgendamento[],
+        agendamentos: await preencherDocumentosGc((ag.data ?? []) as AgendaAgendamento[]),
         veiculoDias: (vd.data ?? []) as AgendaVeiculoDia[],
       };
     },
