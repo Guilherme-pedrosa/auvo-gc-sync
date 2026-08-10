@@ -43,6 +43,7 @@ export default function AgendarTarefaDialog({ open, onOpenChange, alvo, onSaved 
   const [tecnicoId, setTecnicoId] = useState("");
   const [saving, setSaving] = useState(false);
   const [savingForecast, setSavingForecast] = useState(false);
+  const [previsaoDetalhes, setPrevisaoDetalhes] = useState("");
 
   const { data: colaboradores = [] } = useColaboradores();
 
@@ -52,6 +53,7 @@ export default function AgendarTarefaDialog({ open, onOpenChange, alvo, onSaved 
     setHora("08:00");
     setDurationMinutes(120);
     setTecnicoId(alvo.tecnico_id ? String(alvo.tecnico_id) : "");
+    setPrevisaoDetalhes("");
   }, [open, alvo?.exec_task_id, alvo?.auvo_task_id]);
 
   const { data: users = [], isLoading: loadingUsers } = useQuery({
@@ -176,6 +178,7 @@ export default function AgendarTarefaDialog({ open, onOpenChange, alvo, onSaved 
         gc_os_codigo: alvo.gc_os_codigo,
         gc_orcamento_codigo: alvo.gc_orcamento_codigo,
         previsao_continuidade: true,
+        previsao_detalhes: previsaoDetalhes.trim() || null,
         origem: "MANUAL"
       } as any);
 
@@ -254,6 +257,16 @@ export default function AgendarTarefaDialog({ open, onOpenChange, alvo, onSaved 
             </div>
           </div>
           {taskId && <p className="text-[11px] text-muted-foreground italic">Tarefa Auvo #{taskId}</p>}
+          
+          <div className="space-y-1 pt-1 border-t border-dashed">
+            <Label className="text-[11px] text-primary font-medium">Detalhes da Previsão (Opcional)</Label>
+            <Input 
+              value={previsaoDetalhes}
+              onChange={(e) => setPrevisaoDetalhes(e.target.value)}
+              placeholder="Ex: Levar ferramentas especiais, retirar material..."
+              className="text-xs h-8"
+            />
+          </div>
         </div>
 
         <DialogFooter className="gap-2 sm:gap-0">
