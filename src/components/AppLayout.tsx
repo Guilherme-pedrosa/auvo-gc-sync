@@ -28,14 +28,19 @@ const navGroups: NavGroup[] = [
     ],
   },
   {
-    label: "Operacional",
+    label: "Agendamento",
     items: [
       { label: "Agendamento Equipe", icon: CalendarClock, path: "/operacional/agendamento-equipe" },
+      { label: "Chegada Orçamentos", icon: CalendarClock, path: "/financeiro/agendamento" },
+    ],
+  },
+  {
+    label: "Operacional",
+    items: [
       { label: "Dashboard Técnicos", icon: BarChart3, path: "/financeiro/dashboard-tecnicos" },
       { label: "Produtividade Técnicos", icon: BarChart3, path: "/financeiro/produtividade-tecnicos" },
       { label: "Acompanhamento", icon: Radio, path: "/financeiro/acompanhamento" },
       { label: "Agenda Semanal (Antiga)", icon: CalendarDays, path: "/financeiro/agenda-semanal" },
-      { label: "Chegada Orçamentos", icon: CalendarClock, path: "/financeiro/agendamento" },
       { label: "Controle OS", icon: FileText, path: "/financeiro/relatorios" },
       { label: "Controle Orçamentos", icon: FileText, path: "/financeiro/controle-orcamentos" },
       { label: "OS Cruzadas", icon: ArrowLeftRight, path: "/financeiro/os-cruzadas" },
