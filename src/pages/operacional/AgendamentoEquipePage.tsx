@@ -684,7 +684,7 @@ export default function AgendamentoEquipePage() {
                 <Users className="h-4 w-4 text-primary" />
                 <h2 className="text-sm font-bold uppercase tracking-wide">Técnicos</h2>
               </div>
-              <div className="overflow-x-auto border rounded-md">
+              <div className="overflow-x-auto border rounded-md max-h-[600px] overflow-y-auto">
                 <table className="w-full border-collapse">
                   <thead>
                     <tr className="bg-muted">
