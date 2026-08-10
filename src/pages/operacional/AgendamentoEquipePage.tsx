@@ -48,56 +48,75 @@ const isTecnico = (c: { cargo?: string | null; funcao?: string | null }) => {
 };
 
 const PALETA = [
-  "bg-[#E0F2FE] text-[#0369A1] border-[#BAE6FD]", // Light Blue
-  "bg-[#DCFCE7] text-[#15803D] border-[#BBF7D0]", // Light Green
-  "bg-[#FEF3C7] text-[#A16207] border-[#FDE68A]", // Light Amber
-  "bg-[#FFE4E6] text-[#BE123C] border-[#FECDD3]", // Light Rose
-  "bg-[#F5F3FF] text-[#6D28D9] border-[#DDD6FE]", // Light Violet
-  "bg-[#ECFEFF] text-[#0E7490] border-[#CFFAFE]", // Light Cyan
-  "bg-[#F7FEE7] text-[#4D7C0F] border-[#ECFCCB]", // Light Lime
-  "bg-[#FFF7ED] text-[#C2410C] border-[#FFEDD5]", // Light Orange
-  "bg-[#EEF2FF] text-[#4338CA] border-[#C7D2FE]", // Light Indigo
-  "bg-[#F0FDFA] text-[#0F766E] border-[#CCFBF1]", // Light Teal
-  "bg-[#FDF4FF] text-[#A21CAF] border-[#FAE8FF]", // Light Fuchsia
-  "bg-[#F0F9FF] text-[#0369A1] border-[#E0F2FE]", // Light Sky
-  "bg-[#FFF1F2] text-[#BE123C] border-[#FFE4E6]", // Pinkish Red
-  "bg-[#F0FFF4] text-[#22543D] border-[#C6F6D5]", // Mint
-  "bg-[#FFFFF0] text-[#744210] border-[#FEFCBF]", // Light Yellow
-  "bg-[#FAF5FF] text-[#553C9A] border-[#E9D8FD]", // Deep Purple
-  "bg-[#FFF5F5] text-[#9B2C2C] border-[#FED7D7]", // Pale Red
-  "bg-[#F8FAFC] text-[#334155] border-[#E2E8F0]", // Slate
-  "bg-[#EBF8FF] text-[#2C5282] border-[#BEE3F8]", // Azure
-  "bg-[#E6FFFA] text-[#285E61] border-[#B2F5EA]", // Aquamarine
-  "bg-[#F0F5FF] text-[#2B6CB0] border-[#C3DAFE]", // Periwinkle
-  "bg-[#F5FFF5] text-[#2F855A] border-[#C6F6D5]", // Sage
-  "bg-[#FFF8E1] text-[#855B0F] border-[#FFECB3]", // Honey
-  "bg-[#EFEBE9] text-[#4E342E] border-[#D7CCC8]", // Brownish Gray
-  "bg-[#E8EAF6] text-[#1A237E] border-[#C5CAE9]", // Navy Mist
-  "bg-[#E1F5FE] text-[#01579B] border-[#B3E5FC]", // Sky Blue
-  "bg-[#F3E5F5] text-[#4A148C] border-[#E1BEE7]", // Plum
-  "bg-[#E8F5E9] text-[#1B5E20] border-[#C8E6C9]", // Forest Mist
-  "bg-[#FFF3E0] text-[#E65100] border-[#FFE0B2]", // Soft Orange
-  "bg-[#FCE4EC] text-[#880E4F] border-[#F8BBD0]", // Magenta Mist
-  "bg-[#E0F7FA] text-[#006064] border-[#B2EBF2]", // Teal Cyan
-  "bg-[#F1F8E9] text-[#33691E] border-[#DCEDC8]", // Olive Mist
-  "bg-[#FFFDE7] text-[#F57F17] border-[#FFF9C4]", // Lemon
-  "bg-[#E8F5E9] text-[#2E7D32] border-[#A5D6A7]", // Grass
-  "bg-[#F9FBE7] text-[#827717] border-[#F0F4C3]", // Lime Yellow
-  "bg-[#EFEBE9] text-[#5D4037] border-[#D7CCC8]", // Coffee Mist
-  "bg-[#ECEFF1] text-[#263238] border-[#CFD8DC]", // Blue Gray
+  // Azuis
+  "bg-[#E0F2FE] text-[#0369A1] border-[#BAE6FD]",
+  "bg-[#DBEAFE] text-[#1D4ED8] border-[#BFDBFE]",
+  "bg-[#EFF6FF] text-[#1E40AF] border-[#DBEAFE]",
+  // Verdes
+  "bg-[#DCFCE7] text-[#15803D] border-[#BBF7D0]",
+  "bg-[#ECFDF5] text-[#047857] border-[#D1FAE5]",
+  "bg-[#F0FDF4] text-[#166534] border-[#DCFCE7]",
+  // Amarelos/Laranjas
+  "bg-[#FEF3C7] text-[#A16207] border-[#FDE68A]",
+  "bg-[#FFF7ED] text-[#C2410C] border-[#FFEDD5]",
+  "bg-[#FEF9C3] text-[#854D0E] border-[#FEF08A]",
+  // Vermelhos/Rosas
+  "bg-[#FFE4E6] text-[#BE123C] border-[#FECDD3]",
+  "bg-[#FEE2E2] text-[#B91C1C] border-[#FECACA]",
+  "bg-[#FFF1F2] text-[#9F1239] border-[#FFE4E6]",
+  // Roxos/Violets
+  "bg-[#F3E8FF] text-[#7E22CE] border-[#E9D5FF]",
+  "bg-[#F5F3FF] text-[#6D28D9] border-[#DDD6FE]",
+  "bg-[#EDE9FE] text-[#5B21B6] border-[#DDD6FE]",
+  // Cyans/Teals
+  "bg-[#ECFEFF] text-[#0E7490] border-[#CFFAFE]",
+  "bg-[#F0FDFA] text-[#0F766E] border-[#CCFBF1]",
+  "bg-[#E0F7FA] text-[#006064] border-[#B2EBF2]",
+  // Outros/Misturas
+  "bg-[#FDF4FF] text-[#A21CAF] border-[#FAE8FF]",
+  "bg-[#FAF5FF] text-[#553C9A] border-[#E9D8FD]",
+  "bg-[#FFF8E1] text-[#855B0F] border-[#FFECB3]",
+  "bg-[#F0F9FF] text-[#0369A1] border-[#E0F2FE]",
+  "bg-[#EBF8FF] text-[#2C5282] border-[#BEE3F8]",
+  "bg-[#E6FFFA] text-[#285E61] border-[#B2F5EA]",
+  "bg-[#F5FFF5] text-[#2F855A] border-[#C6F6D5]",
+  "bg-[#EFEBE9] text-[#4E342E] border-[#D7CCC8]",
+  "bg-[#F8FAFC] text-[#334155] border-[#E2E8F0]",
+  "bg-[#E8EAF6] text-[#1A237E] border-[#C5CAE9]",
+  "bg-[#F1F8E9] text-[#33691E] border-[#DCEDC8]",
+  "bg-[#FFFBEB] text-[#92400E] border-[#FEF3C7]",
+  "bg-[#FDF2F8] text-[#9D174D] border-[#FCE7F3]",
+  "bg-[#FFF7ED] text-[#9A3412] border-[#FFEDD5]",
+  "bg-[#F0FDFA] text-[#0D9488] border-[#CCFBF1]",
+  "bg-[#F5F5F4] text-[#44403C] border-[#E7E5E4]",
+  "bg-[#FAF5F5] text-[#991B1B] border-[#FEE2E2]",
+  "bg-[#EFF6FF] text-[#2563EB] border-[#DBEAFE]",
+  "bg-[#F5F3FF] text-[#7C3AED] border-[#DDD6FE]",
+  "bg-[#FDF4FF] text-[#C026D3] border-[#FAE8FF]",
+  "bg-[#FFF1F2] text-[#E11D48] border-[#FFE4E6]",
+  "bg-[#F0FDF4] text-[#16A34A] border-[#DCFCE7]",
+  "bg-[#FEFCE8] text-[#A16207] border-[#FEF9C3]",
+  "bg-[#F8FAFC] text-[#475569] border-[#E2E8F0]",
+  "bg-[#F0F9FF] text-[#0284C7] border-[#E0F9FF]",
+  "bg-[#EEF2FF] text-[#4F46E5] border-[#E0E7FF]",
+  "bg-[#F5F3FF] text-[#6D28D9] border-[#EDE9FE]",
 ];
 
-const corCliente = (texto: string, cidade?: string | null) => {
+const corCliente = (texto: string) => {
   const t = texto.trim().toUpperCase();
   if (!t) return "";
   if (t === "X" || t === "FOLGA") return "bg-muted text-muted-foreground";
   if (t.startsWith("OFICINA")) return "bg-slate-200 text-slate-800";
 
-  // Hash robusto baseado apenas no nome do cliente para garantir cor única e fixa
+  // Hash aprimorado para dispersar melhor as cores e evitar colisões
   let hash = 0;
   for (let i = 0; i < t.length; i++) {
     hash = t.charCodeAt(i) + ((hash << 5) - hash);
+    hash = hash & hash; // Convert to 32bit integer
   }
+
+  // Salt adicional baseado no comprimento para diferenciar strings curtas/similares
+  hash += t.length * 31;
 
   const colorIndex = Math.abs(hash) % PALETA.length;
   return PALETA[colorIndex];
