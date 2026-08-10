@@ -201,8 +201,8 @@ export default function AgendamentoPage() {
     if (termo) {
       result = result.filter((i) =>
          [i.compra_codigo, i.cliente, i.fornecedor, i.vinculo_texto, i.situacao, i.equipamento, i.orcamento_codigo, i.vinculo_codigo, i.os_codigo,
-          ...(i.pedidos_compra ?? []), ...((i.pedidos_detalhes ?? []).map((p) => p.situacao)), p.codigo),
-         ...i.produtos.map((p) => p.nome)]
+          ...(i.pedidos_compra ?? []), ...((i.pedidos_detalhes ?? []).map((p) => p.situacao)), ...((i.pedidos_detalhes ?? []).map((p) => p.codigo)),
+          ...i.produtos.map((p) => p.nome)]
           .some((v) => String(v || "").toLowerCase().includes(termo)),
       );
     }
