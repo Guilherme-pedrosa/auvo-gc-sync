@@ -63,11 +63,14 @@ export default function Index() {
 
       <footer className="pt-4 border-t text-center">
         <p className="text-xs text-gray-400">
-          Baseado na análise da imagem: <code>user-uploads://image-755.png</code>
+          o link da agenda coletiva tem que ser desse modelo :https://app2.auvo.com.br/informacoes/tarefa/943909cd-33d1-4775-ba67-00fd48a5b055?chave=bX7ZFmTughW3KoawzinQ3g
+          <br /><br />
+          não pode ser o editar OS
         </p>
       </footer>
     </div>
   );
 }
+
 
 
