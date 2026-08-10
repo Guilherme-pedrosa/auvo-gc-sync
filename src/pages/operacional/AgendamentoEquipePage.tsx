@@ -160,7 +160,7 @@ const getStatusColor = (a: AgendaAgendamento) => {
     return false;
   };
 
-  if (a.pausada || (a.status_auvo !== "Finalizada" && a.status_auvo !== "Em andamento" && isAtrasado())) {
+  if (a.status_auvo !== "Finalizada" && a.status_auvo !== "Em andamento" && isAtrasado()) {
     return "text-red-600 dark:text-red-500 font-bold";
   }
 
