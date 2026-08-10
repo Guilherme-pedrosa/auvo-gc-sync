@@ -707,7 +707,29 @@ export default function AgendamentoPage() {
         open={dialogOpen} 
         onOpenChange={setDialogOpen} 
         alvo={alvo} 
-        onSaved={() => refetch()} 
+        onSaved={(patch) => {
+          const alvoAtual = alvo;
+          if (alvoAtual) {
+            queryClient.setQueryData<ChegadaItem[]>(["compras-chegadas"], (old) =>
+              (old || []).map((item) => {
+                const match =
+                  (alvoAtual.gc_orcamento_codigo && item.orcamento_codigo === alvoAtual.gc_orcamento_codigo) ||
+                  (alvoAtual.gc_os_codigo && item.os_codigo === alvoAtual.gc_os_codigo);
+                if (!match) return item;
+                return {
+                  ...item,
+                  previsao_data: patch.dataTarefa,
+                  previsao_tecnico: patch.tecnico,
+                  previsao_colab_id: patch.tecnicoId,
+                  previsao_detalhes: patch.detalhes ?? null,
+                  previsao_hora: patch.hora ?? null,
+                  previsao_hora_fim: patch.horaFim ?? null,
+                } as ChegadaItem;
+              }),
+            );
+          }
+          refetch();
+        }} 
       />
 
       <Dialog open={detalhesDialog.open} onOpenChange={(open) => setDetalhesDialog(prev => ({ ...prev, open }))}>
