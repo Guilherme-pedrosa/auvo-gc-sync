@@ -271,7 +271,7 @@ function Celula({
       <div className="flex flex-col gap-0.5 h-full">
         {itens.map((a) => {
           const identificadores = [
-            a.gc_os_codigo ? `OS ${a.gc_os_codigo}` : a.auvo_task_id ? "SEM OS" : null,
+            a.gc_os_codigo ? `OS ${a.gc_os_codigo}` : (a.auvo_task_id ? `${a.previsao_tipo || "SEM OS"}` : null),
             a.auvo_task_id ? `Tarefa ${a.auvo_task_id}` : null,
             !a.gc_os_codigo && !a.auvo_task_id && a.gc_orcamento_codigo
               ? `Orç ${a.gc_orcamento_codigo}`

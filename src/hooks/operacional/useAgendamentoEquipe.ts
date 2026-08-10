@@ -64,6 +64,7 @@ async function preencherDocumentosGc(agendamentos: AgendaAgendamento[]) {
     status_auvo: string | null;
     check_in: string | null;
     check_out: string | null;
+    tipo: string | null;
   }>();
   const estadoPorTarefa = new Map<string, {
     status_auvo: string | null;
@@ -73,7 +74,7 @@ async function preencherDocumentosGc(agendamentos: AgendaAgendamento[]) {
   for (let index = 0; index < taskIds.length; index += 500) {
     const { data, error } = await sb
       .from("tarefas_central")
-      .select("auvo_task_id,gc_os_codigo,gc_orcamento_codigo,gc_os_situacao,status_auvo,check_in_iso,check_out_iso")
+      .select("auvo_task_id,gc_os_codigo,gc_orcamento_codigo,gc_os_situacao,status_auvo,check_in_iso,check_out_iso,task_type_id")
       .in("auvo_task_id", taskIds.slice(index, index + 500));
     if (error) throw error;
 
@@ -87,6 +88,10 @@ async function preencherDocumentosGc(agendamentos: AgendaAgendamento[]) {
         check_out: estadoAtual?.check_out || row.check_out_iso || null,
       });
       const atual = documentosPorTarefa.get(taskId);
+      const tipoId = String(row.task_type_id || "");
+      const tipoNome = tipoId === "180175" || tipoId === "180176" ? "PREVENTIVA" : 
+                       tipoId === "180177" ? "EXECUÇÃO" : null;
+
       documentosPorTarefa.set(taskId, {
         os: atual?.os || row.gc_os_codigo || null,
         orcamento: atual?.orcamento || row.gc_orcamento_codigo || null,
@@ -94,6 +99,7 @@ async function preencherDocumentosGc(agendamentos: AgendaAgendamento[]) {
         status_auvo: atual?.status_auvo || row.status_auvo || null,
         check_in: atual?.check_in || row.check_in_iso || null,
         check_out: atual?.check_out || row.check_out_iso || null,
+        tipo: tipoNome,
       });
     }
   }
@@ -127,6 +133,7 @@ async function preencherDocumentosGc(agendamentos: AgendaAgendamento[]) {
           status_auvo: estadoPorTarefa.get(taskId)?.status_auvo || null,
           check_in: estadoPorTarefa.get(taskId)?.check_in || null,
           check_out: estadoPorTarefa.get(taskId)?.check_out || null,
+          tipo: atual?.tipo || null,
         });
       }
     }
@@ -147,6 +154,7 @@ async function preencherDocumentosGc(agendamentos: AgendaAgendamento[]) {
       status_auvo: estado?.status_auvo || documento.status_auvo || item.status_auvo || null,
       check_in_iso: estado?.check_in || documento.check_in || item.check_in_iso || null,
       check_out_iso: estado?.check_out || documento.check_out || item.check_out_iso || null,
+      previsao_tipo: documento.tipo || item.previsao_tipo || null,
     };
   });
 }
