@@ -902,16 +902,20 @@ export default function AgendamentoEquipePage() {
                                 setDialogCreateTaskOpen(true);
                               }}
                               onPreverProximoDia={async (a) => {
-                                const proximoDia = format(addDays(parseISO(a.data), 1), "yyyy-MM-dd");
-                                const toastId = toast.loading("Gerando previsão...");
-                                try {
-                                  const payload = {
-                                    ...a,
-                                    id: undefined, // Novo registro
-                                    data: proximoDia,
-                                    status: "PREVISAO",
-                                    previsao_continuidade: true,
-                                    previsao_tipo: "CONTINUACAO",
+                                 const proximoDia = format(addDays(parseISO(a.data), 1), "yyyy-MM-dd");
+                                 const toastId = toast.loading("Gerando previsão...");
+                                 try {
+                                   if (a.auvo_task_id && !a.gc_os_codigo) {
+                                     throw new Error("Não é permitido gerar previsão para tarefas sem OS vinculada.");
+                                   }
+
+                                   const payload = {
+                                     ...a,
+                                     id: undefined, // Novo registro
+                                     data: proximoDia,
+                                     status: "PREVISAO",
+                                     previsao_continuidade: true,
+                                     previsao_tipo: "CONTINUACAO",
                                     conversao_status: null,
                                     conversao_erro: null,
                                     conversao_tentada_em: null,
