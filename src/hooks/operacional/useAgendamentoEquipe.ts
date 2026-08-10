@@ -70,23 +70,47 @@ async function preencherDocumentosGc(agendamentos: AgendaAgendamento[]) {
     status_auvo: string | null;
     check_in: string | null;
     check_out: string | null;
+    atualizado_em: string | null;
   }>();
+  const statusAuvoConfiavel = (value: string | null | undefined) => {
+    const normalized = String(value || "")
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .toUpperCase();
+    return ["FINALIZ", "CONCLUI", "ANDAMENTO", "DESLOCAMENTO", "PAUSAD", "ABERTA", "AGENDAD"]
+      .some((token) => normalized.includes(token));
+  };
   for (let index = 0; index < taskIds.length; index += 500) {
     const { data, error } = await sb
       .from("tarefas_central")
-      .select("auvo_task_id,gc_os_codigo,gc_orcamento_codigo,gc_os_situacao,status_auvo,check_in_iso,check_out_iso,task_type_id")
-      .in("auvo_task_id", taskIds.slice(index, index + 500));
+      .select("auvo_task_id,gc_os_codigo,gc_orcamento_codigo,gc_os_situacao,status_auvo,check_in_iso,check_out_iso,task_type_id,atualizado_em")
+      .in("auvo_task_id", taskIds.slice(index, index + 500))
+      .order("atualizado_em", { ascending: false });
     if (error) throw error;
 
     for (const row of data ?? []) {
       const taskId = String(row.auvo_task_id || "").trim();
       if (!taskId) continue;
       const estadoAtual = estadoPorTarefa.get(taskId);
-      estadoPorTarefa.set(taskId, {
-        status_auvo: estadoAtual?.status_auvo || row.status_auvo || null,
-        check_in: estadoAtual?.check_in || row.check_in_iso || null,
-        check_out: estadoAtual?.check_out || row.check_out_iso || null,
-      });
+      const statusAtual = statusAuvoConfiavel(row.status_auvo) ? row.status_auvo : null;
+      // A consulta vem do snapshot mais novo para o mais antigo. O estado Auvo
+      // da linha mais recente é autoritativo; linhas antigas só podem preencher
+      // campos que realmente vieram vazios, nunca ressuscitar um status antigo.
+      if (!estadoAtual) {
+        estadoPorTarefa.set(taskId, {
+          status_auvo: statusAtual,
+          check_in: row.check_in_iso || null,
+          check_out: row.check_out_iso || null,
+          atualizado_em: row.atualizado_em || null,
+        });
+      } else {
+        estadoPorTarefa.set(taskId, {
+          status_auvo: estadoAtual.status_auvo || statusAtual,
+          check_in: estadoAtual.check_in || row.check_in_iso || null,
+          check_out: estadoAtual.check_out || row.check_out_iso || null,
+          atualizado_em: estadoAtual.atualizado_em || row.atualizado_em || null,
+        });
+      }
       const atual = documentosPorTarefa.get(taskId);
       const tipoId = String(row.task_type_id || "");
       const tipoNome = tipoId === "180175" || tipoId === "180176" ? "PREVENTIVA" : 
