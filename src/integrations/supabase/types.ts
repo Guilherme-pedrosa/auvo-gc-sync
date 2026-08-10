@@ -114,6 +114,13 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "agenda_agendamentos_contrato_visita_config_id_fkey"
+            columns: ["contrato_visita_config_id"]
+            isOneToOne: false
+            referencedRelation: "contratos_visitas_config"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "agenda_agendamentos_veiculo_id_fkey"
             columns: ["veiculo_id"]
             isOneToOne: false
