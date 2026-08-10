@@ -463,7 +463,7 @@ export default function AgendamentoPage() {
               </span>
             </div>
           )}
-          <div className="flex items-center gap-1">
+          <div className="mt-auto flex items-center gap-1 pt-2">
             <Button 
               size="sm" 
               variant={i.previsao_data ? "outline" : "default"}
