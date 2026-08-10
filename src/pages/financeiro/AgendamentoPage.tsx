@@ -305,6 +305,11 @@ export default function AgendamentoPage() {
             <p className="truncate text-[11px] text-muted-foreground mt-0.5">
               {i.cliente || "Cliente não identificado"}
             </p>
+            {i.equipamento && (
+              <p className="truncate text-[10px] font-medium text-amber-700 bg-amber-50 px-1 rounded mt-0.5 border border-amber-100 w-fit">
+                {i.equipamento}
+              </p>
+            )}
           </div>
           <span className="shrink-0 text-xs font-semibold tabular-nums">{formatBRL(i.documento_valor || i.valor_total)}</span>
         </div>
