@@ -684,11 +684,11 @@ export default function AgendamentoEquipePage() {
                 <Users className="h-4 w-4 text-primary" />
                 <h2 className="text-sm font-bold uppercase tracking-wide">Técnicos</h2>
               </div>
-              <div className="overflow-x-auto border rounded-md">
+              <div className="overflow-x-auto border rounded-md max-h-[600px] overflow-y-auto">
                 <table className="w-full border-collapse">
                   <thead>
                     <tr className="bg-muted">
-                      <th className="border border-border p-2 text-left text-[11px] font-bold uppercase w-40 sticky left-0 bg-muted z-10">
+                      <th className="border border-border p-2 text-left text-[11px] font-bold uppercase w-40 sticky left-0 top-0 bg-muted z-20">
                         Técnico
                       </th>
                       {dias.map((diaStr) => {
@@ -699,7 +699,7 @@ export default function AgendamentoEquipePage() {
                             key={diaStr} 
                             id={isHoje ? "hoje-col" : undefined}
                             className={cn(
-                              "border border-border p-2 text-center text-[10px] font-bold uppercase min-w-[130px]",
+                              "border border-border p-2 text-center text-[10px] font-bold uppercase min-w-[130px] sticky top-0 bg-muted z-10",
                               isHoje && "bg-primary/10 ring-1 ring-primary/30"
                             )}
                           >
@@ -815,11 +815,11 @@ export default function AgendamentoEquipePage() {
                   </Button>
                 </div>
               </div>
-              <div className="overflow-x-auto border rounded-md">
+              <div className="overflow-x-auto border rounded-md max-h-[400px] overflow-y-auto">
                 <table className="w-full border-collapse">
                   <thead>
                     <tr className="bg-muted">
-                      <th className="border border-border p-2 text-left text-[11px] font-bold uppercase w-40 sticky left-0 bg-muted z-10">
+                      <th className="border border-border p-2 text-left text-[11px] font-bold uppercase w-40 sticky left-0 top-0 bg-muted z-20">
                         Veículo
                       </th>
                       {dias.map((diaStr) => {
@@ -829,7 +829,7 @@ export default function AgendamentoEquipePage() {
                           <th 
                             key={diaStr}
                             className={cn(
-                              "border border-border p-2 text-center text-[10px] font-bold uppercase min-w-[130px]",
+                              "border border-border p-2 text-center text-[10px] font-bold uppercase min-w-[130px] sticky top-0 bg-muted z-10",
                               isHoje && "bg-primary/10"
                             )}
                           >
