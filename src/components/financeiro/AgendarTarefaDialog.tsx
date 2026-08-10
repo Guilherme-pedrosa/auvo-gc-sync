@@ -26,6 +26,9 @@ export type AgendarAlvo = {
   equipamento?: string | null;
   data_tarefa?: string | null;
   tecnico_id?: string | null;
+  previsao_detalhes?: string | null;
+  hora?: string | null;
+  hora_fim?: string | null;
 };
 
 type Props = {
@@ -50,11 +53,14 @@ export default function AgendarTarefaDialog({ open, onOpenChange, alvo, onSaved 
   useEffect(() => {
     if (!open || !alvo) return;
     setDateISO(alvo.data_tarefa?.slice(0, 10) || todayISO());
-    setHora("08:00");
-    setDurationMinutes(120);
+    setHora(alvo.hora?.slice(0, 5) || "08:00");
+    const dur = alvo.hora && alvo.hora_fim 
+      ? Math.max(15, clockToMinutes(alvo.hora_fim.slice(0, 5)) - clockToMinutes(alvo.hora.slice(0, 5)))
+      : 120;
+    setDurationMinutes(dur);
     setTecnicoId(alvo.tecnico_id ? String(alvo.tecnico_id) : "");
-    setPrevisaoDetalhes("");
-  }, [open, alvo?.exec_task_id, alvo?.auvo_task_id]);
+    setPrevisaoDetalhes(alvo.previsao_detalhes || "");
+  }, [open, alvo?.exec_task_id, alvo?.auvo_task_id, alvo?.data_tarefa, alvo?.tecnico_id]);
 
   const { data: users = [], isLoading: loadingUsers } = useQuery({
     queryKey: ["auvo-users"],
@@ -141,31 +147,12 @@ export default function AgendarTarefaDialog({ open, onOpenChange, alvo, onSaved 
       return;
     }
 
-    // Verificar se já existe previsão para evitar duplicidade
     setSavingForecast(true);
     try {
-      const { data: existing } = await supabase
-        .from("agenda_agendamentos")
-        .select("id")
-        .match({
-          data: dateISO,
-          colaborador_id: colaboradores.find(c => String(c.auvo_user_id) === String(tecnicoId))?.id || null,
-          gc_orcamento_codigo: alvo.gc_orcamento_codigo,
-          gc_os_codigo: alvo.gc_os_codigo,
-          previsao_continuidade: true
-        })
-        .maybeSingle();
-
-      if (existing) {
-        toast.info("Já existe uma previsão idêntica para este técnico nesta data.");
-        setSavingForecast(false);
-        return;
-      }
-
       const tecnico = userOptions.find((o) => o.value === tecnicoId)?.label || "";
       const colab = colaboradores.find(c => String(c.auvo_user_id) === String(tecnicoId));
       
-      const { error } = await supabase.from("agenda_agendamentos").insert({
+      const payload = {
         data: dateISO,
         hora_inicio: hora,
         hora_fim: minutesToClock(clockToMinutes(hora) + durationMinutes),
@@ -180,9 +167,24 @@ export default function AgendarTarefaDialog({ open, onOpenChange, alvo, onSaved 
         previsao_continuidade: true,
         previsao_detalhes: previsaoDetalhes.trim() || null,
         origem: "MANUAL"
-      } as any);
+      };
 
-      if (error) throw error;
+      // Se já tiver uma previsão (previsao_data), atualizamos em vez de inserir
+      if (alvo.data_tarefa && (alvo.gc_orcamento_codigo || alvo.gc_os_codigo)) {
+        const { error } = await supabase
+          .from("agenda_agendamentos")
+          .update(payload)
+          .match({
+            data: alvo.data_tarefa.slice(0, 10),
+            gc_orcamento_codigo: alvo.gc_orcamento_codigo,
+            gc_os_codigo: alvo.gc_os_codigo,
+            previsao_continuidade: true
+          });
+        if (error) throw error;
+      } else {
+        const { error } = await supabase.from("agenda_agendamentos").insert(payload as any);
+        if (error) throw error;
+      }
 
       toast.success(`Previsão criada na agenda para ${dateISO} às ${hora}`);
       qc.invalidateQueries({ queryKey: ["agenda_agendamentos"] });
@@ -220,8 +222,7 @@ export default function AgendarTarefaDialog({ open, onOpenChange, alvo, onSaved 
           <div className="flex items-start gap-2 rounded-md border border-blue-200 bg-blue-50 p-3 text-[11px] text-blue-800">
             <Eye className="mt-0.5 h-4 w-4 shrink-0 text-blue-600" />
             <span>
-              Ao clicar em <strong>Apenas Previsão</strong>, o registro será criado apenas na escala semanal interna.
-              Para enviar para o aplicativo do técnico, use <strong>Agendar no Auvo</strong>.
+              Ao clicar em <strong>Apenas Previsão</strong>, o registro será criado apenas na escala semanal interna para controle.
             </span>
           </div>
         )}
@@ -278,7 +279,7 @@ export default function AgendarTarefaDialog({ open, onOpenChange, alvo, onSaved 
               {savingForecast ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Eye className="mr-2 h-4 w-4" />}
               Apenas Previsão
             </Button>
-            <Button onClick={handleSave} disabled={saving || savingForecast || !taskId}>
+            <Button onClick={handleSave} disabled={saving || savingForecast || !taskId} className="hidden">
               {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <CalendarClock className="mr-2 h-4 w-4" />}
               Agendar no Auvo
             </Button>

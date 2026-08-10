@@ -104,6 +104,10 @@ export type ChegadaItem = {
   auvo_link: string;
   previsao_data?: string | null;
   previsao_tecnico?: string | null;
+  previsao_colab_id?: string | null;
+  previsao_detalhes?: string | null;
+  previsao_hora?: string | null;
+  previsao_hora_fim?: string | null;
 };
 
 export type ChegadaStatus = "atrasada" | "hoje" | "futura" | "sem_data";

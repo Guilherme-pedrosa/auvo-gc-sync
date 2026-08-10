@@ -55,7 +55,7 @@ async function fetchChegadas(): Promise<ChegadaItem[]> {
     if (orcCodigos.length > 0 || osCodigos.length > 0) {
       const { data: previsoes } = await supabase
         .from("agenda_agendamentos")
-        .select("data, colaborador_nome, gc_orcamento_codigo, gc_os_codigo")
+        .select("data, colaborador_nome, colaborador_id, gc_orcamento_codigo, gc_os_codigo, previsao_detalhes, hora_inicio, hora_fim")
         .or(`gc_orcamento_codigo.in.(${orcCodigos.join(",")}),gc_os_codigo.in.(${osCodigos.join(",")})`)
         .eq("previsao_continuidade", true);
 
@@ -66,7 +66,15 @@ async function fetchChegadas(): Promise<ChegadaItem[]> {
             (item.os_codigo && p.gc_os_codigo === item.os_codigo)
           );
           if (prev) {
-            return { ...item, previsao_data: prev.data, previsao_tecnico: prev.colaborador_nome };
+            return { 
+              ...item, 
+              previsao_data: prev.data, 
+              previsao_tecnico: prev.colaborador_nome,
+              previsao_colab_id: prev.colaborador_id,
+              previsao_detalhes: prev.previsao_detalhes,
+              previsao_hora: prev.hora_inicio,
+              previsao_hora_fim: prev.hora_fim
+            };
           }
           return item;
         });
@@ -245,8 +253,11 @@ export default function AgendamentoPage() {
       gc_orcamento_codigo: i.orcamento_codigo || (i.vinculo_tipo === "orcamento" ? i.vinculo_codigo : null),
       cliente: i.cliente || i.fornecedor,
       equipamento: i.equipamento,
-      data_tarefa: i.data_chegada,
-      tecnico_id: null,
+      data_tarefa: i.data_chegada || i.previsao_data,
+      tecnico_id: i.previsao_colab_id ? String(i.previsao_colab_id) : null,
+      previsao_detalhes: i.previsao_detalhes,
+      hora: i.previsao_hora,
+      hora_fim: i.previsao_hora_fim,
     });
     setDetalhesDialog({ open: false, dia: "" });
     setDialogOpen(true);
@@ -371,7 +382,7 @@ export default function AgendamentoPage() {
               onClick={() => abrirAgendamento(i)}
             >
               <CalendarClock className="mr-1 h-3 w-3" /> 
-              {i.previsao_data ? "Alterar previsão" : "Agendar execução (Previsão)"}
+              {i.previsao_data ? "Alterar previsão" : "Agendar previsão"}
             </Button>
             {i.documento_link && (
               <Button size="icon" variant="ghost" className="h-7 w-7" asChild title="Editar no GestãoClick">
