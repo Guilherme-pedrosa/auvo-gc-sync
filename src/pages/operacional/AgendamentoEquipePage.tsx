@@ -819,7 +819,7 @@ export default function AgendamentoEquipePage() {
                 <table className="w-full border-collapse">
                   <thead>
                     <tr className="bg-muted">
-                      <th className="border border-border p-2 text-left text-[11px] font-bold uppercase w-40 sticky left-0 bg-muted z-10">
+                      <th className="border border-border p-2 text-left text-[11px] font-bold uppercase w-40 sticky left-0 top-0 bg-muted z-20">
                         Veículo
                       </th>
                       {dias.map((diaStr) => {
@@ -829,7 +829,7 @@ export default function AgendamentoEquipePage() {
                           <th 
                             key={diaStr}
                             className={cn(
-                              "border border-border p-2 text-center text-[10px] font-bold uppercase min-w-[130px]",
+                              "border border-border p-2 text-center text-[10px] font-bold uppercase min-w-[130px] sticky top-0 bg-muted z-10",
                               isHoje && "bg-primary/10"
                             )}
                           >
