@@ -32,6 +32,7 @@ export interface AgendaAgendamento {
   gc_os_codigo?: string | null;
   gc_orcamento_codigo?: string | null;
   previsao_continuidade?: boolean;
+  previsao_detalhes?: string | null;
 }
 
 export function useAgendaVeiculos() {
