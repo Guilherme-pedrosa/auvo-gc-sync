@@ -1,5 +1,14 @@
 import { clockToMinutes, minutesToClock } from "@/lib/auvoDuration";
 import { useEffect, useMemo, useState } from "react";
+import { format, parseISO } from "date-fns";
+import { ptBR } from "date-fns/locale";
+import { Calendar } from "@/components/ui/calendar";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import { cn } from "@/lib/utils";
 import { useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
@@ -45,7 +54,14 @@ type Props = {
   open: boolean;
   onOpenChange: (v: boolean) => void;
   alvo: AgendarAlvo | null;
-  onSaved?: (patch: { dataTarefa: string; tecnico: string; tecnicoId: string }) => void;
+  onSaved?: (patch: {
+    dataTarefa: string;
+    tecnico: string;
+    tecnicoId: string;
+    hora?: string;
+    horaFim?: string;
+    detalhes?: string | null;
+  }) => void;
 };
 
 function normalizeName(value: unknown): string {
@@ -186,7 +202,14 @@ export default function AgendarTarefaDialog({ open, onOpenChange, alvo, onSaved 
         qc.invalidateQueries({ queryKey: ["agenda_agendamentos"] }),
         qc.invalidateQueries({ queryKey: ["agenda_semana"] }),
       ]);
-      onSaved?.({ dataTarefa: dateISO, tecnico: colaborador.nome, tecnicoId: colaborador.id });
+      onSaved?.({
+        dataTarefa: dateISO,
+        tecnico: colaborador.nome,
+        tecnicoId: colaborador.id,
+        hora,
+        horaFim: payload.hora_fim,
+        detalhes: payload.previsao_detalhes,
+      });
       onOpenChange(false);
     } catch (error) {
       toast.error(`Não foi possível salvar a previsão: ${(error as Error).message}`);
@@ -234,9 +257,32 @@ export default function AgendarTarefaDialog({ open, onOpenChange, alvo, onSaved 
           </div>
 
           <div className="grid grid-cols-3 gap-2">
-            <div>
+            <div className="col-span-1 flex flex-col">
               <Label className="text-xs">Data</Label>
-              <Input type="date" value={dateISO} onChange={(event) => setDateISO(event.target.value)} />
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant={"outline"}
+                    size="sm"
+                    className={cn(
+                      "w-full justify-start text-left font-normal h-9 text-xs",
+                      !dateISO && "text-muted-foreground"
+                    )}
+                  >
+                    <CalendarClock className="mr-2 h-3.5 w-3.5" />
+                    {dateISO ? format(parseISO(dateISO), "dd/MM/yyyy") : <span>Data</span>}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0" align="start">
+                  <Calendar
+                    mode="single"
+                    selected={dateISO ? parseISO(dateISO) : undefined}
+                    onSelect={(date) => date && setDateISO(format(date, "yyyy-MM-dd"))}
+                    initialFocus
+                    locale={ptBR}
+                  />
+                </PopoverContent>
+              </Popover>
             </div>
             <div>
               <Label className="text-xs">Hora</Label>

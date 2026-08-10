@@ -1,6 +1,15 @@
 import { minutesToClock, clockToMinutes } from "@/lib/auvoDuration";
 import { useEffect, useState, useMemo } from "react";
-import { format } from "date-fns";
+import { format, parseISO } from "date-fns";
+import { ptBR } from "date-fns/locale";
+import { Calendar as CalendarIcon } from "lucide-react";
+import { Calendar } from "@/components/ui/calendar";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import { cn } from "@/lib/utils";
 import {
   Dialog,
   DialogContent,
@@ -256,14 +265,31 @@ export default function AgendamentoEquipeDialog({
         
         <div className="grid gap-4 py-4">
           <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-2">
+            <div className="space-y-2 flex flex-col">
               <Label htmlFor="date">Data</Label>
-              <Input
-                id="date"
-                type="date"
-                value={data}
-                onChange={(e) => setData(e.target.value)}
-              />
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant={"outline"}
+                    className={cn(
+                      "w-full justify-start text-left font-normal",
+                      !data && "text-muted-foreground"
+                    )}
+                  >
+                    <CalendarIcon className="mr-2 h-4 w-4" />
+                    {data ? format(parseISO(data), "PPP", { locale: ptBR }) : <span>Selecione uma data</span>}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0">
+                  <Calendar
+                    mode="single"
+                    selected={data ? parseISO(data) : undefined}
+                    onSelect={(date) => date && setData(format(date, "yyyy-MM-dd"))}
+                    initialFocus
+                    locale={ptBR}
+                  />
+                </PopoverContent>
+              </Popover>
             </div>
           </div>
 
