@@ -32,6 +32,19 @@ const FALLBACK_PREVENTIVE_TASK_TYPES = [
   { id: 180175, description: "Visita Preventiva + OS", active: true },
 ];
 
+function parseTaskTypeDuration(value: unknown): number {
+  const match = String(value ?? "").trim().match(/^(?:(\d+)\.)?(\d{1,2}):(\d{2})(?::\d{2})?$/);
+  if (!match) return 0;
+  return Number(match[1] || 0) * 1440 + Number(match[2] || 0) * 60 + Number(match[3] || 0);
+}
+
+function formatDuration(minutes: number): string {
+  const hours = Math.floor(minutes / 60);
+  const remainder = minutes % 60;
+  if (!hours) return `${remainder} min`;
+  return remainder ? `${hours}h${String(remainder).padStart(2, "0")}` : `${hours}h`;
+}
+
 export default function CriarTarefaAuvoDialog({ open, onOpenChange, equipamento, onCreated }: Props) {
   const [taskTypeId, setTaskTypeId] = useState<string>("");
   const [idUserTo, setIdUserTo] = useState<string>("");
@@ -64,8 +77,7 @@ export default function CriarTarefaAuvoDialog({ open, onOpenChange, equipamento,
   const { data: taskTypes = [], isLoading: loadingTypes } = useQuery({
     queryKey: ["auvo-task-types", "preventiva-v2"],
     enabled: open,
-    staleTime: 0,
-    refetchOnMount: "always",
+    staleTime: 30 * 60 * 1000,
     queryFn: async () => {
       const { data, error } = await supabase.functions.invoke("auvo-task-update", {
         body: { action: "list-task-types" },
@@ -93,13 +105,19 @@ export default function CriarTarefaAuvoDialog({ open, onOpenChange, equipamento,
   });
 
   const taskTypeOptions = useMemo(() => {
-    const byId = new Map<string, { value: string; label: string }>();
+    const byId = new Map<string, { value: string; label: string; durationMinutes: number }>();
     [...FALLBACK_PREVENTIVE_TASK_TYPES, ...taskTypes].forEach((t: any) => {
       const value = String(t.id ?? t.taskTypeId ?? t.taskTypeID ?? "").trim();
       if (!value) return;
+      const description = String(t.description ?? t.name ?? t.taskTypeDescription ?? `Tipo ${value}`);
+      // Variantes técnicas são reutilizadas pelo backend, mas não devem poluir
+      // o seletor do usuário nem virar base de novas variantes.
+      if (/^\[WEDO:\d+:\d+\]/i.test(description)) return;
+      const typeDuration = parseTaskTypeDuration(t.standartTime ?? t.standardTime);
       byId.set(value, {
         value,
-        label: String(t.description ?? t.name ?? t.taskTypeDescription ?? `Tipo ${value}`),
+        label: typeDuration > 0 ? `${description} · padrão Auvo ${formatDuration(typeDuration)}` : description,
+        durationMinutes: typeDuration,
       });
     });
     const list = Array.from(byId.values()).filter(o => o.value);
@@ -160,7 +178,11 @@ export default function CriarTarefaAuvoDialog({ open, onOpenChange, equipamento,
       const okStatus = data?.status === 200 || data?.status === 201;
       if (data?.success || okStatus) {
         const tid = data?.taskId ? String(data.taskId) : null;
-        toast.success(tid ? `Tarefa criada no Auvo (#${tid})` : "Tarefa criada no Auvo", {
+        const verifiedDuration = data?.duration?.verified === true;
+        const durationSuffix = verifiedDuration
+          ? ` · ${formatDuration(Number(data.duration.actualMinutes || durationMinutes))} confirmada`
+          : "";
+        toast.success(tid ? `Tarefa criada no Auvo (#${tid})${durationSuffix}` : `Tarefa criada no Auvo${durationSuffix}`, {
           action: tid
             ? {
                 label: "Abrir",
@@ -168,6 +190,7 @@ export default function CriarTarefaAuvoDialog({ open, onOpenChange, equipamento,
               }
             : undefined,
         });
+        if (data?.warning) toast.warning(data.warning);
         onCreated?.(tid);
         onOpenChange(false);
       } else {
@@ -236,6 +259,9 @@ export default function CriarTarefaAuvoDialog({ open, onOpenChange, equipamento,
               value={durationMinutes}
               onChange={(e) => setDurationMinutes(Number(e.target.value) || 60)}
             />
+            <p className="mt-1 text-[11px] text-muted-foreground">
+              A duração será gravada no Auvo pelo tempo padrão de uma variante do tipo selecionado e conferida após a criação.
+            </p>
           </div>
 
           <div>

@@ -84,6 +84,14 @@ export default function TarefasAgendadasDialog({ open, onOpenChange, equipamento
             const diff = Math.round((e0 - s0) / 60000);
             if (Number.isFinite(diff) && diff > 0) durationMinutes = diff;
           }
+          const estimatedDuration = String(task?.estimatedDuration ?? task?.estimated_duration ?? "");
+          const durationMatch = estimatedDuration.match(/^(?:(\d+)\.)?(\d{1,2}):(\d{2})/);
+          if (durationMatch) {
+            const estimatedMinutes = Number(durationMatch[1] || 0) * 1440
+              + Number(durationMatch[2] || 0) * 60
+              + Number(durationMatch[3] || 0);
+            if (estimatedMinutes > 0) durationMinutes = estimatedMinutes;
+          }
           const userTo = task?.idUserTo ?? task?.id_user_to ?? null;
           if (userTo) tecnicoId = String(userTo);
         } catch {
@@ -111,30 +119,15 @@ export default function TarefasAgendadasDialog({ open, onOpenChange, equipamento
       const mm = st.minute.padStart(2, "0");
       const startISO = `${st.date}T${hh}:${mm}:00`;
       const dur = Math.max(15, Number(st.durationMinutes) || 120);
-      const start = new Date(startISO);
-      const end = new Date(start.getTime() + dur * 60_000);
-      
-      // Formatar exatamente como o Auvo espera: YYYY-MM-DDTHH:mm:ss
-      const formattedStart = format(start, "yyyy-MM-dd'T'HH:mm:ss");
-      const formattedEnd = format(end, "yyyy-MM-dd'T'HH:mm:ss");
-
-      // If taskEndDate is not found, try task_end_date or omit it. 
-      // For now, we'll try taskDate only if the error persists, 
-      // but let's implement a more robust retry logic in the Edge Function or here.
-      const patches: { op: string; path: string; value: any }[] = [
-        { op: "replace", path: "taskDate", value: formattedStart },
-      ];
-      
-      // Some Auvo tasks don't have taskEndDate exposed via JSONPatch.
-      // We'll omit it for now as a baseline and rely on taskDate only if needed,
-      // but let's try to include it if the user changed the duration.
-      if (st.durationMinutes > 0) {
-        patches.push({ op: "replace", path: "taskEndDate", value: formattedEnd });
-      }
-      if (st.tecnicoId) patches.push({ op: "replace", path: "idUserTo", value: Number(st.tecnicoId) });
 
       const { data, error } = await supabase.functions.invoke("auvo-task-update", {
-        body: { action: "edit", taskId: Number(t.id), patches },
+        body: {
+          action: "edit-schedule",
+          taskId: Number(t.id),
+          taskDate: startISO,
+          idUserTo: st.tecnicoId ? Number(st.tecnicoId) : undefined,
+          durationMinutes: dur,
+        },
       });
 
       if (error) {
@@ -155,6 +148,7 @@ export default function TarefasAgendadasDialog({ open, onOpenChange, equipamento
         console.error("[TarefasAgendadasDialog] Auvo API error:", detail);
         throw new Error(`Erro ${status} no Auvo: ${detail}`);
       }
+      if (data?.warning) toast.warning(data.warning);
       toast.success(`Tarefa #${t.id} reagendada para ${format(parseISO(st.date), "dd/MM/yyyy")} às ${hh}:${mm} (${dur} min)`);
       
       // Update local state immediately so the user sees the change without waiting for a re-sync

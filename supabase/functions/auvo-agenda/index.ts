@@ -1,4 +1,5 @@
 import { installGcUsuarioId } from "../_shared/gc-user.ts";
+import { parseAuvoDurationMinutes } from "../_shared/auvo-duration.ts";
 installGcUsuarioId();
 
 const corsHeaders = {
@@ -12,6 +13,30 @@ const GC_BASE_URL = "https://api.gestaoclick.com";
 const GC_ATRIBUTO_TAREFA_OS = "73343";
 const GC_ATRIBUTO_TAREFA_EXEC = "73344";
 const GC_ATRIBUTO_TAREFA_ORC = "73341";
+
+function timeToMinutes(value: string): number {
+  const match = String(value || "").match(/^(\d{1,2}):(\d{2})/);
+  if (!match) return -1;
+  const hours = Number(match[1]);
+  const minutes = Number(match[2]);
+  if (!Number.isFinite(hours) || !Number.isFinite(minutes)) return -1;
+  return hours * 60 + minutes;
+}
+
+function minutesToClock(value: number): string {
+  const normalized = ((Math.round(value) % 1440) + 1440) % 1440;
+  return `${String(Math.floor(normalized / 60)).padStart(2, "0")}:${String(normalized % 60).padStart(2, "0")}`;
+}
+
+function durationBetweenTimes(start: string, end: string): number {
+  const startMinutes = timeToMinutes(start);
+  const endMinutes = timeToMinutes(end);
+  if (startMinutes < 0 || endMinutes < 0) return 0;
+  const diff = endMinutes >= startMinutes
+    ? endMinutes - startMinutes
+    : (24 * 60 - startMinutes) + endMinutes;
+  return diff > 0 ? diff : 0;
+}
 
 async function auvoLogin(apiKey: string, apiToken: string): Promise<string> {
   const url = `${AUVO_BASE_URL}/login/?apiKey=${encodeURIComponent(apiKey)}&apiToken=${encodeURIComponent(apiToken)}`;
@@ -317,6 +342,9 @@ Deno.serve(async (req) => {
       const taskEndDateTime = rawEndDate.length >= 16 ? rawEndDate.substring(11, 16) : "";
       const rawStartTime = String(t.startTime || t.startHour || "").trim();
       const rawEndTime = String(t.endTime || t.endHour || "").trim();
+      const estimatedDurationMinutes = parseAuvoDurationMinutes(
+        t.estimatedDuration ?? t.estimated_duration,
+      );
       const isFinished = !!t.finished || statusDesc === "Finalizada";
       
       // Real check-in/check-out timestamps (when technician actually started/finished)
@@ -331,9 +359,15 @@ Deno.serve(async (req) => {
       const startTime = isFinished
         ? (checkInTime || rawStartTime || taskDateTime || "")
         : (rawStartTime || taskDateTime || "");
+      const estimatedEndTime = estimatedDurationMinutes > 0 && timeToMinutes(startTime) >= 0
+        ? minutesToClock(timeToMinutes(startTime) + estimatedDurationMinutes)
+        : "";
       const endTime = isFinished
         ? (checkOutTime || rawEndTime || taskEndDateTime || "")
-        : (taskEndDateTime || rawEndTime || "");
+        : (taskEndDateTime || rawEndTime || estimatedEndTime || "");
+      const resolvedDurationMinutes = isFinished
+        ? (durationBetweenTimes(startTime, endTime) || estimatedDurationMinutes)
+        : (estimatedDurationMinutes || durationBetweenTimes(startTime, endTime));
 
       const address = typeof t.address === "object" ? "" : String(t.address || "").substring(0, 200);
       const description = String(t.orientation || t.description || "").substring(0, 500);
@@ -350,6 +384,9 @@ Deno.serve(async (req) => {
         data_tarefa: taskDate,
         hora_inicio: startTime,
         hora_fim: endTime,
+        duracao_decimal: resolvedDurationMinutes > 0 ? resolvedDurationMinutes / 60 : null,
+        duracao_estimada_minutos: estimatedDurationMinutes || null,
+        auvo_task_type_id: String(t.taskType?.id ?? t.taskTypeId ?? t.taskType ?? "") || null,
         status_auvo: status,
         endereco: address,
         descricao: description,

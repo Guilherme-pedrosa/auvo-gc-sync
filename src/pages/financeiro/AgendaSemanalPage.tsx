@@ -543,19 +543,23 @@ export default function AgendaSemanalPage() {
                 const startMin = parseTimeToMinutes(oldTarefa.hora_inicio);
                 if (startMin < 0) throw new Error("Hora de início não definida");
 
-                const newDate = oldTarefa.data_tarefa || format(selectedDay, "yyyy-MM-dd");
                 const updatedHoraFim = `${minutesToTime(newEndMinutes)}:00`;
                 const newDurationDecimal = (newEndMinutes - startMin) / 60;
 
-                // Update Auvo
-                const patches: Array<{ op: string; path: string; value: any }> = [];
-                patches.push({ op: "replace", path: "/taskDate", value: `${newDate}T${oldTarefa.hora_inicio?.substring(0, 5)}:00` });
-
+                // A API v2 não grava taskEndDate/estimatedDuration diretamente.
+                // O backend troca a tarefa para uma variante oficial do mesmo
+                // tipo com standartTime correspondente e confirma no Auvo.
                 const { data: patchResult, error } = await supabase.functions.invoke("auvo-task-update", {
-                  body: { action: "edit", taskId: Number(taskId), patches },
+                  body: {
+                    action: "set-task-duration",
+                    taskId: Number(taskId),
+                    durationMinutes: newEndMinutes - startMin,
+                  },
                 });
                 if (error) throw error;
                 if (patchResult?.status && patchResult.status >= 400) throw new Error(patchResult?.data?.message || `Erro ${patchResult.status}`);
+                if (!patchResult?.success) throw new Error(patchResult?.error || "Auvo não confirmou a alteração da duração");
+                if (patchResult?.warning) toast.warning(patchResult.warning);
 
                 // Update local cache
                 queryClient.setQueryData(queryKey, (old: Tarefa[] | undefined) => {
