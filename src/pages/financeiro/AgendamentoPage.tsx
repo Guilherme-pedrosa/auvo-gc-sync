@@ -690,7 +690,7 @@ export default function AgendamentoPage() {
                 {DIAS.map((d) => <div key={d}>{d}</div>)}
               </div>
 
-              <div className="mt-1 space-y-1">
+              <div className="mt-1 flex-1 min-h-0 space-y-1 overflow-y-auto pr-1">
                 {semanas.map((semana, idx) => (
                   <div key={idx} className="grid grid-cols-7 gap-1">
                     {semana.map((dia) => {
