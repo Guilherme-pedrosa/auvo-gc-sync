@@ -200,9 +200,9 @@ export default function AgendamentoPage() {
     // Filtro por busca textual geral
     if (termo) {
       result = result.filter((i) =>
-         [i.compra_codigo, i.cliente, i.fornecedor, i.vinculo_texto, i.situacao, i.equipamento,
-          ...(i.pedidos_compra ?? []), ...((i.pedidos_detalhes ?? []).map((p) => p.situacao)),
-         ...i.produtos.map((p) => p.nome)]
+         [i.compra_codigo, i.cliente, i.fornecedor, i.vinculo_texto, i.situacao, i.equipamento, i.orcamento_codigo, i.vinculo_codigo, i.os_codigo,
+          ...(i.pedidos_compra ?? []), ...((i.pedidos_detalhes ?? []).map((p) => p.situacao)), ...((i.pedidos_detalhes ?? []).map((p) => p.codigo)),
+          ...i.produtos.map((p) => p.nome)]
           .some((v) => String(v || "").toLowerCase().includes(termo)),
       );
     }
@@ -250,7 +250,7 @@ export default function AgendamentoPage() {
     if (!term.trim()) return list;
     const s = term.toLowerCase();
     return list.filter(i => 
-      [i.orcamento_codigo, i.vinculo_codigo, i.compra_codigo, i.cliente, i.fornecedor, i.equipamento]
+      [i.orcamento_codigo, i.vinculo_codigo, i.compra_codigo, i.cliente, i.fornecedor, i.equipamento, i.os_codigo]
         .some(v => String(v || "").toLowerCase().includes(s))
     );
   };
