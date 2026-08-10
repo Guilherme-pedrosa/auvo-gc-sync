@@ -4,6 +4,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { cn } from "@/lib/utils";
 import { ExternalLink, MapPin, Navigation, ClipboardList, Package, Edit, FileText, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 
