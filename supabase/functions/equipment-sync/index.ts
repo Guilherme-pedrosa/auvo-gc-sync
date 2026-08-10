@@ -827,11 +827,19 @@ Deno.serve(async (req) => {
     // This eliminates N round-trips and N Auvo logins from the client.
     if (phase === "2-batch") {
       const windowsParam = Array.isArray(body?.windows) ? body.windows : [];
-      // Se `preventiveTaskTypes` vier no body, filtramos server-side por cada
-      // tipo (ex.: 180175/180176/202616/235724). Isso evita baixar toda a base.
-      const preventiveTaskTypes: string[] = Array.isArray(body?.preventiveTaskTypes)
+      // Filtra server-side pelos dois tipos oficiais de preventiva. Isso evita
+      // baixar toda a base e impede outros tipos de contaminarem o cache.
+      const allowedPreventiveTaskTypes = new Set(["180175", "180176"]);
+      const requestedPreventiveTaskTypes: string[] = Array.isArray(body?.preventiveTaskTypes)
         ? body.preventiveTaskTypes.map((v: unknown) => String(v || "").trim()).filter(Boolean)
         : [];
+      // O batch deste módulo abastece exclusivamente a Preventiva Equip.
+      // Mesmo que um chamador envie IDs extras, não contaminamos o cache.
+      const requestedAllowedTypes = requestedPreventiveTaskTypes
+        .filter((id) => allowedPreventiveTaskTypes.has(id));
+      const preventiveTaskTypes = requestedAllowedTypes.length > 0
+        ? requestedAllowedTypes
+        : Array.from(allowedPreventiveTaskTypes);
       const finalizedOnly = body?.finalizedOnly === true;
       if (windowsParam.length === 0) {
         return new Response(JSON.stringify({ error: "Phase 2-batch requires windows: [{startDate,endDate}]" }), {
