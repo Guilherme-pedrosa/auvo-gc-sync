@@ -91,14 +91,6 @@ const corCliente = (texto: string, cidade?: string | null) => {
   return PALETA[colorIndex];
 };
 
-  // Se houver cidade, tentamos usar um índice próximo para cidades iguais
-  const colorIndex = cidade 
-    ? (Math.abs(cidadeHash) + Math.abs(clienteHash % 3)) % PALETA.length
-    : Math.abs(clienteHash) % PALETA.length;
-
-  return PALETA[colorIndex];
-};
-
 interface CelulaProps {
   itens: AgendaAgendamento[];
   onSalvar: (v: string) => void;
