@@ -1,4 +1,9 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import {
+  equipmentTaskRelationKey,
+  findStaleEquipmentTaskRelationIds,
+  type CachedEquipmentTaskRelation,
+} from "./reconciliation.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -278,6 +283,14 @@ type EquipmentTaskLink = {
   finishedDate: string | null;
   customerDescription: string;
   userToName: string;
+  finished: boolean;
+};
+
+type EquipmentTaskFetchResult = {
+  results: EquipmentTaskLink[];
+  totalTasks: number;
+  tasksWithEquipments: number;
+  complete: boolean;
 };
 
 async function auvoLogin(apiKey: string, apiToken: string): Promise<string> {
@@ -504,7 +517,6 @@ function parseTaskRow(task: any): EquipmentTaskLink | null {
     finishedDate: normalizeDate(task.finishedDate || task.finishedOn),
     customerDescription: String(task.customerDescription || task.customerName || ""),
     userToName: String(task.userToName || ""),
-    // @ts-ignore - carry-through para o filtro finalizedOnly no phase 2-batch
     finished: task.finished === true,
   };
 }
@@ -514,11 +526,12 @@ async function fetchTasksWithEquipmentsForWindow(
   windowStart: string,
   windowEnd: string,
   opts?: { taskType?: string | number; status?: number },
-): Promise<{ results: EquipmentTaskLink[]; totalTasks: number; tasksWithEquipments: number }> {
+): Promise<EquipmentTaskFetchResult> {
   const headers = auvoHeaders(token);
   const results: EquipmentTaskLink[] = [];
   let totalTasks = 0;
   let tasksWithEquipments = 0;
+  let complete = true;
   const urlOpts = { ...(opts || {}), selectFields: TASK_SELECT_FIELDS };
 
   console.log(`[equipment-sync] Fetching tasks ${windowStart} → ${windowEnd}${opts?.taskType ? ` type=${opts.taskType}` : ""}...`);
@@ -529,17 +542,26 @@ async function fetchTasksWithEquipmentsForWindow(
   try {
     const res = await rateLimitedFetch(firstUrl, { method: "GET", headers });
     if (res.ok) firstJson = await res.json();
-    else if (res.status !== 404) {
+    else if (res.status === 404) {
+      // A listagem do Auvo usa 404 para uma janela sem tarefas.
+      firstJson = { result: { entityList: [], pagedSearchReturnData: { totalItems: 0 } } };
+    } else {
+      complete = false;
       const errBody = await res.text().catch(() => "");
       console.error(`[equipment-sync] Tasks listing HTTP ${res.status} page 1: ${errBody.substring(0, 300)}`);
     }
   } catch (err) {
+    complete = false;
     console.error(`[equipment-sync] Falha em tasks page 1 (${windowStart}):`, err);
   }
 
-  const firstTasks = firstJson?.result?.entityList || firstJson?.result?.Entities || [];
-  if (!Array.isArray(firstTasks) || firstTasks.length === 0) {
-    return { results, totalTasks: 0, tasksWithEquipments: 0 };
+  const firstTasks = firstJson?.result?.entityList ?? firstJson?.result?.Entities;
+  if (!complete || !Array.isArray(firstTasks)) {
+    console.error(`[equipment-sync] Resposta incompleta/malformada em tasks page 1 (${windowStart})`);
+    return { results, totalTasks: 0, tasksWithEquipments: 0, complete: false };
+  }
+  if (firstTasks.length === 0) {
+    return { results, totalTasks: 0, tasksWithEquipments: 0, complete: true };
   }
   const totalItems = Number(firstJson?.result?.pagedSearchReturnData?.totalItems || firstTasks.length);
   const totalPages = Math.max(1, Math.ceil(totalItems / TASK_PAGE_SIZE));
@@ -571,22 +593,28 @@ async function fetchTasksWithEquipmentsForWindow(
               const errBody = await res.text().catch(() => "");
               console.error(`[equipment-sync] Tasks HTTP ${res.status} page ${p}: ${errBody.substring(0, 200)}`);
             }
-            return [] as any[];
+            return { tasks: [] as any[], complete: false };
           }
           const j = await res.json();
-          return (j?.result?.entityList || j?.result?.Entities || []) as any[];
+          const tasks = j?.result?.entityList ?? j?.result?.Entities;
+          return { tasks: Array.isArray(tasks) ? tasks as any[] : [], complete: Array.isArray(tasks) };
         } catch (err) {
           console.error(`[equipment-sync] Falha em tasks page ${p} (${windowStart}):`, err);
-          return [] as any[];
+          return { tasks: [] as any[], complete: false };
         }
       }));
-      for (const pageTasks of responses) if (Array.isArray(pageTasks)) ingest(pageTasks);
+      for (const page of responses) {
+        if (!page.complete) complete = false;
+        ingest(page.tasks);
+      }
     }
   }
 
+  if (totalTasks < totalItems) complete = false;
+
   console.log(`[equipment-sync] Total tasks from listing: ${totalTasks}`);
   console.log(`[equipment-sync] Tasks WITH equipmentsId: ${tasksWithEquipments}`);
-  return { results, totalTasks, tasksWithEquipments };
+  return { results, totalTasks, tasksWithEquipments, complete };
 }
 
 async function loadValidEquipmentIdsFromDb(sb: any): Promise<Set<string>> {
@@ -890,6 +918,8 @@ Deno.serve(async (req) => {
       let totalTasksAggregate = 0;
       let totalWithEquip = 0;
       let totalDiscarded = 0;
+      let totalRelDeleted = 0;
+      let reconciliationSkippedWindows = 0;
       const perWindow: any[] = [];
       const allErrors: string[] = [];
       // Map global equipamento → última preventiva (MAX por equipmentId).
@@ -900,6 +930,8 @@ Deno.serve(async (req) => {
         let tasksWithEquipments: EquipmentTaskLink[] = [];
         let totalTasks = 0;
         let withEquipCount = 0;
+        let windowFetchComplete = true;
+        const observedRelationKeys = new Set<string>();
         if (preventiveTaskTypes.length > 0) {
           // Uma chamada por tipo preventivo — server-side.
           const perTypeResults = await Promise.all(
@@ -911,19 +943,23 @@ Deno.serve(async (req) => {
                 // filtramos `task.finished === true` (ou presença de checkOut)
                 // no retorno — evita perder preventiva executada por status mal
                 // fechado no Auvo.
-                status: finalizedOnly ? 4 : undefined,
+                status: 4,
               }),
             ),
           );
+          windowFetchComplete = perTypeResults.every((result) => result.complete);
           const seen = new Set<string>();
           for (const r of perTypeResults) {
             totalTasks += r.totalTasks;
             withEquipCount += r.tasksWithEquipments;
             for (const link of r.results) {
+              for (const equipmentId of link.equipmentIds) {
+                observedRelationKeys.add(equipmentTaskRelationKey(equipmentId, link.taskId));
+              }
               if (seen.has(link.taskId)) continue;
               seen.add(link.taskId);
               if (finalizedOnly) {
-                const isFinished = (link as any).finished === true
+                const isFinished = link.finished === true
                   || !!link.checkOutDate
                   || link.statusCode === 3;
                 if (!isFinished) continue;
@@ -936,6 +972,12 @@ Deno.serve(async (req) => {
           tasksWithEquipments = r.results;
           totalTasks = r.totalTasks;
           withEquipCount = r.tasksWithEquipments;
+          windowFetchComplete = r.complete;
+          for (const link of r.results) {
+            for (const equipmentId of link.equipmentIds) {
+              observedRelationKeys.add(equipmentTaskRelationKey(equipmentId, link.taskId));
+            }
+          }
         }
 
         const relRows: any[] = [];
@@ -964,12 +1006,14 @@ Deno.serve(async (req) => {
         }
 
         let upserted = 0;
+        let windowUpsertSucceeded = true;
         for (let i = 0; i < relRows.length; i += UPSERT_BATCH_SIZE) {
           const batch = relRows.slice(i, i + UPSERT_BATCH_SIZE);
           const { error } = await sb
             .from("equipamento_tarefas_auvo")
             .upsert(batch, { onConflict: "auvo_equipment_id,auvo_task_id" });
           if (error) {
+            windowUpsertSucceeded = false;
             allErrors.push(`${w.startDate}: ${error.message}`);
             console.error(`[equipment-sync] (batch) upsert err ${w.startDate}: ${error.message}`);
           } else {
@@ -981,6 +1025,54 @@ Deno.serve(async (req) => {
         totalTasksAggregate += totalTasks;
         totalWithEquip += withEquipCount;
         totalDiscarded += discarded;
+
+        // Remove vínculos que desapareceram do Auvo (tarefa excluída, movida
+        // de equipamento ou reagendada para fora da janela). A exclusão só é
+        // permitida depois que todas as páginas/tipos foram lidos e todos os
+        // upserts terminaram bem; falha de API nunca vira exclusão acidental.
+        let deleted = 0;
+        let reconciliation = "skipped";
+        if (windowFetchComplete && windowUpsertSucceeded) {
+          const { data: cachedRelations, error: cachedError } = await sb
+            .from("equipamento_tarefas_auvo")
+            .select("id, auvo_equipment_id, auvo_task_id")
+            .eq("source", "native_equipment_relation")
+            .in("auvo_task_type_id", preventiveTaskTypes)
+            .gte("data_tarefa", w.startDate)
+            .lte("data_tarefa", w.endDate);
+
+          if (cachedError) {
+            reconciliationSkippedWindows++;
+            allErrors.push(`${w.startDate}: reconciliação não consultou cache: ${cachedError.message}`);
+          } else {
+            const staleIds = findStaleEquipmentTaskRelationIds(
+              (cachedRelations ?? []) as CachedEquipmentTaskRelation[],
+              observedRelationKeys,
+            );
+            reconciliation = "completed";
+            for (let i = 0; i < staleIds.length; i += UPSERT_BATCH_SIZE) {
+              const staleBatch = staleIds.slice(i, i + UPSERT_BATCH_SIZE);
+              const { error: deleteError } = await sb
+                .from("equipamento_tarefas_auvo")
+                .delete()
+                .in("id", staleBatch);
+              if (deleteError) {
+                reconciliation = "failed";
+                allErrors.push(`${w.startDate}: reconciliação não removeu cache: ${deleteError.message}`);
+                break;
+              }
+              deleted += staleBatch.length;
+            }
+          }
+        } else {
+          reconciliationSkippedWindows++;
+          console.warn(
+            `[equipment-sync] reconciliação ignorada ${w.startDate}→${w.endDate}: `
+            + `fetchComplete=${windowFetchComplete} upsertSucceeded=${windowUpsertSucceeded}`,
+          );
+        }
+        totalRelDeleted += deleted;
+
         // Consolida última data por equipamento (MAX).
         // Precedência da data de execução (NÃO empate):
         //   1º checkOutDate  (execução real no local — fonte de verdade)
@@ -1002,7 +1094,16 @@ Deno.serve(async (req) => {
             }
           }
         }
-        perWindow.push({ window: `${w.startDate} → ${w.endDate}`, totalTasks, withEquip: withEquipCount, upserted, discarded });
+        perWindow.push({
+          window: `${w.startDate} → ${w.endDate}`,
+          totalTasks,
+          withEquip: withEquipCount,
+          upserted,
+          deleted,
+          discarded,
+          fetch_complete: windowFetchComplete,
+          reconciliation,
+        });
       }
 
       phase2Result = {
@@ -1012,6 +1113,8 @@ Deno.serve(async (req) => {
         total_tasks_in_window: totalTasksAggregate,
         tasks_with_equipment_links: totalWithEquip,
         relationship_rows_upserted: totalRelUpserted,
+        relationship_rows_deleted: totalRelDeleted,
+        reconciliation_skipped_windows: reconciliationSkippedWindows,
         discarded_invalid_links: totalDiscarded,
         per_window: perWindow,
         // MAX(data) por equipamento — verificação de "última preventiva".
