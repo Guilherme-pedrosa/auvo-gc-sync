@@ -141,7 +141,7 @@ async function preencherDocumentosGc(agendamentos: AgendaAgendamento[]) {
   while (true) {
     const { data, error } = await sb
       .from("tarefas_central")
-      .select("auvo_task_id,gc_os_codigo,gc_orcamento_codigo,gc_os_situacao,gc_os_tarefa_exec")
+      .select("auvo_task_id,gc_os_codigo,gc_orcamento_codigo,gc_os_situacao,gc_os_tarefa_exec,gc_os_tarefa_os")
       .not("gc_os_codigo", "is", null)
       .not("gc_os_tarefa_exec", "is", null)
       .range(offset, offset + pageSize - 1);
@@ -165,7 +165,7 @@ async function preencherDocumentosGc(agendamentos: AgendaAgendamento[]) {
           check_out: estadoPorTarefa.get(taskId)?.check_out || null,
           tipo_id: atual?.tipo_id || null,
           tipo_descricao: atual?.tipo_descricao || null,
-          tarefa_os: atual?.tarefa_os || row.auvo_task_id || null,
+          tarefa_os: atual?.tarefa_os || row.gc_os_tarefa_os || row.auvo_task_id || null,
           tarefa_execucao: atual?.tarefa_execucao || row.gc_os_tarefa_exec || null,
         });
       }
