@@ -21,6 +21,10 @@ export type Database = {
           cliente: string
           colaborador_id: string | null
           colaborador_nome: string
+          contrato_id: string | null
+          contrato_visita_competencia: string | null
+          contrato_visita_config_id: string | null
+          contrato_visita_numero: number | null
           criado_em: string
           criado_por: string | null
           data: string
@@ -42,6 +46,10 @@ export type Database = {
           cliente: string
           colaborador_id?: string | null
           colaborador_nome: string
+          contrato_id?: string | null
+          contrato_visita_competencia?: string | null
+          contrato_visita_config_id?: string | null
+          contrato_visita_numero?: number | null
           criado_em?: string
           criado_por?: string | null
           data: string
@@ -63,6 +71,10 @@ export type Database = {
           cliente?: string
           colaborador_id?: string | null
           colaborador_nome?: string
+          contrato_id?: string | null
+          contrato_visita_competencia?: string | null
+          contrato_visita_config_id?: string | null
+          contrato_visita_numero?: number | null
           criado_em?: string
           criado_por?: string | null
           data?: string
@@ -79,6 +91,20 @@ export type Database = {
           veiculo_id?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "agenda_agendamentos_contrato_id_fkey"
+            columns: ["contrato_id"]
+            isOneToOne: false
+            referencedRelation: "contratos"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "agenda_agendamentos_contrato_visita_config_id_fkey"
+            columns: ["contrato_visita_config_id"]
+            isOneToOne: false
+            referencedRelation: "contratos_visitas_config"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "agenda_agendamentos_colaborador_id_fkey"
             columns: ["colaborador_id"]
@@ -574,6 +600,62 @@ export type Database = {
             columns: ["grupo_id"]
             isOneToOne: false
             referencedRelation: "grupos_clientes"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      contratos_visitas_config: {
+        Row: {
+          ativo: boolean
+          atualizado_em: string
+          contrato_id: string
+          criado_em: string
+          criado_por: string | null
+          dias_semana: number[]
+          duracao_minutos: number
+          hora_inicio: string
+          id: string
+          observacao: string | null
+          qtd_tecnicos: number
+          qtd_visitas: number
+          tecnico_ids: string[]
+        }
+        Insert: {
+          ativo?: boolean
+          atualizado_em?: string
+          contrato_id: string
+          criado_em?: string
+          criado_por?: string | null
+          dias_semana?: number[]
+          duracao_minutos?: number
+          hora_inicio?: string
+          id?: string
+          observacao?: string | null
+          qtd_tecnicos?: number
+          qtd_visitas?: number
+          tecnico_ids?: string[]
+        }
+        Update: {
+          ativo?: boolean
+          atualizado_em?: string
+          contrato_id?: string
+          criado_em?: string
+          criado_por?: string | null
+          dias_semana?: number[]
+          duracao_minutos?: number
+          hora_inicio?: string
+          id?: string
+          observacao?: string | null
+          qtd_tecnicos?: number
+          qtd_visitas?: number
+          tecnico_ids?: string[]
+        }
+        Relationships: [
+          {
+            foreignKeyName: "contratos_visitas_config_contrato_id_fkey"
+            columns: ["contrato_id"]
+            isOneToOne: true
+            referencedRelation: "contratos"
             referencedColumns: ["id"]
           },
         ]

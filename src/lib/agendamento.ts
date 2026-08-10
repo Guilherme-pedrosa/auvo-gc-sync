@@ -17,15 +17,16 @@ export const AGENDA_BUCKETS: { id: AgendaBucket; label: string; hint: string }[]
   { id: "futura", label: "Agendadas", hint: "Execução prevista à frente" },
 ];
 
-// A consulta chama diretamente a API do GestãoClick e é pesada. Depois da primeira
-// carga da sessão, somente o botão "Atualizar" deve consultá-la novamente.
+// A consulta chama diretamente a API do GestãoClick e é pesada. O conteúdo continua
+// visível enquanto dados vencidos são revalidados em segundo plano.
 export const CHEGADAS_QUERY_POLICY = {
-  staleTime: 60 * 60 * 1000, // 1 hora
-  gcTime: 24 * 60 * 60 * 1000, // 24 horas
-  retry: 2,
-  refetchOnMount: false,
-  refetchOnReconnect: false,
-  refetchOnWindowFocus: false,
+  // Após cinco minutos, mantém o conteúdo atual na tela enquanto atualiza em segundo plano.
+  staleTime: 5 * 60 * 1000,
+  gcTime: Infinity,
+  retry: false,
+  refetchOnMount: true,
+  refetchOnReconnect: true,
+  refetchOnWindowFocus: true,
 } as const;
 
 export function todayISO(): string {

@@ -286,17 +286,15 @@ function ContratoDialog({
   const [obs, setObs] = useState(c?.observacao || "");
 
   const { data: clientesDisponiveis = [] } = useQuery({
-    queryKey: ["clientes_distintos"],
+    queryKey: ["clientes_contratos_cache"],
     queryFn: async () => {
       const { data, error } = await supabase
-        .from("tarefas_central")
-        .select("gc_os_cliente")
-        .not("gc_os_cliente", "is", null)
-        .limit(5000);
+        .from("auvo_clientes_cache")
+        .select("nome")
+        .eq("ativo", true)
+        .order("nome");
       if (error) throw error;
-      const set = new Set<string>();
-      (data || []).forEach((r: any) => { if (r.gc_os_cliente) set.add(r.gc_os_cliente); });
-      return Array.from(set).sort();
+      return [...new Set((data || []).map((row) => row.nome).filter(Boolean))];
     },
     enabled: state.open,
   });

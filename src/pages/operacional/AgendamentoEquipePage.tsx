@@ -159,7 +159,9 @@ function Celula({
                 type="button"
                 draggable
                 onDragStart={() => onDragStart(a)}
-                title={a.previsao_continuidade
+                title={a.origem === "CONTRATO"
+                  ? `Previsão contratual${a.descricao ? ` · ${a.descricao}` : ""}${a.previsao_detalhes ? ` · ${a.previsao_detalhes}` : ""}`
+                  : a.previsao_continuidade
                   ? `Previsão interna${a.previsao_detalhes ? ` · ${a.previsao_detalhes}` : ""}`
                   : a.auvo_task_id
                     ? `Tarefa Auvo #${a.auvo_task_id}`
@@ -185,7 +187,9 @@ function Celula({
                   )}
                 </div>
                 {a.previsao_continuidade && (
-                  <span className="ml-1 text-[9px] lowercase italic text-primary-foreground/70">(previsão)</span>
+                  <span className="ml-1 text-[9px] lowercase italic text-primary-foreground/70">
+                    {a.origem === "CONTRATO" ? "(contrato)" : "(previsão)"}
+                  </span>
                 )}
               </button>
               <div className="absolute -right-1 top-1/2 -translate-y-1/2 z-20 hidden group-hover/item:flex items-center gap-0.5">
