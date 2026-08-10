@@ -101,6 +101,54 @@ export default function TarefaAuvoDetalheDialog({ taskId, onOpenChange, onEdit }
     },
   });
 
+  // Fallback de vínculo: quando a tarefa não tem OS/orçamento gravados,
+  // extrai a referência do texto de orientação (ex.: "OS ref. Orçamento #5835")
+  const refOrcamento = (() => {
+    const txt = String(tarefa?.orientacao || "");
+    const m = txt.match(/or[cç]amento\s*#?\s*(\d{3,})/i);
+    return m ? m[1] : null;
+  })();
+  const refOs = (() => {
+    const txt = String(tarefa?.orientacao || "");
+    const m = txt.match(/\bOS\s*#?\s*(\d{3,})/i);
+    return m ? m[1] : null;
+  })();
+  const precisaVinculo = !!tarefa && !tarefa.gc_os_codigo && !!(refOrcamento || refOs);
+
+  const { data: vinculo } = useQuery({
+    queryKey: ["tarefa_vinculo_os", refOrcamento, refOs],
+    enabled: precisaVinculo,
+    queryFn: async () => {
+      let q = supabase
+        .from("tarefas_central")
+        .select(
+          "auvo_task_id,gc_os_id,gc_os_codigo,gc_os_situacao,gc_os_cor_situacao,gc_os_valor_total,gc_os_link,gc_orc_link,gc_orcamento_codigo,gc_os_cliente",
+        )
+        .not("gc_os_codigo", "is", null)
+        .limit(1);
+      q = refOrcamento
+        ? q.eq("gc_orcamento_codigo", refOrcamento)
+        : q.eq("gc_os_codigo", refOs as string);
+      const { data, error } = await q;
+      if (error) throw error;
+      return (data?.[0] ?? null) as Record<string, any> | null;
+    },
+  });
+
+  const os = {
+    id: tarefa?.gc_os_id || vinculo?.gc_os_id || null,
+    codigo: tarefa?.gc_os_codigo || vinculo?.gc_os_codigo || null,
+    situacao: tarefa?.gc_os_situacao || vinculo?.gc_os_situacao || null,
+    cor: tarefa?.gc_os_cor_situacao || vinculo?.gc_os_cor_situacao || null,
+    valor: Number(tarefa?.gc_os_valor_total || vinculo?.gc_os_valor_total || 0),
+    link: tarefa?.gc_os_link || vinculo?.gc_os_link || null,
+    orcLink: tarefa?.gc_orc_link || vinculo?.gc_orc_link || null,
+    orcamento: tarefa?.gc_orcamento_codigo || vinculo?.gc_orcamento_codigo || refOrcamento || null,
+    cliente: tarefa?.gc_os_cliente || vinculo?.gc_os_cliente || null,
+    herdado: !tarefa?.gc_os_codigo && !!vinculo?.gc_os_codigo,
+    tarefaOrigem: vinculo?.auvo_task_id || null,
+  };
+
   const respostas: any[] = Array.isArray(tarefa?.questionario_respostas)
     ? (tarefa!.questionario_respostas as any[])
     : [];
