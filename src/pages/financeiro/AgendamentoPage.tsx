@@ -141,6 +141,9 @@ export default function AgendamentoPage() {
   const [diaSelecionado, setDiaSelecionado] = useState<string>(hoje);
   const [busca, setBusca] = useState("");
   const [buscaCliente, setBuscaCliente] = useState("");
+  const [buscaPrevista, setBuscaPrevista] = useState("");
+  const [buscaAtrasada, setBuscaAtrasada] = useState("");
+  const [buscaSemPrevisao, setBuscaSemPrevisao] = useState("");
   const [excludedSituacoes, setExcludedSituacoes] = useState<Set<string>>(new Set());
   const [searchSituacao, setSearchSituacao] = useState("");
   const [tipoDoc, setTipoDoc] = useState<"todos" | "orcamentos" | "pedidos">(
