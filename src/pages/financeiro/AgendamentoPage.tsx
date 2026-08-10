@@ -213,8 +213,8 @@ export default function AgendamentoPage() {
 
   const abrirAgendamento = (i: ChegadaItem) => {
     setAlvo({
-      auvo_task_id: i.auvo_task_id || null,
-      exec_task_id: i.auvo_task_id || null,
+      auvo_task_id: parseExecTaskId(i.auvo_task_id) || null,
+      exec_task_id: parseExecTaskId(i.auvo_task_id) || null,
       gc_os_codigo: i.os_codigo || (i.vinculo_tipo === "os" ? i.vinculo_codigo : null),
       gc_orcamento_codigo: i.orcamento_codigo || (i.vinculo_tipo === "orcamento" ? i.vinculo_codigo : null),
       cliente: i.cliente || i.fornecedor,
