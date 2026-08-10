@@ -333,39 +333,50 @@ export default function AgendamentoEquipePage() {
   const { data: veiculos = [], isLoading: loadingVei } = useAgendaVeiculos();
   const { data, isLoading, isFetching, refetch: refetchLocal } = useAgendaSemana(dias);
   const [isSyncing, setIsSyncing] = useState(false);
-  const [isUpdatingCustomers, setIsUpdatingCustomers] = useState(false);
+  const customerSyncPromise = useRef<Promise<void> | null>(null);
 
-  const atualizarClientesAuvo = async () => {
-    setIsUpdatingCustomers(true);
-    const toastId = toast.loading("Atualizando cache de clientes do Auvo...");
-    try {
-      const { data: res, error } = await supabase.functions.invoke("auvo-task-update", {
+  const sincronizarClientesEmSegundoPlano = () => {
+    if (customerSyncPromise.current) return customerSyncPromise.current;
+
+    const request = (async () => {
+      const { error } = await supabase.functions.invoke("auvo-task-update", {
         body: { action: "list-customers", forceRefresh: true },
       });
       if (error) throw error;
-      toast.success("Cache de clientes atualizado com sucesso!", { id: toastId });
-      qc.invalidateQueries({ queryKey: ["auvo-customers"] });
-    } catch (err: any) {
-      console.error("Erro ao atualizar clientes:", err);
-      toast.error("Falha ao atualizar clientes: " + (err.message || String(err)), { id: toastId });
-    } finally {
-      setIsUpdatingCustomers(false);
-    }
+      await qc.invalidateQueries({ queryKey: ["auvo-customers"] });
+    })()
+      .catch((err: unknown) => {
+        console.error("[agendamento-equipe] erro ao atualizar clientes do Auvo:", err);
+        toast.warning("As tarefas foram sincronizadas, mas os clientes do Auvo não foram atualizados.");
+      })
+      .finally(() => {
+        customerSyncPromise.current = null;
+      });
+
+    customerSyncPromise.current = request;
+    return request;
   };
 
   const refetch = async () => {
     setIsSyncing(true);
     const toastId = toast.loading("Atualizando tarefas do Auvo...");
     try {
+      // O mesmo clique também atualiza os clientes, mas esse trabalho não segura
+      // a agenda nem o botão de sincronização.
+      void sincronizarClientesEmSegundoPlano();
+
       // Uma única leitura do RH; o retorno é usado nesta sincronização para
       // evitar trabalhar com o estado anterior do React Query.
-      const colaboradoresResult = await refetchColaboradores();
+      const [colaboradoresResult, agendaResult] = await Promise.all([
+        refetchColaboradores(),
+        supabase.functions.invoke("auvo-agenda", {
+          body: { startDate: dias[0], endDate: dias[dias.length - 1], fast: true },
+        }),
+      ]);
       if (colaboradoresResult.error) throw colaboradoresResult.error;
       const colaboradoresAtuais = colaboradoresResult.data ?? colaboradores;
 
-      const { data: syncRes, error } = await supabase.functions.invoke("auvo-agenda", {
-        body: { startDate: dias[0], endDate: dias[dias.length - 1], fast: true },
-      });
+      const { data: syncRes, error } = agendaResult;
       if (error) throw error;
       if ((syncRes as any)?.error) throw new Error((syncRes as any).error);
 
@@ -658,20 +669,16 @@ export default function AgendamentoEquipePage() {
           </Button>
         </div>
         <div className="flex items-center gap-2">
-          <Button 
-            variant="outline" 
-            size="sm" 
-            className="gap-2" 
-            onClick={atualizarClientesAuvo}
-            disabled={isUpdatingCustomers}
-          >
-            <Users className={cn("h-4 w-4", isUpdatingCustomers && "animate-spin")} />
-            {isUpdatingCustomers ? "Atualizando..." : "Atualizar Clientes"}
-          </Button>
           <Button variant="outline" size="sm" className="gap-2" onClick={() => setDialogRelatorioOpen(true)}>
             <Printer className="h-4 w-4" /> Exportar PDF
           </Button>
-          <Button variant="outline" size="icon" onClick={() => refetch()} disabled={isFetching || isSyncing}>
+          <Button
+            variant="outline"
+            size="icon"
+            title="Sincronizar tarefas e clientes do Auvo"
+            onClick={() => refetch()}
+            disabled={isFetching || isSyncing}
+          >
             <RefreshCw className={cn("h-4 w-4", (isFetching || isSyncing) && "animate-spin")} />
           </Button>
           <Button className="gap-2" size="sm" onClick={() => setDialogCreateTaskOpen(true)}>
