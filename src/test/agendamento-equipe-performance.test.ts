@@ -21,6 +21,20 @@ describe("desempenho do Agendamento Equipe", () => {
 
   it("atualiza o RH uma única vez por sincronização", () => {
     expect(page.match(/refetchColaboradores\(\)/g)).toHaveLength(1);
+    expect(page).toContain("Promise.all([");
+  });
+
+  it("atualiza clientes no mesmo clique sem bloquear a agenda", () => {
+    expect(page).toContain('action: "list-customers", forceRefresh: true');
+    expect(page).toContain("void sincronizarClientesEmSegundoPlano()");
+    expect(page).not.toContain("await sincronizarClientesEmSegundoPlano()");
+    expect(page).not.toContain("Atualizar Clientes");
+  });
+
+  it("persiste as tarefas do modo rapido no espelho central", () => {
+    expect(auvoAgenda).toContain("const centralRows = enriched.map");
+    expect(auvoAgenda).toContain('onConflict: "mirror_key"');
+    expect(auvoAgenda).toContain("persisted_tasks: persistedTasks");
   });
 
   it("mantém IDs estáveis e grava tarefas em lote", () => {

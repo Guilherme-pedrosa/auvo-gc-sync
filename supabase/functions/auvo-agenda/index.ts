@@ -322,6 +322,7 @@ Deno.serve(async (req) => {
     // A mesma fonte do Controle OS é a autoridade para o vínculo tarefa → OS principal.
     // O documento pode ser antigo e não aparecer na janela consultada na API do GC.
     const localDocumentMap = new Map<string, {
+      mirror_key: string | null;
       gc_os_codigo: string | null;
       gc_orcamento_codigo: string | null;
       gc_os_tarefa_exec: string | null;
@@ -346,7 +347,7 @@ Deno.serve(async (req) => {
         const batch = taskIds.slice(index, index + 500);
         const { data: localRows, error: localError } = await backend
           .from("tarefas_central")
-          .select("auvo_task_id,gc_os_codigo,gc_orcamento_codigo,gc_os_tarefa_exec,gc_os_situacao,gc_os_valor_total,gc_os_link,gc_orc_situacao,gc_orc_valor_total,gc_orc_link")
+          .select("mirror_key,auvo_task_id,gc_os_codigo,gc_orcamento_codigo,gc_os_tarefa_exec,gc_os_situacao,gc_os_valor_total,gc_os_link,gc_orc_situacao,gc_orc_valor_total,gc_orc_link")
           .in("auvo_task_id", batch);
 
         if (localError) {
@@ -359,6 +360,7 @@ Deno.serve(async (req) => {
           if (!id) continue;
           const existing = localDocumentMap.get(id);
           localDocumentMap.set(id, {
+            mirror_key: existing?.mirror_key || row.mirror_key || null,
             gc_os_codigo: existing?.gc_os_codigo || row.gc_os_codigo || null,
             gc_orcamento_codigo: existing?.gc_orcamento_codigo || row.gc_orcamento_codigo || null,
             gc_os_tarefa_exec: existing?.gc_os_tarefa_exec || row.gc_os_tarefa_exec || null,
@@ -475,6 +477,7 @@ Deno.serve(async (req) => {
       const orc = gcOrcMap.get(taskId);
 
       return {
+        mirror_key: localDocument?.mirror_key || `${taskId}::os:::orc:`,
         auvo_task_id: taskId,
         cliente,
         tecnico,
@@ -507,6 +510,51 @@ Deno.serve(async (req) => {
         pendencia: null,
       };
     });
+
+    // O modo rápido também é uma sincronização de verdade: a agenda e os demais
+    // módulos consultam tarefas_central para abrir os detalhes da tarefa. Gravar
+    // o espelho aqui custa somente upserts em lote e evita exibir uma tarefa que
+    // "ainda não foi sincronizada" logo depois do botão concluir.
+    let persistedTasks = 0;
+    if (backend && enriched.length > 0) {
+      const now = new Date().toISOString();
+      const centralRows = enriched.map((task: any) => {
+        const row: Record<string, unknown> = {
+          mirror_key: task.mirror_key,
+          auvo_task_id: task.auvo_task_id,
+          cliente: task.cliente,
+          tecnico: task.tecnico,
+          tecnico_id: task.tecnico_id,
+          data_tarefa: task.data_tarefa || null,
+          status_auvo: task.status_auvo,
+          hora_inicio: task.hora_inicio || null,
+          check_in: task.check_in,
+          check_out: task.check_out,
+          auvo_link: task.auvo_link,
+          atualizado_em: now,
+        };
+        if (task.hora_fim) row.hora_fim = task.hora_fim;
+        if (task.duracao_decimal != null) row.duracao_decimal = task.duracao_decimal;
+        if (task.endereco) row.endereco = task.endereco;
+        if (task.descricao) row.orientacao = task.descricao;
+        return row;
+      });
+
+      for (let index = 0; index < centralRows.length; index += 500) {
+        const batch = centralRows.slice(index, index + 500);
+        const { error: persistError } = await backend
+          .from("tarefas_central")
+          .upsert(batch, {
+            onConflict: "mirror_key",
+            ignoreDuplicates: false,
+            defaultToNull: false,
+          });
+        if (persistError) {
+          throw new Error(`Falha ao gravar tarefas na base: ${persistError.message}`);
+        }
+        persistedTasks += batch.length;
+      }
+    }
 
     const promotionResults: any[] = [];
     if (backend) {
@@ -569,6 +617,7 @@ Deno.serve(async (req) => {
       JSON.stringify({
         data: enriched,
         total: enriched.length,
+        persisted_tasks: persistedTasks,
         forecast_promotions: promotionResults,
         mode: fastMode ? "fast" : "full",
       }),
