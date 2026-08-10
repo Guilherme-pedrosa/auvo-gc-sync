@@ -83,6 +83,14 @@ const corCliente = (texto: string, cidade?: string | null) => {
     clienteHash = t.charCodeAt(i) + ((clienteHash << 5) - clienteHash);
   }
 
+  // Se houver cidade, usamos o hash da cidade como base e o hash do cliente para uma pequena variação
+  const colorIndex = cidade 
+    ? (Math.abs(cidadeHash) + Math.abs(clienteHash % 3)) % PALETA.length
+    : Math.abs(clienteHash) % PALETA.length;
+
+  return PALETA[colorIndex];
+};
+
   // Se houver cidade, tentamos usar um índice próximo para cidades iguais
   const colorIndex = cidade 
     ? (Math.abs(cidadeHash) + Math.abs(clienteHash % 3)) % PALETA.length
