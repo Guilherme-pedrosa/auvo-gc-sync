@@ -4,6 +4,45 @@ export function normalizeGcDocumentCode(value: unknown): string {
   return String(value ?? "").replace(/\D/g, "").trim();
 }
 
+function normalizeDateKey(value: unknown): string | null {
+  const match = String(value ?? "").match(/^(\d{4})-(\d{2})-(\d{2})/);
+  return match ? `${match[1]}-${match[2]}-${match[3]}` : null;
+}
+
+function normalizeText(value: unknown): string {
+  return String(value ?? "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toUpperCase()
+    .trim();
+}
+
+/**
+ * Uma previsão nasce no orçamento e só pode ser convertida pela nova OS criada
+ * depois dela. Isso é especialmente importante em baixa parcial: as OS dos
+ * lotes anteriores continuam apontando para o mesmo NÚMERO ORÇAMENTO no GC.
+ */
+export function isOsEligibleForBudgetForecast(os: any, forecastCreatedAt: unknown): boolean {
+  if (!os || !normalizeGcDocumentCode(os.gc_os_codigo)) return false;
+
+  const forecastDate = normalizeDateKey(forecastCreatedAt);
+  const osDate = normalizeDateKey(os.gc_os_data ?? os.data_entrada ?? os.data);
+  if (forecastDate && osDate && osDate < forecastDate) return false;
+
+  const status = normalizeText(os.gc_os_situacao ?? os.nome_situacao);
+  const terminalStatus = [
+    "EXECUTAD",
+    "FINALIZ",
+    "ENCERRAD",
+    "CANCELAD",
+    "EXCLUID",
+    "NOTA EMITIDA",
+  ].some((part) => status.includes(part));
+  if (terminalStatus) return false;
+
+  return true;
+}
+
 export function normalizeClock(value: unknown): string | null {
   const match = String(value ?? "").match(/^(\d{1,2}):(\d{2})/);
   if (!match) return null;

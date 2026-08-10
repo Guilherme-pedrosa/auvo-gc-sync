@@ -5,6 +5,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { resolveQuestionnaireData } from "./questionnaire-normalizer.ts";
 import {
   BUDGET_EXECUTION_FORECAST,
+  isOsEligibleForBudgetForecast,
   normalizeGcDocumentCode,
 } from "../_shared/agenda-forecast-promotion.ts";
 
@@ -1001,7 +1002,7 @@ async function reconcileBudgetExecutionForecasts(
   };
   const { data: forecasts, error } = await sbClient
     .from("agenda_agendamentos")
-    .select("id,gc_orcamento_codigo")
+    .select("id,gc_orcamento_codigo,criado_em")
     .eq("previsao_tipo", BUDGET_EXECUTION_FORECAST)
     .eq("previsao_continuidade", true)
     .or("conversao_status.is.null,conversao_status.neq.BLOQUEADA")
@@ -1041,10 +1042,15 @@ async function reconcileBudgetExecutionForecasts(
   const candidates: Array<{ forecastId: string; budgetCode: string; osCode: string; execTaskId: string }> = [];
   for (const forecast of forecasts) {
     const budgetCode = normalizeGcDocumentCode(forecast.gc_orcamento_codigo);
-    const osMatches = osByBudget.get(budgetCode) || [];
+    const osMatches = (osByBudget.get(budgetCode) || [])
+      .filter((os) => isOsEligibleForBudgetForecast(os, forecast.criado_em));
     if (osMatches.length === 0) {
       summary.waitingOs += 1;
-      await mark(forecast.id, { conversao_status: "AGUARDANDO_OS", conversao_erro: null });
+      await mark(forecast.id, {
+        gc_os_codigo: null,
+        conversao_status: "AGUARDANDO_OS",
+        conversao_erro: null,
+      });
       continue;
     }
     if (osMatches.length > 1) {
@@ -1060,7 +1066,7 @@ async function reconcileBudgetExecutionForecasts(
     const osCode = normalizeGcDocumentCode(os.gc_os_codigo);
     const osTaskIds = String(os.gc_os_tarefa_os || "").split(/\D+/).filter((id) => id.length >= 4);
     const execTaskIds = [...new Set(String(os.gc_os_tarefa_exec || "").split(/\D+/).filter((id) => id.length >= 4))];
-    if (execTaskIds.length === 0) {
+    if (execTaskIds.length === 0 || (execTaskIds.length === 1 && osTaskIds.includes(execTaskIds[0]))) {
       summary.waitingTask += 1;
       await mark(forecast.id, {
         gc_os_codigo: osCode,
@@ -1069,14 +1075,12 @@ async function reconcileBudgetExecutionForecasts(
       });
       continue;
     }
-    if (execTaskIds.length > 1 || osTaskIds.includes(execTaskIds[0])) {
+    if (execTaskIds.length > 1) {
       summary.blocked += 1;
       await mark(forecast.id, {
         gc_os_codigo: osCode,
         conversao_status: "BLOQUEADA",
-        conversao_erro: execTaskIds.length > 1
-          ? `A OS ${osCode} possui mais de uma tarefa de execução: ${execTaskIds.join(", ")}`
-          : `A tarefa de execução ${execTaskIds[0]} é igual à Tarefa OS`,
+        conversao_erro: `A OS ${osCode} possui mais de uma tarefa de execução: ${execTaskIds.join(", ")}`,
       });
       continue;
     }

@@ -1,5 +1,9 @@
 import { installGcUsuarioId } from "../_shared/gc-user.ts";
 import { parseAuvoDurationMinutes } from "../_shared/auvo-duration.ts";
+import {
+  isOsEligibleForBudgetForecast,
+  normalizeGcDocumentCode,
+} from "../_shared/agenda-forecast-promotion.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
 installGcUsuarioId();
 
@@ -326,6 +330,8 @@ Deno.serve(async (req) => {
       gc_os_codigo: string | null;
       gc_orcamento_codigo: string | null;
       gc_os_tarefa_exec: string | null;
+      gc_os_tarefa_os: string | null;
+      gc_os_data: string | null;
       gc_os_situacao: string | null;
       gc_os_valor_total: number | null;
       gc_os_link: string | null;
@@ -347,7 +353,7 @@ Deno.serve(async (req) => {
         const batch = taskIds.slice(index, index + 500);
         const { data: localRows, error: localError } = await backend
           .from("tarefas_central")
-          .select("mirror_key,auvo_task_id,gc_os_codigo,gc_orcamento_codigo,gc_os_tarefa_exec,gc_os_situacao,gc_os_valor_total,gc_os_link,gc_orc_situacao,gc_orc_valor_total,gc_orc_link")
+          .select("mirror_key,auvo_task_id,gc_os_codigo,gc_orcamento_codigo,gc_os_tarefa_exec,gc_os_tarefa_os,gc_os_data,gc_os_situacao,gc_os_valor_total,gc_os_link,gc_orc_situacao,gc_orc_valor_total,gc_orc_link")
           .in("auvo_task_id", batch);
 
         if (localError) {
@@ -364,6 +370,8 @@ Deno.serve(async (req) => {
             gc_os_codigo: existing?.gc_os_codigo || row.gc_os_codigo || null,
             gc_orcamento_codigo: existing?.gc_orcamento_codigo || row.gc_orcamento_codigo || null,
             gc_os_tarefa_exec: existing?.gc_os_tarefa_exec || row.gc_os_tarefa_exec || null,
+            gc_os_tarefa_os: existing?.gc_os_tarefa_os || row.gc_os_tarefa_os || null,
+            gc_os_data: existing?.gc_os_data || row.gc_os_data || null,
             gc_os_situacao: existing?.gc_os_situacao || row.gc_os_situacao || null,
             gc_os_valor_total: existing?.gc_os_valor_total ?? row.gc_os_valor_total ?? null,
             gc_os_link: existing?.gc_os_link || row.gc_os_link || null,
@@ -499,6 +507,8 @@ Deno.serve(async (req) => {
         gc_os_valor_total: os?.gc_os_valor_total ?? localDocument?.gc_os_valor_total ?? null,
         gc_os_link: os?.gc_os_link ?? localDocument?.gc_os_link ?? null,
         gc_os_tarefa_exec: os?.gc_os_tarefa_exec ?? localDocument?.gc_os_tarefa_exec ?? null,
+        gc_os_tarefa_os: os?.gc_os_tarefa_os ?? localDocument?.gc_os_tarefa_os ?? null,
+        gc_os_data: os?.gc_os_data ?? localDocument?.gc_os_data ?? null,
         // O orçamento continua sendo a chave histórica mesmo depois que a OS existe.
         gc_orcamento_codigo: localDocument?.gc_orcamento_codigo
           ?? os?.gc_os_orcamento_codigo
@@ -560,7 +570,7 @@ Deno.serve(async (req) => {
     if (backend) {
       const { data: activeForecasts, error: forecastReadError } = await backend
         .from("agenda_agendamentos")
-        .select("gc_orcamento_codigo")
+        .select("id,gc_orcamento_codigo,criado_em")
         .eq("previsao_tipo", "ORCAMENTO_EXECUCAO")
         .eq("previsao_continuidade", true)
         .or("conversao_status.is.null,conversao_status.neq.BLOQUEADA")
@@ -568,16 +578,22 @@ Deno.serve(async (req) => {
       if (forecastReadError) {
         console.warn(`[auvo-agenda] falha ao consultar previsões pendentes: ${forecastReadError.message}`);
       }
-      const pendingBudgetCodes = new Set(
-        (activeForecasts || []).map((forecast: any) => String(forecast.gc_orcamento_codigo || "").replace(/\D/g, "")),
-      );
+      const forecastsByBudget = new Map<string, any>();
+      for (const forecast of activeForecasts || []) {
+        const budgetCode = normalizeGcDocumentCode(forecast.gc_orcamento_codigo);
+        if (budgetCode) forecastsByBudget.set(budgetCode, forecast);
+      }
       const candidates = enriched.filter((task: any) => {
         const execIds = String(task.gc_os_tarefa_exec || "").split(/\D+/).filter(Boolean);
+        const osTaskIds = String(task.gc_os_tarefa_os || "").split(/\D+/).filter(Boolean);
+        const budgetCode = normalizeGcDocumentCode(task.gc_orcamento_codigo);
+        const forecast = forecastsByBudget.get(budgetCode);
         return task.auvo_task_id
           && task.gc_os_codigo
-          && task.gc_orcamento_codigo
-          && pendingBudgetCodes.has(String(task.gc_orcamento_codigo).replace(/\D/g, ""))
-          && execIds.includes(String(task.auvo_task_id));
+          && forecast
+          && isOsEligibleForBudgetForecast(task, forecast.criado_em)
+          && execIds.includes(String(task.auvo_task_id))
+          && !osTaskIds.includes(String(task.auvo_task_id));
       });
       const concurrency = 3;
       for (let index = 0; index < candidates.length; index += concurrency) {
