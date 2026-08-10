@@ -76,7 +76,8 @@ export default function AgendarTarefaDialog({ open, onOpenChange, alvo, onSaved 
       : 120;
     setDurationMinutes(dur);
     
-    // Tenta encontrar o colaborador no cache do RH para setar o ID local
+    // Tenta encontrar o colaborador no cache do RH para setar o ID local se for um ID de usuário Auvo
+    // Caso contrário, usa o ID como está (ex: ID UUID do Supabase)
     if (alvo.tecnico_id) {
       const colab = colaboradores.find(c => String(c.auvo_user_id) === String(alvo.tecnico_id));
       setTecnicoId(colab ? colab.id : String(alvo.tecnico_id));
