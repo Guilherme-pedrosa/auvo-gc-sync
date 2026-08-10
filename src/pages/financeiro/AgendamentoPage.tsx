@@ -368,6 +368,12 @@ export default function AgendamentoPage() {
         </div>
 
         <div className="mt-2 flex flex-col gap-2">
+          {i.equipamento && (
+             <div className="flex items-center gap-1.5 rounded border border-amber-200 bg-amber-50 p-1.5 text-[10px] text-amber-800">
+               <Package className="h-3 w-3 shrink-0" />
+               <span className="font-medium truncate">{i.equipamento}</span>
+             </div>
+          )}
           {osJaLancada && (
             <div className="flex items-start gap-2 rounded border border-destructive/40 bg-destructive/10 p-1.5 text-[10px] text-destructive">
               <AlertTriangle className="mt-0.5 h-3 w-3 shrink-0" />
