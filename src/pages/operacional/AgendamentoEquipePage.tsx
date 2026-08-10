@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
-import { useColaboradores } from "@/hooks/rh/useRh";
+import { useColaboradores, useRhClientes } from "@/hooks/rh/useRh";
 import {
   Dialog,
   DialogContent,
