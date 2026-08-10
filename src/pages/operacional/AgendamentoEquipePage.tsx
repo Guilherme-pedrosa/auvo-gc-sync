@@ -122,9 +122,16 @@ const corCliente = (texto: string) => {
   return PALETA[colorIndex];
 };
 
+// Remove a cor de texto da paleta do cliente para não competir com a cor de status
+const semCorTexto = (classe: string) =>
+  classe
+    .split(" ")
+    .filter((c) => !c.startsWith("text-"))
+    .join(" ");
+
 const getStatusColor = (a: AgendaAgendamento) => {
   const finalizado = a.status_auvo === "Finalizada";
-  const emAndamento = a.status_auvo === "Em andamento";
+  const pausada = a.status_auvo === "Pausada";
   
   // Amarelo escuro: Finalizada com pendência (Pendente ou Em negociação)
   if (finalizado && (a.gc_os_situacao?.toUpperCase().includes("PENDENTE") || a.gc_os_situacao?.toUpperCase().includes("NEGOCIAÇÃO"))) {
@@ -159,6 +166,10 @@ const getStatusColor = (a: AgendaAgendamento) => {
     }
     return false;
   };
+
+  if (pausada) {
+    return "text-red-600 dark:text-red-500 font-bold";
+  }
 
   if (a.status_auvo !== "Finalizada" && a.status_auvo !== "Em andamento" && isAtrasado()) {
     return "text-red-600 dark:text-red-500 font-bold";
@@ -283,7 +294,10 @@ function Celula({
                 className={cn(
                   "w-full text-left rounded-sm px-1.5 py-1 text-[11px] font-semibold uppercase leading-tight hover:ring-1 hover:ring-primary/60 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary cursor-grab active:cursor-grabbing border border-transparent",
                   a.previsao_continuidade && "border border-dashed border-primary/50 opacity-80",
-                  colorir && corCliente(a.cliente),
+                  colorir &&
+                    (getStatusColor(a)
+                      ? semCorTexto(corCliente(a.cliente))
+                      : corCliente(a.cliente)),
                   getStatusColor(a)
                 )}
               >
