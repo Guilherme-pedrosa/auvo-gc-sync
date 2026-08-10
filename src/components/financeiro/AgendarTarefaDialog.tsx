@@ -186,11 +186,19 @@ export default function AgendarTarefaDialog({ open, onOpenChange, alvo, onSaved 
           </DialogDescription>
         </DialogHeader>
 
-        {!taskId && (
+        {!taskId ? (
           <div className="flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 p-3 text-[11px] text-amber-800">
             <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
             <span>
-              Esta OS não tem tarefa de execução vinculada. Você pode salvar como <strong>Previsão</strong> para controle interno, mas não poderá agendar no Auvo.
+              Esta OS não tem tarefa de execução vinculada. Você pode salvar como <strong>Previsão</strong> para controle interno na agenda, mas não poderá agendar no Auvo.
+            </span>
+          </div>
+        ) : (
+          <div className="flex items-start gap-2 rounded-md border border-blue-200 bg-blue-50 p-3 text-[11px] text-blue-800">
+            <Eye className="mt-0.5 h-4 w-4 shrink-0 text-blue-600" />
+            <span>
+              Ao clicar em <strong>Apenas Previsão</strong>, o registro será criado apenas na escala semanal interna.
+              Para enviar para o aplicativo do técnico, use <strong>Agendar no Auvo</strong>.
             </span>
           </div>
         )}
