@@ -348,7 +348,10 @@ function CelulaTexto({ valor, onSalvar, onExcluir }: { valor: string; onSalvar: 
         setRascunho(valor);
         setEditando(true);
       }}
-      className="group relative border border-border p-1.5 align-top text-[11px] font-semibold uppercase leading-tight cursor-pointer h-16 min-w-[130px] hover:ring-1 hover:ring-primary/50"
+      className={cn(
+        "group relative border border-border p-1.5 align-top text-[11px] font-semibold uppercase leading-tight cursor-pointer h-16 min-w-[130px] hover:ring-1 hover:ring-primary/50",
+        corCliente(valor)
+      )}
     >
       {valor || <span className="opacity-25 normal-case font-normal">—</span>}
     </td>
