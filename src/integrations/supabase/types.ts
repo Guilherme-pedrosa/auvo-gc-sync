@@ -21,6 +21,9 @@ export type Database = {
           cliente: string
           colaborador_id: string | null
           colaborador_nome: string
+          conversao_erro: string | null
+          conversao_status: string | null
+          conversao_tentada_em: string | null
           contrato_id: string | null
           contrato_visita_competencia: string | null
           contrato_visita_config_id: string | null
@@ -29,6 +32,7 @@ export type Database = {
           criado_por: string | null
           data: string
           descricao: string | null
+          convertida_em: string | null
           gc_orcamento_codigo: string | null
           gc_os_codigo: string | null
           hora_fim: string
@@ -37,6 +41,7 @@ export type Database = {
           origem: string
           previsao_continuidade: boolean | null
           previsao_detalhes: string | null
+          previsao_tipo: string | null
           status: string
           veiculo_id: string | null
         }
@@ -46,6 +51,9 @@ export type Database = {
           cliente: string
           colaborador_id?: string | null
           colaborador_nome: string
+          conversao_erro?: string | null
+          conversao_status?: string | null
+          conversao_tentada_em?: string | null
           contrato_id?: string | null
           contrato_visita_competencia?: string | null
           contrato_visita_config_id?: string | null
@@ -54,6 +62,7 @@ export type Database = {
           criado_por?: string | null
           data: string
           descricao?: string | null
+          convertida_em?: string | null
           gc_orcamento_codigo?: string | null
           gc_os_codigo?: string | null
           hora_fim: string
@@ -62,6 +71,7 @@ export type Database = {
           origem?: string
           previsao_continuidade?: boolean | null
           previsao_detalhes?: string | null
+          previsao_tipo?: string | null
           status?: string
           veiculo_id?: string | null
         }
@@ -71,6 +81,9 @@ export type Database = {
           cliente?: string
           colaborador_id?: string | null
           colaborador_nome?: string
+          conversao_erro?: string | null
+          conversao_status?: string | null
+          conversao_tentada_em?: string | null
           contrato_id?: string | null
           contrato_visita_competencia?: string | null
           contrato_visita_config_id?: string | null
@@ -79,6 +92,7 @@ export type Database = {
           criado_por?: string | null
           data?: string
           descricao?: string | null
+          convertida_em?: string | null
           gc_orcamento_codigo?: string | null
           gc_os_codigo?: string | null
           hora_fim?: string
@@ -87,6 +101,7 @@ export type Database = {
           origem?: string
           previsao_continuidade?: boolean | null
           previsao_detalhes?: string | null
+          previsao_tipo?: string | null
           status?: string
           veiculo_id?: string | null
         }

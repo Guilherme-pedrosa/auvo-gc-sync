@@ -36,7 +36,12 @@ export interface AgendaAgendamento {
   contrato_visita_competencia?: string | null;
   contrato_visita_numero?: number | null;
   previsao_continuidade?: boolean;
+  previsao_tipo?: string | null;
   previsao_detalhes?: string | null;
+  conversao_status?: string | null;
+  conversao_erro?: string | null;
+  conversao_tentada_em?: string | null;
+  convertida_em?: string | null;
 }
 
 export function useAgendaVeiculos() {

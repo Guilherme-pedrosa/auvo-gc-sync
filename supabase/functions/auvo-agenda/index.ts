@@ -14,6 +14,7 @@ const GC_BASE_URL = "https://api.gestaoclick.com";
 const GC_ATRIBUTO_TAREFA_OS = "73343";
 const GC_ATRIBUTO_TAREFA_EXEC = "73344";
 const GC_ATRIBUTO_TAREFA_ORC = "73341";
+const GC_ATRIBUTO_NUMERO_ORC = "81831";
 
 function timeToMinutes(value: string): number {
   const match = String(value || "").match(/^(\d{1,2}):(\d{2})/);
@@ -98,10 +99,33 @@ async function fetchGcOsMap(
       const atributos: any[] = os.atributos || [];
       const osData = {
         gc_os_codigo: String(os.codigo || ""),
+        gc_os_orcamento_codigo: "" as string,
+        gc_os_tarefa_exec: "" as string,
         gc_os_situacao: String(os.nome_situacao || ""),
         gc_os_valor_total: parseFloat(os.valor_total || "0"),
         gc_os_link: `https://gestaoclick.com/ordens_servicos/editar/${os.id}?retorno=%2Fordens_servicos`,
       };
+
+      const budgetAttr = atributos.find((a: any) => {
+        const nested = a?.atributo || a;
+        return String(nested.atributo_id || nested.id || "") === GC_ATRIBUTO_NUMERO_ORC;
+      });
+      if (budgetAttr) {
+        const nested = budgetAttr?.atributo || budgetAttr;
+        osData.gc_os_orcamento_codigo = String(nested?.conteudo || nested?.valor || "").replace(/\D/g, "");
+      }
+
+      const execAttr = atributos.find((a: any) => {
+        const nested = a?.atributo || a;
+        return String(nested.atributo_id || nested.id || "") === GC_ATRIBUTO_TAREFA_EXEC;
+      });
+      if (execAttr) {
+        const nested = execAttr?.atributo || execAttr;
+        osData.gc_os_tarefa_exec = String(nested?.conteudo || nested?.valor || "")
+          .split(/\D+/)
+          .filter((taskId) => taskId.length >= 4)
+          .join("/");
+      }
 
       // Check both attributes: 73343 (tarefa OS) and 73344 (tarefa execução)
       for (const attrId of [GC_ATRIBUTO_TAREFA_OS, GC_ATRIBUTO_TAREFA_EXEC]) {
@@ -111,8 +135,10 @@ async function fetchGcOsMap(
         });
         if (attr) {
           const nested = attr?.atributo || attr;
-          const taskId = String(nested?.conteudo || nested?.valor || "").trim();
-          if (taskId && /^\d+$/.test(taskId)) {
+          const taskIds = String(nested?.conteudo || nested?.valor || "")
+            .split(/\D+/)
+            .filter((taskId) => taskId.length >= 4);
+          for (const taskId of taskIds) {
             map.set(taskId, osData);
           }
         }
@@ -294,12 +320,14 @@ Deno.serve(async (req) => {
     const localDocumentMap = new Map<string, { gc_os_codigo: string | null; gc_orcamento_codigo: string | null }>();
     const backendUrl = Deno.env.get("SUPABASE_URL");
     const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+    const backend = backendUrl && serviceRoleKey
+      ? createClient(backendUrl, serviceRoleKey, { auth: { persistSession: false } })
+      : null;
     const taskIds = allTasks
       .map((task: any) => String(task.taskID || task.taskId || task.id || "").trim())
       .filter(Boolean);
 
-    if (backendUrl && serviceRoleKey && taskIds.length > 0) {
-      const backend = createClient(backendUrl, serviceRoleKey);
+    if (backend && taskIds.length > 0) {
       for (let index = 0; index < taskIds.length; index += 500) {
         const batch = taskIds.slice(index, index + 500);
         const { data: localRows, error: localError } = await backend
@@ -445,9 +473,12 @@ Deno.serve(async (req) => {
         gc_os_situacao: os?.gc_os_situacao ?? null,
         gc_os_valor_total: os?.gc_os_valor_total ?? null,
         gc_os_link: os?.gc_os_link ?? null,
-        gc_orcamento_codigo: localDocument?.gc_os_codigo
-          ? null
-          : (localDocument?.gc_orcamento_codigo ?? orc?.gc_orcamento_codigo ?? null),
+        gc_os_tarefa_exec: os?.gc_os_tarefa_exec ?? null,
+        // O orçamento continua sendo a chave histórica mesmo depois que a OS existe.
+        gc_orcamento_codigo: localDocument?.gc_orcamento_codigo
+          ?? os?.gc_os_orcamento_codigo
+          ?? orc?.gc_orcamento_codigo
+          ?? null,
         gc_orc_situacao: orc?.gc_orc_situacao ?? null,
         gc_orc_valor_total: orc?.gc_orc_valor_total ?? null,
         gc_orc_link: orc?.gc_orc_link ?? null,
@@ -455,8 +486,65 @@ Deno.serve(async (req) => {
       };
     });
 
+    const promotionResults: any[] = [];
+    if (backend) {
+      const { data: activeForecasts, error: forecastReadError } = await backend
+        .from("agenda_agendamentos")
+        .select("gc_orcamento_codigo")
+        .eq("previsao_tipo", "ORCAMENTO_EXECUCAO")
+        .eq("previsao_continuidade", true)
+        .or("conversao_status.is.null,conversao_status.neq.BLOQUEADA")
+        .is("auvo_task_id", null);
+      if (forecastReadError) {
+        console.warn(`[auvo-agenda] falha ao consultar previsões pendentes: ${forecastReadError.message}`);
+      }
+      const pendingBudgetCodes = new Set(
+        (activeForecasts || []).map((forecast: any) => String(forecast.gc_orcamento_codigo || "").replace(/\D/g, "")),
+      );
+      const candidates = enriched.filter((task: any) => {
+        const execIds = String(task.gc_os_tarefa_exec || "").split(/\D+/).filter(Boolean);
+        return task.auvo_task_id
+          && task.gc_os_codigo
+          && task.gc_orcamento_codigo
+          && pendingBudgetCodes.has(String(task.gc_orcamento_codigo).replace(/\D/g, ""))
+          && execIds.includes(String(task.auvo_task_id));
+      });
+      const concurrency = 3;
+      for (let index = 0; index < candidates.length; index += concurrency) {
+        const batch = candidates.slice(index, index + concurrency);
+        const results = await Promise.all(batch.map(async (task: any) => {
+          const { data, error } = await backend.functions.invoke("auvo-task-update", {
+            body: {
+              action: "promote-budget-forecast",
+              gcOrcamentoCodigo: task.gc_orcamento_codigo,
+              gcOsCodigo: task.gc_os_codigo,
+              execTaskId: task.auvo_task_id,
+            },
+          });
+          return { task, data, error };
+        }));
+        for (const result of results) {
+          promotionResults.push({
+            taskId: result.task.auvo_task_id,
+            promoted: !!result.data?.promoted,
+            alreadyPromoted: !!result.data?.alreadyPromoted,
+            reason: result.error?.message || result.data?.reason || null,
+          });
+          const agenda = result.data?.agenda;
+          if ((result.data?.promoted || result.data?.alreadyPromoted) && agenda) {
+            result.task.data_tarefa = agenda.data;
+            result.task.hora_inicio = String(agenda.hora_inicio || "").slice(0, 5);
+            result.task.hora_fim = String(agenda.hora_fim || "").slice(0, 5);
+            result.task.tecnico = agenda.colaborador_nome;
+            result.task.gc_os_codigo = agenda.gc_os_codigo;
+            result.task.gc_orcamento_codigo = agenda.gc_orcamento_codigo;
+          }
+        }
+      }
+    }
+
     return new Response(
-      JSON.stringify({ data: enriched, total: enriched.length }),
+      JSON.stringify({ data: enriched, total: enriched.length, forecast_promotions: promotionResults }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   } catch (error) {

@@ -7,6 +7,16 @@ import {
   normalizeRequestedDurationMinutes,
   parseAuvoDurationMinutes,
 } from "../_shared/auvo-duration.ts";
+import {
+  BUDGET_EXECUTION_FORECAST,
+  auvoTaskHasStarted,
+  forecastDurationMinutes,
+  normalizeClock,
+  normalizeGcDocumentCode,
+  taskAssignedUserId,
+  taskStartMinuteKey,
+  taskTypeId,
+} from "../_shared/agenda-forecast-promotion.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -254,6 +264,193 @@ function getAdminClient() {
   return createClient(supabaseUrl, serviceRoleKey, { auth: { persistSession: false } });
 }
 
+async function markForecastConversion(
+  admin: ReturnType<typeof createClient>,
+  forecastId: string,
+  status: string,
+  error: string | null,
+  osCode?: string | null,
+) {
+  const patch: Record<string, unknown> = {
+    conversao_status: status,
+    conversao_erro: error,
+    conversao_tentada_em: new Date().toISOString(),
+    atualizado_em: new Date().toISOString(),
+  };
+  if (osCode) patch.gc_os_codigo = osCode;
+  const { error: updateError } = await admin
+    .from("agenda_agendamentos")
+    .update(patch)
+    .eq("id", forecastId);
+  if (updateError) {
+    console.error(`[auvo-task-update] falha ao registrar conversão ${forecastId}: ${updateError.message}`);
+  }
+}
+
+async function promoteBudgetForecast(
+  admin: ReturnType<typeof createClient>,
+  headers: Record<string, string>,
+  body: any,
+  reqId: string,
+) {
+  const budgetCode = normalizeGcDocumentCode(body?.gcOrcamentoCodigo ?? body?.gc_orcamento_codigo);
+  const osCode = normalizeGcDocumentCode(body?.gcOsCodigo ?? body?.gc_os_codigo);
+  const execTaskId = normalizeGcDocumentCode(body?.execTaskId ?? body?.auvo_task_id);
+  if (!budgetCode || !osCode || !execTaskId) {
+    return { success: false, promoted: false, reason: "invalid_link", error: "Orçamento, OS e tarefa de execução são obrigatórios" };
+  }
+
+  const { data: forecast, error: forecastError } = await admin
+    .from("agenda_agendamentos")
+    .select("*")
+    .eq("gc_orcamento_codigo", budgetCode)
+    .eq("previsao_tipo", BUDGET_EXECUTION_FORECAST)
+    .maybeSingle();
+  if (forecastError) throw forecastError;
+  if (!forecast) {
+    return { success: true, promoted: false, reason: "no_forecast", budgetCode, osCode, execTaskId };
+  }
+
+  if (!forecast.previsao_continuidade) {
+    const sameTask = normalizeGcDocumentCode(forecast.auvo_task_id) === execTaskId;
+    return {
+      success: sameTask,
+      promoted: false,
+      alreadyPromoted: sameTask,
+      reason: sameTask ? "already_promoted" : "forecast_already_converted",
+      agenda: forecast,
+    };
+  }
+
+  await markForecastConversion(admin, forecast.id, "PROCESSANDO", null, osCode);
+
+  try {
+    const startTime = normalizeClock(forecast.hora_inicio);
+    const durationMinutes = forecastDurationMinutes(forecast.hora_inicio, forecast.hora_fim);
+    if (!startTime || durationMinutes < 15) {
+      throw new Error("A previsão não possui horário/duração válidos");
+    }
+    if (!forecast.colaborador_id) {
+      throw new Error("A previsão não possui técnico do RH");
+    }
+
+    const { data: collaborator, error: collaboratorError } = await admin
+      .from("rh_colaboradores")
+      .select("id,nome,auvo_user_id")
+      .eq("id", forecast.colaborador_id)
+      .maybeSingle();
+    if (collaboratorError) throw collaboratorError;
+    const auvoUserId = Number(collaborator?.auvo_user_id);
+    if (!collaborator || !Number.isFinite(auvoUserId) || auvoUserId <= 0) {
+      await markForecastConversion(
+        admin,
+        forecast.id,
+        "BLOQUEADA",
+        "O técnico previsto não possui usuário Auvo vinculado no RH",
+        osCode,
+      );
+      return { success: false, promoted: false, reason: "technician_not_linked", forecastId: forecast.id };
+    }
+
+    const numericTaskId = Number(execTaskId);
+    const currentTask = await fetchTaskById(numericTaskId, headers);
+    if (auvoTaskHasStarted(currentTask)) {
+      await markForecastConversion(
+        admin,
+        forecast.id,
+        "BLOQUEADA",
+        `A tarefa Auvo ${execTaskId} já foi iniciada ou finalizada`,
+        osCode,
+      );
+      return { success: false, promoted: false, reason: "task_started", forecastId: forecast.id, execTaskId };
+    }
+
+    const currentTaskTypeId = taskTypeId(currentTask);
+    if (!currentTaskTypeId) throw new Error(`Tarefa ${execTaskId} não devolveu um tipo de tarefa válido`);
+    const durationResolution = await ensureTaskTypeDuration(
+      currentTaskTypeId,
+      durationMinutes,
+      headers,
+      reqId,
+    );
+
+    const desiredStart = `${forecast.data}T${startTime}:00`;
+    const patches: Array<{ op: string; path: string; value: unknown }> = [];
+    if (taskStartMinuteKey(currentTask) !== desiredStart.slice(0, 16)) {
+      patches.push({ op: "replace", path: "/taskDate", value: desiredStart });
+    }
+    if (taskAssignedUserId(currentTask) !== auvoUserId) {
+      patches.push({ op: "replace", path: "/idUserTo", value: auvoUserId });
+    }
+    if (taskTypeId(currentTask) !== durationResolution.id) {
+      patches.push({ op: "replace", path: "/taskType", value: durationResolution.id });
+    }
+
+    if (patches.length) {
+      const response = await patchWithRetry(`${AUVO_BASE_URL}/tasks/${numericTaskId}`, {
+        method: "PATCH",
+        headers,
+        body: JSON.stringify(patches),
+      }, reqId);
+      const raw = await response.text();
+      if (!response.ok) {
+        throw new Error(`Auvo recusou o agendamento (${response.status}): ${raw.substring(0, 400)}`);
+      }
+    }
+
+    const verifiedTask = await fetchTaskById(numericTaskId, headers);
+    const verifiedStart = taskStartMinuteKey(verifiedTask) === desiredStart.slice(0, 16);
+    const verifiedUser = taskAssignedUserId(verifiedTask) === auvoUserId;
+    const verifiedType = taskTypeId(verifiedTask) === durationResolution.id;
+    if (!verifiedStart || !verifiedUser || !verifiedType) {
+      throw new Error(
+        `Auvo não confirmou o planejamento completo (data=${verifiedStart}, técnico=${verifiedUser}, duração=${verifiedType})`,
+      );
+    }
+
+    const { data: promoted, error: promotionError } = await admin.rpc("promover_previsao_orcamento", {
+      p_previsao_id: forecast.id,
+      p_orcamento_codigo: budgetCode,
+      p_os_codigo: osCode,
+      p_auvo_task_id: execTaskId,
+    });
+    if (promotionError) throw promotionError;
+
+    const promotedRow = Array.isArray(promoted) ? promoted[0] : promoted;
+    await admin
+      .from("tarefas_central")
+      .update({
+        gc_os_codigo: osCode,
+        gc_orcamento_codigo: budgetCode,
+        data_tarefa: forecast.data,
+        hora_inicio: `${startTime}:00`,
+        hora_fim: forecast.hora_fim,
+        duracao_decimal: durationMinutes / 60,
+        tecnico_id: String(auvoUserId),
+        tecnico: collaborator.nome,
+        atualizado_em: new Date().toISOString(),
+      })
+      .eq("auvo_task_id", execTaskId);
+
+    console.log(`[auvo-task-update][reqId=${reqId}] previsão ${forecast.id} promovida: ORC ${budgetCode} -> OS ${osCode} -> tarefa ${execTaskId}`);
+    return {
+      success: true,
+      promoted: true,
+      forecastId: forecast.id,
+      budgetCode,
+      osCode,
+      execTaskId,
+      patches,
+      agenda: promotedRow,
+    };
+  } catch (error) {
+    const message = (error as Error).message || String(error);
+    await markForecastConversion(admin, forecast.id, "ERRO", message, osCode);
+    console.error(`[auvo-task-update][reqId=${reqId}] falha ao promover previsão ${forecast.id}: ${message}`);
+    return { success: false, promoted: false, reason: "promotion_failed", error: message, forecastId: forecast.id };
+  }
+}
+
 function hasOwn(obj: any, key: string): boolean {
   return Object.prototype.hasOwnProperty.call(obj, key);
 }
@@ -426,6 +623,14 @@ Deno.serve(async (req) => {
     // Login to Auvo
     const bearerToken = await auvoLogin(apiKey, apiToken);
     const headers = { Authorization: `Bearer ${bearerToken}`, "Content-Type": "application/json" };
+
+    if (action === "promote-budget-forecast") {
+      const result = await promoteBudgetForecast(getAdminClient(), headers, body, reqId);
+      return new Response(JSON.stringify({ ...result, status: 200, reqId }), {
+        status: 200,
+        headers: respHeaders,
+      });
+    }
 
     if (action === "edit") {
       // Edit task using JSONPatch
@@ -1162,7 +1367,7 @@ Deno.serve(async (req) => {
     }
 
     return new Response(
-      JSON.stringify({ error: `action inválida: ${action}. Use: edit, edit-schedule, set-task-duration, upsert, get, get-equipment, list-users, list-task-types, list-questionnaires, list-customers, list-customer-equipments, create-task, create-preventive-task, persist-central` }),
+      JSON.stringify({ error: `action inválida: ${action}. Use: edit, edit-schedule, set-task-duration, promote-budget-forecast, upsert, get, get-equipment, list-users, list-task-types, list-questionnaires, list-customers, list-customer-equipments, create-task, create-preventive-task, persist-central` }),
       { status: 400, headers: respHeaders }
     );
   } catch (error) {

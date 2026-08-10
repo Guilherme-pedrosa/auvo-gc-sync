@@ -3,6 +3,10 @@ installGcUsuarioId();
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { resolveQuestionnaireData } from "./questionnaire-normalizer.ts";
+import {
+  BUDGET_EXECUTION_FORECAST,
+  normalizeGcDocumentCode,
+} from "../_shared/agenda-forecast-promotion.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -972,6 +976,150 @@ async function upsertGcOsShellRows(
   return upserted;
 }
 
+type ForecastPromotionSummary = {
+  forecasts: number;
+  promoted: number;
+  alreadyPromoted: number;
+  waitingOs: number;
+  waitingTask: number;
+  blocked: number;
+  errors: number;
+};
+
+async function reconcileBudgetExecutionForecasts(
+  sbClient: ReturnType<typeof createClient>,
+  gcOsResult: { byCodigo: Record<string, any> },
+): Promise<ForecastPromotionSummary> {
+  const summary: ForecastPromotionSummary = {
+    forecasts: 0,
+    promoted: 0,
+    alreadyPromoted: 0,
+    waitingOs: 0,
+    waitingTask: 0,
+    blocked: 0,
+    errors: 0,
+  };
+  const { data: forecasts, error } = await sbClient
+    .from("agenda_agendamentos")
+    .select("id,gc_orcamento_codigo")
+    .eq("previsao_tipo", BUDGET_EXECUTION_FORECAST)
+    .eq("previsao_continuidade", true)
+    .or("conversao_status.is.null,conversao_status.neq.BLOQUEADA")
+    .is("auvo_task_id", null);
+  if (error) {
+    console.warn(`[central-sync] previsão orçamento: consulta indisponível: ${error.message}`);
+    summary.errors += 1;
+    return summary;
+  }
+  summary.forecasts = forecasts?.length || 0;
+  if (!forecasts?.length) return summary;
+
+  const osByBudget = new Map<string, any[]>();
+  for (const os of Object.values(gcOsResult.byCodigo || {})) {
+    const budgetCode = normalizeGcDocumentCode((os as any)?.gc_os_orcamento_codigo);
+    if (!budgetCode || !(os as any)?.gc_os_codigo) continue;
+    const rows = osByBudget.get(budgetCode) || [];
+    if (!rows.some((row) => String(row.gc_os_id) === String((os as any).gc_os_id))) rows.push(os);
+    osByBudget.set(budgetCode, rows);
+  }
+
+  const mark = async (id: string, patch: Record<string, unknown>) => {
+    const { error: updateError } = await sbClient
+      .from("agenda_agendamentos")
+      .update({
+        ...patch,
+        conversao_tentada_em: new Date().toISOString(),
+        atualizado_em: new Date().toISOString(),
+      })
+      .eq("id", id);
+    if (updateError) {
+      summary.errors += 1;
+      console.warn(`[central-sync] previsão ${id}: falha ao atualizar estado: ${updateError.message}`);
+    }
+  };
+
+  const candidates: Array<{ forecastId: string; budgetCode: string; osCode: string; execTaskId: string }> = [];
+  for (const forecast of forecasts) {
+    const budgetCode = normalizeGcDocumentCode(forecast.gc_orcamento_codigo);
+    const osMatches = osByBudget.get(budgetCode) || [];
+    if (osMatches.length === 0) {
+      summary.waitingOs += 1;
+      await mark(forecast.id, { conversao_status: "AGUARDANDO_OS", conversao_erro: null });
+      continue;
+    }
+    if (osMatches.length > 1) {
+      summary.blocked += 1;
+      await mark(forecast.id, {
+        conversao_status: "BLOQUEADA",
+        conversao_erro: `Mais de uma OS está vinculada ao orçamento ${budgetCode}: ${osMatches.map((os) => os.gc_os_codigo).join(", ")}`,
+      });
+      continue;
+    }
+
+    const os = osMatches[0];
+    const osCode = normalizeGcDocumentCode(os.gc_os_codigo);
+    const osTaskIds = String(os.gc_os_tarefa_os || "").split(/\D+/).filter((id) => id.length >= 4);
+    const execTaskIds = [...new Set(String(os.gc_os_tarefa_exec || "").split(/\D+/).filter((id) => id.length >= 4))];
+    if (execTaskIds.length === 0) {
+      summary.waitingTask += 1;
+      await mark(forecast.id, {
+        gc_os_codigo: osCode,
+        conversao_status: "AGUARDANDO_TAREFA",
+        conversao_erro: null,
+      });
+      continue;
+    }
+    if (execTaskIds.length > 1 || osTaskIds.includes(execTaskIds[0])) {
+      summary.blocked += 1;
+      await mark(forecast.id, {
+        gc_os_codigo: osCode,
+        conversao_status: "BLOQUEADA",
+        conversao_erro: execTaskIds.length > 1
+          ? `A OS ${osCode} possui mais de uma tarefa de execução: ${execTaskIds.join(", ")}`
+          : `A tarefa de execução ${execTaskIds[0]} é igual à Tarefa OS`,
+      });
+      continue;
+    }
+    candidates.push({ forecastId: forecast.id, budgetCode, osCode, execTaskId: execTaskIds[0] });
+  }
+
+  const concurrency = 3;
+  for (let index = 0; index < candidates.length; index += concurrency) {
+    const batch = candidates.slice(index, index + concurrency);
+    const results = await Promise.all(batch.map(async (candidate) => {
+      const { data, error: invokeError } = await sbClient.functions.invoke("auvo-task-update", {
+        body: {
+          action: "promote-budget-forecast",
+          gcOrcamentoCodigo: candidate.budgetCode,
+          gcOsCodigo: candidate.osCode,
+          execTaskId: candidate.execTaskId,
+        },
+      });
+      return { candidate, data, invokeError };
+    }));
+    for (const result of results) {
+      if (result.invokeError) {
+        summary.errors += 1;
+        await mark(result.candidate.forecastId, {
+          gc_os_codigo: result.candidate.osCode,
+          conversao_status: "ERRO",
+          conversao_erro: result.invokeError.message,
+        });
+      } else if (result.data?.promoted) {
+        summary.promoted += 1;
+      } else if (result.data?.alreadyPromoted) {
+        summary.alreadyPromoted += 1;
+      } else if (result.data?.reason === "task_started" || result.data?.reason === "technician_not_linked") {
+        summary.blocked += 1;
+      } else if (result.data?.reason !== "no_forecast") {
+        summary.errors += 1;
+      }
+    }
+  }
+  console.log(`[central-sync] promoção de previsões: ${JSON.stringify(summary)}`);
+  return summary;
+}
+
 
 type CentralSyncBody = {
   start_date?: unknown;
@@ -1919,6 +2067,15 @@ async function runCentralSync(body: CentralSyncBody = {}) {
     const gcOsByExecTaskId = gcOsResult.byExecTaskId || {};
     const gcOsByCodigo = gcOsResult.byCodigo;
     const gcOsByOrcNumero = gcOsResult.byOrcNumero;
+    let forecastPromotionSummary: ForecastPromotionSummary = {
+      forecasts: 0,
+      promoted: 0,
+      alreadyPromoted: 0,
+      waitingOs: 0,
+      waitingTask: 0,
+      blocked: 0,
+      errors: 0,
+    };
 
     console.log(`[central-sync] GC carregado: Orç: ${Object.keys(gcOrcMap).length}, OS: ${Object.keys(gcOsMap).length}`);
 
@@ -2195,6 +2352,13 @@ async function runCentralSync(body: CentralSyncBody = {}) {
       if (lateLinkExec > 0) {
         console.log(`[central-sync] Late linkage (TAREFA EXECUÇÃO/73344 fallback): ${lateLinkExec} OS vinculadas`);
       }
+    }
+
+    // O sync completo é a fonte automática da transição previsão -> tarefa real.
+    // O modo rápido de situações não entra aqui para continuar leve e não disputar
+    // cota da API Auvo a cada 15 minutos.
+    if (!isGcSolicitadasOnly) {
+      forecastPromotionSummary = await reconcileBudgetExecutionForecasts(sbClient, gcOsResult);
     }
 
     // ── PRIORITY: Global OS/ORC status refresh (runs FIRST, before heavy Auvo processing) ──
@@ -3175,6 +3339,7 @@ async function runCentralSync(body: CentralSyncBody = {}) {
       errors,
       deleted: deleted || 0,
       ghosts_deleted: ghostsDeleted,
+      previsoes_orcamento: forecastPromotionSummary,
     };
 
 }
