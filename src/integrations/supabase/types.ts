@@ -21,18 +21,18 @@ export type Database = {
           cliente: string
           colaborador_id: string | null
           colaborador_nome: string
-          conversao_erro: string | null
-          conversao_status: string | null
-          conversao_tentada_em: string | null
           contrato_id: string | null
           contrato_visita_competencia: string | null
           contrato_visita_config_id: string | null
           contrato_visita_numero: number | null
+          conversao_erro: string | null
+          conversao_status: string | null
+          conversao_tentada_em: string | null
+          convertida_em: string | null
           criado_em: string
           criado_por: string | null
           data: string
           descricao: string | null
-          convertida_em: string | null
           gc_orcamento_codigo: string | null
           gc_os_codigo: string | null
           hora_fim: string
@@ -51,18 +51,18 @@ export type Database = {
           cliente: string
           colaborador_id?: string | null
           colaborador_nome: string
-          conversao_erro?: string | null
-          conversao_status?: string | null
-          conversao_tentada_em?: string | null
           contrato_id?: string | null
           contrato_visita_competencia?: string | null
           contrato_visita_config_id?: string | null
           contrato_visita_numero?: number | null
+          conversao_erro?: string | null
+          conversao_status?: string | null
+          conversao_tentada_em?: string | null
+          convertida_em?: string | null
           criado_em?: string
           criado_por?: string | null
           data: string
           descricao?: string | null
-          convertida_em?: string | null
           gc_orcamento_codigo?: string | null
           gc_os_codigo?: string | null
           hora_fim: string
@@ -81,18 +81,18 @@ export type Database = {
           cliente?: string
           colaborador_id?: string | null
           colaborador_nome?: string
-          conversao_erro?: string | null
-          conversao_status?: string | null
-          conversao_tentada_em?: string | null
           contrato_id?: string | null
           contrato_visita_competencia?: string | null
           contrato_visita_config_id?: string | null
           contrato_visita_numero?: number | null
+          conversao_erro?: string | null
+          conversao_status?: string | null
+          conversao_tentada_em?: string | null
+          convertida_em?: string | null
           criado_em?: string
           criado_por?: string | null
           data?: string
           descricao?: string | null
-          convertida_em?: string | null
           gc_orcamento_codigo?: string | null
           gc_os_codigo?: string | null
           hora_fim?: string
@@ -106,20 +106,6 @@ export type Database = {
           veiculo_id?: string | null
         }
         Relationships: [
-          {
-            foreignKeyName: "agenda_agendamentos_contrato_id_fkey"
-            columns: ["contrato_id"]
-            isOneToOne: false
-            referencedRelation: "contratos"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "agenda_agendamentos_contrato_visita_config_id_fkey"
-            columns: ["contrato_visita_config_id"]
-            isOneToOne: false
-            referencedRelation: "contratos_visitas_config"
-            referencedColumns: ["id"]
-          },
           {
             foreignKeyName: "agenda_agendamentos_colaborador_id_fkey"
             columns: ["colaborador_id"]
@@ -626,7 +612,7 @@ export type Database = {
           contrato_id: string
           criado_em: string
           criado_por: string | null
-          dias_semana: number[]
+          dias_semana: number[] | null
           duracao_minutos: number
           hora_inicio: string
           id: string
@@ -636,7 +622,7 @@ export type Database = {
           qtd_tecnicos: number
           qtd_visitas: number
           semanas_mes: number[]
-          tecnico_ids: string[]
+          tecnico_ids: string[] | null
         }
         Insert: {
           ativo?: boolean
@@ -644,7 +630,7 @@ export type Database = {
           contrato_id: string
           criado_em?: string
           criado_por?: string | null
-          dias_semana?: number[]
+          dias_semana?: number[] | null
           duracao_minutos?: number
           hora_inicio?: string
           id?: string
@@ -654,7 +640,7 @@ export type Database = {
           qtd_tecnicos?: number
           qtd_visitas?: number
           semanas_mes?: number[]
-          tecnico_ids?: string[]
+          tecnico_ids?: string[] | null
         }
         Update: {
           ativo?: boolean
@@ -662,7 +648,7 @@ export type Database = {
           contrato_id?: string
           criado_em?: string
           criado_por?: string | null
-          dias_semana?: number[]
+          dias_semana?: number[] | null
           duracao_minutos?: number
           hora_inicio?: string
           id?: string
@@ -672,17 +658,9 @@ export type Database = {
           qtd_tecnicos?: number
           qtd_visitas?: number
           semanas_mes?: number[]
-          tecnico_ids?: string[]
+          tecnico_ids?: string[] | null
         }
-        Relationships: [
-          {
-            foreignKeyName: "contratos_visitas_config_contrato_id_fkey"
-            columns: ["contrato_id"]
-            isOneToOne: true
-            referencedRelation: "contratos"
-            referencedColumns: ["id"]
-          },
-        ]
+        Relationships: []
       }
       demerito_lancamentos: {
         Row: {
@@ -3209,6 +3187,16 @@ export type Database = {
           _user_id: string
         }
         Returns: boolean
+      }
+      reconciliar_previsoes_visitas_contratuais: {
+        Args: {
+          p_ano: number
+          p_config_id: string
+          p_data_corte: string
+          p_duracao_minutos: number
+          p_linhas: Json
+        }
+        Returns: number
       }
       reopen_budget_kanban_item: {
         Args: {
