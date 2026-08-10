@@ -12,7 +12,7 @@ import { cn } from "@/lib/utils";
 import { useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
-import { CalendarClock, Loader2 } from "lucide-react";
+import { AlertTriangle, CalendarClock, ExternalLink, Loader2 } from "lucide-react";
 import {
   Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog";
@@ -260,18 +260,43 @@ export default function AgendarTarefaDialog({ open, onOpenChange, alvo, onSaved 
           </DialogDescription>
         </DialogHeader>
 
-        <div className="rounded-md border border-blue-200 bg-blue-50 p-3 text-[11px] text-blue-800">
-          Esta ação cria somente uma previsão interna no Agendamento Equipe. Nenhuma tarefa será criada ou alterada no Auvo ou no GestãoClick.
-        </div>
-
-        {alvo?.aviso_estoque && (
-          <div className="rounded-md border border-amber-300 bg-amber-50 p-3 text-[11px] text-amber-900">
-            <strong>Previsão condicionada à chegada das peças.</strong> {alvo.aviso_estoque}
-            {alvo.data_minima
-              ? ` A execução pode ser prevista para ${format(parseISO(alvo.data_minima.slice(0, 10)), "dd/MM/yyyy")} ou depois.`
-              : " Como a reposição ainda não tem data, confirme a previsão quando a compra ganhar uma data de chegada."}
+        <div className="space-y-2">
+          <div className="rounded-md border border-blue-200 bg-blue-50 p-3 text-[11px] text-blue-800">
+            Esta ação cria somente uma previsão interna no Agendamento Equipe. Nenhuma tarefa será criada ou alterada no Auvo ou no GestãoClick.
           </div>
-        )}
+
+          {(alvo?.gc_orcamento_codigo || alvo?.aviso_estoque) && (
+            <div className="rounded-md border border-slate-200 bg-slate-50 p-3 text-[10px] space-y-2">
+              <div className="flex flex-col gap-1 text-slate-700">
+                {alvo?.gc_orcamento_codigo && (
+                  <div className="flex items-center justify-between border-b border-slate-200 pb-1.5 mb-0.5">
+                    <span className="font-semibold text-slate-900">Orçamento {alvo.gc_orcamento_codigo}</span>
+                    <a 
+                      href={`https://gestaoclick.com/v2/api/orcamentos/editar/${alvo.gc_orcamento_codigo}`} 
+                      target="_blank" 
+                      rel="noreferrer"
+                      className="text-blue-600 hover:underline flex items-center gap-1 font-medium"
+                    >
+                      Ver no GC <ExternalLink className="h-2.5 w-2.5" />
+                    </a>
+                  </div>
+                )}
+                
+                {alvo?.aviso_estoque && (
+                  <div className="flex items-start gap-1.5 text-amber-900 bg-amber-100/50 p-1.5 rounded border border-amber-200">
+                    <AlertTriangle className="h-3 w-3 mt-0.5 shrink-0" />
+                    <div>
+                      <strong>Atenção:</strong> {alvo.aviso_estoque}
+                      {alvo.data_minima && (
+                        <p className="mt-0.5">Execução permitida a partir de {format(parseISO(alvo.data_minima.slice(0, 10)), "dd/MM/yyyy")}.</p>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
 
         <div className="mt-2 space-y-3">
           <div>
