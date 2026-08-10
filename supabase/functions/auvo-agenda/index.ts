@@ -224,6 +224,10 @@ Deno.serve(async (req) => {
 
     const body = await req.json();
     const { startDate, endDate } = body;
+    // O Agendamento Equipe precisa somente das tarefas e dos vínculos já
+    // consolidados pelo Controle OS. Nesse modo, não bloqueamos a tela com uma
+    // nova varredura de 18 meses no GestãoClick nem com snapshots individuais.
+    const fastMode = body.fast === true;
 
     if (!startDate || !endDate) {
       return new Response(
@@ -237,7 +241,7 @@ Deno.serve(async (req) => {
 
     // Fetch users for name resolution
     const usersMap = new Map<string, string>();
-    {
+    if (!fastMode) {
       let page = 1;
       const MAX = 10;
       while (page <= MAX) {
@@ -262,7 +266,7 @@ Deno.serve(async (req) => {
       "secret-access-token": gcSecretToken,
       "Content-Type": "application/json",
     } : {};
-    const hasGc = !!gcAccessToken && !!gcSecretToken;
+    const hasGc = !fastMode && !!gcAccessToken && !!gcSecretToken;
 
     const fetchTasks = async () => {
       const allTasks: any[] = [];
@@ -317,24 +321,33 @@ Deno.serve(async (req) => {
 
     // A mesma fonte do Controle OS é a autoridade para o vínculo tarefa → OS principal.
     // O documento pode ser antigo e não aparecer na janela consultada na API do GC.
-    const localDocumentMap = new Map<string, { gc_os_codigo: string | null; gc_orcamento_codigo: string | null }>();
+    const localDocumentMap = new Map<string, {
+      gc_os_codigo: string | null;
+      gc_orcamento_codigo: string | null;
+      gc_os_tarefa_exec: string | null;
+      gc_os_situacao: string | null;
+      gc_os_valor_total: number | null;
+      gc_os_link: string | null;
+      gc_orc_situacao: string | null;
+      gc_orc_valor_total: number | null;
+      gc_orc_link: string | null;
+    }>();
     const backendUrl = Deno.env.get("SUPABASE_URL");
     const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
     const backend = backendUrl && serviceRoleKey
       ? createClient(backendUrl, serviceRoleKey, { auth: { persistSession: false } })
       : null;
-    const taskIds = allTasks
+    const taskIds = [...new Set(allTasks
       .map((task: any) => String(task.taskID || task.taskId || task.id || "").trim())
-      .filter(Boolean);
+      .filter(Boolean))];
 
     if (backend && taskIds.length > 0) {
       for (let index = 0; index < taskIds.length; index += 500) {
         const batch = taskIds.slice(index, index + 500);
         const { data: localRows, error: localError } = await backend
           .from("tarefas_central")
-          .select("auvo_task_id,gc_os_codigo,gc_orcamento_codigo")
-          .in("auvo_task_id", batch)
-          .not("gc_os_codigo", "is", null);
+          .select("auvo_task_id,gc_os_codigo,gc_orcamento_codigo,gc_os_tarefa_exec,gc_os_situacao,gc_os_valor_total,gc_os_link,gc_orc_situacao,gc_orc_valor_total,gc_orc_link")
+          .in("auvo_task_id", batch);
 
         if (localError) {
           console.error(`[auvo-agenda] falha ao consultar vínculos do Controle OS: ${localError.message}`);
@@ -348,12 +361,19 @@ Deno.serve(async (req) => {
           localDocumentMap.set(id, {
             gc_os_codigo: existing?.gc_os_codigo || row.gc_os_codigo || null,
             gc_orcamento_codigo: existing?.gc_orcamento_codigo || row.gc_orcamento_codigo || null,
+            gc_os_tarefa_exec: existing?.gc_os_tarefa_exec || row.gc_os_tarefa_exec || null,
+            gc_os_situacao: existing?.gc_os_situacao || row.gc_os_situacao || null,
+            gc_os_valor_total: existing?.gc_os_valor_total ?? row.gc_os_valor_total ?? null,
+            gc_os_link: existing?.gc_os_link || row.gc_os_link || null,
+            gc_orc_situacao: existing?.gc_orc_situacao || row.gc_orc_situacao || null,
+            gc_orc_valor_total: existing?.gc_orc_valor_total ?? row.gc_orc_valor_total ?? null,
+            gc_orc_link: existing?.gc_orc_link || row.gc_orc_link || null,
           });
         }
       }
     }
 
-    console.log(`[auvo-agenda] ${allTasks.length} tasks, ${gcOsMap.size} OS, ${gcOrcMap.size} orçamentos, ${localDocumentMap.size} vínculos locais`);
+    console.log(`[auvo-agenda] mode=${fastMode ? "fast" : "full"}, ${allTasks.length} tasks, ${gcOsMap.size} OS, ${gcOrcMap.size} orçamentos, ${localDocumentMap.size} vínculos locais`);
 
     // For finished tasks, the list endpoint usually omits checkInDate/checkOutDate.
     // Fetch the per-task snapshot in parallel (limited concurrency) so the agenda
@@ -361,35 +381,37 @@ Deno.serve(async (req) => {
     // initially scheduled window.
     const snapshotMap = new Map<string, { checkInDate: string; checkOutDate: string }>();
     const finishedIds: string[] = [];
-    for (const t of allTasks) {
-      const tid = String(t.taskID || t.taskId || t.id || "");
-      const sd = String(t.taskStatus?.description || t.status?.description || "").trim();
-      const isFin = !!t.finished || sd === "Finalizada";
-      const hasInList =
-        !!(t.checkInDate || t.checkinDate || t.dateCheckIn) &&
-        !!(t.checkOutDate || t.checkoutDate || t.dateCheckOut);
-      if (isFin && tid && !hasInList) finishedIds.push(tid);
-    }
-    const CONCURRENCY = 5;
-    for (let i = 0; i < finishedIds.length; i += CONCURRENCY) {
-      const batch = finishedIds.slice(i, i + CONCURRENCY);
-      await Promise.all(batch.map(async (tid) => {
-        try {
-          const url = `${AUVO_BASE_URL}/tasks/${encodeURIComponent(tid)}`;
-          const resp = await fetchWithRetry(url, { headers }, {
-            retryStatuses: [502, 503],
-            delaysMs: [1500, 3000],
-            label: `Auvo task ${tid} snapshot`,
-          });
-          if (!resp.ok) return;
-          const json = await resp.json().catch(() => ({}));
-          const r = json?.result || json || {};
-          snapshotMap.set(tid, {
-            checkInDate: String(r.checkInDate || r.checkinDate || r.checkin_date || "").trim(),
-            checkOutDate: String(r.checkOutDate || r.checkoutDate || r.checkout_date || "").trim(),
-          });
-        } catch (_) { /* ignore */ }
-      }));
+    if (!fastMode) {
+      for (const t of allTasks) {
+        const tid = String(t.taskID || t.taskId || t.id || "");
+        const sd = String(t.taskStatus?.description || t.status?.description || "").trim();
+        const isFin = !!t.finished || sd === "Finalizada";
+        const hasInList =
+          !!(t.checkInDate || t.checkinDate || t.dateCheckIn) &&
+          !!(t.checkOutDate || t.checkoutDate || t.dateCheckOut);
+        if (isFin && tid && !hasInList) finishedIds.push(tid);
+      }
+      const CONCURRENCY = 5;
+      for (let i = 0; i < finishedIds.length; i += CONCURRENCY) {
+        const batch = finishedIds.slice(i, i + CONCURRENCY);
+        await Promise.all(batch.map(async (tid) => {
+          try {
+            const url = `${AUVO_BASE_URL}/tasks/${encodeURIComponent(tid)}`;
+            const resp = await fetchWithRetry(url, { headers }, {
+              retryStatuses: [502, 503],
+              delaysMs: [1500, 3000],
+              label: `Auvo task ${tid} snapshot`,
+            });
+            if (!resp.ok) return;
+            const json = await resp.json().catch(() => ({}));
+            const r = json?.result || json || {};
+            snapshotMap.set(tid, {
+              checkInDate: String(r.checkInDate || r.checkinDate || r.checkin_date || "").trim(),
+              checkOutDate: String(r.checkOutDate || r.checkoutDate || r.checkout_date || "").trim(),
+            });
+          } catch (_) { /* ignore */ }
+        }));
+      }
     }
     console.log(`[auvo-agenda] snapshot fetched for ${snapshotMap.size}/${finishedIds.length} finished tasks`);
 
@@ -401,8 +423,8 @@ Deno.serve(async (req) => {
       const custName = String(t.customerName || t.customer?.tradeName || t.customer?.companyName || "").trim();
       const cliente = custDesc || custName || "Sem cliente";
 
-      const rawTecnico = String(t.userToName || "").trim();
-      const tecnicoId = String(t.idUserTo || "");
+      const rawTecnico = String(t.userToName || t.userTo?.name || t.userTo?.login || "").trim();
+      const tecnicoId = String(t.idUserTo || t.userTo?.userID || t.userTo?.id || "");
       const tecnico = rawTecnico || usersMap.get(tecnicoId) || "Sem técnico";
 
       const rawDate = String(t.taskDate || "");
@@ -470,18 +492,18 @@ Deno.serve(async (req) => {
         check_out: !!t.checkOut,
         auvo_link: `https://app2.auvo.com.br/relatorioTarefas/DetalheTarefa/${taskId}`,
         gc_os_codigo: localDocument?.gc_os_codigo ?? os?.gc_os_codigo ?? null,
-        gc_os_situacao: os?.gc_os_situacao ?? null,
-        gc_os_valor_total: os?.gc_os_valor_total ?? null,
-        gc_os_link: os?.gc_os_link ?? null,
-        gc_os_tarefa_exec: os?.gc_os_tarefa_exec ?? null,
+        gc_os_situacao: os?.gc_os_situacao ?? localDocument?.gc_os_situacao ?? null,
+        gc_os_valor_total: os?.gc_os_valor_total ?? localDocument?.gc_os_valor_total ?? null,
+        gc_os_link: os?.gc_os_link ?? localDocument?.gc_os_link ?? null,
+        gc_os_tarefa_exec: os?.gc_os_tarefa_exec ?? localDocument?.gc_os_tarefa_exec ?? null,
         // O orçamento continua sendo a chave histórica mesmo depois que a OS existe.
         gc_orcamento_codigo: localDocument?.gc_orcamento_codigo
           ?? os?.gc_os_orcamento_codigo
           ?? orc?.gc_orcamento_codigo
           ?? null,
-        gc_orc_situacao: orc?.gc_orc_situacao ?? null,
-        gc_orc_valor_total: orc?.gc_orc_valor_total ?? null,
-        gc_orc_link: orc?.gc_orc_link ?? null,
+        gc_orc_situacao: orc?.gc_orc_situacao ?? localDocument?.gc_orc_situacao ?? null,
+        gc_orc_valor_total: orc?.gc_orc_valor_total ?? localDocument?.gc_orc_valor_total ?? null,
+        gc_orc_link: orc?.gc_orc_link ?? localDocument?.gc_orc_link ?? null,
         pendencia: null,
       };
     });
@@ -544,7 +566,12 @@ Deno.serve(async (req) => {
     }
 
     return new Response(
-      JSON.stringify({ data: enriched, total: enriched.length, forecast_promotions: promotionResults }),
+      JSON.stringify({
+        data: enriched,
+        total: enriched.length,
+        forecast_promotions: promotionResults,
+        mode: fastMode ? "fast" : "full",
+      }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   } catch (error) {

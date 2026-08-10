@@ -47,6 +47,7 @@ export interface AgendaAgendamento {
 export function useAgendaVeiculos() {
   return useQuery({
     queryKey: ["agenda_veiculos"],
+    staleTime: 5 * 60 * 1000,
     queryFn: async () => {
       const { data, error } = await sb
         .from("agenda_veiculos")
@@ -130,6 +131,9 @@ export function useAgendaSemana(dias: string[]) {
   return useQuery({
     queryKey: ["agenda_semana", inicio, fim],
     enabled: !!inicio && !!fim,
+    staleTime: 5 * 60 * 1000,
+    gcTime: 30 * 60 * 1000,
+    placeholderData: (previousData) => previousData,
     queryFn: async () => {
       const [ag, vd] = await Promise.all([
         sb.from("agenda_agendamentos").select("*").gte("data", inicio).lte("data", fim),
