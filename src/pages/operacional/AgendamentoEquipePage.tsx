@@ -768,6 +768,7 @@ export default function AgendamentoEquipePage() {
                             <Celula
                               key={dia}
                               itens={itens}
+                              clientesInfo={rhClientes}
                                onAbrirTarefa={(a) => setTarefaId(a.auvo_task_id ?? null)}
                                onAbrirAgendamento={(a) => {
                                  setSelectedAgendamento(a);
