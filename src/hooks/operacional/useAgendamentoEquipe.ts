@@ -31,6 +31,10 @@ export interface AgendaAgendamento {
   origem?: string | null;
   gc_os_codigo?: string | null;
   gc_orcamento_codigo?: string | null;
+  contrato_id?: string | null;
+  contrato_visita_config_id?: string | null;
+  contrato_visita_competencia?: string | null;
+  contrato_visita_numero?: number | null;
   previsao_continuidade?: boolean;
   previsao_detalhes?: string | null;
 }
