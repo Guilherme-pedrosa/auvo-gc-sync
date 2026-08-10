@@ -29,6 +29,9 @@ describe("desempenho do Agendamento Equipe", () => {
     expect(page).toContain("void sincronizarClientesEmSegundoPlano()");
     expect(page).not.toContain("await sincronizarClientesEmSegundoPlano()");
     expect(page).not.toContain("Atualizar Clientes");
+    expect(page).toContain("Sincronizar Auvo");
+    expect(page).not.toContain("Sincronizar Frota");
+    expect(page).toContain("sticky top-0 z-40");
   });
 
   it("persiste as tarefas do modo rapido no espelho central", () => {

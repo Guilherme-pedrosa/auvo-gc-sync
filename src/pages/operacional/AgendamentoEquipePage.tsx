@@ -655,7 +655,7 @@ export default function AgendamentoEquipePage() {
 
   return (
     <div className="flex flex-col h-screen bg-background">
-      <header className="flex flex-wrap items-center justify-between gap-3 px-6 py-4 border-b bg-card shrink-0">
+      <header className="sticky top-0 z-40 flex flex-wrap items-center justify-between gap-3 px-6 py-4 border-b bg-card shrink-0">
         <div className="flex items-center gap-3">
           <h1 className="text-xl font-bold">Escala de Técnicos (90 Dias)</h1>
           <div className="flex items-center bg-muted rounded-md p-1 gap-1">
@@ -674,12 +674,14 @@ export default function AgendamentoEquipePage() {
           </Button>
           <Button
             variant="outline"
-            size="icon"
+            size="sm"
+            className="gap-2"
             title="Sincronizar tarefas e clientes do Auvo"
             onClick={() => refetch()}
             disabled={isFetching || isSyncing}
           >
             <RefreshCw className={cn("h-4 w-4", (isFetching || isSyncing) && "animate-spin")} />
+            {isSyncing ? "Sincronizando Auvo..." : "Sincronizar Auvo"}
           </Button>
           <Button className="gap-2" size="sm" onClick={() => setDialogCreateTaskOpen(true)}>
             <Plus className="h-4 w-4" /> Nova Tarefa Auvo
@@ -827,7 +829,8 @@ export default function AgendamentoEquipePage() {
                     onClick={sincronizarFrota}
                     disabled={syncFrota}
                   >
-                    <Download className={cn("h-3.5 w-3.5", syncFrota && "animate-pulse")} /> Sincronizar Frota
+                    <Download className={cn("h-3.5 w-3.5", syncFrota && "animate-pulse")} />
+                    {syncFrota ? "Atualizando veículos..." : "Atualizar veículos"}
                   </Button>
                   <Button variant="outline" size="sm" className="gap-2" onClick={adicionarVeiculo}>
                     <Plus className="h-3.5 w-3.5" /> Veículo
