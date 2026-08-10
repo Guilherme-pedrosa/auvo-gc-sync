@@ -4,7 +4,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { ExternalLink, MapPin, Navigation, ClipboardList, Package, Edit } from "lucide-react";
+import { ExternalLink, MapPin, Navigation, ClipboardList, Package, Edit, FileText } from "lucide-react";
 
 const formatCurrency = (v: number) =>
   new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(v || 0);
@@ -207,10 +207,22 @@ export default function TarefaAuvoDetalheDialog({ taskId, onOpenChange, onEdit }
             )}
 
             <div className="flex flex-wrap gap-2">
+              {taskId && (
+                <Button size="sm" variant="outline" asChild>
+                  <a
+                    href={`https://app2.auvo.com.br/gerenciarTarefas/tarefa/${taskId}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="gap-1"
+                  >
+                    <ExternalLink className="h-3.5 w-3.5" /> Abrir no Auvo
+                  </a>
+                </Button>
+              )}
               {(tarefa.auvo_task_url || tarefa.auvo_link) && (
                 <Button size="sm" variant="outline" asChild>
                   <a href={tarefa.auvo_task_url || tarefa.auvo_link} target="_blank" rel="noopener noreferrer" className="gap-1">
-                    <ExternalLink className="h-3.5 w-3.5" /> Abrir no Auvo
+                    <FileText className="h-3.5 w-3.5" /> Relatório PDF
                   </a>
                 </Button>
               )}
