@@ -21,6 +21,7 @@ export type AgendarAlvo = {
   gc_os_id?: string | null;
   gc_orcamento_id?: string | null;
   gc_os_codigo?: string | null;
+  gc_orcamento_codigo?: string | null;
   cliente: string;
   equipamento?: string | null;
   data_tarefa?: string | null;
