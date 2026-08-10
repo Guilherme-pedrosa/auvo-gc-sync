@@ -238,7 +238,7 @@ function Celula({
                 className={cn(
                   "w-full text-left rounded-sm px-1.5 py-1 text-[11px] font-semibold uppercase leading-tight hover:ring-1 hover:ring-primary/60 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary cursor-grab active:cursor-grabbing border border-transparent",
                   a.previsao_continuidade && "border border-dashed border-primary/50 opacity-80",
-                  colorir && corCliente(a.cliente, clientesInfo.find(c => c.nome_normalizado === a.cliente.toLowerCase())?.cidade),
+                  colorir && corCliente(a.cliente),
                 )}
               >
                 <div className="flex flex-col">
