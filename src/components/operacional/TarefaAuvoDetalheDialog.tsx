@@ -265,7 +265,19 @@ export default function TarefaAuvoDetalheDialog({ taskId, onOpenChange, onEdit }
                 )}
               </div>
               <div>
-                <span className="text-muted-foreground text-xs">Técnico</span>
+                <span className="text-muted-foreground text-xs">Vendedor GC</span>
+                <p className="font-medium">{tarefa.gc_os_vendedor || "—"}</p>
+              </div>
+              <div>
+                <span className="text-muted-foreground text-xs">Valor Total OS</span>
+                <p className="font-semibold text-foreground">{formatCurrency(os.valor)}</p>
+              </div>
+              <div>
+                <span className="text-muted-foreground text-xs">Data Abertura OS</span>
+                <p className="font-medium">{tarefa.gc_os_data || "—"}</p>
+              </div>
+              <div>
+                <span className="text-muted-foreground text-xs">Técnico (Auvo)</span>
                 <p className="font-medium">{tarefa.tecnico || "—"}</p>
               </div>
               <div>
@@ -275,10 +287,6 @@ export default function TarefaAuvoDetalheDialog({ taskId, onOpenChange, onEdit }
                     ? new Date(`${tarefa.data_tarefa}T12:00:00`).toLocaleDateString("pt-BR")
                     : "—"}
                 </p>
-              </div>
-              <div>
-                <span className="text-muted-foreground text-xs">Valor total OS</span>
-                <p className="font-semibold">{formatCurrency(os.valor)}</p>
               </div>
               <div>
                 <span className="text-muted-foreground text-xs">Status Auvo</span>
