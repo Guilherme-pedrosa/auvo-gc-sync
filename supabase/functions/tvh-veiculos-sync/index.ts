@@ -85,6 +85,8 @@ function detalharNaoConformidade(t: Ticket): string | null {
   const data = linhas.find((l) => /^data:/i.test(l))?.replace(/^data:\s*/i, "") || "";
 
   const partes: string[] = [];
+  // Removido o cabeçalho "NÃO CONFORMIDADE — ÚLTIMO CHECKLIST" e as tags de alerta visuais,
+  // mantendo apenas os dados solicitados pelo usuário conforme a referência visual.
   if (data) partes.push(`Checklist ${data}`);
   if (resultado) partes.push(`Resultado: ${resultado}`);
   partes.push(itens.map((i) => `• ${i}`).join("\n"));
