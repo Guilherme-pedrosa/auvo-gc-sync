@@ -64,6 +64,42 @@ describe("planejamento anual de visitas contratuais", () => {
     expect(forecasts.map((forecast) => forecast.data)).toEqual(["2026-09-08", "2026-09-22"]);
   });
 
+  it("ignora semanas inexistentes ou já passadas sem bloquear o contrato semanal", () => {
+    const currentMonth = buildContractVisitForecasts({
+      competencia: "2026-08",
+      qtdVisitas: 4,
+      qtdTecnicos: 1,
+      horasMesContratadas: 32,
+      horaInicio: "08:00",
+      tecnicoIds: ["a"],
+      diasSemana: [2],
+      semanasMes: [1, 2, 3, 4, 5],
+      naoAntesDe: "2026-08-10",
+    });
+    expect(currentMonth.map((forecast) => forecast.data)).toEqual([
+      "2026-08-11",
+      "2026-08-18",
+      "2026-08-25",
+    ]);
+
+    const fullMonth = buildContractVisitForecasts({
+      competencia: "2026-09",
+      qtdVisitas: 4,
+      qtdTecnicos: 1,
+      horasMesContratadas: 32,
+      horaInicio: "08:00",
+      tecnicoIds: ["a"],
+      diasSemana: [2],
+      semanasMes: [1, 2, 3, 4, 5],
+    });
+    expect(fullMonth.map((forecast) => forecast.data)).toEqual([
+      "2026-09-01",
+      "2026-09-08",
+      "2026-09-15",
+      "2026-09-22",
+    ]);
+  });
+
   it("preserva visitas passadas e gera somente as que faltam", () => {
     const forecasts = buildContractVisitForecasts({
       competencia: "2026-09",
