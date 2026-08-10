@@ -132,63 +132,60 @@ const semCorTexto = (classe: string) =>
 const semAcento = (v: string | null | undefined) =>
   String(v ?? "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase();
 
-// Situações do GC que indicam que a OS finalizada ainda tem pendência a resolver
-const PENDENCIA_TOKENS = [
-  "PENDENTE",
-  "PENDENCIA",
-  "NEGOCIA",
-  "AGUARDANDO",
-  "CORRECAO",
-  "CONFERENCIA",
-  "SEPARADO",
-  "DEVOLVIDO",
-];
+// Situações do GC que realmente indicam pendência técnica após a execução.
+// "EXECUTADO - AG. NEGOCIAÇÃO" é o destino normal da sync e NÃO é pendência.
+const PENDENCIA_TOKENS = ["PENDENTE", "PENDENCIA", "RETORNO", "CORRECAO", "REFAZER"];
+
+// Converte "YYYY-MM-DD" em data local (new Date(str) interpreta como UTC e
+// fazia tarefas futuras parecerem atrasadas).
+const dataLocal = (iso: string | null | undefined) => {
+  const m = String(iso ?? "").match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (!m) return null;
+  return new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+};
 
 const getStatusColor = (a: AgendaAgendamento) => {
-  const finalizado = a.status_auvo === "Finalizada";
-  const pausada = a.status_auvo === "Pausada" || a.pausada === true;
+  const statusAuvo = semAcento(a.status_auvo);
+  const finalizado = statusAuvo.includes("FINALIZ") || Boolean(a.check_out_iso);
+  const pausada = statusAuvo.includes("PAUSAD") || a.pausada === true;
   const situacao = semAcento(a.gc_os_situacao);
-  const checkCompleto = Boolean(a.check_in_iso) && Boolean(a.check_out_iso);
+  const temPendencia = PENDENCIA_TOKENS.some((t) => situacao.includes(t));
 
-  // Verde: Finalizada com check-in e check-out feitos e sem pendência no GC
-  if (finalizado && checkCompleto && !PENDENCIA_TOKENS.some((t) => situacao.includes(t))) {
+  // Verde: executada/finalizada sem pendência técnica no GC
+  if (finalizado && !temPendencia) {
     return "text-green-700 dark:text-green-500 font-bold";
   }
 
-  // Amarelo escuro: Finalizada mas com pendência (GC ou check-in/out incompleto)
+  // Amarelo escuro: finalizada, porém com pendência registrada no GC
   if (finalizado) {
     return "text-yellow-700 dark:text-yellow-500 font-bold";
   }
-
-  // Vermelho: Pausada ou Não feita com atraso
-  // Lógica de atraso: se a data do agendamento é anterior a hoje ou se hoje e já passou 2 horas do fim (aproximado)
-  const isAtrasado = () => {
-    if (!a.data) return false;
-    const agDate = new Date(a.data);
-    const now = new Date();
-    
-    // Zera horas para comparar apenas datas
-    const dAg = new Date(agDate.getFullYear(), agDate.getMonth(), agDate.getDate());
-    const dNow = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-    
-    if (dAg < dNow) return true;
-    if (dAg > dNow) return false;
-    
-    // Se for hoje, checa se passou 2 horas do fim
-    if (a.hora_fim) {
-      const [h, m] = a.hora_fim.split(":").map(Number);
-      const endDateTime = new Date(dNow);
-      endDateTime.setHours(h, m, 0);
-      return now.getTime() > (endDateTime.getTime() + 2 * 60 * 60 * 1000);
-    }
-    return false;
-  };
 
   if (pausada) {
     return "text-red-600 dark:text-red-500 font-bold";
   }
 
-  if (a.status_auvo !== "Finalizada" && a.status_auvo !== "Em andamento" && isAtrasado()) {
+  // Vermelho: só quando a data/hora já passou (nunca para agendamentos futuros)
+  const isAtrasado = () => {
+    const dAg = dataLocal(a.data);
+    if (!dAg) return false;
+    const now = new Date();
+    const dNow = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+
+    if (dAg.getTime() > dNow.getTime()) return false;
+    if (dAg.getTime() < dNow.getTime()) return true;
+
+    // Hoje: só fica vermelho 2h após o fim previsto
+    if (a.hora_fim) {
+      const [h, m] = a.hora_fim.split(":").map(Number);
+      const fim = new Date(dNow);
+      fim.setHours(h || 0, m || 0, 0, 0);
+      return now.getTime() > fim.getTime() + 2 * 60 * 60 * 1000;
+    }
+    return false;
+  };
+
+  if (!statusAuvo.includes("ANDAMENTO") && isAtrasado()) {
     return "text-red-600 dark:text-red-500 font-bold";
   }
 
