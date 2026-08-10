@@ -190,21 +190,29 @@ export default function AgendamentoPage() {
       result = result.filter((i) => !excludedSituacoes.has(i.situacao));
     }
 
-    // Filtro por busca de cliente
-    if (termoCliente) {
-      result = result.filter((i) =>
-        String(i.cliente || "").toLowerCase().includes(termoCliente)
-      );
-    }
+    // Filtro por busca textual geral (CABEÇALHO)
+    if (termo || termoCliente) {
+      result = result.filter((i) => {
+        const matchGeral = !termo || [
+          i.compra_codigo,
+          i.cliente,
+          i.fornecedor,
+          i.vinculo_texto,
+          i.situacao,
+          i.equipamento,
+          i.orcamento_codigo,
+          i.vinculo_codigo,
+          i.os_codigo,
+          ...(i.pedidos_compra ?? []),
+          ...(i.pedidos_detalhes ?? []).map((p) => p.situacao),
+          ...(i.pedidos_detalhes ?? []).map((p) => p.codigo),
+          ...i.produtos.map((p) => p.nome)
+        ].some((v) => String(v || "").toLowerCase().includes(termo));
 
-    // Filtro por busca textual geral
-    if (termo) {
-      result = result.filter((i) =>
-         [i.compra_codigo, i.cliente, i.fornecedor, i.vinculo_texto, i.situacao, i.equipamento, i.orcamento_codigo, i.vinculo_codigo, i.os_codigo,
-          ...(i.pedidos_compra ?? []), ...((i.pedidos_detalhes ?? []).map((p) => p.situacao)), ...((i.pedidos_detalhes ?? []).map((p) => p.codigo)),
-          ...i.produtos.map((p) => p.nome)]
-          .some((v) => String(v || "").toLowerCase().includes(termo)),
-      );
+        const matchCliente = !termoCliente || String(i.cliente || "").toLowerCase().includes(termoCliente);
+
+        return matchGeral && matchCliente;
+      });
     }
 
     return result;
@@ -256,7 +264,7 @@ export default function AgendamentoPage() {
   };
 
   const previstaFiltrada = useMemo(() => 
-    filterByKanbanSearch(filtrados.filter(i => i.data_chegada), buscaPrevista), 
+    filterByKanbanSearch(filtrados.filter(i => i.data_chegada && ["hoje", "futura"].includes(getChegadaStatus(i.data_chegada))), buscaPrevista), 
     [filtrados, buscaPrevista]
   );
   const atrasadaFiltrada = useMemo(() => 
