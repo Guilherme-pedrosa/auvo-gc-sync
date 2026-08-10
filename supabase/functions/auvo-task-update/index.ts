@@ -11,6 +11,7 @@ import {
   BUDGET_EXECUTION_FORECAST,
   auvoTaskHasStarted,
   forecastDurationMinutes,
+  isOsEligibleForBudgetForecast,
   normalizeClock,
   normalizeGcDocumentCode,
   taskAssignedUserId,
@@ -277,7 +278,7 @@ async function markForecastConversion(
     conversao_tentada_em: new Date().toISOString(),
     atualizado_em: new Date().toISOString(),
   };
-  if (osCode) patch.gc_os_codigo = osCode;
+  if (osCode !== undefined) patch.gc_os_codigo = osCode;
   const { error: updateError } = await admin
     .from("agenda_agendamentos")
     .update(patch)
@@ -320,6 +321,32 @@ async function promoteBudgetForecast(
       reason: sameTask ? "already_promoted" : "forecast_already_converted",
       agenda: forecast,
     };
+  }
+
+  // Segunda trava: mesmo que algum sincronizador envie uma OS antiga do mesmo
+  // orçamento, nunca convertemos a previsão por um lote anterior da baixa parcial.
+  const { data: osRows, error: osReadError } = await admin
+    .from("tarefas_central")
+    .select("gc_os_codigo,gc_os_data,gc_os_situacao,gc_os_tarefa_os,gc_os_tarefa_exec,gc_orcamento_codigo")
+    .eq("gc_os_codigo", osCode)
+    .limit(20);
+  if (osReadError) {
+    console.warn(`[auvo-task-update][reqId=${reqId}] não foi possível validar a OS ${osCode}: ${osReadError.message}`);
+  } else {
+    const linkedOs = (osRows || []).find((row: any) =>
+      normalizeGcDocumentCode(row.gc_orcamento_codigo) === budgetCode
+    ) || osRows?.[0];
+    if (linkedOs && !isOsEligibleForBudgetForecast(linkedOs, forecast.criado_em)) {
+      await markForecastConversion(admin, forecast.id, "AGUARDANDO_OS", null, null);
+      return {
+        success: true,
+        promoted: false,
+        reason: "stale_os",
+        forecastId: forecast.id,
+        budgetCode,
+        ignoredOsCode: osCode,
+      };
+    }
   }
 
   await markForecastConversion(admin, forecast.id, "PROCESSANDO", null, osCode);

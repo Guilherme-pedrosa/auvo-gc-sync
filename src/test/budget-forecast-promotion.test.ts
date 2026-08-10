@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 import {
   auvoTaskHasStarted,
   forecastDurationMinutes,
+  isOsEligibleForBudgetForecast,
   normalizeGcDocumentCode,
   taskAssignedUserId,
   taskStartMinuteKey,
@@ -27,6 +28,30 @@ describe("promoção da previsão do orçamento", () => {
     expect(auvoTaskHasStarted({ taskStatus: { description: "Em andamento" } })).toBe(true);
     expect(auvoTaskHasStarted({ finished: true })).toBe(true);
     expect(auvoTaskHasStarted({ taskStatus: { description: "Agendada" } })).toBe(false);
+  });
+
+  it("não reaproveita a OS antiga de uma baixa parcial", () => {
+    const forecastCreatedAt = "2026-08-10T22:42:36.852Z";
+
+    expect(isOsEligibleForBudgetForecast({
+      gc_os_codigo: "9331",
+      gc_os_data: "2026-04-14",
+      gc_os_situacao: "EXECUTADO COM NOTA EMITIDA",
+    }, forecastCreatedAt)).toBe(false);
+
+    expect(isOsEligibleForBudgetForecast({
+      gc_os_codigo: "10080",
+      gc_os_data: "2026-08-11",
+      gc_os_situacao: "AGUARDANDO EXECUÇÃO",
+    }, forecastCreatedAt)).toBe(true);
+  });
+
+  it("não usa OS finalizada mesmo quando ela é do mesmo dia da previsão", () => {
+    expect(isOsEligibleForBudgetForecast({
+      gc_os_codigo: "10081",
+      gc_os_data: "2026-08-10",
+      gc_os_situacao: "EXECUTADO – AGUARDANDO NEGOCIAÇÃO FINANCEIRA",
+    }, "2026-08-10T08:00:00Z")).toBe(false);
   });
 
   it("lê data, técnico e tipo nas variações retornadas pela API Auvo", () => {
@@ -57,5 +82,16 @@ describe("promoção da previsão do orçamento", () => {
     expect(migration).toContain("auvo_task_id = v_task");
     expect(migration).toContain("id <> p_previsao_id");
     expect(migration).toContain("previsao_continuidade = false");
+  });
+
+  it("aplica a trava nas duas rotas automáticas e na conversão final", () => {
+    const centralSync = readFileSync(resolve(root, "supabase/functions/central-sync/index.ts"), "utf8");
+    const auvoAgenda = readFileSync(resolve(root, "supabase/functions/auvo-agenda/index.ts"), "utf8");
+    const taskUpdate = readFileSync(resolve(root, "supabase/functions/auvo-task-update/index.ts"), "utf8");
+
+    expect(centralSync).toContain("isOsEligibleForBudgetForecast(os, forecast.criado_em)");
+    expect(centralSync).toContain("gc_os_codigo: null");
+    expect(auvoAgenda).toContain("isOsEligibleForBudgetForecast(task, forecast.criado_em)");
+    expect(taskUpdate).toContain('reason: "stale_os"');
   });
 });
