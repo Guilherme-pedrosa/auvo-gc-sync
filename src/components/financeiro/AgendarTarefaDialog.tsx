@@ -182,15 +182,15 @@ export default function AgendarTarefaDialog({ open, onOpenChange, alvo, onSaved 
 
     setSavingForecast(true);
     try {
-      const tecnico = userOptions.find((o) => o.value === tecnicoId)?.label || "";
-      const colab = colaboradores.find(c => String(c.auvo_user_id) === String(tecnicoId));
+      const colab = colaboradores.find(c => c.id === tecnicoId);
+      const tecnico = colab?.nome || userOptions.find((o) => o.value === tecnicoId)?.label || "";
       
       const payload = {
         data: dateISO,
         hora_inicio: hora,
         hora_fim: minutesToClock(clockToMinutes(hora) + durationMinutes),
-        colaborador_id: colab?.id || null,
-        colaborador_nome: colab?.nome || tecnico,
+        colaborador_id: colab?.id || (tecnicoId.length > 20 ? tecnicoId : null),
+        colaborador_nome: tecnico,
         cliente: alvo.cliente.toUpperCase(),
         descricao: alvo.equipamento ? `Equipamento: ${alvo.equipamento}` : null,
         status: "AGENDADO",
