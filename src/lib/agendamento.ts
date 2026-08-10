@@ -17,6 +17,17 @@ export const AGENDA_BUCKETS: { id: AgendaBucket; label: string; hint: string }[]
   { id: "futura", label: "Agendadas", hint: "Execução prevista à frente" },
 ];
 
+// A consulta chama diretamente a API do GestãoClick e é pesada. Depois da primeira
+// carga da sessão, somente o botão "Atualizar" deve consultá-la novamente.
+export const CHEGADAS_QUERY_POLICY = {
+  staleTime: 5 * 60 * 1000,
+  gcTime: Infinity,
+  retry: false,
+  refetchOnMount: true,
+  refetchOnReconnect: true,
+  refetchOnWindowFocus: true,
+} as const;
+
 export function todayISO(): string {
   const d = new Date();
   const pad = (n: number) => String(n).padStart(2, "0");

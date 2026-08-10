@@ -213,11 +213,6 @@ export default function AgendarTarefaDialog({ open, onOpenChange, alvo, onSaved 
       }
 
       toast.success(wasUpdate ? "Previsão atualizada." : "Previsão criada na agenda da equipe.");
-      await Promise.all([
-        qc.invalidateQueries({ queryKey: ["compras-chegadas"] }),
-        qc.invalidateQueries({ queryKey: ["agenda_agendamentos"] }),
-        qc.invalidateQueries({ queryKey: ["agenda_semana"] }),
-      ]);
       onSaved?.({
         dataTarefa: dateISO,
         tecnico: colaborador.nome,
@@ -228,6 +223,8 @@ export default function AgendarTarefaDialog({ open, onOpenChange, alvo, onSaved 
         previsaoId: previsaoId || undefined,
       });
       onOpenChange(false);
+      void qc.invalidateQueries({ queryKey: ["agenda_agendamentos"] });
+      void qc.invalidateQueries({ queryKey: ["agenda_semana"] });
     } catch (error) {
       toast.error(`Não foi possível salvar a previsão interna: ${(error as Error).message}`);
     } finally {

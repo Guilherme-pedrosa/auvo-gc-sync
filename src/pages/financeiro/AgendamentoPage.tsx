@@ -1,4 +1,4 @@
-import { useMemo, useState, useEffect, useCallback } from "react";
+import { useMemo, useState, useCallback } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import {
@@ -17,7 +17,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import {
-  buildMonthGrid, formatBRL, formatDiaBR, getChegadaStatus, monthLabel, todayISO,
+  buildMonthGrid, CHEGADAS_QUERY_POLICY, formatBRL, formatDiaBR, getChegadaStatus, monthLabel, todayISO,
   latestForecastForDocument, latestMissingPartsArrival, missingPartArrivalDates,
   type ChegadaItem, type ChegadaStatus,
   type PrevisaoAgendamento,
@@ -153,14 +153,13 @@ export default function AgendamentoPage() {
   const { data: itens = [], isLoading, isFetching, refetch, error } = useQuery({
     queryKey: ["compras-chegadas"],
     queryFn: fetchChegadas,
-    staleTime: 5 * 60 * 1000,
+    ...CHEGADAS_QUERY_POLICY,
   });
 
   const handleAtualizar = useCallback(async () => {
-    const t = toast.loading("Atualizando orçamentos e pedidos...");
+      const t = toast.loading("Atualizando orçamentos e pedidos...");
     try {
       console.log("[AgendamentoPage] Forçando atualização manual...");
-      queryClient.invalidateQueries({ queryKey: ["compras-chegadas"] });
       const res = await refetch();
       if (res.error) throw res.error;
       toast.success(`Atualizado: ${res.data?.length ?? 0} documentos`, { id: t });
@@ -220,14 +219,6 @@ export default function AgendamentoPage() {
     const s = searchSituacao.toLowerCase();
     return allSituacoes.filter((sit) => sit.toLowerCase().includes(s));
   }, [allSituacoes, searchSituacao]);
-
-  // Forçar recarga ao montar se estiver vazio
-  useEffect(() => {
-    console.log("[AgendamentoPage] Montado. Itens:", itens.length, "Loading:", isLoading);
-    if (itens.length === 0 && !isLoading && !isFetching) {
-      refetch();
-    }
-  }, [itens.length, isLoading, isFetching, refetch]);
 
   const porDia = useMemo(() => {
     const map = new Map<string, ChegadaItem[]>();
@@ -634,7 +625,7 @@ export default function AgendamentoPage() {
         </div>
       ) : null}
 
-      {isLoading ? (
+      {isLoading && itens.length === 0 ? (
         <div className="flex flex-1 items-center justify-center text-sm text-muted-foreground">
           <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Carregando calendário de compras e orçamentos...
         </div>
@@ -816,7 +807,6 @@ export default function AgendamentoPage() {
               }),
             );
           }
-          refetch();
         }}
       />
 
