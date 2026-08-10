@@ -62,10 +62,6 @@ const PALETA = [
   "bg-[#FEF3C7] text-[#A16207] border-[#FDE68A]",
   "bg-[#FFF7ED] text-[#C2410C] border-[#FFEDD5]",
   "bg-[#FEF9C3] text-[#854D0E] border-[#FEF08A]",
-  // Vermelhos/Rosas
-  "bg-[#FFE4E6] text-[#BE123C] border-[#FECDD3]",
-  "bg-[#FEE2E2] text-[#B91C1C] border-[#FECACA]",
-  "bg-[#FFF1F2] text-[#9F1239] border-[#FFE4E6]",
   // Roxos/Violets
   "bg-[#F3E8FF] text-[#7E22CE] border-[#E9D5FF]",
   "bg-[#F5F3FF] text-[#6D28D9] border-[#DDD6FE]",
@@ -74,7 +70,7 @@ const PALETA = [
   "bg-[#ECFEFF] text-[#0E7490] border-[#CFFAFE]",
   "bg-[#F0FDFA] text-[#0F766E] border-[#CCFBF1]",
   "bg-[#E0F7FA] text-[#006064] border-[#B2EBF2]",
-  // Outros/Misturas
+  // Outros/Misturas (Removidos tons avermelhados como #FEE2E2, #FFE4E6, etc)
   "bg-[#FDF4FF] text-[#A21CAF] border-[#FAE8FF]",
   "bg-[#FAF5FF] text-[#553C9A] border-[#E9D8FD]",
   "bg-[#FFF8E1] text-[#855B0F] border-[#FFECB3]",
@@ -85,14 +81,10 @@ const PALETA = [
   "bg-[#F8FAFC] text-[#334155] border-[#E2E8F0]",
   "bg-[#E8EAF6] text-[#1A237E] border-[#C5CAE9]",
   "bg-[#FFFBEB] text-[#92400E] border-[#FEF3C7]",
-  "bg-[#FDF2F8] text-[#9D174D] border-[#FCE7F3]",
-  "bg-[#FFF7ED] text-[#9A3412] border-[#FFEDD5]",
   "bg-[#F5F5F4] text-[#44403C] border-[#E7E5E4]",
-  "bg-[#FAF5F5] text-[#991B1B] border-[#FEE2E2]",
   "bg-[#EFF6FF] text-[#2563EB] border-[#DBEAFE]",
   "bg-[#F5F3FF] text-[#7C3AED] border-[#DDD6FE]",
   "bg-[#FDF4FF] text-[#C026D3] border-[#FAE8FF]",
-  "bg-[#FFF1F2] text-[#E11D48] border-[#FFE4E6]",
   "bg-[#FEFCE8] text-[#A16207] border-[#FEF9C3]",
   "bg-[#F8FAFC] text-[#475569] border-[#E2E8F0]",
   "bg-[#F0F9FF] text-[#0284C7] border-[#E0F9FF]",
