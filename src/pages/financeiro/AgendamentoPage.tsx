@@ -250,7 +250,7 @@ export default function AgendamentoPage() {
     if (!term.trim()) return list;
     const s = term.toLowerCase();
     return list.filter(i => 
-      [i.orcamento_codigo, i.vinculo_codigo, i.compra_codigo, i.cliente, i.fornecedor, i.equipamento]
+      [i.orcamento_codigo, i.vinculo_codigo, i.compra_codigo, i.cliente, i.fornecedor, i.equipamento, i.os_codigo]
         .some(v => String(v || "").toLowerCase().includes(s))
     );
   };
