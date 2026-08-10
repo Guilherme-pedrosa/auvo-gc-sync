@@ -26,6 +26,17 @@ import { cn } from "@/lib/utils";
 import LastSyncBadge from "@/components/LastSyncBadge";
 
 const PAGE_SIZE = 1000;
+const ORCAMENTOS_CACHE_TTL = 60 * 60 * 1000;
+const ORCAMENTOS_CACHE_PREFIX = "orcamentos-controle:v2";
+const ORCAMENTOS_SELECT = [
+  "atualizado_em", "auvo_task_id", "auvo_task_url", "cliente", "data_tarefa",
+  "descricao", "equipamento_id_serie", "equipamento_nome", "gc_orc_cliente",
+  "gc_orc_cor_situacao", "gc_orc_data", "gc_orc_link", "gc_orc_situacao",
+  "gc_orc_situacao_id", "gc_orc_tipo", "gc_orc_valor_produtos",
+  "gc_orc_valor_servicos", "gc_orc_valor_total", "gc_orc_vendedor",
+  "gc_orcamento_codigo", "gc_orcamento_id", "hora_inicio", "orientacao",
+  "tecnico", "tecnico_id",
+].join(",");
 const formatCurrency = (val: number) =>
   (val || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 
@@ -41,6 +52,43 @@ const SITUACAO_ABERTA_IDS = [
   "7106316", // Retirada pelo Técnico
   "7253507", // Serviço Aguardando Execução
 ];
+
+type OrcamentosLocalCache = { savedAt: number; rows: any[] };
+
+const getOrcamentosCacheKey = (fromStr: string, toStr: string) =>
+  `${ORCAMENTOS_CACHE_PREFIX}:${fromStr}:${toStr}`;
+
+const readOrcamentosCache = (fromStr: string, toStr: string): OrcamentosLocalCache | undefined => {
+  try {
+    const raw = window.localStorage.getItem(getOrcamentosCacheKey(fromStr, toStr));
+    if (!raw) return undefined;
+    const cached = JSON.parse(raw) as OrcamentosLocalCache;
+    if (!Array.isArray(cached.rows) || Date.now() - cached.savedAt >= ORCAMENTOS_CACHE_TTL) {
+      window.localStorage.removeItem(getOrcamentosCacheKey(fromStr, toStr));
+      return undefined;
+    }
+    return cached;
+  } catch {
+    return undefined;
+  }
+};
+
+const writeOrcamentosCache = (fromStr: string, toStr: string, rows: any[]) => {
+  try {
+    for (let index = window.localStorage.length - 1; index >= 0; index -= 1) {
+      const key = window.localStorage.key(index);
+      if (key?.startsWith(`${ORCAMENTOS_CACHE_PREFIX}:`) && key !== getOrcamentosCacheKey(fromStr, toStr)) {
+        window.localStorage.removeItem(key);
+      }
+    }
+    window.localStorage.setItem(
+      getOrcamentosCacheKey(fromStr, toStr),
+      JSON.stringify({ savedAt: Date.now(), rows } satisfies OrcamentosLocalCache),
+    );
+  } catch {
+    // Se o navegador estiver sem espaço, o cache em memória do React Query continua funcionando.
+  }
+};
 
 /** Mesma heurística usada no Controle de OS para extrair equipamento da orientação */
 const extractEquipmentFromOrientation = (raw: unknown): string => {
@@ -62,12 +110,17 @@ const fetchOrcamentosNoPeriodo = async (fromDate: Date, toDate: Date) => {
   // Filtro estrito pela data do orçamento exibida na tela.
   // Se o usuário filtra julho, orçamento com Data Orç. de maio não pode aparecer.
   const rows: any[] = [];
+  const cachePromise = supabase
+    .from("followup_kanban_cache")
+    .select("gc_orcamento_id, atualizado_em, dados")
+    .in("coluna", SITUACAO_ABERTA_IDS);
   let from = 0;
   while (true) {
     const { data, error } = await supabase
       .from("tarefas_central")
-      .select("*")
+      .select(ORCAMENTOS_SELECT)
       .not("gc_orcamento_id", "is", null)
+      .in("gc_orc_situacao_id", SITUACAO_ABERTA_IDS)
       .gte("gc_orc_data", fromStr)
       .lte("gc_orc_data", toStr)
       .order("gc_orc_data", { ascending: false })
@@ -81,10 +134,8 @@ const fetchOrcamentosNoPeriodo = async (fromDate: Date, toDate: Date) => {
 
   // Merge com followup_kanban_cache para incluir orçamentos que ainda NÃO têm tarefa Auvo vinculada.
   const seen = new Set(rows.map((r: any) => String(r.gc_orcamento_id || "")));
-  const { data: cache } = await supabase
-    .from("followup_kanban_cache")
-    .select("gc_orcamento_id, atualizado_em, dados")
-    .in("coluna", SITUACAO_ABERTA_IDS);
+  const { data: cache, error: cacheError } = await cachePromise;
+  if (cacheError) throw cacheError;
   for (const c of cache || []) {
     const id = String((c as any).gc_orcamento_id || "");
     if (!id || seen.has(id)) continue;
@@ -110,6 +161,7 @@ const fetchOrcamentosNoPeriodo = async (fromDate: Date, toDate: Date) => {
     });
     seen.add(id);
   }
+  writeOrcamentosCache(fromStr, toStr, rows);
   return rows;
 };
 
@@ -199,7 +251,16 @@ export default function OrcamentosControlePage() {
   const { data: rows, isLoading } = useQuery({
     queryKey: ["orcamentos-controle", format(dateFrom, "yyyy-MM-dd"), format(dateTo, "yyyy-MM-dd")],
     queryFn: () => fetchOrcamentosNoPeriodo(dateFrom, dateTo),
-    staleTime: 60_000,
+    initialData: () => readOrcamentosCache(
+      format(dateFrom, "yyyy-MM-dd"),
+      format(dateTo, "yyyy-MM-dd"),
+    )?.rows,
+    initialDataUpdatedAt: () => readOrcamentosCache(
+      format(dateFrom, "yyyy-MM-dd"),
+      format(dateTo, "yyyy-MM-dd"),
+    )?.savedAt,
+    staleTime: ORCAMENTOS_CACHE_TTL,
+    gcTime: 24 * 60 * 60 * 1000,
   });
 
   // Auvo users for edit modal
@@ -212,7 +273,8 @@ export default function OrcamentosControlePage() {
       if (error) throw error;
       return (data?.data || []) as { userID: number; login: string; name: string }[];
     },
-    staleTime: 1000 * 60 * 30,
+    enabled: !!editingCard,
+    staleTime: ORCAMENTOS_CACHE_TTL,
   });
 
   // Detalhe do orçamento (peças/serviços) — busca quando abre o modal
