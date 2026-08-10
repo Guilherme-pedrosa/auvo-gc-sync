@@ -1,44 +1,73 @@
 export default function Index() {
   return (
-    <div className="p-8 space-y-6">
-      <h1 className="text-2xl font-bold text-blue-600">LÓGICA DE CORES: QUADRO DE AGENDAMENTO (CHEGADA)</h1>
-      
-      <div className="bg-blue-50 border-l-4 border-blue-500 p-4">
-        <p className="font-bold text-blue-900">Como as cores dos cards são definidas?</p>
-        <p className="text-sm text-blue-800">A lógica de cores no quadro "Chegada Orçamentos" baseia-se no status da entrega das peças em relação à data atual e à disponibilidade de estoque.</p>
-      </div>
+    <div className="p-8 space-y-8 max-w-4xl mx-auto">
+      <header className="space-y-2 border-b pb-6">
+        <h1 className="text-3xl font-bold text-blue-700 tracking-tight">Lógica de Validação: Auvo ↔ GestãoClick</h1>
+        <p className="text-slate-500 italic">
+          Entenda como o sistema identifica se uma tarefa foi finalizada corretamente e sem pendências.
+        </p>
+      </header>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        <div className="border p-4 rounded shadow-sm space-y-2 bg-white">
-          <h2 className="font-bold border-b pb-1 text-slate-700">1. Status de Chegada (Bordas e Ícones)</h2>
-          <ul className="list-disc pl-5 text-sm space-y-2 text-slate-600">
-            <li><span className="text-red-600 font-bold">Vermelho (Atrasada):</span> Data de chegada prevista é anterior a hoje e as peças não foram confirmadas.</li>
-            <li><span className="text-amber-600 font-bold">Amarelo (Hoje):</span> As peças têm previsão de chegada para a data atual.</li>
-            <li><span className="text-emerald-600 font-bold">Verde (Prevista):</span> Data de chegada futura confirmada nos pedidos de compra.</li>
-            <li><span className="text-slate-400 font-bold">Cinza (Sem Data):</span> O orçamento/pedido não possui nenhuma data de previsão vinculada no ERP.</li>
-          </ul>
+      <section className="space-y-4">
+        <div className="bg-emerald-50 border-l-4 border-emerald-500 p-6 rounded-r-lg shadow-sm">
+          <h2 className="text-xl font-bold text-emerald-900 mb-3 flex items-center gap-2">
+            <span className="flex h-6 w-6 items-center justify-center rounded-full bg-emerald-500 text-white text-xs">✓</span>
+            Critérios para o "Verde" (Finalizado OK)
+          </h2>
+          <p className="text-emerald-800 leading-relaxed mb-4">
+            Para que uma tarefa seja considerada <strong>100% concluída</strong> (exibida em verde no agendamento), ela deve atender simultaneamente a três requisitos:
+          </p>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="bg-white/60 p-4 rounded border border-emerald-200">
+              <span className="block font-bold text-emerald-700 mb-1">1. Status Auvo</span>
+              <span className="text-sm text-emerald-900">A tarefa deve estar marcada como <strong>"Finalizada"</strong> no Auvo.</span>
+            </div>
+            <div className="bg-white/60 p-4 rounded border border-emerald-200">
+              <span className="block font-bold text-emerald-700 mb-1">2. Registros Físicos</span>
+              <span className="text-sm text-emerald-900">É obrigatório possuir tanto o <strong>Check-in</strong> quanto o <strong>Check-out</strong> (ISO timestamps) realizados pelo técnico.</span>
+            </div>
+            <div className="bg-white/60 p-4 rounded border border-emerald-200">
+              <span className="block font-bold text-emerald-700 mb-1">3. Sem Pendências GC</span>
+              <span className="text-sm text-emerald-900">A situação da OS no GestãoClick <strong>não</strong> pode conter palavras como: <em>Pendente, Negociação, Aguardando, Correção ou Separação</em>.</span>
+            </div>
+          </div>
         </div>
+      </section>
 
-        <div className="border p-4 rounded shadow-sm space-y-2 bg-slate-50">
-          <h2 className="font-bold border-b pb-1 text-slate-700">2. Status de Execução (Badges Internas)</h2>
-          <ul className="list-disc pl-5 text-sm space-y-2 text-slate-600">
-            <li><strong>Verde:</strong> "Disponível em estoque" (Pode agendar agora).</li>
-            <li><strong>Amarelo:</strong> "Sem estoque · aguarda reposição" (Existe pedido de compra vinculado).</li>
-            <li><strong>Cinza:</strong> "Estoque não confirmado" (Aguardando verificação técnica/administrativa).</li>
-            <li><strong>Vermelho (Alerta):</strong> "OS já lançada" (Evita duplicidade de tarefas no Auvo).</li>
-          </ul>
+      <section className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div className="border p-5 rounded-lg shadow-sm bg-amber-50 border-amber-200">
+          <h3 className="font-bold text-amber-900 mb-2">Atenção: Amarelo Escuro</h3>
+          <p className="text-sm text-amber-800">
+            Se a tarefa está <strong>Finalizada</strong> mas o texto aparece em <strong>amarelo escuro</strong>, significa que algum dos requisitos acima falhou (ex: falta de check-in ou OS ainda está em 'Aguardando Peças').
+          </p>
         </div>
-      </div>
+        <div className="border p-5 rounded-lg shadow-sm bg-red-50 border-red-200">
+          <h3 className="font-bold text-red-900 mb-2">Alerta: Texto Vermelho</h3>
+          <p className="text-sm text-red-800">
+            Indica tarefas <strong>Pausadas</strong> ou tarefas agendadas que <strong>atrasaram mais de 2 horas</strong> do horário previsto sem terem sido iniciadas/concluídas.
+          </p>
+        </div>
+      </section>
 
-      <div className="bg-gray-50 border p-4 rounded text-xs text-slate-500">
-        <p><strong>Nota técnica:</strong> As cores no calendário seguem a mesma lógica (<code>STATUS_STYLE</code>), priorizando a cor de "Atraso" se houver qualquer item crítico no dia.</p>
-      </div>
+      <section className="bg-slate-50 border p-6 rounded-lg space-y-4">
+        <h3 className="font-bold text-slate-800 border-b pb-2">Como o sistema descobre a OS?</h3>
+        <p className="text-sm text-slate-600 leading-relaxed">
+          O sistema realiza um cruzamento inteligente:
+        </p>
+        <ul className="list-disc pl-5 text-sm space-y-2 text-slate-700">
+          <li><strong>Prioridade 1:</strong> Procura pelo ID da tarefa no campo customizado <code>73343 (Tarefa OS)</code> da Ordem de Serviço.</li>
+          <li><strong>Prioridade 2:</strong> Se não encontrar, varre o campo <code>73344 (Tarefa Execução)</code>, que pode conter múltiplos IDs separados por barra.</li>
+          <li><strong>Fallback:</strong> Tenta extrair referências de orçamento (ex: <code>#5835</code>) ou números de OS diretamente da <strong>Orientação</strong> da tarefa no Auvo.</li>
+        </ul>
+      </section>
 
-      <div className="pt-4">
-        <p className="text-sm text-gray-500 mb-2">Referência visual analisada:</p>
-        <img src="user-uploads://image-742.png" className="max-w-full rounded shadow border" alt="Quadro de Agendamento" />
-      </div>
+      <footer className="pt-4 border-t text-center">
+        <p className="text-xs text-gray-400">
+          Baseado na análise da imagem: <code>user-uploads://image-755.png</code>
+        </p>
+      </footer>
     </div>
   );
 }
+
 
