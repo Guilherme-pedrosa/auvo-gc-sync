@@ -249,13 +249,18 @@ export default function AgendarTarefaDialog({ open, onOpenChange, alvo, onSaved 
         <div className="space-y-3 mt-2">
           <div>
             <Label className="text-xs">Técnico</Label>
-            <SearchableSelect
-              options={userOptions}
-              value={tecnicoId}
-              onValueChange={(v) => setTecnicoId(v as string)}
-              placeholder={loadingUsers ? "Carregando..." : "Selecione o técnico"}
-              searchPlaceholder="Buscar técnico..."
-            />
+            <Select value={tecnicoId} onValueChange={setTecnicoId}>
+              <SelectTrigger className="h-9 text-xs">
+                <SelectValue placeholder={loadingUsers ? "Carregando..." : "Selecione o técnico"} />
+              </SelectTrigger>
+              <SelectContent>
+                {userOptions.map((opt) => (
+                  <SelectItem key={opt.value} value={opt.value} className="text-xs">
+                    {opt.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
           <div className="grid grid-cols-3 gap-2">
             <div className="col-span-1">
