@@ -35,7 +35,7 @@ const navGroups: NavGroup[] = [
       { label: "Produtividade Técnicos", icon: BarChart3, path: "/financeiro/produtividade-tecnicos" },
       { label: "Acompanhamento", icon: Radio, path: "/financeiro/acompanhamento" },
       { label: "Agenda Semanal (Antiga)", icon: CalendarDays, path: "/financeiro/agenda-semanal" },
-      { label: "Agendamento (Antiga)", icon: CalendarClock, path: "/financeiro/agendamento" },
+      { label: "Chegada Orçamentos", icon: CalendarClock, path: "/financeiro/agendamento" },
       { label: "Controle OS", icon: FileText, path: "/financeiro/relatorios" },
       { label: "Controle Orçamentos", icon: FileText, path: "/financeiro/controle-orcamentos" },
       { label: "OS Cruzadas", icon: ArrowLeftRight, path: "/financeiro/os-cruzadas" },
