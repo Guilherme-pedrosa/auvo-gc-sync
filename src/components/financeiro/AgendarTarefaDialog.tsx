@@ -131,6 +131,46 @@ export default function AgendarTarefaDialog({ open, onOpenChange, alvo, onSaved 
     }
   };
 
+  const handleSaveForecast = async () => {
+    if (!alvo) return;
+    if (!dateISO || !tecnicoId) {
+      toast.error("Informe data e técnico.");
+      return;
+    }
+    setSavingForecast(true);
+    try {
+      const tecnico = userOptions.find((o) => o.value === tecnicoId)?.label || "";
+      const colab = colaboradores.find(c => String(c.auvo_user_id) === String(tecnicoId));
+      
+      const { error } = await supabase.from("agenda_agendamentos").insert({
+        data: dateISO,
+        hora_inicio: hora,
+        hora_fim: minutesToClock(clockToMinutes(hora) + durationMinutes),
+        colaborador_id: colab?.id || null,
+        colaborador_nome: colab?.nome || tecnico,
+        cliente: alvo.cliente.toUpperCase(),
+        descricao: alvo.equipamento ? `Equipamento: ${alvo.equipamento}` : null,
+        status: "AGENDADO",
+        auvo_task_id: taskId,
+        gc_os_codigo: alvo.gc_os_codigo,
+        gc_orcamento_codigo: alvo.gc_orcamento_id,
+        previsao_continuidade: true,
+        origem: "MANUAL"
+      } as any);
+
+      if (error) throw error;
+
+      toast.success(`Previsão criada na agenda para ${dateISO} às ${hora}`);
+      qc.invalidateQueries({ queryKey: ["agenda_agendamentos"] });
+      qc.invalidateQueries({ queryKey: ["agenda_semana"] });
+      onOpenChange(false);
+    } catch (e: any) {
+      toast.error(`Erro ao criar previsão: ${e?.message || String(e)}`);
+    } finally {
+      setSavingForecast(false);
+    }
+  };
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-md">
