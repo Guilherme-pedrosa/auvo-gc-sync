@@ -3,7 +3,10 @@ import {
   forecastDateMeetsMinimum,
   forecastInitialDate,
   latestForecastForDocument,
+  latestMissingPartsArrival,
+  missingPartArrivalDates,
   type ChegadaItem,
+  type PecaEmFalta,
   type PrevisaoAgendamento,
 } from "@/lib/agendamento";
 
@@ -31,6 +34,24 @@ function forecast(id: string, atualizadoEm: string, overrides: Partial<PrevisaoA
 }
 
 describe("previsões de agendamento", () => {
+  it("mostra todos os prazos da peça e usa o maior no calendário", () => {
+    const part = {
+      produto_id: "p1",
+      nome: "PLACA POWER",
+      quantidade: 2,
+      estoque_atual: 0,
+      deficit: 2,
+      pedidos_compra: [
+        { codigo: "1", id: "1", situacao_id: "1", situacao: "Aberto", data_chegada: "2026-08-20", data_chegada_texto: "", estado: "pendente", gc_link: "" },
+        { codigo: "2", id: "2", situacao_id: "1", situacao: "Aberto", data_chegada: "2026-08-27", data_chegada_texto: "", estado: "pendente", gc_link: "" },
+        { codigo: "3", id: "3", situacao_id: "1", situacao: "Cancelado", data_chegada: "2026-09-15", data_chegada_texto: "", estado: "cancelado", gc_link: "" },
+      ],
+    } satisfies PecaEmFalta;
+
+    expect(missingPartArrivalDates(part)).toEqual(["2026-08-20", "2026-08-27"]);
+    expect(latestMissingPartsArrival([part])).toBe("2026-08-27");
+  });
+
   it("permite prever orçamento sem estoque a partir da reposição", () => {
     expect(forecastInitialDate(null, "2026-08-15", "2026-08-20", "2026-08-10")).toBe("2026-08-20");
     expect(forecastDateMeetsMinimum("2026-08-19", "2026-08-20")).toBe(false);

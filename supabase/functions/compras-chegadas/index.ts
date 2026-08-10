@@ -490,21 +490,15 @@ async function handleRequest(req: Request) {
       const todosEmEstoque = estoqueVerificado && produtos.every((product) => product.deficit <= 0 && !product.conflito_estoque);
       const pecasEmFalta = produtos.filter((product) => !product.estoque_verificado || product.deficit > 0 || product.conflito_estoque);
 
-      const coverageDates = pecasEmFalta.map((product) => {
-        if (!product.estoque_verificado || product.deficit <= 0) return null;
-        const datedOrders = product.pedidos_compra
-          .filter((order) => order.estado === "pendente" && order.data_chegada)
-          .sort((a, b) => String(a.data_chegada).localeCompare(String(b.data_chegada)));
-        let covered = 0;
-        for (const order of datedOrders) {
-          covered += Number(order.quantidade ?? 0);
-          if (covered >= product.deficit) return order.data_chegada;
-        }
-        return null;
-      });
-      const proximaReposicao = pecasEmFalta.length > 0 && coverageDates.every(Boolean)
-        ? (coverageDates.filter((date): date is string => Boolean(date)).sort().at(-1) ?? null)
-        : null;
+      // O calendário deve refletir o prazo mais distante entre todos os lotes abertos
+      // das peças em falta. As datas individuais continuam disponíveis em cada peça.
+      const datasReposicao = [...new Set(
+        pecasEmFalta
+          .flatMap((product) => product.pedidos_compra)
+          .filter((order) => order.estado !== "cancelado" && order.estado !== "chegou" && order.data_chegada)
+          .map((order) => String(order.data_chegada).slice(0, 10)),
+      )].sort();
+      const proximaReposicao = datasReposicao.at(-1) ?? null;
 
       const relatedDetails = pecasEmFalta.flatMap((product) => product.pedidos_compra);
       const detalhes = [...new Map(

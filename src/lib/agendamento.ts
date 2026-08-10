@@ -86,6 +86,17 @@ export type PedidoDetalheProduto = {
   quantidade?: number;
 };
 
+export type PecaEmFalta = {
+  produto_id: string;
+  nome: string;
+  quantidade: number;
+  estoque_atual: number;
+  deficit: number;
+  demanda_total_aberta?: number;
+  conflito_estoque?: boolean;
+  pedidos_compra: PedidoDetalheProduto[];
+};
+
 export type ChegadaItem = {
   doc_tipo?: "orcamento" | "compra";
   orcamento_id?: string;
@@ -108,16 +119,7 @@ export type ChegadaItem = {
   pode_agendar?: boolean;
   motivo_bloqueio?: string | null;
   proxima_reposicao?: string | null;
-  pecas_em_falta?: {
-    produto_id: string;
-    nome: string;
-    quantidade: number;
-    estoque_atual: number;
-    deficit: number;
-    demanda_total_aberta?: number;
-    conflito_estoque?: boolean;
-    pedidos_compra: PedidoDetalheProduto[];
-  }[];
+  pecas_em_falta?: PecaEmFalta[];
   data_chegada_orcamento?: string | null;
   fornecedor: string;
   situacao_id: string;
@@ -212,6 +214,20 @@ export function forecastDateMeetsMinimum(
   const day = isoDay(date);
   const minimumDay = isoDay(minimum);
   return Boolean(day) && (!minimumDay || day! >= minimumDay);
+}
+
+export function missingPartArrivalDates(part: PecaEmFalta): string[] {
+  return [...new Set(
+    part.pedidos_compra
+      .filter((order) => order.estado !== "cancelado" && order.estado !== "chegou" && order.data_chegada)
+      .map((order) => String(order.data_chegada).slice(0, 10))
+      .filter((date) => /^\d{4}-\d{2}-\d{2}$/.test(date)),
+  )].sort();
+}
+
+export function latestMissingPartsArrival(parts: PecaEmFalta[] | null | undefined): string | null {
+  const dates = [...new Set((parts ?? []).flatMap(missingPartArrivalDates))].sort();
+  return dates.at(-1) ?? null;
 }
 
 export type ChegadaStatus = "atrasada" | "hoje" | "futura" | "sem_data";
