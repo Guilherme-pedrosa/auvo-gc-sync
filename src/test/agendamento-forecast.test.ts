@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  CHEGADAS_QUERY_POLICY,
   forecastDateMeetsMinimum,
   forecastInitialDate,
   latestForecastForDocument,
@@ -34,6 +35,17 @@ function forecast(id: string, atualizadoEm: string, overrides: Partial<PrevisaoA
 }
 
 describe("previsões de agendamento", () => {
+  it("não consulta novamente a API de chegadas sem ação manual", () => {
+    expect(CHEGADAS_QUERY_POLICY).toMatchObject({
+      staleTime: 5 * 60 * 1000,
+      gcTime: Infinity,
+      retry: false,
+      refetchOnMount: true,
+      refetchOnReconnect: true,
+      refetchOnWindowFocus: true,
+    });
+  });
+
   it("mostra todos os prazos da peça e usa o maior no calendário", () => {
     const part = {
       produto_id: "p1",
