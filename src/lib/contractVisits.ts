@@ -123,7 +123,9 @@ export function eligibleContractVisitDates(
 
   for (let date = new Date(start); date <= end; date.setDate(date.getDate() + 1)) {
     const iso = localISO(date);
-    const weekOfMonth = Math.floor((date.getDate() - 1) / 7) + 1;
+    const firstDay = new Date(date.getFullYear(), date.getMonth(), 1).getDay();
+    const mondayOffset = (firstDay + 6) % 7;
+    const weekOfMonth = Math.floor((date.getDate() + mondayOffset - 1) / 7) + 1;
     if (!allowedDays.has(date.getDay()) || !allowedWeeks.has(weekOfMonth)) continue;
     if (validFrom && iso < validFrom) continue;
     if (validUntil && iso > validUntil) continue;
@@ -150,6 +152,50 @@ export function evenlyDistributedDates(eligibleDates: string[], quantity: number
     previousIndex = chosen;
   }
   return selected;
+}
+
+function weekOfMonthFromISO(value: string): number {
+  const date = new Date(`${value}T12:00:00`);
+  const firstDay = new Date(date.getFullYear(), date.getMonth(), 1).getDay();
+  const mondayOffset = (firstDay + 6) % 7;
+  return Math.floor((date.getDate() + mondayOffset - 1) / 7) + 1;
+}
+
+export function interleavedVisitDates(
+  eligibleDates: string[],
+  selectedWeeks: number[],
+  totalVisits: number,
+  visitNumbers: number[] = Array.from({ length: totalVisits }, (_, index) => index + 1),
+): string[] {
+  const weeks = [...new Set(selectedWeeks)]
+    .filter((week) => Number.isInteger(week) && week >= 1 && week <= 5)
+    .sort((left, right) => left - right);
+  if (weeks.length < totalVisits) throw new Error("SEMANAS_MES_INSUFICIENTES");
+
+  const targetWeeks = totalVisits === 1
+    ? [weeks[Math.floor((weeks.length - 1) / 2)]]
+    : Array.from({ length: totalVisits }, (_, index) => {
+        const weekIndex = Math.round(index * (weeks.length - 1) / (totalVisits - 1));
+        return weeks[weekIndex];
+      });
+  const datesByWeek = new Map<number, string[]>();
+  for (const date of eligibleDates) {
+    const week = weekOfMonthFromISO(date);
+    const dates = datesByWeek.get(week) || [];
+    dates.push(date);
+    datesByWeek.set(week, dates);
+  }
+  const availableWeeks = [...datesByWeek.keys()].sort((left, right) => left - right);
+  let previousWeek = 0;
+
+  return visitNumbers.map((visitNumber) => {
+    const targetWeek = targetWeeks[visitNumber - 1];
+    const chosenWeek = availableWeeks.find((week) => week > previousWeek && week >= targetWeek)
+      ?? [...availableWeeks].reverse().find((week) => week > previousWeek);
+    if (!chosenWeek) throw new Error("SEMANAS_DISPONIVEIS_INSUFICIENTES");
+    previousWeek = chosenWeek;
+    return datesByWeek.get(chosenWeek)![0];
+  });
 }
 
 export function rotatingVisitTeams(
@@ -188,16 +234,18 @@ export function buildContractVisitForecasts(input: ContractVisitConfigInput): Co
     input.qtdVisitas,
     input.qtdTecnicos,
   );
-  const dates = evenlyDistributedDates(
+  const dates = interleavedVisitDates(
     eligibleContractVisitDates(
       input.competencia,
       input.diasSemana,
       input.vigenciaInicio,
       input.vigenciaFim,
-      input.semanasMes,
+      [1, 2, 3, 4, 5, 6],
       input.naoAntesDe,
     ),
-    missingNumbers.length,
+    input.semanasMes || [1, 2, 3, 4, 5],
+    input.qtdVisitas,
+    missingNumbers,
   );
   const teams = rotatingVisitTeams(input.tecnicoIds, input.qtdTecnicos, input.qtdVisitas);
   const start = input.horaInicio.slice(0, 5);

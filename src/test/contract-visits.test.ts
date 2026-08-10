@@ -35,6 +35,35 @@ describe("planejamento anual de visitas contratuais", () => {
     ]);
   });
 
+  it("nunca coloca duas visitas em dias seguidos da mesma semana", () => {
+    const forecasts = buildContractVisitForecasts({
+      competencia: "2026-08",
+      qtdVisitas: 2,
+      qtdTecnicos: 2,
+      horasMesContratadas: 32,
+      horaInicio: "08:00",
+      tecnicoIds: ["a", "b"],
+      diasSemana: [2, 3],
+      semanasMes: [1, 2],
+      naoAntesDe: "2026-08-10",
+    });
+    expect(forecasts.map((forecast) => forecast.data)).toEqual(["2026-08-11", "2026-08-18"]);
+  });
+
+  it("amarra duas visitas às semanas 2 e 4", () => {
+    const forecasts = buildContractVisitForecasts({
+      competencia: "2026-09",
+      qtdVisitas: 2,
+      qtdTecnicos: 1,
+      horasMesContratadas: 16,
+      horaInicio: "08:00",
+      tecnicoIds: ["a"],
+      diasSemana: [2, 3],
+      semanasMes: [2, 4],
+    });
+    expect(forecasts.map((forecast) => forecast.data)).toEqual(["2026-09-08", "2026-09-22"]);
+  });
+
   it("preserva visitas passadas e gera somente as que faltam", () => {
     const forecasts = buildContractVisitForecasts({
       competencia: "2026-09",

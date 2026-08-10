@@ -90,6 +90,13 @@ function dateLabel(value: string): string {
   return `${day}/${month}/${year}`;
 }
 
+function mondayWeekKey(value: string): string {
+  const date = new Date(`${value.slice(0, 10)}T12:00:00`);
+  const daysSinceMonday = (date.getDay() + 6) % 7;
+  date.setDate(date.getDate() - daysSinceMonday);
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+}
+
 function hoursLabel(value: number): string {
   return `${value.toLocaleString("pt-BR", { maximumFractionDigits: 2 })}h`;
 }
@@ -214,6 +221,21 @@ export default function VisitasContratuaisPage() {
     }
     return map;
   }, [forecasts]);
+  const stackedConfigIds = useMemo(() => {
+    const visitsByWeek = new Map<string, Set<number>>();
+    for (const forecast of forecasts) {
+      if (!forecast.contrato_visita_config_id || !forecast.contrato_visita_numero) continue;
+      const key = `${forecast.contrato_visita_config_id}|${forecast.data.slice(0, 7)}|${mondayWeekKey(forecast.data)}`;
+      const visits = visitsByWeek.get(key) || new Set<number>();
+      visits.add(forecast.contrato_visita_numero);
+      visitsByWeek.set(key, visits);
+    }
+    return new Set(
+      [...visitsByWeek.entries()]
+        .filter(([, visits]) => visits.size > 1)
+        .map(([key]) => key.split("|")[0]),
+    );
+  }, [forecasts]);
 
   const monthlySummaries = useMemo(() => {
     const map = new Map<string, ContractVisitMonthSummary[]>();
@@ -288,6 +310,9 @@ export default function VisitasContratuaisPage() {
       if (value.tecnico_ids.length < value.qtd_tecnicos) throw new Error(`Selecione pelo menos ${value.qtd_tecnicos} técnico(s).`);
       if (!value.dias_semana.length) throw new Error("Selecione pelo menos um dia da semana.");
       if (!value.semanas_mes.length) throw new Error("Selecione pelo menos uma semana do mês.");
+      if (value.semanas_mes.length < value.qtd_visitas) {
+        throw new Error("Selecione ao menos uma semana diferente para cada visita mensal.");
+      }
       const durationMinutes = contractVisitDurationMinutes(
         Number(contract.horas_mes_contratadas),
         value.qtd_visitas,
@@ -365,8 +390,10 @@ export default function VisitasContratuaisPage() {
     if (!config.ativo) return false;
     const contract = contractById.get(config.contrato_id);
     if (!contract || !MONTHS.some((_, month) => contractMonthIsActive(monthCompetence(year, month), contract.vigencia_inicio, contract.vigencia_fim))) return false;
-    return config.planejamento_pendente || (year >= currentYear && !(forecastsByConfig.get(config.id)?.length));
-  }).map((config) => config.id), [configs, contractById, forecastsByConfig, year, currentYear]);
+    return config.planejamento_pendente
+      || stackedConfigIds.has(config.id)
+      || (year >= currentYear && !(forecastsByConfig.get(config.id)?.length));
+  }).map((config) => config.id), [configs, contractById, forecastsByConfig, stackedConfigIds, year, currentYear]);
 
   useEffect(() => {
     if (configsQuery.isLoading || forecastsQuery.isLoading || techniciansQuery.isLoading || planYear.isPending) return;
