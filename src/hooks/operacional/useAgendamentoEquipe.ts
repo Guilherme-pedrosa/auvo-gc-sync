@@ -45,6 +45,8 @@ export interface AgendaAgendamento {
   gc_os_situacao?: string | null;
   status_auvo?: string | null;
   pausada?: boolean | null;
+  check_in_iso?: string | null;
+  check_out_iso?: string | null;
 }
 
 async function preencherDocumentosGc(agendamentos: AgendaAgendamento[]) {
@@ -55,11 +57,18 @@ async function preencherDocumentosGc(agendamentos: AgendaAgendamento[]) {
   )];
   if (taskIds.length === 0) return agendamentos;
 
-  const documentosPorTarefa = new Map<string, { os: string | null; orcamento: string | null; situacao: string | null; status_auvo: string | null }>();
+  const documentosPorTarefa = new Map<string, {
+    os: string | null;
+    orcamento: string | null;
+    situacao: string | null;
+    status_auvo: string | null;
+    check_in: string | null;
+    check_out: string | null;
+  }>();
   for (let index = 0; index < taskIds.length; index += 500) {
     const { data, error } = await sb
       .from("tarefas_central")
-      .select("auvo_task_id,gc_os_codigo,gc_orcamento_codigo,gc_os_situacao,status_auvo")
+      .select("auvo_task_id,gc_os_codigo,gc_orcamento_codigo,gc_os_situacao,status_auvo,check_in_iso,check_out_iso")
       .in("auvo_task_id", taskIds.slice(index, index + 500));
     if (error) throw error;
 
@@ -72,6 +81,8 @@ async function preencherDocumentosGc(agendamentos: AgendaAgendamento[]) {
         orcamento: atual?.orcamento || row.gc_orcamento_codigo || null,
         situacao: atual?.situacao || row.gc_os_situacao || null,
         status_auvo: atual?.status_auvo || row.status_auvo || null,
+        check_in: atual?.check_in || row.check_in_iso || null,
+        check_out: atual?.check_out || row.check_out_iso || null,
       });
     }
   }
@@ -85,6 +96,8 @@ async function preencherDocumentosGc(agendamentos: AgendaAgendamento[]) {
       gc_orcamento_codigo: documento.orcamento || item.gc_orcamento_codigo || null,
       gc_os_situacao: documento.situacao || item.gc_os_situacao || null,
       status_auvo: documento.status_auvo || item.status_auvo || null,
+      check_in_iso: documento.check_in || item.check_in_iso || null,
+      check_out_iso: documento.check_out || item.check_out_iso || null,
     };
   });
 }
