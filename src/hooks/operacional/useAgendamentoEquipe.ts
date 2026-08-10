@@ -42,6 +42,9 @@ export interface AgendaAgendamento {
   conversao_erro?: string | null;
   conversao_tentada_em?: string | null;
   convertida_em?: string | null;
+  gc_os_situacao?: string | null;
+  status_auvo?: string | null;
+  pausada?: boolean | null;
 }
 
 async function preencherDocumentosGc(agendamentos: AgendaAgendamento[]) {
@@ -52,11 +55,11 @@ async function preencherDocumentosGc(agendamentos: AgendaAgendamento[]) {
   )];
   if (taskIds.length === 0) return agendamentos;
 
-  const documentosPorTarefa = new Map<string, { os: string | null; orcamento: string | null }>();
+  const documentosPorTarefa = new Map<string, { os: string | null; orcamento: string | null; situacao: string | null; status_auvo: string | null }>();
   for (let index = 0; index < taskIds.length; index += 500) {
     const { data, error } = await sb
       .from("tarefas_central")
-      .select("auvo_task_id,gc_os_codigo,gc_orcamento_codigo")
+      .select("auvo_task_id,gc_os_codigo,gc_orcamento_codigo,gc_os_situacao,status_auvo")
       .in("auvo_task_id", taskIds.slice(index, index + 500));
     if (error) throw error;
 
@@ -67,6 +70,8 @@ async function preencherDocumentosGc(agendamentos: AgendaAgendamento[]) {
       documentosPorTarefa.set(taskId, {
         os: atual?.os || row.gc_os_codigo || null,
         orcamento: atual?.orcamento || row.gc_orcamento_codigo || null,
+        situacao: atual?.situacao || row.gc_os_situacao || null,
+        status_auvo: atual?.status_auvo || row.status_auvo || null,
       });
     }
   }
@@ -78,6 +83,8 @@ async function preencherDocumentosGc(agendamentos: AgendaAgendamento[]) {
       ...item,
       gc_os_codigo: documento.os || item.gc_os_codigo || null,
       gc_orcamento_codigo: documento.orcamento || item.gc_orcamento_codigo || null,
+      gc_os_situacao: documento.situacao || item.gc_os_situacao || null,
+      status_auvo: documento.status_auvo || item.status_auvo || null,
     };
   });
 }
