@@ -52,15 +52,27 @@ export default function AgendarTarefaDialog({ open, onOpenChange, alvo, onSaved 
 
   useEffect(() => {
     if (!open || !alvo) return;
+    
+    console.log("[AgendarTarefaDialog] Populando campos com alvo:", {
+      data_tarefa: alvo.data_tarefa,
+      tecnico_id: alvo.tecnico_id,
+      hora: alvo.hora,
+      previsao_detalhes: alvo.previsao_detalhes
+    });
+
     setDateISO(alvo.data_tarefa?.slice(0, 10) || todayISO());
-    setHora(alvo.hora?.slice(0, 5) || "08:00");
+    
+    const targetHora = alvo.hora?.slice(0, 5) || "08:00";
+    setHora(targetHora);
+    
     const dur = alvo.hora && alvo.hora_fim 
       ? Math.max(15, clockToMinutes(alvo.hora_fim.slice(0, 5)) - clockToMinutes(alvo.hora.slice(0, 5)))
       : 120;
     setDurationMinutes(dur);
+    
     setTecnicoId(alvo.tecnico_id ? String(alvo.tecnico_id) : "");
     setPrevisaoDetalhes(alvo.previsao_detalhes || "");
-  }, [open, alvo?.exec_task_id, alvo?.auvo_task_id, alvo?.data_tarefa, alvo?.tecnico_id]);
+  }, [open, alvo]);
 
   const { data: users = [], isLoading: loadingUsers } = useQuery({
     queryKey: ["auvo-users"],

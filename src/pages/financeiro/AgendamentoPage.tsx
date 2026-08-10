@@ -253,10 +253,10 @@ export default function AgendamentoPage() {
       gc_orcamento_codigo: i.orcamento_codigo || (i.vinculo_tipo === "orcamento" ? i.vinculo_codigo : null),
       cliente: i.cliente || i.fornecedor,
       equipamento: i.equipamento,
-      data_tarefa: i.data_chegada || i.previsao_data,
+      data_tarefa: i.previsao_data || i.data_chegada,
       tecnico_id: i.previsao_colab_id ? String(i.previsao_colab_id) : null,
       previsao_detalhes: i.previsao_detalhes,
-      hora: i.previsao_hora,
+      hora: i.previsao_hora || "08:00",
       hora_fim: i.previsao_hora_fim,
     });
     setDetalhesDialog({ open: false, dia: "" });
