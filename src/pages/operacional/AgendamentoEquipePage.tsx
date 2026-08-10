@@ -27,6 +27,11 @@ import AgendamentoEquipeDialog from "@/components/operacional/AgendamentoEquipeD
 import TarefaAuvoDetalheDialog from "@/components/operacional/TarefaAuvoDetalheDialog";
 import CriarTarefaGeralDialog from "@/components/operacional/CriarTarefaGeralDialog";
 import AgendaRelatorioDialog from "@/components/operacional/AgendaRelatorioDialog";
+import {
+  AGENDA_TASK_SYNC_FIELDS,
+  agendaTaskSnapshotChanged,
+  mergeAgendaTaskSnapshot,
+} from "@/lib/agendaIncrementalSync";
 import { toast } from "sonner";
 
 const DIAS_TRADUZIDOS = ["Segunda-feira", "Terça-feira", "Quarta-feira", "Quinta-feira", "Sexta-feira", "Sábado", "Domingo"];
@@ -544,7 +549,7 @@ export default function AgendamentoEquipePage() {
         const taskId = String(t.auvo_task_id ?? t.taskID ?? t.id ?? "");
         if (!taskId) continue;
         
-        const key = `${taskId}|${t.data_tarefa}|${colab.id}`;
+        const key = taskId;
         if (vistos.has(key)) continue;
         vistos.add(key);
         
@@ -552,8 +557,8 @@ export default function AgendamentoEquipePage() {
 
         linhas.push({
           data: t.data_tarefa,
-          hora_inicio: t.hora_inicio || "08:00",
-          hora_fim: t.hora_fim || "18:00",
+          hora_inicio: t.hora_inicio || null,
+          hora_fim: t.hora_fim || null,
           colaborador_id: colab.id,
           colaborador_nome: colab.nome,
           cliente: clienteLimpo,
@@ -578,26 +583,22 @@ export default function AgendamentoEquipePage() {
         : { data: [], error: null };
       if (existingReadError) throw existingReadError;
 
-      const taskKey = (row: { auvo_task_id?: string | null; data: string; colaborador_id?: string | null }) =>
-        `${String(row.auvo_task_id || "")}|${row.data}|${String(row.colaborador_id || "")}`;
+      const taskIdKey = (row: { auvo_task_id?: string | null }) => String(row.auvo_task_id || "").trim();
       const slotKey = (row: { data: string; colaborador_id?: string | null }) =>
         `${row.data}|${String(row.colaborador_id || "")}`;
-      const sourceKeys = new Set(linhas.map(taskKey));
       const occupiedSlots = new Set(linhas.map(slotKey));
-      const existingByKey = new Map((existingTaskRows || []).map((row) => [taskKey(row), row]));
+      const existingByTaskId = new Map<string, any>();
+      for (const row of existingTaskRows || []) {
+        const taskId = taskIdKey(row);
+        if (taskId && !existingByTaskId.has(taskId)) existingByTaskId.set(taskId, row);
+      }
 
       const protectedForecast = (row: any) =>
         row.previsao_tipo === "ORCAMENTO_EXECUCAO" || row.conversao_status === "CONVERTIDA";
       const previousRows = data?.agendamentos ?? [];
-      const rowsForCleanup = [...previousRows, ...(existingTaskRows || [])];
-      const deleteIds = [...new Set(rowsForCleanup
+      const deleteIds = [...new Set(previousRows
         .filter((row: any) => {
           if (protectedForecast(row)) return false;
-          if (row.auvo_task_id && (row.origem === "AUVO" || row.origem == null)) {
-            return row.data >= dias[0]
-              && row.data <= dias[dias.length - 1]
-              && !sourceKeys.has(taskKey(row));
-          }
           return !row.auvo_task_id
             && row.origem === "MANUAL"
             && !row.previsao_continuidade
@@ -606,7 +607,8 @@ export default function AgendamentoEquipePage() {
         .map((row: any) => String(row.id))
         .filter(Boolean))];
 
-      // Exclusão em lote dos poucos registros que realmente ficaram obsoletos.
+      // Uma listagem do Auvo pode vir parcial. Nunca apagamos card Auvo por
+      // ausência na rodada; só retiramos o rascunho manual substituído.
       for (let i = 0; i < deleteIds.length; i += 500) {
         const { error: deleteError } = await supabase
           .from("agenda_agendamentos")
@@ -615,23 +617,20 @@ export default function AgendamentoEquipePage() {
         if (deleteError) throw deleteError;
       }
 
-      // Atualiza pelo ID estável; novas linhas recebem UUID no cliente. Assim,
-      // tarefas inalteradas não são apagadas e previsões promovidas mantêm o ID.
-      const syncFields = [
-        "data", "hora_inicio", "hora_fim", "colaborador_id", "colaborador_nome",
-        "cliente", "descricao", "status", "origem", "gc_os_codigo", "gc_orcamento_codigo",
-      ] as const;
-      const equalValue = (value: unknown) => value == null ? "" : String(value);
+      // auvo_task_id é a identidade estável. Mudança de data/técnico atualiza o
+      // mesmo UUID; campo omitido preserva o último valor conhecido.
       const upsertRows = linhas.flatMap((line) => {
-        const existing = existingByKey.get(taskKey(line));
-        const changed = !existing || syncFields.some((field) =>
-          equalValue((existing as any)[field]) !== equalValue(line[field]),
-        );
-        if (!changed) return [];
-        return [{
+        const existing = existingByTaskId.get(taskIdKey(line));
+        const merged = mergeAgendaTaskSnapshot(existing, {
           ...line,
           id: existing?.id ?? crypto.randomUUID(),
-        }];
+        });
+        if (!agendaTaskSnapshotChanged(existing, merged)) return [];
+        return [Object.fromEntries([
+          ["id", merged.id],
+          ["auvo_task_id", merged.auvo_task_id],
+          ...AGENDA_TASK_SYNC_FIELDS.map((field) => [field, merged[field]]),
+        ])];
       });
       for (let i = 0; i < upsertRows.length; i += 500) {
         const { error: upsertError } = await supabase

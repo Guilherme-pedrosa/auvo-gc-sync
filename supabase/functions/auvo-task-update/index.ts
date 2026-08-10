@@ -651,6 +651,105 @@ Deno.serve(async (req) => {
     const bearerToken = await auvoLogin(apiKey, apiToken);
     const headers = { Authorization: `Bearer ${bearerToken}`, "Content-Type": "application/json" };
 
+    if (action === "sync-local") {
+      const taskId = Number(body?.taskId);
+      if (!Number.isFinite(taskId) || taskId <= 0) {
+        return new Response(
+          JSON.stringify({ success: false, error: "taskId é obrigatório", reqId }),
+          { status: 400, headers: respHeaders },
+        );
+      }
+
+      const task = await fetchTaskById(taskId, headers);
+      const admin = getAdminClient();
+      const { data: existingRows, error: existingError } = await admin
+        .from("tarefas_central")
+        .select("mirror_key,gc_os_id,gc_os_codigo,gc_orcamento_id,gc_orcamento_codigo")
+        .eq("auvo_task_id", String(taskId))
+        .order("atualizado_em", { ascending: false })
+        .limit(20);
+      if (existingError) throw existingError;
+      // Se uma sincronização antiga deixou uma duplicata task-only mais nova,
+      // recuperamos a linha que ainda guarda o vínculo GC em vez de degradá-la.
+      const existing = existingRows?.find((row: any) =>
+        row?.gc_os_id || row?.gc_os_codigo || row?.gc_orcamento_id || row?.gc_orcamento_codigo
+      ) || existingRows?.[0] || null;
+
+      const { data: agendaRows, error: agendaError } = await admin
+        .from("agenda_agendamentos")
+        .select("cliente,colaborador_nome,colaborador_id,data,hora_inicio,hora_fim,descricao,gc_os_codigo,gc_orcamento_codigo")
+        .eq("auvo_task_id", String(taskId))
+        .limit(1);
+      if (agendaError) throw agendaError;
+      const agenda = agendaRows?.[0] || null;
+
+      const taskDate = String(task?.taskDate ?? task?.date ?? "");
+      const taskEndDate = String(task?.taskEndDate ?? task?.endDate ?? "");
+      const checkInDate = String(task?.checkInDate ?? task?.checkinDate ?? "");
+      const checkOutDate = String(task?.checkOutDate ?? task?.checkoutDate ?? "");
+      const status = String(task?.taskStatus?.description ?? task?.status?.description ?? task?.status ?? "").trim();
+      const customer = String(task?.customerDescription ?? task?.customerName ?? task?.customer?.tradeName ?? "").trim();
+      const technician = String(task?.userToName ?? task?.userTo?.name ?? "").trim();
+      const technicianId = String(task?.idUserTo ?? task?.userTo?.id ?? "").trim();
+      const orientation = String(task?.orientation ?? task?.description ?? "").trim();
+      const durationMinutes = parseAuvoDurationMinutes(task?.estimatedDuration ?? task?.estimated_duration);
+      const timePart = (value: string) => value.length >= 16 ? value.slice(11, 16) : "";
+      const patch: Record<string, unknown> = {
+        atualizado_em: new Date().toISOString(),
+        auvo_link: `https://app2.auvo.com.br/relatorioTarefas/DetalheTarefa/${taskId}`,
+      };
+      const setKnown = (key: string, value: unknown) => {
+        if (value == null || (typeof value === "string" && !value.trim())) return;
+        patch[key] = value;
+      };
+
+      setKnown("cliente", customer || agenda?.cliente);
+      setKnown("tecnico", technician || agenda?.colaborador_nome);
+      setKnown("tecnico_id", technicianId);
+      setKnown("data_tarefa", taskDate.slice(0, 10) || agenda?.data);
+      setKnown("hora_inicio", timePart(checkInDate) || timePart(taskDate) || agenda?.hora_inicio);
+      setKnown("hora_fim", timePart(checkOutDate) || timePart(taskEndDate) || agenda?.hora_fim);
+      setKnown("status_auvo", status);
+      setKnown("orientacao", orientation || agenda?.descricao);
+      setKnown("gc_os_codigo", agenda?.gc_os_codigo || existing?.gc_os_codigo);
+      setKnown("gc_orcamento_codigo", agenda?.gc_orcamento_codigo || existing?.gc_orcamento_codigo);
+      if (durationMinutes > 0) patch.duracao_decimal = durationMinutes / 60;
+      if (hasOwn(task, "checkIn") || checkInDate) patch.check_in = task?.checkIn === true || !!checkInDate;
+      if (hasOwn(task, "checkOut") || checkOutDate) patch.check_out = task?.checkOut === true || !!checkOutDate;
+
+      const existingMirrorKey = String(existing?.mirror_key || "").trim();
+      const mirrorKey = existingMirrorKey || `${taskId}::os:::orc:`;
+      if (existingMirrorKey) {
+        const { error: updateError } = await admin
+          .from("tarefas_central")
+          .update(patch)
+          .eq("mirror_key", existingMirrorKey);
+        if (updateError) throw updateError;
+      } else {
+        const { error: insertError } = await admin
+          .from("tarefas_central")
+          .upsert({
+            auvo_task_id: String(taskId),
+            mirror_key: mirrorKey,
+            ...patch,
+          }, { onConflict: "mirror_key", defaultToNull: false });
+        if (insertError) throw insertError;
+      }
+
+      const { data: syncedRows, error: syncedError } = await admin
+        .from("tarefas_central")
+        .select("*")
+        .eq("auvo_task_id", String(taskId))
+        .order("atualizado_em", { ascending: false })
+        .limit(1);
+      if (syncedError) throw syncedError;
+
+      return new Response(
+        JSON.stringify({ success: true, status: 200, data: syncedRows?.[0] || null, reqId }),
+        { status: 200, headers: respHeaders },
+      );
+    }
+
     if (action === "promote-budget-forecast") {
       const result = await promoteBudgetForecast(getAdminClient(), headers, body, reqId);
       return new Response(JSON.stringify({ ...result, status: 200, reqId }), {
@@ -1394,7 +1493,7 @@ Deno.serve(async (req) => {
     }
 
     return new Response(
-      JSON.stringify({ error: `action inválida: ${action}. Use: edit, edit-schedule, set-task-duration, promote-budget-forecast, upsert, get, get-equipment, list-users, list-task-types, list-questionnaires, list-customers, list-customer-equipments, create-task, create-preventive-task, persist-central` }),
+      JSON.stringify({ error: `action inválida: ${action}. Use: edit, edit-schedule, set-task-duration, sync-local, promote-budget-forecast, upsert, get, get-equipment, list-users, list-task-types, list-questionnaires, list-customers, list-customer-equipments, create-task, create-preventive-task, persist-central` }),
       { status: 400, headers: respHeaders }
     );
   } catch (error) {

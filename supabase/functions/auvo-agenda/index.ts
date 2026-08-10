@@ -380,6 +380,36 @@ Deno.serve(async (req) => {
             gc_orc_link: existing?.gc_orc_link || row.gc_orc_link || null,
           });
         }
+
+        // A agenda também guarda a última referência conhecida. Ela é o plano
+        // B quando uma sincronização antiga já removeu a linha do central.
+        const { data: agendaRows, error: agendaError } = await backend
+          .from("agenda_agendamentos")
+          .select("auvo_task_id,gc_os_codigo,gc_orcamento_codigo")
+          .in("auvo_task_id", batch);
+        if (agendaError) {
+          console.warn(`[auvo-agenda] falha ao consultar referências estáveis da agenda: ${agendaError.message}`);
+        } else {
+          for (const row of agendaRows ?? []) {
+            const id = String(row.auvo_task_id || "").trim();
+            if (!id) continue;
+            const existing = localDocumentMap.get(id);
+            localDocumentMap.set(id, {
+              mirror_key: existing?.mirror_key || null,
+              gc_os_codigo: existing?.gc_os_codigo || row.gc_os_codigo || null,
+              gc_orcamento_codigo: existing?.gc_orcamento_codigo || row.gc_orcamento_codigo || null,
+              gc_os_tarefa_exec: existing?.gc_os_tarefa_exec || null,
+              gc_os_tarefa_os: existing?.gc_os_tarefa_os || null,
+              gc_os_data: existing?.gc_os_data || null,
+              gc_os_situacao: existing?.gc_os_situacao || null,
+              gc_os_valor_total: existing?.gc_os_valor_total ?? null,
+              gc_os_link: existing?.gc_os_link || null,
+              gc_orc_situacao: existing?.gc_orc_situacao || null,
+              gc_orc_valor_total: existing?.gc_orc_valor_total ?? null,
+              gc_orc_link: existing?.gc_orc_link || null,
+            });
+          }
+        }
       }
     }
 
@@ -547,6 +577,17 @@ Deno.serve(async (req) => {
         if (task.duracao_decimal != null) row.duracao_decimal = task.duracao_decimal;
         if (task.endereco) row.endereco = task.endereco;
         if (task.descricao) row.orientacao = task.descricao;
+        if (task.gc_os_codigo) row.gc_os_codigo = task.gc_os_codigo;
+        if (task.gc_os_situacao) row.gc_os_situacao = task.gc_os_situacao;
+        if (task.gc_os_valor_total != null) row.gc_os_valor_total = task.gc_os_valor_total;
+        if (task.gc_os_link) row.gc_os_link = task.gc_os_link;
+        if (task.gc_os_tarefa_exec) row.gc_os_tarefa_exec = task.gc_os_tarefa_exec;
+        if (task.gc_os_tarefa_os) row.gc_os_tarefa_os = task.gc_os_tarefa_os;
+        if (task.gc_os_data) row.gc_os_data = task.gc_os_data;
+        if (task.gc_orcamento_codigo) row.gc_orcamento_codigo = task.gc_orcamento_codigo;
+        if (task.gc_orc_situacao) row.gc_orc_situacao = task.gc_orc_situacao;
+        if (task.gc_orc_valor_total != null) row.gc_orc_valor_total = task.gc_orc_valor_total;
+        if (task.gc_orc_link) row.gc_orc_link = task.gc_orc_link;
         return row;
       });
 
