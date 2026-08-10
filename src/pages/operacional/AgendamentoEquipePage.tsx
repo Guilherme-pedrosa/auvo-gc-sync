@@ -129,18 +129,34 @@ const semCorTexto = (classe: string) =>
     .filter((c) => !c.startsWith("text-"))
     .join(" ");
 
+const semAcento = (v: string | null | undefined) =>
+  String(v ?? "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase();
+
+// Situações do GC que indicam que a OS finalizada ainda tem pendência a resolver
+const PENDENCIA_TOKENS = [
+  "PENDENTE",
+  "PENDENCIA",
+  "NEGOCIA",
+  "AGUARDANDO",
+  "CORRECAO",
+  "CONFERENCIA",
+  "SEPARADO",
+  "DEVOLVIDO",
+];
+
 const getStatusColor = (a: AgendaAgendamento) => {
   const finalizado = a.status_auvo === "Finalizada";
-  const pausada = a.status_auvo === "Pausada";
-  
-  // Amarelo escuro: Finalizada com pendência (Pendente ou Em negociação)
-  if (finalizado && (a.gc_os_situacao?.toUpperCase().includes("PENDENTE") || a.gc_os_situacao?.toUpperCase().includes("NEGOCIAÇÃO"))) {
-    return "text-amber-700 dark:text-amber-500 font-bold";
+  const pausada = a.status_auvo === "Pausada" || a.pausada === true;
+  const situacao = semAcento(a.gc_os_situacao);
+
+  // Amarelo escuro: Finalizada com pendência
+  if (finalizado && PENDENCIA_TOKENS.some((t) => situacao.includes(t))) {
+    return "text-yellow-700 dark:text-yellow-500 font-bold";
   }
-  
+
   // Verde: Finalizada sem pendência
   if (finalizado) {
-    return "text-green-600 dark:text-green-500 font-bold";
+    return "text-green-700 dark:text-green-500 font-bold";
   }
 
   // Vermelho: Pausada ou Não feita com atraso
