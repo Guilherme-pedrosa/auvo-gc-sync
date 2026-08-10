@@ -69,8 +69,8 @@ export default function TarefaAuvoDetalheDialog({ taskId, onOpenChange, onEdit }
       const { data, error } = await supabase.functions.invoke("auvo-gc-sync", {
         body: {
           action: "revert_os",
-          gc_os_id: tarefa?.gc_os_id,
-          gc_os_codigo: tarefa?.gc_os_codigo,
+          gc_os_id: os.id,
+          gc_os_codigo: os.codigo,
           auvo_task_id: taskId,
           situacao_id_antes: situacaoId,
         },
@@ -86,7 +86,7 @@ export default function TarefaAuvoDetalheDialog({ taskId, onOpenChange, onEdit }
     onSuccess: (data, situacaoId) => {
       const label =
         RECONCILIATION_OS_SITUATIONS.find((s) => s.id === situacaoId)?.label || situacaoId;
-      toast.success(`OS ${tarefa?.gc_os_codigo || ""} → ${label}`);
+      toast.success(`OS ${os.codigo || ""} → ${label}`);
       if (data?.mirror_error) {
         toast.warning(
           "A OS foi alterada no GestãoClick, mas o espelho local será corrigido na próxima sincronização.",
@@ -101,6 +101,54 @@ export default function TarefaAuvoDetalheDialog({ taskId, onOpenChange, onEdit }
     },
   });
 
+  // Fallback de vínculo: quando a tarefa não tem OS/orçamento gravados,
+  // extrai a referência do texto de orientação (ex.: "OS ref. Orçamento #5835")
+  const refOrcamento = (() => {
+    const txt = String(tarefa?.orientacao || "");
+    const m = txt.match(/or[cç]amento\s*#?\s*(\d{3,})/i);
+    return m ? m[1] : null;
+  })();
+  const refOs = (() => {
+    const txt = String(tarefa?.orientacao || "");
+    const m = txt.match(/\bOS\s*#?\s*(\d{3,})/i);
+    return m ? m[1] : null;
+  })();
+  const precisaVinculo = !!tarefa && !tarefa.gc_os_codigo && !!(refOrcamento || refOs);
+
+  const { data: vinculo } = useQuery({
+    queryKey: ["tarefa_vinculo_os", refOrcamento, refOs],
+    enabled: precisaVinculo,
+    queryFn: async () => {
+      let q = supabase
+        .from("tarefas_central")
+        .select(
+          "auvo_task_id,gc_os_id,gc_os_codigo,gc_os_situacao,gc_os_cor_situacao,gc_os_valor_total,gc_os_link,gc_orc_link,gc_orcamento_codigo,gc_os_cliente",
+        )
+        .not("gc_os_codigo", "is", null)
+        .limit(1);
+      q = refOrcamento
+        ? q.eq("gc_orcamento_codigo", refOrcamento)
+        : q.eq("gc_os_codigo", refOs as string);
+      const { data, error } = await q;
+      if (error) throw error;
+      return (data?.[0] ?? null) as Record<string, any> | null;
+    },
+  });
+
+  const os = {
+    id: tarefa?.gc_os_id || vinculo?.gc_os_id || null,
+    codigo: tarefa?.gc_os_codigo || vinculo?.gc_os_codigo || null,
+    situacao: tarefa?.gc_os_situacao || vinculo?.gc_os_situacao || null,
+    cor: tarefa?.gc_os_cor_situacao || vinculo?.gc_os_cor_situacao || null,
+    valor: Number(tarefa?.gc_os_valor_total || vinculo?.gc_os_valor_total || 0),
+    link: tarefa?.gc_os_link || vinculo?.gc_os_link || null,
+    orcLink: tarefa?.gc_orc_link || vinculo?.gc_orc_link || null,
+    orcamento: tarefa?.gc_orcamento_codigo || vinculo?.gc_orcamento_codigo || refOrcamento || null,
+    cliente: tarefa?.gc_os_cliente || vinculo?.gc_os_cliente || null,
+    herdado: !tarefa?.gc_os_codigo && !!vinculo?.gc_os_codigo,
+    tarefaOrigem: vinculo?.auvo_task_id || null,
+  };
+
   const respostas: any[] = Array.isArray(tarefa?.questionario_respostas)
     ? (tarefa!.questionario_respostas as any[])
     : [];
@@ -114,10 +162,11 @@ export default function TarefaAuvoDetalheDialog({ taskId, onOpenChange, onEdit }
         <DialogHeader>
           <DialogTitle className="flex flex-wrap items-center gap-2">
             <span>{tarefa?.cliente || "Tarefa Auvo"}</span>
-            {tarefa?.gc_os_codigo && <Badge variant="outline">OS {tarefa.gc_os_codigo}</Badge>}
-            {tarefa?.gc_os_situacao && (
-              <Badge className="text-xs" style={{ backgroundColor: tarefa.gc_os_cor_situacao || undefined }}>
-                {tarefa.gc_os_situacao}
+            {os.codigo && <Badge variant="outline">OS {os.codigo}</Badge>}
+            {os.orcamento && <Badge variant="outline">Orç #{os.orcamento}</Badge>}
+            {os.situacao && (
+              <Badge className="text-xs" style={{ backgroundColor: os.cor || undefined }}>
+                {os.situacao}
               </Badge>
             )}
           </DialogTitle>
@@ -165,8 +214,8 @@ export default function TarefaAuvoDetalheDialog({ taskId, onOpenChange, onEdit }
               <div>
                 <span className="text-muted-foreground text-xs">Cliente (Auvo)</span>
                 <p className="font-medium">{tarefa.cliente || "—"}</p>
-                {tarefa.gc_os_cliente && (
-                  <p className="text-xs text-muted-foreground">GC: {tarefa.gc_os_cliente}</p>
+                {os.cliente && (
+                  <p className="text-xs text-muted-foreground">GC: {os.cliente}</p>
                 )}
               </div>
               <div>
@@ -183,7 +232,7 @@ export default function TarefaAuvoDetalheDialog({ taskId, onOpenChange, onEdit }
               </div>
               <div>
                 <span className="text-muted-foreground text-xs">Valor total OS</span>
-                <p className="font-semibold">{formatCurrency(Number(tarefa.gc_os_valor_total) || 0)}</p>
+                <p className="font-semibold">{formatCurrency(os.valor)}</p>
               </div>
               <div>
                 <span className="text-muted-foreground text-xs">Status Auvo</span>
@@ -226,24 +275,31 @@ export default function TarefaAuvoDetalheDialog({ taskId, onOpenChange, onEdit }
               )}
             </div>
 
-            {tarefa.gc_os_id && (
+            {os.id && (
               <div className="border rounded-md">
                 <div className="flex items-center gap-2 px-3 py-2 bg-muted/50 border-b">
                   <ArrowRightLeft className="h-4 w-4 text-muted-foreground" />
-                  <span className="text-sm font-semibold">Situação da OS no GestãoClick</span>
+                  <span className="text-sm font-semibold">
+                    OS {os.codigo || ""} no GestãoClick
+                  </span>
                 </div>
                 <div className="p-3 space-y-2">
+                  {os.herdado && (
+                    <p className="text-[10px] text-muted-foreground">
+                      Vínculo identificado pela referência do orçamento #{os.orcamento} (tarefa Auvo #{os.tarefaOrigem}).
+                    </p>
+                  )}
                   <p className="text-xs text-muted-foreground">
                     Situação atual:{" "}
                     <Badge
                       variant="outline"
                       className="text-[10px] ml-1"
                       style={{
-                        borderColor: tarefa.gc_os_cor_situacao || undefined,
-                        color: tarefa.gc_os_cor_situacao || undefined,
+                        borderColor: os.cor || undefined,
+                        color: os.cor || undefined,
                       }}
                     >
-                      {tarefa.gc_os_situacao || "—"}
+                      {os.situacao || "—"}
                     </Badge>
                   </p>
                   <div className="flex flex-col sm:flex-row gap-2">
@@ -278,7 +334,7 @@ export default function TarefaAuvoDetalheDialog({ taskId, onOpenChange, onEdit }
                     </Button>
                   </div>
                   <p className="text-[10px] text-muted-foreground">
-                    A alteração é aplicada diretamente na OS {tarefa.gc_os_codigo || ""} do GestãoClick.
+                    A alteração é aplicada diretamente na OS {os.codigo || ""} do GestãoClick.
                   </p>
                 </div>
               </div>
@@ -380,16 +436,16 @@ export default function TarefaAuvoDetalheDialog({ taskId, onOpenChange, onEdit }
                   </a>
                 </Button>
               )}
-              {tarefa.gc_os_link && (
+              {os.link && (
                 <Button size="sm" variant="outline" asChild>
-                  <a href={tarefa.gc_os_link} target="_blank" rel="noopener noreferrer" className="gap-1">
-                    <ExternalLink className="h-3.5 w-3.5" /> OS no GC
+                  <a href={os.link} target="_blank" rel="noopener noreferrer" className="gap-1">
+                    <ExternalLink className="h-3.5 w-3.5" /> OS {os.codigo || ""} no GC
                   </a>
                 </Button>
               )}
-              {tarefa.gc_orc_link && (
+              {os.orcLink && (
                 <Button size="sm" variant="outline" asChild>
-                  <a href={tarefa.gc_orc_link} target="_blank" rel="noopener noreferrer" className="gap-1">
+                  <a href={os.orcLink} target="_blank" rel="noopener noreferrer" className="gap-1">
                     <ExternalLink className="h-3.5 w-3.5" /> Orçamento no GC
                   </a>
                 </Button>
