@@ -115,7 +115,7 @@ function Celula({
   onDrop,
   colorir = true,
   clientesInfo = [],
-}: CelulaProps & { clientesInfo?: any[] }) {
+}: CelulaProps) {
   const [editando, setEditando] = useState(false);
   const manual = itens.find((i) => !i.auvo_task_id && i.origem !== "AUVO");
   const [rascunho, setRascunho] = useState(manual?.cliente ?? "");
