@@ -811,7 +811,11 @@ export default function EquipamentosPreventivosPage() {
         r.ultima_execucao_task_id = p.ultima_execucao_task_id;
 
         const planoLastTask = p.ultima_execucao_task_id ? taskById.get(String(p.ultima_execucao_task_id)) : null;
-        if (p.ultima_execucao_data && planoLastTask && isPreventivaTaskType(planoLastTask.auvo_task_type_id)) {
+        // Só aplica a última data do plano se ela for realmente MAIS RECENTE que a detectada pelos vínculos nativos do Auvo
+        const planoDate = p.ultima_execucao_data ? p.ultima_execucao_data.slice(0, 10) : "";
+        const nativeDate = r.ultima_data ? r.ultima_data.slice(0, 10) : "";
+        
+        if (planoDate && planoDate > nativeDate && planoLastTask && isPreventivaTaskType(planoLastTask.auvo_task_type_id)) {
           const task = planoLastTask;
           r.ultima_data = p.ultima_execucao_data;
           r.dias_desde = differenceInDays(new Date(), parseISO(p.ultima_execucao_data));
