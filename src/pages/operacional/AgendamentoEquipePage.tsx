@@ -159,7 +159,11 @@ function Celula({
                 type="button"
                 draggable
                 onDragStart={() => onDragStart(a)}
-                title={a.auvo_task_id ? `Tarefa Auvo #${a.auvo_task_id}` : "Agendamento manual"}
+                title={a.previsao_continuidade
+                  ? `Previsão interna${a.previsao_detalhes ? ` · ${a.previsao_detalhes}` : ""}`
+                  : a.auvo_task_id
+                    ? `Tarefa Auvo #${a.auvo_task_id}`
+                    : "Agendamento manual"}
                 onClick={() => (a.auvo_task_id ? onAbrirTarefa(a) : onAbrirAgendamento(a))}
                 onAuxClick={(e) => {
                   if (e.button === 1 && a.auvo_task_id) {
@@ -504,25 +508,6 @@ export default function AgendamentoEquipePage() {
     }
   };
 
-  useEffect(() => {
-    const cleanOldConcatenatedEntries = async () => {
-      // Remove entradas que contêm "/" no cliente, pois eram as antigas concatenadas
-      const { error } = await supabase
-        .from("agenda_agendamentos")
-        .delete()
-        .like("cliente", "%/%");
-      
-      if (error) {
-        console.error("Erro ao limpar agendamentos antigos:", error);
-      } else {
-        // Recarrega os dados locais se houver deleção (embora o refetch inicial já deva lidar com isso se as tabelas estiverem limpas)
-        refetchLocal();
-      }
-    };
-    
-    cleanOldConcatenatedEntries();
-  }, []);
-
   const salvarTecnico = useSalvarCelulaTecnico();
   const salvarVeiculo = useSalvarCelulaVeiculo();
 
@@ -573,7 +558,9 @@ export default function AgendamentoEquipePage() {
         auvo_task_id: item.auvo_task_id,
         origem: item.origem,
         gc_os_codigo: item.gc_os_codigo,
-        gc_orcamento_codigo: item.gc_orcamento_codigo
+        gc_orcamento_codigo: item.gc_orcamento_codigo,
+        previsao_continuidade: item.previsao_continuidade,
+        previsao_detalhes: item.previsao_detalhes,
       });
 
       toast.success("Agendamento movido com sucesso!", { id: toastId });

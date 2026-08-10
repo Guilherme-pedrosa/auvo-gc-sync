@@ -79,6 +79,20 @@ type PedidoDetalhe = {
   data_chegada_texto: string;
   estado: "pendente" | "chegou" | "cancelado" | "desconhecido";
   gc_link: string;
+  quantidade?: number;
+};
+
+type ProdutoDocumento = {
+  produto_id: string;
+  variacao_id: string | null;
+  nome: string;
+  quantidade: number;
+  valor_total: number;
+};
+
+type EstoqueProduto = {
+  estoque: number;
+  verificado: boolean;
 };
 
 function normalize(value: unknown): string {
@@ -87,6 +101,70 @@ function normalize(value: unknown): string {
     .replace(/[\u0300-\u036f]/g, "")
     .toUpperCase()
     .trim();
+}
+
+function toNumber(value: unknown): number {
+  if (typeof value === "number") return Number.isFinite(value) ? value : 0;
+  const raw = String(value ?? "").trim();
+  if (!raw) return 0;
+  const normalized = raw.includes(",")
+    ? raw.replace(/\./g, "").replace(",", ".")
+    : raw;
+  const parsed = Number(normalized);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function produtoDocumento(wrapper: any): ProdutoDocumento {
+  const produto = wrapper?.produto ?? wrapper ?? {};
+  return {
+    produto_id: String(produto?.produto_id ?? produto?.id_produto ?? "").trim(),
+    variacao_id: String(produto?.variacao_id ?? produto?.estoque_id ?? "").trim() || null,
+    nome: String(produto?.nome_produto ?? produto?.nome ?? produto?.descricao ?? "").trim(),
+    quantidade: toNumber(produto?.quantidade),
+    valor_total: toNumber(produto?.valor_total),
+  };
+}
+
+function produtosDocumento(doc: any): ProdutoDocumento[] {
+  return (Array.isArray(doc?.produtos) ? doc.produtos : [])
+    .map(produtoDocumento)
+    .filter((produto) => produto.nome || produto.produto_id);
+}
+
+async function fetchProductStock(produtoId: string, variacaoId?: string | null): Promise<EstoqueProduto> {
+  if (!produtoId) return { estoque: 0, verificado: false };
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      const response = await fetch(`${GC_BASE}/api/produtos/${produtoId}`, { headers: gcHeaders() });
+      if (response.status === 429 && attempt < 2) {
+        await new Promise((resolve) => setTimeout(resolve, 800 * (attempt + 1)));
+        continue;
+      }
+      if (!response.ok) return { estoque: 0, verificado: false };
+      const json = await response.json().catch(() => null);
+      const data = json?.data ?? json;
+      if (!data) return { estoque: 0, verificado: false };
+
+      let rawStock = data?.estoque ?? 0;
+      const variations = Array.isArray(data?.variacoes) ? data.variacoes : [];
+      if (variations.length > 0) {
+        const wanted = String(variacaoId ?? "");
+        const matched = wanted
+          ? variations.find((item: any) => String((item?.variacao ?? item)?.id ?? "") === wanted)
+          : null;
+        const chosen = matched ?? (variations.length === 1 ? variations[0] : null);
+        if (chosen) rawStock = (chosen?.variacao ?? chosen)?.estoque ?? rawStock;
+      }
+      return { estoque: toNumber(rawStock), verificado: true };
+    } catch (error) {
+      if (attempt === 2) {
+        console.warn(`[compras-chegadas] estoque não consultado para produto ${produtoId}`, error);
+      } else {
+        await new Promise((resolve) => setTimeout(resolve, 600 * (attempt + 1)));
+      }
+    }
+  }
+  return { estoque: 0, verificado: false };
 }
 
 /** O campo aceita vários PCs (ex.: "PC 1234 / 5678, PC-9012"). */
@@ -279,6 +357,82 @@ async function handleRequest(req: Request) {
       });
     }
 
+    const productReferences = new Map<string, { produto_id: string; variacao_id: string | null }>();
+    const openDemandByProduct = new Map<string, { quantidade: number; documentos: Set<string> }>();
+    for (const { doc } of brutos) {
+      for (const produto of produtosDocumento(doc)) {
+        if (!produto.produto_id) continue;
+        const key = `${produto.produto_id}::${produto.variacao_id ?? ""}`;
+        productReferences.set(key, { produto_id: produto.produto_id, variacao_id: produto.variacao_id });
+        const demand = openDemandByProduct.get(key) ?? { quantidade: 0, documentos: new Set<string>() };
+        demand.quantidade += produto.quantidade;
+        demand.documentos.add(String(doc?.id ?? doc?.codigo ?? ""));
+        openDemandByProduct.set(key, demand);
+      }
+    }
+
+    const stockByProduct = new Map<string, EstoqueProduto>();
+    const productKeys = [...productReferences.keys()];
+    for (let start = 0; start < productKeys.length; start += 3) {
+      const batch = productKeys.slice(start, start + 3);
+      const stocks = await Promise.all(batch.map((key) => {
+        const reference = productReferences.get(key)!;
+        return fetchProductStock(reference.produto_id, reference.variacao_id);
+      }));
+      batch.forEach((key, index) => stockByProduct.set(key, stocks[index]));
+      if (start + 3 < productKeys.length) await new Promise((resolve) => setTimeout(resolve, 1050));
+    }
+
+    // Procura pedidos de compra abertos pelas próprias peças, em vez de depender apenas
+    // do campo manual "PEDIDO DE COMPRA GC" preenchido no orçamento.
+    const openPurchaseResults = await Promise.all(
+      SITUACOES_PEDIDOS.map((situation) => fetchSituacao(situation, "compras")),
+    );
+    const openPurchases = Array.from(
+      new Map(
+        openPurchaseResults.flat().map((item) => [String(item.doc?.id ?? item.doc?.codigo ?? ""), item]),
+      ).values(),
+    );
+    const budgetProductIds = new Set([...productReferences.values()].map((item) => item.produto_id));
+    const relatedOpenPurchases = openPurchases.filter(({ doc }) =>
+      produtosDocumento(doc).some((produto) => budgetProductIds.has(produto.produto_id)),
+    );
+
+    // A listagem normalmente já contém os itens. O detalhe é consultado somente para PCs
+    // relacionados, para obter campos extras/data sem tornar a tela desnecessariamente lenta.
+    for (let start = 0; start < relatedOpenPurchases.length; start += 5) {
+      const batch = relatedOpenPurchases.slice(start, start + 5);
+      const details = await Promise.all(
+        batch.map((item) => fetchDocumentoCompleto("compras", String(item.doc?.id ?? ""))),
+      );
+      details.forEach((detail, index) => {
+        if (detail) batch[index].doc = { ...batch[index].doc, ...detail };
+      });
+    }
+
+    const purchasesByProduct = new Map<string, PedidoDetalhe[]>();
+    for (const { doc } of relatedOpenPurchases) {
+      const rawDate = dataPedidoRaw(doc);
+      const referenceDate = String(doc?.data_emissao ?? doc?.data ?? new Date().toISOString().slice(0, 10));
+      for (const product of produtosDocumento(doc)) {
+        if (!product.produto_id || !budgetProductIds.has(product.produto_id)) continue;
+        const detail: PedidoDetalhe = {
+          codigo: String(doc?.codigo ?? ""),
+          id: String(doc?.id ?? ""),
+          situacao_id: String(doc?.situacao_id ?? ""),
+          situacao: String(doc?.nome_situacao ?? "Situação não informada"),
+          data_chegada: parseChegada(rawDate, referenceDate),
+          data_chegada_texto: rawDate,
+          estado: estadoPedido(doc),
+          gc_link: doc?.id ? `https://app.gestaoclick.com/compras/visualizar/${doc.id}` : "",
+          quantidade: product.quantidade,
+        };
+        const current = purchasesByProduct.get(product.produto_id) ?? [];
+        if (!current.some((item) => item.codigo === detail.codigo)) current.push(detail);
+        purchasesByProduct.set(product.produto_id, current);
+      }
+    }
+
     const pedidosReferenciados = [...new Set(
       brutos
         .filter(({ tipo }) => tipo === "orcamento")
@@ -291,6 +445,7 @@ async function handleRequest(req: Request) {
       for (const pedido of encontrados) if (pedido) pedidoDetalhes.set(pedido.codigo, pedido);
     }
 
+    const today = new Date().toISOString().slice(0, 10);
     const itens = brutos.map(({ doc, situacao, tipo }) => {
       const vinculoRaw = extra(doc, "OS GC");
       const vinculo = parseVinculo(vinculoRaw);
@@ -298,7 +453,7 @@ async function handleRequest(req: Request) {
       const dataChegadaOrcamento = parseChegada(dataChegadaRaw, doc?.data_emissao || doc?.data);
       // No orçamento, o campo "PEDIDO DE COMPRA GC" diz quais PCs abastecem aquela OS.
       const pedidosCompra = parsePedidosCompra(extra(doc, ...CAMPO_PEDIDO_COMPRA));
-      const detalhes = pedidosCompra.map((codigo) => pedidoDetalhes.get(codigo) ?? {
+      const explicitDetails = pedidosCompra.map((codigo) => pedidoDetalhes.get(codigo) ?? {
         codigo,
         id: "",
         situacao_id: "",
@@ -308,35 +463,68 @@ async function handleRequest(req: Request) {
         estado: "desconhecido" as const,
         gc_link: "",
       });
+      const produtos = produtosDocumento(doc).map((product) => {
+        const key = `${product.produto_id}::${product.variacao_id ?? ""}`;
+        const stock = stockByProduct.get(key) ?? { estoque: 0, verificado: false };
+        const openDemand = openDemandByProduct.get(key) ?? { quantidade: product.quantidade, documentos: new Set<string>() };
+        const stockConflict = stock.verificado
+          && openDemand.documentos.size > 1
+          && openDemand.quantidade > stock.estoque;
+        const purchaseOrders = product.produto_id ? (purchasesByProduct.get(product.produto_id) ?? []) : [];
+        return {
+          ...product,
+          estoque_atual: stock.estoque,
+          estoque_verificado: stock.verificado,
+          deficit: stock.verificado
+            ? Math.max(0, product.quantidade - stock.estoque, stockConflict ? openDemand.quantidade - stock.estoque : 0)
+            : product.quantidade,
+          demanda_total_aberta: openDemand.quantidade,
+          conflito_estoque: stockConflict,
+          critico: /PLACA|MOTOR|COMPRESSOR|BOMBA|INVERSOR/i.test(product.nome),
+          pedidos_compra: purchaseOrders,
+        };
+      });
+
+      const estoqueVerificado = produtos.length > 0 && produtos.every((product) => product.estoque_verificado);
+      const todosEmEstoque = estoqueVerificado && produtos.every((product) => product.deficit <= 0 && !product.conflito_estoque);
+      const pecasEmFalta = produtos.filter((product) => !product.estoque_verificado || product.deficit > 0 || product.conflito_estoque);
+
+      const coverageDates = pecasEmFalta.map((product) => {
+        if (!product.estoque_verificado || product.deficit <= 0) return null;
+        const datedOrders = product.pedidos_compra
+          .filter((order) => order.estado === "pendente" && order.data_chegada)
+          .sort((a, b) => String(a.data_chegada).localeCompare(String(b.data_chegada)));
+        let covered = 0;
+        for (const order of datedOrders) {
+          covered += Number(order.quantidade ?? 0);
+          if (covered >= product.deficit) return order.data_chegada;
+        }
+        return null;
+      });
+      const proximaReposicao = pecasEmFalta.length > 0 && coverageDates.every(Boolean)
+        ? (coverageDates.filter((date): date is string => Boolean(date)).sort().at(-1) ?? null)
+        : null;
+
+      const relatedDetails = pecasEmFalta.flatMap((product) => product.pedidos_compra);
+      const detalhes = [...new Map(
+        [...explicitDetails, ...relatedDetails].map((detail) => [detail.codigo, detail]),
+      ).values()];
       const validos = detalhes.filter((pedido) => pedido.estado !== "cancelado");
       const todosChegaram = validos.length > 0 && validos.every((pedido) => pedido.estado === "chegou");
       const algumSemPrevisao = validos.some(
         (pedido) => pedido.estado !== "chegou" && !pedido.data_chegada,
       );
       const datasPedidos = validos.map((pedido) => pedido.data_chegada).filter((data): data is string => Boolean(data));
-      // Rastreamento (Pick & Pack): a data segura é a MAIOR previsão entre os PCs válidos.
-      // Se nenhum PC informou data, caímos para a data escrita no próprio orçamento.
       const maiorDataPedido = datasPedidos.sort().at(-1) ?? null;
-      const dataChegada = tipo === "orcamento" && validos.length > 0
-        ? (maiorDataPedido ?? dataChegadaOrcamento)
-        : dataChegadaOrcamento;
-      const semPrevisaoConfiavel = tipo === "orcamento" && algumSemPrevisao && !maiorDataPedido && !dataChegadaOrcamento;
-      
-      const produtos = (Array.isArray(doc?.produtos) ? doc.produtos : []).map((p: any) => {
-        const prod = p?.produto ?? p;
-        const nome = String(prod?.nome_produto ?? prod?.nome ?? "").trim();
-        const eCritico = /PLACA|MOTOR|COMPRESSOR|BOMBA|INVERSOR/i.test(nome);
-        return {
-          nome,
-          quantidade: Number(prod?.quantidade ?? 0) || 0,
-          valor_total: Number(prod?.valor_total ?? 0) || 0,
-          estoque_atual: Number(prod?.estoque_atual ?? 0) || 0,
-          critico: eCritico
-        };
-      });
-
-      const todosEmEstoque = produtos.length > 0 && produtos.every(p => p.estoque_atual >= p.quantidade);
-      const dataFinalComEstoque = todosEmEstoque ? (dataChegada || doc?.data || todayISO().slice(0, 10)) : dataChegada;
+      const dataChegada = todosEmEstoque
+        ? today
+        : (proximaReposicao ?? maiorDataPedido ?? dataChegadaOrcamento);
+      const semPrevisaoConfiavel = !todosEmEstoque && !dataChegada;
+      const motivoBloqueio = todosEmEstoque
+        ? null
+        : !estoqueVerificado
+          ? "Não foi possível confirmar o saldo de todas as peças no GestãoClick."
+          : `Sem estoque: ${pecasEmFalta.map((product) => `${product.nome} (faltam ${product.deficit})`).join(", ")}`;
 
 
       const orcCodigo = tipo === "orcamento" ? String(doc?.codigo ?? "") : (vinculo.tipo === "orcamento" ? vinculo.codigo : "");
@@ -350,14 +538,19 @@ async function handleRequest(req: Request) {
         pedidos_detalhes: detalhes,
         pedidos_todos_chegaram: todosChegaram,
         pedidos_sem_previsao: semPrevisaoConfiavel,
+        estoque_verificado: estoqueVerificado,
         todos_em_estoque: todosEmEstoque,
+        pode_agendar: todosEmEstoque,
+        motivo_bloqueio: motivoBloqueio,
+        proxima_reposicao: proximaReposicao,
+        pecas_em_falta: pecasEmFalta,
         data_chegada_orcamento: dataChegadaOrcamento,
         fornecedor: String(doc?.nome_fornecedor || doc?.nome_vendedor || ""),
         situacao_id: situacao.id,
         situacao: String(doc?.nome_situacao ?? situacao.nome),
         grupo: situacao.grupo,
         data_emissao: doc?.data_emissao || doc?.data || null,
-        data_chegada: dataFinalComEstoque,
+        data_chegada: dataChegada,
         data_chegada_texto: dataChegadaRaw,
         vinculo_tipo: tipo === "orcamento" ? "orcamento" : vinculo.tipo,
         vinculo_codigo: orcCodigo,

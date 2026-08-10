@@ -199,7 +199,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
           )}
         </div>
 
-        <nav className="flex-1 py-3 px-2 space-y-3 overflow-y-auto">
+        <nav className="min-h-0 flex-1 space-y-3 overflow-y-scroll overscroll-contain px-2 py-3">
           {allGroups.map((group) => {
             const isExpanded = expandedGroups.has(group.label);
             const hasActiveItem = group.items.some(
