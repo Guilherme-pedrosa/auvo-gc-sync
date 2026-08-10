@@ -101,17 +101,24 @@ export default function AgendarTarefaDialog({ open, onOpenChange, alvo, onSaved 
     },
   });
 
-  const userOptions = useMemo(
-    () =>
-      users
-        .map((u: any) => ({
-          value: String(u.userID ?? u.userId ?? u.id ?? ""),
-          label: String(u.name ?? u.userName ?? `Usuário ${u.userID ?? "?"}`),
-        }))
-        .filter((o) => o.value)
-        .sort((a, b) => a.label.localeCompare(b.label)),
-    [users],
-  );
+  const userOptions = useMemo(() => {
+    // Mesclamos a lista do RH com a do Auvo para garantir que IDs de ambos funcionem no seletor
+    const rhOpts = colaboradores
+      .filter(c => c.ativo)
+      .map(c => ({
+        value: c.id,
+        label: c.nome
+      }));
+
+    const auvoOpts = users
+      .map((u: any) => ({
+        value: String(u.userID ?? u.userId ?? u.id ?? ""),
+        label: String(u.name ?? u.userName ?? `Usuário ${u.userID ?? "?"}`),
+      }))
+      .filter(o => o.value && !rhOpts.some(r => r.label === o.label));
+
+    return [...rhOpts, ...auvoOpts].sort((a, b) => a.label.localeCompare(b.label));
+  }, [users, colaboradores]);
 
   const taskId = alvo?.exec_task_id || alvo?.auvo_task_id || null;
 
