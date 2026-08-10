@@ -777,7 +777,7 @@ export default function AgendamentoEquipePage() {
                             key={diaStr} 
                             id={isHoje ? "hoje-col" : undefined}
                             className={cn(
-                              "border border-border p-2 text-center text-[10px] font-bold uppercase min-w-[130px] sticky top-0 bg-muted z-10",
+                              "border border-border p-2 text-center text-[10px] font-bold uppercase min-w-[240px] sticky top-0 bg-muted z-10",
                               isHoje && "bg-primary/10 ring-1 ring-primary/30"
                             )}
                           >
