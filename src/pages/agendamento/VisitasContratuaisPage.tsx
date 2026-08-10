@@ -223,10 +223,11 @@ export default function VisitasContratuaisPage() {
       const rows = forecastsByConfig.get(config.id) || [];
       map.set(config.id, MONTHS.map((_, monthIndex) => {
         const competence = monthCompetence(year, monthIndex);
+        const hoursContratadas = Number(contract.horas_mes_contratadas || 0);
         return summarizeContractVisitMonth({
           competencia: competence,
           visitasContratadas: config.qtd_visitas,
-          horasContratadas: Number(contract.horas_mes_contratadas),
+          horasContratadas: hoursContratadas,
           vigenciaInicio: contract.vigencia_inicio,
           vigenciaFim: contract.vigencia_fim,
           forecasts: rows.filter((row) => row.data.slice(0, 7) === competence),
