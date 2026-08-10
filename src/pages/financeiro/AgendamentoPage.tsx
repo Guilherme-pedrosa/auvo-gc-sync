@@ -736,9 +736,9 @@ export default function AgendamentoPage() {
               </div>
             </section>
 
-            <div className="grid w-full gap-3 lg:grid-cols-3 flex-[1.5] min-h-0">
+            <div className="grid w-full gap-3 lg:grid-cols-3">
               {/* Orçamentos com data de chegada */}
-              <section className="flex flex-col rounded-lg border border-border bg-muted/20 p-2">
+              <section className="flex min-h-[70vh] flex-col rounded-lg border border-border bg-muted/20 p-2">
                 <h2 className="mb-2 text-xs font-semibold">Orçamentos com chegada prevista ({filtrados.filter(i => i.data_chegada).length})</h2>
                 <div className="flex flex-col flex-1 space-y-2 overflow-y-auto">
                   {filtrados.filter(i => i.data_chegada).length === 0
@@ -750,7 +750,7 @@ export default function AgendamentoPage() {
               </section>
 
               {/* Atrasadas */}
-              <section className="flex flex-col rounded-lg border border-destructive/40 bg-destructive/5 p-2">
+              <section className="flex min-h-[70vh] flex-col rounded-lg border border-destructive/40 bg-destructive/5 p-2">
                 <h2 className="mb-2 text-xs font-semibold text-destructive">Orçamentos atrasados ({atrasadas.length})</h2>
                 <div className="flex flex-col flex-1 space-y-2 overflow-y-auto">
                   {atrasadas.length === 0
@@ -760,7 +760,7 @@ export default function AgendamentoPage() {
               </section>
 
               {/* Sem previsão */}
-              <section className="flex flex-col rounded-lg border border-border bg-muted/20 p-2">
+              <section className="flex min-h-[70vh] flex-col rounded-lg border border-border bg-muted/20 p-2">
                 <h2 className="mb-2 text-xs font-semibold">Sem previsão de chegada ({semData.length})</h2>
                 <div className="flex flex-col flex-1 space-y-2 overflow-y-auto">
                   {semData.length === 0
