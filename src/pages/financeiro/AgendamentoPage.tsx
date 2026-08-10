@@ -754,7 +754,7 @@ export default function AgendamentoPage() {
               </section>
 
               {/* Atrasadas */}
-              <section className="rounded-lg border border-destructive/40 bg-destructive/5 p-2">
+              <section className="flex flex-col rounded-lg border border-destructive/40 bg-destructive/5 p-2">
                 <h2 className="mb-2 text-xs font-semibold text-destructive">Orçamentos atrasados ({atrasadas.length})</h2>
                 <div className="max-h-[420px] space-y-2 overflow-y-auto">
                   {atrasadas.length === 0
