@@ -6,6 +6,9 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
+  Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
+} from "@/components/ui/table";
+import {
   Select,
   SelectContent,
   SelectItem,
@@ -70,7 +73,7 @@ export default function TarefaAuvoDetalheDialog({ taskId, onOpenChange, onEdit }
       const { data, error } = await supabase
         .from("tarefas_central")
         .select(
-          "auvo_task_id,gc_os_id,gc_os_codigo,gc_os_situacao,gc_os_cor_situacao,gc_os_valor_total,gc_os_link,gc_orc_link,gc_orcamento_codigo,gc_os_cliente,gc_os_tarefa_exec",
+          "auvo_task_id,gc_os_id,gc_os_codigo,gc_os_situacao,gc_os_cor_situacao,gc_os_valor_total,gc_os_link,gc_orc_link,gc_orcamento_codigo,gc_orcamento_id,gc_os_vendedor,gc_os_data,gc_os_cliente,gc_os_tarefa_exec",
         )
         .not("gc_os_codigo", "is", null)
         .not("gc_os_tarefa_exec", "is", null)
@@ -167,7 +170,7 @@ export default function TarefaAuvoDetalheDialog({ taskId, onOpenChange, onEdit }
       let q = supabase
         .from("tarefas_central")
         .select(
-          "auvo_task_id,gc_os_id,gc_os_codigo,gc_os_situacao,gc_os_cor_situacao,gc_os_valor_total,gc_os_link,gc_orc_link,gc_orcamento_codigo,gc_os_cliente",
+          "auvo_task_id,gc_os_id,gc_os_codigo,gc_os_situacao,gc_os_cor_situacao,gc_os_valor_total,gc_os_link,gc_orc_link,gc_orcamento_codigo,gc_orcamento_id,gc_os_vendedor,gc_os_data,gc_os_cliente",
         )
         .not("gc_os_codigo", "is", null)
         .limit(1);
@@ -194,6 +197,37 @@ export default function TarefaAuvoDetalheDialog({ taskId, onOpenChange, onEdit }
     herdado: !tarefa?.gc_os_codigo && !!vinculoOs?.gc_os_codigo,
     tarefaOrigem: vinculoOs?.auvo_task_id || null,
   };
+
+  const orcamentoId = tarefa?.gc_orcamento_id || vinculoOs?.gc_orcamento_id || null;
+  const vendedorGc = tarefa?.gc_os_vendedor || vinculoOs?.gc_os_vendedor || tarefa?.gc_orc_vendedor || null;
+  const dataAberturaGc = tarefa?.gc_os_data || vinculoOs?.gc_os_data || tarefa?.gc_orc_data || null;
+
+  // Detalhe financeiro completo do documento no GestãoClick (mesmo padrão do Controle OS)
+  const docEndpoint = os.id
+    ? `/api/ordens_servicos/${os.id}`
+    : orcamentoId
+      ? `/api/orcamentos/${orcamentoId}`
+      : null;
+
+  const { data: gcDoc, isLoading: gcDocLoading } = useQuery({
+    queryKey: ["tarefa_gc_doc_detalhe", docEndpoint],
+    enabled: !!docEndpoint,
+    staleTime: 1000 * 60 * 5,
+    queryFn: async () => {
+      const { data, error } = await supabase.functions.invoke("gc-proxy", {
+        body: { endpoint: docEndpoint, method: "GET" },
+      });
+      if (error) return null;
+      return (data?.data?.data ?? data?.data ?? null) as Record<string, any> | null;
+    },
+  });
+
+  const gcProdutos: any[] = (gcDoc?.produtos || []).map((p: any) => p?.produto || p);
+  const gcServicos: any[] = (gcDoc?.servicos || []).map((s: any) => s?.servico || s);
+  const gcValorProdutos = Number(gcDoc?.valor_produtos || gcDoc?.total_produtos || 0);
+  const gcValorServicos = Number(gcDoc?.valor_servicos || gcDoc?.total_servicos || 0);
+  const gcValorDesconto = Number(gcDoc?.desconto || gcDoc?.valor_desconto || 0);
+  const gcValorTotal = Number(gcDoc?.valor_total || os.valor || 0);
 
   const respostas: any[] = Array.isArray(tarefa?.questionario_respostas)
     ? (tarefa!.questionario_respostas as any[])
@@ -266,15 +300,17 @@ export default function TarefaAuvoDetalheDialog({ taskId, onOpenChange, onEdit }
               </div>
               <div>
                 <span className="text-muted-foreground text-xs">Vendedor GC</span>
-                <p className="font-medium">{tarefa.gc_os_vendedor || "—"}</p>
+                <p className="font-medium">{vendedorGc || gcDoc?.nome_vendedor || "—"}</p>
               </div>
               <div>
-                <span className="text-muted-foreground text-xs">Valor Total OS</span>
-                <p className="font-semibold text-foreground">{formatCurrency(os.valor)}</p>
+                <span className="text-muted-foreground text-xs">
+                  {os.id ? "Valor Total OS" : "Valor Total Orçamento"}
+                </span>
+                <p className="font-semibold text-foreground">{formatCurrency(gcValorTotal)}</p>
               </div>
               <div>
-                <span className="text-muted-foreground text-xs">Data Abertura OS</span>
-                <p className="font-medium">{tarefa.gc_os_data || "—"}</p>
+                <span className="text-muted-foreground text-xs">Data Abertura GC</span>
+                <p className="font-medium">{dataAberturaGc || gcDoc?.data || "—"}</p>
               </div>
               <div>
                 <span className="text-muted-foreground text-xs">Técnico (Auvo)</span>
@@ -392,6 +428,132 @@ export default function TarefaAuvoDetalheDialog({ taskId, onOpenChange, onEdit }
                   </p>
                 </div>
               </div>
+            )}
+
+            {gcDocLoading && docEndpoint && (
+              <div className="border rounded-md p-4 space-y-2">
+                <Skeleton className="h-4 w-40" />
+                <Skeleton className="h-8 w-full" />
+                <Skeleton className="h-8 w-full" />
+              </div>
+            )}
+
+            {!gcDocLoading && gcDoc && (
+              <>
+                <div className="border rounded-md">
+                  <div className="flex items-center gap-2 px-3 py-2 bg-muted/50 border-b">
+                    <span className="text-sm font-semibold">
+                      💰 Resumo Financeiro {os.id ? `— OS ${os.codigo || ""}` : `— Orçamento #${os.orcamento || ""}`}
+                    </span>
+                  </div>
+                  <div className="grid grid-cols-4 gap-2 p-3 text-sm">
+                    <div className="text-center">
+                      <span className="text-muted-foreground text-xs block">Produtos</span>
+                      <p className="font-semibold">{formatCurrency(gcValorProdutos)}</p>
+                    </div>
+                    <div className="text-center">
+                      <span className="text-muted-foreground text-xs block">Serviços</span>
+                      <p className="font-semibold">{formatCurrency(gcValorServicos)}</p>
+                    </div>
+                    <div className="text-center">
+                      <span className="text-muted-foreground text-xs block">Desconto</span>
+                      <p className="font-semibold text-destructive">
+                        {gcValorDesconto > 0 ? `-${formatCurrency(gcValorDesconto)}` : "—"}
+                      </p>
+                    </div>
+                    <div className="text-center">
+                      <span className="text-muted-foreground text-xs block">Total</span>
+                      <p className="font-bold text-foreground">{formatCurrency(gcValorTotal)}</p>
+                    </div>
+                  </div>
+                </div>
+
+                {gcProdutos.length > 0 && (
+                  <div className="border rounded-md">
+                    <div className="flex items-center gap-2 px-3 py-2 bg-muted/50 border-b">
+                      <Package className="h-4 w-4 text-muted-foreground" />
+                      <span className="text-sm font-semibold">Produtos ({gcProdutos.length})</span>
+                    </div>
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead className="text-xs">Código</TableHead>
+                          <TableHead className="text-xs">Descrição</TableHead>
+                          <TableHead className="text-xs text-right">Qtd</TableHead>
+                          <TableHead className="text-xs text-right">Unit.</TableHead>
+                          <TableHead className="text-xs text-right">Total</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {gcProdutos.map((p: any, i: number) => {
+                          const qtd = Number(p.quantidade || p.qtd || 1);
+                          const unitario = Number(p.valor_venda || p.valor_unitario || p.preco || p.valor || 0);
+                          const total = Number(p.valor_total || p.subtotal || qtd * unitario);
+                          return (
+                            <TableRow key={i}>
+                              <TableCell className="text-xs font-mono py-1.5">
+                                {String(p.codigo_interno || p.codigo || p.produto_id || "—")}
+                              </TableCell>
+                              <TableCell className="text-xs py-1.5 max-w-[200px] truncate">
+                                {String(p.nome_produto || p.descricao || p.nome || "—")}
+                              </TableCell>
+                              <TableCell className="text-xs py-1.5 text-right">{qtd}</TableCell>
+                              <TableCell className="text-xs py-1.5 text-right">{formatCurrency(unitario)}</TableCell>
+                              <TableCell className="text-xs py-1.5 text-right font-medium">{formatCurrency(total)}</TableCell>
+                            </TableRow>
+                          );
+                        })}
+                      </TableBody>
+                    </Table>
+                  </div>
+                )}
+
+                {gcServicos.length > 0 && (
+                  <div className="border rounded-md">
+                    <div className="flex items-center gap-2 px-3 py-2 bg-muted/50 border-b">
+                      <ClipboardList className="h-4 w-4 text-muted-foreground" />
+                      <span className="text-sm font-semibold">Serviços ({gcServicos.length})</span>
+                    </div>
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead className="text-xs">Código</TableHead>
+                          <TableHead className="text-xs">Descrição</TableHead>
+                          <TableHead className="text-xs text-right">Qtd</TableHead>
+                          <TableHead className="text-xs text-right">Unit.</TableHead>
+                          <TableHead className="text-xs text-right">Total</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {gcServicos.map((s: any, i: number) => {
+                          const qtd = Number(s.quantidade || s.qtd || 1);
+                          const unitario = Number(s.valor_venda || s.valor_unitario || s.preco || s.valor || 0);
+                          const total = Number(s.valor_total || s.subtotal || qtd * unitario);
+                          return (
+                            <TableRow key={i}>
+                              <TableCell className="text-xs font-mono py-1.5">
+                                {String(s.codigo_interno || s.codigo || s.servico_id || "—")}
+                              </TableCell>
+                              <TableCell className="text-xs py-1.5 max-w-[200px] truncate">
+                                {String(s.nome_servico || s.descricao || s.nome || "—")}
+                              </TableCell>
+                              <TableCell className="text-xs py-1.5 text-right">{qtd}</TableCell>
+                              <TableCell className="text-xs py-1.5 text-right">{formatCurrency(unitario)}</TableCell>
+                              <TableCell className="text-xs py-1.5 text-right font-medium">{formatCurrency(total)}</TableCell>
+                            </TableRow>
+                          );
+                        })}
+                      </TableBody>
+                    </Table>
+                  </div>
+                )}
+
+                {gcProdutos.length === 0 && gcServicos.length === 0 && (
+                  <div className="border rounded-md p-3 text-sm text-muted-foreground text-center">
+                    Nenhum produto ou serviço cadastrado neste documento do GestãoClick
+                  </div>
+                )}
+              </>
             )}
 
             {tarefa.endereco && (
