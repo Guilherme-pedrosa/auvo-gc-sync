@@ -19,6 +19,8 @@ const TVH_ANON_KEY =
 // Só interessam não conformidades de manutenção do último checklist.
 // Alertas de "veículo rodou X km sem checklist" são ruído e ficam de fora.
 const OPEN_STATUSES = ["aberto", "em_andamento", "aguardando_peca"];
+const CLOSED_STATUSES = ["concluido", "cancelado", "resolvido"];
+
 // Ruído: qualquer alerta de quilometragem/checklist não preenchido ou veículo bloqueado por falta de checklist.
 const IGNORAR_TITULO =
   /rodou|sem\s+checklist|checklist\s*(n[ãa]o|vencid|atrasad|pendent|em\s+atraso|obrigat)|bloquead|\d+([.,]\d+)?\s*km/i;
@@ -133,7 +135,7 @@ Deno.serve(async (req) => {
     )) as Vehicle[];
 
     const tickets = (await hub(
-      `maintenance_tickets?select=vehicle_id,titulo,prioridade,status,descricao,created_at,tipo&tipo=eq.nao_conformidade&status=in.(${OPEN_STATUSES.join(",")})&order=created_at.desc`,
+      `maintenance_tickets?select=vehicle_id,titulo,prioridade,status,descricao,created_at,tipo&tipo=eq.nao_conformidade&status=in.(${OPEN_STATUSES.join(",")},${CLOSED_STATUSES.join(",")})&order=created_at.desc`,
     )) as Ticket[];
 
     // Não conformidade mais recente de cada veículo que contenha dano/manutenção real
@@ -146,8 +148,21 @@ Deno.serve(async (req) => {
       // Exige menção a problema/avaria/manutenção no título ou na descrição
       if (!PROBLEMA_KEYWORDS.test(titulo) && !PROBLEMA_KEYWORDS.test(desc)) continue;
       if (porVeiculo.has(t.vehicle_id)) continue;
+      
+      // Se o ticket mais recente de não conformidade estiver fechado, 
+      // significa que o problema foi resolvido no checklist posterior.
+      if (CLOSED_STATUSES.includes(t.status)) {
+        porVeiculo.set(t.vehicle_id, "RESOLVIDO"); // Marcador interno para ignorar
+        continue;
+      }
+
       const detalhe = detalharNaoConformidade(t);
       if (detalhe) porVeiculo.set(t.vehicle_id, detalhe);
+    }
+
+    // Limpa os marcadores de resolvido para não salvar texto "RESOLVIDO" no banco
+    for (const [vid, val] of porVeiculo.entries()) {
+      if (val === "RESOLVIDO") porVeiculo.delete(vid);
     }
 
     const admin = createClient(
