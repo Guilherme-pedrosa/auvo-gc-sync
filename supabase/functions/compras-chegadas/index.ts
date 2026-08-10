@@ -729,8 +729,8 @@ async function handleRequest(req: Request) {
       const r = item.vinculo_tipo === "os" ? osMap.get(item.vinculo_codigo) : orcMap.get(item.vinculo_codigo);
       if (!r) continue;
       if (!item.cliente) item.cliente = String(r.gc_os_cliente || r.gc_orc_cliente || r.cliente || "");
-      item.equipamento = getEquip(r);
-      item.os_codigo = String(r.gc_os_codigo ?? "");
+      if (!item.equipamento) item.equipamento = getEquip(r);
+      if (!item.os_codigo) item.os_codigo = String(r.gc_os_codigo ?? "");
       item.orcamento_codigo = String(r.gc_orcamento_codigo ?? "");
       item.documento_valor =
         item.vinculo_tipo === "os"
