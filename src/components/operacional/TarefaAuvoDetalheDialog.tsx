@@ -297,15 +297,17 @@ export default function TarefaAuvoDetalheDialog({ taskId, onOpenChange, onEdit }
               </div>
               <div>
                 <span className="text-muted-foreground text-xs">Vendedor GC</span>
-                <p className="font-medium">{tarefa.gc_os_vendedor || "—"}</p>
+                <p className="font-medium">{vendedorGc || gcDoc?.nome_vendedor || "—"}</p>
               </div>
               <div>
-                <span className="text-muted-foreground text-xs">Valor Total OS</span>
-                <p className="font-semibold text-foreground">{formatCurrency(os.valor)}</p>
+                <span className="text-muted-foreground text-xs">
+                  {os.id ? "Valor Total OS" : "Valor Total Orçamento"}
+                </span>
+                <p className="font-semibold text-foreground">{formatCurrency(gcValorTotal)}</p>
               </div>
               <div>
-                <span className="text-muted-foreground text-xs">Data Abertura OS</span>
-                <p className="font-medium">{tarefa.gc_os_data || "—"}</p>
+                <span className="text-muted-foreground text-xs">Data Abertura GC</span>
+                <p className="font-medium">{dataAberturaGc || gcDoc?.data || "—"}</p>
               </div>
               <div>
                 <span className="text-muted-foreground text-xs">Técnico (Auvo)</span>
