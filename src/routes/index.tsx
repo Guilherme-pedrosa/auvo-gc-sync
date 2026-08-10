@@ -61,7 +61,14 @@ export default function Index() {
         </ul>
       </section>
 
-      <footer className="pt-4 border-t text-center">
+      <footer className="pt-4 border-t text-center space-y-4">
+        <div className="bg-blue-50 border-blue-200 border p-4 rounded text-left">
+          <h3 className="text-blue-800 font-bold text-sm mb-2">Exibição de Detalhes da OS</h3>
+          <p className="text-xs text-blue-700 leading-relaxed">
+            Os diálogos de detalhes de tarefa agora exibem informações completas da OS vinculada (Faturamento, Vendedor e Data de Abertura), alinhados com o padrão do Controle de OS para facilitar a conferência de valores.
+          </p>
+        </div>
+        
         <p className="text-xs text-gray-400">
           o link da agenda coletiva tem que ser desse modelo :https://app2.auvo.com.br/informacoes/tarefa/943909cd-33d1-4775-ba67-00fd48a5b055?chave=bX7ZFmTughW3KoawzinQ3g
           <br /><br />
@@ -71,6 +78,7 @@ export default function Index() {
     </div>
   );
 }
+
 
 
 
