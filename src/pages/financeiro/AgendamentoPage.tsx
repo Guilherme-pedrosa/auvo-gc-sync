@@ -651,10 +651,10 @@ export default function AgendamentoPage() {
           </div>
         </div>
       ) : (
-        <div className="flex flex-1 min-h-0 flex-col gap-3 xl:flex-row overflow-visible">
-          <div className="flex flex-1 min-h-0 flex-col gap-3 pr-1 overflow-visible">
+        <div className="flex w-full flex-col gap-3 xl:flex-row overflow-visible">
+          <div className="flex w-full flex-1 flex-col gap-3 pr-1 overflow-visible">
             {/* Calendário */}
-            <section className="flex flex-col rounded-lg border border-border bg-card p-3 min-h-[300px]">
+            <section className="flex flex-col rounded-lg border border-border bg-card p-3">
               <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
                 <div className="flex items-center gap-1">
                   <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => navegar(-1)} aria-label="Mês anterior">
@@ -690,7 +690,7 @@ export default function AgendamentoPage() {
                 {DIAS.map((d) => <div key={d}>{d}</div>)}
               </div>
 
-              <div className="mt-1 flex-1 min-h-0 space-y-1 overflow-y-auto pr-1">
+              <div className="mt-1 space-y-1">
                 {semanas.map((semana, idx) => (
                   <div key={idx} className="grid grid-cols-7 gap-1">
                     {semana.map((dia) => {
