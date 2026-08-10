@@ -102,23 +102,25 @@ export default function AgendarTarefaDialog({ open, onOpenChange, alvo, onSaved 
   });
 
   const userOptions = useMemo(() => {
-    // Mesclamos a lista do RH com a do Auvo para garantir que IDs de ambos funcionem no seletor
-    const rhOpts = colaboradores
-      .filter(c => c.ativo)
-      .map(c => ({
+    // Pegamos apenas os colaboradores do RH que são técnicos/auxiliares e estão ativos
+    const isTecnico = (c: any) => {
+      const txt = `${c.cargo ?? ""} ${c.funcao ?? ""}`
+        .toLowerCase()
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "");
+      return txt.includes("tecnico") || txt.includes("auxiliar");
+    };
+
+    const tecnicosRh = colaboradores.filter((c) => c.ativo && isTecnico(c));
+    const listaFinal = tecnicosRh.length > 0 ? tecnicosRh : colaboradores.filter((c) => c.ativo);
+
+    return listaFinal
+      .map((c) => ({
         value: c.id,
-        label: c.nome
-      }));
-
-    const auvoOpts = users
-      .map((u: any) => ({
-        value: String(u.userID ?? u.userId ?? u.id ?? ""),
-        label: String(u.name ?? u.userName ?? `Usuário ${u.userID ?? "?"}`),
+        label: c.nome,
       }))
-      .filter(o => o.value && !rhOpts.some(r => r.label === o.label));
-
-    return [...rhOpts, ...auvoOpts].sort((a, b) => a.label.localeCompare(b.label));
-  }, [users, colaboradores]);
+      .sort((a, b) => a.label.localeCompare(b.label));
+  }, [colaboradores]);
 
   const taskId = alvo?.exec_task_id || alvo?.auvo_task_id || null;
 
