@@ -492,7 +492,7 @@ export default function AgendamentoPage() {
   };
 
   return (
-    <div className="flex min-h-max w-full flex-col gap-3 overflow-visible bg-background p-4">
+    <div className="flex h-screen w-full flex-col gap-3 overflow-hidden bg-background p-4">
       <header className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-lg font-semibold text-foreground">Chegada Orçamentos</h1>
@@ -651,10 +651,10 @@ export default function AgendamentoPage() {
           </div>
         </div>
       ) : (
-        <div className="flex flex-col gap-3 xl:flex-row overflow-visible">
-          <div className="flex flex-1 flex-col gap-3 pr-1 overflow-visible">
+        <div className="flex flex-1 min-h-0 flex-col gap-3 xl:flex-row overflow-visible">
+          <div className="flex flex-1 min-h-0 flex-col gap-3 pr-1 overflow-visible">
             {/* Calendário */}
-            <section className="rounded-lg border border-border bg-card p-3">
+            <section className="flex flex-col rounded-lg border border-border bg-card p-3 min-h-[300px]">
               <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
                 <div className="flex items-center gap-1">
                   <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => navegar(-1)} aria-label="Mês anterior">
@@ -690,7 +690,7 @@ export default function AgendamentoPage() {
                 {DIAS.map((d) => <div key={d}>{d}</div>)}
               </div>
 
-              <div className="mt-1 space-y-1">
+              <div className="mt-1 flex-1 min-h-0 space-y-1 overflow-y-auto pr-1">
                 {semanas.map((semana, idx) => (
                   <div key={idx} className="grid grid-cols-7 gap-1">
                     {semana.map((dia) => {
@@ -736,11 +736,11 @@ export default function AgendamentoPage() {
               </div>
             </section>
 
-            <div className="grid gap-3 lg:grid-cols-3 xl:grid-cols-3">
+            <div className="grid w-full gap-3 lg:grid-cols-3 flex-[1.5] min-h-0">
               {/* Dia selecionado */}
               <section className="flex flex-col rounded-lg border border-border bg-muted/20 p-2">
                 <h2 className="mb-2 text-xs font-semibold">Orçamentos em {formatDiaBR(diaSelecionado)} ({itensDoDia.length})</h2>
-                <div className="flex flex-col flex-1 space-y-2">
+                <div className="flex flex-col flex-1 space-y-2 overflow-y-auto">
                   {itensDoDia.length === 0
                     ? <p className="py-6 text-center text-[11px] text-muted-foreground">Nenhuma peça prevista neste dia.</p>
                     : itensDoDia.map((i) => renderItem(i))}
@@ -750,7 +750,7 @@ export default function AgendamentoPage() {
               {/* Atrasadas */}
               <section className="flex flex-col rounded-lg border border-destructive/40 bg-destructive/5 p-2">
                 <h2 className="mb-2 text-xs font-semibold text-destructive">Orçamentos atrasados ({atrasadas.length})</h2>
-                <div className="flex flex-col flex-1 max-h-[600px] space-y-2 overflow-y-auto">
+                <div className="flex flex-col flex-1 space-y-2 overflow-y-auto">
                   {atrasadas.length === 0
                     ? <p className="py-6 text-center text-[11px] text-muted-foreground">Nada atrasado. 🎉</p>
                     : atrasadas.map((i) => renderItem(i))}
@@ -760,7 +760,7 @@ export default function AgendamentoPage() {
               {/* Sem previsão */}
               <section className="flex flex-col rounded-lg border border-border bg-muted/20 p-2">
                 <h2 className="mb-2 text-xs font-semibold">Sem previsão de chegada ({semData.length})</h2>
-                <div className="flex flex-col flex-1 max-h-[600px] space-y-2 overflow-y-auto">
+                <div className="flex flex-col flex-1 space-y-2 overflow-y-auto">
                   {semData.length === 0
                     ? <p className="py-6 text-center text-[11px] text-muted-foreground">Todos os pedidos têm data.</p>
                     : semData.map((i) => renderItem(i))}
