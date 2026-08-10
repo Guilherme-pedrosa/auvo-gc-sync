@@ -150,14 +150,14 @@ const getStatusColor = (a: AgendaAgendamento) => {
   const situacao = semAcento(a.gc_os_situacao);
   const checkCompleto = Boolean(a.check_in_iso) && Boolean(a.check_out_iso);
 
-  // Amarelo escuro: Finalizada com pendência (situação do GC ou check-in/out incompleto)
-  if (finalizado && (!checkCompleto || PENDENCIA_TOKENS.some((t) => situacao.includes(t)))) {
-    return "text-yellow-700 dark:text-yellow-500 font-bold";
+  // Verde: Finalizada com check-in e check-out feitos e sem pendência no GC
+  if (finalizado && checkCompleto && !PENDENCIA_TOKENS.some((t) => situacao.includes(t))) {
+    return "text-green-700 dark:text-green-500 font-bold";
   }
 
-  // Verde: Finalizada, com check-in e check-out feitos e sem pendência
+  // Amarelo escuro: Finalizada mas com pendência (GC ou check-in/out incompleto)
   if (finalizado) {
-    return "text-green-700 dark:text-green-500 font-bold";
+    return "text-yellow-700 dark:text-yellow-500 font-bold";
   }
 
   // Vermelho: Pausada ou Não feita com atraso
