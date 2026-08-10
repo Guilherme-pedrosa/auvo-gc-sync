@@ -325,15 +325,19 @@ async function handleRequest(req: Request) {
       const produtos = (Array.isArray(doc?.produtos) ? doc.produtos : []).map((p: any) => {
         const prod = p?.produto ?? p;
         const nome = String(prod?.nome_produto ?? prod?.nome ?? "").trim();
-        // Lógica inspirada no Pick & Pack: destacar se o item é crítico ou recorrente
         const eCritico = /PLACA|MOTOR|COMPRESSOR|BOMBA|INVERSOR/i.test(nome);
         return {
           nome,
           quantidade: Number(prod?.quantidade ?? 0) || 0,
           valor_total: Number(prod?.valor_total ?? 0) || 0,
+          estoque_atual: Number(prod?.estoque_atual ?? 0) || 0,
           critico: eCritico
         };
       });
+
+      const todosEmEstoque = produtos.length > 0 && produtos.every(p => p.estoque_atual >= p.quantidade);
+      const dataFinalComEstoque = todosEmEstoque ? (dataChegada || doc?.data || todayISO().slice(0, 10)) : dataChegada;
+
 
       const orcCodigo = tipo === "orcamento" ? String(doc?.codigo ?? "") : (vinculo.tipo === "orcamento" ? vinculo.codigo : "");
 
@@ -346,13 +350,14 @@ async function handleRequest(req: Request) {
         pedidos_detalhes: detalhes,
         pedidos_todos_chegaram: todosChegaram,
         pedidos_sem_previsao: semPrevisaoConfiavel,
+        todos_em_estoque: todosEmEstoque,
         data_chegada_orcamento: dataChegadaOrcamento,
         fornecedor: String(doc?.nome_fornecedor || doc?.nome_vendedor || ""),
         situacao_id: situacao.id,
         situacao: String(doc?.nome_situacao ?? situacao.nome),
         grupo: situacao.grupo,
         data_emissao: doc?.data_emissao || doc?.data || null,
-        data_chegada: dataChegada,
+        data_chegada: dataFinalComEstoque,
         data_chegada_texto: dataChegadaRaw,
         vinculo_tipo: tipo === "orcamento" ? "orcamento" : vinculo.tipo,
         vinculo_codigo: orcCodigo,

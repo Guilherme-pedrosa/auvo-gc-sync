@@ -78,6 +78,7 @@ export type ChegadaItem = {
     gc_link: string;
   }[];
   pedidos_todos_chegaram?: boolean;
+  todos_em_estoque?: boolean;
   data_chegada_orcamento?: string | null;
   fornecedor: string;
   situacao_id: string;

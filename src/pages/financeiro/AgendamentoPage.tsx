@@ -349,9 +349,14 @@ export default function AgendamentoPage() {
             </Badge>
           )}
           <Badge variant="outline" className={cn("text-[10px]", style.chip)}>
-            {i.pedidos_todos_chegaram ? "Todos os PCs chegaram" : style.label}
+            {i.pedidos_todos_chegaram ? (i.todos_em_estoque ? "Disponível em Estoque" : "Peças chegaram (Estoque OK)") : style.label}
             {i.data_chegada && status !== "atrasada" ? ` · ${formatDiaBR(i.data_chegada)}` : ""}
           </Badge>
+          {!i.todos_em_estoque && !ehPedido && (
+            <Badge variant="outline" className="text-[9px] border-amber-500 bg-amber-50 text-amber-700">
+              Aguardando Reposição
+            </Badge>
+          )}
           <Badge variant="secondary" className="text-[10px]">{i.situacao}</Badge>
           {i.fornecedor && <Badge variant="outline" className="max-w-[160px] truncate text-[10px]">{i.fornecedor}</Badge>}
           {i.equipamento && <Badge variant="outline" className="max-w-[180px] truncate text-[10px]">{i.equipamento}</Badge>}
