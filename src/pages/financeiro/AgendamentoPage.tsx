@@ -272,12 +272,9 @@ export default function AgendamentoPage() {
     ].join("\n");
   }, [filtrados, atrasadas, semData]);
 
-  const abrirAgendamento = (i: ChegadaItem) => {
-    if (!i.previsao_id && i.pode_agendar === false) {
-      toast.error(i.motivo_bloqueio || "Não é possível criar uma previsão enquanto faltar estoque.");
-      return;
-    }
-
+  const abrirPrevisao = (i: ChegadaItem) => {
+    const semEstoque = i.pode_agendar === false;
+    const dataReposicaoConfirmada = semEstoque ? (i.proxima_reposicao || null) : null;
     setAlvo({
       previsao_id: i.previsao_id || null,
       auvo_task_id: null,
@@ -287,7 +284,11 @@ export default function AgendamentoPage() {
       cliente: i.cliente || i.fornecedor,
       equipamento: i.equipamento,
       data_tarefa: i.previsao_data || null,
-      data_sugerida: i.data_chegada,
+      data_sugerida: dataReposicaoConfirmada || i.data_chegada,
+      data_minima: dataReposicaoConfirmada,
+      aviso_estoque: semEstoque
+        ? (i.motivo_bloqueio || "Há peças sem saldo disponível para este orçamento.")
+        : null,
       tecnico_id: i.previsao_colab_id ? String(i.previsao_colab_id) : null,
       tecnico_nome: i.previsao_tecnico || null,
       previsao_detalhes: i.previsao_detalhes,
@@ -450,7 +451,7 @@ export default function AgendamentoPage() {
             <div className="flex items-start gap-2 rounded border border-destructive/40 bg-destructive/10 p-1.5 text-[10px] text-destructive">
               <AlertTriangle className="mt-0.5 h-3 w-3 shrink-0" />
               <span>
-                <strong>Atenção: OS já lançada</strong> para este orçamento (OS {i.os_codigo}). Confirme antes de lançar novamente para não duplicar.
+                <strong>OS já lançada</strong> para este orçamento (OS {i.os_codigo}). A previsão é somente interna e não cria outra tarefa no Auvo ou no GestãoClick.
               </span>
             </div>
           )}
@@ -465,14 +466,15 @@ export default function AgendamentoPage() {
           <div className="flex items-center gap-1">
             <Button 
               size="sm" 
-              variant={i.previsao_data ? "outline" : "secondary"} 
+              variant={i.previsao_data ? "outline" : "default"}
               className="h-7 flex-1 text-[11px]" 
-              onClick={() => abrirAgendamento(i)}
-              disabled={!i.previsao_id && i.pode_agendar === false}
-              title={!i.previsao_id && i.pode_agendar === false ? (i.motivo_bloqueio || "Sem estoque disponível") : undefined}
+              onClick={() => abrirPrevisao(i)}
+              title={i.pode_agendar === false
+                ? "Criar previsão interna para depois da chegada das peças"
+                : "Criar previsão interna de execução"}
             >
               <CalendarClock className="mr-1 h-3 w-3" /> 
-              {i.previsao_data ? "Alterar previsão" : "Agendar previsão"}
+              {i.previsao_data ? "Alterar previsão" : "Criar previsão"}
             </Button>
             {i.documento_link && (
               <Button size="icon" variant="ghost" className="h-7 w-7" asChild title="Editar no GestãoClick">
