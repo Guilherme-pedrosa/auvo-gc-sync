@@ -334,17 +334,19 @@ function Celula({
                 )}
               </button>
               <div className="absolute -right-1 top-1/2 -translate-y-1/2 z-20 hidden group-hover/item:flex items-center gap-0.5">
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onPreverProximoDia(a);
-                  }}
-                  title="Prever continuação no próximo dia"
-                  className="flex items-center justify-center h-4 w-4 rounded-full bg-primary text-primary-foreground text-[10px] shadow-sm hover:scale-110 transition-transform"
-                >
-                  +
-                </button>
+                {(!a.auvo_task_id || (a.auvo_task_id && a.gc_os_codigo)) && (
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onPreverProximoDia(a);
+                    }}
+                    title="Prever continuação no próximo dia"
+                    className="flex items-center justify-center h-4 w-4 rounded-full bg-primary text-primary-foreground text-[10px] shadow-sm hover:scale-110 transition-transform"
+                  >
+                    +
+                  </button>
+                )}
                 {a.previsao_continuidade && (
                   <button
                     type="button"
