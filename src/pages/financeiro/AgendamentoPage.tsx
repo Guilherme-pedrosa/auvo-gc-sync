@@ -737,13 +737,15 @@ export default function AgendamentoPage() {
             </section>
 
             <div className="grid w-full gap-3 lg:grid-cols-3 flex-[1.5] min-h-0">
-              {/* Dia selecionado */}
+              {/* Orçamentos com data de chegada */}
               <section className="flex flex-col rounded-lg border border-border bg-muted/20 p-2">
-                <h2 className="mb-2 text-xs font-semibold">Orçamentos em {formatDiaBR(diaSelecionado)} ({itensDoDia.length})</h2>
+                <h2 className="mb-2 text-xs font-semibold">Orçamentos com chegada prevista ({filtrados.filter(i => i.data_chegada).length})</h2>
                 <div className="flex flex-col flex-1 space-y-2 overflow-y-auto">
-                  {itensDoDia.length === 0
-                    ? <p className="py-6 text-center text-[11px] text-muted-foreground">Nenhuma peça prevista neste dia.</p>
-                    : itensDoDia.map((i) => renderItem(i))}
+                  {filtrados.filter(i => i.data_chegada).length === 0
+                    ? <p className="py-6 text-center text-[11px] text-muted-foreground">Nenhum orçamento com data de chegada.</p>
+                    : filtrados.filter(i => i.data_chegada)
+                        .sort((a, b) => String(a.data_chegada).localeCompare(String(b.data_chegada)))
+                        .map((i) => renderItem(i))}
                 </div>
               </section>
 
