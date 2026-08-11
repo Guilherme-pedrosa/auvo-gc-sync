@@ -511,6 +511,30 @@ async function refreshAuvoNameReferences(
   if (autoGroupError && autoGroupError.code !== "23505") throw autoGroupError;
 }
 
+async function fetchAuvoCustomersLight(accessToken: string): Promise<AuvoCustomer[]> {
+  const all: AuvoCustomer[] = [];
+  const filter = encodeURIComponent(JSON.stringify({}));
+  const fields = encodeURIComponent("id,externalId,description,name,legalName,cpfCnpj,active");
+  for (let page = 1; page <= 200; page++) {
+    const response = await fetch(
+      `${AUVO_BASE}/customers/?paramFilter=${filter}&page=${page}&pageSize=500&order=asc&selectfields=${fields}`,
+      { headers: auvoHeaders(accessToken) },
+    );
+    if (response.status === 404) break;
+    const raw = await response.text();
+    if (!response.ok) throw new Error(`Auvo /customers página ${page} respondeu ${response.status}: ${raw.slice(0, 200)}`);
+    const json = raw ? JSON.parse(raw) : {};
+    const list = json?.result?.entityList ?? json?.result ?? [];
+    if (!Array.isArray(list) || list.length === 0) break;
+    for (const item of list) {
+      const mapped = mapAuvoCustomer(item);
+      if (mapped) all.push(mapped);
+    }
+    if (list.length < 500) break;
+  }
+  return all;
+}
+
 async function handleDocumentLookup(supabase: any, body: any): Promise<Record<string, unknown>> {
   const ids = Array.isArray(body?.rhClientIds)
     ? body.rhClientIds.map((value: unknown) => String(value || "").trim()).filter(Boolean)
@@ -525,11 +549,16 @@ async function handleDocumentLookup(supabase: any, body: any): Promise<Record<st
   if (error) throw error;
 
   const accessToken = await auvoLogin();
-  const auvoCustomers = await fetchAllAuvoCustomers(accessToken);
+  const auvoCustomers = await fetchAuvoCustomersLight(accessToken);
   const auvoByDocument = new Map<string, AuvoCustomer[]>();
   for (const customer of auvoCustomers) addMulti(auvoByDocument, digits(customer.cpfCnpj), customer);
 
-  const cacheRows = auvoCustomers.map((customer) => ({
+  const wanted = new Set(
+    (rows ?? []).map((row: any) => digits(row.cpf_cnpj)).filter((doc: string) => doc.length === 11 || doc.length === 14),
+  );
+  const cacheRows = auvoCustomers
+    .filter((customer) => wanted.has(digits(customer.cpfCnpj)))
+    .map((customer) => ({
     auvo_id: customer.id,
     nome: customer.name,
     external_id: customer.externalId,
