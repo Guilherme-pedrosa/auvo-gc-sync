@@ -891,13 +891,28 @@ export default function AgendamentoEquipePage() {
                                      throw new Error("Não é permitido gerar previsão para tarefas sem OS vinculada.");
                                    }
 
-                                   const payload = {
-                                     ...a,
-                                     id: undefined, // Novo registro
-                                     data: proximoDia,
-                                     status: "PREVISAO",
-                                     previsao_continuidade: true,
-                                     previsao_tipo: "CONTINUACAO",
+                                  // Somente colunas reais de agenda_agendamentos: campos
+                                  // enriquecidos (status_auvo, check_in_iso, tipo_tarefa_*)
+                                  // não existem na tabela e quebravam o insert.
+                                  const payload = {
+                                    data: proximoDia,
+                                    hora_inicio: a.hora_inicio,
+                                    hora_fim: a.hora_fim,
+                                    colaborador_id: a.colaborador_id ?? null,
+                                    colaborador_nome: a.colaborador_nome,
+                                    veiculo_id: a.veiculo_id ?? null,
+                                    cliente: a.cliente,
+                                    descricao: a.descricao ?? null,
+                                    gc_os_codigo: a.gc_os_codigo ?? null,
+                                    gc_orcamento_codigo: a.gc_orcamento_codigo ?? null,
+                                    contrato_id: a.contrato_id ?? null,
+                                    contrato_visita_config_id: a.contrato_visita_config_id ?? null,
+                                    contrato_visita_competencia: a.contrato_visita_competencia ?? null,
+                                    contrato_visita_numero: a.contrato_visita_numero ?? null,
+                                    previsao_detalhes: a.previsao_detalhes ?? null,
+                                    status: "PREVISAO",
+                                    previsao_continuidade: true,
+                                    previsao_tipo: "CONTINUACAO",
                                     conversao_status: null,
                                     conversao_erro: null,
                                     conversao_tentada_em: null,
@@ -905,9 +920,6 @@ export default function AgendamentoEquipePage() {
                                     auvo_task_id: null,
                                     origem: "MANUAL",
                                   };
-                                  delete (payload as any).id;
-                                  delete (payload as any).criado_em;
-                                  delete (payload as any).atualizado_em;
 
                                   const { error } = await supabase.from("agenda_agendamentos").insert(payload as any);
                                   if (error) throw error;
@@ -916,7 +928,7 @@ export default function AgendamentoEquipePage() {
                                   toast.success("Previsão gerada para o dia seguinte", { id: toastId });
                                 } catch (err) {
                                   console.error("Erro ao prever:", err);
-                                  toast.error("Erro ao gerar previsão", { id: toastId });
+                                  toast.error((err as Error)?.message || "Erro ao gerar previsão", { id: toastId });
                                 }
                               }}
                             />
