@@ -121,11 +121,12 @@ export function useDeleteDocumentType() {
 }
 
 // ---------- Clientes ----------
-export function useRhClientes(search = "") {
+export function useRhClientes(search = "", vinculoStatus = "all") {
   return useQuery({
-    queryKey: ["rh_clientes", search],
+    queryKey: ["rh_clientes", search, vinculoStatus],
     queryFn: async () => {
       let q = sb.from("rh_clientes").select("*").order("nome");
+      
       if (search) {
         const safe = search.replace(/[,()%]/g, " ").trim();
         q = q.or([
@@ -137,6 +138,15 @@ export function useRhClientes(search = "") {
           `auvo_external_id.ilike.%${safe}%`,
         ].join(","));
       }
+
+      if (vinculoStatus !== "all") {
+        if (vinculoStatus === "nao_vinculado") {
+          q = q.or("vinculo_status.eq.pendente,vinculo_status.is.null");
+        } else {
+          q = q.eq("vinculo_status", vinculoStatus);
+        }
+      }
+
       const { data, error } = await q.limit(2000);
       if (error) throw error;
       return (data ?? []) as RhCliente[];

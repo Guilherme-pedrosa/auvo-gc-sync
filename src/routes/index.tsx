@@ -70,14 +70,11 @@ export default function Index() {
         </div>
         
         <p className="text-xs text-gray-400">
-          ignore o dito acima.
-          
-          eu preciso de um filtro de clientes, preciso de um filtro para os que não estão vinculados, preciso ver o nome completo do clientes
-          
-          RH &gt; Clientes
+          back end - 
+          você fez só o front end do filtro mas não fez o back end
           
           Veja o link da imagem enviada abaixo e analise o conteúdo dela para responder:
-          Imagem 1: https://sorax.lovable.app/api/public/i/j11gw3z01q.png
+          Imagem 1: https://sorax.lovable.app/api/public/i/5brnp3vz8z.png
         </p>
       </footer>
     </div>

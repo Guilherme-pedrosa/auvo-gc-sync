@@ -34,7 +34,7 @@ export default function ClientesRhPage() {
   const navigate = useNavigate();
   const [search, setSearch] = useState("");
   const [filterVinculo, setFilterVinculo] = useState<string>("all");
-  const { data: clientes = [], isLoading } = useRhClientes(search);
+  const { data: clientes = [], isLoading } = useRhClientes(search, filterVinculo);
   const { data: auvoClientes = [] } = useAuvoClientesCache();
   const save = useSaveRhCliente();
   const linkAuvo = useLinkRhClienteAuvo();
@@ -148,13 +148,7 @@ export default function ClientesRhPage() {
           <TableBody>
             {isLoading ? (
               <TableRow><TableCell colSpan={7} className="text-center py-8">Carregando...</TableCell></TableRow>
-            ) : clientes
-                .filter(c => {
-                  if (filterVinculo === "all") return true;
-                  if (filterVinculo === "nao_vinculado") return c.vinculo_status === "pendente" || !c.vinculo_status;
-                  return c.vinculo_status === filterVinculo;
-                })
-                .map((c) => (
+            ) : clientes.map((c) => (
               <TableRow key={c.id}>
                 <TableCell className="font-medium uppercase">
                   <div className="whitespace-normal break-words">{c.nome}</div>
