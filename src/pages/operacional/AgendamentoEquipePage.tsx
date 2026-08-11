@@ -447,7 +447,7 @@ export default function AgendamentoEquipePage() {
   const { data: colaboradores = [], isLoading: loadingCol, refetch: refetchColaboradores } = useColaboradores();
   const { data: veiculos = [], isLoading: loadingVei } = useAgendaVeiculos();
   const { data: rhClientes = [] } = useRhClientes();
-  const { data, isLoading, isFetching, refetch: refetchLocal } = useAgendaSemana(dias);
+  const { data, isLoading, isFetching, refetch: refetchLocal } = useAgendaSemana(diasTodos);
   const [isSyncing, setIsSyncing] = useState(false);
   const customerSyncPromise = useRef<Promise<void> | null>(null);
 
