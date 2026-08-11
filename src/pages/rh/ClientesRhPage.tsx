@@ -56,7 +56,7 @@ export default function ClientesRhPage() {
   const clientes = useMemo(
     () =>
       filterVinculo === "duplicado"
-        ? clientesRaw.filter((c) => duplicados?.clientesDuplicados.has(c.id))
+        ? (duplicados?.clientesDuplicadosRows ?? [])
         : clientesRaw,
     [clientesRaw, duplicados, filterVinculo],
   );
@@ -192,6 +192,19 @@ export default function ClientesRhPage() {
           <Button size="sm" variant="outline" onClick={() => setFilterVinculo("duplicado")}>
             Filtrar duplicados
           </Button>
+        </div>
+      )}
+
+      {filterVinculo === "duplicado" && totalDuplicados > 0 && (
+        <div className="mb-4 rounded-lg border border-amber-500/40 bg-amber-500/10 p-3">
+          <div className="mb-2 flex items-center gap-2 text-sm font-semibold">
+            <AlertTriangle className="h-4 w-4 text-amber-600" /> Conflitos encontrados
+          </div>
+          <div className="space-y-1 font-mono text-xs">
+            {[...new Set(clientes.map((c) => duplicados?.motivos.get(c.id)).filter((motivo): motivo is string => Boolean(motivo)))].map((motivo) => (
+              <div key={motivo} className="break-words">{motivo}</div>
+            ))}
+          </div>
         </div>
       )}
 
