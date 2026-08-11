@@ -10,8 +10,7 @@ export type PortalClientMembership = {
 
 export type PortalClientAliases = {
   nome: string;
-  nome_gc: string | null;
-  nome_auvo: string | null;
+  nome_fantasia: string | null;
 };
 
 export function normalizePortalClientName(value: string | null | undefined): string {
@@ -73,7 +72,7 @@ export function expandPortalClientAliases(
   while (changed) {
     changed = false;
     for (const client of clients) {
-      const names = [client.nome, client.nome_gc, client.nome_auvo]
+      const names = [client.nome, client.nome_fantasia]
         .map(normalizePortalClientName)
         .filter(Boolean);
       if (!names.some((name) => aliases.has(name))) continue;
