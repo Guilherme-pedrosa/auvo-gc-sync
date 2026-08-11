@@ -175,3 +175,61 @@
   scrollbar-width: thin;
   scrollbar-color: hsl(var(--border)) transparent;
 }
+
+/* ==========================================================================
+   Mobile-first shim: adapta as telas operacionais (densas, feitas para
+   desktop) a telas pequenas sem remover nenhuma funcionalidade.
+   Só se aplica abaixo de 768px — o desktop permanece intacto.
+   ========================================================================== */
+@media (max-width: 767px) {
+  /* Páginas usam h-screen; dentro do shell mobile já existe uma topbar. */
+  main .h-screen,
+  main .min-h-screen {
+    height: 100%;
+    min-height: 0;
+  }
+
+  /* Densidade: menos padding lateral para ganhar área útil. */
+  main .px-6 { padding-left: 0.75rem; padding-right: 0.75rem; }
+  main .p-6 { padding: 0.75rem; }
+  main .px-8 { padding-left: 0.75rem; padding-right: 0.75rem; }
+  main .p-8 { padding: 0.75rem; }
+  main .gap-6 { gap: 0.75rem; }
+
+  /* Cabeçalhos de página: quebram em várias linhas em vez de estourar. */
+  main > * > header,
+  main header {
+    flex-wrap: wrap;
+    row-gap: 0.5rem;
+  }
+  main header h1 { font-size: 1rem; line-height: 1.35rem; }
+
+  /* Barras de ação/filtros nunca cortam conteúdo: rolam na horizontal. */
+  main header > div,
+  main [data-mobile-scroll="1"] {
+    max-width: 100%;
+  }
+
+  /* Tabelas densas continuam completas, com rolagem horizontal. */
+  main table {
+    display: block;
+    max-width: 100%;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+  main table > thead,
+  main table > tbody,
+  main table > tfoot {
+    display: table;
+    width: max-content;
+    min-width: 100%;
+  }
+
+  /* Diálogos ocupam praticamente a tela toda. */
+  [role="dialog"] {
+    max-width: calc(100vw - 1.5rem);
+  }
+
+  /* Alvos de toque mínimos em botões de ícone. */
+  main button svg { flex-shrink: 0; }
+}
