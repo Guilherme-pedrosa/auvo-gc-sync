@@ -12,6 +12,14 @@ const migration = readFileSync(
   resolve(root, "supabase/migrations/20260811013000_agenda_planned_duration.sql"),
   "utf8",
 );
+const repairMigration = readFileSync(
+  resolve(root, "supabase/migrations/20260811030000_repair_agenda_planned_duration_values.sql"),
+  "utf8",
+);
+const agendaEdge = readFileSync(
+  resolve(root, "supabase/functions/auvo-agenda/index.ts"),
+  "utf8",
+);
 const incremental = readFileSync(resolve(root, "src/lib/agendaIncrementalSync.ts"), "utf8");
 
 describe("planejado x real diário das OS", () => {
@@ -24,6 +32,8 @@ describe("planejado x real diário das OS", () => {
 
     expect(summary.plannedMinutes).toBe(120);
     expect(summary.plannedOsCount).toBe(1);
+    expect(summary.totalOsCount).toBe(2);
+    expect(summary.missingPlannedOsCount).toBe(1);
   });
 
   it("não compara tarefa pendente como se o real fosse zero", () => {
@@ -89,7 +99,11 @@ describe("planejado x real diário das OS", () => {
     expect(migration).toContain("ADD COLUMN IF NOT EXISTS duracao_planejada_minutos integer");
     expect(page).toContain("t.duracao_estimada_minutos");
     expect(incremental).toContain('"duracao_planejada_minutos"');
+    expect(repairMigration).toContain("SET duracao_planejada_minutos");
+    expect(agendaEdge).toContain("item?.standartTime ?? item?.standardTime");
+    expect(agendaEdge).toContain("taskTypeMetadata?.durationMinutes");
     expect(page).toContain("Planejado OS:");
+    expect(page).toContain("OS sem duração");
     expect(page).toContain("OS executadas:");
   });
 });

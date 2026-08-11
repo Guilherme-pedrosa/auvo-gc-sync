@@ -7,8 +7,10 @@ export type AgendaOsPlanningSource = AgendaWorkedTimeSource & {
 };
 
 export type AgendaOsDailyComparison = {
+  totalOsCount: number;
   plannedMinutes: number;
   plannedOsCount: number;
+  missingPlannedOsCount: number;
   comparedPlannedMinutes: number;
   actualCompletedMinutes: number;
   completedOsCount: number;
@@ -62,6 +64,7 @@ export function summarizeAgendaOsPlannedVsActual(
 
   let plannedMinutesTotal = 0;
   let plannedOsCount = 0;
+  let missingPlannedOsCount = 0;
   let comparedPlannedMinutes = 0;
   let actualCompletedMinutes = 0;
   let completedOsCount = 0;
@@ -74,6 +77,9 @@ export function summarizeAgendaOsPlannedVsActual(
       0,
       ...rows.map((item) => plannedMinutes(item.duracao_planejada_minutos)),
     );
+    if (osPlannedMinutes <= 0) {
+      missingPlannedOsCount += 1;
+    }
 
     if (osPlannedMinutes > 0) {
       plannedMinutesTotal += osPlannedMinutes;
@@ -117,8 +123,10 @@ export function summarizeAgendaOsPlannedVsActual(
   }
 
   return {
+    totalOsCount: byOs.size,
     plannedMinutes: plannedMinutesTotal,
     plannedOsCount,
+    missingPlannedOsCount,
     comparedPlannedMinutes,
     actualCompletedMinutes,
     completedOsCount,

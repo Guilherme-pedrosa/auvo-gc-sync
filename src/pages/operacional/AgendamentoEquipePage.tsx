@@ -242,17 +242,26 @@ function Celula({
       className="group relative border border-border p-0.5 align-top h-16 min-w-[150px] transition-colors"
     >
       <div className="flex flex-col gap-0.5 h-full">
-        {(comparativoOs.plannedMinutes > 0 || horasTrabalhadas.totalMinutes > 0 || horasTrabalhadas.inProgress > 0) && (
+        {(comparativoOs.plannedMinutes > 0 || comparativoOs.totalOsCount > 0 || horasTrabalhadas.totalMinutes > 0 || horasTrabalhadas.inProgress > 0) && (
           <div className="flex flex-wrap gap-1 normal-case">
-            {comparativoOs.plannedMinutes > 0 && (
+            {(comparativoOs.plannedMinutes > 0 || comparativoOs.totalOsCount > 0) && (
               <div
                 className="flex items-center gap-1 rounded-sm border border-indigo-200 bg-indigo-50 px-1.5 py-1 text-[10px] font-bold text-indigo-800 dark:border-indigo-800 dark:bg-indigo-950/40 dark:text-indigo-200"
                 title="Soma a duração planejada das OS do GestãoClick e das Previsões de continuidade. Preventivas e tarefas sem OS/previsão não entram."
               >
                 <CalendarClock className="h-3 w-3 shrink-0" />
-                <span>Planejado OS: {formatWorkedMinutes(comparativoOs.plannedMinutes)}</span>
+                <span>
+                  Planejado OS: {comparativoOs.plannedMinutes > 0
+                    ? formatWorkedMinutes(comparativoOs.plannedMinutes)
+                    : "sem duração"}
+                </span>
                 {comparativoOs.pendingOsCount > 0 && (
                   <span className="font-medium">· {comparativoOs.pendingOsCount} pendente(s)</span>
+                )}
+                {comparativoOs.missingPlannedOsCount > 0 && (
+                  <span className="font-semibold text-amber-700 dark:text-amber-300">
+                    · {comparativoOs.missingPlannedOsCount} OS sem duração
+                  </span>
                 )}
               </div>
             )}
