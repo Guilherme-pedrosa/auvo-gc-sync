@@ -44,11 +44,31 @@ function minutesToClock(value: number): string {
   return `${String(Math.floor(normalized / 60)).padStart(2, "0")}:${String(normalized % 60).padStart(2, "0")}`;
 }
 
+function plannedWindowMinutes(start: string, end: string): number {
+  const startMinutes = timeToMinutes(start);
+  const endMinutes = timeToMinutes(end);
+  if (startMinutes < 0 || endMinutes < 0 || startMinutes === endMinutes) return 0;
+  return endMinutes > startMinutes
+    ? endMinutes - startMinutes
+    : (24 * 60 - startMinutes) + endMinutes;
+}
+
+function managedDescriptionDurationMinutes(value: unknown): number {
+  const match = String(value ?? "").trim().match(/^\[WEDO:\d+:(\d+)\]/i);
+  const minutes = Number(match?.[1] ?? 0);
+  return Number.isFinite(minutes) && minutes > 0 ? Math.round(minutes) : 0;
+}
+
+type AuvoTaskTypeMetadata = {
+  description: string;
+  durationMinutes: number;
+};
+
 async function fetchMissingTaskTypes(
   headers: Record<string, string>,
   taskTypeIds: string[],
-): Promise<Map<string, string>> {
-  const result = new Map<string, string>();
+): Promise<Map<string, AuvoTaskTypeMetadata>> {
+  const result = new Map<string, AuvoTaskTypeMetadata>();
   const uniqueIds = [...new Set(taskTypeIds.map((id) => String(id || "").trim()).filter(Boolean))];
   const concurrency = 6;
   for (let index = 0; index < uniqueIds.length; index += concurrency) {
@@ -66,7 +86,15 @@ async function fetchMissingTaskTypes(
           const json = await response.json().catch(() => ({}));
           const item = json?.result || json?.data || json;
           const description = String(item?.description ?? item?.name ?? "").trim();
-          if (description) result.set(id, description.substring(0, 500));
+          const durationMinutes = parseAuvoDurationMinutes(
+            item?.standartTime ?? item?.standardTime ?? item?.defaultTime,
+          );
+          if (description || durationMinutes > 0) {
+            result.set(id, {
+              description: description.substring(0, 500),
+              durationMinutes,
+            });
+          }
           break;
         }
       } catch (error) {
@@ -483,6 +511,7 @@ Deno.serve(async (req) => {
       duration: unknown;
       durationDecimal: unknown;
       timeControl: unknown;
+      estimatedDuration: unknown;
       taskTypeId: string;
       taskTypeDescription: string;
     }>();
@@ -532,6 +561,7 @@ Deno.serve(async (req) => {
             duration: r.duration ?? r.Duration ?? null,
             durationDecimal: r.durationDecimal ?? r.DurationDecimal ?? null,
             timeControl: r.timeControl ?? r.TimeControl ?? null,
+            estimatedDuration: r.estimatedDuration ?? r.estimated_duration ?? null,
             taskTypeId: auvoTaskTypeId(r),
             taskTypeDescription: auvoTaskTypeDescription(r),
           });
@@ -540,15 +570,20 @@ Deno.serve(async (req) => {
     }
     console.log(`[auvo-agenda] task detail fetched for ${snapshotMap.size}/${detailIds.length} tasks missing work/type data`);
 
-    // A listagem semanal normalmente já devolve o tipo. Para os poucos ausentes,
-    // consulta o detalhe e por último o cadastro do tipo, sem varrer todos eles.
-    const unresolvedTaskTypeIds = allTasks
+    // Consulta cada tipo necessário uma única vez. Além do nome, o cadastro do
+    // tipo é a fonte oficial do tempo planejado quando a listagem rápida omite
+    // estimatedDuration.
+    const requiredTaskTypeIds = allTasks
       .filter((task: any) => {
         const id = String(task.taskID || task.taskId || task.id || "").trim();
         const detail = snapshotMap.get(id);
-        return !auvoTaskTypeDescription(task)
+        const missingDescription = !auvoTaskTypeDescription(task)
           && !detail?.taskTypeDescription
           && !isConcreteAuvoTaskTypeDescription(localDocumentMap.get(id)?.task_type_description);
+        const missingDuration = parseAuvoDurationMinutes(
+          task?.estimatedDuration ?? task?.estimated_duration ?? detail?.estimatedDuration,
+        ) <= 0;
+        return missingDescription || missingDuration;
       })
       .map((task: any) => {
         const id = String(task.taskID || task.taskId || task.id || "").trim();
@@ -557,7 +592,7 @@ Deno.serve(async (req) => {
           || localDocumentMap.get(id)?.task_type_id
           || "";
       });
-    const taskTypesMap = await fetchMissingTaskTypes(headers, unresolvedTaskTypeIds);
+    const taskTypesMap = await fetchMissingTaskTypes(headers, requiredTaskTypeIds);
 
     // Map to simplified format + enrich with GC
     const enriched = allTasks.map((t: any) => {
@@ -583,13 +618,31 @@ Deno.serve(async (req) => {
       const taskEndDateTime = rawEndDate.length >= 16 ? rawEndDate.substring(11, 16) : "";
       const rawStartTime = String(t.startTime || t.startHour || "").trim();
       const rawEndTime = String(t.endTime || t.endHour || "").trim();
+      const snap = snapshotMap.get(taskId);
+      const localDocument = localDocumentMap.get(taskId);
+      const resolvedTaskTypeId = auvoTaskTypeId(t)
+        || snap?.taskTypeId
+        || localDocument?.task_type_id
+        || "";
+      const taskTypeMetadata = taskTypesMap.get(resolvedTaskTypeId);
+      const taskTypeDescription = auvoTaskTypeDescription(t)
+        || snap?.taskTypeDescription
+        || taskTypeMetadata?.description
+        || (isConcreteAuvoTaskTypeDescription(localDocument?.task_type_description)
+          ? localDocument?.task_type_description
+          : "")
+        || (resolvedTaskTypeId ? `Tipo ${resolvedTaskTypeId}` : "");
+      const scheduledStartTime = rawStartTime || taskDateTime;
+      const scheduledEndTime = taskEndDateTime || rawEndTime;
       const estimatedDurationMinutes = parseAuvoDurationMinutes(
-        t.estimatedDuration ?? t.estimated_duration,
-      );
+        t.estimatedDuration ?? t.estimated_duration ?? snap?.estimatedDuration,
+      )
+        || taskTypeMetadata?.durationMinutes
+        || managedDescriptionDurationMinutes(taskTypeDescription)
+        || plannedWindowMinutes(scheduledStartTime, scheduledEndTime);
       const isFinished = !!t.finished || statusDesc === "Finalizada";
       
       // Real check-in/check-out timestamps (when technician actually started/finished)
-      const snap = snapshotMap.get(taskId);
       const workedSource = {
         ...t,
         checkInDate: auvoCheckInDate(t) || snap?.checkInDate || null,
@@ -620,20 +673,8 @@ Deno.serve(async (req) => {
       const description = String(t.orientation || t.description || "").substring(0, 500);
 
       // GC enrichment
-      const localDocument = localDocumentMap.get(taskId);
       const os = gcOsMap.get(taskId);
       const orc = gcOrcMap.get(taskId);
-      const resolvedTaskTypeId = auvoTaskTypeId(t)
-        || snap?.taskTypeId
-        || localDocument?.task_type_id
-        || "";
-      const taskTypeDescription = auvoTaskTypeDescription(t)
-        || snap?.taskTypeDescription
-        || taskTypesMap.get(resolvedTaskTypeId)
-        || (isConcreteAuvoTaskTypeDescription(localDocument?.task_type_description)
-          ? localDocument?.task_type_description
-          : "")
-        || (resolvedTaskTypeId ? `Tipo ${resolvedTaskTypeId}` : "");
 
       return {
         mirror_key: localDocument?.mirror_key || `${taskId}::os:::orc:`,
