@@ -43,8 +43,6 @@ const metodoLabel: Record<string, string> = {
   criado_por_gc: "Criado no Auvo pelo GC",
 };
 
-const onlyDigits = (value?: string | null) => (value ?? "").replace(/\D/g, "");
-
 export default function ClientesRhPage() {
   const navigate = useNavigate();
   const [search, setSearch] = useState("");
