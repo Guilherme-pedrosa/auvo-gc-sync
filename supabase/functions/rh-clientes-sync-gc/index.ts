@@ -12,6 +12,7 @@ const AUVO_APP_KEY = Deno.env.get("AUVO_APP_KEY") ?? "";
 const AUVO_TOKEN = Deno.env.get("AUVO_TOKEN") ?? "";
 const GC_BASE = "https://api.gestaoclick.com/api";
 const AUVO_BASE = "https://api.auvo.com.br/v2";
+const RESPONSE_CONTRACT = "gc-auvo-v2";
 
 type AuvoCustomer = {
   id: number;
@@ -256,6 +257,23 @@ async function upsertCustomerInAuvo(customer: any, accessToken: string): Promise
   return mapped;
 }
 
+async function fetchAuvoCustomerById(customerId: number): Promise<AuvoCustomer> {
+  const accessToken = await auvoLogin();
+  const response = await fetch(`${AUVO_BASE}/customers/${customerId}`, {
+    headers: auvoHeaders(accessToken),
+  });
+  const raw = await response.text();
+  const json = raw ? JSON.parse(raw) : {};
+  if (!response.ok) {
+    throw new Error(`Cliente Auvo #${customerId} não encontrado (${response.status})`);
+  }
+  const mapped = mapAuvoCustomer(json?.result ?? json);
+  if (!mapped || mapped.id !== customerId) {
+    throw new Error(`Auvo não devolveu os dados do cliente #${customerId}`);
+  }
+  return mapped;
+}
+
 function addMulti(map: Map<string, AuvoCustomer[]>, key: string, customer: AuvoCustomer): void {
   if (!key) return;
   if (!map.has(key)) map.set(key, []);
@@ -303,13 +321,36 @@ async function handleManualLink(supabase: any, body: any): Promise<Record<string
     return { ok: true, mergedClientId: null };
   }
 
-  const { data: auvo, error: auvoError } = await supabase
+  const { data: cachedAuvo, error: auvoError } = await supabase
     .from("auvo_clientes_cache")
     .select("auvo_id, nome, external_id")
     .eq("auvo_id", auvoCustomerId)
     .maybeSingle();
   if (auvoError) throw auvoError;
-  if (!auvo) throw new Error("Cliente não encontrado no espelho do Auvo. Sincronize antes de vincular.");
+  let auvo = cachedAuvo;
+  if (!auvo) {
+    // Aceita o ID direto mesmo se o espelho estiver vazio ou desatualizado.
+    // O vínculo só é salvo depois de confirmar o cliente na API do Auvo.
+    const fetched = await fetchAuvoCustomerById(auvoCustomerId);
+    const cacheRow = {
+      auvo_id: fetched.id,
+      nome: fetched.name,
+      external_id: fetched.externalId,
+      cpf_cnpj: fetched.cpfCnpj,
+      nome_legal: fetched.legalName,
+      ativo: fetched.active,
+      endereco: fetched.address,
+      cidade: fetched.city,
+      estado: fetched.state,
+      cep: fetched.zipCode,
+      atualizado_em: new Date().toISOString(),
+    };
+    const { error: cacheError } = await supabase
+      .from("auvo_clientes_cache")
+      .upsert(cacheRow, { onConflict: "auvo_id" });
+    if (cacheError) throw cacheError;
+    auvo = { auvo_id: fetched.id, nome: fetched.name, external_id: fetched.externalId };
+  }
 
   const { data: holder, error: holderError } = await supabase
     .from("rh_clientes")
@@ -435,7 +476,7 @@ Deno.serve(async (req) => {
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
     if (body?.action === "link") {
       const result = await handleManualLink(supabase, body);
-      return new Response(JSON.stringify(result), {
+      return new Response(JSON.stringify({ ...result, apiVersion: RESPONSE_CONTRACT }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
@@ -462,6 +503,7 @@ Deno.serve(async (req) => {
     if (syncMode === "incremental" && gcCustomers.length === 0) {
       return new Response(JSON.stringify({
         ok: true,
+        apiVersion: RESPONSE_CONTRACT,
         mode: syncMode,
         gcTotal: 0,
         auvoTotal: 0,
@@ -713,6 +755,7 @@ Deno.serve(async (req) => {
 
     return new Response(JSON.stringify({
       ok: errors === 0,
+      apiVersion: RESPONSE_CONTRACT,
       mode: syncMode,
       gcTotal: gcCustomers.length,
       auvoTotal: auvoCustomers.length,
@@ -727,7 +770,7 @@ Deno.serve(async (req) => {
   } catch (error) {
     console.error("[rh-clientes-sync]", error);
     return new Response(
-      JSON.stringify({ ok: false, error: (error as Error).message }),
+      JSON.stringify({ ok: false, apiVersion: RESPONSE_CONTRACT, error: (error as Error).message }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
     );
   }
