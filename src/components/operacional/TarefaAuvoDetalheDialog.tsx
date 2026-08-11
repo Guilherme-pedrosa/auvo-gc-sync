@@ -631,7 +631,13 @@ export default function TarefaAuvoDetalheDialog({ taskId, onOpenChange, onEdit }
               {taskId && (
                 <Button size="sm" variant="outline" asChild>
                   <a
-                    href={`https://app2.auvo.com.br/informacoes/tarefa/${taskId}`}
+                    // O link público /informacoes/tarefa/{uuid}?chave=... só existe
+                    // em auvo_task_url. Sem ele, o fallback é o relatório da tarefa.
+                    href={
+                      (tarefa as any)?.auvo_task_url
+                      || (tarefa as any)?.auvo_link
+                      || `https://app2.auvo.com.br/relatorioTarefas/DetalheTarefa/${taskId}`
+                    }
                     target="_blank"
                     rel="noopener noreferrer"
                     className="gap-1"
