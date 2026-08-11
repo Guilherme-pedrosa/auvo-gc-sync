@@ -70,8 +70,9 @@ export default function Index() {
         </div>
         
         <p className="text-xs text-gray-400">
-          ignore acima- 
-          adicione as previsões também nas horas planejadas
+          ignore o que eu disse acima-
+
+          a soma das horas planejadas também precisa considerar as atividades previsão
         </p>
       </footer>
     </div>
