@@ -63,6 +63,7 @@ import {
   formatSignedAgendaMinutes,
   summarizeAgendaOsPlannedVsActual,
 } from "@/lib/agendaPlannedVsActual";
+import { missingAuvoAgendaIds } from "@/lib/agendaAuvoReconciliation";
 
 const DIAS_TRADUZIDOS = ["Segunda-feira", "Terça-feira", "Quarta-feira", "Quinta-feira", "Sexta-feira", "Sábado", "Domingo"];
 
@@ -590,6 +591,11 @@ export default function AgendamentoEquipePage() {
       if ((syncRes as any)?.error) throw new Error((syncRes as any).error);
 
       const tarefas: any[] = Array.isArray(syncRes?.data) ? syncRes.data : [];
+      const syncComplete = (syncRes as any)?.sync_complete === true;
+      const apiTaskId = (task: any) => String(
+        task?.auvo_task_id ?? task?.taskID ?? task?.taskId ?? task?.id ?? "",
+      ).trim();
+      const returnedTaskIds = new Set(tarefas.map(apiTaskId).filter(Boolean));
 
       // Resolução do técnico: auvo_user_id (fonte da verdade) → nome → primeiro nome
       const porAuvoId = new Map<string, any>();
@@ -619,7 +625,7 @@ export default function AgendamentoEquipePage() {
         if (!t.data_tarefa) continue;
         const colab = resolver(t);
         if (!colab) { semTecnico++; continue; }
-        const taskId = String(t.auvo_task_id ?? t.taskID ?? t.id ?? "");
+        const taskId = apiTaskId(t);
         if (!taskId) continue;
         
         const key = taskId;
@@ -659,6 +665,18 @@ export default function AgendamentoEquipePage() {
         : { data: [], error: null };
       if (existingReadError) throw existingReadError;
 
+      // Ausência só é conclusiva quando a edge function terminou todas as
+      // páginas do período. Uma resposta parcial nunca autoriza exclusão local.
+      const { data: reconciliationRows, error: reconciliationReadError } = syncComplete
+        ? await supabase
+          .from("agenda_agendamentos")
+          .select("id,auvo_task_id,data,origem,gc_os_codigo,gc_orcamento_codigo,previsao_tipo,conversao_status")
+          .gte("data", diasFuturos[0])
+          .lte("data", diasFuturos[diasFuturos.length - 1])
+          .not("auvo_task_id", "is", null)
+        : { data: [], error: null };
+      if (reconciliationReadError) throw reconciliationReadError;
+
       const taskIdKey = (row: { auvo_task_id?: string | null }) => String(row.auvo_task_id || "").trim();
       const slotKey = (row: { data: string; colaborador_id?: string | null }) =>
         `${row.data}|${String(row.colaborador_id || "")}`;
@@ -672,7 +690,7 @@ export default function AgendamentoEquipePage() {
       const protectedForecast = (row: any) =>
         row.previsao_tipo === "ORCAMENTO_EXECUCAO" || row.conversao_status === "CONVERTIDA";
       const previousRows = data?.agendamentos ?? [];
-      const deleteIds = [...new Set(previousRows
+      const replacedManualIds = previousRows
         .filter((row: any) => {
           if (protectedForecast(row)) return false;
           return !row.auvo_task_id
@@ -681,10 +699,20 @@ export default function AgendamentoEquipePage() {
             && occupiedSlots.has(slotKey(row));
         })
         .map((row: any) => String(row.id))
-        .filter(Boolean))];
+        .filter(Boolean);
+      const removedAuvoIds = missingAuvoAgendaIds(
+        reconciliationRows ?? [],
+        returnedTaskIds,
+        {
+          syncComplete,
+          startDate: diasFuturos[0],
+          endDate: diasFuturos[diasFuturos.length - 1],
+        },
+      );
+      const deleteIds = [...new Set([...replacedManualIds, ...removedAuvoIds])];
 
-      // Uma listagem do Auvo pode vir parcial. Nunca apagamos card Auvo por
-      // ausência na rodada; só retiramos o rascunho manual substituído.
+      // Remove rascunhos substituídos e espelhos confirmadamente ausentes no
+      // Auvo. Vínculos GC e respostas parciais já foram barrados acima.
       for (let i = 0; i < deleteIds.length; i += 500) {
         const { error: deleteError } = await supabase
           .from("agenda_agendamentos")
@@ -716,9 +744,17 @@ export default function AgendamentoEquipePage() {
       }
 
       await refetchLocal();
+      const syncDetails: string[] = [];
+      if (removedAuvoIds.length > 0) {
+        syncDetails.push(`${removedAuvoIds.length} tarefa(s) excluída(s) no Auvo removida(s) da agenda.`);
+      }
+      if (semTecnico > 0) syncDetails.push(`${semTecnico} tarefas sem técnico vinculado no RH.`);
+      if (!syncComplete) {
+        syncDetails.push("Limpeza de tarefas ausentes adiada porque a resposta do Auvo foi parcial.");
+      }
       toast.success(`Escala atualizada: ${linhas.length} agendamentos (${tarefas.length} tarefas)`, {
         id: toastId,
-        description: semTecnico > 0 ? `${semTecnico} tarefas sem técnico vinculado no RH.` : undefined,
+        description: syncDetails.length > 0 ? syncDetails.join(" ") : undefined,
       });
     } catch (err) {
       console.error("[agendamento-equipe] erro na sincronização:", err);
