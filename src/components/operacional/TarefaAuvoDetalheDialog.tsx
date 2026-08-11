@@ -19,6 +19,8 @@ import { cn } from "@/lib/utils";
 import { ExternalLink, MapPin, Navigation, ClipboardList, Package, Edit, FileText, RefreshCw, ArrowRightLeft } from "lucide-react";
 import { RECONCILIATION_OS_SITUATIONS } from "@/lib/osOpenStatuses";
 import { toast } from "sonner";
+import AgendaTagsEditor from "@/components/operacional/AgendaTagsEditor";
+import { useAgendaIdByTask } from "@/hooks/operacional/useAgendaTags";
 
 const formatCurrency = (v: number) =>
   new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(v || 0);
@@ -32,6 +34,7 @@ interface Props {
 export default function TarefaAuvoDetalheDialog({ taskId, onOpenChange, onEdit }: Props) {
   const qc = useQueryClient();
   const [novaSituacao, setNovaSituacao] = useState("");
+  const { data: agendaAgendamentoId } = useAgendaIdByTask(taskId);
   const { data: tarefa, isLoading, isError, refetch } = useQuery({
     queryKey: ["tarefa_central_detalhe", taskId],
     enabled: !!taskId,
@@ -266,6 +269,12 @@ export default function TarefaAuvoDetalheDialog({ taskId, onOpenChange, onEdit }
             )}
           </div>
         </DialogHeader>
+
+        {agendaAgendamentoId && (
+          <div className="mt-4">
+            <AgendaTagsEditor agendamentoId={agendaAgendamentoId} />
+          </div>
+        )}
 
         {isLoading && (
           <div className="space-y-3">
