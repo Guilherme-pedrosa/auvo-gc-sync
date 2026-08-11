@@ -43,8 +43,7 @@ describe("portal do cliente e preventivas", () => {
       ["SODEXO DO BRASIL COMERCIAL S.A. KLABIN"],
       [{
         nome: "SODEXO DO BRASIL COMERCIAL S.A. KLABIN",
-        nome_gc: "SODEXO DO BRASIL COMERCIAL S.A. KLABIN",
-        nome_auvo: "SODEXO UNIDADE KLABIN RIO VERDE",
+        nome_fantasia: "SODEXO UNIDADE KLABIN RIO VERDE",
       }],
     );
     expect(aliases).toContain(normalizePortalClientName("SODEXO UNIDADE KLABIN RIO VERDE"));
