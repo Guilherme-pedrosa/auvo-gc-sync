@@ -511,6 +511,99 @@ async function refreshAuvoNameReferences(
   if (autoGroupError && autoGroupError.code !== "23505") throw autoGroupError;
 }
 
+async function handleDocumentLookup(supabase: any, body: any): Promise<Record<string, unknown>> {
+  const ids = Array.isArray(body?.rhClientIds)
+    ? body.rhClientIds.map((value: unknown) => String(value || "").trim()).filter(Boolean)
+    : [];
+  if (ids.length === 0) throw new Error("Nenhum cliente selecionado");
+  if (ids.length > 200) throw new Error("Selecione no máximo 200 clientes por consulta");
+
+  const { data: rows, error } = await supabase
+    .from("rh_clientes")
+    .select("id, nome, cpf_cnpj, auvo_cliente_id")
+    .in("id", ids);
+  if (error) throw error;
+
+  const accessToken = await auvoLogin();
+  const auvoCustomers = await fetchAllAuvoCustomers(accessToken);
+  const auvoByDocument = new Map<string, AuvoCustomer[]>();
+  for (const customer of auvoCustomers) addMulti(auvoByDocument, digits(customer.cpfCnpj), customer);
+
+  const cacheRows = auvoCustomers.map((customer) => ({
+    auvo_id: customer.id,
+    nome: customer.name,
+    external_id: customer.externalId,
+    cpf_cnpj: customer.cpfCnpj,
+    nome_legal: customer.legalName,
+    ativo: customer.active,
+    endereco: customer.address,
+    cidade: customer.city,
+    estado: customer.state,
+    cep: customer.zipCode,
+    atualizado_em: new Date().toISOString(),
+  }));
+  for (let i = 0; i < cacheRows.length; i += 500) {
+    const { error: cacheError } = await supabase
+      .from("auvo_clientes_cache")
+      .upsert(cacheRows.slice(i, i + 500), { onConflict: "auvo_id" });
+    if (cacheError) throw cacheError;
+  }
+
+  let linked = 0, alreadyLinked = 0, ambiguous = 0, notFound = 0, invalidDocument = 0, errors = 0;
+  const details: Array<Record<string, unknown>> = [];
+
+  for (const row of rows ?? []) {
+    const document = digits(row.cpf_cnpj);
+    if (row.auvo_cliente_id) {
+      alreadyLinked++;
+      details.push({ id: row.id, nome: row.nome, resultado: "ja_vinculado" });
+      continue;
+    }
+    if (document.length !== 11 && document.length !== 14) {
+      invalidDocument++;
+      details.push({ id: row.id, nome: row.nome, resultado: "sem_documento" });
+      continue;
+    }
+    const candidates = auvoByDocument.get(document) ?? [];
+    if (candidates.length === 0) {
+      notFound++;
+      details.push({ id: row.id, nome: row.nome, resultado: "nao_encontrado" });
+      continue;
+    }
+    if (candidates.length > 1) {
+      ambiguous++;
+      details.push({
+        id: row.id,
+        nome: row.nome,
+        resultado: "ambiguo",
+        candidatos: candidates.map((c) => ({ auvoId: c.id, nome: c.name })),
+      });
+      continue;
+    }
+    try {
+      await handleManualLink(supabase, { rhClientId: row.id, auvoCustomerId: candidates[0].id });
+      linked++;
+      details.push({ id: row.id, nome: row.nome, resultado: "vinculado", auvoId: candidates[0].id, auvoNome: candidates[0].name });
+    } catch (linkError) {
+      errors++;
+      details.push({ id: row.id, nome: row.nome, resultado: "erro", mensagem: String((linkError as Error)?.message || linkError) });
+    }
+  }
+
+  return {
+    ok: true,
+    checked: (rows ?? []).length,
+    auvoTotal: auvoCustomers.length,
+    linked,
+    alreadyLinked,
+    ambiguous,
+    notFound,
+    invalidDocument,
+    errors,
+    details,
+  };
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
@@ -519,6 +612,13 @@ Deno.serve(async (req) => {
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
     if (body?.action === "link") {
       const result = await handleManualLink(supabase, body);
+      return new Response(JSON.stringify({ ...result, apiVersion: RESPONSE_CONTRACT }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    if (body?.action === "lookup_document") {
+      const result = await handleDocumentLookup(supabase, body);
       return new Response(JSON.stringify({ ...result, apiVersion: RESPONSE_CONTRACT }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
