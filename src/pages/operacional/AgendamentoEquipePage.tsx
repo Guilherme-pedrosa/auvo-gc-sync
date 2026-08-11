@@ -425,8 +425,8 @@ function Celula({
                   </span>
                 )}
               </button>
-              <div className="absolute -right-1 top-1/2 -translate-y-1/2 z-20 hidden group-hover/item:flex items-center gap-0.5">
-                {(!a.auvo_task_id || (a.auvo_task_id && a.gc_os_codigo)) && (
+              <div className="absolute -right-1 top-1/2 -translate-y-1/2 z-20 flex items-center gap-0.5 opacity-60 group-hover/item:opacity-100 transition-opacity">
+                {(
                   <button
                     type="button"
                     onClick={(e) => {
@@ -1179,9 +1179,6 @@ export default function AgendamentoEquipePage() {
                                  const proximoDia = format(addDays(parseISO(a.data), 1), "yyyy-MM-dd");
                                  const toastId = toast.loading("Gerando previsão...");
                                  try {
-                                   if (a.auvo_task_id && !a.gc_os_codigo) {
-                                     throw new Error("Não é permitido gerar previsão para tarefas sem OS vinculada.");
-                                   }
 
                                   // Somente colunas reais de agenda_agendamentos: campos
                                   // enriquecidos (status_auvo, check_in_iso, tipo_tarefa_*)
