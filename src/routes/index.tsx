@@ -70,9 +70,10 @@ export default function Index() {
         </div>
         
         <p className="text-xs text-gray-400">
-          ignore o que eu disse acima-
+          kd a porra do planejado???
 
-          a soma das horas planejadas também precisa considerar as atividades previsão
+          Veja o link da imagem enviada abaixo e analise o conteúdo dela para responder:
+          Imagem 1: https://sorax.lovable.app/api/public/i/eishxfqhpq.png
         </p>
       </footer>
     </div>
