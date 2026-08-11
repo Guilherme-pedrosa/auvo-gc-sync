@@ -422,11 +422,22 @@ export default function AgendamentoEquipePage() {
   }, [qc]);
 
   const inicioEscala = useMemo(() => new Date(), []);
-  
+
+  // Histórico: mantemos 60 dias passados na grade (não somem mais),
+  // mas a página sempre abre posicionada no dia atual.
+  const DIAS_PASSADOS = 60;
+  const DIAS_FUTUROS = 90;
+
   const dias = useMemo(
-    () => Array.from({ length: 90 }, (_, i) => format(addDays(inicioEscala, i), "yyyy-MM-dd")),
+    () =>
+      Array.from({ length: DIAS_PASSADOS + DIAS_FUTUROS }, (_, i) =>
+        format(addDays(inicioEscala, i - DIAS_PASSADOS), "yyyy-MM-dd"),
+      ),
     [inicioEscala],
   );
+
+  // Sincronização do Auvo continua olhando apenas de hoje em diante.
+  const diasFuturos = useMemo(() => dias.slice(DIAS_PASSADOS), [dias]);
 
   const { data: colaboradores = [], isLoading: loadingCol, refetch: refetchColaboradores } = useColaboradores();
   const { data: veiculos = [], isLoading: loadingVei } = useAgendaVeiculos();
@@ -470,7 +481,7 @@ export default function AgendamentoEquipePage() {
       const [colaboradoresResult, agendaResult] = await Promise.all([
         refetchColaboradores(),
         supabase.functions.invoke("auvo-agenda", {
-          body: { startDate: dias[0], endDate: dias[dias.length - 1], fast: true },
+          body: { startDate: diasFuturos[0], endDate: diasFuturos[diasFuturos.length - 1], fast: true },
         }),
       ]);
       if (colaboradoresResult.error) throw colaboradoresResult.error;
@@ -748,6 +759,22 @@ export default function AgendamentoEquipePage() {
   };
 
   const carregando = isLoading || loadingCol || loadingVei;
+
+  // A grade contém dias passados (histórico), mas sempre inicia no dia atual.
+  const posicionadoNoHoje = useRef(false);
+  useEffect(() => {
+    if (carregando || posicionadoNoHoje.current) return;
+    const alvos = document.querySelectorAll<HTMLElement>("[data-coluna-hoje='1']");
+    if (!alvos.length) return;
+    alvos.forEach((th) => {
+      const container = th.closest<HTMLElement>("[data-agenda-scroll='1']");
+      if (!container) return;
+      const primeiraColuna = container.querySelector<HTMLElement>("thead th");
+      const offsetFixo = primeiraColuna?.offsetWidth ?? 0;
+      container.scrollLeft = Math.max(0, th.offsetLeft - offsetFixo);
+    });
+    posicionadoNoHoje.current = true;
+  }, [carregando]);
   const rotulo = `ESCALA PRÓXIMOS 90 DIAS — A partir de ${format(new Date(), "dd/MM/yyyy", { locale: ptBR })}`;
 
   return (
@@ -759,8 +786,15 @@ export default function AgendamentoEquipePage() {
             <span className="px-2 text-xs font-semibold uppercase">{rotulo}</span>
           </div>
           <Button variant="outline" size="sm" onClick={() => {
-            const el = document.getElementById("hoje-col");
-            if (el) el.scrollIntoView({ behavior: 'smooth', inline: 'start' });
+            document.querySelectorAll<HTMLElement>("[data-coluna-hoje='1']").forEach((th) => {
+              const container = th.closest<HTMLElement>("[data-agenda-scroll='1']");
+              if (!container) return;
+              const primeiraColuna = container.querySelector<HTMLElement>("thead th");
+              container.scrollTo({
+                left: Math.max(0, th.offsetLeft - (primeiraColuna?.offsetWidth ?? 0)),
+                behavior: "smooth",
+              });
+            });
           }}>
             Ir para Hoje
           </Button>
@@ -806,7 +840,7 @@ export default function AgendamentoEquipePage() {
                 <Users className="h-4 w-4 text-primary" />
                 <h2 className="text-sm font-bold uppercase tracking-wide">Técnicos</h2>
               </div>
-              <div className="overflow-x-auto border rounded-md max-h-[600px] overflow-y-auto">
+              <div data-agenda-scroll="1" className="overflow-x-auto border rounded-md max-h-[600px] overflow-y-auto">
                 <table className="w-full border-collapse">
                   <thead>
                     <tr className="bg-muted">
@@ -820,6 +854,7 @@ export default function AgendamentoEquipePage() {
                           <th 
                             key={diaStr} 
                             id={isHoje ? "hoje-col" : undefined}
+                            data-coluna-hoje={isHoje ? "1" : undefined}
                             className={cn(
                               "border border-border p-2 text-center text-[10px] font-bold uppercase min-w-[240px] sticky top-0 bg-muted z-10",
                               isHoje && "bg-primary/10 ring-1 ring-primary/30"
@@ -961,7 +996,7 @@ export default function AgendamentoEquipePage() {
                   </Button>
                 </div>
               </div>
-              <div className="overflow-x-auto border rounded-md max-h-[400px] overflow-y-auto">
+              <div data-agenda-scroll="1" className="overflow-x-auto border rounded-md max-h-[400px] overflow-y-auto">
                 <table className="w-full border-collapse">
                   <thead>
                     <tr className="bg-muted">
@@ -974,6 +1009,7 @@ export default function AgendamentoEquipePage() {
                         return (
                           <th 
                             key={diaStr}
+                            data-coluna-hoje={isHoje ? "1" : undefined}
                             className={cn(
                               "border border-border p-2 text-center text-[10px] font-bold uppercase min-w-[240px] sticky top-0 bg-muted z-10",
                               isHoje && "bg-primary/10"
