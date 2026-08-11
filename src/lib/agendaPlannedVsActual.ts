@@ -104,8 +104,8 @@ export function summarizeAgendaOsPlannedVsActual(
     }
   }
 
-  // Processar Previsões independentes (não vinculadas a uma OS agrupada)
-  for (const item of independentPrevisoes) {
+  // Processar outras tarefas planejadas (não vinculadas a uma OS agrupada, ex: Preventivas ou Previsões)
+  for (const item of otherPlannedTasks) {
     const prevPlannedMinutes = plannedMinutes(item.duracao_planejada_minutos);
     if (prevPlannedMinutes > 0) {
       plannedMinutesTotal += prevPlannedMinutes;
