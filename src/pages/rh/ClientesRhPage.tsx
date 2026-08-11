@@ -32,6 +32,7 @@ const linkBadge = (status: RhCliente["vinculo_status"]) => {
 export default function ClientesRhPage() {
   const navigate = useNavigate();
   const [search, setSearch] = useState("");
+  const [filterVinculo, setFilterVinculo] = useState<string>("all");
   const { data: clientes = [], isLoading } = useRhClientes(search);
   const { data: auvoClientes = [] } = useAuvoClientesCache();
   const save = useSaveRhCliente();
@@ -104,9 +105,30 @@ export default function ClientesRhPage() {
         ))}
       </div>
 
-      <div className="mb-3 relative max-w-md">
-        <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-        <Input className="pl-8" placeholder="Buscar cliente..." value={search} onChange={(e) => setSearch(e.target.value)} />
+      <div className="flex flex-col sm:flex-row gap-3 mb-4 items-end">
+        <div className="flex-1 max-w-md">
+          <Label className="text-xs mb-1 block">Pesquisar</Label>
+          <div className="relative">
+            <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+            <Input className="pl-8" placeholder="Buscar por nome, GC, Auvo, CPF/CNPJ..." value={search} onChange={(e) => setSearch(e.target.value)} />
+          </div>
+        </div>
+        
+        <div className="w-full sm:w-48">
+          <Label className="text-xs mb-1 block">Situação do Vínculo</Label>
+          <Select value={filterVinculo} onValueChange={setFilterVinculo}>
+            <SelectTrigger>
+              <SelectValue placeholder="Todos" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Todos os clientes</SelectItem>
+              <SelectItem value="vinculado">Vinculados</SelectItem>
+              <SelectItem value="nao_vinculado">Não vinculados (Pendente)</SelectItem>
+              <SelectItem value="erro">Com erro</SelectItem>
+              <SelectItem value="ambiguo">Ambiguidade</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
       </div>
 
       <div className="border rounded-lg bg-card">
@@ -125,17 +147,23 @@ export default function ClientesRhPage() {
           <TableBody>
             {isLoading ? (
               <TableRow><TableCell colSpan={7} className="text-center py-8">Carregando...</TableCell></TableRow>
-            ) : clientes.map((c) => (
+            ) : clientes
+                .filter(c => {
+                  if (filterVinculo === "all") return true;
+                  if (filterVinculo === "nao_vinculado") return c.vinculo_status === "pendente" || !c.vinculo_status;
+                  return c.vinculo_status === filterVinculo;
+                })
+                .map((c) => (
               <TableRow key={c.id}>
-                <TableCell className="font-medium uppercase max-w-[260px]">
-                  <div className="truncate">{c.nome}</div>
-                  {c.auvo_sync_erro && <div className="text-[11px] text-destructive truncate">{c.auvo_sync_erro}</div>}
+                <TableCell className="font-medium uppercase">
+                  <div className="whitespace-normal break-words">{c.nome}</div>
+                  {c.auvo_sync_erro && <div className="text-[11px] text-destructive">{c.auvo_sync_erro}</div>}
                 </TableCell>
-                <TableCell className="text-xs max-w-[230px]">
-                  {c.gc_cliente_id ? <><div className="uppercase truncate">{c.nome_gc || c.nome}</div><div className="text-muted-foreground">GC #{c.gc_cliente_id}</div></> : "—"}
+                <TableCell className="text-xs">
+                  {c.gc_cliente_id ? <><div className="uppercase whitespace-normal break-words">{c.nome_gc || c.nome}</div><div className="text-muted-foreground">GC #{c.gc_cliente_id}</div></> : "—"}
                 </TableCell>
-                <TableCell className="text-xs max-w-[230px]">
-                  {c.auvo_cliente_id ? <><div className="uppercase truncate">{c.nome_auvo || c.nome}</div><div className="text-muted-foreground">Auvo #{c.auvo_cliente_id}</div></> : "—"}
+                <TableCell className="text-xs">
+                  {c.auvo_cliente_id ? <><div className="uppercase whitespace-normal break-words">{c.nome_auvo || c.nome}</div><div className="text-muted-foreground">Auvo #{c.auvo_cliente_id}</div></> : "—"}
                 </TableCell>
                 <TableCell className="font-mono text-xs uppercase">{c.cpf_cnpj ?? "—"}</TableCell>
                 <TableCell className="text-xs uppercase">{[c.cidade, c.uf].filter(Boolean).join(" / ") || "—"}</TableCell>
