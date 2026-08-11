@@ -129,13 +129,16 @@ export function useRhClientes(search = "", vinculoStatus = "all") {
       
       if (search) {
         const safe = search.replace(/[,()%]/g, " ").trim();
+        const onlyDigits = /^\d+$/.test(safe);
         q = q.or([
           `nome.ilike.%${safe}%`,
+          `nome_fantasia.ilike.%${safe}%`,
           `nome_gc.ilike.%${safe}%`,
           `nome_auvo.ilike.%${safe}%`,
           `cpf_cnpj.ilike.%${safe}%`,
           `gc_cliente_id.ilike.%${safe}%`,
           `auvo_external_id.ilike.%${safe}%`,
+          ...(onlyDigits && safe.length <= 18 ? [`auvo_cliente_id.eq.${safe}`] : []),
         ].join(","));
       }
 
