@@ -972,10 +972,10 @@ export default function AgendamentoEquipePage() {
 
   return (
     <div className="flex flex-col h-screen bg-background">
-      <header className="sticky top-0 z-40 flex flex-wrap items-center justify-between gap-3 px-6 py-4 border-b bg-card shrink-0">
-        <div className="flex items-center gap-3">
-          <h1 className="text-xl font-bold">Escala de Técnicos (90 Dias)</h1>
-          <div className="flex items-center bg-muted rounded-md p-1 gap-1">
+      <header className="sticky top-0 z-40 flex flex-wrap items-center justify-between gap-2 px-3 py-2 md:gap-3 md:px-6 md:py-4 border-b bg-card shrink-0">
+        <div className="flex items-center gap-2 md:gap-3">
+          <h1 className="text-base md:text-xl font-bold">Escala de Técnicos (90 Dias)</h1>
+          <div className="hidden md:flex items-center bg-muted rounded-md p-1 gap-1">
             <span className="px-2 text-xs font-semibold uppercase">{rotulo}</span>
           </div>
           <Button variant="outline" size="sm" onClick={() => {
@@ -1007,10 +1007,10 @@ export default function AgendamentoEquipePage() {
               : `Ver histórico${diasHistorico.length ? ` (${diasHistorico.length})` : ""}`}
           </Button>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 overflow-x-auto max-w-full">
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant={tagsSelecionadas.length > 0 ? "default" : "outline"} size="sm" className="gap-2">
+              <Button variant={tagsSelecionadas.length > 0 ? "default" : "outline"} size="sm" className="gap-2 shrink-0">
                 <TagsIcon className="h-4 w-4" />
                 Tags{tagsSelecionadas.length > 0 ? ` (${tagsSelecionadas.length})` : ""}
               </Button>
@@ -1051,29 +1051,32 @@ export default function AgendamentoEquipePage() {
               )}
             </DropdownMenuContent>
           </DropdownMenu>
-          <Button variant="outline" size="sm" className="gap-2" onClick={() => setDialogRelatorioOpen(true)}>
-            <Printer className="h-4 w-4" /> Exportar PDF
+          <Button variant="outline" size="sm" className="gap-2 shrink-0" onClick={() => setDialogRelatorioOpen(true)}>
+            <Printer className="h-4 w-4" /> <span className="hidden sm:inline">Exportar </span>PDF
           </Button>
           <Button
             variant="outline"
             size="sm"
-            className="gap-2"
+            className="gap-2 shrink-0"
             title="Sincronizar tarefas e clientes do Auvo"
             onClick={() => refetch()}
             disabled={isFetching || isSyncing}
           >
             <RefreshCw className={cn("h-4 w-4", (isFetching || isSyncing) && "animate-spin")} />
-            {isSyncing ? "Sincronizando Auvo..." : "Sincronizar Auvo"}
+            <span className="hidden sm:inline">{isSyncing ? "Sincronizando Auvo..." : "Sincronizar Auvo"}</span>
+            <span className="sm:hidden">Auvo</span>
           </Button>
-          <Button className="gap-2" size="sm" onClick={() => setDialogCreateTaskOpen(true)}>
-            <Plus className="h-4 w-4" /> Nova Tarefa Auvo
+          <Button className="gap-2 shrink-0" size="sm" onClick={() => setDialogCreateTaskOpen(true)}>
+            <Plus className="h-4 w-4" /> Nova<span className="hidden sm:inline"> Tarefa Auvo</span>
           </Button>
         </div>
       </header>
 
-      <div className="flex-1 overflow-auto p-6 space-y-8">
-        <div className="flex flex-wrap items-center gap-2 text-[11px]" aria-label="Legenda dos status da agenda">
-          <span className="font-semibold text-muted-foreground uppercase">Legenda:</span>
+      <div className="flex-1 overflow-auto p-3 md:p-6 space-y-4 md:space-y-8">
+        <details className="legenda-agenda text-[11px]" aria-label="Legenda dos status da agenda">
+          <summary className="cursor-pointer font-semibold uppercase text-muted-foreground">Legenda</summary>
+          <div className="mt-2 flex flex-wrap items-center gap-2">
+          <span className="hidden md:inline font-semibold text-muted-foreground uppercase">Legenda:</span>
           <span className="rounded border border-green-300 bg-green-100 px-2 py-1 font-semibold text-green-800">Finalizada sem pendência</span>
           <span className="rounded border border-amber-500 bg-amber-200 px-2 py-1 font-semibold text-amber-950">Pausada</span>
           <span className="rounded border border-red-300 bg-red-100 px-2 py-1 font-semibold text-red-800">Atrasada há mais de 2h</span>
@@ -1081,7 +1084,8 @@ export default function AgendamentoEquipePage() {
             <Clock3 className="h-3 w-3" /> Horas reais: check-in/checkout do Auvo
           </span>
           <span className="rounded border bg-card px-2 py-1 text-muted-foreground">Demais: cor do cliente</span>
-        </div>
+          </div>
+        </details>
         {carregando ? (
           <Skeleton className="h-96 w-full" />
         ) : (
@@ -1091,11 +1095,11 @@ export default function AgendamentoEquipePage() {
                 <Users className="h-4 w-4 text-primary" />
                 <h2 className="text-sm font-bold uppercase tracking-wide">Técnicos</h2>
               </div>
-              <div data-agenda-scroll="1" className="overflow-x-auto border rounded-md max-h-[600px] overflow-y-auto">
+              <div data-agenda-scroll="1" className="overflow-x-auto border rounded-md max-h-[70vh] md:max-h-[600px] overflow-y-auto">
                 <table className="w-full border-collapse">
                   <thead>
                     <tr className="bg-muted">
-                      <th className="border border-border p-2 text-left text-[11px] font-bold uppercase w-60 sticky left-0 top-0 bg-muted z-20">
+                      <th className="border border-border p-2 text-left text-[11px] font-bold uppercase w-28 md:w-60 sticky left-0 top-0 bg-muted z-20">
                         Técnico
                       </th>
                       {dias.map((diaStr) => {
@@ -1107,7 +1111,7 @@ export default function AgendamentoEquipePage() {
                             id={isHoje ? "hoje-col" : undefined}
                             data-coluna-hoje={isHoje ? "1" : undefined}
                             className={cn(
-                              "border border-border p-2 text-center text-[10px] font-bold uppercase min-w-[240px] sticky top-0 bg-muted z-10",
+                              "border border-border p-2 text-center text-[10px] font-bold uppercase min-w-[170px] md:min-w-[240px] sticky top-0 bg-muted z-10",
                               isHoje && "bg-primary/10 ring-1 ring-primary/30"
                             )}
                           >
