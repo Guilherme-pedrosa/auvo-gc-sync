@@ -175,7 +175,7 @@ export function useAuvoClientesCache() {
 /** Conflito de vínculo: um mesmo GC apontando para 2+ Auvo, ou um mesmo Auvo apontando para 2+ GC. */
 export function useRhVinculosDuplicados() {
   return useQuery({
-    queryKey: ["rh_clientes", "duplicados"],
+    queryKey: ["rh_clientes", "duplicados-reais-v2"],
     staleTime: 60 * 1000,
     queryFn: async () => {
       const rows: RhCliente[] = [];
