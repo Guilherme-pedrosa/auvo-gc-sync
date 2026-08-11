@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -70,6 +70,10 @@ export default function ClientesRhPage() {
   const [form, setForm] = useState<Partial<RhCliente>>({});
   const [auvoChoice, setAuvoChoice] = useState("");
   const [selected, setSelected] = useState<string[]>([]);
+  const [page, setPage] = useState(1);
+  const PAGE_SIZE = 200;
+
+  useEffect(() => { setPage(1); }, [search, filterVinculo]);
 
   const isDuplicado = (c: RhCliente) => Boolean(duplicados?.clientesDuplicados.has(c.id));
   const totalDuplicados = duplicados?.clientesDuplicados.size ?? 0;
@@ -86,13 +90,24 @@ export default function ClientesRhPage() {
     label: `${c.nome} · Auvo #${c.auvo_id}${c.cpf_cnpj ? ` · ${c.cpf_cnpj}` : ""}`,
   })), [auvoClientes]);
 
+  const totalPages = Math.max(1, Math.ceil(clientes.length / PAGE_SIZE));
+  const currentPage = Math.min(page, totalPages);
+  const pageClientes = useMemo(
+    () => clientes.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE),
+    [clientes, currentPage],
+  );
+
   const selectedClientes = useMemo(
     () => clientes.filter((c) => selected.includes(c.id)),
     [clientes, selected],
   );
-  const allSelected = clientes.length > 0 && selected.length === clientes.length;
+  const allSelected = pageClientes.length > 0 && pageClientes.every((c) => selected.includes(c.id));
 
-  const toggleAll = (checked: boolean) => setSelected(checked ? clientes.map((c) => c.id) : []);
+  const toggleAll = (checked: boolean) =>
+    setSelected((prev) => {
+      const ids = pageClientes.map((c) => c.id);
+      return checked ? [...new Set([...prev, ...ids])] : prev.filter((v) => !ids.includes(v));
+    });
   const toggleOne = (id: string, checked: boolean) =>
     setSelected((prev) => (checked ? [...new Set([...prev, id])] : prev.filter((v) => v !== id)));
 
@@ -235,7 +250,7 @@ export default function ClientesRhPage() {
                 <Checkbox
                   checked={allSelected}
                   onCheckedChange={(v) => toggleAll(v === true)}
-                  aria-label="Selecionar todos"
+                  aria-label="Selecionar todos desta página"
                 />
               </TableHead>
               <TableHead>Cliente central</TableHead>
@@ -254,7 +269,7 @@ export default function ClientesRhPage() {
               <TableRow><TableCell colSpan={8} className="text-center py-8">Verificando vínculos duplicados...</TableCell></TableRow>
             ) : clientes.length === 0 ? (
               <TableRow><TableCell colSpan={8} className="text-center py-8 text-muted-foreground">{filterVinculo === "duplicado" ? "Nenhum vínculo duplicado real encontrado." : "Nenhum cliente encontrado."}</TableCell></TableRow>
-            ) : clientes.map((c) => (
+            ) : pageClientes.map((c) => (
               <TableRow key={c.id}>
                 <TableCell>
                   <Checkbox
@@ -321,6 +336,26 @@ export default function ClientesRhPage() {
           </TableBody>
         </Table>
       </div>
+
+      {clientes.length > 0 && (
+        <div className="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-lg border bg-card p-3 text-sm">
+          <span className="text-muted-foreground">
+            Mostrando {(currentPage - 1) * PAGE_SIZE + 1}–{Math.min(currentPage * PAGE_SIZE, clientes.length)} de {clientes.length} · {totalPages} página(s)
+          </span>
+          <div className="flex items-center gap-2">
+            <Button size="sm" variant="outline" disabled={currentPage <= 1} onClick={() => setPage(currentPage - 1)}>Anterior</Button>
+            <Select value={String(currentPage)} onValueChange={(v) => setPage(Number(v))}>
+              <SelectTrigger className="w-[150px]"><SelectValue /></SelectTrigger>
+              <SelectContent className="max-h-[300px]">
+                {Array.from({ length: totalPages }, (_, i) => i + 1).map((p) => (
+                  <SelectItem key={p} value={String(p)}>Página {p} de {totalPages}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Button size="sm" variant="outline" disabled={currentPage >= totalPages} onClick={() => setPage(currentPage + 1)}>Próxima</Button>
+          </div>
+        </div>
+      )}
 
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent className="sm:max-w-2xl">
