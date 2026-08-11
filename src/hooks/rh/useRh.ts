@@ -207,21 +207,6 @@ export function useRhVinculosDuplicados() {
   });
 }
 
-function _useAuvoClientesCacheLegacy() {
-  return useQuery({
-    queryKey: ["auvo_clientes_cache", "rh_clientes"],
-    staleTime: 5 * 60 * 1000,
-    queryFn: async () => {
-      const { data, error } = await sb
-        .from("auvo_clientes_cache")
-        .select("auvo_id, nome, nome_legal, cpf_cnpj, external_id, ativo")
-        .order("nome")
-        .limit(10000);
-      if (error) throw error;
-      return (data ?? []) as AuvoClienteCache[];
-    },
-  });
-}
 export function useSaveRhCliente() {
   const qc = useQueryClient();
   return useMutation({
