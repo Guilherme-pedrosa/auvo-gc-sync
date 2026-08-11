@@ -425,7 +425,7 @@ function Celula({
                   </span>
                 )}
               </button>
-              <div className="absolute -right-1 top-1/2 -translate-y-1/2 z-20 flex items-center gap-0.5 opacity-60 group-hover/item:opacity-100 transition-opacity">
+              <div className="ml-0.5 flex shrink-0 items-center gap-0.5">
                 {(
                   <button
                     type="button"
@@ -434,7 +434,7 @@ function Celula({
                       onPreverProximoDia(a);
                     }}
                     title="Prever continuação no próximo dia"
-                    className="flex items-center justify-center h-4 w-4 rounded-full bg-primary text-primary-foreground text-[10px] shadow-sm hover:scale-110 transition-transform"
+                    className="flex h-5 w-5 items-center justify-center rounded-full bg-primary text-[11px] font-bold text-primary-foreground shadow-sm transition-transform hover:scale-110"
                   >
                     +
                   </button>
@@ -447,7 +447,7 @@ function Celula({
                       onAbrirAgendamento(a);
                     }}
                     title="Excluir previsão"
-                    className="flex items-center justify-center h-4 w-4 rounded-full bg-destructive text-destructive-foreground text-[10px] shadow-sm hover:scale-110 transition-transform"
+                    className="flex h-5 w-5 items-center justify-center rounded-full bg-destructive text-[11px] font-bold text-destructive-foreground shadow-sm transition-transform hover:scale-110"
                   >
                     ×
                   </button>
