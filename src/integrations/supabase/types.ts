@@ -66,6 +66,7 @@ export type Database = {
           criado_por: string | null
           data: string
           descricao: string | null
+          duracao_planejada_minutos: number | null
           gc_orcamento_codigo: string | null
           gc_os_codigo: string | null
           hora_fim: string
@@ -96,6 +97,7 @@ export type Database = {
           criado_por?: string | null
           data: string
           descricao?: string | null
+          duracao_planejada_minutos?: number | null
           gc_orcamento_codigo?: string | null
           gc_os_codigo?: string | null
           hora_fim: string
@@ -126,6 +128,7 @@ export type Database = {
           criado_por?: string | null
           data?: string
           descricao?: string | null
+          duracao_planejada_minutos?: number | null
           gc_orcamento_codigo?: string | null
           gc_os_codigo?: string | null
           hora_fim?: string

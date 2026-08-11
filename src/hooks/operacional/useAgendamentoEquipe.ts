@@ -53,6 +53,7 @@ export interface AgendaAgendamento {
   tipo_tarefa_auvo_id?: string | null;
   tipo_tarefa_auvo_descricao?: string | null;
   duracao_decimal?: number | null;
+  duracao_planejada_minutos?: number | null;
   atualizado_em?: string | null;
 }
 

@@ -141,10 +141,12 @@ export default function AgendamentoEquipeDialog({
       setData(agendamento.data);
       setHoraInicio(agendamento.hora_inicio.slice(0, 5));
       setDuracaoMin(
-        Math.max(
-          15,
-          clockToMinutes(agendamento.hora_fim.slice(0, 5)) - clockToMinutes(agendamento.hora_inicio.slice(0, 5)),
-        ),
+        Number(agendamento.duracao_planejada_minutos) > 0
+          ? Number(agendamento.duracao_planejada_minutos)
+          : Math.max(
+            15,
+            clockToMinutes(agendamento.hora_fim.slice(0, 5)) - clockToMinutes(agendamento.hora_inicio.slice(0, 5)),
+          ),
       );
       setColaboradorId(agendamento.colaborador_id ?? "");
       setVeiculoId(agendamento.veiculo_id ?? "");
@@ -177,9 +179,11 @@ export default function AgendamentoEquipeDialog({
       if (agendamento?.auvo_task_id && agendamento.origem === "AUVO") {
         const originalStart = clockToMinutes(agendamento.hora_inicio.slice(0, 5));
         const originalEnd = clockToMinutes(agendamento.hora_fim.slice(0, 5));
-        const originalDuration = Math.max(15, originalEnd > originalStart
-          ? originalEnd - originalStart
-          : originalEnd + 24 * 60 - originalStart);
+        const originalDuration = Number(agendamento.duracao_planejada_minutos) > 0
+          ? Number(agendamento.duracao_planejada_minutos)
+          : Math.max(15, originalEnd > originalStart
+            ? originalEnd - originalStart
+            : originalEnd + 24 * 60 - originalStart);
         const technicianChanged = colaboradorId !== agendamento.colaborador_id;
         const scheduleChanged = data !== agendamento.data
           || horaInicio !== agendamento.hora_inicio.slice(0, 5)
@@ -229,6 +233,7 @@ export default function AgendamentoEquipeDialog({
         data,
         hora_inicio: horaInicio.includes(":") ? (horaInicio.length === 5 ? `${horaInicio}:00` : horaInicio) : "08:00:00",
         hora_fim: `${minutesToClock(clockToMinutes(horaInicio) + duracaoMin)}:00`,
+        duracao_planejada_minutos: duracaoMin,
         colaborador_id: colaboradorId,
         colaborador_nome: nome,
         veiculo_id: veiculoId || null,
@@ -300,7 +305,7 @@ export default function AgendamentoEquipeDialog({
               <Input id="start" type="time" value={horaInicio} onChange={(e) => setHoraInicio(e.target.value)} />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="end">Duração (HH:mm) — local</Label>
+              <Label htmlFor="end">Duração planejada (HH:mm)</Label>
               <Input
                 id="end"
                 type="time"

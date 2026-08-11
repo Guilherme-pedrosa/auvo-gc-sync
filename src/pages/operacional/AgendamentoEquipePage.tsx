@@ -59,6 +59,10 @@ import {
   agendaTagTextColor,
   normalizeAgendaTagColor,
 } from "@/lib/agendaTags";
+import {
+  formatSignedAgendaMinutes,
+  summarizeAgendaOsPlannedVsActual,
+} from "@/lib/agendaPlannedVsActual";
 
 const DIAS_TRADUZIDOS = ["Segunda-feira", "Terça-feira", "Quarta-feira", "Quinta-feira", "Sexta-feira", "Sábado", "Domingo"];
 
@@ -184,6 +188,7 @@ function Celula({
   const manual = itens.find((i) => !i.auvo_task_id && i.origem !== "AUVO");
   const [rascunho, setRascunho] = useState(manual?.cliente ?? "");
   const horasTrabalhadas = summarizeAgendaWorkedTime(itens);
+  const comparativoOs = summarizeAgendaOsPlannedVsActual(itens);
 
   if (editando) {
     return (
@@ -233,15 +238,47 @@ function Celula({
       className="group relative border border-border p-0.5 align-top h-16 min-w-[150px] transition-colors"
     >
       <div className="flex flex-col gap-0.5 h-full">
-        {(horasTrabalhadas.totalMinutes > 0 || horasTrabalhadas.inProgress > 0) && (
-          <div
-            className="flex items-center gap-1 rounded-sm border border-sky-200 bg-sky-50 px-1.5 py-1 text-[10px] font-bold normal-case text-sky-800 dark:border-sky-800 dark:bg-sky-950/40 dark:text-sky-200"
-            title="Tempo efetivamente trabalhado no Auvo. Previsões e duração planejada não entram neste total."
-          >
-            <Clock3 className="h-3 w-3 shrink-0" />
-            <span>Trabalhado: {formatWorkedMinutes(horasTrabalhadas.totalMinutes)}</span>
-            {horasTrabalhadas.inProgress > 0 && (
-              <span className="font-medium">· {horasTrabalhadas.inProgress} em andamento</span>
+        {(comparativoOs.plannedMinutes > 0 || horasTrabalhadas.totalMinutes > 0 || horasTrabalhadas.inProgress > 0) && (
+          <div className="flex flex-wrap gap-1 normal-case">
+            {comparativoOs.plannedMinutes > 0 && (
+              <div
+                className="flex items-center gap-1 rounded-sm border border-indigo-200 bg-indigo-50 px-1.5 py-1 text-[10px] font-bold text-indigo-800 dark:border-indigo-800 dark:bg-indigo-950/40 dark:text-indigo-200"
+                title="Soma somente a duração planejada das OS do GestãoClick. Preventivas, contratos e tarefas sem OS não entram."
+              >
+                <CalendarClock className="h-3 w-3 shrink-0" />
+                <span>Planejado OS: {formatWorkedMinutes(comparativoOs.plannedMinutes)}</span>
+                {comparativoOs.pendingOsCount > 0 && (
+                  <span className="font-medium">· {comparativoOs.pendingOsCount} pendente(s)</span>
+                )}
+              </div>
+            )}
+            {(horasTrabalhadas.totalMinutes > 0 || horasTrabalhadas.inProgress > 0) && (
+              <div
+                className="flex items-center gap-1 rounded-sm border border-sky-200 bg-sky-50 px-1.5 py-1 text-[10px] font-bold text-sky-800 dark:border-sky-800 dark:bg-sky-950/40 dark:text-sky-200"
+                title="Tempo efetivamente trabalhado no Auvo. Previsões e duração planejada não entram neste total."
+              >
+                <Clock3 className="h-3 w-3 shrink-0" />
+                <span>Trabalhado: {formatWorkedMinutes(horasTrabalhadas.totalMinutes)}</span>
+                {horasTrabalhadas.inProgress > 0 && (
+                  <span className="font-medium">· {horasTrabalhadas.inProgress} em andamento</span>
+                )}
+              </div>
+            )}
+            {comparativoOs.completedOsCount > 0 && (
+              <div
+                className={cn(
+                  "flex items-center gap-1 rounded-sm border px-1.5 py-1 text-[10px] font-bold",
+                  comparativoOs.differenceMinutes > 0
+                    ? "border-red-200 bg-red-50 text-red-800 dark:border-red-800 dark:bg-red-950/40 dark:text-red-200"
+                    : "border-emerald-200 bg-emerald-50 text-emerald-800 dark:border-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-200",
+                )}
+                title="Compara somente OS já concluídas: tempo real de check-in/checkout contra a duração que estava planejada. OS pendentes não reduzem o real."
+              >
+                <span>
+                  OS executadas: {formatWorkedMinutes(comparativoOs.actualCompletedMinutes)} real / {formatWorkedMinutes(comparativoOs.comparedPlannedMinutes)} planejado
+                </span>
+                <span>· {formatSignedAgendaMinutes(comparativoOs.differenceMinutes)}</span>
+              </div>
             )}
           </div>
         )}
@@ -603,6 +640,9 @@ export default function AgendamentoEquipePage() {
           auvo_task_id: taskId,
           origem: "AUVO",
           gc_os_codigo: t.gc_os_codigo || null,
+          duracao_planejada_minutos: Number(t.duracao_estimada_minutos) > 0
+            ? Math.round(Number(t.duracao_estimada_minutos))
+            : null,
           // O orçamento é a chave que liga a previsão à OS e não pode ser descartado.
           gc_orcamento_codigo: t.gc_orcamento_codigo || null,
         });
@@ -614,7 +654,7 @@ export default function AgendamentoEquipePage() {
       const { data: existingTaskRows, error: existingReadError } = lineTaskIds.length
         ? await supabase
           .from("agenda_agendamentos")
-          .select("id,auvo_task_id,data,hora_inicio,hora_fim,colaborador_id,colaborador_nome,cliente,descricao,status,origem,gc_os_codigo,gc_orcamento_codigo,previsao_continuidade,previsao_tipo,conversao_status")
+          .select("id,auvo_task_id,data,hora_inicio,hora_fim,duracao_planejada_minutos,colaborador_id,colaborador_nome,cliente,descricao,status,origem,gc_os_codigo,gc_orcamento_codigo,previsao_continuidade,previsao_tipo,conversao_status")
           .in("auvo_task_id", lineTaskIds)
         : { data: [], error: null };
       if (existingReadError) throw existingReadError;
@@ -735,6 +775,7 @@ export default function AgendamentoEquipePage() {
         // Mantém o resto
         hora_inicio: item.hora_inicio,
         hora_fim: item.hora_fim,
+        duracao_planejada_minutos: item.duracao_planejada_minutos,
         veiculo_id: item.veiculo_id,
         cliente: item.cliente,
         descricao: item.descricao,
@@ -1073,6 +1114,7 @@ export default function AgendamentoEquipePage() {
                                     data: proximoDia,
                                     hora_inicio: a.hora_inicio,
                                     hora_fim: a.hora_fim,
+                                    duracao_planejada_minutos: a.duracao_planejada_minutos ?? null,
                                     colaborador_id: a.colaborador_id ?? null,
                                     colaborador_nome: a.colaborador_nome,
                                     veiculo_id: a.veiculo_id ?? null,
