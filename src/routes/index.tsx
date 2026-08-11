@@ -70,11 +70,10 @@ export default function Index() {
         </div>
         
         <p className="text-xs text-gray-400">
-          back end - 
-          você fez só o front end do filtro mas não fez o back end
-          
+          erro ao criar tarefa preventiva + OS usuário maria eduarda
+
           Veja o link da imagem enviada abaixo e analise o conteúdo dela para responder:
-          Imagem 1: https://sorax.lovable.app/api/public/i/5brnp3vz8z.png
+          Imagem 1: https://sorax.lovable.app/api/public/i/2fhfiot7z6.png
         </p>
       </footer>
     </div>
