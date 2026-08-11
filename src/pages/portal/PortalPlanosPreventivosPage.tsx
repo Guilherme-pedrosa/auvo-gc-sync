@@ -14,9 +14,14 @@ import {
 } from "@/components/ui/dialog";
 import {
   ArrowLeft, LogOut, Loader2, Search, Download, FileText, Clock,
-  ChevronRight, ExternalLink,
+  ChevronRight, ExternalLink, RefreshCw, AlertTriangle,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import {
+  expandPortalClientAliases,
+  normalizePortalClientName,
+  resolvePortalPreventiveGroupIds,
+} from "@/lib/portalPreventivas";
 import { format, parseISO } from "date-fns";
 import { toast } from "sonner";
 import * as XLSX from "xlsx";
@@ -44,6 +49,15 @@ type UltimaInfo = {
   task_id: string | null;
 };
 
+type PreventiveExecution = {
+  id: string;
+  item_id: string;
+  data_realizada: string;
+  task_id: string | null;
+  task_type_id: string | null;
+  horas_decimal: number | null;
+};
+
 type Grupo = { id: string; nome: string };
 type Contrato = { grupo_id: string | null; cliente_nome: string | null; horas_mes_contratadas: number };
 
@@ -55,7 +69,8 @@ type Aggregate = {
   cliente_nome: string; // nome "amigável" (sem prefixo [Auto])
   ano_referencia: number;
   itens: PlanoItem[];
-  ultimaByAuvoId: Map<string, UltimaInfo>;
+  ultimaByEquipId: Map<string, UltimaInfo>;
+  execucoesByItemId: Map<string, PreventiveExecution[]>;
   ht_ano: number;
   ht_contrato_mes: number;
   ht_contrato_ano: number;
@@ -64,14 +79,7 @@ type Aggregate = {
   meses_estourados: number;
 };
 
-const normalize = (s: string) =>
-  (s || "")
-    .toUpperCase()
-    .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
-    .replace(/\s*(LTDA|ME|SA|EPP|EIRELI|S\/A|S\.A\.|MEI)\s*/g, "")
-    .replace(/[.\-\/]/g, "")
-    .replace(/\s+/g, " ")
-    .trim();
+const normalize = normalizePortalClientName;
 
 function htPorOcorrencia(it: PlanoItem): number {
   const n = (it.meses_planejados?.length ?? 0);
@@ -94,29 +102,48 @@ export default function PortalPlanosPreventivosPage() {
     if (!user || role !== "cliente") navigate("/portal/login", { replace: true });
   }, [user, role, authLoading, navigate]);
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isFetching, isError, error, refetch } = useQuery({
     queryKey: ["portal-planos-preventivos", profile?.grupo_id],
     enabled: !!profile?.grupo_id,
     queryFn: async () => {
       const grupoId = profile!.grupo_id!;
       // 1) grupo principal + membros (clientes da rede)
-      const [{ data: grupoPrinc }, { data: membros }] = await Promise.all([
+      const [grupoResult, membrosResult, gruposResult, allMembershipsResult, centralClientsResult] = await Promise.all([
         supabase.from("grupos_clientes").select("id, nome").eq("id", grupoId).maybeSingle(),
         supabase.from("grupo_cliente_membros").select("cliente_nome").eq("grupo_id", grupoId),
+        supabase.from("grupos_clientes").select("id, nome"),
+        supabase.from("grupo_cliente_membros").select("grupo_id, cliente_nome"),
+        supabase.from("rh_clientes").select("nome, nome_gc, nome_auvo").eq("ativo", true).limit(5000),
       ]);
-      const memberNames = (membros ?? []).map(m => m.cliente_nome as string);
-      const memberNamesNorm = new Set(memberNames.map(normalize));
+      if (grupoResult.error) throw new Error(`Falha ao carregar o grupo do portal: ${grupoResult.error.message}`);
+      if (membrosResult.error) throw new Error(`Falha ao carregar os clientes da rede: ${membrosResult.error.message}`);
+      if (gruposResult.error) throw new Error(`Falha ao carregar os grupos de clientes: ${gruposResult.error.message}`);
+      if (allMembershipsResult.error) throw new Error(`Falha ao relacionar os grupos de clientes: ${allMembershipsResult.error.message}`);
+      if (centralClientsResult.error) throw new Error(`Falha ao carregar os vínculos GC/Auvo: ${centralClientsResult.error.message}`);
 
-      // 2) buscar todos os grupos e filtrar os "[Auto] <cliente>" cujos clientes pertençam à rede
-      const { data: allGrupos } = await supabase.from("grupos_clientes").select("id, nome");
-      const grupos = (allGrupos ?? []) as Grupo[];
-      const autoGrupos = grupos.filter(g => {
-        if (g.id === grupoId) return true;
-        if (!/^\s*\[Auto\]/i.test(g.nome)) return false;
-        const cliente = normalize(stripAutoPrefix(g.nome));
-        return memberNamesNorm.has(cliente);
+      const grupoPrinc = grupoResult.data;
+      const membros = membrosResult.data;
+      const memberNames = (membros ?? []).map(m => m.cliente_nome as string);
+      const memberAliases = expandPortalClientAliases(memberNames, centralClientsResult.data ?? []);
+
+      // 2) buscar os grupos automáticos pela associação persistida. O nome do
+      // grupo pode estar antigo depois de uma renomeação no Auvo.
+      const grupos = (gruposResult.data ?? []) as Grupo[];
+      const allMemberships = (allMembershipsResult.data ?? []) as Array<{ grupo_id: string; cliente_nome: string }>;
+      const allowedGroupIds = resolvePortalPreventiveGroupIds({
+        principalGroupId: grupoId,
+        principalMemberNames: memberAliases,
+        groups: grupos,
+        memberships: allMemberships,
       });
-      const allowedGroupIds = new Set(autoGrupos.map(g => g.id));
+      const autoGrupos = grupos.filter((group) => allowedGroupIds.has(group.id));
+      const clienteNameByGroupId = new Map<string, string>();
+      for (const membership of allMemberships) {
+        if (!allowedGroupIds.has(membership.grupo_id)) continue;
+        if (!clienteNameByGroupId.has(membership.grupo_id)) {
+          clienteNameByGroupId.set(membership.grupo_id, membership.cliente_nome);
+        }
+      }
 
       // 3) itens
       const itens: PlanoItem[] = [];
@@ -124,7 +151,7 @@ export default function PortalPlanosPreventivosPage() {
       const ids = Array.from(allowedGroupIds);
       if (ids.length) {
         while (true) {
-          const { data: page, error } = await (supabase as any)
+          const { data: page, error } = await supabase
             .from("plano_preventivo_item")
             .select("id, grupo_id, ano_referencia, equipamento_nome, equipamento_auvo_id, periodicidade, periodicidade_meses, horas_total, meses_planejados, proxima_data, ultima_execucao_data, ativo")
             .eq("ativo", true)
@@ -140,27 +167,29 @@ export default function PortalPlanosPreventivosPage() {
       }
 
       // 4) contratos (para meta de horas)
-      const { data: contratos } = await supabase
+      const { data: contratos, error: contratosError } = await supabase
         .from("contratos")
         .select("grupo_id, cliente_nome, horas_mes_contratadas, ativo")
         .eq("ativo", true);
+      if (contratosError) throw new Error(`Falha ao carregar os contratos: ${contratosError.message}`);
 
       // 5) consolidado (última preventiva + link do relatório no Auvo)
-      const auvoIds = Array.from(new Set(
+      const equipmentIds = Array.from(new Set(
         itens.map(i => i.equipamento_auvo_id).filter(Boolean) as string[],
       ));
-      const ultimaByAuvoId = new Map<string, UltimaInfo>();
-      if (auvoIds.length) {
+      const ultimaByEquipId = new Map<string, UltimaInfo>();
+      if (equipmentIds.length) {
         const CHUNK = 500;
-        for (let i = 0; i < auvoIds.length; i += CHUNK) {
-          const slice = auvoIds.slice(i, i + CHUNK);
-          const { data: cons } = await (supabase as any)
+        for (let i = 0; i < equipmentIds.length; i += CHUNK) {
+          const slice = equipmentIds.slice(i, i + CHUNK);
+          const { data: cons, error: consError } = await supabase
             .from("equipamento_preventiva_consolidado")
-            .select("auvo_equipment_id, ultima_preventiva, ultima_preventiva_link, ultima_preventiva_task_id")
-            .in("auvo_equipment_id", slice);
-          for (const r of (cons ?? []) as any[]) {
-            if (!r.auvo_equipment_id) continue;
-            ultimaByAuvoId.set(String(r.auvo_equipment_id), {
+            .select("equip_id, ultima_preventiva, ultima_preventiva_link, ultima_preventiva_task_id")
+            .in("equip_id", slice);
+          if (consError) throw new Error(`Falha ao carregar as preventivas executadas: ${consError.message}`);
+          for (const r of cons ?? []) {
+            if (!r.equip_id) continue;
+            ultimaByEquipId.set(String(r.equip_id), {
               data: r.ultima_preventiva ?? null,
               link: r.ultima_preventiva_link ?? null,
               task_id: r.ultima_preventiva_task_id ?? null,
@@ -169,16 +198,36 @@ export default function PortalPlanosPreventivosPage() {
         }
       }
 
+      // 6) histórico executado por item do plano.
+      const execucoesByItemId = new Map<string, PreventiveExecution[]>();
+      const itemIds = itens.map((item) => item.id);
+      for (let i = 0; i < itemIds.length; i += 500) {
+        const slice = itemIds.slice(i, i + 500);
+        const { data: executions, error: executionsError } = await supabase
+          .from("plano_preventivo_execucao")
+          .select("id, item_id, data_realizada, task_id, task_type_id, horas_decimal")
+          .in("item_id", slice)
+          .order("data_realizada", { ascending: false });
+        if (executionsError) throw new Error(`Falha ao carregar o histórico de preventivas: ${executionsError.message}`);
+        for (const execution of (executions ?? []) as PreventiveExecution[]) {
+          if (!execucoesByItemId.has(execution.item_id)) execucoesByItemId.set(execution.item_id, []);
+          execucoesByItemId.get(execution.item_id)!.push(execution);
+        }
+      }
+
       return {
         grupoPrincipal: grupoPrinc as Grupo | null,
         memberNames,
         grupos: autoGrupos,
+        clienteNameByGroupId,
         itens,
         contratos: (contratos ?? []) as Contrato[],
-        ultimaByAuvoId,
+        ultimaByEquipId,
+        execucoesByItemId,
       };
     },
-    staleTime: 60_000,
+    staleTime: 5 * 60_000,
+    refetchInterval: 5 * 60_000,
   });
 
   const aggregates = useMemo<Aggregate[]>(() => {
@@ -208,7 +257,7 @@ export default function PortalPlanosPreventivosPage() {
       const k = `${it.grupo_id}::${it.ano_referencia}`;
       if (!map.has(k)) {
         const grupoNome = grupoById.get(it.grupo_id) ?? "(Sem grupo)";
-        const clienteNome = stripAutoPrefix(grupoNome);
+        const clienteNome = data.clienteNameByGroupId.get(it.grupo_id) || stripAutoPrefix(grupoNome);
         const ht_contrato_mes = contratoPorGrupo(it.grupo_id);
         map.set(k, {
           grupo_id: it.grupo_id,
@@ -216,7 +265,8 @@ export default function PortalPlanosPreventivosPage() {
           cliente_nome: clienteNome,
           ano_referencia: it.ano_referencia,
           itens: [],
-          ultimaByAuvoId: data.ultimaByAuvoId,
+          ultimaByEquipId: data.ultimaByEquipId,
+          execucoesByItemId: data.execucoesByItemId,
           ht_ano: 0,
           ht_contrato_mes,
           ht_contrato_ano: ht_contrato_mes * 12,
@@ -265,7 +315,7 @@ export default function PortalPlanosPreventivosPage() {
     const wb = XLSX.utils.book_new();
     const rows = agg.itens.map(it => {
       const set = new Set(it.meses_planejados ?? []);
-      const linha: any = {
+      const linha: Record<string, string | number> = {
         Equipamento: it.equipamento_nome,
         Periodicidade: it.periodicidade ?? "",
         "HT/ocorrência": Number(htPorOcorrencia(it).toFixed(2)),
@@ -276,9 +326,9 @@ export default function PortalPlanosPreventivosPage() {
       MES_LABEL.forEach((m, i) => { linha[m] = set.has(i + 1) ? Number(htPorOcorrencia(it).toFixed(2)) : ""; });
       return linha;
     });
-    const resumo: any = { Equipamento: "TOTAL MÊS", "HT total ano": Number(agg.ht_ano.toFixed(2)) };
+    const resumo: Record<string, string | number> = { Equipamento: "TOTAL MÊS", "HT total ano": Number(agg.ht_ano.toFixed(2)) };
     MES_LABEL.forEach((m, i) => { resumo[m] = Number(agg.ht_por_mes[i].toFixed(2)); });
-    const meta: any = { Equipamento: "META CONTRATO", "HT total ano": Number(agg.ht_contrato_ano.toFixed(2)) };
+    const meta: Record<string, string | number> = { Equipamento: "META CONTRATO", "HT total ano": Number(agg.ht_contrato_ano.toFixed(2)) };
     MES_LABEL.forEach(m => { meta[m] = Number(agg.ht_contrato_mes.toFixed(2)); });
     const ws = XLSX.utils.json_to_sheet([...rows, {}, resumo, meta]);
     XLSX.utils.book_append_sheet(wb, ws, `Plano ${agg.ano_referencia}`);
@@ -299,7 +349,7 @@ export default function PortalPlanosPreventivosPage() {
       40, 58,
     );
     const head = [["Equipamento", "Period.", "HT", ...MES_LABEL, "Total", "Próxima"]];
-    const body: any[] = agg.itens.map(it => {
+    const body: Array<Array<string | number>> = agg.itens.map(it => {
       const set = new Set(it.meses_planejados ?? []);
       const ht = htPorOcorrencia(it);
       return [
@@ -317,7 +367,7 @@ export default function PortalPlanosPreventivosPage() {
       styles: { fontSize: 7, cellPadding: 2 },
       headStyles: { fillColor: [30, 41, 59], textColor: 255 },
       columnStyles: { 0: { cellWidth: 160 } },
-      didParseCell: (d: any) => {
+      didParseCell: (d) => {
         if (d.section !== "body") return;
         const isTotal = d.row.index >= agg.itens.length;
         if (isTotal) {
@@ -395,16 +445,28 @@ export default function PortalPlanosPreventivosPage() {
               Um cartão por unidade. Clique num plano para ver o cronograma detalhado.
             </p>
           </div>
-          <div className="relative max-w-sm w-full">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-            <Input value={search} onChange={(e) => setSearch(e.target.value)}
-              placeholder="Buscar unidade ou ano..." className="pl-10" />
+          <div className="flex items-center gap-2 max-w-md w-full">
+            <div className="relative flex-1">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Input value={search} onChange={(e) => setSearch(e.target.value)}
+                placeholder="Buscar unidade ou ano..." className="pl-10" />
+            </div>
+            <Button variant="outline" size="icon" onClick={() => refetch()} disabled={isFetching} title="Atualizar preventivas">
+              <RefreshCw className={cn("h-4 w-4", isFetching && "animate-spin")} />
+            </Button>
           </div>
         </div>
 
         {isLoading ? (
           <div className="flex items-center justify-center py-16 text-muted-foreground">
             <Loader2 className="h-6 w-6 animate-spin mr-2" /> Carregando planos...
+          </div>
+        ) : isError ? (
+          <div className="border border-destructive/40 bg-destructive/5 rounded-lg p-8 text-center space-y-3">
+            <AlertTriangle className="h-7 w-7 text-destructive mx-auto" />
+            <div className="font-medium">Não foi possível carregar as preventivas</div>
+            <div className="text-sm text-muted-foreground">{error instanceof Error ? error.message : "Erro desconhecido"}</div>
+            <Button variant="outline" onClick={() => refetch()}>Tentar novamente</Button>
           </div>
         ) : porCliente.length === 0 ? (
           <div className="border rounded-lg p-10 text-center text-muted-foreground">
@@ -546,22 +608,45 @@ function PlanoViewDialog({
                     <td className="px-2 py-1">
                       <div className="text-sm">{it.equipamento_nome}</div>
                       {(() => {
-                        const info = it.equipamento_auvo_id ? agg.ultimaByAuvoId.get(it.equipamento_auvo_id) : null;
+                        const info = it.equipamento_auvo_id ? agg.ultimaByEquipId.get(it.equipamento_auvo_id) : null;
+                        const executions = agg.execucoesByItemId.get(it.id) ?? [];
                         const ultimaISO = info?.data ?? it.ultima_execucao_data;
-                        if (!ultimaISO && !info?.link) return null;
+                        if (!ultimaISO && !info?.link && executions.length === 0) return null;
                         return (
-                          <div className="text-[10px] text-muted-foreground flex items-center gap-1.5">
-                            {ultimaISO && <span>Última: {format(parseISO(ultimaISO), "dd/MM/yyyy")}</span>}
-                            {info?.link && (
-                              <a
-                                href={info.link}
-                                target="_blank"
-                                rel="noreferrer"
-                                className="inline-flex items-center gap-0.5 text-primary hover:underline"
-                                title="Abrir relatório da última preventiva"
-                              >
-                                <ExternalLink className="h-3 w-3" /> relatório
-                              </a>
+                          <div className="text-[10px] text-muted-foreground space-y-0.5">
+                            <div className="flex items-center gap-1.5">
+                              {ultimaISO && <span>Última: {format(parseISO(ultimaISO), "dd/MM/yyyy")}</span>}
+                              {info?.link && (
+                                <a
+                                  href={info.link}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  className="inline-flex items-center gap-0.5 text-primary hover:underline"
+                                  title="Abrir relatório da última preventiva"
+                                >
+                                  <ExternalLink className="h-3 w-3" /> relatório
+                                </a>
+                              )}
+                            </div>
+                            {executions.length > 0 && (
+                              <div className="flex items-center gap-1 flex-wrap">
+                                <span>{executions.length} preventiva{executions.length > 1 ? "s" : ""} executada{executions.length > 1 ? "s" : ""}:</span>
+                                {executions.slice(0, 3).map((execution) => (
+                                  execution.task_id ? (
+                                    <a
+                                      key={execution.id}
+                                      href={`https://app2.auvo.com.br/relatorioTarefas/DetalheTarefa/${execution.task_id}`}
+                                      target="_blank"
+                                      rel="noreferrer"
+                                      className="text-primary hover:underline"
+                                    >
+                                      {format(parseISO(execution.data_realizada), "dd/MM/yyyy")}
+                                    </a>
+                                  ) : (
+                                    <span key={execution.id}>{format(parseISO(execution.data_realizada), "dd/MM/yyyy")}</span>
+                                  )
+                                ))}
+                              </div>
                             )}
                           </div>
                         );

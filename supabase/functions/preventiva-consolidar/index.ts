@@ -61,6 +61,8 @@ type Plano = { codigo_barras_auvo: string; cliente_nome: string; datas_meses: an
 type ActivePlanCacheRow = {
   id: string;
   equipamento_auvo_id: string;
+  ano_referencia: number;
+  meses_planejados: number[] | null;
   ultima_execucao_data: string | null;
   ultima_execucao_task_id: string | null;
   proxima_data: string | null;
@@ -186,12 +188,22 @@ Deno.serve(async (req) => {
     }
 
     // 5) grupos + membros
-    const { data: grupoMemb } = await supa
-      .from("grupo_cliente_membros")
-      .select("grupo_id, cliente_nome");
-    const grupoPorCliente = new Map<string, string>();
+    const [{ data: grupoMemb, error: grupoMembError }, { data: grupos, error: gruposError }] = await Promise.all([
+      supa.from("grupo_cliente_membros").select("grupo_id, cliente_nome"),
+      supa.from("grupos_clientes").select("id, nome"),
+    ]);
+    if (grupoMembError) throw grupoMembError;
+    if (gruposError) throw gruposError;
+    const autoGroupIds = new Set(
+      (grupos ?? []).filter((g: any) => /^\s*\[Auto\]/i.test(String(g.nome || ""))).map((g: any) => String(g.id)),
+    );
+    const grupoPorCliente = new Map<string, { id: string; auto: boolean }>();
     for (const g of (grupoMemb ?? []) as any[]) {
-      grupoPorCliente.set(normalizeClienteName(g.cliente_nome), g.grupo_id);
+      const key = normalizeClienteName(g.cliente_nome);
+      const candidate = { id: String(g.grupo_id), auto: autoGroupIds.has(String(g.grupo_id)) };
+      const current = grupoPorCliente.get(key);
+      // O grupo real da rede tem precedência sobre o grupo técnico [Auto].
+      if (!current || (current.auto && !candidate.auto)) grupoPorCliente.set(key, candidate);
     }
 
     // 6) planos preventivos (para próxima data via plano)
@@ -223,6 +235,14 @@ Deno.serve(async (req) => {
     };
     const porEquip = new Map<string, Ult>();
     const totalPorEquip = new Map<string, number>();
+    const tarefasPorAuvoEquipmentId = new Map<string, Tarefa[]>();
+    for (const tarefa of tarefas) {
+      if (!tarefasPorAuvoEquipmentId.has(tarefa.auvo_equipment_id)) {
+        tarefasPorAuvoEquipmentId.set(tarefa.auvo_equipment_id, []);
+      }
+      tarefasPorAuvoEquipmentId.get(tarefa.auvo_equipment_id)!.push(tarefa);
+    }
+    const execucoesPorEquipId = new Map<string, Tarefa[]>();
 
     for (const eq of equipamentos) {
       if (!eq.auvo_equipment_id) continue;
@@ -233,14 +253,15 @@ Deno.serve(async (req) => {
 
       let ult: Ult | null = null;
       let total = 0;
-      for (const t of tarefas) {
-        if (t.auvo_equipment_id !== eq.auvo_equipment_id) continue;
+      const validExecutions: Tarefa[] = [];
+      for (const t of tarefasPorAuvoEquipmentId.get(eq.auvo_equipment_id) ?? []) {
         if (!t.auvo_task_type_id || !tiposValidos.has(String(t.auvo_task_type_id))) continue;
         // Só conta como EXECUTADA quando a tarefa está Finalizada.
         // Agendada/Aberta/Em andamento/Pausada NÃO é preventiva realizada.
         if (String(t.status_auvo || "").trim().toLowerCase() !== "finalizada") continue;
         const d = t.data_conclusao || t.data_tarefa;
         if (!d) continue;
+        validExecutions.push(t);
         total += 1;
         if (!ult || d > ult.data) {
           ult = {
@@ -255,6 +276,7 @@ Deno.serve(async (req) => {
       if (ult) {
         porEquip.set(eq.id, { ...ult, total });
       }
+      execucoesPorEquipId.set(eq.id, validExecutions);
       totalPorEquip.set(eq.id, total);
     }
 
@@ -270,7 +292,7 @@ Deno.serve(async (req) => {
       const htPorOcorrencia = hpt != null && qtd != null ? Number(hpt) * Number(qtd) : null;
 
       const clienteKey = normalizeClienteName(eq.cliente);
-      const grupoId = grupoPorCliente.get(clienteKey) ?? null;
+      const grupoId = grupoPorCliente.get(clienteKey)?.id ?? null;
 
       // Próxima via plano
       let proxima: string | null = null;
@@ -350,7 +372,7 @@ Deno.serve(async (req) => {
     const rowByEquipmentId = new Map(rows.map((row) => [row.equip_id, row]));
     const { data: activePlanRows, error: activePlanError } = await supa
       .from("plano_preventivo_item")
-      .select("id, equipamento_auvo_id, ultima_execucao_data, ultima_execucao_task_id, proxima_data")
+      .select("id, equipamento_auvo_id, ano_referencia, meses_planejados, ultima_execucao_data, ultima_execucao_task_id, proxima_data")
       .eq("ativo", true)
       .not("equipamento_auvo_id", "is", null);
     if (activePlanError) throw activePlanError;
@@ -370,6 +392,68 @@ Deno.serve(async (req) => {
       );
       const failedUpdate = updateResults.find((result) => result.error);
       if (failedUpdate?.error) throw failedUpdate.error;
+    }
+
+    // Grava o histórico completo de preventivas executadas por item do plano.
+    // A chave é o UUID interno do equipamento, o mesmo FK usado pelo plano.
+    const executionRows: any[] = [];
+    const expectedTasksByItemId = new Map<string, Set<string>>();
+    for (const plan of (activePlanRows ?? []) as ActivePlanCacheRow[]) {
+      const expected = new Set<string>();
+      const plannedMonths = new Set(plan.meses_planejados ?? []);
+      for (const task of execucoesPorEquipId.get(plan.equipamento_auvo_id) ?? []) {
+        const realizedDate = String(task.data_conclusao || task.data_tarefa || "").slice(0, 10);
+        if (!realizedDate || Number(realizedDate.slice(0, 4)) !== Number(plan.ano_referencia)) continue;
+        const taskId = String(task.auvo_task_id || "").trim();
+        if (!taskId) continue;
+        expected.add(taskId);
+        const realizedMonth = Number(realizedDate.slice(5, 7));
+        const isPlannedMonth = plannedMonths.has(realizedMonth);
+        executionRows.push({
+          item_id: plan.id,
+          mes_planejado: isPlannedMonth ? realizedMonth : null,
+          data_planejada: isPlannedMonth
+            ? `${plan.ano_referencia}-${String(realizedMonth).padStart(2, "0")}-01`
+            : null,
+          data_realizada: realizedDate,
+          task_id: taskId,
+          task_type_id: task.auvo_task_type_id,
+          horas_decimal: null,
+          origem: "auto",
+        });
+      }
+      expectedTasksByItemId.set(plan.id, expected);
+    }
+
+    for (let i = 0; i < executionRows.length; i += BATCH) {
+      const { error: executionUpsertError } = await supa
+        .from("plano_preventivo_execucao")
+        .upsert(executionRows.slice(i, i + BATCH), { onConflict: "item_id,task_id" });
+      if (executionUpsertError) throw executionUpsertError;
+    }
+
+    // Se uma tarefa foi excluída no Auvo, ela também deixa de aparecer no
+    // histórico automático. Registros manuais são preservados.
+    let staleExecutionsRemoved = 0;
+    const activePlanIds = ((activePlanRows ?? []) as ActivePlanCacheRow[]).map((plan) => plan.id);
+    for (let i = 0; i < activePlanIds.length; i += BATCH) {
+      const { data: storedExecutions, error: storedExecutionsError } = await supa
+        .from("plano_preventivo_execucao")
+        .select("id, item_id, task_id, origem")
+        .eq("origem", "auto")
+        .in("item_id", activePlanIds.slice(i, i + BATCH));
+      if (storedExecutionsError) throw storedExecutionsError;
+      const staleIds = (storedExecutions ?? [])
+        .filter((row: any) => row.task_id && !expectedTasksByItemId.get(String(row.item_id))?.has(String(row.task_id)))
+        .map((row: any) => String(row.id));
+      if (staleIds.length > 0) {
+        const { error: staleDeleteError } = await supa
+          .from("plano_preventivo_execucao")
+          .delete()
+          .in("id", staleIds);
+        if (staleDeleteError) throw staleDeleteError;
+        staleExecutionsRemoved += staleIds.length;
+      }
     }
 
     // remove linhas de equipamentos que não existem mais
@@ -395,6 +479,8 @@ Deno.serve(async (req) => {
         orfaos_removidos: orfaos.length,
         tipos_ativos: tipos.length,
         planos_reconciliados: planUpdates.length,
+        execucoes_historicas: executionRows.length,
+        execucoes_orfas_removidas: staleExecutionsRemoved,
         elapsed_ms: Date.now() - t0,
       }),
       { headers: { ...cors, "Content-Type": "application/json" } },

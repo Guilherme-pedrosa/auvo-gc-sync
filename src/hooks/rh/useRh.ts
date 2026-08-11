@@ -13,16 +13,29 @@ export type DocumentType = {
 };
 export type RhCliente = {
   id: string; gc_cliente_id: string | null;
+  auvo_cliente_id: number | null;
   nome: string; nome_normalizado: string; nome_fantasia: string | null;
+  nome_gc: string | null; nome_auvo: string | null; auvo_external_id: string | null;
   cpf_cnpj: string | null; email: string | null; telefone: string | null;
   endereco: string | null; cidade: string | null; uf: string | null; cep: string | null;
-  ativo: boolean; origem: "cache" | "gc" | "manual"; sync_em: string | null;
+  ativo: boolean; origem: "cache" | "gc" | "auvo" | "gc_auvo" | "manual"; sync_em: string | null;
+  vinculo_status: "vinculado" | "pendente" | "ambiguo" | "erro";
+  vinculo_metodo: string | null; vinculo_confianca: number | null;
+  auvo_sync_em: string | null; auvo_sync_erro: string | null;
   observacoes: string | null;
   integration_validity_days: number | null;
   integration_send_channel: "email" | "portal" | "presencial" | "outro" | null;
   portal_url: string | null;
   portal_login: string | null;
   portal_senha: string | null;
+};
+export type AuvoClienteCache = {
+  auvo_id: number;
+  nome: string;
+  nome_legal: string | null;
+  cpf_cnpj: string | null;
+  external_id: string | null;
+  ativo: boolean | null;
 };
 export type RhColaborador = {
   id: string; tipo_pessoa: "PF" | "PJ"; nome: string;
@@ -113,10 +126,35 @@ export function useRhClientes(search = "") {
     queryKey: ["rh_clientes", search],
     queryFn: async () => {
       let q = sb.from("rh_clientes").select("*").order("nome");
-      if (search) q = q.ilike("nome", `%${search}%`);
+      if (search) {
+        const safe = search.replace(/[,()%]/g, " ").trim();
+        q = q.or([
+          `nome.ilike.%${safe}%`,
+          `nome_gc.ilike.%${safe}%`,
+          `nome_auvo.ilike.%${safe}%`,
+          `cpf_cnpj.ilike.%${safe}%`,
+          `gc_cliente_id.ilike.%${safe}%`,
+          `auvo_external_id.ilike.%${safe}%`,
+        ].join(","));
+      }
       const { data, error } = await q.limit(2000);
       if (error) throw error;
       return (data ?? []) as RhCliente[];
+    },
+  });
+}
+export function useAuvoClientesCache() {
+  return useQuery({
+    queryKey: ["auvo_clientes_cache", "rh_clientes"],
+    staleTime: 5 * 60 * 1000,
+    queryFn: async () => {
+      const { data, error } = await sb
+        .from("auvo_clientes_cache")
+        .select("auvo_id, nome, nome_legal, cpf_cnpj, external_id, ativo")
+        .order("nome")
+        .limit(10000);
+      if (error) throw error;
+      return (data ?? []) as AuvoClienteCache[];
     },
   });
 }
@@ -149,6 +187,26 @@ export function useDeleteRhCliente() {
     },
     onSuccess: () => { toast.success("Cliente excluído"); qc.invalidateQueries({ queryKey: ["rh_clientes"] }); },
     onError: (e: Error) => toast.error(e.message),
+  });
+}
+
+export function useLinkRhClienteAuvo() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ rhClientId, auvoCustomerId }: { rhClientId: string; auvoCustomerId: number | null }) => {
+      const { data, error } = await sb.functions.invoke("rh-clientes-sync-gc", {
+        body: { action: "link", rhClientId, auvoCustomerId },
+      });
+      if (error) throw error;
+      if (!data?.ok) throw new Error(data?.error || "Não foi possível salvar o vínculo com o Auvo");
+      return data as { ok: true; mergedClientId?: string | null };
+    },
+    onSuccess: () => {
+      toast.success("Vínculo GC ↔ Auvo atualizado");
+      qc.invalidateQueries({ queryKey: ["rh_clientes"] });
+      qc.invalidateQueries({ queryKey: ["auvo_clientes_cache"] });
+    },
+    onError: (e: Error) => toast.error(`Falha ao vincular: ${e.message}`),
   });
 }
 
@@ -505,13 +563,25 @@ export function useSyncClientesGc() {
     mutationFn: async () => {
       const { data, error } = await sb.functions.invoke("rh-clientes-sync-gc", { body: {} });
       if (error) throw error;
-      return data as { updated: number; errors: number };
+      if (!data?.ok) throw new Error(data?.error || `A sincronização terminou com ${data?.errors ?? 1} falha(s)`);
+      return data as {
+        ok: true; gcTotal: number; auvoTotal: number; linked: number;
+        createdInAuvo: number; ambiguous: number; auvoOnly: number;
+        inserted: number; updated: number; errors: number;
+      };
     },
     onSuccess: (res) => {
-      toast.success(`Sync concluído: ${res.updated} atualizado(s), ${res.errors} falha(s)`);
-      qc.invalidateQueries({ queryKey: ["rh_clientes"] });
+      toast.success(
+        `GC + Auvo: ${res.linked} vinculados, ${res.createdInAuvo} criado(s) no Auvo, ${res.ambiguous} ambíguo(s)`,
+      );
     },
     onError: (e: Error) => toast.error(`Falha no sync: ${e.message}`),
+    onSettled: () => {
+      // Mesmo uma rodada parcialmente falha pode ter confirmado centenas de
+      // vínculos; a tela deve refletir o que foi persistido.
+      qc.invalidateQueries({ queryKey: ["rh_clientes"] });
+      qc.invalidateQueries({ queryKey: ["auvo_clientes_cache"] });
+    },
   });
 }
 

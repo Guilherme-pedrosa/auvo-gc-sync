@@ -431,7 +431,18 @@ async function fetchCustomerName(customerId: number, token: string, cache: Map<n
     });
     if (!res.ok) return null;
     const data = await res.json();
-    const name = data?.result?.description || null;
+    const customer = data?.result || data || {};
+    // A API v2 documenta `name`; contas legadas também podem devolver
+    // tradeName/companyName/description. `description` não deve ter prioridade,
+    // pois pode conservar o nome antigo depois de uma edição no Auvo.
+    const name = String(
+      customer?.name
+        || customer?.tradeName
+        || customer?.legalName
+        || customer?.companyName
+        || customer?.description
+        || "",
+    ).trim() || null;
     if (name) cache.set(customerId, name);
     return name;
   } catch (err) {
@@ -759,6 +770,7 @@ Deno.serve(async (req) => {
 
         const row: any = {
           auvo_equipment_id: eqId,
+          auvo_customer_id: eq.associatedCustomerId > 0 ? eq.associatedCustomerId : null,
           nome,
           identificador: eq.identifier?.trim() || null,
           descricao: eq.description?.trim() || null,
@@ -1262,8 +1274,36 @@ Deno.serve(async (req) => {
       }
     }
 
+    // A rotina automática usa phase=all. Antes, somente o fluxo 2-batch
+    // consolidava os vínculos recém-importados e o portal permanecia com cache
+    // antigo até uma sincronização manual.
+    if (
+      body?.skipConsolidate !== true
+      && consolidateResult === null
+      && !isCountOnly
+      && (phase === "2" || phase === "all")
+    ) {
+      try {
+        const consRes = await fetch(`${supabaseUrl}/functions/v1/preventiva-consolidar`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${serviceKey}`,
+            apikey: serviceKey,
+          },
+          body: JSON.stringify({}),
+        });
+        const consJson = await consRes.json().catch(() => ({}));
+        consolidateResult = { ok: consRes.ok, ...consJson };
+        console.log(`[equipment-sync] consolidar legado → ${consRes.status} ${JSON.stringify(consJson).slice(0, 200)}`);
+      } catch (e) {
+        consolidateResult = { ok: false, error: (e as Error).message };
+        console.error("[equipment-sync] consolidar legado falhou:", e);
+      }
+    }
+
     return new Response(JSON.stringify({
-      success: true,
+      success: consolidateResult?.ok !== false,
       phase_executed: phase,
       phase1_equipment_catalog: phase1Result,
       phase2_equipment_tasks: phase2Result,

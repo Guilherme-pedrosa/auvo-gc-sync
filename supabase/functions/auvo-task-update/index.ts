@@ -1325,8 +1325,12 @@ Deno.serve(async (req) => {
 
       if (all.length > 0) {
         const rows = all.map(c => ({
-          auvo_id: Number(c.id ?? c.customerId),
-          nome: String(c.description ?? c.name ?? "Sem Nome"),
+          auvo_id: Number(c.customerId ?? c.id),
+          nome: String(c.name ?? c.tradeName ?? c.description ?? c.legalName ?? "Sem Nome"),
+          external_id: String(c.externalId || "").trim() || null,
+          cpf_cnpj: String(c.cpfCnpj || "").replace(/\D/g, "") || null,
+          nome_legal: String(c.legalName || c.companyName || "").trim() || null,
+          ativo: c.active !== false,
           endereco: c.address ?? null,
           cidade: c.city ?? null,
           estado: c.state ?? null,
