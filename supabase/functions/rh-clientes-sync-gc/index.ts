@@ -511,6 +511,154 @@ async function refreshAuvoNameReferences(
   if (autoGroupError && autoGroupError.code !== "23505") throw autoGroupError;
 }
 
+async function fetchAuvoCustomersLight(accessToken: string): Promise<AuvoCustomer[]> {
+  const all: AuvoCustomer[] = [];
+  const filter = encodeURIComponent(JSON.stringify({}));
+  const fields = encodeURIComponent("id,externalId,description,name,legalName,cpfCnpj,active");
+  for (let page = 1; page <= 200; page++) {
+    const response = await fetch(
+      `${AUVO_BASE}/customers/?paramFilter=${filter}&page=${page}&pageSize=500&order=asc&selectfields=${fields}`,
+      { headers: auvoHeaders(accessToken) },
+    );
+    if (response.status === 404) break;
+    const raw = await response.text();
+    if (!response.ok) throw new Error(`Auvo /customers página ${page} respondeu ${response.status}: ${raw.slice(0, 200)}`);
+    const json = raw ? JSON.parse(raw) : {};
+    const list = json?.result?.entityList ?? json?.result ?? [];
+    if (!Array.isArray(list) || list.length === 0) break;
+    for (const item of list) {
+      const mapped = mapAuvoCustomer(item);
+      if (mapped) all.push(mapped);
+    }
+    if (list.length < 500) break;
+  }
+  return all;
+}
+
+function namesLookCompatible(a: string, b: string): boolean {
+  const tokensA = new Set(normalize(a).split(" ").filter((t) => t.length >= 3));
+  const tokensB = new Set(normalize(b).split(" ").filter((t) => t.length >= 3));
+  if (tokensA.size === 0 || tokensB.size === 0) return false;
+  for (const token of tokensA) if (tokensB.has(token)) return true;
+  return false;
+}
+
+async function handleDocumentLookup(supabase: any, body: any): Promise<Record<string, unknown>> {
+  const ids = Array.isArray(body?.rhClientIds)
+    ? body.rhClientIds.map((value: unknown) => String(value || "").trim()).filter(Boolean)
+    : [];
+  if (ids.length === 0) throw new Error("Nenhum cliente selecionado");
+  if (ids.length > 200) throw new Error("Selecione no máximo 200 clientes por consulta");
+
+  const { data: rows, error } = await supabase
+    .from("rh_clientes")
+    .select("id, nome, cpf_cnpj, auvo_cliente_id")
+    .in("id", ids);
+  if (error) throw error;
+
+  const accessToken = await auvoLogin();
+  const auvoCustomers = await fetchAuvoCustomersLight(accessToken);
+  const auvoByDocument = new Map<string, AuvoCustomer[]>();
+  for (const customer of auvoCustomers) addMulti(auvoByDocument, digits(customer.cpfCnpj), customer);
+
+  const wanted = new Set(
+    (rows ?? []).map((row: any) => digits(row.cpf_cnpj)).filter((doc: string) => doc.length === 11 || doc.length === 14),
+  );
+  const cacheRows = auvoCustomers
+    .filter((customer) => wanted.has(digits(customer.cpfCnpj)))
+    .map((customer) => ({
+    auvo_id: customer.id,
+    nome: customer.name,
+    external_id: customer.externalId,
+    cpf_cnpj: customer.cpfCnpj,
+    nome_legal: customer.legalName,
+    ativo: customer.active,
+    endereco: customer.address,
+    cidade: customer.city,
+    estado: customer.state,
+    cep: customer.zipCode,
+    atualizado_em: new Date().toISOString(),
+  }));
+  for (let i = 0; i < cacheRows.length; i += 500) {
+    const { error: cacheError } = await supabase
+      .from("auvo_clientes_cache")
+      .upsert(cacheRows.slice(i, i + 500), { onConflict: "auvo_id" });
+    if (cacheError) throw cacheError;
+  }
+
+  let linked = 0, alreadyLinked = 0, ambiguous = 0, notFound = 0, invalidDocument = 0, errors = 0;
+  const details: Array<Record<string, unknown>> = [];
+
+  for (const row of rows ?? []) {
+    const document = digits(row.cpf_cnpj);
+    if (row.auvo_cliente_id) {
+      alreadyLinked++;
+      details.push({ id: row.id, nome: row.nome, resultado: "ja_vinculado" });
+      continue;
+    }
+    if (document.length !== 11 && document.length !== 14) {
+      invalidDocument++;
+      details.push({ id: row.id, nome: row.nome, resultado: "sem_documento" });
+      continue;
+    }
+    const candidates = auvoByDocument.get(document) ?? [];
+    if (candidates.length === 0) {
+      notFound++;
+      details.push({ id: row.id, nome: row.nome, resultado: "nao_encontrado" });
+      continue;
+    }
+    if (candidates.length > 1) {
+      ambiguous++;
+      details.push({
+        id: row.id,
+        nome: row.nome,
+        resultado: "ambiguo",
+        candidatos: candidates.map((c) => ({ auvoId: c.id, nome: c.name })),
+      });
+      continue;
+    }
+    const candidate = candidates[0];
+    if (!namesLookCompatible(row.nome, candidate.name) && !namesLookCompatible(row.nome, candidate.legalName || "")) {
+      ambiguous++;
+      await supabase.from("rh_clientes").update({
+        vinculo_status: "ambiguo",
+        vinculo_metodo: "cpf_cnpj_nome_divergente",
+        vinculo_confianca: 0.4,
+        auvo_sync_erro: `CPF/CNPJ igual ao Auvo #${candidate.id} (${candidate.name}), mas o nome diverge`,
+        atualizado_em: new Date().toISOString(),
+      }).eq("id", row.id);
+      details.push({
+        id: row.id,
+        nome: row.nome,
+        resultado: "nome_divergente",
+        candidatos: [{ auvoId: candidate.id, nome: candidate.name }],
+      });
+      continue;
+    }
+    try {
+      await handleManualLink(supabase, { rhClientId: row.id, auvoCustomerId: candidate.id });
+      linked++;
+      details.push({ id: row.id, nome: row.nome, resultado: "vinculado", auvoId: candidate.id, auvoNome: candidate.name });
+    } catch (linkError) {
+      errors++;
+      details.push({ id: row.id, nome: row.nome, resultado: "erro", mensagem: String((linkError as Error)?.message || linkError) });
+    }
+  }
+
+  return {
+    ok: true,
+    checked: (rows ?? []).length,
+    auvoTotal: auvoCustomers.length,
+    linked,
+    alreadyLinked,
+    ambiguous,
+    notFound,
+    invalidDocument,
+    errors,
+    details,
+  };
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
@@ -519,6 +667,13 @@ Deno.serve(async (req) => {
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
     if (body?.action === "link") {
       const result = await handleManualLink(supabase, body);
+      return new Response(JSON.stringify({ ...result, apiVersion: RESPONSE_CONTRACT }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    if (body?.action === "lookup_document") {
+      const result = await handleDocumentLookup(supabase, body);
       return new Response(JSON.stringify({ ...result, apiVersion: RESPONSE_CONTRACT }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
