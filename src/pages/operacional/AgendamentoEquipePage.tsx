@@ -1,7 +1,7 @@
 import { useMemo, useState, useEffect, useRef } from "react";
 import { format, addDays, parseISO } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import { ChevronLeft, ChevronRight, RefreshCw, Printer, Plus, Truck, Users, AlertTriangle, Download, CalendarClock } from "lucide-react";
+import { ChevronLeft, ChevronRight, RefreshCw, Printer, Plus, Truck, Users, AlertTriangle, Download, CalendarClock, Clock3 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
@@ -34,6 +34,12 @@ import {
 } from "@/lib/agendaIncrementalSync";
 import { agendaVisualStatus } from "@/lib/agendaTaskStatus";
 import { taskTypeRequiresGcOs } from "@/lib/agendaTaskType";
+import {
+  agendaTaskWorkedTime,
+  formatWorkedClock,
+  formatWorkedMinutes,
+  summarizeAgendaWorkedTime,
+} from "@/lib/agendaWorkedTime";
 import { toast } from "sonner";
 
 const DIAS_TRADUZIDOS = ["Segunda-feira", "Terça-feira", "Quarta-feira", "Quinta-feira", "Sexta-feira", "Sábado", "Domingo"];
@@ -155,6 +161,7 @@ function Celula({
   const [editando, setEditando] = useState(false);
   const manual = itens.find((i) => !i.auvo_task_id && i.origem !== "AUVO");
   const [rascunho, setRascunho] = useState(manual?.cliente ?? "");
+  const horasTrabalhadas = summarizeAgendaWorkedTime(itens);
 
   if (editando) {
     return (
@@ -204,8 +211,21 @@ function Celula({
       className="group relative border border-border p-0.5 align-top h-16 min-w-[150px] transition-colors"
     >
       <div className="flex flex-col gap-0.5 h-full">
+        {(horasTrabalhadas.totalMinutes > 0 || horasTrabalhadas.inProgress > 0) && (
+          <div
+            className="flex items-center gap-1 rounded-sm border border-sky-200 bg-sky-50 px-1.5 py-1 text-[10px] font-bold normal-case text-sky-800 dark:border-sky-800 dark:bg-sky-950/40 dark:text-sky-200"
+            title="Tempo efetivamente trabalhado no Auvo. Previsões e duração planejada não entram neste total."
+          >
+            <Clock3 className="h-3 w-3 shrink-0" />
+            <span>Trabalhado: {formatWorkedMinutes(horasTrabalhadas.totalMinutes)}</span>
+            {horasTrabalhadas.inProgress > 0 && (
+              <span className="font-medium">· {horasTrabalhadas.inProgress} em andamento</span>
+            )}
+          </div>
+        )}
         {itens.map((a) => {
           const statusColor = getStatusColor(a);
+          const tempoTrabalhado = agendaTaskWorkedTime(a);
           const tipoTarefa = a.auvo_task_id
             ? (a.tipo_tarefa_auvo || "TIPO NÃO INFORMADO")
             : null;
@@ -258,6 +278,15 @@ function Celula({
                   {osNaoVinculada && (
                     <span className="text-[9px] font-bold normal-case text-red-700 dark:text-red-300 truncate">
                       OS do GestãoClick não vinculada
+                    </span>
+                  )}
+                  {tempoTrabalhado.hasCheckIn && (
+                    <span className="flex items-center gap-1 text-[9px] font-semibold normal-case opacity-90 truncate">
+                      <Clock3 className="h-2.5 w-2.5 shrink-0" />
+                      {formatWorkedClock(tempoTrabalhado.checkIn)} → {tempoTrabalhado.hasCheckOut
+                        ? formatWorkedClock(tempoTrabalhado.checkOut)
+                        : "em andamento"}
+                      {tempoTrabalhado.minutes > 0 && ` · ${formatWorkedMinutes(tempoTrabalhado.minutes)}`}
                     </span>
                   )}
                   {a.previsao_detalhes && (
@@ -772,6 +801,9 @@ export default function AgendamentoEquipePage() {
           <span className="rounded border border-amber-500 bg-amber-200 px-2 py-1 font-semibold text-amber-950">Pausada</span>
           <span className="rounded border border-red-300 bg-red-100 px-2 py-1 font-semibold text-red-800">Atrasada há mais de 2h</span>
           <span className="rounded border border-red-300 bg-card px-2 py-1 font-semibold text-red-700">OS do GC não vinculada: revisar cadastro</span>
+          <span className="flex items-center gap-1 rounded border border-sky-200 bg-sky-50 px-2 py-1 font-semibold text-sky-800">
+            <Clock3 className="h-3 w-3" /> Horas reais: check-in/checkout do Auvo
+          </span>
           <span className="rounded border bg-card px-2 py-1 text-muted-foreground">Demais: cor do cliente</span>
         </div>
         {carregando ? (

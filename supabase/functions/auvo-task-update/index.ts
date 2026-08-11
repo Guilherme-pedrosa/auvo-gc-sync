@@ -8,6 +8,11 @@ import {
   parseAuvoDurationMinutes,
 } from "../_shared/auvo-duration.ts";
 import {
+  auvoCheckInDate,
+  auvoCheckOutDate,
+  computeAuvoWorkedHours,
+} from "../_shared/auvo-worked-time.ts";
+import {
   BUDGET_EXECUTION_FORECAST,
   auvoTaskHasStarted,
   forecastDurationMinutes,
@@ -685,8 +690,8 @@ Deno.serve(async (req) => {
 
       const taskDate = String(task?.taskDate ?? task?.date ?? "");
       const taskEndDate = String(task?.taskEndDate ?? task?.endDate ?? "");
-      const checkInDate = String(task?.checkInDate ?? task?.checkinDate ?? "");
-      const checkOutDate = String(task?.checkOutDate ?? task?.checkoutDate ?? "");
+      const checkInDate = auvoCheckInDate(task) || "";
+      const checkOutDate = auvoCheckOutDate(task) || "";
       const status = String(task?.taskStatus?.description ?? task?.status?.description ?? task?.status ?? "").trim();
       const customer = String(task?.customerDescription ?? task?.customerName ?? task?.customer?.tradeName ?? "").trim();
       const technician = String(task?.userToName ?? task?.userTo?.name ?? "").trim();
@@ -707,7 +712,7 @@ Deno.serve(async (req) => {
           console.warn(`[auvo-task-update][reqId=${reqId}] tipo ${currentTaskTypeId} não resolvido: ${(error as Error).message}`);
         }
       }
-      const durationMinutes = parseAuvoDurationMinutes(task?.estimatedDuration ?? task?.estimated_duration);
+      const workedHours = computeAuvoWorkedHours(task);
       const timePart = (value: string) => value.length >= 16 ? value.slice(11, 16) : "";
       const patch: Record<string, unknown> = {
         atualizado_em: new Date().toISOString(),
@@ -730,7 +735,9 @@ Deno.serve(async (req) => {
       setKnown("descricao", currentTaskTypeDescription);
       setKnown("gc_os_codigo", agenda?.gc_os_codigo || existing?.gc_os_codigo);
       setKnown("gc_orcamento_codigo", agenda?.gc_orcamento_codigo || existing?.gc_orcamento_codigo);
-      if (durationMinutes > 0) patch.duracao_decimal = durationMinutes / 60;
+      if (workedHours > 0) patch.duracao_decimal = workedHours;
+      setKnown("check_in_iso", checkInDate);
+      setKnown("check_out_iso", checkOutDate);
       if (hasOwn(task, "checkIn") || checkInDate) patch.check_in = task?.checkIn === true || !!checkInDate;
       if (hasOwn(task, "checkOut") || checkOutDate) patch.check_out = task?.checkOut === true || !!checkOutDate;
 

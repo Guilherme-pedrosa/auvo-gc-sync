@@ -1,6 +1,11 @@
 import { installGcUsuarioId } from "../_shared/gc-user.ts";
 import { parseAuvoDurationMinutes } from "../_shared/auvo-duration.ts";
 import {
+  auvoCheckInDate,
+  auvoCheckOutDate,
+  computeAuvoWorkedHours,
+} from "../_shared/auvo-worked-time.ts";
+import {
   isOsEligibleForBudgetForecast,
   normalizeGcDocumentCode,
 } from "../_shared/agenda-forecast-promotion.ts";
@@ -32,16 +37,6 @@ function timeToMinutes(value: string): number {
 function minutesToClock(value: number): string {
   const normalized = ((Math.round(value) % 1440) + 1440) % 1440;
   return `${String(Math.floor(normalized / 60)).padStart(2, "0")}:${String(normalized % 60).padStart(2, "0")}`;
-}
-
-function durationBetweenTimes(start: string, end: string): number {
-  const startMinutes = timeToMinutes(start);
-  const endMinutes = timeToMinutes(end);
-  if (startMinutes < 0 || endMinutes < 0) return 0;
-  const diff = endMinutes >= startMinutes
-    ? endMinutes - startMinutes
-    : (24 * 60 - startMinutes) + endMinutes;
-  return diff > 0 ? diff : 0;
 }
 
 function taskTypeId(task: any): string {
@@ -485,45 +480,59 @@ Deno.serve(async (req) => {
 
     console.log(`[auvo-agenda] mode=${fastMode ? "fast" : "full"}, ${allTasks.length} tasks, ${gcOsMap.size} OS, ${gcOrcMap.size} orçamentos, ${localDocumentMap.size} vínculos locais`);
 
-    // For finished tasks, the list endpoint usually omits checkInDate/checkOutDate.
-    // Fetch the per-task snapshot in parallel (limited concurrency) so the agenda
-    // shows the effective time spent (real check-in → check-out) instead of the
-    // initially scheduled window.
-    const snapshotMap = new Map<string, { checkInDate: string; checkOutDate: string }>();
+    // A listagem costuma omitir checkInDate/checkOutDate. Busca o detalhe apenas
+    // das tarefas que já começaram/finalizaram e estão sem esses horários. Assim
+    // o modo rápido continua seletivo e o total diário não depende de cache velho.
+    const snapshotMap = new Map<string, {
+      checkInDate: string;
+      checkOutDate: string;
+      duration: unknown;
+      durationDecimal: unknown;
+      timeControl: unknown;
+    }>();
     const finishedIds: string[] = [];
-    if (!fastMode) {
-      for (const t of allTasks) {
-        const tid = String(t.taskID || t.taskId || t.id || "");
-        const sd = String(t.taskStatus?.description || t.status?.description || "").trim();
-        const isFin = !!t.finished || sd === "Finalizada";
-        const hasInList =
-          !!(t.checkInDate || t.checkinDate || t.dateCheckIn) &&
-          !!(t.checkOutDate || t.checkoutDate || t.dateCheckOut);
-        if (isFin && tid && !hasInList) finishedIds.push(tid);
-      }
-      const CONCURRENCY = 5;
-      for (let i = 0; i < finishedIds.length; i += CONCURRENCY) {
-        const batch = finishedIds.slice(i, i + CONCURRENCY);
-        await Promise.all(batch.map(async (tid) => {
-          try {
-            const url = `${AUVO_BASE_URL}/tasks/${encodeURIComponent(tid)}`;
-            const resp = await fetchWithRetry(url, { headers }, {
-              retryStatuses: [502, 503],
-              delaysMs: [1500, 3000],
-              label: `Auvo task ${tid} snapshot`,
-            });
-            if (!resp.ok) return;
-            const json = await resp.json().catch(() => ({}));
-            const r = json?.result || json || {};
-            snapshotMap.set(tid, {
-              checkInDate: String(r.checkInDate || r.checkinDate || r.checkin_date || "").trim(),
-              checkOutDate: String(r.checkOutDate || r.checkoutDate || r.checkout_date || "").trim(),
-            });
-          } catch (_) { /* ignore */ }
-        }));
+    for (const t of allTasks) {
+      const tid = String(t.taskID || t.taskId || t.id || "");
+      const normalizedStatus = String(t.taskStatus?.description || t.status?.description || "")
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .toLowerCase();
+      const isFinished = !!t.finished || normalizedStatus.includes("finaliz") || normalizedStatus.includes("conclui");
+      const hasStarted = t.checkIn === true
+        || normalizedStatus.includes("andamento")
+        || normalizedStatus.includes("pausad")
+        || isFinished;
+      const hasCheckInDate = !!auvoCheckInDate(t);
+      const hasCheckOutDate = !!auvoCheckOutDate(t);
+      if (hasStarted && tid && (!hasCheckInDate || (isFinished && !hasCheckOutDate))) {
+        finishedIds.push(tid);
       }
     }
-    console.log(`[auvo-agenda] snapshot fetched for ${snapshotMap.size}/${finishedIds.length} finished tasks`);
+    const CONCURRENCY = 5;
+    for (let i = 0; i < finishedIds.length; i += CONCURRENCY) {
+      const batch = finishedIds.slice(i, i + CONCURRENCY);
+      await Promise.all(batch.map(async (tid) => {
+        try {
+          const url = `${AUVO_BASE_URL}/tasks/${encodeURIComponent(tid)}`;
+          const resp = await fetchWithRetry(url, { headers }, {
+            retryStatuses: [502, 503],
+            delaysMs: [1500, 3000],
+            label: `Auvo task ${tid} snapshot`,
+          });
+          if (!resp.ok) return;
+          const json = await resp.json().catch(() => ({}));
+          const r = json?.result || json || {};
+          snapshotMap.set(tid, {
+            checkInDate: String(r.checkInDate || r.checkinDate || r.checkin_date || "").trim(),
+            checkOutDate: String(r.checkOutDate || r.checkoutDate || r.checkout_date || "").trim(),
+            duration: r.duration ?? r.Duration ?? null,
+            durationDecimal: r.durationDecimal ?? r.DurationDecimal ?? null,
+            timeControl: r.timeControl ?? r.TimeControl ?? null,
+          });
+        } catch (_) { /* ignore */ }
+      }));
+    }
+    console.log(`[auvo-agenda] work snapshot fetched for ${snapshotMap.size}/${finishedIds.length} started/finished tasks`);
 
     // Map to simplified format + enrich with GC
     const enriched = allTasks.map((t: any) => {
@@ -556,8 +565,17 @@ Deno.serve(async (req) => {
       
       // Real check-in/check-out timestamps (when technician actually started/finished)
       const snap = snapshotMap.get(taskId);
-      const rawCheckInDate = String(t.checkInDate || t.checkinDate || t.dateCheckIn || snap?.checkInDate || "");
-      const rawCheckOutDate = String(t.checkOutDate || t.checkoutDate || t.dateCheckOut || snap?.checkOutDate || "");
+      const workedSource = {
+        ...t,
+        checkInDate: auvoCheckInDate(t) || snap?.checkInDate || null,
+        checkOutDate: auvoCheckOutDate(t) || snap?.checkOutDate || null,
+        duration: t.duration ?? t.Duration ?? snap?.duration ?? null,
+        durationDecimal: t.durationDecimal ?? t.DurationDecimal ?? snap?.durationDecimal ?? null,
+        timeControl: t.timeControl ?? t.TimeControl ?? snap?.timeControl ?? null,
+      };
+      const rawCheckInDate = auvoCheckInDate(workedSource) || "";
+      const rawCheckOutDate = auvoCheckOutDate(workedSource) || "";
+      const workedHours = computeAuvoWorkedHours(workedSource);
       const checkInTime = rawCheckInDate.length >= 16 ? rawCheckInDate.substring(11, 16) : "";
       const checkOutTime = rawCheckOutDate.length >= 16 ? rawCheckOutDate.substring(11, 16) : "";
 
@@ -572,9 +590,6 @@ Deno.serve(async (req) => {
       const endTime = isFinished
         ? (checkOutTime || rawEndTime || taskEndDateTime || "")
         : (taskEndDateTime || rawEndTime || estimatedEndTime || "");
-      const resolvedDurationMinutes = isFinished
-        ? (durationBetweenTimes(startTime, endTime) || estimatedDurationMinutes)
-        : (estimatedDurationMinutes || durationBetweenTimes(startTime, endTime));
 
       const address = typeof t.address === "object" ? "" : String(t.address || "").substring(0, 200);
       const description = String(t.orientation || t.description || "").substring(0, 500);
@@ -598,7 +613,7 @@ Deno.serve(async (req) => {
         data_tarefa: taskDate,
         hora_inicio: startTime,
         hora_fim: endTime,
-        duracao_decimal: resolvedDurationMinutes > 0 ? resolvedDurationMinutes / 60 : null,
+        duracao_decimal: workedHours > 0 ? workedHours : null,
         duracao_estimada_minutos: estimatedDurationMinutes || null,
         auvo_task_type_id: resolvedTaskTypeId || null,
         task_type_id: resolvedTaskTypeId || localDocument?.task_type_id || null,
@@ -607,8 +622,10 @@ Deno.serve(async (req) => {
         endereco: address,
         descricao: description,
         orientacao: description,
-        check_in: !!t.checkIn,
-        check_out: !!t.checkOut,
+        check_in: t.checkIn === true || !!rawCheckInDate,
+        check_out: t.checkOut === true || !!rawCheckOutDate,
+        check_in_iso: rawCheckInDate || null,
+        check_out_iso: rawCheckOutDate || null,
         auvo_link: `https://app2.auvo.com.br/relatorioTarefas/DetalheTarefa/${taskId}`,
         gc_os_codigo: localDocument?.gc_os_codigo ?? os?.gc_os_codigo ?? null,
         gc_os_situacao: os?.gc_os_situacao ?? localDocument?.gc_os_situacao ?? null,
@@ -653,6 +670,8 @@ Deno.serve(async (req) => {
         };
         if (task.hora_fim) row.hora_fim = task.hora_fim;
         if (task.duracao_decimal != null) row.duracao_decimal = task.duracao_decimal;
+        if (task.check_in_iso) row.check_in_iso = task.check_in_iso;
+        if (task.check_out_iso) row.check_out_iso = task.check_out_iso;
         if (task.endereco) row.endereco = task.endereco;
         if (task.descricao) row.orientacao = task.descricao;
         if (task.task_type_id) row.task_type_id = task.task_type_id;

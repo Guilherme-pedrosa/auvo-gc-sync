@@ -2,6 +2,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase as sb } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { resolveAgendaTaskType } from "@/lib/agendaTaskType";
+import { agendaWorkSnapshotQuality } from "@/lib/agendaWorkedTime";
 
 export interface AgendaVeiculo {
   id: string;
@@ -51,6 +52,8 @@ export interface AgendaAgendamento {
   tipo_tarefa_auvo?: string | null;
   tipo_tarefa_auvo_id?: string | null;
   tipo_tarefa_auvo_descricao?: string | null;
+  duracao_decimal?: number | null;
+  atualizado_em?: string | null;
 }
 
 async function preencherDocumentosGc(agendamentos: AgendaAgendamento[]) {
@@ -79,6 +82,12 @@ async function preencherDocumentosGc(agendamentos: AgendaAgendamento[]) {
     check_out: string | null;
     atualizado_em: string | null;
   }>();
+  const tempoPorTarefa = new Map<string, {
+    check_in_iso: string | null;
+    check_out_iso: string | null;
+    duracao_decimal: number | null;
+    atualizado_em: string | null;
+  }>();
   const statusAuvoConfiavel = (value: string | null | undefined) => {
     const normalized = String(value || "")
       .normalize("NFD")
@@ -90,7 +99,7 @@ async function preencherDocumentosGc(agendamentos: AgendaAgendamento[]) {
   for (let index = 0; index < taskIds.length; index += 500) {
     const { data, error } = await sb
       .from("tarefas_central")
-      .select("auvo_task_id,gc_os_codigo,gc_orcamento_codigo,gc_os_situacao,gc_os_tarefa_os,gc_os_tarefa_exec,status_auvo,check_in_iso,check_out_iso,task_type_id,descricao,atualizado_em")
+      .select("auvo_task_id,gc_os_codigo,gc_orcamento_codigo,gc_os_situacao,gc_os_tarefa_os,gc_os_tarefa_exec,status_auvo,check_in_iso,check_out_iso,duracao_decimal,task_type_id,descricao,atualizado_em")
       .in("auvo_task_id", taskIds.slice(index, index + 500))
       .order("atualizado_em", { ascending: false });
     if (error) throw error;
@@ -98,6 +107,25 @@ async function preencherDocumentosGc(agendamentos: AgendaAgendamento[]) {
     for (const row of data ?? []) {
       const taskId = String(row.auvo_task_id || "").trim();
       if (!taskId) continue;
+      const tempoCandidato = {
+        check_in_iso: row.check_in_iso || null,
+        check_out_iso: row.check_out_iso || null,
+        duracao_decimal: row.duracao_decimal == null ? null : Number(row.duracao_decimal),
+        atualizado_em: row.atualizado_em || null,
+      };
+      const tempoAtual = tempoPorTarefa.get(taskId);
+      const qualidadeCandidato = agendaWorkSnapshotQuality(tempoCandidato);
+      const qualidadeAtual = tempoAtual ? agendaWorkSnapshotQuality(tempoAtual) : -1;
+      if (
+        !tempoAtual
+        || qualidadeCandidato > qualidadeAtual
+        || (
+          qualidadeCandidato === qualidadeAtual
+          && String(tempoCandidato.atualizado_em || "") > String(tempoAtual.atualizado_em || "")
+        )
+      ) {
+        tempoPorTarefa.set(taskId, tempoCandidato);
+      }
       const estadoAtual = estadoPorTarefa.get(taskId);
       const statusAtual = statusAuvoConfiavel(row.status_auvo) ? row.status_auvo : null;
       // A consulta vem do snapshot mais novo para o mais antigo. O estado Auvo
@@ -178,6 +206,7 @@ async function preencherDocumentosGc(agendamentos: AgendaAgendamento[]) {
   return agendamentos.map((item) => {
     const documento = documentosPorTarefa.get(String(item.auvo_task_id || "").trim());
     const estado = estadoPorTarefa.get(String(item.auvo_task_id || "").trim());
+    const tempo = tempoPorTarefa.get(String(item.auvo_task_id || "").trim());
     if (!documento) return item;
     const tipoTarefa = resolveAgendaTaskType({
       taskId: item.auvo_task_id,
@@ -192,8 +221,9 @@ async function preencherDocumentosGc(agendamentos: AgendaAgendamento[]) {
       gc_orcamento_codigo: documento.orcamento || item.gc_orcamento_codigo || null,
       gc_os_situacao: documento.situacao || item.gc_os_situacao || null,
       status_auvo: estado?.status_auvo || documento.status_auvo || item.status_auvo || null,
-      check_in_iso: estado?.check_in || documento.check_in || item.check_in_iso || null,
-      check_out_iso: estado?.check_out || documento.check_out || item.check_out_iso || null,
+      check_in_iso: tempo?.check_in_iso || estado?.check_in || documento.check_in || item.check_in_iso || null,
+      check_out_iso: tempo?.check_out_iso || estado?.check_out || documento.check_out || item.check_out_iso || null,
+      duracao_decimal: tempo?.duracao_decimal ?? item.duracao_decimal ?? null,
       tipo_tarefa_auvo: tipoTarefa,
       tipo_tarefa_auvo_id: documento.tipo_id,
       tipo_tarefa_auvo_descricao: documento.tipo_descricao,
